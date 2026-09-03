@@ -876,3 +876,102 @@ def test_union_add_rejects_mismatched_union():
 
     with raises(SyntaxError, match="Cannot merge union CTEs"):
         left + right
+
+
+def _consumer_cte(
+    name: str,
+    outputs: list[BuildConcept],
+    sources: dict[str, list[CTE | UnionCTE]],
+    joins: list[Join] | None = None,
+) -> CTE:
+    parents = list({id(p): p for ps in sources.values() for p in ps}.values())
+    cte = CTE(
+        name=name,
+        source=QueryDatasource(
+            input_concepts=outputs,
+            output_concepts=outputs,
+            datasources=[p.source for p in parents],
+            grain=BuildGrain(),
+            joins=[],
+            source_map={
+                c.address: {p.source for p in sources.get(c.address, [])}
+                for c in outputs
+            },
+        ),
+        output_columns=outputs,
+        parent_ctes=parents,
+        joins=joins or [],
+        grain=BuildGrain(),
+        source_map={
+            c.address: [p.name for p in sources.get(c.address, [])] for c in outputs
+        },
+        existence_source_map={},
+    )
+    cte.group_to_grain = True
+    return cte
+
+
+def test_group_concepts_dedups_aliases_of_one_column():
+    from trilogy.core.models.build import BuildFunction
+
+    key = _key_concept("k")
+    parent = _datasource_cte("orders", key)
+    alias = BuildConcept(
+        name="k_alias",
+        canonical_name="k_alias",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.KEY,
+        build_is_aggregate=False,
+        grain=BuildGrain(),
+        lineage=BuildFunction(
+            operator=FunctionType.ALIAS,
+            arguments=[key],
+            output_data_type=DataType.INTEGER,
+            output_purpose=Purpose.KEY,
+            arg_count=1,
+        ),
+    )
+    cte = _consumer_cte("cte", [key, alias], {key.address: [parent]})
+
+    assert cte.render_binding(alias) == cte.render_binding(key)
+    assert cte.render_binding(key)[0] == "source"
+    assert cte.group_concepts == [key]
+
+
+def test_group_concepts_keeps_keys_bound_to_different_columns():
+    left = _key_concept("k")
+    right = _key_concept("r")
+    a = _datasource_cte("a", left)
+    b = _datasource_cte("b", right)
+    cte = _consumer_cte("cte", [left, right], {left.address: [a], right.address: [b]})
+
+    assert cte.render_binding(left) != cte.render_binding(right)
+    assert cte.group_concepts == [left, right]
+
+
+def test_group_concepts_dedups_outer_join_key_class():
+    left = _key_concept("k")
+    right = _key_concept("r")
+    a = _datasource_cte("a", left)
+    b = _datasource_cte("b", right)
+    join = Join(
+        right_cte=b,
+        jointype=JoinType.LEFT_OUTER,
+        joinkey_pairs=[
+            CTEConceptPair(left=left, right=right, existing_datasource=b.source, cte=b)
+        ],
+    )
+    cte = _consumer_cte(
+        "cte", [left, right], {left.address: [a], right.address: [b]}, joins=[join]
+    )
+
+    assert cte.render_binding(left) == cte.render_binding(right)
+    assert cte.render_binding(left)[0] == "key_class"
+    assert len(cte.group_concepts) == 1
+
+
+def test_render_binding_unbound_concept_falls_back_to_address():
+    key = _key_concept("k")
+    cte = _consumer_cte("cte", [key], {})
+
+    assert cte.render_binding(key) == ("address", key.address)

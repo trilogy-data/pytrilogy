@@ -79,7 +79,7 @@ def _union_key_siblings(
     concept: BuildConcept, environment: BuildEnvironment
 ) -> list[BuildConcept]:
     """Sibling `union(...)` concepts that stack a key for every arm of this
-    union — e.g. `all_k <- union(k1, k2)` beside `all_amt <- union(amt, pad)`.
+    union, e.g. `all_k <- union(k1, k2)` beside `all_amt <- union(amt, pad)`.
     Such a sibling is the stacked row identity of this union's output."""
     if not isinstance(concept.lineage, BuildFunction):
         return []
@@ -105,7 +105,7 @@ def _walk_aggregate_grain_inputs(
     seen: set[str] | None = None,
 ) -> list[BuildConcept]:
     """Collect row-identity concepts an aggregate needs from its arg's
-    upstream — without crossing a row-identity boundary.
+    upstream, without crossing a row-identity boundary.
 
     Each concept defines its own row identity if it is:
       - a rowset (row identity = its declared grain)
@@ -137,7 +137,7 @@ def _walk_aggregate_grain_inputs(
         # A union output's per-arm keys can't be stacked into one column, so
         # its usable row identity is a sibling union over those keys (which a
         # UnionNode CAN output). Without one, fall through to the per-arm key
-        # demand — unsatisfiable, but loud, never a silent dedup.
+        # demand: unsatisfiable, but loud, never a silent dedup.
         siblings = _union_key_siblings(concept, environment)
         if siblings:
             return siblings

@@ -41,7 +41,6 @@ class PostgresDialect(BaseDialect):
         **FUNCTION_MAP,
     }
     QUOTE_CHARACTER = '"'
-    RECURSIVE_KEYWORD = ""
     SUPPORTS_AGGREGATE_GROUPING_MODES = True
     # `relation "orders" does not exist` / `schema "analytics" does not exist`.
     # Anchored on the object kind: bare `does not exist` also covers a missing

@@ -52,7 +52,6 @@ from trilogy.core.exceptions import InvalidSyntaxException, UnsupportedDialectFe
 from trilogy.core.internal import DEFAULT_CONCEPTS
 from trilogy.core.models.author import ArgBinding, arg_to_datatype
 from trilogy.core.models.build import (
-    BoolExpr,
     BuildAggregateWrapper,
     BuildBetween,
     BuildCaseElse,
@@ -105,10 +104,6 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.processing.condition_utility import (
     condition_implies,
-    contains_window,
-    decompose_condition,
-    is_scalar_condition,
-    references_any_concept,
 )
 from trilogy.core.processing.utility import sort_select_output_processed
 from trilogy.core.query_processor import (
@@ -809,7 +804,7 @@ class BaseDialect:
     # Row cap spelling: TOP goes after SELECT, LIMIT after ORDER BY.
     LIMIT_STYLE: ClassVar[Literal["LIMIT", "TOP"]] = "LIMIT"
     LIMIT_PARENTHESIZED = False
-    # Empty for dialects whose WITH never takes a RECURSIVE marker.
+    # Empty where WITH takes no RECURSIVE marker (SQL Server).
     RECURSIVE_KEYWORD = "RECURSIVE"
     QUOTE_CTE_NAMES = False
     DATATYPE_MAP: ClassVar[dict[DataType, str]] = DATATYPE_MAP
@@ -2722,10 +2717,7 @@ class BaseDialect:
 
         if self.GROUP_MODE == GroupMode.AUTO:
             result = sorted(
-                {
-                    self.render_concept_sql(c, cte, alias=False)
-                    for c in cte.group_concepts
-                }
+                self.render_concept_sql(c, cte, alias=False) for c in cte.group_concepts
             )
             if not result:
                 return constant_output_fallback
@@ -2735,18 +2727,10 @@ class BaseDialect:
         # hidden concepts that render identically to visible ones
         rendered_to_index = self._rendered_select_index(cte, select_index)
         seen: set[int] = set()
-        seen_sql: set[str] = set()
         indices: list[int] = []
         fallbacks: list[str] = []
         for c in cte.group_concepts:
             sql = self.render_concept_sql(c, cte, alias=False)
-            # two group keys that resolve to the same source expression are
-            # redundant: grouping by (x, x) == grouping by (x). Distinct
-            # aliases over one column (e.g. q39's isk1/isk2 -> inv_item_sk)
-            # otherwise emit GROUP BY 1,2,3,4 instead of 1,3.
-            if sql in seen_sql:
-                continue
-            seen_sql.add(sql)
             if c.address in select_index:
                 idx = select_index[c.address]
                 if idx not in seen:
@@ -2896,44 +2880,10 @@ class BaseDialect:
             final_joins = []
         else:
             final_joins = cte.joins or []
-        where: BoolExpr | None = None
-        having: BoolExpr | None = None
-        qualify: BoolExpr | None = None
-        materialized = {x for x, v in cte.source_map.items() if v}
-        # Rollup-carrier outputs render as SUM(input) in this CTE (see
-        # _render_concept_sql), so a predicate touching one is aggregated at
-        # render time and must live in HAVING even though its input column is
-        # materialized (which would otherwise mark the atom WHERE-safe scalar).
-        rollup_addresses = (
-            {concept.address for concept in cte.rollup_concepts}
-            if cte.group_to_grain
-            else set()
-        )
-        if cte.condition:
-            # Window predicates (rank/lag/... over) can't live in WHERE or HAVING;
-            # they must be lowered to QUALIFY. Fast-path the common no-window case.
-            if (
-                not contains_window(cte.condition, materialized=materialized)
-                and not references_any_concept(cte.condition, rollup_addresses)
-                and (
-                    not cte.group_to_grain
-                    or is_scalar_condition(cte.condition, materialized=materialized)
-                )
-            ):
-                where = cte.condition
-            else:
-                components = decompose_condition(cte.condition)
-                for x in components:
-                    if contains_window(x, materialized=materialized):
-                        qualify = qualify + x if qualify else x
-                    elif cte.group_to_grain and (
-                        not is_scalar_condition(x, materialized=materialized)
-                        or references_any_concept(x, rollup_addresses)
-                    ):
-                        having = having + x if having else x
-                    else:
-                        where = where + x if where else x
-
+        placement = cte.condition_placement
+        where = placement.where
+        having = placement.having
+        qualify = placement.qualify
         if qualify is not None and not self.SUPPORTS_QUALIFY:
             raise InvalidSyntaxException(
                 "Window functions are not allowed in a `having` clause for this "

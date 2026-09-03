@@ -376,11 +376,12 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
         if address not in parent.existence_source_map:
             parent.existence_source_map[address] = sources
 
-    # AND-combine the child's WHERE into the parent — for AGGREGATE merges the
+    # AND-combine the child's WHERE into the parent: for AGGREGATE merges the
     # child sits BELOW the aggregate (its condition is the pre-aggregation
     # WHERE), and the parent becomes the aggregate after the merge, so its
-    # WHERE has to carry the predicate forward. (WINDOW/BASIC modes are blocked
-    # upstream by `child_has_merge_blockers` when the child has a condition.)
+    # WHERE has to carry the predicate forward. WINDOW merges are blocked
+    # upstream by `child_has_merge_blockers` when the child has a condition; a
+    # conditioned BASIC child arrives through the filtered-projection branch.
     # Dedup on AND-atoms so a chain of merges (or a predicate already carried
     # by the parent) can't re-stamp it into `H AND H AND H` — q31's HAVING.
     if cte.condition is not None:

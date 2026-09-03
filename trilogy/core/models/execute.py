@@ -113,6 +113,17 @@ class SemiJoinFilter:
         )
 
 
+@dataclass(frozen=True)
+class ConditionPlacement:
+    """Where a CTE's condition renders: atoms over the rows it reads go to
+    WHERE, atoms over values it aggregates to HAVING, atoms over window
+    functions it emits to QUALIFY."""
+
+    where: BoolExpr | None = None
+    having: BoolExpr | None = None
+    qualify: BoolExpr | None = None
+
+
 @dataclass
 class CTE:
     name: str
@@ -586,6 +597,87 @@ class CTE:
         )
 
     @property
+    def condition_placement(self) -> ConditionPlacement:
+        from trilogy.core.processing.condition_utility import (
+            contains_window,
+            decompose_condition,
+            is_scalar_condition,
+            references_any_concept,
+        )
+
+        if not self.condition:
+            return ConditionPlacement()
+        materialized = {
+            address for address, sources in self.source_map.items() if sources
+        }
+        # Rollup carriers render as SUM(input) here, so an atom reading one is
+        # aggregated even though its input column is materialized.
+        aggregated = (
+            {concept.address for concept in self.rollup_concepts}
+            if self.group_to_grain
+            else set()
+        )
+        where: BoolExpr | None = None
+        having: BoolExpr | None = None
+        qualify: BoolExpr | None = None
+        for atom in decompose_condition(self.condition):
+            if contains_window(atom, materialized=materialized):
+                qualify = qualify + atom if qualify else atom
+            elif self.group_to_grain and (
+                not is_scalar_condition(atom, materialized=materialized)
+                or references_any_concept(atom, aggregated)
+            ):
+                having = having + atom if having else atom
+            else:
+                where = where + atom if where else atom
+        if having is None and qualify is None:
+            return ConditionPlacement(where=self.condition)
+        return ConditionPlacement(where=where, having=having, qualify=qualify)
+
+    def render_binding(
+        self, concept: BuildConcept, seen: frozenset[str] = frozenset()
+    ) -> tuple[str, ...]:
+        """What ``concept`` renders as in this CTE: the parent column it reads,
+        or the expression it computes. Aliases, ``group(x, ...)``, rowset items
+        and aligned multiselect columns render as their content, so they bind
+        to it; an unbound column renders through a pseudonym or canonical
+        sibling this CTE does bind."""
+        seen = seen | {concept.address}
+        # Members of one outer-join key class render as one coalesce.
+        key_class = self.outer_join_key_class(concept.address)
+        if len(key_class) > 1:
+            return ("key_class", *sorted(member.address for member in key_class))
+        sources = self.source_map.get(concept.address, [])
+        if sources:
+            return ("source", *sorted(sources), str(self.get_alias(concept)))
+        lineage = concept.lineage
+        if isinstance(lineage, BuildRowsetItem):
+            return self.render_binding(lineage.content, seen)
+        if (
+            isinstance(lineage, BuildFunction)
+            and lineage.operator in (FunctionType.ALIAS, FunctionType.GROUP)
+            and isinstance(lineage.arguments[0], BuildConcept)
+        ):
+            return self.render_binding(lineage.arguments[0], seen)
+        if isinstance(lineage, BuildMultiSelectLineage):
+            try:
+                return self.render_binding(lineage.find_source(concept, self), seen)
+            except UnionOutputResolutionError:
+                return ("address", concept.address)
+        if lineage is not None:
+            return ("expression", str(lineage))
+        for other in self.output_columns:
+            if other.address in seen or not self.source_map.get(other.address, []):
+                continue
+            if (
+                other.address in concept.pseudonyms
+                or concept.address in other.pseudonyms
+                or other.canonical_address == concept.canonical_address
+            ):
+                return self.render_binding(other, seen)
+        return ("address", concept.address)
+
+    @property
     def group_concepts(self) -> list[BuildConcept]:
         from trilogy.core.processing.condition_utility import condition_implies
 
@@ -702,22 +794,24 @@ class CTE:
                 return bool(has_local_aggregate(c))
             return c.purpose == Purpose.METRIC
 
-        return (
-            unique(
-                [
-                    c
-                    for c in self.output_columns
-                    if not check_is_not_in_group(c)
-                    and not (
-                        c.address in self.hidden_concepts
-                        and c.derivation == Derivation.MULTISELECT
-                    )
-                ],
-                "address",
-            )
-            if self.group_to_grain
-            else []
-        )
+        if not self.group_to_grain:
+            return []
+        # Two keys that render as one column or expression are one key
+        # (distinct aliases over the same column).
+        keys: list[BuildConcept] = []
+        bindings: set[tuple[str, ...]] = set()
+        for c in unique(self.output_columns, "address"):
+            if check_is_not_in_group(c) or (
+                c.address in self.hidden_concepts
+                and c.derivation == Derivation.MULTISELECT
+            ):
+                continue
+            binding = self.render_binding(c)
+            if binding in bindings:
+                continue
+            bindings.add(binding)
+            keys.append(c)
+        return keys
 
     @property
     def render_from_clause(self) -> bool:
@@ -1746,6 +1840,10 @@ class UnionCTE:
     @condition.setter
     def condition(self, value):
         raise NotImplementedError
+
+    @property
+    def condition_placement(self) -> ConditionPlacement:
+        return ConditionPlacement()
 
     def source_bindings(self, include_branches: bool = True) -> list[SourceBinding]:
         bindings = [

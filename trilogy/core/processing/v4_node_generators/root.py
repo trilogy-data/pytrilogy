@@ -333,31 +333,6 @@ def _resolve_row_arg_source(
     return row_node
 
 
-def _has_upgradable_outer_join(node: StrategyNode, guard_addresses: set[str]) -> bool:
-    """Whether the sourced node renders a preserved (outer) join whose
-    NULL-padded side carries a guard column — the only case where co-locating
-    the rejecting WHERE with the joins lets the join-upgrade pass tighten the
-    scan (q70: `state in top_states` over the LEFT-joined store dim). Anywhere
-    else the inline form buys nothing and costs a scan-CTE split when the
-    unfiltered scan is also consumed elsewhere (q33's size regression)."""
-    from trilogy.core.enums import JoinType
-    from trilogy.core.models.execute import BaseJoin
-
-    resolved = node.resolve()
-    for join in resolved.joins or []:
-        if not isinstance(join, BaseJoin):
-            continue
-        padded = []
-        if join.join_type in (JoinType.LEFT_OUTER, JoinType.FULL):
-            padded.append(join.right_datasource)
-        if join.join_type == JoinType.FULL:
-            padded.extend(ds.existing_datasource for ds in join.concept_pairs or [])
-        for side in padded:
-            if guard_addresses & {c.address for c in side.output_concepts}:
-                return True
-    return False
-
-
 def _where_clause(atoms: list[BoolExpr]) -> BuildWhereClause | None:
     combined = combine_condition_atoms(atoms)
     return BuildWhereClause(conditional=combined) if combined is not None else None
@@ -514,27 +489,18 @@ def gen_root(
             not node.force_group
             and not (node_addresses & feeder_addresses)
             and not extra
-            and _has_upgradable_outer_join(
-                node,
-                {
-                    arg.address
-                    for atom in decompose_condition(existence_conditions.conditional)
-                    for arg in atom.row_arguments
-                },
-            )
         ):
-            # Attach the existence gate ON the sourced node, not in a
-            # pass-through wrapper CTE: the join-upgrade pass can only prove a
-            # preserved dim join INNER when the rejecting WHERE and the join
-            # render in the SAME select (q70's `state in top_states` guard must
-            # upgrade the nullable store join exactly as the inline form
-            # does), and a wrapper hides the joins from the proof. Gated to
-            # feeders whose outputs are fully disjoint from the row stream — a
-            # shared address makes node resolution treat the feeder as a row
-            # parent and fan the scan (q16/q23) — and to memberships whose row
-            # args are all demanded outputs (a hidden extra breaks downstream
-            # input validation, q23). Copy-first: plan_source results are
-            # history-cached and may be shared.
+            # Host the existence gate ON the sourced node rather than in a
+            # pass-through wrapper: the wrapper is what predicate pushdown
+            # would otherwise collapse, and the join-upgrade pass can only
+            # prove a preserved dim join INNER when the rejecting WHERE and
+            # the join render in the same select. Gated to feeders whose
+            # outputs are fully disjoint from the row stream (a shared address
+            # makes node resolution treat the feeder as a row parent and fan
+            # the scan) and to memberships whose row args are all demanded
+            # outputs (a hidden extra breaks downstream input validation).
+            # The copy keeps a history-cached result intact for its other
+            # consumers.
             gated = node.copy()
             gated.conditions = (
                 BuildConditional(

@@ -39,7 +39,7 @@ def _make_group_cte(
     )
 
 
-def testis_grouped_cte(test_environment: Environment):
+def test_is_grouped_cte(test_environment: Environment):
     cols = _get_cols(test_environment)[:1]
     col = cols[0]
     group_cte = _make_group_cte("a", cols)

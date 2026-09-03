@@ -1166,3 +1166,15 @@ order by sales.billing_customer.id asc nulls first;"""
     assert all(
         row[0] is not None for row in rows
     ), "NULL customer survived `billing_customer.sk is not null`"
+
+
+def test_fourteen_renders_without_merge_aggregate(engine):
+    text = (working_path / "query14.preql").read_text()
+    original = CONFIG.optimizations.merge_aggregate
+    try:
+        CONFIG.optimizations.merge_aggregate = False
+        engine.environment = Environment(working_path=working_path)
+        sql = engine.generate_sql(text)[-1]
+    finally:
+        CONFIG.optimizations.merge_aggregate = original
+    engine.execute_raw_sql(f"EXPLAIN {sql}")

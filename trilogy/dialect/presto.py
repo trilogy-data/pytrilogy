@@ -45,7 +45,6 @@ class PrestoDialect(BaseDialect):
         **FUNCTION_MAP,
     }
     QUOTE_CHARACTER = '"'
-    RECURSIVE_KEYWORD = ""
 
     DATATYPE_MAP: ClassVar[dict[DataType, str]] = {
         **BaseDialect.DATATYPE_MAP,

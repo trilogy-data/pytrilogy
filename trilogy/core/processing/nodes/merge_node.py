@@ -638,7 +638,7 @@ class MergeNode(StrategyNode):
                 full_join_concepts += join.input_concepts
         pregrain = BuildGrain.from_concepts(
             calculate_joined_pregrain(
-                final_datasets, joins, grain, self.environment
+                join_candidates, joins, grain, self.environment
             ).components,
             environment=self.environment,
         )
@@ -689,7 +689,7 @@ class MergeNode(StrategyNode):
         # the output grain: nothing to collapse (a row filter on keys outside
         # the grain cannot create duplicates), so render a plain projection.
         if force_group and is_identity_group(
-            final_datasets,
+            join_candidates,
             joins,
             BuildGrain.from_concepts(
                 self.output_concepts, environment=self.environment

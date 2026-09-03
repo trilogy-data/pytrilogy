@@ -120,9 +120,9 @@ These are recent, deliberate, and gate-verified. Divergence = wrong plans.
 ## Where the time actually goes (measured, s66)
 
 Per-state cost after the Python optimization passes: `pending_obligations`
-dominated by the COLOCATED scan (set intersections against
-`functional_partners`), the LABELABLE chain walk (`_label_chain_state`), and
-`components` (union-find over `join_partners`). All pairwise predicates are
+dominated by the COLOCATED scan (set intersections against the functional
+partner sets), the LABELABLE chain walk (`_label_chain_state`), and
+`components` (union-find over the join partner sets). All pairwise predicates are
 precomputed once per network into adjacency sets (`SourceNetwork._partners`)
 — in Rust these become bitset rows and the per-state loops become AND/OR
 words. q23's big search: 772 states visited, 260 obligation computations

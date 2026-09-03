@@ -224,7 +224,7 @@ class TestValidateStackScalarConditions:
             preexisting_conditions=target_conditional,
             label="multi",
         )
-        result, _, _, _, _ = validate_stack(
+        result, _, _, _ = validate_stack(
             environment=BuildEnvironment(),
             stack=[scalar_node, multi_node],
             concepts=[cmax, customer_id],
@@ -252,7 +252,7 @@ class TestValidateStackScalarConditions:
             preexisting_conditions=target_conditional,
             label="multi",
         )
-        result, _, _, _, _ = validate_stack(
+        result, _, _, _ = validate_stack(
             environment=BuildEnvironment(),
             stack=[scalar_node, multi_node],
             concepts=[cmax, customer_id],
@@ -289,7 +289,7 @@ class TestValidateStackScalarConditions:
             preexisting_conditions=target_conditional,
             label="multi_b",
         )
-        result, _, _, _, _ = validate_stack(
+        result, _, _, _ = validate_stack(
             environment=BuildEnvironment(),
             stack=[node_a, node_b],
             concepts=[cmax, customer_id],
@@ -313,7 +313,7 @@ class TestValidateStackScalarConditions:
         # the merged outputs so the loop can apply the WHERE here.
         node_a = _StackNode([cmax], label="a")
         node_b = _StackNode([customer_id, sales_channel], label="b")
-        result, _, _, _, _ = validate_stack(
+        result, _, _, _ = validate_stack(
             environment=BuildEnvironment(),
             stack=[node_a, node_b],
             concepts=[cmax, customer_id, sales_channel],
@@ -339,7 +339,7 @@ class TestValidateStackScalarConditions:
             preexisting_conditions=_eq(sales_channel, "STORE"),
             label="partial",
         )
-        result, _, _, _, _ = validate_stack(
+        result, _, _, _ = validate_stack(
             environment=BuildEnvironment(),
             stack=[node],
             concepts=[customer_id],
@@ -362,7 +362,7 @@ class TestValidateStackScalarConditions:
             preexisting_conditions=_eq(sales_channel, "STORE"),
             label="partial",
         )
-        result, _, _, _, _ = validate_stack(
+        result, _, _, _ = validate_stack(
             environment=BuildEnvironment(),
             stack=[node],
             concepts=[customer_id],

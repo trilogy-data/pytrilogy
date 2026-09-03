@@ -290,9 +290,9 @@ written.
   equivalence and upgrade to INNER). The directional claim has its own
   predicate `_own_coverage_partial(concept, cte, graph)`: exact-address
   stamps outside `graph.subset_sources()` (now cached) block; relation
-  stamps speak to the relation. `_complete_values` /
-  `_equal_intersection_complete` / `_complete_via_preserved_base` take the
-  graph instead of ignore sets. `subset_join_map` survives only for the
+  stamps speak to the relation. `_complete_values` takes the graph instead
+  of ignore sets (the EQUAL-trust and preserved-base recursions are gone;
+  `_pair_equal_declared` is the only EQUAL exemption). `subset_join_map` survives only for the
   same-address ORIGIN arbitration (its legitimate use).
 
 One environment-level directed graph over concepts, carrying TWO edge

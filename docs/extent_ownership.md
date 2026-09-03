@@ -100,8 +100,7 @@ statement fails to bind at render time.
 
 ## What this leaves behind
 
-The reunion machinery (`_gate_nullable_by_host`'s `family_anchored` keep, the
-padding-provenance matrix) is now a safety net for plans that still split a
+The reunion machinery (the padding-provenance matrix) is now a safety net for plans that still split a
 span across owners, not the mechanism that makes the common case correct.
 
 `PruneInvisibleOuterJoins` is gone. It survived this landing because it still

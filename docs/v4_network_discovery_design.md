@@ -266,10 +266,9 @@ reporting, then the search memo, then branch-and-bound; handoff at
 `local_scripts/handoff_v4_search_cost.md`. (3) Predicate pushdown back onto
 scans (TPC-H q20's `CANADA` is deferred past a join).
 (4) The recorded S4/S5 and provider-choice families.
-(5) Nullability is still not modeled (§0.1). (6) Condition labels beyond
-`SENSITIVE`/`IMPLIED_EXACT` are computed and never read (§3 promised them as
-dominance inputs; `APPLIES`/`UNAFFECTED`/`DEFERRED`/`NEUTRAL` have no
-consumer). (7) Stage D is still an adapter: the search prices `completions` and
+(5) Nullability is still not modeled (§0.1). (6) Only the `SENSITIVE`/`IMPLIED_EXACT`
+condition labels exist (§3 promised richer labels as dominance inputs; the
+others were computed and never read, and have been deleted). (7) Stage D is still an adapter: the search prices `completions` and
 `partial_terminals`, but `_network_source` passes only `sources` and
 `connectors` to the legacy bridge emitter, which re-derives the rest — so the
 §3 "emit a solution, not a graph" contract is unfulfilled and the two can
@@ -533,7 +532,9 @@ The cutover costs exactly ONE regression: `test_five` (query05).
    spelling, so keying on the minted node deleted the graph's own node and severed the
    datasource edge. Symptom: `Missing source reference to sales.billing_customer.sk`.
 2. `reinject_common_join_keys_v2` is a carry-over that runs INSIDE
-   `determine_induced_minimal_nodes`, which this path bypasses. Ported explicitly.
+   `determine_induced_minimal_nodes`, which this path bypasses. It was ported
+   explicitly and later removed again: under the unit suite and the corpus the
+   network path never changed a node through it.
 
 Also landed: memoization of `SourceNetwork.join_keys` (the cover search asks it O(n^2)
 times per cover over thousands of covers).
@@ -925,11 +926,12 @@ Gate 7 → 4 failed. Three fixes, each a one-cause diagnosis (details and the
 diagnosis chains live in `local_scripts/s34_handoff.md`):
 
 1. **q29 dangling feeder** — emitter-side, as predicted. The union-join
-   assembly's `_inject_scoped_join_key_exposure` counted an EXISTENCE FEEDER
+   assembly's resolve-time key exposure counted an EXISTENCE FEEDER
    grandparent as row availability and surfaced a coalescing member
-   (`sr_data.cid`) onto an arm whose row parents cannot render it. Guarded by
-   `_feeds_only_existence`, the same feeder test `_repoint_feeder_only_rows`
-   uses.
+   (`sr_data.cid`) onto an arm whose row parents cannot render it. That
+   exposure is now a construction-time demand of gen_aggregate
+   (`outputs_with_scoped_join_mates`), which runs before existence feeders
+   are attached, so the feeder can no longer be mistaken for a row parent.
 2. **Mirrored-INNER duplicate alias** (unmasked by 1) — two independently-built
    merges over the same parents legitimately pick opposite bases, the
    same-name CTEs merge, and `unique_id` (orientation-sensitive) kept both
@@ -1487,11 +1489,11 @@ silent wrong-rows regression, not a build error.
   flag. Its partiality is never dominance evidence.
 - **A Steiner solution can traverse a node minted in another build scope** (a
   rowset body's key under different scoped joins); it proves connectivity but
-  cannot be planned here — resolve what this scope knows and drop the rest
-  (`_concepts_in_graph`).
-- **`reinject_common_join_keys_v2` / synonym handling**: pseudonym mates must be
-  re-added or a side never materializes its own member and the equality drops
-  out of the merge join (q05 fan-out).
+  cannot be planned here; resolve what this scope knows and drop the rest.
+- **Synonym handling**: pseudonym mates must be re-added or a side never
+  materializes its own member and the equality drops out of the merge join
+  (q05 fan-out). `reinject_common_join_keys_v2` does this on the legacy path;
+  the network path needs no re-injection.
 - **Determinism**: no `hash()`-derived ordering anywhere; sort by address /
   datasource name; stable tie-breaks (the s29 discriminator lesson).
 

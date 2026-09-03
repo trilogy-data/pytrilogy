@@ -1,6 +1,6 @@
 # Handoff: query-generation simplification audit (2026-08-23)
 
-## Status 2026-08-23: LANDED through wave 3 (commits aecae9837 .. see git log)
+## Status 2026-09-02: LANDED through wave 3 plus the wave-3 remainder (commits aecae9837 .. see git log)
 
 Landing was done in three waves of parallel agents with disjoint file
 ownership, a serialized pytest lock, and a per-wave corpus baseline. Every
@@ -23,83 +23,69 @@ commit message records its corpus A/B result. Item status:
 | 2.2 | LANDED c4cc2a05f, 81ce16e8c | `_clear_identity_group` deleted after GroupNode honours is_identity_group and CollapseSingleParent treats `sum(x) by k` over the grouping parent as a rename |
 | 2.3(a) | LANDED f3c846fbb | the planner emits `min(leaf)` in the ordering of a grouped final; a plain reference is impossible for that shape (GROUP BY lower(ch) vs ORDER BY ch), so this is one owner, not zero wrapping |
 | 2.4 | LANDED fc533ce3f | direct return deleted; the 16 residual roots were conditioned projections, not ORDER BY/LIMIT shapes |
-| 2.6 | PARTIAL 9a2892dfb; site A patches in docs/patches | the 142 pushes originate at gen_root's existence wrapper (34) and source_planning's bridge merge (57), not the strategy_builder sites; a conditioned COPY of a history-cached node diverges (q64) and a node condition refines nullability-derived join rendering (q80) |
+| 2.6 | PARTIAL 9a2892dfb; site A LANDED (wave-3 remainder) | the 142 pushes originate at gen_root's existence wrapper (34) and source_planning's bridge merge (57), not the strategy_builder sites; a conditioned COPY of a history-cached node diverges (q64) and a node condition refines nullability-derived join rendering (q80). Site A: gen_root's copy-and-attach path is the default under its three structural gates and MergeNode's joined pregrain / identity-group test see join candidates only; 34 -> 12 pushes, q35 loses a passthrough CTE, 8 statements rename CTEs. Site B stays in the optimizer (see Resume) |
 | 2.7 | LANDED c2897f784, 737bb0e37 | the resolve-time exposure is now a gen_aggregate construction obligation |
 | 3.6 | BLOCKED, design decision needed | the divergence is real but not where the spec pointed: node-level stamps are output-restricted while `_collect_deep_partial_addresses` reads NON-projected `~` columns for join typing (gcat:inline29 flips INNER->LEFT/FULL when the QDS honours the stamps), and post-construction widening (`projection.widen_projection`, `set_output_concepts`) never restamps (gcat:inline32 loses its date-spine FULL). Decide whether non-projected partials are join-typing input; then either widen the stamp or make join typing read datasource columns, and restamp on widening. Also: dropping the construction-time `_refine_nullable_for_conditions` loses q64's membership pushdown (`semi_join_pushdown.nullable_in` reads `cte.nullable_concepts`) |
-| 2.3(b)(c), 3.3 | NOT LANDED | agent R was stopped mid-edit; see Resume here |
+| 3.3 | LANDED (wave-3 remainder) | `CTE.condition_placement` owns WHERE/HAVING/QUALIFY; `CTE.group_concepts` dedups by `render_binding` (source column, expression, or outer-join key class), the renderer no longer dedups by SQL text; corpus byte-identical |
+| 2.3(b)(c) | NOT LANDED | filter-virtual MAX wrapping and the passthrough-group gate still coordinate at render; see 2.3 |
 
-### Resume here (stopped 2026-08-23 during wave 3)
+### Resume here (wave-3 remainder landed 2026-09-02)
 
-Landed: 13 commits, aecae9837 .. 9a2892dfb on `additional_refinement`
-(pushed to origin), each gated by a same-process corpus A/B and the
-TPC-DS/TPC-H row batteries. `more_eval_tuning` is untouched.
+Landed after the wave-3 stop, each gated by the same-process corpus A/B
+(pre-stack c8eab06fe vs tree: 15 statements smaller, none larger; the
+wave-3 remainder itself: q35 -898 chars, 8 CTE renames, everything else
+byte-identical) and the TPC-DS/TPC-H row batteries:
 
-Stopped mid-flight, NOT committed: agent R (2.3b, 2.3c, 3.3) had
-uncommitted, unverified edits in `trilogy/core/models/execute.py` and
-`trilogy/dialect/base.py` (about +103/-71). Treat that diff as a draft: run
-the gate below on it or discard those two files. Nothing else of R's is in
-the tree.
+- 3.3 (was agent R's draft): `CTE.condition_placement` and
+  `CTE.render_binding` in `execute.py`; the renderer reads them.
+- 2.6 site A: `gen_root` hosts the existence gate on a copy of the sourced
+  node whenever the three structural gates hold (`_has_upgradable_outer_join`
+  deleted); `MergeNode._resolve` passes `join_candidates`, not
+  `final_datasets`, to `calculate_joined_pregrain` and `is_identity_group`.
+- Review cleanups: `validate_stack` no longer threads a write-only
+  `virtual_addresses` set; postgres and presto emit `WITH RECURSIVE` (the
+  shared template kept their old empty marker, which those engines reject);
+  stale design-doc references to deleted helpers corrected.
+- New pins: `tests/optimization/test_collapse_filtered_projection.py`
+  (filtered projection never folds into a window-computing parent),
+  `test_non_benchmark_queries::test_fourteen_renders_without_merge_aggregate`
+  (item 0.2), `test_execute_models` render-binding dedup cases.
 
-2.6 after the wave-3 retry (commit 9a2892dfb landed the gen_root fallback):
-
-- Site A (gen_root existence wrapper, 34 of the 142 pushdown relocations)
-  is PREPARED, not landed: `docs/patches/handoff_2_6_siteA_merge_node.patch`
-  (MergeNode._resolve passes `join_candidates`, not `final_datasets`, to
-  `calculate_joined_pregrain` and `is_identity_group`, so an existence-only
-  feeder stops contributing grain; 0 corpus effect alone) and
-  `docs/patches/handoff_2_6_siteA_root.patch` (drop the
-  `_has_upgradable_outer_join` gate so the copy-and-attach path is the
-  default under the three structural gates). Applied TOGETHER: 34 -> 12
-  pushes, 8 statements change by CTE rename only (q14, 16, 54, 56, 60, 69,
-  94, 95) and q35 loses a two-consumer passthrough CTE (-898 chars, same
-  predicates and scopes); batteries 173 passed. Applied separately, five
-  statements grow a spurious GROUP BY. Apply both, re-run the gate, commit.
-- Site B (source_planning bridge merge, 57 relocations) is NOT a
-  construction-time decision: InlineDatasource runs before pushdown and
-  refuses a filtered root scan unless sole-consumer and all-INNER, so
-  planner-hosted scan atoms split scans that are inlined today (75
-  statements changed, 6 new errors in the prototype). The remaining 30 are
-  union-arm pushes/prunes the spec keeps in the optimizer. Closed.
-- The other 43 (final-condition injection, build_strategy_node wrapper,
-  gen_filter/gen_basic, cascades) were not attempted.
-
-Also uncommitted, deliberately: the regenerated tests/modeling timing
-artifacts (`*.png`, `*-summary.md`, `zquery*.log`) and
-`crates/trilogy-io/Cargo.lock` (version sync to 0.3.338). They are committed
-by design with the diffs that produced them; commit them once on the final
-tree after the last wave, not per wave.
+2.6 site B (source_planning bridge merge, 57 relocations) is NOT a
+construction-time decision: InlineDatasource runs before pushdown and
+refuses a filtered root scan unless sole-consumer and all-INNER, so
+planner-hosted scan atoms split scans that are inlined today (75
+statements changed, 6 new errors in the prototype). The remaining 30 are
+union-arm pushes/prunes the spec keeps in the optimizer. Closed. The other
+43 (final-condition injection, build_strategy_node wrapper,
+gen_filter/gen_basic, cascades) were not attempted.
 
 Remaining work, in order:
 
-1. Decide R's draft diff (keep only if the gate passes) and apply the two
-   site-A patches; mark the table rows.
-2. Regenerate and commit the timing artifacts on the final tree (today's
-   regenerated `tests/modeling/**/zquery*.log`, `*-summary.md`, `*.png` and
-   `crates/trilogy-io/Cargo.lock` are uncommitted in the tree; they reflect
-   the post-wave-2 SQL and are safe to commit as-is if no further SQL change
-   lands first).
-3. Full suite (`.venv/Scripts/python.exe -m pytest tests -m "not
-   adventureworks_execution" --ignore=tests/cli/test_cloud_live.py`; takes
-   ~22 minutes, run it detached, the Bash tool kills at 10 minutes); expected:
-   only `tests/modeling/gcat/test_gcat.py::test_environment`, pre-existing.
-4. Decide 3.6 (see the table row) and 2.1 step 4 (the 45 residual optimizer
+1. Decide 3.6 (see the table row) and 2.1 step 4 (the 45 residual optimizer
    LEFT->INNER flips all need post-planning proofs, so the optimizer branches
    stay unless pushed conditions are visible to the planner).
-5. Optional symmetric coverage for 2.7: `outputs_with_scoped_join_mates` is
+2. 2.3(b)(c): filter-virtual `max(case ...)` lineage at build time and the
+   passthrough-group gate as a planner decision (`force_group`).
+3. Optional symmetric coverage for 2.7: `outputs_with_scoped_join_mates` is
    generator-agnostic; wire into gen_basic/gen_filter/gen_window only if a
    test shape needs it (0 firings today).
-6. `docs/v4_network_discovery_design.md:928` still names
-   `_inject_scoped_join_key_exposure`.
+4. Known pre-existing gaps surfaced by the review, none introduced here:
+   `_scalar_order_leaves` returns None for a CASE in ORDER BY over an
+   unprojected leaf (invalid GROUP BY on DuckDB); `narrow_keyless_joins`
+   re-derives the left side of a keyless join from the explicit left after a
+   keyed reset (same override the deleted optimizer rule had); a rowset
+   consumed through basic wrappers on both sides of a FULL join drops the
+   derived key.
 
-Gate tooling lives in this session's scratchpad `land/` directory
-(`corpus_render.py`, `corpus_diff.py`, `locked_pytest.py`, `AGENT_RULES.md`,
-`base3_<dialect>.json` = render of commit 81ce16e8c). The scratchpad is
-ephemeral; the render harness is the ~80-line recipe from
-`docs/handoff_invisible_contributor_joins.md`, and `base3` is reproducible by
-rendering that commit from a worktree.
+Gate tooling: the render harness is the ~80-line recipe from
+`docs/handoff_invisible_contributor_joins.md` (render every `query*.preql`
+under tpc_ds_duckdb, tpc_ds_duckdb/aggregates and tpc_h, diff per query);
+run it from a cwd outside the repo with `PYTHONPATH=<worktree>` for the
+control leg.
 
 Verification of the final tree: full suite (`-m "not adventureworks_execution"`,
-cloud live tests ignored) 8556 passed after wave 1 with one failure,
+cloud live tests ignored); the only expected failure is
 `tests/modeling/gcat/test_gcat.py::test_environment`, which fails on the
 pre-wave commit c8eab06fe as well (DatasourceColumnBindingError, unrelated).
 

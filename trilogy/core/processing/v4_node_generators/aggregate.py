@@ -51,7 +51,7 @@ def _abstract_output_grain(
     """Outputs at abstract grain are a single-row (`by *`) aggregate: it has
     no join key and is broadcast via a keyless FULL join. Surfacing a
     scoped-join key would re-grain it to that key, and the renderer's
-    grain-match collapse would then silently strip the aggregate (q23)."""
+    grain-match collapse would then silently strip the aggregate."""
     return BuildGrain.from_concepts(outputs, environment).abstract
 
 
@@ -60,7 +60,7 @@ def _renders_nonstandard_grouping(
 ) -> bool:
     """A node that renders `GROUP BY ROLLUP/CUBE/GROUPING SETS` takes its
     GROUP BY from the aggregate wrapper's `by` list verbatim, so any other
-    column surfaced on it is a bare, ungrouped projection (q05). The key still
+    column surfaced on it is a bare, ungrouped projection. The key still
     reaches join inference from the other side; this side keeps only its
     grouping keys."""
     return any(
@@ -110,7 +110,7 @@ def outputs_with_scoped_join_mates(
     Join inference pairs the sides' visible outputs, so an aggregate carrying
     `ticket` as its join-back axis while its parent binds the mate
     `r.r_ticket` under a pseudonym would lose that key from the merge and
-    cross-product the rows on whatever keys remain (q59, q17)."""
+    cross-product the rows on whatever keys remain."""
     group_mates = environment.distinct_scoped_join_group_mates()
     if not group_mates or _abstract_output_grain(outputs, environment):
         return outputs

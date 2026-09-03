@@ -893,7 +893,7 @@ def gen_select_merge_node(
         completion_mandatory = unique(
             validate_targets + list(conditions.row_arguments), "address"
         )
-        complete, _, _, _, _ = validate_stack(
+        complete, _, _, _ = validate_stack(
             environment,
             [candidate],
             validate_targets,
