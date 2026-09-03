@@ -1,5 +1,5 @@
 query_id = "06"
-gen_length = 607
+gen_length = 557
 preql_size = 94
 comp_size = 175
 generated_sql = """
@@ -15,11 +15,11 @@ FROM
 GROUP BY
     1)
 SELECT
-    coalesce(\"user_users\".\"id\",\"wakeful\".\"user_id\") as \"user_id\",
+    \"wakeful\".\"user_id\" as \"user_id\",
     \"user_users\".\"state\" as \"user_state\",
     \"wakeful\".\"revenue\" as \"revenue\"
 FROM
-    \"users\" as \"user_users\"
-    FULL JOIN \"wakeful\" on \"user_users\".\"id\" = \"wakeful\".\"user_id\"
+    \"wakeful\"
+    LEFT OUTER JOIN \"users\" as \"user_users\" on \"wakeful\".\"user_id\" = \"user_users\".\"id\"
 ORDER BY 
-    coalesce(\"user_users\".\"id\",\"wakeful\".\"user_id\") asc"""
+    \"wakeful\".\"user_id\" asc"""

@@ -478,6 +478,26 @@ class StrategyNode:
             proven = condition_proves_non_null(self.conditions)
             if proven:
                 nullable = [c for c in nullable if c.address not in proven]
+        # Partiality likewise comes from the resolved parents: an output every
+        # supplying parent binds partially stays partial through a projection.
+        parent_partial = [
+            (
+                {c.address for c in p.partial_concepts},
+                {c.address for c in p.output_concepts},
+            )
+            for p in parent_sources
+        ]
+        inherited_partials = [
+            c
+            for c in self.output_concepts
+            if any(c.address in partial for partial, _ in parent_partial)
+            and all(
+                c.address in partial
+                for partial, output in parent_partial
+                if c.address in output
+            )
+        ]
+        partials = unique(self.partial_concepts + inherited_partials, "address")
 
         return QueryDatasource(
             input_concepts=self.input_concepts,
@@ -492,7 +512,7 @@ class StrategyNode:
             joins=[],
             grain=grain,
             condition=self.conditions,
-            partial_concepts=self.partial_concepts,
+            partial_concepts=partials,
             rollup_concepts=self.rollup_concepts,
             nullable_concepts=nullable,
             force_group=self.force_group,

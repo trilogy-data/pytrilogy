@@ -1,5 +1,5 @@
 query_id = "29"
-gen_length = 7612
+gen_length = 7670
 preql_size = 1692
 comp_size = 1350
 generated_sql = """
@@ -30,7 +30,7 @@ FROM
 WHERE
     \"store_sales_sale_date_date\".\"D_MOY\" = 9 and \"store_sales_sale_date_date\".\"D_YEAR\" = 1999
 ),
-macho as (
+friendly as (
 SELECT
     \"store_sales_item_items\".\"I_ITEM_DESC\" as \"_per_pair_item_desc\",
     \"store_sales_item_items\".\"I_ITEM_ID\" as \"_per_pair_item_id\",
@@ -67,11 +67,11 @@ WHERE
 GROUP BY
     1,
     2),
-sparkling as (
+sweltering as (
 SELECT
     \"vacuous\".\"store_sales_store_id\" as \"store_sales_store_id\",
     \"vacuous\".\"store_sales_store_name\" as \"store_sales_store_name\",
-    coalesce(\"vacuous\".\"catalog_customer_item_cat_item_sk\",\"vacuous\".\"store_sales_item_sk\",\"wakeful\".\"catalog_customer_item_cat_item_sk\") as \"store_sales_item_sk\",
+    coalesce(\"concerned\".\"catalog_customer_item_cat_item_sk\",\"concerned\".\"store_sales_item_sk\",\"wakeful\".\"catalog_customer_item_cat_item_sk\") as \"store_sales_item_sk\",
     coalesce(\"vacuous\".\"store_sales_customer_sk\",\"wakeful\".\"catalog_customer_item_cat_customer_sk\") as \"store_sales_customer_sk\",
     max(\"wakeful\".\"catalog_customer_item_cat_quantity\") as \"_per_pair_cq\",
     sum(\"vacuous\".\"store_sales_quantity\") as \"_per_pair_sq\",
@@ -81,25 +81,25 @@ FROM
     INNER JOIN \"vacuous\" on \"wakeful\".\"catalog_customer_item_cat_customer_sk\" = \"vacuous\".\"store_sales_customer_sk\" AND \"wakeful\".\"catalog_customer_item_cat_item_sk\" = \"vacuous\".\"store_sales_item_sk\"
     LEFT OUTER JOIN \"concerned\" on \"vacuous\".\"store_sales_ticket_number\" is not distinct from \"concerned\".\"store_sales_ticket_number\" AND coalesce(\"wakeful\".\"catalog_customer_item_cat_item_sk\", \"vacuous\".\"store_sales_item_sk\") is not distinct from \"concerned\".\"store_sales_item_sk\"
 WHERE
-    \"concerned\".\"store_sales_is_returned\" and \"vacuous\".\"store_sales_return_date_month_of_year\" BETWEEN 9 AND 12 and \"vacuous\".\"store_sales_return_date_year\" = 1999 and coalesce(\"vacuous\".\"store_sales_customer_sk\",\"wakeful\".\"catalog_customer_item_cat_customer_sk\") = \"vacuous\".\"store_sales_return_customer_sk\" and \"wakeful\".\"catalog_customer_item_cat_quantity\" > 0 and \"vacuous\".\"store_sales_sale_date_month_of_year\" = 9 and \"vacuous\".\"store_sales_sale_date_year\" = 1999
+    \"vacuous\".\"store_sales_return_date_month_of_year\" BETWEEN 9 AND 12 and \"vacuous\".\"store_sales_return_date_year\" = 1999 and coalesce(\"vacuous\".\"store_sales_customer_sk\",\"wakeful\".\"catalog_customer_item_cat_customer_sk\") = \"vacuous\".\"store_sales_return_customer_sk\" and \"wakeful\".\"catalog_customer_item_cat_quantity\" > 0 and \"vacuous\".\"store_sales_sale_date_month_of_year\" = 9 and \"vacuous\".\"store_sales_sale_date_year\" = 1999 and \"concerned\".\"store_sales_is_returned\"
 
 GROUP BY
     1,
     2,
     3,
     4),
-friendly as (
+divergent as (
 SELECT
-    \"macho\".\"_per_pair_item_desc\" as \"per_pair_item_desc\",
-    \"macho\".\"_per_pair_item_id\" as \"per_pair_item_id\",
-    \"macho\".\"_per_pair_store_name\" as \"per_pair_store_name\",
-    \"macho\".\"_per_pair_store_text_id\" as \"per_pair_store_text_id\",
-    \"sparkling\".\"_per_pair_cq\" as \"per_pair_cq\",
-    \"sparkling\".\"_per_pair_sq\" as \"per_pair_sq\",
-    \"sparkling\".\"_per_pair_srq\" as \"per_pair_srq\"
+    \"friendly\".\"_per_pair_item_desc\" as \"per_pair_item_desc\",
+    \"friendly\".\"_per_pair_item_id\" as \"per_pair_item_id\",
+    \"friendly\".\"_per_pair_store_name\" as \"per_pair_store_name\",
+    \"friendly\".\"_per_pair_store_text_id\" as \"per_pair_store_text_id\",
+    \"sweltering\".\"_per_pair_cq\" as \"per_pair_cq\",
+    \"sweltering\".\"_per_pair_sq\" as \"per_pair_sq\",
+    \"sweltering\".\"_per_pair_srq\" as \"per_pair_srq\"
 FROM
-    \"sparkling\"
-    INNER JOIN \"macho\" on \"sparkling\".\"store_sales_customer_sk\" = \"macho\".\"_per_pair_customer_sk\" AND \"sparkling\".\"store_sales_item_sk\" = \"macho\".\"_per_pair_item_sk\" AND \"sparkling\".\"store_sales_store_id\" is not distinct from \"macho\".\"_per_pair_store_text_id\" AND \"sparkling\".\"store_sales_store_name\" is not distinct from \"macho\".\"_per_pair_store_name\"
+    \"sweltering\"
+    INNER JOIN \"friendly\" on \"sweltering\".\"store_sales_customer_sk\" = \"friendly\".\"_per_pair_customer_sk\" AND \"sweltering\".\"store_sales_item_sk\" = \"friendly\".\"_per_pair_item_sk\" AND \"sweltering\".\"store_sales_store_id\" is not distinct from \"friendly\".\"_per_pair_store_text_id\" AND \"sweltering\".\"store_sales_store_name\" is not distinct from \"friendly\".\"_per_pair_store_name\"
 GROUP BY
     1,
     2,
@@ -108,18 +108,18 @@ GROUP BY
     5,
     6,
     7,
-    \"macho\".\"_per_pair_customer_sk\",
-    \"macho\".\"_per_pair_item_sk\")
+    \"friendly\".\"_per_pair_customer_sk\",
+    \"friendly\".\"_per_pair_item_sk\")
 SELECT
-    \"friendly\".\"per_pair_item_id\" as \"store_sales_item_name\",
-    \"friendly\".\"per_pair_item_desc\" as \"store_sales_item_desc\",
-    \"friendly\".\"per_pair_store_text_id\" as \"store_sales_store_text_id\",
-    \"friendly\".\"per_pair_store_name\" as \"store_name\",
-    sum(\"friendly\".\"per_pair_sq\") as \"store_sales_quantity\",
-    sum(\"friendly\".\"per_pair_srq\") as \"store_returns_quantity\",
-    sum(\"friendly\".\"per_pair_cq\") as \"catalog_sales_quantity\"
+    \"divergent\".\"per_pair_item_id\" as \"store_sales_item_name\",
+    \"divergent\".\"per_pair_item_desc\" as \"store_sales_item_desc\",
+    \"divergent\".\"per_pair_store_text_id\" as \"store_sales_store_text_id\",
+    \"divergent\".\"per_pair_store_name\" as \"store_name\",
+    sum(\"divergent\".\"per_pair_sq\") as \"store_sales_quantity\",
+    sum(\"divergent\".\"per_pair_srq\") as \"store_returns_quantity\",
+    sum(\"divergent\".\"per_pair_cq\") as \"catalog_sales_quantity\"
 FROM
-    \"friendly\"
+    \"divergent\"
 GROUP BY
     1,
     2,

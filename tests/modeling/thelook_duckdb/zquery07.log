@@ -1,5 +1,5 @@
 query_id = "07"
-gen_length = 685
+gen_length = 623
 preql_size = 103
 comp_size = 181
 generated_sql = """
@@ -15,11 +15,11 @@ FROM
 GROUP BY
     1)
 SELECT
-    coalesce(\"product_products\".\"id\",\"wakeful\".\"product_id\") as \"product_id\",
+    \"wakeful\".\"product_id\" as \"product_id\",
     \"product_products\".\"brand\" as \"product_brand\",
     \"wakeful\".\"revenue\" as \"revenue\"
 FROM
-    \"products\" as \"product_products\"
-    FULL JOIN \"wakeful\" on \"product_products\".\"id\" = \"wakeful\".\"product_id\"
+    \"wakeful\"
+    LEFT OUTER JOIN \"products\" as \"product_products\" on \"wakeful\".\"product_id\" = \"product_products\".\"id\"
 ORDER BY 
-    coalesce(\"product_products\".\"id\",\"wakeful\".\"product_id\") asc"""
+    \"wakeful\".\"product_id\" asc"""

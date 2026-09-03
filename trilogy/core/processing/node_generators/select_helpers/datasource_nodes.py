@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING
 
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation, Granularity
-from trilogy.core.functions import propagates_argument_nulls
 from trilogy.core.graph_models import (
     ReferenceGraph,
     datasource_has_filter_sensitive_aggregate,
@@ -39,6 +38,7 @@ from trilogy.core.processing.nodes import (
     SelectNode,
     StrategyNode,
 )
+from trilogy.core.processing.nodes.select_node_v2 import scan_stamps
 from trilogy.core.processing.utility import padding
 
 if TYPE_CHECKING:
@@ -311,32 +311,6 @@ def create_datasource_node(
         )
     ]
     output_addresses = {c.address for c in output_concepts}
-    # Partiality is a binding-level fact: an address also bound complete here
-    # (a relation folded a second endpoint onto it) is still fully providable.
-    complete_addresses = {
-        c.concept.address for c in datasource.columns if c.is_complete
-    }
-    partial_concepts = [
-        c.concept
-        for c in datasource.columns
-        if not c.is_complete
-        and c.concept.address in output_addresses
-        and c.concept.address not in complete_addresses
-    ]
-
-    partial_lcl = CanonicalBuildConceptList(concepts=partial_concepts)
-    nullable_concepts = [
-        c.concept
-        for c in datasource.columns
-        if c.is_nullable and c.concept.address in output_addresses
-    ]
-
-    nullable_lcl = CanonicalBuildConceptList(concepts=nullable_concepts)
-    # a computed output's nullability flows from its argument COLUMN's
-    # nullability whether or not that column is itself projected
-    all_nullable_lcl = CanonicalBuildConceptList(
-        concepts=[c.concept for c in datasource.columns if c.is_nullable]
-    )
     partial_is_full = bool(
         conditions
         and datasource.non_partial_for
@@ -396,39 +370,25 @@ def create_datasource_node(
         f"partial_is_full {partial_is_full}, satisfies_conditions {satisfies_conditions}, "
         f"force_group {force_group}"
     )
+    partials, nullables = scan_stamps(
+        datasource,
+        output_concepts,
+        partial_is_full,
+        set(membership_complete),
+        set(proven_non_null),
+    )
     rval = SelectNode(
         input_concepts=all_inputs,
         output_concepts=sorted(output_concepts, key=lambda x: x.address),
         environment=environment,
         parents=[],
         depth=depth,
-        partial_concepts=(
-            []
-            if partial_is_full
-            else [
-                c
-                for c in output_concepts
-                if c in partial_lcl and c.canonical_address not in membership_complete
-            ]
-        ),
+        partial_concepts=partials,
         rollup_concepts=rollup_concepts,
-        # a BASIC derivation computed at this scan is NULL wherever its
-        # nullable argument is; stamp it here or downstream non-null proofs
-        # strip null-safety
-        nullable_concepts=[
-            c
-            for c in output_concepts
-            if (
-                c in nullable_lcl
-                or (
-                    propagates_argument_nulls(c)
-                    and any(arg in all_nullable_lcl for arg in c.concept_arguments)
-                )
-            )
-            and not proven_non_null.intersection(
-                {c.address, c.canonical_address, *c.pseudonyms}
-            )
-        ],
+        nullable_concepts=nullables,
+        partial_is_full=partial_is_full,
+        complete_proofs=set(membership_complete),
+        non_null_proofs=set(proven_non_null),
         datasource=datasource,
         grain=datasource.grain,
         conditions=routed_conditions,

@@ -1201,6 +1201,19 @@ class QueryDatasource:
         # intrinsic nullability lives only on its own modifiers. Fold that in
         # here so join planning and null-safe rendering see it uniformly.
         intrinsic_nullable = [c for c in self.output_concepts if c.is_nullable]
+        if intrinsic_nullable and self.condition is not None:
+            from trilogy.core.processing.condition_utility import (
+                condition_proves_non_null,
+            )
+
+            proven = condition_proves_non_null(self.condition)
+            intrinsic_nullable = [
+                c
+                for c in intrinsic_nullable
+                if not proven.intersection(
+                    {c.address, c.canonical_address, *c.pseudonyms}
+                )
+            ]
         if intrinsic_nullable:
             self.nullable_concepts = unique(
                 self.nullable_concepts + intrinsic_nullable, "address"
@@ -1236,8 +1249,9 @@ class QueryDatasource:
         # ``_identifier_cache``. Optimization passes mutate QDS fields after
         # construction (datasources/condition/source_type/...), so drop the
         # cache on any field write to keep the memo correct.
-        if name != "_identifier_cache":
+        if name not in ("_identifier_cache", "_shape_cache"):
             self.__dict__["_identifier_cache"] = None
+            self.__dict__["_shape_cache"] = None
         object.__setattr__(self, name, value)
 
     def __repr__(self):
@@ -1454,7 +1468,38 @@ class QueryDatasource:
         self.__dict__["_identifier_cache"] = result
         return result
 
-    def _compute_identifier(self) -> str:
+    @property
+    def shape(self) -> tuple:
+        """Identity without extent ownership, plus the resolved joins, down the
+        whole tree. Two sources with one shape are one relation: the ownership
+        that distinguishes their identifiers changed no join."""
+        cached = self.__dict__.get("_shape_cache")
+        if cached is not None:
+            return cached
+        joins = tuple(
+            sorted(
+                f"{join.join_type.value}:{join.unique_id}"
+                for join in self.joins
+                if isinstance(join, BaseJoin)
+            )
+        )
+        children = tuple(
+            d.shape if isinstance(d, QueryDatasource) else d.identifier
+            for d in self.datasources
+        )
+        result = (self._compute_identifier(include_extent=False), joins, children)
+        self.__dict__["_shape_cache"] = result
+        return result
+
+    @staticmethod
+    def _child_identifier(
+        child: BuildDatasource | QueryDatasource, include_extent: bool
+    ) -> str:
+        if include_extent or not isinstance(child, QueryDatasource):
+            return child.identifier
+        return child._compute_identifier(include_extent=False)
+
+    def _compute_identifier(self, include_extent: bool = True) -> str:
         if self.source_type == SourceType.UNION:
             # The arms, each addressable by its underlying base table, are what
             # make a union unique. Two unions over the same arms can be merged
@@ -1471,7 +1516,12 @@ class QueryDatasource:
                 if self.set_operator is SetOperator.UNION_ALL
                 else f"_{self.set_operator.name.lower()}ed"
             )
-            return "_union_".join([d.identifier for d in self.datasources]) + suffix
+            return (
+                "_union_".join(
+                    self._child_identifier(d, include_extent) for d in self.datasources
+                )
+                + suffix
+            )
         filters = string_to_hash(str(self.condition)) if self.condition else ""
         grain = "_".join(
             [str(c).replace(".", "_") for c in sorted(self.grain.components)]
@@ -1511,7 +1561,7 @@ class QueryDatasource:
         # where it can bite: a span nothing here binds `~` joins the same way
         # either way, so folding it in would rename CTEs for no reason.
         extent_free = ""
-        if self.extent_free_spans:
+        if include_extent and self.extent_free_spans:
             live_spans = self.extent_free_spans & {
                 c.address for d in self.datasources for c in d.partial_concepts
             }
@@ -1520,7 +1570,11 @@ class QueryDatasource:
                     sorted(a.replace(".", "_") for a in live_spans)
                 )
         return (
-            "_join_".join(sorted(d.identifier for d in self.datasources))
+            "_join_".join(
+                sorted(
+                    self._child_identifier(d, include_extent) for d in self.datasources
+                )
+            )
             + group
             + (f"_at_{grain}" if grain else "_at_abstract")
             + (f"_filtered_by_{filters}" if filters else "")

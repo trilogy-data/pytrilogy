@@ -2,9 +2,21 @@ from trilogy.core.enums import SetOperator, SourceType
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
+    BuildDatasource,
     BuildGrain,
 )
+from trilogy.core.models.execute import QueryDatasource
 from trilogy.core.processing.nodes.base_node import StrategyNode
+
+
+def column_level_partial_addresses(ds: BuildDatasource | QueryDatasource) -> set[str]:
+    """Column-level (``~col``) partial addresses of the leaf tables under ``ds``."""
+    if isinstance(ds, BuildDatasource):
+        return set(ds.column_level_partial_addresses)
+    out: set[str] = set()
+    for sub in ds.datasources:
+        out |= column_level_partial_addresses(sub)
+    return out
 
 
 class UnionNode(StrategyNode):
@@ -41,6 +53,21 @@ class UnionNode(StrategyNode):
         # partial_concepts carries only intrinsic column-level partials (``~col``
         # inside a ``partial datasource``); those survive a covering UNION.
         self.set_operator = set_operator
+
+    def _resolve(self) -> QueryDatasource:
+        qds = super()._resolve()
+        # A covering UNION completes its arms' table-level partiality; only a
+        # column-level `~` binding survives it.
+        column_level: set[str] = set()
+        for arm in qds.datasources:
+            column_level |= column_level_partial_addresses(arm)
+        stamped = {c.address for c in self.partial_concepts}
+        qds.partial_concepts = [
+            c
+            for c in qds.partial_concepts
+            if c.address in stamped or c.address in column_level
+        ]
+        return qds
 
     def add_output_concepts(self, concepts, rebuild=True, unhide=True):
         for x in self.parents:

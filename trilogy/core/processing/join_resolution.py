@@ -937,19 +937,63 @@ def get_modifiers(
     return [Modifier.NULLABLE]
 
 
-def _collect_deep_partial_addresses(
-    ds: DataSource,
+def preserved_sources(
+    datasets: list[DataSource], joins: list[BaseJoin | UnnestJoin]
 ) -> set[str]:
-    """Collect partial addresses, suppressing UNION table-level stamps."""
-    result: set[str] = {c.address for c in ds.partial_concepts}
-    if isinstance(ds, QueryDatasource):
-        if ds.source_type == SourceType.UNION:
-            for sub in ds.datasources:
-                result |= _collect_intrinsic_partial_addresses(sub)
-            return result
-        for sub in ds.datasources:
-            result |= _collect_deep_partial_addresses(sub)
-    return result
+    """Identifiers of the sources whose every row survives the join tree.
+    Joins are left-deep: a join that does not preserve its left side drops
+    rows of everything joined so far, and an UNNEST can drop rows too."""
+    right_ids = {
+        join.right_datasource.identifier for join in joins if isinstance(join, BaseJoin)
+    }
+    alive = {ds.identifier for ds in datasets if ds.identifier not in right_ids}
+    for join in joins:
+        if not isinstance(join, BaseJoin):
+            alive = set()
+            continue
+        if join.join_type not in (JoinType.LEFT_OUTER, JoinType.FULL):
+            alive = set()
+        if join.join_type in (JoinType.RIGHT_OUTER, JoinType.FULL):
+            alive.add(join.right_datasource.identifier)
+    return alive
+
+
+def merge_partial_addresses(
+    datasets: list[DataSource],
+    joins: list[BaseJoin | UnnestJoin],
+    outputs: list[BuildConcept],
+) -> set[str]:
+    """Output addresses a merge binds partially, from its sides' own stamps
+    and the resolved join types. A fully preserved side binding the address
+    complete makes it complete (the merge coalesces every present member);
+    with no such side the rows come from the matched intersection, so any
+    partial binding keeps the address partial."""
+    preserved = preserved_sources(datasets, joins)
+    bound = [
+        (
+            ds.identifier in preserved,
+            {c.address for c in ds.output_concepts},
+            {c.address for c in ds.partial_concepts},
+        )
+        for ds in datasets
+    ]
+    out: set[str] = set()
+    for concept in outputs:
+        address = concept.address
+        sides = [
+            (kept, address in partial)
+            for kept, output, partial in bound
+            if address in output
+        ]
+        if not sides:
+            continue
+        kept_sides = [partial for kept, partial in sides if kept]
+        if kept_sides:
+            if all(kept_sides):
+                out.add(address)
+        elif any(partial for _, partial in sides):
+            out.add(address)
+    return out
 
 
 def partial_binding_sources(ds: DataSource, address: str) -> frozenset[str]:
@@ -985,20 +1029,6 @@ def deep_extent_free_spans(ds: DataSource) -> frozenset[str]:
     for sub in ds.datasources:
         out |= deep_extent_free_spans(sub)
     return out
-
-
-def _collect_intrinsic_partial_addresses(
-    ds: DataSource,
-) -> set[str]:
-    """Collect column-level partial addresses only."""
-    if isinstance(ds, BuildDatasource):
-        return set(ds.column_level_partial_addresses)
-    if isinstance(ds, QueryDatasource):
-        result: set[str] = set()
-        for sub in ds.datasources:
-            result |= _collect_intrinsic_partial_addresses(sub)
-        return result
-    return set()
 
 
 def _is_authored_coalescing_pair(pair: ConceptPair, members: set[str]) -> bool:
@@ -1439,9 +1469,7 @@ def get_node_joins(
         ds_node_map[ds_node] = datasource
         grain_size[ds_node] = _estimated_grain_size(datasource)
         graph.add_node(ds_node, type=NodeType.NODE)
-        partial_nodes = {
-            canon_node(a) for a in _collect_deep_partial_addresses(datasource)
-        }
+        partial_nodes = {canon_node(c.address) for c in datasource.partial_concepts}
         # A LEFT scoped join on a derived key has no datasource column binding
         # to carry Modifier.PARTIAL. The merge keeps that key as a distinct
         # output present ONLY on the partial side (the complete side outputs
