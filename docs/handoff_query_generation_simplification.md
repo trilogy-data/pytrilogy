@@ -134,29 +134,24 @@ generator-agnostic but wired only into `gen_aggregate` (`:155`). Wire it into
 `gen_basic` / `gen_filter` / `gen_window` only if a test shape needs it. Nothing
 fires today.
 
-## 5. Known gaps
-
-The three gaps the audit's review surfaced are closed; each is pinned by a
-DuckDB row test:
-
-- CASE or comparison in ORDER BY over an unprojected leaf on a grouped final
-  node: `_scalar_order_leaves` walks CASE arms and comparisons and the min()
-  wrap parenthesizes a bare comparison
-  (`tests/engine/test_duckdb_order_by_case_unprojected_leaf.py`).
-- `narrow_keyless_joins` no longer re-derives the left side from the explicit
-  left after a keyed or unnest join; only keyless right sides accumulate
-  from then on. Zero corpus, fuzzer or suite decisions changed.
-- A scoped join on expression keys between rowsets where the FINAL
-  contributors are projection wrappers over the boundaries: the union form
-  tripped the keyless-join guard or cross-joined, the subset form always
-  cross-joined. `_widen_merge_join_keys` now runs a second pass that carries
-  the unprojected expression mates onto whichever parent renders them
-  (`tests/engine/test_duckdb_scoped_join_expression_keys_through_wrappers.py`).
-
 ## Closed: do not re-chase
 
 Verified during the audit, kept here only so the next pass does not re-open
 them.
+
+- **The review's three "known gaps" are fixed**, each pinned by a DuckDB row
+  test: ORDER BY CASE/comparison over an unprojected leaf
+  (`_scalar_order_leaves` walks CASE arms and comparisons;
+  `tests/engine/test_duckdb_order_by_case_unprojected_leaf.py`);
+  `narrow_keyless_joins` ignoring the explicit left after a keyed or unnest
+  join; scoped joins on expression keys between rowsets consumed through
+  projection wrappers (`_widen_merge_join_keys` second pass carries the
+  unprojected expression mates;
+  `tests/engine/test_duckdb_scoped_join_expression_keys_through_wrappers.py`).
+  That mate rule must stay restricted to BASIC-over-rowset-handle members:
+  environment `merge` declarations fold into the same key groups, and
+  widening those re-plans hackernews adhoc05 and breaks the canonical
+  collision merge test.
 
 - **2.6 site B** (`source_planning` bridge merge, 57 relocations) is not a
   construction-time decision: `InlineDatasource` runs before pushdown and
