@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 from trilogy.core.domain_graph import DomainGraph
 from trilogy.core.enums import (
     AggregateGroupingMode,
+    Derivation,
     Granularity,
     JoinType,
     Modifier,
@@ -1143,6 +1144,24 @@ def build_canonical_address_map(
     return canonical
 
 
+def _sole_projected_relation(ds: DataSource) -> str | None:
+    """The identifier of the one relation this source only projects (and
+    possibly dedups): a single parent, and nothing it computes itself changes
+    the row set. Two such sources over the same relation hold the SAME rows
+    under different columns, so pairing them is never a cross product no matter
+    what their axes look like. An aggregating source is excluded: `sum(x) by k1`
+    beside `sum(y) by k2` over one scan is an authored fan-out, not a lost key.
+    """
+    if not isinstance(ds, QueryDatasource) or len(ds.datasources) != 1:
+        return None
+    if any(
+        concept.purpose == Purpose.METRIC or concept.derivation == Derivation.AGGREGATE
+        for concept in ds.output_concepts
+    ):
+        return None
+    return ds.datasources[0].identifier
+
+
 def _row_independent(ds: DataSource) -> bool:
     """True when cross-joining this source cannot fan out row counts: no
     grain, an authored literal fan-out, or every column it exposes is
@@ -1180,18 +1199,21 @@ def _raise_if_keyless_row_bearing_join(
     rollup_padded_addresses: frozenset[str],
     environment: BuildEnvironment | None,
 ) -> None:
-    """A keyless join between row-bearing sources is a planner bug exactly
-    when the sides SHARE a join axis the planner failed to use. The axis test
+    """A keyless join between row-bearing sources is a planner bug when the
+    sides SHARE a join axis the planner failed to use, or when they are two
+    projections of ONE relation (``_sole_projected_relation``) and so hold the
+    same rows however their axes look. The axis test
     is FD-aware: one side's addresses (grain components and outputs, hidden
     included — hidden is how the axis gets lost) closed over concept ``keys``,
     pseudonyms and rowset content, intersected with the other side's direct
     addresses, after canonicalization. q30's group parents
     projected `review_date` (keys={customer_sk}) at self-grain beside a scan
     carrying `customer_sk` — the FD key existed and was dropped, a 5.7B-row
-    cross product. Axis-DISJOINT row-bearing sides cross-join legitimately
-    (selecting an aggregate without its grouping key is an authored fan-out:
-    `by_item` at grain {iid} beside `sid` shares no carried address), as does
-    a row-independent side (constant / global-aggregate scalar). ROLLUP-padded
+    cross product. Axis-DISJOINT row-bearing sides off DIFFERENT relations
+    cross-join legitimately (selecting an aggregate without its grouping key is
+    an authored fan-out: `by_item` at grain {iid} beside `sid` shares no carried
+    address), as does a row-independent side (constant / global-aggregate
+    scalar). ROLLUP-padded
     keys are excluded — subtotal rows NULL them, so consumers deliberately
     avoid joining on them.
 
@@ -1283,16 +1305,28 @@ def _raise_if_keyless_row_bearing_join(
         if not j.keys and not row_independent(j.right):
             right_direct = direct_axis(j.right)
             right_closure = key_closure(j.right)
+            right_relation = _sole_projected_relation(ds_node_map[j.right])
             offenders = sorted(
                 d
                 for d in tree
                 if not row_independent(d)
-                and (right_closure & direct_axis(d) or right_direct & key_closure(d))
+                and (
+                    right_closure & direct_axis(d)
+                    or right_direct & key_closure(d)
+                    # Axis-disjoint but the same rows: two projections of one
+                    # relation are correlated by construction, so the shared
+                    # axis test never sees them (a union-TVF arm's key and
+                    # value close over different domains).
+                    or (
+                        right_relation is not None
+                        and right_relation == _sole_projected_relation(ds_node_map[d])
+                    )
+                )
             )
             if offenders:
                 raise UnresolvableQueryException(
                     "Planner emitted a keyless join between row-bearing sources "
-                    "that share a join axis: "
+                    "that share a join axis or one source relation: "
                     f"{ds_node_map[j.right].identifier} onto "
                     f"{', '.join(ds_node_map[d].identifier for d in offenders)}. "
                     "This would render as a cross join (ON 1=1) and fan out; "

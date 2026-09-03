@@ -170,7 +170,11 @@ them.
   not redundant with that pass: consumers copy a group's node as it is built, so
   a passthrough the tree pass would later collapse is already the shared parent
   two consumers regroup over
-  (`test_duckdb_fuzzer_regressions::test_union_arm_partition_with_optional_fk_sibling`); the
+  (`test_duckdb_fuzzer_regressions::test_union_arm_partition_with_optional_fk_sibling`).
+  Nor do the two collapse into one call: the publish seam needs one level, the
+  tree pass is recursive and separately pinned, and calling the recursive form
+  at the seam renders identical SQL for 2.6x the walk (9282 vs 3558 helper
+  calls on the corpus, same 6 collapses). Also the
   second existence-attach loop (new errors on ds:query08, adhoc01,
   adhoc01_imports); `value_set_join_upgrade._upgrade_to_inner` (live under 46
   tests).

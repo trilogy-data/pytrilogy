@@ -1054,6 +1054,11 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
 
 
 def _elide_single_parent_passthrough(node: StrategyNode) -> StrategyNode:
+    """Collapse one level of pure projection into its parent. Called both as a
+    group's node is published (consumers copy from `built`, so the shape they
+    see is the shape they plan against) and bottom-up over the assembled tree
+    by `_elide_passthrough_tree` for the passthroughs post-publication mutation
+    creates. Neither call site subsumes the other."""
     if not isinstance(node, SelectNode):
         return node
     if (
