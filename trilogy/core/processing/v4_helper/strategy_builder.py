@@ -4381,6 +4381,12 @@ def build_strategy_node(
             continue
         if derivation == Derivation.ROOT:
             _drop_unadvertised_rowset_handles(node, set(select_addrs))
+        # Elide here, not only in the tree pass: consumers take their own copy
+        # of this node, so a passthrough left standing becomes the SHARED
+        # parent two single-column consumers each regroup over, and the merge
+        # above them has no key to pair on (union-TVF arm outputs split into a
+        # cross join).
+        node = _elide_single_parent_passthrough(node)
         # Attach existence parents+concepts for any SubselectComparison
         # atoms at this group. Done post-build so the generators stay
         # ignorant of existence handling — the host node just learns it

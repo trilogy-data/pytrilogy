@@ -31,6 +31,13 @@ gate is not sufficient on its own: it missed two keyless-join-guard raises in
 this stack that the full suite caught, so run `-m "not adventureworks_execution"`
 before landing anything here.
 
+Also run `python -m local_scripts.fuzzer` (fixed seed, deterministic, a few
+minutes). Neither corpus nor unit suite covers a union-TVF arm whose key has an
+optional (`?`) binder elsewhere in the model; the fuzzer does, and one item in
+this stack shipped a silent cross join through a byte-identical corpus and a
+green suite. Any change to what a group's consumers see as their parent needs
+this gate.
+
 ## 1. 3.6 Two truths for partial/nullable on the same scan (BLOCKED: design decision)
 
 PHYSICAL. The node-level stamp and the QueryDatasource disagree about which
@@ -158,7 +165,12 @@ them.
   padding, `test_v4_nested_select_parity::test_multiselect_arm_limit_applies`;
   `HideUnusedConcepts` does not cover it); the `_elide_passthrough_tree` pass
   (`test_non_benchmark_queries::test_or_membership_with_projected_aggregate`,
-  `::test_membership_in_having_auto_concept_renders_valid_subselect`); the
+  `::test_membership_in_having_auto_concept_renders_valid_subselect`) AND the
+  per-group `_elide_single_parent_passthrough` call in the build loop, which is
+  not redundant with that pass: consumers copy a group's node as it is built, so
+  a passthrough the tree pass would later collapse is already the shared parent
+  two consumers regroup over
+  (`test_duckdb_fuzzer_regressions::test_union_arm_partition_with_optional_fk_sibling`); the
   second existence-attach loop (new errors on ds:query08, adhoc01,
   adhoc01_imports); `value_set_join_upgrade._upgrade_to_inner` (live under 46
   tests).
