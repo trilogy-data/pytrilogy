@@ -877,11 +877,12 @@ class CTE:
         self,
         include_inlined: bool = False,
     ) -> list[CTE | UnionCTE]:
-        return [
-            binding.node
-            for binding in self.source_bindings(include_inlined=include_inlined)
-            if binding.node is not None
-        ]
+        # The node list of source_bindings without building the bindings: the
+        # optimizer walks this per CTE per rule pass.
+        nodes: list[CTE | UnionCTE] = list(self.parent_ctes)
+        if include_inlined:
+            nodes.extend(self.inlined_parents)
+        return nodes
 
     def add_dependency(self, parent: CTE | UnionCTE) -> None:
         self.parent_ctes = unique(self.parent_ctes + [parent], "name")
@@ -1920,11 +1921,10 @@ class UnionCTE:
         self,
         include_branches: bool = False,
     ) -> list[CTE | UnionCTE]:
-        return [
-            binding.node
-            for binding in self.source_bindings(include_branches=include_branches)
-            if binding.node is not None
-        ]
+        nodes: list[CTE | UnionCTE] = list(self.parent_ctes)
+        if include_branches:
+            nodes.extend(self.internal_ctes)
+        return nodes
 
     def source_key_for(self, source: str | CTE | UnionCTE) -> str:
         if isinstance(source, str):

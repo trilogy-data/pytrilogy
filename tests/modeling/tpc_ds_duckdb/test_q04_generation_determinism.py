@@ -12,32 +12,40 @@ Generation is in-process deterministic, so each seed needs its own
 interpreter: the test re-runs this module as a subprocess per seed. Seeds 0/1
 diverged at plan time (exposure order) and seed 2 at render time (pseudonym
 walk in CTE.get_alias); together they pin all three ordering fixes.
+
+query29 pins a fourth: `generate_source_map` dedup'd each provider list through
+a set, so with two equivalent parent CTEs the renderer's base alias (and which
+CTE survived optimization) followed the hash seed.
 """
 
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 working_path = Path(__file__).parent
 
 SEEDS = ("0", "1", "2")
+FILES = ("_q04_agent_rowset_union_join.preql", "query29.preql")
 
 
-def _generate() -> str:
+def _generate(name: str) -> str:
     from trilogy import Dialects
     from trilogy.core.models.environment import Environment
 
-    text = (working_path / "_q04_agent_rowset_union_join.preql").read_text()
+    text = (working_path / name).read_text()
     env = Environment(working_path=working_path)
     executor = Dialects.DUCK_DB.default_executor(environment=env)
     return executor.generate_sql(text)[-1]
 
 
-def test_q04_generation_deterministic_and_binds():
+@pytest.mark.parametrize("name", FILES)
+def test_generation_deterministic_and_binds(name: str):
     results: dict[str, str] = {}
     for seed in SEEDS:
         proc = subprocess.run(
-            [sys.executable, __file__],
+            [sys.executable, __file__, name],
             capture_output=True,
             text=True,
             timeout=300,
@@ -68,4 +76,4 @@ def test_q04_generation_deterministic_and_binds():
 
 
 if __name__ == "__main__":
-    print(_generate())
+    print(_generate(sys.argv[1]))

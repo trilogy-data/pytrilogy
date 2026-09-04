@@ -234,6 +234,20 @@ class DictImportResolver(BaseImportResolver):
     # a key in this map is treated as published even when there is no real file
     # on disk — useful for server / sandboxed environments.
     data_files: dict[str, bytes] = field(default_factory=dict)
+    # Dotted directory of the file whose imports this resolver serves: "" at
+    # the top level, "nest." inside `nest.child`. An import resolves under it
+    # first and then as an absolute address, the way a filesystem import tries
+    # the importing file's directory before `import_paths`.
+    prefix: str = ""
+
+    def resolve(self, address: str) -> str | None:
+        """Canonical `content` key for an import address, or None."""
+        relative = self.prefix + address
+        if relative in self.content:
+            return relative
+        if address in self.content:
+            return address
+        return None
 
     def has_data_file(self, *paths: str) -> bool:
         return any(p in self.data_files for p in paths)
@@ -247,16 +261,11 @@ class EnvironmentConfig:
     )
 
     def copy_for_root(self, root: str | None) -> EnvironmentConfig:
+        """Config for parsing an imported file; `root` is the file's canonical
+        dotted directory (or None at the top level)."""
         new = copy.deepcopy(self)
-        if isinstance(new.import_resolver, DictImportResolver) and root:
-            new.import_resolver = DictImportResolver(
-                content={
-                    k[len(root) + 1 :]: v
-                    for k, v in new.import_resolver.content.items()
-                    if k.startswith(f"{root}.")
-                },
-                data_files=new.import_resolver.data_files,
-            )
+        if isinstance(new.import_resolver, DictImportResolver):
+            new.import_resolver.prefix = f"{root}." if root else ""
         return new
 
 
