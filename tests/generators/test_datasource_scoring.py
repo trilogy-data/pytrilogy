@@ -30,8 +30,9 @@ from trilogy.core.models.core import DataType, EnumType
 from trilogy.core.models.datasource import Address
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     _best_enum_union,
+    _claim_atoms,
+    _claimed_value,
     _datasource_score,
-    _extract_enum_value_for_key,
 )
 from trilogy.core.processing.node_generators.select_helpers.source_scoring import (
     get_graph_partial_nodes,
@@ -425,12 +426,15 @@ class TestBestEnumUnion:
         }
 
     def test_two_key_condition_discriminates_on_correct_key(self):
-        """When non_partial_for has two enum keys, only the discriminating key produces a union.
+        """Two enum keys in non_partial_for: the same two-arm union is the cover
+        under either key.
 
         city=['USBOS'] (single value) and source=['CITY','ARBORETUM'] (two values).
         Two sources: (city=USBOS, source=CITY) and (city=USBOS, source=ARBORETUM).
-        The city key has all sources sharing the same value → None.
-        The source key correctly discriminates → 2-way union.
+        Under the city key both arms claim USBOS and cover it only jointly,
+        through their residual source claims exhausting the source enum; under
+        the source key each arm covers its own value. Either way the union is
+        the same two arms, so the two families dedupe to one node.
         """
         city_enum = EnumType(type=DataType.STRING, values=["USBOS"])
         source_enum = EnumType(type=DataType.STRING, values=["CITY", "ARBORETUM"])
@@ -442,7 +446,10 @@ class TestBestEnumUnion:
         arb_raw = _make_enum_ds_two_key("USBOS", city, "ARBORETUM", source, shared)
 
         city_result = _best_enum_union([city_raw, arb_raw], city_enum, city)
-        assert city_result is None, f"city key should return None, got {city_result}"
+        assert city_result is not None
+        assert [{ds.name for ds in combo} for combo in city_result] == [
+            {city_raw.name, arb_raw.name}
+        ]
 
         source_result = _best_enum_union([city_raw, arb_raw], source_enum, source)
         assert source_result is not None
@@ -502,12 +509,10 @@ def _reference_best_enum_union(
     for ds in dses:
         if not ds.non_partial_for:
             continue
-        val = _extract_enum_value_for_key(
-            ds.non_partial_for.conditional, merge_key.address
-        )
-        if val is None:
+        claim = _claim_atoms(ds.non_partial_for.conditional)
+        if claim is None or merge_key.address not in claim:
             continue
-        by_value[val].append(ds)
+        by_value[_claimed_value(claim[merge_key.address])].append(ds)
 
     if {str(v) for v in by_value} < set(enum_type.values):
         return None
@@ -613,21 +618,18 @@ class TestBestEnumUnionEquivalence:
         assert elapsed < 1.0, f"union selection took {elapsed:.3f}s"
 
 
-class TestExtractEnumValueForKey:
+class TestClaimAtoms:
     def _concept(self, name: str) -> BuildConcept:
         return _make_concept(name)
 
     def test_parenthetical_wrapping_comparison(self):
-        """Value is extracted when the comparison is wrapped in a BuildParenthetical."""
         key = self._concept("region")
         cmp = BuildComparison(left=key, right="NORTH", operator=ComparisonOperator.EQ)
-        paren = BuildParenthetical(content=cmp)
+        claim = _claim_atoms(BuildParenthetical(content=cmp))
+        assert claim is not None
+        assert _claimed_value(claim[key.address]) == "NORTH"
 
-        result = _extract_enum_value_for_key(paren, key.address)
-        assert result == "NORTH"
-
-    def test_parenthetical_wrapping_conditional(self):
-        """Value is extracted when a parenthetical wraps a compound AND condition."""
+    def test_parenthetical_wrapping_conditional_keeps_every_atom(self):
         key = self._concept("region")
         other = self._concept("other")
         inner = BuildConditional(
@@ -639,18 +641,30 @@ class TestExtractEnumValueForKey:
             ),
             operator=BooleanOperator.AND,
         )
-        paren = BuildParenthetical(content=inner)
+        claim = _claim_atoms(BuildParenthetical(content=inner))
+        assert claim is not None
+        assert _claimed_value(claim[key.address]) == "SOUTH"
+        assert _claimed_value(claim[other.address]) == "X"
 
-        result = _extract_enum_value_for_key(paren, key.address)
-        assert result == "SOUTH"
+    def test_or_and_repeated_atoms_are_not_claims(self):
+        key = self._concept("region")
+        atom = BuildComparison(left=key, right="N", operator=ComparisonOperator.EQ)
+        assert (
+            _claim_atoms(
+                BuildConditional(left=atom, right=atom, operator=BooleanOperator.OR)
+            )
+            is None
+        )
+        assert (
+            _claim_atoms(
+                BuildConditional(left=atom, right=atom, operator=BooleanOperator.AND)
+            )
+            is None
+        )
 
     def test_parenthetical_with_non_condition_content_returns_none(self):
-        """A BuildParenthetical whose content is not a condition type returns None."""
-        key = self._concept("region")
         paren = BuildParenthetical(content="not_a_condition")  # type: ignore[arg-type]
-
-        result = _extract_enum_value_for_key(paren, key.address)
-        assert result is None
+        assert _claim_atoms(paren) is None
 
 
 def _scoped_concept(name: str) -> BuildConcept:

@@ -37,7 +37,11 @@ from __future__ import annotations
 from _preql_import_resolver import enumerate_network_covers
 
 from trilogy.core.graph_models import ReferenceGraph
-from trilogy.core.models.build import BuildConcept, BuildWhereClause
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildUnionDatasource,
+    BuildWhereClause,
+)
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.v4_helper.network_build import build_source_network
 from trilogy.core.processing.v4_helper.network_model import (
@@ -329,6 +333,7 @@ def _solution_for(
             if network.fans_out(node, assignments[node] or joined_on[node])
         ),
         sources=len(sources),
+        scans=sum(_scan_count(network.candidates[node]) for node in sources),
         connectors=len(connectors),
         derived_joins=derived_joins,
     )
@@ -341,6 +346,14 @@ def _solution_for(
         connectors=frozenset(connectors),
         cost=cost,
     )
+
+
+def _scan_count(candidate: SourceCandidate) -> int:
+    """Relations a candidate reads: each arm of a union, none for a derived
+    connector (its subplan is costed where it is materialized)."""
+    if isinstance(candidate.datasource, BuildUnionDatasource):
+        return len(candidate.datasource.children)
+    return 0 if candidate.datasource is None else 1
 
 
 def _split_terminals(network: SourceNetwork, targets: list[str]) -> frozenset[str]:
