@@ -1,5 +1,5 @@
 query_id = "29"
-gen_length = 7670
+gen_length = 7661
 preql_size = 1692
 comp_size = 1350
 generated_sql = """
@@ -67,7 +67,7 @@ WHERE
 GROUP BY
     1,
     2),
-sweltering as (
+sparkling as (
 SELECT
     \"vacuous\".\"store_sales_store_id\" as \"store_sales_store_id\",
     \"vacuous\".\"store_sales_store_name\" as \"store_sales_store_name\",
@@ -94,12 +94,12 @@ SELECT
     \"friendly\".\"_per_pair_item_id\" as \"per_pair_item_id\",
     \"friendly\".\"_per_pair_store_name\" as \"per_pair_store_name\",
     \"friendly\".\"_per_pair_store_text_id\" as \"per_pair_store_text_id\",
-    \"sweltering\".\"_per_pair_cq\" as \"per_pair_cq\",
-    \"sweltering\".\"_per_pair_sq\" as \"per_pair_sq\",
-    \"sweltering\".\"_per_pair_srq\" as \"per_pair_srq\"
+    \"sparkling\".\"_per_pair_cq\" as \"per_pair_cq\",
+    \"sparkling\".\"_per_pair_sq\" as \"per_pair_sq\",
+    \"sparkling\".\"_per_pair_srq\" as \"per_pair_srq\"
 FROM
-    \"sweltering\"
-    INNER JOIN \"friendly\" on \"sweltering\".\"store_sales_customer_sk\" = \"friendly\".\"_per_pair_customer_sk\" AND \"sweltering\".\"store_sales_item_sk\" = \"friendly\".\"_per_pair_item_sk\" AND \"sweltering\".\"store_sales_store_id\" is not distinct from \"friendly\".\"_per_pair_store_text_id\" AND \"sweltering\".\"store_sales_store_name\" is not distinct from \"friendly\".\"_per_pair_store_name\"
+    \"sparkling\"
+    INNER JOIN \"friendly\" on \"sparkling\".\"store_sales_customer_sk\" = \"friendly\".\"_per_pair_customer_sk\" AND \"sparkling\".\"store_sales_item_sk\" = \"friendly\".\"_per_pair_item_sk\" AND \"sparkling\".\"store_sales_store_id\" is not distinct from \"friendly\".\"_per_pair_store_text_id\" AND \"sparkling\".\"store_sales_store_name\" is not distinct from \"friendly\".\"_per_pair_store_name\"
 GROUP BY
     1,
     2,

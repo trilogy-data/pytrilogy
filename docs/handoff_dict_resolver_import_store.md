@@ -76,6 +76,20 @@ The store fills to 7 entries for the tpch model and 11 after `parse_model`.
 132 `query*.preql` (tpc_ds_duckdb + tpc_h) plus the tpch dict model under
 `StudioEnvironmentConfig`, one process, all identical; ruff / mypy / black.
 
+**Determinism fix found on the way.** `tests/modeling/tpc_ds_duckdb/zquery29.log`
+changed a CTE name between runs. Not the store: on origin/main the same query
+rendered `sparkling` under `PYTHONHASHSEED=0/2` and `sweltering` under seed 1.
+Planning and the pre-optimization CTE graph were identical across seeds; the
+divergence was `query_processor.generate_source_map`, which dedup'd each
+provider list with `list(set(v))`. With two equivalent parent CTEs (`macho`
+had `abhorrent` and `late`, one the `_extent_free_` variant of the other),
+the list order set the CTE's base alias and the renderer's `used_map`, so
+`MergeIrrelevantGroupBy` kept whichever came first in hash order. Now
+`list(dict.fromkeys(v))`, and the `BuildDatasource` pass is sorted by
+`safe_identifier`. All 132 corpus queries render identically under four hash
+seeds (`scratchpad corpus_seeds.py` pattern: one subprocess per seed);
+`test_q04_generation_determinism.py` is parametrized to cover query29.
+
 **Not done, by choice.** Closure validation still re-opens stdlib files from
 disk once per parse (6 `open`s per studio request, ~0.3 ms under cProfile);
 a stat-validated process-wide text cache would remove it but is ~1% here and

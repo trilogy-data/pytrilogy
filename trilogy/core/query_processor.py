@@ -248,7 +248,10 @@ def generate_source_map(
         unnest = [x for x in qdv if isinstance(x, UnnestJoin)]
         for _ in unnest:
             source_map[qdk] = []
-        basic = [x for x in qdv if isinstance(x, BuildDatasource)]
+        basic = sorted(
+            (x for x in qdv if isinstance(x, BuildDatasource)),
+            key=lambda x: x.safe_identifier,
+        )
         for base in basic:
             source_map[qdk].append(base.safe_identifier)
 
@@ -305,8 +308,10 @@ def generate_source_map(
             cte.name for cte in all_new_ctes if cte.source.safe_identifier in ids
         ]
         existence_source_map[ek] = ematches
+    # Order-preserving dedup: the list order is the renderer's provider
+    # preference (base alias, used_map), so it must not follow the hash seed.
     return {
-        k: [] if not v else list(set(v)) for k, v in source_map.items()
+        k: list(dict.fromkeys(v)) for k, v in source_map.items()
     }, existence_source_map
 
 
