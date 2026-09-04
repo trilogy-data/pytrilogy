@@ -77,12 +77,14 @@ def _suggest_import_paths(
 
 def _read_import_text(
     address: str, environment: Environment, is_stdlib: bool = False
-) -> str:
+) -> tuple[str, str]:
+    """(canonical target, text): the address itself for a disk read, the
+    resolver's canonical content key for a dict resolver."""
     resolver = environment.config.import_resolver
     if isinstance(resolver, FileSystemImportResolver) or is_stdlib:
         try:
             with safe_open(address) as f:
-                return f.read()
+                return address, f.read()
         except OSError as exc:
             if is_stdlib:
                 raise
@@ -98,7 +100,7 @@ def _read_import_text(
             raise ImportError(
                 f"Unable to import file {address}, not resolvable from provided source files."
             )
-        return resolver.content[key]
+        return key, resolver.content[key]
     raise ImportError(
         f"Unable to import file {address}, resolver type "
         f"{type(resolver)} not supported"
@@ -305,9 +307,11 @@ class ImportHydrationService:
                 self.text_lookup[path] = text
             return text
         resolver = self.environment.config.import_resolver
-        if not isinstance(resolver, DictImportResolver):
-            return None
-        return resolver.content.get(key.target)
+        return (
+            resolver.content.get(key.target)
+            if isinstance(resolver, DictImportResolver)
+            else None
+        )
 
     def execute(self, request: ImportRequest) -> ImportStatement:
         from trilogy.parsing.parse_engine_v2 import parse_syntax
@@ -324,14 +328,15 @@ class ImportHydrationService:
         # via multiple import paths parses exactly once. add_import still
         # applies the per-edge namespace downstream.
         target = str(request.target)
+        # Dict-resolver texts are read straight off the resolver: text_lookup
+        # is keyed by the request target, and a nested `x` is not the top `x`.
         if is_dict:
-            assert isinstance(resolver, DictImportResolver)
-            canonical = resolver.resolve(target)
-            if canonical is None:
-                raise ImportError(
-                    f"Unable to import file {target}, not resolvable from provided source files."
-                )
-            target = canonical
+            target, text = _read_import_text(target, environment)
+        elif request.token_lookup in self.text_lookup:
+            text = self.text_lookup[request.token_lookup]
+        else:
+            _, text = _read_import_text(target, environment, request.is_stdlib)
+            self.text_lookup[request.token_lookup] = text
         root = None
         if "." in target:
             root = target.rsplit(".", 1)[0]
@@ -362,14 +367,6 @@ class ImportHydrationService:
                 path=Path(request.target),
             )
 
-        if is_dict:
-            assert isinstance(resolver, DictImportResolver)
-            text = resolver.content[target]
-        elif request.token_lookup in self.text_lookup:
-            text = self.text_lookup[request.token_lookup]
-        else:
-            text = _read_import_text(request.target, environment, request.is_stdlib)
-            self.text_lookup[request.token_lookup] = text
         own_hash = hash(text)
         own_key = ClosureKey(not is_dict, target)
 

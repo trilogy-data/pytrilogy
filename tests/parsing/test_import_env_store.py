@@ -78,13 +78,10 @@ def test_transitive_content_invalidation(model_dir: Path):
 
 def test_integrity_invalidation_on_shared_mutation(model_dir: Path):
     _fresh(model_dir)
-    entry = next(
-        e
-        for e in isvc._IMPORT_ENV_STORE.values()
-        if any(k.endswith("base_ds") for k in e.env.datasources)
-    )
-    cached_ds = next(iter(entry.env.datasources.values()))
-    cached_ds.columns = cached_ds.columns[:-1]
+    # mid's entry is the one a re-parse looks up (base is reached through it)
+    for entry in isvc._IMPORT_ENV_STORE.values():
+        cached_ds = next(iter(entry.env.datasources.values()))
+        cached_ds.columns = cached_ds.columns[:-1]
     # the mutated entry is evicted and re-parsed; the fresh parse sees full columns
     recovered = _fresh(model_dir)
     ds = next(v for k, v in recovered.datasources.items() if k.endswith("base_ds"))
@@ -578,3 +575,21 @@ def test_fallback_import_resolves_its_own_imports_from_its_own_directory():
     env = _dict_env(model)
     parse("import nest.child as child;\nselect child.c;", env)
     assert "child.x.y.top_y" in env.concepts.data
+
+
+def test_deleted_dependency_invalidates_the_entry(model_dir: Path):
+    _fresh(model_dir)
+    (model_dir / "base.preql").unlink()
+    with pytest.raises(ImportError):
+        _fresh(model_dir)
+    # mid's entry could not be validated (its dependency is gone) and is evicted
+    assert not any(
+        any(k.target.endswith("mid.preql") for k in e.closure)
+        for e in isvc._IMPORT_ENV_STORE.values()
+    )
+
+
+def test_missing_dict_key_is_an_import_error():
+    env = _dict_env({"leaf": "key id int;"})
+    with pytest.raises(ImportError, match="not resolvable"):
+        parse("import absent as absent;", env)
