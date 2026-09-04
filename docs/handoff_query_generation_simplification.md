@@ -1,7 +1,7 @@
 # Query-generation simplification: remaining work
 
 What is left of the 2026-08 simplification audit. Everything that landed has
-been removed from this file; the git history is the record of that. Four items
+been removed from this file; the git history is the record of that. Three items
 remain, plus a set of verdicts that exist to stop them being re-opened.
 
 Pipeline stages as used below:
@@ -38,44 +38,44 @@ this stack shipped a silent cross join through a byte-identical corpus and a
 green suite. Any change to what a group's consumers see as their parent needs
 this gate.
 
-## 1. 3.6 Two truths for partial/nullable on the same scan (BLOCKED: design decision)
+## 1. 3.6 One truth for partial/nullable (LANDED)
 
-PHYSICAL. The node-level stamp and the QueryDatasource disagree about which
-columns of a scan are partial or nullable, and consumers split along that line:
-`node.partial_concepts` (validate_stack, discovery) against
-`qds.partial_concepts` (join typing).
+Decision taken: a node's partial and nullable stamps are its empirical inputs
+(datasource columns, or the resolved parents' stamps) narrowed by its own
+proofs, computed at resolve so a widened projection is restamped; the
+QueryDatasource takes the stamp verbatim and nothing unions raw column flags
+back in. Non-projected columns are not join-typing input.
 
-- `select_helpers/datasource_nodes.py:343-380` computes the filtered node-level
-  stamp (`partial_is_full` / `membership_complete` / `proven_non_null`).
-- `select_node_v2.resolve_from_provided_datasource:130-149` unions the raw
-  `datasource.columns` flags with those stamps, so the QDS set stays a superset
-  of the stamp the node published.
-- Condition non-null stripping happens at four sites: `base_node.py:225` (via
-  `_refine_nullable_for_conditions:291`), `base_node.py:506` at resolve,
-  `group_node.py:125-150`, `datasource_nodes.py:373`.
+- `select_node_v2.scan_stamps` is the scan rule (columns over projected
+  outputs, minus `partial_is_full` / membership-complete / condition non-null
+  proofs stored on the SelectNode); construction and resolve both call it.
+- `StrategyNode._resolve` and `GroupNode` inherit partials from the resolved
+  parents by address. `UnionNode` keeps only column-level `~` bindings (a
+  covering union completes table-level partiality).
+- `MergeNode` stamps outputs by `join_resolution.merge_partial_addresses`:
+  a fully preserved side (`preserved_sources`, left-deep over the resolved
+  join types) binding the address complete makes it complete; otherwise any
+  partial side keeps it partial.
+- `_collect_deep_partial_addresses` is deleted; join typing and the merge's
+  branch proofs read the sides' own stamps.
 
-The obvious change (make `resolve_from_provided_datasource` honour the stamps
-and drop the construction-time strip) is blocked, because the divergence is not
-where the audit pointed:
+Three consumers relied on the stale (empty) merge stamps and were tightened
+to their real requirement: `deduplicate_nodes` (a redundant parent needs
+every address it exposes bound by the survivor, complete ones complete, not
+"no partial anywhere"); the merge folds sibling parents whose `shape`
+(extent-agnostic identity plus resolved joins, recursively) matches, since
+extent ownership that changed no join is not a distinct relation; and
+`_is_filter_population` only defers to an extent-free branch's partner when
+that partner binds the axis complete. Do NOT sync merge-level partials back
+onto the node (discovery reads the node stamp for source completeness and
+starts refusing complete sources).
 
-- Node-level stamps are output-restricted, but `_collect_deep_partial_addresses`
-  (`join_resolution.py:946`, called at `join_resolution.py:1424` and
-  `merge_node.py:418`) reads NON-projected `~` columns for join typing.
-  gcat:inline29 flips INNER to LEFT/FULL if the QDS honours the stamps.
-- Post-construction widening (`projection.widen_projection:145`,
-  `base_node.set_output_concepts:390`) never restamps. gcat:inline32 loses its
-  date-spine FULL.
-- Dropping the construction-time `_refine_nullable_for_conditions` loses q64's
-  membership pushdown: `semi_join_pushdown.nullable_in:98` reads
-  `cte.nullable_concepts`.
-
-Decide first: **are non-projected partials join-typing input?** Then either
-widen the stamp to cover them, or make join typing read datasource columns
-directly, and restamp on widening either way.
-
-Gate: `tests/join_matrix`, `tests/engine/test_duckdb_return_only_anchor_elision.py`,
-`tests/modeling/test_nullability.py`, corpus. q78/q51/q86 notes live in the
-comments at those sites.
+Pins: `tests/core/processing/test_partial_nullable_stamps.py`,
+`tests/join_matrix`, `tests/engine/test_duckdb_return_only_anchor_elision.py`,
+`tests/modeling/test_nullability.py`, the modeling row suites. Corpus: 7
+statements change, all row-verified (FULL/RIGHT narrowed to LEFT where the
+fact side already carries every dimension member, a redundant order_items
+self-join dropped in thelook adhoc04, a join-order flip, CTE renames).
 
 ## 2. 2.3(b) Filter-virtual wrapping (NOT LANDED)
 
@@ -134,29 +134,24 @@ generator-agnostic but wired only into `gen_aggregate` (`:155`). Wire it into
 `gen_basic` / `gen_filter` / `gen_window` only if a test shape needs it. Nothing
 fires today.
 
-## 5. Known gaps
-
-The three gaps the audit's review surfaced are closed; each is pinned by a
-DuckDB row test:
-
-- CASE or comparison in ORDER BY over an unprojected leaf on a grouped final
-  node: `_scalar_order_leaves` walks CASE arms and comparisons and the min()
-  wrap parenthesizes a bare comparison
-  (`tests/engine/test_duckdb_order_by_case_unprojected_leaf.py`).
-- `narrow_keyless_joins` no longer re-derives the left side from the explicit
-  left after a keyed or unnest join; only keyless right sides accumulate
-  from then on. Zero corpus, fuzzer or suite decisions changed.
-- A scoped join on expression keys between rowsets where the FINAL
-  contributors are projection wrappers over the boundaries: the union form
-  tripped the keyless-join guard or cross-joined, the subset form always
-  cross-joined. `_widen_merge_join_keys` now runs a second pass that carries
-  the unprojected expression mates onto whichever parent renders them
-  (`tests/engine/test_duckdb_scoped_join_expression_keys_through_wrappers.py`).
-
 ## Closed: do not re-chase
 
 Verified during the audit, kept here only so the next pass does not re-open
 them.
+
+- **The review's three "known gaps" are fixed**, each pinned by a DuckDB row
+  test: ORDER BY CASE/comparison over an unprojected leaf
+  (`_scalar_order_leaves` walks CASE arms and comparisons;
+  `tests/engine/test_duckdb_order_by_case_unprojected_leaf.py`);
+  `narrow_keyless_joins` ignoring the explicit left after a keyed or unnest
+  join; scoped joins on expression keys between rowsets consumed through
+  projection wrappers (`_widen_merge_join_keys` second pass carries the
+  unprojected expression mates;
+  `tests/engine/test_duckdb_scoped_join_expression_keys_through_wrappers.py`).
+  That mate rule must stay restricted to BASIC-over-rowset-handle members:
+  environment `merge` declarations fold into the same key groups, and
+  widening those re-plans hackernews adhoc05 and breaks the canonical
+  collision merge test.
 
 - **2.6 site B** (`source_planning` bridge merge, 57 relocations) is not a
   construction-time decision: `InlineDatasource` runs before pushdown and

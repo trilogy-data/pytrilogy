@@ -74,8 +74,8 @@ juicy as (
 SELECT
     \"abundant\".\"sales_item_sk\" as \"sales_item_sk\"
 FROM
-    \"abundant\"
-    INNER JOIN \"yummy\" on \"abundant\".\"_frequent_items_frequent_item_id\" = \"yummy\".\"sales_item_sk\"
+    \"yummy\"
+    INNER JOIN \"abundant\" on \"yummy\".\"sales_item_sk\" = \"abundant\".\"_frequent_items_frequent_item_id\"
 GROUP BY
     1,
     \"abundant\".\"sales_item_desc_truncated\",

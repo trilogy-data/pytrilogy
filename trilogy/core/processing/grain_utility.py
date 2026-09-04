@@ -407,6 +407,7 @@ def _is_filter_population(
     by_id: dict[str, GrainSource],
     filtered_ids: set[str],
     join_addresses: set[str],
+    partner_partial: set[str],
 ) -> bool:
     """Whether this side's row set IS the request WHERE's population.
 
@@ -414,7 +415,8 @@ def _is_filter_population(
     anything else. An extent-free branch covers only the span members its facts
     bound (docs/extent_ownership.md), so a row missing there is a member nobody
     referenced, not a row the WHERE rejected, and the other side stays
-    preserved."""
+    preserved. That only matters when the other side binds the axis complete;
+    a partner partial on it carries no extension member to preserve."""
     if identifier not in filtered_ids:
         return False
     source = by_id.get(identifier)
@@ -423,7 +425,9 @@ def _is_filter_population(
     suppressed = {c.address for c in source.partial_concepts} & deep_extent_free_spans(
         source
     )
-    return not (join_addresses & suppressed)
+    if not (join_addresses & suppressed):
+        return True
+    return bool(join_addresses & partner_partial)
 
 
 def _join_key_addresses(join: BaseJoin) -> tuple[set[str], set[str]]:
@@ -541,11 +545,23 @@ def tighten_join_for_filtered_branch(
         left_ids.add(join.left_datasource.identifier)
     for pair in join.concept_pairs or []:
         left_ids.add(pair.existing_datasource.identifier)
+    left_partial: set[str] = set()
+    for identifier in left_ids:
+        source = by_id.get(identifier)
+        if source is not None:
+            left_partial |= {c.address for c in source.partial_concepts}
+    right_partial = {c.address for c in join.right_datasource.partial_concepts}
     right_filtered = _is_filter_population(
-        join.right_datasource.identifier, by_id, filtered_ids, join_addresses
+        join.right_datasource.identifier,
+        by_id,
+        filtered_ids,
+        join_addresses,
+        left_partial,
     )
     left_filtered = any(
-        _is_filter_population(identifier, by_id, filtered_ids, join_addresses)
+        _is_filter_population(
+            identifier, by_id, filtered_ids, join_addresses, right_partial
+        )
         for identifier in left_ids
     )
     if join.join_type == JoinType.FULL:

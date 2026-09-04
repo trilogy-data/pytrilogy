@@ -34,9 +34,9 @@ from trilogy.core.processing.grain_utility import (
     non_null_proofs,
 )
 from trilogy.core.processing.join_resolution import (
-    _collect_deep_partial_addresses,
     compute_outer_null_status,
     get_node_joins,
+    merge_partial_addresses,
     narrow_keyless_joins,
     partial_binding_sources,
     prune_outer_join_pairs,
@@ -91,27 +91,33 @@ def deduplicate_nodes(
     duplicates = False
     removed: set[str] = set()
     set_map: dict[str, set[str]] = {}
+    all_map: dict[str, set[str]] = {}
     for k, v in merged.items():
         # A parent that hides a concept does not supply it downstream, so it
         # must not shadow another parent that exposes the same concept.
         hidden = set(v.hidden_concepts) if isinstance(v, QueryDatasource) else set()
-        unique_outputs = [
-            # a rowset's concept may live in a different environment
-            (environment.concepts.get(x.address) or x).address
+        # a rowset's concept may live in a different environment
+        exposed = [
+            (
+                (environment.concepts.get(x.address) or x).address,
+                x in v.partial_concepts,
+            )
             for x in v.output_concepts
-            if x not in v.partial_concepts and x.address not in hidden
+            if x.address not in hidden
         ]
-        set_map[k] = set(unique_outputs)
+        set_map[k] = {address for address, partial in exposed if not partial}
+        all_map[k] = {address for address, _ in exposed}
     for k1, v1 in set_map.items():
         found = False
         for k2, v2 in set_map.items():
             if k1 == k2:
                 continue
+            # k1 is redundant when k2 binds everything it exposes, its complete
+            # bindings complete; a partial binding k2 lacks is a side k1 supplies.
             if (
                 v1.issubset(v2)
+                and all_map[k1].issubset(all_map[k2])
                 and merged[k1].grain.issubset(merged[k2].grain)
-                and not merged[k2].partial_concepts
-                and not merged[k1].partial_concepts
                 and not _has_applied_condition(merged[k2])
                 and not _has_applied_condition(merged[k1])
                 # a row-limited source is a proper row subset, never
@@ -405,7 +411,7 @@ class MergeNode(StrategyNode):
         for source in final_datasets:
             for condition in collect_applied_conditions(source):
                 branch_proofs |= non_null_proofs(condition)
-            source_partial = _collect_deep_partial_addresses(source)
+            source_partial = {c.address for c in source.partial_concepts}
             source_outputs = {c.address for c in source.output_concepts}
             complete_addresses |= source_outputs - source_partial
             partial_addresses |= source_outputs & source_partial
@@ -455,14 +461,21 @@ class MergeNode(StrategyNode):
         ]
         merged: dict[str, QueryDatasource | BuildDatasource] = {}
         final_joins: list[NodeJoin] | None = self.node_joins
+        # Two parents built under different extent ownership carry distinct
+        # identifiers; when their resolved joins came out the same they are one
+        # relation and fold like any other identifier match.
+        by_shape: dict[tuple, str] = {}
         for source in parent_sources:
-            if source.identifier in merged:
+            key = source.identifier
+            if isinstance(source, QueryDatasource) and key not in merged:
+                key = by_shape.setdefault(source.shape, key)
+            if key in merged:
                 logger.info(
                     f"{self.logging_prefix}{LOGGER_PREFIX} merging parent node with {source.identifier} into existing"
                 )
-                merged[source.identifier] = merged[source.identifier] + source
+                merged[key] = merged[key] + source
             else:
-                merged[source.identifier] = source
+                merged[key] = source
 
         # drop redundant sources, unless every parent is a deliberate side of a
         # coalescing relation
@@ -764,6 +777,9 @@ class MergeNode(StrategyNode):
             logger.info(
                 f"{self.logging_prefix}{LOGGER_PREFIX} forcing group by to achieve grain {grain}"
             )
+        joined_partials = merge_partial_addresses(
+            final_datasets, qd_joins, final_output_concepts
+        )
         qds = QueryDatasource(
             input_concepts=unique(self.input_concepts, "address"),
             output_concepts=final_output_concepts,
@@ -784,6 +800,7 @@ class MergeNode(StrategyNode):
             ],
             partial_concepts=unique(
                 self.partial_concepts
+                + [c for c in final_output_concepts if c.address in joined_partials]
                 + self._extent_free_partials(final_datasets, final_output_concepts),
                 "address",
             ),

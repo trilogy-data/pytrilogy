@@ -1,6 +1,7 @@
 from trilogy.constants import logger
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import Derivation, Purpose, SourceType
+from trilogy.core.functions import propagates_argument_nulls
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
@@ -8,9 +9,11 @@ from trilogy.core.models.build import (
     BuildFunction,
     BuildGrain,
     BuildOrderBy,
+    CanonicalBuildConceptList,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import QueryDatasource, UnnestJoin
+from trilogy.core.processing.condition_utility import condition_proves_non_null
 from trilogy.core.processing.nodes.base_node import (
     StrategyNode,
     resolve_concept_map,
@@ -19,6 +22,54 @@ from trilogy.core.processing.nodes.base_node import (
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - SELECT NODE]"
+
+
+def scan_stamps(
+    datasource: BuildDatasource,
+    outputs: list[BuildConcept],
+    partial_is_full: bool,
+    complete_proofs: set[str],
+    non_null_proofs: set[str],
+) -> tuple[list[BuildConcept], list[BuildConcept]]:
+    """Partial and nullable outputs of a scan: the datasource's column flags
+    over the projected outputs, narrowed by the scan's proofs. An address also
+    bound complete on the same datasource is fully providable, and a BASIC
+    computed here over a nullable column is NULL wherever that column is."""
+    complete = {c.concept.address for c in datasource.columns if c.is_complete}
+    partial_lcl = CanonicalBuildConceptList(
+        concepts=[
+            c.concept
+            for c in datasource.columns
+            if not c.is_complete and c.concept.address not in complete
+        ]
+    )
+    nullable_lcl = CanonicalBuildConceptList(
+        concepts=[c.concept for c in datasource.columns if c.is_nullable]
+    )
+    partials = (
+        []
+        if partial_is_full
+        else [
+            c
+            for c in outputs
+            if c in partial_lcl and c.canonical_address not in complete_proofs
+        ]
+    )
+    nullables = [
+        c
+        for c in outputs
+        if (
+            c in nullable_lcl
+            or (
+                propagates_argument_nulls(c)
+                and any(arg in nullable_lcl for arg in c.concept_arguments)
+            )
+        )
+        and not non_null_proofs.intersection(
+            {c.address, c.canonical_address, *c.pseudonyms}
+        )
+    ]
+    return partials, nullables
 
 
 class SelectNode(StrategyNode):
@@ -48,11 +99,19 @@ class SelectNode(StrategyNode):
         hidden_concepts: set[str] | None = None,
         ordering: BuildOrderBy | None = None,
         existence_concepts: list[BuildConcept] | None = None,
+        partial_is_full: bool = False,
+        complete_proofs: set[str] | None = None,
+        non_null_proofs: set[str] | None = None,
     ):
         if datasource and partial_concepts is None:
             partial_concepts = datasource.partial_concepts
         if datasource and nullable_concepts is None:
             nullable_concepts = datasource.nullable_concepts
+        # Proofs the scan's construction established; the stamps are recomputed
+        # from them at resolve so a widened projection is stamped the same way.
+        self.partial_is_full = partial_is_full
+        self.complete_proofs = complete_proofs or set()
+        self.non_null_proofs = non_null_proofs or set()
         super().__init__(
             input_concepts=input_concepts,
             output_concepts=output_concepts,
@@ -112,6 +171,16 @@ class SelectNode(StrategyNode):
             ):
                 source_map[x.address] = set()
 
+        non_null_proofs = set(self.non_null_proofs)
+        if self.conditions:
+            non_null_proofs |= condition_proves_non_null(self.conditions)
+        partials, nullables = scan_stamps(
+            datasource,
+            all_concepts_final,
+            self.partial_is_full,
+            self.complete_proofs,
+            non_null_proofs,
+        )
         # when not grouping, the scan keeps the datasource grain so merges align
         if self.force_group is False:
             grain = self.grain if self.grain else datasource.grain
@@ -124,19 +193,19 @@ class SelectNode(StrategyNode):
             datasources=[datasource],
             grain=grain,
             joins=[],
-            # node-level stamps can mark a partial binding (a licensed rowset
-            # handle widened onto this scan) the datasource columns cannot express
-            partial_concepts=unique(
-                [c.concept for c in datasource.columns if not c.is_complete]
-                + list(self.partial_concepts),
-                "address",
-            ),
+            # the node stamp adds what columns cannot express (a licensed
+            # rowset handle widened onto this scan)
+            partial_concepts=unique(partials + list(self.partial_concepts), "address"),
             rollup_concepts=self.rollup_concepts,
-            # node-level stamps carry a BASIC computed at this scan over a
-            # nullable column, which is not itself a datasource column
             nullable_concepts=unique(
-                [c.concept for c in datasource.columns if c.is_nullable]
-                + list(self.nullable_concepts),
+                nullables
+                + [
+                    c
+                    for c in self.nullable_concepts
+                    if not non_null_proofs.intersection(
+                        {c.address, c.canonical_address, *c.pseudonyms}
+                    )
+                ],
                 "address",
             ),
             source_type=SourceType.DIRECT_SELECT,
@@ -245,6 +314,9 @@ class SelectNode(StrategyNode):
             hidden_concepts=self.hidden_concepts,
             ordering=self.ordering,
             existence_concepts=list(self.existence_concepts),
+            partial_is_full=self.partial_is_full,
+            complete_proofs=set(self.complete_proofs),
+            non_null_proofs=set(self.non_null_proofs),
         )
         node.limit = self.limit
         return node
