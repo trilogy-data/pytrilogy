@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import threading
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from os.path import dirname
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from trilogy.constants import Parsing
 from trilogy.core.models.environment import (
@@ -77,10 +78,8 @@ def _suggest_import_paths(
 def _read_import_text(
     address: str, environment: Environment, is_stdlib: bool = False
 ) -> str:
-    if (
-        isinstance(environment.config.import_resolver, FileSystemImportResolver)
-        or is_stdlib
-    ):
+    resolver = environment.config.import_resolver
+    if isinstance(resolver, FileSystemImportResolver) or is_stdlib:
         try:
             with safe_open(address) as f:
                 return f.read()
@@ -93,52 +92,65 @@ def _read_import_text(
             )
             hint = f" Did you mean: {', '.join(suggestions)}?" if suggestions else ""
             raise ImportError(f"Unable to import '{address}': {exc}.{hint}") from exc
-    if isinstance(environment.config.import_resolver, DictImportResolver):
-        if address not in environment.config.import_resolver.content:
+    if isinstance(resolver, DictImportResolver):
+        key = resolver.resolve(address)
+        if key is None:
             raise ImportError(
                 f"Unable to import file {address}, not resolvable from provided source files."
             )
-        return environment.config.import_resolver.content[address]
+        return resolver.content[key]
     raise ImportError(
         f"Unable to import file {address}, resolver type "
-        f"{type(environment.config.import_resolver)} not supported"
+        f"{type(resolver)} not supported"
     )
 
 
-# Cache key for parsed import environments: (resolved target, config root).
+# Parse-local cache key for parsed import environments: (canonical target,
+# config root). Filesystem targets are absolute paths; dict-resolver targets
+# are the resolver's canonical `content` key, so a file reached relatively
+# from one importer and absolutely from another parses once.
 ImportEnvCacheKey = tuple[str, str | None]
+
+
+class ClosureKey(NamedTuple):
+    """One text an import environment depends on: an absolute path read off
+    disk, or a dict resolver's canonical content key."""
+
+    on_disk: bool
+    target: str
 
 
 # ---------------------------------------------------------------------------
 # Cross-parse import environment store.
 #
-# A parsed import file's Environment is a pure function of the resolved file
-# path, the parse-relevant config (duplicate-declaration flag, import search
+# A parsed import file's Environment is a pure function of the resolved
+# target, the parse-relevant config (duplicate-declaration flag, import search
 # paths, parameter values) and the CONTENT of the file plus everything it
 # transitively imports. Entries are validated on reuse by re-hashing that text
-# closure and by an env-integrity stamp that catches post-parse mutation of
-# the cached environment through shared objects (bare imports share objects
-# with the importing environment; see Environment.add_import). Filesystem and
-# stdlib resolution only: dict-resolver texts are re-scoped per copy_for_root
-# and are not stable process-wide.
+# closure through the importing env's resolver and by an env-integrity stamp
+# that catches post-parse mutation of the cached environment through shared
+# objects (bare imports share objects with the importing environment; see
+# Environment.add_import). Dict-resolver targets are not unique across
+# resolvers, so their keys carry the target's own text hash: models that share
+# an address coexist instead of evicting each other.
 # ---------------------------------------------------------------------------
 
 
 @dataclass
 class _ClosureFrame:
-    """Per-import-parse dependency recorder: resolved path -> hash(text) for
+    """Per-import-parse dependency recorder: closure key -> hash(text) for
     the file and everything parsed beneath it. `tainted` marks a parse whose
-    result is not context-free (cycle/depth stub baked in, or non-filesystem
-    text) and must never enter the process-wide store."""
+    result is not context-free (cycle/depth stub baked in) and must never
+    enter the process-wide store."""
 
-    deps: dict[str, int] = field(default_factory=dict)
+    deps: dict[ClosureKey, int] = field(default_factory=dict)
     tainted: bool = False
 
 
 @dataclass
 class _ImportEnvEntry:
     env: Environment
-    closure: dict[str, int]
+    closure: dict[ClosureKey, int]
     integrity: tuple
     # `with_namespace(alias)` products of `env`, keyed by alias. Only valid
     # while `env` itself is — they are dropped with the entry. Each is
@@ -176,6 +188,17 @@ def clear_import_env_store() -> None:
         _IMPORT_ENV_STORE.clear()
 
 
+def set_import_env_store_max(size: int) -> None:
+    """Size the store for the deployment: each entry holds a whole parsed
+    Environment plus its namespaced projections, and a multi-tenant service
+    fills it with one entry per (model file, content)."""
+    global _IMPORT_ENV_STORE_MAX
+    with _IMPORT_ENV_STORE_LOCK:
+        _IMPORT_ENV_STORE_MAX = size
+        while len(_IMPORT_ENV_STORE) > size:
+            _IMPORT_ENV_STORE.popitem(last=False)
+
+
 def _params_fingerprint(parameters: dict) -> tuple:
     return tuple(sorted((k, repr(v)) for k, v in parameters.items()))
 
@@ -197,28 +220,22 @@ def _env_integrity(env: Environment) -> tuple:
 
 
 def _store_lookup(
-    key: tuple, own_hash: int, text_lookup: dict[Path | str, str]
+    key: tuple,
+    own_key: ClosureKey,
+    own_hash: int,
+    read_text: Callable[[ClosureKey], str | None],
 ) -> _ImportEnvEntry | None:
     with _IMPORT_ENV_STORE_LOCK:
         entry = _IMPORT_ENV_STORE.get(key)
     if entry is None:
         return None
-    target = key[0]
-    valid = entry.closure.get(target) == own_hash
+    valid = entry.closure.get(own_key) == own_hash
     if valid:
-        for path, expected in entry.closure.items():
-            if path == target:
+        for dep, expected in entry.closure.items():
+            if dep == own_key:
                 continue
-            text = text_lookup.get(Path(path))
-            if text is None:
-                try:
-                    with safe_open(path) as f:
-                        text = f.read()
-                except OSError:
-                    valid = False
-                    break
-                text_lookup[Path(path)] = text
-            if hash(text) != expected:
+            text = read_text(dep)
+            if text is None or hash(text) != expected:
                 valid = False
                 break
     if valid and _env_integrity(entry.env) != entry.integrity:
@@ -252,11 +269,11 @@ class ImportHydrationService:
     )
     text_lookup: dict[Path | str, str] = field(default_factory=dict)
     import_keys: list[str] = field(default_factory=list)
-    # Target paths whose parse is currently on the call stack. Used to break
+    # Imports whose parse is currently on the call stack. Used to break
     # circular imports at re-entry rather than recursing until max_parse_depth.
     # Shared by reference across child ImportHydrationServices via
     # HydrationContext so cycle detection sees the full parse stack.
-    in_flight_imports: set[str] = field(default_factory=set)
+    in_flight_imports: set[ImportEnvCacheKey] = field(default_factory=set)
     # Closure recording for the cross-parse store: per-parse dependency frames
     # (shared across child services like in_flight_imports) plus the recorded
     # closure for each local parsed_environments entry.
@@ -275,21 +292,57 @@ class ImportHydrationService:
     def set_text(self, key: Path | str, text: str) -> None:
         self.text_lookup[key] = text
 
+    def _read_closure_text(self, key: ClosureKey) -> str | None:
+        if key.on_disk:
+            path = Path(key.target)
+            text = self.text_lookup.get(path)
+            if text is None:
+                try:
+                    with safe_open(key.target) as f:
+                        text = f.read()
+                except OSError:
+                    return None
+                self.text_lookup[path] = text
+            return text
+        resolver = self.environment.config.import_resolver
+        if not isinstance(resolver, DictImportResolver):
+            return None
+        return resolver.content.get(key.target)
+
     def execute(self, request: ImportRequest) -> ImportStatement:
         from trilogy.parsing.parse_engine_v2 import parse_syntax
         from trilogy.parsing.v2.hydration import HydrationContext, NativeHydrator
 
         environment = self.environment
+        resolver = environment.config.import_resolver
         key_path = self.import_keys + [request.cache_key]
         cache_lookup = "-".join(key_path)
-        target_key = str(request.token_lookup)
+        is_dict = not request.is_stdlib and isinstance(resolver, DictImportResolver)
+        # Cache parsed import environments by canonical target + config root
+        # rather than the alias chain: the parsed env is namespace-neutral and
+        # identical regardless of which alias imports it, so a file reachable
+        # via multiple import paths parses exactly once. add_import still
+        # applies the per-edge namespace downstream.
+        target = str(request.target)
+        if is_dict:
+            assert isinstance(resolver, DictImportResolver)
+            canonical = resolver.resolve(target)
+            if canonical is None:
+                raise ImportError(
+                    f"Unable to import file {target}, not resolvable from provided source files."
+                )
+            target = canonical
+        root = None
+        if "." in target:
+            root = target.rsplit(".", 1)[0]
+        env_cache_key: ImportEnvCacheKey = (target, root)
 
         # Cycle detection: a parse currently on the stack re-encounters
         # itself. Break by returning a stub ImportStatement and registering
         # the alias as a deferred namespace; downstream concept lookups in
         # this parser produce partial placeholders via ConceptLookup rather
         # than recursing until max_parse_depth and failing.
-        if target_key in self.in_flight_imports:
+        if env_cache_key in self.in_flight_imports:
             if self.semantic_state is not None:
                 self.semantic_state.add_deferred_import_alias(request.alias)
             if self.closure_stack:
@@ -309,29 +362,20 @@ class ImportHydrationService:
                 path=Path(request.target),
             )
 
-        if request.token_lookup in self.text_lookup:
+        if is_dict:
+            assert isinstance(resolver, DictImportResolver)
+            text = resolver.content[target]
+        elif request.token_lookup in self.text_lookup:
             text = self.text_lookup[request.token_lookup]
         else:
             text = _read_import_text(request.target, environment, request.is_stdlib)
             self.text_lookup[request.token_lookup] = text
+        own_hash = hash(text)
+        own_key = ClosureKey(not is_dict, target)
 
-        # Cache parsed import environments by resolved file + config root rather
-        # than the alias chain: the parsed env is namespace-neutral and identical
-        # regardless of which alias imports it, so a file reachable via multiple
-        # import paths parses exactly once. add_import still applies the per-edge
-        # namespace downstream.
-        root = None
-        if "." in str(request.token_lookup):
-            root = str(request.token_lookup).rsplit(".", 1)[0]
-        env_cache_key: ImportEnvCacheKey = (str(request.target), root)
-
-        # Filesystem/stdlib texts come off disk and are process-stable, so the
-        # parsed env can be shared across parses; dict-resolver texts are
-        # scoped to one environment's resolver.
         use_store = IMPORT_ENV_STORE_ENABLED and (
             request.is_stdlib
-            or self.in_stdlib
-            or isinstance(environment.config.import_resolver, FileSystemImportResolver)
+            or isinstance(resolver, (FileSystemImportResolver, DictImportResolver))
         )
         # The active deployment env is part of the key: its transform rewrites
         # datasource Addresses in place, and those Address objects are shared
@@ -341,8 +385,9 @@ class ImportHydrationService:
 
         activation = active_env()
         store_key = (
-            str(request.target),
+            target,
             root,
+            own_hash if is_dict else None,
             environment.config.allow_duplicate_declaration,
             tuple(str(p) for p in environment.import_paths),
             _params_fingerprint(environment.parameters),
@@ -364,7 +409,9 @@ class ImportHydrationService:
             if local is not None and local.env is new_env:
                 store_entry = local
         elif use_store and (
-            entry := _store_lookup(store_key, hash(text), self.text_lookup)
+            entry := _store_lookup(
+                store_key, own_key, own_hash, self._read_closure_text
+            )
         ):
             store_entry = entry
             new_env = entry.env
@@ -373,17 +420,20 @@ class ImportHydrationService:
             if self.closure_stack:
                 self.closure_stack[-1].deps.update(entry.closure)
         else:
-            self.in_flight_imports.add(target_key)
+            self.in_flight_imports.add(env_cache_key)
             frame = _ClosureFrame(tainted=not use_store)
             self.closure_stack.append(frame)
             try:
                 document = parse_syntax(text)
+                # Parameters are snapshotted: the importer's dict keeps being
+                # written by set_parameters after the parse, and a stored child
+                # env must not observe values its key never fingerprinted.
                 new_env = Environment(
                     working_path=dirname(request.target),
                     import_paths=list(environment.import_paths),
                     env_file_path=request.token_lookup,
                     config=environment.config.copy_for_root(root=root),
-                    parameters=environment.parameters,
+                    parameters=dict(environment.parameters),
                 )
                 child_context = HydrationContext(
                     environment=new_env,
@@ -406,9 +456,9 @@ class ImportHydrationService:
                     f"Unable to import '{request.target}', parsing error: {e}"
                 ) from e
             finally:
-                self.in_flight_imports.discard(target_key)
+                self.in_flight_imports.discard(env_cache_key)
                 self.closure_stack.pop()
-            frame.deps[str(request.target)] = hash(text)
+            frame.deps[own_key] = own_hash
             self.local_closures[env_cache_key] = frame
             if use_store and not frame.tainted:
                 store_entry = _ImportEnvEntry(
@@ -421,9 +471,7 @@ class ImportHydrationService:
                 self.closure_stack[-1].deps.update(frame.deps)
                 self.closure_stack[-1].tainted |= frame.tainted
 
-        is_file_resolver = isinstance(
-            environment.config.import_resolver, FileSystemImportResolver
-        )
+        is_file_resolver = isinstance(resolver, FileSystemImportResolver)
         parsed_path = Path(request.input_path)
         # Aliased imports namespace-copy the whole source env; when it came from
         # the store it is validated-unchanged, so that copy is reusable across

@@ -118,7 +118,7 @@ class HydrationContext:
     import_keys: list[str] | None = None
     symbol_table: SymbolTable | None = None
     semantic_state: SemanticState | None = None
-    in_flight_imports: set[str] | None = None
+    in_flight_imports: set[ImportEnvCacheKey] | None = None
     closure_stack: list | None = None
     local_closures: dict | None = None
     in_stdlib: bool = False
