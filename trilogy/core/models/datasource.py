@@ -26,6 +26,7 @@ from trilogy.core.models.author import (
     LooseConceptList,
     Namespaced,
     WhereClause,
+    combine_staged_wheres,
 )
 
 LOGGER_PREFIX = "[MODELS_DATASOURCE]"
@@ -455,6 +456,11 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         # can never be written even when source-selection is wrong. Blocked on first
         # fixing source-selection to prefer the exact-matching partial source automatically.
 
+        # The datasource's own `where` is a row contract: every read of it is
+        # filtered by it, so a build that skipped it would write rows the
+        # datasource then denies. AND it into the build gate alongside any
+        # incremental filter.
+        where = combine_staged_wheres([w for w in (self.where, where) if w])
         return SelectStatement.from_inputs(
             environment=environment,
             selection=[

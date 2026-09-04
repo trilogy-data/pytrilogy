@@ -21,10 +21,16 @@ def parent_output_addresses(node: StrategyNode) -> set[str]:
 def renderable_addresses(node: StrategyNode) -> set[str]:
     """Addresses `node` can project: its parents' visible outputs plus, for a leaf
     scan, every column its datasource binds (a leaf has no parent nodes, so
-    `parent_output_addresses` alone reports nothing)."""
+    `parent_output_addresses` alone reports nothing). A union's columns are the
+    stack of its arms', so it can render whatever EVERY arm can (the
+    all-or-nothing rule `widen_projection` applies when widening one)."""
     available = parent_output_addresses(node)
     if isinstance(node, SelectNode) and node.datasource is not None:
         available |= {c.address for c in node.datasource.output_concepts}
+    if isinstance(node, UnionNode) and node.parents:
+        available |= set.intersection(
+            *(renderable_addresses(arm) for arm in node.parents)
+        )
     return available
 
 
@@ -177,6 +183,11 @@ def widen_projection(
                 available_addresses=available,
                 rebuild=rebuild,
             )
+        # The arms compute the column from THEIR inputs; the union itself only
+        # reads what the arms now stack. Its inputs are the widened outputs,
+        # never the arms' source columns.
+        input_candidates = arm_outputs
+        available_addresses = parent_output_addresses(node)
     in_addrs = {concept.address for concept in node.input_concepts}
     out_addrs = {concept.address for concept in node.output_concepts}
     for concept in input_candidates:
