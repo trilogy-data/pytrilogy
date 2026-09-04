@@ -62,6 +62,7 @@ from trilogy.core.processing.nodes import (
     MultiSelectMergeNode,
     SelectNode,
     StrategyNode,
+    UnionNode,
     WindowNode,
 )
 from trilogy.core.processing.v4_node_generators import build_node
@@ -1451,6 +1452,13 @@ def _parents_already_at_input_grain(
 _JOIN_KEY_CHAIN_LIMIT = 4
 
 
+# Node kinds whose projection can be widened with a column derived from their
+# own row inputs without changing which rows they emit: plain projections,
+# non-grouping merges, virt-filter/WHERE projections (a FilterNode restricts
+# rows, never regroups them) and unions (widened arm-by-arm, all or nothing).
+_WIDENABLE_PROJECTIONS = (SelectNode, MergeNode, FilterNode, UnionNode)
+
+
 def _widen_scan_chain(
     node: StrategyNode, concept: BuildConcept, depth: int = 0
 ) -> bool:
@@ -1465,20 +1473,25 @@ def _widen_scan_chain(
     cross-joins ON 1=1."""
     if concept.address in {o.address for o in node.output_concepts}:
         return True
-    if not isinstance(node, (SelectNode, MergeNode)):
+    if not isinstance(node, _WIDENABLE_PROJECTIONS):
         return False
     available = renderable_addresses(node)
     if not concept_satisfiable(concept, available):
         if depth >= _JOIN_KEY_CHAIN_LIMIT:
             return False
-        # A SelectNode projects ONE stream, so descending a fan-in would change
-        # what the widened column means; a MergeNode joins its parents, so any
-        # arm that binds the key can supply it. A grain-collapsing parent is
-        # never widened: that would move its grouping key.
-        if isinstance(node, SelectNode) and len(node.parents) != 1:
+        # A single-stream projection (SelectNode, FilterNode) would change what
+        # the widened column means if it descended a fan-in; a MergeNode joins
+        # its parents, so any arm that binds the key can supply it. A union is
+        # widened only from what every arm already renders: descending its arms
+        # one by one could leave some carrying a column the stack lacks. A
+        # grain-collapsing parent is never widened: that would move its
+        # grouping key.
+        if isinstance(node, UnionNode):
+            return False
+        if isinstance(node, (SelectNode, FilterNode)) and len(node.parents) != 1:
             return False
         if not any(
-            isinstance(below, (SelectNode, MergeNode))
+            isinstance(below, _WIDENABLE_PROJECTIONS)
             and not below.force_group
             and _widen_scan_chain(below, concept, depth + 1)
             for below in node.parents
@@ -1705,7 +1718,7 @@ def _carry_join_keys(
             ):
                 _widen_passthrough_group(parent, join_key_concepts)
             continue
-        if parent.force_group or not isinstance(parent, (SelectNode, MergeNode)):
+        if parent.force_group or not isinstance(parent, _WIDENABLE_PROJECTIONS):
             continue
         # A leaf datasource scan can still emit any column its datasource binds,
         # so a partial merge key (a fact's `?d1` column that canonicalizes to the
