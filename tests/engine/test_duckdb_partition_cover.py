@@ -97,3 +97,21 @@ def test_city_filter_still_reads_that_city_alone():
     rows, sql = _run(FULL_GRID, "select id where city = 'A' order by id asc;")
     assert [r[0] for r in rows] == ["A-MUN-1", "A-MUN-2", "A-OSM-1", "A-OSM-2"]
     assert "raw_B_MUN" not in sql and "raw_B_OSM" not in sql
+
+
+ROLLUP = """
+datasource rollup (id: id, city: city, source: source, x: x)
+grain (id)
+query '''{rows}''';
+""".format(rows=" union all ".join(_rows(c, s) for c, s in CELLS))
+
+
+@pytest.mark.parametrize(
+    "query", ["select id order by id asc;", "select city, count(id) -> n;"]
+)
+def test_one_complete_source_outranks_a_covering_union(query):
+    model = CONCEPTS + _pub("A") + _pub("B") + ROLLUP
+    rows, sql = _run(model, query)
+    assert "rollup" in sql
+    assert "pub_A" not in sql and "pub_B" not in sql
+    assert len(rows) == (8 if query.startswith("select id") else 2)

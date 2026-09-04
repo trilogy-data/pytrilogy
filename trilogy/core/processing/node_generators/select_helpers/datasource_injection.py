@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from trilogy.core.enums import (
     AddressType,
+    BooleanOperator,
     ComparisonOperator,
     Modifier,
 )
@@ -69,6 +70,11 @@ def _claim_atoms(conditional: BoolExpr) -> _Claim | None:
         while isinstance(atom, BuildParenthetical):
             atom = atom.content
         if isinstance(atom, BuildConditional):
+            # `decompose_condition` splits every AND it can; a conditional it
+            # handed back is an OR (or an AND over non-conditions). Only one
+            # freshly unwrapped from parentheses still has an AND to split.
+            if atom is chunk or atom.operator != BooleanOperator.AND:
+                return None
             nested = _claim_atoms(atom)
             if nested is None or set(nested) & set(out):
                 return None

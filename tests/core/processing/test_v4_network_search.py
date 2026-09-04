@@ -1243,9 +1243,9 @@ class TestCostAndObligationInvariants:
     def test_axes_covers_every_cost_field(self):
         import dataclasses
 
-        cost = SolutionCost(1, 2, 3, 4, 5, 6, 7, 8)
+        cost = SolutionCost(1, 2, 3, 4, 5, 6, 7, 8, 9)
 
-        assert cost.axes() == (1, 2, 3, 4, 5, 6, 7, 8)
+        assert cost.axes() == (1, 2, 3, 4, 5, 6, 7, 8, 9)
         assert len(cost.axes()) == len(dataclasses.fields(SolutionCost))
 
     def test_obligation_kinds_order_as_their_names_did(self):

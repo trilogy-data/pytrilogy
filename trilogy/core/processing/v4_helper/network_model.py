@@ -481,6 +481,10 @@ class SolutionCost:
     blend_joins: int
     fanout_sources: int
     sources: int
+    # Physical relations read: a partition-family union is ONE source (no
+    # join) but N scans, so at equal source count a single complete table
+    # outranks the union of partials that jointly cover the same rows.
+    scans: int
     connectors: int
     derived_joins: int
 
