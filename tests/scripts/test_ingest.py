@@ -1668,7 +1668,7 @@ class TestProcessColumn:
         assert rich_import == "std.currency"
         assert isinstance(concept.datatype, TraitDataType)
         assert concept.datatype.traits == ["usd"]
-        assert concept.datatype.type == DataType.FLOAT
+        assert concept.datatype.type == DataType.DOUBLE
 
     def test_rich_type_detection_latitude(self):
         """Test rich type detection for latitude."""

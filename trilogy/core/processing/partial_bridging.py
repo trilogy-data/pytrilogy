@@ -42,7 +42,6 @@ from trilogy.core.processing.condition_utility import (
     gate_allowed_values,
 )
 from trilogy.core.processing.v4_helper.functional_dependency import build_fd_closure
-from trilogy.core.processing.v4_helper.staged_where import stage_computes_cross_row
 
 
 def _spellings(concept: BuildConcept) -> set[str]:
@@ -251,15 +250,16 @@ def _gate_excluded_enum_values(
 def drop_excluded_partials(
     environment: BuildEnvironment, stage: BuildWhereClause | None
 ) -> None:
-    """Hide every ``complete where`` source the first WHERE stage rules out.
+    """Hide every ``complete where`` source the statement's row bound rules out.
 
-    ``stage`` is the statement's stage-1 row gate: every row the statement
-    reads passes it, so a source whose partition predicate contradicts it holds
-    no usable row. A stage that itself computes an aggregate or window sees the
-    full population, so nothing is hidden for it. Removal is from the
-    per-statement mapping only; shared build-cache objects are untouched.
+    ``stage`` is ``universal_row_bound``: the predicate every row the statement
+    reads satisfies, so a source whose partition predicate contradicts it holds
+    no usable row. Deciding which stages that bound may draw on belongs to the
+    staging rules, not here; None means the statement has no such bound and
+    nothing is hidden. Removal is from the per-statement mapping only; shared
+    build-cache objects are untouched.
     """
-    if stage is None or stage_computes_cross_row(stage):
+    if stage is None:
         return
     environment.excluded_enum_values = _gate_excluded_enum_values(environment, stage)
     excluded = [

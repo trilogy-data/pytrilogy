@@ -219,7 +219,9 @@ def _check_column_combination_uniqueness(
 
 
 # Decimal/float types are measures; their sample uniqueness is a coincidence.
-_MEASURE_TYPES = frozenset({DataType.FLOAT, DataType.NUMERIC, DataType.NUMBER})
+_MEASURE_TYPES = frozenset(
+    {DataType.FLOAT, DataType.DOUBLE, DataType.NUMERIC, DataType.NUMBER}
+)
 # Temporal columns lose to a non-temporal partner: a fact's grain is its entity
 # + transaction number, not when it happened. Caught by type, or by name for a
 # surrogate key whose stem carries a date/time token (``returned_date_sk``).

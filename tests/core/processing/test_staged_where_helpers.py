@@ -11,6 +11,7 @@ from trilogy.core.processing.v4_helper.staged_where import (
     hosting_stage_index,
     stage_computes_cross_row,
     stage_lineage_addresses,
+    universal_row_bound,
 )
 
 MODEL = """key id int;
@@ -74,3 +75,41 @@ def test_hosting_stage_index_is_none_for_a_plain_row_arg() -> None:
     built = _stages("where f = 1 then where sum(z) by x > 5 select x;")
     row_args = list(built.where_clauses[0].conditional.concept_arguments)
     assert hosting_stage_index(built.where_clauses, row_args) is None
+
+
+def _bound(select: str) -> str | None:
+    built = _stages(select)
+    bound = universal_row_bound(built.where_clauses, built.where_clause)
+    return str(bound.conditional) if bound is not None else None
+
+
+def test_bound_of_a_flat_row_local_where_is_that_where() -> None:
+    assert _bound("where f = 1 select x;") == "local.f = 1"
+
+
+def test_bound_of_a_flat_cross_row_where_is_nothing() -> None:
+    # the aggregate sees the unfiltered population, so nothing may be narrowed
+    assert _bound("where sum(z) by x > 5 select x;") is None
+
+
+def test_bound_spans_the_whole_leading_row_local_run() -> None:
+    bound = _bound("where f = 1 then where z > 1 then where sum(z) by x > 5 select x;")
+    assert bound is not None
+    assert "local.f = 1" in bound and "local.z > 1" in bound
+
+
+def test_bound_stops_at_the_first_cross_row_stage() -> None:
+    bound = _bound("where f = 1 then where sum(z) by x > 5 then where z > 1 select x;")
+    assert bound == "local.f = 1"
+
+
+def test_bound_does_not_enter_a_stage_that_also_computes_cross_row() -> None:
+    # `z > 1` shares its stage with an aggregate whose population is stage 1,
+    # so honouring it would prune rows that aggregate must read
+    assert _bound("where f = 1 then where z > 1 and sum(z) by x > 5 select x;") == (
+        "local.f = 1"
+    )
+
+
+def test_bound_is_nothing_when_the_first_stage_computes_cross_row() -> None:
+    assert _bound("where sum(z) by x > 5 then where f = 1 select x;") is None

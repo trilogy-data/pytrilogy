@@ -1414,6 +1414,11 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
                     _, _, parent_keys = x.get_select_grain_and_keys(grain, environment)
                     if parent_keys:
                         pkeys.update(parent_keys)
+                    elif x.purpose == Purpose.KEY:
+                        # A bare key peer has no keys of its own; its row
+                        # identity is itself (`coalesce(min(id) by cell, id)`
+                        # varies per id, not per cell).
+                        pkeys.add(x.address)
                 final_grain = Grain.from_concepts(pkeys, environment)
                 keys = final_grain.components
             else:

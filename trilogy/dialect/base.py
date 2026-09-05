@@ -469,10 +469,10 @@ DB_COLUMN_TYPE_MAP: dict[str, DataType] = {
     # float
     "float": DataType.FLOAT,
     "float4": DataType.FLOAT,
-    "float8": DataType.FLOAT,
+    "float8": DataType.DOUBLE,
     "real": DataType.FLOAT,
-    "double": DataType.FLOAT,
-    "double precision": DataType.FLOAT,
+    "double": DataType.DOUBLE,
+    "double precision": DataType.DOUBLE,
     # numeric / decimal
     "numeric": DataType.NUMERIC,
     "decimal": DataType.NUMERIC,

@@ -10,8 +10,12 @@ them when it re-sources such a computation standalone
 rules live here rather than drifting apart in two modules.
 """
 
+from collections.abc import Sequence
+from itertools import takewhile
+
 from trilogy.core.enums import Derivation
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
+from trilogy.core.processing.condition_utility import combine_where_clauses
 
 # The derivations that read across rows, and so are what a stage bound has to
 # be delivered INTO rather than merely ANDed alongside.
@@ -81,3 +85,28 @@ def hosting_stage_index(
         if cross_row & stage_lineage_addresses(clause):
             return index
     return None
+
+
+def universal_row_bound(
+    stages: Sequence[BuildWhereClause],
+    flat: BuildWhereClause | None,
+) -> BuildWhereClause | None:
+    """The predicate EVERY row this statement reads satisfies, or None.
+
+    Stage 1 is applied to the raw rows and each later stage sees only what the
+    stages before it kept, so the leading run of stages that do not themselves
+    compute across rows bounds every row any node in the plan reads. That run
+    is what a completeness proof may narrow a domain by; stage 1 alone is
+    merely its shortest case.
+
+    The run stops AT the first cross-row stage rather than descending into it.
+    A stage's aggregate computes over the population its predecessors left, so
+    a row-local conjunct sharing that stage (`where a then where b and sum(x)
+    by k > 5`) would, if honoured, prune rows the aggregate must read. Same
+    reason a flat `where` returns nothing once it computes across rows: its
+    aggregate sees the unfiltered population.
+    """
+    if not stages:
+        return None if flat is None or stage_computes_cross_row(flat) else flat
+    prefix = list(takewhile(lambda stage: not stage_computes_cross_row(stage), stages))
+    return combine_where_clauses(prefix) if prefix else None

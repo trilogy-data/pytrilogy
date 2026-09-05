@@ -254,7 +254,8 @@ def test_duckdb_normalize_db_type():
     assert dialect.normalize_db_type("DATE") == DataType.DATE
     assert dialect.normalize_db_type("TIMESTAMP") == DataType.DATETIME
     assert dialect.normalize_db_type("TIMESTAMP WITH TIME ZONE") == DataType.TIMESTAMP
-    assert dialect.normalize_db_type("DOUBLE") == DataType.FLOAT
+    assert dialect.normalize_db_type("DOUBLE") == DataType.DOUBLE
+    assert dialect.normalize_db_type("REAL") == DataType.FLOAT
     assert dialect.normalize_db_type("DECIMAL(18,3)") == DataType.NUMERIC
 
 
@@ -301,7 +302,7 @@ def test_postgres_normalize_db_type():
     assert dialect.normalize_db_type("text") == DataType.STRING
     assert dialect.normalize_db_type("boolean") == DataType.BOOL
     assert dialect.normalize_db_type("numeric(10,2)") == DataType.NUMERIC
-    assert dialect.normalize_db_type("double precision") == DataType.FLOAT
+    assert dialect.normalize_db_type("double precision") == DataType.DOUBLE
     assert dialect.normalize_db_type("real") == DataType.FLOAT
     assert dialect.normalize_db_type("date") == DataType.DATE
     assert dialect.normalize_db_type("timestamp without time zone") == DataType.DATETIME

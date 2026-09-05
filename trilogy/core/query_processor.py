@@ -1,4 +1,5 @@
 from collections import OrderedDict, defaultdict
+from collections.abc import Sequence
 from dataclasses import replace
 from math import ceil
 from typing import Any
@@ -25,6 +26,7 @@ from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.author import (
     Concept,
     ConceptRef,
+    Conditional,
     Function,
     HavingClause,
     MultiSelectLineage,
@@ -32,6 +34,7 @@ from trilogy.core.models.author import (
     RowsetItem,
     SelectLineage,
     WhereClause,
+    combine_staged_wheres,
     prepend_where_stage,
 )
 from trilogy.core.models.build import (
@@ -101,6 +104,10 @@ from trilogy.core.processing.partial_bridging import (
     heal_pinned_partials,
 )
 from trilogy.core.processing.utility import unrenderable_outputs
+from trilogy.core.processing.v4_helper.staged_where import (
+    CROSS_ROW_DERIVATIONS,
+    universal_row_bound,
+)
 from trilogy.core.scope_diagnostics import (
     DerivedValueScope,
     extract_derived_value_scopes,
@@ -1185,10 +1192,8 @@ def get_query_node(
     if isinstance(build_statement, BuildSelectLineage):
         drop_excluded_partials(
             build_environment,
-            (
-                build_statement.where_clauses[0]
-                if build_statement.where_clauses
-                else build_statement.where_clause
+            universal_row_bound(
+                build_statement.where_clauses, build_statement.where_clause
             ),
         )
 
@@ -1289,6 +1294,63 @@ def _validate_persist_projection(
     )
 
 
+def _computes_cross_row(refs: Sequence[ConceptRef], environment: Environment) -> bool:
+    """Whether any of `refs` computes an aggregate, group-to or window,
+    directly or anywhere in its lineage."""
+    pending = [ref.address for ref in refs]
+    seen: set[str] = set()
+    while pending:
+        address = pending.pop()
+        if address in seen:
+            continue
+        seen.add(address)
+        concept = environment.concepts.get(address)
+        if concept is None:
+            continue
+        if concept.derivation in CROSS_ROW_DERIVATIONS:
+            return True
+        pending.extend(source.address for source in concept.sources)
+    return False
+
+
+def _partition_scoped_stages(
+    stages: Sequence[WhereClause], claim: WhereClause, environment: Environment
+) -> list[WhereClause]:
+    """Gate a partial datasource's build by its `complete where` claim.
+
+    The claim's scalar atoms name the slice of the domain the target holds, and
+    the unfiltered build already computes every projected aggregate inside that
+    slice. A row gate that computes across rows, whether authored on the
+    datasource or inside the claim itself, is evaluated in the same slice: the
+    scalar atoms lead as their own stage and the cross-row conjuncts follow,
+    so partition arms are proven complete over the slice rather than over the
+    whole discriminator domain. A purely scalar gate is one conjunct either way
+    and stays ANDed into stage 1."""
+    conjuncts = (
+        claim.conditional.decompose()
+        if isinstance(claim.conditional, Conditional)
+        else [claim.conditional]
+    )
+    cross_row = [
+        c for c in conjuncts if _computes_cross_row(c.row_arguments, environment)
+    ]
+    if not cross_row and not (
+        stages and _computes_cross_row(stages[0].row_arguments, environment)
+    ):
+        return prepend_where_stage(stages, claim)
+    scalar = [c for c in conjuncts if not any(c is x for x in cross_row)]
+    result = list(stages)
+    if cross_row:
+        gate = combine_staged_wheres([WhereClause(conditional=c) for c in cross_row])
+        assert gate is not None
+        result = prepend_where_stage(result, gate)
+    if scalar:
+        scope = combine_staged_wheres([WhereClause(conditional=c) for c in scalar])
+        assert scope is not None
+        result = [scope, *result]
+    return result
+
+
 def process_persist(
     environment: Environment,
     statement: PersistStatement,
@@ -1308,13 +1370,10 @@ def process_persist(
     # condition in its SELECT, and injecting again would duplicate it (and push
     # its HAVING atoms into a pre-aggregation WHERE).
     if ds.non_partial_for and not ds.non_partial_for_embedded:
-        # AND into stage 1: the partition condition gates every row the persist
-        # writes, so it belongs ahead of any `then where` staging, and every
-        # later stage's input population narrows with it.
         select_stmt = replace(
             select_stmt,
-            where_clauses=prepend_where_stage(
-                select_stmt.where_clauses, ds.non_partial_for
+            where_clauses=_partition_scoped_stages(
+                select_stmt.where_clauses, ds.non_partial_for, environment
             ),
         )
     # set to unpublished to avoid circular refs

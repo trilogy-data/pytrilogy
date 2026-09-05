@@ -365,3 +365,15 @@ having sum(amount) > 1.2 * avg(sum(amount) by store_id);
     assert not re.search(
         r"\b(sum|avg|min|max|count)\s*\(\s*(sum|avg|min|max|count)\s*\(", joined
     ), joined
+
+
+def test_key_peer_of_by_aggregate_keeps_row_grain():
+    env, _ = parse("""key id string;
+property id.cell string;
+auto anchor <- min(id) by cell;
+auto cluster_id <- coalesce(anchor, id);
+auto cluster_cell <- coalesce(anchor, cell);
+""")
+    build = env.materialize_for_select()
+    assert set(build.concepts["local.cluster_id"].grain.components) == {"local.id"}
+    assert set(build.concepts["local.cluster_cell"].grain.components) == {"local.id"}
