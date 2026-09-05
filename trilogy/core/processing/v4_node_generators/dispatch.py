@@ -95,11 +95,7 @@ def build_node(
             g=g,
             staged_conditions=staged_conditions,
         )
-    if derivation in (
-        Derivation.ROWSET,
-        Derivation.UNION,
-        Derivation.SUBSELECT,
-    ):
+    if derivation in (Derivation.ROWSET, Derivation.SUBSELECT):
         return fn(
             outputs,
             parents,
@@ -107,6 +103,14 @@ def build_node(
             conditions,
             history=history,
             g=g,
+        )
+    if derivation == Derivation.UNION:
+        return fn(
+            outputs,
+            parents,
+            environment,
+            conditions,
+            preexisting_conditions=preexisting_conditions,
         )
     if derivation == Derivation.FILTER:
         return fn(

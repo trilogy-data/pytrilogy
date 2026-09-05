@@ -559,17 +559,25 @@ def _cosource_component_groups(
     addr_of = {node: data.address for node, data in main_items}
     # Forward lineage reach per root, following only LINEAGE edges (a
     # d1->d0 ordering rides its own CONSTRAINT edge and is excluded here).
+    # A UNION consumer is the arm's projection, not a shared consumer: roots
+    # feeding it converge there the way output roots converge at FINAL, so it
+    # is recorded as convergence (`feeds_union`) rather than reach.
     reaches: list[set[str]] = []
+    feeds_union: list[bool] = []
     for node, _ in main_items:
         seen: set[str] = set()
         visited = {node}
         stack = [node]
+        stacked = False
         while stack:
             cur = stack.pop()
             for nxt in concept_graph.successors(cur):
                 if nxt in visited:
                     continue
                 if edge_kind(concept_edges, cur, nxt) != EdgeKind.LINEAGE:
+                    continue
+                if concept_attrs[nxt].derivation == Derivation.UNION:
+                    stacked = True
                     continue
                 visited.add(nxt)
                 stack.append(nxt)
@@ -581,6 +589,7 @@ def _cosource_component_groups(
                 if not concept_attrs[nxt].is_rename:
                     seen.add(nxt)
         reaches.append(seen)
+        feeds_union.append(stacked)
 
     # Bail out to one bucket if any root has zero reach; see partition_roots.
     can_split = bool(main_items) and all(reaches)
@@ -657,6 +666,7 @@ def _cosource_component_groups(
         for j in range(i + 1, n)
         if reaches[i] & reaches[j]
         or (i in output_component and output_component[i] == output_component.get(j))
+        or (feeds_union[i] and feeds_union[j])
     ]
     return [
         [main_items[i] for i in member_indices]
@@ -1226,6 +1236,42 @@ def partition_constants(
     return list(by_key.values())
 
 
+def partition_unions(
+    items: list[NodeItem],
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    primary_group: dict[str, str],
+    ensure_assigned: EnsureAssignedFn,
+    output_addresses: frozenset[str] = frozenset(),
+) -> list[GroupBucket]:
+    """Sibling unions over one arm family stack into ONE UnionNode: key on
+    `(scope, arm scopes)`, never grain. The family's members can differ in
+    grain (`union(amt, zero)` is at `k1`, `union(k1, k2)` at `k1|k2`), and a
+    per-grain split would hand the FINAL two stacked sources to join on
+    nothing. The arm scopes are the labels of the union's lineage parents
+    (see `union_arms`); the bucket grain is the union of its members'."""
+    by_key: dict[tuple[str, frozenset[str]], GroupBucket] = {}
+    for node, data in items:
+        scope = _scope_and_phase(data.label)[0]
+        arms = frozenset(
+            _scope_and_phase(concept_attrs[pred].label)[0]
+            for pred in concept_graph.predecessors(node)
+            if edge_kind(concept_edges, pred, node) == EdgeKind.LINEAGE
+        )
+        key = (scope, arms)
+        bucket = by_key.get(key)
+        if bucket is None:
+            bucket = _bucket_for(
+                data.depth_label, Derivation.UNION, frozenset(), label=scope
+            )
+            bucket.discriminator = "|".join(sorted(arms))
+            by_key[key] = bucket
+        bucket.grain_components |= data.grain_components
+        _add_member(bucket, node, data)
+    return list(by_key.values())
+
+
 # Per-derivation registry. Any derivation not in here uses the default rule.
 GROUPING_RULES: dict[Derivation, PartitionFn] = {
     Derivation.ROOT: partition_roots,
@@ -1235,6 +1281,7 @@ GROUPING_RULES: dict[Derivation, PartitionFn] = {
     Derivation.AGGREGATE: partition_aggregates,
     Derivation.CONSTANT: partition_constants,
     Derivation.WINDOW: partition_windows,
+    Derivation.UNION: partition_unions,
 }
 
 DEFAULT_RULE: PartitionFn = partition_by_depth_and_grain

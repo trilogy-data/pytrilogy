@@ -128,9 +128,13 @@ def _reachable_input(
     buckets: dict[str, GroupBucket],
     group_members: dict[str, set[str]],
 ) -> set[str]:
+    # A group hosts an atom over its OWN outputs only when it decides them per
+    # row: a ROOT scan, or a UNION, whose stacked columns each arm renders from
+    # its own contributing column (`gen_union` applies the atom in every arm).
     own = (
         set(group_members.get(gid, set()))
-        if buckets.get(gid) and buckets[gid].derivation == Derivation.ROOT
+        if buckets.get(gid)
+        and buckets[gid].derivation in (Derivation.ROOT, Derivation.UNION)
         else set()
     )
     ancestors = nx.ancestors(lineage_ancestors_graph, gid)
