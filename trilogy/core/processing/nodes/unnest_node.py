@@ -2,6 +2,7 @@ from trilogy.core.enums import SourceType
 from trilogy.core.models.build import BuildConcept, BuildFunction
 from trilogy.core.models.execute import QueryDatasource, UnnestJoin
 from trilogy.core.processing.nodes.base_node import StrategyNode
+from trilogy.utility import unique
 
 
 class UnnestNode(StrategyNode):
@@ -44,6 +45,14 @@ class UnnestNode(StrategyNode):
         for unnest_concept in self.unnest_concepts:
             base.source_map[unnest_concept.address] = {unnest}
             base.join_derived_concepts = [unnest_concept]
+        # A parent row whose array is empty or NULL yields no unnested row, so
+        # the carried-through parent columns bind a subset of the parent's rows.
+        unnested = {c.address for c in self.unnest_concepts}
+        base.partial_concepts = unique(
+            base.partial_concepts
+            + [c for c in base.output_concepts if c.address not in unnested],
+            "address",
+        )
         return base
 
     def copy(self) -> "UnnestNode":
