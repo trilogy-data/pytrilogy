@@ -7,8 +7,10 @@ import pytest
 
 from trilogy import Dialects
 from trilogy.core.enums import ComparisonOperator
+from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.build import BuildComparison, BuildWhereClause
 from trilogy.core.processing.partial_bridging import drop_excluded_partials
+from trilogy.core.processing.v4_helper.staged_where import universal_row_bound
 
 COMMON = """
 key city enum<string>['A', 'B'];
@@ -133,7 +135,9 @@ def test_drop_excluded_partials_keeps_everything_without_gate():
     assert set(environment.datasources) == before
 
 
-def test_drop_excluded_partials_stands_down_for_cross_row_stage():
+def test_nothing_is_hidden_for_a_cross_row_gate():
+    # the gate's own aggregate sees the unfiltered population, so
+    # `universal_row_bound` yields nothing to narrow by and every source stands
     executor = _executor(
         COMMON, MODEL_A_SOURCES, MODEL_B, "auto tree_count <- count(tree_id) by city;"
     )
@@ -147,8 +151,42 @@ def test_drop_excluded_partials_stands_down_for_cross_row_stage():
             operator=ComparisonOperator.GT,
         )
     )
-    drop_excluded_partials(environment, gate)
+    assert universal_row_bound([], gate) is None
+    drop_excluded_partials(environment, universal_row_bound([], gate))
     assert set(environment.datasources) == before
+
+
+def test_staging_is_what_lets_an_aggregate_gate_narrow_the_domain():
+    # A flat `where` hands its aggregate the UNFILTERED population, so the
+    # sibling `city = 'A'` cannot narrow the domain the family must exhaust and
+    # the uncovered city makes the query unresolvable. Staging the same two
+    # predicates scopes the aggregate to city A, and the bound applies.
+    agg = "auto tree_count <- count(tree_id) by city;"
+    projection = " select tree_id, dbh order by tree_id asc;"
+    flat = _executor(COMMON, MODEL_A_SOURCES, agg)
+    with pytest.raises(UnresolvableQueryException):
+        flat.execute_text("where city = 'A' and tree_count > 0" + projection)
+    staged = _executor(COMMON, MODEL_A_SOURCES, agg)
+    rows = staged.execute_text(
+        "where city = 'A' then where tree_count > 0" + projection
+    )[-1].fetchall()
+    assert [row[0] for row in rows] == ["a1", "a2"]
+
+
+def test_partition_gate_narrows_from_any_leading_row_local_stage():
+    # the narrowing predicate need not be stage 1: every row the statement
+    # reads passes the whole leading row-local run
+    executor = _executor(COMMON, MODEL_A_SOURCES, MODEL_B)
+    for query in (
+        "where city = 'A' select tree_id, dbh order by tree_id asc;",
+        "where tree_id != 'zzz' then where city = 'A'"
+        " select tree_id, dbh order by tree_id asc;",
+        "where tree_id != 'zzz' then where tree_id != 'yyy' then where city = 'A'"
+        " select tree_id, dbh order by tree_id asc;",
+    ):
+        sql = executor.generate_sql(query)[-1]
+        assert "b_one" not in sql and "b_two" not in sql, sql
+        assert executor.execute_text(query)[-1].fetchall() == [("a1", 1.0), ("a2", 2.0)]
 
 
 THREE_WAY = """

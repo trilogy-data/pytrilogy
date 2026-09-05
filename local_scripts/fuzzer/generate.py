@@ -3425,6 +3425,96 @@ order by 1 asc nulls first
     return cases
 
 
+def _partition_cover_cases(seed: SeedData) -> list[FuzzCase]:
+    """Two `complete where` arms carrying `tier_amount`, which no other source
+    binds, so every case here has to prove the pair covers the domain before it
+    can read the column at all.
+
+    The arms exhaust `tier` but pin `region` to one of its two values, so the
+    proof only closes once the statement's row gate rules the other region out.
+    Which stage that gate sits in must not matter: rows reaching any stage have
+    passed the ones before it, so a gate in a later row-local stage bounds the
+    read exactly as a leading one does. The oracles are plain reads of the seed
+    rows, so an arm dropped from the union, or a gate honoured against only
+    part of it, shows up as missing rows rather than as an error."""
+    events = seed.events.select_sql()
+
+    def arm(name: str, tier: str, predicate: str) -> str:
+        return f"""
+partial datasource {name} (
+    raw(''' 'NORTH' '''): region,
+    raw(''' '{tier}' '''): tier,
+    eid: event_id,
+    amount: tier_amount
+)
+grain (event_id)
+complete where region = 'NORTH' and tier = '{tier}'
+query '''select eid, amount from ({events}) as e where {predicate}''';
+"""
+
+    preamble = (
+        """
+key region enum<string>['NORTH', 'SOUTH'];
+key tier enum<string>['ALPHA', 'BETA'];
+property event_id.tier_amount int;
+"""
+        + arm("tier_alpha", "ALPHA", "eid % 2 = 0")
+        + arm("tier_beta", "BETA", "eid % 2 = 1")
+    )
+
+    projection = "select event_id, tier_amount order by event_id asc;"
+    all_rows = "select eid, amount from events order by eid"
+    alpha_rows = "select eid, amount from events where eid % 2 = 0 order by eid"
+    specs = (
+        (
+            "region_gate_reads_both_arms",
+            "The gate rules out the uncovered region, so the arms union into "
+            "one complete source and every event row is read.",
+            f"where region = 'NORTH' {projection}",
+            all_rows,
+        ),
+        (
+            "region_gate_in_a_later_stage",
+            "The same gate one stage later. Every row read still passes it, so "
+            "the union is proven the same way and the rows are unchanged.",
+            f"where event_id > 0 then where region = 'NORTH' {projection}",
+            all_rows,
+        ),
+        (
+            "arm_gate_selects_one_partition",
+            "Gating the second discriminator too narrows the read to one arm.",
+            f"where region = 'NORTH' and tier = 'ALPHA' {projection}",
+            alpha_rows,
+        ),
+        (
+            "arm_gate_across_three_stages",
+            "Both discriminators gated from later stages, one per stage.",
+            "where event_id > 0 then where region = 'NORTH'"
+            f" then where tier = 'ALPHA' {projection}",
+            alpha_rows,
+        ),
+        (
+            "aggregate_over_the_covered_union",
+            "An aggregate over the union spans both arms, not the arm the "
+            "planner happened to pick first.",
+            "where region = 'NORTH' select sum(tier_amount) as total;",
+            "select sum(amount) from events",
+        ),
+    )
+    return [
+        _case(
+            seed,
+            "partition_cover",
+            name,
+            description,
+            ("partition", "completeness", "union"),
+            preamble + query,
+            oracle,
+        )
+        for name, description, query, oracle in specs
+    ]
+
+
 def generate_cases(seeds: Iterable[SeedData] = SEEDS) -> list[FuzzCase]:
     cases = []
     builders = (
@@ -3452,6 +3542,7 @@ def generate_cases(seeds: Iterable[SeedData] = SEEDS) -> list[FuzzCase]:
         _distinct_count_cases,
         _composite_membership_cases,
         _padding_provenance_cases,
+        _partition_cover_cases,
     )
     for seed in seeds:
         for builder in builders:

@@ -34,6 +34,11 @@ then LEFT JOIN the leaf dims back on it, so both a backing key leaking into the
 grouped CTE and a join-back that drops subtotal/grand-total rows show up.
 Derived-rowset controls distinguish base-model WHERE enrichment from equivalent
 no-WHERE and rowset-output-WHERE forms.
+The `partition_cover` family reads a column only two `complete where` arms bind,
+so each case must first prove the pair covers the domain. The arms exhaust one
+discriminator and pin the other, which makes the proof depend on the statement's
+row gate; the cases move that gate between stages, since rows reaching any stage
+have passed the ones before it and the read is bounded the same way either way.
 
 Run everything from the repository root:
 

@@ -104,7 +104,10 @@ from trilogy.core.processing.partial_bridging import (
     heal_pinned_partials,
 )
 from trilogy.core.processing.utility import unrenderable_outputs
-from trilogy.core.processing.v4_helper.staged_where import CROSS_ROW_DERIVATIONS
+from trilogy.core.processing.v4_helper.staged_where import (
+    CROSS_ROW_DERIVATIONS,
+    universal_row_bound,
+)
 from trilogy.core.scope_diagnostics import (
     DerivedValueScope,
     extract_derived_value_scopes,
@@ -1189,10 +1192,8 @@ def get_query_node(
     if isinstance(build_statement, BuildSelectLineage):
         drop_excluded_partials(
             build_environment,
-            (
-                build_statement.where_clauses[0]
-                if build_statement.where_clauses
-                else build_statement.where_clause
+            universal_row_bound(
+                build_statement.where_clauses, build_statement.where_clause
             ),
         )
 
