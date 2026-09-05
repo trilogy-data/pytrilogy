@@ -191,3 +191,116 @@ def test_reduced_domain_recorded_by_address_and_canonical():
     drop_excluded_partials(environment, gate)
     assert set(environment.datasources) == {"web", "catalog"}
     assert environment.excluded_enum_values["local.channel"] == frozenset({"STORE"})
+
+
+CLUSTERED = """
+key city enum<string>['A', 'B'];
+key id string;
+key source enum<string>['municipal', 'community', 'osm'];
+property id.cell string;
+
+root partial datasource municipal (id: id, city: city, source: source, cell: cell)
+grain (id) complete where city = 'A' and source = 'municipal'
+query '''select 'm1' as id, 'A' as city, 'municipal' as source, 'c1' as cell''';
+
+root partial datasource community (id: id, city: city, source: source, cell: cell)
+grain (id) complete where city = 'A' and source = 'community'
+query '''select 'k1' as id, 'A' as city, 'community' as source, 'c2' as cell''';
+
+root partial datasource osm (id: id, city: city, source: source, cell: cell)
+grain (id) complete where city = 'A' and source = 'osm'
+query '''select 'o1' as id, 'A' as city, 'osm' as source, 'c1' as cell
+union all select 'o2' as id, 'A' as city, 'osm' as source, 'c3' as cell''';
+
+auto anchor <- min(id ? source != 'osm') by cell;
+auto cluster_id <- coalesce(anchor, id);
+auto is_primary <- id = cluster_id;
+"""
+
+PRUNE_SPELLINGS = {
+    "target_where": """
+partial datasource pruned (id, city, cluster_id)
+grain (id) complete where city = 'A'
+address pruned_out
+where id = cluster_id;
+""",
+    "claim_predicate": """
+partial datasource pruned (id, city, cluster_id)
+grain (id) complete where city = 'A' and id = cluster_id
+address pruned_out;
+""",
+    "claim_boolean": """
+partial datasource pruned (id, city, is_primary)
+grain (id) complete where city = 'A' and is_primary = true
+address pruned_out;
+""",
+}
+
+
+def _refresh_pruned(executor) -> list[str]:
+    target = executor.environment.datasources["pruned"]
+    executor.update_datasource(target)
+    return [
+        r[0]
+        for r in executor.execute_raw_sql(
+            "select id from pruned_out order by id"
+        ).fetchall()
+    ]
+
+
+def test_unpruned_target_unions_own_partitions():
+    executor = _executor(
+        CLUSTERED,
+        """
+partial datasource pruned (id, city, cluster_id)
+grain (id) complete where city = 'A'
+address pruned_out;
+""",
+    )
+    assert _refresh_pruned(executor) == ["k1", "m1", "o1", "o2"]
+
+
+@pytest.mark.parametrize("spelling", PRUNE_SPELLINGS, ids=list(PRUNE_SPELLINGS))
+def test_row_gate_on_partitioned_target_plans_inside_partition_scope(spelling):
+    """A row gate that depends on an aggregate is evaluated after the union
+    of the arms covering the target's own partition, not against the whole
+    `city` domain: the partials are exhaustive within `city = 'A'` only."""
+    executor = _executor(CLUSTERED, PRUNE_SPELLINGS[spelling])
+    assert _refresh_pruned(executor) == ["k1", "m1", "o2"]
+
+
+def _stages(executor, claim: str, gate: str | None) -> list[str]:
+    from trilogy.core.models.author import WhereClause, prepend_where_stage
+    from trilogy.core.query_processor import _partition_scoped_stages
+
+    env = executor.environment
+
+    def clause(text: str) -> WhereClause:
+        statement = env.parse(f"{text} select id;")[1][-1]
+        assert statement.where_clause is not None
+        return statement.where_clause
+
+    claim_clause = clause(claim)
+    stages = [clause(gate)] if gate else []
+    scoped = _partition_scoped_stages(stages, claim_clause, env)
+    if len(scoped) == 1:
+        assert str(scoped) == str(prepend_where_stage(stages, claim_clause))
+    return [str(s) for s in scoped]
+
+
+def test_scalar_gate_stays_one_stage_with_the_claim():
+    executor = _executor(CLUSTERED)
+    assert len(_stages(executor, "where city = 'A'", None)) == 1
+    assert len(_stages(executor, "where city = 'A'", "where source = 'osm'")) == 1
+
+
+def test_cross_row_gate_follows_the_scalar_claim_as_its_own_stage():
+    executor = _executor(CLUSTERED)
+    stages = _stages(executor, "where city = 'A'", "where id = cluster_id")
+    assert len(stages) == 2 and "city" in stages[0] and "cluster_id" in stages[1]
+    stages = _stages(executor, "where city = 'A' and id = cluster_id", None)
+    assert len(stages) == 2 and "cluster_id" not in stages[0]
+    stages = _stages(
+        executor, "where city = 'A' and is_primary = true", "where source = 'osm'"
+    )
+    assert len(stages) == 2 and "source" in stages[1] and "is_primary" in stages[1]

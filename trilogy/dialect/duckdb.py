@@ -469,9 +469,9 @@ class DuckDBDialect(BaseDialect):
         "timestamptz": DataType.TIMESTAMP,
         "float4": DataType.FLOAT,
         "real": DataType.FLOAT,
-        "double": DataType.FLOAT,
-        "float8": DataType.FLOAT,
-        "double precision": DataType.FLOAT,
+        "double": DataType.DOUBLE,
+        "float8": DataType.DOUBLE,
+        "double precision": DataType.DOUBLE,
         "decimal": DataType.NUMERIC,
     }
 

@@ -626,3 +626,39 @@ def test_macro_wrapped_inline_where_aggregate():
         "select x, sum(z) by x as sx where f = 1 and @bigsum(z) > 5;",
     )
     assert rows == AGG_EXPECTED, rows
+
+
+CELL_ANCHOR_SCHEMA = """key id string;
+property id.cell string;
+property id.kind string;
+datasource rows (id: id, cell: cell, kind: kind) grain (id)
+query '''select 'm1' as id, 'c1' as cell, 'muni' as kind
+union all select 'o1' as id, 'c1' as cell, 'osm' as kind
+union all select 'o2' as id, 'c3' as cell, 'osm' as kind''';
+auto anchor <- min(id ? kind != 'osm') by cell;
+auto plain_anchor <- min(id) by cell;
+auto cluster_id <- coalesce(anchor, id);
+auto is_primary <- id = cluster_id;
+"""
+# Population values: anchor {c1: m1, c3: null}, plain_anchor {c1: m1, c3: o2},
+# cluster_id {m1: m1, o1: m1, o2: o2}. A row gate against them must drop o1
+# even when the gated concept is also projected and recomputed in select scope.
+
+
+def test_row_key_gated_by_projected_aggregate_drops_failing_rows():
+    rows = _rows(CELL_ANCHOR_SCHEMA, "where id = plain_anchor select id, plain_anchor;")
+    assert rows == [("m1", "m1"), ("o2", "o2")], rows
+    rows = _rows(CELL_ANCHOR_SCHEMA, "where id = anchor select id, anchor;")
+    assert rows == [("m1", "m1")], rows
+
+
+def test_row_key_gated_by_aggregate_coalesced_with_key_drops_failing_rows():
+    rows = _rows(CELL_ANCHOR_SCHEMA, "where id = cluster_id select id, cluster_id;")
+    assert rows == [("m1", "m1"), ("o2", "o2")], rows
+    rows = _rows(CELL_ANCHOR_SCHEMA, "where id != cluster_id select id;")
+    assert rows == [("o1",)], rows
+
+
+def test_row_flag_derived_from_aggregate_gates_projected_rows():
+    rows = _rows(CELL_ANCHOR_SCHEMA, "where is_primary = true select id, is_primary;")
+    assert rows == [("m1", True), ("o2", True)], rows

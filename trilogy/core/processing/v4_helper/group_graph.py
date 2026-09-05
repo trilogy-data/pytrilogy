@@ -2904,7 +2904,9 @@ def build_group_graph(
     _merge_basic_into_window_parent(
         group_graph, group_edges, attrs, buckets, concept_attrs
     )
-    _regraft_group_sources(group_graph, group_edges, attrs, buckets, concept_attrs)
+    _regraft_group_sources(
+        group_graph, group_edges, attrs, buckets, concept_attrs, concept_edges
+    )
     condition_group_ids = _inject_conditions(
         group_graph,
         group_edges,
@@ -3111,6 +3113,7 @@ def _terminal_basic_grouping_provider(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     gid: str,
+    lineage_parents: dict[str, set[str]],
 ) -> str | None:
     """Choose a shaped provider for a terminal scalar projection.
 
@@ -3118,6 +3121,9 @@ def _terminal_basic_grouping_provider(
     as a grain-only input even when its expression needs only a grouping key.
     When the projection feeds only FINAL, place it at the deepest grouping
     provider that covers its expression inputs and adopt that provider's grain.
+    The expression inputs are the member's own lineage parents: a grain key
+    the expression reads (`coalesce(min(id) by cell, id)`) is a genuine input
+    that keeps the projection at row grain, not a grain-only passenger.
     """
     current = attrs[gid]
     if current.derivation != Derivation.BASIC or current.condition_atoms:
@@ -3126,7 +3132,7 @@ def _terminal_basic_grouping_provider(
         return None
     if any(successor != FINAL_NODE_ID for successor in group_graph.successors(gid)):
         return None
-    expression_inputs = set(current.input_concepts) - set(current.grain_components)
+    expression_inputs = set(lineage_parents.get(current.primary_members[0], set()))
     if not expression_inputs:
         return None
     my_ancestors = nx.ancestors(group_graph, gid)
@@ -3365,6 +3371,7 @@ def _regraft_group_sources(
     attrs: dict[str, GroupAttrs],
     buckets: dict[str, GroupBucket],
     concept_attrs: dict[str, ConceptAttrs],
+    concept_edges: EdgeMap,
 ) -> None:
     """Topology-only repair for groups whose best row source is already built.
 
@@ -3373,12 +3380,15 @@ def _regraft_group_sources(
     but concrete datasource selection remains in `source_planning` and
     StrategyNode construction remains in `strategy_builder`.
     """
+    lineage_parents = _lineage_parents_by_address(concept_edges, concept_attrs)
     for gid in list(group_graph.nodes):
         if gid == FINAL_NODE_ID:
             continue
         if attrs[gid].derivation not in _REGRAFTABLE_DERIVATIONS:
             continue
-        provider_gid = _terminal_basic_grouping_provider(group_graph, attrs, gid)
+        provider_gid = _terminal_basic_grouping_provider(
+            group_graph, attrs, gid, lineage_parents
+        )
         parent_gid = None
         if provider_gid is not None:
             attrs[gid].grain_components = attrs[provider_gid].grain_components

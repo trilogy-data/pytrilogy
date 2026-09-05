@@ -31,6 +31,7 @@ from trilogy.core.processing.node_generators.presence_probe import is_presence_p
 from .concept_graph import computed_origin_relation_members
 from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS, DepthLabel, EdgeKind
 from .edges import EdgeMap, lineage_subgraph, subgraph_of_kinds
+from .functional_dependency import build_fd_determines
 from .models import ConceptAttrs, GroupBucket
 from .staged_where import (
     CROSS_ROW_DERIVATIONS,
@@ -425,6 +426,7 @@ def _uncovered_exposing_output_contributor(
     buckets: dict[str, GroupBucket],
     group_graph: nx.DiGraph,
     mandatory_addrs: set[str],
+    environment: BuildEnvironment,
 ) -> bool:
     """Whether some select-phase group producing a mandatory output sits outside
     the chosen hosts' downstream cover AND can expose every atom input, i.e. an
@@ -451,7 +453,30 @@ def _uncovered_exposing_output_contributor(
     covered: set[str] = set(chosen_groups)
     for gid in chosen_groups:
         covered |= nx.descendants(group_graph, gid)
-    uncovered_exposing = False
+    # Inputs FINAL can read off its own contributors, condition-phase groups
+    # included: a population twin merges into FINAL keyed by its grain.
+    final_exposable: set[str] = set()
+    for gid in group_graph.predecessors(FINAL_NODE_ID):
+        b = buckets.get(gid)
+        if b is not None:
+            final_exposable |= set(b.primary_members) | set(b.secondary_members)
+    collapsing_hosts = [
+        buckets[gid]
+        for gid in chosen_groups
+        if gid in buckets and buckets[gid].derivation in _EMITS_GROUP_BY
+    ]
+    # Outputs the filtered branch itself supplies: the hosts' own columns and
+    # what their descendants compute. A descendant's grain keys are not
+    # counted, since they may ride through from an unfiltered parent.
+    covered_members: set[str] = set()
+    for gid in covered:
+        if gid not in buckets:
+            continue
+        covered_members |= set(buckets[gid].primary_members)
+        if gid in chosen_groups:
+            covered_members |= set(buckets[gid].secondary_members) | set(
+                buckets[gid].grain_components
+            )
     for gid, b in buckets.items():
         if gid in covered:
             continue
@@ -461,9 +486,62 @@ def _uncovered_exposing_output_contributor(
         if not (members & mandatory_addrs):
             continue
         if row_inputs <= members:
-            uncovered_exposing = True
-            break
-    return uncovered_exposing
+            return True
+        # The atom is hosted at an aggregate as a pre-aggregation filter, and
+        # that filter reaches this contributor's rows only through a join on
+        # the host's grain. When the contributor must reach FINAL (it alone
+        # supplies a mandatory output) and the atom is not decided per group
+        # (a row key compared against a population twin, a row-grain flag
+        # derived from an aggregate), the join fans the surviving groups back
+        # out to every row, so re-apply at FINAL, which can read the inputs
+        # off its other contributors. A dimension projection whose outputs
+        # the host grain determines is pinned by that join and needs none.
+        own_outputs = (members & mandatory_addrs) - covered_members
+        if (
+            collapsing_hosts
+            and len(collapsing_hosts) == len(chosen_groups)
+            and own_outputs
+            and not any(
+                all(
+                    build_fd_determines(environment, host.grain_components, addr)
+                    for addr in own_outputs
+                )
+                for host in collapsing_hosts
+            )
+            and row_inputs <= final_exposable
+            and not all(
+                _decided_per_group(row_inputs, host, buckets)
+                for host in collapsing_hosts
+            )
+        ):
+            return True
+    return False
+
+
+def _decided_per_group(
+    row_inputs: set[str], host: GroupBucket, buckets: dict[str, GroupBucket]
+) -> bool:
+    """Whether every row input of an atom is fixed within one of `host`'s
+    groups: a column of the host itself, or produced at a grain the host's
+    grain covers. A ROOT-produced input (no grain of its own) counts only as
+    a host column."""
+    host_columns = set(host.grain_components) | set(host.primary_members)
+    for addr in row_inputs:
+        if addr in host_columns:
+            continue
+        producers = [
+            b
+            for b in buckets.values()
+            if b is not host
+            and addr in b.primary_members
+            and b.derivation != Derivation.ROOT
+        ]
+        if not producers or not all(
+            b.grain_components and set(b.grain_components) <= set(host.grain_components)
+            for b in producers
+        ):
+            return False
+    return True
 
 
 def _preserved_final_branch(
@@ -1295,6 +1373,7 @@ def plan_condition_placements(
                     buckets,
                     group_graph,
                     {c.address for c in mandatory_list},
+                    environment,
                 )
             ):
                 placements.append(

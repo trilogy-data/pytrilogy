@@ -90,6 +90,7 @@ from .models import (
     FinalContributorContract,
     GroupAttrs,
     InputChannel,
+    nulls_grouping_keys,
 )
 from .projection import (
     concept_satisfiable,
@@ -515,15 +516,28 @@ def _accumulated_atoms_above(
     attrs: dict[str, GroupAttrs],
     gid: str,
 ) -> list[BoolExpr]:
-    """Atoms applied at any STRICT ancestor of `gid`. Threaded into the node
-    as `preexisting_conditions` so nullable inference (and any later
-    optimizer) knows which rows the parent already filtered, without
-    re-emitting the same WHERE on this CTE."""
+    """Atoms applied at any STRICT ancestor of `gid` that still hold on this
+    group's rows. Threaded into the node as `preexisting_conditions` so
+    nullable inference (and any later optimizer) knows which rows the parent
+    already filtered, without re-emitting the same WHERE on this CTE.
+
+    A standard grouping ancestor applies its atom to the rows it aggregates;
+    the groups it emits are filtered only when the atom is decided per group
+    (every row arg among the group's own columns). Otherwise a descendant that
+    joins those groups back onto a row stream re-admits rows the atom
+    rejects, so the atom is not preexisting for it."""
     accumulated: list[BoolExpr] = []
     for anc in nx.ancestors(group_graph, gid):
         if anc == FINAL_NODE_ID:
             continue
-        for atom in attrs[anc].condition_atoms:
+        anc_attrs = attrs[anc]
+        collapsing = anc_attrs.derivation in GROUPING_DERIVATIONS and not (
+            nulls_grouping_keys(anc_attrs.grouping_mode)
+        )
+        columns = set(anc_attrs.members) | set(anc_attrs.grain_components)
+        for atom in anc_attrs.condition_atoms:
+            if collapsing and not ({c.address for c in atom.row_arguments} <= columns):
+                continue
             if atom not in accumulated:
                 accumulated.append(atom)
     return accumulated
@@ -3336,13 +3350,26 @@ def _subtree_applies_conditions(node: StrategyNode, where: BuildWhereClause) -> 
     best redundant; for a ROLLUP contributor it is destructive: the feeder
     re-join pairs on grouping keys the ROLLUP NULLs at subtotal rows, so the
     subtotal/total rows drop."""
+    row_args = {c.address for c in condition_row_args(where)}
     stack: list[StrategyNode] = [node]
     while stack:
         current = stack.pop()
         for applied in (current.conditions, current.preexisting_conditions):
             if applied is not None and condition_implies(applied, where.conditional):
                 return True
-        stack.extend(current.parents)
+        for parent in current.parents:
+            # A standard GroupNode applies its WHERE to the rows it aggregates.
+            # The groups it emits are gated only when the atom is decided per
+            # group, i.e. every row arg is one of its outputs; otherwise a row
+            # stream merged back onto those groups re-admits rows the atom
+            # rejects, so nothing applied at or below it counts for `node`.
+            if (
+                isinstance(parent, GroupNode)
+                and not node_nulls_grouping_keys(parent)
+                and not row_args <= {o.address for o in parent.output_concepts}
+            ):
+                continue
+            stack.append(parent)
     return False
 
 
