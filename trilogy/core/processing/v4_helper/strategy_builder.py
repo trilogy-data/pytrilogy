@@ -2132,6 +2132,8 @@ def _pre_merge_parents(
     environment: BuildEnvironment,
     join_key_addresses: frozenset[str] = frozenset(),
     needed: set[str] | None = None,
+    group_graph: nx.DiGraph | None = None,
+    built: dict[str, StrategyNode] | None = None,
 ) -> list[StrategyNode]:
     """Collapse a multi-parent set into a single MergeNode that auto-joins
     on shared output concepts. Non-merging generators (GroupNode for
@@ -2152,6 +2154,10 @@ def _pre_merge_parents(
     if len(parents) <= 1:
         return parents
     _widen_merge_join_keys(parents, environment, join_key_addresses)
+    # After widening, not before: a parent that has just been handed the join
+    # key it was missing needs no bridge.
+    if group_graph is not None and built is not None:
+        parents = _bridge_unpaired_parents(parents, group_graph, built, environment)
     seen: set[str] = set()
     all_outputs: list[BuildConcept] = []
     for p in parents:
@@ -3117,6 +3123,79 @@ def _wrap_for_grain(
     return wraps
 
 
+def _pairing_addresses(node: StrategyNode, environment: BuildEnvironment) -> set[str]:
+    """Addresses a merge can pair this parent on, as join resolution sees them:
+    its outputs plus every alias of the same axis. Two sides of an authored
+    relation (`subset join kb = ka`) name one axis under two addresses, so a raw
+    address comparison reads them as sharing nothing."""
+    addresses: set[str] = set()
+    for concept in node.output_concepts:
+        addresses.add(concept.address)
+        for pseudonym in concept.pseudonyms:
+            addresses.add(pseudonym)
+            origin = environment.alias_origin_lookup.get(pseudonym)
+            if origin is not None:
+                addresses.add(origin.address)
+    for canonical, members in environment.scoped_join_key_groups.items():
+        relation = {canonical, *members}
+        if addresses & relation:
+            addresses |= relation
+    return addresses
+
+
+def _bridge_unpaired_parents(
+    parents: list[StrategyNode],
+    group_graph: nx.DiGraph,
+    built: dict[str, StrategyNode],
+    environment: BuildEnvironment,
+) -> list[StrategyNode]:
+    """Pull in the built group that pairs a contributor sharing no column with
+    any sibling, so the merge below joins on an axis instead of `ON 1=1`.
+
+    `select id, min(x) by id, min(y) by cell` leaves two aggregates, one keyed
+    on `id` and one on `cell`, with nothing that maps between them: the
+    row-grain projection of `{id, cell}` that fed the cell aggregate covers no
+    mandatory output, so neither the cover election nor a consumer's parent
+    dedup keeps it. Add it back as a join-only parent.
+
+    A contributor that genuinely cross joins (a global aggregate) is untouched:
+    nothing else renders its column, so it has no candidate."""
+    if len(parents) < 2:
+        return parents
+    outputs = [_pairing_addresses(parent, environment) for parent in parents]
+    exposed = {
+        gid: _pairing_addresses(node, environment) for gid, node in built.items()
+    }
+    present = {id(parent) for parent in parents}
+    added: list[StrategyNode] = []
+    for index, own in enumerate(outputs):
+        others: set[str] = set()
+        for other_index, other in enumerate(outputs):
+            if other_index != index:
+                others |= other
+        if own & others:
+            continue
+        candidates = [
+            gid
+            for gid, node in built.items()
+            if id(node) not in present and exposed[gid] & own and exposed[gid] & others
+        ]
+        if not candidates:
+            continue
+        candidates.sort(
+            key=lambda gid: (
+                sum(1 for a in nx.ancestors(group_graph, gid) if a in built),
+                gid,
+            ),
+            reverse=True,
+        )
+        bridge = built[candidates[0]]
+        present.add(id(bridge))
+        added.append(bridge)
+        outputs.append(exposed[candidates[0]])
+    return parents + added
+
+
 def _filter_arg_parents(
     group_graph: nx.DiGraph,
     built: dict[str, StrategyNode],
@@ -3927,6 +4006,7 @@ def _assemble_final_node(
         {id(built[gid]) for gid, concepts in per_group.items() if concepts},
         {id(built[gid]) for gid in ownership.owner_by_span.values() if gid in built},
     )
+    parents = _bridge_unpaired_parents(parents, group_graph, built, environment)
     _raise_if_rowset_islanded(parents, mandatory_list, environment, graph)
 
     available: set[str] = set()
@@ -4248,6 +4328,8 @@ def build_strategy_node(
             environment,
             join_key_addresses=join_key_addresses,
             needed=needed,
+            group_graph=group_graph,
+            built=built,
         )
         # ROOT scans source columns from datasources directly, not from their
         # group-graph predecessors. A `constraint`-edge predecessor (e.g. a
