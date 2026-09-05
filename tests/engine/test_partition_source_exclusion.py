@@ -179,10 +179,14 @@ def test_partition_gate_narrows_from_any_leading_row_local_stage():
     executor = _executor(COMMON, MODEL_A_SOURCES, MODEL_B)
     for query in (
         "where city = 'A' select tree_id, dbh order by tree_id asc;",
-        "where tree_id != 'zzz' then where city = 'A'"
-        " select tree_id, dbh order by tree_id asc;",
-        "where tree_id != 'zzz' then where tree_id != 'yyy' then where city = 'A'"
-        " select tree_id, dbh order by tree_id asc;",
+        (
+            "where tree_id != 'zzz' then where city = 'A'"
+            " select tree_id, dbh order by tree_id asc;"
+        ),
+        (
+            "where tree_id != 'zzz' then where tree_id != 'yyy' then where city = 'A'"
+            " select tree_id, dbh order by tree_id asc;"
+        ),
     ):
         sql = executor.generate_sql(query)[-1]
         assert "b_one" not in sql and "b_two" not in sql, sql
