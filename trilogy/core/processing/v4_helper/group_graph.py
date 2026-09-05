@@ -75,6 +75,7 @@ from .models import (
     GroupInputContract,
     InputChannel,
 )
+from .projection import output_rowset_base_keys
 
 # depth_label for the secondary root bucket that feeds d1 (in-WHERE) aggregate
 # calculations. Distinct from ``root`` so the bucket gets its own group id.
@@ -2489,6 +2490,43 @@ def _hosted_condition_outputs(
     return {arg.address for atom in atoms for arg in atom.row_arguments} & capability
 
 
+def _final_gate_rowset_base_keys(
+    attrs: dict[str, GroupAttrs],
+    buckets: dict[str, GroupBucket],
+    gid: str,
+    fact: GroupFacts,
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> set[str]:
+    """Base grain keys of the output rowset boundaries that `gid` must render
+    to pair with them at FINAL, when every one of its members is a row arg of a
+    FINAL-hosted gate and none is a mandatory output."""
+    if FINAL_NODE_ID not in attrs or not attrs[FINAL_NODE_ID].condition_atoms:
+        return set()
+    bucket = buckets.get(gid)
+    if bucket is None or bucket.derivation != Derivation.ROOT:
+        return set()
+    members = set(fact.primary)
+    if not members or members & {c.address for c in mandatory_list}:
+        return set()
+    gate_args = {
+        arg.address
+        for atom in attrs[FINAL_NODE_ID].condition_atoms
+        for arg in atom.row_arguments
+    }
+    if not members <= gate_args:
+        return set()
+    base_keys = output_rowset_base_keys(mandatory_list, environment)
+    if not base_keys:
+        return set()
+    keyed: set[str] = set()
+    for member in members:
+        if member not in environment.concepts:
+            continue
+        keyed |= set(environment.concepts[member].keys or ())
+    return base_keys & keyed
+
+
 def _compute_concept_sets(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -2851,6 +2889,15 @@ def _compute_concept_sets(
                     if mate in cap_gid:
                         outs.add(mate)
                         break
+        # A condition-only ROOT feeding a FINAL-hosted gate that pairs to an
+        # output rowset boundary on its base grain key must RENDER that key:
+        # the group covers no mandatory output, so it never becomes a FINAL
+        # contributor and never picks up the contract's preserve_keys; it
+        # arrives as a hidden feeder built from this demand alone. Without the
+        # key the FINAL merge has no shared column and cross-joins.
+        outs |= _final_gate_rowset_base_keys(
+            attrs, buckets, gid, fact, mandatory_list, environment
+        )
         io.outputs[gid] = outs
 
         ins: set[str] = set()

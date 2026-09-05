@@ -33,6 +33,7 @@ from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS, DepthLabel, EdgeKind
 from .edges import EdgeMap, lineage_subgraph, subgraph_of_kinds
 from .functional_dependency import build_fd_determines
 from .models import ConceptAttrs, GroupBucket
+from .projection import output_rowset_base_keys
 from .staged_where import (
     CROSS_ROW_DERIVATIONS,
     concept_is_cross_row,
@@ -62,6 +63,10 @@ class PlacementReason(Enum):
     # An earlier `then where` stage's row atom delivered as an input filter on
     # a later stage's cross-row computation (its d1 feeder scan or host).
     STAGE_PRECONDITION = "stage_precondition"
+    # A row atom keyed by a base grain key an output rowset boundary
+    # exposes: hosted on FINAL, which pairs the gate's scan to the
+    # boundary on that key.
+    FINAL_ROWSET_BASE_KEY = "final_rowset_base_key"
 
 
 @dataclass(frozen=True)
@@ -69,6 +74,28 @@ class ConditionPlacement:
     atom: BoolExpr
     group_ids: tuple[str, ...]
     reason: PlacementReason
+
+
+def _keyed_by_output_rowset_base(
+    row_inputs: set[str],
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> bool:
+    """Whether every row input is, or is a property of, a base grain key an
+    output rowset boundary exposes. Such a gate is relatable: it pairs with the
+    boundary on that key exactly as it would if it were selected."""
+    base_keys = output_rowset_base_keys(mandatory_list, environment)
+    if not base_keys:
+        return False
+    for address in row_inputs:
+        concept = environment.concepts.get(address)
+        if concept is None:
+            return False
+        if address in base_keys:
+            continue
+        if not concept.keys or not set(concept.keys) <= base_keys:
+            return False
+    return True
 
 
 def _output_rowset_body_condition_addresses(
@@ -1269,6 +1296,28 @@ def plan_condition_placements(
                         atom=atom,
                         group_ids=(FINAL_NODE_ID,),
                         reason=PlacementReason.DISCONNECTED_GATE,
+                    )
+                )
+                continue
+            # A gate keyed by a base grain key an output rowset boundary
+            # exposes is relatable, not disconnected: it pairs with the boundary
+            # on that key exactly as it would if it were selected
+            # (`select cat, rs.oid` already joins there). Host it on FINAL,
+            # which merges the gate's scan onto the boundary on that key.
+            if (
+                mandatory_list
+                and candidates
+                and not atom.existence_arguments
+                and all(gid not in main_lineage for gid in candidates)
+                and _keyed_by_output_rowset_base(
+                    row_inputs, mandatory_list, environment
+                )
+            ):
+                placements.append(
+                    ConditionPlacement(
+                        atom=atom,
+                        group_ids=(FINAL_NODE_ID,),
+                        reason=PlacementReason.FINAL_ROWSET_BASE_KEY,
                     )
                 )
                 continue

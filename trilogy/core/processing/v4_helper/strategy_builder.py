@@ -95,6 +95,7 @@ from .models import (
 from .projection import (
     concept_satisfiable,
     literal_producible,
+    output_rowset_base_keys,
     parent_output_addresses,
     renderable_addresses,
     row_lineage_arguments,
@@ -1691,6 +1692,28 @@ def _unprojected_expression_mates(
         if reached >= 2:
             mates |= candidates.keys()
     return mates
+
+
+def _rowset_base_join_keys(
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
+    node: StrategyNode,
+    feeders: list[StrategyNode],
+) -> frozenset[str]:
+    """Output rowset boundaries' base grain keys that BOTH the assembled
+    contributor and every feeder can render.
+
+    A FINAL-hosted gate keyed by such an address (see
+    `condition_placement.PlacementReason.FINAL_ROWSET_BASE_KEY`) pairs to the
+    boundary on it; without the widening the merge has no shared column and
+    cross-joins, which the keyless-join guard rejects."""
+    base_keys = output_rowset_base_keys(mandatory_list, environment)
+    if not base_keys:
+        return frozenset()
+    available = renderable_addresses(node)
+    for feeder in feeders:
+        available &= renderable_addresses(feeder)
+    return frozenset(base_keys & available)
 
 
 def _widen_merge_join_keys(
@@ -3655,6 +3678,15 @@ def _assemble_final_node(
         # feeder) with the authored members each side can render: a leaf
         # scan picks up the mate it binds, the boundary its member handle.
         # Feeders with no relation stay hidden cross-join inputs.
+        # A gate keyed by a base grain key of an output rowset boundary pairs
+        # to the boundary on that key; widen both sides so the merge joins on
+        # it instead of cross-joining.
+        if arg_nodes:
+            base_keys = _rowset_base_join_keys(
+                mandatory_list, environment, node, arg_nodes
+            )
+            if base_keys:
+                _widen_merge_join_keys([node, *arg_nodes], environment, base_keys)
         if arg_nodes and environment.scoped_join_key_groups:
             relation_keys: set[str] = set()
             for feeder in arg_nodes:
