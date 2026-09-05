@@ -2134,6 +2134,7 @@ def _pre_merge_parents(
     needed: set[str] | None = None,
     group_graph: nx.DiGraph | None = None,
     built: dict[str, StrategyNode] | None = None,
+    force_join_type: JoinType | None = None,
 ) -> list[StrategyNode]:
     """Collapse a multi-parent set into a single MergeNode that auto-joins
     on shared output concepts. Non-merging generators (GroupNode for
@@ -2141,7 +2142,12 @@ def _pre_merge_parents(
     renderer pick one parent as base, so multi-parent without a merge
     yields `Referenced table "X" not found` binder errors when the SELECT
     references the dropped parent. Wrapping here keeps the generators
-    simple and the join logic in one place."""
+    simple and the join logic in one place.
+
+    `force_join_type` overrides join inference; a caller merging in a FILTER
+    scan (a WHERE-only root a constraint edge feeds this consumer) passes
+    INNER, since a filter may only remove rows and a preserving join would
+    re-admit the rows it rejects."""
     if len(parents) <= 1:
         return parents
     parents = _fold_constant_parents(parents, needed or set())
@@ -2170,8 +2176,38 @@ def _pre_merge_parents(
         output_concepts=all_outputs,
         environment=environment,
         parents=parents,
+        force_join_type=force_join_type,
     )
     return [merged]
+
+
+def _union_arm_parents(
+    parent_builds: list[ParentBuild],
+    attrs: dict[str, GroupAttrs],
+    environment: BuildEnvironment,
+    needed: set[str],
+    group_graph: nx.DiGraph,
+    built: dict[str, StrategyNode],
+) -> list[StrategyNode]:
+    """One parent per union arm. Arms stack, so parents merge only WITHIN an
+    arm scope (a key scan beside a constant feeding the same arm), never
+    across arms: two arms share no key and their join would be a cross
+    product. Arm scopes are the parent groups' labels (see `union_arms`)."""
+    by_arm: dict[str, list[StrategyNode]] = {}
+    for parent in parent_builds:
+        by_arm.setdefault(attrs[parent.group_id].label, []).append(parent.node)
+    arms: list[StrategyNode] = []
+    for arm_parents in by_arm.values():
+        arms.extend(
+            _pre_merge_parents(
+                arm_parents,
+                environment,
+                needed=needed,
+                group_graph=group_graph,
+                built=built,
+            )
+        )
+    return arms
 
 
 def _contains_shape_barrier(node: StrategyNode) -> bool:
@@ -4322,15 +4358,29 @@ def build_strategy_node(
         )
         parent_group_ids = {parent.group_id for parent in parent_builds}
         join_key_addresses = _input_contract_join_keys(a, parent_group_ids)
-        parents = _apply_input_contracts(parent_builds, a, needed, environment)
-        parents = _pre_merge_parents(
-            parents,
-            environment,
-            join_key_addresses=join_key_addresses,
-            needed=needed,
-            group_graph=group_graph,
-            built=built,
-        )
+        if derivation == Derivation.UNION:
+            parents = _union_arm_parents(
+                parent_builds, attrs, environment, needed, group_graph, built
+            )
+        else:
+            # A WHERE-only root scan a constraint edge feeds into this consumer
+            # (see `_attach_condition_roots_to_rowset_consumers`) is a filter on
+            # the input rows: it may only remove them, so the merge is INNER.
+            filter_scan = any(
+                attrs[parent.group_id].derivation == Derivation.ROOT
+                and edge_kind(group_edges, parent.group_id, gid) == EdgeKind.CONSTRAINT
+                for parent in parent_builds
+            )
+            parents = _apply_input_contracts(parent_builds, a, needed, environment)
+            parents = _pre_merge_parents(
+                parents,
+                environment,
+                join_key_addresses=join_key_addresses,
+                needed=needed,
+                group_graph=group_graph,
+                built=built,
+                force_join_type=JoinType.INNER if filter_scan else None,
+            )
         # ROOT scans source columns from datasources directly, not from their
         # group-graph predecessors. A `constraint`-edge predecessor (e.g. a
         # d1 aggregate feeding a HAVING-style filter on this root) is real
@@ -4343,7 +4393,6 @@ def build_strategy_node(
         # sibling happens not to pseudonym-cover.
         if derivation not in (
             Derivation.ROOT,
-            Derivation.UNION,
             Derivation.UNNEST,
             Derivation.ROWSET,
         ):

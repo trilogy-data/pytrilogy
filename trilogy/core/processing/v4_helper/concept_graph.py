@@ -55,6 +55,13 @@ from .functional_dependency import minimize_build_grain
 from .models import ConceptAttrs
 from .projection import concept_satisfiable, lineage_existence_only
 from .staged_where import cross_row_stage_args
+from .union_arms import (
+    arm_scope,
+    is_union_concept,
+    nest_scope,
+    union_args,
+    union_arm_identities,
+)
 
 UpstreamFetcher = Callable[[BuildConcept, BuildEnvironment], list[BuildConcept]]
 
@@ -220,8 +227,15 @@ def _effective_label(
     that materializes it (a precomputed/summary table), so it behaves as a
     ROOT input here even though its lineage is derived. The set also carries
     pinned presence probes (see `pinned_probe_addresses`), which are computed
-    on their member's own scan and share it between phases the same way."""
-    if concept.address in materialized_roots or concept.derivation == Derivation.ROOT:
+    on their member's own scan and share it between phases the same way.
+
+    A UNION is one stacked source read in place by both phases: a WHERE over
+    a stacked column is applied inside each arm, never by re-stacking the
+    arms as a separate condition-phase twin."""
+    if concept.address in materialized_roots or concept.derivation in (
+        Derivation.ROOT,
+        Derivation.UNION,
+    ):
         return _scope_and_phase(label)[0]
     return label
 
@@ -296,6 +310,75 @@ def _upstream_default(
         for c in _lineage_args(concept, environment)
         if c.address not in existence_only
     ]
+
+
+def _upstream_labels(
+    concept: BuildConcept,
+    upstreams: list[BuildConcept],
+    label: str,
+    environment: BuildEnvironment,
+) -> list[str]:
+    """The label each upstream is walked under. A UNION's arguments each open
+    their own arm scope (see `union_arms`), nested under the union's scope;
+    every other derivation hands its recursion label down unchanged."""
+    if not is_union_concept(concept):
+        return [label] * len(upstreams)
+    scope = _scope_and_phase(label)[0]
+    by_address = {
+        arg.address: nest_scope(scope, arm_scope(identity))
+        for arg, identity in zip(
+            union_args(concept), union_arm_identities(concept, environment)
+        )
+    }
+    return [by_address.get(upstream.address, label) for upstream in upstreams]
+
+
+def _arm_scopes_sourcing(
+    concept: BuildConcept,
+    environment: BuildEnvironment,
+    attrs: dict[str, ConceptAttrs],
+) -> list[str]:
+    """Arm scopes under which every raw input of a WHERE argument is already
+    sourced by the SELECT walk, when no blank-scope node sources one.
+
+    A column that exists only inside a union arm (`amt` under `union(amt,
+    pad)`) filters that arm's rows: the atom must land on the arm's own scan,
+    so its condition-phase walk happens under the arm's scope. An input a
+    blank-scope node also sources keeps the ordinary blank walk; an input no
+    scope sources at all falls back to its key's arm (a property beside the
+    arm's key). Empty means: walk under the blank scope as usual."""
+    scopes_of: dict[str, set[str]] = defaultdict(set)
+    for node_attrs in attrs.values():
+        scopes_of[node_attrs.address].add(_scope_and_phase(node_attrs.label)[0])
+    shared: set[str] | None = None
+    stack = [concept]
+    seen: set[str] = set()
+    while stack:
+        current = stack.pop()
+        if current.address in seen:
+            continue
+        seen.add(current.address)
+        resolved = environment.concepts.get(current.address, current) or current
+        if resolved.lineage is not None and resolved.derivation not in (
+            Derivation.ROOT,
+            Derivation.UNION,
+            Derivation.ROWSET,
+            Derivation.CONSTANT,
+        ):
+            stack.extend(resolved.lineage.concept_arguments)
+            continue
+        if resolved.derivation == Derivation.CONSTANT:
+            continue
+        scopes = set(scopes_of.get(resolved.address, set()))
+        # A union or rowset lives at the enclosing scope (its keys are per
+        # arm / per body), so only a ROOT falls back to its key's arm.
+        if not scopes and resolved.derivation == Derivation.ROOT:
+            for key in sorted(resolved.keys or ()):
+                scopes |= scopes_of.get(key, set())
+        if not scopes or "" in scopes:
+            return []
+        shared = scopes if shared is None else shared & scopes
+    return sorted(shared or ())
 
 
 def _relation_mates(address: str, environment: BuildEnvironment) -> set[str]:
@@ -1491,7 +1574,8 @@ def _add_concept(
                 and _relation_crosses_rowset_boundary(addr, environment)
             ):
                 upstreams.append(axis)
-    for upstream in upstreams:
+    upstream_labels = _upstream_labels(concept, upstreams, label, environment)
+    for upstream, upstream_walk_label in zip(upstreams, upstream_labels):
         # Substitute here too so the edge wires to the origin's node (the
         # recursive call below adds the origin, not the bare key); otherwise
         # the bare key gets an implicit graph node with no attrs entry. A
@@ -1508,12 +1592,12 @@ def _add_concept(
             graph,
             edges,
             attrs,
-            label,
+            upstream_walk_label,
             materialized_roots,
             datasource_addresses,
             pinned_probes,
         )
-        upstream_label = _effective_label(upstream, label, root_like)
+        upstream_label = _effective_label(upstream, upstream_walk_label, root_like)
         add_edge(
             graph,
             edges,
@@ -1807,17 +1891,31 @@ def build_concept_graph(
     for clause in conditions:
         for concept in clause.concept_arguments:
             resolved = environment.concepts.get(concept.address, concept) or concept
-            _add_concept(
-                resolved,
-                environment,
-                graph,
-                edges,
-                attrs,
-                label=staged_labels.get(resolved.address, _condition_label("")),
-                materialized_roots=materialized_roots,
-                datasource_addresses=datasource_addresses,
-                pinned_probes=pinned_probes,
-            )
+            base_label = staged_labels.get(resolved.address, _condition_label(""))
+            # An argument sourced only inside union arms is a filter on those
+            # arms' rows: walk it under each arm's scope so its atom hosts on
+            # the arm's own scan (see `_arm_scopes_sourcing`).
+            stage = condition_stage_of_label(base_label)
+            walk_labels = [
+                (
+                    stage_condition_label(scope, stage)
+                    if stage is not None
+                    else _condition_label(scope)
+                )
+                for scope in _arm_scopes_sourcing(resolved, environment, attrs)
+            ] or [base_label]
+            for walk_label in walk_labels:
+                _add_concept(
+                    resolved,
+                    environment,
+                    graph,
+                    edges,
+                    attrs,
+                    label=walk_label,
+                    materialized_roots=materialized_roots,
+                    datasource_addresses=datasource_addresses,
+                    pinned_probes=pinned_probes,
+                )
 
     # Unreferenced rowset-handle key-group mates of demanded members (see
     # `_unsourced_relation_mates`): without a node here the mate's rowset never
