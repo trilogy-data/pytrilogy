@@ -3468,15 +3468,19 @@ property event_id.tier_amount int;
     specs = (
         (
             "region_gate_reads_both_arms",
-            "The gate rules out the uncovered region, so the arms union into "
-            "one complete source and every event row is read.",
+            (
+                "The gate rules out the uncovered region, so the arms union into "
+                "one complete source and every event row is read."
+            ),
             f"where region = 'NORTH' {projection}",
             all_rows,
         ),
         (
             "region_gate_in_a_later_stage",
-            "The same gate one stage later. Every row read still passes it, so "
-            "the union is proven the same way and the rows are unchanged.",
+            (
+                "The same gate one stage later. Every row read still passes it, so "
+                "the union is proven the same way and the rows are unchanged."
+            ),
             f"where event_id > 0 then where region = 'NORTH' {projection}",
             all_rows,
         ),
@@ -3489,14 +3493,18 @@ property event_id.tier_amount int;
         (
             "arm_gate_across_three_stages",
             "Both discriminators gated from later stages, one per stage.",
-            "where event_id > 0 then where region = 'NORTH'"
-            f" then where tier = 'ALPHA' {projection}",
+            (
+                "where event_id > 0 then where region = 'NORTH'"
+                f" then where tier = 'ALPHA' {projection}"
+            ),
             alpha_rows,
         ),
         (
             "aggregate_over_the_covered_union",
-            "An aggregate over the union spans both arms, not the arm the "
-            "planner happened to pick first.",
+            (
+                "An aggregate over the union spans both arms, not the arm the "
+                "planner happened to pick first."
+            ),
             "where region = 'NORTH' select sum(tier_amount) as total;",
             "select sum(amount) from events",
         ),
