@@ -24,6 +24,7 @@ from trilogy.core.models.datasource import Datasource
 from trilogy.dialect.enums import Dialects
 from trilogy.execution.config import RuntimeConfig
 from trilogy.execution.report import emit_report, get_report_sink, report_run
+from trilogy.execution.staged_write import write_text_staged
 from trilogy.execution.state.partitions import PartitionObservation
 from trilogy.execution.state.persistence import (
     ENV_STATE_FILE,
@@ -381,7 +382,7 @@ def write_state_snapshot(snapshot: StateSnapshot, path: PathlibPath) -> None:
     from trilogy.scripts.display import print_info
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(snapshot.model_dump_json(indent=2), encoding="utf-8")
+    write_text_staged(path, snapshot.model_dump_json(indent=2))
     emit_report(
         "state_snapshot",
         path=str(path),

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from trilogy.execution.staged_write import staged_write
 from trilogy.rendering.theme import DEFAULT_THEME, REPORT_LAYOUT, Theme
 from trilogy.report.backends.base import ReportBackend
 from trilogy.report.backends.html import build_html
@@ -33,7 +34,8 @@ def _snapshot(html: str, output_path: Path) -> None:
             )
             page.set_content(html, wait_until="networkidle")
             page.evaluate("() => document.fonts.ready.then(() => true)")
-            page.screenshot(path=str(output_path), full_page=True)
+            with staged_write(str(output_path)) as staged:
+                page.screenshot(path=staged, full_page=True)
         finally:
             browser.close()
 

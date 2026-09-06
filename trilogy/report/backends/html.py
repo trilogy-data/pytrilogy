@@ -10,6 +10,7 @@ from pathlib import Path
 from string import Template
 
 from trilogy.core.enums import ChartType
+from trilogy.execution.staged_write import write_text_staged
 from trilogy.rendering.theme import DEFAULT_THEME, REPORT_LAYOUT, Layout, Theme
 from trilogy.report.backends.base import ReportBackend
 from trilogy.report.charts import style_chart
@@ -332,6 +333,6 @@ class HtmlBackend(ReportBackend):
         output_path: Path,
         theme: Theme = DEFAULT_THEME,
     ) -> None:
-        output_path.write_text(
-            build_html(elements, theme=theme, interactive=True), encoding="utf-8"
+        write_text_staged(
+            output_path, build_html(elements, theme=theme, interactive=True)
         )

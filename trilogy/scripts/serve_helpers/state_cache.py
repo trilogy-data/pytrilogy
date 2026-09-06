@@ -26,12 +26,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 from trilogy.constants import logger
+from trilogy.execution.staged_write import write_text_staged
 from trilogy.execution.state.persistence import read_state_snapshot
 from trilogy.execution.state.snapshot import StateSnapshot
 from trilogy.scripts.serve_helpers.file_discovery import find_all_model_files
@@ -75,22 +74,6 @@ def fingerprint_directory(directory: Path) -> str:
             f"{path.relative_to(directory).as_posix()}:{stat.st_size}:{stat.st_mtime_ns}"
         )
     return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
-
-
-def _atomic_write(path: Path, content: str) -> None:
-    """Write via a temp file in the same directory, then rename.
-
-    A partially written snapshot must never be readable: a concurrent GET would
-    parse it as a valid-but-truncated cache entry.
-    """
-    handle, tmp_name = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
-    try:
-        with os.fdopen(handle, "w", encoding="utf-8") as tmp_file:
-            tmp_file.write(content)
-        os.replace(tmp_name, path)
-    except BaseException:
-        Path(tmp_name).unlink(missing_ok=True)
-        raise
 
 
 class StateSnapshotCache:
@@ -144,8 +127,8 @@ class StateSnapshotCache:
             # Snapshot first: the meta file is what makes an entry readable, so
             # writing it last means a crash between the two reads as a miss
             # rather than as a stale hit.
-            _atomic_write(snapshot_path, snapshot.model_dump_json())
-            _atomic_write(
+            write_text_staged(snapshot_path, snapshot.model_dump_json())
+            write_text_staged(
                 meta_path,
                 json.dumps(
                     {

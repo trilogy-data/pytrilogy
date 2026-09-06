@@ -10,6 +10,7 @@ import pytest
 from trilogy.core.enums import ChartType
 from trilogy.core.statements.execute import ProcessedQuery
 from trilogy.dialect.results import ChartResult
+from trilogy.execution.staged_write import STAGING_DIR
 from trilogy.rendering.theme import (
     DEFAULT_THEME,
     EDITORIAL_THEME,
@@ -423,7 +424,12 @@ def test_png_backend_renders_via_playwright(tmp_path, monkeypatch):
 
     page = cm.__enter__.return_value.chromium.launch.return_value.new_page.return_value
     page.set_content.assert_called_once()
-    page.screenshot.assert_called_once_with(path=str(out), full_page=True)
+    page.screenshot.assert_called_once()
+    kwargs = page.screenshot.call_args.kwargs
+    assert kwargs["full_page"] is True
+    assert Path(kwargs["path"]).parent == tmp_path / STAGING_DIR
+    assert out.exists()
+    assert not (tmp_path / STAGING_DIR).exists()
 
 
 def test_png_snapshot_requires_playwright(tmp_path, monkeypatch):

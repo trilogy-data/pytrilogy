@@ -889,6 +889,12 @@ select ...` exports query data the same way. Prefer `copy into` for
 individual image assets; prefer `trilogy render report.md` when you want one
 combined artifact.
 
+Local targets are written through a `.trilogy-staging` sibling directory and
+swapped in with one rename, so a copy that fails or is killed part-way leaves
+the previous file in place rather than a truncated one; the staged file is
+removed on failure. Object-store targets (`gs://`) write in place, since their
+uploads are already all-or-nothing.
+
 ## Running external scripts (`call`)
 
 `call` runs an external program as a pipeline step — e.g. emailing an artifact
