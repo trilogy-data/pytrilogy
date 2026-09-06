@@ -104,8 +104,11 @@ Probe sweep, baseline vs after:
 | `DISCARDED_PARENTS` | 4 | 4 |
 | `DROPPED_OTHER_ROWSET_HANDLE` | 10 | 10 |
 | `dropped_output` | 88 | 88 |
-| `OUTPUT_ABSENT_FROM_STAMPED_ENV` | 52 | 52 |
-| built as `RowsetNode` | 0 | 766 (the other 12 are condition wrappers above one) |
+| `OUTPUT_ABSENT_FROM_STAMPED_ENV` | 61 | 61 |
+| built as `RowsetNode` | 0 | 775 |
+| a condition wrapper over a `RowsetNode` | 0 | 12 |
+
+775 + 12 = 787, so every boundary is now typed or sits directly under one.
 
 ### Tier 3 answer: is the fresh environment irreducible? Yes.
 
@@ -179,19 +182,22 @@ Measured over 792 generator calls, sweeping
 | 0 | 788 |
 | 1 | **4** |
 
-So "always empty" is *nearly* true. The 4 exceptions are silently discarded. They
-occur when the bucket also carries a non-handle concept with its own lineage
-(observed: `local.overall_avg_sale`; a TVF-union arm node whose parent produced
-`local.___tvf_arm_0_a` and friends).
+So "always empty" is *nearly* true. The 4 exceptions were silently discarded at
+audit time; 1.2 made them logged. They occur when the bucket also carries a
+non-handle concept with its own lineage (observed: `local.overall_avg_sale`; a
+TVF-union arm node whose parent produced `local.___tvf_arm_0_a` and friends).
 
 ### Why it resources within
 
 Two reasons, one stated and one structural.
 
-- **Stated** (`rowset.py:60-66`): the *outer* build environment classifies the
-  inner select's concepts under rowset aliasing, so a plain root inside the body
-  reads back as `derivation=rowset`. Reusing the outer env mis-buckets the inner
-  plan, so the body needs a fresh `BuildEnvironment` and graph.
+- **Stated** (`rowset.py:60-66` as of the audit): the *outer* build environment
+  classifies the inner select's concepts under rowset aliasing, so a plain root
+  inside the body reads back as `derivation=rowset`. Reusing the outer env
+  mis-buckets the inner plan, so the body needs a fresh `BuildEnvironment` and
+  graph. **`## Resolution` disproved this reason standing alone** and rewrote
+  the docstring; the fresh environment is still required, for the reasons the
+  Tier 3 answer gives.
 - **Structural**: that fresh scope is exactly why the body cannot live in the
   outer concept graph, which is why there are no parents. The two answers are one
   decision seen from both ends.
@@ -596,12 +602,15 @@ def pytest_configure(config):
 
     rowset_mod.plan_nested_select = plan_probe
 
-    def probe(outputs, parents, environment, conditions=None,
-              preexisting_conditions=None, *, history, g):
+    # Signature tracks `gen_rowset`. It lost `preexisting_conditions` and `g`
+    # and gained `depth` in Tier 1; a stale probe raises TypeError on every
+    # dispatch, which reads as a mass test failure rather than a bad probe.
+    def probe(outputs, parents, environment, conditions=None, *,
+              history, depth=0):
         from trilogy.core.models.build import BuildRowsetItem
         mark = len(PLANS)
         result = original(outputs, parents, environment, conditions,
-                          preexisting_conditions, history=history, g=g)
+                          history=history, depth=depth)
         STATS["calls"] += 1
         if parents:
             STATS["DISCARDED_PARENTS"] += 1

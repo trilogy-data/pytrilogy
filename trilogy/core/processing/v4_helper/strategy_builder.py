@@ -4255,9 +4255,7 @@ def build_strategy_node(
     with explicit parent nodes. Returns the most-downstream built node, or
     None if nothing built. `depth` is the nesting of this plan inside rowset
     bodies, for trace indentation."""
-    # Imported here: `v4_node_generators` imports this package for its
-    # condition helpers, so a module-level import is a cycle.
-    from trilogy.core.processing.v4_node_generators import build_node
+    from trilogy.core.processing.v4_node_generators import build_node  # cycle
 
     built: dict[str, StrategyNode] = {}
     condition_hosts: dict[str, StrategyNode] = {}

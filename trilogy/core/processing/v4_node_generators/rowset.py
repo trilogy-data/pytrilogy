@@ -1,7 +1,6 @@
 """ROWSET generator: the boundary node projecting a rowset's inner select."""
 
 from trilogy.constants import logger
-from trilogy.core.domain_graph import DomainRelation, EdgeProvenance
 from trilogy.core.enums import Derivation
 from trilogy.core.models.author import MultiSelectLineage, SelectLineage
 from trilogy.core.models.build import (
@@ -53,18 +52,6 @@ def gen_rowset(
     return resolve_rowset(
         outputs, environment, depth=depth, history=history, conditions=conditions
     )
-
-
-def _declared_subset_anchors(environment: BuildEnvironment) -> dict[str, set[str]]:
-    """Declared-subset sources mapped to the anchors they are subsets of."""
-    anchors: dict[str, set[str]] = {}
-    for edge in environment.domain_graph.edges:
-        if (
-            edge.relation is DomainRelation.SUBSET
-            and edge.provenance is EdgeProvenance.DECLARED
-        ):
-            anchors.setdefault(edge.source, set()).add(edge.target)
-    return anchors
 
 
 def _anchors_all_rowset(anchors: set[str], environment: BuildEnvironment) -> bool:
@@ -424,7 +411,7 @@ def resolve_rowset(
     # rows no condition expresses, so the anchor scan's handle binding cannot
     # stand in for the boundary's row set; unmarked, the merge INNER-narrows
     # the anchor to the limited rows.
-    declared_anchors = _declared_subset_anchors(environment)
+    declared_anchors = environment.domain_graph.declared_subset_anchors()
     scoped_partial = [
         h
         for h in handles

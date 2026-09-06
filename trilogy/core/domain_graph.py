@@ -164,6 +164,7 @@ class DomainGraph:
         self._canonical: dict[str, str] | None = None
         self._eq_classes: dict[str, str] | None = None
         self._subset_sources: set[str] | None = None
+        self._declared_subset_anchors: dict[str, set[str]] | None = None
         for e in edges or []:
             self.add_edge(e)
         for b in binding_edges or []:
@@ -194,6 +195,7 @@ class DomainGraph:
         self._canonical = None
         self._eq_classes = None
         self._subset_sources = None
+        self._declared_subset_anchors = None
         return True
 
     def add_binding(self, edge: BindingEdge) -> bool:
@@ -260,17 +262,31 @@ class DomainGraph:
 
     # --- registry derivations (phase 3 step 1 compat shims) ----------------
 
+    def declared_subset_anchors(self) -> dict[str, set[str]]:
+        """Every declared SUBSET source mapped to the anchors it is declared a
+        subset of. Cached; `subset_sources` is its key set."""
+        if self._declared_subset_anchors is None:
+            anchors: dict[str, set[str]] = {}
+            for e in self.edges:
+                if (
+                    e.relation is DomainRelation.SUBSET
+                    and e.provenance is EdgeProvenance.DECLARED
+                ):
+                    anchors.setdefault(e.source, set()).add(e.target)
+            self._declared_subset_anchors = anchors
+        return self._declared_subset_anchors
+
     def subset_sources(self) -> set[str]:
         """The subset side of every declared SUBSET relation, by its OWN
         address (historical scoped_partial_sources). Cached — completeness
         predicates consult it per join pair."""
         if self._subset_sources is None:
-            self._subset_sources = {
-                e.source
-                for e in self.edges
-                if e.relation is DomainRelation.SUBSET
-                and e.provenance is EdgeProvenance.DECLARED
-            }
+            # A comprehension, not `set(...)`: it grows incrementally over the
+            # anchors' first-appearance order, so the set's iteration order
+            # stays what a direct scan of `edges` produced. `set()` presizes
+            # from the dict's length and reorders, which leaks into the dict
+            # `subset_join_map` builds from it.
+            self._subset_sources = {source for source in self.declared_subset_anchors()}
         return self._subset_sources
 
     def subset_join_map(self) -> dict[str, str]:
