@@ -95,3 +95,22 @@ def test_chart_copy_is_staged(tmp_path: Path):
     )
     assert target.read_text(encoding="utf-8").lstrip().startswith("<svg")
     assert not (tmp_path / STAGING_DIR).exists()
+
+
+def test_copy_stages_under_configured_staging_path(tmp_path: Path):
+    from trilogy.staging import StagingConfig
+
+    scratch = tmp_path / "scratch"
+    out = tmp_path / "out"
+    out.mkdir()
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=out),
+        staging=StagingConfig(path=str(scratch)),
+    )
+    executor.execute_raw_sql("CREATE TABLE src AS SELECT 1 AS id, 'alpha' AS name")
+    executor.parse_text(_MODEL)
+    list(executor.execute_text("copy into parquet 'out.parquet' from select id, name;"))
+    assert (out / "out.parquet").exists()
+    assert not (out / STAGING_DIR).exists()
+    instance_dirs = list(scratch.iterdir())
+    assert len(instance_dirs) == 1 and list(instance_dirs[0].iterdir()) == []

@@ -878,6 +878,13 @@ class Executor:
         select_clause = ", ".join(alias_clauses)
         return f"SELECT {select_clause} FROM ({base_sql}) as _copy_source"
 
+    def _swap_staging_root(self) -> str:
+        """Where ``copy into`` stages a local target before swapping it in:
+        this executor's scratch subdir under ``[staging] path``, cleaned at
+        exit. ``staged_write`` falls back to a sibling of the target when
+        the root is remote or on another filesystem."""
+        return self.staging.prepare_executor_subdir(self._instance_id)
+
     def _resolve_copy_target(self, target: str) -> str:
         """Resolve copy target path, making relative paths relative to working_path."""
         target_path = Path(target)
@@ -909,7 +916,7 @@ class Executor:
             # redundant and would leave its tmp_ file behind on failure.
             if not is_remote_target(target):
                 options += ", USE_TMP_FILE false"
-            with staged_write(target) as staged:
+            with staged_write(target, self._swap_staging_root()) as staged:
                 self.execute_raw_sql(
                     f"COPY ({sql}) TO '{staged}' ({options})",
                     local_concepts=query.local_concepts,
@@ -1060,7 +1067,7 @@ class Executor:
         if size_props:
             chart = chart.properties(**size_props)
         target = self._resolve_copy_target(query.target)
-        with staged_write(target) as staged:
+        with staged_write(target, self._swap_staging_root()) as staged:
             chart.save(staged, format=query.target_type.value, **save_kwargs)
         return MockResult([{"target": target}], ["target"])
 

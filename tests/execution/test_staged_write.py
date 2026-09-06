@@ -78,3 +78,48 @@ def test_write_text_staged_round_trips_utf8(tmp_path: Path):
     write_text_staged(target, "caf\u00e9")
     assert target.read_text(encoding="utf-8") == "caf\u00e9"
     assert not (tmp_path / STAGING_DIR).exists()
+
+
+def test_configured_root_on_same_filesystem_is_preferred(tmp_path: Path):
+    root = tmp_path / "scratch" / "instance"
+    target = tmp_path / "out" / "out.parquet"
+    target.parent.mkdir()
+    with staged_write(str(target), str(root)) as staged:
+        assert Path(staged).parent == root
+        Path(staged).write_bytes(b"new")
+    assert target.read_bytes() == b"new"
+    assert root.is_dir()
+    assert list(root.iterdir()) == []
+    assert not (target.parent / STAGING_DIR).exists()
+
+
+def test_configured_root_leaves_other_targets_scratch_alone(tmp_path: Path):
+    root = tmp_path / "scratch"
+    root.mkdir()
+    twin = root / "out.parquet.deadbeef.tmp"
+    twin.write_bytes(b"in flight for a target elsewhere")
+    with staged_write(str(tmp_path / "out.parquet"), str(root)) as staged:
+        Path(staged).write_bytes(b"new")
+    assert twin.exists()
+
+
+@pytest.mark.parametrize("root", ["gs://bucket/scratch", None])
+def test_unusable_root_falls_back_to_sibling(tmp_path: Path, root: str | None):
+    target = tmp_path / "out.parquet"
+    with staged_write(str(target), root) as staged:
+        assert Path(staged).parent == tmp_path / STAGING_DIR
+        Path(staged).write_bytes(b"new")
+    assert target.read_bytes() == b"new"
+
+
+def test_root_on_another_filesystem_falls_back_to_sibling(tmp_path: Path, monkeypatch):
+    from trilogy.execution import staged_write as module
+
+    monkeypatch.setattr(module, "_same_filesystem", lambda a, b: False)
+    root = tmp_path / "scratch"
+    target = tmp_path / "out.parquet"
+    with staged_write(str(target), str(root)) as staged:
+        assert Path(staged).parent == tmp_path / STAGING_DIR
+        Path(staged).write_bytes(b"new")
+    assert target.read_bytes() == b"new"
+    assert list(root.iterdir()) == []
