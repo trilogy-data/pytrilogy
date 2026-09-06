@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from pathlib import Path
 
 from local_scripts.fuzzer.generate import generate_cases
@@ -8,18 +9,27 @@ from local_scripts.fuzzer.models import FuzzCase
 from local_scripts.fuzzer.random_data import generate_random_seeds, random_seed
 from local_scripts.fuzzer.runner import CaseOutcome, CaseResult, run_case, write_repro
 
+# Every seed instantiates the same builders, so a corpus is exactly
+# `CASES_PER_SEED * len(seeds)`. Adding or removing cases changes this one
+# number and every total below follows from it.
+CASES_PER_SEED = 119
+
 
 def test_generated_corpus_is_stable_and_covers_requested_families() -> None:
     first = generate_cases()
     second = generate_cases()
 
     assert first == second
-    assert len(first) == 218
+    per_seed = Counter(case.seed for case in first)
+    assert per_seed == {"edge": CASES_PER_SEED, "dense": CASES_PER_SEED}, (
+        f"per-seed case counts changed: {dict(per_seed)}; "
+        f"update CASES_PER_SEED if deliberate"
+    )
+    assert len(first) == CASES_PER_SEED * len(per_seed)
     assert len({case.case_id for case in first}) == len(first)
     assert all(
         "where " not in case.trilogy.lower() or "where" in case.tags for case in first
     )
-    assert {case.seed for case in first} == {"edge", "dense"}
     assert {case.family for case in first} == {
         "aggregate",
         "chasm",
@@ -38,6 +48,8 @@ def test_generated_corpus_is_stable_and_covers_requested_families() -> None:
         "membership",
         "multiway_join",
         "named_grouping_window",
+        "padding_provenance",
+        "partition_cover",
         "rowset",
         "rowset_boundary",
         "scalar",
@@ -91,7 +103,11 @@ def test_random_datasets_are_repeatable_and_preserve_domain_invariants() -> None
         "random_002001",
         "random_002002",
     ]
-    assert len(generate_cases(seeds)) == 327
+    random_cases = generate_cases(seeds)
+    assert Counter(case.seed for case in random_cases) == {
+        seed.name: CASES_PER_SEED for seed in seeds
+    }
+    assert len(random_cases) == CASES_PER_SEED * len(seeds)
 
 
 def test_repro_contains_standalone_program_and_diagnostics(tmp_path: Path) -> None:
