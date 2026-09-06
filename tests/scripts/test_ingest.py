@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 
 import pytest
@@ -45,11 +46,18 @@ _DIALECT = BaseDialect()
 
 
 @pytest.fixture
-def config_dir() -> Path:
-    """The shared checked-in project. Ingest tests write into its root/ on
-    purpose: test_config's directory-wide unit/integration sweep that output,
-    validating that ingested models round-trip."""
-    return Path(__file__).parent / "config_directory"
+def config_dir(tmp_path) -> Path:
+    """A per-test copy of the checked-in project.
+
+    Ingest writes generated models into `root/`, so these tests must not run
+    against the tracked directory: that rewrites `root/world_capitals.preql`
+    on every run and leaves the working tree dirty. The round-trip coverage
+    this side effect used to provide (does an ingested model still parse and
+    run?) is now explicit and order-independent in
+    `test_ingest_output_round_trips`."""
+    target = tmp_path / "config_directory"
+    shutil.copytree(Path(__file__).parent / "config_directory", target)
+    return target
 
 
 def test_ingest_digit_leading_columns_produce_parseable_output(tmp_path):
@@ -110,6 +118,30 @@ def test_ingest(config_dir):
     assert "capital" in content
     # The grain detection should identify country as a key
     assert "key country" in content.lower() or "country: country" in content.lower()
+
+
+def test_ingest_output_round_trips(config_dir):
+    """An ingested model parses and runs beside the project's authored ones.
+
+    This is what writing into the checked-in `config_directory` used to cover
+    implicitly, and only when `test_config`'s sweep happened to run after the
+    ingest tests."""
+    runner = CliRunner()
+    ingested = runner.invoke(
+        cli,
+        ["ingest", "world_capitals", "--config", str(config_dir / "trilogy.toml")],
+    )
+    if ingested.exception:
+        raise ingested.exception
+    assert ingested.exit_code == 0
+
+    for args in (["unit", str(config_dir)], ["run", str(config_dir), "duckdb"]):
+        result = runner.invoke(cli, args)
+        if result.exception:
+            raise AssertionError(
+                f"'{args[0]}' failed on the ingested project:\n{result.output}"
+            )
+        assert result.exit_code == 0
 
 
 def test_detect_numeric_bounds():
