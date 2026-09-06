@@ -100,6 +100,7 @@ from trilogy.engine import (
     SupportsNativePersist,
     escape_literal_colons,
 )
+from trilogy.execution.staged_write import is_remote_target, staged_write
 from trilogy.hooks.base_hook import BaseHook
 from trilogy.parser import parse_text
 from trilogy.render import get_dialect_generator
@@ -311,6 +312,23 @@ class Executor:
         if self.connection.get_transaction() is not owned:
             return
         self.connection.commit()
+
+    def _rollback_transaction(self) -> None:
+        """Discard work in a transaction this executor implicitly opened.
+
+        A statement that fails mid-write leaves the transaction aborted on
+        engines with transactional DDL (DuckDB, postgres): every later statement
+        on the connection errors until it is rolled back, and the DDL that ran
+        before the failure (an OVERWRITE's CREATE OR REPLACE) must not ride
+        along with whatever commits next. Rolling back is what keeps the
+        previous table intact on those engines."""
+        owned = self._owned_transaction
+        self._owned_transaction = None
+        if owned is None or not owned.is_active:
+            return
+        if self.connection.get_transaction() is not owned:
+            return
+        self.connection.rollback()
 
     def _execute_setup_ddl(self, sql: str) -> None:
         """Run connect-time DuckDB setup, retrying a lost catalog race.
@@ -860,10 +878,17 @@ class Executor:
         select_clause = ", ".join(alias_clauses)
         return f"SELECT {select_clause} FROM ({base_sql}) as _copy_source"
 
+    def _swap_staging_root(self) -> str:
+        """Where ``copy into`` stages a local target before swapping it in:
+        this executor's scratch subdir under ``[staging] path``, cleaned at
+        exit. ``staged_write`` falls back to a sibling of the target when
+        the root is remote or on another filesystem."""
+        return self.staging.prepare_executor_subdir(self._instance_id)
+
     def _resolve_copy_target(self, target: str) -> str:
         """Resolve copy target path, making relative paths relative to working_path."""
         target_path = Path(target)
-        if not target_path.is_absolute() and not target.startswith(("gcs://", "gs://")):
+        if not target_path.is_absolute() and not is_remote_target(target):
             return str(self.environment.working_path / target_path)
         return target
 
@@ -879,14 +904,23 @@ class Executor:
                 check_gcs_write_credentials()
 
             if query.target_type == IOType.PARQUET:
-                copy_sql = f"COPY ({sql}) TO '{target}' (FORMAT PARQUET)"
+                options = "FORMAT PARQUET"
             elif query.target_type == IOType.CSV:
-                copy_sql = f"COPY ({sql}) TO '{target}' (FORMAT CSV, HEADER)"
+                options = "FORMAT CSV, HEADER"
             elif query.target_type == IOType.JSON:
-                copy_sql = f"COPY ({sql}) TO '{target}' (FORMAT JSON, ARRAY true)"
+                options = "FORMAT JSON, ARRAY true"
             else:
                 raise NotImplementedError(f"Unsupported IO Type {query.target_type}")
-            self.execute_raw_sql(copy_sql, local_concepts=query.local_concepts)
+            # The staged path is already the safety copy, so DuckDB's own
+            # tmp_-and-rename step (on by default over an existing file) is
+            # redundant and would leave its tmp_ file behind on failure.
+            if not is_remote_target(target):
+                options += ", USE_TMP_FILE false"
+            with staged_write(target, self._swap_staging_root()) as staged:
+                self.execute_raw_sql(
+                    f"COPY ({sql}) TO '{staged}' ({options})",
+                    local_concepts=query.local_concepts,
+                )
         else:
             raise NotImplementedError(
                 f"COPY statement not supported for dialect {self.dialect}"
@@ -1033,7 +1067,8 @@ class Executor:
         if size_props:
             chart = chart.properties(**size_props)
         target = self._resolve_copy_target(query.target)
-        chart.save(target, format=query.target_type.value, **save_kwargs)
+        with staged_write(target, self._swap_staging_root()) as staged:
+            chart.save(staged, format=query.target_type.value, **save_kwargs)
         return MockResult([{"target": target}], ["target"])
 
     @singledispatchmethod
@@ -1418,12 +1453,18 @@ class Executor:
         copied out before committing, which discards an unconsumed cursor on some
         drivers (duckdb among them)."""
         buffered = BufferedResult([], [])
-        for statement in statements:
-            result = self.execute_raw_sql(statement, local_concepts=local_concepts)
-            if result.returns_rows:
-                buffered = BufferedResult(list(result.keys()), list(result.fetchall()))
-            else:
-                buffered = BufferedResult([], [])
+        try:
+            for statement in statements:
+                result = self.execute_raw_sql(statement, local_concepts=local_concepts)
+                if result.returns_rows:
+                    buffered = BufferedResult(
+                        list(result.keys()), list(result.fetchall())
+                    )
+                else:
+                    buffered = BufferedResult([], [])
+        except Exception:
+            self._rollback_transaction()
+            raise
         self._flush_transaction()
         return buffered
 

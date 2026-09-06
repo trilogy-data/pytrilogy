@@ -19,6 +19,7 @@ from trilogy.core.models.core import (
 from trilogy.core.models.datasource import Address
 from trilogy.core.models.execute import CompiledCTE
 from trilogy.core.statements.execute import CreateTableInfo, ProcessedQueryPersist
+from trilogy.core.table_processor import datasource_to_create_table_info
 from trilogy.dialect.base import (
     BaseDialect,
     TableColumn,
@@ -398,6 +399,20 @@ class BigqueryDialect(BaseDialect):
         if from_clause:
             source = f"{from_clause}, {source}"
         return source, self.ARRAY_MEMBER_COLUMN
+
+    def _persist_overwrite_prefix(self, query: ProcessedQueryPersist) -> str:
+        """``CREATE [OR REPLACE] TABLE t (...) [PARTITION BY ...] AS``, so the
+        select is the table's own definition and the replace is one atomic
+        statement. BigQuery's transactions cannot hold permanent-table DDL, so
+        the portable DDL-then-INSERT pair would leave an empty table behind a
+        failed insert. The column list keeps the declared types and
+        descriptions; the select fills it positionally, as the INSERT did."""
+        info = datasource_to_create_table_info(query.datasource)
+        ddl = self.compile_create_table_statement(info, query.create_mode)
+        return f"{ddl.rstrip(';')}\nAS"
+
+    def compile_overwrite_statements(self, query: ProcessedQueryPersist) -> list[str]:
+        return [self._render_query(query, self._persist_overwrite_prefix(query))]
 
     def render_partition_clause(self, target: CreateTableInfo) -> str:
         if not target.partition_keys:

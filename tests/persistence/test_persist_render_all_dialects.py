@@ -24,8 +24,13 @@ def test_persist_render_keeps_insert_prefix(dialect: Dialects):
     processed = gen.generate_queries(env, generatable)
     assert isinstance(processed[-1], ProcessedQueryPersist)
     sql = gen.compile_statement(processed[-1])
-    assert "CREATE" in sql and "INSERT INTO" in sql, sql
-    assert sql.index("CREATE") < sql.index("INSERT INTO") < sql.index("SELECT")
+    if dialect == Dialects.BIGQUERY:
+        # No transaction can hold its DDL, so the overwrite is one CTAS.
+        assert "INSERT INTO" not in sql, sql
+        assert sql.index("CREATE") < sql.index("\nAS\n") < sql.index("SELECT")
+    else:
+        assert "CREATE" in sql and "INSERT INTO" in sql, sql
+        assert sql.index("CREATE") < sql.index("INSERT INTO") < sql.index("SELECT")
     assert "out_table" in sql
     if dialect == Dialects.SQL_SERVER:
         assert "TOP 5" in sql

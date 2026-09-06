@@ -3439,8 +3439,7 @@ class BaseDialect:
         output = None
         if isinstance(query, ProcessedQueryPersist):
             if query.persist_mode == PersistMode.OVERWRITE:
-                create_table_info = datasource_to_create_table_info(query.datasource)
-                output = f"{self.compile_create_table_statement(create_table_info, query.create_mode)} {self._persist_insert_prefix(query)}"
+                output = self._persist_overwrite_prefix(query)
             elif query.persist_mode == PersistMode.APPEND:
                 if query.partition_by:
                     return self.generate_partitioned_insert(
@@ -3456,6 +3455,26 @@ class BaseDialect:
                 )
 
         return self._render_query(query, output)
+
+    def _persist_overwrite_prefix(self, query: ProcessedQueryPersist) -> str:
+        """What precedes the select in the one-string form of an OVERWRITE:
+        the target's DDL, then the INSERT the select feeds."""
+        info = datasource_to_create_table_info(query.datasource)
+        ddl = self.compile_create_table_statement(info, query.create_mode)
+        return f"{ddl} {self._persist_insert_prefix(query)}"
+
+    def compile_overwrite_statements(self, query: ProcessedQueryPersist) -> list[str]:
+        """An OVERWRITE as separately runnable statements: DDL, then INSERT.
+
+        The executor runs these inside one implicit transaction and rolls it
+        back on failure, which is what makes the pair atomic on engines with
+        transactional DDL. An engine without one overrides this with a single
+        statement instead (see BigQuery)."""
+        info = datasource_to_create_table_info(query.datasource)
+        return [
+            *self.compile_create_table_statements(info, query.create_mode),
+            self._render_query(query, self._persist_insert_prefix(query)),
+        ]
 
     def _persist_insert_prefix(
         self, query: ProcessedQueryPersist, location: str | None = None
@@ -3498,13 +3517,7 @@ class BaseDialect:
             ]
         if isinstance(query, ProcessedQueryPersist):
             if query.persist_mode == PersistMode.OVERWRITE:
-                create_table_info = datasource_to_create_table_info(query.datasource)
-                return [
-                    *self.compile_create_table_statements(
-                        create_table_info, query.create_mode
-                    ),
-                    self._render_query(query, self._persist_insert_prefix(query)),
-                ]
+                return self.compile_overwrite_statements(query)
             if query.persist_mode == PersistMode.APPEND and query.partition_by:
                 return self.generate_partitioned_insert_statements(
                     query,

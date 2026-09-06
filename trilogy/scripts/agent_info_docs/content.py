@@ -549,8 +549,10 @@ theme = "inter"
 - `[engine.config]` — dialect-specific connection and behaviour params, passed
   straight to that dialect's config object. See the per-dialect keys below.
 - `[staging]` — `path` for intermediate/temp artifacts (a local directory, or
-  a `gs://`/`s3://` prefix). Defaults to the system temp directory. Only
-  relevant to dialects that must materialize something before querying it.
+  a `gs://`/`s3://` prefix). Defaults to the system temp directory. Used by
+  dialects that must materialize something before querying it, and as the
+  scratch location `copy into` writes a local target to before swapping it
+  in (when the path is local and on the target's filesystem).
 - `[setup]` — scripts to run before any user script. `trilogy = [...]` runs
   `.preql` declarations to seed the environment; `sql = [...]` runs raw SQL
   for tables/extensions.
@@ -595,6 +597,11 @@ instead; when set here, always reference the environment (see below).
 Staged objects are deleted at executor close in the default mode, but that is
 best-effort and cannot run if the process is killed — put an age-based
 lifecycle rule on the staging bucket as the backstop.
+
+A `persist` OVERWRITE on BigQuery renders as one `CREATE [OR REPLACE] TABLE
+... AS SELECT` rather than DDL followed by an INSERT: BigQuery has no
+transaction that can hold permanent-table DDL, and the single statement is
+what keeps the previous table in place if the select fails.
 
 ```toml
 [engine]
@@ -888,6 +895,14 @@ The `from` clause takes a bare statement — `from chart ...` or
 select ...` exports query data the same way. Prefer `copy into` for
 individual image assets; prefer `trilogy render report.md` when you want one
 combined artifact.
+
+Local targets are written to scratch first and swapped in with one rename,
+so a copy that fails or is killed part-way leaves the previous file in place
+rather than a truncated one; the staged file is removed on failure. Scratch
+is the `[staging] path` subdir when that is local and on the target's
+filesystem (a rename cannot cross filesystems), else a `.trilogy-staging`
+sibling directory of the target. Object-store targets (`gs://`) write in
+place, since their uploads are already all-or-nothing.
 
 ## Running external scripts (`call`)
 

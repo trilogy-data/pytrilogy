@@ -131,3 +131,14 @@ Copy jobs are free but counted: BigQuery caps copy jobs per destination table
 per day. Irrelevant for hourly or daily runs; check it before fanning a single
 day's backfill across thousands of slices, where the SQL form's fixed statement
 count may be the better shape.
+
+## Overwrites
+
+An OVERWRITE is not an append and takes neither form above. It renders as a
+single `CREATE [OR REPLACE] TABLE t (...) [PARTITION BY ...] AS <select>`:
+BigQuery's multi-statement transactions accept DML and temp-table DDL only, so
+the portable DDL-then-INSERT pair cannot be made atomic there and would leave
+an empty table behind a failed insert. The column list carries the declared
+types and descriptions; the select fills it positionally, exactly as the INSERT
+did. Engines with transactional DDL keep the pair and rely on the executor
+rolling the implicit transaction back on failure.

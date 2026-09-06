@@ -29,6 +29,8 @@ import re
 import tempfile
 from pathlib import Path
 
+from trilogy.execution.staged_write import write_text_staged
+
 SESSION_ENV = "TRILOGY_EXPLORE_SESSION"
 RECORD_LIMIT_ENV = "TRILOGY_EXPLORE_RECORD_LIMIT"
 
@@ -73,9 +75,7 @@ def _save(session: str, store: dict[str, str]) -> None:
     path = _store_path(session)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(f".{os.getpid()}.tmp")
-        tmp.write_text(json.dumps(store), encoding="utf-8")
-        tmp.replace(path)
+        write_text_staged(path, json.dumps(store))
     except OSError:
         pass
 
