@@ -3,7 +3,16 @@
 from collections.abc import Iterable
 
 from trilogy.core.enums import Derivation
-from trilogy.core.models.build import BuildConcept, BuildConceptArgs, BuildFilterItem
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildConceptArgs,
+    BuildFilterItem,
+    BuildRowsetItem,
+)
+from trilogy.core.models.build_environment import (
+    BuildEnvironment,
+    resolve_rowset_content_address,
+)
 from trilogy.core.processing.nodes import SelectNode, StrategyNode, UnionNode
 
 
@@ -208,3 +217,23 @@ def widen_projection(
     if changed and rebuild:
         node.rebuild_cache()
     return changed
+
+
+def output_rowset_base_keys(
+    mandatory_list: list[BuildConcept], environment: BuildEnvironment
+) -> set[str]:
+    """Base addresses the grain keys of the output rowset boundaries unwrap to.
+
+    A boundary over `select oid, amt` is grained on `rs.oid`, which unwraps to
+    `local.oid`. The boundary can expose that base column beneath its handle, so
+    a scan keyed by it pairs with the boundary on a real key instead of
+    cross-joining."""
+    keys: set[str] = set()
+    for concept in mandatory_list:
+        if not isinstance(concept.lineage, BuildRowsetItem) or concept.grain is None:
+            continue
+        for component in concept.grain.components:
+            resolved = resolve_rowset_content_address(component, environment)
+            if resolved != component:
+                keys.add(resolved)
+    return keys

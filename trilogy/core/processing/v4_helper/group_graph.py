@@ -75,6 +75,7 @@ from .models import (
     GroupInputContract,
     InputChannel,
 )
+from .projection import output_rowset_base_keys
 
 # depth_label for the secondary root bucket that feeds d1 (in-WHERE) aggregate
 # calculations. Distinct from ``root`` so the bucket gets its own group id.
@@ -1509,6 +1510,72 @@ def _add_final_node(
         add_edge(group_graph, group_edges, gid, FINAL_NODE_ID, EdgeKind.MERGE)
 
 
+def _attach_condition_roots_to_rowset_consumers(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    buckets: dict[str, GroupBucket],
+    concept_attrs: dict[str, ConceptAttrs],
+    conditions: list[BuildWhereClause],
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> None:
+    """Feed a WHERE-only ROOT scan into the grouping consumers of a rowset
+    boundary whose base key its members hang off.
+
+    Over a plain fact, `select sum(amt) where cat = 'a'` co-sources `cat` into
+    the aggregate's own scan and the WHERE filters the aggregated rows. A
+    rowset boundary defeats that: `sum(rs.amt)` reads the boundary, `cat`
+    stays a scan of its own with nothing but a FINAL merge edge, and the atom
+    can only land at FINAL as a cross-joined gate that filters nothing. The
+    scan belongs in the consumer's input row stream, paired with the boundary
+    on the boundary's base grain key that keys `cat`: a CONSTRAINT edge puts
+    it there, and the consumer's merge joins on that key (see
+    `_refresh_input_contracts`). Only a scan every member of which is a
+    property of (or is) the base key qualifies, so the pairing needs no bridge
+    the scan cannot render."""
+    condition_args = {
+        arg.address for clause in conditions for arg in clause.row_arguments
+    }
+    outputs = {c.address for c in mandatory_list}
+    rollup_padded = _rollup_padded_addresses(environment)
+    for gid, bucket in buckets.items():
+        if (
+            bucket.derivation != Derivation.ROOT
+            or bucket.depth_label != DepthLabel.ROOT
+            or not bucket.primary_members
+            or not set(bucket.primary_members) <= condition_args
+            or set(bucket.primary_members) & outputs
+            or any(succ != FINAL_NODE_ID for succ in group_graph.successors(gid))
+        ):
+            continue
+        member_keys = [
+            (concept_attrs[node].address, concept_attrs[node].keys)
+            for node in bucket.primary_node_ids
+        ]
+        for consumer_gid, consumer in attrs.items():
+            if (
+                consumer_gid == gid
+                or consumer.derivation not in GROUPING_DERIVATIONS
+                or consumer.label != bucket.label
+            ):
+                continue
+            for pred in group_graph.predecessors(consumer_gid):
+                if pred == FINAL_NODE_ID or attrs[pred].derivation != Derivation.ROWSET:
+                    continue
+                base_keys = _unwrapped_rowset_grain(
+                    attrs[pred].grain_components, environment, rollup_padded
+                )
+                if base_keys and all(
+                    address in base_keys or (keys and keys <= base_keys)
+                    for address, keys in member_keys
+                ):
+                    add_edge(
+                        group_graph, group_edges, gid, consumer_gid, EdgeKind.CONSTRAINT
+                    )
+                    break
+
+
 def _rowset_join_key_addresses(
     concept: BuildConcept, mandatory_by_address: dict[str, BuildConcept]
 ) -> set[str]:
@@ -1878,6 +1945,10 @@ def _consumer_required_input_grain(
     attrs: dict[str, GroupAttrs],
     gid: str,
 ) -> frozenset[str]:
+    # A UNION stacks its arms; its grain names every arm's key and no arm can
+    # carry another's, so it requires no input grain of them.
+    if attrs[gid].derivation == Derivation.UNION:
+        return frozenset()
     # A group's own derived output can be a grain component (a filter/rowset
     # concept whose identity IS its grain). Parents can't supply it; requiring
     # it as an input grain forces a parent to re-derive the concept (e.g. a
@@ -2011,11 +2082,17 @@ def _refresh_input_contracts(
     attrs: dict[str, GroupAttrs],
     concept_attrs: dict[str, ConceptAttrs],
     concept_edges: EdgeMap,
+    environment: BuildEnvironment | None = None,
 ) -> None:
     key_addresses = frozenset(
         a.address for a in concept_attrs.values() if a.purpose == Purpose.KEY
     )
     lineage_parents = _lineage_parents_by_address(concept_edges, concept_attrs)
+    rollup_padded = (
+        _rollup_padded_addresses(environment)
+        if environment is not None
+        else frozenset()
+    )
     for gid in group_graph.nodes:
         if gid == FINAL_NODE_ID or gid not in attrs:
             continue
@@ -2025,24 +2102,41 @@ def _refresh_input_contracts(
         bridge_keys = _shared_row_parent_join_keys(
             group_graph, group_edges, attrs, gid, key_addresses, lineage_parents
         )
+        row_parents = [
+            pred
+            for pred in group_graph.predecessors(gid)
+            if pred != FINAL_NODE_ID
+            and pred in attrs
+            and edge_kind(group_edges, pred, gid) != EdgeKind.EXISTENCE
+        ]
         # A non-grouping consumer pairing a GROUPING row parent (a population
         # aggregate at grain G) with row-grain siblings joins them ON G; the
         # aggregate's value repeats per G-group across the row stream (`sum(z)
         # by x + w`: the sum CTE pairs to the w rows on x). Declare G so the
         # sibling projections keep the bridge instead of degrading to 1=1.
         grouping_parent_grain: set[str] = set()
-        if attrs[gid].derivation not in GROUPING_DERIVATIONS:
-            row_parents = [
-                pred
-                for pred in group_graph.predecessors(gid)
-                if pred != FINAL_NODE_ID
-                and pred in attrs
-                and edge_kind(group_edges, pred, gid) != EdgeKind.EXISTENCE
-            ]
-            if len(row_parents) >= 2:
-                for pred in row_parents:
-                    if attrs[pred].derivation in GROUPING_DERIVATIONS:
-                        grouping_parent_grain |= set(attrs[pred].grain_components)
+        if attrs[gid].derivation not in GROUPING_DERIVATIONS and len(row_parents) >= 2:
+            for pred in row_parents:
+                if attrs[pred].derivation in GROUPING_DERIVATIONS:
+                    grouping_parent_grain |= set(attrs[pred].grain_components)
+        # A ROWSET boundary beside a FILTER SCAN (a WHERE-only root fed in by
+        # a CONSTRAINT edge, see `_attach_condition_roots_to_rowset_consumers`)
+        # pairs on its BASE grain key: the boundary can expose `oid` beneath
+        # its `rs.oid` handle, and a plain scan renders only that base
+        # address, so the handle alone would leave the merge keyless. Sibling
+        # boundaries pair on their handles and are left alone.
+        rowset_base_keys: set[str] = set()
+        filter_scan = any(
+            attrs[pred].derivation == Derivation.ROOT
+            and edge_kind(group_edges, pred, gid) == EdgeKind.CONSTRAINT
+            for pred in row_parents
+        )
+        if filter_scan:
+            for pred in row_parents:
+                if attrs[pred].derivation == Derivation.ROWSET:
+                    rowset_base_keys |= _unwrapped_rowset_grain(
+                        attrs[pred].grain_components, environment, rollup_padded
+                    )
         contracts: list[GroupInputContract] = []
         for pred in sorted(group_graph.predecessors(gid)):
             if pred == FINAL_NODE_ID or pred not in attrs:
@@ -2061,7 +2155,10 @@ def _refresh_input_contracts(
                     preserve_keys=(
                         frozenset()
                         if is_existence
-                        else required_grain | bridge_keys | grouping_parent_grain
+                        else required_grain
+                        | bridge_keys
+                        | grouping_parent_grain
+                        | rowset_base_keys
                     ),
                     channel=(
                         InputChannel.EXISTENCE
@@ -2391,6 +2488,43 @@ def _hosted_condition_outputs(
     ):
         return set()
     return {arg.address for atom in atoms for arg in atom.row_arguments} & capability
+
+
+def _final_gate_rowset_base_keys(
+    attrs: dict[str, GroupAttrs],
+    buckets: dict[str, GroupBucket],
+    gid: str,
+    fact: GroupFacts,
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> set[str]:
+    """Base grain keys of the output rowset boundaries that `gid` must render
+    to pair with them at FINAL, when every one of its members is a row arg of a
+    FINAL-hosted gate and none is a mandatory output."""
+    if FINAL_NODE_ID not in attrs or not attrs[FINAL_NODE_ID].condition_atoms:
+        return set()
+    bucket = buckets.get(gid)
+    if bucket is None or bucket.derivation != Derivation.ROOT:
+        return set()
+    members = set(fact.primary)
+    if not members or members & {c.address for c in mandatory_list}:
+        return set()
+    gate_args = {
+        arg.address
+        for atom in attrs[FINAL_NODE_ID].condition_atoms
+        for arg in atom.row_arguments
+    }
+    if not members <= gate_args:
+        return set()
+    base_keys = output_rowset_base_keys(mandatory_list, environment)
+    if not base_keys:
+        return set()
+    keyed: set[str] = set()
+    for member in members:
+        if member not in environment.concepts:
+            continue
+        keyed |= set(environment.concepts[member].keys or ())
+    return base_keys & keyed
 
 
 def _compute_concept_sets(
@@ -2755,11 +2889,30 @@ def _compute_concept_sets(
                     if mate in cap_gid:
                         outs.add(mate)
                         break
+        # A condition-only ROOT feeding a FINAL-hosted gate that pairs to an
+        # output rowset boundary on its base grain key must RENDER that key:
+        # the group covers no mandatory output, so it never becomes a FINAL
+        # contributor and never picks up the contract's preserve_keys; it
+        # arrives as a hidden feeder built from this demand alone. Without the
+        # key the FINAL merge has no shared column and cross-joins.
+        outs |= _final_gate_rowset_base_keys(
+            attrs, buckets, gid, fact, mandatory_list, environment
+        )
         io.outputs[gid] = outs
 
         ins: set[str] = set()
         is_grouping = fact.derivation in GROUPING_DERIVATIONS
-        for concept_addr in outs:
+        # A primary member a hosted atom references is computed here for the
+        # WHERE even when nothing downstream demands it (`where all_amt > 0`
+        # over a union that selects only `all_k`), so it demands its inputs of
+        # the parents exactly like an output does.
+        hosted_primary = {
+            arg.address
+            for atom in attrs[gid].condition_atoms
+            for arg in atom.row_arguments
+            if arg.address in fact.primary
+        }
+        for concept_addr in outs | hosted_primary:
             if concept_addr in fact.primary:
                 stack = list(lineage_parents.get(concept_addr, set()))
                 seen_chain: set[str] = set()
@@ -2888,6 +3041,16 @@ def build_group_graph(
         conditions,
         mandatory_list,
     )
+    _attach_condition_roots_to_rowset_consumers(
+        group_graph,
+        group_edges,
+        attrs,
+        buckets,
+        concept_attrs,
+        conditions,
+        mandatory_list,
+        environment,
+    )
     merged_group_graph = group_graph.copy()
     merged_group_edges = copy_edges(group_edges)
     _compute_concept_sets(
@@ -2960,7 +3123,7 @@ def build_group_graph(
         relation_edge_members=relation_edge_members,
     )
     _refresh_input_contracts(
-        group_graph, group_edges, attrs, concept_attrs, concept_edges
+        group_graph, group_edges, attrs, concept_attrs, concept_edges, environment
     )
     _refresh_final_contract(
         group_graph,

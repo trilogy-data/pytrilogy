@@ -37,6 +37,7 @@ class UnionNode(StrategyNode):
         preexisting_conditions: BoolExpr | None = None,
         grain: BuildGrain | None = None,
         set_operator: SetOperator = SetOperator.UNION_ALL,
+        hidden_concepts: set[str] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -49,6 +50,7 @@ class UnionNode(StrategyNode):
             # A union's grain is always its stacked output columns.
             grain=grain
             or BuildGrain.from_concepts(output_concepts, environment=environment),
+            hidden_concepts=hidden_concepts,
         )
         # partial_concepts carries only intrinsic column-level partials (``~col``
         # inside a ``partial datasource``); those survive a covering UNION.
@@ -85,4 +87,5 @@ class UnionNode(StrategyNode):
             preexisting_conditions=self.preexisting_conditions,
             grain=self.grain,
             set_operator=self.set_operator,
+            hidden_concepts=set(self.hidden_concepts),
         )

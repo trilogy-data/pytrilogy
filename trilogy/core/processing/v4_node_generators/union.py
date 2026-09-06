@@ -1,52 +1,34 @@
-from trilogy.core.enums import FunctionType
-from trilogy.core.graph_models import ReferenceGraph
-from trilogy.core.models.build import BuildConcept, BuildFunction, BuildWhereClause
+from trilogy.core.enums import Derivation
+from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import SelectNode, StrategyNode, UnionNode
-from trilogy.core.processing.v4_helper.history import V4History
+from trilogy.core.processing.v4_helper.condition_injection import condition_row_args
+from trilogy.core.processing.v4_helper.union_arms import is_union_concept, union_arms
 
-from .common import collapse_conditions, parent_outputs_needed, search_parent
-
-
-def is_union(c: BuildConcept):
-    return (
-        isinstance(c.lineage, BuildFunction)
-        and c.lineage.operator == FunctionType.UNION
-    )
+from .common import collapse_conditions
 
 
-def build_layers(
-    concepts: list[BuildConcept],
-) -> tuple[list[list[BuildConcept]], list[BuildConcept]]:
-    sources = {
-        x.address: x.lineage.concept_arguments if x.lineage else [] for x in concepts
-    }
-    root = concepts[0]
-
-    built_layers = []
-    # copy: concept_arguments is a shared cached list, and the pop() drain
-    # below would otherwise empty it for every later consumer of this lineage
-    layers = list(root.lineage.concept_arguments) if root.lineage else []
-    sourced = set()
-    while layers:
-        layer = []
-        current = layers.pop()
-        sourced.add(current.address)
-        layer.append(current)
-        for key, values in sources.items():
-            if key == current.address:
+def _arm_inputs(
+    parents: list[StrategyNode], arm: list[BuildConcept]
+) -> tuple[StrategyNode, list[BuildConcept]] | None:
+    """The parent that renders every argument of one arm, with the parent
+    outputs those arguments read (a constant renders inline and needs none)."""
+    for parent in parents:
+        by_address = {o.address: o for o in parent.output_concepts}
+        inputs: list[BuildConcept] = []
+        for arg in arm:
+            if arg.derivation == Derivation.CONSTANT:
                 continue
-            for value in values:
-                if value.address in (current.keys or []) or current.address in (
-                    value.keys or []
-                ):
-                    layer.append(value)
-                    sourced.add(value.address)
-        built_layers.append(layer)
-    complete = [
-        x for x in concepts if all(x.address in sourced for x in sources[x.address])
-    ]
-    return built_layers, complete
+            source = by_address.get(arg.address) or next(
+                (o for o in parent.output_concepts if arg.address in o.pseudonyms),
+                None,
+            )
+            if source is None:
+                break
+            inputs.append(source)
+        else:
+            return parent, inputs
+    return None
 
 
 def gen_union(
@@ -55,51 +37,58 @@ def gen_union(
     environment: BuildEnvironment,
     conditions: BuildWhereClause | None = None,
     preexisting_conditions: BuildWhereClause | None = None,
-    *,
-    history: V4History,
-    g: ReferenceGraph,
 ) -> StrategyNode | None:
-    """Stack parent outputs into a UNION ALL. Each parent contributes one
-    arm; the union node is responsible for column-aligning them. UnionNode
-    has no `conditions` arg, so new-at-this-group atoms collapse into
-    `preexisting_conditions` alongside the inherited ones."""
-    union_outputs = [output for output in outputs if is_union(output)]
+    """Stack the arm parents the group graph hands us into a UNION ALL.
+
+    `parents` holds one node per arm scope (see `union_arms`); each arm
+    projects the stacked columns off its own contributing arguments, which
+    stay in the arm's outputs (hidden) so the renderer's member substitution
+    finds them there. A condition is a predicate over the stacked columns, so
+    every arm applies it to its own rows: `all_amt > 0.15` filters arm one on
+    `amt` and arm two on `pad`. A stacked column the WHERE names without
+    selecting it is materialized the same way and hidden. UnionNode has no
+    `conditions` slot, so the applied atoms collapse into
+    `preexisting_conditions` beside the inherited ones."""
+    union_outputs = [output for output in outputs if is_union_concept(output)]
     if not union_outputs:
         return None
-    layers, resolved = build_layers(union_outputs)
-    if not layers or not resolved:
+    hidden: set[str] = set()
+    selected = {output.address for output in union_outputs}
+    for arg in condition_row_args(conditions):
+        if is_union_concept(arg) and arg.address not in selected:
+            union_outputs.append(arg)
+            selected.add(arg.address)
+            hidden.add(arg.address)
+    arms = union_arms(union_outputs, environment)
+    if arms is None:
         return None
-    parent_nodes: list[StrategyNode] = []
-    for layer in layers:
-        parent = search_parent(
-            layer,
-            environment,
-            history,
-            g,
-            conditions=[conditions] if conditions else [],
-        )
-        if parent is None:
+    arm_nodes: list[StrategyNode] = []
+    for arm in arms:
+        found = _arm_inputs(parents, arm)
+        if found is None:
             return None
-        parent.add_output_concepts(resolved)
+        parent, inputs = found
         # A pure projection is row-preserving: carry the arm's OWN row grain,
         # not the union outputs' claimed grain. The FINAL dedup check reads the
         # first arm's grain off the stacked QDS; masking it with the output
         # grain elides the set-semantics GROUP BY and a key in both arms counts
         # twice.
-        parent_nodes.append(
+        arm_nodes.append(
             SelectNode(
-                input_concepts=list(parent.output_concepts),
-                output_concepts=resolved,
+                input_concepts=inputs,
+                output_concepts=[*union_outputs, *arm],
                 environment=environment,
                 parents=[parent],
                 grain=parent.grain,
+                conditions=conditions.conditional if conditions else None,
+                hidden_concepts={arg.address for arg in arm},
             )
         )
-
     return UnionNode(
-        input_concepts=parent_outputs_needed(resolved, parent_nodes, conditions),
-        output_concepts=resolved,
+        input_concepts=list(union_outputs),
+        output_concepts=list(union_outputs),
         environment=environment,
-        parents=parent_nodes,
+        parents=arm_nodes,
         preexisting_conditions=collapse_conditions(conditions, preexisting_conditions),
+        hidden_concepts=hidden,
     )
