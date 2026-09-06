@@ -164,7 +164,7 @@ class DomainGraph:
         self._canonical: dict[str, str] | None = None
         self._eq_classes: dict[str, str] | None = None
         self._subset_sources: set[str] | None = None
-        self._declared_subset_anchors: dict[str, set[str]] | None = None
+        self._declared_subset_pairs: list[tuple[str, str]] | None = None
         for e in edges or []:
             self.add_edge(e)
         for b in binding_edges or []:
@@ -195,7 +195,7 @@ class DomainGraph:
         self._canonical = None
         self._eq_classes = None
         self._subset_sources = None
-        self._declared_subset_anchors = None
+        self._declared_subset_pairs = None
         return True
 
     def add_binding(self, edge: BindingEdge) -> bool:
@@ -262,31 +262,42 @@ class DomainGraph:
 
     # --- registry derivations (phase 3 step 1 compat shims) ----------------
 
+    def declared_subset_pairs(self) -> list[tuple[str, str]]:
+        """(subset source, declared anchor) for every declared SUBSET edge, in
+        edge order. The one scan every other declared-SUBSET accessor derives
+        from, so the predicate has a single home.
+
+        Order is part of the contract, not incidental: the accessors below are
+        set comprehensions over this list, so each inserts in edge order and
+        reproduces the iteration order its own direct scan of `edges` had.
+        Grouping first would not — a dict of sets loses edge order, and the
+        resulting set's order leaks into the dict `subset_join_map` builds and
+        from there into join-tree ordering."""
+        if self._declared_subset_pairs is None:
+            self._declared_subset_pairs = [
+                (e.source, e.target)
+                for e in self.edges
+                if e.relation is DomainRelation.SUBSET
+                and e.provenance is EdgeProvenance.DECLARED
+            ]
+        return self._declared_subset_pairs
+
     def declared_subset_anchors(self) -> dict[str, set[str]]:
         """Every declared SUBSET source mapped to the anchors it is declared a
-        subset of. Cached; `subset_sources` is its key set."""
-        if self._declared_subset_anchors is None:
-            anchors: dict[str, set[str]] = {}
-            for e in self.edges:
-                if (
-                    e.relation is DomainRelation.SUBSET
-                    and e.provenance is EdgeProvenance.DECLARED
-                ):
-                    anchors.setdefault(e.source, set()).add(e.target)
-            self._declared_subset_anchors = anchors
-        return self._declared_subset_anchors
+        subset of."""
+        anchors: dict[str, set[str]] = {}
+        for source, target in self.declared_subset_pairs():
+            anchors.setdefault(source, set()).add(target)
+        return anchors
 
     def subset_sources(self) -> set[str]:
         """The subset side of every declared SUBSET relation, by its OWN
         address (historical scoped_partial_sources). Cached — completeness
         predicates consult it per join pair."""
         if self._subset_sources is None:
-            # A comprehension, not `set(...)`: it grows incrementally over the
-            # anchors' first-appearance order, so the set's iteration order
-            # stays what a direct scan of `edges` produced. `set()` presizes
-            # from the dict's length and reorders, which leaks into the dict
-            # `subset_join_map` builds from it.
-            self._subset_sources = {source for source in self.declared_subset_anchors()}
+            self._subset_sources = {
+                source for source, _ in self.declared_subset_pairs()
+            }
         return self._subset_sources
 
     def subset_join_map(self) -> dict[str, str]:
@@ -350,12 +361,7 @@ class DomainGraph:
     def left_anchor_keys(self) -> set[str]:
         """Canonicalized superset anchors of declared SUBSET relations
         (historical scoped_left_anchor_keys)."""
-        return {
-            self.canonical(e.target)
-            for e in self.edges
-            if e.relation is DomainRelation.SUBSET
-            and e.provenance is EdgeProvenance.DECLARED
-        }
+        return {self.canonical(target) for _, target in self.declared_subset_pairs()}
 
     def join_key_groups(self) -> dict[str, set[str]]:
         """Authored join-key equivalence groups, canonical -> all members."""
