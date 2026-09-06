@@ -175,6 +175,29 @@ def apply_sweep(plan: Plan, log: Callable[[str], None] = print) -> int:
     return freed
 
 
+def purge_stale_spill(
+    results_dir: Path,
+    log: Callable[[str], None] | None = None,
+    skip_recent_hours: float = 6.0,
+) -> int:
+    """Spill an earlier, hard-killed run left behind, reclaimed as the next starts.
+
+    ``purge_spill`` covers a clean finish and the atexit hook; a kill -9 runs
+    neither, and an ingest that died mid-join can leave tens of GB of
+    ``.duckdb.tmp``. Sweeping the suite's whole ``results/`` at startup means the
+    next run collects it instead of it sitting there until someone notices. The
+    recent-run window keeps a concurrent run untouched."""
+    plan = plan_sweep(results_dir, spill=True, skip_recent_hours=skip_recent_hours)
+    if not plan.targets:
+        return 0
+    freed = apply_sweep(plan, log=log or (lambda _: None))
+    if freed and log is not None:
+        log(
+            f"  reclaimed {human(freed)} of spill left by {len(plan.runs)} earlier run(s)"
+        )
+    return freed
+
+
 def human(num_bytes: float) -> str:
     size = float(num_bytes)
     for unit in ("B", "KB", "MB", "GB", "TB"):

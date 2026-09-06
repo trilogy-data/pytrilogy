@@ -564,11 +564,15 @@ def run(spec: BenchmarkSpec) -> int:
         args.reasoning_effort,
     )
     run_dir = (args.output_dir or default_run_dir).resolve()
+    # Before anything of ours lands on disk: reclaim spill an earlier run was
+    # killed before it could clear. Runs touched in the last few hours are left
+    # alone, so a concurrent sweep is safe.
+    cleanup.purge_stale_spill(spec.results_dir, log=print)
     workspace = run_dir / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)
     # Safety net for the paths the explicit purges below don't reach: an
-    # exception, or Ctrl-C. (A hard kill runs nothing, so `clean_results.py
-    # --spill` still exists for that.)
+    # exception, or Ctrl-C. (A hard kill runs nothing; the startup sweep above
+    # and `clean_results.py --spill` are what collect that.)
     atexit.register(cleanup.purge_spill, run_dir)
     chart_slug = chart_artifact_slug(run_dir.name)
     dashboard_path = spec.charts_dir / f"dashboard_{chart_slug}.png"

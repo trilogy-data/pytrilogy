@@ -116,6 +116,11 @@ def check_if_group_required(
     environment: BuildEnvironment,
     depth: int = 0,
 ) -> GroupRequiredResponse:
+    # Local: v4_helper imports the node package, which imports this module.
+    from trilogy.core.processing.v4_helper.functional_dependency import (
+        build_fd_determines,
+    )
+
     padding = "\t" * depth
     target_grain = BuildGrain.from_concepts(
         downstream_concepts,
@@ -156,6 +161,25 @@ def check_if_group_required(
     if comp_grain.components.issubset(target_coverage):
         logger.info(
             f"{padding}{LOGGER_PREFIX} Group requirement check:  {comp_grain} covered by target coverage {target_coverage}, no group node required"
+        )
+        return GroupRequiredResponse(target_grain, comp_grain, False)
+    # FD closure: an upstream grain component the target functionally
+    # determines is constant within each output row, so the rows are already
+    # unique at the target grain. The one-level `keys` checks below cannot see
+    # past a derived key whose raw keys reach outside the grain (cluster_id
+    # keyed on tree_id AND the grid cells tree_id determines). Declared
+    # keys/grains only, never the domain graph: an authored scoped-join
+    # equality (`subset join fut.period + 53 = agg.period`) merges its ends
+    # into one ≡-class there, but it holds only on matched rows, and treating
+    # it as an FD elides the re-aggregation and flips the join preserving.
+    if all(
+        build_fd_determines(
+            environment, target_coverage, component, include_empty_grain=False
+        )
+        for component in comp_grain.components - target_coverage
+    ):
+        logger.info(
+            f"{padding}{LOGGER_PREFIX} Group requirement check: {comp_grain} functionally determined by target {target_grain}, no group node required"
         )
         return GroupRequiredResponse(target_grain, comp_grain, False)
     difference = [

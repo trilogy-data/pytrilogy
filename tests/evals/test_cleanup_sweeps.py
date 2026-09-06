@@ -108,6 +108,28 @@ def test_purge_spill_takes_a_workers_leftovers_and_nothing_else(tmp_path):
     assert cleanup.purge_spill(worker, log=lines.append) == 0 and not lines
 
 
+def test_purge_stale_spill_collects_a_killed_run_at_startup(tmp_path):
+    """The kill -9 path: neither the run's own purge nor its atexit hook fired."""
+    results = tmp_path / "results"
+    dead = make_run(results, "20260101-000000_ingest")
+    live = make_run(results, "20260102-000000_enriched", age_hours=0)
+    lines: list[str] = []
+    assert cleanup.purge_stale_spill(results, log=lines.append) == 5000
+    assert not list(dead.rglob("*.duckdb.tmp"))
+    assert (dead / "workspace" / "_worker_0" / "warehouse.duckdb").exists()
+    assert (dead / "agent_log.q05.jsonl").exists()
+    assert list(live.rglob("*.duckdb.tmp"))  # in flight, untouched
+    assert any("earlier run" in line for line in lines)
+
+
+def test_purge_stale_spill_is_quiet_when_there_is_nothing(tmp_path):
+    results = tmp_path / "results"
+    make_run(results, "20260102-000000_enriched", age_hours=0)
+    lines: list[str] = []
+    assert cleanup.purge_stale_spill(results, log=lines.append) == 0 and not lines
+    assert cleanup.purge_stale_spill(tmp_path / "never_ran", log=lines.append) == 0
+
+
 def test_purge_spill_ignores_a_run_with_none(tmp_path):
     run = tmp_path / "results" / "clean_run"
     run.mkdir(parents=True)
