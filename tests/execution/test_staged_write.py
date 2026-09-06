@@ -123,3 +123,64 @@ def test_root_on_another_filesystem_falls_back_to_sibling(tmp_path: Path, monkey
         Path(staged).write_bytes(b"new")
     assert target.read_bytes() == b"new"
     assert list(root.iterdir()) == []
+
+
+def test_claim_retries_when_a_sibling_removes_the_empty_directory(
+    tmp_path: Path, monkeypatch
+):
+    from trilogy.execution import staged_write as module
+
+    original = Path.touch
+    calls: list[int] = []
+
+    def flaky_touch(self: Path, *args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            self.parent.rmdir()
+            raise FileNotFoundError(self)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "touch", flaky_touch)
+    target = tmp_path / "out.parquet"
+    with staged_write(str(target)) as staged:
+        Path(staged).write_bytes(b"new")
+    assert target.read_bytes() == b"new"
+    assert len(calls) == 2
+
+    monkeypatch.setattr(module, "_CREATE_ATTEMPTS", 1)
+    calls.clear()
+    with pytest.raises(FileNotFoundError), staged_write(str(target)):
+        pass
+
+
+def test_sweep_tolerates_an_undeletable_leftover(tmp_path: Path, monkeypatch):
+    staging = tmp_path / STAGING_DIR
+    staging.mkdir()
+    stale = staging / "out.parquet.deadbeef.tmp"
+    stale.write_bytes(b"held open elsewhere")
+    original = Path.unlink
+
+    def refuse(self: Path, *args, **kwargs):
+        if self == stale:
+            raise PermissionError(self)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", refuse)
+    target = tmp_path / "out.parquet"
+    with staged_write(str(target)) as staged:
+        Path(staged).write_bytes(b"new")
+    assert target.read_bytes() == b"new"
+    assert stale.exists()
+
+
+def test_root_that_cannot_be_created_falls_back_to_sibling(tmp_path: Path):
+    from trilogy.execution.staged_write import _same_filesystem
+
+    blocker = tmp_path / "blocker"
+    blocker.write_bytes(b"a file where the root should be")
+    target = tmp_path / "out.parquet"
+    with staged_write(str(target), str(blocker / "scratch")) as staged:
+        assert Path(staged).parent == tmp_path / STAGING_DIR
+        Path(staged).write_bytes(b"new")
+    assert target.read_bytes() == b"new"
+    assert not _same_filesystem(tmp_path / "missing", tmp_path)

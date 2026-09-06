@@ -170,3 +170,26 @@ def test_failed_overwrite_keeps_old_rows_and_a_usable_connection(db_path, tmp_pa
     assert exec.execute_raw_sql("select * from out_t").fetchall() == [(1, "keep")]
     exec.close()
     assert _rows(db_path, "select * from out_t") == [(1, "keep")]
+
+
+def test_rollback_leaves_a_caller_owned_transaction_alone(db_path, tmp_path):
+    exec = _executor(db_path, tmp_path)
+    exec.execute_write_sql("CREATE TABLE out_t AS SELECT 1 AS i, 'keep' AS n")
+    exec.execute_write_sql(
+        "CREATE VIEW raw_t AS SELECT 2 AS i, "
+        "CASE WHEN i > 0 THEN error('boom') ELSE 'x' END AS n"
+    )
+    exec.connection.begin()
+    with pytest.raises(Exception, match="boom"):
+        exec.execute_text(SETUP + "persist p into out_t from select i, n;")
+    assert exec.connection.in_transaction()
+    exec.connection.rollback()
+    assert exec.execute_raw_sql("select * from out_t").fetchall() == [(1, "keep")]
+    exec.close()
+
+
+def test_rollback_without_an_owned_transaction_is_a_no_op(db_path, tmp_path):
+    exec = _executor(db_path, tmp_path)
+    exec._rollback_transaction()
+    assert not exec.connection.in_transaction()
+    exec.close()
