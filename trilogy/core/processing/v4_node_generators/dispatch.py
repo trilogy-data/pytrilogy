@@ -62,10 +62,13 @@ def build_node(
     history: History,
     g: ReferenceGraph,
     staged_conditions: list[BuildWhereClause] | None = None,
+    depth: int = 0,
 ) -> StrategyNode | None:
-    """Dispatch on `derivation`. ROOT and ROWSET need `history`/`g` (ROOT for
-    datasource selection, ROWSET to recursively plan its inner select); the
-    other generators ignore them.
+    """Dispatch on `derivation`. Only the generators that re-enter the planner
+    take `history` (ROOT for datasource selection, ROWSET and SUBSELECT for
+    their nested selects) and `g` (ROOT and SUBSELECT; a rowset body builds
+    its own graph); the rest ignore them. `depth` only indents the trace of a
+    nested plan.
 
     `preexisting_conditions` means "an ancestor already applied this, don't
     re-emit it" everywhere EXCEPT ROOT, which re-sources from datasources
@@ -95,12 +98,22 @@ def build_node(
             g=g,
             staged_conditions=staged_conditions,
         )
-    if derivation in (Derivation.ROWSET, Derivation.SUBSELECT):
+    if derivation == Derivation.ROWSET:
         return fn(
             outputs,
             parents,
             environment,
             conditions,
+            history=history,
+            depth=depth,
+        )
+    if derivation == Derivation.SUBSELECT:
+        return fn(
+            outputs,
+            parents,
+            environment,
+            conditions,
+            preexisting_conditions=preexisting_conditions,
             history=history,
             g=g,
         )

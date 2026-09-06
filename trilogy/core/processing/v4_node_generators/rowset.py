@@ -1,8 +1,9 @@
 """ROWSET generator: the boundary node projecting a rowset's inner select."""
 
-from trilogy.core.domain_graph import DomainRelation, EdgeProvenance
+from dataclasses import dataclass, field
+
+from trilogy.constants import logger
 from trilogy.core.enums import Derivation
-from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.author import MultiSelectLineage, SelectLineage
 from trilogy.core.models.build import (
     BuildConcept,
@@ -13,11 +14,12 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.discovery_utility import LOGGER_PREFIX, depth_to_prefix
 from trilogy.core.processing.node_generators.presence_probe import (
     is_presence_probe,
     probe_member_address,
 )
-from trilogy.core.processing.nodes import History, SelectNode, StrategyNode
+from trilogy.core.processing.nodes import History, RowsetNode, StrategyNode
 from trilogy.core.processing.v4_helper.history import V4History
 
 from .condition_sources import resolve_and_inject_condition
@@ -29,42 +31,138 @@ def gen_rowset(
     parents: list[StrategyNode],
     environment: BuildEnvironment,
     conditions: BuildWhereClause | None = None,
-    preexisting_conditions: BuildWhereClause | None = None,
     *,
     history: History,
-    g: ReferenceGraph,
+    depth: int = 0,
 ) -> StrategyNode | None:
     """Boundary node for a rowset reference. The rowset's inner select is a
-    self-contained sub-query, so, like ROOT, this generator ignores the
-    group graph's pre-built parents and plans the inner recursively.
-    Enrichment joins back to the outer query are handled by the outer group
-    graph / FINAL merge, not here."""
+    self-contained sub-query, so, like ROOT, this generator plans the inner
+    recursively instead of consuming `parents`. A ROWSET concept is a leaf of
+    the concept graph, so the group graph normally hands none; the rare
+    parent (a non-handle concept bucketed alongside the handles) is logged
+    rather than silently dropped. Enrichment joins back to the outer query are
+    handled by the outer group graph / FINAL merge, not here."""
     if not outputs or not isinstance(history, V4History):
         return None
+    if parents:
+        logger.info(
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} rowset boundary for "
+            f"{[o.address for o in outputs]} discards "
+            f"{len(parents)} group-graph parent(s): "
+            f"{[[o.address for o in p.output_concepts] for p in parents]}"
+        )
     return resolve_rowset(
-        outputs, environment, depth=0, g=g, history=history, conditions=conditions
+        outputs, environment, depth=depth, history=history, conditions=conditions
     )
+
+
+@dataclass
+class _Boundary:
+    """The boundary's outputs as they accumulate: every handle once, paired
+    with the produced body column that backs it. A presence probe or a derived
+    relation member has no backing column; it renders inline off the handles
+    already exposed."""
+
+    handles: list[BuildConcept] = field(default_factory=list)
+    inputs: list[BuildConcept] = field(default_factory=list)
+    hidden: set[str] = field(default_factory=set)
+    addresses: set[str] = field(default_factory=set)
+
+    def __contains__(self, address: str) -> bool:
+        return address in self.addresses
+
+    def add(
+        self,
+        handle: BuildConcept,
+        source: BuildConcept | None = None,
+        hidden: bool = False,
+    ) -> None:
+        if handle.address in self.addresses:
+            return
+        self.addresses.add(handle.address)
+        self.handles.append(handle)
+        if source is not None:
+            self.inputs.append(source)
+        if hidden:
+            self.hidden.add(handle.address)
+
+
+def _anchors_all_rowset(anchors: set[str], environment: BuildEnvironment) -> bool:
+    concepts = [environment.concepts.get(a) for a in anchors]
+    return bool(concepts) and all(
+        c is not None and c.derivation == Derivation.ROWSET for c in concepts
+    )
+
+
+def _rowset_handles(
+    environment: BuildEnvironment, derived: list[str]
+) -> list[BuildConcept]:
+    """Candidate concepts for a rowset's handle addresses, own address only.
+
+    A scoped-merge collapse can store the CANONICAL it substituted for a
+    handle under the handle's address (a different concept, a different
+    address); the authored handle then survives only in `alias_origin_lookup`.
+    Both spellings of one address are offered, in that order, and the caller's
+    filters decide."""
+    origins = {c.address: c for c in environment.alias_origin_lookup.values()}
+    handles: list[BuildConcept] = []
+    for addr in derived:
+        stored = environment.concepts.get(addr)
+        if stored is not None and stored.address == addr:
+            handles.append(stored)
+        origin = origins.get(addr)
+        if origin is not None and origin is not stored:
+            handles.append(origin)
+    return handles
+
+
+def _probed_member_handle(
+    outputs: list[BuildConcept], environment: BuildEnvironment
+) -> BuildConcept | None:
+    """The rowset handle a presence probe among `outputs` pins, for a
+    probe-only demand (the presence-count shape: the boundary's sole contract
+    output is a member's presence probe). The obligation pass materializes the
+    member alongside the probe."""
+    for concept in outputs:
+        if not is_presence_probe(concept.address):
+            continue
+        member_addr = probe_member_address(concept.address, environment)
+        member = environment.concepts.get(member_addr) if member_addr else None
+        if member is not None and isinstance(member.lineage, BuildRowsetItem):
+            return member
+    return None
+
+
+def _nullability_aliases(concept: BuildConcept) -> set[str]:
+    """Every address a concept's nullability can arrive under: its own, its
+    pseudonyms and, for a rowset handle, the body content it wraps."""
+    aliases = {concept.address, *concept.pseudonyms}
+    if isinstance(concept.lineage, BuildRowsetItem):
+        content = concept.lineage.content
+        aliases.update((content.address, *content.pseudonyms))
+    return aliases
 
 
 def resolve_rowset(
     outputs: list[BuildConcept],
     environment: BuildEnvironment,
     depth: int,
-    g: ReferenceGraph,
     history: V4History,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     """Plan a rowset boundary node by recursively planning its inner select
     through v4, then projecting that producer under the outer handle addresses.
 
-    The rowset's inner select is a self-contained sub-query, planned the same
-    way `get_query_node` plans a statement: we build its author lineage against
-    the base environment, materialize a FRESH build environment + graph for it
-    (the outer environment classifies the inner's concepts under rowset
-    aliasing, where a plain root reads back as `derivation=rowset`, so reusing
-    it mis-buckets the inner plan), plan its outputs + WHERE through
-    `search_concepts`, apply the inner HAVING as a post-aggregate filter, then
-    re-expose the producer's columns under the outer rowset handles. Each
+    The rowset's inner select is a STATEMENT, not an expression: it carries
+    its own WHERE, HAVING, LIMIT and ORDER BY, may carry its own query-scoped
+    joins (a different canonical collapse from the outer's) and may nest
+    further rowsets. So it is planned the way `get_query_node` plans a
+    statement: build its author lineage against the base environment,
+    materialize a FRESH build environment + graph for it, plan its outputs +
+    WHERE through `search_concepts`, apply the inner HAVING as a
+    post-aggregate filter, then re-expose the producer's columns under the
+    outer rowset handles. That is why the boundary consumes no group-graph
+    parents and why the group graph never descends into a body. Each
     handle is a ROWSET concept whose `lineage.content` is the inner column it
     wraps; the renderer emits the handle as that content, so the boundary is a
     thin projection whose inputs are the content columns the inner producer
@@ -76,37 +174,26 @@ def resolve_rowset(
     normal group rather than asserting."""
     rowset_outputs = [o for o in outputs if isinstance(o.lineage, BuildRowsetItem)]
     if not rowset_outputs:
-        # A probe-only demand (the presence-count shape: the boundary's sole
-        # contract output is a member's presence probe): recover the boundary
-        # through the probe's member handle, which the obligation pass below
-        # then materializes alongside the probe.
-        for concept in outputs:
-            if not is_presence_probe(concept.address):
-                continue
-            member_addr = probe_member_address(concept.address, environment)
-            member = environment.concepts.get(member_addr) if member_addr else None
-            if member is not None and isinstance(member.lineage, BuildRowsetItem):
-                rowset_outputs = [member]
-                break
-    if not rowset_outputs:
-        return None
+        probed = _probed_member_handle(outputs, environment)
+        if probed is None:
+            return None
+        rowset_outputs = [probed]
     lineage = rowset_outputs[0].lineage
     assert isinstance(lineage, BuildRowsetItem)
     select: SelectLineage | MultiSelectLineage = lineage.rowset.select
+    derived = lineage.rowset.derived_concepts
 
     plan = plan_nested_select(
         select,
         history,
         depth,
         f"rowset {lineage.rowset.name} inner select",
-        exclude_derived=lineage.rowset.derived_concepts,
+        exclude_derived=derived,
     )
     if plan is None:
         return None
     inner_node = plan.node
     built = plan.built
-    inner_env = plan.environment
-    inner_g = plan.graph
 
     # Expose the demanded handles plus any rowset-derived handle that carries a
     # PSEUDONYM: a cross-rowset merge (`merge X.a into Y.b`) links its two
@@ -132,35 +219,31 @@ def resolve_rowset(
     for out in produced.values():
         for pseudonym in out.pseudonyms:
             produced_by_pseudonym.setdefault(pseudonym, out)
-    coalesced_contents: list[BuildConcept] = []
+    coalesced: dict[str, BuildConcept] = {}
     for demanded_handle in outputs:
         dlineage = demanded_handle.lineage
         if not isinstance(dlineage, BuildRowsetItem):
             continue
         content = dlineage.content
-        if content.address in produced or content.address not in produced_by_pseudonym:
-            continue
-        if content.address not in {c.address for c in coalesced_contents}:
-            coalesced_contents.append(content)
-    if coalesced_contents:
-        inner_node.add_output_concepts(coalesced_contents)
-        produced.update({c.address: c for c in coalesced_contents})
-    derived = lineage.rowset.derived_concepts
+        if content.address not in produced and content.address in produced_by_pseudonym:
+            coalesced.setdefault(content.address, content)
+    if coalesced:
+        inner_node.add_output_concepts(list(coalesced.values()))
+        produced.update(coalesced)
+
     demanded = {o.address for o in rowset_outputs}
-    handle_pool = list(environment.concepts.values()) + list(
-        environment.alias_origin_lookup.values()
-    )
-    handles: list[BuildConcept] = []
-    inputs: list[BuildConcept] = []
-    seen: set[str] = set()
     condition_row_addresses = (
         {c.address for c in conditions.row_arguments}
         if conditions is not None
         else set()
     )
-    for handle in [*rowset_outputs, *handle_pool]:
+    boundary = _Boundary()
+    # Demanded handles first so they win ties; a demanded handle of ANOTHER
+    # rowset (a deferred WHERE's arg exposed through a scoped relation) is not
+    # one of `derived` and is skipped.
+    for handle in [*rowset_outputs, *_rowset_handles(environment, derived)]:
         hlineage = handle.lineage
-        if handle.address in seen or handle.address not in derived:
+        if handle.address in boundary or handle.address not in derived:
             continue
         if not isinstance(hlineage, BuildRowsetItem):
             continue
@@ -172,9 +255,7 @@ def resolve_rowset(
             and not handle.pseudonyms
         ):
             continue
-        seen.add(handle.address)
-        handles.append(handle)
-        inputs.append(produced[hlineage.content.address])
+        boundary.add(handle, produced[hlineage.content.address])
 
     # A plain rowset's GRAIN keys (e.g. `id`) are the shared join keys back to the
     # outer query and sibling rowsets, but they're plain roots, not
@@ -212,37 +293,31 @@ def resolve_rowset(
         and built.where_clause is None
         and built.having_clause is None
     ):
-        handle_addrs = {h.address for h in handles}
         handle_contents = {
             h.lineage.content.address
-            for h in handles
+            for h in boundary.handles
             if isinstance(h.lineage, BuildRowsetItem)
         }
-        for key_addr in built.grain.components:
+        for key_addr in sorted(built.grain.components):
             if (
                 key_addr in produced
-                and key_addr not in handle_addrs
+                and key_addr not in boundary
                 and key_addr not in handle_contents
             ):
-                key_concept = produced[key_addr]
-                handles.append(key_concept)
-                inputs.append(key_concept)
+                boundary.add(produced[key_addr], produced[key_addr])
 
     # A rowset wrapping a multiselect: an aligned handle's content is the
     # multiselect concept, which the renderer resolves via `find_source`; it
     # needs the per-arm concepts in the SAME CTE's outputs. They're not handles,
     # so carry them as HIDDEN outputs of this boundary; the aligned value is then
     # materialized here and outer CTEs just reference the column.
-    hidden: set[str] = set()
     if isinstance(built, BuildMultiSelectLineage):
-        handle_addrs = {h.address for h in handles}
         for item in built.align.items:
             for arm in item.concepts:
-                if arm.address in produced and arm.address not in handle_addrs:
-                    arm_concept = produced[arm.address]
-                    handles.append(arm_concept)
-                    inputs.append(arm_concept)
-                    hidden.add(arm_concept.address)
+                if arm.address in produced and arm.address not in boundary:
+                    boundary.add(
+                        produced[arm.address], produced[arm.address], hidden=True
+                    )
 
     # A demanded output that is the inner multiselect's OWN concept rather
     # than a handle (a union OUTPUT carrying the ORDER BY of a grouped-away
@@ -251,30 +326,26 @@ def resolve_rowset(
     # Restricted to multiselect/union derivations, the exact set the concept
     # graph tags, so an unrelated unsourceable demand still fails the search
     # loudly instead of riding the boundary into a joinless plan.
-    handle_addrs = {h.address for h in handles}
     for demanded_content in outputs:
         if (
             demanded_content.derivation
             not in (Derivation.TVF_UNION, Derivation.MULTISELECT)
-            or demanded_content.address in handle_addrs
+            or demanded_content.address in boundary
             or isinstance(demanded_content.lineage, BuildRowsetItem)
             or demanded_content.address not in produced
         ):
             continue
         content_concept = produced[demanded_content.address]
-        handles.append(content_concept)
-        inputs.append(content_concept)
-        handle_addrs.add(content_concept.address)
+        boundary.add(content_concept, content_concept)
 
     # OBLIGATION: a presence probe over one of this rowset's handles must be
     # computed HERE, pre-merge; post-merge the member reads as the fused group
-    # coalesce, never NULL. The probe is a
-    # BASIC over the handle, so it renders inline in the boundary SELECT once
-    # its member handle is materialized; expose the member as a hidden output
-    # when the outer query didn't demand it directly.
-    handle_addrs = {h.address for h in handles}
+    # coalesce, never NULL. The probe is a BASIC over the handle, so it
+    # renders inline in the boundary SELECT once its member handle is
+    # materialized; expose the member as a hidden output when the outer query
+    # didn't demand it directly.
     for probe in outputs:
-        if probe.address in handle_addrs or not is_presence_probe(probe.address):
+        if probe.address in boundary or not is_presence_probe(probe.address):
             continue
         member_addr = probe_member_address(probe.address, environment)
         if member_addr is None or member_addr not in derived:
@@ -282,17 +353,17 @@ def resolve_rowset(
         member_handle = environment.concepts.get(member_addr)
         if member_handle is None:
             continue
-        if member_addr not in handle_addrs and isinstance(
+        if member_addr not in boundary and isinstance(
             member_handle.lineage, BuildRowsetItem
         ):
             if member_handle.lineage.content.address not in produced:
                 continue
-            handles.append(member_handle)
-            inputs.append(produced[member_handle.lineage.content.address])
-            handle_addrs.add(member_addr)
-            hidden.add(member_addr)
-        handles.append(probe)
-        handle_addrs.add(probe.address)
+            boundary.add(
+                member_handle,
+                produced[member_handle.lineage.content.address],
+                hidden=True,
+            )
+        boundary.add(probe)
 
     # OBLIGATION: a DERIVED relation member (`union join cur.wk + 53 = fut.wk`)
     # is a BASIC over THIS boundary's handles with no producer group of its
@@ -309,13 +380,13 @@ def resolve_rowset(
     # is structural: every lineage arg must already be a handle of this
     # boundary.
     outer_relation_keys = environment.domain_graph.outer_relation_keys()
-    subset_source_members = environment.domain_graph.subset_sources()
+    subset_sources = environment.domain_graph.subset_sources()
     for canonical, members in environment.scoped_join_key_groups.items():
         outer_relation = canonical in outer_relation_keys
-        for member_addr in {canonical, *members}:
-            if not outer_relation and member_addr not in subset_source_members:
+        for member_addr in sorted({canonical, *members}):
+            if not outer_relation and member_addr not in subset_sources:
                 continue
-            if member_addr in handle_addrs or is_presence_probe(member_addr):
+            if member_addr in boundary or is_presence_probe(member_addr):
                 continue
             member_concept = environment.concepts.get(member_addr)
             if (
@@ -337,7 +408,7 @@ def resolve_rowset(
             # projects `ftr.ws`; without this the completion merge has no axis
             # and cross-joins ON 1=1).
             pending: list[tuple[BuildConcept, BuildConcept]] = []
-            for arg_addr in sorted(arg_addrs - handle_addrs):
+            for arg_addr in sorted(arg_addrs - boundary.addresses):
                 arg_handle = environment.concepts.get(arg_addr)
                 if (
                     arg_addr not in derived
@@ -351,12 +422,11 @@ def resolve_rowset(
                 )
             else:
                 for arg_handle, arg_input in pending:
-                    handles.append(arg_handle)
-                    inputs.append(arg_input)
-                    handle_addrs.add(arg_handle.address)
-                handles.append(member_concept)
-                handle_addrs.add(member_addr)
+                    boundary.add(arg_handle, arg_input)
+                boundary.add(member_concept)
 
+    handles = boundary.handles
+    hidden = boundary.hidden
     # A handle that is a declared-subset SOURCE (`subset join rs.k = anchor.k`)
     # spans only the subset side's domain: mark it partial so join resolution
     # anchors the complete side and LEFT-joins this boundary instead of
@@ -373,27 +443,16 @@ def resolve_rowset(
     # rows no condition expresses, so the anchor scan's handle binding cannot
     # stand in for the boundary's row set; unmarked, the merge INNER-narrows
     # the anchor to the limited rows.
-    subset_sources = environment.domain_graph.subset_sources()
-
-    def _subset_anchors_all_rowset(address: str) -> bool:
-        targets = {
-            e.target
-            for e in environment.domain_graph.edges
-            if e.relation is DomainRelation.SUBSET
-            and e.provenance is EdgeProvenance.DECLARED
-            and e.source == address
-        }
-        target_concepts = [environment.concepts.get(t) for t in targets]
-        return bool(target_concepts) and all(
-            t is not None and t.derivation == Derivation.ROWSET for t in target_concepts
-        )
-
+    declared_anchors = environment.domain_graph.declared_subset_anchors()
     scoped_partial = [
         h
         for h in handles
         if h.address in subset_sources
         and isinstance(h.lineage, BuildRowsetItem)
-        and (select.limit is not None or _subset_anchors_all_rowset(h.address))
+        and (
+            select.limit is not None
+            or _anchors_all_rowset(declared_anchors.get(h.address, set()), environment)
+        )
     ]
     # nullability propagates by ADDRESS between nodes, but a rowset handle is a
     # new address wrapping its body content; map through the BuildRowsetItem
@@ -403,10 +462,16 @@ def resolve_rowset(
     # becomes a join key the moment split aggregate branches over the same
     # boundary rejoin on their GROUP BY keys, where a NULL is a group label
     # and a plain `=` drops the whole group.
-    base_nullable: set[str] = set()
-    for c in inner_node.nullable_concepts:
-        base_nullable.add(c.address)
-        base_nullable.update(c.pseudonyms)
+    base_nullable = {
+        alias
+        for c in inner_node.nullable_concepts
+        for alias in (c.address, *c.pseudonyms)
+    }
+    nullable_handles = [h for h in handles if _nullability_aliases(h) & base_nullable]
+    # Grain over the outer handles: lets the FINAL merge join two rowsets on
+    # their shared/pseudonym grain key instead of cross-joining when the
+    # boundary exposes no grain. Probes are per-key presence markers, not part
+    # of the boundary's row grain.
     boundary_grain = BuildGrain.from_concepts(
         [
             h
@@ -428,30 +493,12 @@ def resolve_rowset(
         ]
         if full_handles:
             boundary_grain = BuildGrain.from_concepts(full_handles)
-    nullable_handles = [
-        h
-        for h in handles
-        if (
-            h.address in base_nullable
-            or (set(h.pseudonyms) & base_nullable)
-            or (
-                isinstance(h.lineage, BuildRowsetItem)
-                and (
-                    h.lineage.content.address in base_nullable
-                    or (set(h.lineage.content.pseudonyms) & base_nullable)
-                )
-            )
-        )
-    ]
-    boundary: StrategyNode = SelectNode(
+    node: StrategyNode = RowsetNode(
         output_concepts=handles,
-        input_concepts=inputs,
+        input_concepts=boundary.inputs,
         parents=[inner_node],
-        environment=inner_env,
-        # Grain over the outer handles: lets the
-        # FINAL merge join two rowsets on their shared/pseudonym grain key
-        # instead of cross-joining when the boundary exposes no grain. Probes
-        # are per-key presence markers, not part of the boundary's row grain.
+        environment=plan.environment,
+        depth=depth,
         grain=boundary_grain,
         hidden_concepts=hidden,
         partial_concepts=scoped_partial,
@@ -471,15 +518,15 @@ def resolve_rowset(
             or h.address in hidden
             or h.pseudonyms
         ]
-        boundary = resolve_and_inject_condition(
-            boundary,
+        node = resolve_and_inject_condition(
+            node,
             conditions,
-            list(condition_outputs),
-            environment=inner_env,
-            graph=inner_g,
+            condition_outputs,
+            environment=plan.environment,
+            graph=plan.graph,
             history=history,
             depth=depth,
-            grain=boundary.grain,
+            grain=node.grain,
             hidden_concepts=hidden,
         )
-    return boundary
+    return node

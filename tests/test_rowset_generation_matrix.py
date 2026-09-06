@@ -14,7 +14,7 @@ it raises a *clean trilogy exception* (an actionable author-facing error). It
 must never leak a raw DuckDB error or a sentinel ValueError. This sweep covers
 the cross product of rowset shape (single / cross-rowset / nested / union) and
 usage (direct select / enrich / membership / WHERE comparison / HAVING), so a
-refactor of ``gen_rowset_node`` can gate on it.
+refactor of ``resolve_rowset`` can gate on it.
 """
 
 import pytest

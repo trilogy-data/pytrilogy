@@ -345,6 +345,7 @@ def _build_from_graph(
     materialized_roots: frozenset[str],
     complete_partials: bool,
     staged_conditions: list[BuildWhereClause] | None = None,
+    depth: int = 0,
 ) -> BuildInfo:
     concept_graph, concept_attrs, concept_edges = build_concept_graph(
         mandatory_list,
@@ -388,6 +389,7 @@ def _build_from_graph(
             history,
             complete_partials=complete_partials,
             staged_conditions=staged_conditions,
+            depth=depth,
         )
     finally:
         environment.extent_free_spans = outer_extent_free
@@ -493,6 +495,7 @@ def _search_concepts(
         materialized_roots,
         complete_partials,
         staged_conditions,
+        depth=depth,
     )
     if materialized_roots and info.strategy_node is None:
         info = _build_from_graph(
@@ -504,6 +507,7 @@ def _search_concepts(
             frozenset(),
             complete_partials,
             staged_conditions,
+            depth=depth,
         )
     return info
 

@@ -59,13 +59,11 @@ from trilogy.core.processing.nodes import (
     GroupNode,
     History,
     MergeNode,
-    MultiSelectMergeNode,
     SelectNode,
     StrategyNode,
     UnionNode,
     WindowNode,
 )
-from trilogy.core.processing.v4_node_generators import build_node
 from trilogy.utility import unique
 
 from .concept_graph import _relation_mates, _statement_scoped_relation_members
@@ -638,6 +636,10 @@ def _parent_nodes_for(
     multi-parent ambiguity for non-merge generators: no JOIN gets
     emitted and the SQL renderer references the dropped parent by name,
     yielding a binder error."""
+    # Imported here: `v4_node_generators` imports this package for its
+    # condition helpers, so a module-level import is a cycle.
+    from trilogy.core.processing.v4_node_generators import build_node
+
     candidates: list[tuple[str, StrategyNode]] = []
     for pgid in group_graph.predecessors(gid):
         if pgid == FINAL_NODE_ID:
@@ -1348,9 +1350,7 @@ def _subtree_pinned_addresses(
         return set()
     seen.add(id(node))
     pinned = _equality_pinned_addresses(node.conditions)
-    if isinstance(node, MultiSelectMergeNode) or not isinstance(
-        node, (SelectNode, GroupNode, FilterNode, WindowNode, MergeNode)
-    ):
+    if not isinstance(node, (SelectNode, GroupNode, FilterNode, WindowNode, MergeNode)):
         return pinned
     if isinstance(node, MergeNode):
         extended: set[str] = set()
@@ -4249,10 +4249,14 @@ def build_strategy_node(
     history: History,
     complete_partials: bool = True,
     staged_conditions: list[BuildWhereClause] | None = None,
+    depth: int = 0,
 ) -> StrategyNode | None:
     """Walk groups in topological order, dispatching each to its v4 generator
     with explicit parent nodes. Returns the most-downstream built node, or
-    None if nothing built."""
+    None if nothing built. `depth` is the nesting of this plan inside rowset
+    bodies, for trace indentation."""
+    from trilogy.core.processing.v4_node_generators import build_node  # cycle
+
     built: dict[str, StrategyNode] = {}
     condition_hosts: dict[str, StrategyNode] = {}
     ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
@@ -4279,7 +4283,9 @@ def build_strategy_node(
             # (a deferred WHERE's args exposed through a scoped relation).
             # `resolve_rowset` plans the rowset of the first handle it sees, so
             # order this group's OWN handles (its primary members) first so a
-            # foreign condition-arg handle can't hijack the boundary.
+            # foreign condition-arg handle can't hijack the boundary. Permanent:
+            # a body is a statement planned in its own scope, so the boundary
+            # can never take a foreign handle from a parent.
             primary = set(a.primary_members)
             select_addrs = (
                 *(addr for addr in select_addrs if addr in primary),
@@ -4420,7 +4426,8 @@ def build_strategy_node(
         # supply the root's primary scan columns. Pruning by parent outputs
         # there would strip every requested column and the root would never
         # build. A ROWSET boundary likewise sources from its own
-        # recursively-planned inner select (`gen_rowset` ignores parents);
+        # recursively-planned inner select (`gen_rowset` consumes no parents,
+        # permanently: a body is a statement planned in its own scope);
         # pruning it by a constraint-edge sibling would drop any handle the
         # sibling happens not to pseudonym-cover.
         if derivation not in (
@@ -4572,6 +4579,7 @@ def build_strategy_node(
             history=history,
             g=g,
             staged_conditions=staged_conditions,
+            depth=depth,
         )
         logger.info(
             f"[v4] built {gid} derivation={derivation} "

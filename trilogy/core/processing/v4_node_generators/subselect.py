@@ -29,8 +29,11 @@ def gen_subselect(
     columns; plan it recursively and add it as a second parent so the
     SubselectNode can render the correlated sub-query.
 
-    SubselectNode has no `conditions` arg; both this-level and inherited atoms
-    collapse into `preexisting_conditions`."""
+    SubselectNode has no `conditions` slot, so an atom hosted here and the
+    atoms an ancestor already applied both collapse into
+    `preexisting_conditions`: recorded as applied, never re-rendered. The
+    group graph hosts no atom at a SUBSELECT group, so `conditions` is
+    expected to be None; a hosted atom would be recorded, not rendered."""
     combined = collapse_conditions(conditions, preexisting_conditions)
 
     inner_parents: list[StrategyNode] = []

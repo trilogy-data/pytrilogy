@@ -7,6 +7,8 @@ generator bodies all run on a genuine plan — synthetic StrategyNodes wouldn't
 exercise the lineage/grain branches the generators isinstance-check.
 """
 
+import subprocess
+import sys
 import types
 
 import pytest
@@ -29,6 +31,7 @@ from trilogy.core.processing.nodes import (
     GroupNode,
     MergeNode,
     RecursiveNode,
+    RowsetNode,
     SelectNode,
     StrategyNode,
     UnionNode,
@@ -41,7 +44,11 @@ from trilogy.core.processing.v4_node_generators.condition_sources import (
 )
 from trilogy.core.processing.v4_node_generators.dispatch import build_node
 from trilogy.core.processing.v4_node_generators.recursive import gen_recursive
-from trilogy.core.processing.v4_node_generators.rowset import gen_rowset, resolve_rowset
+from trilogy.core.processing.v4_node_generators.rowset import (
+    _rowset_handles,
+    gen_rowset,
+    resolve_rowset,
+)
 
 
 def _build(text: str) -> tuple[Environment, BuildEnvironment]:
@@ -462,12 +469,24 @@ class TestRowset:
             [rc],
             benv,
             depth=0,
-            g=generate_graph(benv),
             history=V4History(base_environment=env),
             conditions=cond,
         )
         assert isinstance(node, SelectNode)
         assert node.conditions is not None
+        assert isinstance(node.parents[0], RowsetNode)
+
+    def test_resolve_rowset_builds_typed_boundary(self):
+        """An unconditioned boundary is the `RowsetNode` itself, projecting
+        the demanded handle off the body."""
+        env, benv = _build(ROWSET_MODEL)
+        rc = benv.concepts["high_value.store_id"]
+        node = resolve_rowset(
+            [rc], benv, depth=0, history=V4History(base_environment=env)
+        )
+        assert isinstance(node, RowsetNode)
+        assert node.conditions is None
+        assert [c.address for c in node.output_concepts] == ["high_value.store_id"]
 
     def test_resolve_rowset_non_rowset_outputs_returns_none(self):
         """A bucket of plain roots handed to `resolve_rowset` bails to None so
@@ -479,7 +498,6 @@ class TestRowset:
                 [plain],
                 benv,
                 depth=0,
-                g=generate_graph(benv),
                 history=V4History(base_environment=env),
             )
             is None
@@ -1020,9 +1038,61 @@ class TestGeneratorGuards:
 
     def test_gen_rowset_empty_outputs_returns_none(self):
         env, benv = _build(UNNEST_MODEL)
-        assert (
-            gen_rowset(
-                [], [], benv, history=V4History(base_environment=env), g=nx.DiGraph()
-            )
-            is None
-        )
+        assert gen_rowset([], [], benv, history=V4History(base_environment=env)) is None
+
+
+class TestRowsetHandleLookup:
+    """`_rowset_handles` replaced a scan of the whole environment. A
+    scoped-merge collapse can file the CANONICAL it substituted under a
+    handle's address, leaving the authored handle only in
+    `alias_origin_lookup`; the scan found both spellings and the direct lookup
+    has to as well."""
+
+    @staticmethod
+    def _env(concepts: dict, origins: dict) -> types.SimpleNamespace:
+        return types.SimpleNamespace(concepts=concepts, alias_origin_lookup=origins)
+
+    def test_returns_the_stored_concept_when_it_owns_the_address(self):
+        handle = types.SimpleNamespace(address="rs.k")
+        env = self._env({"rs.k": handle}, {})
+        assert _rowset_handles(env, ["rs.k"]) == [handle]
+
+    def test_offers_the_alias_origin_when_a_canonical_took_the_address(self):
+        canonical = types.SimpleNamespace(address="local._virt_func_add_1")
+        authored = types.SimpleNamespace(address="rs.k")
+        env = self._env({"rs.k": canonical}, {"alias": authored})
+        # the substituted canonical does not own `rs.k`, so only the authored
+        # handle is offered
+        assert _rowset_handles(env, ["rs.k"]) == [authored]
+
+    def test_offers_both_spellings_stored_first(self):
+        stored = types.SimpleNamespace(address="rs.k")
+        origin = types.SimpleNamespace(address="rs.k")
+        env = self._env({"rs.k": stored}, {"alias": origin})
+        assert _rowset_handles(env, ["rs.k"]) == [stored, origin]
+
+    def test_skips_addresses_the_environment_does_not_carry(self):
+        env = self._env({}, {})
+        assert _rowset_handles(env, ["rs.missing"]) == []
+
+
+@pytest.mark.parametrize(
+    "module",
+    [
+        "trilogy.core.processing.v4_node_generators",
+        "trilogy.core.processing.v4_helper",
+        "trilogy",
+    ],
+)
+def test_package_imports_first_from_a_cold_interpreter(module: str) -> None:
+    """`v4_node_generators` and `v4_helper` import each other, so the cycle is
+    broken by function-local imports rather than by ordering. Each package must
+    import first in its own process; importing in-process would hide a
+    regression behind whatever the suite already loaded."""
+    result = subprocess.run(
+        [sys.executable, "-c", f"import {module}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr

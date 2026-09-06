@@ -5,11 +5,11 @@ predicate post-join.
 Regression for TPC-DS q11/q23 (the "compare growth/ratio across periods or
 channels" family): four rowsets (store/web x 2001/2002) scoped-joined on the
 customer key, then a WHERE comparing their revenues. The operands from the other
-rowsets aren't in the output rowset's columns, so gen_rowset_node returned the
+rowsets aren't in the output rowset's columns, so the rowset generator returned the
 bare rowset node and dropped the pushed-up condition entirely — silently losing
 the cross-rowset filter (single comparison) or raising a cryptic
 `Have {RowsetNode<...>} and need ...` SyntaxError (two or more comparisons
-spanning >=3 rowsets). gen_rowset_node now sources the rowset output together
+spanning >=3 rowsets). the rowset generator now sources the rowset output together
 with those operand rowsets as one scoped-join merge and applies the predicate
 there.
 """

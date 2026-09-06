@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import pytest
 
 import trilogy.core.processing.concept_strategies_v4 as cs
-import trilogy.core.processing.v4_helper.strategy_builder as sb
+import trilogy.core.processing.v4_node_generators as generators
 from tests.engine.test_duckdb_union_arm_cast import MODEL
 from trilogy import Dialects, Environment
 from trilogy.core.enums import Derivation
@@ -51,7 +51,7 @@ class Capture:
 def capture(monkeypatch) -> Capture:
     captured = Capture()
     graph_builder = cs.build_group_graph
-    node_builder = sb.build_node
+    node_builder = generators.build_node
 
     def spy_graph(*args, **kwargs):
         result = graph_builder(*args, **kwargs)
@@ -67,7 +67,9 @@ def capture(monkeypatch) -> Capture:
         return node
 
     monkeypatch.setattr(cs, "build_group_graph", spy_graph)
-    monkeypatch.setattr(sb, "build_node", spy_node)
+    # The strategy builder imports `build_node` at call time, so the
+    # package attribute is the seam.
+    monkeypatch.setattr(generators, "build_node", spy_node)
     return captured
 
 

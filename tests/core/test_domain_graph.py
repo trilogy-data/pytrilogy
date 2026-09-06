@@ -105,6 +105,39 @@ def test_chained_collapse_matches_declaration_order():
     assert graph.join_key_groups() == {"a": {"a", "b", "c"}}
 
 
+def test_declared_subset_pairs_is_the_one_scan_the_others_derive_from():
+    graph = DomainGraph(
+        [
+            subset("sub", "anchor_a"),
+            subset("sub", "anchor_b"),
+            subset("other", "anchor_a"),
+            subset("structural", "anchor_a", provenance=EdgeProvenance.STRUCTURAL),
+            equal("eq_a", "eq_b"),
+        ]
+    )
+    # edge order, declared SUBSET only
+    assert graph.declared_subset_pairs() == [
+        ("sub", "anchor_a"),
+        ("sub", "anchor_b"),
+        ("other", "anchor_a"),
+    ]
+    assert graph.declared_subset_anchors() == {
+        "sub": {"anchor_a", "anchor_b"},
+        "other": {"anchor_a"},
+    }
+    assert graph.subset_sources() == {
+        source for source, _ in graph.declared_subset_pairs()
+    }
+    assert graph.left_anchor_keys() == {
+        graph.canonical(target) for _, target in graph.declared_subset_pairs()
+    }
+
+    graph.add_edge(subset("late", "anchor_c"))
+    assert graph.declared_subset_pairs()[-1] == ("late", "anchor_c")
+    assert graph.declared_subset_anchors()["late"] == {"anchor_c"}
+    assert "late" in graph.subset_sources()
+
+
 def test_relation_resolution():
     graph = DomainGraph(
         edges=[
