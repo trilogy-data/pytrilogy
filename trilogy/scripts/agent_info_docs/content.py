@@ -598,6 +598,11 @@ Staged objects are deleted at executor close in the default mode, but that is
 best-effort and cannot run if the process is killed — put an age-based
 lifecycle rule on the staging bucket as the backstop.
 
+A `persist` OVERWRITE on BigQuery renders as one `CREATE [OR REPLACE] TABLE
+... AS SELECT` rather than DDL followed by an INSERT: BigQuery has no
+transaction that can hold permanent-table DDL, and the single statement is
+what keeps the previous table in place if the select fails.
+
 ```toml
 [engine]
 dialect = "bigquery"
