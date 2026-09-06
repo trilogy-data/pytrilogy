@@ -3,7 +3,7 @@ scoped-joined rowset must source the existence set as a parent of the post-join
 merge -- otherwise the membership subselect renders against a dangling CTE
 (`INVALID_REFERENCE_BUG`) and the renderer raises an uncaught ValueError.
 
-Regression for TPC-DS q2. `gen_rowset_node` intercepts a WHERE comparing a
+Regression for TPC-DS q2. the rowset generator intercepts a WHERE comparing a
 rowset's output against *another* rowset (the q11/q23 cross-rowset family),
 merges the rowsets, and applies the predicate post-join -- but it short-circuited
 the normal completion-merge path that sources a membership's existence set, so

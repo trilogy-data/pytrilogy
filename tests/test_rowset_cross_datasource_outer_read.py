@@ -1,6 +1,6 @@
 """A rowset whose body INTERNALLY joins two datasources (via a query-scoped join)
 must apply that join when built as a sub-node. The rowset's own joins live on its
-`SelectLineage.scoped_joins`; `gen_rowset_node` has to feed them to the inner build
+`SelectLineage.scoped_joins`; `resolve_rowset` has to feed them to the inner build
 (exactly like the union-arm path does) — otherwise the body builds with no join, the
 two datasources come back as separate connected components, and the read-back raises
 a (misleading) DisconnectedConceptsException naming a "missing join/merge" that is in

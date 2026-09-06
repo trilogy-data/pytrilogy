@@ -323,13 +323,11 @@ class SelectNode(StrategyNode):
 
 
 class RowsetNode(SelectNode):
-    """A thin translation projection over a rowset body.
-
-    Re-exposes the body's rowset-local concepts under their outer rowset
-    addresses. A distinct type so the regroup pass never regroups it: the
-    wrapper is a 1:1 projection of an already-final body, and a forced GROUP BY
-    would dedup rows or omit raw projections.
-    """
+    """The boundary projection over a rowset body: re-exposes the body's
+    columns under the outer rowset handle addresses, 1:1 with the body's
+    rows. A distinct type so the boundary is recognizable by `isinstance`;
+    it adds no behavior of its own (a merge above it keeps the body's rows
+    through the rowset-output check in `MergeNode._resolve`)."""
 
 
 class ConstantNode(SelectNode):

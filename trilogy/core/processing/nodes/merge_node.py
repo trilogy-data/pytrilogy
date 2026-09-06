@@ -860,13 +860,3 @@ class MergeNode(StrategyNode):
             host_stitch=self.host_stitch,
             extent_free_spans=self.extent_free_spans,
         )
-
-
-class MultiSelectMergeNode(MergeNode):
-    """The outer FULL JOIN of a multiselect's aligned arms.
-
-    A marker type so the regroup pass never regroups it: the node is always at
-    the align-key grain, even when hidden derive-arg columns inflate the joined
-    pregrain past it, and a forced GROUP BY would omit the raw aggregate
-    projections. ``copy()`` preserves the type via ``type(self)``.
-    """

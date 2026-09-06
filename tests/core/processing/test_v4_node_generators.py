@@ -29,6 +29,7 @@ from trilogy.core.processing.nodes import (
     GroupNode,
     MergeNode,
     RecursiveNode,
+    RowsetNode,
     SelectNode,
     StrategyNode,
     UnionNode,
@@ -462,12 +463,24 @@ class TestRowset:
             [rc],
             benv,
             depth=0,
-            g=generate_graph(benv),
             history=V4History(base_environment=env),
             conditions=cond,
         )
         assert isinstance(node, SelectNode)
         assert node.conditions is not None
+        assert isinstance(node.parents[0], RowsetNode)
+
+    def test_resolve_rowset_builds_typed_boundary(self):
+        """An unconditioned boundary is the `RowsetNode` itself, projecting
+        the demanded handle off the body."""
+        env, benv = _build(ROWSET_MODEL)
+        rc = benv.concepts["high_value.store_id"]
+        node = resolve_rowset(
+            [rc], benv, depth=0, history=V4History(base_environment=env)
+        )
+        assert isinstance(node, RowsetNode)
+        assert node.conditions is None
+        assert [c.address for c in node.output_concepts] == ["high_value.store_id"]
 
     def test_resolve_rowset_non_rowset_outputs_returns_none(self):
         """A bucket of plain roots handed to `resolve_rowset` bails to None so
@@ -479,7 +492,6 @@ class TestRowset:
                 [plain],
                 benv,
                 depth=0,
-                g=generate_graph(benv),
                 history=V4History(base_environment=env),
             )
             is None
@@ -1020,9 +1032,4 @@ class TestGeneratorGuards:
 
     def test_gen_rowset_empty_outputs_returns_none(self):
         env, benv = _build(UNNEST_MODEL)
-        assert (
-            gen_rowset(
-                [], [], benv, history=V4History(base_environment=env), g=nx.DiGraph()
-            )
-            is None
-        )
+        assert gen_rowset([], [], benv, history=V4History(base_environment=env)) is None

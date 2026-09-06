@@ -7,7 +7,7 @@ from trilogy.core.models.environment import Environment
 from .base_node import NodeJoin, StrategyNode
 from .filter_node import FilterNode
 from .group_node import GroupNode
-from .merge_node import MergeNode, MultiSelectMergeNode
+from .merge_node import MergeNode
 from .recursive_node import RecursiveNode
 from .select_node_v2 import ConstantNode, RowsetNode, SelectNode
 from .subselect_node import SubselectNode
@@ -109,7 +109,6 @@ __all__ = [
     "GroupNode",
     "History",
     "MergeNode",
-    "MultiSelectMergeNode",
     "NodeJoin",
     "RecursiveNode",
     "RowsetNode",

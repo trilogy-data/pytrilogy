@@ -3,7 +3,7 @@
 predicate references into the cross-rowset merge -- including operands that live
 in the rowset being processed, not just the ones missing from it.
 
-Regression for TPC-DS q64. `gen_rowset_node`'s cross-rowset branch sourced a
+Regression for TPC-DS q64. the rowset generator's cross-rowset branch sourced a
 fresh merge from `[concept] + local_optional + condition_targets`, where
 `condition_targets` excludes operands already present in `node`. But the merge is
 sourced anew and does NOT inherit `node`'s outputs, so an operand living in `node`

@@ -1,8 +1,8 @@
 """ROWSET generator: the boundary node projecting a rowset's inner select."""
 
+from trilogy.constants import logger
 from trilogy.core.domain_graph import DomainRelation, EdgeProvenance
 from trilogy.core.enums import Derivation
-from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.author import MultiSelectLineage, SelectLineage
 from trilogy.core.models.build import (
     BuildConcept,
@@ -13,11 +13,12 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.discovery_utility import LOGGER_PREFIX, depth_to_prefix
 from trilogy.core.processing.node_generators.presence_probe import (
     is_presence_probe,
     probe_member_address,
 )
-from trilogy.core.processing.nodes import History, SelectNode, StrategyNode
+from trilogy.core.processing.nodes import History, RowsetNode, StrategyNode
 from trilogy.core.processing.v4_helper.history import V4History
 
 from .condition_sources import resolve_and_inject_condition
@@ -29,42 +30,92 @@ def gen_rowset(
     parents: list[StrategyNode],
     environment: BuildEnvironment,
     conditions: BuildWhereClause | None = None,
-    preexisting_conditions: BuildWhereClause | None = None,
     *,
     history: History,
-    g: ReferenceGraph,
+    depth: int = 0,
 ) -> StrategyNode | None:
     """Boundary node for a rowset reference. The rowset's inner select is a
-    self-contained sub-query, so, like ROOT, this generator ignores the
-    group graph's pre-built parents and plans the inner recursively.
-    Enrichment joins back to the outer query are handled by the outer group
-    graph / FINAL merge, not here."""
+    self-contained sub-query, so, like ROOT, this generator plans the inner
+    recursively instead of consuming `parents`. A ROWSET concept is a leaf of
+    the concept graph, so the group graph normally hands none; the rare
+    parent (a non-handle concept bucketed alongside the handles) is logged
+    rather than silently dropped. Enrichment joins back to the outer query are
+    handled by the outer group graph / FINAL merge, not here."""
     if not outputs or not isinstance(history, V4History):
         return None
+    if parents:
+        logger.info(
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} rowset boundary for "
+            f"{[o.address for o in outputs]} discards "
+            f"{len(parents)} group-graph parent(s): "
+            f"{[[o.address for o in p.output_concepts] for p in parents]}"
+        )
     return resolve_rowset(
-        outputs, environment, depth=0, g=g, history=history, conditions=conditions
+        outputs, environment, depth=depth, history=history, conditions=conditions
     )
+
+
+def _declared_subset_anchors(environment: BuildEnvironment) -> dict[str, set[str]]:
+    """Declared-subset sources mapped to the anchors they are subsets of."""
+    anchors: dict[str, set[str]] = {}
+    for edge in environment.domain_graph.edges:
+        if (
+            edge.relation is DomainRelation.SUBSET
+            and edge.provenance is EdgeProvenance.DECLARED
+        ):
+            anchors.setdefault(edge.source, set()).add(edge.target)
+    return anchors
+
+
+def _anchors_all_rowset(anchors: set[str], environment: BuildEnvironment) -> bool:
+    concepts = [environment.concepts.get(a) for a in anchors]
+    return bool(concepts) and all(
+        c is not None and c.derivation == Derivation.ROWSET for c in concepts
+    )
+
+
+def _rowset_handles(
+    environment: BuildEnvironment, derived: list[str]
+) -> list[BuildConcept]:
+    """Candidate concepts for a rowset's handle addresses, own address only.
+
+    A scoped-merge collapse can store the CANONICAL it substituted for a
+    handle under the handle's address (a different concept, a different
+    address); the authored handle then survives only in `alias_origin_lookup`.
+    Both spellings of one address are offered, in that order, and the caller's
+    filters decide."""
+    origins = {c.address: c for c in environment.alias_origin_lookup.values()}
+    handles: list[BuildConcept] = []
+    for addr in derived:
+        stored = environment.concepts.get(addr)
+        if stored is not None and stored.address == addr:
+            handles.append(stored)
+        origin = origins.get(addr)
+        if origin is not None and origin is not stored:
+            handles.append(origin)
+    return handles
 
 
 def resolve_rowset(
     outputs: list[BuildConcept],
     environment: BuildEnvironment,
     depth: int,
-    g: ReferenceGraph,
     history: V4History,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
     """Plan a rowset boundary node by recursively planning its inner select
     through v4, then projecting that producer under the outer handle addresses.
 
-    The rowset's inner select is a self-contained sub-query, planned the same
-    way `get_query_node` plans a statement: we build its author lineage against
-    the base environment, materialize a FRESH build environment + graph for it
-    (the outer environment classifies the inner's concepts under rowset
-    aliasing, where a plain root reads back as `derivation=rowset`, so reusing
-    it mis-buckets the inner plan), plan its outputs + WHERE through
-    `search_concepts`, apply the inner HAVING as a post-aggregate filter, then
-    re-expose the producer's columns under the outer rowset handles. Each
+    The rowset's inner select is a STATEMENT, not an expression: it carries
+    its own WHERE, HAVING, LIMIT and ORDER BY, may carry its own query-scoped
+    joins (a different canonical collapse from the outer's) and may nest
+    further rowsets. So it is planned the way `get_query_node` plans a
+    statement: build its author lineage against the base environment,
+    materialize a FRESH build environment + graph for it, plan its outputs +
+    WHERE through `search_concepts`, apply the inner HAVING as a
+    post-aggregate filter, then re-expose the producer's columns under the
+    outer rowset handles. That is why the boundary consumes no group-graph
+    parents and why the group graph never descends into a body. Each
     handle is a ROWSET concept whose `lineage.content` is the inner column it
     wraps; the renderer emits the handle as that content, so the boundary is a
     thin projection whose inputs are the content columns the inner producer
@@ -147,9 +198,6 @@ def resolve_rowset(
         produced.update({c.address: c for c in coalesced_contents})
     derived = lineage.rowset.derived_concepts
     demanded = {o.address for o in rowset_outputs}
-    handle_pool = list(environment.concepts.values()) + list(
-        environment.alias_origin_lookup.values()
-    )
     handles: list[BuildConcept] = []
     inputs: list[BuildConcept] = []
     seen: set[str] = set()
@@ -158,7 +206,10 @@ def resolve_rowset(
         if conditions is not None
         else set()
     )
-    for handle in [*rowset_outputs, *handle_pool]:
+    # Demanded handles first so they win ties; a demanded handle of ANOTHER
+    # rowset (a deferred WHERE's arg exposed through a scoped relation) is not
+    # one of `derived` and is skipped.
+    for handle in [*rowset_outputs, *_rowset_handles(environment, derived)]:
         hlineage = handle.lineage
         if handle.address in seen or handle.address not in derived:
             continue
@@ -309,11 +360,11 @@ def resolve_rowset(
     # is structural: every lineage arg must already be a handle of this
     # boundary.
     outer_relation_keys = environment.domain_graph.outer_relation_keys()
-    subset_source_members = environment.domain_graph.subset_sources()
+    subset_sources = environment.domain_graph.subset_sources()
     for canonical, members in environment.scoped_join_key_groups.items():
         outer_relation = canonical in outer_relation_keys
         for member_addr in {canonical, *members}:
-            if not outer_relation and member_addr not in subset_source_members:
+            if not outer_relation and member_addr not in subset_sources:
                 continue
             if member_addr in handle_addrs or is_presence_probe(member_addr):
                 continue
@@ -373,27 +424,16 @@ def resolve_rowset(
     # rows no condition expresses, so the anchor scan's handle binding cannot
     # stand in for the boundary's row set; unmarked, the merge INNER-narrows
     # the anchor to the limited rows.
-    subset_sources = environment.domain_graph.subset_sources()
-
-    def _subset_anchors_all_rowset(address: str) -> bool:
-        targets = {
-            e.target
-            for e in environment.domain_graph.edges
-            if e.relation is DomainRelation.SUBSET
-            and e.provenance is EdgeProvenance.DECLARED
-            and e.source == address
-        }
-        target_concepts = [environment.concepts.get(t) for t in targets]
-        return bool(target_concepts) and all(
-            t is not None and t.derivation == Derivation.ROWSET for t in target_concepts
-        )
-
+    declared_anchors = _declared_subset_anchors(environment)
     scoped_partial = [
         h
         for h in handles
         if h.address in subset_sources
         and isinstance(h.lineage, BuildRowsetItem)
-        and (select.limit is not None or _subset_anchors_all_rowset(h.address))
+        and (
+            select.limit is not None
+            or _anchors_all_rowset(declared_anchors.get(h.address, set()), environment)
+        )
     ]
     # nullability propagates by ADDRESS between nodes, but a rowset handle is a
     # new address wrapping its body content; map through the BuildRowsetItem
@@ -443,7 +483,7 @@ def resolve_rowset(
             )
         )
     ]
-    boundary: StrategyNode = SelectNode(
+    boundary: StrategyNode = RowsetNode(
         output_concepts=handles,
         input_concepts=inputs,
         parents=[inner_node],
