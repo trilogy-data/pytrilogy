@@ -1666,9 +1666,16 @@ def _lineage_pinned_grain(
     (`buyers_b.cust_id as b_cust`): its join axis is what the body value is
     keyed by (`id`), which sibling contributors expose. The walk stops at each
     barrier; grains BELOW it are pre-aggregation / body row grains, not join
-    axes. Members of an AUTHORED scoped-join relation are skipped: the
-    authored keys are the axis there, and pairing on internal grain too would
-    silently narrow the authored fan-out."""
+    axes. A row-level ROOT reached BESIDE a barrier is part of the pin: a
+    derivation over an aggregate and a row key (`cluster_id <-
+    coalesce(min(x) by cell, tree_id)`) varies per row, so its rows are unique
+    at the row grain, not the aggregate's; pinning only the barrier claims a
+    coarser grain than the rows have and the FINAL merge regroups a 1:1 join
+    back onto those rows. With no barrier anywhere nothing is pinned: a plain
+    BASIC over row columns regenerates at any grain. Members of an AUTHORED
+    scoped-join relation are skipped: the authored keys are the axis there,
+    and pairing on internal grain too would silently narrow the authored
+    fan-out."""
     scoped_members = environment.all_scoped_join_group_members()
     stack: list[BuildConcept] = []
     for addr in addresses:
@@ -1678,6 +1685,7 @@ def _lineage_pinned_grain(
         if concept is not None:
             stack.append(concept)
     grain: set[str] = set()
+    row_grain: set[str] = set()
     seen: set[str] = set()
     while stack:
         concept = stack.pop()
@@ -1708,7 +1716,9 @@ def _lineage_pinned_grain(
             continue
         if concept.lineage is not None:
             stack.extend(concept.lineage.concept_arguments)
-    return frozenset(grain)
+        elif concept.derivation == Derivation.ROOT and concept.grain:
+            row_grain |= set(concept.grain.components)
+    return frozenset(grain | row_grain) if grain else frozenset()
 
 
 def _final_host_count(

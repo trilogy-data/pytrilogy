@@ -797,7 +797,11 @@ def has_condition_key_outside_grain(
     grain: BuildGrain,
     environment: BuildEnvironment,
 ) -> bool:
+    """A WHERE on a key the grain neither contains nor functionally determines
+    reaches that key through a finer relation, so the merge must regroup. A key
+    the grain determines (`city` under a `tree_id` grain) is constant per
+    output row: the filter only removes rows and adds no grain."""
     condition_grain = condition_key_grain(condition, environment)
     if not condition_grain.components:
         return False
-    return not condition_grain.issubset(rowset_source_grain(grain, environment))
+    return not grain_satisfied_by_pregrain(condition_grain, grain, environment)

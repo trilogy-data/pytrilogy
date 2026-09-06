@@ -158,6 +158,21 @@ def check_if_group_required(
             f"{padding}{LOGGER_PREFIX} Group requirement check:  {comp_grain} covered by target coverage {target_coverage}, no group node required"
         )
         return GroupRequiredResponse(target_grain, comp_grain, False)
+    # FD closure: an upstream grain component the target functionally
+    # determines is constant within each output row, so the rows are already
+    # unique at the target grain. Same rule as `grain_satisfied_by_pregrain`;
+    # the one-level `keys` checks below cannot see past a derived key whose
+    # raw keys reach outside the grain (cluster_id keyed on tree_id AND the
+    # grid cells tree_id determines).
+    graph = environment.domain_graph
+    if graph.fd_edges and all(
+        graph.determines(target_coverage, component)
+        for component in comp_grain.components - target_coverage
+    ):
+        logger.info(
+            f"{padding}{LOGGER_PREFIX} Group requirement check: {comp_grain} functionally determined by target {target_grain}, no group node required"
+        )
+        return GroupRequiredResponse(target_grain, comp_grain, False)
     difference = [
         environment.concepts[c] for c in (comp_grain - target_grain).components
     ]
