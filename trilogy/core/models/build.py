@@ -2679,76 +2679,29 @@ class EnvBaseline:
     environment: Any
     end_locals: dict[str, BuildConcept]
     units: list[EnvUnit]
+    # (section, key) of every unit built, so `build_environment_extend` can
+    # append the units an author environment gained since.
+    unit_keys: set[tuple[str, str]] = field(default_factory=set)
+    # `len(base.concepts.data)` when last recorded/extended: the cheap
+    # "anything new?" test for `Environment.ensure_baseline`.
+    concept_count: int = 0
 
 
-class Factory:
+class JoinScope:
+    """Everything a Factory derives from its scoped-join set: the declared
+    domain graph, the substitution / identity registries and the pseudonym map
+    augmented with the join groups' mutual links. A pure function of
+    (environment, scoped_joins, pseudonym_map), so a materialization builds it
+    once and every sub-factory under the same join set (one per datasource,
+    hundreds of them) adopts it instead of re-deriving it. The endpoint
+    identity validation runs here, once per scope."""
 
     def __init__(
         self,
         environment: Environment,
-        local_concepts: dict[str, BuildConcept] | None = None,
-        grain: Grain | None = None,
-        pseudonym_map: dict[str, set[str]] | None = None,
-        build_cache: dict[str, BuildConcept] | None = None,
-        grain_build_cache: dict[tuple, BuildGrain] | None = None,
-        canonical_build_cache: dict[str, BuildConcept] | None = None,
-        datasource_build_cache: dict[str, BuildDatasource] | None = None,
-        scoped_joins: list[tuple[str, str, JoinType]] | None = None,
-        aggregate_grain: Grain | None = None,
-        select_grouping: AggregateGrouping | None = None,
-        virtual_scope_salt: str | None = None,
+        scoped_joins: list[tuple[str, str, JoinType]] | None,
+        pseudonym_map: dict[str, set[str]] | None,
     ):
-        self.grain = grain or Grain()
-        # Suffix for virtual concepts minted for CROSS-ROW expressions
-        # (aggregates/windows/group-to). The WHERE-clause factory sets this so
-        # an anonymous aggregate nested in a WHERE expression gets a DIFFERENT
-        # address than the identical expression nested in a select output —
-        # the two roles have different scopes (population gate vs
-        # WHERE-filtered projection) and one address can only carry one value.
-        # Row-invariant virtuals (scalar functions, filter items) stay
-        # unsalted: sharing them is correct and desirable.
-        self.virtual_scope_salt = virtual_scope_salt
-        # Grain at which a bare (no explicit `by`) aggregate resolves, when it
-        # differs from `self.grain`. Used by the WHERE-clause factory: WHERE runs
-        # at row grain (`self.grain = Grain()`) for plain predicates, but an
-        # aggregate condition must co-grain to the SELECT grain (like HAVING)
-        # rather than collapsing to a global scalar. None => use `self.grain`.
-        self.aggregate_grain = aggregate_grain
-        # SELECT-level `by rollup/cube/grouping sets` spec of the select whose
-        # projection scope this factory builds. Applied to every un-pinned
-        # aggregate at materialization — the select-scoped moment — so shared
-        # authoring definitions never carry (or leak) the spec.
-        self.select_grouping = select_grouping
-        self.environment = environment
-        # Build-scoped joins (query JOIN clauses plus environment MERGE
-        # statements — the same relation declared at different scopes, resolved
-        # identically) relate two key concepts. TWO mechanisms do this, split by
-        # JOIN SEMANTICS (not by key kind — a root-keyed FULL still needs
-        # coalesce):
-        #
-        #   * SUBSTITUTION (scoped_merge_map -> `_build_concept` swap): the
-        #     source address is replaced by its canonical target everywhere
-        #     (refs, grain components, datasource column bindings). Correct ONLY
-        #     when the key equality holds on EVERY output row, so one logical key
-        #     can render from one physical column: the FULL canonical-key
-        #     registry and dependent-grain collapse.
-        #
-        #   * IDENTITY + pseudonym + coalesce (scoped_merge_sources +
-        #     scoped_outer_identity_sources, coalesced at the merge node): the
-        #     collapsed-away key keeps its OWN address and a pseudonym back to the
-        #     canonical, and the merge node coalesces the distinct physical
-        #     columns. Required when the correspondence MAY be ABSENT on some
-        #     rows (LEFT / FULL across distinct columns), where the output key is
-        #     a row-by-row `coalesce` of both columns and substitution — having
-        #     destroyed one column — could not represent it.
-        #
-        # ROOT OUTER keys stay on the identity path end-to-end: a
-        # binding-keyed OUTER source (scoped_outer_identity_sources, below)
-        # keeps its own binding instead of substituting to the canonical, so
-        # the FULL coalesce spans both members regardless of which side is
-        # projected (pinned in tests/test_scoped_join_permutations.py).
-        # scoped_partial_sources marks the LEFT-join side whose datasource
-        # binding must be partial.
         self.scoped_joins: list[tuple[str, str, JoinType]] = scoped_joins or []
         # The declared-edge domain graph for this build: every scoped join is
         # a domain DECLARATION (subset / equal / incomparable) and the legacy
@@ -2758,7 +2711,6 @@ class Factory:
         )
         self.scoped_merge_map = dict(self.domain_graph.canonical_map())
         self.scoped_partial_sources = self.domain_graph.subset_sources()
-        self._source_identity_addresses: set[str] = set()
         # A global `merge` IS a scoped join persisted on the environment (FULL
         # non-partial / LEFT partial). It resolves identically to the equivalent
         # query-scoped join; the only difference is scope (merges are re-injected
@@ -2876,15 +2828,6 @@ class Factory:
                 scoped_pseudonym_sources.add(addr)
                 if _is_binding_keyed(addr):
                     self.scoped_outer_identity_sources.add(addr)
-        self.local_concepts: dict[str, BuildConcept] = (
-            {} if local_concepts is None else local_concepts
-        )
-        self.local_non_build_concepts: dict[str, Concept] = {}
-        # Environment-materialization footprint recording (see EnvBaseline):
-        # while set, every `local_concepts` lookup name is added to
-        # `_env_footprint` and every write name to `_env_writes`.
-        self._env_footprint: set[str] | None = None
-        self._env_writes: set[str] | None = None
         self.pseudonym_map = pseudonym_map or get_canonical_pseudonyms(environment)
         if self.scoped_merge_map:
             # A scoped join collapses source->target like a global `merge`, but
@@ -2903,56 +2846,64 @@ class Factory:
             # and resolution walks pseudonym edges within the scope of a single
             # side — where the canonical (a different side's column) is absent,
             # so the members are unreachable from each other. Close the group.
+            # A group whose every declared relation has the canonical as an
+            # endpoint is a pure star (N `merge x_i into k` declarations onto
+            # one key): no member relates to another except through the
+            # canonical, so the star IS its closure and the N^2 pairs a closed
+            # class would mint (and every graph edge / equivalence scan over
+            # them) are pure waste that grows quadratically with N.
             groups: dict[str, set[str]] = defaultdict(set)
             for source in scoped_pseudonym_sources:
                 canonical_addr = self.scoped_merge_map[source]
                 groups[canonical_addr].update((source, canonical_addr))
-            pending: list[tuple[str, str]] = [
-                (a, b)
-                for members in groups.values()
-                for a in sorted(members)
-                for b in sorted(members)
-                if a != b and b not in self.pseudonym_map.get(a, ())
-            ]
+            chained: set[str] = set()
+            for s, t, _ in self.scoped_joins:
+                root = self.scoped_merge_map.get(s, self.scoped_merge_map.get(t))
+                if root is not None and root not in (s, t):
+                    chained.add(root)
+            pending: list[tuple[str, str]] = []
+            for canonical_addr, members in groups.items():
+                if canonical_addr in chained:
+                    pairs = [
+                        (a, b)
+                        for a in sorted(members)
+                        for b in sorted(members)
+                        if a != b
+                    ]
+                else:
+                    pairs = [
+                        pair
+                        for a in sorted(members)
+                        if a != canonical_addr
+                        for pair in ((a, canonical_addr), (canonical_addr, a))
+                    ]
+                pending.extend(
+                    (a, b) for a, b in pairs if b not in self.pseudonym_map.get(a, ())
+                )
             if pending:
                 augmented = {k: set(v) for k, v in self.pseudonym_map.items()}
                 for source_addr, target_addr in pending:
                     augmented.setdefault(target_addr, set()).add(source_addr)
                     augmented.setdefault(source_addr, set()).add(target_addr)
                 self.pseudonym_map = augmented
-        self.build_cache = build_cache or {}
-        # Cross-factory cache for BuildGrain keyed on (frozenset(components),
-        # id(where_clause)). Same lifecycle as build_cache — propagated to
-        # sub-factories that share build_cache so all factories in a parse
-        # reuse the same normalized grains.
-        self.grain_build_cache: dict[tuple, BuildGrain] = (
-            {} if grain_build_cache is None else grain_build_cache
-        )
-        # Cache of BuildConcepts for "grain-stable" base concepts (no lineage
-        # + explicit grain). Their BuildConcept is determined entirely by the
-        # source Concept + env state and so is identical across every factory
-        # in the call tree, regardless of the factory's grain context. Keyed
-        # by base.address. Lifetime is one get_query_node call — created by
-        # the caller and threaded through.
-        self.canonical_build_cache: dict[str, BuildConcept] = (
-            {} if canonical_build_cache is None else canonical_build_cache
-        )
-        # Cache of fully-built BuildDatasources. A datasource builds with its
-        # own fixed grain and an empty local-concept scope, so the result is a
-        # pure function of (Datasource, environment) — safe to reuse across
-        # every sub-select in a resolution.
-        self.datasource_build_cache: dict[str, BuildDatasource] = (
-            {} if datasource_build_cache is None else datasource_build_cache
-        )
-        self.build_grain = self.build(self.grain) if self.grain else None
-        # Addresses currently mid-build, in dependency order. Used to expand a
-        # self-referential metric out of an abstract aggregate's resolution
-        # grain (see `_abstract_resolution_grain`).
-        self._building: list[str] = []
 
-    def _scoped_join_key_groups(self) -> dict[str, set[str]]:
-        """Authored join-key equivalence groups, canonical -> all members."""
-        return self.domain_graph.join_key_groups()
+    @classmethod
+    def matching(
+        cls,
+        existing: JoinScope | None,
+        environment: Environment,
+        scoped_joins: list[tuple[str, str, JoinType]] | None,
+        pseudonym_map: dict[str, set[str]] | None,
+    ) -> JoinScope:
+        """`existing` when it was derived from this exact join set, else a
+        fresh scope. A sub-factory almost always passes its parent's list
+        object straight through, so the identity test carries the hot case."""
+        if existing is not None and (
+            existing.scoped_joins is scoped_joins
+            or existing.scoped_joins == (scoped_joins or [])
+        ):
+            return existing
+        return cls(environment, scoped_joins, pseudonym_map)
 
     def _validate_scoped_join_endpoint_identity(self, environment: Environment) -> None:
         """Reject a FULL/UNION relation between two ROOT keys bound only in the
@@ -2997,6 +2948,137 @@ class Factory:
                     "imports' keys instead (e.g. `import emp as e1; import emp as "
                     "e2; ... join e1.key = e2.other_key`)."
                 )
+
+
+class Factory:
+
+    def __init__(
+        self,
+        environment: Environment,
+        local_concepts: dict[str, BuildConcept] | None = None,
+        grain: Grain | None = None,
+        pseudonym_map: dict[str, set[str]] | None = None,
+        build_cache: dict[str, BuildConcept] | None = None,
+        grain_build_cache: dict[tuple, BuildGrain] | None = None,
+        canonical_build_cache: dict[str, BuildConcept] | None = None,
+        datasource_build_cache: dict[str, BuildDatasource] | None = None,
+        scoped_joins: list[tuple[str, str, JoinType]] | None = None,
+        aggregate_grain: Grain | None = None,
+        select_grouping: AggregateGrouping | None = None,
+        virtual_scope_salt: str | None = None,
+        join_scope: JoinScope | None = None,
+    ):
+        self.grain = grain or Grain()
+        # Suffix for virtual concepts minted for CROSS-ROW expressions
+        # (aggregates/windows/group-to). The WHERE-clause factory sets this so
+        # an anonymous aggregate nested in a WHERE expression gets a DIFFERENT
+        # address than the identical expression nested in a select output —
+        # the two roles have different scopes (population gate vs
+        # WHERE-filtered projection) and one address can only carry one value.
+        # Row-invariant virtuals (scalar functions, filter items) stay
+        # unsalted: sharing them is correct and desirable.
+        self.virtual_scope_salt = virtual_scope_salt
+        # Grain at which a bare (no explicit `by`) aggregate resolves, when it
+        # differs from `self.grain`. Used by the WHERE-clause factory: WHERE runs
+        # at row grain (`self.grain = Grain()`) for plain predicates, but an
+        # aggregate condition must co-grain to the SELECT grain (like HAVING)
+        # rather than collapsing to a global scalar. None => use `self.grain`.
+        self.aggregate_grain = aggregate_grain
+        # SELECT-level `by rollup/cube/grouping sets` spec of the select whose
+        # projection scope this factory builds. Applied to every un-pinned
+        # aggregate at materialization — the select-scoped moment — so shared
+        # authoring definitions never carry (or leak) the spec.
+        self.select_grouping = select_grouping
+        self.environment = environment
+        # Build-scoped joins (query JOIN clauses plus environment MERGE
+        # statements — the same relation declared at different scopes, resolved
+        # identically) relate two key concepts. TWO mechanisms do this, split by
+        # JOIN SEMANTICS (not by key kind — a root-keyed FULL still needs
+        # coalesce):
+        #
+        #   * SUBSTITUTION (scoped_merge_map -> `_build_concept` swap): the
+        #     source address is replaced by its canonical target everywhere
+        #     (refs, grain components, datasource column bindings). Correct ONLY
+        #     when the key equality holds on EVERY output row, so one logical key
+        #     can render from one physical column: the FULL canonical-key
+        #     registry and dependent-grain collapse.
+        #
+        #   * IDENTITY + pseudonym + coalesce (scoped_merge_sources +
+        #     scoped_outer_identity_sources, coalesced at the merge node): the
+        #     collapsed-away key keeps its OWN address and a pseudonym back to the
+        #     canonical, and the merge node coalesces the distinct physical
+        #     columns. Required when the correspondence MAY be ABSENT on some
+        #     rows (LEFT / FULL across distinct columns), where the output key is
+        #     a row-by-row `coalesce` of both columns and substitution — having
+        #     destroyed one column — could not represent it.
+        #
+        # ROOT OUTER keys stay on the identity path end-to-end: a
+        # binding-keyed OUTER source (scoped_outer_identity_sources, below)
+        # keeps its own binding instead of substituting to the canonical, so
+        # the FULL coalesce spans both members regardless of which side is
+        # projected (pinned in tests/test_scoped_join_permutations.py).
+        # scoped_partial_sources marks the LEFT-join side whose datasource
+        # binding must be partial.
+        # Read-only facade over the shared scope: the registries below are the
+        # scope's, aliased here because every build path already spells them
+        # `self.<name>`.
+        join_scope = JoinScope.matching(
+            join_scope, environment, scoped_joins, pseudonym_map
+        )
+        self.join_scope = join_scope
+        self.scoped_joins = join_scope.scoped_joins
+        self.domain_graph = join_scope.domain_graph
+        self.scoped_merge_map = join_scope.scoped_merge_map
+        self.scoped_partial_sources = join_scope.scoped_partial_sources
+        self.scoped_merge_sources_by_target = join_scope.scoped_merge_sources_by_target
+        self.scoped_rowset_outer_sources = join_scope.scoped_rowset_outer_sources
+        self.scoped_rowset_outer_targets = join_scope.scoped_rowset_outer_targets
+        self.scoped_key_merge_map = join_scope.scoped_key_merge_map
+        self.scoped_merge_sources = join_scope.scoped_merge_sources
+        self.scoped_outer_identity_sources = join_scope.scoped_outer_identity_sources
+        self.pseudonym_map = join_scope.pseudonym_map
+        self._source_identity_addresses: set[str] = set()
+        self.local_concepts: dict[str, BuildConcept] = (
+            {} if local_concepts is None else local_concepts
+        )
+        self.local_non_build_concepts: dict[str, Concept] = {}
+        # Environment-materialization footprint recording (see EnvBaseline):
+        # while set, every `local_concepts` lookup name is added to
+        # `_env_footprint` and every write name to `_env_writes`.
+        self._env_footprint: set[str] | None = None
+        self._env_writes: set[str] | None = None
+        self.build_cache = build_cache or {}
+        # Cross-factory cache for BuildGrain keyed on (frozenset(components),
+        # id(where_clause)). Same lifecycle as build_cache — propagated to
+        # sub-factories that share build_cache so all factories in a parse
+        # reuse the same normalized grains.
+        self.grain_build_cache: dict[tuple, BuildGrain] = (
+            {} if grain_build_cache is None else grain_build_cache
+        )
+        # Cache of BuildConcepts for "grain-stable" base concepts (no lineage
+        # + explicit grain). Their BuildConcept is determined entirely by the
+        # source Concept + env state and so is identical across every factory
+        # in the call tree, regardless of the factory's grain context. Keyed
+        # by base.address. Lifetime is one get_query_node call — created by
+        # the caller and threaded through.
+        self.canonical_build_cache: dict[str, BuildConcept] = (
+            {} if canonical_build_cache is None else canonical_build_cache
+        )
+        # Cache of fully-built BuildDatasources. A datasource builds with its
+        # own fixed grain and an empty local-concept scope, so the result is a
+        # pure function of (Datasource, environment) — safe to reuse across
+        # every sub-select in a resolution.
+        self.datasource_build_cache: dict[str, BuildDatasource] = (
+            {} if datasource_build_cache is None else datasource_build_cache
+        )
+        # Per-grain column-build scopes shared by the datasources this factory
+        # builds (see `_datasource_local_scope`).
+        self._datasource_scopes: dict[tuple, dict[str, BuildConcept]] = {}
+        self.build_grain = self.build(self.grain) if self.grain else None
+        # Addresses currently mid-build, in dependency order. Used to expand a
+        # self-referential metric out of an abstract aggregate's resolution
+        # grain (see `_abstract_resolution_grain`).
+        self._building: list[str] = []
 
     def _build_keys(self, keys: set[str] | None) -> set[str] | None:
         if keys is None:
@@ -4304,6 +4386,7 @@ class Factory:
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
             scoped_joins=self.scoped_joins,
+            join_scope=self.join_scope,
             select_grouping=base.grouping,
         )
         # WHERE-scope twins (normalize_select_where_scope) are the local
@@ -4340,6 +4423,7 @@ class Factory:
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
             scoped_joins=self.scoped_joins,
+            join_scope=self.join_scope,
             # cross-row virtuals in the WHERE are population-scope gates and
             # must not share addresses with select-scope twins
             virtual_scope_salt=WHERE_SCOPE_SALT,
@@ -4546,7 +4630,7 @@ class Factory:
                 (self.scoped_merge_sources & self.scoped_partial_sources)
                 - self.scoped_outer_identity_sources
             ),
-            scoped_join_key_groups=self._scoped_join_key_groups(),
+            scoped_join_key_groups=self.domain_graph.join_key_groups(),
             domain_graph=assemble_full_graph(base, self.domain_graph),
         )
 
@@ -4635,30 +4719,64 @@ class Factory:
         new = self._env_shell(base)
         units: list[EnvUnit] = []
         for section, key, author_ref, canonical_addr in self._env_units(base):
-            footprint: set[str] = set()
-            writes: set[str] = set()
-            self._env_footprint = footprint
-            self._env_writes = writes
-            try:
-                self._env_run_unit(new, base, section, key, author_ref, canonical_addr)
-            finally:
-                self._env_footprint = None
-                self._env_writes = None
             units.append(
-                EnvUnit(
-                    section=section,
-                    key=key,
-                    author_ref=author_ref,
-                    canonical_addr=canonical_addr,
-                    footprint=frozenset(footprint),
-                    written=tuple(writes),
+                self._env_run_recorded_unit(
+                    new, base, section, key, author_ref, canonical_addr
                 )
             )
         return EnvBaseline(
             environment=self._env_finish(new),
             end_locals=self.local_concepts,
             units=units,
+            unit_keys={(u.section, u.key) for u in units},
+            concept_count=len(base.concepts.data),
         )
+
+    def _env_run_recorded_unit(
+        self, new, base, section, key, author_ref, canonical_addr
+    ) -> EnvUnit:
+        footprint: set[str] = set()
+        writes: set[str] = set()
+        self._env_footprint = footprint
+        self._env_writes = writes
+        try:
+            self._env_run_unit(new, base, section, key, author_ref, canonical_addr)
+        finally:
+            self._env_footprint = None
+            self._env_writes = None
+        return EnvUnit(
+            section=section,
+            key=key,
+            author_ref=author_ref,
+            canonical_addr=canonical_addr,
+            footprint=frozenset(footprint),
+            written=tuple(writes),
+        )
+
+    def build_environment_extend(self, base: Environment, baseline: EnvBaseline):
+        """Append to `baseline` the units `base` gained since it was recorded
+        (a `select ... as alias` registers a concept; a bundle stamped on
+        structure_version survives that). This factory's `local_concepts` must
+        BE `baseline.end_locals`. Sound by the delta argument: a unit reads
+        only end-state names, and every name already recorded resolves to the
+        value the baseline built for it, so an appended unit builds exactly as
+        it would have at the end of a full recording."""
+        new = baseline.environment
+        appended = False
+        for section, key, author_ref, canonical_addr in self._env_units(base):
+            if (section, key) in baseline.unit_keys:
+                continue
+            baseline.units.append(
+                self._env_run_recorded_unit(
+                    new, base, section, key, author_ref, canonical_addr
+                )
+            )
+            baseline.unit_keys.add((section, key))
+            appended = True
+        if appended:
+            self._env_finish(new)
+        baseline.concept_count = len(base.concepts.data)
+        return baseline
 
     def build_environment_delta(self, base: Environment, baseline: EnvBaseline):
         """Materialize this factory's overlay (its `local_concepts`) as
@@ -4787,6 +4905,24 @@ class Factory:
     def _(self, base: Datasource):
         return self._build_datasource(base)
 
+    def _datasource_local_scope(self, grain: Grain) -> dict[str, BuildConcept]:
+        """The local-concept scope a datasource's columns build in. A column
+        build is a function of (concept, datasource grain, environment, join
+        scope) alone: no select overlay, grouping spec or scope salt reaches
+        a datasource factory. So every datasource under this factory that
+        declares the same grain shares one scope, exactly as the concept units
+        of one materialization share the top factory's, and a derived concept
+        that many same-grain sources bind (a shared dedup lineage bound by a
+        published target per city) builds once instead of once per source."""
+        key = (
+            frozenset(grain.components),
+            id(grain.where_clause) if grain.where_clause else None,
+        )
+        scope = self._datasource_scopes.get(key)
+        if scope is None:
+            scope = self._datasource_scopes[key] = {}
+        return scope
+
     def _build_datasource(self, base: Datasource):
         from trilogy.constants import CONFIG
 
@@ -4796,7 +4932,7 @@ class Factory:
             cached_ds = self.datasource_build_cache.get(ds_key)
             if cached_ds is not None:
                 return cached_ds
-        local_cache: dict[str, BuildConcept] = {}
+        local_cache = self._datasource_local_scope(base.grain)
         factory = Factory(
             grain=base.grain,
             environment=self.environment,
@@ -4815,6 +4951,7 @@ class Factory:
             # collapse merged-away source keys (and mark partial bindings) when
             # building this datasource's columns/grain.
             scoped_joins=self.scoped_joins,
+            join_scope=self.join_scope,
         )
         # Filter out columns with undefined concepts (e.g., at max import depth)
         columns = [

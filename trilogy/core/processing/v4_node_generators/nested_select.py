@@ -20,7 +20,6 @@ from trilogy.core.models.build import (
     BuildSelectLineage,
     BuildWhereClause,
     Factory,
-    get_canonical_pseudonyms,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.discovery_utility import (
@@ -138,8 +137,7 @@ def build_nested_select(
     nested_scoped = select.scoped_joins if isinstance(select, SelectLineage) else []
     outer_scoped = _scoped_joins_for_rowset(caches.scoped_joins, exclude_derived or [])
     scoped_joins = outer_scoped + [j for j in nested_scoped if j not in outer_scoped]
-    if caches.pseudonym_map is None:
-        caches.pseudonym_map = get_canonical_pseudonyms(author_env)
+    caches.sync_pseudonym_map(author_env)
     # The shared build caches are keyed on address/grain identity alone, which
     # is only correct while every build in the resolution applies the SAME
     # scoped joins; a join changes what an address builds to (canonical
@@ -153,7 +151,9 @@ def build_nested_select(
     # off them.
     if any(j not in caches.scoped_joins for j in scoped_joins):
         caches = BuildCaches(
-            pseudonym_map=caches.pseudonym_map, scoped_joins=scoped_joins
+            pseudonym_map=caches.pseudonym_map,
+            pseudonym_concept_count=caches.pseudonym_concept_count,
+            scoped_joins=scoped_joins,
         )
     factory = Factory(
         environment=author_env,
@@ -169,18 +169,15 @@ def build_nested_select(
     # resolution (per join set) and each arm replays only the units its own
     # overlay actually changes. `materialize_for_select` is the reference
     # spelling the delta must stay byte-equivalent to.
-    baseline_key = author_env.materialize_join_key(scoped_joins)
-    baseline = caches.env_baselines.get(baseline_key)
-    if baseline is None:
-        baseline = author_env.materialize_baseline(
-            build_cache=caches.build_cache,
-            pseudonym_map=factory.pseudonym_map,
-            grain_build_cache=caches.grain_build_cache,
-            canonical_build_cache=caches.canonical_build_cache,
-            datasource_build_cache=caches.datasource_build_cache,
-            scoped_joins=scoped_joins,
-        )
-        caches.env_baselines[baseline_key] = baseline
+    baseline = author_env.shared_baseline(
+        caches.env_baselines,
+        build_cache=caches.build_cache,
+        pseudonym_map=factory.pseudonym_map,
+        grain_build_cache=caches.grain_build_cache,
+        canonical_build_cache=caches.canonical_build_cache,
+        datasource_build_cache=caches.datasource_build_cache,
+        scoped_joins=scoped_joins,
+    )
     build_env = author_env.materialize_delta(
         baseline,
         built.local_concepts,

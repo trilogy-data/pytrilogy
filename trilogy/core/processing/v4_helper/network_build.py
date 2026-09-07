@@ -308,6 +308,54 @@ def _union_candidates(
     return out
 
 
+def _drop_dominated_arms(
+    candidates: dict[str, SourceCandidate], requested: list[str]
+) -> dict[str, SourceCandidate]:
+    """Drop the partition arms (and the union assembled from them) that one
+    COMPLETE scan makes redundant for this request.
+
+    An arm is row-partial for its grain, so outside a WHERE that implies its
+    predicate it can only ever serve as one piece of a whole-population read.
+    A complete candidate (no partition predicate, no partial binding) at the
+    SAME grain that binds every requested address the arm binds IS that
+    whole-population read, and serves every obligation the arm or the union
+    could. Deciding that here, once, is what keeps N partitions of a model
+    from putting N^2 partner tests and 2^N cover states on a search whose
+    answer is the complete scan. Only requested addresses are compared: an
+    arm binds columns the rollup never carries, but a column nobody asked for
+    cannot make the arm worth reading. IMPLIED_EXACT arms are untouched, as
+    in `_subsumed_arms`: pre-filtered to the requested rows, they beat the
+    whole read."""
+    complete = [
+        candidate
+        for candidate in candidates.values()
+        if isinstance(candidate.datasource, BuildDatasource)
+        and candidate.datasource.non_partial_for is None
+        and not any(binding.partial for binding in candidate.bindings.values())
+    ]
+    if not complete:
+        return candidates
+    asked = set(requested)
+    out: dict[str, SourceCandidate] = {}
+    for node, candidate in candidates.items():
+        datasource = candidate.datasource
+        is_arm = isinstance(datasource, BuildUnionDatasource) or (
+            isinstance(datasource, BuildDatasource)
+            and datasource.non_partial_for is not None
+        )
+        if not is_arm or candidate.condition is not ConditionFit.NEUTRAL:
+            out[node] = candidate
+            continue
+        needed = asked & set(candidate.bindings)
+        if any(
+            other.grain == candidate.grain and needed <= set(other.bindings)
+            for other in complete
+        ):
+            continue
+        out[node] = candidate
+    return out
+
+
 def _subsumed_arms(candidates: dict[str, SourceCandidate]) -> dict[str, str]:
     """Arm node -> the union candidate whose children include it, for arms that
     are redundant wherever that union is also on offer.
@@ -638,9 +686,10 @@ def build_source_network(
         candidates.setdefault(node, union_candidate)
     for node, connector in connector_candidates.items():
         candidates.setdefault(node, connector)
+    requested = [equivalence.get(a, a) for a in addresses]
+    candidates = _drop_dominated_arms(candidates, requested)
     candidates = pin_unoffered_probes(addresses, candidates, environment, equivalence)
     bound = {address for c in candidates.values() for address in c.bindings}
-    requested = [equivalence.get(a, a) for a in addresses]
     sourced = {address for address in requested if address in bound}
     searched = [
         address

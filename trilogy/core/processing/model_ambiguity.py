@@ -84,11 +84,17 @@ def build_key_graph(benv: BuildEnvironment) -> KeyGraph:
     rep = {a: _find(parent, a) for a in key_addresses}
     binders: dict[str, frozenset[str]] = {}
     by_class: dict[str, set[str]] = {}
+    # Datasources binding the same key classes are one node: the graph reads
+    # nothing else off a datasource, so they have identical edges and lie on
+    # identical paths. A partitioned model declares one scan per partition
+    # (hundreds, all binding the same keys) and the pairwise edge pass below
+    # is quadratic in nodes.
+    representative: dict[frozenset[str], str] = {}
     for name, datasource in sorted(benv.datasources.items()):
         classes = frozenset(
             rep[c.address] for c in datasource.output_concepts if c.address in rep
         )
-        if not classes:
+        if not classes or representative.setdefault(classes, name) != name:
             continue
         binders[name] = classes
         for cls in classes:

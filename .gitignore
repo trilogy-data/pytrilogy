@@ -114,6 +114,7 @@ local_scripts/v4_sql_drift/
 local_scripts/v4_size_sql/
 local_scripts/v4_diagnostics/
 local_scripts/v4_sweep/
+local_scripts/city_scale_runs/
 
 # scratch dirs from local test/diagnostic runs; some are created with
 # restrictive ACLs that make git/black fail while recursing into them
