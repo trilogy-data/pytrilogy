@@ -136,6 +136,58 @@ def test_empty_table_observes_no_slices_but_expects_three(executor):
     }
 
 
+CORRUPT_PARTITIONED_MODEL = """
+key order_id int;
+property order_id.order_date date;
+property order_id.updated_at datetime;
+
+root datasource raw_orders (
+    order_id: order_id,
+    order_date: order_date,
+    updated_at: updated_at
+)
+grain (order_id)
+query '''
+SELECT 1 as order_id, DATE '2024-01-01' as order_date,
+       TIMESTAMP '2024-01-05 06:00:00' as updated_at
+''';
+
+auto max_updated_at <- max(updated_at) by order_date;
+
+datasource daily_orders (
+    order_date: order_date,
+    max_updated_at: max_updated_at
+)
+grain (order_date)
+file `{target}`
+freshness by max_updated_at
+partition by order_date
+;
+"""
+
+
+def test_corrupt_file_observes_no_slices(tmp_path):
+    """A half-uploaded parquet holds no legible slices, so the observed probe
+    reads it as unbuilt — every expected slice missing — instead of raising and
+    taking the snapshot down with it."""
+    target = tmp_path / "daily_orders.parquet"
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_raw_sql(
+        f"COPY (SELECT DATE '2024-01-01' as order_date,"
+        f" TIMESTAMP '2024-01-05 06:00:00' as max_updated_at)"
+        f" TO '{target.as_posix()}' (FORMAT PARQUET)"
+    )
+    written = target.read_bytes()
+    target.write_bytes(written[: len(written) // 2])
+
+    executor.execute_text(CORRUPT_PARTITIONED_MODEL.format(target=target.as_posix()))
+    ds = executor.environment.datasources["daily_orders"]
+
+    assert probe_observed_partitions(ds, executor) == []
+    expected = probe_expected_partitions(ds, executor, _roots(executor))
+    assert {obs.id for obs in expected} == {"order_date=2024-01-01"}
+
+
 def test_missing_slice_is_stale_and_present_slice_is_fresh(executor):
     executor.execute_text(BUILD_ONE_DAY)
     ds = _ds(executor)
