@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -8,9 +9,11 @@ from trilogy import Dialects, Executor
 from trilogy.core.models.datasource import UpdateKey, UpdateKeys, UpdateKeyType
 from trilogy.execution.state import BaseStateStore
 from trilogy.execution.state.exceptions import (
+    is_corrupt_source_error,
     is_missing_source_error,
     is_schema_mismatch_error,
 )
+from trilogy.execution.state.state_store import UNREADABLE_SOURCE_REASON
 from trilogy.execution.state.watermarks import (
     _compare_watermark_values,
     _execute_raw_sql_scalar,
@@ -178,6 +181,53 @@ class TestDuckDBMissingSourcePatterns:
         assert is_missing_source_error(exc, Dialects.DUCK_DB.default_renderer()) is True
 
 
+_PUBLISHED = "https://storage.googleapis.com/b/full_tree_info_v2.parquet"
+
+#: Every way duckdb reports a parquet whose bytes it cannot parse. The first is
+#: the reported one: a publish died mid-upload, leaving an object at the address
+#: with no footer, and every probe against it aborted the run.
+CORRUPT_PARQUET_WORDINGS = [
+    (
+        "Invalid Input Error: No magic bytes found at end of file"
+        f" '{_PUBLISHED}?cache_bust=478163328'"
+    ),
+    f"Invalid Input Error: File '{_PUBLISHED}' too small to be a Parquet file",
+    "TProtocolException: Invalid data",
+]
+
+
+class TestDuckDBCorruptSourcePatterns:
+    @pytest.mark.parametrize("message", CORRUPT_PARQUET_WORDINGS)
+    def test_corrupt_wordings(self, message: str) -> None:
+        dialect = Dialects.DUCK_DB.default_renderer()
+        assert is_corrupt_source_error(Exception(message), dialect) is True
+        assert (
+            is_corrupt_source_error(
+                ProgrammingError("stmt", {}, Exception(message)), dialect
+            )
+            is True
+        )
+
+    @pytest.mark.parametrize("message", CORRUPT_PARQUET_WORDINGS)
+    def test_corrupt_is_not_missing(self, message: str) -> None:
+        """Separate verdicts: a missing file is the normal pre-build state, an
+        unparseable one is an anomaly the probe reports."""
+        dialect = Dialects.DUCK_DB.default_renderer()
+        assert is_missing_source_error(Exception(message), dialect) is False
+
+    @pytest.mark.parametrize(
+        "message",
+        [
+            "HTTP Error: HTTP GET error on 'https://x/y.parquet' (HTTP 404 Not Found)",
+            "Catalog Error: Table with name foo does not exist!",
+            "Out of Memory Error: failed to allocate block of 262144 bytes",
+        ],
+    )
+    def test_other_failures_are_not_corruption(self, message: str) -> None:
+        dialect = Dialects.DUCK_DB.default_renderer()
+        assert is_corrupt_source_error(Exception(message), dialect) is False
+
+
 class StubProbeExecutor:
     """Only what _execute_raw_sql_scalar touches."""
 
@@ -304,6 +354,7 @@ class TestProbeErrorClassification:
         exc = Exception(message)
         assert is_schema_mismatch_error(exc, renderer) is False
         assert is_missing_source_error(exc, renderer) is False
+        assert is_corrupt_source_error(exc, renderer) is False
 
     @pytest.mark.parametrize(
         "dialect,message", MISSING_COLUMN_CASES + MISSING_SOURCE_CASES
@@ -312,7 +363,9 @@ class TestProbeErrorClassification:
         """The reported failure: repointing freshness at a column the physical
         table does not have yet failed the run instead of reading as stale."""
         executor = StubProbeExecutor(dialect.default_renderer(), Exception(message))
-        assert _execute_raw_sql_scalar("SELECT MAX(updated_at)", executor) is None
+        probe = _execute_raw_sql_scalar("SELECT MAX(updated_at)", executor)
+        assert probe.value is None
+        assert probe.unreadable is False
 
     @pytest.mark.parametrize("dialect,message", UNRELATED_CASES)
     def test_probe_still_raises_on_an_unrelated_failure(
@@ -323,6 +376,15 @@ class TestProbeErrorClassification:
         with pytest.raises(RuntimeError) as exc_info:
             _execute_raw_sql_scalar("SELECT MAX(updated_at)", executor)
         assert exc_info.value is sentinel
+
+    @pytest.mark.parametrize("message", CORRUPT_PARQUET_WORDINGS)
+    def test_probe_reports_an_unreadable_source(self, message: str) -> None:
+        executor = StubProbeExecutor(
+            Dialects.DUCK_DB.default_renderer(), Exception(message)
+        )
+        probe = _execute_raw_sql_scalar("SELECT MAX(updated_at)", executor)
+        assert probe.value is None
+        assert probe.unreadable is True
 
 
 def test_last_update_time_watermarks(duckdb_engine: Executor):
@@ -1701,6 +1763,165 @@ def test_get_stale_assets_missing_parquet(tmp_path):
     assert len(stale) == 1
     assert stale[0].datasource_id == "out"
     assert stale[0].reason == "file not found"
+
+
+def _write_corrupt_parquet(executor: Executor, path: str, kind: str) -> None:
+    """Something exists at the address, but it is not a readable parquet."""
+    file = Path(path)
+    if kind == "empty":
+        file.write_bytes(b"")
+        return
+    if kind == "error_page":
+        file.write_bytes(b"<?xml version='1.0'?><Error><Code>NoSuchKey</Code></Error>")
+        return
+    executor.execute_raw_sql(
+        f"COPY (SELECT 1 as event_id, TIMESTAMP '2024-06-01' as updated_at)"
+        f" TO '{path}' (FORMAT PARQUET)"
+    )
+    written = file.read_bytes()
+    file.write_bytes(written[: len(written) // 2])
+
+
+CORRUPT_KINDS = ["truncated", "empty", "error_page"]
+
+CORRUPT_TARGET_MODEL = """
+key event_id int;
+property event_id.updated_at datetime;
+
+root datasource root_src (
+    event_id,
+    updated_at
+)
+grain (event_id)
+file `{root}`;
+
+datasource target_events (
+    event_id,
+    updated_at
+)
+grain (event_id)
+file `{target}`
+freshness by updated_at;
+"""
+
+
+@pytest.mark.parametrize("kind", CORRUPT_KINDS)
+def test_get_stale_assets_corrupt_parquet(tmp_path, kind: str):
+    """The reported failure: a publish that died mid-upload left a parquet with
+    no footer, and probing it aborted the whole run instead of rebuilding it."""
+    executor = Dialects.DUCK_DB.default_executor()
+    parquet_path = str(tmp_path / "events.parquet").replace("\\", "/")
+    root_parquet_path = str(tmp_path / "root.parquet").replace("\\", "/")
+
+    executor.execute_raw_sql(
+        f"COPY (SELECT 1 as event_id, TIMESTAMP '2024-06-01' as updated_at)"
+        f" TO '{root_parquet_path}' (FORMAT PARQUET)"
+    )
+    _write_corrupt_parquet(executor, parquet_path, kind)
+
+    executor.execute_text(
+        CORRUPT_TARGET_MODEL.format(root=root_parquet_path, target=parquet_path)
+    )
+
+    state_store = BaseStateStore()
+    stale = state_store.get_stale_assets(executor.environment, executor)
+
+    assert [a.datasource_id for a in stale] == ["target_events"]
+    assert stale[0].reason == UNREADABLE_SOURCE_REASON
+
+
+def test_corrupt_parquet_stale_without_an_expectation(tmp_path):
+    """No root can answer the freshness concept, so there is nothing to compare
+    a null watermark against - unreadable has to be its own verdict, or a
+    corrupt asset reads as fresh and is never rebuilt."""
+    executor = Dialects.DUCK_DB.default_executor()
+    parquet_path = str(tmp_path / "events.parquet").replace("\\", "/")
+    root_parquet_path = str(tmp_path / "root.parquet").replace("\\", "/")
+
+    executor.execute_raw_sql(
+        f"COPY (SELECT 1 as event_id) TO '{root_parquet_path}' (FORMAT PARQUET)"
+    )
+    _write_corrupt_parquet(executor, parquet_path, "truncated")
+
+    executor.execute_text(f"""
+        key event_id int;
+        property event_id.updated_at datetime;
+
+        root datasource root_src (
+            event_id
+        )
+        grain (event_id)
+        file `{root_parquet_path}`;
+
+        datasource target_events (
+            event_id,
+            updated_at
+        )
+        grain (event_id)
+        file `{parquet_path}`
+        freshness by updated_at;
+        """)
+
+    state_store = BaseStateStore()
+    stale = state_store.get_stale_assets(executor.environment, executor)
+
+    assert [a.datasource_id for a in stale] == ["target_events"]
+    assert stale[0].reason == UNREADABLE_SOURCE_REASON
+
+
+def test_corrupt_parquet_watermark_marks_unreadable(tmp_path):
+    executor = Dialects.DUCK_DB.default_executor()
+    parquet_path = str(tmp_path / "events.parquet").replace("\\", "/")
+    _write_corrupt_parquet(executor, parquet_path, "truncated")
+
+    executor.execute_text(f"""
+        key event_id int;
+        property event_id.updated_at datetime;
+
+        datasource target_events (
+            event_id,
+            updated_at
+        )
+        grain (event_id)
+        file `{parquet_path}`
+        freshness by updated_at;
+        """)
+
+    watermarks = get_freshness_watermarks(
+        executor.environment.datasources["target_events"], executor
+    )
+
+    assert watermarks.unreadable is True
+    assert watermarks.keys["local.updated_at"].value is None
+
+
+def test_healthy_parquet_is_not_unreadable(tmp_path):
+    executor = Dialects.DUCK_DB.default_executor()
+    parquet_path = str(tmp_path / "events.parquet").replace("\\", "/")
+    executor.execute_raw_sql(
+        f"COPY (SELECT 1 as event_id, TIMESTAMP '2024-06-01' as updated_at)"
+        f" TO '{parquet_path}' (FORMAT PARQUET)"
+    )
+
+    executor.execute_text(f"""
+        key event_id int;
+        property event_id.updated_at datetime;
+
+        datasource target_events (
+            event_id,
+            updated_at
+        )
+        grain (event_id)
+        file `{parquet_path}`
+        freshness by updated_at;
+        """)
+
+    watermarks = get_freshness_watermarks(
+        executor.environment.datasources["target_events"], executor
+    )
+
+    assert watermarks.unreadable is False
+    assert watermarks.keys["local.updated_at"].value == datetime(2024, 6, 1)
 
 
 class TestIsSchemasMismatchError:

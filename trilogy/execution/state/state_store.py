@@ -46,6 +46,10 @@ from trilogy.execution.state.watermarks import (
 
 LOGGER_PREFIX = "[STATE_STORE]"
 
+#: Staleness verdict for a source whose bytes could not be parsed. Shared with
+#: the tests that pin it, since a snapshot consumer reads this string.
+UNREADABLE_SOURCE_REASON = "source unreadable: file exists but could not be parsed"
+
 
 @runtime_checkable
 class StateStore(Protocol):
@@ -496,6 +500,19 @@ class BaseStateStore:
             return StaleAsset(
                 datasource_id=ds_id,
                 reason="file not found",
+                filters=UpdateKeys(),
+            )
+
+        # An unreadable source is stale on its own evidence, ahead of any
+        # comparison: its watermarks are all None because the bytes could not be
+        # parsed, so pairing them against an expectation would report "behind"
+        # for the wrong reason - or, where the roots offer no expectation at
+        # all, report a corrupt asset as fresh and never rebuild it.
+        observed = self.watermarks.get(ds_id)
+        if observed is not None and observed.unreadable:
+            return StaleAsset(
+                datasource_id=ds_id,
+                reason=UNREADABLE_SOURCE_REASON,
                 filters=UpdateKeys(),
             )
 

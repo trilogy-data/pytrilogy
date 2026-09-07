@@ -91,6 +91,32 @@ A missing watermark value is never lag — an asset with no rows is empty, not
 behind, so it stays stale regardless of tolerance. Probe-based freshness can't
 take a lag: a probe returns a bool, so there's nothing to measure.
 
+### Unreadable sources (corrupt files)
+
+A probe error is classified by the dialect's patterns, and the three verdicts
+are deliberately separate. Missing (`TABLE_NOT_FOUND` / `HTTP_NOT_FOUND`) and
+schema-mismatch (`COLUMN_NOT_FOUND`) are ordinary states — the asset is unbuilt
+or reshaped, the probe yields no value, and the comparison against the roots
+decides. `CORRUPT_SOURCE_PATTERN` is the third: something exists at the address
+but its bytes are not a readable file, which is what a publish that died
+mid-upload leaves behind. Anything else still raises — absorbing a broken
+warehouse or a bad credential would render an outage as a clean bill of health.
+
+Corruption is carried on `DatasourceWatermark.unreadable` (from `ScalarProbe`)
+rather than inferred from a null value, and `is_stale` returns
+`UNREADABLE_SOURCE_REASON` from that flag alone, ahead of the partition probe
+and the watermark comparison. Both halves are load-bearing: a null watermark is
+ambiguous (an empty table reads the same), and where the roots offer no
+expectation for the freshness key the comparison is skipped entirely — so
+without its own verdict a corrupt asset reads as *fresh* and is never rebuilt.
+It is also logged at WARNING, unlike a missing source: absence is the normal
+pre-build state, an unparseable file is an anomaly an operator wants to see.
+
+Every state producer inherits this, because they all reach the warehouse
+through the same two guarded seams (`_execute_raw_sql_scalar`,
+`_execute_raw_sql_rows`) — `trilogy state`, `serve`'s `/state`, and the
+directory snapshot alike.
+
 ### Refreshable roots
 
 A root datasource (`is_root=True`) carrying both `freshness_probe` and `refresh_script` is a **refreshable root**: trilogy doesn't refresh it via SQL persist, but it does drive an opaque subprocess. `is_stale` emits these with `kind=RefreshKind.SCRIPT`; non-root SQL staleness uses `RefreshKind.SQL`. Plain roots without `refresh_script` remain untouchable — `is_stale` returns `None` for them regardless of probe.

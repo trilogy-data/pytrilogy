@@ -329,6 +329,13 @@ class DuckDBDialect(BaseDialect):
     # <=1.4: `... URL "x": 404 (Not Found)`; >=1.5: `... on 'x' (HTTP 404 Not Found)`
     HTTP_NOT_FOUND_PATTERN = r"404[\s(]*Not Found"
     COLUMN_NOT_FOUND_PATTERN = "does not have a column named"
+    # A half-written parquet: no footer magic (truncated upload), nothing to
+    # read at all (zero bytes), or a footer thrift decode that fails.
+    CORRUPT_SOURCE_PATTERN = (
+        r"No magic bytes found at end of file"
+        r"|too small to be a Parquet file"
+        r"|TProtocolException"
+    )
 
     def summarize_result(
         self, query: ProcessedQuery, run_sql: Callable[[str], ResultProtocol]
