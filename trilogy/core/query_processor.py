@@ -58,7 +58,6 @@ from trilogy.core.models.build import (
     BuildSubselectComparison,
     BuildWhereClause,
     Factory,
-    get_canonical_pseudonyms,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import DataType, arg_to_datatype
@@ -1053,9 +1052,12 @@ def _session_build_caches(
     reused across statements. Every entry in the bundle is a pure function of
     the author environment and the folded join set, so it stays valid exactly
     until either changes. The stamp covers every author mutation channel a
-    build reads: the concept and datasource effective-write counters
-    (content_version rather than mutations, so overlay push/pop and identical
-    re-registrations do not evict the bundle), in-place datasource status
+    build reads: the concept structure counter (rebinds and deletions only:
+    a concept ADDED since is a new address no entry can already be keyed on,
+    and `ensure_baseline` appends its unit to the cached baseline rather than
+    rebuilding it), the datasource effective-write counter (content_version
+    rather than mutations, so overlay push/pop and identical re-registrations
+    do not evict the bundle), in-place datasource status
     flips (persist marks PUBLISHED without a dict write), datasource
     membership, and the alias map; env merges ride in the join key. While a
     concept overlay is live, the raw mutation counter is used instead so
@@ -1068,7 +1070,7 @@ def _session_build_caches(
     from weakref import ref
 
     stamp = (
-        environment.concepts.content_version,
+        environment.concepts.structure_version,
         environment.datasources.content_version,
         environment.concepts.mutations if environment.concepts.has_overlays else -1,
         len(environment.alias_origin_lookup),
@@ -1126,8 +1128,7 @@ def get_query_node(
         caches.scoped_joins = caches.scoped_joins + [
             m for m in environment.merges if m not in existing
         ]
-    if caches.pseudonym_map is None:
-        caches.pseudonym_map = get_canonical_pseudonyms(environment)
+    caches.sync_pseudonym_map(environment)
 
     base_factory = Factory(
         environment=environment,
@@ -1146,18 +1147,15 @@ def get_query_node(
     # Baseline + overlay delta (see nested_select.build_nested_select): the
     # statement's own materialization seeds the per-resolution baseline that
     # nested arms under the same scoped joins then reuse.
-    baseline_key = environment.materialize_join_key(caches.scoped_joins)
-    baseline = caches.env_baselines.get(baseline_key)
-    if baseline is None:
-        baseline = environment.materialize_baseline(
-            build_cache=caches.build_cache,
-            pseudonym_map=base_factory.pseudonym_map,
-            grain_build_cache=base_factory.grain_build_cache,
-            canonical_build_cache=caches.canonical_build_cache,
-            datasource_build_cache=caches.datasource_build_cache,
-            scoped_joins=caches.scoped_joins,
-        )
-        caches.env_baselines[baseline_key] = baseline
+    baseline = environment.shared_baseline(
+        caches.env_baselines,
+        build_cache=caches.build_cache,
+        pseudonym_map=base_factory.pseudonym_map,
+        grain_build_cache=base_factory.grain_build_cache,
+        canonical_build_cache=caches.canonical_build_cache,
+        datasource_build_cache=caches.datasource_build_cache,
+        scoped_joins=caches.scoped_joins,
+    )
     build_environment = environment.materialize_delta(
         baseline,
         build_statement.local_concepts,

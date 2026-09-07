@@ -53,6 +53,7 @@ from trilogy.core.models.datasource import Datasource, EnvironmentDatasourceDict
 from trilogy.utility import safe_open
 
 if TYPE_CHECKING:
+    from trilogy.core.domain_graph import DomainGraph
     from trilogy.core.models.build import BuildConcept, BuildEnvironment
     from trilogy.parsing.helpers import Meta
 
@@ -303,6 +304,13 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         # outside any overlay scope (the cross-statement BuildCaches store) can
         # survive a re-parse of identical statements.
         self.content_version: int = 0
+        # Bumps only when an EXISTING address is rebound or deleted, never on
+        # a pure addition. A concept-set cache whose every entry is keyed by
+        # address stays valid across additions (a new address cannot collide
+        # with an entry already made), so the cross-statement build bundle
+        # stamps on this and extends itself with the new units instead of
+        # rebuilding the whole environment for every `select ... as alias`.
+        self.structure_version: int = 0
         super().__init__(*args, **kwargs)
         self.undefined: dict[str, UndefinedConceptFull] = {}
         self.fail_on_missing: bool = True
@@ -392,13 +400,17 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
 
     def __setitem__(self, key: str, item: Concept) -> None:
         self.mutations += 1
-        if self.data.get(key) is not item:
+        existing = self.data.get(key)
+        if existing is not item:
             self.content_version += 1
+            if existing is not None:
+                self.structure_version += 1
         super().__setitem__(key, item)
 
     def __delitem__(self, key: str) -> None:
         self.mutations += 1
         self.content_version += 1
+        self.structure_version += 1
         super().__delitem__(key)
 
     @property
@@ -858,6 +870,9 @@ class Environment:
     parameters: dict[str, Any] = field(default_factory=dict)
     # (content stamp, map) for fk_derived_keys.
     _fk_derived_keys: tuple[tuple[int, int], dict[str, frozenset[str]]] | None = None
+    # (len(merges) it covers, declared-edge graph over them): the merge lint's
+    # base graph, extended per accepted merge instead of rebuilt per check.
+    _merge_lint_graph: tuple[int, DomainGraph] | None = None
 
     def freeze(self):
         self.frozen = True
@@ -1000,6 +1015,61 @@ class Environment:
         )
         return factory.build_environment_recorded(self)
 
+    def shared_baseline(
+        self,
+        store: dict,
+        build_cache: dict | None = None,
+        pseudonym_map: dict[str, set[str]] | None = None,
+        grain_build_cache: dict | None = None,
+        canonical_build_cache: dict | None = None,
+        datasource_build_cache: dict | None = None,
+        scoped_joins: list[tuple[str, str, JoinType]] | None = None,
+    ):
+        """The baseline for `scoped_joins`, recorded into `store` on first ask
+        and brought up to date on every later one. One spelling for the
+        statement and for the nested arms that share its store."""
+        caches = (
+            build_cache,
+            pseudonym_map,
+            grain_build_cache,
+            canonical_build_cache,
+            datasource_build_cache,
+            scoped_joins,
+        )
+        key = self.materialize_join_key(scoped_joins)
+        baseline = store.get(key)
+        if baseline is None:
+            baseline = store[key] = self.materialize_baseline(*caches)
+            return baseline
+        return self.ensure_baseline(baseline, *caches)
+
+    def ensure_baseline(
+        self,
+        baseline,
+        build_cache: dict | None = None,
+        pseudonym_map: dict[str, set[str]] | None = None,
+        grain_build_cache: dict | None = None,
+        canonical_build_cache: dict | None = None,
+        datasource_build_cache: dict | None = None,
+        scoped_joins: list[tuple[str, str, JoinType]] | None = None,
+    ):
+        """Bring a cached baseline up to date with concepts registered since
+        it was recorded (see `build_environment_extend`). Only concept
+        additions can reach a still-valid bundle: every other author mutation
+        moves the bundle stamp or the join key."""
+        if len(self.concepts.data) == baseline.concept_count:
+            return baseline
+        factory = self._materialize_factory(
+            baseline.end_locals,
+            build_cache,
+            pseudonym_map,
+            grain_build_cache,
+            canonical_build_cache,
+            datasource_build_cache,
+            scoped_joins,
+        )
+        return factory.build_environment_extend(self, baseline)
+
     def materialize_delta(
         self,
         baseline,
@@ -1080,16 +1150,26 @@ class Environment:
         edge = declared_edge_from_join(*pair, scope=EdgeScope.GLOBAL)
         if edge is None:
             return
-        graph = DomainGraph.from_scoped_joins(
-            [(merge, EdgeScope.GLOBAL) for merge in self.merges]
+        cached = self._merge_lint_graph
+        if cached is None or cached[0] != len(self.merges):
+            graph = DomainGraph.from_scoped_joins(
+                [(merge, EdgeScope.GLOBAL) for merge in self.merges]
+            )
+        else:
+            graph = cached[1]
+        probe = graph.with_overlay(
+            structural
+            for concept in (source, target)
+            if (structural := structural_domain_edge(concept)) is not None
         )
-        for concept in (source, target):
-            structural = structural_domain_edge(concept)
-            if structural is not None:
-                graph.add_edge(structural)
-        reason = graph.contradicts(edge)
+        reason = probe.contradicts(edge)
         if reason:
             raise InvalidSyntaxException(f"Invalid merge declaration: {reason}")
+        # The caller appends `pair` next; carry the base graph forward to
+        # that length so the next declaration extends it rather than
+        # re-deriving every prior merge's edge.
+        graph.add_edge(edge)
+        self._merge_lint_graph = (len(self.merges) + 1, graph)
 
     def duplicate(self):
         return Environment(
@@ -1231,7 +1311,7 @@ class Environment:
         if lookup not in self.concepts:
             return None
         existing: Concept = self.concepts[lookup]
-        if isinstance(existing, UndefinedConcept):
+        if existing is new_concept or isinstance(existing, UndefinedConcept):
             return None
 
         def handle_currently_bound_sources():
@@ -1448,6 +1528,14 @@ class Environment:
             and source_key not in concepts
             and source_name not in concepts
         )
+        if self.concepts.data.get(target_key) is concept:
+            # Already merged as this very object (a shared module reached
+            # through several import edges): re-adding it is a no-op that
+            # would still re-validate and regenerate its related concepts.
+            self.imported.concepts.add(target_key)
+            if (excluded or is_hidden) and target_key not in self.concepts.hidden:
+                self.concepts.hidden.add(target_key)
+            return
         new = self.add_concept(concept)
         self.imported.concepts.add(target_key)
         self.imported.concepts.add(new.address)
