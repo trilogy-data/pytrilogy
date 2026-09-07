@@ -901,8 +901,12 @@ so a copy that fails or is killed part-way leaves the previous file in place
 rather than a truncated one; the staged file is removed on failure. Scratch
 is the `[staging] path` subdir when that is local and on the target's
 filesystem (a rename cannot cross filesystems), else a `.trilogy-staging`
-sibling directory of the target. Object-store targets (`gs://`) write in
-place, since their uploads are already all-or-nothing.
+sibling directory of the target. Object-store targets (`gs://`, `s3://`) are
+protected the same way: the write lands under a `.trilogy-staging` key prefix
+and is finalized with a server-side copy, so the target is replaced whole or
+not at all. GCS is finalized with the same `GOOGLE_HMAC_KEY` /
+`GOOGLE_HMAC_SECRET` pair the write itself uses; without those the target is
+written in place, as before.
 
 ## Running external scripts (`call`)
 
