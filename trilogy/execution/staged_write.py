@@ -44,6 +44,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+from trilogy.constants import logger
+
 STAGING_DIR = ".trilogy-staging"
 _CREATE_ATTEMPTS = 5
 
@@ -138,10 +140,14 @@ def _remote_filesystem(scheme: str, uri: str):
 
 
 def _delete_remote(filesystem, path: str) -> None:
+    """Best-effort: a staged key we cannot collect costs storage, and the
+    next writer of this target sweeps it. Never worth failing a good publish
+    for, but worth saying out loud -- a rising count of these is a
+    credential or permission problem, not noise."""
     try:
         filesystem.delete_file(path)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Could not remove staged object %s: %s", path, exc)
 
 
 def _sweep_remote(filesystem, prefix: str, name: str) -> None:
