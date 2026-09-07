@@ -169,6 +169,66 @@ def test_non_object_store_scheme_writes_in_place():
     assert _remote_filesystem("file", "file:///tmp/out.parquet") is None
 
 
+def test_cleanup_failure_is_logged_and_never_fails_a_good_publish(fake_remote, caplog):
+    """A staged key we cannot collect costs storage; the next writer sweeps it.
+    Losing the cleanup must not lose the publish."""
+
+    class Undeletable(FakeRemote):
+        def delete_file(self, path: str) -> None:
+            raise OSError("permission denied")
+
+    remote = fake_remote(Undeletable(("bucket/trees/out.parquet",)))
+    with caplog.at_level("WARNING"):
+        with staged_write("gcs://bucket/trees/out.parquet") as staged:
+            remote.objects[staged.split("://", 1)[1]] = b"new"
+    assert remote.objects["bucket/trees/out.parquet"] == b"new"
+    assert "Could not remove staged object" in caplog.text
+
+
+def test_sweep_tolerates_a_listing_failure(fake_remote):
+    """A store that will not list is no reason to refuse the write."""
+
+    class Unlistable(FakeRemote):
+        def get_file_info(self, selector):
+            raise OSError("listing denied")
+
+    remote = fake_remote(Unlistable(("bucket/trees/out.parquet",)))
+    with staged_write("gcs://bucket/trees/out.parquet") as staged:
+        remote.objects[staged.split("://", 1)[1]] = b"new"
+    assert remote.objects["bucket/trees/out.parquet"] == b"new"
+
+
+def test_s3_is_resolved_through_pyarrow_from_uri(monkeypatch: pytest.MonkeyPatch):
+    """S3 carries no bespoke credential handling -- unlike GCS, its ambient
+    configuration is what pyarrow already reads."""
+    from trilogy.execution.staged_write import _remote_filesystem
+
+    sentinel = object()
+    seen: list[str] = []
+
+    class DummyFileSystem:
+        @staticmethod
+        def from_uri(uri: str):
+            seen.append(uri)
+            return sentinel, "bucket/out.parquet"
+
+    monkeypatch.setattr("pyarrow.fs.FileSystem", DummyFileSystem)
+    assert _remote_filesystem("s3", "s3://bucket/out.parquet") is sentinel
+    assert seen == ["s3://bucket/out.parquet"]
+
+
+def test_a_uri_pyarrow_rejects_writes_in_place(monkeypatch: pytest.MonkeyPatch):
+    from trilogy.execution.staged_write import _remote_filesystem
+
+    class RefusingFileSystem:
+        @staticmethod
+        def from_uri(uri: str):
+            raise ValueError("unparseable")
+
+    monkeypatch.setattr("pyarrow.fs.FileSystem", RefusingFileSystem)
+    assert _remote_filesystem("s3", "s3://bucket/out.parquet") is None
+
+
 def test_gcs_credentials_build_an_s3_endpoint_filesystem(
     monkeypatch: pytest.MonkeyPatch,
 ):
