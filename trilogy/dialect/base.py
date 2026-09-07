@@ -854,6 +854,11 @@ class BaseDialect:
     TABLE_NOT_FOUND_PATTERN: str | None = None
     HTTP_NOT_FOUND_PATTERN: str | None = None  # HTTP 404 errors (e.g., GCS)
     COLUMN_NOT_FOUND_PATTERN: str | None = None
+    # A source that exists but cannot be parsed - a truncated or half-uploaded
+    # object, the usual shape of a publish that died mid-write. Distinct from
+    # not-found: the state probes report it loudly and treat the asset as
+    # unbuilt, rather than letting the read error abort the run.
+    CORRUPT_SOURCE_PATTERN: str | None = None
     # Types an APPEND may partition on. What can key a partition is a property
     # of the engine, not of the language, so this is checked here rather than at
     # parse time: BigQuery widens it to whatever its DDL can partition on, which

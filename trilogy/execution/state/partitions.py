@@ -53,6 +53,7 @@ from trilogy.core.models.datasource import (
 from trilogy.core.models.execute import CTE
 from trilogy.execution.state.exceptions import (
     UNRESOLVABLE_ERRORS,
+    is_corrupt_source_error,
     is_missing_source_error,
     is_schema_mismatch_error,
 )
@@ -411,12 +412,20 @@ def _execute_raw_sql_rows(query: str, executor: Executor) -> list[tuple]:
     """Rows for a probe query, or none when the source does not exist yet.
 
     An unbuilt or reshaped target is the normal case for a partition probe — it
-    is exactly the "no slices yet" answer the caller wants, not an error."""
+    is exactly the "no slices yet" answer the caller wants, not an error. An
+    unreadable file holds no legible slices either, so it reads the same way
+    (every expected slice missing) and every one of them gets rebuilt."""
     dialect = executor.generator
     try:
         result = executor.execute_raw_sql(query)
         return list(result.fetchall())
     except Exception as e:
+        if is_corrupt_source_error(e, dialect):
+            executor.connection.rollback()
+            logger.warning(
+                "[STATE_STORE] source is unreadable, treating as unbuilt: %s", e
+            )
+            return []
         if is_missing_source_error(e, dialect) or is_schema_mismatch_error(e, dialect):
             executor.connection.rollback()
             return []

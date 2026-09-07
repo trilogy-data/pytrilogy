@@ -24,10 +24,28 @@ from trilogy.core.models.execute import CTE
 from trilogy.execution.state.cache import ColumnStatsCache
 from trilogy.execution.state.exceptions import (
     UNRESOLVABLE_ERRORS,
+    is_corrupt_source_error,
     is_missing_source_error,
     is_schema_mismatch_error,
 )
 from trilogy.execution.state.isolation import hidden_datasources
+
+WatermarkValueType = str | int | float | datetime | date | None
+
+
+@dataclass
+class ScalarProbe:
+    """One probe query's answer, plus whether the source was readable at all.
+
+    A value of None is ambiguous on its own - an empty table, a column the file
+    does not carry, and a half-uploaded object all read as None - so corruption
+    is carried alongside rather than inferred from it. Only corruption makes an
+    asset stale by itself; the other two are ordinary states a comparison
+    against the roots already judges.
+    """
+
+    value: WatermarkValueType = None
+    unreadable: bool = False
 
 
 @dataclass
@@ -48,6 +66,10 @@ class DatasourceWatermark:
     """
 
     keys: dict[str, UpdateKey]
+    #: The source could not be read (corrupt/truncated file). Its watermarks are
+    #: all None for a reason that has nothing to do with what the table holds,
+    #: so staleness must not compare them - the asset needs rebuilding outright.
+    unreadable: bool = False
 
 
 class RefreshKind(Enum):
@@ -164,22 +186,26 @@ def within_allowed_lag(
     )
 
 
-def _execute_raw_sql_scalar(
-    query: str, executor: Executor
-) -> str | int | float | datetime | date | None:
+def _execute_raw_sql_scalar(query: str, executor: Executor) -> ScalarProbe:
     """Execute a raw SQL query and return the first column of the first row.
 
-    Returns None if the source is missing; rolls back and suppresses the error.
-    Re-raises all other exceptions.
+    Yields an empty probe if the source is missing or unparseable; rolls back
+    and suppresses the error. Re-raises all other exceptions.
     """
     dialect = executor.generator
     try:
         result = executor.execute_raw_sql(query).fetchone()
-        return result[0] if result else None
+        return ScalarProbe(value=result[0] if result else None)
     except Exception as e:
+        if is_corrupt_source_error(e, dialect):
+            executor.connection.rollback()
+            logger.warning(
+                "[STATE_STORE] source is unreadable, treating as unbuilt: %s", e
+            )
+            return ScalarProbe(unreadable=True)
         if is_missing_source_error(e, dialect) or is_schema_mismatch_error(e, dialect):
             executor.connection.rollback()
-            return None
+            return ScalarProbe()
         raise
 
 
@@ -286,6 +312,7 @@ def get_unique_key_hash_watermarks(
     table_ref = _resolve_table_ref(datasource, executor)
     dialect = executor.generator
     watermarks = {}
+    unreadable = False
 
     for col in key_columns:
         if isinstance(col.alias, str):
@@ -297,15 +324,16 @@ def get_unique_key_hash_watermarks(
         hash_expr = dialect.hash_column_value(column_name)
         checksum_expr = dialect.aggregate_checksum(hash_expr)
         query = f"SELECT {checksum_expr} as checksum FROM {table_ref}"
-        checksum_value = _execute_raw_sql_scalar(query, executor)
+        probe = _execute_raw_sql_scalar(query, executor)
+        unreadable = unreadable or probe.unreadable
 
         watermarks[col.concept.address] = UpdateKey(
             concept_name=col.concept.address,
             type=UpdateKeyType.KEY_HASH,
-            value=checksum_value,
+            value=probe.value,
         )
 
-    return DatasourceWatermark(keys=watermarks)
+    return DatasourceWatermark(keys=watermarks, unreadable=unreadable)
 
 
 def _get_max_watermarks(
@@ -323,6 +351,7 @@ def _get_max_watermarks(
     dialect = executor.generator
     output_addresses = {c.address for c in datasource.output_concepts}
     watermarks = {}
+    unreadable = False
 
     for concept_ref in concept_refs:
         concept = executor.environment.concepts[concept_ref.address]
@@ -342,15 +371,16 @@ def _get_max_watermarks(
         else:
             query = f"SELECT MAX({dialect.render_expr(build_concept.lineage, cte=cte)}) as max_value FROM {table_ref} as {dialect.quote(cte.base_alias)}"
 
-        max_value = _execute_raw_sql_scalar(query, executor)
+        probe = _execute_raw_sql_scalar(query, executor)
+        unreadable = unreadable or probe.unreadable
 
         watermarks[concept.address] = UpdateKey(
             concept_name=concept.address,
             type=key_type,
-            value=max_value,
+            value=probe.value,
         )
 
-    return DatasourceWatermark(keys=watermarks)
+    return DatasourceWatermark(keys=watermarks, unreadable=unreadable)
 
 
 def get_incremental_key_watermarks(
@@ -469,6 +499,7 @@ def get_concept_max_watermarks(
     factory = Factory(environment=executor.environment)
     dialect = executor.generator
     watermarks = {}
+    unreadable = False
 
     for concept_ref in concept_refs:
         if concept_ref.address not in output_addresses:
@@ -479,15 +510,16 @@ def get_concept_max_watermarks(
         cte: CTE = CTE.from_datasource(build_datasource)
         query = f"SELECT MAX({dialect.render_concept_sql(build_concept, cte=cte, alias=False)}) as max_value FROM {table_ref} as {dialect.quote(cte.base_alias)}"
 
-        max_value = _execute_raw_sql_scalar(query, executor)
+        probe = _execute_raw_sql_scalar(query, executor)
+        unreadable = unreadable or probe.unreadable
 
         watermarks[concept.address] = UpdateKey(
             concept_name=concept.address,
             type=UpdateKeyType.INCREMENTAL_KEY,
-            value=max_value,
+            value=probe.value,
         )
 
-    return DatasourceWatermark(keys=watermarks)
+    return DatasourceWatermark(keys=watermarks, unreadable=unreadable)
 
 
 def run_freshness_probe(probe_path: str) -> bool:

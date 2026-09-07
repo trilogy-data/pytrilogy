@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from trilogy.execution.state.snapshot import StateSnapshot
+from trilogy.execution.state.state_store import UNREADABLE_SOURCE_REASON
 from trilogy.scripts.serve_helpers.state_computation import compute_state_snapshot_sync
 
 # A minimal DuckDB-compatible trilogy file with one root datasource.
@@ -110,6 +111,57 @@ def test_compute_state_missing_table_marks_stale_or_unknown(tmp_path: Path) -> N
     by_id = _datasources(snapshot)
     # derived_missing_table does not exist -> stale (watermark behind root) or unknown
     assert by_id["derived"].status in ("stale", "unknown")
+
+
+# A publish that died mid-upload: the object exists at the address but carries
+# no parquet footer, so every probe against it raised and took the whole
+# snapshot down with "State snapshot failed".
+CORRUPT_TARGET_PREQL = textwrap.dedent("""    key id int;
+    property id.updated_at datetime;
+
+    root datasource raw (
+        id,
+        updated_at
+    )
+    grain (id)
+    query '''select 1 as id, TIMESTAMP '2024-06-01' as updated_at''';
+
+    datasource published (
+        id,
+        updated_at
+    )
+    grain (id)
+    file `{target}`
+    freshness by updated_at;
+""")
+
+
+def _truncated_parquet(tmp_path: Path) -> Path:
+    """A real parquet cut in half — header and page data, no footer."""
+    import duckdb
+
+    target = tmp_path / "published.parquet"
+    con = duckdb.connect()
+    con.execute(
+        f"COPY (SELECT 1 as id, TIMESTAMP '2024-06-01' as updated_at)"
+        f" TO '{target.as_posix()}' (FORMAT PARQUET)"
+    )
+    con.close()
+    written = target.read_bytes()
+    target.write_bytes(written[: len(written) // 2])
+    return target
+
+
+def test_compute_state_survives_a_corrupt_published_parquet(tmp_path: Path) -> None:
+    target = _truncated_parquet(tmp_path)
+    preql = tmp_path / "test.preql"
+    preql.write_text(CORRUPT_TARGET_PREQL.format(target=target.as_posix()))
+
+    snapshot = compute_state_snapshot_sync(preql, "duck_db", None, tmp_path)
+
+    published = _datasources(snapshot)["published"]
+    assert published.status == "stale"
+    assert published.stale_reason == UNREADABLE_SOURCE_REASON
 
 
 def test_compute_state_summary_counts(tmp_path: Path) -> None:

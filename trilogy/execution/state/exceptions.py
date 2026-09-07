@@ -57,6 +57,17 @@ def is_missing_source_error(exc: Exception, dialect: BaseDialect) -> bool:
     )
 
 
+def is_corrupt_source_error(exc: Exception, dialect: BaseDialect) -> bool:
+    """Check if exception indicates a source that exists but cannot be parsed.
+
+    A publish that dies mid-upload leaves an object at the address whose bytes
+    are not a readable file. The probe has no watermark to read from it, exactly
+    as if it were absent - but unlike absence it is an anomaly, so callers log
+    it and mark the asset unreadable rather than silently returning nothing.
+    """
+    return _matches(dialect.CORRUPT_SOURCE_PATTERN, exc)
+
+
 def is_schema_mismatch_error(exc: Exception, dialect: BaseDialect) -> bool:
     """Check if exception indicates a schema mismatch (e.g., column not found)."""
     return _is_column_not_found_error(exc, dialect)
