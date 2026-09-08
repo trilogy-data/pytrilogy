@@ -61,6 +61,15 @@ means "accepted", not "succeeded". ``--wait`` (and ``runs wait <id>``) blocks
 until the server stamps the run finished and then exits non-zero unless it
 ended ``completed``.
 
+**Getting a repository onto the cloud is one command.** ``cloud bootstrap
+[ROOT]``, run from a checkout, does the whole first-time setup: it syncs the
+tree to production under your own credentials (so the workspace, jobs and
+schedules exist with their source recorded), mints a deploy token pinned to
+that source, and prints the GitHub Actions step — ``--write-workflow`` writes
+the whole workflow — that keeps the repository synced on every push. It is
+built from the pieces below, each of which is usable on its own: ``sync`` is
+what it runs, ``tokens create-deploy`` is what it mints.
+
 ``cloud sync`` is the declarative form of the same push. It walks a directory
 tree, treats every ``trilogy.toml`` whose ``[cloud]`` block declares *how the
 job runs* as one deployable project, and upserts each against its
@@ -87,8 +96,9 @@ it — may create, update and delete only the jobs and workspaces whose
 tree's workspace or to the workspaces its bind list names. ``--source`` with
 no value pins to the current checkout's own key, which is the same key
 ``sync`` records on what it deploys, so the token for a repository is minted
-from inside it. The verbs that buy no compute and touch no secret stay open to
-it; ``secret_env``, ``priority``/``deadline_seconds`` and ``vm_class`` still
+from inside it (``bootstrap`` does both in order, and refuses to pin a CI
+token to a laptop's path-derived key). The verbs that buy no compute and touch
+no secret stay open to it; ``secret_env``, ``priority``/``deadline_seconds`` and ``vm_class`` still
 need a ``jobs:admin`` token, since a pinned token is a *deploy* key, not an
 operator.
 """
@@ -148,6 +158,7 @@ from trilogy.scripts.display import (
 )
 from trilogy.scripts.project_config import find_trilogy_config
 from trilogy.scripts.source_identity import (
+    DEFAULT_BRANCHES,
     SourceOrigin,
     content_digest,
     environment_label,
@@ -1190,20 +1201,26 @@ def _deploy_capabilities(
     return [verb for verb in DEPLOY_CAPABILITIES if verb in verbs]
 
 
-def _resolve_source_key(source: str) -> str:
+def _checkout_origin(directory: Path) -> SourceOrigin:
+    """The identity `sync` records for *directory*, resolved the one way."""
+    return resolve_origin(directory.resolve())
+
+
+def _resolve_source_key(source: str, directory: Path | None = None) -> str:
     """The source prefix a token is pinned to.
 
-    ``SOURCE_HERE`` derives it from the working directory the same way `sync`
-    derives the key it records, so a token minted from inside a repository
-    reaches exactly what a sync from that directory deploys. Anything else is
-    sent verbatim: a repository alone (``github.com/owner/repo``) is a prefix
-    the server matches every directory of it against.
+    ``SOURCE_HERE`` derives it from *directory* (the working directory by
+    default) the same way `sync` derives the key it records, so a token minted
+    from inside a repository reaches exactly what a sync from that directory
+    deploys. Anything else is sent verbatim: a repository alone
+    (``github.com/owner/repo``) is a prefix the server matches every directory
+    of it against.
     """
     if source != SOURCE_HERE:
         if not source.strip():
             raise CloudError("--source needs a source key, or `.` for this checkout.")
         return source.strip()
-    origin = resolve_origin(Path.cwd().resolve())
+    origin = _checkout_origin(directory or Path.cwd())
     if not origin.is_git:
         print_warning(
             "This directory is not in a git repository with a remote, so the "
@@ -1211,6 +1228,59 @@ def _resolve_source_key(source: str) -> str:
             f"produces: {origin.source_key()}"
         )
     return origin.source_key()
+
+
+def _source_prefix(origin: SourceOrigin) -> str:
+    """The prefix a *repository's* deploy token is pinned to.
+
+    A directory's own key is ``{location}#{subpath}``, and ``#.`` — the
+    repository root's — is one directory's key, not a prefix of the ``#etl``
+    keys of the projects under it. So a bootstrap from the root pins to the
+    location alone, which the server matches every directory against, and one
+    from a subdirectory pins to that directory's key, which every project
+    beneath it extends.
+    """
+    if origin.subpath in (None, "."):
+        return origin.location
+    return origin.source_key()
+
+
+def _mint_deploy_token(
+    client: CloudClient,
+    org: str,
+    name: str,
+    capabilities: Sequence[str],
+    source_key: str | None,
+    bind_workspace_ids: Sequence[str] | None,
+    expires_in_days: int | None,
+    no_expiry: bool,
+) -> IssuedDeployToken:
+    """``POST /orgs/{slug}/tokens``, sending only what was asked for: an
+    omitted field is the server's default, never an explicit null."""
+    body: dict[str, Any] = {"name": name, "capabilities": list(capabilities)}
+    if source_key is not None:
+        body["source_key"] = source_key
+    if bind_workspace_ids:
+        body["bind_workspace_ids"] = list(bind_workspace_ids)
+    if expires_in_days is not None:
+        body["expires_in_days"] = expires_in_days
+    if no_expiry:
+        body["no_expiry"] = True
+    return client.post_one(f"/orgs/{org}/tokens", IssuedDeployToken, body)
+
+
+def _print_issued_deploy_token(
+    issued: IssuedDeployToken, org: str, bind_names: Sequence[str]
+) -> None:
+    """The token's scope, then its value — once."""
+    print_success(f"Created deploy token {issued.name!r} ({issued.id}) for org {org}")
+    print_info(f"Capabilities: {', '.join(issued.capabilities) or '-'}")
+    print_info(f"Source:       {issued.source_key or 'any (not pinned)'}")
+    if bind_names:
+        print_info(f"Workspaces:   {', '.join(dict.fromkeys(bind_names))}")
+    print_info(f"Expires:      {_ts(issued.expires_at, 'never')}")
+    print_info("Store this value now; it cannot be retrieved later:")
+    click.echo(issued.token)
 
 
 def _resolve_workspace_ids(
@@ -1312,32 +1382,24 @@ def tokens_create_deploy(
     client, org = _org_client(ctx)
     if expires_in_days is not None and no_expiry:
         raise CloudError("--expires-in-days and --no-expiry contradict; pass one.")
-    body: dict[str, Any] = {
-        "name": name,
-        "capabilities": _deploy_capabilities(capabilities, preset, prune),
-    }
-    if source is not None:
-        body["source_key"] = _resolve_source_key(source)
-    if bind_workspaces:
-        body["bind_workspace_ids"] = _resolve_workspace_ids(
-            client, org, bind_workspaces
-        )
-    if expires_in_days is not None:
-        body["expires_in_days"] = expires_in_days
-    if no_expiry:
-        body["no_expiry"] = True
-    issued = client.post_one(f"/orgs/{org}/tokens", IssuedDeployToken, body)
+    issued = _mint_deploy_token(
+        client,
+        org,
+        name,
+        _deploy_capabilities(capabilities, preset, prune),
+        _resolve_source_key(source) if source is not None else None,
+        (
+            _resolve_workspace_ids(client, org, bind_workspaces)
+            if bind_workspaces
+            else None
+        ),
+        expires_in_days,
+        no_expiry,
+    )
     if is_json_mode():
         emit_event("deploy_token_created", org=org, **issued.model_dump(mode="json"))
         return
-    print_success(f"Created deploy token {issued.name!r} ({issued.id}) for org {org}")
-    print_info(f"Capabilities: {', '.join(issued.capabilities) or '-'}")
-    print_info(f"Source:       {issued.source_key or 'any (not pinned)'}")
-    if bind_workspaces:
-        print_info(f"Workspaces:   {', '.join(dict.fromkeys(bind_workspaces))}")
-    print_info(f"Expires:      {_ts(issued.expires_at, 'never')}")
-    print_info("Store this value now; it cannot be retrieved later:")
-    click.echo(issued.token)
+    _print_issued_deploy_token(issued, org, bind_workspaces)
 
 
 @tokens.command("revoke")
@@ -3152,6 +3214,69 @@ def cloud_sync(
     # spellings take one path.
     if production:
         environment_flag = ""
+    report = _sync_tree(client, org, root, environment_flag, dry_run, prune)
+    if is_json_mode():
+        emit_event("sync", **report.event_fields())
+        return
+    print_success(report.summary())
+
+
+@dataclass
+class SyncReport:
+    """What one sync did — or, dry, would do.
+
+    The closing line's inputs, kept as data rather than printed on the spot
+    so `bootstrap` can run the same sync and report it before minting the
+    token for the tree it just deployed.
+    """
+
+    org: str
+    environment: str | None
+    dry_run: bool
+    prune: bool
+    #: One record per project: ``{name, source_key, action, outcome}``.
+    jobs: list[dict]
+    #: One per multi-job toml: ``{name, id, outcome}``; ``id`` is ``None`` on
+    #: a dry run that would have created it.
+    workspaces: list[dict]
+    pruned: int
+
+    @property
+    def target(self) -> str:
+        return self.environment or "production"
+
+    def summary(self) -> str:
+        return _sync_summary(
+            self.jobs, self.target, self.dry_run, self.pruned if self.prune else None
+        )
+
+    def event_fields(self) -> dict[str, Any]:
+        return {
+            "org": self.org,
+            "environment": self.environment,
+            "dry_run": self.dry_run,
+            "jobs": self.jobs,
+            "workspaces": self.workspaces,
+            "pruned": self.pruned,
+        }
+
+
+def _sync_tree(
+    client: CloudClient,
+    org: str,
+    root: Path,
+    environment_flag: str | None,
+    dry_run: bool,
+    prune: bool,
+) -> SyncReport:
+    """The sync itself: discover ROOT's projects, resolve the target
+    environment, deploy the workspaces, then the jobs, then their schedules,
+    then prune. ``environment_flag`` is as `sync` takes it — ``None`` derives
+    the environment from the branch, ``""`` is production.
+
+    Prints its per-entity progress lines as it goes and leaves the closing
+    line to the caller, which is what lets `bootstrap` run it unchanged.
+    """
     projects = discover_projects(root)
     if not projects:
         raise CloudError(
@@ -3200,6 +3325,7 @@ def cloud_sync(
     )
 
     results: list[dict] = []
+    workspaces: list[dict] = []
     # (config_path, cron) -> the jobs that declared it. Several jobs from one
     # toml on one cron share a schedule *row*, which is what makes them one
     # tick — and the tick is what the platform orders by dependency. One
@@ -3240,6 +3366,7 @@ def cloud_sync(
             dry_run,
         )
         workspace_ids[project.config_path] = ws_id
+        workspaces.append({"name": name, "id": ws_id, "outcome": ws_outcome})
         print_info(f"  {ws_outcome:>12}  workspace {name} ({len(files)} file(s))")
 
     groups: dict[tuple[Path, str | None], list[Job]] = {}
@@ -3273,18 +3400,282 @@ def cloud_sync(
         )
 
     pruned = _prune_stale(client, org, projects, by_key, dry_run) if prune else 0
+    return SyncReport(
+        org=org,
+        environment=env_name,
+        dry_run=dry_run,
+        prune=prune,
+        jobs=results,
+        workspaces=workspaces,
+        pruned=pruned,
+    )
 
+
+#: Where `bootstrap --write-workflow` puts the workflow when no path is given.
+DEFAULT_WORKFLOW_PATH = ".github/workflows/cloud-sync.yml"
+
+
+def _deploy_token_name(origin: SourceOrigin) -> str:
+    """``ci-deploy (<repo>)`` — the location minus its host, which is how a
+    repository is usually referred to; a path origin has only its token."""
+    location = origin.location
+    repo = location.split("/", 1)[1] if origin.is_git and "/" in location else location
+    return f"ci-deploy ({repo})"
+
+
+def _workflow_branch(origin: SourceOrigin) -> str:
+    """The branch the workflow syncs from: the default branch, which is what
+    `sync` reads as production. The current branch when it is one, else the
+    conventional name — a bootstrap run from a feature branch still wants CI
+    on main."""
+    if origin.branch in DEFAULT_BRANCHES:
+        return origin.branch
+    return DEFAULT_BRANCHES[0]
+
+
+def _sync_step(org: str, api_url: str, subpath: str, prune: bool) -> str:
+    """The one GitHub Actions step a sync needs, ready to paste into a job.
+
+    ``--org`` and ``--api`` sit *before* the subcommand, where the `cloud`
+    group parses them; trailing them reads as an unknown option.
+    """
+    command = f"trilogy cloud --org {org} --api {api_url} sync {subpath}"
+    if prune:
+        command += " --prune"
+    return (
+        "      - name: Sync to trilogy cloud\n"
+        "        env:\n"
+        "          TRILOGY_CLOUD_TOKEN: ${{ secrets.TRILOGY_CLOUD_TOKEN }}\n"
+        f"        run: {command}\n"
+    )
+
+
+def _sync_workflow(
+    org: str, api_url: str, subpath: str, prune: bool, branch: str
+) -> str:
+    """A complete workflow around `_sync_step`: on push to the default branch,
+    filtered to the synced subtree when there is one to filter to."""
+    paths = "" if subpath == "." else f'    paths:\n      - "{subpath}/**"\n'
+    return (
+        "name: Cloud sync\n"
+        "on:\n"
+        "  push:\n"
+        f"    branches: [{branch}]\n"
+        f"{paths}"
+        "jobs:\n"
+        "  sync:\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - uses: actions/checkout@v4\n"
+        "      - uses: actions/setup-python@v5\n"
+        "        with:\n"
+        '          python-version: "3.12"\n'
+        "      - run: pip install pytrilogy\n"
+        + _sync_step(org, api_url, subpath, prune)
+    )
+
+
+@cloud.command()
+@click.argument(
+    "root",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=".",
+)
+@click.option(
+    "--name",
+    "token_name",
+    default=None,
+    help="The deploy token's name. Default: `ci-deploy (<repo>)`.",
+)
+@click.option(
+    "--prune",
+    is_flag=True,
+    help="Sync with --prune, and grant the token jobs:delete so CI can too.",
+)
+@click.option(
+    "--no-sync",
+    is_flag=True,
+    help="Skip the sync: the tree is already deployed and only the token "
+    "(and the workflow) are wanted.",
+)
+@click.option(
+    "--allow-local",
+    is_flag=True,
+    help="Pin to a path-derived key when ROOT is not in a git repository with "
+    "a remote. Refused otherwise: a CI token pinned to a laptop's path "
+    "reaches nothing a runner syncs. A path key names one directory, so only "
+    "a project at ROOT itself is covered.",
+)
+@click.option(
+    "--bind-workspace",
+    "bind_workspaces",
+    multiple=True,
+    metavar="NAME",
+    help="A workspace the token may bind jobs into beyond its own tree's; "
+    "repeatable. Resolved by name.",
+)
+@click.option(
+    "--expires-in-days",
+    type=int,
+    default=None,
+    help="Token lifetime; omit for the server default (90 days).",
+)
+@click.option("--no-expiry", is_flag=True, help="Never expires. Owner/admin only.")
+@click.option(
+    "--write-workflow",
+    is_flag=False,
+    flag_value=DEFAULT_WORKFLOW_PATH,
+    default=None,
+    metavar="[PATH]",
+    help=f"Write the printed step as a complete GitHub Actions workflow, at "
+    f"PATH (default {DEFAULT_WORKFLOW_PATH}, relative to the working "
+    "directory). Refuses to overwrite without --force.",
+)
+@click.option("--force", is_flag=True, help="Overwrite an existing workflow file.")
+@dry_run_option("Sync dry, mint nothing, write nothing; say what would happen.")
+@click.pass_context
+def bootstrap(
+    ctx: click.Context,
+    root: Path,
+    token_name: str | None,
+    prune: bool,
+    no_sync: bool,
+    allow_local: bool,
+    bind_workspaces: tuple[str, ...],
+    expires_in_days: int | None,
+    no_expiry: bool,
+    write_workflow: str | None,
+    force: bool,
+    dry_run: bool,
+) -> None:
+    """Put a repository on the cloud: sync it, mint its deploy token, and
+    print the CI step that keeps it synced.
+
+    Run from a checkout. ROOT (default: the working directory) is synced to
+    **production** with your own credentials — `sync ROOT --production` —
+    so its workspace, jobs and schedules exist with their source recorded.
+    Then an org-scoped deploy token pinned to that source is minted, as
+    `tokens create-deploy --source` would, carrying the `sync` verb set
+    (`--prune` adds jobs:delete). Finally the GitHub Actions step that runs
+    the same sync under that token is printed; `--write-workflow` writes it
+    as a whole workflow, on push to the default branch, filtered to ROOT's
+    subtree. Store the token as the repository's TRILOGY_CLOUD_TOKEN secret.
+
+    Each half is its own command too: `--no-sync` skips the sync for a tree
+    already deployed, and `tokens create-deploy` mints without syncing.
+    """
+    client, org = _org_client(ctx)
+    if expires_in_days is not None and no_expiry:
+        raise CloudError("--expires-in-days and --no-expiry contradict; pass one.")
+    origin = _checkout_origin(root)
+    if not origin.is_git and not allow_local:
+        raise CloudError(
+            f"{root} is not in a git repository with a remote, so its source key "
+            f"({origin.source_key()}) names a path on this machine — a token "
+            "pinned to it would reach nothing a CI runner syncs. Push the "
+            "repository and run this from a clone of it, or pass --allow-local."
+        )
+    workflow_path = Path(write_workflow) if write_workflow else None
+    # Refused up front, before anything is deployed or minted: a bootstrap
+    # that stops here has changed nothing and can simply be re-run.
+    if workflow_path is not None and workflow_path.exists() and not force:
+        raise CloudError(f"{write_workflow} exists; pass --force to overwrite it.")
+
+    source_key = _source_prefix(origin)
+    name = token_name or _deploy_token_name(origin)
+    capabilities = _deploy_capabilities((), None, prune)
+    # Resolved before the sync so a mistyped name stops the bootstrap while
+    # it has still done nothing; these are workspaces beyond the tree's own,
+    # which exist already or are not what the flag is for.
+    bind_ids = (
+        _resolve_workspace_ids(client, org, bind_workspaces)
+        if bind_workspaces
+        else None
+    )
+    subpath = origin.subpath or "."
+    step = _sync_step(org, client.api_url, subpath, prune)
+
+    report = None if no_sync else _sync_tree(client, org, root, "", dry_run, prune)
+    if report is not None and not is_json_mode():
+        print_success(report.summary())
+    # A path origin's key is a digest of one directory, with no tree above
+    # it, so under --allow-local only the projects *at* ROOT share the
+    # token's prefix; and a git tree can surprise too. Said here, while the
+    # token can still be re-minted with `tokens create-deploy --source KEY`.
+    outside = [
+        str(job["name"])
+        for job in (report.jobs if report else [])
+        if not str(job["source_key"]).startswith(source_key)
+    ]
+    if outside:
+        print_warning(
+            f"{len(outside)} synced project(s) sit outside the token's source "
+            f"prefix {source_key} and will not be reachable by it: "
+            f"{', '.join(outside)}"
+        )
+
+    if dry_run:
+        if is_json_mode():
+            emit_event(
+                "bootstrap",
+                org=org,
+                dry_run=True,
+                source_key=source_key,
+                sync=report.event_fields() if report else None,
+                token=None,
+                token_name=name,
+                capabilities=capabilities,
+                bind_workspace_ids=bind_ids,
+                workflow_step=step,
+                workflow_path=write_workflow,
+            )
+            return
+        print_info(
+            f"Would mint deploy token {name!r} pinned to {source_key} "
+            f"with {', '.join(capabilities)}"
+        )
+        if workflow_path is not None:
+            print_info(f"Would write {write_workflow}")
+        return
+
+    issued = _mint_deploy_token(
+        client,
+        org,
+        name,
+        capabilities,
+        source_key,
+        bind_ids,
+        expires_in_days,
+        no_expiry,
+    )
+    if workflow_path is not None:
+        workflow_path.parent.mkdir(parents=True, exist_ok=True)
+        workflow_path.write_text(
+            _sync_workflow(
+                org, client.api_url, subpath, prune, _workflow_branch(origin)
+            ),
+            encoding="utf-8",
+        )
     if is_json_mode():
         emit_event(
-            "sync",
+            "bootstrap",
             org=org,
-            environment=env_name,
-            dry_run=dry_run,
-            jobs=results,
-            pruned=pruned,
+            dry_run=False,
+            source_key=source_key,
+            sync=report.event_fields() if report else None,
+            token=issued.model_dump(mode="json"),
+            workflow_step=step,
+            workflow_path=write_workflow,
         )
         return
-    print_success(_sync_summary(results, target, dry_run, pruned if prune else None))
+    _print_issued_deploy_token(issued, org, bind_workspaces)
+    print_info(
+        "Add it to the repository's Actions secrets as TRILOGY_CLOUD_TOKEN; "
+        "this step then syncs every push:"
+    )
+    click.echo(step)
+    if workflow_path is not None:
+        print_success(f"Wrote {write_workflow}")
 
 
 def _sync_summary(
