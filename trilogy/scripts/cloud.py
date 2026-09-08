@@ -74,6 +74,23 @@ rather than naming it: ``sync`` reaches production by ``--production`` (or the
 empty ``--environment`` a CI step templates), and ``env delete`` on an
 environment holding jobs takes ``--with-jobs`` or ``--keep-jobs``, since
 deleting the record alone moves them into production with their schedules.
+
+**The credential a CI sync runs under is a deploy token, not a login.**
+``tokens create`` mints a personal token — everything its user can do, in
+every org. ``tokens create-deploy`` mints an *org-scoped* one
+(``POST /orgs/{slug}/tokens``): a restriction of its minter, default-deny,
+carrying only the verbs it names (``--preset sync`` is what ``cloud sync``
+needs; ``--prune`` adds ``jobs:delete``). Pinning it to a **source** narrows it
+further: a token pinned to a source prefix — a repository, or one directory of
+it — may create, update and delete only the jobs and workspaces whose
+``source_key`` sits under that prefix, and may bind jobs only to its own
+tree's workspace or to the workspaces its bind list names. ``--source`` with
+no value pins to the current checkout's own key, which is the same key
+``sync`` records on what it deploys, so the token for a repository is minted
+from inside it. The verbs that buy no compute and touch no secret stay open to
+it; ``secret_env``, ``priority``/``deadline_seconds`` and ``vm_class`` still
+need a ``jobs:admin`` token, since a pinned token is a *deploy* key, not an
+operator.
 """
 
 from __future__ import annotations
@@ -107,6 +124,7 @@ from trilogy.scripts.click_utils import dry_run_option
 from trilogy.scripts.cloud_models import (
     Environment,
     EnvironmentExt,
+    IssuedDeployToken,
     IssuedToken,
     Job,
     JobRun,
@@ -1068,7 +1086,13 @@ def whoami(ctx: click.Context) -> None:
 
 @cloud.group()
 def tokens() -> None:
-    """Manage API tokens for the signed-in user."""
+    """Manage API tokens: personal ones, and org-scoped deploy tokens.
+
+    `create` mints a token that acts as you, everywhere you are a member.
+    `create-deploy` mints one scoped to an org and a set of verbs — and,
+    pinned to a source, to the jobs and workspaces synced from one repository
+    — which is the credential a CI `cloud sync` should run under.
+    """
 
 
 @tokens.command("list")
@@ -1105,6 +1129,213 @@ def tokens_create(ctx: click.Context, name: str, expires_in_days: int | None) ->
         emit_event("token_created", **issued.model_dump(mode="json"))
         return
     print_success(f"Created token {issued.name!r} ({issued.id})")
+    print_info("Store this value now; it cannot be retrieved later:")
+    click.echo(issued.token)
+
+
+#: The verbs an org-scoped deploy token can carry, as the API spells them.
+#: Families never cross: deciding *when* a job runs (`schedules:*`) is not
+#: implied by deciding what it does (`jobs:*`), editing the shared tree above
+#: a job (`workspaces:*`) is implied by neither, and `jobs:delete` sits under
+#: nothing. Within a family, `admin` ⊃ `write` ⊃ `read`.
+DEPLOY_CAPABILITIES: tuple[str, ...] = (
+    "jobs:read",
+    "jobs:write",
+    "jobs:admin",
+    "jobs:run",
+    "jobs:delete",
+    "schedules:read",
+    "schedules:write",
+    "workspaces:read",
+    "workspaces:write",
+    "workspaces:admin",
+)
+
+#: What `cloud sync` needs: read and write across all three families, since a
+#: sync reconciles jobs, their schedules and the shared workspace above them.
+#: Deliberately no `admin` verb — a deploy key changes content, not secrets,
+#: fairness or placement — and no `jobs:delete`, which `--prune` adds.
+CAPABILITY_PRESETS: dict[str, tuple[str, ...]] = {
+    "sync": (
+        "jobs:read",
+        "jobs:write",
+        "schedules:read",
+        "schedules:write",
+        "workspaces:read",
+        "workspaces:write",
+    ),
+}
+
+#: What a bare ``--source`` means: the current checkout's own key. Also
+#: accepted spelled out, since a bare flag ahead of the NAME argument would
+#: swallow the name as its value.
+SOURCE_HERE = "."
+
+
+def _deploy_capabilities(
+    explicit: Sequence[str], preset: str | None, prune: bool
+) -> list[str]:
+    """The verb list a deploy token is minted with, in the API's order.
+
+    Explicit verbs and a preset union; neither given means the sync preset,
+    since a deploy token with no verbs can do nothing at all.
+    """
+    verbs = set(explicit)
+    if preset is not None:
+        verbs.update(CAPABILITY_PRESETS[preset])
+    if not verbs:
+        verbs.update(CAPABILITY_PRESETS["sync"])
+    if prune:
+        verbs.add("jobs:delete")
+    return [verb for verb in DEPLOY_CAPABILITIES if verb in verbs]
+
+
+def _resolve_source_key(source: str) -> str:
+    """The source prefix a token is pinned to.
+
+    ``SOURCE_HERE`` derives it from the working directory the same way `sync`
+    derives the key it records, so a token minted from inside a repository
+    reaches exactly what a sync from that directory deploys. Anything else is
+    sent verbatim: a repository alone (``github.com/owner/repo``) is a prefix
+    the server matches every directory of it against.
+    """
+    if source != SOURCE_HERE:
+        if not source.strip():
+            raise CloudError("--source needs a source key, or `.` for this checkout.")
+        return source.strip()
+    origin = resolve_origin(Path.cwd().resolve())
+    if not origin.is_git:
+        print_warning(
+            "This directory is not in a git repository with a remote, so the "
+            "token is pinned to a path-derived key that only this checkout "
+            f"produces: {origin.source_key()}"
+        )
+    return origin.source_key()
+
+
+def _resolve_workspace_ids(
+    client: CloudClient, org: str, names: Sequence[str]
+) -> list[str]:
+    """Workspace names → ids, refusing a name the org does not have. Names are
+    unique per org, so each resolves to exactly one row."""
+    known = {
+        w.name: w.id for w in client.get_many(f"/orgs/{org}/workspaces", Workspace)
+    }
+    ids: list[str] = []
+    for name in names:
+        if name not in known:
+            listed = ", ".join(sorted(known)) or "none"
+            raise CloudError(
+                f"No workspace named {name!r} in org {org!r} (known: {listed})."
+            )
+        if known[name] not in ids:
+            ids.append(known[name])
+    return ids
+
+
+@tokens.command("create-deploy")
+@click.argument("name")
+@click.option(
+    "--capability",
+    "-c",
+    "capabilities",
+    multiple=True,
+    type=click.Choice(DEPLOY_CAPABILITIES),
+    help="A verb to grant; repeatable. Unions with --preset. Default: the "
+    "`sync` preset.",
+)
+@click.option(
+    "--preset",
+    type=click.Choice(sorted(CAPABILITY_PRESETS)),
+    default=None,
+    help="A named verb set: `sync` is what `trilogy cloud sync` needs "
+    "(jobs, schedules and workspaces, read + write).",
+)
+@click.option(
+    "--prune",
+    is_flag=True,
+    help="Also grant jobs:delete, for a sync that runs with --prune.",
+)
+@click.option(
+    "--source",
+    is_flag=False,
+    flag_value=SOURCE_HERE,
+    default=None,
+    metavar="[KEY]",
+    help="Pin the token to a source prefix: bare (or `.`) for this checkout's "
+    "own key, `github.com/owner/repo` for a whole repository, or "
+    "`github.com/owner/repo#path` for one directory of it. Give NAME before "
+    "a bare --source, or it is read as the key.",
+)
+@click.option(
+    "--bind-workspace",
+    "bind_workspaces",
+    multiple=True,
+    metavar="NAME",
+    help="A workspace a pinned token may bind jobs into beyond its own tree's; "
+    "repeatable. Resolved by name.",
+)
+@click.option(
+    "--expires-in-days",
+    type=int,
+    default=None,
+    help="Lifetime; omit for the server default (90 days).",
+)
+@click.option(
+    "--no-expiry",
+    is_flag=True,
+    help="Never expires. Owner/admin only.",
+)
+@click.pass_context
+def tokens_create_deploy(
+    ctx: click.Context,
+    name: str,
+    capabilities: tuple[str, ...],
+    preset: str | None,
+    prune: bool,
+    source: str | None,
+    bind_workspaces: tuple[str, ...],
+    expires_in_days: int | None,
+    no_expiry: bool,
+) -> None:
+    """Mint an org-scoped deploy token. The value is printed once.
+
+    The token is a restriction of you: it reaches one org, carries only the
+    verbs it names, and — pinned with --source — may create, update and delete
+    only the jobs and workspaces whose source sits under that prefix, binding
+    jobs only to its own tree's workspace or to the ones --bind-workspace
+    names. Run it from inside the repository a sync deploys, after the first
+    sync has recorded the source, and `--source` pins to exactly that::
+
+        trilogy cloud tokens create-deploy ci --source --prune
+    """
+    client, org = _org_client(ctx)
+    if expires_in_days is not None and no_expiry:
+        raise CloudError("--expires-in-days and --no-expiry contradict; pass one.")
+    body: dict[str, Any] = {
+        "name": name,
+        "capabilities": _deploy_capabilities(capabilities, preset, prune),
+    }
+    if source is not None:
+        body["source_key"] = _resolve_source_key(source)
+    if bind_workspaces:
+        body["bind_workspace_ids"] = _resolve_workspace_ids(
+            client, org, bind_workspaces
+        )
+    if expires_in_days is not None:
+        body["expires_in_days"] = expires_in_days
+    if no_expiry:
+        body["no_expiry"] = True
+    issued = client.post_one(f"/orgs/{org}/tokens", IssuedDeployToken, body)
+    if is_json_mode():
+        emit_event("deploy_token_created", org=org, **issued.model_dump(mode="json"))
+        return
+    print_success(f"Created deploy token {issued.name!r} ({issued.id}) for org {org}")
+    print_info(f"Capabilities: {', '.join(issued.capabilities) or '-'}")
+    print_info(f"Source:       {issued.source_key or 'any (not pinned)'}")
+    if bind_workspaces:
+        print_info(f"Workspaces:   {', '.join(dict.fromkeys(bind_workspaces))}")
+    print_info(f"Expires:      {_ts(issued.expires_at, 'never')}")
     print_info("Store this value now; it cannot be retrieved later:")
     click.echo(issued.token)
 
@@ -2897,6 +3128,20 @@ def cloud_sync(
     **Existing jobs are not adopted by name.** A job the platform holds with no
     ``source_key`` — anything created by hand or by ``jobs push`` — is invisible
     to this command and will be duplicated rather than updated.
+
+    **The first sync from a repository records its source on the workspace
+    and jobs; mint a source-pinned token for it afterwards.** Every job, and
+    the workspace a multi-job project deploys into, is stamped with the
+    directory's ``source_key``, which makes the repository a *source* the
+    platform knows. ``tokens create-deploy NAME --source`` (run from inside
+    the checkout) then mints an org-scoped token pinned to exactly that: it
+    may create, update and delete only the jobs and workspaces under the
+    prefix, and bind jobs only to its own tree's workspace or to those its
+    ``--bind-workspace`` list names — which is the credential a CI sync should
+    run under, in ``TRILOGY_CLOUD_TOKEN``. It carries the ``sync`` verb set
+    (``--prune`` adds ``jobs:delete``); ``secret_env``, ``priority``,
+    ``deadline_seconds`` and ``vm_class`` are outside what a deploy key may
+    move and still need a ``jobs:admin`` token.
     """
     client, org = _org_client(ctx)
     if production and environment_flag is not None:
@@ -2989,6 +3234,9 @@ def cloud_sync(
             name,
             project.config_path.read_text(encoding="utf-8"),
             files,
+            # The directory's key, not a job's: several jobs share this tree,
+            # and each of theirs carries a `::key` suffix this one must not.
+            project.origin.source_key(),
             dry_run,
         )
         workspace_ids[project.config_path] = ws_id
@@ -3096,6 +3344,7 @@ def _ensure_workspace(
     name: str,
     config_text: str,
     files: list[dict],
+    source_key: str,
     dry_run: bool,
 ) -> tuple[str | None, str]:
     """Create or update the workspace a multi-job project deploys into, and
@@ -3107,9 +3356,13 @@ def _ensure_workspace(
     `config` stays on the *jobs*: workspace config layering needs pytrilogy's
     `--config-overlay`, which has not shipped. Files are the part that moves.
 
-    Matched by name, which is unique per org. A workspace has no `source_key`,
-    so a renamed one is a new workspace and the old one is left behind;
-    `--prune` does not cover it.
+    Matched by name, which is unique per org — *not* by `source_key`, so a
+    renamed one is a new workspace and the old one is left behind; `--prune`
+    does not cover it. The key is still **recorded**: it is the project
+    directory's own (no ``::key`` job suffix), the same one its jobs carry, and
+    it is what makes the repository a source a deploy token can be pinned to
+    (`tokens create-deploy --source`). Only a sync sends it; `workspaces push`
+    omits the field and the server keeps whatever it holds.
 
     Everything a sync does not declare is **carried** off the workspace being
     updated, through the payload builder `workspaces push` uses, since a `PUT`
@@ -3130,6 +3383,7 @@ def _ensure_workspace(
         declared={"description": f"Shared project tree for {name}"},
         existing=existing,
     )
+    body["source_key"] = source_key
     if dry_run:
         return (existing.id if existing else None), (
             "would update" if existing else "would create"

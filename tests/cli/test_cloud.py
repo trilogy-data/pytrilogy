@@ -911,6 +911,255 @@ class TestTokenCommands:
         assert logged_in.call_for("DELETE", "/auth/tokens/tok-1")
 
 
+class TestDeployTokenCommands:
+    """`tokens create-deploy`: the org-scoped, source-pinned credential a CI
+    sync runs under. It goes through the org route, so it resolves an org the
+    way every org-scoped command does, and everything it sends is a
+    restriction — the verbs it names, the source prefix it is pinned to, the
+    workspaces it may bind into."""
+
+    SYNC: ClassVar[list[str]] = [
+        "jobs:read",
+        "jobs:write",
+        "schedules:read",
+        "schedules:write",
+        "workspaces:read",
+        "workspaces:write",
+    ]
+
+    @staticmethod
+    def _body(api) -> dict:
+        return api.body_for("POST", f"/orgs/{api.org}/tokens")
+
+    @staticmethod
+    def _pin_checkout(monkeypatch, subpath: str = "etl") -> list[Path]:
+        """Stand in for the git provider, recording what it was asked about."""
+        asked: list[Path] = []
+
+        def fake(directory: Path) -> SourceOrigin:
+            asked.append(directory)
+            return SourceOrigin(
+                kind="git", location="github.com/acme/models", subpath=subpath
+            )
+
+        monkeypatch.setattr(cloud_mod, "resolve_origin", fake)
+        return asked
+
+    # -- capabilities --------------------------------------------------
+
+    def test_no_capability_means_the_sync_preset(self, logged_in, run_cloud):
+        """A deploy token with no verbs can do nothing, and the one thing a
+        deploy token is for is a sync."""
+        result = run_cloud("tokens", "create-deploy", "ci")
+        assert result.exit_code == 0, result.output
+        assert self._body(logged_in) == {"name": "ci", "capabilities": self.SYNC}
+
+    def test_prune_adds_jobs_delete(self, logged_in, run_cloud):
+        """`jobs:delete` sits under no other verb, so a sync that prunes needs
+        it spelled — and it is sent in the API's order, not appended."""
+        run_cloud("tokens", "create-deploy", "ci", "--prune")
+        assert self._body(logged_in)["capabilities"] == [
+            "jobs:read",
+            "jobs:write",
+            "jobs:delete",
+            "schedules:read",
+            "schedules:write",
+            "workspaces:read",
+            "workspaces:write",
+        ]
+
+    def test_explicit_verbs_replace_the_default(self, logged_in, run_cloud):
+        run_cloud("tokens", "create-deploy", "ci", "-c", "jobs:run", "-c", "jobs:read")
+        assert self._body(logged_in)["capabilities"] == ["jobs:read", "jobs:run"]
+
+    def test_explicit_verbs_union_with_a_preset(self, logged_in, run_cloud):
+        run_cloud(
+            "tokens", "create-deploy", "ci", "--preset", "sync", "-c", "jobs:admin"
+        )
+        assert self._body(logged_in)["capabilities"] == [
+            "jobs:read",
+            "jobs:write",
+            "jobs:admin",
+            "schedules:read",
+            "schedules:write",
+            "workspaces:read",
+            "workspaces:write",
+        ]
+
+    def test_an_unknown_verb_is_refused_before_any_request(self, logged_in, run_cloud):
+        result = run_cloud("tokens", "create-deploy", "ci", "-c", "jobs:fly")
+        assert result.exit_code == 2
+        assert "jobs:fly" in result.output
+        assert not logged_in.requests_for("POST", f"/orgs/{logged_in.org}/tokens")
+
+    # -- source pinning ------------------------------------------------
+
+    def test_a_bare_source_pins_to_this_checkout(
+        self, logged_in, run_cloud, monkeypatch
+    ):
+        """The same key `sync` records on what it deploys from this directory,
+        so the token reaches exactly that."""
+        asked = self._pin_checkout(monkeypatch)
+        result = run_cloud("tokens", "create-deploy", "ci", "--source")
+        assert result.exit_code == 0, result.output
+        assert self._body(logged_in)["source_key"] == "github.com/acme/models#etl"
+        assert asked == [Path.cwd().resolve()]
+
+    def test_a_dot_source_is_the_bare_source_spelled_out(
+        self, logged_in, run_cloud, monkeypatch
+    ):
+        """Needed because a bare `--source` ahead of NAME would swallow the
+        name as its value."""
+        self._pin_checkout(monkeypatch, subpath=".")
+        run_cloud("tokens", "create-deploy", "--source", ".", "ci")
+        assert self._body(logged_in)["source_key"] == "github.com/acme/models#."
+
+    def test_an_explicit_source_is_sent_verbatim(
+        self, logged_in, run_cloud, monkeypatch
+    ):
+        """A repository alone is a prefix the server matches every directory
+        of it against; the checkout is not consulted."""
+        monkeypatch.setattr(
+            cloud_mod, "resolve_origin", lambda d: pytest.fail("consulted git")
+        )
+        run_cloud("tokens", "create-deploy", "ci", "--source", "github.com/acme/models")
+        assert self._body(logged_in)["source_key"] == "github.com/acme/models"
+
+    def test_a_checkout_outside_git_warns_and_pins_to_its_path_key(
+        self, logged_in, run_cloud
+    ):
+        """tmp_path is not a repository. The token still pins — to a key only
+        this checkout produces — and says so, since a CI runner elsewhere
+        will never derive it."""
+        result = run_cloud("tokens", "create-deploy", "ci", "--source")
+        assert result.exit_code == 0, result.output
+        assert "not in a git repository" in result.output
+        assert self._body(logged_in)["source_key"].startswith("local:")
+
+    def test_no_source_means_an_unpinned_token(self, logged_in, run_cloud):
+        run_cloud("tokens", "create-deploy", "ci")
+        assert "source_key" not in self._body(logged_in)
+
+    # -- bind workspaces -----------------------------------------------
+
+    def test_bind_workspaces_resolve_by_name_in_the_order_given(
+        self, logged_in, run_cloud
+    ):
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/workspaces",
+            [_workspace("ws-1", "space"), _workspace("ws-2", "shared")],
+        )
+        result = run_cloud(
+            "tokens",
+            "create-deploy",
+            "ci",
+            "--bind-workspace",
+            "shared",
+            "--bind-workspace",
+            "space",
+            "--bind-workspace",
+            "shared",
+        )
+        assert result.exit_code == 0, result.output
+        assert self._body(logged_in)["bind_workspace_ids"] == ["ws-2", "ws-1"]
+
+    def test_an_unknown_workspace_is_refused_by_name(self, logged_in, run_cloud):
+        result = run_cloud("tokens", "create-deploy", "ci", "--bind-workspace", "nope")
+        assert result.exit_code != 0
+        assert "No workspace named 'nope'" in result.output
+        assert "space" in result.output, "the known names are listed"
+        assert not logged_in.requests_for("POST", f"/orgs/{logged_in.org}/tokens")
+
+    def test_no_bind_list_sends_no_field_and_reads_no_workspaces(
+        self, logged_in, run_cloud
+    ):
+        run_cloud("tokens", "create-deploy", "ci")
+        assert "bind_workspace_ids" not in self._body(logged_in)
+        assert not logged_in.requests_for("GET", f"/orgs/{logged_in.org}/workspaces")
+
+    # -- expiry ----------------------------------------------------------
+
+    def test_expiry_forwards(self, logged_in, run_cloud):
+        run_cloud("tokens", "create-deploy", "ci", "--expires-in-days", "30")
+        body = self._body(logged_in)
+        assert body["expires_in_days"] == 30 and "no_expiry" not in body
+
+    def test_no_expiry_forwards(self, logged_in, run_cloud):
+        run_cloud("tokens", "create-deploy", "ci", "--no-expiry")
+        body = self._body(logged_in)
+        assert body["no_expiry"] is True and "expires_in_days" not in body
+
+    def test_an_expiry_and_no_expiry_contradict(self, logged_in, run_cloud):
+        result = run_cloud(
+            "tokens", "create-deploy", "ci", "--expires-in-days", "30", "--no-expiry"
+        )
+        assert result.exit_code != 0
+        assert "contradict" in result.output
+        assert not logged_in.requests_for("POST", f"/orgs/{logged_in.org}/tokens")
+
+    # -- the whole body, and the answer --------------------------------
+
+    def test_the_request_body_shape(self, logged_in, run_cloud, monkeypatch):
+        """Everything at once, and nothing else: in particular no `job_ids`,
+        which the org route no longer takes."""
+        self._pin_checkout(monkeypatch)
+        result = run_cloud(
+            "tokens",
+            "create-deploy",
+            "ci",
+            "--source",
+            "--prune",
+            "--bind-workspace",
+            "space",
+            "--expires-in-days",
+            "365",
+        )
+        assert result.exit_code == 0, result.output
+        assert self._body(logged_in) == {
+            "name": "ci",
+            "capabilities": [
+                "jobs:read",
+                "jobs:write",
+                "jobs:delete",
+                "schedules:read",
+                "schedules:write",
+                "workspaces:read",
+                "workspaces:write",
+            ],
+            "source_key": "github.com/acme/models#etl",
+            "bind_workspace_ids": ["ws-1"],
+            "expires_in_days": 365,
+        }
+
+    def test_it_goes_through_the_org_route(self, logged_in, run_cloud):
+        logged_in.set(
+            "POST",
+            "/orgs/other/tokens",
+            logged_in.routes[("POST", f"/orgs/{logged_in.org}/tokens")],
+        )
+        result = run_cloud("--org", "other", "tokens", "create-deploy", "ci")
+        assert result.exit_code == 0, result.output
+        assert logged_in.call_for("POST", "/orgs/other/tokens")
+
+    def test_it_prints_the_value_once_with_its_scope(self, logged_in, run_cloud):
+        output = run_cloud(
+            "tokens", "create-deploy", "ci", "--bind-workspace", "space"
+        ).output
+        assert "tri_deploy_value" in output
+        assert "jobs:write" in output
+        assert "github.com/acme/models#etl" in output
+        assert "space" in output
+
+    def test_it_emits_a_json_event(self, logged_in, run_cloud, json_mode):
+        payload = json.loads(run_cloud("tokens", "create-deploy", "ci").output)
+        assert payload["event"] == "deploy_token_created"
+        assert payload["org"] == logged_in.org
+        assert payload["token"] == "tri_deploy_value"
+        assert payload["capabilities"] == self.SYNC
+        assert payload["source_key"] == "github.com/acme/models#etl"
+
+
 class TestOrgResolution:
     def test_orgs_lists_memberships(self, logged_in, run_cloud):
         assert "acme" in run_cloud("orgs").output
@@ -2385,6 +2634,21 @@ class TestWorkspacePush:
         assert body["name"] == "fresh"
         assert {f["name"] for f in body["files"]} == {"model.preql"}
 
+    def test_a_push_never_sends_a_source(self, logged_in, run_cloud, tmp_path):
+        """A workspace's `source_key` is what a deploy token pins to, and only
+        a sync knows it. A push omits the field on create and on replace, and
+        the server keeps whatever it holds — sending null would clear it."""
+        source = str(self._source(tmp_path))
+        run_cloud("workspaces", "push", "--source", source, "--name", "space")
+        assert "source_key" not in logged_in.body_for(
+            "PUT", f"/orgs/{logged_in.org}/workspaces/ws-1"
+        )
+        logged_in.set("GET", f"/orgs/{logged_in.org}/workspaces", [])
+        run_cloud("workspaces", "push", "--source", source, "--name", "fresh")
+        assert "source_key" not in logged_in.body_for(
+            "POST", f"/orgs/{logged_in.org}/workspaces"
+        )
+
     def test_an_existing_workspace_is_replaced_in_place(
         self, logged_in, run_cloud, tmp_path
     ):
@@ -3766,6 +4030,47 @@ schedule = "0 0 6 * * *"
             "publish.preql",
         }
         assert all(job["workspace_id"] == "ws-1" for job in jobs)
+
+    def test_the_workspace_records_the_directory_source(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """The first sync from a repository is what makes it a *source* a
+        deploy token can be pinned to (`tokens create-deploy --source`), so
+        the workspace carries the directory's own key — the one every job
+        under it shares, without any job's `::key` suffix."""
+        root = self._repo(tmp_path)
+        self._seed(logged_in)
+        result = run_cloud("sync", str(root))
+        assert result.exit_code == 0, result.output
+
+        directory_key = cloud_mod.resolve_origin((root / "data").resolve()).source_key()
+        assert "::" not in directory_key
+        workspace = logged_in.body_for("POST", f"/orgs/{logged_in.org}/workspaces")
+        assert workspace["source_key"] == directory_key
+        jobs = logged_in.requests_for("POST", f"/orgs/{logged_in.org}/jobs")
+        assert {job["source_key"] for job in jobs} == {
+            f"{directory_key}::refresh",
+            f"{directory_key}::publish",
+        }
+
+    def test_an_existing_workspace_is_restamped_with_its_source(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """A workspace deployed before sources were recorded gets its key on
+        the next sync, through the PUT that replaces its tree."""
+        root = self._repo(tmp_path)
+        self._seed(logged_in)
+        logged_in.set(
+            "GET", f"/orgs/{logged_in.org}/workspaces", [_workspace("ws-1", "data")]
+        )
+        result = run_cloud("sync", str(root))
+        assert result.exit_code == 0, result.output
+        assert (
+            logged_in.body_for("PUT", f"/orgs/{logged_in.org}/workspaces/ws-1")[
+                "source_key"
+            ]
+            == cloud_mod.resolve_origin((root / "data").resolve()).source_key()
+        )
 
     def test_an_explicit_production_does_not_namespace_the_workspace(
         self, logged_in, run_cloud, tmp_path

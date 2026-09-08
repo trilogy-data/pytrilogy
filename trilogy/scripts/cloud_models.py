@@ -76,6 +76,31 @@ class IssuedToken(BaseModel):
     expires_at: datetime | None = None
 
 
+class IssuedDeployToken(BaseModel):
+    """``routes/org_tokens.rs`` — the answer to ``POST /orgs/{slug}/tokens``:
+    an org-scoped token, its scope echoed back, and the one place its value is
+    ever populated.
+
+    ``capabilities`` is the verb list as the server accepted it. ``source_key``
+    is the source *prefix* the token is pinned to — a repository
+    (``github.com/owner/repo``) or one directory of it
+    (``github.com/owner/repo#path``) — and ``None`` for a token that may reach
+    any source the org holds. ``bind_workspace_ids`` are the workspaces a
+    pinned token may bind jobs into beyond its own tree's.
+    """
+
+    id: str
+    name: str
+    token: str
+    token_prefix: str
+    org_id: str
+    capabilities: list[str] = []
+    source_key: str | None = None
+    bind_workspace_ids: list[str] | None = None
+    created_at: datetime
+    expires_at: datetime | None = None
+
+
 # ============================================================================
 # Jobs, runs, schedules (api/src/models/job.rs, api/src/routes)
 # ============================================================================
