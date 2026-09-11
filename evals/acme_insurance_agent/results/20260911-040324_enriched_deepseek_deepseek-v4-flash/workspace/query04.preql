@@ -1,0 +1,7 @@
+import raw.policy as policy;
+
+# How many policies has each agent sold?
+select
+    policy.agent_id,
+    policy.policy_count
+order by policy.agent_id asc;

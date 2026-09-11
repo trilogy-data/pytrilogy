@@ -1,0 +1,3 @@
+import raw.policy as policy;
+
+select policy.policy_count as policy_count;

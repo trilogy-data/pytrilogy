@@ -1,0 +1,7 @@
+import raw.claim as claim;
+
+# Only settled claims (close_date set) contribute; each policy's average over
+# its settled claims, grouped automatically by policy number.
+where claim.close_date is not null
+select claim.policy.policy_number as policy_number,
+       claim.average_days_to_settle as avg_days_to_settle;

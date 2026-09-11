@@ -1,0 +1,4 @@
+import root.Agreement_Party_Role as apr;
+
+where apr.party_role_code = 'PH'
+select apr.party_identifier, count_distinct(apr.agreement_identifier) as policy_count;

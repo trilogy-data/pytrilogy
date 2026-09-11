@@ -1,0 +1,3 @@
+import root.Claim as claim;
+
+select count(claim.claim_identifier) as claim_count;

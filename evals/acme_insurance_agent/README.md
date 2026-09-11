@@ -77,23 +77,31 @@ JSONL traces are not.
 
 ## Results
 
-One pass over the eleven blog questions with `deepseek/deepseek-v4-flash`
-(run `20260911-001859`, one agent per question, fresh context each;
-`charts/funnel_deepseek_deepseek-v4-flash.md` has the per-question matrix):
+Two passes over the eleven blog questions with `deepseek/deepseek-v4-flash`
+(one agent per question, fresh context each; `charts/` has the per-question
+matrix of the latest run). The first used the verbatim blog wording
+(`20260911-001859`); the second the fully specified wording
+(`20260911-040324`), after the tooling fixes in `trace_audit.md`:
 
-| Leg | Post's condition | Pass | Tokens |
+| Leg | Post's condition | Verbatim wording | Specified wording |
 |---|---|---|---|
-| `sql_bare` (db only) | text-to-SQL, no DDL | 10/11 | 697k |
-| `sql_schema` (db + DDL) | text-to-SQL | 10/11 | 382k |
-| `ingest` (auto Trilogy model) | — | 9/11 | 1,574k |
-| `enriched` (curated Trilogy model) | semantic layer | 11/11 | 649k |
+| `sql_bare` (db only) | text-to-SQL, no DDL | 10/11, 697k tokens | 11/11, 338k |
+| `sql_schema` (db + DDL) | text-to-SQL | 10/11, 382k | 11/11, 318k |
+| `ingest` (auto Trilogy model) | — | 9/11, 1,574k | 11/11, 1,310k |
+| `enriched` (curated Trilogy model) | semantic layer | 11/11, 649k | 11/11, 627k |
+
+With the output shape stated, every leg answers every question; what
+separates them is cost. The curated model runs at about half the auto-ingested
+model's tokens, and the SQL legs are cheapest of all on a 13-table schema this
+small.
 
 For comparison the post reports, on the same questions, text-to-SQL at
 84-90% and the modeled semantic layer at 98-100% across twenty repetitions.
 A single pass here is not a repetition study, so treat the numbers as a
 first reading rather than a headline.
 
-What failed, and why it is the semantic layer's argument in miniature:
+What failed on the verbatim wording, and why it is the semantic layer's
+argument in miniature:
 
 - **q03** (`What is the total amount of premiums that a policy holder has paid?`)
   fails on every unmodeled leg. The question never says "by policy holder",
