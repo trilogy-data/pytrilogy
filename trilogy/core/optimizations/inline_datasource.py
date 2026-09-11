@@ -27,9 +27,11 @@ def _raw_columns_inline_safely(
     """Verbatim raw() text is evaluated wherever it lands. As the consumer's
     sole source that is the datasource's own scope. Beside another table a
     column reference is unqualified (ambiguous when the tables share the
-    name), and a literal on a joined-in side reads as its value on the other
-    table's rows; a literal on the driving table of INNER/LEFT joins is still
-    per-row correct, since every result row carries one of its rows."""
+    name), and a literal on an optional (outer-joined) side reads as its value
+    on rows that have no such row. A literal stays per-row correct wherever
+    every result row carries one of the datasource's rows: the driving table
+    of INNER/LEFT joins, or an INNER-joined table in a plan with no FULL/RIGHT
+    join to manufacture rows without it."""
     if not root.has_raw_columns:
         return True
     if not cte.joins and parent_count <= 1:
@@ -39,12 +41,19 @@ def _raw_columns_inline_safely(
         for c in root.columns
         if isinstance(c.alias, RawColumnExpr)
     )
-    if not literal_only or cte.base_name != parent.name:
+    if not literal_only:
         return False
+    joins = [join for join in cte.joins if isinstance(join, Join)]
+    if len(joins) != len(cte.joins) or any(
+        join.jointype in (JoinType.FULL, JoinType.RIGHT_OUTER) for join in joins
+    ):
+        return False
+    if cte.base_name == parent.name:
+        return True
     return all(
-        isinstance(join, Join)
-        and join.jointype in (JoinType.INNER, JoinType.LEFT_OUTER)
-        for join in cte.joins
+        join.jointype == JoinType.INNER
+        for join in joins
+        if join.right_cte.name == parent.name
     )
 
 
