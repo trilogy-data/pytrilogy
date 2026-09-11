@@ -5,17 +5,21 @@ import pytest
 from click.testing import CliRunner
 
 from trilogy import Dialects
-from trilogy.authoring import DataType
+from trilogy.authoring import Comment, Datasource, DataType
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import Modifier, Purpose
+from trilogy.core.models.author import Concept
 from trilogy.core.models.core import EnumType, TraitDataType
+from trilogy.core.models.datasource import Address, ColumnAssignment
 from trilogy.dialect.base import BaseDialect
 from trilogy.scripts.ingest import (
     _PENALTY_MEASURE,
     _PENALTY_TEMPORAL,
+    IngestRecord,
     _alternate_single_keys,
     _check_column_combination_uniqueness,
     _column_grain_penalty,
+    _describe_ingested,
     _fk_source_key,
     _grain_penalties,
     _is_unique_key,
@@ -2829,3 +2833,64 @@ def test_ingest_dry_run_reports_success_not_failure(tmp_path):
     )
     assert result.exit_code == 0
     assert "0/1 ok" not in result.output
+
+
+def _record(name: str, columns: list[tuple[str, Purpose]]) -> IngestRecord:
+    concepts = [
+        Concept(name=col.lower(), datatype="int", purpose=purpose)
+        for col, purpose in columns
+    ]
+    datasource = Datasource(
+        name=name,
+        columns=[
+            ColumnAssignment(alias=col, concept=c)
+            for (col, _), c in zip(columns, concepts)
+        ],
+        address=Address(location=name),
+    )
+    return IngestRecord(
+        source=name,
+        datasource=datasource,
+        concepts=concepts,
+        required_imports=set(),
+        script=[Comment(text=f"# Datasource ingested from {name}")],
+        alternate_keys=[],
+    )
+
+
+def test_header_names_grain_properties_and_links():
+    rec = _record(
+        "Policy_Amount",
+        [
+            ("Policy_Amount_Identifier", Purpose.KEY),
+            ("Policy_Identifier", Purpose.PROPERTY),
+            ("Policy_Amount", Purpose.PROPERTY),
+        ],
+    )
+    bindings = {
+        "Policy_Identifier": FKBinding("Policy.Policy_Identifier", partial=False)
+    }
+    lines = [c.text for c in _describe_ingested(rec, bindings, ["Premium"])]
+    assert lines == [
+        "# Grain: policy_amount_identifier. Properties: policy_amount.",
+        "# Imports: Policy via Policy_Identifier (fields as Policy.*).",
+        "# Referenced by: Premium.",
+    ]
+
+
+def test_header_flags_key_only_table():
+    rec = _record("Premium", [("Policy_Amount_Identifier", Purpose.KEY)])
+    lines = [c.text for c in _describe_ingested(rec, {}, [])]
+    assert lines == [
+        "# Grain: policy_amount_identifier. Key-only table: no columns beyond its key."
+    ]
+
+
+def test_header_uses_role_alias_and_caps_properties():
+    columns = [("Id", Purpose.KEY)] + [(f"C{i}", Purpose.PROPERTY) for i in range(14)]
+    columns.append(("Ship_Date", Purpose.PROPERTY))
+    rec = _record("Orders", columns)
+    bindings = {"Ship_Date": FKBinding("Date.Date_Id@ship", partial=True)}
+    lines = [c.text for c in _describe_ingested(rec, bindings, [])]
+    assert lines[0].endswith("c10, c11, +2 more.")
+    assert lines[1] == "# Imports: ship via Ship_Date (fields as ship.*)."

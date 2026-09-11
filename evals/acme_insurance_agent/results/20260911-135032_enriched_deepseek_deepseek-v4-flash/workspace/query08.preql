@@ -1,0 +1,7 @@
+import raw.claim as c;
+
+select
+    c.policy.policy_number as policy_number,
+    c.claim_count as num_claims
+where c.id is not null
+order by c.policy.policy_number;

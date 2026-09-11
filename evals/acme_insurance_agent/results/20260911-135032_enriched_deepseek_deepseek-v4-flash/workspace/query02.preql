@@ -1,0 +1,4 @@
+import raw.claim as claim;
+
+select claim.policy.policy_number, claim.average_days_to_settle
+where claim.close_date is not null;

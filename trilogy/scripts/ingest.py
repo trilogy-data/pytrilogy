@@ -49,6 +49,7 @@ from trilogy.scripts.display_ingest import (
     show_ingest_summary,
 )
 from trilogy.scripts.ingest_helpers.fk_inference import (
+    FKBinding,
     InferredFK,
     _fk_stem,
     _stem_related,
@@ -833,6 +834,65 @@ def create_datasource_from_table(
     return datasource, concepts, required_imports, alternate_keys
 
 
+_HEADER_PROPERTY_CAP = 12
+
+
+def _fk_target(binding: FKBinding) -> tuple[str, str]:
+    """(target table, import alias) from ``table.column[@alias]``."""
+    target_ref, _, role_alias = binding.target_ref.partition("@")
+    table = target_ref.rsplit(".", 1)[0]
+    return table, role_alias or table
+
+
+def _describe_ingested(
+    rec: IngestRecord,
+    bindings: dict[str, FKBinding],
+    referenced_by: list[str],
+) -> list[Comment]:
+    """Header lines after the "ingested from" comment. `file list` shows the
+    leading comment block as the file's description, so an agent can pick
+    files from the listing instead of exploring each: the grain, the
+    properties, the models this file imports (with the column each hangs off
+    and the dot-path that reaches their fields), and which files import this
+    one. A key-only table says so up front; probing it for columns is wasted."""
+    fk_columns = {
+        col.concept.name
+        for col in rec.datasource.columns
+        if isinstance(col.alias, str) and col.alias in bindings
+    }
+    keys = [c.name for c in rec.concepts if c.purpose == Purpose.KEY]
+    props = [
+        c.name
+        for c in rec.concepts
+        if c.purpose == Purpose.PROPERTY and c.name not in fk_columns
+    ]
+    shown = ", ".join(props[:_HEADER_PROPERTY_CAP])
+    if len(props) > _HEADER_PROPERTY_CAP:
+        shown += f", +{len(props) - _HEADER_PROPERTY_CAP} more"
+    grain = ", ".join(keys) or "-"
+    detail = (
+        f"Properties: {shown}."
+        if props
+        else (
+            "Key-only table: no columns beyond its key."
+            if not fk_columns
+            else "No properties beyond its key and links."
+        )
+    )
+    lines = [Comment(text=f"# Grain: {grain}. {detail}")]
+    if bindings:
+        links = sorted(
+            f"{alias} via {column} (fields as {alias}.*)"
+            for column, alias in (
+                (column, _fk_target(binding)[1]) for column, binding in bindings.items()
+            )
+        )
+        lines.append(Comment(text=f"# Imports: {', '.join(links)}."))
+    if referenced_by:
+        lines.append(Comment(text=f"# Referenced by: {', '.join(referenced_by)}."))
+    return lines
+
+
 def _build_script_content(
     source_label: str,
     datasource: Datasource,
@@ -1168,9 +1228,18 @@ def ingest(
         print_info("Processing foreign key relationships...")
 
     fk_datasources = {_fk_source_key(rec): rec.datasource for rec in ingested.values()}
+    referenced_by: dict[str, list[str]] = defaultdict(list)
+    for source_key, mappings in fk_map.items():
+        for binding in mappings.values():
+            target = _fk_target(binding)[0]
+            if target in fk_datasources:
+                referenced_by[target].append(fk_datasources[source_key].name)
     for source, rec in ingested.items():
         output_file = output_dir / f"{rec.datasource.name}.preql"
         fk_key = _fk_source_key(rec)
+        rec.script[1:1] = _describe_ingested(
+            rec, fk_map.get(fk_key, {}), sorted(set(referenced_by.get(fk_key, [])))
+        )
         if fk_map and fk_key in fk_map:
             column_mappings = fk_map[fk_key]
             content = apply_foreign_key_references(

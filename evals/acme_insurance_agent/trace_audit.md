@@ -269,3 +269,23 @@ Smaller, not taken: the directory hop (`agent-info` then `agent-info
 query`) is one iteration per question, ~2.5k prompt tokens each; the task
 could name `trilogy agent-info query` directly, but the funnel deliberately
 measures discovery through the directory.
+
+Second round (run `20260911-135032`, Trilogy legs only), taking two of the
+levers above:
+
+- **Ingest file headers.** `_describe_ingested` writes, after the "ingested
+  from" line, the grain and properties (capped at 12), the imports with the
+  column each hangs off and the dot-path that reaches their fields
+  (`Imports: Policy via Policy_Identifier (fields as Policy.*)`), the files
+  that import this one, and `Key-only table: no columns beyond its key` for
+  the markers. `file list` shows the block as the description. Ingest
+  explores 80 -> 39 across the eleven questions, tool errors 3 -> 0,
+  tokens 884k -> 609k, still 11/11. No agent sweep-explored the model
+  again; q07 went list -> two explores -> answer.
+- **`agent-info query` without the example summaries.** The CLI doc now
+  ends with the example names on one line and points at `agent-info syntax`
+  for what each covers (14.4k chars, from 16.8k). The in-process prompt
+  (`TRILOGY_LEAD_IN`) keeps the summaries, since that agent cannot fetch the
+  listing. Enriched 425k -> 427k: the ~30k mechanical saving (600 tokens x
+  ~5 later iterations x 11 questions) is inside single-pass noise at this
+  size (iterations 61 -> 63). TPC-DS not re-run on the trimmed doc.

@@ -1,0 +1,6 @@
+import raw.claim_amount as ca;
+
+select
+    ca.claim.claim_number as company_claim_number,
+    ca.loss_amount as loss_amount
+order by ca.claim.claim_number asc;
