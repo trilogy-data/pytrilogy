@@ -96,7 +96,9 @@ matrix of the latest run). The first used the verbatim blog wording
 leg, telling the agent the sample is tiny so a small count is not a symptom;
 a fourth (`20260911-135032`, Trilogy legs only) has ingest write a real file
 header (grain, properties, imports, referenced-by, key-only flag) and trims
-the example summaries out of `agent-info query`; a fifth (`20260911-152006`)
+the example summaries out of `agent-info query` (a trim later reverted: the
+TPC-DS A/B in `evals/tpcds_agent/handoff_docs_trim_ab_20260911.md` showed it
+costs 3-9% more per question there); a fifth (`20260911-152006`)
 has ingest turn the key-only marker tables into membership flags on the
 tables they mark, the curated model take the same shape, and the
 separate-import error see through select aliases:

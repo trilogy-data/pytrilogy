@@ -288,7 +288,11 @@ levers above:
   (`TRILOGY_LEAD_IN`) keeps the summaries, since that agent cannot fetch the
   listing. Enriched 425k -> 427k: the ~30k mechanical saving (600 tokens x
   ~5 later iterations x 11 questions) is inside single-pass noise at this
-  size (iterations 61 -> 63). TPC-DS not re-run on the trimmed doc.
+  size (iterations 61 -> 63). TPC-DS A/B afterwards
+  (`evals/tpcds_agent/handoff_docs_trim_ab_20260911.md`): the trim costs
+  3-9% more cache-adjusted tokens per question there, because agents fetch
+  more worked examples when they only have names; REVERTED, the summaries
+  stay in `agent-info query`.
 
 Third round: marker tables as membership flags (closes item 2 above).
 

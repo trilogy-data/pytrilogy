@@ -3,7 +3,7 @@ import json
 from trilogy import Environment
 from trilogy.ai.constants import FUNCTIONS, RULE_PROMPT
 from trilogy.ai.models import LLMRequestOptions, LLMToolDefinition
-from trilogy.ai.syntax_examples import available_names, example_headers
+from trilogy.ai.syntax_examples import example_headers
 from trilogy.authoring import (
     ArrayType,
     DataType,
@@ -21,25 +21,10 @@ from trilogy.core.models.core import (
 from trilogy.scripts.explore import build_concepts_payload
 
 
-def get_trilogy_syntax_reference(example_summaries: bool = True) -> str:
-    # The per-example summaries are what `trilogy agent-info syntax` prints;
-    # a CLI agent that re-reads this reference on every task gets the names
-    # only (3k chars less in every later turn) and fetches the listing once.
-    if example_summaries:
-        examples = (
-            "Additional syntax examples:\n"
-            "These less-common patterns have complete, copy-pasteable examples. "
-            "Do NOT guess\nthe syntax — print the full example on demand with\n"
-            f"`trilogy agent-info syntax example <name>`:\n{example_headers()}"
-        )
-    else:
-        examples = (
-            "Additional syntax examples (complete, copy-pasteable; do NOT guess "
-            "the syntax for these patterns): "
-            f"{', '.join(available_names())}. `trilogy agent-info syntax` "
-            "lists what each covers; `trilogy agent-info syntax example <name>` "
-            "prints one."
-        )
+def get_trilogy_syntax_reference() -> str:
+    # The per-example summaries stay: a names-only listing was A/B'd on the
+    # TPC-DS enriched leg (evals/tpcds_agent/handoff_docs_trim_ab_20260911.md)
+    # and cost 3-9% more per question, since agents then fetch more drilldowns.
     return f"""{RULE_PROMPT}
 
 Functions (the `aggregate` family doubles as the Aggregate Functions list):
@@ -47,20 +32,20 @@ Functions (the `aggregate` family doubles as the Aggregate Functions list):
 
 Some types carry trait metadata that adds meaning: 'latitude', 'longitude' and 'currency' are all 'float' with extra semantics.
 
-{examples}
+Additional syntax examples:
+These less-common patterns have complete, copy-pasteable examples. Do NOT guess
+the syntax — print the full example on demand with
+`trilogy agent-info syntax example <name>`:
+{example_headers()}
 
 """
 
 
-def get_trilogy_prompt(
-    intro: str | None = None,
-    outro: str | None = None,
-    example_summaries: bool = True,
-) -> str:
+def get_trilogy_prompt(intro: str | None = None, outro: str | None = None) -> str:
     parts = []
     if intro:
         parts.append(intro)
-    parts.append(get_trilogy_syntax_reference(example_summaries))
+    parts.append(get_trilogy_syntax_reference())
     if outro:
         parts.append(outro)
     return "\n\n".join(parts)
