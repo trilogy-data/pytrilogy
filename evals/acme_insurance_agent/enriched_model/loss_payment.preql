@@ -1,0 +1,9 @@
+# Key-only marker: one row per claim_amount row that is a loss payment. Nothing to select here; use claim_amount.is_loss_payment.
+
+key id int; # claim_amount identifier
+
+root datasource loss_payment (
+    Claim_Amount_Identifier: id,
+)
+grain (id)
+address Loss_Payment;

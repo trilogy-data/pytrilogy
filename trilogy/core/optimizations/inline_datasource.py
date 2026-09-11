@@ -1,8 +1,10 @@
+import re
 from collections import defaultdict
 
 from trilogy.constants import CONFIG
 from trilogy.core.enums import JoinType
 from trilogy.core.models.build import BuildConcept, BuildDatasource
+from trilogy.core.models.datasource import RawColumnExpr
 from trilogy.core.models.execute import CTE, DatasourceCTE, Join, RecursiveCTE, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import (
@@ -13,6 +15,57 @@ from trilogy.core.optimizations.utils import (
     rename_reference,
     render_cte_used_map,
 )
+
+_RAW_LITERAL_RE = re.compile(
+    r"^\s*(?:-?\d+(?:\.\d+)?|'[^']*'|true|false|null)\s*$", re.IGNORECASE
+)
+
+
+def _raw_columns_inline_safely(
+    cte: CTE, parent: DatasourceCTE, root: BuildDatasource, parent_count: int
+) -> bool:
+    """Verbatim raw() text is evaluated wherever it lands. As the consumer's
+    sole source that is the datasource's own scope, and a consumer that never
+    reads a raw-bound concept never renders the text at all. Beside another
+    table a column reference is unqualified (ambiguous when the tables share
+    the name), and a literal on an optional (outer-joined) side reads as its
+    value on rows that have no such row. A literal stays per-row correct
+    wherever every result row carries one of the datasource's rows: the
+    driving table of INNER/LEFT joins, or an INNER-joined table in a plan with
+    no FULL/RIGHT join to manufacture rows without it."""
+    if not root.has_raw_columns:
+        return True
+    if not cte.joins and parent_count <= 1:
+        return True
+    raw_addresses: set[str] = set()
+    for column in root.columns:
+        if isinstance(column.alias, RawColumnExpr):
+            raw_addresses.add(column.concept.address)
+            raw_addresses |= column.concept.pseudonyms
+    consumed = render_cte_used_map(cte).get(parent.name, set()) | _join_key_demand(
+        cte, parent.name
+    )
+    if not consumed & raw_addresses:
+        return True
+    literal_only = all(
+        _RAW_LITERAL_RE.match(c.alias.text)
+        for c in root.columns
+        if isinstance(c.alias, RawColumnExpr)
+    )
+    if not literal_only:
+        return False
+    joins = [join for join in cte.joins if isinstance(join, Join)]
+    if len(joins) != len(cte.joins) or any(
+        join.jointype in (JoinType.FULL, JoinType.RIGHT_OUTER) for join in joins
+    ):
+        return False
+    if cte.base_name == parent.name:
+        return True
+    return all(
+        join.jointype == JoinType.INNER
+        for join in joins
+        if join.right_cte.name == parent.name
+    )
 
 
 def _can_inline_filtered_parent(
@@ -144,6 +197,12 @@ class InlineDatasource(OptimizationRule):
             if not root.can_be_inlined:
                 self.debug(
                     f"Cannot inline: Parent {parent_cte.name} datasource is not inlineable"
+                )
+                continue
+            if not _raw_columns_inline_safely(cte, parent_cte, root, len(parents)):
+                self.debug(
+                    f"Cannot inline: Parent {parent_cte.name} has raw() columns "
+                    "the consumer's joins would misattribute"
                 )
                 continue
             # A merged key present as one datasource column also satisfies its

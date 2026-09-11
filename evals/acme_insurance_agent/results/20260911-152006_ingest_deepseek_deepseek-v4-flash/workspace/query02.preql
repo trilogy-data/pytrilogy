@@ -1,0 +1,11 @@
+# Average days from claim open to close (settlement), per policy number,
+# over that policy's settled (closed) claims.
+import root.Claim as c;
+import root.Claim_Coverage as cc;
+
+where c.claim_close_date is not null
+select
+  cc.Policy_Coverage_Detail.Policy.policy_number as policy_number,
+  avg(date_diff(c.claim_open_date, c.claim_close_date, day)) as avg_days_to_settle
+subset join c.claim_identifier = cc.claim_identifier
+order by policy_number asc;

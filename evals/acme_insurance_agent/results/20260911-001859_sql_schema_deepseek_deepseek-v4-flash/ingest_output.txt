@@ -1,0 +1,6 @@
+exit=0  duration=0.0s
+--- stdout ---
+sql_schema: wrote schema.md (curated C:\Users\ethan\coding_projects\pytrilogy-acme\evals\acme_insurance_agent\schema.md).
+
+--- stderr ---
+

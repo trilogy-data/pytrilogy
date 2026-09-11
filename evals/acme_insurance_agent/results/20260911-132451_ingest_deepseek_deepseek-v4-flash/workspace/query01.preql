@@ -1,0 +1,10 @@
+import root.Policy_Amount as pa;
+import root.Premium as pr;
+
+# One row per policy: policy number and the total premium paid on it.
+# Premium rows are exactly the Policy_Amount rows listed in the Premium table.
+where pa.policy_amount_identifier in pr.policy_amount_identifier
+
+select
+    pa.Policy.policy_number,
+    sum(pa.policy_amount) as total_premium_amount;

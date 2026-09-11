@@ -1,0 +1,13 @@
+import root.Claim as c;
+import root.Claim_Coverage as cc;
+import root.Policy_Coverage_Detail as pcd;
+import root.Policy as p;
+
+where c.claim_identifier is not null
+select
+    p.policy_number as policy_number,
+    avg(date_diff(c.claim_open_date, c.claim_close_date, day)) as avg_days_to_settle,
+subset join c.claim_identifier = cc.claim_identifier
+subset join cc.policy_coverage_detail_identifier = pcd.policy_coverage_detail_identifier
+subset join pcd.policy_identifier = p.policy_identifier
+order by policy_number asc;

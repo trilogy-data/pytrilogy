@@ -1,0 +1,11 @@
+import root.Policy_Amount as pa;
+import root.Premium as prem;
+
+# Average policy size = total premium amount / number of policies.
+# A row of Policy_Amount is a premium when its policy_amount_identifier
+# appears in the Premium model (the 'Year' annual premium amounts).
+select
+  sum(pa.policy_amount ? pa.policy_amount_identifier in prem.policy_amount_identifier) as total_premium,
+  count_distinct(pa.policy_identifier ? pa.policy_amount_identifier in prem.policy_amount_identifier) as number_of_policies,
+  sum(pa.policy_amount ? pa.policy_amount_identifier in prem.policy_amount_identifier)
+    / count_distinct(pa.policy_identifier ? pa.policy_amount_identifier in prem.policy_amount_identifier) as average_policy_size;

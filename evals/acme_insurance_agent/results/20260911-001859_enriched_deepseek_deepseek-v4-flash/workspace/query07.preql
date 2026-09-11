@@ -1,0 +1,6 @@
+import raw.premium as p;
+
+select
+    p.policy.policy_number,
+    sum(p.amount) as total_premiums_paid
+order by p.policy.policy_number;

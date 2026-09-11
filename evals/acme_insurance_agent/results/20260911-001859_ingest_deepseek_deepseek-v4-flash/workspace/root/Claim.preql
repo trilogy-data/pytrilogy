@@ -1,0 +1,37 @@
+# Datasource ingested from Claim
+key claim_identifier enum<bigint>[1, 2];
+
+properties claim_identifier (
+    catastrophe_identifier enum<bigint>[4],
+    claim_description string?,
+    claims_made_date string?,
+    company_claim_number enum<string>['12312701', '12312702'],
+    company_subclaim_number string?,
+    insurable_object_identifier enum<bigint>[1, 2],
+    occurrence_identifier enum<bigint>[1, 2],
+    entry_into_claims_made_program_date string?,
+    claim_open_date date,
+    claim_close_date date,
+    claim_reopen_date string?,
+    claim_status_code string?,
+    claim_reported_date string?,
+);
+
+root datasource Claim (
+    Claim_Identifier: claim_identifier,
+    Catastrophe_Identifier: catastrophe_identifier,
+    Claim_Description: ?claim_description,
+    Claims_Made_Date: ?claims_made_date,
+    Company_Claim_Number: company_claim_number,
+    Company_Subclaim_Number: ?company_subclaim_number,
+    Insurable_Object_Identifier: insurable_object_identifier,
+    Occurrence_Identifier: occurrence_identifier,
+    Entry_Into_Claims_Made_Program_Date: ?entry_into_claims_made_program_date,
+    Claim_Open_Date: claim_open_date,
+    Claim_Close_Date: claim_close_date,
+    Claim_Reopen_Date: ?claim_reopen_date,
+    Claim_Status_Code: ?claim_status_code,
+    Claim_Reported_Date: ?claim_reported_date,
+)
+grain (claim_identifier)
+address Claim;

@@ -1,0 +1,11 @@
+import root.Claim_Coverage as cc;
+import root.Policy_Coverage_Detail as pcd;
+import root.Policy as p;
+
+# Count the claims placed under each policy number.
+# Path: Claim_Coverage -> Policy_Coverage_Detail -> Policy
+select p.policy_number as policy_number,
+       count(cc.claim_identifier) as claim_count
+subset join cc.policy_coverage_detail_identifier = pcd.policy_coverage_detail_identifier
+subset join pcd.policy_identifier = p.policy_identifier
+where cc.claim_identifier is not null;

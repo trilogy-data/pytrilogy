@@ -1,0 +1,10 @@
+# Average policy size = total premium amount / number of policies.
+# The Premium rows of Policy_Amount are the annual premium rows
+# (amount_type_code = 'Year'); the null rows are policy limits.
+import root.Policy_Amount as pa;
+
+select
+  sum(pa.policy_amount) as total_premium,
+  count_distinct(pa.Policy.policy_identifier) as number_of_policies,
+  sum(pa.policy_amount) / count_distinct(pa.Policy.policy_identifier) as average_policy_size
+where pa.amount_type_code = 'Year';

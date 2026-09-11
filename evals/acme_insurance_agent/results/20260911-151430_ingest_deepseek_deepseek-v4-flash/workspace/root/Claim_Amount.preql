@@ -1,0 +1,36 @@
+# Datasource ingested from Claim_Amount
+# Grain: claim_amount_identifier. Properties: claim_offer_identifier, amount_type_code, event_date, claim_amount, insurance_type_code.
+# Flags: is_expense_payment (a Expense_Payment row exists for this claim_amount_identifier), is_expense_reserve (a Expense_Reserve row exists for this claim_amount_identifier), is_loss_payment (a Loss_Payment row exists for this claim_amount_identifier), is_loss_reserve (a Loss_Reserve row exists for this claim_amount_identifier).
+# Imports: Claim via Claim_Identifier (fields as Claim.*).
+import Claim as Claim;
+import Expense_Payment as Expense_Payment;
+import Expense_Reserve as Expense_Reserve;
+import Loss_Payment as Loss_Payment;
+import Loss_Reserve as Loss_Reserve;
+
+key claim_amount_identifier enum<bigint>[1, 2, 3, 4, 5, 6, 7, 8];
+
+properties claim_amount_identifier (
+    claim_offer_identifier string?,
+    amount_type_code string?,
+    event_date string?,
+    claim_amount double[0..],
+    insurance_type_code string?,
+);
+
+auto is_expense_payment <- claim_amount_identifier in Expense_Payment.claim_amount_identifier; # true when a Expense_Payment row marks this claim_amount_identifier
+auto is_expense_reserve <- claim_amount_identifier in Expense_Reserve.claim_amount_identifier; # true when a Expense_Reserve row marks this claim_amount_identifier
+auto is_loss_payment <- claim_amount_identifier in Loss_Payment.claim_amount_identifier; # true when a Loss_Payment row marks this claim_amount_identifier
+auto is_loss_reserve <- claim_amount_identifier in Loss_Reserve.claim_amount_identifier; # true when a Loss_Reserve row marks this claim_amount_identifier
+
+root datasource Claim_Amount (
+    Claim_Amount_Identifier: claim_amount_identifier,
+    Claim_Identifier: Claim.claim_identifier,
+    Claim_Offer_Identifier: ?claim_offer_identifier,
+    Amount_Type_Code: ?amount_type_code,
+    Event_Date: ?event_date,
+    Claim_Amount: claim_amount,
+    Insurance_Type_Code: ?insurance_type_code,
+)
+grain (claim_amount_identifier)
+address Claim_Amount;

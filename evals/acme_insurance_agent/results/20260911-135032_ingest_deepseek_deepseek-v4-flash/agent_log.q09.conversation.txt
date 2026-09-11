@@ -1,0 +1,883 @@
+===== message 0 [system] =====
+You are the Trilogy CLI agent. You operate by calling tools.
+
+Available tools:
+- show_message(message): print a message to the user.
+- trilogy(args, stdin=None): invoke the `trilogy` CLI as a subprocess. `args` is a
+  list of string arguments. Output is captured and returned; large outputs are
+  truncated from the middle. Common uses:
+    * ["agent-info"] — prints the full CLI docs AND the Trilogy language
+      syntax reference. CALL THIS FIRST on every task before writing any
+      .preql file. Trilogy is not SQL; the language section names the rules
+      you cannot afford to guess. Do not skip it.
+    * `database list` / `database describe` are DISABLED for this task: the
+      semantic model is prebuilt, so read it with `explore` instead.
+    * ["ingest", "--all"] — generate a Trilogy semantic model (.preql files
+      under root/) for every table in the database, in one step.
+    * Run a Trilogy script: ["run", "<path.preql>"].
+      A result may carry a `warnings` list flagging likely filter/grain
+      mistakes to double-check against the question's intent:
+      `window_filter_needs_having` — a window value is in the SELECT while a
+      WHERE clause filters its inputs; WHERE runs BEFORE the window computes, so
+      to filter on the window result (e.g. a rank cutoff) use a HAVING instead;
+      `where_aggregate_inherited_grain` — a WHERE-clause aggregate pinned no
+      grain and so inherited the SELECT grain rather than a single global value;
+      pin it with `by *` if you meant a global comparison.
+    * ["explore", "<path.preql>"] is the canonical "what concepts can I query
+      from this file?" tool. Imported references chain in — exploring the
+      fact file (e.g. `sales.preql`) ALSO lists all dimensions it
+      imports (`product.*`, `date.*`, `customer.*`, …) in the same output.
+      You do NOT need to explore each dimension separately. Prefer this over
+      reading the raw model file. Imported dimensions arrive OUTLINED (keys,
+      roles, and a members_elided count); expand only the ones the question
+      touches with `--ns <alias>` (repeatable), or filter with `--regex`
+      (repeatable, Python regex) — matches render in full.
+      Trilogy auto-resolves joins from the model's declared relationships.
+      Join discovery is not needed;
+    write `select store_sales.date_dim.year, ...;` and Trilogy
+      handles the join. There is no manual JOIN clause in this language.
+    * ["file", "list", "<dir>"] (add "--recursive") — list workspace files;
+      .preql entries carry their leading-comment description. Use this when
+      unsure what exists (e.g. before guessing `./store_sales.preql` — the
+      model files live under root/).
+    * `file read` is DISABLED for this task — `explore` replaces it; `file
+      list` and `file write` still work.
+    * Only documented subcommands work — do NOT invent `raw`, `shell`,
+      `read_file`, etc. Start with `trilogy agent-info`, then immediately call
+      the listed drilldown matching the task before authoring syntax.
+
+To create or overwrite a file (every .preql query file you write), use
+`trilogy file write <path> --content <full body>`. Pass the complete file
+body as a single string in `--content`; embed literal newlines. Trilogy
+parses the body before it lands on disk — partial or broken .preql writes
+are rejected with the parse error. Re-issue the call with the COMPLETE body.
+- return_control_to_user(message): indicate you are done with the task.
+
+Discipline:
+1. Bias toward action and use of the trilogy CLI. Never repeat exploration you have already done.
+2. Use `trilogy` for all CLI work. Call `return_control_to_user` only when
+   the task is completely finished. Avoid reading raw files; explore will give you
+   richer content.
+3. If a tool call fails or returns the same error you have already seen, do
+   NOT immediately re-issue the same call. First emit a short plain-text
+   message naming the failure and what you will try differently.
+
+===== message 1 [user] =====
+Trilogy project in this directory. `trilogy.toml` configures an already-loaded
+DuckDB database, and `root/` is already populated with Trilogy model
+files — do NOT re-run `trilogy ingest` and do NOT edit files in `root/`.
+Import models by dot path from the project root: the file
+`root/orders.preql` is imported as `import root.orders as o;`
+(a bare `import orders;` will NOT resolve).
+
+Answer the ONE business question below by writing a Trilogy query file to
+`answer_1695156134.preql` in the working directory (alongside `trilogy.toml`, NOT inside
+`root/`). Write and validate it in ONE call:
+`trilogy file write answer_1695156134.preql --run` (body on stdin —
+syntax-checks, executes, and shows results together; re-issue the same call
+after edits). For throwaway exploration probes use
+`trilogy file write <probe>.preql --run-and-delete` rather than separate
+write/run/delete calls.
+
+Return control once it runs cleanly to submit your result. This will be 
+your final action.
+
+Every question in this set returns at least one row at this scale factor. A
+zero-row result means the query has an issue. Do NOT, however, add/drop/loosen
+filters just to force rows; find and fix the actual mistake.
+
+This dataset is a small hand-built sample, not a scale-factor generator: each table holds a handful of rows, so small counts and one-row answers are normal. Once your query runs and returns the requested shape it is done; do not spend calls probing the data volume.
+
+Exact response column names do not matter, but the position and values do.
+
+Business question 1695156134:
+What is the average policy size, defined as the total premium amount across all policies divided by the number of distinct policies that carry a premium? Return a single row with one column: that average.
+
+
+===== message 2 [assistant] =====
+(empty content)
+[tool_call] trilogy
+  args:
+    - agent-info
+[tool_call] trilogy
+  args:
+    - file
+    - list
+    - root
+    - --recursive
+[model_info] {"reasoning_content": "Let me start by reading the agent info and exploring the model.\n\nLet me call agent-info and file list root.", "reasoning_tokens": 23}
+
+===== message 3 [user] =====
+[tool_result] trilogy
+  exit_code: 0
+  --- stdout ---
+  # Trilogy Agent Info Directory
+  
+  Choose the bucket matching the task, then immediately call its drilldown. Do
+  not guess syntax here; detailed guidance lives one level down.
+  
+  ## Query authoring
+  
+  - `trilogy agent-info query` - language, exploration, clause order, functions,
+   and query workflow.
+  - `trilogy agent-info syntax` - list focused, copy-pasteable syntax examples.
+  - `trilogy agent-info syntax example <name>` - print one complete example.
+  
+  ## Model, script, and datasource authoring
+  
+  - `trilogy agent-info authoring` - model and datasource authoring, including 
+  Python scripts.
+  - `trilogy agent-info datasources` - mappings, files, partial sources, and 
+  Python/Arrow sources.
+    Writing a Python source? Wrap the function in `trilogy.io.run`, then 
+  generate the
+    datasource block with `trilogy source describe <script.py>`.
+  - `trilogy agent-info ingest` - bootstrap models from tables, files, or cloud 
+  objects.
+  - `trilogy agent-info config` - trilogy.toml, engines, credentials, and 
+  feature flags.
+  
+  ## Creating, running, and managing projects and scripts
+  
+  - `trilogy agent-info cli` - init, run, explore, files, formatting, tests, and
+   database inspection.
+  - `trilogy agent-info report` - render Markdown reports to HTML or PNG.
+  - `trilogy agent-info state` - persisted execution state and run reports.
+  - `trilogy agent-info serve` - publish, fetch, and serve Trilogy models.
+  
+  
+  --- stderr ---
+
+===== message 4 [user] =====
+[tool_result] trilogy
+  exit_code: 0
+  --- stdout ---
+  {
+    "event": "entries",
+    "path": "root",
+    "count": 13,
+    "truncated": false,
+    "entries": [
+      {
+        "path": "root\\Agreement_Party_Role.preql",
+        "size": 727,
+        "description": "Datasource ingested from Agreement_Party_Role Grain: 
+  agreement_identifier, party_identifier. Properties: party_role_code, 
+  effective_date, expiration_date."
+      },
+      {
+        "path": "root\\Catastrophe.preql",
+        "size": 827,
+        "description": "Datasource ingested from Catastrophe Grain: 
+  catastrophe_identifier. Properties: catastrophe_type_code, catastrophe_name, 
+  industry_catastrophe_code, company_catastrophe_code. Referenced by: Claim."
+      },
+      {
+        "path": "root\\Claim.preql",
+        "size": 1775,
+        "description": "Datasource ingested from Claim Grain: claim_identifier. 
+  Properties: claim_description, claims_made_date, company_claim_number, 
+  company_subclaim_number, insurable_object_identifier, occurrence_identifier, 
+  entry_into_claims_made_program_date, claim_open_date, claim_close_date, 
+  claim_reopen_date, claim_status_code, claim_reported_date. Imports: 
+  Catastrophe via Catastrophe_Identifier (fields as Catastrophe.*). Referenced 
+  by: Claim_Amount."
+      },
+      {
+        "path": "root\\Claim_Amount.preql",
+        "size": 908,
+        "description": "Datasource ingested from Claim_Amount Grain: 
+  claim_amount_identifier. Properties: claim_offer_identifier, amount_type_code,
+   event_date, claim_amount, insurance_type_code. Imports: Claim via 
+  Claim_Identifier (fields as Claim.*)."
+      },
+      {
+        "path": "root\\Claim_Coverage.preql",
+        "size": 612,
+        "description": "Datasource ingested from Claim_Coverage Grain: 
+  claim_identifier. Properties: effective_date. Imports: Policy_Coverage_Detail 
+  via Policy_Coverage_Detail_Identifier (fields as Policy_Coverage_Detail.*)."
+      },
+      {
+        "path": "root\\Expense_Payment.preql",
+        "size": 316,
+        "description": "Datasource ingested from Expense_Payment Grain: 
+  claim_amount_identifier. Key-only table: no columns beyond its key."
+      },
+      {
+        "path": "root\\Expense_Reserve.preql",
+        "size": 316,
+        "description": "Datasource ingested from Expense_Reserve Grain: 
+  claim_amount_identifier. Key-only table: no columns beyond its key."
+      },
+      {
+        "path": "root\\Loss_Payment.preql",
+        "size": 307,
+        "description": "Datasource ingested from Loss_Payment Grain: 
+  claim_amount_identifier. Key-only table: no columns beyond its key."
+      },
+      {
+        "path": "root\\Loss_Reserve.preql",
+        "size": 307,
+        "description": "Datasource ingested from Loss_Reserve Grain: 
+  claim_amount_identifier. Key-only table: no columns beyond its key."
+      },
+      {
+        "path": "root\\Policy.preql",
+        "size": 802,
+        "description": "Datasource ingested from Policy Grain: 
+  policy_identifier. Properties: effective_date, expiration_date, policy_number,
+   status_code, geographic_location_identifier. Referenced by: Policy_Amount, 
+  Policy_Coverage_Detail."
+      },
+      {
+        "path": "root\\Policy_Amount.preql",
+        "size": 1529,
+        "description": "Datasource ingested from Policy_Amount Grain: 
+  policy_amount_identifier. Properties: geographic_location_identifier, 
+  effective_date, amount_type_code, earning_begin_date, earning_end_date, 
+  policy_amount, insurable_object_identifier, insurance_type_code. Imports: 
+  Policy via Policy_Identifier (fields as Policy.*), Policy_Coverage_Detail via 
+  Policy_Coverage_Detail_Identifier (fields as Policy_Coverage_Detail.*)."
+      },
+      {
+        "path": "root\\Policy_Coverage_Detail.preql",
+        "size": 1365,
+        "description": "Datasource ingested from Policy_Coverage_Detail Grain: 
+  policy_coverage_detail_identifier. Properties: effective_date, 
+  coverage_identifier, insurable_object_identifier, coverage_part_code, 
+  coverage_description, expiration_date, coverage_inclusion_exclusion_code. 
+  Imports: Policy via Policy_Identifier (fields as Policy.*). Referenced by: 
+  Claim_Coverage, Policy_Amount."
+      },
+      {
+        "path": "root\\Premium.preql",
+        "size": 311,
+        "description": "Datasource ingested from Premium Grain: 
+  policy_amount_identifier. Key-only table: no columns beyond its key."
+      }
+    ]
+  }
+  
+  --- stderr ---
+
+===== message 5 [assistant] =====
+(empty content)
+[tool_call] trilogy
+  args:
+    - agent-info
+    - query
+[tool_call] trilogy
+  args:
+    - explore
+    - root/Premium.preql
+[tool_call] trilogy
+  args:
+    - explore
+    - root/Policy_Amount.preql
+[model_info] {"reasoning_content": "Let me look at the query authoring info and explore the relevant files. The question: average policy size = total premium amount / distinct policies that carry a premium.\n\nPremium table is a key-only table with policy_amount_identifier. Policy_Amount has amount_type_code and policy_amount. Premium likely joins to Policy_Amount. Let me explore.\n\nLet me call agent-info query and explore Premium.preql and Policy_Amount.preql.", "reasoning_tokens": 87}
+
+===== message 6 [user] =====
+[tool_result] trilogy
+  exit_code: 0
+  --- stdout ---
+  ## Trilogy Language Reference
+  Trilogy is a SQL-inspired language with a built-in semantic layer, written as 
+  .preql files.
+  
+  # Trilogy Syntax
+  
+  Trilogy statements define a semantic model or a query; collections of 
+  statements
+  are written as `.preql` files. A statement returns data (SELECT) or defines
+  concepts (key | property | auto | metric), datasources, or parameters.
+  
+  import <model> as <alias>; makes a model's fields available. <model> is a 
+  DOT-SEPARATED MODULE PATH relative to the project root (where trilogy.toml 
+  lives), never a file path: the file `raw/store_sales.preql` is imported as 
+  `import raw.store_sales as ss;` — replace each `/` with `.`, drop the 
+  `.preql`, keep the folder segment. When an imported model imports others (a 
+  fact with imported dimensions), those are dot paths: `enroll.student.name`. 
+  Typical usage imports ONE fact and reaches dimensions through it; nested 
+  dimensions carry ALL values (order.customers includes customers without 
+  orders).
+  
+  key | property | auto | metric; define new concepts. `auto x <- ...` is a 
+  DEFINITION, not a precomputed value: each reference expands and re-evaluates 
+  in the consuming query's scope.
+  
+  parameter NAME TYPE [default <literal>]; — a runtime value supplied via 
+  `--param NAME=VALUE` (repeatable); append `?` to the type to allow null.
+  
+  ## Combining models
+  
+  | Goal | Use |
+  |---|---|
+  | Typical query | no merge, no join: access all fields through dot-paths |
+  | Blend two models on shared keys inside one query | scoped `subset\|union 
+  join` |
+  | Make a connection universal to a whole file | `merge` |
+  | Stack subsets/channels as rows | `union(...)` |
+  | Rows in A but never in B (set difference) | `except(...)` |
+  | Rows present in every source (set intersection) | `intersect(...)` |
+  
+  ### Query-scoped join
+  
+  A typical fact already has its dimensions merged in, so no join is needed. 
+  Blending fact models or rowset outputs takes a scoped join, placed right after
+   the select list, which DECLARES how the key domains relate: `subset join a = 
+  b` (a's values are contained in b's, a ⊆ b; b authoritative for the key) or 
+  `union join a = b` (neither contains the other; the key is the coalesce of 
+  both sides and unmatched rows from BOTH sides are kept).
+  
+  Two rules decide whether the numbers are right, so apply them before reaching 
+  for the example:
+  
+  - Joins NEVER drop a row and NULL keys match null-safely; there is NO inner 
+  join. An intersection is an explicit `where <optional-side attr> is not null`.
+  - JOIN ON THE FULL GRAIN: `explore` prints each fact's grain as @<k1, k2>; 
+  write one clause PER key. Matching only one key of a multi-key grain causes 
+  duplication.
+  
+  Chaining, expression keys, union/subset mixing, multi-key and self-pair 
+  shapes: trilogy agent-info syntax example scoped-join.
+  
+  merge <a> into ~<b>; is the persistent (whole-file) equivalent of `subset join
+   a = b`; plain `merge a into b;` declares EXACT domain equivalence. Standalone
+   statements; prefer a scoped join unless the connection is universal.
+  
+  ### union / except / intersect (row set operations)
+  
+  `union(...)` row-stacks self-contained select arms positionally (SQL UNION 
+  ALL) into one named rowset (`with combined as union((armA), (armB), ...) -> 
+  (out1, out2, ...)`); `except(...)` / `intersect(...)` share that arm shape but
+   are SQL SET operators (DISTINCT rows, null-safe whole-row compare, and except
+   subtracts later arms from the FIRST, so arm order matters). Prefer except 
+  over a multi-column `not in` for "in A but never in B". Each arm dedups to its
+   own output grain BEFORE stacking, so aggregate INSIDE each arm or the total 
+  silently undersums. Examples: trilogy agent-info syntax example 
+  union-stack-channels / except-intersect-setops.
+  
+  ## Query structure
+  
+  Top-level statements first (each `;`-terminated), then a query with clauses in
+   this EXACT order — all optional except select:
+  
+  ```
+  <top-level statements>;            # import / key / auto / rowset / merge / 
+  def / parameter
+  with <name> as                     # optional: name the select as a reusable 
+  rowset (CTE)
+  where   <row condition>            # 1. filters INPUT rows, BEFORE aggregation
+  select  <col>, <agg> as name,      # 2. projection — grouping is AUTOMATIC by 
+  the
+                                     #    non-aggregated columns; never write 
+  GROUP BY
+    subset|union join a = b (= c)?   # 3. blend models; one clause per key, 
+  right after the select list
+  by rollup|cube|grouping sets (...) # 4. optional multi-level grouping for the 
+  whole select
+  having  <result condition>         # 5. filters aggregated/joined RESULTS
+  order by <col> asc|desc            # 6. sort
+  limit   <n>;                       # 7. cap rows
+  ```
+  
+  A rowset (`with <name> as where ... select ...;`) is a standalone statement, 
+  evaluated in isolation — it does NOT respond to the consuming query's context.
+   All its outputs are namespaced: output `abc.def` of rowset `foo` is 
+  referenced as `foo.abc.def`, and joined back like any concept (`subset join 
+  foo.key = other.key`). Alias every reused expression with `as`.
+  
+  Full annotated example: trilogy agent-info syntax example query-structure.
+  
+  ### Not SQL — what to never write
+  
+  - **No FROM, GROUP BY, DISTINCT, SELECT \*, or SQL-style set operators between
+   selects.** Stack rows with `union(...)`; set difference/intersection with 
+  `except(...)`/`intersect(...)`; blend fact models with a scoped join.
+  - **Grouping is automatic** by the non-aggregated fields in the SELECT — never
+   write GROUP BY. Aggregates inherit the select's grain wherever they appear 
+  (where/select/having). Override per-aggregate with `agg(x) by <dims>`; `by *` 
+  aggregates across all data (single row). To weight a related dimension 
+  property once per fact row, project it to the fact grain first: `auto 
+  row_birth_year <- group(enroll.student.birth_year) by enroll.student_id, 
+  enroll.course_id;` then aggregate that.
+  - **Output rows are deduplicated to the select grain.** To preserve legitimate
+   duplicates (one row per matching fact), include the fact's grain keys in the 
+  select — hidden with the PREFIX `--` if they shouldn't appear in the output.
+  - **Never write `distinct`.** `count(<key>)` is already distinct because keys 
+  are unique; `count_distinct(<property>)` counts distinct values of a non-key 
+  property.
+  - **Count a COMPOSITE grain with `grain(...)`.** `count(grain(order_id, 
+  item.id))` counts order+item combinations; `grain(...)` is NEVER NULL. Never 
+  count one column of a multi-key grain — a coarser key counts its own distinct 
+  values and undercounts. `count_distinct(a, b)` is accepted as sugar for 
+  `count(grain(a, b))` (distinct combinations, NULL members included).
+  - **An aggregate over a group with no qualifying rows is NULL, never 0.** 
+  `sum(x ? cond) by k` yields NULL for groups where nothing matches, so `= 0` 
+  matches nothing. Test emptiness with `count(key ? cond) by k = 0` or wrap: 
+  `coalesce(sum(x ? cond), 0)`.
+  - **`count(1)` is invalid** — a constant does not identify rows. Use the row 
+  key, `count(grain(...))`, or `sum(1) by <grain>`.
+  - **One-column expression subqueries only.** `(select ...)` is allowed where a
+   scalar or membership set is expected (exactly one projected column) — never 
+  as a SQL-style FROM-subquery. For related-entity filters prefer the dot-path: 
+  `where enrollments.student.state = 'TN'`, not a subselect.
+  - **`--` is a HIDDEN-field prefix, not a comment** (it still changes query 
+  structure). Comments use `#` only.
+  - **Aliases**: always use the full dot-path (`enroll.student.id`); alias every
+   new expression with `as`; a select alias is usable in `having`/`order by` but
+   NOT inside other select expressions or `where`, and must not rename a field 
+  back to an existing concept name.
+  
+  ## Filtering
+  
+  `where` filters input rows before aggregation; `having` filters results after 
+  aggregation/windows. The inline filter `x ? cond` filters the immediate prior 
+  expression: `sum(credits ? enrolled = true)`.
+  
+  Aggregates/windows in WHERE do not filter each other's inputs. Use inline 
+  filters, or a staged `then where` chain: each `then where` stage's aggregates 
+  compute over only the rows passing earlier stages (`where x = 5 then where 
+  sum(y) > 10` ≡ `where x = 5 and sum(y ? x = 5) > 10`). One rule: the SAME 
+  cross-row expression cannot gate two different stages — give one an inline 
+  filter.
+  
+  Windows need all rows in their range: filter AFTER the window (in `having`) 
+  rather than in `where` when the window must see the full set.
+  
+  ## Membership (semijoins)
+  
+  `in` / `not in` cross models without any declared relationship — the semijoin 
+  IS a scoped intersection. The right side is a concept or expression (never a 
+  subselect); build computed sets with an inline filter: `auto big_zip <- 
+  student.zip ? (count(student.id ? student.honors = true) by student.zip) > 10;
+   ... where school.zip in big_zip`.
+  
+  Membership is IDENTITY matching, not SQL three-valued logic: NULL matches 
+  NULL; the result is always TRUE or FALSE (safe as a projected flag); `not in` 
+  is the exact complement (a NULL in the set never empties the result). For 
+  strict SQL behavior, add `x is not null`.
+  
+  A fact model contains ALL dimensional members, so `where students.id not in 
+  enroll.student_id` is typically a tautology — use `where enroll.id is null` 
+  instead. Tuple membership `(a, b) in (m.a, m.b)` requires both right-side 
+  concepts to resolve to ONE source (model or rowset); to test against a 
+  cross-model pair, stage it through a rowset first. Examples: 
+  existence-anti-join, staged-membership.
+  
+  ## Aggregation
+  
+  An aggregate without an explicit `by` is RESPONSIVE — its grain is set where 
+  it is consumed, not where it is declared (`auto avg_credits <- 
+  avg(enroll.credits);` becomes per-department when selected with 
+  `enroll.department`). Pin a grain inline: `sum(metric) by dim1, dim2 as name`;
+   `by` accepts bare identifiers or parenthesized expressions: `avg(price) by 
+  (substring(phone, 1, 2))`.
+  
+  Multi-level grouping (`by rollup|cube|grouping sets (...)`) is a clause of the
+   WHOLE select, placed before `having`: it computes every no-explicit-grain 
+  aggregate at every level in one pass (`by rollup (d1, d2)` → leaf, per-d1 
+  subtotal, grand total). `grouping(<field>)` = 1 on rolled-up rows — use it to 
+  label levels rather than testing for NULL. Full detail: trilogy agent-info 
+  syntax example rollup.
+  
+  ## Window functions
+  
+  Default to windows for self-referential queries (period-over-period, running 
+  totals, rank, share of group). SQL-style syntax: `rank(<key>) over (partition 
+  by <g> order by <expr> desc)` (`dense_rank`/`row_number` same shape; multi-key
+   `rank(a, b)`); `sum(x) over (partition by g order by t)` for running totals; 
+  `lag(<field>, <offset>) over (...)` / `lead(...)` for offsets (default 1). 
+  `partition by` is optional and accepts expressions.
+  
+  ## Data types
+  
+  Scalars: `string`, `bytes`, `bool`, `int`, `bigint`, `float`, `double`, 
+  `number`, `numeric(p,s)` (alias `decimal`; use for exact money), `date`, 
+  `datetime`, `timestamp`, `geography`, `any`. Composites: `array<T>`, `map<K, 
+  V>`, `struct<name: T, ...>`, `enum<T>[v1, v2, ...]`. Cast with `::type` or 
+  `cast(x as type)`: `"2020-01-01"::date`.
+  
+  `?` after a type marks it nullable (`property user.middle_name string?;`). `~`
+   prefixing a concept marks the reference as a PARTIAL subset of the concept's 
+  domain — on a select item (`~customer.id`) or in `merge a into ~b` (a ⊆ b); it
+   tells the planner this side is not authoritative.
+  
+  ## Expression gotchas
+  
+  - `x ? cond` binds to a primary — wrap arithmetic: `(a - b) ? cond`, NOT `a - 
+  b ? cond`.
+  - `a || b` is NULL if either side is NULL; `concat(...)` skips NULL arguments;
+   `concat_ws(sep, ...)` joins with sep, skipping NULLs.
+  - Date parts are unquoted: `date_part(d, year)`, never `'year'`; prefer 
+  `year(d)`. `date_diff(start, end, unit)` = end − start (a shipping lag is 
+  `date_diff(sold_date, ship_date, day)`).
+  - Zero-argument functions still take parentheses: `current_date()`.
+  - Factor repeated calculations into a `def` macro (invoked `@name(...)`) or 
+  reusable `auto` concepts.
+  
+  
+  Functions (the `aggregate` family doubles as the Aggregate Functions list):
+  aggregate: 
+  count|count_distinct|sum|max|min|avg|stddev|variance|array_agg|bool_or|bool_and|any|grouping(<arg1>)
+   ; grouping_id(<arg1>, <arg2>, ..., <argN>)
+  string: concat|concat_strict|concat_ws(<arg1>, <arg2>, ..., <argN>) ; 
+  split|strpos|contains|trim|regexp_contains|format_time|parse_time(<arg1>, 
+  <arg2>) ; len|lower|upper|ltrim|rtrim|hex(<arg1>) ; 
+  substring|replace|regexp_extract|regexp_replace(<arg1>, <arg2>, <arg3>)
+  date/time: 
+  date|datetime|timestamp|second|minute|hour|day|day_of_week|week|month|quarter|year|month_name|day_name|unix_to_timestamp(<arg1>)
+   ; date_spine(<arg1>, <arg2>) ; current_date|current_datetime()
+    date_part(<arg1>, <arg2>) e.g. date_part('2020-01-01'::date, year)
+    date_truncate(<arg1>, <arg2>) e.g. date_trunc('2020-01-01'::date, month)
+    date_add(<arg1>, <arg2>, <arg3>) e.g. date_add('2020-01-01'::date, month, 1)
+    date_sub(<arg1>, <arg2>, <arg3>) e.g. date_sub('2020-01-01'::date, day, 1)
+    date_diff(<arg1>, <arg2>, <arg3>) e.g. date_diff('2020-01-01'::date, 
+  '2020-01-02'::date, day)
+    current_timestamp() e.g. now()
+  array/map/struct: unnest|array_distinct|array_sum|map_keys|map_values(<arg1>) 
+  ; struct|array(<arg1>, <arg2>, ..., <argN>) ; 
+  array_sort|array_to_string(<arg1>, <arg2>) ; 
+  array_transform|array_filter|generate_array(<arg1>, <arg2>, <arg3>)
+  math: mod|round|log|power|hash(<arg1>, <arg2>) ; 
+  abs|sqrt|random|floor|ceil(<arg1>)
+  conditional/cast: case|simple_case|coalesce|greatest|least(<arg1>, <arg2>, 
+  ..., <argN>) ; cast|nullif(<arg1>, <arg2>) ; isnull(<arg1>)
+  geo: geo_from_text|geo_x|geo_y|geo_centroid(<arg1>) ; 
+  geo_point|geo_distance(<arg1>, <arg2>) ; geo_transform(<arg1>, <arg2>, <arg3>)
+  other: is_not_distinct(<arg1>, <arg2>)
+  
+  Some types carry trait metadata that adds meaning: 'latitude', 'longitude' and
+   'currency' are all 'float' with extra semantics.
+  
+  Additional syntax examples (complete, copy-pasteable; do NOT guess the syntax 
+  for these patterns): python-datasource, query-structure, chart, 
+  filtered-aggregate, row-level-where-vs-having, nested-aggregate-group-average,
+   pivot-columns, case-when, window-period-over-period, union-stack-channels, 
+  except-intersect-setops, scoped-join, existence-anti-join, 
+  set-intersect-difference, dedup-before-aggregate, rollup, rank-over-rollup, 
+  staged-membership, correlated-exists-via-grouped-counts. `trilogy agent-info 
+  syntax` lists what each covers; `trilogy agent-info syntax example <name>` 
+  prints one.
+  
+  
+  
+  --- stderr ---
+
+===== message 7 [user] =====
+[tool_result] trilogy
+  exit_code: 0
+  --- stdout ---
+  {
+    "type": "concepts",
+    "version": 3,
+    "count": 1,
+    "namespaces": {
+      "": [
+        {
+          "keys": [
+            "policy_amount_identifier enum<bigint>[2, 4, 6, 8, 10, 12];"
+          ]
+        }
+      ]
+    }
+  }
+  
+  --- stderr ---
+
+===== message 8 [user] =====
+[tool_result] trilogy
+  exit_code: 0
+  --- stdout ---
+  {
+    "type": "concepts",
+    "version": 3,
+    "count": 29,
+    "namespaces": {
+      "": [
+        {
+          "keys": [
+            "policy_amount_identifier bigint;"
+          ]
+        },
+        {
+          "grain": "policy_amount_identifier",
+          "properties": [
+            "amount_type_code enum<string>['Year']?;",
+            "earning_begin_date string?;",
+            "earning_end_date string?;",
+            "effective_date date;",
+            "geographic_location_identifier string?;",
+            "insurable_object_identifier string?;",
+            "insurance_type_code string?;",
+            "policy_amount double[0..];"
+          ]
+        }
+      ]
+    },
+    "namespaced": {
+      "Policy, Policy_Coverage_Detail.Policy": {
+        "roles": {
+          "Policy": {
+            "direct": true
+          },
+          "Policy_Coverage_Detail.Policy": {
+            "via": "Policy_Coverage_Detail"
+          }
+        },
+        "keys": [
+          "Policy.policy_identifier enum<bigint>[1, 2];"
+        ],
+        "members_elided": 5
+      },
+      "Policy_Coverage_Detail": {
+        "keys": [
+          "Policy_Coverage_Detail.policy_coverage_detail_identifier 
+  enum<bigint>[1, 2, 3, 4, 5, 6];"
+        ],
+        "members_elided": 7
+      }
+    },
+    "outline_note": "namespaced entries are outlined: keys/roles/join only, with
+   members_elided counting hidden declarations. Expand one with `explore <file> 
+  --ns <name>` (or --expand-imports for all); every expanded field is queryable 
+  by the address shown."
+  }
+  
+  --- stderr ---
+
+===== message 9 [assistant] =====
+(empty content)
+[tool_call] trilogy
+  args:
+    - explore
+    - root/Policy.preql
+[tool_call] trilogy
+  args:
+    - explore
+    - root/Policy_Amount.preql
+    - --ns
+    - Policy
+[model_info] {"reasoning_content": "The question: average policy size = total premium amount across all policies / number of distinct policies that carry a premium.\n\nPremium is a key-only table keyed by policy_amount_identifier. So a \"premium\" is a row in Premium table, which links to a Policy_Amount row. The \"premium amount\" would be policy_amount where the Policy_Amount is a premium (i.e., is in the Premium table).\n\nHmm. Let me think about the semantic model. Premium table grain: policy_amount_identifier. It's a key-only table meaning it identifies which policy_amount rows are premiums. So \"carry a premium\" means policies that have a premium policy_amount.\n\nSo average policy size = sum(policy_amount) over premium rows / count(distinct policies that carry a premium).\n\nWait, \"total premium amount across all policies\" \u2014 total premium amount. And \"number of distinct policies that carry a premium\".\n\nSo numerator = sum of policy_amount for premium amounts. Denominator = count_distinct policy_identifier for those.\n\nBut how do we link Premium to Policy_Amount? Premium's key is policy_amount_identifier, and Policy_Amount's key is policy_amount_identifier. So they join on that key.\n\nActually maybe the Premium table is meant to be analyzed via Policy_Amount. Let me explore Policy.preql and check the amounts. Let me also check the amount_type_code values.\n\nActually, let me think: maybe there's a simpler interpretation. amount_type_code enum<string>['Year'] \u2014 only 'Year'. Hmm, that's odd. Actually it says enum with 'Year'? Let me check the data.\n\nLet me write a probe query. First let me understand joins. Premium.preql is key-only: no import of Policy_Amount? Let me look at the description: \"Datasource ingested from Premium Grain: policy_amount_identifier. Key-only table: no columns beyond its key.\" So no relationships declared. Hmm, that means Premium is standalone.\n\nBut how do we know which policy_amount rows are premiums? Perhaps Premium is a subset table. In the semantic model, key-only tables might be used via membership. Hmm.\n\nAlternatively, maybe \"premium amount\" is identified in Policy_Amount by insurance_type_code or amount_type_code. Let me look at actual data. Let me explore Policy.preql and also run a probe to see data.\n\nLet me investigate. Actually, the question says \"total premium amount across all policies\" and \"distinct policies that carry a premium\". This suggests the Premium table identifies premium-bearing policy_amount rows.\n\nBut wait \u2014 Premium's grain is policy_amount_identifier and is key-only. It might not link to Policy. Hmm.\n\nLet me look at the actual datasources. Since file read is disabled, but I can explore. Let me look at Policy_Amount more with --ns to see all fields, and Policy.\n\nActually let me just probe the data. Let me write a probe query to look at Policy_Amount rows and Premium rows.\n\nLet me first explore Policy.preql.\n\nActually, let me think about what tables link. Policy_Amount imports Policy and Policy_Coverage_Detail. Claim_Coverage imports Policy_Coverage_Detail. Premium, Loss_Payment, Expense_Payment, Loss_Reserve, Expense_Reserve are key-only tables on claim_amount_identifier or policy_amount_identifier. These look like subtype tables indicating classification (payment vs reserve, loss vs expense, premium).\n\nThese key-only tables probably are \"channel\" tables. To use them, you'd do membership: `where policy_amount_identifier in Premium.policy_amount_identifier`.\n\nSo the query: \n- Numerator: sum(policy_amount) where policy_amount_identifier in Premium.\n- Denominator: count_distinct(policy.policy_identifier) where ... in Premium.\n\nHmm, but how do we express \"across all policies\"? The policy_amount grain includes policy_identifier (imported via Policy). So distinct policies = distinct Policy.policy_identifier among Premium rows.\n\nAverage = sum(policy_amount of premium rows) / count_distinct(policy_identifier of premium rows).\n\nAlternatively, maybe simpler: The Premium table just marks premium rows, and we want sum over those / distinct policies.\n\nLet me probe. Let me write a probe query listing Policy_Amount data with the membership flag.\n\nActually let's just look at data directly. I'll write a probe to select policy_amount_identifier, policy_amount, Policy.policy_identifier, and a flag whether in Premium.\n\nLet me construct syntax carefully.\n\nMembership: `where policy_amount_identifier in Premium.policy_amount_identifier`. But Premium is a separate model, need import root.Premium as premium; and root.Policy_Amount as pa.\n\nLet me write:\n\nimport root.Policy_Amount as pa;\nimport root.Premium as prem;\n\nselect pa.policy_amount_identifier, pa.policy_amount, pa.Policy.policy_identifier,\n  (pa.policy_amount_identifier in prem.policy_amount_identifier) as is_prem\n;\n\nHmm, is that boolean membership allowed in select? Probably. Let me try.\n\nActually let's just run a probe. Let me first explore Policy.preql and then write probe.", "reasoning_tokens": 1077}
+
+===== message 10 [user] =====
+[tool_result] trilogy
+  exit_code: 0
+  --- stdout ---
+  {
+    "type": "concepts",
+    "version": 3,
+    "count": 6,
+    "namespaces": {
+      "": [
+        {
+          "keys": [
+            "policy_identifier enum<bigint>[1, 2];"
+          ]
+        },
+        {
+          "grain": "policy_identifier",
+          "properties": [
+            "effective_date date;",
+            "expiration_date date;",
+            "geographic_location_identifier string?;",
+            "policy_number enum<string>['31003000336', '31003000337'];",
+            "status_code string?;"
+          ]
+        }
+      ]
+    }
+  }
+  
+  --- stderr ---
+
+===== message 11 [user] =====
+[tool_result] trilogy
+  exit_code: 0
+  --- stdout ---
+  {
+    "type": "concepts",
+    "version": 3,
+    "count": 29,
+    "namespaces": {
+      "": {
+        "already_shown": "root\\Policy_Amount.preql"
+      }
+    },
+    "namespaced": {
+      "Policy, Policy_Coverage_Detail.Policy": {
+        "roles": {
+          "Policy": {
+            "direct": true
+          },
+          "Policy_Coverage_Detail.Policy": {
+            "via": "Policy_Coverage_Detail"
+          }
+        },
+        "concepts": [
+          {
+            "keys": [
+              "Policy.policy_identifier enum<bigint>[1, 2];"
+            ]
+          },
+          {
+            "grain": "Policy.policy_identifier",
+            "properties": [
+              "effective_date date;",
+              "expiration_date date;",
+              "geographic_location_identifier string?;",
+              "policy_number enum<string>['31003000336', '31003000337'];",
+              "status_code string?;"
+            ]
+          }
+        ]
+      },
+      "Policy_Coverage_Detail": {
+        "already_shown": "root\\Policy_Amount.preql"
+      }
+    },
+    "outline_note": "namespaced entries are outlined: keys/roles/join only, with
+   members_elided counting hidden declarations. Expand one with `explore <file> 
+  --ns <name>` (or --expand-imports for all); every expanded field is queryable 
+  by the address shown.",
+    "already_shown_note": "already_shown entries are byte-identical to an 
+  earlier explore output in this session (first shown exploring the named file);
+   pass --reshow to reprint them in full."
+  }
+  
+  --- stderr ---
+
+===== message 12 [assistant] =====
+(empty content)
+[tool_call] trilogy
+  args:
+    - file
+    - write
+    - probe_a.preql
+    - --run-and-delete
+  stdin: |
+    import root.Policy_Amount as pa;
+    import root.Premium as prem;
+    
+    select
+      pa.policy_amount_identifier,
+      pa.policy_amount,
+      pa.amount_type_code,
+      pa.insurance_type_code,
+      pa.Policy.policy_identifier,
+      (pa.policy_amount_identifier in prem.policy_amount_identifier) as 
+    is_premium
+    ;
+[model_info] {"reasoning_content": "Now let me probe the data. Let me write a probe to see Policy_Amount rows and Premium membership.\n\nLet me write a probe file with --run-and-delete.", "reasoning_tokens": 35}
+
+===== message 13 [user] =====
+[tool_result] trilogy
+  exit_code: 0
+  --- stdout ---
+  {
+    "event": "write",
+    "path": "probe_a.preql",
+    "bytes": 293
+  }
+  {
+    "event": "result",
+    "columns": [
+      "pa_policy_amount_identifier",
+      "pa_policy_amount",
+      "pa_amount_type_code",
+      "pa_insurance_type_code",
+      "pa_Policy_policy_identifier",
+      "is_premium"
+    ],
+    "rows": [
+      [1,1000000.0,null,null,1,false],
+      [2,15000.0,"Year",null,1,true],
+      [3,1000000.0,null,null,1,false],
+      [4,16000.0,"Year",null,1,true],
+      [5,1000000.0,null,null,1,false],
+      [6,17000.0,"Year",null,1,true],
+      [7,1000000.0,null,null,1,false],
+      [8,18000.0,"Year",null,1,true],
+      [9,1000000.0,null,null,1,false],
+      [10,20000.0,"Year",null,1,true],
+      [11,600000.0,null,null,2,false],
+      [12,12000.0,"Year",null,2,true]
+    ],
+    "row_count": 12,
+    "displayed": 12
+  }
+  {
+    "event": "summary",
+    "statements": 1,
+    "duration_ms": 2.947,
+    "ok": true,
+    "rows": 12
+  }
+  
+  --- stderr ---
+
+===== message 14 [assistant] =====
+Premium membership is clean: premium rows (2,4,6,8,10,12) sum to 98,000 across 2 distinct policies. Writing the answer.
+[tool_call] trilogy
+  args:
+    - file
+    - write
+    - answer_1695156134.preql
+    - --run
+  stdin: |
+    import root.Policy_Amount as pa;
+    import root.Premium as prem;
+    
+    where pa.policy_amount_identifier in prem.policy_amount_identifier
+    select sum(pa.policy_amount) / count_distinct(pa.Policy.policy_identifier) 
+    as avg_policy_size
+    ;
+[model_info] {"reasoning_content": "The Premium membership correctly identifies rows 2,4,6,8,10,12 as premium rows. Their policy_amounts: 15000,16000,17000,18000,20000,12000. Policies: rows 2-10 are policy 1, row 12 is policy 2.\n\nTotal premium = 15000+16000+17000+18000+20000+12000 = 98000.\nDistinct policies carrying premium = 2 (policy 1 and policy 2).\nAverage = 49000.\n\nNow the question: \"average policy size, defined as the total premium amount across all policies divided by the number of distinct policies that carry a premium.\"\n\nSo numerator = sum of premium amounts = 98000, denominator = 2 \u2192 49000.\n\nBut note: \"the number of distinct policies that carry a premium\" - policies 1 and 2 both carry premium. So 2.\n\nHmm, but wait, can there be policies that don't have a premium? Policy table has only 2 policies (1 and 2). Both carry premium. So denominator 2.\n\nActually, re-read: \"the total premium amount across all policies divided by the number of distinct policies that carry a premium\". So sum(premium amount)/count(distinct premium policies).\n\nNow, how to compute \"total premium amount\"? Sum of policy_amount where is_premium. That's 98000.\n\nLet me write the final query:\n\nimport root.Policy_Amount as pa;\nimport root.Premium as prem;\n\nwhere pa.policy_amount_identifier in prem.policy_amount_identifier\nselect sum(pa.policy_amount) / count_distinct(pa.Policy.policy_identifier) as avg_policy_size\n;\n\nWait, count_distinct of a key property... Policy.policy_identifier is a key in Policy model, but within Policy_Amount grain it's a foreign key property, so count_distinct works. Or use count(grain(pa.Policy.policy_identifier))? Let me use count_distinct which is documented for non-key property. Actually count_distinct counts distinct values of a non-key property. pa.Policy.policy_identifier at Policy_Amount grain is a property (foreign key). Should be fine.\n\nActually, better: since we need to count distinct policies, and the row key is policy_amount_identifier which is unique, count_distinct(pa.Policy.policy_identifier) gives 2.\n\nLet me write:\n\nselect sum(pa.policy_amount) / count_distinct(pa.Policy.policy_identifier) as avg_policy_size\nwhere pa.policy_amount_identifier in prem.policy_amount_identifier\n;\n\nClause order: where before select. Right.\n\nLet me verify the value = 98000/2 = 49000.\n\nLet me write the answer file with --run.\n\nActually one consideration: \"total premium amount across all policies\" - could it mean including policies with no premium? No, sum of premium amount = 98000. Policies without premium contribute 0. Fine.\n\nLet me write.", "reasoning_tokens": 639}
+
+===== message 15 [user] =====
+[tool_result] trilogy
+  exit_code: 0
+  --- stdout ---
+  {
+    "event": "write",
+    "path": "answer_1695156134.preql",
+    "bytes": 232
+  }
+  {
+    "event": "result",
+    "columns": [
+      "avg_policy_size"
+    ],
+    "rows": [
+      [49000.0]
+    ],
+    "row_count": 1,
+    "displayed": 1
+  }
+  {
+    "event": "summary",
+    "statements": 1,
+    "duration_ms": 6.149,
+    "ok": true,
+    "rows": 1
+  }
+  
+  --- stderr ---
+
+===== message 16 [assistant] =====
+(empty content)
+[tool_call] return_control_to_user
+  message: |
+    Wrote answer_1695156134.preql and it runs cleanly, returning one row / one 
+    column: avg_policy_size = 49000.0.
+    
+    Interpretation: the Premium key-only table identifies which Policy_Amount 
+    rows are premium amounts. Summing policy_amount over those rows gives 98000 
+    (15000+16000+17000+18000+20000+12000), across 2 distinct policies, so 
+    98000/2 = 49000.
+[model_info] {"reasoning_content": "Single row, single column: 49000.0. Done.", "reasoning_tokens": 14}
+
+===== message 17 [user] =====
+[tool_result] return_control_to_user
+  return_control_to_user: ok

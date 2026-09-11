@@ -1,0 +1,9 @@
+import root.Policy_Amount as pa;
+import root.Premium as prem;
+
+# Premium rows are the Policy_Amount entries flagged in the Premium model.
+# Sum them up per policy, keyed by the policy number.
+select pa.Policy.policy_number as policy_number,
+       sum(pa.policy_amount) as total_premium_paid
+where pa.policy_amount_identifier in prem.policy_amount_identifier
+order by policy_number;

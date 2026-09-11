@@ -21,6 +21,9 @@ class ResultSet:
     # non-query statements. Always emitted in JSON mode (agent default),
     # rendered in rich mode only behind `run --scope`.
     derived_value_scopes: "list[DerivedValueScope] | None" = None
+    # Plan-shape warnings off the ProcessedQuery (a scoped join side the plan
+    # never read from); merged into the result event's `warnings`.
+    plan_warnings: "list[dict] | None" = None
 
 
 @dataclass(frozen=True)

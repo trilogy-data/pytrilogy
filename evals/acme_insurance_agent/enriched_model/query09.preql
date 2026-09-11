@@ -1,0 +1,4 @@
+import policy_amount as pa;
+
+select
+    pa.average_policy_size;

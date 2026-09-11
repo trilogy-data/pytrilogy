@@ -1,0 +1,9 @@
+# Datasource ingested from Loss_Reserve
+# Grain: claim_amount_identifier. Key-only table: no columns beyond its key.
+key claim_amount_identifier enum<bigint>[1, 5];
+
+root datasource Loss_Reserve (
+    Claim_Amount_Identifier: claim_amount_identifier,
+)
+grain (claim_amount_identifier)
+address Loss_Reserve;

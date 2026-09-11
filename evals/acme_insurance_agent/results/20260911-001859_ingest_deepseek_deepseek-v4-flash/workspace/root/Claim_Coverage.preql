@@ -1,0 +1,15 @@
+# Datasource ingested from Claim_Coverage
+key claim_identifier enum<bigint>[1, 2];
+
+properties claim_identifier (
+    effective_date date,
+    policy_coverage_detail_identifier enum<bigint>[5],
+);
+
+root datasource Claim_Coverage (
+    Claim_Identifier: claim_identifier,
+    Effective_Date: effective_date,
+    Policy_Coverage_Detail_Identifier: policy_coverage_detail_identifier,
+)
+grain (claim_identifier)
+address Claim_Coverage;

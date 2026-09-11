@@ -1,0 +1,6 @@
+import root.Policy_Amount as pa;
+import root.Premium as prem;
+
+select
+  sum(pa.policy_amount) / count_distinct(pa.Policy.policy_identifier) as avg_policy_size
+where pa.policy_amount_identifier in prem.policy_amount_identifier;

@@ -78,6 +78,23 @@ def test_misplaced_join_reports_226(backend, query):
 
 
 @pytest.mark.parametrize("backend", [parse_lark, parse_pest])
+def test_join_after_trailing_where_reports_231(backend):
+    # a trailing `where` closes the statement; a join after it is misplaced
+    with pytest.raises(InvalidSyntaxException) as exc:
+        backend(_IMPORTS + "select a.x where a.x = 1 subset join a.id = b.id;")
+    assert "Syntax [231]" in str(exc.value), str(exc.value)
+    # the CR a Windows text-mode pipe adds must not survive into the snippet
+    with pytest.raises(InvalidSyntaxException) as exc:
+        backend(_IMPORTS + "select a.x where a.x = 1\r\nsubset join a.id = b.id;")
+    assert "\r" not in str(exc.value)
+
+
+@pytest.mark.parametrize("backend", [parse_lark, parse_pest])
+def test_join_before_trailing_where_is_valid(backend):
+    backend(_IMPORTS + "select a.x subset join a.id = b.id where a.x = 1;")
+
+
+@pytest.mark.parametrize("backend", [parse_lark, parse_pest])
 def test_misplaced_226_does_not_steal_valid_trailing_join(backend):
     # a well-formed join in a VALID position with a downstream error stays put
     with pytest.raises(InvalidSyntaxException) as exc:

@@ -1,0 +1,20 @@
+# One row per catastrophe event (storm, fire, ...) that claims can be
+# attributed to. Reach it from a claim as claim.catastrophe.
+
+key id int; # catastrophe identifier
+properties id (
+    name string, # catastrophe name; "by catastrophe" questions group on this
+    type_code string?, # catastrophe type code
+    industry_code string?, # industry-wide catastrophe code
+    company_code string?, # company's own catastrophe code
+);
+
+root datasource catastrophe (
+    Catastrophe_Identifier: id,
+    Catastrophe_Name: name,
+    Catastrophe_Type_Code: ?type_code,
+    Industry_Catastrophe_Code: ?industry_code,
+    Company_Catastrophe_Code: ?company_code,
+)
+grain (id)
+address Catastrophe;

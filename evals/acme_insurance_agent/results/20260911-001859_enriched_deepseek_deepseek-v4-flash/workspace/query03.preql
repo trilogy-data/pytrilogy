@@ -1,0 +1,7 @@
+import raw.premium as p;
+
+# Total amount of premiums paid by each policy holder
+select
+    p.policy.policy_holder_id,
+    p.total_premium as total_premium_paid
+order by p.policy.policy_holder_id asc;

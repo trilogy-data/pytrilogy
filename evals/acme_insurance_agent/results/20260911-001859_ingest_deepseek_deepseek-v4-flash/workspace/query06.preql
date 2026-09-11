@@ -1,0 +1,7 @@
+import root.Agreement_Party_Role as apr;
+
+# One row per policy holder id, with the number of policies (agreements) held.
+select apr.party_identifier as policy_holder_id,
+       count(apr.agreement_identifier) as policy_count
+where apr.party_role_code = 'PH'
+order by policy_holder_id;

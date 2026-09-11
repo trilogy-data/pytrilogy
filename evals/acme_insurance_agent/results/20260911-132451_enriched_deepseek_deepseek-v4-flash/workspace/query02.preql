@@ -1,0 +1,7 @@
+import raw.claim as claim;
+
+# Settled claims only: a claim is settled once it has a close_date.
+where claim.close_date is not null
+select
+    claim.policy.policy_number as policy_number,
+    claim.average_days_to_settle as average_days_to_settle;

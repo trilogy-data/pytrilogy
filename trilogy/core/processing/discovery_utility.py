@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, logger
 from trilogy.core.enums import (
     Derivation,
+    FunctionType,
     Granularity,
     Purpose,
 )
@@ -13,6 +14,7 @@ from trilogy.core.models.build import (
     BuildConditional,
     BuildDatasource,
     BuildFilterItem,
+    BuildFunction,
     BuildGrain,
     BuildParenthetical,
     BuildRowsetItem,
@@ -22,6 +24,7 @@ from trilogy.core.models.build import (
     get_concept_row_arguments,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.datasource import Address
 from trilogy.core.models.execute import QueryDatasource, UnnestJoin
 from trilogy.core.processing.constants import ROOT_DERIVATIONS
 from trilogy.core.processing.grain_utility import (
@@ -629,6 +632,21 @@ def raise_if_disconnected_for(
         )
 
 
+def _physical_tables_by_concept(
+    environment: BuildEnvironment,
+) -> dict[str, frozenset[str]]:
+    """Concept address -> the physical locations of the datasources binding it.
+    Two imports of one model under different aliases bind the same table."""
+    out: dict[str, set[str]] = {}
+    for ds in environment.datasources.values():
+        location = (
+            ds.address.location if isinstance(ds.address, Address) else ds.address
+        )
+        for column in ds.columns:
+            out.setdefault(column.concept.address, set()).add(location)
+    return {k: frozenset(v) for k, v in out.items()}
+
+
 def connected_equivalent_suggestions(
     environment: BuildEnvironment | None,
     subgraphs: list[list[BuildConcept]],
@@ -659,34 +677,85 @@ def connected_equivalent_suggestions(
                 return comp_of[node]
         return None
 
-    target = max(subgraphs, key=len)
-    target_comps = {component_of(c) for c in target} - {None}
-    if not target_comps:
-        return []
+    tables = _physical_tables_by_concept(environment)
 
-    suggestions: list[tuple[str, str]] = []
-    for group in subgraphs:
-        if group is target:
-            continue
-        for concept in group:
-            stranded = concept.address
-            if VIRTUAL_CONCEPT_PREFIX in stranded:
+    def twin_of(concept: BuildConcept, target_comps: set[int]) -> str | None:
+        # A select alias (`claim.claim_number as company_claim_number`) is
+        # its own concept; the twin is searched for the concept it names.
+        source = _alias_source(concept)
+        stranded = source.address
+        if VIRTUAL_CONCEPT_PREFIX in stranded:
+            return None
+        suffix = "." + stranded.removeprefix(f"{DEFAULT_NAMESPACE}.")
+        stranded_tables = tables.get(stranded, frozenset())
+        depth = stranded.count(".")
+        best: str | None = None
+        for candidate in environment.concepts.values():
+            addr = candidate.address
+            if addr == stranded or addr in excluded_addresses:
                 continue
-            suffix = "." + stranded.removeprefix(f"{DEFAULT_NAMESPACE}.")
-            best: str | None = None
-            for candidate in environment.concepts.values():
-                addr = candidate.address
-                if addr == stranded or addr in excluded_addresses:
-                    continue
-                if VIRTUAL_CONCEPT_PREFIX in addr or not addr.endswith(suffix):
-                    continue
-                if component_of(candidate) not in target_comps:
-                    continue
-                if best is None or len(addr) < len(best):
-                    best = addr
-            if best is not None:
-                suggestions.append((stranded, best))
-    return suggestions
+            if VIRTUAL_CONCEPT_PREFIX in addr:
+                continue
+            # The twin is the same path one namespace deeper (same alias
+            # both times), or - when the aliases differ (`import policy as
+            # p` vs the fact's nested `Policy`) - the same column of the
+            # same physical table, still reached through another import
+            # (deeper). A second top-level import of the same fact
+            # (`import store_sales as store_returns`) is a deliberate
+            # self-pair, not a copy to chain through.
+            if not addr.endswith(suffix) and not (
+                candidate.name == source.name
+                and addr.count(".") > depth
+                and stranded_tables & tables.get(addr, frozenset())
+            ):
+                continue
+            if component_of(candidate) not in target_comps:
+                continue
+            if best is None or len(addr) < len(best):
+                best = addr
+        return best
+
+    # Largest subgraph first, but a tie (two singletons) says nothing about
+    # which side is the connected one: try each until a twin turns up.
+    for target in sorted(subgraphs, key=len, reverse=True):
+        target_comps = {
+            comp for comp in (component_of(c) for c in target) if comp is not None
+        }
+        if not target_comps:
+            continue
+        suggestions: list[tuple[str, str]] = []
+        for group in subgraphs:
+            if group is target:
+                continue
+            for concept in group:
+                best = twin_of(concept, target_comps)
+                if best is not None:
+                    suggestions.append((_describe_stranded(concept), best))
+        if suggestions:
+            return suggestions
+    return []
+
+
+def _alias_source(concept: BuildConcept) -> BuildConcept:
+    """The concept a select alias names, or the concept itself."""
+    seen = {concept.address}
+    while (
+        isinstance(concept.lineage, BuildFunction)
+        and concept.lineage.operator == FunctionType.ALIAS
+        and len(concept.lineage.concept_arguments) == 1
+        and concept.lineage.concept_arguments[0].address not in seen
+    ):
+        concept = concept.lineage.concept_arguments[0]
+        seen.add(concept.address)
+    return concept
+
+
+def _describe_stranded(concept: BuildConcept) -> str:
+    source = _alias_source(concept)
+    shown = f"`{_strip_default_namespace(source.address)}`"
+    if source is concept:
+        return shown
+    return f"{shown} (as `{_strip_default_namespace(concept.address)}`)"
 
 
 def _strip_default_namespace(addr: str) -> str:
@@ -703,15 +772,20 @@ def format_disconnected_subgraphs_error(
     line_number: int | None = None,
     excluded_addresses: frozenset[str] = frozenset(),
 ) -> str:
+    def label(concept: BuildConcept) -> str:
+        # name the model path behind a select alias, which is what the
+        # reader has to re-route
+        source = _alias_source(concept)
+        shown = _strip_default_namespace(concept.address)
+        if source is concept:
+            return shown
+        return f"{shown} (= {_strip_default_namespace(source.address)})"
+
     def render(group: list[BuildConcept]) -> str:
-        addrs = sorted(c.address for c in group)
+        labels = sorted(label(c) for c in group)
         # drop internal _virt_* scaffolding, but keep raw if that empties a group
-        cleaned = [a for a in addrs if VIRTUAL_CONCEPT_PREFIX not in a]
-        return (
-            "{"
-            + ", ".join(_strip_default_namespace(a) for a in (cleaned or addrs))
-            + "}"
-        )
+        cleaned = [a for a in labels if VIRTUAL_CONCEPT_PREFIX not in a]
+        return "{" + ", ".join(cleaned or labels) + "}"
 
     rendered = "; ".join(render(group) for group in subgraphs)
     location = f" (statement at line {line_number})" if line_number else ""
@@ -730,7 +804,7 @@ def format_disconnected_subgraphs_error(
     )
     if suggestions:
         lines = "\n".join(
-            f"  - `{disc}` is disconnected, did you mean `{conn}`? "
+            f"  - {disc} is disconnected, did you mean `{conn}`? "
             "(connected to the other concepts)"
             for disc, conn in suggestions
         )

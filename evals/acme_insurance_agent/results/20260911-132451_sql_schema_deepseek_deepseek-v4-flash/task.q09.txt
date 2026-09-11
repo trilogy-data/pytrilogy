@@ -1,0 +1,19 @@
+An already-loaded DuckDB database is configured in this directory. Answer the
+ONE business question below with plain DuckDB SQL.
+
+Write your answer as a SINGLE self-contained SELECT to `answer_1695156134.sql` in the
+working directory, and validate it with the run_file tool before finishing.
+
+Return control once it runs cleanly to submit your result. This will be 
+your final action.
+
+Every question in this set returns at least one row at this scale factor. A
+zero-row result means the query has an issue. Do NOT, however, add/drop/loosen
+filters just to force rows; find and fix the actual mistake.
+
+This dataset is a small hand-built sample, not a scale-factor generator: each table holds a handful of rows, so small counts and one-row answers are normal. Once your query runs and returns the requested shape it is done; do not spend calls probing the data volume.
+
+Exact response column names do not matter, but the position and values do.
+
+Business question 1695156134:
+What is the average policy size, defined as the total premium amount across all policies divided by the number of distinct policies that carry a premium? Return a single row with one column: that average.

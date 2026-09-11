@@ -1,0 +1,27 @@
+# One row per policy coverage detail: a coverage on an insurable object under
+# a policy, in force from effective_date to expiration_date. Premiums are
+# charged per coverage (premium.coverage) and claims are filed against a
+# coverage (claim.coverage_id), which is how a claim reaches its policy.
+
+import policy as policy; # the policy this coverage belongs to
+
+key id int; # policy coverage detail identifier
+properties id (
+    effective_date date, # coverage start
+    expiration_date date?, # coverage end
+    coverage_part_code string?, # unused in this dataset
+    coverage_description string?, # unused in this dataset
+    insurable_object_id int, # the insured object
+);
+
+root datasource policy_coverage_detail (
+    Policy_Coverage_Detail_Identifier: id,
+    Policy_Identifier: ~policy.id,
+    Effective_Date: effective_date,
+    Expiration_Date: ?expiration_date,
+    Coverage_Part_Code: ?coverage_part_code,
+    Coverage_Description: ?coverage_description,
+    Insurable_Object_Identifier: insurable_object_id,
+)
+grain (id)
+address Policy_Coverage_Detail;

@@ -1,0 +1,60 @@
+# One row per claim. A claim is filed against a policy coverage
+# (Claim_Coverage), which is how it reaches its policy; that bridge is
+# flattened here so policy.* is directly available on a claim. The money on a
+# claim (loss and expense payments and reserves) lives in claim_amount.
+#
+# Not every policy has a claim. A query that groups a claim metric by policy.*
+# keeps claim-less policies (count 0 / NULL averages); add
+# `where claim.id is not null` to report only policies that have claims, or
+# `where claim.close_date is not null` to report only settled claims.
+
+import policy as policy; # the policy the claim was filed against
+import catastrophe as catastrophe; # the catastrophe the claim is attributed to
+
+key id int; # claim identifier
+properties id (
+    claim_number string, # company claim number; "by claim number" questions group on this
+    open_date date, # date the claim was opened
+    close_date date?, # date the claim was closed / settled; null while still open
+    coverage_id int, # policy coverage detail the claim was filed against
+    status_code string?, # unused in this dataset
+    description string?, # unused in this dataset
+    insurable_object_id int?, # the insured object the claim is on
+    occurrence_id int?, # the occurrence (event) behind the claim
+);
+
+property id.days_to_settle <- date_diff(open_date, close_date, day); # days from open to close; null while the claim is open
+
+auto claim_count <- count(id); # number of claims; "how many claims" questions select this
+auto average_days_to_settle <- avg(days_to_settle); # average time to settle a claim, in days, over settled claims; "average time to settle" questions select this
+
+root datasource claim (
+    Claim_Identifier: id,
+    Catastrophe_Identifier: ~catastrophe.id,
+    Company_Claim_Number: claim_number,
+    Claim_Open_Date: open_date,
+    Claim_Close_Date: ?close_date,
+    Claim_Status_Code: ?status_code,
+    Claim_Description: ?description,
+    Insurable_Object_Identifier: ?insurable_object_id,
+    Occurrence_Identifier: ?occurrence_id,
+)
+grain (id)
+address Claim;
+
+# Claim -> coverage -> policy bridge. Each claim here has one coverage.
+root datasource claim_policy (
+    Claim_Identifier: id,
+    Policy_Coverage_Detail_Identifier: coverage_id,
+    Policy_Identifier: ~policy.id,
+)
+grain (id)
+query '''
+select
+    cc.Claim_Identifier,
+    cc.Policy_Coverage_Detail_Identifier,
+    pcd.Policy_Identifier
+from Claim_Coverage cc
+join Policy_Coverage_Detail pcd
+    on cc.Policy_Coverage_Detail_Identifier = pcd.Policy_Coverage_Detail_Identifier
+''';

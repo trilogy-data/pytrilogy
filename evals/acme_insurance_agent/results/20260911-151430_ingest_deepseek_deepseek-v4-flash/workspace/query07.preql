@@ -1,0 +1,6 @@
+import root.Policy_Amount as pa;
+
+select
+  pa.Policy.policy_number,
+  sum(pa.policy_amount ? pa.is_premium) as total_premium
+;

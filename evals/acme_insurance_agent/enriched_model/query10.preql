@@ -1,0 +1,4 @@
+import policy as policy;
+
+select
+    policy.policy_count;

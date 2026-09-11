@@ -1,0 +1,9 @@
+import claim as claim;
+
+# Settled claims only: an open claim has no close date, and a policy without
+# claims would otherwise appear with a NULL average.
+where
+    claim.close_date is not null
+select
+    claim.policy.policy_number,
+    claim.average_days_to_settle;

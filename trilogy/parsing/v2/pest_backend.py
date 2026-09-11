@@ -15,6 +15,7 @@ from trilogy.parsing.v2.errors import (
     detect_derivation_as_connector,
     detect_group_by,
     detect_import_file_path,
+    detect_join_after_trailing_where,
     detect_join_comma_group,
     detect_join_missing_key,
     detect_missing_signature_semicolon,
@@ -346,6 +347,11 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
     join_pos = detect_clause_after_join(text, pos)
     if join_pos is not None:
         return create_syntax_error(220, join_pos, text)
+
+    # 231: a query-scoped join written after a trailing (post-select) `where`.
+    trailing_pos = detect_join_after_trailing_where(text, pos)
+    if trailing_pos is not None:
+        return create_syntax_error(231, trailing_pos, text)
 
     # 226: a WELL-FORMED query-scoped join in the wrong place (standalone, or
     # before the `where`). Confirm the key is fine by probing the clause alone;

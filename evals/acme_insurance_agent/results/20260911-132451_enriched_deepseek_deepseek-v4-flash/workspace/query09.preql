@@ -1,0 +1,3 @@
+import raw.premium as premium;
+
+select premium.average_policy_size as avg_policy_size;

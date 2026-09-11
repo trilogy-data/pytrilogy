@@ -1,0 +1,19 @@
+# Datasource ingested from Agreement_Party_Role
+key agreement_identifier enum<bigint>[1, 2];
+key party_identifier enum<bigint>[1, 2];
+
+properties <agreement_identifier, party_identifier> (
+    party_role_code enum<string>['AG', 'PH'],
+    effective_date string?,
+    expiration_date string?,
+);
+
+root datasource Agreement_Party_Role (
+    Agreement_Identifier: agreement_identifier,
+    Party_Identifier: party_identifier,
+    Party_Role_Code: party_role_code,
+    Effective_Date: ?effective_date,
+    Expiration_Date: ?expiration_date,
+)
+grain (agreement_identifier, party_identifier)
+address Agreement_Party_Role;

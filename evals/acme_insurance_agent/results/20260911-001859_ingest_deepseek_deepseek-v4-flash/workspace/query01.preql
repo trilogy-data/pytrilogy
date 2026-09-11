@@ -1,0 +1,12 @@
+import root.Policy as pol;
+import root.Policy_Amount as pa;
+import root.Premium as pr;
+
+# Keep only Policy_Amount rows that are premiums (the Premium table lists them),
+# then attach the owning policy and total the premium amounts per policy number.
+where pa.policy_amount_identifier in pr.policy_amount_identifier
+select
+    pol.policy_number,
+    sum(pa.policy_amount) as total_premiums_paid
+subset join pa.policy_identifier = pol.policy_identifier
+order by pol.policy_number asc;

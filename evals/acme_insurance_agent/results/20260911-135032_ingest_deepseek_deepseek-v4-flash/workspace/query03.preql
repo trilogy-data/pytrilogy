@@ -1,0 +1,10 @@
+import root.Policy_Amount as pa;
+import root.Agreement_Party_Role as apr;
+import root.Premium as prem;
+
+where apr.party_role_code = 'PH'
+select
+    apr.party_identifier,
+    sum(pa.policy_amount ? pa.policy_amount_identifier in prem.policy_amount_identifier) as total_premium,
+subset join pa.Policy.policy_identifier = apr.agreement_identifier
+order by apr.party_identifier asc;

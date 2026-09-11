@@ -1,0 +1,11 @@
+# Regenerable: the cached database, per-run database copies, the installed
+# model copy, and the raw JSONL traces. The report, task prompts, readable
+# conversation logs, and the agent's final queries are committed as the
+# run's evidence.
+.cache/
+results/*/workspace/*.duckdb
+results/*/workspace/*.duckdb.wal
+results/*/workspace/raw/
+results/*/workspace/.trilogy/
+results/*/workspace/_worker*/
+results/*/*.jsonl

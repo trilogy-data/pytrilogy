@@ -110,6 +110,7 @@ from trilogy.core.processing.v4_helper.staged_where import (
 from trilogy.core.scope_diagnostics import (
     DerivedValueScope,
     extract_derived_value_scopes,
+    scoped_join_unused_side_warnings,
 )
 from trilogy.core.statements.author import (
     CallStatement,
@@ -1563,6 +1564,31 @@ def _collect_rowset_scoped_joins(
     return out
 
 
+def _plan_datasource_identifiers(ctes: list[CTE | UnionCTE]) -> set[str]:
+    """Identifiers of every datasource the finished plan reads from,
+    including scans the optimizer folded into their consumer."""
+    out: set[str] = set()
+
+    def walk(source: BuildDatasource | QueryDatasource) -> None:
+        if isinstance(source, QueryDatasource):
+            for child in source.datasources:
+                walk(child)
+        else:
+            out.add(source.identifier)
+
+    stack: list[CTE | UnionCTE] = list(ctes)
+    while stack:
+        node = stack.pop()
+        if isinstance(node, UnionCTE):
+            stack.extend(node.internal_ctes)
+            continue
+        stack.extend(node.inlined_parents)
+        if isinstance(node, DatasourceCTE):
+            out.add(node.datasource.identifier)
+        walk(node.source)
+    return out
+
+
 def process_query(
     environment: Environment,
     statement: SelectStatement | MultiSelectStatement,
@@ -1659,6 +1685,14 @@ def process_query(
             )
         except Exception as exc:
             logger.debug(f"{LOGGER_PREFIX} scope diagnostics extraction failed: {exc}")
+    plan_warnings: list[dict] = []
+    if join_clauses:
+        try:
+            plan_warnings = scoped_join_unused_side_warnings(
+                environment, join_clauses, _plan_datasource_identifiers(final_ctes)
+            )
+        except Exception as exc:
+            logger.debug(f"{LOGGER_PREFIX} scoped join diagnostics failed: {exc}")
     return ProcessedQuery(
         order_by=root_cte.order_by,
         limit=statement.limit,
@@ -1671,4 +1705,5 @@ def process_query(
         parameters=_extract_params(environment.concepts, statement.local_concepts),
         scoped_merge_map=scoped_merge_map,
         derived_value_scopes=derived_value_scopes,
+        plan_warnings=plan_warnings,
     )

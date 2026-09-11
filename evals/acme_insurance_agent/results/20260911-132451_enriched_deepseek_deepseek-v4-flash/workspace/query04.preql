@@ -1,0 +1,6 @@
+import raw.policy as p;
+
+select
+    p.agent_id,
+    p.policy_count
+;

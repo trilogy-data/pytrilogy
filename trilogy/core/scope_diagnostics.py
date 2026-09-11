@@ -1077,6 +1077,56 @@ def _window_filter_is_deliberate(scope: DerivedValueScope) -> bool:
     )
 
 
+def scoped_join_unused_side_warnings(
+    environment: Environment, join_clauses: list[SelectJoin], used_datasources: set[str]
+) -> list[dict]:
+    """A scoped join whose one side is referenced only as its join key plans
+    without that side: `subset join prem.k = pa.k` with nothing else from
+    `prem` scans `pa` alone, and a projected `prem.k` renders from `pa`. The
+    rows are right by the never-drop-a-row rule, but nothing tells the reader
+    the narrow side was dropped, so name it with the pin and the inversion.
+    ``used_datasources`` are the identifiers the finished plan reads from."""
+    out: list[dict] = []
+    for join in join_clauses:
+        for side, other in (
+            (join.source_address, join.target_address),
+            (join.target_address, join.source_address),
+        ):
+            owners = sorted(
+                ds.identifier
+                for ds in environment.datasources.values()
+                if any(c.address == side for c in ds.output_concepts)
+            )
+            if not owners or set(owners) & used_datasources:
+                continue
+            short_side, short_other = _short(side), _short(other)
+            hints = [
+                (
+                    f"to keep only rows present in {owners[0]}, add "
+                    f"`where {short_side} is not null`"
+                )
+            ]
+            if (join.authored or join.join_type) is JoinType.SUBSET:
+                hints.append(
+                    f"to drive the query from {owners[0]}, write "
+                    f"`subset join {short_other} = {short_side}`"
+                )
+            out.append(
+                {
+                    "kind": "scoped_join_side_unused",
+                    "side": short_side,
+                    "join": _render_scoped_join(join),
+                    "message": (
+                        f"`{short_side}` is referenced only as a join key, so its "
+                        f"model ({', '.join(owners)}) contributed no rows: the key "
+                        f"was read from `{short_other}`'s side and no row was "
+                        f"dropped. {'; '.join(hints)}."
+                    ),
+                }
+            )
+    return out
+
+
 def derived_value_warnings(scopes: list[DerivedValueScope]) -> list[dict]:
     """Actionable warnings distilled from the factual scope records: computation
     shapes that usually mean a filter or grain was misapplied. Observational

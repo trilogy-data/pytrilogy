@@ -1,0 +1,10 @@
+import root.Claim_Amount as ca;
+import root.Claim as c;
+import root.Loss_Payment as lp;
+import root.Loss_Reserve as lr;
+
+select c.company_claim_number as claim_number,
+  coalesce(sum(ca.claim_amount ? ca.claim_amount_identifier in lp.claim_amount_identifier), 0)
+    + coalesce(sum(ca.claim_amount ? ca.claim_amount_identifier in lr.claim_amount_identifier), 0) as total_loss_amount
+subset join ca.claim_identifier = c.claim_identifier
+order by claim_number;

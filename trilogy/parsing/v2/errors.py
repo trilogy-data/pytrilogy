@@ -156,6 +156,13 @@ ERROR_CODES: dict[int, str] = {
         "statement stops at this character. To pull a THIRD column into the "
         "SAME key instead, extend the equality: `a.k = b.k = c.k`."
     ),
+    231: (
+        "A `subset|union join` cannot follow a trailing `where`. Put the join "
+        "right after the select list, with the filter either before `select` "
+        "or after the join: `where <filters> select <cols> subset join a.key = "
+        "b.key` or `select <cols> subset join a.key = b.key where <filters>`. "
+        "Full reference: `trilogy agent-info syntax example query-structure`."
+    ),
 }
 
 
@@ -490,6 +497,23 @@ def misplaced_join_candidate(text: str, pos: int) -> tuple[int, str] | None:
     boundary = _CLAUSE_BOUNDARY_RE.search(text, join.end())
     clause_end = boundary.start() if boundary else stmt_end
     return join.start(), text[join.start() : clause_end].strip()
+
+
+def detect_join_after_trailing_where(text: str, pos: int) -> int | None:
+    """Locate a query-scoped join written after a post-select `where`
+    (`select ... where ... subset join a = b`). A trailing `where` is the
+    statement's closing filter, so a well-formed join there fails with a raw
+    expectation list. Returns the join's position, or None. Shared by both
+    grammar backends."""
+    if _QUERY_JOIN_RE.match(text, pos) is None:
+        return None
+    stmt_start = text.rfind(";", 0, pos) + 1
+    selects = list(_SELECT_KW_RE.finditer(text, stmt_start, pos))
+    if not selects:
+        return None
+    if _WHERE_KW_RE.search(text, selects[-1].end(), pos) is None:
+        return None
+    return pos
 
 
 # A `def NAME(...)` (or `def table NAME(...)`) declaration — the named-function
@@ -885,6 +909,12 @@ def suggest_select_alias(expr: str) -> str:
     return sanitized
 
 
+def _one_line(text: str) -> str:
+    """Flatten for the `Location:` snippet; CRs arrive from Windows text-mode
+    pipes and each replacement keeps `pos` aligned (one char for one char)."""
+    return text.replace("\r", " ").replace("\n", " ")
+
+
 def create_syntax_error(code: int, pos: int, text: str) -> InvalidSyntaxException:
     message = ERROR_CODES[code]
     if code == 201:
@@ -900,7 +930,7 @@ def create_syntax_error(code: int, pos: int, text: str) -> InvalidSyntaxExceptio
         f"Syntax [{code}]: "
         + message
         + "\nLocation:\n"
-        + inject_context_maker(pos, text.replace("\n", " "), DEFAULT_ERROR_SPAN)
+        + inject_context_maker(pos, _one_line(text), DEFAULT_ERROR_SPAN)
     )
 
 
@@ -910,5 +940,5 @@ def create_generic_syntax_error(
     return InvalidSyntaxException(
         message
         + "\nLocation:\n"
-        + inject_context_maker(pos, text.replace("\n", " "), DEFAULT_ERROR_SPAN)
+        + inject_context_maker(pos, _one_line(text), DEFAULT_ERROR_SPAN)
     )

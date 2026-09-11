@@ -1,0 +1,6 @@
+import raw.policy as policy;
+
+select
+    policy.policy_holder_id,
+    policy.policy_count
+order by policy.policy_holder_id asc;

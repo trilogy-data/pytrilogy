@@ -22,6 +22,9 @@ from trilogy.scripts.explore import build_concepts_payload
 
 
 def get_trilogy_syntax_reference() -> str:
+    # The per-example summaries stay: a names-only listing was A/B'd on the
+    # TPC-DS enriched leg (evals/tpcds_agent/handoff_docs_trim_ab_20260911.md)
+    # and cost 3-9% more per question, since agents then fetch more drilldowns.
     return f"""{RULE_PROMPT}
 
 Functions (the `aggregate` family doubles as the Aggregate Functions list):

@@ -1824,3 +1824,39 @@ def test_handle_trilogy_blocks_database_when_introspection_disabled():
     out = handle_trilogy(state, {"args": ["database", "tables"]})
     assert "introspection is disabled" in out
     assert "explore" in out
+
+
+# --- disabled commands are named, not discovered by calling them ---
+
+
+def test_annotate_disabled_cli_docs_marks_refused_commands():
+    from trilogy.scripts.agent_info_docs.cli import CLI_DOC
+    from trilogy.scripts.agent_tools import _annotate_disabled_cli_docs
+
+    state = AgentState(allow_db_introspection=False, allow_file_read=False)
+    out = _annotate_disabled_cli_docs(CLI_DOC, state)
+    for prefix in (
+        "- `trilogy file read <path>`",
+        "- `trilogy database list`",
+        "- `trilogy database describe <table>`",
+    ):
+        assert f"{prefix} - DISABLED for this task" in out
+    assert "read a file when exploration is insufficient" not in out
+    assert "list physical tables" not in out
+    assert _annotate_disabled_cli_docs(CLI_DOC, AgentState()) == CLI_DOC
+
+
+def test_instructions_name_disabled_database_and_file_read():
+    prompt = agent_mod.get_agent_instructions(
+        include_database=False, include_file_read=False
+    )
+    assert "`database list` / `database describe` are DISABLED" in prompt
+    assert "`file read` is DISABLED" in prompt
+    full = agent_mod.get_agent_instructions()
+    assert "DISABLED" not in full
+
+
+def test_refusals_point_at_scoped_joins():
+    state = AgentState(allow_db_introspection=False, allow_file_read=False)
+    assert "subset join" in handle_trilogy(state, {"args": ["database", "list"]})
+    assert "subset join" in handle_trilogy(state, {"args": ["file", "read", "x"]})

@@ -1,0 +1,10 @@
+import root.Policy_Amount as pa;
+import root.Premium as pr;
+
+# Total premium paid per policy: the annual premium amounts (Policy_Amount rows
+# that belong to the Premium subset) summed for each policy, keyed by policy.
+select
+  pa.Policy.policy_number as policy_number,
+  sum(pa.policy_amount) as total_premium_paid
+subset join pa.policy_amount_identifier = pr.policy_amount_identifier
+order by policy_number asc;

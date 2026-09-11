@@ -1,0 +1,6 @@
+import root.Policy as p;
+import root.Agreement_Party_Role as apr;
+
+where apr.party_role_code = 'AG'
+select apr.party_identifier, count(p.policy_identifier) as policy_count
+subset join apr.agreement_identifier = p.policy_identifier;

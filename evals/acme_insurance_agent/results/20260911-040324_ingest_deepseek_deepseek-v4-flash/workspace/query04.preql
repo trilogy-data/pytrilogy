@@ -1,0 +1,7 @@
+import root.Agreement_Party_Role as apr;
+
+select
+  apr.party_identifier,
+  count(apr.agreement_identifier) as policies_sold
+where apr.party_role_code = 'AG'
+order by apr.party_identifier;

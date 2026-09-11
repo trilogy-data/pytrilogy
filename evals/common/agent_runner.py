@@ -311,7 +311,12 @@ def write_trilogy_toml(
 ) -> None:
     """Configure the agent subprocess: DuckDB pointing at the benchmark file,
     provider/model, and the per-query iteration budget. ``quiet = true`` drops
-    the show_message tool — long unattended runs blow up otherwise."""
+    the show_message tool — long unattended runs blow up otherwise.
+
+    Bare keys only: agents read this file hunting for schema hints, and prose
+    about A/B knobs or a ``schema.md`` that is not in their workspace sends
+    them off on tangents. The rationale for each knob lives with the flag's
+    definition in ``trilogy/scripts/agent.py``."""
     # No silent fallback — an unknown provider here would inherit a wrong env
     # var and 401 against the actual API. Fail loud so the misconfiguration
     # surfaces at workspace-setup time, not 50 turns into a hung eval.
@@ -346,27 +351,12 @@ provider = "{provider}"
 model = "{model}"
 api_key_env = "{api_key_env}"
 {reasoning_effort_line}max_iterations = {max_iterations}
-# Focused agent-info drilldowns can carry complete language/model references;
-# give them enough room to arrive without truncating load-bearing examples.
-# Noise-dose cells raise this so read_file('schema.md') stays untruncated.
 tool_output_limit = {tool_output_limit or 32768}
-# Narration messages compound quadratically through history replays in long
-# unattended runs; the eval drops show_message entirely.
 quiet = true
-# Drop the todo tool (and its prompt mention) — A/B knob for short single-query
-# tasks where the scratch list tends to invite over-planning.
 disable_todo = {str(disable_todo).lower()}
-# When false, the model may reason in plain text before calling a tool
-# (tool_choice: auto) instead of being forced to act every turn.
 force_tool_choice = {str(force_tool_choice).lower()}
-# When false, the trilogy tool refuses `database list/describe` and the prompt
-# omits them — raw-table introspection is for ingest, not query generation.
 allow_database_introspection = {str(allow_database_introspection).lower()}
-# When false, `trilogy file read` is refused (gentle deny pointing at explore);
-# `file list` still works. Schema discovery should go through `explore`.
 allow_file_read = {str(allow_file_read).lower()}
-# Disabled for now: A/B-ing whether the post-submit reviewer gate helps or just
-# adds false kickbacks (e.g. q14 mis-quoted "can't see them due to the limit").
 disable_reviewer = true
 """,
         encoding="utf-8",

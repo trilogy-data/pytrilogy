@@ -9,8 +9,8 @@ from trilogy.scripts.agent_sql_tools import (
     _envelope,
     _execute_sql,
     _format_result,
-    _last_statement,
     _readonly_violation,
+    _statements,
     _strip_leading_comments,
     handle_read_file,
     handle_return_control,
@@ -45,10 +45,10 @@ def test_strip_leading_comments_line_and_block():
     assert _strip_leading_comments("-- a\n/* b */\nselect 1") == "select 1"
 
 
-def test_last_statement_skips_trailing_comment_and_empty():
-    assert _last_statement("select 1; select 2;") == "select 2"
-    assert _last_statement("select 1;\n-- trailing note") == "select 1"
-    assert _last_statement("   ;  ;  ") == ""
+def test_statements_skips_trailing_comment_and_empty():
+    assert _statements("select 1; select 2;") == ["select 1", "select 2"]
+    assert _statements("select 1;\n-- trailing note") == ["select 1"]
+    assert _statements("   ;  ;  ") == []
 
 
 # --- read-only enforcement ---
@@ -88,7 +88,8 @@ def test_format_result_truncates_and_reports_total(monkeypatch):
     assert '"displayed": 2' in out
     assert '"truncated": true' in out
     assert '"omitted": 3' in out
-    assert "<redacted 3 rows>" in out
+    assert "<hidden 3 rows>" in out
+    assert '"omitted_note"' in out
     assert '"column_stats"' in out
 
 
@@ -128,10 +129,31 @@ def test_execute_sql_reports_engine_error(sql_engine):
     assert "--- stderr ---" in out
 
 
-def test_execute_sql_runs_only_last_statement(sql_engine):
+def test_execute_sql_runs_every_statement(sql_engine):
     out = _execute_sql(AgentState(), "select 1 as a; select 99 as b")
     assert "exit_code: 0" in out
-    assert "99" in out
+    assert '"statement": 1' in out and '"statement": 2' in out
+    assert '"a"' in out and '"b"' in out and "99" in out
+    assert '"statements": 2' in out
+
+
+def test_execute_sql_single_statement_has_no_statement_index(sql_engine):
+    out = _execute_sql(AgentState(), "select 1 as a")
+    assert '"statement":' not in out
+    assert '"statements": 1' in out
+
+
+def test_execute_sql_batch_keeps_results_before_a_failure(sql_engine):
+    out = _execute_sql(AgentState(), "select 1 as a; select * from nope")
+    assert "exit_code: 1" in out
+    assert '"statement": 1' in out and '"a"' in out
+    assert '"statement": 2' in out and '"event": "error"' in out
+
+
+def test_execute_sql_batch_names_the_offending_statement(sql_engine):
+    out = _execute_sql(AgentState(), "select 1; DELETE FROM t")
+    assert "exit_code: 1" in out
+    assert "statement 2 of 2" in out
 
 
 def test_execute_sql_truncates_output(sql_engine):

@@ -1,0 +1,9 @@
+# Key-only marker: one row per policy_amount row that is a premium. Nothing to select here; use policy_amount.is_premium.
+
+key id int; # policy_amount identifier
+
+root datasource premium (
+    Policy_Amount_Identifier: id,
+)
+grain (id)
+address Premium;

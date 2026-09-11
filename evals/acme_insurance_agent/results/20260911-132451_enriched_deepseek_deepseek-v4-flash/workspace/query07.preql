@@ -1,0 +1,6 @@
+import raw.premium as p;
+
+select
+    p.policy.policy_number,
+    p.total_premium
+order by p.policy.policy_number;

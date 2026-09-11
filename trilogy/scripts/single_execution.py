@@ -115,6 +115,7 @@ def execute_single_statement(
         )
         if results is not None and isinstance(query, ProcessedQuery):
             results.derived_value_scopes = query.derived_value_scopes
+            results.plan_warnings = query.plan_warnings
         # When the result hit its own LIMIT (a biased prefix) and the dialect
         # supports it, ask the dialect to summarize the FULL un-limited result so
         # the stats block is trustworthy. Best-effort: failures fall back silently.
