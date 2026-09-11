@@ -36,6 +36,12 @@ SPEC = BenchmarkSpec(
     database_builder=db_build.build_database,
     default_enriched_dir=EVAL_DIR / "enriched_model",
     default_scale_factor=1.0,
+    dataset_note=(
+        "This dataset is a small hand-built sample, not a scale-factor "
+        "generator: each table holds a handful of rows, so small counts and "
+        "one-row answers are normal. Once your query runs and returns the "
+        "requested shape it is done; do not spend calls probing the data volume."
+    ),
     # The eleven blog questions lead the catalog; --num-queries 43 runs the
     # whole ACME set.
     default_num_queries=11,

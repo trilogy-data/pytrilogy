@@ -13,7 +13,7 @@ properties id (
     agent_id int, # party id of the agent who sold the policy ('AG' role on the agreement)
 );
 
-auto policy_count <- count(id); # number of policies; group by policy_holder_id or agent_id for per-party counts
+auto policy_count <- count(id); # number of policies; "how many policies" questions select this, by policy_holder_id or agent_id for per-party counts
 
 root datasource policy (
     Policy_Identifier: id,

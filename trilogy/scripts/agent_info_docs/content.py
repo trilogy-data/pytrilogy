@@ -993,6 +993,7 @@ def get_query_authoring_output() -> str:
     """Query workflow plus the complete Trilogy language reference."""
     return get_trilogy_prompt(
         intro="## Trilogy Language Reference\nTrilogy is a SQL-inspired language with a built-in semantic layer, written as .preql files.",
+        example_summaries=False,
     )
 
 

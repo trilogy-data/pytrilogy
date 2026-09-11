@@ -1,0 +1,38 @@
+# Datasource ingested from Policy_Amount
+# Grain: policy_amount_identifier. Properties: geographic_location_identifier, effective_date, amount_type_code, earning_begin_date, earning_end_date, policy_amount, insurable_object_identifier, insurance_type_code.
+# Flags: is_premium (a Premium row exists for this policy_amount_identifier).
+# Imports: Policy via Policy_Identifier (fields as Policy.*), Policy_Coverage_Detail via Policy_Coverage_Detail_Identifier (fields as Policy_Coverage_Detail.*).
+import Policy as Policy;
+import Policy_Coverage_Detail as Policy_Coverage_Detail;
+import Premium as Premium;
+
+key policy_amount_identifier bigint;
+
+properties policy_amount_identifier (
+    geographic_location_identifier string?,
+    effective_date date,
+    amount_type_code enum<string>['Year']?,
+    earning_begin_date string?,
+    earning_end_date string?,
+    policy_amount double[0..],
+    insurable_object_identifier string?,
+    insurance_type_code string?,
+);
+
+auto is_premium <- policy_amount_identifier in Premium.policy_amount_identifier; # true when a Premium row marks this policy_amount_identifier
+
+root datasource Policy_Amount (
+    Policy_Amount_Identifier: policy_amount_identifier,
+    Geographic_Location_Identifier: ?geographic_location_identifier,
+    Policy_Identifier: Policy.policy_identifier,
+    Effective_Date: effective_date,
+    Amount_Type_Code: ?amount_type_code,
+    Earning_Begin_Date: ?earning_begin_date,
+    Earning_End_Date: ?earning_end_date,
+    Policy_Coverage_Detail_Identifier: Policy_Coverage_Detail.policy_coverage_detail_identifier,
+    Policy_Amount: policy_amount,
+    Insurable_Object_Identifier: ?insurable_object_identifier,
+    Insurance_Type_Code: ?insurance_type_code,
+)
+grain (policy_amount_identifier)
+address Policy_Amount;

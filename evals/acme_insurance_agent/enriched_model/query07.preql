@@ -1,5 +1,5 @@
-import premium as premium;
+import policy_amount as pa;
 
 select
-    premium.policy.policy_number,
-    premium.total_premium;
+    pa.policy.policy_number,
+    pa.total_premium;

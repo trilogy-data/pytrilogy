@@ -18,9 +18,9 @@ from pathlib import Path
 # relative tolerance on both sides.
 from trilogy.core.validation.rows import rows_equal_tolerant as _results_equal
 
-# Marker the agent's ``truncate_middle`` emits. We detect it in tool_result
-# bodies to count how many responses came back truncated.
-_TRUNCATION_MARKER = "...[truncated "
+# Markers a truncated tool result carries: ``truncate_middle`` on the Trilogy
+# toolset, the SQL toolset's row cap. Counted per tool_result body.
+_TRUNCATION_MARKERS = ("...[truncated ", "<hidden ")
 
 # Messy-warehouse pre-aggregated tables are named ``fact_agg_*`` by
 # convention (see tpcds_agent/warehouse/aggregates.sql). Benchmarks without
@@ -235,7 +235,7 @@ def parse_agent_log(log_path: Path) -> AgentMetrics:
             bucket.count += 1
             bucket.total_chars += len(result)
             bucket.max_chars = max(bucket.max_chars, len(result))
-            if _TRUNCATION_MARKER in result:
+            if any(marker in result for marker in _TRUNCATION_MARKERS):
                 bucket.truncated += 1
             # Drain matching pending call (FIFO) — pairing isn't strictly
             # necessary for the aggregates we record, but keeps queue bounded.

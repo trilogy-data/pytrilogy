@@ -1,0 +1,878 @@
+{
+  "meta": {
+    "timestamp": "20260911-135033",
+    "benchmark": "ACME Insurance",
+    "model": "deepseek-v4-flash",
+    "provider": "deepseek",
+    "reasoning_effort": null,
+    "scale_factor": 1.0,
+    "num_queries": 11,
+    "max_iterations": 75,
+    "scope_diagnostics": false,
+    "scope_warnings": true,
+    "trilogy_version": "0.3.353",
+    "openrouter_routing": null,
+    "model_source": "ingest",
+    "category": "enriched",
+    "category_label": "enriched"
+  },
+  "agent": {
+    "exit_code": 0,
+    "timed_out": false,
+    "duration_seconds": 213.5,
+    "wall_duration_seconds": 67.3,
+    "avg_query_seconds": 19.4,
+    "iterations": 63,
+    "tool_calls_total": 80,
+    "tool_calls_by_name": {
+      "trilogy": 69,
+      "return_control_to_user": 11
+    },
+    "trilogy_subcommands": {
+      "agent-info": 23,
+      "file": 28,
+      "explore": 18
+    },
+    "tool_results_total": 80,
+    "tool_errors": 1,
+    "tool_success_rate": 0.988,
+    "repeated_calls_by_name": {},
+    "agent_info_sequences": [
+      [
+        "index"
+      ],
+      [
+        "query"
+      ],
+      [
+        "index"
+      ],
+      [
+        "query"
+      ],
+      [
+        "index",
+        "query"
+      ],
+      [
+        "index"
+      ],
+      [
+        "query"
+      ],
+      [
+        "index"
+      ],
+      [
+        "query"
+      ],
+      [
+        "index",
+        "query"
+      ],
+      [
+        "index",
+        "query"
+      ],
+      [
+        "index",
+        "query",
+        "syntax"
+      ],
+      [
+        "index",
+        "query"
+      ],
+      [
+        "index"
+      ],
+      [
+        "query"
+      ],
+      [
+        "index"
+      ],
+      [
+        "query"
+      ]
+    ],
+    "agent_info_transitions": {
+      "index -> query": 5,
+      "query -> syntax": 1
+    },
+    "agent_info_directory_calls": 11,
+    "agent_info_directory_followups": 5,
+    "tool_output_stats": {
+      "trilogy": {
+        "count": 69,
+        "truncated": 0,
+        "truncation_rate": 0.0,
+        "avg_chars": 3562.0,
+        "max_chars": 14449
+      },
+      "return_control_to_user": {
+        "count": 11,
+        "truncated": 0,
+        "truncation_rate": 0.0,
+        "avg_chars": 26.0,
+        "max_chars": 26
+      }
+    },
+    "reviewer_verdicts": 0,
+    "reviewer_kickbacks": 0,
+    "tokens": {
+      "prompt": 414704,
+      "completion": 12116,
+      "total": 426820,
+      "cached_prompt": 337152,
+      "cache_adjusted": 123383
+    },
+    "farewell": "Wrote answer_2200255695.preql (imports raw.claim and selects the built-in claim_count metric). It runs cleanly and returns one row with one column: claim_count = 2."
+  },
+  "queries": [
+    {
+      "id": 1,
+      "status": "pass",
+      "ref_rows": 2,
+      "cand_rows": 2,
+      "generated_sql_len": 704,
+      "detail": "",
+      "cand_ms": 5,
+      "ref_ms": 4,
+      "used_aggregate": false
+    },
+    {
+      "id": 2,
+      "status": "pass",
+      "ref_rows": 1,
+      "cand_rows": 1,
+      "generated_sql_len": 966,
+      "detail": "",
+      "cand_ms": 5,
+      "ref_ms": 4,
+      "used_aggregate": false
+    },
+    {
+      "id": 3,
+      "status": "pass",
+      "ref_rows": 1,
+      "cand_rows": 1,
+      "generated_sql_len": 989,
+      "detail": "",
+      "cand_ms": 4,
+      "ref_ms": 280,
+      "used_aggregate": false
+    },
+    {
+      "id": 4,
+      "status": "pass",
+      "ref_rows": 1,
+      "cand_rows": 1,
+      "generated_sql_len": 361,
+      "detail": "",
+      "cand_ms": 2,
+      "ref_ms": 2,
+      "used_aggregate": false
+    },
+    {
+      "id": 5,
+      "status": "pass",
+      "ref_rows": 2,
+      "cand_rows": 2,
+      "generated_sql_len": 1546,
+      "detail": "",
+      "cand_ms": 9,
+      "ref_ms": 3,
+      "used_aggregate": false
+    },
+    {
+      "id": 6,
+      "status": "pass",
+      "ref_rows": 1,
+      "cand_rows": 1,
+      "generated_sql_len": 292,
+      "detail": "",
+      "cand_ms": 2,
+      "ref_ms": 2,
+      "used_aggregate": false
+    },
+    {
+      "id": 7,
+      "status": "pass",
+      "ref_rows": 2,
+      "cand_rows": 2,
+      "generated_sql_len": 709,
+      "detail": "",
+      "cand_ms": 6,
+      "ref_ms": 4,
+      "used_aggregate": false
+    },
+    {
+      "id": 8,
+      "status": "pass",
+      "ref_rows": 1,
+      "cand_rows": 1,
+      "generated_sql_len": 705,
+      "detail": "",
+      "cand_ms": 4,
+      "ref_ms": 3,
+      "used_aggregate": false
+    },
+    {
+      "id": 9,
+      "status": "pass",
+      "ref_rows": 1,
+      "cand_rows": 1,
+      "generated_sql_len": 721,
+      "detail": "",
+      "cand_ms": 4,
+      "ref_ms": 3,
+      "used_aggregate": false
+    },
+    {
+      "id": 10,
+      "status": "pass",
+      "ref_rows": 1,
+      "cand_rows": 1,
+      "generated_sql_len": 108,
+      "detail": "",
+      "cand_ms": 1,
+      "ref_ms": 1,
+      "used_aggregate": false
+    },
+    {
+      "id": 11,
+      "status": "pass",
+      "ref_rows": 1,
+      "cand_rows": 1,
+      "generated_sql_len": 101,
+      "detail": "",
+      "cand_ms": 1,
+      "ref_ms": 1,
+      "used_aggregate": false
+    }
+  ],
+  "summary": {
+    "pass_count": 11,
+    "pass_rate": 1.0,
+    "status_breakdown": {
+      "pass": 11
+    }
+  },
+  "per_query": [
+    {
+      "id": 1,
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 28.8
+    },
+    {
+      "id": 2,
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 15.0
+    },
+    {
+      "id": 3,
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 29.1
+    },
+    {
+      "id": 4,
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 15.3
+    },
+    {
+      "id": 5,
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 17.8
+    },
+    {
+      "id": 6,
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 21.7
+    },
+    {
+      "id": 7,
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 19.5
+    },
+    {
+      "id": 8,
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 22.2
+    },
+    {
+      "id": 9,
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 18.0
+    },
+    {
+      "id": 10,
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 12.9
+    },
+    {
+      "id": 11,
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 13.0
+    }
+  ],
+  "per_query_metrics": [
+    {
+      "id": 1,
+      "iterations": 8,
+      "tool_calls_total": 10,
+      "tool_calls_by_name": {
+        "trilogy": 9,
+        "return_control_to_user": 1
+      },
+      "trilogy_subcommands": {
+        "agent-info": 2,
+        "file": 4,
+        "explore": 3
+      },
+      "tool_results_total": 10,
+      "tool_errors": 0,
+      "prompt_tokens": 60993,
+      "completion_tokens": 1839,
+      "total_tokens": 62832,
+      "cached_prompt_tokens": 52992,
+      "reviewer_verdicts": 0,
+      "reviewer_kickbacks": 0,
+      "farewell": "Wrote answer_4002635042.preql which sums premium amounts grouped by policy number:\n\nimport raw.premium as p;\nselect p.policy.policy_number, sum(p.amount) as total_premium;\n\nResult (one row per policy, 2 rows \u2014 the dataset has exactly 2 policies, both with premiums):\n- 31003000337 \u2192 12000.0\n- 31003000336 \u2192 86000.0",
+      "repeated_calls_by_name": {},
+      "agent_info_sequences": [
+        [
+          "index"
+        ],
+        [
+          "query"
+        ]
+      ],
+      "agent_info_transitions": {},
+      "agent_info_directory_calls": 1,
+      "agent_info_directory_followups": 0,
+      "tool_output_stats": {
+        "trilogy": {
+          "count": 9,
+          "truncated": 0,
+          "total_chars": 24443,
+          "max_chars": 14449
+        },
+        "return_control_to_user": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 26,
+          "max_chars": 26
+        }
+      }
+    },
+    {
+      "id": 2,
+      "iterations": 5,
+      "tool_calls_total": 7,
+      "tool_calls_by_name": {
+        "trilogy": 6,
+        "return_control_to_user": 1
+      },
+      "trilogy_subcommands": {
+        "agent-info": 2,
+        "file": 2,
+        "explore": 2
+      },
+      "tool_results_total": 7,
+      "tool_errors": 0,
+      "prompt_tokens": 32236,
+      "completion_tokens": 899,
+      "total_tokens": 33135,
+      "cached_prompt_tokens": 25088,
+      "reviewer_verdicts": 0,
+      "reviewer_kickbacks": 0,
+      "farewell": "Wrote and validated `answer_1177233318.preql`:\n\n```preql\nimport raw.claim as claim;\n\nselect claim.policy.policy_number, claim.average_days_to_settle\nwhere claim.close_date is not null;\n```\n\nIt groups per policy (`claim.policy.policy_number`) and averages `days_to_settle` (= `date_diff(open_date, close_date, day)`), filtering to settled claims via `claim.close_date is not null`. Result: one row \u2014 policy `31003000336`, average 20.5 days.",
+      "repeated_calls_by_name": {},
+      "agent_info_sequences": [
+        [
+          "index"
+        ],
+        [
+          "query"
+        ]
+      ],
+      "agent_info_transitions": {},
+      "agent_info_directory_calls": 1,
+      "agent_info_directory_followups": 0,
+      "tool_output_stats": {
+        "trilogy": {
+          "count": 6,
+          "truncated": 0,
+          "total_chars": 22871,
+          "max_chars": 14449
+        },
+        "return_control_to_user": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 26,
+          "max_chars": 26
+        }
+      }
+    },
+    {
+      "id": 3,
+      "iterations": 8,
+      "tool_calls_total": 9,
+      "tool_calls_by_name": {
+        "trilogy": 8,
+        "return_control_to_user": 1
+      },
+      "trilogy_subcommands": {
+        "agent-info": 2,
+        "file": 4,
+        "explore": 2
+      },
+      "tool_results_total": 9,
+      "tool_errors": 1,
+      "prompt_tokens": 59026,
+      "completion_tokens": 1649,
+      "total_tokens": 60675,
+      "cached_prompt_tokens": 51200,
+      "reviewer_verdicts": 0,
+      "reviewer_kickbacks": 0,
+      "farewell": "Wrote and validated answer_1785741564.preql (runs cleanly). It imports raw.premium as p and selects p.policy.policy_holder_id plus sum(p.amount) (total premium), grouping automatically to one row per policy holder. Result: one row \u2014 policy_holder_id = 1, total_premium = 98000.0. Probe confirmed the sample has 6 premium records and 2 policies, all belonging to holder 1, so the single-row result is correct.",
+      "repeated_calls_by_name": {},
+      "agent_info_sequences": [
+        [
+          "index",
+          "query"
+        ]
+      ],
+      "agent_info_transitions": {
+        "index -> query": 1
+      },
+      "agent_info_directory_calls": 1,
+      "agent_info_directory_followups": 1,
+      "tool_output_stats": {
+        "trilogy": {
+          "count": 8,
+          "truncated": 0,
+          "total_chars": 23773,
+          "max_chars": 14449
+        },
+        "return_control_to_user": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 26,
+          "max_chars": 26
+        }
+      }
+    },
+    {
+      "id": 4,
+      "iterations": 4,
+      "tool_calls_total": 6,
+      "tool_calls_by_name": {
+        "trilogy": 5,
+        "return_control_to_user": 1
+      },
+      "trilogy_subcommands": {
+        "agent-info": 2,
+        "file": 2,
+        "explore": 1
+      },
+      "tool_results_total": 6,
+      "tool_errors": 0,
+      "prompt_tokens": 21958,
+      "completion_tokens": 1018,
+      "total_tokens": 22976,
+      "cached_prompt_tokens": 15872,
+      "reviewer_verdicts": 0,
+      "reviewer_kickbacks": 0,
+      "farewell": "Wrote answer_1318992729.preql:\n\n```\nimport raw.policy as policy;\n\nselect\n    policy.agent_id,\n    count(policy.id) as policies_sold\norder by policy.agent_id;\n```\n\nRuns cleanly; returns one row per agent: agent_id = 2, policies_sold = 2 (the sole agent in this sample dataset).",
+      "repeated_calls_by_name": {},
+      "agent_info_sequences": [
+        [
+          "index"
+        ],
+        [
+          "query"
+        ]
+      ],
+      "agent_info_transitions": {},
+      "agent_info_directory_calls": 1,
+      "agent_info_directory_followups": 0,
+      "tool_output_stats": {
+        "trilogy": {
+          "count": 5,
+          "truncated": 0,
+          "total_chars": 19979,
+          "max_chars": 14449
+        },
+        "return_control_to_user": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 26,
+          "max_chars": 26
+        }
+      }
+    },
+    {
+      "id": 5,
+      "iterations": 5,
+      "tool_calls_total": 7,
+      "tool_calls_by_name": {
+        "trilogy": 6,
+        "return_control_to_user": 1
+      },
+      "trilogy_subcommands": {
+        "agent-info": 2,
+        "file": 2,
+        "explore": 2
+      },
+      "tool_results_total": 7,
+      "tool_errors": 0,
+      "prompt_tokens": 33491,
+      "completion_tokens": 1351,
+      "total_tokens": 34842,
+      "cached_prompt_tokens": 26112,
+      "reviewer_verdicts": 0,
+      "reviewer_kickbacks": 0,
+      "farewell": "Wrote answer_2306670096.preql and validated it with `--run`. It imports raw.claim_amount and selects ca.claim.claim_number plus the model's per-claim `loss_amount` (loss_payment_amount + loss_reserve_amount). Result: 2 rows, columns [company_claim_number, loss_amount] \u2192 (\"12312701\", 2200.0), (\"12312702\", 4400.0).",
+      "repeated_calls_by_name": {},
+      "agent_info_sequences": [
+        [
+          "index"
+        ],
+        [
+          "query"
+        ]
+      ],
+      "agent_info_transitions": {},
+      "agent_info_directory_calls": 1,
+      "agent_info_directory_followups": 0,
+      "tool_output_stats": {
+        "trilogy": {
+          "count": 6,
+          "truncated": 0,
+          "total_chars": 23773,
+          "max_chars": 14449
+        },
+        "return_control_to_user": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 26,
+          "max_chars": 26
+        }
+      }
+    },
+    {
+      "id": 6,
+      "iterations": 7,
+      "tool_calls_total": 8,
+      "tool_calls_by_name": {
+        "trilogy": 7,
+        "return_control_to_user": 1
+      },
+      "trilogy_subcommands": {
+        "agent-info": 2,
+        "file": 4,
+        "explore": 1
+      },
+      "tool_results_total": 8,
+      "tool_errors": 0,
+      "prompt_tokens": 45159,
+      "completion_tokens": 1134,
+      "total_tokens": 46293,
+      "cached_prompt_tokens": 38272,
+      "reviewer_verdicts": 0,
+      "reviewer_kickbacks": 0,
+      "farewell": "Wrote `answer_2444133627.preql`:\n\n```\nimport raw.policy as p;\n\nselect\n    p.policy_holder_id,\n    count(p.id) as policy_count;\n```\n\nIt runs cleanly and returns one row per policy holder with (party id, number of policies). At this sample scale there are exactly two policies, both held by party id 1, so the result is a single row: `[1, 2]`.",
+      "repeated_calls_by_name": {},
+      "agent_info_sequences": [
+        [
+          "index",
+          "query"
+        ]
+      ],
+      "agent_info_transitions": {
+        "index -> query": 1
+      },
+      "agent_info_directory_calls": 1,
+      "agent_info_directory_followups": 1,
+      "tool_output_stats": {
+        "trilogy": {
+          "count": 7,
+          "truncated": 0,
+          "total_chars": 20611,
+          "max_chars": 14449
+        },
+        "return_control_to_user": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 26,
+          "max_chars": 26
+        }
+      }
+    },
+    {
+      "id": 7,
+      "iterations": 6,
+      "tool_calls_total": 7,
+      "tool_calls_by_name": {
+        "trilogy": 6,
+        "return_control_to_user": 1
+      },
+      "trilogy_subcommands": {
+        "agent-info": 2,
+        "file": 2,
+        "explore": 2
+      },
+      "tool_results_total": 7,
+      "tool_errors": 0,
+      "prompt_tokens": 38975,
+      "completion_tokens": 957,
+      "total_tokens": 39932,
+      "cached_prompt_tokens": 31744,
+      "reviewer_verdicts": 0,
+      "reviewer_kickbacks": 0,
+      "farewell": "Wrote answer_4213852742.preql. It imports raw.premium and selects the policy number alongside total_premium (sum of premium amounts), grouped automatically per policy. Result: one row per policy with two columns \u2014 policy number and total premium paid:\n\n31003000337 \u2192 12000.0\n31003000336 \u2192 86000.0",
+      "repeated_calls_by_name": {},
+      "agent_info_sequences": [
+        [
+          "index",
+          "query"
+        ]
+      ],
+      "agent_info_transitions": {
+        "index -> query": 1
+      },
+      "agent_info_directory_calls": 1,
+      "agent_info_directory_followups": 1,
+      "tool_output_stats": {
+        "trilogy": {
+          "count": 6,
+          "truncated": 0,
+          "total_chars": 22834,
+          "max_chars": 14449
+        },
+        "return_control_to_user": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 26,
+          "max_chars": 26
+        }
+      }
+    },
+    {
+      "id": 8,
+      "iterations": 6,
+      "tool_calls_total": 8,
+      "tool_calls_by_name": {
+        "trilogy": 7,
+        "return_control_to_user": 1
+      },
+      "trilogy_subcommands": {
+        "agent-info": 3,
+        "file": 2,
+        "explore": 2
+      },
+      "tool_results_total": 8,
+      "tool_errors": 0,
+      "prompt_tokens": 42761,
+      "completion_tokens": 1298,
+      "total_tokens": 44059,
+      "cached_prompt_tokens": 34816,
+      "reviewer_verdicts": 0,
+      "reviewer_kickbacks": 0,
+      "farewell": "Wrote answer_1034131706.preql and validated it (exit 0). It groups claims by policy number via the claim model's flattened policy path: `select c.policy.policy_number, c.claim_count ... where c.id is not null`. Result: one row \u2014 policy 31003000336 with 2 claims \u2014 which matches the dataset's small hand-built scale.",
+      "repeated_calls_by_name": {},
+      "agent_info_sequences": [
+        [
+          "index",
+          "query",
+          "syntax"
+        ]
+      ],
+      "agent_info_transitions": {
+        "index -> query": 1,
+        "query -> syntax": 1
+      },
+      "agent_info_directory_calls": 1,
+      "agent_info_directory_followups": 1,
+      "tool_output_stats": {
+        "trilogy": {
+          "count": 7,
+          "truncated": 0,
+          "total_chars": 25750,
+          "max_chars": 14449
+        },
+        "return_control_to_user": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 26,
+          "max_chars": 26
+        }
+      }
+    },
+    {
+      "id": 9,
+      "iterations": 6,
+      "tool_calls_total": 6,
+      "tool_calls_by_name": {
+        "trilogy": 5,
+        "return_control_to_user": 1
+      },
+      "trilogy_subcommands": {
+        "agent-info": 2,
+        "file": 2,
+        "explore": 1
+      },
+      "tool_results_total": 6,
+      "tool_errors": 0,
+      "prompt_tokens": 36084,
+      "completion_tokens": 863,
+      "total_tokens": 36947,
+      "cached_prompt_tokens": 29696,
+      "reviewer_verdicts": 0,
+      "reviewer_kickbacks": 0,
+      "farewell": "Wrote answer_1695156134.preql:\n\n    import raw.premium as pm;\n    select pm.average_policy_size as average_policy_size;\n\nThis uses the model's own `average_policy_size` metric, defined as total_premium / count_distinct(policy.id) \u2014 exactly \"total premium across all policies divided by the number of distinct policies carrying a premium.\" Result: one row, one column, value 49000.0.",
+      "repeated_calls_by_name": {},
+      "agent_info_sequences": [
+        [
+          "index",
+          "query"
+        ]
+      ],
+      "agent_info_transitions": {
+        "index -> query": 1
+      },
+      "agent_info_directory_calls": 1,
+      "agent_info_directory_followups": 1,
+      "tool_output_stats": {
+        "trilogy": {
+          "count": 5,
+          "truncated": 0,
+          "total_chars": 20793,
+          "max_chars": 14449
+        },
+        "return_control_to_user": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 26,
+          "max_chars": 26
+        }
+      }
+    },
+    {
+      "id": 10,
+      "iterations": 4,
+      "tool_calls_total": 6,
+      "tool_calls_by_name": {
+        "trilogy": 5,
+        "return_control_to_user": 1
+      },
+      "trilogy_subcommands": {
+        "agent-info": 2,
+        "file": 2,
+        "explore": 1
+      },
+      "tool_results_total": 6,
+      "tool_errors": 0,
+      "prompt_tokens": 21619,
+      "completion_tokens": 469,
+      "total_tokens": 22088,
+      "cached_prompt_tokens": 15488,
+      "reviewer_verdicts": 0,
+      "reviewer_kickbacks": 0,
+      "farewell": "Wrote and validated answer_1112404444.preql. It imports raw.policy and selects the model's policy_count metric, returning a single row / single column: 2 policies total.",
+      "repeated_calls_by_name": {},
+      "agent_info_sequences": [
+        [
+          "index"
+        ],
+        [
+          "query"
+        ]
+      ],
+      "agent_info_transitions": {},
+      "agent_info_directory_calls": 1,
+      "agent_info_directory_followups": 0,
+      "tool_output_stats": {
+        "trilogy": {
+          "count": 5,
+          "truncated": 0,
+          "total_chars": 19952,
+          "max_chars": 14449
+        },
+        "return_control_to_user": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 26,
+          "max_chars": 26
+        }
+      }
+    },
+    {
+      "id": 11,
+      "iterations": 4,
+      "tool_calls_total": 6,
+      "tool_calls_by_name": {
+        "trilogy": 5,
+        "return_control_to_user": 1
+      },
+      "trilogy_subcommands": {
+        "agent-info": 2,
+        "file": 2,
+        "explore": 1
+      },
+      "tool_results_total": 6,
+      "tool_errors": 0,
+      "prompt_tokens": 22402,
+      "completion_tokens": 639,
+      "total_tokens": 23041,
+      "cached_prompt_tokens": 15872,
+      "reviewer_verdicts": 0,
+      "reviewer_kickbacks": 0,
+      "farewell": "Wrote answer_2200255695.preql (imports raw.claim and selects the built-in claim_count metric). It runs cleanly and returns one row with one column: claim_count = 2.",
+      "repeated_calls_by_name": {},
+      "agent_info_sequences": [
+        [
+          "index"
+        ],
+        [
+          "query"
+        ]
+      ],
+      "agent_info_transitions": {},
+      "agent_info_directory_calls": 1,
+      "agent_info_directory_followups": 0,
+      "tool_output_stats": {
+        "trilogy": {
+          "count": 5,
+          "truncated": 0,
+          "total_chars": 21002,
+          "max_chars": 14449
+        },
+        "return_control_to_user": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 26,
+          "max_chars": 26
+        }
+      }
+    }
+  ],
+  "ingest": {
+    "exit_code": 0,
+    "duration_seconds": 0.0,
+    "separate_reference_database": false
+  }
+}

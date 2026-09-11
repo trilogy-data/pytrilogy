@@ -1,0 +1,21 @@
+# Datasource ingested from Policy
+key policy_identifier enum<bigint>[1, 2];
+
+properties policy_identifier (
+    effective_date date,
+    expiration_date date,
+    policy_number enum<string>['31003000336', '31003000337'],
+    status_code string?,
+    geographic_location_identifier string?,
+);
+
+root datasource Policy (
+    Policy_Identifier: policy_identifier,
+    Effective_Date: effective_date,
+    Expiration_Date: expiration_date,
+    Policy_Number: policy_number,
+    Status_Code: ?status_code,
+    Geographic_Location_Identifier: ?geographic_location_identifier,
+)
+grain (policy_identifier)
+address Policy;

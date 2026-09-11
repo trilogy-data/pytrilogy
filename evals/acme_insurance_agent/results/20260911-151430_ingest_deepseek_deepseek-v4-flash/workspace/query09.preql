@@ -1,0 +1,3 @@
+import root.Policy_Amount as pa;
+
+select sum(pa.policy_amount ? pa.is_premium = true) / count_distinct(pa.Policy.policy_identifier ? pa.is_premium = true) as avg_policy_size;

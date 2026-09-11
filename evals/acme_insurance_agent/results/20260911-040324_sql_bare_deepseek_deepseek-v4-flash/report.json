@@ -1,0 +1,971 @@
+{
+  "meta": {
+    "timestamp": "20260911-040324",
+    "benchmark": "ACME Insurance",
+    "model": "deepseek-v4-flash",
+    "provider": "deepseek",
+    "reasoning_effort": null,
+    "scale_factor": 1.0,
+    "num_queries": 11,
+    "max_iterations": 75,
+    "scope_diagnostics": false,
+    "scope_warnings": true,
+    "trilogy_version": "0.3.353",
+    "openrouter_routing": null,
+    "model_source": "ingest",
+    "category": "sql_bare",
+    "category_label": "db-only"
+  },
+  "agent": {
+    "exit_code": 0,
+    "timed_out": false,
+    "duration_seconds": 179.1,
+    "wall_duration_seconds": 207.0,
+    "avg_query_seconds": 16.3,
+    "iterations": 82,
+    "tool_calls_total": 170,
+    "tool_calls_by_name": {
+      "run_query": 124,
+      "list_files": 11,
+      "write_file": 11,
+      "run_file": 11,
+      "return_control_to_user": 11,
+      "read_file": 2
+    },
+    "trilogy_subcommands": {},
+    "tool_results_total": 170,
+    "tool_errors": 0,
+    "tool_success_rate": 1.0,
+    "repeated_calls_by_name": {
+      "run_query": 1
+    },
+    "agent_info_sequences": [],
+    "agent_info_transitions": {},
+    "agent_info_directory_calls": 0,
+    "agent_info_directory_followups": 0,
+    "tool_output_stats": {
+      "run_query": {
+        "count": 124,
+        "truncated": 0,
+        "truncation_rate": 0.0,
+        "avg_chars": 565.6,
+        "max_chars": 1345
+      },
+      "list_files": {
+        "count": 11,
+        "truncated": 0,
+        "truncation_rate": 0.0,
+        "avg_chars": 116.1,
+        "max_chars": 157
+      },
+      "write_file": {
+        "count": 11,
+        "truncated": 0,
+        "truncation_rate": 0.0,
+        "avg_chars": 53.8,
+        "max_chars": 54
+      },
+      "run_file": {
+        "count": 11,
+        "truncated": 0,
+        "truncation_rate": 0.0,
+        "avg_chars": 296.9,
+        "max_chars": 338
+      },
+      "return_control_to_user": {
+        "count": 11,
+        "truncated": 0,
+        "truncation_rate": 0.0,
+        "avg_chars": 26.0,
+        "max_chars": 26
+      },
+      "read_file": {
+        "count": 2,
+        "truncated": 0,
+        "truncation_rate": 0.0,
+        "avg_chars": 390.0,
+        "max_chars": 390
+      }
+    },
+    "reviewer_verdicts": 0,
+    "reviewer_kickbacks": 0,
+    "tokens": {
+      "prompt": 320730,
+      "completion": 16836,
+      "total": 337566,
+      "cached_prompt": 276096,
+      "cache_adjusted": 89080
+    },
+    "farewell": "Total claims = 2. Wrote and validated answer_2200255695.sql: `SELECT COUNT(*) AS total_claims FROM Claim;` \u2014 returns one row, one column."
+  },
+  "queries": [
+    {
+      "id": 1,
+      "status": "pass",
+      "ref_rows": 2,
+      "cand_rows": 2,
+      "generated_sql_len": 292,
+      "detail": "",
+      "cand_ms": 4,
+      "ref_ms": 3,
+      "used_aggregate": false
+    },
+    {
+      "id": 2,
+      "status": "pass",
+      "ref_rows": 1,
+      "cand_rows": 1,
+      "generated_sql_len": 475,
+      "detail": "",
+      "cand_ms": 352,
+      "ref_ms": 3,
+      "used_aggregate": false
+    },
+    {
+      "id": 3,
+      "status": "pass",
+      "ref_rows": 1,
+      "cand_rows": 1,
+      "generated_sql_len": 350,
+      "detail": "",
+      "cand_ms": 3,
+      "ref_ms": 2,
+      "used_aggregate": false
+    },
+    {
+      "id": 4,
+      "status": "pass",
+      "ref_rows": 1,
+      "cand_rows": 1,
+      "generated_sql_len": 312,
+      "detail": "",
+      "cand_ms": 4,
+      "ref_ms": 2,
+      "used_aggregate": false
+    },
+    {
+      "id": 5,
+      "status": "pass",
+      "ref_rows": 2,
+      "cand_rows": 2,
+      "generated_sql_len": 735,
+      "detail": "",
+      "cand_ms": 976,
+      "ref_ms": 2,
+      "used_aggregate": false
+    },
+    {
+      "id": 6,
+      "status": "pass",
+      "ref_rows": 1,
+      "cand_rows": 1,
+      "generated_sql_len": 297,
+      "detail": "",
+      "cand_ms": 4,
+      "ref_ms": 1,
+      "used_aggregate": false
+    },
+    {
+      "id": 7,
+      "status": "pass",
+      "ref_rows": 2,
+      "cand_rows": 2,
+      "generated_sql_len": 304,
+      "detail": "",
+      "cand_ms": 4,
+      "ref_ms": 3,
+      "used_aggregate": false
+    },
+    {
+      "id": 8,
+      "status": "pass",
+      "ref_rows": 1,
+      "cand_rows": 1,
+      "generated_sql_len": 396,
+      "detail": "",
+      "cand_ms": 6,
+      "ref_ms": 3,
+      "used_aggregate": false
+    },
+    {
+      "id": 9,
+      "status": "pass",
+      "ref_rows": 1,
+      "cand_rows": 1,
+      "generated_sql_len": 191,
+      "detail": "",
+      "cand_ms": 3,
+      "ref_ms": 3,
+      "used_aggregate": false
+    },
+    {
+      "id": 10,
+      "status": "pass",
+      "ref_rows": 1,
+      "cand_rows": 1,
+      "generated_sql_len": 43,
+      "detail": "",
+      "cand_ms": 1,
+      "ref_ms": 1,
+      "used_aggregate": false
+    },
+    {
+      "id": 11,
+      "status": "pass",
+      "ref_rows": 1,
+      "cand_rows": 1,
+      "generated_sql_len": 42,
+      "detail": "",
+      "cand_ms": 1,
+      "ref_ms": 1,
+      "used_aggregate": false
+    }
+  ],
+  "summary": {
+    "pass_count": 11,
+    "pass_rate": 1.0,
+    "status_breakdown": {
+      "pass": 11
+    }
+  },
+  "per_query": [
+    {
+      "id": 1,
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 16.8
+    },
+    {
+      "id": 2,
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 20.1
+    },
+    {
+      "id": 3,
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 17.1
+    },
+    {
+      "id": 4,
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 18.4
+    },
+    {
+      "id": 5,
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 15.1
+    },
+    {
+      "id": 6,
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 18.3
+    },
+    {
+      "id": 7,
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 14.8
+    },
+    {
+      "id": 8,
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 17.7
+    },
+    {
+      "id": 9,
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 19.9
+    },
+    {
+      "id": 10,
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 8.7
+    },
+    {
+      "id": 11,
+      "exit_code": 0,
+      "timed_out": false,
+      "duration_seconds": 12.0
+    }
+  ],
+  "per_query_metrics": [
+    {
+      "id": 1,
+      "iterations": 8,
+      "tool_calls_total": 16,
+      "tool_calls_by_name": {
+        "run_query": 12,
+        "list_files": 1,
+        "write_file": 1,
+        "run_file": 1,
+        "return_control_to_user": 1
+      },
+      "trilogy_subcommands": {},
+      "tool_results_total": 16,
+      "tool_errors": 0,
+      "prompt_tokens": 31220,
+      "completion_tokens": 1353,
+      "total_tokens": 32573,
+      "cached_prompt_tokens": 27008,
+      "reviewer_verdicts": 0,
+      "reviewer_kickbacks": 0,
+      "farewell": "Done. The answer is saved to answer_4002635042.sql. It returns one row per policy with the policy number and the total premium paid: policy 31003000336 = 86000.0, policy 31003000337 = 12000.0. Premiums live in Policy_Amount (rows flagged by the Premium subtype table), joined to Policy by Policy_Identifier.",
+      "repeated_calls_by_name": {
+        "run_query": 1
+      },
+      "agent_info_sequences": [],
+      "agent_info_transitions": {},
+      "agent_info_directory_calls": 0,
+      "agent_info_directory_followups": 0,
+      "tool_output_stats": {
+        "run_query": {
+          "count": 12,
+          "truncated": 0,
+          "total_chars": 6333,
+          "max_chars": 1345
+        },
+        "list_files": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 157,
+          "max_chars": 157
+        },
+        "write_file": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 54,
+          "max_chars": 54
+        },
+        "run_file": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 338,
+          "max_chars": 338
+        },
+        "return_control_to_user": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 26,
+          "max_chars": 26
+        }
+      }
+    },
+    {
+      "id": 2,
+      "iterations": 9,
+      "tool_calls_total": 19,
+      "tool_calls_by_name": {
+        "list_files": 1,
+        "run_query": 15,
+        "write_file": 1,
+        "run_file": 1,
+        "return_control_to_user": 1
+      },
+      "trilogy_subcommands": {},
+      "tool_results_total": 19,
+      "tool_errors": 0,
+      "prompt_tokens": 44217,
+      "completion_tokens": 1996,
+      "total_tokens": 46213,
+      "cached_prompt_tokens": 38784,
+      "reviewer_verdicts": 0,
+      "reviewer_kickbacks": 0,
+      "farewell": "Saved answer_1177233318.sql. It joins Claim -> Claim_Coverage -> Policy_Coverage_Detail -> Policy to map claims to policies, filters to settled/closed claims (Claim_Close_Date IS NOT NULL), and averages (Claim_Close_Date - Claim_Open_Date) per Policy_Number. Validated output: one row \u2014 policy 31003000336, avg 20.5 days.",
+      "repeated_calls_by_name": {},
+      "agent_info_sequences": [],
+      "agent_info_transitions": {},
+      "agent_info_directory_calls": 0,
+      "agent_info_directory_followups": 0,
+      "tool_output_stats": {
+        "list_files": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 112,
+          "max_chars": 112
+        },
+        "run_query": {
+          "count": 15,
+          "truncated": 0,
+          "total_chars": 9014,
+          "max_chars": 1170
+        },
+        "write_file": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 54,
+          "max_chars": 54
+        },
+        "run_file": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 303,
+          "max_chars": 303
+        },
+        "return_control_to_user": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 26,
+          "max_chars": 26
+        }
+      }
+    },
+    {
+      "id": 3,
+      "iterations": 8,
+      "tool_calls_total": 18,
+      "tool_calls_by_name": {
+        "run_query": 14,
+        "list_files": 1,
+        "write_file": 1,
+        "run_file": 1,
+        "return_control_to_user": 1
+      },
+      "trilogy_subcommands": {},
+      "tool_results_total": 18,
+      "tool_errors": 0,
+      "prompt_tokens": 36987,
+      "completion_tokens": 1448,
+      "total_tokens": 38435,
+      "cached_prompt_tokens": 32000,
+      "reviewer_verdicts": 0,
+      "reviewer_kickbacks": 0,
+      "farewell": "Done. Saved answer_1785741564.sql. It joins Premium \u2192 Policy_Amount \u2192 Agreement_Party_Role (filtering Party_Role_Code = 'PH'), summing each policy holder's premium amounts. Result: party_id 1 with total_premium 98000.0 (the 5 annual premiums on policy 1 plus policy 2's premium). Validated via run_file.",
+      "repeated_calls_by_name": {},
+      "agent_info_sequences": [],
+      "agent_info_transitions": {},
+      "agent_info_directory_calls": 0,
+      "agent_info_directory_followups": 0,
+      "tool_output_stats": {
+        "run_query": {
+          "count": 14,
+          "truncated": 0,
+          "total_chars": 8197,
+          "max_chars": 1345
+        },
+        "list_files": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 112,
+          "max_chars": 112
+        },
+        "write_file": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 54,
+          "max_chars": 54
+        },
+        "run_file": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 287,
+          "max_chars": 287
+        },
+        "return_control_to_user": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 26,
+          "max_chars": 26
+        }
+      }
+    },
+    {
+      "id": 4,
+      "iterations": 7,
+      "tool_calls_total": 21,
+      "tool_calls_by_name": {
+        "list_files": 1,
+        "run_query": 16,
+        "read_file": 1,
+        "write_file": 1,
+        "run_file": 1,
+        "return_control_to_user": 1
+      },
+      "trilogy_subcommands": {},
+      "tool_results_total": 21,
+      "tool_errors": 0,
+      "prompt_tokens": 31476,
+      "completion_tokens": 2367,
+      "total_tokens": 33843,
+      "cached_prompt_tokens": 25728,
+      "reviewer_verdicts": 0,
+      "reviewer_kickbacks": 0,
+      "farewell": "Saved answer_1318992729.sql. It returns one row per agent (party with role code 'AG'), listing the agent's party id and the number of policies sold: agent 2 \u2192 2 policies. Validated via run_file with a non-empty result.",
+      "repeated_calls_by_name": {},
+      "agent_info_sequences": [],
+      "agent_info_transitions": {},
+      "agent_info_directory_calls": 0,
+      "agent_info_directory_followups": 0,
+      "tool_output_stats": {
+        "list_files": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 112,
+          "max_chars": 112
+        },
+        "run_query": {
+          "count": 16,
+          "truncated": 0,
+          "total_chars": 10094,
+          "max_chars": 1345
+        },
+        "read_file": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 390,
+          "max_chars": 390
+        },
+        "write_file": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 54,
+          "max_chars": 54
+        },
+        "run_file": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 295,
+          "max_chars": 295
+        },
+        "return_control_to_user": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 26,
+          "max_chars": 26
+        }
+      }
+    },
+    {
+      "id": 5,
+      "iterations": 6,
+      "tool_calls_total": 18,
+      "tool_calls_by_name": {
+        "run_query": 14,
+        "list_files": 1,
+        "write_file": 1,
+        "run_file": 1,
+        "return_control_to_user": 1
+      },
+      "trilogy_subcommands": {},
+      "tool_results_total": 18,
+      "tool_errors": 0,
+      "prompt_tokens": 23007,
+      "completion_tokens": 1782,
+      "total_tokens": 24789,
+      "cached_prompt_tokens": 18944,
+      "reviewer_verdicts": 0,
+      "reviewer_kickbacks": 0,
+      "farewell": "Saved answer_2306670096.sql. It returns one row per claim with Company_Claim_Number and loss amount (loss payment + loss reserve), using Loss_Payment/Loss_Reserve subtypes joined to Claim_Amount for their values: 12312701 -> 2200, 12312702 -> 4400. Validated with run_file (2 rows).",
+      "repeated_calls_by_name": {},
+      "agent_info_sequences": [],
+      "agent_info_transitions": {},
+      "agent_info_directory_calls": 0,
+      "agent_info_directory_followups": 0,
+      "tool_output_stats": {
+        "run_query": {
+          "count": 14,
+          "truncated": 0,
+          "total_chars": 6600,
+          "max_chars": 1170
+        },
+        "list_files": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 112,
+          "max_chars": 112
+        },
+        "write_file": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 54,
+          "max_chars": 54
+        },
+        "run_file": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 330,
+          "max_chars": 330
+        },
+        "return_control_to_user": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 26,
+          "max_chars": 26
+        }
+      }
+    },
+    {
+      "id": 6,
+      "iterations": 8,
+      "tool_calls_total": 17,
+      "tool_calls_by_name": {
+        "run_query": 12,
+        "list_files": 1,
+        "read_file": 1,
+        "write_file": 1,
+        "run_file": 1,
+        "return_control_to_user": 1
+      },
+      "trilogy_subcommands": {},
+      "tool_results_total": 17,
+      "tool_errors": 0,
+      "prompt_tokens": 29876,
+      "completion_tokens": 1806,
+      "total_tokens": 31682,
+      "cached_prompt_tokens": 26240,
+      "reviewer_verdicts": 0,
+      "reviewer_kickbacks": 0,
+      "farewell": "Wrote answer_2444133627.sql: counts policies per policy holder. Joins Agreement_Party_Role (role 'PH') to Policy on Agreement_Identifier = Policy_Identifier, grouping by Party_Identifier. Runs cleanly, returns [party_id, policy_count] = [1, 2].",
+      "repeated_calls_by_name": {},
+      "agent_info_sequences": [],
+      "agent_info_transitions": {},
+      "agent_info_directory_calls": 0,
+      "agent_info_directory_followups": 0,
+      "tool_output_stats": {
+        "run_query": {
+          "count": 12,
+          "truncated": 0,
+          "total_chars": 4796,
+          "max_chars": 661
+        },
+        "list_files": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 112,
+          "max_chars": 112
+        },
+        "read_file": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 390,
+          "max_chars": 390
+        },
+        "write_file": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 54,
+          "max_chars": 54
+        },
+        "run_file": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 280,
+          "max_chars": 280
+        },
+        "return_control_to_user": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 26,
+          "max_chars": 26
+        }
+      }
+    },
+    {
+      "id": 7,
+      "iterations": 7,
+      "tool_calls_total": 12,
+      "tool_calls_by_name": {
+        "list_files": 1,
+        "run_query": 8,
+        "write_file": 1,
+        "run_file": 1,
+        "return_control_to_user": 1
+      },
+      "trilogy_subcommands": {},
+      "tool_results_total": 12,
+      "tool_errors": 0,
+      "prompt_tokens": 23520,
+      "completion_tokens": 1113,
+      "total_tokens": 24633,
+      "cached_prompt_tokens": 19968,
+      "reviewer_verdicts": 0,
+      "reviewer_kickbacks": 0,
+      "farewell": "Wrote and validated answer_4213852742.sql. It returns one row per policy: policy number and total premium paid, by summing Premium-linked Policy_Amount records per policy.\n\nResults:\n- 31003000336 \u2192 86000.0\n- 31003000337 \u2192 12000.0",
+      "repeated_calls_by_name": {},
+      "agent_info_sequences": [],
+      "agent_info_transitions": {},
+      "agent_info_directory_calls": 0,
+      "agent_info_directory_followups": 0,
+      "tool_output_stats": {
+        "list_files": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 112,
+          "max_chars": 112
+        },
+        "run_query": {
+          "count": 8,
+          "truncated": 0,
+          "total_chars": 5084,
+          "max_chars": 1345
+        },
+        "write_file": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 54,
+          "max_chars": 54
+        },
+        "run_file": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 338,
+          "max_chars": 338
+        },
+        "return_control_to_user": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 26,
+          "max_chars": 26
+        }
+      }
+    },
+    {
+      "id": 8,
+      "iterations": 8,
+      "tool_calls_total": 17,
+      "tool_calls_by_name": {
+        "run_query": 13,
+        "list_files": 1,
+        "write_file": 1,
+        "run_file": 1,
+        "return_control_to_user": 1
+      },
+      "trilogy_subcommands": {},
+      "tool_results_total": 17,
+      "tool_errors": 0,
+      "prompt_tokens": 34264,
+      "completion_tokens": 1884,
+      "total_tokens": 36148,
+      "cached_prompt_tokens": 29440,
+      "reviewer_verdicts": 0,
+      "reviewer_kickbacks": 0,
+      "farewell": "Saved answer_1034131706.sql. It joins Claim \u2192 Claim_Coverage \u2192 Policy_Coverage_Detail \u2192 Policy, groups by Policy_Number, and counts distinct claims. Result: one row (31003000336, 2). Validated successfully with run_file.",
+      "repeated_calls_by_name": {},
+      "agent_info_sequences": [],
+      "agent_info_transitions": {},
+      "agent_info_directory_calls": 0,
+      "agent_info_directory_followups": 0,
+      "tool_output_stats": {
+        "run_query": {
+          "count": 13,
+          "truncated": 0,
+          "total_chars": 8591,
+          "max_chars": 1170
+        },
+        "list_files": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 112,
+          "max_chars": 112
+        },
+        "write_file": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 54,
+          "max_chars": 54
+        },
+        "run_file": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 296,
+          "max_chars": 296
+        },
+        "return_control_to_user": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 26,
+          "max_chars": 26
+        }
+      }
+    },
+    {
+      "id": 9,
+      "iterations": 9,
+      "tool_calls_total": 16,
+      "tool_calls_by_name": {
+        "run_query": 12,
+        "list_files": 1,
+        "write_file": 1,
+        "run_file": 1,
+        "return_control_to_user": 1
+      },
+      "trilogy_subcommands": {},
+      "tool_results_total": 16,
+      "tool_errors": 0,
+      "prompt_tokens": 37705,
+      "completion_tokens": 2022,
+      "total_tokens": 39727,
+      "cached_prompt_tokens": 33408,
+      "reviewer_verdicts": 0,
+      "reviewer_kickbacks": 0,
+      "farewell": "Wrote answer_1695156134.sql: a single SELECT that joins Premium (which links to Policy_Amount_Identifier) with Policy_Amount, computing SUM(Policy_Amount) / COUNT(DISTINCT Policy_Identifier) = 98000 / 2 = 49000.0. Validated with run_file.",
+      "repeated_calls_by_name": {},
+      "agent_info_sequences": [],
+      "agent_info_transitions": {},
+      "agent_info_directory_calls": 0,
+      "agent_info_directory_followups": 0,
+      "tool_output_stats": {
+        "run_query": {
+          "count": 12,
+          "truncated": 0,
+          "total_chars": 6885,
+          "max_chars": 1345
+        },
+        "list_files": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 112,
+          "max_chars": 112
+        },
+        "write_file": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 54,
+          "max_chars": 54
+        },
+        "run_file": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 275,
+          "max_chars": 275
+        },
+        "return_control_to_user": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 26,
+          "max_chars": 26
+        }
+      }
+    },
+    {
+      "id": 10,
+      "iterations": 5,
+      "tool_calls_total": 7,
+      "tool_calls_by_name": {
+        "run_query": 3,
+        "list_files": 1,
+        "write_file": 1,
+        "run_file": 1,
+        "return_control_to_user": 1
+      },
+      "trilogy_subcommands": {},
+      "tool_results_total": 7,
+      "tool_errors": 0,
+      "prompt_tokens": 10289,
+      "completion_tokens": 370,
+      "total_tokens": 10659,
+      "cached_prompt_tokens": 8832,
+      "reviewer_verdicts": 0,
+      "reviewer_kickbacks": 0,
+      "farewell": "Wrote answer_1112404444.sql: SELECT COUNT(*) AS policy_count FROM Policy; \u2014 returns 2 (total number of policies). Validated with run_file.",
+      "repeated_calls_by_name": {},
+      "agent_info_sequences": [],
+      "agent_info_transitions": {},
+      "agent_info_directory_calls": 0,
+      "agent_info_directory_followups": 0,
+      "tool_output_stats": {
+        "run_query": {
+          "count": 3,
+          "truncated": 0,
+          "total_chars": 1456,
+          "max_chars": 661
+        },
+        "list_files": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 112,
+          "max_chars": 112
+        },
+        "write_file": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 53,
+          "max_chars": 53
+        },
+        "run_file": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 262,
+          "max_chars": 262
+        },
+        "return_control_to_user": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 26,
+          "max_chars": 26
+        }
+      }
+    },
+    {
+      "id": 11,
+      "iterations": 7,
+      "tool_calls_total": 9,
+      "tool_calls_by_name": {
+        "run_query": 5,
+        "list_files": 1,
+        "write_file": 1,
+        "run_file": 1,
+        "return_control_to_user": 1
+      },
+      "trilogy_subcommands": {},
+      "tool_results_total": 9,
+      "tool_errors": 0,
+      "prompt_tokens": 18169,
+      "completion_tokens": 695,
+      "total_tokens": 18864,
+      "cached_prompt_tokens": 15744,
+      "reviewer_verdicts": 0,
+      "reviewer_kickbacks": 0,
+      "farewell": "Total claims = 2. Wrote and validated answer_2200255695.sql: `SELECT COUNT(*) AS total_claims FROM Claim;` \u2014 returns one row, one column.",
+      "repeated_calls_by_name": {},
+      "agent_info_sequences": [],
+      "agent_info_transitions": {},
+      "agent_info_directory_calls": 0,
+      "agent_info_directory_followups": 0,
+      "tool_output_stats": {
+        "run_query": {
+          "count": 5,
+          "truncated": 0,
+          "total_chars": 3079,
+          "max_chars": 1170
+        },
+        "list_files": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 112,
+          "max_chars": 112
+        },
+        "write_file": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 53,
+          "max_chars": 53
+        },
+        "run_file": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 262,
+          "max_chars": 262
+        },
+        "return_control_to_user": {
+          "count": 1,
+          "truncated": 0,
+          "total_chars": 26,
+          "max_chars": 26
+        }
+      }
+    }
+  ],
+  "ingest": {
+    "exit_code": 0,
+    "duration_seconds": 0.0,
+    "separate_reference_database": false
+  }
+}

@@ -1,0 +1,19 @@
+[engine]
+dialect = "duck_db"
+
+[engine.config]
+db_location = "acme.duckdb"
+enable_python_datasources = false
+
+[agent]
+provider = "deepseek"
+model = "deepseek-v4-flash"
+api_key_env = "DEEPSEEK_API_KEY"
+max_iterations = 75
+tool_output_limit = 32768
+quiet = true
+disable_todo = true
+force_tool_choice = false
+allow_database_introspection = false
+allow_file_read = false
+disable_reviewer = true

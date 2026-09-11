@@ -75,6 +75,9 @@ class ProcessedQuery:
     # observational scope diagnostics (docs/SPEC_query_derived_value_scopes.md);
     # empty when the query has no aggregate/window values or extraction failed.
     derived_value_scopes: list[DerivedValueScope] = field(default_factory=list)
+    # plan-shape warnings (a scoped join side the plan never read from);
+    # observational, surfaced beside the scope warnings in the result event.
+    plan_warnings: list[dict] = field(default_factory=list)
 
 
 @dataclass

@@ -1,0 +1,5 @@
+import raw.premium as p;
+
+select
+    p.policy.policy_holder_id as policy_holder_id,
+    sum(p.amount) as total_premium;

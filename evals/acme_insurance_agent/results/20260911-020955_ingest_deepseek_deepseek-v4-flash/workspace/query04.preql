@@ -1,0 +1,10 @@
+# How many policies have agents sold, by agent id?
+# Agreement_Party_Role maps each agreement (policy) to a party with a role:
+# 'AG' = agent, 'PH' = policyholder. agreement_identifier aligns with the
+# Policy table's policy_identifier.
+import root.Agreement_Party_Role as apr;
+
+select
+    apr.party_identifier as agent_id,
+    count(apr.agreement_identifier) as policy_count
+where apr.party_role_code = 'AG';

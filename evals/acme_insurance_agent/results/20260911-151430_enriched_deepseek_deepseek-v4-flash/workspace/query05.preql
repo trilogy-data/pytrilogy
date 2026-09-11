@@ -1,0 +1,6 @@
+import raw.claim_amount as claim_amount;
+
+select
+    claim_amount.claim.claim_number as company_claim_number,
+    claim_amount.loss_amount as loss_amount
+;

@@ -1,0 +1,14 @@
+import root.Policy_Coverage_Detail as pcd;
+
+# Time to settle one claim = close date - open date, computed at claim grain so a
+# claim spanning multiple coverage-detail rows is not double-counted.
+with claim_settle as
+  select
+    pcd.Claim.claim_identifier as claim_id,
+    pcd.Policy.policy_number as policy_number,
+    date_diff(pcd.Claim.claim_open_date, pcd.Claim.claim_close_date, day) as settle_days;
+
+select
+  claim_settle.policy_number as policy_number,
+  avg(claim_settle.settle_days) as avg_time_to_settle_days
+order by policy_number;

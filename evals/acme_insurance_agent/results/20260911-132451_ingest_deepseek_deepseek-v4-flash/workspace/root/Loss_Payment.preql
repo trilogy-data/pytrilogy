@@ -1,0 +1,8 @@
+# Datasource ingested from Loss_Payment
+key claim_amount_identifier enum<bigint>[3, 7];
+
+root datasource Loss_Payment (
+    Claim_Amount_Identifier: claim_amount_identifier,
+)
+grain (claim_amount_identifier)
+address Loss_Payment;

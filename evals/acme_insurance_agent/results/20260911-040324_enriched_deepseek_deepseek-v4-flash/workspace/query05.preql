@@ -1,0 +1,7 @@
+import raw.claim_amount as ca;
+
+# Loss amount per claim = loss payment + loss reserve.
+select
+    ca.claim.claim_number,
+    ca.loss_amount
+;

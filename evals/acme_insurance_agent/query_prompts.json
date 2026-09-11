@@ -4,77 +4,88 @@
     "grade": "medium",
     "kind": "blog",
     "complexity": "HQLS",
-    "prompt": "What is the total amount of premiums that a policy holder has paid by policy number?"
+    "prompt": "What is the total premium paid on each policy? Return one row per policy with two columns, in this order: the policy number, and the total premium amount paid on that policy (the sum of its premium amounts).",
+    "prompt_original": "What is the total amount of premiums that a policy holder has paid by policy number?"
   },
   {
     "id": 2,
     "grade": "medium",
     "kind": "blog",
     "complexity": "HQLS",
-    "prompt": "What is the average time to settle a claim by policy number?"
+    "prompt": "What is the average time to settle a claim, per policy? Return one row per policy that has at least one settled claim, with two columns, in this order: the policy number, and the average number of days from a claim's open date to its close date over that policy's settled (closed) claims. Policies with no settled claims are not included.",
+    "prompt_original": "What is the average time to settle a claim by policy number?"
   },
   {
     "id": 3,
     "grade": "medium",
     "kind": "blog",
     "complexity": "HQLS",
-    "prompt": "What is the total amount of premiums that a policy holder has paid?"
+    "prompt": "How much premium has each policy holder paid in total? Return one row per policy holder with two columns, in this order: the policy holder's party id, and the total premium amount across all of their policies.",
+    "prompt_original": "What is the total amount of premiums that a policy holder has paid?"
   },
   {
     "id": 4,
     "grade": "medium",
     "kind": "blog",
     "complexity": "HQLS",
-    "prompt": "How many policies have agents sold by agent id?"
+    "prompt": "How many policies has each agent sold? Return one row per agent with two columns, in this order: the agent's party id, and the number of policies that agent sold.",
+    "prompt_original": "How many policies have agents sold by agent id?"
   },
   {
     "id": 5,
     "grade": "medium",
     "kind": "blog",
     "complexity": "HQLS",
-    "prompt": "What is the total loss amounts, which is the sum of loss payment, loss reserve amount by claim number?"
+    "prompt": "What is the loss amount of each claim, where loss amount is the claim's loss payment amount plus its loss reserve amount? Return one row per claim with two columns, in this order: the company claim number, and that loss amount.",
+    "prompt_original": "What is the total loss amounts, which is the sum of loss payment, loss reserve amount by claim number?"
   },
   {
     "id": 6,
     "grade": "medium",
     "kind": "blog",
     "complexity": "HQLS",
-    "prompt": "How many policies does each policy holder have by policy holder id?"
+    "prompt": "How many policies does each policy holder have? Return one row per policy holder with two columns, in this order: the policy holder's party id, and their number of policies.",
+    "prompt_original": "How many policies does each policy holder have by policy holder id?"
   },
   {
     "id": 7,
     "grade": "medium",
     "kind": "blog",
     "complexity": "HQLS",
-    "prompt": "What is the total amount of premiums paid by policy number?"
+    "prompt": "What is the total premium paid, per policy? Return one row per policy with two columns, in this order: the policy number, and the total premium amount paid on that policy.",
+    "prompt_original": "What is the total amount of premiums paid by policy number?"
   },
   {
     "id": 8,
     "grade": "medium",
     "kind": "blog",
     "complexity": "HQLS",
-    "prompt": "How many claims have been placed by policy number?"
+    "prompt": "How many claims have been placed against each policy? Return one row per policy that has at least one claim, with two columns, in this order: the policy number, and the number of claims placed against it. Policies with no claims are not included.",
+    "prompt_original": "How many claims have been placed by policy number?"
   },
   {
     "id": 9,
     "grade": "medium",
     "kind": "blog",
     "complexity": "HQLS",
-    "prompt": "What is the average policy size which is the the total amount of premium divided by the number of policies?"
+    "prompt": "What is the average policy size, defined as the total premium amount across all policies divided by the number of distinct policies that carry a premium? Return a single row with one column: that average.",
+    "prompt_original": "What is the average policy size which is the the total amount of premium divided by the number of policies?"
   },
   {
     "id": 10,
     "grade": "medium",
     "kind": "blog",
     "complexity": "HQLS",
-    "prompt": "How many policies do we have?"
+    "prompt": "How many policies do we have in total? Return a single row with one column: the number of policies.",
+    "prompt_original": "How many policies do we have?"
   },
   {
     "id": 11,
     "grade": "medium",
     "kind": "blog",
     "complexity": "HQLS",
-    "prompt": "How many claims do we have?"
+    "prompt": "How many claims do we have in total? Return a single row with one column: the number of claims.",
+    "prompt_original": "How many claims do we have?"
   },
   {
     "id": 12,

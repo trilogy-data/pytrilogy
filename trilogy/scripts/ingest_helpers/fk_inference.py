@@ -32,10 +32,10 @@ if TYPE_CHECKING:
     from trilogy.core.models.datasource import Datasource
 
 # Canonical-name suffixes that mark a column as a candidate foreign key.
-# Underscore-qualified forms are a strong signal (TPC-DS `*_sk`); the bare
-# tokens catch glued forms (TPC-H `custkey`).
-FK_SUFFIXES = ("_sk", "_id", "_key", "_fk")
-_FK_SUFFIX_TOKENS = ("sk", "id", "key", "fk")
+# Underscore-qualified forms are a strong signal (TPC-DS `*_sk`, insurance
+# schemas' `*_identifier`); the bare tokens catch glued forms (TPC-H `custkey`).
+FK_SUFFIXES = ("_sk", "_id", "_key", "_fk", "_identifier")
+_FK_SUFFIX_TOKENS = ("sk", "id", "key", "fk", "identifier")
 # Stage 1 confidence by match kind — orders candidates only; Stage 2 value
 # overlap is the real filter.
 _CONFIDENCE: dict[str, float] = {"exact": 1.0, "suffix": 0.85, "stem": 0.7}
@@ -49,6 +49,11 @@ SUBSET_OVERLAP_THRESHOLD = 0.95
 COMPLETE_REVERSE_THRESHOLD = 0.999
 # Bound on distinct from-values pulled per containment check.
 DEFAULT_SNIFF_SAMPLE = 50_000
+# An alternate (non-grain) column is trusted as an identity only when its
+# uniqueness is proved over at least this many rows. A 2-row table makes every
+# column unique, and a shared FK to an absent entity (ACME's
+# insurable_object_identifier on Claim) then reads as Claim's own key.
+MIN_ALTERNATE_KEY_DISTINCT = 10
 # Shortest name stem considered meaningful for a fuzzy entity match.
 _MIN_STEM_LEN = 3
 
@@ -532,12 +537,14 @@ def _alternate_key_is_unique(
         return cached
     quoted = executor.generator.safe_quote(raw_column)
     sql = (
-        f"SELECT MAX(_n) FROM "
+        f"SELECT MAX(_n), COUNT(*) FROM "
         f"(SELECT COUNT(*) AS _n FROM {target.sql_relation} GROUP BY {quoted}) _g"
     )
     try:
         rows = executor.execute_raw_sql(sql).fetchall()
-        verdict = bool(rows) and rows[0][0] == 1
+        verdict = (
+            bool(rows) and rows[0][0] == 1 and rows[0][1] >= MIN_ALTERNATE_KEY_DISTINCT
+        )
     except Exception as e:
         print_warning(
             f"Uniqueness check skipped for alternate key "
@@ -753,6 +760,88 @@ def infer_foreign_keys(
         claimed.update((fk.from_table, fk.from_column) for fk in group)
         targeted.add((comp.from_table, comp.to_table))
     return _resolve_target_conflicts(accepted, by_name)
+
+
+@dataclass
+class MarkerLink:
+    """A key-only table whose key sits strictly inside another table's single
+    key: a row's presence flags the parent row (``Premium`` marks which
+    ``Policy_Amount`` rows are premiums). Such a table never links through
+    ``generate_candidates`` (a table's own key is its identity, not an FK), so
+    it stays an island and the parent gets a membership flag instead."""
+
+    marker: str  # table key of the key-only table
+    marker_column: str  # raw
+    parent: str  # table key of the marked table
+    parent_column: str  # raw
+
+
+def _marker_candidates(
+    src: TableFKInfo, tables: list[TableFKInfo]
+) -> list[FKCandidate]:
+    key = src.single_key_raw
+    if key is None or len(src.raw_columns) != 1:
+        return []
+    from_canonical = src.raw_to_canonical[key]
+    from_stem = _fk_stem(from_canonical) or ""
+    candidates: list[FKCandidate] = []
+    for target in tables:
+        to_column = target.single_key_raw
+        # a parent has something to flag: more than its own key
+        if target.name == src.name or to_column is None or len(target.raw_columns) < 2:
+            continue
+        kind = _match_kind(
+            from_canonical, from_stem, target.raw_to_canonical[to_column], target.name
+        )
+        if kind is not None:
+            candidates.append(FKCandidate(src.name, key, target.name, to_column, kind))
+    candidates.sort(key=lambda c: -c.confidence)
+    return candidates
+
+
+def infer_marker_tables(
+    tables: list[TableFKInfo],
+    executor: Any,
+    level: IntrospectionLevel,
+    sample_size: int = DEFAULT_SNIFF_SAMPLE,
+) -> list[MarkerLink]:
+    """Key-only tables that mark rows of another table, best parent per marker.
+
+    FAST accepts the strongest name match. FULL requires the marker's key to
+    be contained in the parent's (``SUBSET_OVERLAP_THRESHOLD``) and the parent
+    NOT to be contained in the marker: a twin that covers every parent row is
+    a one-to-one extension, and a flag that is always true says nothing."""
+    if level is IntrospectionLevel.OFF or len(tables) < 2:
+        return []
+    by_name = {t.name: t for t in tables}
+    links: list[MarkerLink] = []
+    for src in tables:
+        candidates = _marker_candidates(src, tables)
+        if not candidates:
+            continue
+        chosen: FKCandidate | None = None
+        if level is IntrospectionLevel.FAST:
+            chosen = candidates[0]
+        else:
+            best_overlap = -1.0
+            for candidate in candidates:
+                overlap = measure_overlap(
+                    executor, src, candidate, by_name[candidate.to_table], sample_size
+                )
+                if overlap is None or overlap < SUBSET_OVERLAP_THRESHOLD:
+                    continue
+                reverse = _reverse_coverage(executor, by_name, candidate, sample_size)
+                if reverse >= COMPLETE_REVERSE_THRESHOLD:
+                    continue
+                if overlap > best_overlap:
+                    chosen, best_overlap = candidate, overlap
+        if chosen is not None:
+            links.append(
+                MarkerLink(
+                    src.name, chosen.from_column, chosen.to_table, chosen.to_column
+                )
+            )
+    return links
 
 
 def _grain_key_columns(name: str, datasource: Datasource) -> list[str]:

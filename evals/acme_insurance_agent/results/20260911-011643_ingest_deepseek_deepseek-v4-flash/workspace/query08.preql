@@ -1,0 +1,4 @@
+import root.Claim_Coverage as cc;
+select cc.Policy_Coverage_Detail.Policy.policy_number as policy_number,
+       count(cc.claim_identifier) as claim_count
+order by policy_number asc;

@@ -49,12 +49,15 @@ from trilogy.scripts.display_ingest import (
     show_ingest_summary,
 )
 from trilogy.scripts.ingest_helpers.fk_inference import (
+    FKBinding,
     InferredFK,
+    MarkerLink,
     _fk_stem,
     _stem_related,
     build_table_fk_info,
     enrich_explicit_fks_partial,
     infer_foreign_keys,
+    infer_marker_tables,
     merge_fk_maps,
 )
 from trilogy.scripts.ingest_helpers.foreign_keys import (
@@ -833,6 +836,135 @@ def create_datasource_from_table(
     return datasource, concepts, required_imports, alternate_keys
 
 
+_HEADER_PROPERTY_CAP = 12
+
+
+def _fk_target(binding: FKBinding) -> tuple[str, str]:
+    """(target table, import alias) from ``table.column[@alias]``."""
+    target_ref, _, role_alias = binding.target_ref.partition("@")
+    table = target_ref.rsplit(".", 1)[0]
+    return table, role_alias or table
+
+
+def _flag_name(marker_name: str) -> str:
+    return f"is_{canonicolize_name(marker_name)}"
+
+
+def _column_concept(rec: IngestRecord, raw_column: str) -> str:
+    for col in rec.datasource.columns:
+        if col.alias == raw_column:
+            return col.concept.name
+    raise KeyError(raw_column)
+
+
+def _add_marker_flags(
+    content: str, rec: IngestRecord, links: list[MarkerLink], by_key: dict[str, str]
+) -> str:
+    """Give a marked table its flags: `import <marker>` after the leading
+    comment/import block and `auto is_<marker> <- <key> in <marker>.<key>;`
+    before the datasource. A membership flag is a real boolean (never NULL),
+    needs no join to read, and leaves the marker file the island it is."""
+    if not links:
+        return content
+    lines = content.split("\n")
+    head = 0
+    while head < len(lines) and (
+        not lines[head].strip()
+        or lines[head].startswith("#")
+        or lines[head].startswith("import ")
+    ):
+        head += 1
+    while head and not lines[head - 1].strip():
+        head -= 1  # insert directly under the last comment/import line
+    body = lines[head:]
+    ds_at = next(
+        (
+            i
+            for i, line in enumerate(body)
+            if line.startswith(("datasource ", "root datasource "))
+        ),
+        len(body),
+    )
+    parent_key = _column_concept(rec, links[0].parent_column)
+    imports = [f"import {by_key[m.marker]} as {by_key[m.marker]};" for m in links]
+    flags = [
+        f"auto {_flag_name(by_key[m.marker])} <- {parent_key} in "
+        f"{by_key[m.marker]}.{canonicolize_name(m.marker_column)}; "
+        f"# true when a {by_key[m.marker]} row marks this {parent_key}"
+        for m in links
+    ]
+    return "\n".join(
+        lines[:head] + imports + body[:ds_at] + flags + [""] + body[ds_at:]
+    )
+
+
+def _describe_ingested(
+    rec: IngestRecord,
+    bindings: dict[str, FKBinding],
+    referenced_by: list[str],
+    marks: MarkerLink | None = None,
+    flags: list[MarkerLink] | None = None,
+    by_key: dict[str, str] | None = None,
+) -> list[Comment]:
+    """Header lines after the "ingested from" comment. `file list` shows the
+    leading comment block as the file's description, so an agent can pick
+    files from the listing instead of exploring each: the grain, the
+    properties, the models this file imports (with the column each hangs off
+    and the dot-path that reaches their fields), and which files import this
+    one. A key-only table says so up front; probing it for columns is wasted."""
+    fk_columns = {
+        col.concept.name
+        for col in rec.datasource.columns
+        if isinstance(col.alias, str) and col.alias in bindings
+    }
+    keys = [c.name for c in rec.concepts if c.purpose == Purpose.KEY]
+    props = [
+        c.name
+        for c in rec.concepts
+        if c.purpose == Purpose.PROPERTY and c.name not in fk_columns
+    ]
+    shown = ", ".join(props[:_HEADER_PROPERTY_CAP])
+    if len(props) > _HEADER_PROPERTY_CAP:
+        shown += f", +{len(props) - _HEADER_PROPERTY_CAP} more"
+    grain = ", ".join(keys) or "-"
+    detail = (
+        f"Properties: {shown}."
+        if props
+        else (
+            "Key-only table: no columns beyond its key."
+            if not fk_columns
+            else "No properties beyond its key and links."
+        )
+    )
+    names = by_key or {}
+    if marks is not None:
+        parent = names.get(marks.parent, marks.parent)
+        marker = names.get(marks.marker, marks.marker)
+        detail += (
+            f" A row marks a {parent} row; query through "
+            f"{parent}.{_flag_name(marker)}."
+        )
+    lines = [Comment(text=f"# Grain: {grain}. {detail}")]
+    if flags:
+        rendered = ", ".join(
+            f"{_flag_name(names.get(f.marker, f.marker))} "
+            f"(a {names.get(f.marker, f.marker)} row exists for this {grain})"
+            for f in flags
+        )
+        lines.append(Comment(text=f"# Flags: {rendered}."))
+    if bindings:
+        links = sorted(
+            f"{alias} via {column} (fields as {alias}.*)"
+            for column, alias in (
+                (column, _fk_target(binding)[1]) for column, binding in bindings.items()
+            )
+        )
+        lines.append(Comment(text=f"# Imports: {', '.join(links)}."))
+    if referenced_by:
+        lines.append(Comment(text=f"# Referenced by: {', '.join(referenced_by)}."))
+    return lines
+
+
 def _build_script_content(
     source_label: str,
     datasource: Datasource,
@@ -1142,6 +1274,7 @@ def ingest(
     # than warn-and-continue, since silently producing un-linked .preql files
     # would be worse than a hard failure.
     inferred_fks: list[InferredFK] = []
+    marker_links: list[MarkerLink] = []
     fk_infos = []
     if introspection_level is not IntrospectionLevel.OFF and len(ingested) >= 2:
         with _rollback_on_error(exec):
@@ -1155,6 +1288,7 @@ def ingest(
                 for rec in ingested.values()
             ]
             inferred_fks = infer_foreign_keys(fk_infos, exec, introspection_level)
+            marker_links = infer_marker_tables(fk_infos, exec, introspection_level)
     # Explicit --fks arrive marked partial=True. In full mode we have the
     # executor; sniff reverse coverage to upgrade complete edges.
     if introspection_level is IntrospectionLevel.FULL and explicit_fk_map and fk_infos:
@@ -1168,9 +1302,32 @@ def ingest(
         print_info("Processing foreign key relationships...")
 
     fk_datasources = {_fk_source_key(rec): rec.datasource for rec in ingested.values()}
+    names_by_key = {key: ds.name for key, ds in fk_datasources.items()}
+    marks_parent = {link.marker: link for link in marker_links}
+    flags_of: dict[str, list[MarkerLink]] = defaultdict(list)
+    for link in marker_links:
+        flags_of[link.parent].append(link)
+        print_info(
+            f"Marker {link.marker} -> {names_by_key[link.parent]}."
+            f"{_flag_name(names_by_key[link.marker])}"
+        )
+    referenced_by: dict[str, list[str]] = defaultdict(list)
+    for source_key, mappings in fk_map.items():
+        for binding in mappings.values():
+            target = _fk_target(binding)[0]
+            if target in fk_datasources:
+                referenced_by[target].append(fk_datasources[source_key].name)
     for source, rec in ingested.items():
         output_file = output_dir / f"{rec.datasource.name}.preql"
         fk_key = _fk_source_key(rec)
+        rec.script[1:1] = _describe_ingested(
+            rec,
+            fk_map.get(fk_key, {}),
+            sorted(set(referenced_by.get(fk_key, []))),
+            marks=marks_parent.get(fk_key),
+            flags=flags_of.get(fk_key),
+            by_key=names_by_key,
+        )
         if fk_map and fk_key in fk_map:
             column_mappings = fk_map[fk_key]
             content = apply_foreign_key_references(
@@ -1178,6 +1335,9 @@ def ingest(
             )
         else:
             content = renderer.render_statement_string(rec.script)
+        content = _add_marker_flags(
+            content, rec, flags_of.get(fk_key, []), names_by_key
+        )
         # Trailing newline + LF line endings match what `trilogy fmt` writes,
         # so a freshly ingested file is already format-stable.
         if not content.endswith("\n"):

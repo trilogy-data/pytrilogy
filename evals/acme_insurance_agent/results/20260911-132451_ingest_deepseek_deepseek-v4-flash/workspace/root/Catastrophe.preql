@@ -1,0 +1,19 @@
+# Datasource ingested from Catastrophe
+key catastrophe_identifier enum<bigint>[1, 2, 3, 4];
+
+properties catastrophe_identifier (
+    catastrophe_type_code string?,
+    catastrophe_name enum<string>['Fire', 'Flood', 'Hurricane', 'Tornado'],
+    industry_catastrophe_code string?,
+    company_catastrophe_code string?,
+);
+
+root datasource Catastrophe (
+    Catastrophe_Identifier: catastrophe_identifier,
+    Catastrophe_Type_Code: ?catastrophe_type_code,
+    Catastrophe_Name: catastrophe_name,
+    Industry_Catastrophe_Code: ?industry_catastrophe_code,
+    Company_Catastrophe_Code: ?company_catastrophe_code,
+)
+grain (catastrophe_identifier)
+address Catastrophe;

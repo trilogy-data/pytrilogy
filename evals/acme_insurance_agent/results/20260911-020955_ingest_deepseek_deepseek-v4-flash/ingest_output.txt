@@ -1,0 +1,128 @@
+exit=0  duration=4.9s
+--- stdout ---
+Trilogy Ingest | sources=13 | dialect=duck_db | output=C:\Users\ethan\coding_projects\pytrilogy-acme\evals\acme_insurance_agent\results\20260911-020955_ingest_deepseek_deepseek-v4-flash\workspace\root
+[1/13] Agreement_Party_Role: introspecting schema
+Analyzing 4 sample rows for grain and nullability detection
+Detected potential unique key combinations: [['Agreement_Identifier', 'Party_Identifier'], ['Agreement_Identifier', 'Party_Role_Code']]
+Using verified unique grain: ['Agreement_Identifier', 'Party_Identifier']
+Detected enum type for 'agreement_identifier': enum<1, 2>
+Detected enum type for 'party_identifier': enum<1, 2>
+Detected enum type for 'party_role_code': enum<'AG', 'PH'>
+[1/13] Agreement_Party_Role: writing
+[2/13] Catastrophe: introspecting schema
+Analyzing 4 sample rows for grain and nullability detection
+Detected potential unique key combinations: [['Catastrophe_Identifier'], ['Catastrophe_Name']]
+Using verified unique grain: ['Catastrophe_Identifier']
+Detected enum type for 'catastrophe_identifier': enum<1, 2, 3, 4>
+Detected enum type for 'catastrophe_name': enum<'Fire', 'Flood', 'Hurricane', 'Tornado'>
+[2/13] Catastrophe: writing
+[3/13] Claim: introspecting schema
+Analyzing 2 sample rows for grain and nullability detection
+Detected potential unique key combinations: [['Claim_Identifier'], ['Company_Claim_Number'], ['Insurable_Object_Identifier'], ['Occurrence_Identifier'], ['Claim_Open_Date'], ['Claim_Close_Date']]
+Using verified unique grain: ['Claim_Identifier']
+Detected enum type for 'claim_identifier': enum<1, 2>
+Detected enum type for 'catastrophe_identifier': enum<4>
+Detected enum type for 'company_claim_number': enum<'12312701', '12312702'>
+Detected enum type for 'insurable_object_identifier': enum<1, 2>
+Detected enum type for 'occurrence_identifier': enum<1, 2>
+[3/13] Claim: writing
+[4/13] Claim_Amount: introspecting schema
+Analyzing 8 sample rows for grain and nullability detection
+Detected potential unique key combinations: [['Claim_Amount_Identifier'], ['Claim_Amount']]
+Using verified unique grain: ['Claim_Amount_Identifier']
+Detected enum type for 'claim_amount_identifier': enum<1, 2, 3, 4, 5, 6, 7, 8>
+Detected enum type for 'claim_identifier': enum<1, 2>
+Inferred value bounds for 'claim_amount': double[0..]
+[4/13] Claim_Amount: writing
+[5/13] Claim_Coverage: introspecting schema
+Analyzing 2 sample rows for grain and nullability detection
+Detected potential unique key combinations: [['Claim_Identifier']]
+Using verified unique grain: ['Claim_Identifier']
+Detected enum type for 'claim_identifier': enum<1, 2>
+Detected enum type for 'policy_coverage_detail_identifier': enum<5>
+[5/13] Claim_Coverage: writing
+[6/13] Expense_Payment: introspecting schema
+Analyzing 2 sample rows for grain and nullability detection
+Detected potential unique key combinations: [['Claim_Amount_Identifier']]
+Using verified unique grain: ['Claim_Amount_Identifier']
+Detected enum type for 'claim_amount_identifier': enum<4, 8>
+[6/13] Expense_Payment: writing
+[7/13] Expense_Reserve: introspecting schema
+Analyzing 2 sample rows for grain and nullability detection
+Detected potential unique key combinations: [['Claim_Amount_Identifier']]
+Using verified unique grain: ['Claim_Amount_Identifier']
+Detected enum type for 'claim_amount_identifier': enum<2, 6>
+[7/13] Expense_Reserve: writing
+[8/13] Loss_Payment: introspecting schema
+Analyzing 2 sample rows for grain and nullability detection
+Detected potential unique key combinations: [['Claim_Amount_Identifier']]
+Using verified unique grain: ['Claim_Amount_Identifier']
+Detected enum type for 'claim_amount_identifier': enum<3, 7>
+[8/13] Loss_Payment: writing
+[9/13] Loss_Reserve: introspecting schema
+Analyzing 2 sample rows for grain and nullability detection
+Detected potential unique key combinations: [['Claim_Amount_Identifier']]
+Using verified unique grain: ['Claim_Amount_Identifier']
+Detected enum type for 'claim_amount_identifier': enum<1, 5>
+[9/13] Loss_Reserve: writing
+[10/13] Policy: introspecting schema
+Analyzing 2 sample rows for grain and nullability detection
+Detected potential unique key combinations: [['Policy_Identifier'], ['Policy_Number'], ['Effective_Date'], ['Expiration_Date']]
+Using verified unique grain: ['Policy_Identifier']
+Detected enum type for 'policy_identifier': enum<1, 2>
+Detected enum type for 'policy_number': enum<'31003000336', '31003000337'>
+[10/13] Policy: writing
+[11/13] Policy_Amount: introspecting schema
+Analyzing 12 sample rows for grain and nullability detection
+Detected potential unique key combinations: [['Policy_Amount_Identifier']]
+Using verified unique grain: ['Policy_Amount_Identifier']
+Detected enum type for 'policy_identifier': enum<1, 2>
+Detected enum type for 'amount_type_code': enum<'Year'>
+Detected enum type for 'policy_coverage_detail_identifier': enum<1, 2, 3, 4, 5, 6>
+Inferred value bounds for 'policy_amount': double[0..]
+[11/13] Policy_Amount: writing
+[12/13] Policy_Coverage_Detail: introspecting schema
+Analyzing 6 sample rows for grain and nullability detection
+Detected potential unique key combinations: [['Policy_Coverage_Detail_Identifier'], ['Effective_Date'], ['Expiration_Date']]
+Using verified unique grain: ['Policy_Coverage_Detail_Identifier']
+Detected enum type for 'policy_coverage_detail_identifier': enum<1, 2, 3, 4, 5, 6>
+Detected enum type for 'insurable_object_identifier': enum<1, 2>
+Detected enum type for 'policy_identifier': enum<1, 2>
+[12/13] Policy_Coverage_Detail: writing
+[13/13] Premium: introspecting schema
+Analyzing 6 sample rows for grain and nullability detection
+Detected potential unique key combinations: [['Policy_Amount_Identifier']]
+Using verified unique grain: ['Policy_Amount_Identifier']
+Detected enum type for 'policy_amount_identifier': enum<2, 4, 6, 8, 10, 12>
+[13/13] Premium: writing
+Processing foreign key relationships...
+Linking Claim.Catastrophe_Identifier -> Catastrophe.Catastrophe_Identifier (partial)
+Linking Claim_Amount.Claim_Identifier -> Claim.Claim_Identifier (complete)
+Linking Claim_Coverage.Policy_Coverage_Detail_Identifier -> Policy_Coverage_Detail.Policy_Coverage_Detail_Identifier (partial)
+Linking Policy_Amount.Policy_Identifier -> Policy.Policy_Identifier (complete)
+Linking Policy_Amount.Policy_Coverage_Detail_Identifier -> Policy_Coverage_Detail.Policy_Coverage_Detail_Identifier (complete)
+Linking Policy_Coverage_Detail.Policy_Identifier -> Policy.Policy_Identifier (complete)
+Agreement_Party_Role -> C:\Users\ethan\coding_projects\pytrilogy-acme\evals\acme_insurance_agent\results\20260911-020955_ingest_deepseek_deepseek-v4-flash\workspace\root\Agreement_Party_Role.preql [5 cols, grain=agreement_identifier, party_identifier, ok]
+Catastrophe -> C:\Users\ethan\coding_projects\pytrilogy-acme\evals\acme_insurance_agent\results\20260911-020955_ingest_deepseek_deepseek-v4-flash\workspace\root\Catastrophe.preql [5 cols, grain=catastrophe_identifier, ok]
+Claim -> C:\Users\ethan\coding_projects\pytrilogy-acme\evals\acme_insurance_agent\results\20260911-020955_ingest_deepseek_deepseek-v4-flash\workspace\root\Claim.preql [14 cols, grain=claim_identifier, ok]
+Claim_Amount -> C:\Users\ethan\coding_projects\pytrilogy-acme\evals\acme_insurance_agent\results\20260911-020955_ingest_deepseek_deepseek-v4-flash\workspace\root\Claim_Amount.preql [7 cols, grain=claim_amount_identifier, ok]
+Claim_Coverage -> C:\Users\ethan\coding_projects\pytrilogy-acme\evals\acme_insurance_agent\results\20260911-020955_ingest_deepseek_deepseek-v4-flash\workspace\root\Claim_Coverage.preql [3 cols, grain=claim_identifier, ok]
+Expense_Payment -> C:\Users\ethan\coding_projects\pytrilogy-acme\evals\acme_insurance_agent\results\20260911-020955_ingest_deepseek_deepseek-v4-flash\workspace\root\Expense_Payment.preql [1 cols, grain=claim_amount_identifier, ok]
+Expense_Reserve -> C:\Users\ethan\coding_projects\pytrilogy-acme\evals\acme_insurance_agent\results\20260911-020955_ingest_deepseek_deepseek-v4-flash\workspace\root\Expense_Reserve.preql [1 cols, grain=claim_amount_identifier, ok]
+Loss_Payment -> C:\Users\ethan\coding_projects\pytrilogy-acme\evals\acme_insurance_agent\results\20260911-020955_ingest_deepseek_deepseek-v4-flash\workspace\root\Loss_Payment.preql [1 cols, grain=claim_amount_identifier, ok]
+Loss_Reserve -> C:\Users\ethan\coding_projects\pytrilogy-acme\evals\acme_insurance_agent\results\20260911-020955_ingest_deepseek_deepseek-v4-flash\workspace\root\Loss_Reserve.preql [1 cols, grain=claim_amount_identifier, ok]
+Policy -> C:\Users\ethan\coding_projects\pytrilogy-acme\evals\acme_insurance_agent\results\20260911-020955_ingest_deepseek_deepseek-v4-flash\workspace\root\Policy.preql [6 cols, grain=policy_identifier, ok]
+Policy_Amount -> C:\Users\ethan\coding_projects\pytrilogy-acme\evals\acme_insurance_agent\results\20260911-020955_ingest_deepseek_deepseek-v4-flash\workspace\root\Policy_Amount.preql [11 cols, grain=policy_amount_identifier, ok]
+Policy_Coverage_Detail -> C:\Users\ethan\coding_projects\pytrilogy-acme\evals\acme_insurance_agent\results\20260911-020955_ingest_deepseek_deepseek-v4-flash\workspace\root\Policy_Coverage_Detail.preql [9 cols, grain=policy_coverage_detail_identifier, ok]
+Premium -> C:\Users\ethan\coding_projects\pytrilogy-acme\evals\acme_insurance_agent\results\20260911-020955_ingest_deepseek_deepseek-v4-flash\workspace\root\Premium.preql [1 cols, grain=policy_amount_identifier, ok]
+
+Ingested 13 source(s).
+FK Claim.Catastrophe_Identifier -> Catastrophe.Catastrophe_Identifier [inferred (exact), overlap=100%, partial]
+FK Claim_Amount.Claim_Identifier -> Claim.Claim_Identifier [inferred (exact), overlap=100%, complete]
+FK Claim_Coverage.Policy_Coverage_Detail_Identifier -> Policy_Coverage_Detail.Policy_Coverage_Detail_Identifier [inferred (exact), overlap=100%, partial]
+FK Policy_Amount.Policy_Identifier -> Policy.Policy_Identifier [inferred (exact), overlap=100%, complete]
+FK Policy_Amount.Policy_Coverage_Detail_Identifier -> Policy_Coverage_Detail.Policy_Coverage_Detail_Identifier [inferred (exact), overlap=100%, complete]
+FK Policy_Coverage_Detail.Policy_Identifier -> Policy.Policy_Identifier [inferred (exact), overlap=100%, complete]
+
+--- stderr ---
+

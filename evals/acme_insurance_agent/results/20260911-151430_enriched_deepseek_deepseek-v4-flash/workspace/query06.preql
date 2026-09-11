@@ -1,0 +1,5 @@
+import raw.policy as policy;
+
+select
+    policy.policy_holder_id as policy_holder_id,
+    count(policy.id) as policy_count;

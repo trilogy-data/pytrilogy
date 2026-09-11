@@ -89,6 +89,12 @@ class BenchmarkSpec:
     query_prompts.json so docless legs don't send agents chasing files that
     aren't in their workspace."""
 
+    dataset_note: str = ""
+    """One paragraph about the data's shape, rendered into every task prompt on
+    every leg. For a hand-built sample (ACME: a few rows per table) it tells the
+    agent that small counts are normal, so a clean run is not followed by rounds
+    of probing for the volume the shared "at this scale factor" wording implies."""
+
     default_scale_factor: float = 0.01
     default_num_queries: int = 22
 

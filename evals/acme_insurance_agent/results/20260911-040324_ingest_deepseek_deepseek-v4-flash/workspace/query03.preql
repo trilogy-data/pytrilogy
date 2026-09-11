@@ -1,0 +1,14 @@
+# Total premium paid by each policy holder (party with role 'PH'), summed
+# across all of their policies. Premium amounts are the Policy_Amount rows
+# listed by the Premium table; policy holders come from Agreement_Party_Role,
+# linked to Policy_Amount through agreement_identifier = policy_identifier.
+import root.Policy_Amount as pa;
+import root.Agreement_Party_Role as apr;
+import root.Premium as pr;
+
+select
+  apr.party_identifier as party_id,
+  sum(pa.policy_amount) as total_premium
+subset join pa.policy_amount_identifier = pr.policy_amount_identifier
+subset join apr.agreement_identifier = pa.Policy.policy_identifier
+where apr.party_role_code = 'PH';

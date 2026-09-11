@@ -1,0 +1,11 @@
+import root.Claim_Coverage as cc;
+
+# One row per policy that has at least one claim: the policy number and how
+# many claims are linked to it through Claim_Coverage -> Policy_Coverage_Detail
+# -> Policy.
+select
+    cc.Policy_Coverage_Detail.Policy.policy_number,
+    count(cc.claim_identifier) as claim_count
+where cc.claim_identifier is not null
+order by cc.Policy_Coverage_Detail.Policy.policy_number asc
+;

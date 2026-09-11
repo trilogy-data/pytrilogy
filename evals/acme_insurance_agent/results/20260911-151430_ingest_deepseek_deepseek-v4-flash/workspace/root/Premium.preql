@@ -1,0 +1,9 @@
+# Datasource ingested from Premium
+# Grain: policy_amount_identifier. Key-only table: no columns beyond its key. A row marks a Policy_Amount row; query through Policy_Amount.is_premium.
+key policy_amount_identifier enum<bigint>[2, 4, 6, 8, 10, 12];
+
+root datasource Premium (
+    Policy_Amount_Identifier: policy_amount_identifier,
+)
+grain (policy_amount_identifier)
+address Premium;

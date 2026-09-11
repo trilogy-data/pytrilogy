@@ -1,0 +1,8 @@
+# Datasource ingested from Premium
+key policy_amount_identifier enum<bigint>[2, 4, 6, 8, 10, 12];
+
+root datasource Premium (
+    Policy_Amount_Identifier: policy_amount_identifier,
+)
+grain (policy_amount_identifier)
+address Premium;

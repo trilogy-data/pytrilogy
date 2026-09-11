@@ -1,0 +1,4 @@
+import raw.claim as claim;
+
+where claim.id is not null
+select claim.policy.policy_number, claim.claim_count;

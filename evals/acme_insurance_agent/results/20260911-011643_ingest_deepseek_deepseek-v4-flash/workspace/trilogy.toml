@@ -1,0 +1,34 @@
+[engine]
+dialect = "duck_db"
+
+[engine.config]
+db_location = "acme.duckdb"
+enable_python_datasources = false
+
+[agent]
+provider = "deepseek"
+model = "deepseek-v4-flash"
+api_key_env = "DEEPSEEK_API_KEY"
+max_iterations = 75
+# Focused agent-info drilldowns can carry complete language/model references;
+# give them enough room to arrive without truncating load-bearing examples.
+# Noise-dose cells raise this so read_file('schema.md') stays untruncated.
+tool_output_limit = 32768
+# Narration messages compound quadratically through history replays in long
+# unattended runs; the eval drops show_message entirely.
+quiet = true
+# Drop the todo tool (and its prompt mention) — A/B knob for short single-query
+# tasks where the scratch list tends to invite over-planning.
+disable_todo = true
+# When false, the model may reason in plain text before calling a tool
+# (tool_choice: auto) instead of being forced to act every turn.
+force_tool_choice = false
+# When false, the trilogy tool refuses `database list/describe` and the prompt
+# omits them — raw-table introspection is for ingest, not query generation.
+allow_database_introspection = false
+# When false, `trilogy file read` is refused (gentle deny pointing at explore);
+# `file list` still works. Schema discovery should go through `explore`.
+allow_file_read = false
+# Disabled for now: A/B-ing whether the post-submit reviewer gate helps or just
+# adds false kickbacks (e.g. q14 mis-quoted "can't see them due to the limit").
+disable_reviewer = true

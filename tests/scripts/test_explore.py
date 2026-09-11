@@ -801,3 +801,20 @@ def test_explore_show_imports_lists_alias_and_path(runner, tmp_path: Path):
     assert result.exit_code == 0, result.output
     assert "Imports" in result.output
     assert "leaf" in result.output
+
+
+def test_explore_v3_unmatched_ns_filter_warns(conformed_preql: Path):
+    from trilogy.scripts.explore import _load_environment, build_concepts_payload
+
+    env = _load_environment(conformed_preql)
+    items = [
+        (k, v)
+        for k, v in env.concepts.items()
+        if not k.startswith("__") and not k.startswith("local._env_")
+    ]
+    payload = build_concepts_payload(env, items, ns_filters=("doesnotexist",))
+    (warning,) = payload["warnings"]
+    assert "'doesnotexist' matched no imported namespace" in warning
+    assert "sold_date" in warning
+    matched = build_concepts_payload(env, items, ns_filters=("sold_date",))
+    assert "warnings" not in matched

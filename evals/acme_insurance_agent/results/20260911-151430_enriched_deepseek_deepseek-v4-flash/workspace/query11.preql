@@ -1,0 +1,2 @@
+import raw.claim as claim;
+select claim.claim_count as number_of_claims;

@@ -1,0 +1,26 @@
+# Datasource ingested from Claim_Amount
+# Grain: claim_amount_identifier. Properties: claim_offer_identifier, amount_type_code, event_date, claim_amount, insurance_type_code.
+# Imports: Claim via Claim_Identifier (fields as Claim.*).
+import Claim as Claim;
+
+key claim_amount_identifier enum<bigint>[1, 2, 3, 4, 5, 6, 7, 8];
+
+properties claim_amount_identifier (
+    claim_offer_identifier string?,
+    amount_type_code string?,
+    event_date string?,
+    claim_amount double[0..],
+    insurance_type_code string?,
+);
+
+root datasource Claim_Amount (
+    Claim_Amount_Identifier: claim_amount_identifier,
+    Claim_Identifier: Claim.claim_identifier,
+    Claim_Offer_Identifier: ?claim_offer_identifier,
+    Amount_Type_Code: ?amount_type_code,
+    Event_Date: ?event_date,
+    Claim_Amount: claim_amount,
+    Insurance_Type_Code: ?insurance_type_code,
+)
+grain (claim_amount_identifier)
+address Claim_Amount;
