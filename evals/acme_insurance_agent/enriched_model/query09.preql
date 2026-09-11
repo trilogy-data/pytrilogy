@@ -1,4 +1,4 @@
-import premium as premium;
+import policy_amount as pa;
 
 select
-    premium.average_policy_size;
+    pa.average_policy_size;

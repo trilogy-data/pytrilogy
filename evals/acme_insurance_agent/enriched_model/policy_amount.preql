@@ -1,0 +1,33 @@
+# One row per policy-level amount (Policy_Amount). Only the rows flagged
+# is_premium are premiums (the Premium marker table); amount on the other rows
+# is not premium, so never sum amount alone for a premium question. "Premiums
+# paid" questions select total_premium (amount summed over premium rows) by
+# policy.policy_number, or by policy.policy_holder_id for what each policy
+# holder has paid; "average policy size" questions select average_policy_size.
+
+import policy as policy; # the policy the amount is on
+import coverage as coverage; # the coverage the amount was charged for
+import premium as premium; # marker: which amounts are premiums
+
+key id int; # policy amount identifier
+properties id (
+    amount float, # the amount; a premium only when is_premium
+    effective_date date, # date the amount took effect
+    amount_type_code string?, # unused in this dataset
+);
+
+auto is_premium <- id in premium.id; # true when a Premium row marks this amount
+auto total_premium <- sum(amount ? is_premium); # total premium paid; "total premiums paid" questions select this (by policy.policy_number, policy.policy_holder_id, ...)
+auto premium_count <- count(id ? is_premium); # number of premium records
+auto average_policy_size <- total_premium / count_distinct(policy.id ? is_premium); # total premium divided by the number of policies carrying a premium; "average policy size" questions select this
+
+root datasource policy_amount (
+    Policy_Amount_Identifier: id,
+    Policy_Identifier: ~policy.id,
+    Policy_Coverage_Detail_Identifier: ~coverage.id,
+    Effective_Date: effective_date,
+    Amount_Type_Code: ?amount_type_code,
+    Policy_Amount: amount,
+)
+grain (id)
+address Policy_Amount;

@@ -31,15 +31,25 @@ whether it copes with scale.
 
 ## The model
 
-Six files, one entity each: `policy` (with the holder and selling agent
-pivoted out of `Agreement_Party_Role`), `coverage`, `premium` (the
-`Policy_Amount` rows marked in `Premium`), `claim` (with the
-`Claim_Coverage` -> `Policy_Coverage_Detail` bridge flattened so `policy.*`
-is one hop away), `claim_amount` (the four marker tables folded into
+Six entity files: `policy` (with the holder and selling agent pivoted out
+of `Agreement_Party_Role`), `coverage`, `policy_amount` (every policy-level
+amount, with `is_premium` for the rows the `Premium` table marks), `claim`
+(with the `Claim_Coverage` -> `Policy_Coverage_Detail` bridge flattened so
+`policy.*` is one hop away), `claim_amount` (`is_loss_payment` ...
+`is_expense_reserve` from the four marker tables, combined into
 `amount_kind`, plus per-claim `loss_payment_amount` ... `total_loss`), and
 `catastrophe`. Named metrics cover the post's questions the way a dbt
 semantic model would: `total_premium`, `average_policy_size`, `policy_count`,
 `claim_count`, `average_days_to_settle`, `loss_amount`, `total_loss`.
+
+The five key-only marker tables (`Premium`, `Loss_Payment`, `Loss_Reserve`,
+`Expense_Payment`, `Expense_Reserve`) are modeled the way `trilogy ingest`
+now models them: each is its own key-only file, and the table it marks
+imports it and defines a membership flag (`auto is_premium <- id in
+premium.id`). A membership flag is a real boolean, needs no join to read,
+and keeps the marker file an island, so neither `policy_amount` nor
+`claim_amount` needs a query-backed datasource. (`policy` and `claim` still
+use one each, for the role pivot and the coverage bridge.)
 
 The one modeling decision that matters for scoring: claims bind their policy
 as a partial (`~`) reference, because not every policy has a claim. Trilogy

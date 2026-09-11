@@ -1,0 +1,11 @@
+# Marker table, a key only: one row per claim_amount row that is a expense reserve.
+# Nothing to select here; claim_amount.is_expense_reserve is true for the rows this table
+# marks, and the claim_amount metrics are already restricted by it.
+
+key id int; # claim amount identifier of an expense reserve
+
+root datasource expense_reserve (
+    Claim_Amount_Identifier: id,
+)
+grain (id)
+address Expense_Reserve;

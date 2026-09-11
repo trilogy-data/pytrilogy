@@ -289,3 +289,27 @@ levers above:
   listing. Enriched 425k -> 427k: the ~30k mechanical saving (600 tokens x
   ~5 later iterations x 11 questions) is inside single-pass noise at this
   size (iterations 61 -> 63). TPC-DS not re-run on the trimmed doc.
+
+Third round: marker tables as membership flags (closes item 2 above).
+
+- **Ingest.** `infer_marker_tables`: a key-only table whose single key
+  name-matches another table's single key, and (in FULL mode) whose key is
+  contained in the parent's while the parent is NOT contained in it, is a
+  marker. The marker file stays the island it was, its header now saying
+  which table it marks; the parent gets `import <Marker> as <Marker>;` and
+  `auto is_<marker> <- <key> in <Marker>.<key>;` plus a `# Flags:` header
+  line. A membership flag is a real TRUE/FALSE (no NULL side, no join to
+  read) and renders as a correlated EXISTS. On ACME: `Premium ->
+  Policy_Amount.is_premium` and the four claim markers ->
+  `Claim_Amount.is_*`; `sum(pa.policy_amount ? pa.is_premium)` by policy
+  gives the gold 86000 / 12000. A twin that covers every parent row is
+  skipped (a flag that is always true says nothing).
+- **Enriched model.** Same shape by hand: `premium`, `loss_payment`,
+  `loss_reserve`, `expense_payment`, `expense_reserve` are key-only marker
+  files; `policy_amount` (was `premium`) is the whole `Policy_Amount` table
+  with `is_premium` and the premium metrics filtered by it; `claim_amount`
+  derives `amount_kind` from four flags. Neither needs a query-backed
+  datasource any more. The trade: `policy_amount.amount` is now every
+  policy-level amount, so an agent that sums it without the flag over-sums;
+  the file header says so and points at `total_premium`. Canonical answers
+  still 12/12.
