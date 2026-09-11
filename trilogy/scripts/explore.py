@@ -930,6 +930,7 @@ def build_concepts_payload(
         version,
         join_nullable,
     )
+    ns_warnings = _unmatched_ns_warnings(ns_filters, list(imported))
     outlined = False
     if imported and version >= 3 and not (expand_imports or expand_roles):
         collapsed: dict[str, dict] = {}
@@ -955,8 +956,24 @@ def build_concepts_payload(
         "namespaced": imported or None,
         "outline_note": _OUTLINE_NOTE if outlined else None,
         "join_note": join_note,
+        "warnings": ns_warnings or None,
     }
     return {k: v for k, v in payload.items() if v is not None}
+
+
+def _unmatched_ns_warnings(ns_filters: tuple[str, ...], keys: list[str]) -> list[str]:
+    """A `--ns` that matches nothing used to fall through silently to the
+    outlined payload, which reads as "this alias has no members"."""
+    unmatched = [
+        f for f in ns_filters if not any(_ns_filter_match(k, (f,)) for k in keys)
+    ]
+    if not unmatched:
+        return []
+    available = ", ".join(keys) if keys else "none; this file imports nothing"
+    return [
+        f"--ns {f!r} matched no imported namespace (available: {available})"
+        for f in unmatched
+    ]
 
 
 def _emit_explore_json(

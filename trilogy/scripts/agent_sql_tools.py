@@ -86,11 +86,10 @@ def _strip_leading_comments(sql: str) -> str:
     return sql.lstrip()
 
 
-def _last_statement(sql: str) -> str:
+def _statements(sql: str) -> list[str]:
     parts = [s.strip() for s in sql.split(";")]
     # Skip comment-only / empty segments (e.g. a trailing `-- note`).
-    nonempty = [s for s in parts if _strip_leading_comments(s)]
-    return nonempty[-1] if nonempty else ""
+    return [s for s in parts if _strip_leading_comments(s)]
 
 
 def _readonly_violation(sql: str) -> str | None:
@@ -107,25 +106,33 @@ def _readonly_violation(sql: str) -> str | None:
     return None
 
 
-def _format_result(keys: list[str], rows: list) -> str:
+def _format_result(keys: list[str], rows: list, statement: int | None = None) -> str:
     total = len(rows)
     head, tail, omitted = _slice_for_middle_truncation(rows, _MAX_RESULT_ROWS)
     shown: list = [list(row) for row in head]
     if omitted:
-        shown.append(f"<redacted {omitted} rows>")
+        shown.append(f"<hidden {omitted} rows>")
     shown.extend(list(row) for row in tail)
-    payload = {
-        "event": "result",
-        "columns": keys,
-        "rows": shown,
-        "row_count": total,
-        "displayed": len(head) + len(tail),
-    }
+    payload: dict = {"event": "result"}
+    if statement is not None:
+        payload["statement"] = statement
+    payload.update(
+        {
+            "columns": keys,
+            "rows": shown,
+            "row_count": total,
+            "displayed": len(head) + len(tail),
+        }
+    )
     if omitted:
         payload.update(
             {
                 "truncated": True,
                 "omitted": omitted,
+                "omitted_note": (
+                    f"{omitted} middle rows hidden to bound output size; narrow "
+                    "the query (WHERE/LIMIT, or one table at a time) to see them."
+                ),
                 "column_stats": _column_stats(keys, rows),
                 "column_stats_note": (
                     "column_stats are computed over the full returned result "
@@ -145,41 +152,48 @@ def _envelope(exit_code: int, stdout: str, stderr: str) -> str:
 
 
 def _execute_sql(state: AgentState, sql: str) -> str:
-    statement = _last_statement(sql)
-    violation = _readonly_violation(statement)
-    if violation is not None:
-        return _envelope(1, _pretty({"event": "error", "message": violation}), "")
+    statements = _statements(sql) or [""]
+    many = len(statements) > 1
+    for idx, statement in enumerate(statements, 1):
+        violation = _readonly_violation(statement)
+        if violation is not None:
+            if many:
+                violation = f"statement {idx} of {len(statements)}: {violation}"
+            return _envelope(1, _pretty({"event": "error", "message": violation}), "")
     start = time.perf_counter()
-    try:
-        result = _get_engine().execute_raw_sql(statement)
-        rows = result.fetchall()
+    engine = _get_engine()
+    events: list[str] = []
+    total_rows = 0
+    # Every statement runs and reports its own result; a failure stops the
+    # batch but keeps the results that preceded it.
+    for idx, statement in enumerate(statements, 1):
         try:
-            keys = list(result.keys())
-        except Exception:
-            keys = []
-    except Exception as exc:
-        return _envelope(
-            1,
-            _pretty(
-                {
-                    "event": "error",
-                    "message": f"{type(exc).__name__}: {exc}",
-                }
-            ),
-            "",
-        )
+            result = engine.execute_raw_sql(statement)
+            rows = result.fetchall()
+            try:
+                keys = list(result.keys())
+            except Exception:
+                keys = []
+        except Exception as exc:
+            error: dict = {"event": "error"}
+            if many:
+                error["statement"] = idx
+            error["message"] = f"{type(exc).__name__}: {exc}"
+            events.append(_pretty(error))
+            return _envelope(1, "\n".join(events), "")
+        total_rows += len(rows)
+        events.append(_format_result(keys, rows, statement=idx if many else None))
     summary = _pretty(
         {
             "event": "summary",
-            "statements": 1,
+            "statements": len(statements),
             "duration_ms": round((time.perf_counter() - start) * 1000, 3),
             "ok": True,
-            "rows": len(rows),
+            "rows": total_rows,
         }
     )
-    out = truncate_json_events(
-        f"{_format_result(keys, rows)}\n{summary}", state.tool_output_limit
-    )
+    events.append(summary)
+    out = truncate_json_events("\n".join(events), state.tool_output_limit)
     return _envelope(0, out, "")
 
 

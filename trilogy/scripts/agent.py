@@ -104,6 +104,10 @@ Available tools:
         base += """
     * ["database", "list"] — list the tables in the configured database.
       ["database", "describe", "<table>"] — show a table's columns and types."""
+    else:
+        base += """
+    * `database list` / `database describe` are DISABLED for this task: the
+      semantic model is prebuilt, so read it with `explore` instead."""
     base += """
     * ["ingest", "--all"] — generate a Trilogy semantic model (.preql files
       under root/) for every table in the database, in one step."""
@@ -178,6 +182,10 @@ Available tools:
         base += """
     * ["file", "read", "<path>"] — read a file's raw contents (rarely needed;
       prefer explore for model files)."""
+    else:
+        base += """
+    * `file read` is DISABLED for this task — `explore` replaces it; `file
+      list` and `file write` still work."""
     base += """
     * Only documented subcommands work — do NOT invent `raw`, `shell`,
       `read_file`, etc. Start with `trilogy agent-info`, then immediately call

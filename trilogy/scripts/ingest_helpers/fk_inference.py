@@ -32,10 +32,10 @@ if TYPE_CHECKING:
     from trilogy.core.models.datasource import Datasource
 
 # Canonical-name suffixes that mark a column as a candidate foreign key.
-# Underscore-qualified forms are a strong signal (TPC-DS `*_sk`); the bare
-# tokens catch glued forms (TPC-H `custkey`).
-FK_SUFFIXES = ("_sk", "_id", "_key", "_fk")
-_FK_SUFFIX_TOKENS = ("sk", "id", "key", "fk")
+# Underscore-qualified forms are a strong signal (TPC-DS `*_sk`, insurance
+# schemas' `*_identifier`); the bare tokens catch glued forms (TPC-H `custkey`).
+FK_SUFFIXES = ("_sk", "_id", "_key", "_fk", "_identifier")
+_FK_SUFFIX_TOKENS = ("sk", "id", "key", "fk", "identifier")
 # Stage 1 confidence by match kind — orders candidates only; Stage 2 value
 # overlap is the real filter.
 _CONFIDENCE: dict[str, float] = {"exact": 1.0, "suffix": 0.85, "stem": 0.7}

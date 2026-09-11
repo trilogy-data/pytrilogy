@@ -472,6 +472,33 @@ def _trilogy_file_write_hint(raw_args: list[str]) -> str | None:
     )
 
 
+_NO_IMPORTS_HINT = (
+    "If a model declares no imports, relate models in the query instead: "
+    "`select ... subset join a.key = b.key` or `where a.key in b.key` "
+    "(`trilogy agent-info syntax example scoped-join`)."
+)
+
+
+def _annotate_disabled_cli_docs(text: str, state: AgentState) -> str:
+    """The `cli` drilldown is static; when this session refuses a command,
+    say so on its line rather than letting the agent find out by calling."""
+    disabled = {
+        "- `trilogy file read <path>`": not state.allow_file_read,
+        "- `trilogy database list`": not state.allow_db_introspection,
+        "- `trilogy database describe <table>`": not state.allow_db_introspection,
+    }
+    lines = []
+    for line in text.splitlines(keepends=True):
+        for prefix, off in disabled.items():
+            if off and line.startswith(prefix):
+                line = (
+                    f"{prefix} - DISABLED for this task; use `explore <file.preql>`.\n"
+                )
+                break
+        lines.append(line)
+    return "".join(lines)
+
+
 def handle_trilogy(state: AgentState, args: dict) -> str:
     raw_args = args.get("args")
     if not isinstance(raw_args, list) or not all(isinstance(a, str) for a in raw_args):
@@ -487,7 +514,8 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
             "trilogy database introspection is disabled for this task. The "
             "semantic model is already built under root/ — use "
             "`explore <file.preql>` to see queryable concepts (it chains in "
-            "imported dimensions too). Do not list raw database tables."
+            "imported dimensions too). Do not list raw database tables. "
+            + _NO_IMPORTS_HINT
         )
     if (
         not state.allow_file_read
@@ -498,7 +526,8 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
             "trilogy file read is disabled for this task. Use "
             "`explore <file.preql>` to inspect a model's queryable concepts "
             "(it chains in imported dimensions too) instead of reading raw "
-            "file contents. `file list` and `file write` are still available."
+            "file contents. `file list` and `file write` are still available. "
+            + _NO_IMPORTS_HINT
         )
     cmd = [sys.executable, "-m", "trilogy.scripts.trilogy", *raw_args]
     # Agents consume the CLI as structured NDJSON (one JSON event per line) —
@@ -543,7 +572,7 @@ def handle_trilogy(state: AgentState, args: dict) -> str:
     # namespace. Narrow regex calls already targeted the question; they use
     # the full general budget so a 12KB result doesn't get sliced mid-output.
     if subcommand == "agent-info":
-        stdout = completed.stdout or ""
+        stdout = _annotate_disabled_cli_docs(completed.stdout or "", state)
         stderr = completed.stderr or ""
     else:
         # stdout is structured JSON events — truncate on event boundaries so the

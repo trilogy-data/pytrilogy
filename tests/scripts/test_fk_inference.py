@@ -1444,3 +1444,11 @@ def test_ingest_no_infer_fks_leaves_tables_disconnected():
             raise result.exception
         assert result.exit_code == 0
         assert "import customers" not in (out_dir / "orders.preql").read_text()
+
+
+def test_identifier_suffix_is_fk_like():
+    from trilogy.scripts.ingest_helpers.fk_inference import _fk_stem
+
+    assert _fk_stem("policy_identifier") == "policy"
+    assert _fk_stem("claim_amount_identifier") == "claim_amount"
+    assert _fk_stem("identifier") == ""
