@@ -688,6 +688,7 @@ def connected_equivalent_suggestions(
             return None
         suffix = "." + stranded.removeprefix(f"{DEFAULT_NAMESPACE}.")
         stranded_tables = tables.get(stranded, frozenset())
+        depth = stranded.count(".")
         best: str | None = None
         for candidate in environment.concepts.values():
             addr = candidate.address
@@ -698,9 +699,13 @@ def connected_equivalent_suggestions(
             # The twin is the same path one namespace deeper (same alias
             # both times), or - when the aliases differ (`import policy as
             # p` vs the fact's nested `Policy`) - the same column of the
-            # same physical table.
+            # same physical table, still reached through another import
+            # (deeper). A second top-level import of the same fact
+            # (`import store_sales as store_returns`) is a deliberate
+            # self-pair, not a copy to chain through.
             if not addr.endswith(suffix) and not (
                 candidate.name == source.name
+                and addr.count(".") > depth
                 and stranded_tables & tables.get(addr, frozenset())
             ):
                 continue

@@ -25,16 +25,27 @@ def _raw_columns_inline_safely(
     cte: CTE, parent: DatasourceCTE, root: BuildDatasource, parent_count: int
 ) -> bool:
     """Verbatim raw() text is evaluated wherever it lands. As the consumer's
-    sole source that is the datasource's own scope. Beside another table a
-    column reference is unqualified (ambiguous when the tables share the
-    name), and a literal on an optional (outer-joined) side reads as its value
-    on rows that have no such row. A literal stays per-row correct wherever
-    every result row carries one of the datasource's rows: the driving table
-    of INNER/LEFT joins, or an INNER-joined table in a plan with no FULL/RIGHT
-    join to manufacture rows without it."""
+    sole source that is the datasource's own scope, and a consumer that never
+    reads a raw-bound concept never renders the text at all. Beside another
+    table a column reference is unqualified (ambiguous when the tables share
+    the name), and a literal on an optional (outer-joined) side reads as its
+    value on rows that have no such row. A literal stays per-row correct
+    wherever every result row carries one of the datasource's rows: the
+    driving table of INNER/LEFT joins, or an INNER-joined table in a plan with
+    no FULL/RIGHT join to manufacture rows without it."""
     if not root.has_raw_columns:
         return True
     if not cte.joins and parent_count <= 1:
+        return True
+    raw_addresses: set[str] = set()
+    for column in root.columns:
+        if isinstance(column.alias, RawColumnExpr):
+            raw_addresses.add(column.concept.address)
+            raw_addresses |= column.concept.pseudonyms
+    consumed = render_cte_used_map(cte).get(parent.name, set()) | _join_key_demand(
+        cte, parent.name
+    )
+    if not consumed & raw_addresses:
         return True
     literal_only = all(
         _RAW_LITERAL_RE.match(c.alias.text)
