@@ -1,7 +1,7 @@
-# Trilogy failure analysis — 20260911-135033
+# Trilogy failure analysis — 20260911-152007
 
-- Run `20260911-135032_enriched_deepseek_deepseek-v4-flash` | `deepseek/deepseek-v4-flash` | sf=1
-- `trilogy` calls: 69 | failed: 1 (1%)
+- Run `20260911-152006_enriched_deepseek_deepseek-v4-flash` | `deepseek/deepseek-v4-flash` | sf=1
+- `trilogy` calls: 64 | failed: 1 (2%)
 
 ## Categories
 
@@ -13,8 +13,8 @@
 
 ### `undefined-concept`
 
-- `trilogy file write probe_h.preql --run-and-delete`
+- `trilogy file write answer_4002635042.preql --run`
 
   ```text
-  Syntax error in probe_h.preql: Undefined concept: pol.policy.id. Suggestions: ['pol.policy_holder_id', 'pol.policy_count', 'pol.policy_number', 'p.policy.id', 'p.coverage.policy.id', 'pol.id']
+  Syntax error in answer_4002635042.preql: Undefined concept: policy.policy_number (line 3, col 8, in SELECT). Suggestions: ['pa.policy.policy_number', 'pa.coverage.policy.policy_number', 'pa.policy.policy_count']
   ```

@@ -96,14 +96,17 @@ matrix of the latest run). The first used the verbatim blog wording
 leg, telling the agent the sample is tiny so a small count is not a symptom;
 a fourth (`20260911-135032`, Trilogy legs only) has ingest write a real file
 header (grain, properties, imports, referenced-by, key-only flag) and trims
-the example summaries out of `agent-info query`:
+the example summaries out of `agent-info query`; a fifth (`20260911-152006`)
+has ingest turn the key-only marker tables into membership flags on the
+tables they mark, the curated model take the same shape, and the
+separate-import error see through select aliases:
 
-| Leg | Post's condition | Verbatim wording | Specified wording | + dataset note | + ingest header |
-|---|---|---|---|---|---|
-| `sql_bare` (db only) | text-to-SQL, no DDL | 10/11, 697k tokens | 11/11, 338k | 9/11, 292k | |
-| `sql_schema` (db + DDL) | text-to-SQL | 10/11, 382k | 11/11, 318k | 11/11, 278k | |
-| `ingest` (auto Trilogy model) | — | 9/11, 1,574k | 11/11, 1,310k | 11/11, 884k | 11/11, 609k |
-| `enriched` (curated Trilogy model) | semantic layer | 11/11, 649k | 11/11, 627k | 11/11, 425k | 11/11, 427k |
+| Leg | Post's condition | Verbatim wording | Specified wording | + dataset note | + ingest header | + marker flags |
+|---|---|---|---|---|---|---|
+| `sql_bare` (db only) | text-to-SQL, no DDL | 10/11, 697k tokens | 11/11, 338k | 9/11, 292k | | |
+| `sql_schema` (db + DDL) | text-to-SQL | 10/11, 382k | 11/11, 318k | 11/11, 278k | | |
+| `ingest` (auto Trilogy model) | — | 9/11, 1,574k | 11/11, 1,310k | 11/11, 884k | 11/11, 609k | 11/11, 513k |
+| `enriched` (curated Trilogy model) | semantic layer | 11/11, 649k | 11/11, 627k | 11/11, 425k | 11/11, 427k | 11/11, 412k |
 
 With the output shape stated, every leg answers every question; what
 separates them is cost. The curated model runs at about half the auto-ingested

@@ -313,3 +313,28 @@ Third round: marker tables as membership flags (closes item 2 above).
   policy-level amount, so an agent that sums it without the flag over-sums;
   the file header says so and points at `total_premium`. Canonical answers
   still 12/12.
+- **Run `20260911-151430`.** Ingest 609k -> 565k, explores 39 -> 27, still
+  11/11; every premium answer used `pa.is_premium` straight from the header
+  (`sum(pa.policy_amount ? pa.is_premium)`), where the previous run's
+  agents had to discover the subset by probing key domains. Enriched 427k
+  -> 468k, still 11/11: the listing grew from six files to eleven (five
+  marker files with three-line descriptions, 2.3k -> 4.5k chars), and every
+  agent reads it once per question; the answers themselves are unchanged
+  (`pa.total_premium`, `pa.average_policy_size`).
+- **Hint gap found by that run.** Enriched q05 wrote `import raw.claim as
+  claim; import raw.claim_amount as claim_amount; select claim.claim_number
+  as company_claim_number, claim_amount.loss_amount as loss_amount` and got
+  `{company_claim_number}; {loss_amount}` with the generic join/merge text:
+  a select alias is its own concept, so the twin search never saw
+  `claim.claim_number`, and with two singleton subgraphs the "largest is
+  the connected side" rule picked the wrong one. Fixed: the search looks
+  through `FunctionType.ALIAS` lineage, tries each subgraph as the target
+  until a twin turns up, and renders `company_claim_number (=
+  claim.claim_number)` in the split. The message now says "`claim.claim_number`
+  (as `company_claim_number`) is disconnected, did you mean
+  `claim_amount.claim.claim_number`?".
+- **Run `20260911-152006`** (one-line marker descriptions, alias-aware
+  hint): ingest 513k, explores 19, no tool errors; enriched 412k, one
+  error (an undefined-concept typo the suggestions fixed in one turn).
+  Both 11/11. Over the whole audit: ingest 1,310k -> 513k, enriched
+  627k -> 412k, against the SQL legs' ~280-340k.

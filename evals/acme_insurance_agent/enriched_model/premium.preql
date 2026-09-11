@@ -1,8 +1,6 @@
-# Marker table, a key only: one row per policy_amount row that is a premium.
-# Nothing to select here; policy_amount.is_premium is true for the rows this table
-# marks, and the policy_amount metrics are already restricted by it.
+# Key-only marker: one row per policy_amount row that is a premium. Nothing to select here; use policy_amount.is_premium.
 
-key id int; # policy amount identifier of a premium
+key id int; # policy_amount identifier
 
 root datasource premium (
     Policy_Amount_Identifier: id,

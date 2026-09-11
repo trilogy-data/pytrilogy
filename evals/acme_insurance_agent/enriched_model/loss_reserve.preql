@@ -1,8 +1,6 @@
-# Marker table, a key only: one row per claim_amount row that is a loss reserve.
-# Nothing to select here; claim_amount.is_loss_reserve is true for the rows this table
-# marks, and the claim_amount metrics are already restricted by it.
+# Key-only marker: one row per claim_amount row that is a loss reserve. Nothing to select here; use claim_amount.is_loss_reserve.
 
-key id int; # claim amount identifier of a loss reserve
+key id int; # claim_amount identifier
 
 root datasource loss_reserve (
     Claim_Amount_Identifier: id,

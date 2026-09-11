@@ -11,8 +11,8 @@
 
 | category | pass rate | total tokens | cache-adj cost | agg used | p50 cand ms |
 |---|---|---|---|---|---|
-| ingest | 1.00 | 609,261 | 170,929 | 0/11 | 5 |
-| enriched | 1.00 | 426,820 | 123,383 | 0/11 | 4 |
+| ingest | 1.00 | 512,948 | 147,649 | 0/11 | 6 |
+| enriched | 1.00 | 412,331 | 119,493 | 0/11 | 4 |
 
 ## Per-query matrix
 

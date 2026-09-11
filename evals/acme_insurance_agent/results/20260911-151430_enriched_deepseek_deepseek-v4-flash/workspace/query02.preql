@@ -1,0 +1,8 @@
+import raw.claim as c;
+
+select
+  c.policy.policy_number as policy_number,
+  avg(c.days_to_settle) as average_days_to_settle
+where c.close_date is not null
+order by policy_number
+;

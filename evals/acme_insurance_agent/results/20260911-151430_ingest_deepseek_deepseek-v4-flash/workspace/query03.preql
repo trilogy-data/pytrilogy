@@ -1,0 +1,9 @@
+import root.Agreement_Party_Role as apr;
+import root.Policy_Amount as pa;
+
+with pol as
+  select pa.Policy.policy_identifier as policy_id, sum(pa.policy_amount ? pa.is_premium) as premium;
+
+where apr.party_role_code = 'PH'
+select apr.party_identifier as party_id, sum(pol.premium) as total_premium
+subset join apr.agreement_identifier = pol.policy_id;

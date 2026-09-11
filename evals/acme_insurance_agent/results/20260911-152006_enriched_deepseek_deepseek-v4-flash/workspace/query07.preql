@@ -1,0 +1,5 @@
+import raw.policy_amount as pa;
+
+select
+  pa.policy.policy_number,
+  pa.total_premium as total_premium_paid;

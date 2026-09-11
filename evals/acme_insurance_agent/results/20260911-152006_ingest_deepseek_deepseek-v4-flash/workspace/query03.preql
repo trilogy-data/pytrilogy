@@ -1,0 +1,12 @@
+# Total premium paid per policy holder (party with role code 'PH').
+import root.Policy_Amount as pa;
+import root.Agreement_Party_Role as apr;
+
+where apr.party_role_code = 'PH'
+
+select
+    apr.party_identifier,
+    sum(pa.policy_amount ? pa.is_premium) as total_premium
+subset join pa.Policy.policy_identifier = apr.agreement_identifier
+order by apr.party_identifier asc
+;

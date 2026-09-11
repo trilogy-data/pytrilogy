@@ -1,0 +1,4 @@
+import root.Agreement_Party_Role as apr;
+
+select apr.party_identifier, count(apr.agreement_identifier) as policy_count
+where apr.party_role_code = 'AG';

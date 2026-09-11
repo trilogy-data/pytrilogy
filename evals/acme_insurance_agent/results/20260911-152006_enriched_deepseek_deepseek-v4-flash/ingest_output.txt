@@ -1,0 +1,6 @@
+exit=0  duration=0.0s
+--- stdout ---
+copied 11 files from C:\Users\ethan\coding_projects\pytrilogy-acme\evals\acme_insurance_agent\enriched_model (stripped db-qualifier on 0 address lines): ['catastrophe.preql', 'claim.preql', 'claim_amount.preql', 'coverage.preql', 'expense_payment.preql', 'expense_reserve.preql', 'loss_payment.preql', 'loss_reserve.preql', 'policy.preql', 'policy_amount.preql', 'premium.preql']
+
+--- stderr ---
+

@@ -1,0 +1,8 @@
+import root.Claim_Amount as ca;
+
+select
+  ca.Claim.company_claim_number as company_claim_number,
+  (
+    coalesce(sum(ca.claim_amount ? ca.is_loss_payment = true), 0)
+    + coalesce(sum(ca.claim_amount ? ca.is_loss_reserve = true), 0)
+  ) as loss_amount;
