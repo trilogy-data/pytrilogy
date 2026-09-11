@@ -1101,8 +1101,10 @@ def scoped_join_unused_side_warnings(
                 continue
             short_side, short_other = _short(side), _short(other)
             hints = [
-                f"to keep only rows present in {owners[0]}, add "
-                f"`where {short_side} is not null`"
+                (
+                    f"to keep only rows present in {owners[0]}, add "
+                    f"`where {short_side} is not null`"
+                )
             ]
             if (join.authored or join.join_type) is JoinType.SUBSET:
                 hints.append(
