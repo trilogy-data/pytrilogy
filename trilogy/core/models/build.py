@@ -2291,6 +2291,15 @@ class BuildDatasource:
         return None
 
     @property
+    def has_raw_columns(self) -> bool:
+        """A raw() column renders its text verbatim, so it is only sound in
+        this datasource's own scope: inlined into a consumer that joins
+        another table, the text is unqualified (ambiguous when the other table
+        shares the column name) and a literal reads as its value on the other
+        table's rows too."""
+        return any(isinstance(c.alias, RawColumnExpr) for c in self.columns)
+
+    @property
     def can_be_inlined(self) -> bool:
         return not (
             isinstance(self.address, Address)

@@ -1,13 +1,26 @@
 query_id = "14"
-gen_length = 483
+gen_length = 814
 preql_size = 189
 comp_size = 363
 generated_sql = """
+
+WITH 
+quizzical as (
 SELECT
-    ( 100.0 * sum(CASE WHEN \"part_part\".\"p_type\" like 'PROMO%' THEN \"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\") ELSE NULL END) ) / sum(\"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\")) as \"promo_revenue\"
+    \"lineitem\".\"l_discount\" as \"discount\",
+    \"lineitem\".\"l_extendedprice\" as \"extended_price\",
+    \"lineitem\".\"l_partkey\" as \"part_id\",
+    \"lineitem\".\"l_shipdate\" as \"ship_date\"
 FROM
-    \"memory\".\"part\" as \"part_part\"
-    INNER JOIN \"memory\".\"lineitem\" as \"lineitem\" on \"part_part\".\"p_partkey\" = \"lineitem\".\"l_partkey\"
+    \"memory\".\"lineitem\" as \"lineitem\"
 WHERE
     \"lineitem\".\"l_shipdate\" >= date '1995-09-01' and \"lineitem\".\"l_shipdate\" < date '1995-10-01'
+)
+SELECT
+    ( 100.0 * sum(CASE WHEN \"part_part\".\"p_type\" like 'PROMO%' THEN \"quizzical\".\"extended_price\" * (1 - \"quizzical\".\"discount\") ELSE NULL END) ) / sum(\"quizzical\".\"extended_price\" * (1 - \"quizzical\".\"discount\")) as \"promo_revenue\"
+FROM
+    \"memory\".\"part\" as \"part_part\"
+    INNER JOIN \"quizzical\" on \"part_part\".\"p_partkey\" = \"quizzical\".\"part_id\"
+WHERE
+    \"quizzical\".\"ship_date\" >= date '1995-09-01' and \"quizzical\".\"ship_date\" < date '1995-10-01'
 """

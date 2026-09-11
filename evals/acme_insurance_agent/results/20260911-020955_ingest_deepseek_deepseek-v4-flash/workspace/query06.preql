@@ -1,0 +1,13 @@
+# How many policies does each policy holder have, by policy holder id?
+# A policy holder is the party with role code 'PH' in Agreement_Party_Role;
+# that link ties each agreement/policy to its holder, joined to Policy on
+# policy_identifier = agreement_identifier.
+import root.Policy as p;
+import root.Agreement_Party_Role as apr;
+
+select
+    apr.party_identifier as policy_holder_id,
+    count(p.policy_identifier) as policy_count,
+subset join apr.agreement_identifier = p.policy_identifier
+where apr.party_role_code = 'PH'
+order by apr.party_identifier;

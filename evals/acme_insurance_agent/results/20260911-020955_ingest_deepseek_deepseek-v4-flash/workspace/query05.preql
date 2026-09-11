@@ -1,0 +1,10 @@
+import root.Claim_Amount as ca;
+import root.Loss_Payment as lp;
+import root.Loss_Reserve as lr;
+
+select
+    ca.Claim.company_claim_number,
+    sum(ca.claim_amount) as total_loss_amounts
+where ca.claim_amount_identifier in lp.claim_amount_identifier
+   or ca.claim_amount_identifier in lr.claim_amount_identifier
+order by ca.Claim.company_claim_number;

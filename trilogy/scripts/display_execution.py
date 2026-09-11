@@ -449,6 +449,14 @@ def _scope_warnings(scopes: list) -> "list[dict] | None":
     return derived_value_warnings(scopes) or None
 
 
+def _result_warnings(results: ResultSet) -> "list[dict] | None":
+    """Scope warnings plus plan-shape warnings (an unused scoped-join side)."""
+    warnings = list(results.plan_warnings or [])
+    if results.derived_value_scopes:
+        warnings.extend(_scope_warnings(results.derived_value_scopes) or [])
+    return warnings or None
+
+
 def _emit_results_json(
     results: ResultSet, cap: int, query_limit: int | None = None
 ) -> None:
@@ -510,9 +518,8 @@ def _emit_results_json(
         # filters/grains (window-in-SELECT wanting a HAVING; a WHERE aggregate
         # that inherited the SELECT grain). On by default for agent runs.
         warnings=(
-            _scope_warnings(results.derived_value_scopes)
-            if results.derived_value_scopes
-            and os.environ.get("TRILOGY_AGENT_SCOPE_WARNINGS", "1").lower()
+            _result_warnings(results)
+            if os.environ.get("TRILOGY_AGENT_SCOPE_WARNINGS", "1").lower()
             not in ("0", "false", "no", "off")
             else None
         ),

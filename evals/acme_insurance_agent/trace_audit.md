@@ -138,9 +138,30 @@ Landed: 1 (`_identifier` FK suffix; ingest now links 12 of the 13 ACME tables),
 refusal), 10 (`run_query` runs every statement), 11 (`<hidden N rows>` with a
 note; the scorer counts it).
 
+Second pass (after the ingest re-run):
+
+- **Ingest re-run** (`20260911-020955`, concurrency 1): 8/11. q02 now passes
+  with the alternate-key floor; q03 (wording), q08 (unpinned claim-less
+  policy) and q09 (over-projection) are the agent/prompt shapes from the first
+  audit. Tokens 2.2M: the FK links move the cost from discovery to deciding
+  whether to keep the padded policy row.
+- **3, subset-join elision → warning.** A scoped join side referenced only as
+  its join key now yields a `scoped_join_side_unused` entry in the result's
+  `warnings`, naming the pin (`where prem.k is not null`) and, for subset
+  joins, the inversion (`subset join pa.k = prem.k`, which drives from the
+  narrow side). Plan semantics unchanged.
+- **`raw()` scoping.** A datasource with a raw() column is inlined into a
+  consumer only when it is the consumer's sole source, or when every raw text
+  is a literal and it is the driving table of INNER/LEFT joins (per-row
+  correct). Otherwise it keeps its own CTE, so the text is evaluated in its
+  own scope: no ambiguous references, and a literal marker reads NULL on the
+  other side's rows. TPC-H `lineitem` (`raw('''1''')`) still inlines.
+
 Not landed, with what blocked them:
 
-- **2, marker-table folding.** Letting a one-column table's key be an FK
+- **2, marker-table folding.** (The two `raw()` blockers below are now fixed;
+  what remains is the ingest design: a one-column marker needs a flag column
+  or a query-backed parent to be queryable at all.) Letting a one-column table's key be an FK
   candidate yields `root datasource Premium (Policy_Amount_Identifier:
   ~Policy_Amount.policy_amount_identifier) grain (...)` with no concept of
   its own, which is worse for an agent than the island model (the `in`

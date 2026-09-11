@@ -1,0 +1,8 @@
+import root.Claim_Coverage as cc;
+
+# Count claims placed, grouped by the policy number reached through
+# Claim_Coverage -> Policy_Coverage_Detail -> Policy.
+select
+  cc.Policy_Coverage_Detail.Policy.policy_number as policy_number,
+  count(cc.claim_identifier) as claim_count
+order by policy_number;

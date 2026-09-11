@@ -1,18 +1,25 @@
 query_id = "17"
-gen_length = 764
+gen_length = 944
 preql_size = 266
 comp_size = 328
 generated_sql = """
 
 WITH 
-wakeful as (
+quizzical as (
 SELECT
     \"lineitem\".\"l_extendedprice\" as \"extended_price\",
-    \"lineitem\".\"l_quantity\" as \"quantity\",
-    \"part_part\".\"p_partkey\" as \"part_id\"
+    \"lineitem\".\"l_partkey\" as \"part_id\",
+    \"lineitem\".\"l_quantity\" as \"quantity\"
+FROM
+    \"memory\".\"lineitem\" as \"lineitem\"),
+wakeful as (
+SELECT
+    \"part_part\".\"p_partkey\" as \"part_id\",
+    \"quizzical\".\"extended_price\" as \"extended_price\",
+    \"quizzical\".\"quantity\" as \"quantity\"
 FROM
     \"memory\".\"part\" as \"part_part\"
-    INNER JOIN \"memory\".\"lineitem\" as \"lineitem\" on \"part_part\".\"p_partkey\" = \"lineitem\".\"l_partkey\"
+    INNER JOIN \"quizzical\" on \"part_part\".\"p_partkey\" = \"quizzical\".\"part_id\"
 WHERE
     \"part_part\".\"p_brand\" = 'Brand#23' and \"part_part\".\"p_container\" = 'MED BOX'
 ),
