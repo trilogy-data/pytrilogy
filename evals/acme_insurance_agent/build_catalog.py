@@ -34,6 +34,72 @@ BLOG_QUESTIONS = [
     "How many claims do we have?",
 ]
 
+# The blog's wording leaves the output shape to the reader (q03 never says "by
+# policy holder"; q08 and q02 never say whether claim-less policies appear).
+# Each rewrite states the grain, the columns in order, and which rows count,
+# exactly as the gold SQL computes them; the verbatim text is kept beside it
+# as ``prompt_original``.
+SPECIFIED = {
+    BLOG_QUESTIONS[0]: (
+        "What is the total premium paid on each policy? Return one row per "
+        "policy with two columns, in this order: the policy number, and the "
+        "total premium amount paid on that policy (the sum of its premium "
+        "amounts)."
+    ),
+    BLOG_QUESTIONS[1]: (
+        "What is the average time to settle a claim, per policy? Return one row "
+        "per policy that has at least one settled claim, with two columns, in "
+        "this order: the policy number, and the average number of days from a "
+        "claim's open date to its close date over that policy's settled "
+        "(closed) claims. Policies with no settled claims are not included."
+    ),
+    BLOG_QUESTIONS[2]: (
+        "How much premium has each policy holder paid in total? Return one row "
+        "per policy holder with two columns, in this order: the policy holder's "
+        "party id, and the total premium amount across all of their policies."
+    ),
+    BLOG_QUESTIONS[3]: (
+        "How many policies has each agent sold? Return one row per agent with "
+        "two columns, in this order: the agent's party id, and the number of "
+        "policies that agent sold."
+    ),
+    BLOG_QUESTIONS[4]: (
+        "What is the loss amount of each claim, where loss amount is the claim's "
+        "loss payment amount plus its loss reserve amount? Return one row per "
+        "claim with two columns, in this order: the company claim number, and "
+        "that loss amount."
+    ),
+    BLOG_QUESTIONS[5]: (
+        "How many policies does each policy holder have? Return one row per "
+        "policy holder with two columns, in this order: the policy holder's "
+        "party id, and their number of policies."
+    ),
+    BLOG_QUESTIONS[6]: (
+        "What is the total premium paid, per policy? Return one row per policy "
+        "with two columns, in this order: the policy number, and the total "
+        "premium amount paid on that policy."
+    ),
+    BLOG_QUESTIONS[7]: (
+        "How many claims have been placed against each policy? Return one row "
+        "per policy that has at least one claim, with two columns, in this "
+        "order: the policy number, and the number of claims placed against it. "
+        "Policies with no claims are not included."
+    ),
+    BLOG_QUESTIONS[8]: (
+        "What is the average policy size, defined as the total premium amount "
+        "across all policies divided by the number of distinct policies that "
+        "carry a premium? Return a single row with one column: that average."
+    ),
+    BLOG_QUESTIONS[9]: (
+        "How many policies do we have in total? Return a single row with one "
+        "column: the number of policies."
+    ),
+    BLOG_QUESTIONS[10]: (
+        "How many claims do we have in total? Return a single row with one "
+        "column: the number of claims."
+    ),
+}
+
 _BLOCK = re.compile(r"\n\s*\n")
 _EXPECTS = re.compile(r"QandA:expects\s+(.*?)\s;", re.DOTALL)
 _PROMPT = re.compile(r'QandA:prompt\s+"(.*?)"\s*[,.]', re.DOTALL)
@@ -95,15 +161,16 @@ def main() -> None:
         # The title prefix encodes the benchmark's own difficulty tag:
         # {H,L}Q = high/low question complexity, {H,L}S = high/low schema hops.
         complexity = entry["title"].split(":")[0] if ":" in entry["title"] else ""
-        prompts.append(
-            {
-                "id": idx,
-                "grade": "medium",
-                "kind": "blog" if idx <= len(BLOG_QUESTIONS) else "extended",
-                "complexity": complexity,
-                "prompt": entry["prompt"],
-            }
-        )
+        record = {
+            "id": idx,
+            "grade": "medium",
+            "kind": "blog" if idx <= len(BLOG_QUESTIONS) else "extended",
+            "complexity": complexity,
+            "prompt": SPECIFIED.get(entry["prompt"], entry["prompt"]),
+        }
+        if entry["prompt"] in SPECIFIED:
+            record["prompt_original"] = entry["prompt"]
+        prompts.append(record)
         (refs / f"query{idx:02d}.sql").write_text(
             to_duckdb(entry["sql"]), encoding="utf-8", newline="\n"
         )

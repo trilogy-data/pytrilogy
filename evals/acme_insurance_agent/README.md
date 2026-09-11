@@ -48,6 +48,17 @@ therefore keeps claim-less policies in a claim-metric-by-policy query (count
 has to pin the population with `where claim.id is not null` (questions 2 and
 8). The model comments say so; the language reference says the same.
 
+## Question wording
+
+The eleven blog questions are asked in a fully specified form: each states
+the grain, the columns in order, and which rows count, exactly as the gold
+SQL computes them (`build_catalog.py`'s `SPECIFIED` table). The verbatim
+blog text stays beside each entry as `prompt_original`. The first run used
+the verbatim wording, and its failures were almost all wording: q03 never
+says "by policy holder" and q02/q08 never say whether claim-less policies
+appear, so agents on every unmodeled leg guessed the shape. The 32 extended
+questions keep their original wording.
+
 ## Run
 
 ```bash
