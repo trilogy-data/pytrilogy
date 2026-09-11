@@ -14,9 +14,9 @@ properties id (
     amount_type_code string?, # unused in this dataset
 );
 
-auto total_premium <- sum(amount); # total premium paid
+auto total_premium <- sum(amount); # total premium paid; "total premiums paid" questions select this (by policy.policy_number, policy.policy_holder_id, ...)
 auto premium_count <- count(id); # number of premium records
-auto average_policy_size <- total_premium / count_distinct(policy.id); # total premium divided by the number of policies carrying premiums
+auto average_policy_size <- total_premium / count_distinct(policy.id); # total premium divided by the number of policies carrying premiums; "average policy size" questions select this
 
 root datasource premium (
     Policy_Amount_Identifier: id,

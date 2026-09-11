@@ -1,0 +1,1 @@
+SELECT COUNT(*) AS policy_count FROM Policy;

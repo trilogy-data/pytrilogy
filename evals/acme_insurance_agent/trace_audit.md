@@ -129,3 +129,54 @@ alias typo (sql_schema q03), q09 over-projection on ingest.
 3. `run_query` multi-statement and the row-cap marker/count (10, 11).
 4. Subset-join elision warning and the clause-order hint (3, 4).
 5. Scale sentence and key convention in the task prompt (15, 16); q03 wording (17).
+
+## Fix pass (commit "Agent tooling fixes from the ACME trace audit")
+
+Landed: 1 (`_identifier` FK suffix; ingest now links 12 of the 13 ACME tables),
+4 (Syntax [231]), 5 (`explore --ns` warning), 7 (`\r` strip), 8 and 9
+(disabled commands named in the prompt, the `cli` drilldown, and the
+refusal), 10 (`run_query` runs every statement), 11 (`<hidden N rows>` with a
+note; the scorer counts it).
+
+Not landed, with what blocked them:
+
+- **2, marker-table folding.** Letting a one-column table's key be an FK
+  candidate yields `root datasource Premium (Policy_Amount_Identifier:
+  ~Policy_Amount.policy_amount_identifier) grain (...)` with no concept of
+  its own, which is worse for an agent than the island model (the `in`
+  idiom stops working). Giving it a flag column exposed two `raw()`
+  limitations: a `raw('''true''')` binding on a partial source is hoisted
+  as a constant, so `select pa.id, is_premium` reports `True` for every
+  parent row without touching `Premium`; and a `raw('''col IS NOT NULL''')`
+  binding renders unqualified in the consuming query, so it is ambiguous
+  under any join. The sound shape is the curated model's: a query-backed
+  parent datasource that LEFT JOINs the markers into an `amount_kind` /
+  `is_<marker>` column. That is an ingest design change, not a patch.
+- **3, subset-join elision.** Exact repro on the ingest models
+  (`Premium` = key-only island, `Policy_Amount` = the parent):
+
+  ```
+  select sum(pa.policy_amount) as total
+  subset join prem.policy_amount_identifier = pa.policy_amount_identifier;
+  -- SELECT sum("pa_Policy_Amount"."Policy_Amount") FROM "Policy_Amount"   -> 5,698,000
+
+  select prem.policy_amount_identifier as prem_id, pa.policy_amount_identifier as pa_id
+  subset join prem.policy_amount_identifier = pa.policy_amount_identifier;
+  -- both columns render from "Policy_Amount"; 12 rows, ids 1,3,5,... are not in Premium
+
+  where prem.policy_amount_identifier is not null
+  select sum(pa.policy_amount) as total
+  subset join prem.policy_amount_identifier = pa.policy_amount_identifier;
+  -- INNER JOIN on a presence CTE                                          -> 98,000
+  ```
+
+  Consistent with "joins never drop a row" and "the projected key is the
+  coalesced group axis", but the second query is the one an agent writes to
+  check membership, and it shows the narrow side's key carrying values the
+  narrow side does not have.
+- **6**, explore's property/metric label for pinned-aggregate arithmetic:
+  the payload already prints the full derivation with its grain, so left
+  as is.
+- **13**, the two candidate filenames in the SQL toolset: harmless, left.
+- **15, 16, 17** are prompt/question wording; unchanged so the run stays
+  comparable to the blog.

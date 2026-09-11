@@ -5,7 +5,8 @@
 #
 # Not every policy has a claim. A query that groups a claim metric by policy.*
 # keeps claim-less policies (count 0 / NULL averages); add
-# `where claim.id is not null` to report only policies that have claims.
+# `where claim.id is not null` to report only policies that have claims, or
+# `where claim.close_date is not null` to report only settled claims.
 
 import policy as policy; # the policy the claim was filed against
 import catastrophe as catastrophe; # the catastrophe the claim is attributed to
@@ -24,8 +25,8 @@ properties id (
 
 property id.days_to_settle <- date_diff(open_date, close_date, day); # days from open to close; null while the claim is open
 
-auto claim_count <- count(id); # number of claims
-auto average_days_to_settle <- avg(days_to_settle); # average time to settle a claim, in days, over settled claims
+auto claim_count <- count(id); # number of claims; "how many claims" questions select this
+auto average_days_to_settle <- avg(days_to_settle); # average time to settle a claim, in days, over settled claims; "average time to settle" questions select this
 
 root datasource claim (
     Claim_Identifier: id,

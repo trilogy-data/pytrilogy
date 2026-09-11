@@ -1,0 +1,12 @@
+# Total loss amount per claim number = loss payment amount + loss reserve amount.
+# Loss_Payment and Loss_Reserve are subtype sets of Claim_Amount
+# (which claim_amount_identifier rows are loss payments / loss reserves).
+import root.Claim_Amount as ca;
+import root.Loss_Payment as lp;
+import root.Loss_Reserve as lr;
+
+select
+  ca.Claim.company_claim_number as claim_number,
+  sum(ca.claim_amount) as total_loss_amount
+where ca.claim_amount_identifier in lp.claim_amount_identifier
+   or ca.claim_amount_identifier in lr.claim_amount_identifier;

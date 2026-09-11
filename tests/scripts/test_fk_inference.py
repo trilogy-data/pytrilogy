@@ -261,8 +261,10 @@ class TestAlternateKeyTargets:
         exec.execute_raw_sql(
             "CREATE TABLE people(id INTEGER, playerID VARCHAR, birthYear INTEGER)"
         )
+        # Ten people: an alternate key is only trusted once uniqueness holds
+        # over MIN_ALTERNATE_KEY_DISTINCT rows.
         exec.execute_raw_sql(
-            "INSERT INTO people VALUES (1,'p1',1980),(2,'p2',1985),(3,'p3',1990)"
+            "INSERT INTO people SELECT i, 'p' || i, 1979 + i FROM range(1, 11) t(i)"
         )
         exec.execute_raw_sql(
             "CREATE TABLE batting(playerID VARCHAR, yearID INTEGER, HR INTEGER)"
@@ -295,10 +297,32 @@ class TestAlternateKeyTargets:
         # p3 never batted -> reverse coverage short -> partial.
         assert edge.partial is True
 
+    def test_full_level_rejects_alternate_on_tiny_table(self):
+        # ACME: Claim has 2 rows, so its insurable_object_identifier (a shared
+        # FK to an absent entity) is trivially unique; that is no identity.
+        exec = self._lahman_db()
+        exec.execute_raw_sql("DELETE FROM people WHERE id > 2")
+        people = _info(
+            "people",
+            ["id", "playerID", "birthYear"],
+            ["id"],
+            relation="people",
+            alternate_keys=["playerID"],
+        )
+        batting = _info(
+            "batting",
+            ["playerID", "yearID", "HR"],
+            ["playerID", "yearID"],
+            relation="batting",
+        )
+        inferred = infer_foreign_keys([batting, people], exec, IntrospectionLevel.FULL)
+        assert inferred == []
+        assert people.unique_verdicts["playerID"] is False
+
     def test_full_level_rejects_non_unique_alternate(self):
         exec = self._lahman_db()
         # Duplicate playerID in people: sample said unique, full table disagrees.
-        exec.execute_raw_sql("INSERT INTO people VALUES (4,'p1',1979)")
+        exec.execute_raw_sql("INSERT INTO people VALUES (11,'p1',1979)")
         people = _info(
             "people",
             ["id", "playerID", "birthYear"],
@@ -1323,8 +1347,10 @@ def test_ingest_infers_fk_onto_alternate_key_csv():
     with tempfile.TemporaryDirectory() as tmpdir:
         tmppath = Path(tmpdir)
         people_csv = tmppath / "people.csv"
+        # Ten people so the alternate key clears MIN_ALTERNATE_KEY_DISTINCT.
         people_csv.write_text(
-            "id,player_id,birth_year\n1,p1,1980\n2,p2,1985\n3,p3,1990\n",
+            "id,player_id,birth_year\n"
+            + "".join(f"{i},p{i},{1979 + i}\n" for i in range(1, 11)),
             newline="\n",
         )
         batting_csv = tmppath / "batting.csv"

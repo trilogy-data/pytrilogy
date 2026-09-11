@@ -49,6 +49,11 @@ SUBSET_OVERLAP_THRESHOLD = 0.95
 COMPLETE_REVERSE_THRESHOLD = 0.999
 # Bound on distinct from-values pulled per containment check.
 DEFAULT_SNIFF_SAMPLE = 50_000
+# An alternate (non-grain) column is trusted as an identity only when its
+# uniqueness is proved over at least this many rows. A 2-row table makes every
+# column unique, and a shared FK to an absent entity (ACME's
+# insurable_object_identifier on Claim) then reads as Claim's own key.
+MIN_ALTERNATE_KEY_DISTINCT = 10
 # Shortest name stem considered meaningful for a fuzzy entity match.
 _MIN_STEM_LEN = 3
 
@@ -532,12 +537,14 @@ def _alternate_key_is_unique(
         return cached
     quoted = executor.generator.safe_quote(raw_column)
     sql = (
-        f"SELECT MAX(_n) FROM "
+        f"SELECT MAX(_n), COUNT(*) FROM "
         f"(SELECT COUNT(*) AS _n FROM {target.sql_relation} GROUP BY {quoted}) _g"
     )
     try:
         rows = executor.execute_raw_sql(sql).fetchall()
-        verdict = bool(rows) and rows[0][0] == 1
+        verdict = (
+            bool(rows) and rows[0][0] == 1 and rows[0][1] >= MIN_ALTERNATE_KEY_DISTINCT
+        )
     except Exception as e:
         print_warning(
             f"Uniqueness check skipped for alternate key "
