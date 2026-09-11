@@ -22,6 +22,7 @@ from trilogy.core.models.build import (
     get_concept_row_arguments,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.datasource import Address
 from trilogy.core.models.execute import QueryDatasource, UnnestJoin
 from trilogy.core.processing.constants import ROOT_DERIVATIONS
 from trilogy.core.processing.grain_utility import (
@@ -629,6 +630,21 @@ def raise_if_disconnected_for(
         )
 
 
+def _physical_tables_by_concept(
+    environment: BuildEnvironment,
+) -> dict[str, frozenset[str]]:
+    """Concept address -> the physical locations of the datasources binding it.
+    Two imports of one model under different aliases bind the same table."""
+    out: dict[str, set[str]] = {}
+    for ds in environment.datasources.values():
+        location = (
+            ds.address.location if isinstance(ds.address, Address) else ds.address
+        )
+        for column in ds.columns:
+            out.setdefault(column.concept.address, set()).add(location)
+    return {k: frozenset(v) for k, v in out.items()}
+
+
 def connected_equivalent_suggestions(
     environment: BuildEnvironment | None,
     subgraphs: list[list[BuildConcept]],
@@ -664,6 +680,7 @@ def connected_equivalent_suggestions(
     if not target_comps:
         return []
 
+    tables = _physical_tables_by_concept(environment)
     suggestions: list[tuple[str, str]] = []
     for group in subgraphs:
         if group is target:
@@ -673,12 +690,22 @@ def connected_equivalent_suggestions(
             if VIRTUAL_CONCEPT_PREFIX in stranded:
                 continue
             suffix = "." + stranded.removeprefix(f"{DEFAULT_NAMESPACE}.")
+            stranded_tables = tables.get(stranded, frozenset())
             best: str | None = None
             for candidate in environment.concepts.values():
                 addr = candidate.address
                 if addr == stranded or addr in excluded_addresses:
                     continue
-                if VIRTUAL_CONCEPT_PREFIX in addr or not addr.endswith(suffix):
+                if VIRTUAL_CONCEPT_PREFIX in addr:
+                    continue
+                # The twin is the same path one namespace deeper (same alias
+                # both times), or - when the aliases differ (`import policy as
+                # p` vs the fact's nested `Policy`) - the same column of the
+                # same physical table.
+                if not addr.endswith(suffix) and not (
+                    candidate.name == concept.name
+                    and stranded_tables & tables.get(addr, frozenset())
+                ):
                     continue
                 if component_of(candidate) not in target_comps:
                     continue

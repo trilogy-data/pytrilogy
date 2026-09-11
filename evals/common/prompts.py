@@ -39,7 +39,7 @@ your final action.
 Every question in this set returns at least one row at this scale factor. A
 zero-row result means the query has an issue. Do NOT, however, add/drop/loosen
 filters just to force rows; find and fix the actual mistake.
-
+{dataset_note}
 Exact response column names do not matter, but the position and values do.
 
 Business question {opaque_id}:
@@ -65,7 +65,7 @@ your final action.
 Every question in this set returns at least one row at this scale factor. A
 zero-row result means the query has an issue. Do NOT, however, add/drop/loosen
 filters just to force rows; find and fix the actual mistake.
-
+{dataset_note}
 Exact response column names do not matter, but the position and values do.
 
 Business question {opaque_id}:
@@ -99,7 +99,7 @@ require merging multiple facts.
 Every question in this set returns at least one row at this scale factor. A
 zero-row result means the query has an issue. Do NOT, however, add/drop/loosen
 filters just to force rows; find and fix the actual mistake.
-
+{dataset_note}
 Exact response column names do not matter, but the position and values do.
 
 Business questions
@@ -231,7 +231,12 @@ def build_single_query_task(
         params_block=params_block,
         validate_params=validate_params,
         model_dir=model_dir,
+        dataset_note=_dataset_note(spec),
     )
+
+
+def _dataset_note(spec: BenchmarkSpec) -> str:
+    return f"\n{spec.dataset_note}\n" if spec.dataset_note else ""
 
 
 def _render_sql_params_block(params: dict) -> str:
@@ -254,6 +259,7 @@ def build_single_query_task_sql(spec: BenchmarkSpec, entry: dict) -> str:
         filename=candidate_filename(spec, entry["id"], ".sql"),
         prompt=entry["prompt"],
         params_block=_render_sql_params_block(entry.get("params") or {}),
+        dataset_note=_dataset_note(spec),
     )
 
 
@@ -263,4 +269,6 @@ def build_task(spec: BenchmarkSpec, num_queries: int) -> str:
         f"Question {p['id']} -> write `query{p['id']:02d}.preql`\n{p['prompt']}"
         for p in prompts
     )
-    return _TASK_TEMPLATE.format(n=len(prompts), questions=questions)
+    return _TASK_TEMPLATE.format(
+        n=len(prompts), questions=questions, dataset_note=_dataset_note(spec)
+    )

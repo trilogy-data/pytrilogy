@@ -1,39 +1,31 @@
-# Trilogy failure analysis — 20260911-040324
+# Trilogy failure analysis — 20260911-132452
 
-- Run `20260911-040324_enriched_deepseek_deepseek-v4-flash` | `deepseek/deepseek-v4-flash` | sf=1
-- `trilogy` calls: 84 | failed: 3 (4%)
+- Run `20260911-132451_enriched_deepseek_deepseek-v4-flash` | `deepseek/deepseek-v4-flash` | sf=1
+- `trilogy` calls: 68 | failed: 2 (3%)
 
 ## Categories
 
 | Category | Count | Share |
 |---|---:|---:|
-| `undefined-concept` | 2 | 67% |
-| `syntax-parse` | 1 | 33% |
+| `undefined-concept` | 1 | 50% |
+| `join-resolution` | 1 | 50% |
 
 ## Detail
 
 ### `undefined-concept`
 
-- `trilogy file write probe2.preql --run-and-delete`
+- `trilogy file write probe_claims.preql --run-and-delete`
 
   ```text
-  Syntax error in probe2.preql: Undefined concept: premium.policy_number (line 8, in SELECT). Suggestions: ['premium.policy.policy_number', 'premium.coverage.policy.policy_number', 'premium.policy.id', 'policy.policy_number', 'claim.policy.policy_number', 'coverage.policy.policy_number']
-  ```
-- `trilogy file write probe_cov.preql --run-and-delete`
-
-  ```text
-  Syntax error in probe_cov.preql: Undefined concept: coverage.policy_number (line 3, in SELECT). Suggestions: ['coverage.policy.policy_number', 'coverage.policy.id', 'coverage.policy.agent_id']
+  Syntax error in probe_claims.preql: 2 undefined concept references; fix all before re-running:
+    - claim.claim_count (line 2, col 8, in SELECT); did you mean: claim.claim_number, c.claim_count?
+    - claim.claim_number (line 2, col 27, in SELECT); did you mean: claim.claim_count, c.claim_number?
   ```
 
-### `syntax-parse`
+### `join-resolution`
 
-- `trilogy file write probe_policy.preql --run-and-delete`
+- `trilogy file write probe_claims.preql --run-and-delete`
 
   ```text
-  refused to write 'probe_policy.preql': not syntactically valid Trilogy.
-
-  Parse error:
-  Syntax [202]: Missing closing semicolon? Statements must be terminated with a semicolon `;`.
-  Location:
-     policy.policy_count as pc  ???
+  Resolution error in probe_claims.preql: Discovery error: cannot merge all concepts into one connected query (statement at line 3). The requested concepts split into 2 disconnected subgraphs: {c.claim_number, c.id}; {ca.loss_amount}. Are you missing a join or merge statement to relate them?
   ```

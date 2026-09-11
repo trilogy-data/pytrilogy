@@ -201,3 +201,71 @@ Not landed, with what blocked them:
 - **13**, the two candidate filenames in the SQL toolset: harmless, left.
 - **15, 16, 17** are prompt/question wording; unchanged so the run stays
   comparable to the blog.
+
+## Token audit (run `20260911-040324` -> `20260911-132451`)
+
+Why `ingest` cost 1.31M tokens and `enriched` 627k for the same 11/11 the
+SQL legs got at ~330k. Per-iteration prompt size is the whole story: the
+SQL agent's context is ~4k tokens per call, the Trilogy agent's ~8k, and
+the Trilogy legs take more calls.
+
+Where the enriched leg's 608k prompt tokens went:
+
+- **Post-answer verification, 31 of 80 iterations.** The answer ran clean
+  after ~2 real iterations (the curated metrics make it a one-liner), then
+  the agent spent 2-5 more per question distrusting the result: "2 policies
+  seems small", "only one row returned... let me sanity-check the data
+  volume". The ingest and SQL agents never do this because they have already
+  seen the row counts while exploring. Cause: the shared task text says
+  "at this scale factor", which promises volume the hand-built sample does
+  not have. Fix: `BenchmarkSpec.dataset_note`, rendered into every task on
+  every leg; ACME's says the sample is tiny and a clean, correctly shaped
+  run is done. Result: enriched 627k -> 425k (post-answer iterations
+  31 -> 19, of which 11 are the mandatory return), ingest 1,310k -> 884k.
+- **The language reference, re-read on every question.** `trilogy
+  agent-info` (1.4k chars) then `agent-info query` (16.8k chars) sit in the
+  context for every later iteration: about 38% of enriched's prompt tokens
+  and 33% of ingest's after the fix above, i.e. the largest remaining line.
+  Its last 3k chars (the "Additional syntax examples" list) are a
+  byte-for-byte duplicate of `trilogy agent-info syntax`, which the
+  directory already points at. Not changed here: the listing is the
+  designed always-loaded cost of the drilldown system and the other
+  benchmarks were tuned with it; dropping it from `query` is a ~17% cut of
+  the doc that needs a TPC-DS re-run to sign off. The `enriched_docs`
+  category (reference inlined in the task) measures the query-authoring
+  cost with the read already paid.
+- **`file list` descriptions, 2.7k chars.** The curated model's leading
+  comments, verbatim. Worth it: the enriched agent explored 19 files across
+  11 questions where the ingest agent explored 95.
+
+Where the ingest leg's extra went, beyond the two items above:
+
+- **`Premium` is a key-only marker table** (`policy_amount_identifier`
+  enum only). q07's agent guessed five column names against it, then
+  discovered empirically that its key domain is the `amount_type_code =
+  'Year'` rows of `Policy_Amount`; q01/q03 did the same dance. The five
+  largest reasoning bursts in the leg (5.3k, 3.3k, 2.5k... completion
+  tokens on ~200 visible chars) are all this. Same blocker as item 2 above:
+  ingest would have to fold the marker into its parent or say in the file
+  header what the key is a subset of.
+- **Separate-import errors with no hint.** `import root.Policy_Amount as
+  pa; import root.Policy as p; select pa.policy_amount, p.policy_number`
+  failed five times in q01 with the generic "missing a join or merge"
+  text. The "did you mean `pa.Policy.policy_number`" path existed but only
+  matched when the second import reused the nested alias
+  (`import Policy as Policy`); `as p` never matched. Fixed in
+  `connected_equivalent_suggestions`: a twin is also the same column of the
+  same physical table (`_physical_tables_by_concept`). Errors in the leg
+  16 -> 3 on the re-run (the remaining disconnected one,
+  `Agreement_Party_Role` x `Policy`, has no twin: inference does not link
+  `agreement_identifier` to `policy_identifier`, so no hint is possible).
+- **Explore sweeps.** With every `file list` description reading
+  "Datasource ingested from X", the q07 agent explored all 13 files with
+  `--expand-imports`, then five of them again with `--reshow`. A header
+  naming the grain and the FK links (known at ingest time once inference
+  has run) would let it pick files from the listing. Not done here.
+
+Smaller, not taken: the directory hop (`agent-info` then `agent-info
+query`) is one iteration per question, ~2.5k prompt tokens each; the task
+could name `trilogy agent-info query` directly, but the funnel deliberately
+measures discovery through the directory.

@@ -1,0 +1,6 @@
+import raw.premium as p;
+
+select
+    p.policy.policy_holder_id,
+    p.total_premium
+;

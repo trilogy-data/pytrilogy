@@ -1,0 +1,1 @@
+SELECT COUNT(*) AS claim_count FROM Claim

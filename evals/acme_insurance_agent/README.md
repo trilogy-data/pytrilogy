@@ -77,23 +77,27 @@ JSONL traces are not.
 
 ## Results
 
-Two passes over the eleven blog questions with `deepseek/deepseek-v4-flash`
+Three passes over the eleven blog questions with `deepseek/deepseek-v4-flash`
 (one agent per question, fresh context each; `charts/` has the per-question
 matrix of the latest run). The first used the verbatim blog wording
 (`20260911-001859`); the second the fully specified wording
-(`20260911-040324`), after the tooling fixes in `trace_audit.md`:
+(`20260911-040324`), after the tooling fixes in `trace_audit.md`; the third
+(`20260911-132451`) adds the spec's `dataset_note` to every task on every
+leg, telling the agent the sample is tiny so a small count is not a symptom:
 
-| Leg | Post's condition | Verbatim wording | Specified wording |
-|---|---|---|---|
-| `sql_bare` (db only) | text-to-SQL, no DDL | 10/11, 697k tokens | 11/11, 338k |
-| `sql_schema` (db + DDL) | text-to-SQL | 10/11, 382k | 11/11, 318k |
-| `ingest` (auto Trilogy model) | — | 9/11, 1,574k | 11/11, 1,310k |
-| `enriched` (curated Trilogy model) | semantic layer | 11/11, 649k | 11/11, 627k |
+| Leg | Post's condition | Verbatim wording | Specified wording | + dataset note |
+|---|---|---|---|---|
+| `sql_bare` (db only) | text-to-SQL, no DDL | 10/11, 697k tokens | 11/11, 338k | 9/11, 292k |
+| `sql_schema` (db + DDL) | text-to-SQL | 10/11, 382k | 11/11, 318k | 11/11, 278k |
+| `ingest` (auto Trilogy model) | — | 9/11, 1,574k | 11/11, 1,310k | 11/11, 884k |
+| `enriched` (curated Trilogy model) | semantic layer | 11/11, 649k | 11/11, 627k | 11/11, 425k |
 
 With the output shape stated, every leg answers every question; what
 separates them is cost. The curated model runs at about half the auto-ingested
 model's tokens, and the SQL legs are cheapest of all on a 13-table schema this
-small.
+small. The two `sql_bare` misses on the third pass (q02, q08) are the post's
+failure mode verbatim: the agent joined `Claim` to `Policy_Coverage_Detail`
+on `Insurable_Object_Identifier` instead of walking through `Claim_Coverage`.
 
 For comparison the post reports, on the same questions, text-to-SQL at
 84-90% and the modeled semantic layer at 98-100% across twenty repetitions.
@@ -113,7 +117,9 @@ argument in miniature:
   its numerator and denominator alongside it; the scorer compares whole
   rows.
 
-The ingest leg's token bill is ~4x the enriched leg's: 36 of its 43 failed
-tool calls were attempts to read raw model files or list database tables
-(disabled in that leg), i.e. the agent spent its budget rediscovering
-structure the curated model states up front.
+The ingest leg's token bill is ~2x the enriched leg's, and the enriched leg
+is ~1.5x the SQL legs. `trace_audit.md` ("Token audit") breaks both down:
+the language reference the agent re-reads on every question is now the
+largest single line (about a third of each Trilogy leg's prompt tokens), and
+on `ingest` the rest is discovery over thirteen one-table files, three of
+which are key-only marker tables the agent has to probe empirically.

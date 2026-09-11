@@ -1,0 +1,16 @@
+# Total premium paid per policy holder.
+# Premium amounts live in Policy_Amount; the Premium model marks which
+# policy_amount rows are premium (annual) amounts. Policy holders are the
+# parties with role 'PH' in Agreement_Party_Role, linked to a policy through
+# agreement_identifier = policy_identifier.
+import root.Agreement_Party_Role as apr;
+import root.Policy_Amount as pa;
+import root.Premium as pm;
+
+select
+  apr.party_identifier as party_id,
+  sum(pa.policy_amount) as total_premium
+subset join apr.agreement_identifier = pa.Policy.policy_identifier
+where apr.party_role_code = 'PH'
+  and pa.policy_amount_identifier in pm.policy_amount_identifier
+order by party_id;

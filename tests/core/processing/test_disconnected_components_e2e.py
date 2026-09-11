@@ -236,6 +236,37 @@ def test_message_suggests_connected_nested_equivalent(tmp_path):
     assert "separately-imported copies" in message
 
 
+def test_message_suggests_nested_equivalent_under_a_different_alias(tmp_path):
+    """The same mistake with the second import under its OWN alias (`import
+    dates as d` beside the fact's nested `date`): the stranded path no longer
+    ends with the nested one, so the twin is found by column-of-the-same-table."""
+    (tmp_path / "dates.preql").write_text(
+        "key date_id int;\n"
+        "property date_id.year int;\n"
+        "datasource dates (id: date_id, yr: year) grain (date_id)\n"
+        "query '''select 1 id, 2001 yr''';\n"
+    )
+    (tmp_path / "sales.preql").write_text(
+        "import dates as date;\n"
+        "key sale_id int;\n"
+        "property sale_id.amt float;\n"
+        "datasource sales (id: sale_id, amt: amt, d: date.date_id)\n"
+        "grain (sale_id)\n"
+        "query '''select 1 id, 9.0 amt, 1 d''';\n"
+    )
+    eng = Dialects.DUCK_DB.default_executor(working_path=tmp_path)
+    sql = (
+        "import sales as all_sales;\n"
+        "import dates as d;\n"
+        "select d.year, all_sales.amt;\n"
+    )
+    with pytest.raises(DisconnectedConceptsException) as exc:
+        eng.generate_sql(sql)
+    message = str(exc.value)
+    assert "`d.year` is disconnected, did you mean `all_sales.date.year`" in message
+    assert "join or merge" not in message
+
+
 def test_subgraphs_attribute_is_address_partition():
     eng = Dialects.DUCK_DB.default_executor()
     with pytest.raises(DisconnectedConceptsException) as exc:

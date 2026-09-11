@@ -1,0 +1,5 @@
+import raw.claim as claim;
+
+where claim.id is not null
+select claim.policy.policy_number, count(claim.id) as claim_count
+order by claim.policy.policy_number asc;
