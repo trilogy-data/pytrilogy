@@ -1,0 +1,8 @@
+# How many policies have agents sold, by agent id?
+# Agreement_Party_Role links each agreement (policy) to its parties;
+# party_role_code 'AG' marks the selling agent, 'PH' the policyholder.
+import root.Agreement_Party_Role as apr;
+
+where apr.party_role_code = 'AG'
+select apr.party_identifier as agent_id, count_distinct(apr.agreement_identifier) as policy_count
+order by agent_id;

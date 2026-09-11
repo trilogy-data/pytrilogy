@@ -1,0 +1,4 @@
+import premium as premium;
+
+select
+    premium.average_policy_size;

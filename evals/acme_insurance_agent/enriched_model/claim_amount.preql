@@ -1,0 +1,53 @@
+# One row per amount booked on a claim: a payment or a reserve, for loss or
+# for expense. The kind comes from four marker tables (Loss_Payment,
+# Loss_Reserve, Expense_Payment, Expense_Reserve) and is flattened into
+# amount_kind. Per-claim totals by kind and the claim's total loss are
+# derived below; sum them by claim.policy.policy_number, claim.policy.agent_id
+# or claim.catastrophe.name for coarser totals.
+
+import claim as claim; # the claim the amount was booked on
+
+key id int; # claim amount identifier
+properties id (
+    amount float, # the amount booked
+    amount_kind enum<string>['loss_payment', 'loss_reserve', 'expense_payment', 'expense_reserve', 'other'], # what the amount is: a loss or expense, paid or reserved
+    amount_type_code string?, # unused in this dataset
+    event_date date?, # unused in this dataset
+);
+
+auto loss_payment_amount <- sum(amount ? amount_kind = 'loss_payment') by claim.id; # loss paid out on the claim
+auto loss_reserve_amount <- sum(amount ? amount_kind = 'loss_reserve') by claim.id; # loss reserved on the claim
+auto expense_payment_amount <- sum(amount ? amount_kind = 'expense_payment') by claim.id; # expense paid out on the claim
+auto expense_reserve_amount <- sum(amount ? amount_kind = 'expense_reserve') by claim.id; # expense reserved on the claim
+auto loss_amount <- loss_payment_amount + loss_reserve_amount; # loss on the claim: loss payment + loss reserve
+auto total_loss <- loss_payment_amount + loss_reserve_amount + expense_payment_amount + expense_reserve_amount; # total loss on the claim: loss payment + loss reserve + expense payment + expense reserve
+
+root datasource claim_amount (
+    Claim_Amount_Identifier: id,
+    Claim_Identifier: claim.id,
+    Amount_Type_Code: ?amount_type_code,
+    Event_Date: ?event_date,
+    Claim_Amount: amount,
+    amount_kind,
+)
+grain (id)
+query '''
+select
+    ca.Claim_Amount_Identifier,
+    ca.Claim_Identifier,
+    ca.Amount_Type_Code,
+    ca.Event_Date,
+    ca.Claim_Amount,
+    case
+        when lp.Claim_Amount_Identifier is not null then 'loss_payment'
+        when lr.Claim_Amount_Identifier is not null then 'loss_reserve'
+        when ep.Claim_Amount_Identifier is not null then 'expense_payment'
+        when er.Claim_Amount_Identifier is not null then 'expense_reserve'
+        else 'other'
+    end as amount_kind
+from Claim_Amount ca
+left join Loss_Payment lp on lp.Claim_Amount_Identifier = ca.Claim_Amount_Identifier
+left join Loss_Reserve lr on lr.Claim_Amount_Identifier = ca.Claim_Amount_Identifier
+left join Expense_Payment ep on ep.Claim_Amount_Identifier = ca.Claim_Amount_Identifier
+left join Expense_Reserve er on er.Claim_Amount_Identifier = ca.Claim_Amount_Identifier
+''';

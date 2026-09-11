@@ -1,0 +1,6 @@
+import raw.claim_amount as ca;
+
+select
+    ca.claim.claim_number,
+    sum(ca.loss_amount) as total_loss_amount
+order by ca.claim.claim_number asc;

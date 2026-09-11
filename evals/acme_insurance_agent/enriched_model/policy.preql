@@ -1,0 +1,50 @@
+# One row per insurance policy (a policy is an agreement). The parties on the
+# agreement are flattened onto the policy: the policy holder (role 'PH') and
+# the agent who sold it (role 'AG'), each identified by party id. Premiums
+# live in premium; claims reach the policy through claim.
+
+key id int; # policy identifier (also the agreement identifier)
+properties id (
+    policy_number string, # customer-facing policy number; "by policy number" questions group on this
+    effective_date date, # policy start
+    expiration_date date, # policy end
+    status_code string?, # unused in this dataset
+    policy_holder_id int, # party id of the policy holder ('PH' role on the agreement)
+    agent_id int, # party id of the agent who sold the policy ('AG' role on the agreement)
+);
+
+auto policy_count <- count(id); # number of policies; group by policy_holder_id or agent_id for per-party counts
+
+root datasource policy (
+    Policy_Identifier: id,
+    Policy_Number: policy_number,
+    Effective_Date: effective_date,
+    Expiration_Date: expiration_date,
+    Status_Code: ?status_code,
+)
+grain (id)
+address Policy;
+
+# Agreement_Party_Role holds one row per (agreement, party, role); each policy
+# here has exactly one holder and one agent, so the roles pivot to properties.
+root datasource policy_holder (
+    Agreement_Identifier: id,
+    Party_Identifier: policy_holder_id,
+)
+grain (id)
+query '''
+select Agreement_Identifier, Party_Identifier
+from Agreement_Party_Role
+where Party_Role_Code = 'PH'
+''';
+
+root datasource policy_agent (
+    Agreement_Identifier: id,
+    Party_Identifier: agent_id,
+)
+grain (id)
+query '''
+select Agreement_Identifier, Party_Identifier
+from Agreement_Party_Role
+where Party_Role_Code = 'AG'
+''';

@@ -1,0 +1,27 @@
+# Datasource ingested from Policy_Coverage_Detail
+key policy_coverage_detail_identifier enum<bigint>[1, 2, 3, 4, 5, 6];
+
+properties policy_coverage_detail_identifier (
+    effective_date date,
+    coverage_identifier string?,
+    insurable_object_identifier enum<bigint>[1, 2],
+    policy_identifier enum<bigint>[1, 2],
+    coverage_part_code string?,
+    coverage_description string?,
+    expiration_date date,
+    coverage_inclusion_exclusion_code string?,
+);
+
+root datasource Policy_Coverage_Detail (
+    Effective_Date: effective_date,
+    Policy_Coverage_Detail_Identifier: policy_coverage_detail_identifier,
+    Coverage_Identifier: ?coverage_identifier,
+    Insurable_Object_Identifier: insurable_object_identifier,
+    Policy_Identifier: policy_identifier,
+    Coverage_Part_Code: ?coverage_part_code,
+    Coverage_Description: ?coverage_description,
+    Expiration_Date: expiration_date,
+    Coverage_Inclusion_Exclusion_Code: ?coverage_inclusion_exclusion_code,
+)
+grain (policy_coverage_detail_identifier)
+address Policy_Coverage_Detail;

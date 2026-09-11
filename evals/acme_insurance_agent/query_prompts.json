@@ -1,0 +1,303 @@
+[
+  {
+    "id": 1,
+    "grade": "medium",
+    "kind": "blog",
+    "complexity": "HQLS",
+    "prompt": "What is the total amount of premiums that a policy holder has paid by policy number?"
+  },
+  {
+    "id": 2,
+    "grade": "medium",
+    "kind": "blog",
+    "complexity": "HQLS",
+    "prompt": "What is the average time to settle a claim by policy number?"
+  },
+  {
+    "id": 3,
+    "grade": "medium",
+    "kind": "blog",
+    "complexity": "HQLS",
+    "prompt": "What is the total amount of premiums that a policy holder has paid?"
+  },
+  {
+    "id": 4,
+    "grade": "medium",
+    "kind": "blog",
+    "complexity": "HQLS",
+    "prompt": "How many policies have agents sold by agent id?"
+  },
+  {
+    "id": 5,
+    "grade": "medium",
+    "kind": "blog",
+    "complexity": "HQLS",
+    "prompt": "What is the total loss amounts, which is the sum of loss payment, loss reserve amount by claim number?"
+  },
+  {
+    "id": 6,
+    "grade": "medium",
+    "kind": "blog",
+    "complexity": "HQLS",
+    "prompt": "How many policies does each policy holder have by policy holder id?"
+  },
+  {
+    "id": 7,
+    "grade": "medium",
+    "kind": "blog",
+    "complexity": "HQLS",
+    "prompt": "What is the total amount of premiums paid by policy number?"
+  },
+  {
+    "id": 8,
+    "grade": "medium",
+    "kind": "blog",
+    "complexity": "HQLS",
+    "prompt": "How many claims have been placed by policy number?"
+  },
+  {
+    "id": 9,
+    "grade": "medium",
+    "kind": "blog",
+    "complexity": "HQLS",
+    "prompt": "What is the average policy size which is the the total amount of premium divided by the number of policies?"
+  },
+  {
+    "id": 10,
+    "grade": "medium",
+    "kind": "blog",
+    "complexity": "HQLS",
+    "prompt": "How many policies do we have?"
+  },
+  {
+    "id": 11,
+    "grade": "medium",
+    "kind": "blog",
+    "complexity": "HQLS",
+    "prompt": "How many claims do we have?"
+  },
+  {
+    "id": 12,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "HQHS",
+    "prompt": "What is the average loss of each policy by policy number and number of claims where loss is the sum of loss payment, loss reserve, expense payment, expense reserve amounts?"
+  },
+  {
+    "id": 13,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "HQHS",
+    "prompt": "What are the total loss, which is the sum of loss payment, loss reserve, expense payment, expense reserve amount by catastrophe and policy number?"
+  },
+  {
+    "id": 14,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "LQLS",
+    "prompt": "Return all the policies and their policy holder by id"
+  },
+  {
+    "id": 15,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "LQHS",
+    "prompt": "Return policy holders and the claims they have made and the correspoinding catastrophe"
+  },
+  {
+    "id": 16,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "LQLS",
+    "prompt": "What are the loss reserve amount of all claims by claim number?"
+  },
+  {
+    "id": 17,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "LQHS",
+    "prompt": "Return agents and the policy they have sold that have had a claim and the corresponding expense reserve amount by agent id, policy number and claim number"
+  },
+  {
+    "id": 18,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "LQHS",
+    "prompt": "Return agents and the policy they have sold that have had a claim and the corresponding loss reserve amount by agent id, policy number and claim number"
+  },
+  {
+    "id": 19,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "LQLS",
+    "prompt": "What are all the premiums that have been paid by policy holders?"
+  },
+  {
+    "id": 20,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "HQHS",
+    "prompt": "What are the total loss, which is the sum of loss payment, loss reserve, expense payment, expense reserve amount by claim number, catastrophe and corresponding policy number?"
+  },
+  {
+    "id": 21,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "LQLS",
+    "prompt": "What is the premium amount of all policies by policy number, coverage effective date and coverage expiration date"
+  },
+  {
+    "id": 22,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "HQHS",
+    "prompt": "What is the loss ratio of each policy and agent who sold it by policy number and agent id?"
+  },
+  {
+    "id": 23,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "HQHS",
+    "prompt": "What is the total loss of each policy that an agent has sold by agent id where total loss is the sum of loss payment, loss reserve, expense payment, expense reserve amounts?"
+  },
+  {
+    "id": 24,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "HQHS",
+    "prompt": "What is the total loss of each claim by claim number where total loss is the sum of loss payment, loss reserve, expense payment, expense reserve amount?"
+  },
+  {
+    "id": 25,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "LQHS",
+    "prompt": "What are the loss payment, loss reserve, expense payment, expense reserve amount by claim number and corresponding policy number, policy holder, premium amount paid, the catastrophe it had, and the agent who sold it?"
+  },
+  {
+    "id": 26,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "LQLS",
+    "prompt": "What are all our policies that have a claim associated to them by policy and claim number?"
+  },
+  {
+    "id": 27,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "HQHS",
+    "prompt": "What is the loss ratio, number of claims, total loss by policy number and premium where total loss is the sum of loss payment, loss reserve, expense payment, expense reserve amount and loss ratio is total loss divided by premium?"
+  },
+  {
+    "id": 28,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "LQLS",
+    "prompt": "Return all the policies and the agents that sold them by policy number and agent id"
+  },
+  {
+    "id": 29,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "LQLS",
+    "prompt": "What are the expense payment amount of all claims by claim number?"
+  },
+  {
+    "id": 30,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "HQHS",
+    "prompt": "What is the average loss of each policy by policy number where loss is the sum of loss payment, loss reserve, expense payment, expense reserve amounts?"
+  },
+  {
+    "id": 31,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "LQLS",
+    "prompt": "What are the expense reserve amount of all claims by claim number?"
+  },
+  {
+    "id": 32,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "LQHS",
+    "prompt": "What are the loss payment, loss reserve, expense payment, expense reserve amount by claim number and corresponding policy number, policy holder and premium amount paid?"
+  },
+  {
+    "id": 33,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "LQHS",
+    "prompt": "What are the loss payment, loss reserve, expense payment, expense reserve amount by claim number?"
+  },
+  {
+    "id": 34,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "LQLS",
+    "prompt": "Return all the claims we have by claim number, open date and close date?"
+  },
+  {
+    "id": 35,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "LQHS",
+    "prompt": "Return agents and the policy they have sold that have had a claim and the corresponding expense payment amount by agent id, policy number and claim number"
+  },
+  {
+    "id": 36,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "LQHS",
+    "prompt": "What are the loss payment, loss reserve, expense payment, expense reserve amount by claim number and corresponding policy number, policy holder, premium amount paid and the agent who sold it?"
+  },
+  {
+    "id": 37,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "LQLS",
+    "prompt": "Return all the policies we have by policy number, effective date and expiration date?"
+  },
+  {
+    "id": 38,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "LQHS",
+    "prompt": "Return agents and the policies they have sold that have had a claim and the corresponding loss payment amount by agent id, policy number and claim number"
+  },
+  {
+    "id": 39,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "HQHS",
+    "prompt": "What is the total loss of each policy by policy number where total loss is the sum of loss payment, loss reserve, expense payment, expense reserve amounts?"
+  },
+  {
+    "id": 40,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "LQLS",
+    "prompt": "What are the loss payment amount of all claims by claim number?"
+  },
+  {
+    "id": 41,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "LQHS",
+    "prompt": "Return agents and the policy they have sold that have had a claim and the corresponding catastrophe it had."
+  },
+  {
+    "id": 42,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "LQLS",
+    "prompt": "What is the premium amount of all policies by policy number?"
+  },
+  {
+    "id": 43,
+    "grade": "medium",
+    "kind": "extended",
+    "complexity": "HQHS",
+    "prompt": "What are the total loss, which is the sum of loss payment, loss reserve, expense payment, expense reserve amount by claim number and corresponding policy number, policy holder and premium amount paid?"
+  }
+]

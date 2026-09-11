@@ -1,0 +1,4 @@
+import claim as claim;
+
+select
+    claim.claim_count;

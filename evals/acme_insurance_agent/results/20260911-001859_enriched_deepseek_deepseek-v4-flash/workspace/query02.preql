@@ -1,0 +1,7 @@
+import raw.claim as claim;
+
+select
+    claim.policy.policy_number,
+    claim.average_days_to_settle as avg_days_to_settle
+where claim.id is not null
+order by claim.policy.policy_number;

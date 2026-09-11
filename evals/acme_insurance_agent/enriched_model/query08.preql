@@ -1,0 +1,9 @@
+import claim as claim;
+
+# Policies with at least one claim: without the pin every policy survives and
+# a claim-less policy reports 0.
+where
+    claim.id is not null
+select
+    claim.policy.policy_number,
+    claim.claim_count;

@@ -1,0 +1,7 @@
+import root.Premium as prem;
+import root.Policy_Amount as pa;
+
+# Total premiums paid by policy holders: sum the policy amounts that are
+# premium amounts, i.e. the rows present in the Premium subset.
+select sum(pa.policy_amount) as total_premiums_paid
+where pa.policy_amount_identifier in prem.policy_amount_identifier;

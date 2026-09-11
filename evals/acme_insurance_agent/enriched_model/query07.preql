@@ -1,0 +1,5 @@
+import premium as premium;
+
+select
+    premium.policy.policy_number,
+    premium.total_premium;

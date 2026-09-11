@@ -1,0 +1,27 @@
+Trilogy project in this directory. `trilogy.toml` configures an already-loaded
+DuckDB database, and `root/` is already populated with Trilogy model
+files — do NOT re-run `trilogy ingest` and do NOT edit files in `root/`.
+Import models by dot path from the project root: the file
+`root/orders.preql` is imported as `import root.orders as o;`
+(a bare `import orders;` will NOT resolve).
+
+Answer the ONE business question below by writing a Trilogy query file to
+`answer_1034131706.preql` in the working directory (alongside `trilogy.toml`, NOT inside
+`root/`). Write and validate it in ONE call:
+`trilogy file write answer_1034131706.preql --run` (body on stdin —
+syntax-checks, executes, and shows results together; re-issue the same call
+after edits). For throwaway exploration probes use
+`trilogy file write <probe>.preql --run-and-delete` rather than separate
+write/run/delete calls.
+
+Return control once it runs cleanly to submit your result. This will be 
+your final action.
+
+Every question in this set returns at least one row at this scale factor. A
+zero-row result means the query has an issue. Do NOT, however, add/drop/loosen
+filters just to force rows; find and fix the actual mistake.
+
+Exact response column names do not matter, but the position and values do.
+
+Business question 1034131706:
+How many claims have been placed by policy number?

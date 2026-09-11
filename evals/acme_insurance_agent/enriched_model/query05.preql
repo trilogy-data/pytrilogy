@@ -1,0 +1,5 @@
+import claim_amount as ca;
+
+select
+    ca.claim.claim_number,
+    ca.loss_amount;
