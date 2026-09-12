@@ -147,7 +147,6 @@ DATATYPE_MAP: dict[DataType, str] = {
 # Nullable wrappers and parametric types are stripped before lookup at the
 # call site; this map only needs the base type names.
 DB_COLUMN_TYPE_MAP: dict[str, DataType] = {
-    "string": DataType.STRING,
     "fixedstring": DataType.STRING,
     "uint8": DataType.INTEGER,
     "uint16": DataType.INTEGER,
@@ -159,15 +158,8 @@ DB_COLUMN_TYPE_MAP: dict[str, DataType] = {
     "int64": DataType.INTEGER,
     "float32": DataType.FLOAT,
     "float64": DataType.FLOAT,
-    "bool": DataType.BOOL,
-    "boolean": DataType.BOOL,
-    "decimal": DataType.NUMERIC,
-    "date": DataType.DATE,
     "date32": DataType.DATE,
-    "datetime": DataType.DATETIME,
     "datetime64": DataType.DATETIME,
-    "array": DataType.ARRAY,
-    "map": DataType.MAP,
     "tuple": DataType.STRUCT,
 }
 
@@ -198,21 +190,12 @@ class ClickhouseDialect(BaseDialect):
         self,
         e: "MapWrapper[Any, Any]",
         cte: "CTE | UnionCTE | None" = None,
-        cte_map: "dict[str, CTE | UnionCTE] | None" = None,
         raise_invalid: bool = False,
     ) -> str:
         # CH uses map(k1, v1, k2, v2, ...). Avoids the `key:value` syntax that
         # SQLAlchemy's text() reads as bound parameters.
         parts: list[str] = []
         for k, v in e.items():
-            parts.append(
-                self.render_expr(
-                    k, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
-                )
-            )
-            parts.append(
-                self.render_expr(
-                    v, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
-                )
-            )
+            parts.append(self.render_expr(k, cte=cte, raise_invalid=raise_invalid))
+            parts.append(self.render_expr(v, cte=cte, raise_invalid=raise_invalid))
         return f"map({', '.join(parts)})"

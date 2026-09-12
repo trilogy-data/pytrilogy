@@ -344,14 +344,7 @@ class BigqueryDialect(BaseDialect):
         **BaseDialect.DB_COLUMN_TYPE_MAP,
         "int64": DataType.INTEGER,
         "float64": DataType.FLOAT,
-        "bool": DataType.BOOL,
-        "datetime": DataType.DATETIME,
-        "timestamp": DataType.TIMESTAMP,
         # legacy aliases
-        "integer": DataType.INTEGER,
-        "int": DataType.INTEGER,
-        "float": DataType.FLOAT,
-        "boolean": DataType.BOOL,
     }
 
     def get_table_schema(

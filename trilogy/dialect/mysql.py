@@ -188,33 +188,26 @@ class MySQLDialect(BaseDialect):
         right,
         operator: ComparisonOperator,
         cte: CTE | UnionCTE | None = None,
-        cte_map: dict[str, CTE | UnionCTE] | None = None,
         raise_invalid: bool = False,
         materialized_addresses: set[str] | None = None,
     ) -> str:
         if operator in (ComparisonOperator.ILIKE, ComparisonOperator.NOT_ILIKE):
-            left_sql = self.render_expr(
+            return self.render_ilike_as_lower_like(
                 left,
-                cte=cte,
-                cte_map=cte_map,
-                raise_invalid=raise_invalid,
-                materialized_addresses=materialized_addresses,
-            )
-            right_sql = self.render_expr(
                 right,
+                operator,
                 cte=cte,
-                cte_map=cte_map,
                 raise_invalid=raise_invalid,
                 materialized_addresses=materialized_addresses,
+                lower="LOWER",
+                like="LIKE",
+                negate="NOT ",
             )
-            negate = "NOT " if operator == ComparisonOperator.NOT_ILIKE else ""
-            return f"({negate}LOWER({left_sql}) LIKE LOWER({right_sql}))"
         return super().render_comparison(
             left,
             right,
             operator,
             cte=cte,
-            cte_map=cte_map,
             raise_invalid=raise_invalid,
             materialized_addresses=materialized_addresses,
         )

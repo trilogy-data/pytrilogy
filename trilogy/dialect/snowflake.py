@@ -106,16 +106,11 @@ class SnowflakeDialect(BaseDialect):
     # Extends the shared base map; bare TIMESTAMP defaults to TIMESTAMP_NTZ semantics.
     DB_COLUMN_TYPE_MAP: ClassVar[dict[str, DataType]] = {
         **BaseDialect.DB_COLUMN_TYPE_MAP,
-        "text": DataType.STRING,
         "number": DataType.INTEGER,
-        "float": DataType.FLOAT,
-        "boolean": DataType.BOOL,
-        "date": DataType.DATE,
         "timestamp": DataType.DATETIME,
         "timestamp_ntz": DataType.DATETIME,
         "timestamp_ltz": DataType.TIMESTAMP,
         "timestamp_tz": DataType.TIMESTAMP,
-        "array": DataType.ARRAY,
     }
 
     def get_table_primary_keys(
