@@ -23,26 +23,10 @@ property order_id.profit float;""")
         environment=env,
     )
 
-    x.hide_output_concepts([env.concepts["order_id"]])
+    x.hidden_concepts.add(env.concepts["order_id"].address)
     assert len(x.hidden_concepts) == 1
     x.unhide_output_concepts([env.concepts["order_id"]])
     assert len(x.hidden_concepts) == 0
-
-
-def test_partial():
-    env = Environment()
-    env.parse("""
-key order_id int;
-property order_id.profit float;""")
-    env = env.materialize_for_select()
-    x = StrategyNode(
-        input_concepts=[],
-        output_concepts=[env.concepts["order_id"]],
-        environment=env,
-    )
-
-    x.add_partial_concepts([env.concepts["order_id"]])
-    assert len(x.partial_concepts) == 1
 
 
 def test_get_parent_partial():

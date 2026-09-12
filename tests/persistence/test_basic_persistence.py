@@ -2,7 +2,8 @@ import pytest
 
 from trilogy import Dialects
 from trilogy.core.enums import ConceptSource, Derivation, Purpose
-from trilogy.core.query_processor import process_auto
+from trilogy.core.query_processor import process_persist, process_query
+from trilogy.core.statements.author import PersistStatement, SelectStatement
 from trilogy.core.statements.execute import ProcessedQueryPersist
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.bigquery import BigqueryDialect
@@ -10,6 +11,16 @@ from trilogy.dialect.duckdb import DuckDBDialect
 from trilogy.dialect.snowflake import SnowflakeDialect
 from trilogy.dialect.sql_server import SqlServerDialect
 from trilogy.parser import parse
+
+
+def process_auto(env, statement, hooks=None):
+    """Dispatch the statement kinds this suite's mixed parse lists contain."""
+    if isinstance(statement, PersistStatement):
+        return process_persist(env, statement, hooks)
+    if isinstance(statement, SelectStatement):
+        return process_query(env, statement, hooks)
+    return None
+
 
 TEST_DIALECTS: list[BaseDialect] = [
     BaseDialect(),

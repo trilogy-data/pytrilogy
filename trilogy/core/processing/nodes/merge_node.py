@@ -149,7 +149,6 @@ def deduplicate_nodes_and_joins(
 ) -> tuple[list[NodeJoin] | None, dict[str, QueryDatasource | BuildDatasource]]:
     duplicates = True
     while duplicates:
-        duplicates = False
         duplicates, merged, removed = deduplicate_nodes(
             merged, logging_prefix, environment=environment
         )

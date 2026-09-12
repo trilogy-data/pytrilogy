@@ -267,7 +267,7 @@ class SelectNode(StrategyNode):
             resolution = self.resolve_from_constant_datasources()
             return resolution
 
-        if self.datasource and not resolution:
+        if self.datasource:
             resolution = self.resolve_from_provided_datasource()
 
         if self.parents:

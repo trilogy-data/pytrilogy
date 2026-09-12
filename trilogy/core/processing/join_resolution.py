@@ -1041,8 +1041,6 @@ def reduce_concept_pairs(
     join_type: JoinType = JoinType.INNER,
     domain_graph: DomainGraph | None = None,
 ) -> list[ConceptPair]:
-    from trilogy.core.enums import Purpose
-
     left_keys = {
         pair.left.address for pair in pairs if pair.left.purpose == Purpose.KEY
     }

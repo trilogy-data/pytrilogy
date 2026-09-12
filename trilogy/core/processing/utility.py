@@ -67,9 +67,6 @@ def calculate_graph_relevance(
                 continue
             if len(concept.grain.components) == 0:
                 continue
-        if concept.grain and len(concept.grain.components) > 0:
-            relevance += 1
-            continue
         relevance += 1
     return relevance
 
