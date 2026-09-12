@@ -1,32 +1,42 @@
 query_id = "17"
-gen_length = 6627
+gen_length = 7107
 preql_size = 1365
 comp_size = 1588
 generated_sql = """
 
 WITH 
+cooperative as (
+SELECT
+    \"analysis_store_returns\".\"SR_CUSTOMER_SK\" as \"analysis_customer_sk\",
+    \"analysis_store_returns\".\"SR_ITEM_SK\" as \"analysis_item_sk\",
+    \"analysis_store_returns\".\"SR_RETURNED_DATE_SK\" as \"analysis_store_return_date_sk\",
+    \"analysis_store_returns\".\"SR_RETURN_QUANTITY\" as \"analysis_store_return_quantity\",
+    \"analysis_store_returns\".\"SR_TICKET_NUMBER\" as \"analysis_ticket_number\",
+    SR_RETURN_TIME_SK IS NOT NULL as \"analysis_is_returned\"
+FROM
+    \"memory\".\"store_returns\" as \"analysis_store_returns\"),
 uneven as (
 SELECT
     \"analysis_catalog_sales\".\"CS_ORDER_NUMBER\" as \"analysis_catalog_order_number\",
     \"analysis_catalog_sales\".\"CS_QUANTITY\" as \"analysis_catalog_quantity\",
     \"analysis_item_items\".\"I_ITEM_DESC\" as \"analysis_item_desc\",
     \"analysis_item_items\".\"I_ITEM_ID\" as \"analysis_item_id\",
-    \"analysis_store_returns\".\"SR_RETURN_QUANTITY\" as \"analysis_store_return_quantity\",
     \"analysis_store_sales\".\"SS_QUANTITY\" as \"analysis_store_quantity\",
     \"analysis_store_store\".\"S_STATE\" as \"analysis_store_state\",
-    coalesce(\"analysis_catalog_sales\".\"CS_ITEM_SK\",\"analysis_item_items\".\"I_ITEM_SK\",\"analysis_store_returns\".\"SR_ITEM_SK\",\"analysis_store_sales\".\"SS_ITEM_SK\") as \"analysis_item_sk\",
-    coalesce(\"analysis_store_returns\".\"SR_TICKET_NUMBER\",\"analysis_store_sales\".\"SS_TICKET_NUMBER\") as \"analysis_ticket_number\"
+    \"cooperative\".\"analysis_store_return_quantity\" as \"analysis_store_return_quantity\",
+    coalesce(\"analysis_catalog_sales\".\"CS_ITEM_SK\",\"analysis_item_items\".\"I_ITEM_SK\",\"analysis_store_sales\".\"SS_ITEM_SK\",\"cooperative\".\"analysis_item_sk\") as \"analysis_item_sk\",
+    coalesce(\"analysis_store_sales\".\"SS_TICKET_NUMBER\",\"cooperative\".\"analysis_ticket_number\") as \"analysis_ticket_number\"
 FROM
     \"memory\".\"store_sales\" as \"analysis_store_sales\"
-    INNER JOIN \"memory\".\"store_returns\" as \"analysis_store_returns\" on \"analysis_store_sales\".\"SS_CUSTOMER_SK\" = \"analysis_store_returns\".\"SR_CUSTOMER_SK\" AND \"analysis_store_sales\".\"SS_ITEM_SK\" = \"analysis_store_returns\".\"SR_ITEM_SK\" AND \"analysis_store_sales\".\"SS_TICKET_NUMBER\" = \"analysis_store_returns\".\"SR_TICKET_NUMBER\"
+    INNER JOIN \"cooperative\" on \"analysis_store_sales\".\"SS_CUSTOMER_SK\" = \"cooperative\".\"analysis_customer_sk\" AND \"analysis_store_sales\".\"SS_ITEM_SK\" = \"cooperative\".\"analysis_item_sk\" AND \"analysis_store_sales\".\"SS_TICKET_NUMBER\" = \"cooperative\".\"analysis_ticket_number\"
     INNER JOIN \"memory\".\"date_dim\" as \"analysis_store_sale_date_date\" on \"analysis_store_sales\".\"SS_SOLD_DATE_SK\" = \"analysis_store_sale_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"date_dim\" as \"analysis_store_return_date_date\" on \"analysis_store_returns\".\"SR_RETURNED_DATE_SK\" = \"analysis_store_return_date_date\".\"D_DATE_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"analysis_store_return_date_date\" on \"cooperative\".\"analysis_store_return_date_sk\" = \"analysis_store_return_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"catalog_sales\" as \"analysis_catalog_sales\" on \"analysis_store_sales\".\"SS_CUSTOMER_SK\" = \"analysis_catalog_sales\".\"CS_BILL_CUSTOMER_SK\" AND \"analysis_store_sales\".\"SS_ITEM_SK\" = \"analysis_catalog_sales\".\"CS_ITEM_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"analysis_catalog_date_date\" on \"analysis_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"analysis_catalog_date_date\".\"D_DATE_SK\"
     LEFT OUTER JOIN \"memory\".\"store\" as \"analysis_store_store\" on \"analysis_store_sales\".\"SS_STORE_SK\" = \"analysis_store_store\".\"S_STORE_SK\"
     LEFT OUTER JOIN \"memory\".\"item\" as \"analysis_item_items\" on \"analysis_store_sales\".\"SS_ITEM_SK\" = \"analysis_item_items\".\"I_ITEM_SK\"
 WHERE
-    \"analysis_store_sale_date_date\".\"D_YEAR\" = 2001 and (\"analysis_store_return_date_date\".\"D_YEAR\" is not null and \"analysis_store_return_date_date\".\"D_YEAR\" in (2001,2002)) and (\"analysis_catalog_date_date\".\"D_YEAR\" is not null and \"analysis_catalog_date_date\".\"D_YEAR\" in (2001,2002)) and SR_RETURN_TIME_SK IS NOT NULL
+    \"analysis_store_sale_date_date\".\"D_YEAR\" = 2001 and (\"analysis_store_return_date_date\".\"D_YEAR\" is not null and \"analysis_store_return_date_date\".\"D_YEAR\" in (2001,2002)) and (\"analysis_catalog_date_date\".\"D_YEAR\" is not null and \"analysis_catalog_date_date\".\"D_YEAR\" in (2001,2002)) and \"cooperative\".\"analysis_is_returned\"
 ),
 concerned as (
 SELECT

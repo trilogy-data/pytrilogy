@@ -1146,7 +1146,17 @@ class BaseDialect:
             for other in source:
                 if other is c or any(other is s for s in siblings):
                     continue
-                if other.canonical_address != c.canonical_address:
+                # Same address is identity enough, and canonical equality can
+                # not stand in for it: a merge rewrites the demoted concept's
+                # canonical onto the surviving address (`merge first_org into
+                # org.code` leaves `first_org` canonically `org.code`) while the
+                # origin carrying its lineage keeps its own `_virt_func_*`. The
+                # two objects at this address then disagree on canonical, and
+                # the only one that can render is the one being skipped.
+                if (
+                    other.address != c.address
+                    and other.canonical_address != c.canonical_address
+                ):
                     continue
                 if other.lineage is None and not cte.source_map.get(other.address, []):
                     continue

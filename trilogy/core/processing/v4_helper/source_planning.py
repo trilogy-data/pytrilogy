@@ -458,12 +458,12 @@ def _network_source(
         if network.equivalence.get(concept.address, concept.address) in keep_addresses
     ]
     for address in sorted(keep_addresses):
-        if any(concept.address == address for concept in bridge_concepts):
-            continue
-        connector = request.environment.concepts.get(address)
-        if connector is not None:
-            bridge_concepts.append(connector)
-            continue
+        named = any(concept.address == address for concept in bridge_concepts)
+        if not named:
+            connector = request.environment.concepts.get(address)
+            if connector is not None:
+                bridge_concepts.append(connector)
+                named = True
         # A connector labeled by a canonical (`_virt_*`) address is a derived
         # merge key: each side of the declared equality owns one variant, known
         # only to `canonical_concepts` (the demoted side's real lineage lives in
@@ -474,6 +474,17 @@ def _network_source(
         # Never the whole equivalence class: an unread member (a second
         # declared alias for the same key) would hand the join a column the
         # authored FK already provides, changing the join.
+        #
+        # An already-named address is revisited only when it is a DEMOTED merge
+        # key, which no scan can emit off its own columns. The representative is
+        # the class's lexicographic minimum, so whether it spells the authored
+        # address or the `_virt_` canonical follows from the namespace the model
+        # happens to be imported under; without the revisit the origin reaches
+        # the scan only under the second spelling and the key is unsourced.
+        if named and not _is_demoted_merge_key(
+            request.environment.concepts.get(address), request.environment
+        ):
+            continue
         for node in result.solution.sources:
             binding = network.candidates[node].bindings.get(address)
             if binding is None:
@@ -528,6 +539,23 @@ def _network_source(
             graph=graph,
             connector_aliases=tuple(connector_aliases),
         )
+    )
+
+
+def _is_demoted_merge_key(
+    concept: BuildConcept | None, environment: BuildEnvironment
+) -> bool:
+    """`concept` is a merge key the merge DEMOTED: a lineage-less ROOT whose
+    only value source is a pseudonym origin's derivation (`merge first_org into
+    org.code` leaves `org.code` bare while `first_org` keeps the split). No scan
+    can emit it off its own columns, so the origin has to be carried explicitly.
+    """
+    if concept is None or concept.derivation != Derivation.ROOT or concept.lineage:
+        return False
+    return any(
+        (origin := environment.alias_origin_lookup.get(alias)) is not None
+        and origin.lineage is not None
+        for alias in (concept.address, *concept.pseudonyms)
     )
 
 
