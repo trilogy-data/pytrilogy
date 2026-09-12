@@ -1,7 +1,13 @@
 import dataclasses
 from typing import cast
 
-from trilogy.core.enums import BooleanOperator, Derivation, FunctionType, SourceType
+from trilogy.core.enums import (
+    BooleanOperator,
+    Derivation,
+    FunctionType,
+    JoinType,
+    SourceType,
+)
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
@@ -10,7 +16,7 @@ from trilogy.core.models.build import (
     BuildFunction,
     BuildRowsetItem,
 )
-from trilogy.core.models.execute import CTE, QueryDatasource, UnionCTE
+from trilogy.core.models.execute import CTE, Join, QueryDatasource, UnionCTE
 from trilogy.core.processing.condition_utility import merge_conditions_and_dedup
 
 # Derivations whose rows cannot be re-scoped: a window, unnest or recursive
@@ -18,6 +24,80 @@ from trilogy.core.processing.condition_utility import merge_conditions_and_dedup
 SENSITIVE_DERIVATIONS = frozenset(
     {Derivation.WINDOW, Derivation.UNNEST, Derivation.RECURSIVE}
 )
+
+
+def propagate_existence_sources(
+    branch: CTE, consumer: CTE | UnionCTE, addresses: set[str]
+) -> bool:
+    """Give ``branch`` the source entries a pushed-down condition needs for its
+    existence arguments, copied from whichever map the consumer resolved them
+    through, and the dependencies that back them. True when anything moved."""
+    changed = False
+    for address in addresses:
+        if address in branch.source_map or address in branch.existence_source_map:
+            continue
+        if address in consumer.source_map:
+            origin = list(consumer.source_map[address])
+            branch.source_map[address] = origin
+        elif address in consumer.existence_source_map:
+            origin = list(consumer.existence_source_map[address])
+            branch.existence_source_map[address] = origin
+        else:
+            continue
+        for source in consumer.dependency_nodes():
+            if source.name in origin:
+                branch.add_dependency(source)
+        changed = True
+    return changed
+
+
+def existence_linked(cte: CTE, parent: CTE) -> bool:
+    """True when an existence subselect on either CTE reads from the other.
+    Merging the pair would make the exists() reference the CTE it renders in,
+    or a name that no longer exists."""
+    return any(
+        parent.name in (sources or []) for sources in cte.existence_source_map.values()
+    ) or any(
+        cte.name in (sources or []) for sources in parent.existence_source_map.values()
+    )
+
+
+def carry_child_state(parent: CTE, cte: CTE) -> None:
+    """Move the child's state onto the parent it is being merged into.
+
+    Nullability: an under-reported nullable set lets SimplifyNullSafeJoins
+    falsely prove a key non-null and downgrade IS NOT DISTINCT FROM to `=`,
+    dropping NULL-keyed groups. Existence references: an `IN (<set>)` resolves
+    its set columns through existence_source_map, and dropping those entries
+    strands the membership and lets the feeder CTE be pruned as unreferenced.
+    LIMIT is the last logical operation of a SELECT, so the child's limit and
+    ORDER BY apply unchanged to the merged CTE."""
+    nullable_addresses = {c.address for c in parent.nullable_concepts}
+    for column in cte.nullable_concepts:
+        if column.address not in nullable_addresses:
+            parent.nullable_concepts.append(column)
+    for address, sources in cte.existence_source_map.items():
+        if address not in parent.existence_source_map:
+            parent.existence_source_map[address] = sources
+    if cte.limit is not None:
+        parent.limit = cte.limit
+        parent.order_by = cte.order_by
+
+
+def null_padded_nodes(cte: CTE) -> list[CTE | UnionCTE]:
+    """The sides ``cte``'s own outer joins NULL-pad: the right of a LEFT/FULL,
+    and the accumulated left (plus every joinkey source) of a RIGHT/FULL."""
+    padded: list[CTE | UnionCTE] = []
+    for join in cte.joins or []:
+        if not isinstance(join, Join) or join.jointype == JoinType.INNER:
+            continue
+        if join.jointype in (JoinType.LEFT_OUTER, JoinType.FULL):
+            padded.append(join.right_cte)
+        if join.jointype in (JoinType.RIGHT_OUTER, JoinType.FULL):
+            if join.left_cte is not None:
+                padded.append(join.left_cte)
+            padded.extend(pair.cte for pair in join.joinkey_pairs or [])
+    return padded
 
 
 def is_grouped_cte(cte: CTE) -> bool:

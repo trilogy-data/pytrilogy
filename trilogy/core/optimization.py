@@ -490,6 +490,34 @@ def build_optimization_rule_plan(
                 ),
             )
         )
+    if opts.datasource_inlining and (
+        opts.upgrade_condition_joins or opts.upgrade_outer_key_set_equivalence
+    ):
+        plan.append(
+            OptimizationRulePlan(
+                name="inline_datasource.after_join_upgrades",
+                rule_factory=lambda: InlineDatasource(raw_scope_only=True),
+                depends_on=_enabled_dependencies(
+                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
+                    (
+                        "upgrade_outer_key_set_equivalence",
+                        opts.upgrade_outer_key_set_equivalence,
+                    ),
+                ),
+                refires_after=_enabled_dependencies(
+                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
+                    (
+                        "upgrade_outer_key_set_equivalence",
+                        opts.upgrade_outer_key_set_equivalence,
+                    ),
+                ),
+                reason=(
+                    "a raw() scan folds only where every result row carries one "
+                    "of its rows, which the initial pass has to read off "
+                    "provisional outer joins; retry once join types are final"
+                ),
+            )
+        )
     if opts.push_filtered_count_into_join:
         plan.append(
             OptimizationRulePlan(

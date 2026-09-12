@@ -2,7 +2,10 @@ from trilogy import Dialects
 from trilogy.constants import CONFIG
 from trilogy.core.models.build import BuildGrain
 from trilogy.core.models.execute import CTE, QueryDatasource
-from trilogy.core.optimizations.inline_datasource import InlineDatasource
+from trilogy.core.optimizations.inline_datasource import (
+    InlineDatasource,
+    _raw_text_column_refs,
+)
 
 
 def test_safe_cases():
@@ -189,3 +192,39 @@ SELECT
     assert "WITH" not in query
     assert '"customers"."customer_id" is not null' not in query
     assert '"orders"."customer_id" is not null' in query
+
+
+def test_raw_text_column_refs_reads_the_columns_a_text_names():
+    assert _raw_text_column_refs("SR_RETURN_TIME_SK IS NOT NULL") == {
+        "sr_return_time_sk"
+    }
+    assert _raw_text_column_refs(""""sr_item_sk" = amount""") == {
+        "sr_item_sk",
+        "amount",
+    }
+    # The binding's own scope makes these columns of its table whether or not
+    # the model declares them, which is how most raw() text is written.
+    assert _raw_text_column_refs(
+        "cast(event_timestamp as numeric) * 10000 + user_pseudo_id"
+    ) == {"event_timestamp", "user_pseudo_id"}
+
+
+def test_raw_text_column_refs_admits_literals_and_functions():
+    assert _raw_text_column_refs("1") == set()
+    assert _raw_text_column_refs(" -2.5 ") == set()
+    assert _raw_text_column_refs("'a b c'") == set()
+    assert _raw_text_column_refs("true") == set()
+    assert _raw_text_column_refs("coalesce(amount, 0) > 0") == {"amount"}
+    assert _raw_text_column_refs("PARSE_DATE('%Y%m%d', suffix)") == {"suffix"}
+
+
+def test_raw_text_column_refs_refuses_a_qualified_reference():
+    # The qualifier is the scan's alias, which the fold replaces.
+    assert _raw_text_column_refs("returns.amount > 0") is None
+    assert _raw_text_column_refs('''"returns"."amount"''') is None
+
+
+def test_raw_text_column_refs_cannot_see_a_keyword_spelled_column():
+    # A column named `end` reads as syntax, so it is not collision-checked. The
+    # cost is a possible ambiguity error, never a silently wrong reference.
+    assert _raw_text_column_refs("end is null") == set()

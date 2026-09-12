@@ -148,94 +148,56 @@ def rollup_padded_addresses(datasource: DataSource) -> set[str]:
     return padded
 
 
-def extent_null_addresses(
-    datasource: DataSource, _memo: dict[int, set[str]] | None = None
-) -> set[str]:
-    """Addresses this source can genuinely emit NULL for or omit a member of
-    BECAUSE of a `?` declaration: a `?` binding at a leaf, or a key every
-    provider of which is null-extended by a VALUE-NULL-DRIVEN outer join in
-    this source's own tree (or already extent-null within that provider).
-    Narrower than ``nullable_concepts`` twice over: a side merely JOINED on a
-    nullable condition gets no mark (an INNER join introduces no NULLs), and
-    padding from partial-driven (`~`) preserving joins gets none either, since
-    extension families ride the host machinery and claiming their padding here
-    would re-preserve rows that machinery already keeps exactly once. ROLLUP
-    padding is likewise excluded; ``rollup_padded_addresses`` owns it."""
-    memo = _memo if _memo is not None else {}
-    cached = memo.get(id(datasource))
-    if cached is not None:
-        return cached
+def _leaf_null_addresses(datasource: BuildDatasource) -> set[str]:
     out: set[str] = set()
-    memo[id(datasource)] = out
-    if isinstance(datasource, BuildDatasource):
-        for concept in datasource.nullable_concepts:
-            out.add(concept.address)
-            out.update(concept.pseudonyms)
-        return out
-    child_null: dict[str, set[str]] = {}
-    for child in datasource.datasources:
-        child_null[child.identifier] = extent_null_addresses(child, memo)
-    base_joins = [j for j in datasource.joins if isinstance(j, BaseJoin)]
-    right_ids = {j.right_datasource.identifier for j in base_joins}
-    # Left-deep accumulation as in find_nullable_concepts: a RIGHT/FULL join
-    # null-extends the whole accumulated left input, not just one operand.
-    extended: set[str] = set()
-    accumulated = {i for i in child_null if i not in right_ids}
-    for join in base_joins:
-        right_id = join.right_datasource.identifier
-        value_driven = any(
-            nulls_are_values(pair.left, pair.existing_datasource)
-            or nulls_are_values(pair.right, join.right_datasource)
-            for pair in join.concept_pairs or []
-        )
-        if value_driven:
-            if join.join_type in (JoinType.LEFT_OUTER, JoinType.FULL):
-                extended.add(right_id)
-            if join.join_type in (JoinType.RIGHT_OUTER, JoinType.FULL):
-                extended |= accumulated
-        accumulated.add(right_id)
-    for address, providers in datasource.source_map.items():
-        idents = {
-            p.identifier
-            for p in providers
-            if isinstance(p, (BuildDatasource, QueryDatasource))
-        }
-        if idents and all(
-            ident in extended or address in child_null.get(ident, set())
-            for ident in idents
-        ):
-            out.add(address)
-    for concept in datasource.output_concepts:
-        if concept.address in out:
-            out.update(concept.pseudonyms)
+    for concept in datasource.nullable_concepts:
+        out.add(concept.address)
+        out.update(concept.pseudonyms)
     return out
 
 
-def extension_padded_addresses(
-    datasource: DataSource,
-    spans: frozenset[str],
-    _memo: dict[int, set[str]] | None = None,
-) -> set[str]:
-    """Addresses this source only emits NULL for because a ``~``-preserving
-    join padded them to carry one of ``spans``' extension members.
+def _no_leaf_addresses(datasource: BuildDatasource) -> set[str]:
+    return set()
 
-    Read by a merge that is extent-free for those spans: the padded rows belong
-    to the branch the statement elected to own them, so here they are absence,
-    not content. Treating their NULLs as ordinary nullability would make this
-    merge preserve rows whose values it can never supply, which is the copy the
-    FINAL assembly then has to reunite or throw away. Only joins keyed on a licensed
-    span count; an ordinary outer lookup pads for its own reasons and its
-    nullability stands."""
-    memo = _memo if _memo is not None else {}
+
+def _value_null_driven(join: BaseJoin) -> bool:
+    return any(
+        nulls_are_values(pair.left, pair.existing_datasource)
+        or nulls_are_values(pair.right, join.right_datasource)
+        for pair in join.concept_pairs or []
+    )
+
+
+def _span_keyed(join: BaseJoin, spans: frozenset[str]) -> bool:
+    return any(
+        pair.left.address in spans or pair.right.address in spans
+        for pair in join.concept_pairs or []
+    ) or any(concept.address in spans for concept in join.concepts or [])
+
+
+def _padded_addresses(
+    datasource: DataSource,
+    leaf_addresses: Callable[[BuildDatasource], set[str]],
+    join_extends: Callable[[BaseJoin], bool],
+    memo: dict[int, set[str]],
+) -> set[str]:
+    """Addresses this source emits NULL for because an outer join `join_extends`
+    licenses padded them, or because a leaf declared them nullable.
+
+    Left-deep accumulation as in find_nullable_concepts: a RIGHT/FULL join
+    null-extends the whole accumulated left input, not just one operand. An
+    address counts only when EVERY provider of it was extended (or was already
+    padded inside that provider)."""
     cached = memo.get(id(datasource))
     if cached is not None:
         return cached
     out: set[str] = set()
     memo[id(datasource)] = out
     if isinstance(datasource, BuildDatasource):
+        out.update(leaf_addresses(datasource))
         return out
-    child_padded: dict[str, set[str]] = {
-        child.identifier: extension_padded_addresses(child, spans, memo)
+    child_padded = {
+        child.identifier: _padded_addresses(child, leaf_addresses, join_extends, memo)
         for child in datasource.datasources
     }
     base_joins = [j for j in datasource.joins if isinstance(j, BaseJoin)]
@@ -244,11 +206,7 @@ def extension_padded_addresses(
     accumulated = {i for i in child_padded if i not in right_ids}
     for join in base_joins:
         right_id = join.right_datasource.identifier
-        span_keyed = any(
-            pair.left.address in spans or pair.right.address in spans
-            for pair in join.concept_pairs or []
-        ) or any(concept.address in spans for concept in join.concepts or [])
-        if span_keyed:
+        if join_extends(join):
             if join.join_type in (JoinType.LEFT_OUTER, JoinType.FULL):
                 extended.add(right_id)
             if join.join_type in (JoinType.RIGHT_OUTER, JoinType.FULL):
@@ -269,6 +227,50 @@ def extension_padded_addresses(
         if concept.address in out:
             out.update(concept.pseudonyms)
     return out
+
+
+def extent_null_addresses(
+    datasource: DataSource, _memo: dict[int, set[str]] | None = None
+) -> set[str]:
+    """Addresses this source can genuinely emit NULL for or omit a member of
+    BECAUSE of a `?` declaration: a `?` binding at a leaf, or a key every
+    provider of which is null-extended by a VALUE-NULL-DRIVEN outer join in
+    this source's own tree (or already extent-null within that provider).
+    Narrower than ``nullable_concepts`` twice over: a side merely JOINED on a
+    nullable condition gets no mark (an INNER join introduces no NULLs), and
+    padding from partial-driven (`~`) preserving joins gets none either, since
+    extension families ride the host machinery and claiming their padding here
+    would re-preserve rows that machinery already keeps exactly once. ROLLUP
+    padding is likewise excluded; ``rollup_padded_addresses`` owns it."""
+    return _padded_addresses(
+        datasource,
+        _leaf_null_addresses,
+        _value_null_driven,
+        _memo if _memo is not None else {},
+    )
+
+
+def extension_padded_addresses(
+    datasource: DataSource,
+    spans: frozenset[str],
+    _memo: dict[int, set[str]] | None = None,
+) -> set[str]:
+    """Addresses this source only emits NULL for because a ``~``-preserving
+    join padded them to carry one of ``spans``' extension members.
+
+    Read by a merge that is extent-free for those spans: the padded rows belong
+    to the branch the statement elected to own them, so here they are absence,
+    not content. Treating their NULLs as ordinary nullability would make this
+    merge preserve rows whose values it can never supply, which is the copy the
+    FINAL assembly then has to reunite or throw away. Only joins keyed on a licensed
+    span count; an ordinary outer lookup pads for its own reasons and its
+    nullability stands."""
+    return _padded_addresses(
+        datasource,
+        _no_leaf_addresses,
+        partial(_span_keyed, spans=spans),
+        _memo if _memo is not None else {},
+    )
 
 
 def _is_nullable_grain_aligned_merge(
@@ -1041,8 +1043,6 @@ def reduce_concept_pairs(
     join_type: JoinType = JoinType.INNER,
     domain_graph: DomainGraph | None = None,
 ) -> list[ConceptPair]:
-    from trilogy.core.enums import Purpose
-
     left_keys = {
         pair.left.address for pair in pairs if pair.left.purpose == Purpose.KEY
     }

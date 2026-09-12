@@ -2,16 +2,16 @@
 
 from dataclasses import dataclass, field
 
-from trilogy.core.enums import BooleanOperator, JoinType
+from trilogy.core.enums import JoinType
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
-    BuildConditional,
     BuildGrain,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import (
+    and_optional,
     combine_condition_atoms,
     decompose_condition,
 )
@@ -76,14 +76,8 @@ def inject_condition_at_node(
     combine_existing: bool = True,
 ) -> StrategyNode:
     if condition_on_merge:
-        combined = (
-            BuildConditional(
-                left=node.conditions,
-                right=condition.conditional,
-                operator=BooleanOperator.AND,
-            )
-            if combine_existing and node.conditions
-            else condition.conditional
+        combined = and_optional(
+            node.conditions if combine_existing else None, condition.conditional
         )
         return MergeNode(
             input_concepts=unique(
@@ -135,14 +129,8 @@ def inject_condition_at_node(
             parents=[base, *sources.row_parents],
         )
 
-    combined = (
-        BuildConditional(
-            left=base.conditions,
-            right=condition.conditional,
-            operator=BooleanOperator.AND,
-        )
-        if combine_existing and base.conditions
-        else condition.conditional
+    combined = and_optional(
+        base.conditions if combine_existing else None, condition.conditional
     )
     input_concepts = unique(
         list(input_concepts if input_concepts is not None else base.usable_outputs)

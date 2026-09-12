@@ -5,9 +5,24 @@ from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
 from trilogy.core.processing.model_ambiguity import (
     build_key_graph,
     connector_sets_from,
-    sweep_model,
+    undominated,
     validate_relation_paths,
 )
+
+
+def sweep_model(environment):
+    """Every ambiguous key-class pair in the model, query-independent."""
+    kg = build_key_graph(environment)
+    out = []
+    for source in sorted(kg.by_class):
+        for target, alternatives in connector_sets_from(kg, source).items():
+            if target <= source:
+                continue
+            surviving = undominated(alternatives)
+            if len(surviving) > 1:
+                out.append((source, target, tuple(surviving)))
+    return out
+
 
 # Two incomparable bridge chains between store and product: via orders
 # (connector order_id) and via warehouse (connector wh_id).
@@ -69,7 +84,7 @@ def _concepts(benv, *addresses):
 
 def test_sweep_flags_incomparable_bridge_paths():
     benv = _benv(AMBIGUOUS_MODEL)
-    pairs = {(p.left, p.right): p.alternatives for p in sweep_model(benv)}
+    pairs = {(left, right): alts for left, right, alts in sweep_model(benv)}
     assert ("local.product_id", "local.store_id") in pairs
     assert set(pairs[("local.product_id", "local.store_id")]) == {
         frozenset({"local.order_id"}),

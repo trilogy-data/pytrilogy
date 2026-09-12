@@ -696,6 +696,14 @@ def condition_required_addresses(
     }
 
 
+def and_optional(existing: BoolExpr | None, new: BoolExpr) -> BoolExpr:
+    """AND `new` onto a condition that may not be there yet. The two-operand
+    case of `combine_condition_atoms`, typed so the result is never None."""
+    if existing is None:
+        return new
+    return BuildConditional(left=existing, operator=BooleanOperator.AND, right=new)
+
+
 def combine_condition_atoms(
     atoms: list[BoolExpr],
 ) -> BoolExpr | None:

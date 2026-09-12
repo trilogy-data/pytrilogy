@@ -2,16 +2,16 @@
 
 from typing import cast
 
-from trilogy.core.enums import BooleanOperator, Derivation, Purpose
+from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
-    BuildConditional,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import (
+    and_optional,
     combine_condition_atoms,
     decompose_condition,
 )
@@ -361,11 +361,7 @@ def _conjoin(
     if other is None:
         return clause
     return BuildWhereClause(
-        conditional=BuildConditional(
-            left=clause.conditional,
-            right=other.conditional,
-            operator=BooleanOperator.AND,
-        )
+        conditional=and_optional(clause.conditional, other.conditional)
     )
 
 
@@ -507,14 +503,8 @@ def gen_root(
             # The copy keeps a history-cached result intact for its other
             # consumers.
             gated = node.copy()
-            gated.conditions = (
-                BuildConditional(
-                    left=gated.conditions,
-                    right=existence_conditions.conditional,
-                    operator=BooleanOperator.AND,
-                )
-                if gated.conditions is not None
-                else existence_conditions.conditional
+            gated.conditions = and_optional(
+                gated.conditions, existence_conditions.conditional
             )
             gated.parents = list(gated.parents) + list(sources.existence_parents)
             gated.add_existence_concepts(sources.existence_concepts, rebuild=False)

@@ -1,5 +1,3 @@
-from dataclasses import replace
-
 from trilogy.core.enums import FunctionType, JoinType
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
@@ -8,43 +6,23 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import CTE, Join, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
+from trilogy.core.optimizations.filtered_aggregate import (
+    _filtered_aggregate,
+    _remove_filter,
+)
 from trilogy.core.optimizations.utils import append_condition
 
 
 def _filtered_count(
     concept: BuildConcept,
 ) -> tuple[BuildConcept, BuildFilterItem] | None:
+    """As `_filtered_aggregate`, restricted to COUNT."""
     lineage = concept.lineage
     if not isinstance(lineage, BuildAggregateWrapper):
         return None
-    function = lineage.function
-    if function.operator != FunctionType.COUNT or len(function.arguments) != 1:
+    if lineage.function.operator != FunctionType.COUNT:
         return None
-    argument = function.arguments[0]
-    if not isinstance(argument, BuildConcept) or not isinstance(
-        argument.lineage, BuildFilterItem
-    ):
-        return None
-    if not isinstance(argument.lineage.content, BuildConcept):
-        return None
-    return argument, argument.lineage
-
-
-def _unfiltered_count(
-    concept: BuildConcept, filtered: BuildConcept, item: BuildFilterItem
-) -> BuildConcept:
-    assert isinstance(concept.lineage, BuildAggregateWrapper)
-    assert isinstance(item.content, BuildConcept)
-    content = item.content
-    function = replace(
-        concept.lineage.function,
-        arguments=[
-            content if argument is filtered else argument
-            for argument in concept.lineage.function.arguments
-        ],
-    )
-    concept.lineage = replace(concept.lineage, function=function)
-    return concept
+    return _filtered_aggregate(concept)
 
 
 class PushFilteredCountIntoJoin(OptimizationRule):
@@ -78,7 +56,8 @@ class PushFilteredCountIntoJoin(OptimizationRule):
             right_source not in cte.source_map.get(address, ()) for address in required
         ):
             return False, None
-        replacement = _unfiltered_count(aggregates[0], filtered, item)
+        replacement = aggregates[0]
+        _remove_filter(replacement, filtered, item)
         cte.output_columns = [
             replacement if concept is aggregates[0] else concept
             for concept in cte.output_columns

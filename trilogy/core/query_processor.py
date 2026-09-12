@@ -116,7 +116,6 @@ from trilogy.core.statements.author import (
     CallStatement,
     ChartLayer,
     ChartStatement,
-    ConceptDeclarationStatement,
     CopyStatement,
     MultiSelectStatement,
     PersistStatement,
@@ -1249,20 +1248,6 @@ def flatten_ctes(input: CTE | UnionCTE) -> list[CTE | UnionCTE]:
     for cte in input.parent_ctes:
         output += flatten_ctes(cte)
     return output
-
-
-def process_auto(
-    environment: Environment,
-    statement: PersistStatement | SelectStatement,
-    hooks: list[BaseHook] | None = None,
-):
-    if isinstance(statement, PersistStatement):
-        return process_persist(environment, statement, hooks)
-    elif isinstance(statement, SelectStatement):
-        return process_query(environment, statement, hooks)
-    elif isinstance(statement, ConceptDeclarationStatement):
-        return None
-    raise ValueError(f"Do not know how to process {type(statement)}")
 
 
 def _validate_persist_projection(

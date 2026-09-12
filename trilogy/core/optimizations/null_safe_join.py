@@ -25,7 +25,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import CTE, Join, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
-from trilogy.core.optimizations.utils import equivalent_addresses
+from trilogy.core.optimizations.utils import equivalent_addresses, null_padded_nodes
 from trilogy.core.processing.condition_utility import condition_proves_non_null
 
 
@@ -33,44 +33,15 @@ def _join_pads_null(cte: CTE, addrs: set[str]) -> bool:
     """True when one of ``cte``'s own outer joins NULL-pads any address in
     ``addrs``. The parent-walk in ``proven_non_null`` uses this to refuse a
     recursive proof when the local join is itself the source of nullability."""
-    if not cte.joins:
-        return False
-    for join in cte.joins:
-        if not isinstance(join, Join) or join.jointype == JoinType.INNER:
-            continue
-        if join.jointype in (JoinType.LEFT_OUTER, JoinType.FULL):
-            right_outputs = equivalent_addresses(list(join.right_cte.output_columns))
-            if not addrs.isdisjoint(right_outputs):
-                return True
-        if join.jointype in (JoinType.RIGHT_OUTER, JoinType.FULL):
-            if join.left_cte is not None:
-                left_outputs = equivalent_addresses(list(join.left_cte.output_columns))
-                if not addrs.isdisjoint(left_outputs):
-                    return True
-            for pair in join.joinkey_pairs or []:
-                if pair.cte is None:
-                    continue
-                pair_outputs = equivalent_addresses(list(pair.cte.output_columns))
-                if not addrs.isdisjoint(pair_outputs):
-                    return True
-    return False
+    return any(
+        not addrs.isdisjoint(equivalent_addresses(list(node.output_columns)))
+        for node in null_padded_nodes(cte)
+    )
 
 
 def _null_padded_sources(cte: CTE) -> set[str]:
     """Names of ``cte``'s sources whose columns its own outer joins NULL-pad."""
-    padded: set[str] = set()
-    for join in cte.joins or []:
-        if not isinstance(join, Join) or join.jointype == JoinType.INNER:
-            continue
-        if join.jointype in (JoinType.LEFT_OUTER, JoinType.FULL):
-            padded.add(join.right_cte.name)
-        if join.jointype in (JoinType.RIGHT_OUTER, JoinType.FULL):
-            if join.left_cte is not None:
-                padded.add(join.left_cte.name)
-            for pair in join.joinkey_pairs or []:
-                if pair.cte is not None:
-                    padded.add(pair.cte.name)
-    return padded
+    return {node.name for node in null_padded_nodes(cte)}
 
 
 def _coalesced_source_non_null(

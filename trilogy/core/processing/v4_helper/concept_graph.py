@@ -1844,6 +1844,55 @@ def _staged_condition_labels(
     return labels
 
 
+def _lineage_ancestor_rowsets(
+    graph: nx.DiGraph, attrs: dict[str, ConceptAttrs], src: str
+) -> set[str]:
+    out: set[str] = set()
+    for a in nx.ancestors(graph, src):
+        name = attrs[a].rowset_name
+        if name:
+            out.add(name)
+    return out
+
+
+def _constraint_crosses_rowset(
+    attrs: dict[str, ConceptAttrs],
+    src: str,
+    dst: str,
+    src_ancestor_rowsets: set[str],
+) -> bool:
+    """Whether a src→dst CONSTRAINT edge would cross a rowset boundary it must
+    not. Two ways it can.
+
+    A condition concept derived from a ROWSET (a WINDOW `eldest` computed over a
+    rowset, then filtered `eldest = 1`; or a bare aggregate over a rowset handle)
+    already sits above that rowset, and its value cannot exist until the
+    rowset's rows do. A rowset is one indivisible group, so constraining the
+    condition back onto ANY of its handles forms a cycle -- rowset to window by
+    lineage, window back to rowset by constraint -- that kills the topological
+    concept-set pass. Deriving from one handle puts `src` above the whole
+    rowset, including handles it never reads directly (the window reads
+    `id`/`last_name`/`age` while its filter sits above `name`/`survived` from
+    the same rowset).
+
+    A rowset-scoped condition value is computed inside ITS own rowset's boundary
+    and its test only applies above the completion merge (FINAL). Constraining
+    it onto ANOTHER rowset's boundary forces that independent scope to consume a
+    value it cannot see, polluting its output contract -- the b-side boundary
+    "outputs" the a-side's value and loses its own handles. Two forms: a
+    rowset-member presence probe, and a plain rowset handle in a post-merge
+    filter (`where a.amt is not null and b.amt is not null` over two independent
+    rowsets, where each null test lands at FINAL and a mutual constraint would
+    2-cycle the two rowset groups)."""
+    if attrs[dst].rowset_name and attrs[dst].rowset_name in src_ancestor_rowsets:
+        return True
+    return bool(
+        attrs[src].rowset_name
+        and attrs[src].rowset_name != attrs[dst].rowset_name
+        and attrs[dst].derivation == Derivation.ROWSET
+    )
+
+
 def build_concept_graph(
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
@@ -2157,43 +2206,9 @@ def build_concept_graph(
             src_address = attrs[src].address
             if src_address not in row_arg_addresses:
                 continue
-            # A condition concept derived from a ROWSET (e.g. a WINDOW `eldest`
-            # computed over a rowset, then filtered `eldest = 1`) sits above that
-            # rowset already; its value can't exist until the rowset's rows do.
-            # A rowset is one indivisible group, so constraining the condition
-            # back onto ANY of the rowset's handles forms a cycle (rowset→window
-            # lineage, window→rowset constraint). Skip those: deriving from one
-            # handle means `src` is above the whole rowset, including the handles
-            # it doesn't read directly (the window reads `id`/`last_name`/`age`
-            # but its filter sits above `name`/`survived` from the same rowset).
-            src_lineage_ancestor_rowsets = {
-                attrs[a].rowset_name
-                for a in nx.ancestors(graph, src)
-                if attrs[a].rowset_name
-            }
+            src_ancestor_rowsets = _lineage_ancestor_rowsets(graph, attrs, src)
             for dst in d0_blank_nodes:
-                if (
-                    attrs[dst].rowset_name
-                    and attrs[dst].rowset_name in src_lineage_ancestor_rowsets
-                ):
-                    continue
-                # A rowset-scoped condition value is computed inside ITS own
-                # rowset's boundary and its test only applies above the
-                # completion merge (FINAL). Constraining it onto ANOTHER
-                # rowset's boundary would force that independent scope to consume
-                # a value it cannot see, polluting its output contract (the
-                # b-side boundary "output" the a-side's value and lost its own
-                # handles). Two forms: a rowset-member presence probe, and a
-                # plain rowset handle used in a post-merge filter (`where a.amt
-                # is not null and b.amt is not null` over two independent
-                # rowsets: each null test lands at FINAL, never inside the
-                # sibling's scan; a mutual constraint would 2-cycle the two
-                # rowset groups).
-                if (
-                    attrs[src].rowset_name
-                    and attrs[src].rowset_name != attrs[dst].rowset_name
-                    and attrs[dst].derivation == Derivation.ROWSET
-                ):
+                if _constraint_crosses_rowset(attrs, src, dst, src_ancestor_rowsets):
                     continue
                 # A lineage edge already present src→dst is left as-is; the
                 # constraint ordering it would carry is implied by the lineage.
@@ -2248,33 +2263,11 @@ def build_concept_graph(
             continue
         if any(True for _ in graph.successors(src)):
             continue
-        # Same rowset cycle guard as the main constraint pass above: a
-        # condition concept DERIVED from a rowset (a bare aggregate over a
-        # rowset handle, co-grained to the select grain) already sits above
-        # that rowset; constraining it back onto a mandatory output owned by
-        # the same rowset forms a rowset→condition→rowset cycle that kills
-        # the topological concept-set pass.
-        src_lineage_ancestor_rowsets = {
-            attrs[a].rowset_name
-            for a in nx.ancestors(graph, src)
-            if attrs[a].rowset_name
-        }
+        src_ancestor_rowsets = _lineage_ancestor_rowsets(graph, attrs, src)
         for dst in mandatory_blank_ids:
             if dst not in graph.nodes or graph.has_edge(src, dst):
                 continue
-            if (
-                attrs[dst].rowset_name
-                and attrs[dst].rowset_name in src_lineage_ancestor_rowsets
-            ):
-                continue
-            # Same cross-rowset guard as the main constraint pass: a
-            # rowset-scoped value's test lands at FINAL, never inside a sibling
-            # rowset's independent scope.
-            if (
-                attrs[src].rowset_name
-                and attrs[src].rowset_name != attrs[dst].rowset_name
-                and attrs[dst].derivation == Derivation.ROWSET
-            ):
+            if _constraint_crosses_rowset(attrs, src, dst, src_ancestor_rowsets):
                 continue
             add_edge(graph, edges, src, dst, EdgeKind.CONSTRAINT)
 

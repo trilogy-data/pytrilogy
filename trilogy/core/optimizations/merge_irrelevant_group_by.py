@@ -15,6 +15,8 @@ from trilogy.core.models.execute import (
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import (
     SENSITIVE_DERIVATIONS,
+    carry_child_state,
+    existence_linked,
     is_grouped_cte,
     is_sole_consumer,
     render_cte_used_map,
@@ -180,13 +182,7 @@ class MergeIrrelevantGroupBy(OptimizationRule):
         # An existence subselect must read from a CTE other than its host;
         # merging either side of an existence link makes the exists()
         # reference the CTE it renders in (or a dropped name).
-        if any(
-            parent.name in (sources or [])
-            for sources in cte.existence_source_map.values()
-        ) or any(
-            cte.name in (sources or [])
-            for sources in parent.existence_source_map.values()
-        ):
+        if existence_linked(cte, parent):
             self.debug(
                 f"CTE {cte.name} and parent {parent.name} are linked by an "
                 "existence reference; merging would self-reference, skipping"
@@ -235,16 +231,7 @@ class MergeIrrelevantGroupBy(OptimizationRule):
             if x.address not in parent.source_map:
                 parent.source_map[x.address] = []
 
-        # Carry the child's existence references and nullability: dropping
-        # them strands memberships and lets null-safe joins be falsely
-        # downgraded (same contract as CollapseSingleParent).
-        for address, sources in cte.existence_source_map.items():
-            if address not in parent.existence_source_map:
-                parent.existence_source_map[address] = sources
-        nullable_addresses = {c.address for c in parent.nullable_concepts}
-        for column in cte.nullable_concepts:
-            if column.address not in nullable_addresses:
-                parent.nullable_concepts.append(column)
+        carry_child_state(parent, cte)
 
         # The child's output_columns already carry the hidden group-by keys,
         # so the GROUP BY survives the swap.
@@ -254,11 +241,6 @@ class MergeIrrelevantGroupBy(OptimizationRule):
         ]
         parent.grain = cte.grain
         parent.hidden_concepts = parent.hidden_concepts.union(cte.hidden_concepts)
-        # LIMIT is the last logical operation of a SELECT, so the child's limit
-        # and ORDER BY carry onto the merged CTE unchanged.
-        if cte.limit is not None:
-            parent.limit = cte.limit
-            parent.order_by = cte.order_by
 
         repoint_consumers(cte, parent, inverse_map)
 

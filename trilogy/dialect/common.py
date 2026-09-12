@@ -1,7 +1,7 @@
 from collections.abc import Callable
 
 from trilogy.core.constants import UNNEST_NAME
-from trilogy.core.enums import JoinType, Modifier, UnnestMode
+from trilogy.core.enums import FunctionType, JoinType, Modifier, UnnestMode
 from trilogy.core.models.build import (
     BoolExpr,
     BuildAggregateWrapper,
@@ -306,3 +306,37 @@ def render_join(
     if join.condition:
         base = f"{base} and {render_expr_func(join.condition, cte)}"
     return base
+
+
+# Function-map fragments several dialects spell identically. Each is spread
+# into a dialect's own FUNCTION_MAP, which can still override any entry after
+# it -- BigQuery does exactly that for DAY_OF_WEEK, whose DAYOFWEEK is 1-based
+# on Sunday.
+SQL_STANDARD_EXTRACT: dict[FunctionType, Callable[..., str]] = {
+    FunctionType.MINUTE: lambda x, types: f"EXTRACT(MINUTE from {x[0]})",
+    FunctionType.SECOND: lambda x, types: f"EXTRACT(SECOND from {x[0]})",
+    FunctionType.HOUR: lambda x, types: f"EXTRACT(HOUR from {x[0]})",
+    FunctionType.DAY: lambda x, types: f"EXTRACT(DAY from {x[0]})",
+    FunctionType.YEAR: lambda x, types: f"EXTRACT(YEAR from {x[0]})",
+    FunctionType.MONTH: lambda x, types: f"EXTRACT(MONTH from {x[0]})",
+    FunctionType.WEEK: lambda x, types: f"EXTRACT(WEEK from {x[0]})",
+    FunctionType.QUARTER: lambda x, types: f"EXTRACT(QUARTER from {x[0]})",
+}
+
+SQL_STANDARD_EXTRACT_DAY_OF_WEEK: dict[FunctionType, Callable[..., str]] = {
+    FunctionType.DAY_OF_WEEK: lambda x, types: f"EXTRACT(DAYOFWEEK from {x[0]})",
+}
+
+# Native CONCAT propagates NULL; wrap each argument to match trilogy's
+# null-skipping semantics.
+CONCAT_COALESCE_UPPER: dict[FunctionType, Callable[..., str]] = {
+    FunctionType.CONCAT: lambda x, types: (
+        "CONCAT(" + ", ".join([f"COALESCE({a}, '')" for a in x]) + ")"
+    ),
+}
+
+CONCAT_COALESCE_LOWER: dict[FunctionType, Callable[..., str]] = {
+    FunctionType.CONCAT: lambda x, types: (
+        "concat(" + ", ".join([f"coalesce({a}, '')" for a in x]) + ")"
+    ),
+}

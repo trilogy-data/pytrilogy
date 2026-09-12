@@ -239,25 +239,3 @@ def validate_relation_paths(
                 ),
                 parents=[set(s) for s in surviving],
             )
-
-
-@dataclass(frozen=True)
-class AmbiguousModelPair:
-    left: str
-    right: str
-    alternatives: tuple[frozenset[str], ...]
-
-
-def sweep_model(environment: BuildEnvironment) -> list[AmbiguousModelPair]:
-    """Every ambiguous key-class pair in the model, query-independent; for
-    validation tooling."""
-    kg = build_key_graph(environment)
-    out: list[AmbiguousModelPair] = []
-    for source in sorted(kg.by_class):
-        for target, alternatives in connector_sets_from(kg, source).items():
-            if target <= source:
-                continue
-            surviving = undominated(alternatives)
-            if len(surviving) > 1:
-                out.append(AmbiguousModelPair(source, target, tuple(surviving)))
-    return out

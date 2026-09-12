@@ -358,13 +358,7 @@ def _build_from_graph(
         frozenset(c.address for c in ds.output_concepts)
         for ds in environment.datasources.values()
     ]
-    (
-        group_graph,
-        group_edges,
-        group_attrs,
-        merged_group_graph,
-        merged_group_edges,
-    ) = build_group_graph(
+    group_graph, group_edges, group_attrs = build_group_graph(
         concept_graph,
         concept_edges,
         concept_attrs,
@@ -395,12 +389,10 @@ def _build_from_graph(
         environment.extent_free_spans = outer_extent_free
     return BuildInfo(
         concept_graph=concept_graph,
-        merged_group_graph=merged_group_graph,
         group_graph=group_graph,
         group_attrs=group_attrs,
         concept_attrs=concept_attrs,
         concept_edges=concept_edges,
-        merged_group_edges=merged_group_edges,
         group_edges=group_edges,
         strategy_node=strategy_node,
     )

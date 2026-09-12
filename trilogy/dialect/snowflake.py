@@ -4,17 +4,15 @@ from typing import ClassVar
 from trilogy.core.enums import FunctionType, UnnestMode
 from trilogy.core.models.core import CONCRETE_TYPES, DataType
 from trilogy.dialect.base import BaseDialect, TableColumn
+from trilogy.dialect.common import (
+    CONCAT_COALESCE_UPPER,
+    SQL_STANDARD_EXTRACT,
+    SQL_STANDARD_EXTRACT_DAY_OF_WEEK,
+)
 
 FUNCTION_MAP = {
-    FunctionType.MINUTE: lambda x, types: f"EXTRACT(MINUTE from {x[0]})",
-    FunctionType.SECOND: lambda x, types: f"EXTRACT(SECOND from {x[0]})",
-    FunctionType.HOUR: lambda x, types: f"EXTRACT(HOUR from {x[0]})",
-    FunctionType.DAY_OF_WEEK: lambda x, types: f"EXTRACT(DAYOFWEEK from {x[0]})",
-    FunctionType.DAY: lambda x, types: f"EXTRACT(DAY from {x[0]})",
-    FunctionType.YEAR: lambda x, types: f"EXTRACT(YEAR from {x[0]})",
-    FunctionType.MONTH: lambda x, types: f"EXTRACT(MONTH from {x[0]})",
-    FunctionType.WEEK: lambda x, types: f"EXTRACT(WEEK from {x[0]})",
-    FunctionType.QUARTER: lambda x, types: f"EXTRACT(QUARTER from {x[0]})",
+    **SQL_STANDARD_EXTRACT,
+    **SQL_STANDARD_EXTRACT_DAY_OF_WEEK,
     # math
     FunctionType.POWER: lambda x, types: f"POWER({x[0]}, {x[1]})",
     FunctionType.DIVIDE: lambda x, types: f"DIV0({x[0]},{x[1]})",
@@ -29,11 +27,8 @@ FUNCTION_MAP = {
     FunctionType.DATE_ADD: lambda x, types: f"DATEADD({x[1]}, {x[2]}, {x[0]})",
     FunctionType.DATE_SUB: lambda x, types: f"DATEADD({x[1]}, -{x[2]}, {x[0]})",
     FunctionType.DATE_DIFF: lambda x, types: f"DATEDIFF({x[2]}, {x[0]}, {x[1]})",
-    # native CONCAT/CONCAT_WS propagate NULL; wrap to match the null-skipping
-    # semantics (ARRAY_CONSTRUCT_COMPACT drops NULL elements)
-    FunctionType.CONCAT: lambda x, types: (
-        "CONCAT(" + ", ".join([f"COALESCE({a}, '')" for a in x]) + ")"
-    ),
+    # CONCAT_WS propagates NULL too; ARRAY_CONSTRUCT_COMPACT drops NULL elements.
+    **CONCAT_COALESCE_UPPER,
     FunctionType.CONCAT_WS: lambda x, types: (
         f"ARRAY_TO_STRING(ARRAY_CONSTRUCT_COMPACT({', '.join(x[1:])}), {x[0]})"
     ),
@@ -106,16 +101,11 @@ class SnowflakeDialect(BaseDialect):
     # Extends the shared base map; bare TIMESTAMP defaults to TIMESTAMP_NTZ semantics.
     DB_COLUMN_TYPE_MAP: ClassVar[dict[str, DataType]] = {
         **BaseDialect.DB_COLUMN_TYPE_MAP,
-        "text": DataType.STRING,
         "number": DataType.INTEGER,
-        "float": DataType.FLOAT,
-        "boolean": DataType.BOOL,
-        "date": DataType.DATE,
         "timestamp": DataType.DATETIME,
         "timestamp_ntz": DataType.DATETIME,
         "timestamp_ltz": DataType.TIMESTAMP,
         "timestamp_tz": DataType.TIMESTAMP,
-        "array": DataType.ARRAY,
     }
 
     def get_table_primary_keys(

@@ -100,10 +100,12 @@ def membership_complete_grain_keys(
     return grain_keys if proven & exclusive else set()
 
 
-def get_graph_partial_nodes(
+def _graph_partial_concepts(
     g: ReferenceGraph, conditions: BuildWhereClause | None
-) -> dict[str, list[str]]:
-    partial: dict[str, list[str]] = {}
+) -> dict[str, list[BuildConcept]]:
+    """Per datasource node, the concepts still partial once the query's own
+    condition and membership-complete grain keys are taken into account."""
+    partial: dict[str, list[BuildConcept]] = {}
     for node, ds in g.datasources.items():
         complete_keys = membership_complete_grain_keys(
             ds, g.datasources.values(), conditions
@@ -118,43 +120,31 @@ def get_graph_partial_nodes(
             # Condition satisfies the DS's complete-where, so the implicit
             # table-level partial stamp goes away; column-level ~ partials are
             # structural and survive.
-            partial[node] = [
-                concept_to_node(c)
-                for c in _structural_partial_concepts(ds)
-                if c.canonical_address not in complete_keys
-            ]
+            candidates: list[BuildConcept] = _structural_partial_concepts(ds)
         else:
-            partial[node] = [
-                concept_to_node(c)
-                for c in ds.partial_concepts
-                if c.canonical_address not in complete_keys
-            ]
+            candidates = list(ds.partial_concepts)
+        partial[node] = [
+            c for c in candidates if c.canonical_address not in complete_keys
+        ]
     return partial
+
+
+def get_graph_partial_nodes(
+    g: ReferenceGraph, conditions: BuildWhereClause | None
+) -> dict[str, list[str]]:
+    return {
+        node: [concept_to_node(c) for c in concepts]
+        for node, concepts in _graph_partial_concepts(g, conditions).items()
+    }
 
 
 def get_graph_partial_canonical(
     g: ReferenceGraph, conditions: BuildWhereClause | None
 ) -> dict[str, set[str]]:
-    partial: dict[str, set[str]] = {}
-    for node, ds in g.datasources.items():
-        complete_keys = membership_complete_grain_keys(
-            ds, g.datasources.values(), conditions
-        )
-        if (
-            ds.non_partial_for
-            and conditions
-            and condition_implies(
-                conditions.conditional, ds.non_partial_for.conditional
-            )
-        ):
-            partial[node] = {
-                c.canonical_address for c in _structural_partial_concepts(ds)
-            } - complete_keys
-        else:
-            partial[node] = {
-                c.canonical_address for c in ds.partial_concepts
-            } - complete_keys
-    return partial
+    return {
+        node: {c.canonical_address for c in concepts}
+        for node, concepts in _graph_partial_concepts(g, conditions).items()
+    }
 
 
 def get_graph_grains(g: ReferenceGraph) -> dict[str, set[str]]:

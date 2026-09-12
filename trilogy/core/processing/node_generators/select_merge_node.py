@@ -813,9 +813,6 @@ def gen_select_merge_node(
             f"{padding(depth)}{LOGGER_PREFIX} Multiple parent DS nodes resolved - {[type(x) for x in parents]}, wrapping in merge"
         )
 
-        preexisting_conditions = None
-        force_join_type: JoinType | None = None
-        merge_conditions = None
         preexisting_conditions, merge_conditions, force_join_type = (
             _merge_condition_routing(parents, all_concepts, conditions)
         )
