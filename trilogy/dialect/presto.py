@@ -5,18 +5,16 @@ from trilogy.core.enums import FunctionType, GroupMode, UnnestMode
 from trilogy.core.models.core import CONCRETE_TYPES, DataType
 from trilogy.core.statements.execute import CreateTableInfo
 from trilogy.dialect.base import BaseDialect
+from trilogy.dialect.common import (
+    CONCAT_COALESCE_LOWER,
+    SQL_STANDARD_EXTRACT,
+    SQL_STANDARD_EXTRACT_DAY_OF_WEEK,
+)
 
 FUNCTION_MAP = {
     FunctionType.INDEX_ACCESS: lambda x, types: f"element_at({x[0]},{x[1]})",
-    FunctionType.MINUTE: lambda x, types: f"EXTRACT(MINUTE from {x[0]})",
-    FunctionType.SECOND: lambda x, types: f"EXTRACT(SECOND from {x[0]})",
-    FunctionType.HOUR: lambda x, types: f"EXTRACT(HOUR from {x[0]})",
-    FunctionType.DAY_OF_WEEK: lambda x, types: f"EXTRACT(DAYOFWEEK from {x[0]})",
-    FunctionType.DAY: lambda x, types: f"EXTRACT(DAY from {x[0]})",
-    FunctionType.YEAR: lambda x, types: f"EXTRACT(YEAR from {x[0]})",
-    FunctionType.MONTH: lambda x, types: f"EXTRACT(MONTH from {x[0]})",
-    FunctionType.WEEK: lambda x, types: f"EXTRACT(WEEK from {x[0]})",
-    FunctionType.QUARTER: lambda x, types: f"EXTRACT(QUARTER from {x[0]})",
+    **SQL_STANDARD_EXTRACT,
+    **SQL_STANDARD_EXTRACT_DAY_OF_WEEK,
     # math
     FunctionType.DIVIDE: lambda x, types: f"{x[0]}/{x[1]}",
     FunctionType.DATE_ADD: lambda x, types: f"date_add({x[1]},{x[2]}, {x[0]})",
@@ -26,11 +24,8 @@ FUNCTION_MAP = {
     FunctionType.ARRAY: lambda x, types: f"ARRAY[{', '.join(x)}]",
     # regex
     FunctionType.REGEXP_CONTAINS: lambda x, types: f"REGEXP_LIKE({x[0]}, {x[1]})",
-    # native concat propagates NULL; wrap to match the null-skipping semantics.
     # array_join omits NULL elements when no null_replacement is given.
-    FunctionType.CONCAT: lambda x, types: (
-        "concat(" + ", ".join([f"coalesce({a}, '')" for a in x]) + ")"
-    ),
+    **CONCAT_COALESCE_LOWER,
     FunctionType.CONCAT_WS: lambda x, types: (
         f"array_join(ARRAY[{', '.join(x[1:])}], {x[0]})"
     ),

@@ -14,6 +14,7 @@ from trilogy.core.models.core import DataType
 from trilogy.core.models.execute import CTE, UnionCTE
 from trilogy.core.statements.execute import CreateTableInfo
 from trilogy.dialect.base import BaseDialect, TableColumn
+from trilogy.dialect.common import CONCAT_COALESCE_UPPER
 
 
 def date_truncate(expr: str, part: str) -> str:
@@ -46,11 +47,6 @@ def date_interval(function: str, args: list[str]) -> str:
 def date_diff(first: str, second: str, part: str) -> str:
     grain = DatePart(part).value.upper()
     return f"TIMESTAMPDIFF({grain}, {first}, {second})"
-
-
-def concat_ignore_nulls(args: list[str]) -> str:
-    values = ", ".join(f"COALESCE({arg}, '')" for arg in args)
-    return f"CONCAT({values})"
 
 
 def render_cast(args: list[str]) -> str:
@@ -91,7 +87,7 @@ FUNCTION_MAP = {
     FunctionType.BOOL_AND: lambda x, types: f"MIN(CAST({x[0]} AS UNSIGNED))",
     FunctionType.STRPOS: lambda x, types: f"LOCATE({x[1]}, {x[0]})",
     FunctionType.CONTAINS: lambda x, types: f"(LOCATE({x[1]}, {x[0]}) > 0)",
-    FunctionType.CONCAT: lambda x, types: concat_ignore_nulls(x),
+    **CONCAT_COALESCE_UPPER,
     FunctionType.CONCAT_STRICT: lambda x, types: f"CONCAT({', '.join(x)})",
     FunctionType.CAST: lambda x, types: render_cast(x),
     FunctionType.DATE_LITERAL: lambda x, types: f"DATE('{x}')",

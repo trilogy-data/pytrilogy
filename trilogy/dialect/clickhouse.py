@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from trilogy.core.enums import FunctionType, UnnestMode
 from trilogy.core.models.core import DataType, MapWrapper
 from trilogy.dialect.base import BaseDialect
+from trilogy.dialect.common import CONCAT_COALESCE_LOWER
 
 if TYPE_CHECKING:
     from trilogy.core.models.execute import CTE, UnionCTE
@@ -65,9 +66,7 @@ FUNCTION_MAP = {
     # native concat propagates NULL; wrap to match the null-skipping semantics.
     # concat_ws must drop NULL elements (not render them as '') so the
     # separator is skipped too — filter then assumeNotNull for Array(String).
-    FunctionType.CONCAT: lambda x, types: (
-        "concat(" + ", ".join([f"coalesce({a}, '')" for a in x]) + ")"
-    ),
+    **CONCAT_COALESCE_LOWER,
     FunctionType.CONCAT_WS: lambda x, types: (
         "arrayStringConcat(arrayMap(v -> assumeNotNull(v), "
         f"arrayFilter(v -> isNotNull(v), [{', '.join(x[1:])}])), {x[0]})"
