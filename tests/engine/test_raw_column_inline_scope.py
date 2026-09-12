@@ -11,8 +11,8 @@ two counts, and both are checked here against the hazard they exist to stop:
   optional side of an outer join it reads FALSE where the scan's own column
   would read NULL (`_probe_outer_join`).
 
-A raw column over a column the datasource does not declare cannot be proven to
-belong to its own table, so it keeps its CTE too.
+The binding's own scope is what makes the names columns of its table, so a
+column the model never declares is read the same as a declared one.
 """
 
 import duckdb
@@ -121,9 +121,11 @@ def test_raw_column_reference_keeps_its_cte_on_the_optional_side():
     assert rows == [(1, True, "ann"), (2, None, "ann"), (3, False, "bob")]
 
 
-def test_raw_column_reference_keeps_its_cte_when_the_column_is_undeclared():
+def test_raw_column_reference_folds_when_the_column_is_undeclared():
+    # `r_returned_at` is a column of returns whether or not the model binds it.
     sql, rows = _sql_and_rows(_executor(returned_at=""))
-    assert "WITH" in sql, sql
+    assert "WITH" not in sql, sql
+    assert "r_returned_at IS NOT NULL as" in sql, sql
     assert rows == [(1, True, "ann"), (3, False, "bob")]
 
 

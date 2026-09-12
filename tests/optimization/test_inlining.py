@@ -194,35 +194,37 @@ SELECT
     assert '"orders"."customer_id" is not null' in query
 
 
-DECLARED = {"sr_return_time_sk", "sr_item_sk", "amount", "end"}
-
-
-def test_raw_text_column_refs_reads_declared_columns():
-    assert _raw_text_column_refs("SR_RETURN_TIME_SK IS NOT NULL", DECLARED) == {
+def test_raw_text_column_refs_reads_the_columns_a_text_names():
+    assert _raw_text_column_refs("SR_RETURN_TIME_SK IS NOT NULL") == {
         "sr_return_time_sk"
     }
-    assert _raw_text_column_refs(""""sr_item_sk" = amount""", DECLARED) == {
+    assert _raw_text_column_refs(""""sr_item_sk" = amount""") == {
         "sr_item_sk",
         "amount",
     }
-    # A column may share a keyword's spelling; declared wins.
-    assert _raw_text_column_refs("end is null", DECLARED) == {"end"}
+    # The binding's own scope makes these columns of its table whether or not
+    # the model declares them, which is how most raw() text is written.
+    assert _raw_text_column_refs(
+        "cast(event_timestamp as numeric) * 10000 + user_pseudo_id"
+    ) == {"event_timestamp", "user_pseudo_id"}
 
 
 def test_raw_text_column_refs_admits_literals_and_functions():
-    for text in ("1", " -2.5 ", "'STORE'", "true", "coalesce(amount, 0) > 0"):
-        refs = _raw_text_column_refs(text, DECLARED)
-        assert refs is not None, text
-    assert _raw_text_column_refs("1", DECLARED) == set()
-    assert _raw_text_column_refs("'a b c'", DECLARED) == set()
-    assert _raw_text_column_refs("cast(amount as int)", DECLARED) == {"amount"}
+    assert _raw_text_column_refs("1") == set()
+    assert _raw_text_column_refs(" -2.5 ") == set()
+    assert _raw_text_column_refs("'a b c'") == set()
+    assert _raw_text_column_refs("true") == set()
+    assert _raw_text_column_refs("coalesce(amount, 0) > 0") == {"amount"}
+    assert _raw_text_column_refs("PARSE_DATE('%Y%m%d', suffix)") == {"suffix"}
 
 
-def test_raw_text_column_refs_refuses_what_it_cannot_attribute():
-    # Not a column of this datasource.
-    assert _raw_text_column_refs("ss_quantity > 0", DECLARED) is None
-    # Qualified: the qualifier does not survive the fold.
-    assert _raw_text_column_refs("returns.amount > 0", DECLARED) is None
-    assert _raw_text_column_refs('''"returns"."amount"''', DECLARED) is None
-    # An unknown bare word could be anything.
-    assert _raw_text_column_refs("amount > total", DECLARED) is None
+def test_raw_text_column_refs_refuses_a_qualified_reference():
+    # The qualifier is the scan's alias, which the fold replaces.
+    assert _raw_text_column_refs("returns.amount > 0") is None
+    assert _raw_text_column_refs('''"returns"."amount"''') is None
+
+
+def test_raw_text_column_refs_cannot_see_a_keyword_spelled_column():
+    # A column named `end` reads as syntax, so it is not collision-checked. The
+    # cost is a possible ambiguity error, never a silently wrong reference.
+    assert _raw_text_column_refs("end is null") == set()

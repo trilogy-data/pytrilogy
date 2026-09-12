@@ -27,10 +27,9 @@ _SQL_STRING_RE = re.compile(r"'(?:[^']|'')*'")
 _SQL_TOKEN_RE = re.compile(r'"(?:[^"]|"")*"|[A-Za-z_][A-Za-z0-9_$]*')
 
 # Words a raw() expression can carry that are not column references: SQL
-# syntax and type names. Checked only AFTER the declared-column lookup, so a
-# column that shares a keyword's spelling still reads as a column. A word that
-# is neither declared nor listed here refuses the inline, so a gap here costs a
-# CTE and never a misresolved reference.
+# syntax and type names. This is precision, not safety -- an unlisted word is
+# treated as a column of this datasource and checked for a collision, so a gap
+# here can only cost a CTE the fold would have been welcome to take.
 _NON_COLUMN_WORDS = """
     all and any as asc at between by case cast collate cross current_date
     current_time current_timestamp desc distinct else end escape exists false
@@ -45,11 +44,16 @@ _NON_COLUMN_WORDS = """
 _SQL_NON_COLUMN_WORDS = frozenset(_NON_COLUMN_WORDS.split())
 
 
-def _raw_text_column_refs(text: str, declared: set[str]) -> set[str] | None:
-    """Column names ``text`` reads, lowercased, or None when it reads anything
-    this rule cannot prove is a column of its own datasource -- an undeclared
-    word, or a qualified ``alias.column`` whose qualifier does not survive the
-    fold. A literal carries no words and yields the empty set."""
+def _raw_text_column_refs(text: str) -> set[str] | None:
+    """Column names ``text`` reads, lowercased, or None when it carries a
+    qualified ``alias.column`` whose qualifier does not survive the fold.
+
+    A raw() binding is evaluated in its own datasource's scope, so every word
+    in it that is not SQL syntax is a column of that table, declared in the
+    model or not. Folding changes exactly one thing about that: the name stops
+    being alone in the FROM. A literal carries no words and yields the empty
+    set.
+    """
     body = _SQL_STRING_RE.sub(" ", text)
     refs: set[str] = set()
     for match in _SQL_TOKEN_RE.finditer(body):
@@ -61,14 +65,11 @@ def _raw_text_column_refs(text: str, declared: set[str]) -> set[str] | None:
         if after.startswith(".") or body[: match.start()].rstrip().endswith("."):
             return None
         if token.startswith('"'):
-            name = token[1:-1].replace('""', '"').lower()
-        else:
-            name = token.lower()
-            # Declared first: a column may share a keyword's spelling.
-            if name not in declared and name in _SQL_NON_COLUMN_WORDS:
-                continue
-        if name not in declared:
-            return None
+            refs.add(token[1:-1].replace('""', '"').lower())
+            continue
+        name = token.lower()
+        if name in _SQL_NON_COLUMN_WORDS:
+            continue
         refs.add(name)
     return refs
 
@@ -107,8 +108,9 @@ def _raw_columns_inline_safely(
     """Verbatim raw() text is evaluated wherever it lands. As the consumer's
     sole source that is the datasource's own scope, and a consumer that never
     reads a raw-bound concept never renders the text at all. Beside another
-    table the text is unqualified, so it is only sound when every word in it is
-    a column of this datasource that no other source in scope also exposes.
+    table the text is unqualified, so it is only sound when no other source in
+    scope exposes a name the text reads (the binding's own scope guarantees the
+    names are this datasource's columns; the fold is what puts them in company).
     Value is a second question: the text reads as if the datasource had a row
     wherever it lands, so it stays per-row correct only where every result row
     carries one -- the driving table of INNER/LEFT joins, or an INNER-joined
@@ -118,13 +120,10 @@ def _raw_columns_inline_safely(
     if not cte.joins and parent_count <= 1:
         return True
     raw_text: dict[str, str] = {}
-    declared: set[str] = set()
     for column in root.columns:
         if isinstance(column.alias, RawColumnExpr):
             for address in {column.concept.address} | column.concept.pseudonyms:
                 raw_text[address] = column.alias.text
-        elif isinstance(column.alias, str):
-            declared.add(column.alias.lower())
     consumed = render_cte_used_map(cte).get(parent.name, set()) | _join_key_demand(
         cte, parent.name
     )
@@ -133,7 +132,7 @@ def _raw_columns_inline_safely(
         return True
     scope = _consumer_scope_names(cte, parent)
     for text in rendered:
-        refs = _raw_text_column_refs(text, declared)
+        refs = _raw_text_column_refs(text)
         if refs is None or refs & scope:
             return False
     joins = [join for join in cte.joins if isinstance(join, Join)]
