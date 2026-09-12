@@ -889,18 +889,47 @@ def parse_rewrite(
     return parsed
 
 
+def _largest_files(payload: dict, limit: int = 5) -> list[tuple[str, int]]:
+    """The biggest entries in a bundle, largest first, as (name, bytes)."""
+    files = payload.get("files")
+    if not isinstance(files, list):
+        return []
+    sized = [
+        (f["name"], len(f.get("content") or ""))
+        for f in files
+        if isinstance(f, dict) and isinstance(f.get("name"), str)
+    ]
+    return sorted(sized, key=lambda pair: pair[1], reverse=True)[:limit]
+
+
 def check_bundle_size(payload: dict) -> bytes:
     """The encoded payload, refused if it cannot fit in a queue message.
 
     Returns the bytes, so the caller sends exactly what was measured.
+
+    The budget is the platform's, twice over: the distributor refuses to
+    publish a flattened payload past it, and the API refuses a request body
+    past it (`job_limits::MAX_REQUEST_BODY_BYTES`) — the same number, so
+    measuring here is the same question asked one hop earlier, where the answer
+    can name files instead of arriving as a 413.
     """
     encoded = json.dumps(payload).encode("utf-8")
     budget = int(PUBSUB_MAX_BYTES * SAFETY_MARGIN)
     if len(encoded) > budget:
+        # Naming the offenders is most of the fix: a tree of several hundred
+        # small scripts goes over because of a handful of data files in it,
+        # and "narrow --include" is not actionable until you know which.
+        biggest = _largest_files(payload)
+        detail = ""
+        if biggest:
+            listed = ", ".join(f"{name} ({size:,}B)" for name, size in biggest)
+            detail = f" Largest: {listed}."
         raise CloudError(
             f"Bundle is {len(encoded):,}B, over the {budget:,}B budget "
             f"({SAFETY_MARGIN:.0%} of PubSub's {PUBSUB_MAX_BYTES:,}B message "
-            "limit). Narrow --include, add --exclude, or split the job."
+            f"limit).{detail} Narrow --include, add --exclude, or split the "
+            "project. Data files especially do not belong in a bundle — they "
+            "are re-materialized onto a worker VM on every run."
         )
     return encoded
 
@@ -1939,6 +1968,28 @@ def _find_workspace(
     raise CloudError(f"No workspace named {name_or_id!r} in org {org!r}.")
 
 
+def _workspace_by_name(client: CloudClient, org: str, name: str) -> Workspace | None:
+    """The org's workspace with this exact name, or None.
+
+    Asks the server to do the filtering (`?name=`), which matters because the
+    list route returns **whole** workspaces — `files` included. A sync calls
+    this only to learn one workspace's id, and unfiltered that means
+    downloading every tree in the org to find it: a cost that grows with the
+    org rather than with the question, and the read-side twin of pushing a
+    whole tree on every sync.
+
+    The client-side match is kept deliberately. An API that predates the
+    parameter has no query extractor on that route at all, so it ignores the
+    filter and answers with everything — the narrowing has to be a bandwidth
+    optimization rather than something correctness rests on, or this silently
+    picks an arbitrary workspace against an older server.
+    """
+    matches = client.get_many(
+        f"/orgs/{org}/workspaces?{urlencode({'name': name})}", Workspace
+    )
+    return next((w for w in matches if w.name == name), None)
+
+
 def _workspace_chain(
     workspaces_: Sequence[Workspace], workspace_id: str | None
 ) -> list[Workspace]:
@@ -2422,14 +2473,7 @@ def workspaces_push(
                     touched += 1
         print_info(f"Applied rewrites to {touched} file(s)")
 
-    existing = next(
-        (
-            w
-            for w in client.get_many(f"/orgs/{org}/workspaces", Workspace)
-            if w.name == name
-        ),
-        None,
-    )
+    existing = _workspace_by_name(client, org, name)
 
     # An explicit --config always wins. Otherwise a trilogy.toml in the tree is
     # sent only when the workspace already has a config — that is the file a
@@ -3759,14 +3803,7 @@ def _ensure_workspace(
     updated, through the payload builder `workspaces push` uses, since a `PUT`
     replaces a workspace wholesale and this body names only the tree.
     """
-    existing = next(
-        (
-            w
-            for w in client.get_many(f"/orgs/{org}/workspaces", Workspace)
-            if w.name == name
-        ),
-        None,
-    )
+    existing = _workspace_by_name(client, org, name)
     body = _workspace_payload(
         name=name,
         files=files,
@@ -3775,14 +3812,22 @@ def _ensure_workspace(
         existing=existing,
     )
     body["source_key"] = source_key
+    # Measured here, and on a dry run too, for the same reason `_sync_one`
+    # measures a job's: a tree over the budget is exactly what a dry run
+    # exists to find. This is the *workspace* push, which carries the whole
+    # project — so in workspace mode it is the big body and the jobs beside it
+    # are empty, the opposite of the per-job layout the job check was written
+    # for. Missing it, an oversized tree reached the server unmeasured and
+    # came back as a bare 413 naming nothing.
+    encoded = check_bundle_size(body)
     if dry_run:
         return (existing.id if existing else None), (
             "would update" if existing else "would create"
         )
     if existing:
-        client.put_one(f"/orgs/{org}/workspaces/{existing.id}", Workspace, body)
+        client.put_one(f"/orgs/{org}/workspaces/{existing.id}", Workspace, encoded)
         return existing.id, "updated"
-    created = client.post_one(f"/orgs/{org}/workspaces", Workspace, body)
+    created = client.post_one(f"/orgs/{org}/workspaces", Workspace, encoded)
     return created.id, "created"
 
 
