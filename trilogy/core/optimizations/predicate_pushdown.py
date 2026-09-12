@@ -23,6 +23,7 @@ from trilogy.core.optimizations.base_optimization import MergedCTEMap, Optimizat
 from trilogy.core.optimizations.utils import (
     append_condition,
     condition_contains_atom,
+    null_padded_nodes,
     strip_condition_atom,
 )
 from trilogy.core.processing.condition_utility import (
@@ -195,25 +196,7 @@ def _parent_nullable_in_cte(cte: CTE, parent_name: str) -> bool:
     ``cte``. A nullable parent can be NULL-padded by the join, so rows whose
     filter column is NULL slip through a removed predicate but would have
     failed the original WHERE."""
-    for j in cte.joins or []:
-        if not isinstance(j, Join):
-            continue
-        if j.jointype == JoinType.INNER:
-            continue
-        if j.jointype in (JoinType.FULL, JoinType.LEFT_OUTER) and (
-            isinstance(j.right_cte, (CTE, UnionCTE)) and j.right_cte.name == parent_name
-        ):
-            return True
-        if j.jointype in (JoinType.FULL, JoinType.RIGHT_OUTER):
-            if (
-                isinstance(j.left_cte, (CTE, UnionCTE))
-                and j.left_cte.name == parent_name
-            ):
-                return True
-            for pair in j.joinkey_pairs or []:
-                if pair.cte.name == parent_name:
-                    return True
-    return False
+    return any(node.name == parent_name for node in null_padded_nodes(cte))
 
 
 def _consumer_may_emit_without_parent(cte: CTE, parent_name: str) -> bool:

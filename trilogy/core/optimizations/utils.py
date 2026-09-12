@@ -1,7 +1,13 @@
 import dataclasses
 from typing import cast
 
-from trilogy.core.enums import BooleanOperator, Derivation, FunctionType, SourceType
+from trilogy.core.enums import (
+    BooleanOperator,
+    Derivation,
+    FunctionType,
+    JoinType,
+    SourceType,
+)
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
@@ -10,7 +16,7 @@ from trilogy.core.models.build import (
     BuildFunction,
     BuildRowsetItem,
 )
-from trilogy.core.models.execute import CTE, QueryDatasource, UnionCTE
+from trilogy.core.models.execute import CTE, Join, QueryDatasource, UnionCTE
 from trilogy.core.processing.condition_utility import merge_conditions_and_dedup
 
 # Derivations whose rows cannot be re-scoped: a window, unnest or recursive
@@ -18,6 +24,22 @@ from trilogy.core.processing.condition_utility import merge_conditions_and_dedup
 SENSITIVE_DERIVATIONS = frozenset(
     {Derivation.WINDOW, Derivation.UNNEST, Derivation.RECURSIVE}
 )
+
+
+def null_padded_nodes(cte: CTE) -> list[CTE | UnionCTE]:
+    """The sides ``cte``'s own outer joins NULL-pad: the right of a LEFT/FULL,
+    and the accumulated left (plus every joinkey source) of a RIGHT/FULL."""
+    padded: list[CTE | UnionCTE] = []
+    for join in cte.joins or []:
+        if not isinstance(join, Join) or join.jointype == JoinType.INNER:
+            continue
+        if join.jointype in (JoinType.LEFT_OUTER, JoinType.FULL):
+            padded.append(join.right_cte)
+        if join.jointype in (JoinType.RIGHT_OUTER, JoinType.FULL):
+            if join.left_cte is not None:
+                padded.append(join.left_cte)
+            padded.extend(pair.cte for pair in join.joinkey_pairs or [])
+    return padded
 
 
 def is_grouped_cte(cte: CTE) -> bool:
