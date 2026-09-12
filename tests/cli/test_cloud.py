@@ -219,6 +219,27 @@ class TestBundling:
         with pytest.raises(CloudError, match="budget"):
             check_bundle_size(payload)
 
+    def test_the_refusal_names_the_files_that_caused_it(self):
+        """A tree goes over because of a handful of data files among hundreds
+        of small scripts. "Narrow --include" is not actionable until you know
+        which ones, and the whole point of measuring client-side rather than
+        taking a 413 is that here we still have the names."""
+        payload = {
+            "files": [
+                {"name": "raw/dump.json", "content": "x" * (9 * 1024 * 1024)},
+                {"name": "model.preql", "content": "key id int;"},
+            ]
+        }
+        with pytest.raises(CloudError) as exc:
+            check_bundle_size(payload)
+        assert "raw/dump.json" in str(exc.value)
+
+    def test_a_bundle_with_no_files_key_still_reports_its_size(self):
+        """The size check has to survive a payload shaped differently from a
+        bundle — it is called on job and workspace bodies alike."""
+        with pytest.raises(CloudError, match="budget"):
+            check_bundle_size({"config": "x" * (9 * 1024 * 1024)})
+
     def test_encoded_bundle_is_returned_for_reuse(self):
         payload = {"files": []}
         assert check_bundle_size(payload) == json.dumps(payload).encode("utf-8")
@@ -5055,3 +5076,181 @@ class TestDryRunWritesNothing:
         assert result.exit_code == 0, result.output
         assert "would create" in result.output
         assert "would update" not in result.output
+
+
+class TestWorkspaceLookupIsServerFiltered:
+    """Resolving one workspace by name must not download the org's trees.
+
+    The list route returns **whole** workspaces, `files` included, and both
+    `sync` and `workspaces push` call it only to learn one workspace's id. Left
+    unfiltered, every sync pulled every tree in the org to find one — a cost
+    that grows with the org rather than with the question, and the read-side
+    twin of pushing a whole tree on every sync.
+    """
+
+    TOML = """
+[cloud]
+
+[[cloud.job]]
+key = "refresh"
+name = "space-refresh"
+entrypoint = "refresh.preql"
+operation = "refresh"
+"""
+
+    def _repo(self, root: Path) -> Path:
+        directory = root / "data"
+        directory.mkdir(parents=True)
+        (directory / "trilogy.toml").write_text(self.TOML, encoding="utf-8")
+        (directory / "model.preql").write_text("key id int;", encoding="utf-8")
+        return root
+
+    def _seed(self, api) -> None:
+        api.set("GET", f"/orgs/{api.org}/workspaces", [])
+        api.set(
+            "POST",
+            f"/orgs/{api.org}/workspaces",
+            {"id": "ws-1", "org_id": "org-acme", "name": "data"},
+        )
+        api.set(
+            "PUT",
+            f"/orgs/{api.org}/workspaces/*",
+            {"id": "ws-1", "org_id": "org-acme", "name": "data"},
+        )
+        api.set("PATCH", f"/orgs/{api.org}/jobs/*", {})
+        api.set("GET", f"/orgs/{api.org}/jobs", [])
+        api.set("POST", f"/orgs/{api.org}/jobs", _job_payload("job-1", "space-refresh"))
+        api.set("GET", f"/orgs/{api.org}/schedules", [])
+
+    def test_sync_asks_the_server_for_the_one_workspace_by_name(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        root = self._repo(tmp_path)
+        self._seed(logged_in)
+        assert run_cloud("sync", str(root)).exit_code == 0
+        call = logged_in.call_for("GET", f"/orgs/{logged_in.org}/workspaces")
+        assert call.query.get("name") == ["data"]
+
+    def test_push_asks_the_server_for_the_one_workspace_by_name(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        source = tmp_path / "src"
+        source.mkdir()
+        (source / "model.preql").write_text("key id int;", encoding="utf-8")
+        assert (
+            run_cloud(
+                "workspaces", "push", "--source", str(source), "--name", "space"
+            ).exit_code
+            == 0
+        )
+        call = logged_in.call_for("GET", f"/orgs/{logged_in.org}/workspaces")
+        assert call.query.get("name") == ["space"]
+
+    def test_an_api_that_ignores_the_filter_still_resolves_correctly(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        """An API predating the parameter has no query extractor on that route,
+        so it answers with everything. The narrowing is bandwidth, never
+        correctness — without the client-side match this would pick whichever
+        workspace happened to come back first."""
+        root = self._repo(tmp_path)
+        self._seed(logged_in)
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/workspaces",
+            [
+                {"id": "ws-other", "org_id": "org-acme", "name": "unrelated"},
+                {"id": "ws-data", "org_id": "org-acme", "name": "data"},
+            ],
+        )
+        assert run_cloud("sync", str(root)).exit_code == 0
+        # Updated the workspace actually named `data`, not the first row back.
+        assert logged_in.requests_for(
+            "PUT", f"/orgs/{logged_in.org}/workspaces/ws-data"
+        )
+        assert not logged_in.requests_for(
+            "PUT", f"/orgs/{logged_in.org}/workspaces/ws-other"
+        )
+
+    def test_a_name_with_url_characters_is_encoded(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        source = tmp_path / "src"
+        source.mkdir()
+        (source / "model.preql").write_text("key id int;", encoding="utf-8")
+        logged_in.set("GET", f"/orgs/{logged_in.org}/workspaces", [])
+        run_cloud("workspaces", "push", "--source", str(source), "--name", "a b&c")
+        call = logged_in.call_for("GET", f"/orgs/{logged_in.org}/workspaces")
+        assert call.query.get("name") == ["a b&c"]
+
+
+class TestWorkspacePushIsSizeChecked:
+    """A sync's *workspace* body is the big one, and went unmeasured.
+
+    `check_bundle_size` was called on each job's payload, which was written
+    when a job carried its own copy of the project. Under a shared workspace
+    that layout inverts: the workspace holds the whole tree and the jobs beside
+    it carry no files at all — so the one body worth measuring was the one
+    nothing measured, and an oversized tree reached the server and came back as
+    a bare 413 naming nothing.
+    """
+
+    TOML = """
+[cloud]
+
+[[cloud.job]]
+key = "refresh"
+name = "space-refresh"
+entrypoint = "refresh.preql"
+operation = "refresh"
+"""
+
+    def _oversized_repo(self, root: Path) -> Path:
+        directory = root / "data"
+        directory.mkdir(parents=True)
+        (directory / "trilogy.toml").write_text(self.TOML, encoding="utf-8")
+        (directory / "model.preql").write_text("key id int;", encoding="utf-8")
+        (directory / "raw_dump.json").write_text("x" * (9 * 1024 * 1024), "utf-8")
+        return root
+
+    def _seed(self, api) -> None:
+        api.set("GET", f"/orgs/{api.org}/workspaces", [])
+        api.set("GET", f"/orgs/{api.org}/jobs", [])
+        api.set("GET", f"/orgs/{api.org}/schedules", [])
+
+    def test_an_oversized_tree_is_refused_before_it_is_sent(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        root = self._oversized_repo(tmp_path)
+        self._seed(logged_in)
+        result = run_cloud("sync", str(root))
+        assert result.exit_code != 0
+        assert "budget" in result.output
+        assert not logged_in.requests_for("POST", f"/orgs/{logged_in.org}/workspaces")
+
+    def test_the_refusal_names_the_file_to_exclude(
+        self, logged_in, run_cloud, tmp_path
+    ):
+        root = self._oversized_repo(tmp_path)
+        self._seed(logged_in)
+        assert "raw_dump.json" in run_cloud("sync", str(root)).output
+
+    def test_a_dry_run_measures_it_too(self, logged_in, run_cloud, tmp_path):
+        """A dry run exists to find exactly this before a real sync does.
+
+        Seeded with the workspace *already existing*, which is the case that
+        had no cover at all: a dry run against a new workspace resolves no
+        workspace id, so the jobs fall back to carrying the tree themselves and
+        the job-side check catches it by accident. Once the workspace exists
+        the jobs carry nothing, and the tree is measured here or nowhere.
+        """
+        root = self._oversized_repo(tmp_path)
+        self._seed(logged_in)
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/workspaces",
+            [{"id": "ws-1", "org_id": "org-acme", "name": "data"}],
+        )
+        result = run_cloud("sync", str(root), "--dry-run")
+        assert result.exit_code != 0
+        assert "budget" in result.output
