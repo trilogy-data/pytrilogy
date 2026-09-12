@@ -400,10 +400,7 @@ class PredicatePushdown(OptimizationRule):
                         for x in row_conditions:
                             if x not in materialized_now:
                                 branch.source_map[x] = [base.name]
-            if branch.condition is None:
-                branch.condition = candidate
-            else:
-                branch.condition = append_condition(branch.condition, candidate)
+            branch.condition = append_condition(branch.condition, candidate)
             if propagate_existence_sources(branch, cte, existence_extras):
                 union_dependencies_changed = True
             self.log(

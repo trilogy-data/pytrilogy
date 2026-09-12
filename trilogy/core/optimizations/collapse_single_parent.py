@@ -21,6 +21,7 @@ from trilogy.core.models.execute import (
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import (
     SENSITIVE_DERIVATIONS,
+    append_condition,
     carry_child_state,
     consumed_parent_column,
     existence_linked,
@@ -32,7 +33,6 @@ from trilogy.core.optimizations.utils import (
 )
 from trilogy.core.processing.condition_utility import (
     gather_windows,
-    merge_conditions_and_dedup,
 )
 
 if TYPE_CHECKING:
@@ -345,11 +345,7 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
     # conditioned BASIC child arrives through the filtered-projection branch.
     # Dedup on AND-atoms so a chain of merges cannot re-stamp `H AND H AND H`.
     if cte.condition is not None:
-        parent.condition = (
-            merge_conditions_and_dedup(cte.condition, parent.condition)
-            if parent.condition is not None
-            else cte.condition
-        )
+        parent.condition = append_condition(parent.condition, cte.condition)
 
     if merge_mode == MergeMode.AGGREGATE:
         # Keep only columns the child exposes; everything else is rolled up.

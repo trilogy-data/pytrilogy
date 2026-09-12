@@ -1945,6 +1945,23 @@ def _refresh_final_contract(
     )
 
 
+def _row_parents(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+) -> list[str]:
+    """`gid`'s parents that feed it rows: real groups, reached by an edge that
+    is not an existence reference."""
+    return [
+        pred
+        for pred in group_graph.predecessors(gid)
+        if pred != FINAL_NODE_ID
+        and pred in attrs
+        and edge_kind(group_edges, pred, gid) != EdgeKind.EXISTENCE
+    ]
+
+
 def _consumer_required_input_grain(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -1960,19 +1977,7 @@ def _consumer_required_input_grain(
     # it as an input grain forces a parent to re-derive the concept (e.g. a
     # filter's per-row CASE at a merge that lacks the aggregate arg). Drop it.
     grain: set[str] = set(attrs[gid].grain_components) - set(attrs[gid].primary_members)
-    # Likewise a component COMPUTED by a grouping row parent (a window ordering
-    # by a coarser-grain aggregate carries the aggregate in its grain) is a
-    # column that parent supplies, not a join axis siblings can carry; widening
-    # a raw scan with it is unrenderable. The parent's grain (added below) is
-    # the joinable identity.
-    parent_computed: set[str] = set()
-    row_preds = [
-        pred
-        for pred in group_graph.predecessors(gid)
-        if pred != FINAL_NODE_ID
-        and pred in attrs
-        and edge_kind(group_edges, pred, gid) != EdgeKind.EXISTENCE
-    ]
+    row_preds = _row_parents(group_graph, group_edges, attrs, gid)
     for pred in row_preds:
         if (
             attrs[pred].derivation in GROUPING_DERIVATIONS
@@ -1997,7 +2002,7 @@ def _consumer_required_input_grain(
             if axis_grouped_away:
                 continue
             grain |= pred_grain
-    return frozenset(grain - parent_computed)
+    return frozenset(grain)
 
 
 # Consumers that JOIN their row parents (vs. stack/expand them). Only these need
@@ -2051,13 +2056,7 @@ def _shared_row_parent_join_keys(
     sourcing."""
     if attrs[gid].derivation not in _ROW_JOIN_CONSUMER_DERIVATIONS:
         return frozenset()
-    row_parents = [
-        pred
-        for pred in group_graph.predecessors(gid)
-        if pred != FINAL_NODE_ID
-        and pred in attrs
-        and edge_kind(group_edges, pred, gid) != EdgeKind.EXISTENCE
-    ]
+    row_parents = _row_parents(group_graph, group_edges, attrs, gid)
     if len(row_parents) < 2:
         return frozenset()
     grain_ancestors = _transitive_lineage_ancestors(
@@ -2108,13 +2107,7 @@ def _refresh_input_contracts(
         bridge_keys = _shared_row_parent_join_keys(
             group_graph, group_edges, attrs, gid, key_addresses, lineage_parents
         )
-        row_parents = [
-            pred
-            for pred in group_graph.predecessors(gid)
-            if pred != FINAL_NODE_ID
-            and pred in attrs
-            and edge_kind(group_edges, pred, gid) != EdgeKind.EXISTENCE
-        ]
+        row_parents = _row_parents(group_graph, group_edges, attrs, gid)
         # A non-grouping consumer pairing a GROUPING row parent (a population
         # aggregate at grain G) with row-grain siblings joins them ON G; the
         # aggregate's value repeats per G-group across the row stream (`sum(z)
