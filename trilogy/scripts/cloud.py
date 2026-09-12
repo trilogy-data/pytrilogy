@@ -24,7 +24,7 @@ API's own response types, so an unexpected shape is an error naming the field.
 ``jobs push`` bundles a local project directory into the job's inline files —
 paths relative to ``--source``, so the directory shape (relative imports,
 ``sys.path`` tricks in Python datasources) survives the trip. A bundle over the
-PubSub size budget is refused at push time.
+platform's size budget is refused at push time.
 
 **Push is an upsert, keyed by job name.** Jobs are versioned platform-side —
 the row is stable identity and its content is a copy of the newest version — so
@@ -903,33 +903,31 @@ def _largest_files(payload: dict, limit: int = 5) -> list[tuple[str, int]]:
 
 
 def check_bundle_size(payload: dict) -> bytes:
-    """The encoded payload, refused if it cannot fit in a queue message.
+    """The encoded payload, refused if it is too large to send.
 
     Returns the bytes, so the caller sends exactly what was measured.
 
-    The budget is the platform's, twice over: the distributor refuses to
-    publish a flattened payload past it, and the API refuses a request body
-    past it (`job_limits::MAX_REQUEST_BODY_BYTES`) — the same number, so
-    measuring here is the same question asked one hop earlier, where the answer
-    can name files instead of arriving as a 413.
+    The budget matches the platform's own limit on both a request body and a
+    queued job. Checking it here rather than letting the server answer 413
+    means the error can name the files that caused it.
     """
     encoded = json.dumps(payload).encode("utf-8")
     budget = int(PUBSUB_MAX_BYTES * SAFETY_MARGIN)
     if len(encoded) > budget:
-        # Naming the offenders is most of the fix: a tree of several hundred
-        # small scripts goes over because of a handful of data files in it,
-        # and "narrow --include" is not actionable until you know which.
+        # Usually a few large data files among many small scripts, so list
+        # them: "narrow --include" is not actionable without the names.
         biggest = _largest_files(payload)
         detail = ""
         if biggest:
             listed = ", ".join(f"{name} ({size:,}B)" for name, size in biggest)
             detail = f" Largest: {listed}."
+        # Don't name where the budget comes from: the caller cannot see or
+        # change it. The size and the file names are what they can act on.
         raise CloudError(
-            f"Bundle is {len(encoded):,}B, over the {budget:,}B budget "
-            f"({SAFETY_MARGIN:.0%} of PubSub's {PUBSUB_MAX_BYTES:,}B message "
-            f"limit).{detail} Narrow --include, add --exclude, or split the "
-            "project. Data files especially do not belong in a bundle — they "
-            "are re-materialized onto a worker VM on every run."
+            f"Bundle is {len(encoded):,}B, over the {budget:,}B budget."
+            f"{detail} Narrow --include, add --exclude, or split the project. "
+            "Consider loading data files to an object store and referencing "
+            "them in script rather than bundling."
         )
     return encoded
 
@@ -1971,18 +1969,13 @@ def _find_workspace(
 def _workspace_by_name(client: CloudClient, org: str, name: str) -> Workspace | None:
     """The org's workspace with this exact name, or None.
 
-    Asks the server to do the filtering (`?name=`), which matters because the
-    list route returns **whole** workspaces — `files` included. A sync calls
-    this only to learn one workspace's id, and unfiltered that means
-    downloading every tree in the org to find it: a cost that grows with the
-    org rather than with the question, and the read-side twin of pushing a
-    whole tree on every sync.
+    Filters server-side (`?name=`) because the list route returns whole
+    workspaces, files included, and callers here need only one workspace's id.
+    Unfiltered, that downloads every project tree in the org.
 
-    The client-side match is kept deliberately. An API that predates the
-    parameter has no query extractor on that route at all, so it ignores the
-    filter and answers with everything — the narrowing has to be a bandwidth
-    optimization rather than something correctness rests on, or this silently
-    picks an arbitrary workspace against an older server.
+    The client-side match stays because an older API ignores the parameter and
+    answers with everything; without it, this would pick whichever workspace
+    came back first.
     """
     matches = client.get_many(
         f"/orgs/{org}/workspaces?{urlencode({'name': name})}", Workspace
@@ -3812,13 +3805,9 @@ def _ensure_workspace(
         existing=existing,
     )
     body["source_key"] = source_key
-    # Measured here, and on a dry run too, for the same reason `_sync_one`
-    # measures a job's: a tree over the budget is exactly what a dry run
-    # exists to find. This is the *workspace* push, which carries the whole
-    # project — so in workspace mode it is the big body and the jobs beside it
-    # are empty, the opposite of the per-job layout the job check was written
-    # for. Missing it, an oversized tree reached the server unmeasured and
-    # came back as a bare 413 naming nothing.
+    # In workspace mode this body carries the whole project and the jobs beside
+    # it carry no files, so this is the only size check that sees the files.
+    # Measured before the dry-run return as well, so a dry run reports it.
     encoded = check_bundle_size(body)
     if dry_run:
         return (existing.id if existing else None), (

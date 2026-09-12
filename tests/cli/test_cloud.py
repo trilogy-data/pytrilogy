@@ -24,6 +24,7 @@ from trilogy.scripts.cloud import (
     CloudClient,
     CloudError,
     DeploySettings,
+    _ensure_workspace,
     _find_job,
     _fmt_job,
     _fmt_run,
@@ -220,10 +221,9 @@ class TestBundling:
             check_bundle_size(payload)
 
     def test_the_refusal_names_the_files_that_caused_it(self):
-        """A tree goes over because of a handful of data files among hundreds
-        of small scripts. "Narrow --include" is not actionable until you know
-        which ones, and the whole point of measuring client-side rather than
-        taking a 413 is that here we still have the names."""
+        """A tree usually goes over because of a few data files among many
+        small scripts. "Narrow --include" is not actionable without the names,
+        and checking client-side is what keeps them available to report."""
         payload = {
             "files": [
                 {"name": "raw/dump.json", "content": "x" * (9 * 1024 * 1024)},
@@ -235,8 +235,8 @@ class TestBundling:
         assert "raw/dump.json" in str(exc.value)
 
     def test_a_bundle_with_no_files_key_still_reports_its_size(self):
-        """The size check has to survive a payload shaped differently from a
-        bundle — it is called on job and workspace bodies alike."""
+        """The check runs on job and workspace bodies alike, so it has to
+        handle a payload shaped differently from a bundle."""
         with pytest.raises(CloudError, match="budget"):
             check_bundle_size({"config": "x" * (9 * 1024 * 1024)})
 
@@ -5081,11 +5081,9 @@ class TestDryRunWritesNothing:
 class TestWorkspaceLookupIsServerFiltered:
     """Resolving one workspace by name must not download the org's trees.
 
-    The list route returns **whole** workspaces, `files` included, and both
-    `sync` and `workspaces push` call it only to learn one workspace's id. Left
-    unfiltered, every sync pulled every tree in the org to find one — a cost
-    that grows with the org rather than with the question, and the read-side
-    twin of pushing a whole tree on every sync.
+    The list route returns whole workspaces, files included, and both `sync`
+    and `workspaces push` call it only to learn one workspace's id. Unfiltered,
+    every sync downloaded every project tree in the org to find one.
     """
 
     TOML = """
@@ -5149,10 +5147,9 @@ operation = "refresh"
     def test_an_api_that_ignores_the_filter_still_resolves_correctly(
         self, logged_in, run_cloud, tmp_path
     ):
-        """An API predating the parameter has no query extractor on that route,
-        so it answers with everything. The narrowing is bandwidth, never
-        correctness — without the client-side match this would pick whichever
-        workspace happened to come back first."""
+        """An older API ignores the parameter and answers with everything, so
+        the filter saves bandwidth but cannot be relied on for correctness.
+        Without the client-side match this would pick the first row back."""
         root = self._repo(tmp_path)
         self._seed(logged_in)
         logged_in.set(
@@ -5185,14 +5182,13 @@ operation = "refresh"
 
 
 class TestWorkspacePushIsSizeChecked:
-    """A sync's *workspace* body is the big one, and went unmeasured.
+    """The workspace body holds a shared project's files, and went unmeasured.
 
-    `check_bundle_size` was called on each job's payload, which was written
-    when a job carried its own copy of the project. Under a shared workspace
-    that layout inverts: the workspace holds the whole tree and the jobs beside
-    it carry no files at all — so the one body worth measuring was the one
-    nothing measured, and an oversized tree reached the server and came back as
-    a bare 413 naming nothing.
+    `check_bundle_size` ran on each job's payload, which was right when every
+    job carried its own copy of the project. With a shared workspace the
+    workspace holds the files and its jobs hold none, so nothing checked the
+    body that could actually be too large. It reached the server and came back
+    as a 413 with no detail.
     """
 
     TOML = """
@@ -5236,13 +5232,11 @@ operation = "refresh"
         assert "raw_dump.json" in run_cloud("sync", str(root)).output
 
     def test_a_dry_run_measures_it_too(self, logged_in, run_cloud, tmp_path):
-        """A dry run exists to find exactly this before a real sync does.
+        """A dry run should report an oversized tree before a real sync does.
 
-        Seeded with the workspace *already existing*, which is the case that
-        had no cover at all: a dry run against a new workspace resolves no
-        workspace id, so the jobs fall back to carrying the tree themselves and
-        the job-side check catches it by accident. Once the workspace exists
-        the jobs carry nothing, and the tree is measured here or nowhere.
+        Seeded with the workspace already existing, because that is the case
+        with no other check behind it: its jobs carry no files, so the
+        workspace body is the only thing measured.
         """
         root = self._oversized_repo(tmp_path)
         self._seed(logged_in)
@@ -5254,3 +5248,35 @@ operation = "refresh"
         result = run_cloud("sync", str(root), "--dry-run")
         assert result.exit_code != 0
         assert "budget" in result.output
+
+    def _ensure(self, api, dry_run: bool):
+        """`_ensure_workspace` against a *new* workspace — the fake API's
+        default answer for the list route is seeded empty by `_seed`."""
+        return _ensure_workspace(
+            CloudClient(api.url, "tri_stored"),
+            api.org,
+            "data",
+            "[cloud]\n",
+            [{"name": "raw_dump.json", "content": "x" * (9 * 1024 * 1024)}],
+            "github.com/acme/models",
+            dry_run,
+        )
+
+    @pytest.mark.parametrize("dry_run", [False, True])
+    def test_a_workspace_that_does_not_exist_yet_is_measured_too(
+        self, logged_in, dry_run
+    ):
+        """The size check runs before the create/update branch and before the
+        dry-run return, so a workspace that does not exist yet is refused the
+        same way one that does.
+
+        Checked against `_ensure_workspace` rather than through a sync,
+        because a sync would fail here even without this check: with no
+        workspace id to bind to, the jobs carry the project files themselves
+        and the job-side check rejects them a step later. Only an existing
+        workspace, whose jobs carry no files, depends on this check alone.
+        """
+        self._seed(logged_in)
+        with pytest.raises(CloudError, match="budget"):
+            self._ensure(logged_in, dry_run)
+        assert not logged_in.requests_for("POST", f"/orgs/{logged_in.org}/workspaces")
