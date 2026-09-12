@@ -24,6 +24,7 @@ from trilogy.core.optimizations.utils import (
     append_condition,
     condition_contains_atom,
     null_padded_nodes,
+    propagate_existence_sources,
     strip_condition_atom,
 )
 from trilogy.core.processing.condition_utility import (
@@ -403,21 +404,7 @@ class PredicatePushdown(OptimizationRule):
                 branch.condition = candidate
             else:
                 branch.condition = append_condition(branch.condition, candidate)
-            for x in existence_extras:
-                if x in branch.source_map or x in branch.existence_source_map:
-                    continue
-                # Propagate from whichever map the consumer used.
-                if x in cte.source_map:
-                    origin = list(cte.source_map[x])
-                    branch.source_map[x] = origin
-                elif x in cte.existence_source_map:
-                    origin = list(cte.existence_source_map[x])
-                    branch.existence_source_map[x] = origin
-                else:
-                    continue
-                sources = [p for p in cte.dependency_nodes() if p.name in origin]
-                for source in sources:
-                    branch.add_dependency(source)
+            if propagate_existence_sources(branch, cte, existence_extras):
                 union_dependencies_changed = True
             self.log(
                 f"Pushed {candidate} into union branch {branch.name} of {parent_cte.name}"
