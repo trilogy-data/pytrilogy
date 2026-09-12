@@ -7,6 +7,7 @@ from pathlib import Path
 import tomli_w
 import tomllib
 
+from tests.modeling._benchmark_artifacts import check_query_size
 from trilogy import Executor
 from trilogy.core.models.environment import Environment
 
@@ -97,6 +98,7 @@ def run_query(engine: Executor, idx: int, sql_override: bool = False):
             row, comp_results[qidx]
         ), f"Row mismatch in row {qidx} (expected v actual): {row} != {comp_results[qidx]}"
 
+    check_query_size(working_path / "aggregates", f"{idx:02d}", len(query))
     with open(
         working_path / "aggregates" / f"zquery{idx:02d}.log",
         "w",

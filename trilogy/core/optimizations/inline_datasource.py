@@ -5,7 +5,14 @@ from trilogy.constants import CONFIG
 from trilogy.core.enums import JoinType
 from trilogy.core.models.build import BuildConcept, BuildDatasource
 from trilogy.core.models.datasource import RawColumnExpr
-from trilogy.core.models.execute import CTE, DatasourceCTE, Join, RecursiveCTE, UnionCTE
+from trilogy.core.models.execute import (
+    CTE,
+    DatasourceCTE,
+    InstantiatedUnnestJoin,
+    Join,
+    RecursiveCTE,
+    UnionCTE,
+)
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import (
     append_condition,
@@ -16,9 +23,170 @@ from trilogy.core.optimizations.utils import (
     render_cte_used_map,
 )
 
-_RAW_LITERAL_RE = re.compile(
-    r"^\s*(?:-?\d+(?:\.\d+)?|'[^']*'|true|false|null)\s*$", re.IGNORECASE
+_SQL_STRING_RE = re.compile(r"'(?:[^']|'')*'")
+_SQL_TOKEN_RE = re.compile(r'"(?:[^"]|"")*"|[A-Za-z_][A-Za-z0-9_$]*')
+
+# Words a raw() expression can carry that are not column references. A word
+# that is neither listed here nor a declared column refuses the inline, so a
+# gap in this set costs a CTE, never a misresolved reference.
+_SQL_NON_COLUMN_WORDS = frozenset(
+    [
+        "all",
+        "and",
+        "any",
+        "as",
+        "asc",
+        "at",
+        "between",
+        "by",
+        "case",
+        "cast",
+        "collate",
+        "cross",
+        "current_date",
+        "current_time",
+        "current_timestamp",
+        "desc",
+        "distinct",
+        "else",
+        "end",
+        "escape",
+        "exists",
+        "false",
+        "filter",
+        "first",
+        "from",
+        "full",
+        "ilike",
+        "in",
+        "inner",
+        "interval",
+        "into",
+        "is",
+        "join",
+        "last",
+        "left",
+        "like",
+        "localtime",
+        "localtimestamp",
+        "natural",
+        "not",
+        "null",
+        "nulls",
+        "on",
+        "or",
+        "order",
+        "outer",
+        "over",
+        "partition",
+        "precision",
+        "right",
+        "rlike",
+        "similar",
+        "some",
+        "symmetric",
+        "then",
+        "to",
+        "true",
+        "unknown",
+        "using",
+        "when",
+        "where",
+        "window",
+        "with",
+        "within",
+        "zone",
+        "bigint",
+        "bit",
+        "bool",
+        "boolean",
+        "blob",
+        "bytea",
+        "char",
+        "date",
+        "datetime",
+        "decimal",
+        "double",
+        "float",
+        "hugeint",
+        "int",
+        "int1",
+        "int2",
+        "int4",
+        "int8",
+        "integer",
+        "interval",
+        "json",
+        "numeric",
+        "real",
+        "smallint",
+        "string",
+        "text",
+        "time",
+        "timestamp",
+        "timestamptz",
+        "tinyint",
+        "uuid",
+        "varbinary",
+        "varchar",
+    ]
 )
+
+
+def _raw_text_column_refs(text: str, declared: set[str]) -> set[str] | None:
+    """Column names ``text`` reads, lowercased, or None when it reads anything
+    this rule cannot prove is a column of its own datasource -- an undeclared
+    word, or a qualified ``alias.column`` whose qualifier does not survive the
+    fold. A literal carries no words and yields the empty set."""
+    body = _SQL_STRING_RE.sub(" ", text)
+    refs: set[str] = set()
+    for match in _SQL_TOKEN_RE.finditer(body):
+        token = match.group(0)
+        after = body[match.end() :].lstrip()
+        if after.startswith("("):
+            # A function name resolves against the schema, not against a table.
+            continue
+        if after.startswith(".") or body[: match.start()].rstrip().endswith("."):
+            return None
+        if token.startswith('"'):
+            name = token[1:-1].replace('""', '"').lower()
+        else:
+            name = token.lower()
+            # Declared first: a column may share a keyword's spelling.
+            if name not in declared and name in _SQL_NON_COLUMN_WORDS:
+                continue
+        if name not in declared:
+            return None
+        refs.add(name)
+    return refs
+
+
+def _consumer_scope_names(cte: CTE, parent: DatasourceCTE) -> set[str]:
+    """Lowercased names every source in the consumer's scope OTHER than
+    ``parent`` exposes. Raw text renders unqualified, so a name in here is
+    ambiguous -- or binds to the wrong table -- once ``parent`` is folded in.
+    A datasource leaf contributes its physical columns as well as its CTE
+    outputs, because a later pass may fold it in too."""
+    names = {c.safe_address.lower() for c in cte.output_columns}
+    sources: list[CTE | UnionCTE] = [
+        x
+        for x in [*cte.parent_ctes, *cte.inlined_parents]
+        if x.safe_identifier != parent.safe_identifier
+    ]
+    for source in sources:
+        names |= {c.safe_address.lower() for c in source.output_columns}
+        if isinstance(source, DatasourceCTE):
+            names |= {
+                c.alias.lower()
+                for c in source.datasource.columns
+                if isinstance(c.alias, str)
+            }
+    names |= {
+        join.alias.lower()
+        for join in cte.joins
+        if isinstance(join, InstantiatedUnnestJoin)
+    }
+    return names
 
 
 def _raw_columns_inline_safely(
@@ -27,33 +195,35 @@ def _raw_columns_inline_safely(
     """Verbatim raw() text is evaluated wherever it lands. As the consumer's
     sole source that is the datasource's own scope, and a consumer that never
     reads a raw-bound concept never renders the text at all. Beside another
-    table a column reference is unqualified (ambiguous when the tables share
-    the name), and a literal on an optional (outer-joined) side reads as its
-    value on rows that have no such row. A literal stays per-row correct
-    wherever every result row carries one of the datasource's rows: the
-    driving table of INNER/LEFT joins, or an INNER-joined table in a plan with
-    no FULL/RIGHT join to manufacture rows without it."""
+    table the text is unqualified, so it is only sound when every word in it is
+    a column of this datasource that no other source in scope also exposes.
+    Value is a second question: the text reads as if the datasource had a row
+    wherever it lands, so it stays per-row correct only where every result row
+    carries one -- the driving table of INNER/LEFT joins, or an INNER-joined
+    table in a plan with no FULL/RIGHT join to manufacture rows without it."""
     if not root.has_raw_columns:
         return True
     if not cte.joins and parent_count <= 1:
         return True
-    raw_addresses: set[str] = set()
+    raw_text: dict[str, str] = {}
+    declared: set[str] = set()
     for column in root.columns:
         if isinstance(column.alias, RawColumnExpr):
-            raw_addresses.add(column.concept.address)
-            raw_addresses |= column.concept.pseudonyms
+            for address in {column.concept.address} | column.concept.pseudonyms:
+                raw_text[address] = column.alias.text
+        elif isinstance(column.alias, str):
+            declared.add(column.alias.lower())
     consumed = render_cte_used_map(cte).get(parent.name, set()) | _join_key_demand(
         cte, parent.name
     )
-    if not consumed & raw_addresses:
+    rendered = [raw_text[address] for address in consumed if address in raw_text]
+    if not rendered:
         return True
-    literal_only = all(
-        _RAW_LITERAL_RE.match(c.alias.text)
-        for c in root.columns
-        if isinstance(c.alias, RawColumnExpr)
-    )
-    if not literal_only:
-        return False
+    scope = _consumer_scope_names(cte, parent)
+    for text in rendered:
+        refs = _raw_text_column_refs(text, declared)
+        if refs is None or refs & scope:
+            return False
     joins = [join for join in cte.joins if isinstance(join, Join)]
     if len(joins) != len(cte.joins) or any(
         join.jointype in (JoinType.FULL, JoinType.RIGHT_OUTER) for join in joins
@@ -178,10 +348,14 @@ def _fold_plan(
 
 
 class InlineDatasource(OptimizationRule):
-    def __init__(self):
+    def __init__(self, raw_scope_only: bool = False):
         super().__init__()
-        self.candidates = defaultdict(lambda: set())
-        self.count = defaultdict(lambda: 0)
+        # The late phase exists only to retry scans whose raw() text needed
+        # final join types to clear `_raw_columns_inline_safely`; every other
+        # candidate settled in the initial phase and is left alone.
+        self.raw_scope_only = raw_scope_only
+        self.candidates: defaultdict[str, set[str]] = defaultdict(set)
+        self.count: defaultdict[str, int] = defaultdict(int)
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
@@ -231,6 +405,8 @@ class InlineDatasource(OptimizationRule):
                 self.debug(f"Cannot inline: Parent {parent_cte.name} is not datasource")
                 continue
             root: BuildDatasource = raw_root
+            if self.raw_scope_only and not root.has_raw_columns:
+                continue
             if not root.can_be_inlined:
                 self.debug(
                     f"Cannot inline: Parent {parent_cte.name} datasource is not inlineable"

@@ -2,7 +2,10 @@ from trilogy import Dialects
 from trilogy.constants import CONFIG
 from trilogy.core.models.build import BuildGrain
 from trilogy.core.models.execute import CTE, QueryDatasource
-from trilogy.core.optimizations.inline_datasource import InlineDatasource
+from trilogy.core.optimizations.inline_datasource import (
+    InlineDatasource,
+    _raw_text_column_refs,
+)
 
 
 def test_safe_cases():
@@ -189,3 +192,37 @@ SELECT
     assert "WITH" not in query
     assert '"customers"."customer_id" is not null' not in query
     assert '"orders"."customer_id" is not null' in query
+
+
+DECLARED = {"sr_return_time_sk", "sr_item_sk", "amount", "end"}
+
+
+def test_raw_text_column_refs_reads_declared_columns():
+    assert _raw_text_column_refs("SR_RETURN_TIME_SK IS NOT NULL", DECLARED) == {
+        "sr_return_time_sk"
+    }
+    assert _raw_text_column_refs(""""sr_item_sk" = amount""", DECLARED) == {
+        "sr_item_sk",
+        "amount",
+    }
+    # A column may share a keyword's spelling; declared wins.
+    assert _raw_text_column_refs("end is null", DECLARED) == {"end"}
+
+
+def test_raw_text_column_refs_admits_literals_and_functions():
+    for text in ("1", " -2.5 ", "'STORE'", "true", "coalesce(amount, 0) > 0"):
+        refs = _raw_text_column_refs(text, DECLARED)
+        assert refs is not None, text
+    assert _raw_text_column_refs("1", DECLARED) == set()
+    assert _raw_text_column_refs("'a b c'", DECLARED) == set()
+    assert _raw_text_column_refs("cast(amount as int)", DECLARED) == {"amount"}
+
+
+def test_raw_text_column_refs_refuses_what_it_cannot_attribute():
+    # Not a column of this datasource.
+    assert _raw_text_column_refs("ss_quantity > 0", DECLARED) is None
+    # Qualified: the qualifier does not survive the fold.
+    assert _raw_text_column_refs("returns.amount > 0", DECLARED) is None
+    assert _raw_text_column_refs('''"returns"."amount"''', DECLARED) is None
+    # An unknown bare word could be anything.
+    assert _raw_text_column_refs("amount > total", DECLARED) is None
