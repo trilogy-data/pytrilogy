@@ -26,111 +26,23 @@ from trilogy.core.optimizations.utils import (
 _SQL_STRING_RE = re.compile(r"'(?:[^']|'')*'")
 _SQL_TOKEN_RE = re.compile(r'"(?:[^"]|"")*"|[A-Za-z_][A-Za-z0-9_$]*')
 
-# Words a raw() expression can carry that are not column references. A word
-# that is neither listed here nor a declared column refuses the inline, so a
-# gap in this set costs a CTE, never a misresolved reference.
-_SQL_NON_COLUMN_WORDS = frozenset(
-    [
-        "all",
-        "and",
-        "any",
-        "as",
-        "asc",
-        "at",
-        "between",
-        "by",
-        "case",
-        "cast",
-        "collate",
-        "cross",
-        "current_date",
-        "current_time",
-        "current_timestamp",
-        "desc",
-        "distinct",
-        "else",
-        "end",
-        "escape",
-        "exists",
-        "false",
-        "filter",
-        "first",
-        "from",
-        "full",
-        "ilike",
-        "in",
-        "inner",
-        "interval",
-        "into",
-        "is",
-        "join",
-        "last",
-        "left",
-        "like",
-        "localtime",
-        "localtimestamp",
-        "natural",
-        "not",
-        "null",
-        "nulls",
-        "on",
-        "or",
-        "order",
-        "outer",
-        "over",
-        "partition",
-        "precision",
-        "right",
-        "rlike",
-        "similar",
-        "some",
-        "symmetric",
-        "then",
-        "to",
-        "true",
-        "unknown",
-        "using",
-        "when",
-        "where",
-        "window",
-        "with",
-        "within",
-        "zone",
-        "bigint",
-        "bit",
-        "bool",
-        "boolean",
-        "blob",
-        "bytea",
-        "char",
-        "date",
-        "datetime",
-        "decimal",
-        "double",
-        "float",
-        "hugeint",
-        "int",
-        "int1",
-        "int2",
-        "int4",
-        "int8",
-        "integer",
-        "interval",
-        "json",
-        "numeric",
-        "real",
-        "smallint",
-        "string",
-        "text",
-        "time",
-        "timestamp",
-        "timestamptz",
-        "tinyint",
-        "uuid",
-        "varbinary",
-        "varchar",
-    ]
-)
+# Words a raw() expression can carry that are not column references: SQL
+# syntax and type names. Checked only AFTER the declared-column lookup, so a
+# column that shares a keyword's spelling still reads as a column. A word that
+# is neither declared nor listed here refuses the inline, so a gap here costs a
+# CTE and never a misresolved reference.
+_NON_COLUMN_WORDS = """
+    all and any as asc at between by case cast collate cross current_date
+    current_time current_timestamp desc distinct else end escape exists false
+    filter first from full ilike in inner interval into is join last left like
+    localtime localtimestamp natural not null nulls on or order outer over
+    partition precision right rlike similar some symmetric then to true unknown
+    using when where window with within zone
+    bigint bit blob bool boolean bytea char date datetime decimal double float
+    hugeint int int1 int2 int4 int8 integer json numeric real smallint string
+    text time timestamp timestamptz tinyint uuid varbinary varchar
+"""
+_SQL_NON_COLUMN_WORDS = frozenset(_NON_COLUMN_WORDS.split())
 
 
 def _raw_text_column_refs(text: str, declared: set[str]) -> set[str] | None:
