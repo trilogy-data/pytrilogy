@@ -290,6 +290,22 @@ class BuildEnvironment:
                     out.setdefault(member, set()).update(blocked)
         return out
 
+    def merge_origins(self, concept: BuildConcept) -> list[BuildConcept]:
+        """The lineage-carrying origins a merge demoted `concept` to a bare key
+        over, address-sorted. A merge collapses its members onto one canonical
+        and keeps each derived member's real lineage in `alias_origin_lookup`,
+        under its own address (the demoted side: `merge first_org into org.code`
+        leaves `local.first_org` a ROOT whose split survives only here) or a
+        pseudonym's (the surviving side, reached through the demoted one).
+        Empty for a key no merge computes."""
+        origins = {
+            origin.address: origin
+            for alias in (concept.address, *concept.pseudonyms)
+            if (origin := self.alias_origin_lookup.get(alias)) is not None
+            and origin.lineage is not None
+        }
+        return [origins[address] for address in sorted(origins)]
+
     def gen_concept_list_caches(self) -> None:
         concrete_concepts: list[BuildConcept] = []
         non_partial_concrete_concepts: list[BuildConcept] = []

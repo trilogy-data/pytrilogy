@@ -539,11 +539,7 @@ def _is_demoted_merge_key(
     """
     if concept is None or concept.derivation != Derivation.ROOT or concept.lineage:
         return False
-    return any(
-        (origin := environment.alias_origin_lookup.get(alias)) is not None
-        and origin.lineage is not None
-        for alias in (concept.address, *concept.pseudonyms)
-    )
+    return bool(environment.merge_origins(concept))
 
 
 def _concept_has_non_basic_merge_origin(
@@ -555,15 +551,10 @@ def _concept_has_non_basic_merge_origin(
     lineage-less ROOT. Such a key is materialized by `_derived_connector_nodes`,
     never a raw scan. A BASIC merge origin (`p_last <- split(p_name)`) computes
     inline on the scan, so it is excluded."""
-    for alias in (concept.address, *concept.pseudonyms):
-        origin = environment.alias_origin_lookup.get(alias)
-        if (
-            origin is not None
-            and origin.lineage is not None
-            and origin.derivation != Derivation.BASIC
-        ):
-            return True
-    return False
+    return any(
+        origin.derivation != Derivation.BASIC
+        for origin in environment.merge_origins(concept)
+    )
 
 
 def _bridge_has_non_basic_merge(
