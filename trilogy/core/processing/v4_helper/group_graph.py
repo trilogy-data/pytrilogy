@@ -54,7 +54,6 @@ from .constants import (
 from .edges import (
     EdgeMap,
     add_edge,
-    copy_edges,
     dependency_subgraph,
     edge_kind,
     edges_of_kind,
@@ -1300,7 +1299,6 @@ def _inject_conditions(
         for gid in placement.group_ids:
             if placement.atom not in attrs[gid].condition_atoms:
                 attrs[gid].condition_atoms.append(placement.atom)
-                attrs[gid].conditions.append(str(placement.atom))
             # A conjunction-coverage copy is tagged so the builder can strip
             # it from a twin-reused aggregate at build time; its host is
             # already colored by the sibling atom that put it in play. A stage
@@ -1453,7 +1451,6 @@ def _propagate_raw_filters_to_d1_roots(
                     continue
                 if atom not in attrs[d1_gid].condition_atoms:
                     attrs[d1_gid].condition_atoms.append(atom)
-                    attrs[d1_gid].conditions.append(str(atom))
                     touched.add(d1_gid)
     return touched
 
@@ -1498,7 +1495,6 @@ def _add_final_node(
     attrs[FINAL_NODE_ID] = GroupAttrs(
         depth_label=DepthLabel.FINAL,
         members=non_condition_members,
-        conditions=[str(c) for c in conditions],
         final_contract=FinalAssemblyContract(
             output_addresses=frozenset(c.address for c in mandatory_list),
             required_grain=frozenset(
@@ -2153,14 +2149,10 @@ def _refresh_input_contracts(
                 continue
             kind = edge_kind(group_edges, pred, gid)
             is_existence = kind == EdgeKind.EXISTENCE
-            required_outputs = frozenset(attrs[pred].output_concepts) & frozenset(
-                attrs[gid].input_concepts
-            )
             contracts.append(
                 GroupInputContract(
                     parent_group_id=pred,
                     consumer_group_id=gid,
-                    required_outputs=required_outputs,
                     required_grain=frozenset() if is_existence else required_grain,
                     preserve_keys=(
                         frozenset()
@@ -2968,12 +2960,11 @@ def build_group_graph(
     *,
     environment: BuildEnvironment,
     staged_conditions: list[BuildWhereClause] | None = None,
-) -> tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs], nx.DiGraph, EdgeMap]:
+) -> tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs]]:
     """Collapse compatible concepts into groups and append a single FINAL sink.
 
-    Returns the topology graph, its typed `group_edges` metadata map, a
-    side-table of typed per-group attributes keyed by group id, and the merged
-    graph + its edge map as they stood before condition injection.
+    Returns the topology graph, its typed `group_edges` metadata map, and a
+    side-table of typed per-group attributes keyed by group id.
 
     Grouping is delegated to per-derivation rules in `group_rules.py`:
     most derivations group by equality on `(depth_label, grain)`; ROOT
@@ -3061,8 +3052,6 @@ def build_group_graph(
         mandatory_list,
         environment,
     )
-    merged_group_graph = group_graph.copy()
-    merged_group_edges = copy_edges(group_edges)
     _compute_concept_sets(
         group_graph,
         group_edges,
@@ -3145,7 +3134,7 @@ def build_group_graph(
     attrs[FINAL_NODE_ID].extent_ownership = elect_extent_owners(
         group_graph, attrs, environment
     )
-    return group_graph, group_edges, attrs, merged_group_graph, merged_group_edges
+    return group_graph, group_edges, attrs
 
 
 def _lineage_predecessors(

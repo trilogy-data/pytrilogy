@@ -48,7 +48,6 @@ class GroupInputContract:
 
     parent_group_id: str
     consumer_group_id: str
-    required_outputs: frozenset[str] = frozenset()
     required_grain: frozenset[str] = frozenset()
     preserve_keys: frozenset[str] = frozenset()
     channel: InputChannel = InputChannel.ROW_STREAM
@@ -136,8 +135,6 @@ class GroupAttrs:
     # genuinely recomputes over rows (a twin-reused value is read through,
     # and the extra WHERE would resurrect the redundant fact-rescan parent).
     conjunction_atoms: list[BoolExpr] = field(default_factory=list)
-    # String renderings of the atoms above, just for visualization.
-    conditions: list[str] = field(default_factory=list)
     # How this group's GROUP BY is written. Non-STANDARD modes NULL-inject
     # their grouping keys on the subtotal rows they add, which is what
     # `nulls_grouping_keys` exists to ask about.
@@ -227,14 +224,12 @@ class BuildInfo:
     walking the group graph."""
 
     concept_graph: nx.DiGraph = field(default_factory=nx.DiGraph)
-    merged_group_graph: nx.DiGraph = field(default_factory=nx.DiGraph)
     group_graph: nx.DiGraph = field(default_factory=nx.DiGraph)
     group_attrs: dict[str, GroupAttrs] = field(default_factory=dict)
     concept_attrs: dict[str, ConceptAttrs] = field(default_factory=dict)
     # Typed edge-metadata side maps, one per graph above (the graphs themselves
     # carry only topology).
     concept_edges: EdgeMap = field(default_factory=dict)
-    merged_group_edges: EdgeMap = field(default_factory=dict)
     group_edges: EdgeMap = field(default_factory=dict)
     strategy_node: StrategyNode | None = None
 
@@ -243,12 +238,10 @@ class BuildInfo:
         attribute maps are read-only after build and shared."""
         return BuildInfo(
             concept_graph=self.concept_graph,
-            merged_group_graph=self.merged_group_graph,
             group_graph=self.group_graph,
             group_attrs=self.group_attrs,
             concept_attrs=self.concept_attrs,
             concept_edges=self.concept_edges,
-            merged_group_edges=self.merged_group_edges,
             group_edges=self.group_edges,
             strategy_node=self.strategy_node.copy() if self.strategy_node else None,
         )

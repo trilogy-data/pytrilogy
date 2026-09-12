@@ -12,7 +12,7 @@ Parents are explicit, derived from the group graph's lineage edges;
 generator dispatch lives in `v4_node_generators.dispatch.build_node`."""
 
 from collections import Counter, defaultdict
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from dataclasses import replace as dc_replace
 from datetime import date, datetime
@@ -413,18 +413,22 @@ def _node_existence_arg_groups(node: StrategyNode) -> list[tuple[BuildConcept, .
     )
 
 
-def _strategy_nodes(root: StrategyNode) -> list[StrategyNode]:
+def _iter_strategy_nodes(root: StrategyNode) -> Iterator[StrategyNode]:
+    """`root` and every node above it, each visited once. Lazy, so an `any()`
+    over it stops at the first match instead of walking the whole tree."""
     seen: set[int] = set()
-    nodes: list[StrategyNode] = []
     stack = [root]
     while stack:
         node = stack.pop()
         if id(node) in seen:
             continue
         seen.add(id(node))
-        nodes.append(node)
+        yield node
         stack.extend(node.parents)
-    return nodes
+
+
+def _strategy_nodes(root: StrategyNode) -> list[StrategyNode]:
+    return list(_iter_strategy_nodes(root))
 
 
 def _leaf_datasources(node: StrategyNode) -> dict[str, BuildDatasource]:
@@ -1096,32 +1100,27 @@ def _elide_passthrough_tree(
     return collapsed
 
 
-def _row_lineage_closure(concept: BuildConcept) -> list[BuildConcept]:
+def _iter_row_lineage(concept: BuildConcept) -> Iterator[BuildConcept]:
+    """`concept` and its row-lineage ancestors, each address visited once."""
     seen: set[str] = set()
-    output: list[BuildConcept] = []
     stack = [concept]
     while stack:
         current = stack.pop()
         if current.address in seen:
             continue
         seen.add(current.address)
-        output.append(current)
+        yield current
         stack.extend(row_lineage_arguments(current))
-    return output
 
 
-def _lineage_crosses_row_shape_barrier(
-    concept: BuildConcept, seen: set[str] | None = None
-) -> bool:
-    seen = seen or set()
-    if concept.address in seen:
-        return False
-    seen.add(concept.address)
-    if concept.derivation in ROW_SHAPE_BARRIER_DERIVATIONS:
-        return True
+def _row_lineage_closure(concept: BuildConcept) -> list[BuildConcept]:
+    return list(_iter_row_lineage(concept))
+
+
+def _lineage_crosses_row_shape_barrier(concept: BuildConcept) -> bool:
     return any(
-        _lineage_crosses_row_shape_barrier(arg, seen)
-        for arg in row_lineage_arguments(concept)
+        c.derivation in ROW_SHAPE_BARRIER_DERIVATIONS
+        for c in _iter_row_lineage(concept)
     )
 
 
@@ -1859,17 +1858,7 @@ def _carry_join_keys(
 
 
 def _descends_from_any(node: StrategyNode, targets: set[int]) -> bool:
-    stack = [node]
-    seen: set[int] = set()
-    while stack:
-        current = stack.pop()
-        if id(current) in seen:
-            continue
-        seen.add(id(current))
-        if id(current) in targets:
-            return True
-        stack.extend(current.parents)
-    return False
+    return any(id(n) in targets for n in _iter_strategy_nodes(node))
 
 
 def _subtree_restrictions(node: StrategyNode) -> tuple[list[BoolExpr], bool]:
@@ -1878,18 +1867,11 @@ def _subtree_restrictions(node: StrategyNode) -> tuple[list[BoolExpr], bool]:
     semijoin subselect or a row limit)."""
     conditions: list[BoolExpr] = []
     opaque = False
-    stack = [node]
-    seen: set[int] = set()
-    while stack:
-        current = stack.pop()
-        if id(current) in seen:
-            continue
-        seen.add(id(current))
+    for current in _iter_strategy_nodes(node):
         if current.conditions is not None:
             conditions.append(current.conditions)
         if current.existence_concepts or current.limit is not None:
             opaque = True
-        stack.extend(current.parents)
     return conditions, opaque
 
 
@@ -2234,11 +2216,10 @@ def _union_arm_parents(
 
 
 def _contains_shape_barrier(node: StrategyNode) -> bool:
-    if isinstance(node, (GroupNode, WindowNode)):
-        return True
-    if node.force_group:
-        return True
-    return any(_contains_shape_barrier(parent) for parent in node.parents)
+    return any(
+        isinstance(n, (GroupNode, WindowNode)) or n.force_group
+        for n in _iter_strategy_nodes(node)
+    )
 
 
 def _input_contract_projection_grain(

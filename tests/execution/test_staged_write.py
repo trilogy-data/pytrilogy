@@ -178,9 +178,10 @@ def test_cleanup_failure_is_logged_and_never_fails_a_good_publish(fake_remote, c
             raise OSError("permission denied")
 
     remote = fake_remote(Undeletable(("bucket/trees/out.parquet",)))
-    with caplog.at_level("WARNING"):
-        with staged_write("gcs://bucket/trees/out.parquet") as staged:
-            remote.objects[staged.split("://", 1)[1]] = b"new"
+    with caplog.at_level("WARNING"), staged_write(
+        "gcs://bucket/trees/out.parquet"
+    ) as staged:
+        remote.objects[staged.split("://", 1)[1]] = b"new"
     assert remote.objects["bucket/trees/out.parquet"] == b"new"
     assert "Could not remove staged object" in caplog.text
 

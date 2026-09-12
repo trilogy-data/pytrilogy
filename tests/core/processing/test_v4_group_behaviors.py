@@ -1503,7 +1503,6 @@ def test_parent_projection_uses_declared_contract_not_shape_barrier():
             GroupInputContract(
                 parent_group_id="dim",
                 consumer_group_id="consumer",
-                required_outputs=frozenset({station_name.address}),
                 required_grain=frozenset({store_id.address}),
                 preserve_keys=frozenset({store_id.address}),
                 channel=InputChannel.ROW_STREAM,
