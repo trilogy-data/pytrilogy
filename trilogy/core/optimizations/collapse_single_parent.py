@@ -21,7 +21,10 @@ from trilogy.core.models.execute import (
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import (
     SENSITIVE_DERIVATIONS,
+    append_condition,
+    carry_child_state,
     consumed_parent_column,
+    existence_linked,
     is_grouped_cte,
     is_sole_consumer,
     rebind_rename_to_consumed,
@@ -30,7 +33,6 @@ from trilogy.core.optimizations.utils import (
 )
 from trilogy.core.processing.condition_utility import (
     gather_windows,
-    merge_conditions_and_dedup,
 )
 
 if TYPE_CHECKING:
@@ -334,20 +336,7 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
                 column = rebind_rename_to_consumed(column, consumed)
             parent.output_columns.append(column)
 
-    # Carry the child's nullability: an under-reported nullable set lets
-    # SimplifyNullSafeJoins falsely prove a key non-null and downgrade
-    # IS NOT DISTINCT FROM to `=`, dropping NULL-keyed groups.
-    nullable_addresses = {c.address for c in parent.nullable_concepts}
-    for column in cte.nullable_concepts:
-        if column.address not in nullable_addresses:
-            parent.nullable_concepts.append(column)
-
-    # Carry the child's existence references: an `IN (<set>)` resolves its set
-    # columns through existence_source_map; dropping those entries strands the
-    # membership and lets the feeder CTE be pruned as unreferenced.
-    for address, sources in cte.existence_source_map.items():
-        if address not in parent.existence_source_map:
-            parent.existence_source_map[address] = sources
+    carry_child_state(parent, cte)
 
     # AND-combine the child's WHERE into the parent. For AGGREGATE merges the
     # child's condition is the pre-aggregation WHERE and the parent becomes the
@@ -356,18 +345,7 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
     # conditioned BASIC child arrives through the filtered-projection branch.
     # Dedup on AND-atoms so a chain of merges cannot re-stamp `H AND H AND H`.
     if cte.condition is not None:
-        parent.condition = (
-            merge_conditions_and_dedup(cte.condition, parent.condition)
-            if parent.condition is not None
-            else cte.condition
-        )
-
-    # LIMIT is the last logical operation of a SELECT, so the child's limit
-    # and ORDER BY apply unchanged to the merged CTE. The caller rejects
-    # limited parents, the direction that would cross the boundary.
-    if cte.limit is not None:
-        parent.limit = cte.limit
-        parent.order_by = cte.order_by
+        parent.condition = append_condition(parent.condition, cte.condition)
 
     if merge_mode == MergeMode.AGGREGATE:
         # Keep only columns the child exposes; everything else is rolled up.
@@ -545,13 +523,7 @@ class CollapseSingleParent(OptimizationRule):
         # either direction: a child exists() over the parent would reference
         # the CTE it lives in, and a parent exists() over the child would be
         # repointed to name the parent itself.
-        if any(
-            parent.name in (sources or [])
-            for sources in cte.existence_source_map.values()
-        ) or any(
-            cte.name in (sources or [])
-            for sources in parent.existence_source_map.values()
-        ):
+        if existence_linked(cte, parent):
             self.debug(
                 f"CTE {cte.name} and parent {parent.name} are linked by an "
                 "existence reference; merging would self-reference, skipping"

@@ -1,15 +1,6 @@
 from enum import Enum
-from typing import NewType
 
 from trilogy.core.enums import Derivation
-
-# --- identifier aliases -------------------------------------------------
-# Distinct static identities for the three string namespaces the planner
-# threads around, so mypy flags mixing a concept address with a concept-graph
-# node id (the bracketed ``[label]address`` form) or a group id.
-ConceptAddress = NewType("ConceptAddress", str)
-ConceptNodeId = NewType("ConceptNodeId", str)
-GroupId = NewType("GroupId", str)
 
 
 class DepthLabel(Enum):

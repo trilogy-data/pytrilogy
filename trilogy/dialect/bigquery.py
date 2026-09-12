@@ -28,6 +28,7 @@ from trilogy.dialect.base import (
 from trilogy.dialect.base import null_wrapper as base_null_wrapper
 from trilogy.dialect.bigquery_engine import BigQueryConnection
 from trilogy.dialect.bigquery_staging import BigQueryPythonStaging
+from trilogy.dialect.common import CONCAT_COALESCE_UPPER, SQL_STANDARD_EXTRACT
 
 if TYPE_CHECKING:
     from trilogy.executor import Executor
@@ -105,15 +106,10 @@ def null_wrapper(
 FUNCTION_MAP = {
     FunctionType.LENGTH: lambda x, types: handle_length(x, types),
     FunctionType.IS_NULL: lambda x, types: f"{x[0]} IS NULL",
-    FunctionType.MINUTE: lambda x, types: f"EXTRACT(MINUTE from {x[0]})",
-    FunctionType.SECOND: lambda x, types: f"EXTRACT(SECOND from {x[0]})",
-    FunctionType.HOUR: lambda x, types: f"EXTRACT(HOUR from {x[0]})",
-    FunctionType.DAY_OF_WEEK: lambda x, types: f"EXTRACT(DAYOFWEEK from {x[0]})-1",  # BigQuery's DAYOFWEEK returns 1 for Sunday
-    FunctionType.DAY: lambda x, types: f"EXTRACT(DAY from {x[0]})",
-    FunctionType.YEAR: lambda x, types: f"EXTRACT(YEAR from {x[0]})",
-    FunctionType.MONTH: lambda x, types: f"EXTRACT(MONTH from {x[0]})",
-    FunctionType.WEEK: lambda x, types: f"EXTRACT(WEEK from {x[0]})",
-    FunctionType.QUARTER: lambda x, types: f"EXTRACT(QUARTER from {x[0]})",
+    **SQL_STANDARD_EXTRACT,
+    # BigQuery's DAYOFWEEK returns 1 for Sunday, so it does not take the
+    # shared entry.
+    FunctionType.DAY_OF_WEEK: lambda x, types: f"EXTRACT(DAYOFWEEK from {x[0]})-1",
     # math
     FunctionType.POWER: lambda x, types: f"POWER({x[0]}, {x[1]})",
     FunctionType.DIVIDE: lambda x, types: f"COALESCE(SAFE_DIVIDE({x[0]},{x[1]}),0)",
@@ -139,11 +135,8 @@ FUNCTION_MAP = {
     # aggregate
     FunctionType.BOOL_AND: lambda x, types: f"LOGICAL_AND({x[0]})",
     FunctionType.BOOL_OR: lambda x, types: f"LOGICAL_OR({x[0]})",
-    # native CONCAT propagates NULL; wrap to match the null-skipping semantics.
     # ARRAY_TO_STRING omits NULL elements when no null_text is given.
-    FunctionType.CONCAT: lambda x, types: (
-        "CONCAT(" + ", ".join([f"COALESCE({a}, '')" for a in x]) + ")"
-    ),
+    **CONCAT_COALESCE_UPPER,
     FunctionType.CONCAT_WS: lambda x, types: (
         f"ARRAY_TO_STRING([{', '.join(x[1:])}], {x[0]})"
     ),
@@ -344,14 +337,7 @@ class BigqueryDialect(BaseDialect):
         **BaseDialect.DB_COLUMN_TYPE_MAP,
         "int64": DataType.INTEGER,
         "float64": DataType.FLOAT,
-        "bool": DataType.BOOL,
-        "datetime": DataType.DATETIME,
-        "timestamp": DataType.TIMESTAMP,
         # legacy aliases
-        "integer": DataType.INTEGER,
-        "int": DataType.INTEGER,
-        "float": DataType.FLOAT,
-        "boolean": DataType.BOOL,
     }
 
     def get_table_schema(

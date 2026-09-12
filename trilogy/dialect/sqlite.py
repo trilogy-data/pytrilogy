@@ -192,34 +192,27 @@ class SQLiteDialect(BaseDialect):
         right,
         operator,
         cte=None,
-        cte_map=None,
         raise_invalid=False,
         materialized_addresses: set[str] | None = None,
     ):
         # SQLite has no native ``ILIKE``; emulate via case-folded LIKE.
         if operator in (ComparisonOperator.ILIKE, ComparisonOperator.NOT_ILIKE):
-            left_sql = self.render_expr(
+            return self.render_ilike_as_lower_like(
                 left,
-                cte=cte,
-                cte_map=cte_map,
-                raise_invalid=raise_invalid,
-                materialized_addresses=materialized_addresses,
-            )
-            right_sql = self.render_expr(
                 right,
+                operator,
                 cte=cte,
-                cte_map=cte_map,
                 raise_invalid=raise_invalid,
                 materialized_addresses=materialized_addresses,
+                lower="lower",
+                like="like",
+                negate="not ",
             )
-            negate = "not " if operator == ComparisonOperator.NOT_ILIKE else ""
-            return f"({negate}lower({left_sql}) like lower({right_sql}))"
         return super().render_comparison(
             left,
             right,
             operator,
             cte=cte,
-            cte_map=cte_map,
             raise_invalid=raise_invalid,
             materialized_addresses=materialized_addresses,
         )

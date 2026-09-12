@@ -5,6 +5,10 @@ three size measures) and folds its timings into
 `zquery_timing_{fingerprint}.log`. Both files are committed, so every writer
 pins `newline="\n"` — platform-native newlines would rewrite every line of
 both on Windows.
+
+The committed `gen_length` is also the size baseline every run is checked
+against, so a plan that grows fails here rather than landing as an artifact
+diff nobody reads.
 """
 
 from __future__ import annotations
@@ -41,6 +45,41 @@ def load_toml_mapping(path: Path) -> dict[str, object]:
     return {}
 
 
+# Generated SQL is deterministic, so a committed gen_length is a baseline and
+# not a sample. Leave room for the churn a replanned CTE name costs (names are
+# words, and words differ in length); an extra CTE costs far more than that.
+SIZE_REGRESSION_RATIO = 0.02
+SIZE_REGRESSION_FLOOR = 64
+REBASELINE_ENV = "TRILOGY_BENCHMARK_REBASELINE"
+
+
+def size_budget(baseline: int) -> int:
+    return baseline + max(SIZE_REGRESSION_FLOOR, int(baseline * SIZE_REGRESSION_RATIO))
+
+
+def check_query_size(root: Path, label: str, gen_length: int) -> None:
+    """Fail when a query's generated SQL outgrows its committed baseline.
+
+    The log is NOT rewritten when it does: a run that overwrote it would leave
+    the next run passing against the inflated size, which is how a 7% growth on
+    two TPC-DS queries reached main unnoticed.
+    """
+    if os.environ.get(REBASELINE_ENV):
+        return
+    baseline = load_toml_mapping(root / f"zquery{label}.log").get("gen_length")
+    if not isinstance(baseline, int):
+        return
+    budget = size_budget(baseline)
+    if gen_length <= budget:
+        return
+    raise AssertionError(
+        f"query {label} generated SQL grew {baseline} -> {gen_length} chars, "
+        f"over its budget of {budget}; its log is left at the committed "
+        f"baseline. If the growth is intended, re-run with "
+        f"{REBASELINE_ENV}=1 to accept it and commit the new log."
+    )
+
+
 def write_query_log(
     root: Path,
     label: str,
@@ -49,6 +88,7 @@ def write_query_log(
     preql_size: int,
     comp_size: int,
 ) -> None:
+    check_query_size(root, label, gen_length)
     with open(root / f"zquery{label}.log", "w", encoding="utf-8", newline="\n") as f:
         f.write(
             tomli_w.dumps(

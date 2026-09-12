@@ -23,6 +23,8 @@ from trilogy.core.optimizations.base_optimization import MergedCTEMap, Optimizat
 from trilogy.core.optimizations.utils import (
     append_condition,
     condition_contains_atom,
+    null_padded_nodes,
+    propagate_existence_sources,
     strip_condition_atom,
 )
 from trilogy.core.processing.condition_utility import (
@@ -195,25 +197,7 @@ def _parent_nullable_in_cte(cte: CTE, parent_name: str) -> bool:
     ``cte``. A nullable parent can be NULL-padded by the join, so rows whose
     filter column is NULL slip through a removed predicate but would have
     failed the original WHERE."""
-    for j in cte.joins or []:
-        if not isinstance(j, Join):
-            continue
-        if j.jointype == JoinType.INNER:
-            continue
-        if j.jointype in (JoinType.FULL, JoinType.LEFT_OUTER) and (
-            isinstance(j.right_cte, (CTE, UnionCTE)) and j.right_cte.name == parent_name
-        ):
-            return True
-        if j.jointype in (JoinType.FULL, JoinType.RIGHT_OUTER):
-            if (
-                isinstance(j.left_cte, (CTE, UnionCTE))
-                and j.left_cte.name == parent_name
-            ):
-                return True
-            for pair in j.joinkey_pairs or []:
-                if pair.cte.name == parent_name:
-                    return True
-    return False
+    return any(node.name == parent_name for node in null_padded_nodes(cte))
 
 
 def _consumer_may_emit_without_parent(cte: CTE, parent_name: str) -> bool:
@@ -416,25 +400,8 @@ class PredicatePushdown(OptimizationRule):
                         for x in row_conditions:
                             if x not in materialized_now:
                                 branch.source_map[x] = [base.name]
-            if branch.condition is None:
-                branch.condition = candidate
-            else:
-                branch.condition = append_condition(branch.condition, candidate)
-            for x in existence_extras:
-                if x in branch.source_map or x in branch.existence_source_map:
-                    continue
-                # Propagate from whichever map the consumer used.
-                if x in cte.source_map:
-                    origin = list(cte.source_map[x])
-                    branch.source_map[x] = origin
-                elif x in cte.existence_source_map:
-                    origin = list(cte.existence_source_map[x])
-                    branch.existence_source_map[x] = origin
-                else:
-                    continue
-                sources = [p for p in cte.dependency_nodes() if p.name in origin]
-                for source in sources:
-                    branch.add_dependency(source)
+            branch.condition = append_condition(branch.condition, candidate)
+            if propagate_existence_sources(branch, cte, existence_extras):
                 union_dependencies_changed = True
             self.log(
                 f"Pushed {candidate} into union branch {branch.name} of {parent_cte.name}"

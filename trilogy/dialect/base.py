@@ -877,13 +877,12 @@ class BaseDialect:
         self,
         e: "MapWrapper[Any, Any]",
         cte: Optional["CTE | UnionCTE"] = None,
-        cte_map: dict[str, "CTE | UnionCTE"] | None = None,
         raise_invalid: bool = False,
     ) -> str:
         # Default DuckDB-style; CH and others override.
         items = ",".join(
-            f"{self.render_expr(k, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
-            f":{self.render_expr(v, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
+            f"{self.render_expr(k, cte=cte, raise_invalid=raise_invalid)}"
+            f":{self.render_expr(v, cte=cte, raise_invalid=raise_invalid)}"
             for k, v in e.items()
         )
         return f"MAP {{{items}}}"
@@ -1473,14 +1472,7 @@ class BaseDialect:
                             [rval, self.render_expr(cast_target, cte=cte)],
                             [local_matched[0].datatype, cast_target],
                         )
-            elif (
-                isinstance(c.lineage, FUNCTION_ITEMS)
-                and c.lineage.operator == FunctionType.CONSTANT
-                and self.rendering.parameters is True
-                and c.datatype.data_type != DataType.MAP
-                and c.datatype.data_type not in INLINE_SAFE_PARAM_DATATYPES
-                and _constant_bindable(c.lineage)
-            ):
+            elif self._constant_binds_as_parameter(c):
                 rval = f":{c.safe_address}"
             else:
                 args = []
@@ -1669,6 +1661,17 @@ class BaseDialect:
         )
         return self._render_membership_exists(left_sql, member, source, operator)
 
+    def _constant_binds_as_parameter(self, c: BuildConcept) -> bool:
+        """Whether a CONSTANT concept renders as a bound ``:name`` parameter."""
+        return (
+            isinstance(c.lineage, FUNCTION_ITEMS)
+            and c.lineage.operator == FunctionType.CONSTANT
+            and self.rendering.parameters is True
+            and c.datatype.data_type != DataType.MAP
+            and c.datatype.data_type not in INLINE_SAFE_PARAM_DATATYPES
+            and _constant_bindable(c.lineage)
+        )
+
     def _renders_as_parameter(self, e: BuildParamaterizedConceptReference) -> bool:
         """Whether a parameterized reference binds (``:name``) or inlines its
         value; small datatypes round-trip cleanly and are always inlined."""
@@ -1682,19 +1685,46 @@ class BaseDialect:
         right,
         operator: ComparisonOperator,
         cte: CTE | UnionCTE | None = None,
-        cte_map: dict[str, CTE | UnionCTE] | None = None,
         raise_invalid: bool = False,
         materialized_addresses: set[str] | None = None,
     ) -> str:
         """Default rendering for a binary comparison. Dialects override when an
         operator needs translation (e.g. SQLite ``ILIKE``)."""
-        return f"{self.render_expr(left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)}"
+        return f"{self.render_expr(left, cte=cte, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {operator.value} {self.render_expr(right, cte=cte, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)}"
+
+    def render_ilike_as_lower_like(
+        self,
+        left,
+        right,
+        operator: ComparisonOperator,
+        cte: CTE | UnionCTE | None,
+        raise_invalid: bool,
+        materialized_addresses: set[str] | None,
+        lower: str,
+        like: str,
+        negate: str,
+    ) -> str:
+        """Emulate ``ILIKE`` on dialects without it via case-folded ``LIKE``;
+        the keyword spellings are the dialect's."""
+        left_sql = self.render_expr(
+            left,
+            cte=cte,
+            raise_invalid=raise_invalid,
+            materialized_addresses=materialized_addresses,
+        )
+        right_sql = self.render_expr(
+            right,
+            cte=cte,
+            raise_invalid=raise_invalid,
+            materialized_addresses=materialized_addresses,
+        )
+        prefix = negate if operator == ComparisonOperator.NOT_ILIKE else ""
+        return f"({prefix}{lower}({left_sql}) {like} {lower}({right_sql}))"
 
     def _common_existence_source(
         self,
         concepts: list[BuildConcept],
         cte: CTE | UnionCTE | None,
-        cte_map: dict[str, CTE | UnionCTE] | None,
     ) -> str | None:
         """A single source name able to supply EVERY component of a composite
         membership tuple. Each component resolves independently, so a shared row
@@ -1707,8 +1737,6 @@ class BaseDialect:
         candidate_lists: list[list[str]] = []
         for rc in concepts:
             lookup_cte = cte
-            if cte_map and not lookup_cte:
-                lookup_cte = cte_map.get(rc.address)
             if not lookup_cte:
                 return None
             candidates = list(
@@ -1739,7 +1767,6 @@ class BaseDialect:
         self,
         rc: BuildConcept,
         cte: CTE | UnionCTE | None,
-        cte_map: dict[str, CTE | UnionCTE] | None,
         raise_invalid: bool,
         preferred: str | None = None,
     ) -> tuple[str, str]:
@@ -1748,8 +1775,6 @@ class BaseDialect:
         inlined-parent physical columns). ``preferred`` pins the source (a
         composite tuple's common source, validated by the caller)."""
         lookup_cte = cte
-        if cte_map and not lookup_cte:
-            lookup_cte = cte_map.get(rc.address)
         assert lookup_cte, "Subselects must be rendered with a CTE in context"
         if rc.address not in lookup_cte.existence_source_map:
             lookup = lookup_cte.source_map.get(
@@ -1780,9 +1805,7 @@ class BaseDialect:
             elif isinstance(phys, RawColumnExpr):
                 col_ref = phys.text
             else:
-                col_ref = self.render_expr(
-                    phys, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
-                )
+                col_ref = self.render_expr(phys, cte=cte, raise_invalid=raise_invalid)
             return f"{new_base} as {target}", col_ref
         self.used_map[target].add(rc.address)
         col_ref = (
@@ -1796,7 +1819,6 @@ class BaseDialect:
         right: BuildFunction,
         operator: ComparisonOperator,
         cte: CTE | UnionCTE | None = None,
-        cte_map: dict[str, CTE | UnionCTE] | None = None,
         raise_invalid: bool = False,
         materialized_addresses: set[str] | None = None,
     ) -> str:
@@ -1815,7 +1837,6 @@ class BaseDialect:
             self.render_expr(
                 a,
                 cte=cte,
-                cte_map=cte_map,
                 raise_invalid=raise_invalid,
                 materialized_addresses=materialized_addresses,
             )
@@ -1827,13 +1848,13 @@ class BaseDialect:
                 resolved_concepts.append(rc)
             elif isinstance(rc, BuildFunction):
                 resolved_concepts.extend(rc.concept_arguments)
-        preferred = self._common_existence_source(resolved_concepts, cte, cte_map)
+        preferred = self._common_existence_source(resolved_concepts, cte)
         from_clauses: set[str] = set()
         cols: list[str] = []
         for rc in right.arguments:
             if isinstance(rc, BuildConcept):
                 from_clause, col_ref = self._resolve_existence_column(
-                    rc, cte, cte_map, raise_invalid, preferred=preferred
+                    rc, cte, raise_invalid, preferred=preferred
                 )
                 from_clauses.add(from_clause)
                 cols.append(col_ref)
@@ -1848,7 +1869,7 @@ class BaseDialect:
             overrides: dict[str, str] = {}
             for inner in concepts:
                 from_clause, col_ref = self._resolve_existence_column(
-                    inner, cte, cte_map, raise_invalid, preferred=preferred
+                    inner, cte, raise_invalid, preferred=preferred
                 )
                 from_clauses.add(from_clause)
                 overrides[inner.address] = col_ref
@@ -1859,7 +1880,6 @@ class BaseDialect:
                     self.render_expr(
                         rc,
                         cte=cte,
-                        cte_map=cte_map,
                         raise_invalid=raise_invalid,
                         materialized_addresses=materialized_addresses,
                     )
@@ -1945,7 +1965,6 @@ class BaseDialect:
         right: "ListWrapper[Any] | TupleWrapper[Any]",
         operator: ComparisonOperator,
         cte: CTE | UnionCTE | None,
-        cte_map: dict[str, CTE | UnionCTE] | None,
         raise_invalid: bool,
         materialized_addresses: set[str] | None,
     ) -> str:
@@ -1964,7 +1983,6 @@ class BaseDialect:
         left_sql = self.render_expr(
             left,
             cte=cte,
-            cte_map=cte_map,
             raise_invalid=raise_invalid,
             materialized_addresses=materialized_addresses,
         )
@@ -1977,9 +1995,7 @@ class BaseDialect:
         literal_types = (int, float, str, bool, date, datetime)
         if all(isinstance(x, literal_types) or is_null_literal(x) for x in elements):
             non_null = [
-                self.render_expr(x, cte=cte, cte_map=cte_map)
-                for x in elements
-                if not is_null_literal(x)
+                self.render_expr(x, cte=cte) for x in elements if not is_null_literal(x)
             ]
             has_null = len(non_null) != len(elements)
             if not non_null:
@@ -1998,7 +2014,6 @@ class BaseDialect:
                 self.render_expr(
                     x,
                     cte=cte,
-                    cte_map=cte_map,
                     raise_invalid=raise_invalid,
                     materialized_addresses=materialized_addresses,
                 ),
@@ -2015,7 +2030,6 @@ class BaseDialect:
         right: BuildFunction,
         operator: ComparisonOperator,
         cte: CTE | UnionCTE | None,
-        cte_map: dict[str, CTE | UnionCTE] | None,
         raise_invalid: bool,
     ) -> str | None:
         """Render an expression-typed membership RHS (`... in (rs.col::string)`,
@@ -2029,8 +2043,6 @@ class BaseDialect:
         if not concepts:
             return None
         lookup_cte = cte
-        if cte_map and not lookup_cte:
-            lookup_cte = cte_map.get(concepts[0].address)
         if lookup_cte is None:
             return None
         # Only a genuine existence membership (every referenced concept sourced
@@ -2040,9 +2052,7 @@ class BaseDialect:
             return None
         from_clauses: set[str] = set()
         for rc in concepts:
-            from_clause, _ = self._resolve_existence_column(
-                rc, cte, cte_map, raise_invalid
-            )
+            from_clause, _ = self._resolve_existence_column(rc, cte, raise_invalid)
             # inlined-parent physical-column form ("<base> as <target>"); the
             # full-expression render below can't redirect to physical columns,
             # so let it fall back rather than emit inconsistent SQL.
@@ -2052,9 +2062,7 @@ class BaseDialect:
         if len(from_clauses) != 1:
             return None
         from_clause = next(iter(from_clauses))
-        inner = self.render_expr(
-            right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
-        )
+        inner = self.render_expr(right, cte=cte, raise_invalid=raise_invalid)
         return self._render_membership_exists(left_sql, inner, from_clause, operator)
 
     def render_expr(
@@ -2098,7 +2106,6 @@ class BaseDialect:
             | DatePart
         ),
         cte: CTE | UnionCTE | None = None,
-        cte_map: dict[str, CTE | UnionCTE] | None = None,
         raise_invalid: bool = False,
         materialized_addresses: set[str] | None = None,
     ) -> str:
@@ -2125,7 +2132,6 @@ class BaseDialect:
                     right,
                     e.operator,
                     cte=cte,
-                    cte_map=cte_map,
                     raise_invalid=raise_invalid,
                     materialized_addresses=materialized_addresses,
                 )
@@ -2135,64 +2141,12 @@ class BaseDialect:
                 # DB. Unnest into a derived table so the identity predicate
                 # compares one scalar per element.
                 rhs_is_array = isinstance(right.datatype, ArrayType)
-                # we won't always have an existnce map
-                # so fall back to the normal map
-                lookup_cte = cte
-                if cte_map and not lookup_cte:
-                    lookup_cte = cte_map.get(right.address)
-
-                assert lookup_cte, "Subselects must be rendered with a CTE in context"
-                if right.address not in lookup_cte.existence_source_map:
-                    lookup = lookup_cte.source_map.get(
-                        right.address,
-                        [
-                            INVALID_REFERENCE_STRING(
-                                f"Missing source reference to {right.address}"
-                            )
-                        ],
-                    )
-                else:
-                    lookup = lookup_cte.existence_source_map[right.address]
-                if len(lookup) > 0:
-                    target = lookup[0]
-                else:
-                    target = INVALID_REFERENCE_STRING(
-                        f"Missing source CTE for {right.address}"
-                    )
-                assert cte, "CTE must be provided for inlined CTEs"
-                inlined_parent = (
-                    cte.inlined_parent_for_source(target)
-                    if isinstance(cte, CTE)
-                    else None
+                from_clause, col_ref = self._resolve_existence_column(
+                    right, cte, raise_invalid
                 )
-                if inlined_parent is not None:
-                    target = cte.source_key_for(target)
-                    self.used_map[target].add(right.address)
-                    new_base = inlined_parent.datasource.safe_location
-                    # The inlined parent exposes raw table columns, so look up
-                    # the physical column for `right` rather than emitting the
-                    # logical concept name.
-                    phys = inlined_parent.consumer_column(right)
-                    if isinstance(phys, str):
-                        col_ref = f"{target}.{self.QUOTE_CHARACTER}{phys}{self.QUOTE_CHARACTER}"
-                    elif isinstance(phys, RawColumnExpr):
-                        col_ref = phys.text
-                    else:
-                        col_ref = self.render_expr(
-                            phys,
-                            cte=cte,
-                            cte_map=cte_map,
-                            raise_invalid=raise_invalid,
-                        )
-                    from_clause = f"{new_base} as {target}"
-                else:
-                    self.used_map[target].add(right.address)
-                    col_ref = f"{target}.{self.QUOTE_CHARACTER}{right.safe_address}{self.QUOTE_CHARACTER}"
-                    from_clause = target
                 left_sql = self.render_expr(
                     e.left,
                     cte=cte,
-                    cte_map=cte_map,
                     raise_invalid=raise_invalid,
                     materialized_addresses=materialized_addresses,
                 )
@@ -2217,7 +2171,6 @@ class BaseDialect:
                         literal,
                         e.operator,
                         cte=cte,
-                        cte_map=cte_map,
                         raise_invalid=raise_invalid,
                         materialized_addresses=materialized_addresses,
                     )
@@ -2226,24 +2179,20 @@ class BaseDialect:
                         self.render_expr(
                             e.left,
                             cte=cte,
-                            cte_map=cte_map,
                             raise_invalid=raise_invalid,
                             materialized_addresses=materialized_addresses,
                         ),
-                        self.render_expr(
-                            right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
-                        ),
+                        self.render_expr(right, cte=cte, raise_invalid=raise_invalid),
                         e.operator,
                         arg_to_datatype(e.left),
                     )
-                return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} {self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)}"
+                return f"{self.render_expr(e.left, cte=cte, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} {self.render_expr(right, cte=cte, raise_invalid=raise_invalid)}"
             elif isinstance(right, (ListWrapper, TupleWrapper)):
                 return self._render_value_list_membership(
                     e.left,
                     right,
                     e.operator,
                     cte=cte,
-                    cte_map=cte_map,
                     raise_invalid=raise_invalid,
                     materialized_addresses=materialized_addresses,
                 )
@@ -2258,27 +2207,24 @@ class BaseDialect:
                     self.render_expr(
                         e.left,
                         cte=cte,
-                        cte_map=cte_map,
                         raise_invalid=raise_invalid,
                         materialized_addresses=materialized_addresses,
                     ),
                     right,
                     e.operator,
                     cte=cte,
-                    cte_map=cte_map,
                     raise_invalid=raise_invalid,
                 )
                 if exists_sql is not None:
                     return exists_sql
 
-            return f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} ({self.render_expr(right, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid)})"
+            return f"{self.render_expr(e.left, cte=cte, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {e.operator.value} ({self.render_expr(right, cte=cte, raise_invalid=raise_invalid)})"
         elif isinstance(e, COMPARISON_ITEMS):
             return self.render_comparison(
                 e.left,
                 e.right,
                 e.operator,
                 cte=cte,
-                cte_map=cte_map,
                 raise_invalid=raise_invalid,
                 materialized_addresses=materialized_addresses,
             )
@@ -2286,14 +2232,12 @@ class BaseDialect:
             left_rendered = self.render_expr(
                 e.left,
                 cte=cte,
-                cte_map=cte_map,
                 raise_invalid=raise_invalid,
                 materialized_addresses=materialized_addresses,
             )
             right_rendered = self.render_expr(
                 e.right,
                 cte=cte,
-                cte_map=cte_map,
                 raise_invalid=raise_invalid,
                 materialized_addresses=materialized_addresses,
             )
@@ -2304,9 +2248,9 @@ class BaseDialect:
             )
         elif isinstance(e, BETWEEN_ITEMS):
             return (
-                f"{self.render_expr(e.left, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} "
-                f"BETWEEN {self.render_expr(e.low, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} "
-                f"AND {self.render_expr(e.high, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)}"
+                f"{self.render_expr(e.left, cte=cte, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} "
+                f"BETWEEN {self.render_expr(e.low, cte=cte, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} "
+                f"AND {self.render_expr(e.high, cte=cte, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)}"
             )
         elif isinstance(e, WINDOW_ITEMS):
             rendered_order_components = [
@@ -2314,7 +2258,6 @@ class BaseDialect:
                     self.render_expr(
                         x.expr,
                         cte,
-                        cte_map=cte_map,
                         raise_invalid=raise_invalid,
                         materialized_addresses=materialized_addresses,
                     ),
@@ -2326,7 +2269,6 @@ class BaseDialect:
                 self.render_expr(
                     x,
                     cte,
-                    cte_map=cte_map,
                     raise_invalid=raise_invalid,
                     materialized_addresses=materialized_addresses,
                 )
@@ -2340,7 +2282,6 @@ class BaseDialect:
                 self.render_expr(
                     e.content,
                     cte=cte,
-                    cte_map=cte_map,
                     raise_invalid=raise_invalid,
                     materialized_addresses=materialized_addresses,
                 ),
@@ -2351,14 +2292,14 @@ class BaseDialect:
         elif isinstance(e, PARENTHETICAL_ITEMS):
             # conditions need to be nested in parentheses
             if isinstance(e.content, list):
-                return f"( {','.join([self.render_expr(x, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses) for x in e.content])} )"
-            return f"( {self.render_expr(e.content, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} )"
+                return f"( {','.join([self.render_expr(x, cte=cte, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses) for x in e.content])} )"
+            return f"( {self.render_expr(e.content, cte=cte, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} )"
         elif isinstance(e, CASE_WHEN_ITEMS):
-            return f"WHEN {self.render_expr(e.comparison, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses) } THEN {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses) }"
+            return f"WHEN {self.render_expr(e.comparison, cte=cte, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses) } THEN {self.render_expr(e.expr, cte=cte, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses) }"
         elif isinstance(e, BuildCaseSimpleWhen):
-            return f"{self.render_expr(e.value_expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} THEN {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)}"
+            return f"{self.render_expr(e.value_expr, cte=cte, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} THEN {self.render_expr(e.expr, cte=cte, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)}"
         elif isinstance(e, CASE_ELSE_ITEMS):
-            return f"ELSE {self.render_expr(e.expr, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses) }"
+            return f"ELSE {self.render_expr(e.expr, cte=cte, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses) }"
         elif isinstance(e, FUNCTION_ITEMS):
             # propagate aliases for scalar functions, drop for aggregates
             # (DuckDB resolves aggregate inputs against FROM, not projection)
@@ -2374,7 +2315,6 @@ class BaseDialect:
                         self.render_expr(
                             BuildParenthetical(content=cast(BuildExpr, arg)),
                             cte=cte,
-                            cte_map=cte_map,
                             raise_invalid=raise_invalid,
                             materialized_addresses=arg_aliases,
                         )
@@ -2384,7 +2324,6 @@ class BaseDialect:
                         self.render_expr(
                             arg,
                             cte=cte,
-                            cte_map=cte_map,
                             raise_invalid=raise_invalid,
                             materialized_addresses=arg_aliases,
                         )
@@ -2400,21 +2339,14 @@ class BaseDialect:
         elif isinstance(e, AGGREGATE_ITEMS):
             # aggregate input columns must resolve from FROM, not the
             # projection: don't propagate alias addresses into the function
-            return self.render_expr(
-                e.function, cte, cte_map=cte_map, raise_invalid=raise_invalid
-            )
+            return self.render_expr(e.function, cte, raise_invalid=raise_invalid)
         elif isinstance(e, FILTER_ITEMS):
-            return f"CASE WHEN {self.render_expr(e.where.conditional,cte=cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} THEN {self.render_expr(e.content, cte, cte_map=cte_map, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} ELSE NULL END"
+            return f"CASE WHEN {self.render_expr(e.where.conditional,cte=cte, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} THEN {self.render_expr(e.content, cte, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} ELSE NULL END"
         elif isinstance(e, BuildConcept):
             if e.address in self._existence_ref_overrides:
                 return self._existence_ref_overrides[e.address]
             if (
-                isinstance(e.lineage, FUNCTION_ITEMS)
-                and e.lineage.operator == FunctionType.CONSTANT
-                and self.rendering.parameters is True
-                and e.datatype.data_type != DataType.MAP
-                and e.datatype.data_type not in INLINE_SAFE_PARAM_DATATYPES
-                and _constant_bindable(e.lineage)
+                self._constant_binds_as_parameter(e)
                 # only bind the literal where it's first materialized; if it's
                 # already a column in a source CTE (e.g. an ORDER BY term sourced
                 # from a join), reference that column instead of re-emitting the
@@ -2437,9 +2369,6 @@ class BaseDialect:
                     alias=False,
                     raise_invalid=raise_invalid,
                 )
-            elif cte_map:
-                self.used_map[cte_map[e.address].name].add(e.address)
-                return f"{cte_map[e.address].name}.{self.QUOTE_CHARACTER}{e.safe_address}{self.QUOTE_CHARACTER}"
             return f"{self.QUOTE_CHARACTER}{e.safe_address}{self.QUOTE_CHARACTER}"
         elif isinstance(e, bool):
             return f"{e}"
@@ -2448,13 +2377,11 @@ class BaseDialect:
         elif isinstance(e, (int, float)):
             return str(e)
         elif isinstance(e, TupleWrapper):
-            return f"({','.join([self.render_expr(x, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) for x in e])})"
+            return f"({','.join([self.render_expr(x, cte=cte, raise_invalid=raise_invalid) for x in e])})"
         elif isinstance(e, MapWrapper):
-            return self.render_map_literal(
-                e, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid
-            )
+            return self.render_map_literal(e, cte=cte, raise_invalid=raise_invalid)
         elif isinstance(e, ListWrapper):
-            return f"{self.FUNCTION_MAP[FunctionType.ARRAY]([self.render_expr(x, cte=cte, cte_map=cte_map, raise_invalid=raise_invalid) for x in e], [])}"
+            return f"{self.FUNCTION_MAP[FunctionType.ARRAY]([self.render_expr(x, cte=cte, raise_invalid=raise_invalid) for x in e], [])}"
         elif isinstance(e, DataType):
             return self.DATATYPE_MAP.get(e, e.value)
         elif isinstance(e, DatePart):
@@ -2470,24 +2397,24 @@ class BaseDialect:
         elif isinstance(e, date):
             return self.FUNCTION_MAP[FunctionType.DATE_LITERAL](e, [])
         elif isinstance(e, EnumType):
-            return self.render_expr(e.data_type, cte=cte, cte_map=cte_map)  # type: ignore[arg-type]
+            return self.render_expr(e.data_type, cte=cte)  # type: ignore[arg-type]
         elif isinstance(e, (ValidatedType, TraitDataType)):
-            return self.render_expr(e.type, cte=cte, cte_map=cte_map)  # type: ignore[arg-type]
+            return self.render_expr(e.type, cte=cte)  # type: ignore[arg-type]
         elif isinstance(e, ArgBinding):
             return e.name
         elif isinstance(e, Ordering):
             return str(e.value)
         elif isinstance(e, ArrayType):
-            return f"{self.COMPLEX_DATATYPE_MAP[DataType.ARRAY](self.render_expr(e.value_data_type, cte=cte, cte_map=cte_map))}"  # type: ignore[arg-type]
+            return f"{self.COMPLEX_DATATYPE_MAP[DataType.ARRAY](self.render_expr(e.value_data_type, cte=cte))}"  # type: ignore[arg-type]
         elif isinstance(e, list):
-            return f"{self.FUNCTION_MAP[FunctionType.ARRAY]([self.render_expr(x, cte=cte, cte_map=cte_map) for x in e], [])}"
+            return f"{self.FUNCTION_MAP[FunctionType.ARRAY]([self.render_expr(x, cte=cte) for x in e], [])}"
         elif isinstance(e, BuildParamaterizedConceptReference):
             if self._renders_as_parameter(e):
                 if e.concept.namespace == DEFAULT_NAMESPACE:
                     return f":{e.concept.name}"
                 return f":{e.concept.address.replace('.', '_')}"
             elif e.concept.lineage:
-                return self.render_expr(e.concept.lineage, cte=cte, cte_map=cte_map)
+                return self.render_expr(e.concept.lineage, cte=cte)
             return f"{self.QUOTE_CHARACTER}{e.concept.address}{self.QUOTE_CHARACTER}"
 
         else:
@@ -2694,36 +2621,32 @@ class BaseDialect:
             )
             return CompiledCTE(name=cte.name, statement=base_statement)
         join_derived_addresses = {c.address for c in cte.join_derived_concepts}
-        if self.UNNEST_MODE in (UnnestMode.CROSS_APPLY, UnnestMode.SNOWFLAKE):
+        if self.UNNEST_MODE in (
+            UnnestMode.CROSS_APPLY,
+            UnnestMode.SNOWFLAKE,
+            UnnestMode.CROSS_JOIN_UNNEST,
+            UnnestMode.PRESTO,
+        ):
             # for a cross apply, derivation happens in the join
             # so we only use the alias to select
             select_columns = {
-                **{
-                    c.address: self.render_concept_sql(c, cte)
-                    for c in cte.output_columns
-                    if c.address not in join_derived_addresses
-                    and c.address not in cte.hidden_concepts
-                },
-                **{
-                    c.address: f"{self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
+                c.address: self.render_concept_sql(c, cte)
+                for c in cte.output_columns
+                if c.address not in join_derived_addresses
+                and c.address not in cte.hidden_concepts
+            }
+            derived_prefix = (
+                ""
+                if self.UNNEST_MODE in (UnnestMode.CROSS_APPLY, UnnestMode.SNOWFLAKE)
+                else f"{UNNEST_NAME} as "
+            )
+            select_columns.update(
+                {
+                    c.address: f"{derived_prefix}{self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
                     for c in cte.join_derived_concepts
                     if c.address not in cte.hidden_concepts
-                },
-            }
-        elif self.UNNEST_MODE in (UnnestMode.CROSS_JOIN_UNNEST, UnnestMode.PRESTO):
-            select_columns = {
-                **{
-                    c.address: self.render_concept_sql(c, cte)
-                    for c in cte.output_columns
-                    if c.address not in join_derived_addresses
-                    and c.address not in cte.hidden_concepts
-                },
-                **{
-                    c.address: f"{UNNEST_NAME} as {self.QUOTE_CHARACTER}{c.safe_address}{self.QUOTE_CHARACTER}"
-                    for c in cte.join_derived_concepts
-                    if c.address not in cte.hidden_concepts
-                },
-            }
+                }
+            )
         else:
             # otherwse, assume we are unnesting directly in the select
             select_columns = {
@@ -2744,9 +2667,9 @@ class BaseDialect:
         source: str | None = cte.base_name
         if not cte.render_from_clause:
             if len(cte.joins) > 0:
-                if (
-                    cte.join_derived_concepts
-                    and self.UNNEST_MODE == UnnestMode.CROSS_APPLY
+                if cte.join_derived_concepts and self.UNNEST_MODE in (
+                    UnnestMode.CROSS_APPLY,
+                    UnnestMode.SNOWFLAKE,
                 ):
                     source = f"{render_unnest(self.UNNEST_MODE, self.QUOTE_CHARACTER, cte.join_derived_concepts[0], self.render_expr, cte)}"
                 elif cte.join_derived_concepts and self.UNNEST_MODE in (
@@ -2757,11 +2680,6 @@ class BaseDialect:
                     UnnestMode.PRESTO,
                 ):
                     source = f"{self.render_expr(cte.join_derived_concepts[0], cte)} as t({self.QUOTE_CHARACTER}{UNNEST_NAME}{self.QUOTE_CHARACTER})"
-                elif (
-                    cte.join_derived_concepts
-                    and self.UNNEST_MODE == UnnestMode.SNOWFLAKE
-                ):
-                    source = f"{render_unnest(self.UNNEST_MODE, self.QUOTE_CHARACTER, cte.join_derived_concepts[0], self.render_expr, cte)}"
                 # direct - eg DUCK DB - can be directly selected inline
                 elif (
                     cte.join_derived_concepts and self.UNNEST_MODE == UnnestMode.DIRECT

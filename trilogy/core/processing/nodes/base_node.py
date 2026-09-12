@@ -347,15 +347,6 @@ class StrategyNode:
             self.rebuild_cache()
         return self
 
-    def add_partial_concepts(self, concepts: list[BuildConcept], rebuild: bool = True):
-        for concept in concepts:
-            if concept.address not in self.partial_lcl.addresses:
-                self.partial_concepts.append(concept)
-        self.partial_lcl = LooseBuildConceptList(concepts=self.partial_concepts)
-        if rebuild:
-            self.rebuild_cache()
-        return self
-
     def add_existence_concepts(
         self, concepts: list[BuildConcept], rebuild: bool = True
     ):
@@ -382,18 +373,6 @@ class StrategyNode:
 
         self.output_lcl = LooseBuildConceptList(concepts=self.output_concepts)
 
-        if rebuild:
-            self.rebuild_cache()
-        return self
-
-    def hide_output_concepts(
-        self, concepts: list[BuildConcept] | list[str] | set[str], rebuild: bool = True
-    ):
-        for x in concepts:
-            if isinstance(x, BuildConcept):
-                self.hidden_concepts.add(x.address)
-            else:
-                self.hidden_concepts.add(x)
         if rebuild:
             self.rebuild_cache()
         return self

@@ -30,7 +30,7 @@ Runs after ``PredicatePushdown`` so consumer WHEREs have settled at the
 consumer level, and before any rule that flattens / inlines the UnionCTE.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import cast
 
 from trilogy.core.enums import Derivation, JoinType, SetOperator, SourceType
@@ -60,6 +60,7 @@ from trilogy.core.optimizations.utils import (
     add_datasource_sorted,
     append_condition,
     base_datasource,
+    propagate_existence_sources,
     strip_condition_atom,
 )
 from trilogy.core.processing.condition_utility import (
@@ -229,37 +230,22 @@ def _dim_local_atoms(
     return found
 
 
+@dataclass
 class _DimDescriptor:
-    """One pushable dim shared by every consumer."""
+    """One pushable dim: per consumer while candidates are collected, then one
+    shared descriptor once every consumer is found to agree."""
 
     dim_qds: BuildDatasource | QueryDatasource
+    # Original join right_datasource identifier, disambiguating sibling dim
+    # CTEs that share one base BD (an unfiltered and a filtered variant).
     join_qds_id: str
     key_pairs: list[ConceptPair]
     dim_concepts: list[BuildConcept]
     where_atoms: list[BoolExpr]
+    # True when every non-FK dim concept the consumer references appears in a
+    # ``where_atom``. When False the dim and filter still push into each branch
+    # for early filtering, but the consumer keeps its own dim join.
     strip_safe: bool
-
-    def __init__(
-        self,
-        dim_qds: BuildDatasource | QueryDatasource,
-        join_qds_id: str,
-        key_pairs: list[ConceptPair],
-        dim_concepts: list[BuildConcept],
-        where_atoms: list[BoolExpr],
-        strip_safe: bool,
-    ) -> None:
-        self.dim_qds = dim_qds
-        # Original join right_datasource identifier, disambiguating sibling
-        # dim CTEs that share one base BD (an unfiltered and a filtered variant).
-        self.join_qds_id = join_qds_id
-        self.key_pairs = key_pairs
-        self.dim_concepts = dim_concepts
-        self.where_atoms = where_atoms
-        # True when every non-FK dim concept the consumer references appears
-        # in a ``where_atom``. When False the dim and filter still push into
-        # each branch for early filtering, but the consumer keeps its own dim
-        # join.
-        self.strip_safe = strip_safe
 
     @property
     def fk_left_addrs(self) -> set[str]:
@@ -267,16 +253,6 @@ class _DimDescriptor:
 
 
 _DimKey = tuple[str, frozenset[tuple[str, str]]]
-
-
-@dataclass
-class _ConsumerDimCandidate:
-    dim_qds: BuildDatasource | QueryDatasource
-    join_qds_id: str
-    key_pairs: list[ConceptPair]
-    dim_concepts: list[BuildConcept]
-    where_atoms: list[BoolExpr]
-    strip_safe: bool
 
 
 @dataclass
@@ -429,7 +405,7 @@ class UnionDimPushdown(OptimizationRule):
 
     def _consumer_dim_map(
         self, consumer: CTE, union_outputs: set[str]
-    ) -> dict[_DimKey, _ConsumerDimCandidate]:
+    ) -> dict[_DimKey, _DimDescriptor]:
         """Map each pushable INNER dim join on this consumer to its descriptor
         bits. Key: (dim_id, frozenset of (left_addr, right_addr) pairs).
 
@@ -442,7 +418,7 @@ class UnionDimPushdown(OptimizationRule):
             for ds in consumer.source.datasources
             if isinstance(ds, BuildDatasource)
         }
-        result: dict[_DimKey, _ConsumerDimCandidate] = {}
+        result: dict[_DimKey, _DimDescriptor] = {}
         for j in consumer.source.joins:
             if not isinstance(j, BaseJoin):
                 continue
@@ -518,7 +494,7 @@ class UnionDimPushdown(OptimizationRule):
                 dim_concepts,
                 dim_ds,
             )
-            result[key] = _ConsumerDimCandidate(
+            result[key] = _DimDescriptor(
                 dim_qds=dim_ds,
                 join_qds_id=join_qds.identifier,
                 key_pairs=list(j.concept_pairs),
@@ -552,11 +528,8 @@ class UnionDimPushdown(OptimizationRule):
             # otherwise all consumers keep it and the push is filter-only.
             strip_safe = all(m[key].strip_safe for m in per_consumer)
             out.append(
-                _DimDescriptor(
-                    dim_qds=first.dim_qds,
-                    join_qds_id=first.join_qds_id,
-                    key_pairs=first.key_pairs,
-                    dim_concepts=first.dim_concepts,
+                replace(
+                    first,
                     where_atoms=list(first.where_atoms),
                     strip_safe=strip_safe,
                 )
@@ -903,28 +876,11 @@ class UnionDimPushdown(OptimizationRule):
         source_consumer: CTE,
         atom: BoolExpr,
     ) -> None:
-        existence_addrs: set[str] = set()
-        for tup in atom.existence_arguments:
-            for arg in tup:
-                existence_addrs.add(arg.address)
-        if not existence_addrs:
-            return
-        for x in existence_addrs:
-            if x in branch.source_map or x in branch.existence_source_map:
-                continue
-            if x in source_consumer.source_map:
-                origin = list(source_consumer.source_map[x])
-                branch.source_map[x] = origin
-            elif x in source_consumer.existence_source_map:
-                origin = list(source_consumer.existence_source_map[x])
-                branch.existence_source_map[x] = origin
-            else:
-                continue
-            sources = [
-                p for p in source_consumer.dependency_nodes() if p.name in origin
-            ]
-            for source in sources:
-                branch.add_dependency(source)
+        propagate_existence_sources(
+            branch,
+            source_consumer,
+            {arg.address for tup in atom.existence_arguments for arg in tup},
+        )
 
     def _branch_left_datasource(
         self, branch: CTE, fk_left_addrs: set[str]
