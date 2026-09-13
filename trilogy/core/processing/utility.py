@@ -8,12 +8,20 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from trilogy.core import graph as nx
 
-from trilogy.core.enums import Derivation, Granularity, JoinType, Purpose
+from trilogy.core.enums import (
+    Derivation,
+    FunctionType,
+    Granularity,
+    JoinType,
+    Purpose,
+)
 from trilogy.core.models.author import ConceptRef
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
+    BuildFunction,
     BuildGrain,
+    generate_concept_name,
 )
 from trilogy.core.models.execute import (
     CTE,
@@ -254,14 +262,24 @@ def sort_select_output_processed(
     )
 
     def render_as(target, oc: BuildConcept) -> BuildConcept:
-        # render `oc`'s column under the originally-written `target` name
+        # render `oc`'s column under the originally-written `target` name: the
+        # same ALIAS rename `select oc as target` builds, so it renders through
+        # `oc` (and whatever `oc` renders through) and the collapse rules pin
+        # it to the consumed column exactly as they pin an authored alias.
         if target.address not in cte.source_map and oc.address in cte.source_map:
             cte.source_map[target.address] = list(cte.source_map[oc.address])
+        lineage = BuildFunction(
+            operator=FunctionType.ALIAS,
+            arguments=[oc],
+            output_data_type=oc.datatype,
+            output_purpose=oc.purpose,
+        )
         return BuildConcept(
             name=target.name,
-            canonical_name=target.name,
+            canonical_name=generate_concept_name(lineage),
             namespace=target.namespace,
-            pseudonyms={oc.address},
+            lineage=lineage,
+            derivation=Derivation.BASIC,
             datatype=oc.datatype,
             purpose=oc.purpose,
             grain=oc.grain,

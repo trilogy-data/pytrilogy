@@ -1266,18 +1266,9 @@ def _derivable_pseudonym_origins(
         return []
     if concept.address in datasource_addresses:
         return []
-    # A merge can demote a derived concept to a bare ROOT key while its real
-    # lineage survives in `alias_origin_lookup` under the SAME address (e.g.
-    # `merge first_parent into parent.id` leaves `local.first_parent` ROOT but its
-    # origin is the RECURSIVE `recurse_edge(...)`). Check the concept's own
-    # address alongside its pseudonyms. Recursion is bounded: each origin has a
-    # lineage, so re-entry on it returns [].
-    origins: dict[str, BuildConcept] = {}
-    for pseudonym in (concept.address, *concept.pseudonyms):
-        origin = environment.alias_origin_lookup.get(pseudonym)
-        if origin is not None and origin.lineage is not None and origin is not concept:
-            origins[origin.address] = origin
-    return [origins[a] for a in sorted(origins)]
+    # Recursion is bounded: each origin has a lineage, so re-entry on it
+    # returns [].
+    return environment.merge_origins(concept)
 
 
 def _resolve_pseudonym_origin(
