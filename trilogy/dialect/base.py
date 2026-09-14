@@ -549,10 +549,11 @@ def is_array_arg(types: list[Any], idx: int = 0) -> bool:
 
 
 def array_element_type(types: list[Any], idx: int = 0) -> CONCRETE_TYPES | None:
-    """Element type of an array argument, looking through trait/enum wrappers."""
+    """Element type of an array argument; None when it isn't a plain array.
+
+    Callers treat None as "unknown element type" and coerce, which stays
+    correct for a type this can't see into."""
     target = types[idx] if len(types) > idx else None
-    while target is not None and not isinstance(target, ArrayType):
-        target = getattr(target, "type", None)
     return target.value_data_type if isinstance(target, ArrayType) else None
 
 
