@@ -27,7 +27,7 @@ from trilogy.core.enums import (
 )
 from trilogy.core.models.core import CONCRETE_TYPES, DataType
 from trilogy.core.models.datasource import Address
-from trilogy.dialect.base import BaseDialect
+from trilogy.dialect.base import BaseDialect, is_array_arg
 from trilogy.utility import safe_open
 
 SENTINAL_AUTO_CAPTURE_GROUP_VALUE = "-1"
@@ -103,6 +103,13 @@ def handle_cast(args, types):
     return f"cast({args[0]} as {args[1]})"
 
 
+def contains(args, types):
+    # array membership is exact; substring search is case-insensitive
+    if is_array_arg(types):
+        return f"CONTAINS({args[0]}, {args[1]})"
+    return f"CONTAINS(LOWER({args[0]}), LOWER({args[1]}))"
+
+
 def date_part(args, types):
     if args[1] == "day_of_week":
         return f"date_part('{map_date_part_specifier(args[1])}', {args[0]})+1"
@@ -154,7 +161,7 @@ FUNCTION_MAP = {
     FunctionType.CONCAT_WS: lambda x, types: f"CONCAT_WS({', '.join(x)})",
     FunctionType.DAY_OF_WEEK: lambda x, types: f"dayofweek({x[0]})+1",
     # string
-    FunctionType.CONTAINS: lambda x, types: f"CONTAINS(LOWER({x[0]}), LOWER({x[1]}))",
+    FunctionType.CONTAINS: lambda x, types: contains(x, types),
     # regexp
     FunctionType.REGEXP_CONTAINS: lambda x, types: f"REGEXP_MATCHES({x[0]},{x[1]})",
     FunctionType.REGEXP_EXTRACT: lambda x, types: generate_regex_extract(x),

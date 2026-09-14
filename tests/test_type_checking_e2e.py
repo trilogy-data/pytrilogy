@@ -553,11 +553,20 @@ class TestArrayFunctionArgumentTypes:
             """)
         assert env.concepts["y"].datatype == DataType.INTEGER
 
-    def test_array_to_string_with_integer_array_fails(self):
-        """ARRAY_TO_STRING requires string array, not integer array."""
+    def test_array_to_string_with_integer_array_succeeds(self):
+        """ARRAY_TO_STRING takes any element type; members are cast on render."""
+        env, _ = parse_text("""
+            const x <- [1, 2, 3];
+            auto y <- array_to_string(x, ',');
+            select y;
+            """)
+        assert env.concepts["y"].datatype == DataType.STRING
+
+    def test_array_to_string_with_non_array_fails(self):
+        """ARRAY_TO_STRING still requires an array."""
         with pytest.raises(TypeError, match="Invalid argument type"):
             parse_text("""
-                const x <- [1, 2, 3];
+                const x <- 'abc';
                 auto y <- array_to_string(x, ',');
                 select y;
                 """)

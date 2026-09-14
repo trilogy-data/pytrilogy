@@ -542,8 +542,10 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         arg_count=3,
     ),
     FunctionType.ARRAY_TO_STRING: FunctionConfig(
+        # any element type is accepted; dialects that require a string array
+        # cast the members on render
         valid_inputs=[
-            {ArrayType(type=DataType.STRING)},
+            {DataType.ARRAY},
             {DataType.STRING},
         ],
         output_purpose=Purpose.PROPERTY,
@@ -661,9 +663,12 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         arg_count=3,
     ),
     FunctionType.CONTAINS: FunctionConfig(
+        # overloaded: substring search on a string, membership on an array.
+        # The second argument is checked against the first in
+        # validate_contains_arguments, which positional valid_inputs can't express.
         valid_inputs=[
-            {DataType.STRING},
-            {DataType.STRING},
+            {DataType.STRING, DataType.ARRAY},
+            {*DataType},
         ],
         output_purpose=Purpose.PROPERTY,
         output_type=DataType.BOOL,

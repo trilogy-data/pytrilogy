@@ -10,7 +10,7 @@ from trilogy import Dialects
 from trilogy.constants import Rendering
 from trilogy.core.enums import Derivation, FunctionType, Granularity, JoinType, Purpose
 from trilogy.core.env_processor import generate_graph
-from trilogy.core.exceptions import InvalidSyntaxException
+from trilogy.core.exceptions import FunctionArgumentException, InvalidSyntaxException
 from trilogy.core.models.author import Concept, FunctionCallWrapper, Grain
 from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
@@ -2223,6 +2223,131 @@ select array_to_string(values, ', ') as value_string;
 
     assert len(results) == 1
     assert results[0].value_string == " abc ,  def, jkl , mon"
+
+
+ARRAY_MODEL = """
+key tree_id int;
+property tree_id.bloom_months array<int>;
+property tree_id.tags array<string>;
+property tree_id.city string;
+
+datasource trees (
+    tree_id: tree_id,
+    bloom_months: bloom_months,
+    tags: tags,
+    city: city,
+)
+grain (tree_id)
+query '''
+select 1 as tree_id, [3,4,9] as bloom_months, ['Street','Native'] as tags, 'USSFO' as city
+union all select 2, [1,2], ['Park'], 'USSFO'
+union all select 3, [9], ['Street'], 'USNYC'
+''';
+"""
+
+
+def test_contains_array_of_int():
+    engine = Dialects.DUCK_DB.default_executor()
+    test = ARRAY_MODEL + """
+select tree_id, contains(bloom_months, 9) as blooms_in_september
+order by tree_id asc;
+"""
+
+    results = engine.execute_text(test)[0].fetchall()
+    assert [(x.tree_id, x.blooms_in_september) for x in results] == [
+        (1, True),
+        (2, False),
+        (3, True),
+    ]
+
+
+def test_contains_array_in_where_clause():
+    engine = Dialects.DUCK_DB.default_executor()
+    test = ARRAY_MODEL + """
+select tree_id
+where city = 'USSFO' and contains(bloom_months, 9)
+order by tree_id asc;
+"""
+
+    # the array argument must not be wrapped in the substring form's LOWER()
+    assert 'CONTAINS("trees"."bloom_months", 9)' in engine.generate_sql(test)[-1]
+    results = engine.execute_text(test)[0].fetchall()
+    assert [x.tree_id for x in results] == [1]
+
+
+def test_contains_array_of_string():
+    engine = Dialects.DUCK_DB.default_executor()
+    test = ARRAY_MODEL + """
+select tree_id
+where contains(tags, 'Street')
+order by tree_id asc;
+"""
+
+    results = engine.execute_text(test)[0].fetchall()
+    assert [x.tree_id for x in results] == [1, 3]
+
+
+def test_contains_string_stays_case_insensitive_substring():
+    engine = Dialects.DUCK_DB.default_executor()
+    test = ARRAY_MODEL + """
+select tree_id
+where contains(city, 'ussfo')
+order by tree_id asc;
+"""
+
+    results = engine.execute_text(test)[0].fetchall()
+    assert [x.tree_id for x in results] == [1, 2]
+
+
+def test_contains_array_element_type_mismatch():
+    engine = Dialects.DUCK_DB.default_executor()
+    test = ARRAY_MODEL + """
+select tree_id where contains(bloom_months, 'september');
+"""
+
+    with raises(FunctionArgumentException) as exc:
+        engine.generate_sql(test)
+    assert "position 2" in str(exc.value)
+
+
+def test_contains_string_rejects_non_string_needle():
+    engine = Dialects.DUCK_DB.default_executor()
+    test = ARRAY_MODEL + """
+select tree_id where contains(city, 9);
+"""
+
+    with raises(FunctionArgumentException):
+        engine.generate_sql(test)
+
+
+def test_contains_in_custom_function_binds_at_expansion():
+    engine = Dialects.DUCK_DB.default_executor()
+    test = ARRAY_MODEL + """
+def has_nine(x) -> contains(x, 9);
+select tree_id where @has_nine(bloom_months)
+order by tree_id asc;
+"""
+
+    results = engine.execute_text(test)[0].fetchall()
+    assert [x.tree_id for x in results] == [1, 3]
+
+    mismatched = Dialects.DUCK_DB.default_executor()
+    with raises(FunctionArgumentException):
+        mismatched.generate_sql(ARRAY_MODEL + """
+def has_street(x) -> contains(x, 'Street');
+select tree_id where @has_street(bloom_months);
+""")
+
+
+def test_array_to_string_non_string_members():
+    engine = Dialects.DUCK_DB.default_executor()
+    test = ARRAY_MODEL + """
+select tree_id, array_to_string(bloom_months, ',') as months
+order by tree_id asc;
+"""
+
+    results = engine.execute_text(test)[0].fetchall()
+    assert [x.months for x in results] == ["3,4,9", "1,2", "9"]
 
 
 def test_not_value():

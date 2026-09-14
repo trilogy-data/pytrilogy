@@ -578,6 +578,53 @@ def table top_vals() -> select val order by val desc limit 3;
     assert "LIST(" not in sql
 
 
+_ARRAY_SCHEMA = """
+key tree_id int;
+property tree_id.bloom_months array<int>;
+property tree_id.tags array<string>;
+property tree_id.city string;
+datasource trees (
+    tree_id: tree_id,
+    bloom_months: bloom_months,
+    tags: tags,
+    city: city
+)
+grain (tree_id)
+address `project.dataset.trees`;
+"""
+
+
+def _render_bigquery(query: str) -> str:
+    from trilogy.render import get_dialect_generator
+
+    environment = Environment()
+    environment.parse(_ARRAY_SCHEMA)
+    generator = get_dialect_generator(Dialects.BIGQUERY)
+    _, queries = environment.parse(query)
+    return generator.compile_statement(
+        generator.generate_queries(environment, queries)[0]
+    )
+
+
+def test_contains_array_rendering():
+    sql = _render_bigquery("select tree_id where contains(bloom_months, 9);")
+    assert "IN UNNEST(`trees`.`bloom_months`)" in sql, sql
+    assert "CONTAINS_SUBSTR" not in sql, sql
+
+    string_sql = _render_bigquery("select tree_id where contains(city, 'SFO');")
+    assert "CONTAINS_SUBSTR(`trees`.`city`, 'SFO')" in string_sql, string_sql
+
+
+def test_array_to_string_casts_non_string_members():
+    sql = _render_bigquery(
+        "select tree_id, array_to_string(bloom_months, ',') as months;"
+    )
+    assert "CAST(element AS STRING)" in sql, sql
+
+    string_sql = _render_bigquery("select tree_id, array_to_string(tags, ',') as t;")
+    assert "ARRAY_TO_STRING(`trees`.`tags`, ',')" in string_sql, string_sql
+
+
 def test_hash_column_value():
     dialect = BigqueryDialect()
     result = dialect.hash_column_value("my_column")
