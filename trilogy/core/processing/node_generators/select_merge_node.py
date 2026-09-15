@@ -49,6 +49,7 @@ from trilogy.core.processing.node_generators.select_helpers.condition_routing im
 )
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
+    union_derived_concepts,
 )
 from trilogy.core.processing.node_generators.select_helpers.datasource_nodes import (
     SourceNodeCandidate,
@@ -144,8 +145,11 @@ def create_pruned_concept_graph(
         g.datasources[node_address] = BuildUnionDatasource(
             children=ds_list, non_partial_for=reduced_non_partial_for
         )
+        if environment is not None:
+            common |= set(union_derived_concepts(ds_list, environment))
         for c in common:
             cnode = concept_to_node(c)
+            g.concepts.setdefault(cnode, c)
             union_edges.append((node_address, cnode))
             union_edges.append((cnode, node_address))
     g.add_edges_from(union_edges)

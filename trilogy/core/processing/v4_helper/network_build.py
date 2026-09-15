@@ -42,6 +42,7 @@ from trilogy.core.processing.node_generators.presence_probe import (
 )
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
+    union_derived_concepts,
 )
 from trilogy.core.processing.v4_helper.network_coalescing import (
     axis_families,
@@ -269,7 +270,9 @@ def _union_candidates(
 ) -> dict[str, SourceCandidate]:
     """A partition family read as one source. Each arm binds the discriminator
     only for its own partition, so only the union binds it fully; without this
-    candidate the search would answer a whole-population request from one arm."""
+    candidate the search would answer a whole-population request from one arm.
+    Like a single scan, it also emits the derivations every arm computes
+    inline, so a lookup keyed on one (`cell <- f(lat, lon)`) can join it."""
     datasources = [
         datasource
         for datasource in environment.datasources.values()
@@ -292,16 +295,19 @@ def _union_candidates(
                 BuildWhereClause(conditional=merged) if merged is not None else None
             ),
         )
-        emitted = {column.concept.address for column in union_datasource.columns}
-        if not emitted:
+        stored = {column.concept.address for column in union_datasource.columns}
+        if not stored:
             continue
+        derived = {
+            concept.canonical_address
+            for concept in union_derived_concepts(group, environment)
+        }
         node = "ds~" + "-".join(child.name for child in group)
         out[node] = _candidate(
             node,
             union_datasource,
-            emitted,
-            # a union's columns are the arms' stored columns, so all of it is
-            stored=emitted,
+            stored | derived,
+            stored=stored,
             conditions=conditions,
             equivalence=equivalence,
         )
