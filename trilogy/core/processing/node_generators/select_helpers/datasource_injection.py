@@ -7,6 +7,10 @@ from trilogy.core.enums import (
     ComparisonOperator,
     Modifier,
 )
+from trilogy.core.env_processor import (
+    build_basic_concept_graph,
+    get_derivable_concepts,
+)
 from trilogy.core.models.build import (
     BoolExpr,
     BuildComparison,
@@ -15,7 +19,9 @@ from trilogy.core.models.build import (
     BuildDatasource,
     BuildFunction,
     BuildParenthetical,
+    BuildUnionDatasource,
 )
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import EnumType
 from trilogy.core.models.datasource import Address
 from trilogy.core.processing.condition_utility import (
@@ -373,6 +379,30 @@ def get_union_sources(
             if simplify_conditions(conditions, excluded):
                 final.append(dses)
     return final
+
+
+def union_derived_concepts(
+    children: list[BuildDatasource], environment: BuildEnvironment
+) -> list[BuildConcept]:
+    """BASIC derivations a partition union computes inline, beyond the columns
+    its arms share. The graph attaches a derivation to a scan only off complete
+    columns, and a `partial` arm has none, so no arm carries `cell <- f(lat,
+    lon)`; the covering union heals that partiality, and renders by planning
+    each arm for the same outputs, so it can emit (and join on) the derivation
+    exactly as a single complete scan would."""
+    union = BuildUnionDatasource(children=children)
+    present = {column.concept.canonical_address for column in union.columns}
+    unhealed = union.column_level_partial_addresses
+    complete = {
+        column.concept.canonical_address
+        for column in union.columns
+        if column.concept.address not in unhealed
+    }
+    basic_graph = build_basic_concept_graph(
+        list(environment.concepts.values())
+        + list(environment.alias_origin_lookup.values())
+    )
+    return list(get_derivable_concepts(basic_graph, complete, present))
 
 
 def describe_incomplete_partitions(
