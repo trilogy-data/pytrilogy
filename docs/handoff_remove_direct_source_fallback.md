@@ -1,6 +1,6 @@
 # Handoff: remove the pre-v4 cover search that `plan_source` falls back to
 
-**Status**: PLANNED, not started (2026-09-15). Measured on `derived-key-union-lookup`
+**Status**: PLANNED, not started (2026-09-15). The derived-key union fix it builds on was narrowed after CI (PR #690): a union emits only derivations some other datasource is keyed on, because emitting every derivation made a channel partition union an INNER anchor and re-typed TPC-DS q05's FULL joins to LEFT (wrong rows) and grew q49 past its size budget. Removing the fallback must keep TPC-DS byte-identical for the same reason. Measured on `derived-key-union-lookup`
 (commit `91f92ac99`, origin/main `7f0fe8aba` plus the derived-key union fix). Land
 that PR first; this work touches the same union-injection code and should not tangle
 with it.
@@ -55,7 +55,7 @@ suite in one process gets OOM-killed, run directories separately):
 | `tests/complex tests/generators tests/nodes tests/optimization tests/test_*.py` | 0 failed / 2514 |
 | `tests/modeling` (minus `tpc_ds_duckdb`), stdlib, rendering, persistence, execution, parse_refactor, stack_overflow, custom, hooks, helpers | 2 failed / 917 |
 | TPC-DS DuckDB, SQL generation only for all 99 `queryNN*.preql` | 0 errors, 0 byte diffs vs baseline |
-| `tests/engine` | run was OOM-killed twice locally; UNVERIFIED, rerun first |
+| `tests/engine` | UNVERIFIED: OOM-killed twice, then a third run hung after 80 min with under 5 min of CPU (suspect a network-backed engine test blocking); rerun with `-x --timeout` or in CI, and treat any new failure as a fifth shape |
 
 A log of every fallback firing on the passing baseline (first chunk) recorded 15
 firings, all belonging to the failing tests below. Nothing else silently routes
