@@ -27,6 +27,27 @@ grain (cell)
 query '''SELECT * FROM (VALUES ({CELL_A}::BIGINT, 'road')) AS t(cell, label)''';
 """
 
+# The same lookup keyed on a root key the derivation is merged into. Before
+# the fix this spelling planned, rendered `LEFT OUTER JOIN lookup on 1=1`, and
+# returned the lookup's one row for every tree: a silent wrong answer.
+MERGE_MODEL = f"""
+key city enum<string>['USBTV'];
+key source enum<string>['MUNICIPAL', 'OSM'];
+key tree_id string;
+property tree_id.latitude float;
+property tree_id.longitude float;
+
+key cell bigint;
+auto row_cell <- cast(floor(longitude / 0.00003) as bigint) * 100000000
+           + cast(floor(latitude / 0.00002) as bigint);
+merge row_cell into cell;
+
+property cell.label string;
+root datasource lookup (cell: cell, label: label)
+grain (cell)
+query '''SELECT * FROM (VALUES ({CELL_A}::BIGINT, 'road')) AS t(cell, label)''';
+"""
+
 ROW_A = "('a', 'USBTV', 'MUNICIPAL', 44.4760::DOUBLE, -73.2120::DOUBLE)"
 ROW_B = "('b', 'USBTV', 'OSM', 44.4770::DOUBLE, -73.2130::DOUBLE)"
 COLS = "tree_id, city, source, latitude, longitude"
@@ -56,9 +77,9 @@ query '''SELECT * FROM (VALUES {ROW_B}) AS t({COLS})''';
 """
 
 
-def _executor(sources: str):
+def _executor(sources: str, model: str = MODEL):
     env = Environment()
-    env.parse(MODEL + sources)
+    env.parse(model + sources)
     return Dialects.DUCK_DB.default_executor(environment=env)
 
 
@@ -82,7 +103,19 @@ def test_lookup_joins_on_derived_cell(sources: str):
     query = "select tree_id, label where city = 'USBTV' order by tree_id asc;"
     sql = executor.generate_sql(query)[-1]
     assert "LEFT OUTER JOIN" in sql, sql
-    assert "ON 1=1" not in sql, sql
+    assert "on 1=1" not in sql.lower(), sql
+    rows = executor.execute_text(query)[-1].fetchall()
+    assert rows == [("a", "road"), ("b", None)]
+
+
+@pytest.mark.parametrize(
+    "sources", [ONE_SOURCE, PARTITIONED_UNION], ids=["single", "union"]
+)
+def test_lookup_joins_on_merged_derived_key(sources: str):
+    executor = _executor(sources, MERGE_MODEL)
+    query = "select tree_id, label where city = 'USBTV' order by tree_id asc;"
+    sql = executor.generate_sql(query)[-1]
+    assert "on 1=1" not in sql.lower(), sql
     rows = executor.execute_text(query)[-1].fetchall()
     assert rows == [("a", "road"), ("b", None)]
 

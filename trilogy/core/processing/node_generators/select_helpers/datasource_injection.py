@@ -384,12 +384,32 @@ def get_union_sources(
 def union_derived_concepts(
     children: list[BuildDatasource], environment: BuildEnvironment
 ) -> list[BuildConcept]:
-    """BASIC derivations a partition union computes inline, beyond the columns
-    its arms share. The graph attaches a derivation to a scan only off complete
-    columns, and a `partial` arm has none, so no arm carries `cell <- f(lat,
-    lon)`; the covering union heals that partiality, and renders by planning
-    each arm for the same outputs, so it can emit (and join on) the derivation
-    exactly as a single complete scan would."""
+    """BASIC derivations a partition union computes inline that some OTHER
+    datasource is keyed on (`cell <- f(lat, lon)`; `lookup ... grain (cell)`).
+
+    The graph attaches a derivation to a scan only off complete columns, and a
+    `partial` arm has none, so no arm carries `cell`; the covering union heals
+    that partiality and renders by planning each arm for the same outputs, so
+    it can emit the derivation and join the lookup on it. Only key-bearing
+    derivations are emitted: a union computing every derivation its arms
+    could becomes a mandatory anchor for values the merge would otherwise
+    compute post-join, and that re-types multi-fact FULL joins to LEFT
+    (TPC-DS q05)."""
+    arms = {child.name for child in children}
+    keyed: set[str] = set()
+    for datasource in environment.datasources.values():
+        if not isinstance(datasource, BuildDatasource) or datasource.name in arms:
+            continue
+        for address in datasource.grain.components:
+            keyed.add(address)
+            # `merge row_cell into cell` keys the lookup on `cell` while the
+            # arms derive its pseudonym `row_cell`; the network joins the two
+            # through the equivalence map once the union emits the pseudonym.
+            key = environment.concepts.get(address)
+            if key is not None:
+                keyed.update(key.pseudonyms)
+    if not keyed:
+        return []
     union = BuildUnionDatasource(children=children)
     present = {column.concept.canonical_address for column in union.columns}
     unhealed = union.column_level_partial_addresses
@@ -402,7 +422,11 @@ def union_derived_concepts(
         list(environment.concepts.values())
         + list(environment.alias_origin_lookup.values())
     )
-    return list(get_derivable_concepts(basic_graph, complete, present))
+    return [
+        concept
+        for concept in get_derivable_concepts(basic_graph, complete, present)
+        if concept.address in keyed or concept.canonical_address in keyed
+    ]
 
 
 def describe_incomplete_partitions(
