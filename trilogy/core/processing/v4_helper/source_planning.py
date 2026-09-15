@@ -45,6 +45,7 @@ from trilogy.core.processing.node_generators.presence_probe import (
 )
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
+    union_derived_concepts,
 )
 from trilogy.core.processing.node_generators.select_helpers.datasource_nodes import (
     create_select_node,
@@ -303,8 +304,10 @@ def _inject_union_datasources(
         common_outputs = set(datasource_group[0].output_concepts)
         for datasource in datasource_group[1:]:
             common_outputs &= set(datasource.output_concepts)
-        for concept in common_outputs:
+        derived = union_derived_concepts(datasource_group, environment)
+        for concept in [*common_outputs, *derived]:
             concept_node = concept_to_node(concept)
+            graph.concepts.setdefault(concept_node, concept)
             union_edges.append((union_node, concept_node))
             union_edges.append((concept_node, union_node))
     graph.add_edges_from(union_edges)

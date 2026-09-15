@@ -7,6 +7,10 @@ from trilogy.core.enums import (
     ComparisonOperator,
     Modifier,
 )
+from trilogy.core.env_processor import (
+    build_basic_concept_graph,
+    get_derivable_concepts,
+)
 from trilogy.core.models.build import (
     BoolExpr,
     BuildComparison,
@@ -15,7 +19,9 @@ from trilogy.core.models.build import (
     BuildDatasource,
     BuildFunction,
     BuildParenthetical,
+    BuildUnionDatasource,
 )
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import EnumType
 from trilogy.core.models.datasource import Address
 from trilogy.core.processing.condition_utility import (
@@ -373,6 +379,54 @@ def get_union_sources(
             if simplify_conditions(conditions, excluded):
                 final.append(dses)
     return final
+
+
+def union_derived_concepts(
+    children: list[BuildDatasource], environment: BuildEnvironment
+) -> list[BuildConcept]:
+    """BASIC derivations a partition union computes inline that some OTHER
+    datasource is keyed on (`cell <- f(lat, lon)`; `lookup ... grain (cell)`).
+
+    The graph attaches a derivation to a scan only off complete columns, and a
+    `partial` arm has none, so no arm carries `cell`; the covering union heals
+    that partiality and renders by planning each arm for the same outputs, so
+    it can emit the derivation and join the lookup on it. Only key-bearing
+    derivations are emitted: a union computing every derivation its arms
+    could becomes a mandatory anchor for values the merge would otherwise
+    compute post-join, and that re-types multi-fact FULL joins to LEFT
+    (TPC-DS q05)."""
+    arms = {child.name for child in children}
+    keyed: set[str] = set()
+    for datasource in environment.datasources.values():
+        if not isinstance(datasource, BuildDatasource) or datasource.name in arms:
+            continue
+        for address in datasource.grain.components:
+            keyed.add(address)
+            # `merge row_cell into cell` keys the lookup on `cell` while the
+            # arms derive its pseudonym `row_cell`; the network joins the two
+            # through the equivalence map once the union emits the pseudonym.
+            key = environment.concepts.get(address)
+            if key is not None:
+                keyed.update(key.pseudonyms)
+    if not keyed:
+        return []
+    union = BuildUnionDatasource(children=children)
+    present = {column.concept.canonical_address for column in union.columns}
+    unhealed = union.column_level_partial_addresses
+    complete = {
+        column.concept.canonical_address
+        for column in union.columns
+        if column.concept.address not in unhealed
+    }
+    basic_graph = build_basic_concept_graph(
+        list(environment.concepts.values())
+        + list(environment.alias_origin_lookup.values())
+    )
+    return [
+        concept
+        for concept in get_derivable_concepts(basic_graph, complete, present)
+        if concept.address in keyed or concept.canonical_address in keyed
+    ]
 
 
 def describe_incomplete_partitions(
