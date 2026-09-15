@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 from trilogy.core.enums import FunctionType, UnnestMode
 from trilogy.core.models.core import DataType, MapWrapper
-from trilogy.dialect.base import BaseDialect
+from trilogy.dialect.base import BaseDialect, array_element_type, is_array_arg
 from trilogy.dialect.common import CONCAT_COALESCE_LOWER
 
 if TYPE_CHECKING:
@@ -22,6 +22,13 @@ def _ch_struct(args, types):
     ]
     fields = ", ".join(f"{n} {t}" for n, t in zip(names, type_strs))
     return f"cast(tuple({', '.join(values)}), 'Tuple({fields})')"
+
+
+def array_to_string(args, types):
+    # arrayStringConcat only takes a string array; map other element types
+    if array_element_type(types) == DataType.STRING:
+        return f"arrayStringConcat({args[0]}, {args[1]})"
+    return f"arrayStringConcat(arrayMap(x -> toString(x), {args[0]}), {args[1]})"
 
 
 def _ch_log(args):
@@ -55,7 +62,11 @@ FUNCTION_MAP = {
     FunctionType.MOD: lambda x, types: f"modulo({x[0]}, {x[1]})",
     # string
     FunctionType.STRPOS: lambda x, types: f"position({x[0]}, {x[1]})",
-    FunctionType.CONTAINS: lambda x, types: f"position({x[0]}, {x[1]}) > 0",
+    FunctionType.CONTAINS: lambda x, types: (
+        f"has({x[0]}, {x[1]})"
+        if is_array_arg(types)
+        else f"position({x[0]}, {x[1]}) > 0"
+    ),
     FunctionType.REGEXP_CONTAINS: lambda x, types: f"match({x[0]}, {x[1]})",
     FunctionType.REGEXP_EXTRACT: lambda x, types: f"extract({x[0]}, {x[1]})",
     FunctionType.REGEXP_REPLACE: lambda x, types: f"replaceRegexpAll({x[0]}, {x[1]}, {x[2]})",
@@ -109,7 +120,7 @@ FUNCTION_MAP = {
     FunctionType.ARRAY_SUM: lambda x, types: f"arraySum({x[0]})",
     FunctionType.ARRAY_DISTINCT: lambda x, types: f"arrayDistinct({x[0]})",
     FunctionType.ARRAY_SORT: lambda x, types: f"arraySort({x[0]})",
-    FunctionType.ARRAY_TO_STRING: lambda x, types: f"arrayStringConcat({x[0]}, {x[1]})",
+    FunctionType.ARRAY_TO_STRING: lambda x, types: array_to_string(x, types),
     # CH lambda syntax flips arg order vs. trilogy default (lambda first)
     FunctionType.ARRAY_TRANSFORM: lambda x, types: f"arrayMap({x[1]} -> {x[2]}, {x[0]})",
     FunctionType.ARRAY_FILTER: lambda x, types: f"arrayFilter({x[1]} -> {x[2]}, {x[0]})",

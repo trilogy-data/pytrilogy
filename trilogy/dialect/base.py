@@ -50,7 +50,7 @@ from trilogy.core.enums import (
 )
 from trilogy.core.exceptions import InvalidSyntaxException, UnsupportedDialectFeature
 from trilogy.core.internal import DEFAULT_CONCEPTS
-from trilogy.core.models.author import ArgBinding, arg_to_datatype
+from trilogy.core.models.author import ArgBinding, arg_to_datatype, get_basic_type
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildBetween,
@@ -541,6 +541,20 @@ def render_simple_case(args):
 
 def struct_arg(args):
     return [f"{x[1]}: {x[0]}" for x in zip(args[::2], args[1::2])]
+
+
+def is_array_arg(types: list[Any], idx: int = 0) -> bool:
+    """Whether the rendered function's argument at `idx` is an array."""
+    return len(types) > idx and get_basic_type(types[idx]) == DataType.ARRAY
+
+
+def array_element_type(types: list[Any], idx: int = 0) -> CONCRETE_TYPES | None:
+    """Element type of an array argument; None when it isn't a plain array.
+
+    Callers treat None as "unknown element type" and coerce, which stays
+    correct for a type this can't see into."""
+    target = types[idx] if len(types) > idx else None
+    return target.value_data_type if isinstance(target, ArrayType) else None
 
 
 def hash_from_args(val, hash_type):
@@ -2328,14 +2342,13 @@ class BaseDialect:
                             materialized_addresses=arg_aliases,
                         )
                     )
+            # types come from the unrendered arguments; `arguments` at this
+            # point are SQL strings, which would type every argument as STRING
+            arg_types = [arg_to_datatype(x) for x in e.arguments]
             if cte and cte.group_to_grain:
-                return self.FUNCTION_MAP[e.operator](
-                    arguments, [arg_to_datatype(x) for x in arguments]
-                )
+                return self.FUNCTION_MAP[e.operator](arguments, arg_types)
 
-            return self.FUNCTION_GRAIN_MATCH_MAP[e.operator](
-                arguments, [arg_to_datatype(x) for x in arguments]
-            )
+            return self.FUNCTION_GRAIN_MATCH_MAP[e.operator](arguments, arg_types)
         elif isinstance(e, AGGREGATE_ITEMS):
             # aggregate input columns must resolve from FROM, not the
             # projection: don't propagate alias addresses into the function

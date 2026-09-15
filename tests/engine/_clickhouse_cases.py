@@ -199,6 +199,18 @@ AGG_CASES: list[tuple[str, str, str, Any]] = [
         "a,b,c",
     ),
     (
+        "array_to_string_int_members",
+        "auto __VALS__ <- unnest([1,2,3]); auto __AGG__ <- array_to_string([1,2,3], ',');",
+        "agg",
+        "1,2,3",
+    ),
+    (
+        "array_contains",
+        "auto __VALS__ <- unnest([1,2,3]); auto __AGG__ <- contains([1,2,3], 2);",
+        "agg",
+        True,
+    ),
+    (
         "array_transform",
         (
             "const xs_<CASE> <- [1,2,3,4]; "

@@ -23,6 +23,8 @@ from trilogy.core.table_processor import datasource_to_create_table_info
 from trilogy.dialect.base import (
     BaseDialect,
     TableColumn,
+    array_element_type,
+    is_array_arg,
     safe_quote,
 )
 from trilogy.dialect.base import null_wrapper as base_null_wrapper
@@ -49,6 +51,22 @@ def handle_length(args, types: list[DataType] | None = None) -> str:
     if types and types[0].data_type == DataType.ARRAY:
         return f"ARRAY_LENGTH({arg})"
     return f"LENGTH({arg})"
+
+
+def handle_contains(args, types) -> str:
+    if is_array_arg(types):
+        return f"({args[1]} IN UNNEST({args[0]}))"
+    return f"CONTAINS_SUBSTR({args[0]}, {args[1]})"
+
+
+def handle_array_to_string(args, types) -> str:
+    # ARRAY_TO_STRING only takes ARRAY<STRING>; cast other element types
+    if array_element_type(types) == DataType.STRING:
+        return f"ARRAY_TO_STRING({args[0]}, {args[1]})"
+    return (
+        f"ARRAY_TO_STRING(ARRAY(SELECT CAST(element AS STRING) FROM"
+        f" UNNEST({args[0]}) AS element), {args[1]})"
+    )
 
 
 def render_geo_transform(args: list[str]) -> str:
@@ -122,7 +140,8 @@ FUNCTION_MAP = {
     FunctionType.FORMAT_TIME: lambda x, types: f"FORMAT_DATETIME({x[1]}, {x[0]})",
     FunctionType.PARSE_TIME: lambda x, types: f"PARSE_DATETIME({x[1]}, {x[0]})",
     # string
-    FunctionType.CONTAINS: lambda x, types: f"CONTAINS_SUBSTR({x[0]}, {x[1]})",
+    FunctionType.CONTAINS: lambda x, types: handle_contains(x, types),
+    FunctionType.ARRAY_TO_STRING: lambda x, types: handle_array_to_string(x, types),
     FunctionType.RANDOM: lambda x, types: f"FLOOR(RAND()*{x[0]})",
     FunctionType.ARRAY_SUM: lambda x, types: f"(select sum(x) from unnest({x[0]}) as x)",
     FunctionType.ARRAY_DISTINCT: lambda x, types: f"ARRAY(SELECT DISTINCT element FROM UNNEST({x[0]}) AS element)",

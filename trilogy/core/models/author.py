@@ -2147,6 +2147,32 @@ def args_to_pretty(input: set[DataType | ArrayType | MapType]) -> str:
     )
 
 
+def validate_contains_arguments(arguments: Sequence[Any]) -> None:
+    """contains() is overloaded: substring on a string, membership on an array.
+
+    The second argument's valid type depends on the first, so it is checked
+    here rather than through positional valid_inputs."""
+    from trilogy.core.exceptions import FunctionArgumentException
+
+    if len(arguments) != 2:
+        return
+    haystack = arg_to_datatype(arguments[0])
+    needle = arg_to_datatype(arguments[1])
+    # an untyped argument (an unbound custom-function parameter) picks no
+    # overload; the body is re-validated once expansion binds a real type
+    if haystack == DataType.UNKNOWN:
+        return
+    expected: CONCRETE_TYPES = (
+        haystack.value_data_type if isinstance(haystack, ArrayType) else DataType.STRING
+    )
+    if is_compatible_datatype(expected, needle):
+        return
+    raise FunctionArgumentException(
+        f"Invalid argument type '{needle}' passed into CONTAINS function in position 2;"
+        f" searching a '{haystack}' expects '{expected}'."
+    )
+
+
 def _matches_valid_type(
     datatype: CONCRETE_TYPES,
     valid_types: set[DataType | ArrayType | MapType],
@@ -2263,6 +2289,8 @@ class Function(DataTyped, ConceptArgs, ReferenceReplaceable, Namespaced):
                     raise FunctionArgumentException(
                         f'Invalid {dtype} constant passed into {operator_name} "{arg}", expecting one of {valid_inputs[idx]}'
                     )
+        if self.operator == FunctionType.CONTAINS:
+            validate_contains_arguments(self.arguments)
 
     def __repr__(self):
         return f'{self.operator.value}({",".join([str(a) for a in self.arguments])})'
