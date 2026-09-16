@@ -94,6 +94,12 @@ class SourceRequest:
     # cannot re-enter `_complete_partial_requested` on itself (infinite loop when
     # the concept has no complete source).
     complete_partials: bool = True
+    # The statement WHERE this request has deliberately dropped, because some
+    # caller above will apply it instead. Never rendered here -- it is carried
+    # only so LABELING can see it, and today only the rollup binding reads it:
+    # a pre-aggregated summary is not a legal source for an aggregate that a
+    # later step will filter to a subset of the rows it already summed.
+    deferred_conditions: BuildWhereClause | None = None
 
 
 @dataclass(frozen=True)
@@ -383,7 +389,11 @@ def _inject_rollup_edges(
     Returns the concept nodes drawn: they spell the aggregate's grain-pinned
     canonical, not the terminal address the pruning below keeps by."""
     rollups = rollup_concepts_by_node(
-        concepts, request.environment, graph, request.conditions
+        concepts,
+        request.environment,
+        graph,
+        request.conditions,
+        request.deferred_conditions,
     )
     edges: list[tuple[str, str]] = []
     drawn: set[str] = set()
@@ -454,7 +464,7 @@ def _network_source(
     if v4_history is not None:
         verdict_key = (
             "-".join(sorted(c.address for c in concepts)),
-            str(request.conditions),
+            f"{request.conditions}|{request.deferred_conditions}",
             defer_single_scan,
         )
         cached_verdict = v4_history.network_verdicts.get(verdict_key)
@@ -463,7 +473,11 @@ def _network_source(
         if cached_verdict == "defer":
             return NetworkDecision(bridge=None)
     network = build_source_network(
-        concepts, request.environment, request.graph, request.conditions
+        concepts,
+        request.environment,
+        request.graph,
+        request.conditions,
+        request.deferred_conditions,
     )
     result = _memoized_search(network, request.history)
     if result.truncated:
@@ -1461,6 +1475,7 @@ def _plan_finer_filter_rollup(request: SourceRequest) -> StrategyNode | None:
             graph=request.graph,
             history=request.history,
             conditions=None,
+            deferred_conditions=request.conditions,
             depth=request.depth + 1,
             require_full=request.require_full,
         )
@@ -1615,7 +1630,11 @@ def _cross_component_source(request: SourceRequest) -> StrategyNode | None:
         return None
     concepts = _search_concepts_for_bridge(request)
     network = build_source_network(
-        concepts, request.environment, request.graph, request.conditions
+        concepts,
+        request.environment,
+        request.graph,
+        request.conditions,
+        request.deferred_conditions,
     )
     groups = _terminal_components(network)
     if len(groups) < 2:
@@ -1664,6 +1683,7 @@ def _cross_component_source(request: SourceRequest) -> StrategyNode | None:
                 graph=request.graph,
                 history=request.history,
                 conditions=None,
+                deferred_conditions=request.conditions or request.deferred_conditions,
                 depth=request.depth + 1,
                 require_full=request.require_full,
                 complete_partials=request.complete_partials,
@@ -1747,6 +1767,7 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
                 graph=request.graph,
                 history=request.history,
                 conditions=None,
+                deferred_conditions=request.conditions,
                 depth=request.depth,
                 require_full=request.require_full,
             )

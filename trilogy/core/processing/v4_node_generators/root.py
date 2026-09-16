@@ -426,6 +426,7 @@ def gen_root(
                     graph=g,
                     history=history,
                     conditions=row_atoms,
+                    deferred_conditions=gates,
                     complete_partials=complete_partials,
                 )
             )
@@ -442,6 +443,7 @@ def gen_root(
                     graph=g,
                     history=history,
                     conditions=None,
+                    deferred_conditions=conditions,
                     complete_partials=complete_partials,
                 )
             )

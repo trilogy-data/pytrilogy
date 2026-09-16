@@ -29,7 +29,10 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.aggregate_rollup import get_additive_rollup_concepts
+from trilogy.core.processing.aggregate_rollup import (
+    filter_finer_row_args,
+    get_additive_rollup_concepts,
+)
 from trilogy.core.processing.condition_utility import (
     condition_implies,
     merge_conditions,
@@ -157,6 +160,7 @@ def rollup_concepts_by_node(
     environment: BuildEnvironment,
     graph: ReferenceGraph,
     conditions: BuildWhereClause | None,
+    deferred_conditions: BuildWhereClause | None = None,
 ) -> dict[str, list[BuildConcept]]:
     """Datasource node -> the requested additive aggregates it SUM-rolls up to
     at THIS request's grain. The graph's own rollup edges were drawn at each
@@ -174,6 +178,21 @@ def rollup_concepts_by_node(
         if isinstance(datasource, BuildDatasource)
     ]
     target_grain = BuildGrain.from_concepts(terminals)
+    # A filter FINER than the target grain splits the groups the roll would sum,
+    # so the summary has to be filtered before it is aggregated. A binding says
+    # only "this source can produce that address"; it cannot also say "and the
+    # predicate must land on this scan", and the emitter routes the predicate on
+    # its own -- to whichever source binds the filter column, which for a
+    # property of another table's key is not this one. The roll then sums
+    # unfiltered rows and joins them to a filtered fact scan, which both drops
+    # the filter and fans the aggregate out. `_plan_finer_filter_rollup` is the
+    # path that serves this shape safely, by PINNING one datasource that carries
+    # the aggregate and the finer column together and pushing the filter into it.
+    if any(
+        filter_finer_row_args(clause, target_grain, environment.concepts)
+        for clause in (conditions, deferred_conditions)
+    ):
+        return {}
     out: dict[str, list[BuildConcept]] = {}
     for node, datasource in graph.datasources.items():
         if not isinstance(datasource, BuildDatasource):
@@ -679,6 +698,7 @@ def build_source_network(
     environment: BuildEnvironment,
     graph: ReferenceGraph,
     conditions: BuildWhereClause | None = None,
+    deferred_conditions: BuildWhereClause | None = None,
 ) -> SourceNetwork:
     addresses = _terminal_addresses(terminals)
     all_addresses = set(addresses)
@@ -686,7 +706,9 @@ def build_source_network(
     # `_candidate_for` read it rather than re-walking the graph's neighbors
     # (three walks per node otherwise, and the graph does not change here).
     emitted_by_node: dict[str, set[str]] = {}
-    rollups = rollup_concepts_by_node(terminals, environment, graph, conditions)
+    rollups = rollup_concepts_by_node(
+        terminals, environment, graph, conditions, deferred_conditions
+    )
     for node in graph.datasources:
         if node in graph:
             emitted_by_node[node] = _emitted_addresses(graph, node) | {

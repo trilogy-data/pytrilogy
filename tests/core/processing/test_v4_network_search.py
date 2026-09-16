@@ -1094,9 +1094,11 @@ def _captured_network_requests(monkeypatch, model: str, query: str):
 
     captured = []
 
-    def capturing_build(concepts, environment, graph, conditions=None):
-        captured.append((concepts, environment, graph, conditions))
-        return real_build(concepts, environment, graph, conditions)
+    def capturing_build(
+        concepts, environment, graph, conditions=None, deferred_conditions=None
+    ):
+        captured.append((concepts, environment, graph, conditions, deferred_conditions))
+        return real_build(concepts, environment, graph, conditions, deferred_conditions)
 
     monkeypatch.setattr(sp, "build_source_network", capturing_build)
     env = Environment()
@@ -1121,7 +1123,7 @@ class TestUnofferedProbePinning:
             COALESCING_ARMS_MODEL,
             "where s_cust is null select c_cust union join s_cust = c_cust;",
         )
-        for concepts, benv, graph, conditions in requests:
+        for concepts, benv, graph, conditions, _ in requests:
             probe_nodes = [
                 node
                 for node in graph.nodes
