@@ -349,6 +349,26 @@ has a home:
   grain. The guard corrected the legacy merge too: thelook q18's outer
   `sum(...) GROUP BY` over a CTE already at the requested grain is gone. That
   is the ONE plan change in the corpora (below).
+
+  A second, worse defect in the same binding came out of adversarial review
+  rather than any suite. A summary is only a legal source for a rolled
+  aggregate if every filter the statement applies is applied BEFORE the roll,
+  and a binding cannot carry that requirement: it says "this source can
+  produce that address" and the emitter routes predicates on its own. Given
+  `select origin_region, flight_count where flight_date = ...` against a
+  summary keyed (origin, destination, date), the roll summed every row and the
+  plan then INNER-joined it to a filtered, non-distinct fact scan and re-summed
+  -- dropping the filter and fanning the aggregate out in one step (`west 6,
+  east 2` over a five-row table). `rollup_concepts_by_node` now withholds the
+  binding whenever `filter_finer_row_args` sees a filter below the target
+  grain, leaving the shape to `_plan_finer_filter_rollup`, which serves it
+  safely by PINNING one datasource that carries the aggregate and the finer
+  column together. The filter is usually not on the request that asks for the
+  aggregate -- `gen_root` re-plans the row scan unconditioned and applies the
+  WHERE above -- so `SourceRequest.deferred_conditions` carries the dropped
+  clause for LABELING only, set at the four places that drop one, and joins the
+  network verdict cache key so two requests differing only in what was deferred
+  cannot share a verdict.
 - **A connector alone as the cover.** A `connector~` candidate binds the merged
   key's class, reads zero scans and so out-prices the one scan holding the
   column (`select l_key subset join web_cust.cust_sk = l_key`); the emitter,
@@ -380,7 +400,8 @@ thelook_duckdb, ncaa, hackernews and tpc_ds unchanged except the q18 regroup
 above (304 queries diffed against the branch point, with the same five
 generation failures on both sides). `tests/engine` 948, its `scripts/` runner
 and `tests/io` 241, and the processing/discovery/join-matrix,
-complex/generators/nodes/optimization, modeling and TPC-DS batteries green.
+complex/generators/nodes/optimization, modeling and TPC-DS batteries green,
+and the differential fuzzer corpus 238/238.
 
 ## 0. Progress (s32)
 
