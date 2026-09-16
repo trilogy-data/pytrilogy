@@ -34,6 +34,20 @@ then LEFT JOIN the leaf dims back on it, so both a backing key leaking into the
 grouped CTE and a join-back that drops subtotal/grand-total rows show up.
 Derived-rowset controls distinguish base-model WHERE enrichment from equivalent
 no-WHERE and rowset-output-WHERE forms.
+The `summary_rollup` family is the corpus's only PRE-AGGREGATED source: a
+summary derived in SQL from the same `events` rows, keyed (group, active) and
+therefore one level finer than the requests that read it. Its oracles read
+`events` alone, so whichever source the planner picks owes the same answer, and
+a plan that SUM-rolls the summary wrongly shows up as wrong rows rather than as
+a shape difference. The sharp cases group by a dimension PROPERTY while
+filtering on `active`, the grain component the roll drops: the summary's own key
+then leaves the output too, condition routing has somewhere other than the
+summary to put the predicate, and a roll that happens before the filter is both
+unfiltered and fannable. Grouping by `group_id` cannot expose that -- the
+summary binds that key itself, so the filter lands on the summary scan anyway --
+which is why the whole class went unexercised until a planner bug that inflated
+`count` past the table's own row count still passed 238/238.
+
 The `partition_cover` family reads a column only two `complete where` arms bind,
 so each case must first prove the pair covers the domain. The arms exhaust one
 discriminator and pin the other, which makes the proof depend on the statement's

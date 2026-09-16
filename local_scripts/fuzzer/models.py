@@ -136,6 +136,37 @@ query '''{sources["visits"]}''';
 
 """
 
+    def summary_model(self) -> str:
+        """A pre-aggregated summary over `events`, keyed one level FINER than
+        the requests that read it.
+
+        Derived from the events rows in SQL rather than written out, so it
+        cannot drift from the fact table on any seed, fixed or random: the two
+        sources must agree, and a query answered from either has one right
+        answer. That is what makes a plan which rolls this table up wrongly --
+        summing rows a filter should have removed, or fanning the sum out over
+        a join -- show up as wrong rows against an oracle that only ever reads
+        `events`.
+
+        `active` is a property of the event, not of the group, so a request
+        grouped by `group_id` alone must sum it away, and a filter on it has to
+        reach this scan BEFORE the roll."""
+        return f"""
+auto event_count <- count(event_id);
+auto event_total <- sum(event_amount);
+
+datasource event_summary (
+    gid: group_id,
+    active: active,
+    event_count: event_count,
+    event_total: event_total,
+)
+grain (group_id, active)
+query '''select gid, active, count(eid) as event_count, sum(amount) as event_total
+from ({self.events.select_sql()}) group by 1, 2''';
+
+"""
+
 
 @dataclass(frozen=True)
 class FuzzCase:
