@@ -241,8 +241,16 @@ def merge_rollup_concepts(
         if grain and grain.components:
             merge_components.update(grain.components)
     target_components = {c.address for c in all_concepts if not c.is_aggregate}
+    # A grain component must actually be summed AWAY. When every one of them
+    # survives into the output the merge already sits at the target's row
+    # identity, and the outputs beyond it are attributes the join carried in at
+    # that same grain: grouping there re-sums one row per group, buying an
+    # identical answer and a GROUP BY (thelook q17's pair rollup read beside
+    # both its keys' dimension attributes).
+    if not merge_components - target_components:
+        return []
     unreached = target_components - merge_components
-    if not (merge_components and unreached and target_components != merge_components):
+    if not (merge_components and unreached):
         return []
     for address in unreached:
         concept = concepts_by_address.get(address)

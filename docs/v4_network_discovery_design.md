@@ -336,6 +336,19 @@ has a home:
   rollup still renders through `_direct_source`, whose graph carries the
   rollup edges; that block in `create_pruned_concept_graph` stays for it and
   for the grand-total shape below.
+
+  Extracting that predicate exposed a gap in it. It asked only whether some
+  target component was unreached by the merge's grain, which is also true of
+  a merge that reaches the target grain exactly and carries dimension
+  ATTRIBUTES beside it: thelook q17 reads a (user, product) pair rollup
+  alongside both keys' attributes, and grouping there re-sums one row per
+  group for an identical answer and a spurious GROUP BY. It now also requires
+  that a grain component actually be summed AWAY (`merge_components -
+  target_components` non-empty), which is what distinguishes rolling a
+  per-customer count up to region from reading a pair rollup at its own
+  grain. The guard corrected the legacy merge too: thelook q18's outer
+  `sum(...) GROUP BY` over a CTE already at the requested grain is gone. That
+  is the ONE plan change in the corpora (below).
 - **A connector alone as the cover.** A `connector~` candidate binds the merged
   key's class, reads zero scans and so out-prices the one scan holding the
   column (`select l_key subset join web_cust.cust_sk = l_key`); the emitter,

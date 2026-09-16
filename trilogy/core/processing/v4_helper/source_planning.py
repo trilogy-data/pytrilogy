@@ -386,14 +386,16 @@ def _inject_rollup_edges(
         concepts, request.environment, graph, request.conditions
     )
     edges: list[tuple[str, str]] = []
+    drawn: set[str] = set()
     for node in sorted(chosen & set(rollups)):
         for concept in rollups[node]:
             concept_node = concept_to_node(concept)
             graph.concepts[concept_node] = concept
             edges.append((node, concept_node))
             edges.append((concept_node, node))
+            drawn.add(concept_node)
     graph.add_edges_from(edges)
-    return {concept_node for _, concept_node in edges[::2]}
+    return drawn
 
 
 def _memoized_search(network: SourceNetwork, history: History) -> SearchResult:
