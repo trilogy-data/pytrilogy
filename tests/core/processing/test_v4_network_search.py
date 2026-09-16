@@ -7,6 +7,7 @@ from trilogy.core.processing.v4_helper import network_search as ns
 from trilogy.core.processing.v4_helper import network_topology as nt
 from trilogy.core.processing.v4_helper.network_build import build_source_network
 from trilogy.core.processing.v4_helper.network_model import (
+    CONNECTOR_NODE_PREFIX,
     BindingStrength,
     ConditionFit,
     Obligation,
@@ -300,6 +301,24 @@ auto first_parent <- recurse_edge(id, parent);
 merge first_parent into pid;
 """
 
+
+ROWSET_SUBSET_MODEL = """
+key l_id int;
+property l_id.l_key int;
+property l_id.l_val int;
+datasource lsrc (i: l_id, k: l_key, v: l_val) grain (l_id)
+query '''select 1 i, 1 k, 1 v union all select 2 i, 2 k, 4 v''';
+
+key r_id int;
+property r_id.r_key int;
+property r_id.r_val int;
+datasource rsrc (i: r_id, k: r_key, v: r_val) grain (r_id)
+query '''select 1 i, 1 k, 100 v union all select 2 i, 2 k, 400 v''';
+
+with web_cust as
+where r_val < 800
+select r_key as cust_sk;
+"""
 
 ROLLUP_SUMMARY_MODEL = """
 key id int;
@@ -696,19 +715,33 @@ class TestNetworkSearch:
         assert "connector~local.first_parent" in result.solution.sources
         assert any(node.startswith("ds~") for node in result.solution.sources)
 
-    def test_connector_alone_is_not_a_cover(self):
-        """A connector binds the merged key's class, so on bindings alone it
-        covers a request for that key by itself and, reading zero scans,
-        prices below the one scan that holds the column. It relates scans; a
-        cover with none is not an answer."""
-        benv, graph = _build(RECURSIVE_MERGE_MODEL)
-        network = build_source_network(_terminals(benv, "local.pid"), benv, graph)
-        assert "connector~local.first_parent" in network.candidates
-
-        result = search_sources(network)
-
-        assert result.solution is not None
-        assert any(node.startswith("ds~") for node in result.solution.sources)
+    def test_connector_alone_is_not_a_cover(self, monkeypatch):
+        """A rowset connector binds the merged key's whole class, so on
+        bindings alone it covers a request for that key by itself -- and,
+        reading zero scans, it prices below the one scan that actually holds
+        the column. A connector relates scans; a cover containing none reads no
+        rows and the emitter, with nothing to scan, can only decline."""
+        requests = _captured_network_requests(
+            monkeypatch,
+            ROWSET_SUBSET_MODEL,
+            "select l_key subset join web_cust.cust_sk = l_key;",
+        )
+        networks = [build_source_network(*request) for request in requests]
+        candidates = [
+            network
+            for network in networks
+            if any(
+                node.startswith(CONNECTOR_NODE_PREFIX) for node in network.candidates
+            )
+        ]
+        assert candidates, "no request offered a connector candidate"
+        for network in candidates:
+            assert "ds~lsrc" in network.candidates
+            solution = search_sources(network).solution
+            assert solution is not None
+            assert any(
+                node.startswith("ds~") for node in solution.sources
+            ), solution.sources
 
     def test_solution_is_deterministic_across_runs(self):
         benv, graph = _build(BRIDGE_MODEL)

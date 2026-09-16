@@ -375,11 +375,12 @@ retry) remain: an instrumented pass showed the retry answering conditioned
 rollup requests in the discovery suite and the cross-component assembly firing
 in the engine suite; neither fires on TPC-DS generation.
 
-Gates: TPC-DS generation byte-identical 109/109; `tests/engine` under the
-removal 948 passed (the `scripts/` runner tests need a maturin rebuild this
-machine cannot do while the extension is loaded, and were excluded); the
-processing/discovery/join-matrix, complex/generators/nodes/optimization and
-modeling chunks green.
+Gates: TPC-DS generation byte-identical 109/109, and every query in tpc_h,
+thelook_duckdb, ncaa, hackernews and tpc_ds unchanged except the q18 regroup
+above (304 queries diffed against the branch point, with the same five
+generation failures on both sides). `tests/engine` 948, its `scripts/` runner
+and `tests/io` 241, and the processing/discovery/join-matrix,
+complex/generators/nodes/optimization, modeling and TPC-DS batteries green.
 
 ## 0. Progress (s32)
 
