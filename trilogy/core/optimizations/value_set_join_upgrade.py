@@ -34,6 +34,7 @@ from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
     BuildRowsetItem,
+    nonstandard_grouping_lineage,
 )
 from trilogy.core.models.execute import CTE, BuildDatasource, Join, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
@@ -750,6 +751,22 @@ def _relative_key_subset(
     )
 
 
+def _emits_grouping_set_rows(cte: CTE | UnionCTE) -> bool:
+    """True when this CTE emits ROLLUP/CUBE/GROUPING SETS rows.
+
+    Its grouping-key columns then carry a NULL on every subtotal row that no
+    ordinary source has, so the two sides of a join on those keys do NOT hold
+    the same value set however equivalent their inputs are -- the NULLs are
+    minted by the grouping itself, downstream of anything the equivalence
+    tests can see. Narrowing to INNER there deletes exactly the subtotal and
+    grand-total rows the query asked for.
+    """
+    return any(
+        nonstandard_grouping_lineage(column) is not None
+        for column in cte.output_columns
+    )
+
+
 class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
     """Upgrade FULL/LEFT/RIGHT OUTER to INNER when each join key pair has
     identical conceptual value sets on both sides, or narrow directionally
@@ -821,6 +838,11 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
             if not join.joinkey_pairs:
                 continue
             right_cte = join.right_cte
+            # A grouping-set side's NULL subtotal keys are not in the other
+            # side's value set, so no equivalence or subset proof about the
+            # underlying rows licenses dropping them.
+            if _emits_grouping_set_rows(cte) or _emits_grouping_set_rows(right_cte):
+                continue
             if self.full_join_keys and any(
                 _key_addresses(pair.left) & self.full_join_keys
                 or _key_addresses(pair.right) & self.full_join_keys

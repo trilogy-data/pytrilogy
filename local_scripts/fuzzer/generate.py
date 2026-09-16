@@ -2365,8 +2365,15 @@ full join (
 {trilogy_join}
 order by current_period.gid asc nulls last;
 """
+        # DISTINCT because the projection omits `flag`, which both rowsets
+        # group by: two groups that differ only in `flag` are one row at the
+        # requested grain, and a Trilogy select IS a projection at that grain.
+        # Plain SQL would emit both, and does whenever their measures happen to
+        # be equal -- rare enough that only a randomized dataset found it
+        # (two gid=-10 groups both summing to 5690), which made a faithful
+        # oracle look like a planner row-loss.
         oracle = f"""
-select c.gid, c.total, f.total
+select distinct c.gid, c.total, f.total
 {sql_rowsets}
 {sql_join}
 {sql_where}
