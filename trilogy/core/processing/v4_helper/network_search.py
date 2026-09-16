@@ -443,7 +443,7 @@ def search_sources(network: SourceNetwork) -> SearchResult:
             continue
         connected = _reduce(network, cover, targets)
         key = tuple(sorted(connected))
-        if key in seen:
+        if key in seen or not _reads_a_scan(network, connected):
             continue
         seen.add(key)
         reduced.append((connected, _binding_profile(network, connected, targets)))
@@ -457,13 +457,22 @@ def search_sources(network: SourceNetwork) -> SearchResult:
         # the budget was hit, so `_report_truncation` still says the solution
         # may not be cost-minimal.
         seed = _seed_cover(network, targets)
-        if seed is not None:
+        if seed is not None and _reads_a_scan(network, seed):
             return SearchResult(
                 solution=_solution_for(network, seed, targets), limit=limit
             )
         return SearchResult(limit=limit)
     best = min(solutions, key=lambda s: (s.cost.axes(), s.sources))
     return SearchResult(solution=best, limit=limit)
+
+
+def _reads_a_scan(network: SourceNetwork, sources: frozenset[str]) -> bool:
+    """A derived connector exists to RELATE scans, so a cover made only of
+    connectors reads no rows and is not an answer, however cheap it prices
+    (zero scans): a rowset connector binding a ROOT key's class would otherwise
+    beat the one scan that actually holds the column, and the emitter, with
+    no datasource to scan, could only decline."""
+    return any(network.candidates[node].datasource is not None for node in sources)
 
 
 def plan_network_sources(

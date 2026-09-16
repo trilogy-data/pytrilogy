@@ -306,6 +306,68 @@ calls across both corpora, **zero** with a non-empty baseline — every cover
 `_functional_reach`, which had no production caller and now lives in the test
 that pins `chain_completers` against it. Gate: corpus byte-identical 132/132.
 
+### The second cover search is gone (s58)
+
+Until s58, `plan_source` ended in a pre-v4 cover search: after `_network_source`
+declined, `_direct_source` -> `gen_select_node` -> `gen_select_merge_node` ->
+`_source_concepts_via_graph` ran `create_pruned_concept_graph` +
+`resolve_subgraphs` over the reference graph and merged whatever came back. That
+is an independent search with none of the search's connectivity rules, and it
+could accept a cover the network had just judged disconnected (the `ON 1=1`
+plan behind `test_duckdb_derived_key_union_lookup`: a union scan merged with a
+lookup regrouped to a single non-key property). It is deleted. `_direct_source`
+keeps ONE role: rendering a solution the network already found (a one-scan
+answer, or one the bridge emitter cannot carry), and it is called only behind a
+`NetworkDecision`. The search's verdict on a cover is final.
+
+An instrumented pass over the corpora and the test chunks recorded every
+request the fallback used to answer. They were four shapes, each of which now
+has a home:
+
+- **Additive rollup at a coarser grain** (a summary at (origin, destination,
+  date) serving (origin, date)). The graph's rollup edges are drawn at each
+  metric's declared grain, so the network never saw the binding; only the
+  fallback recomputed `get_additive_rollup_concepts` per request.
+  `network_build.rollup_concepts_by_node` now labels the candidate with the
+  request-grain binding (FULL, not stored), `_network_source` draws the same
+  edge on the bridge's private graph so the emitter's neighbor walk attaches
+  it, and `_merge_component_sources` SUM-rolls at the merge through the same
+  `aggregate_rollup.merge_rollup_concepts` the legacy merge used. A one-scan
+  rollup still renders through `_direct_source`, whose graph carries the
+  rollup edges; that block in `create_pruned_concept_graph` stays for it and
+  for the grand-total shape below.
+- **A connector alone as the cover.** A `connector~` candidate binds the merged
+  key's class, reads zero scans and so out-prices the one scan holding the
+  column (`select l_key subset join web_cust.cust_sk = l_key`); the emitter,
+  with nothing to scan, declined. `network_search._reads_a_scan` refuses a
+  cover with no scan in it. Pinned at the search level in
+  `test_v4_network_search.py` and end-to-end by
+  `test_subset_join_rowset_onto_root.py`.
+- **A request with no join axis** (grand-total aggregates, a `<*>` watermark).
+  Single-row concepts are dropped from the terminals, so the search had nothing
+  to connect and declined without judging anything. `plan_source._no_join_axis`
+  routes such a request straight to the render role: a cross product of scalar
+  scans is its meaning.
+- **The error surface.** `validate_query_is_resolvable` lived only on the
+  fallback path. `plan_source._raise_if_unsourceable_root` raises the same
+  `NoDatasourceException` on a decline when a requested ROOT concept is bound
+  nowhere under any spelling, instead of returning `None` into a render.
+
+Also gone: the `union_derived_concepts` injection in
+`create_pruned_concept_graph`, added by the derived-key union fix purely to keep
+the fallback consistent with the network's union candidates. The `[v4]` decline
+log no longer speaks of "falling through to the single-scan planners". The two
+typed tails after a decline (`_cross_component_source`, the unconditioned
+retry) remain: an instrumented pass showed the retry answering conditioned
+rollup requests in the discovery suite and the cross-component assembly firing
+in the engine suite; neither fires on TPC-DS generation.
+
+Gates: TPC-DS generation byte-identical 109/109; `tests/engine` under the
+removal 948 passed (the `scripts/` runner tests need a maturin rebuild this
+machine cannot do while the extension is loaded, and were excluded); the
+processing/discovery/join-matrix, complex/generators/nodes/optimization and
+modeling chunks green.
+
 ## 0. Progress (s32)
 
 **Landed (inert — no production code path imports it):**

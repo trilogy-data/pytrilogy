@@ -2,8 +2,9 @@
 
 Turns the network search's chosen sources into StrategyNodes: scans each chosen
 datasource, materializes derived connectors, completes partial bindings, and
-merges the components. Also hosts the typed fallbacks a declined search falls
-through to.
+merges the components. The search's verdict on a cover is final: no second
+cover search runs behind it. What follows a decline is typed and narrow (the
+lineage-related cross product, the unconditioned retry), never a re-search.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from typing import cast
 
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation, Granularity, JoinType
+from trilogy.core.exceptions import NoDatasourceException
 from trilogy.core.graph_models import ReferenceGraph, concept_to_node
 from trilogy.core.models.build import (
     BuildConcept,
@@ -27,6 +29,7 @@ from trilogy.core.processing.aggregate_rollup import (
     _is_additive_aggregate,
     filter_finer_row_args,
     get_additive_rollup_concepts,
+    merge_rollup_concepts,
 )
 from trilogy.core.processing.condition_utility import (
     condition_implies,
@@ -60,6 +63,7 @@ from trilogy.core.processing.v4_helper.history import V4History
 from trilogy.core.processing.v4_helper.network_build import (
     build_source_network,
     connector_join_keys,
+    rollup_concepts_by_node,
 )
 from trilogy.core.processing.v4_helper.network_model import (
     CONNECTOR_NODE_PREFIX,
@@ -99,8 +103,10 @@ class NetworkDecision:
     `None` from `_network_source` means the search DECLINED: it found no
     solution, or found one the emitter cannot express. A decision with
     `bridge=None` is not a decline: the search succeeded and the answer is a
-    single scan, which `_direct_source` renders. A decline needs another home,
-    a single-scan does not."""
+    single scan, which `_direct_source` renders. `_direct_source` runs its own
+    graph-scored cover search, so it is ONLY ever handed a request the network
+    already answered (or one with nothing to search, see `_no_join_axis`);
+    behind a decline it could accept a cover the network judged disconnected."""
 
     bridge: BridgePlan | None
 
@@ -133,6 +139,19 @@ def _requested_concepts(request: SourceRequest) -> list[BuildConcept]:
     return unique(
         request.outputs + condition_row_args(request.conditions),
         "address",
+    )
+
+
+def _no_join_axis(request: SourceRequest) -> bool:
+    """Every requested concept is single-row: a grand-total aggregate, a `<*>`
+    watermark. The search drops such concepts from its terminals (they join by
+    cross product, never by a key), so it has nothing to connect and declines
+    without judging anything. The read is a cross product of scalar scans by
+    definition, which `_direct_source` renders."""
+    return all(
+        concept.granularity == Granularity.SINGLE_ROW
+        or "__preql_internal" in concept.address
+        for concept in _requested_concepts(request)
     )
 
 
@@ -198,6 +217,44 @@ def _concepts_with_grain_keys(
                 continue
             expanded.append(environment.concepts[address])
     return unique(expanded, "address")
+
+
+def _pseudonym_is_sourced(address: str, environment: BuildEnvironment) -> bool:
+    concept = environment.alias_origin_lookup.get(address) or environment.concepts.get(
+        address
+    )
+    if concept is None:
+        return False
+    # A non-ROOT pseudonym is derivable; a ROOT one needs its own column.
+    return (
+        concept.derivation != Derivation.ROOT
+        or concept.canonical_address in environment.materialized_canonical_concepts
+    )
+
+
+def _raise_if_unsourceable_root(request: SourceRequest) -> None:
+    """A requested ROOT concept no datasource in the environment binds, under
+    any spelling, is a model defect the search cannot repair: no retry with
+    other conditions or a wider output set will conjure a column. Say so,
+    instead of returning `None` into a render that emits INVALID_REFERENCE."""
+    environment = request.environment
+    for concept in _requested_concepts(request):
+        if concept.derivation != Derivation.ROOT:
+            continue
+        declared = environment.concepts.get(concept.address)
+        # Locally derived, or a pseudonym spelling: not this concept's own claim.
+        if declared is None or declared.address != concept.address:
+            continue
+        if declared.canonical_address in environment.materialized_canonical_concepts:
+            continue
+        if any(_pseudonym_is_sourced(p, environment) for p in declared.pseudonyms):
+            continue
+        raise NoDatasourceException(
+            f"No datasource exists for root concept {declared}, and no resolvable "
+            f"pseudonyms found from {declared.pseudonyms}. This query is "
+            "unresolvable from your environment. Check your datasources and "
+            "imports to make sure this concept is bound."
+        )
 
 
 def _direct_source(request: SourceRequest, accept_partial: bool) -> StrategyNode | None:
@@ -313,6 +370,32 @@ def _inject_union_datasources(
     graph.add_edges_from(union_edges)
 
 
+def _inject_rollup_edges(
+    graph: ReferenceGraph,
+    concepts: list[BuildConcept],
+    request: SourceRequest,
+    chosen: set[str],
+) -> set[str]:
+    """A rollup binding (`network_build.rollup_concepts_by_node`) has no edge
+    in the reference graph, which relates a summary only to the metric at its
+    declared grain. Draw the request-grain edge on the bridge's private graph
+    so the emitter's neighbor walk attaches the aggregate to the chosen scan.
+    Returns the concept nodes drawn: they spell the aggregate's grain-pinned
+    canonical, not the terminal address the pruning below keeps by."""
+    rollups = rollup_concepts_by_node(
+        concepts, request.environment, graph, request.conditions
+    )
+    edges: list[tuple[str, str]] = []
+    for node in sorted(chosen & set(rollups)):
+        for concept in rollups[node]:
+            concept_node = concept_to_node(concept)
+            graph.concepts[concept_node] = concept
+            edges.append((node, concept_node))
+            edges.append((concept_node, node))
+    graph.add_edges_from(edges)
+    return {concept_node for _, concept_node in edges[::2]}
+
+
 def _memoized_search(network: SourceNetwork, history: History) -> SearchResult:
     """The search, memoized for this build request on the network's structural
     signature. The ROOT planner re-asks the same question several times per
@@ -335,17 +418,17 @@ def _report_truncation(network: SourceNetwork, result: SearchResult) -> None:
 
     With a solution in hand the plan is valid but need not be cost-minimal.
     Without one the search DECLINED FOR LACK OF BUDGET, which is not the same
-    claim as "no solution exists", yet `plan_source` falls through to
-    `_direct_source` and the unconditioned retry identically for both. Saying
-    so is the difference between a known limitation and a silent one."""
+    claim as "no solution exists", yet `plan_source` treats it as a decline
+    identically. Saying so is the difference between a known limitation and a
+    silent one."""
     logger.warning(
         "[v4] source search hit %s over %d candidates for terminals %s: %s",
         result.limit.value if result.limit else "no limit",
         len(network.candidates),
         ",".join(network.terminals),
         (
-            "no solution emitted, falling through to the single-scan planners, "
-            "which is a guess, not evidence that none exists"
+            "no solution emitted; the request is declined, which is a budget "
+            "verdict, not evidence that no solution exists"
             if result.exhausted
             else "solution kept but it may not be cost-minimal"
         ),
@@ -389,8 +472,7 @@ def _network_source(
         # fall-through is evidence-based (contrast _report_truncation).
         logger.info(
             "[v4] source search declined: terminals %s share no join-component "
-            "with the rest of the request, no connected cover exists; falling "
-            "through to the single-scan planners",
+            "with the rest of the request, no connected cover exists",
             ",".join(sorted(result.split)),
         )
     if result.solution is None:
@@ -425,6 +507,7 @@ def _network_source(
     # convention, so injecting here makes its chosen node addresses resolvable.
     _inject_union_datasources(graph, concepts, request.environment)
     chosen = set(result.solution.sources)
+    rollup_nodes = _inject_rollup_edges(graph, concepts, request, chosen)
     # A derived-connector choice (`connector~<alias>`) is not a scan: its alias
     # concept rides in `plan.concepts` and `_derived_connector_nodes` plans the
     # `alias_origin_lookup` origin as a parent. Only real scans face the
@@ -509,7 +592,7 @@ def _network_source(
     # carries an `@grain` suffix that need not match the default-grain spelling, and
     # deleting the graph's own node severs the datasource edge that binds it.
     def _keep(node: str) -> bool:
-        if node in chosen:
+        if node in chosen or node in rollup_nodes:
             return True
         if not node.startswith("c~"):
             return False
@@ -1109,6 +1192,18 @@ def _merge_component_sources(
                 else None
             ),
         )
+    # A summary read below the target grain (a rollup binding) is summed at
+    # the merge, where the dimension supplying the coarser key has been joined.
+    # Judged on the request's own concepts: the join spine the bridge carried
+    # in is what the regroup sums away, so it leaves the outputs too.
+    requested = {concept.address for concept in _requested_concepts(request)}
+    rollup = merge_rollup_concepts(
+        (parent.grain for parent in parents),
+        [concept for concept in outputs if concept.address in requested],
+        request.environment.concepts,
+    )
+    if rollup:
+        outputs = [concept for concept in outputs if concept.address in requested]
     return MergeNode(
         input_concepts=inputs,
         output_concepts=outputs,
@@ -1118,6 +1213,8 @@ def _merge_component_sources(
         conditions=(
             request.conditions.conditional if request.conditions is not None else None
         ),
+        force_group=True if rollup else None,
+        rollup_concepts=rollup or None,
     )
 
 
@@ -1605,18 +1702,27 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
     if pinned_rollup is not None:
         return pinned_rollup
     decision = _network_source(request)
-    if decision is not None and decision.bridge is not None:
+    if decision is None and _no_join_axis(request):
+        # Nothing was searched: the terminal set is empty. Render the scalar
+        # scans; their cross product is the request's meaning.
+        decision = NetworkDecision(bridge=None)
+    if decision is None:
+        # The search's verdict is final: no second cover search runs behind
+        # it. What it can still say is WHY, when the reason is a column that
+        # exists nowhere.
+        _raise_if_unsourceable_root(request)
+    elif decision.bridge is not None:
         merged = _emit_bridge(request, decision.bridge)
         if merged is not None:
             return merged
-    # Either the search answered with a single scan (`_direct_source` is that
-    # solution's renderer), or it declined and this is the last read that might
-    # still work. The escalation is only "may this read accept a partial
-    # binding"; it is not a re-search.
-    for accept_partial in ((False,) if request.require_full else (False, True)):
-        direct = _direct_source(request, accept_partial)
-        if direct is not None:
-            return direct
+    else:
+        # The search answered with a single scan; `_direct_source` is that
+        # solution's renderer. The escalation is only "may this read accept a
+        # partial binding"; it is not a re-search.
+        for accept_partial in (False,) if request.require_full else (False, True):
+            direct = _direct_source(request, accept_partial)
+            if direct is not None:
+                return direct
     if decision is not None and decision.bridge is None:
         # The single-scan solution `_direct_source` could not render: a derived
         # output only the bridge's concept-node assembly computes (the

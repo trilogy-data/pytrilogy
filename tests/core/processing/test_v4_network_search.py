@@ -301,6 +301,29 @@ merge first_parent into pid;
 """
 
 
+ROLLUP_SUMMARY_MODEL = """
+key id int;
+key origin_code string;
+key destination_code string;
+property id.flight_date date;
+
+auto flight_count <- count(id);
+
+datasource flight (id: id, origin_code: origin_code, destination_code: destination_code, flight_date: flight_date)
+grain (id)
+query '''select 1 as id, 'A' as origin_code, 'X' as destination_code, '2024-01-01'::date as flight_date''';
+
+datasource flight_summary (
+    origin_code: origin_code,
+    destination_code: destination_code,
+    flight_date: flight_date,
+    flight_count: flight_count,
+)
+grain (origin_code, destination_code, flight_date)
+query '''select 'A' as origin_code, 'X' as destination_code, '2024-01-01'::date as flight_date, 1 as flight_count''';
+"""
+
+
 def _build(model: str):
     env = Environment()
     env.parse(model)
@@ -353,6 +376,32 @@ class TestNetworkLabels:
         )
 
         assert set(network.terminals) == {"local.customer_id", "local.item_id"}
+
+    def test_rollup_binding_labels_summary_at_request_grain(self, monkeypatch):
+        """The graph relates a summary only to the metric at its declared
+        grain; the label must also offer the metric at THIS request's coarser
+        grain when the dropped component sums away, or the summary is never a
+        candidate for the rollup and the raw fact is re-aggregated."""
+        requests = _captured_network_requests(
+            monkeypatch,
+            ROLLUP_SUMMARY_MODEL,
+            "select origin_code, flight_date, flight_count;",
+        )
+        rollup_requests = [
+            request
+            for request in requests
+            if {c.address for c in request[0]} >= {"local.flight_count"}
+        ]
+        assert rollup_requests
+        network = build_source_network(*rollup_requests[0])
+
+        binding = network.candidates["ds~flight_summary"].bindings["local.flight_count"]
+        assert binding.strength is BindingStrength.FULL
+        assert not binding.stored
+        assert "local.flight_count" not in network.candidates["ds~flight"].bindings
+        result = search_sources(network)
+        assert result.solution is not None
+        assert result.solution.sources == ("ds~flight_summary",)
 
 
 class TestNetworkSearch:
@@ -645,6 +694,20 @@ class TestNetworkSearch:
 
         assert result.solution is not None
         assert "connector~local.first_parent" in result.solution.sources
+        assert any(node.startswith("ds~") for node in result.solution.sources)
+
+    def test_connector_alone_is_not_a_cover(self):
+        """A connector binds the merged key's class, so on bindings alone it
+        covers a request for that key by itself and, reading zero scans,
+        prices below the one scan that holds the column. It relates scans; a
+        cover with none is not an answer."""
+        benv, graph = _build(RECURSIVE_MERGE_MODEL)
+        network = build_source_network(_terminals(benv, "local.pid"), benv, graph)
+        assert "connector~local.first_parent" in network.candidates
+
+        result = search_sources(network)
+
+        assert result.solution is not None
         assert any(node.startswith("ds~") for node in result.solution.sources)
 
     def test_solution_is_deterministic_across_runs(self):
