@@ -15,7 +15,6 @@ from typing import cast
 
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation, Granularity, JoinType
-from trilogy.core.exceptions import NoDatasourceException
 from trilogy.core.graph_models import ReferenceGraph, concept_to_node
 from trilogy.core.models.build import (
     BuildConcept,
@@ -32,6 +31,7 @@ from trilogy.core.processing.aggregate_rollup import (
     merge_rollup_concepts,
 )
 from trilogy.core.processing.condition_utility import (
+    and_optional,
     condition_implies,
     merge_conditions,
 )
@@ -55,6 +55,9 @@ from trilogy.core.processing.node_generators.select_helpers.datasource_nodes imp
     create_select_node_candidate,
     finalize_select_node,
 )
+from trilogy.core.processing.node_generators.select_node import (
+    validate_query_is_resolvable,
+)
 from trilogy.core.processing.nodes import History, MergeNode, SelectNode, StrategyNode
 from trilogy.core.processing.v4_helper.condition_injection import condition_row_args
 from trilogy.core.processing.v4_helper.constants import ROW_SHAPE_BARRIER_DERIVATIONS
@@ -64,6 +67,7 @@ from trilogy.core.processing.v4_helper.network_build import (
     build_source_network,
     connector_join_keys,
     rollup_concepts_by_node,
+    terminal_addresses,
 )
 from trilogy.core.processing.v4_helper.network_model import (
     CONNECTOR_NODE_PREFIX,
@@ -154,10 +158,22 @@ def _no_join_axis(request: SourceRequest) -> bool:
     cross product, never by a key), so it has nothing to connect and declines
     without judging anything. The read is a cross product of scalar scans by
     definition, which `_direct_source` renders."""
-    return all(
-        concept.granularity == Granularity.SINGLE_ROW
-        or "__preql_internal" in concept.address
-        for concept in _requested_concepts(request)
+    return not terminal_addresses(_requested_concepts(request))
+
+
+def _deferred_conditions(request: SourceRequest) -> BuildWhereClause | None:
+    """What a sub-request that drops `request.conditions` must still carry for
+    labeling: the clause this request applies, and whatever it was already
+    deferring. Dropping only the former would let a summary roll up rows a
+    grandparent will filter."""
+    if request.conditions is None:
+        return request.deferred_conditions
+    if request.deferred_conditions is None:
+        return request.conditions
+    return BuildWhereClause(
+        conditional=and_optional(
+            request.deferred_conditions.conditional, request.conditions.conditional
+        )
     )
 
 
@@ -223,44 +239,6 @@ def _concepts_with_grain_keys(
                 continue
             expanded.append(environment.concepts[address])
     return unique(expanded, "address")
-
-
-def _pseudonym_is_sourced(address: str, environment: BuildEnvironment) -> bool:
-    concept = environment.alias_origin_lookup.get(address) or environment.concepts.get(
-        address
-    )
-    if concept is None:
-        return False
-    # A non-ROOT pseudonym is derivable; a ROOT one needs its own column.
-    return (
-        concept.derivation != Derivation.ROOT
-        or concept.canonical_address in environment.materialized_canonical_concepts
-    )
-
-
-def _raise_if_unsourceable_root(request: SourceRequest) -> None:
-    """A requested ROOT concept no datasource in the environment binds, under
-    any spelling, is a model defect the search cannot repair: no retry with
-    other conditions or a wider output set will conjure a column. Say so,
-    instead of returning `None` into a render that emits INVALID_REFERENCE."""
-    environment = request.environment
-    for concept in _requested_concepts(request):
-        if concept.derivation != Derivation.ROOT:
-            continue
-        declared = environment.concepts.get(concept.address)
-        # Locally derived, or a pseudonym spelling: not this concept's own claim.
-        if declared is None or declared.address != concept.address:
-            continue
-        if declared.canonical_address in environment.materialized_canonical_concepts:
-            continue
-        if any(_pseudonym_is_sourced(p, environment) for p in declared.pseudonyms):
-            continue
-        raise NoDatasourceException(
-            f"No datasource exists for root concept {declared}, and no resolvable "
-            f"pseudonyms found from {declared.pseudonyms}. This query is "
-            "unresolvable from your environment. Check your datasources and "
-            "imports to make sure this concept is bound."
-        )
 
 
 def _direct_source(request: SourceRequest, accept_partial: bool) -> StrategyNode | None:
@@ -1475,7 +1453,7 @@ def _plan_finer_filter_rollup(request: SourceRequest) -> StrategyNode | None:
             graph=request.graph,
             history=request.history,
             conditions=None,
-            deferred_conditions=request.conditions,
+            deferred_conditions=_deferred_conditions(request),
             depth=request.depth + 1,
             require_full=request.require_full,
         )
@@ -1683,7 +1661,7 @@ def _cross_component_source(request: SourceRequest) -> StrategyNode | None:
                 graph=request.graph,
                 history=request.history,
                 conditions=None,
-                deferred_conditions=request.conditions or request.deferred_conditions,
+                deferred_conditions=_deferred_conditions(request),
                 depth=request.depth + 1,
                 require_full=request.require_full,
                 complete_partials=request.complete_partials,
@@ -1732,7 +1710,10 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
         # The search's verdict is final: no second cover search runs behind
         # it. What it can still say is WHY, when the reason is a column that
         # exists nowhere.
-        _raise_if_unsourceable_root(request)
+        validate_query_is_resolvable(
+            (concept.address for concept in _requested_concepts(request)),
+            request.environment,
+        )
     elif decision.bridge is not None:
         merged = _emit_bridge(request, decision.bridge)
         if merged is not None:
@@ -1767,7 +1748,7 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
                 graph=request.graph,
                 history=request.history,
                 conditions=None,
-                deferred_conditions=request.conditions,
+                deferred_conditions=_deferred_conditions(request),
                 depth=request.depth,
                 require_full=request.require_full,
             )

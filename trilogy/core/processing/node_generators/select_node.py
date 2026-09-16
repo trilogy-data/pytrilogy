@@ -1,3 +1,5 @@
+from collections.abc import Iterable
+
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import NoDatasourceException
@@ -22,39 +24,42 @@ LOGGER_PREFIX = "[GEN_SELECT_NODE]"
 
 
 def validate_query_is_resolvable(
-    missing: list[str],
+    addresses: Iterable[str],
     environment: BuildEnvironment,
-    materialized_lcl: CanonicalBuildConceptList,
 ) -> None:
-    # if a query cannot ever be resolved, exit early with an error
-    for x in missing:
-        if x not in environment.concepts:
-            # if it's locally derived, we can assume it can be resolved
+    """A requested ROOT concept no datasource in the environment binds, under
+    any spelling, is a model defect no planner can repair: no retry with other
+    conditions or a wider output set will conjure a column. Say so."""
+    for address in addresses:
+        concept = environment.concepts.get(address)
+        # Locally derived, or a pseudonym spelling: not this concept's own claim.
+        if concept is None or concept.address != address:
             continue
-        validation_concept = environment.concepts[x]
-        # if the concept we look up isn't what we searched for,
-        # we're in a pseudonym anyway, don't worry about validating
-        if validation_concept.address != x:
+        if concept.derivation != Derivation.ROOT:
             continue
-        if validation_concept.derivation == Derivation.ROOT:
-            has_source = False
-            for x in validation_concept.pseudonyms:
-                if x in environment.alias_origin_lookup:
-                    pseudonym_concept = environment.alias_origin_lookup[x]
-                else:
-                    pseudonym_concept = environment.concepts[x]
-                # if it's not a root concept pseudonym,
-                # assume we can derive it
-                if pseudonym_concept.derivation != Derivation.ROOT:
-                    has_source = True
-                    break
-                if pseudonym_concept.address in materialized_lcl:
-                    has_source = True
-                    break
-            if not has_source:
-                raise NoDatasourceException(
-                    f"No datasource exists for root concept {validation_concept}, and no resolvable pseudonyms found from {validation_concept.pseudonyms}. This query is unresolvable from your environment. Check your datasources and imports to make sure this concept is bound."
-                )
+        if concept.canonical_address in environment.materialized_canonical_concepts:
+            continue
+        if any(_pseudonym_is_sourced(p, environment) for p in concept.pseudonyms):
+            continue
+        raise NoDatasourceException(
+            f"No datasource exists for root concept {concept}, and no resolvable "
+            f"pseudonyms found from {concept.pseudonyms}. This query is "
+            "unresolvable from your environment. Check your datasources and "
+            "imports to make sure this concept is bound."
+        )
+
+
+def _pseudonym_is_sourced(address: str, environment: BuildEnvironment) -> bool:
+    concept = environment.alias_origin_lookup.get(address) or environment.concepts.get(
+        address
+    )
+    if concept is None:
+        return False
+    # A non-ROOT pseudonym is derivable; a ROOT one needs its own column.
+    return (
+        concept.derivation != Derivation.ROOT
+        or concept.canonical_address in environment.materialized_canonical_concepts
+    )
 
 
 def gen_select_node(
@@ -99,7 +104,7 @@ def gen_select_node(
             f"{padding(depth)}{LOGGER_PREFIX} Skipping select node generation for {concepts}"
             f" as it + optional includes non-materialized concepts (looking for all {all_lcl}, missing {missing})."
         )
-        validate_query_is_resolvable(missing, environment, materialized_lcl)
+        validate_query_is_resolvable(missing, environment)
         if fail_if_not_found:
             raise NoDatasourceException(f"No datasource exists for {concepts}")
         return None

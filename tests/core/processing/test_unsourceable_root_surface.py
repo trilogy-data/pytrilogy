@@ -2,10 +2,10 @@
 does NOT raise merely because the concept has no column of its own.
 
 Removing the pre-v4 cover search took `validate_query_is_resolvable` off the
-decline path with it, so `_raise_if_unsourceable_root` states the same rule in
-the planner. The risk in moving it is over-raising: the check runs on EVERY
-decline, including sub-requests whose caller used to recover from a `None`, so
-a concept that is reachable only through a pseudonym must still plan.
+decline path with it, so `plan_source` now calls it on a decline. The risk in
+moving it is over-raising: the check runs on EVERY decline, including
+sub-requests whose caller used to recover from a `None`, so a concept that is
+reachable only through a pseudonym must still plan.
 """
 
 import pytest

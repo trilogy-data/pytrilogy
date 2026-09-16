@@ -457,16 +457,16 @@ def _subsumed_arms(candidates: dict[str, SourceCandidate]) -> dict[str, str]:
     return out
 
 
-def _terminal_addresses(terminals: list[BuildConcept]) -> list[str]:
+def terminal_addresses(terminals: list[BuildConcept]) -> list[str]:
     """Single-row / abstract-grain concepts join by cross product, never by a
     key, so they must not drive connectivity: sourcing them is a cross join the
-    caller adds. Internal addresses are never terminals."""
+    caller adds. The `__preql_internal` concepts are declared single-row, so
+    this is also what keeps them out."""
     return sorted(
         {
             concept.address
             for concept in terminals
             if concept.granularity != Granularity.SINGLE_ROW
-            and "__preql_internal" not in concept.address
         }
     )
 
@@ -700,7 +700,7 @@ def build_source_network(
     conditions: BuildWhereClause | None = None,
     deferred_conditions: BuildWhereClause | None = None,
 ) -> SourceNetwork:
-    addresses = _terminal_addresses(terminals)
+    addresses = terminal_addresses(terminals)
     all_addresses = set(addresses)
     # The one place a node's emitted set is derived; `_probe_offers` and
     # `_candidate_for` read it rather than re-walking the graph's neighbors

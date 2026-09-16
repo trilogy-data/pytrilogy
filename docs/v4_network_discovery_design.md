@@ -366,9 +366,13 @@ has a home:
   column together. The filter is usually not on the request that asks for the
   aggregate -- `gen_root` re-plans the row scan unconditioned and applies the
   WHERE above -- so `SourceRequest.deferred_conditions` carries the dropped
-  clause for LABELING only, set at the four places that drop one, and joins the
-  network verdict cache key so two requests differing only in what was deferred
-  cannot share a verdict.
+  clause for LABELING only, and joins the network verdict cache key so two
+  requests differing only in what was deferred cannot share a verdict. The
+  information has to travel: the unconditioned sub-request is otherwise the
+  same request as an unfiltered query, whose correct answer IS the rollup.
+  Inside the planner, `_deferred_conditions(request)` is the one seam a
+  sub-request that drops the WHERE reads (this request's clause AND whatever
+  it was already deferring); `gen_root` sets it at the top.
 - **A connector alone as the cover.** A `connector~` candidate binds the merged
   key's class, reads zero scans and so out-prices the one scan holding the
   column (`select l_key subset join web_cust.cust_sk = l_key`); the emitter,
@@ -380,11 +384,12 @@ has a home:
   Single-row concepts are dropped from the terminals, so the search had nothing
   to connect and declined without judging anything. `plan_source._no_join_axis`
   routes such a request straight to the render role: a cross product of scalar
-  scans is its meaning.
+  scans is its meaning. It is defined as "`terminal_addresses` is empty", so it
+  cannot drift from what the search actually drops.
 - **The error surface.** `validate_query_is_resolvable` lived only on the
-  fallback path. `plan_source._raise_if_unsourceable_root` raises the same
-  `NoDatasourceException` on a decline when a requested ROOT concept is bound
-  nowhere under any spelling, instead of returning `None` into a render.
+  fallback path. `plan_source` now calls the same helper on a decline, so a
+  requested ROOT concept bound nowhere under any spelling raises
+  `NoDatasourceException` instead of returning `None` into a render.
 
 Also gone: the `union_derived_concepts` injection in
 `create_pruned_concept_graph`, added by the derived-key union fix purely to keep
@@ -1556,7 +1561,8 @@ silent wrong-rows regression, not a build error.
   by cross product; driving the search with them invents a spurious join key
   and raises false ambiguity). Today: the `Granularity.SINGLE_ROW` filter in
   `_resolve_bridge_graph`.
-- **`__preql_internal` addresses are not terminals.**
+- **`__preql_internal` concepts are declared `SINGLE_ROW`**, so the same
+  filter keeps them out; there is no separate name test.
 - **Derivation purge**: CONSTANT / AGGREGATE / FILTER nodes are not path
   material — EXCEPT a mandatory concept whose canonical is
   datasource-materialized (a summary table binding `count(x) by k` makes that
