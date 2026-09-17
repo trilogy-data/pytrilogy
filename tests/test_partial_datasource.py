@@ -219,6 +219,41 @@ query '''select 2 as order_id, cast('2024-10-01' as date) as order_date''';
     assert rows[0].order_id == 1
 
 
+def test_pinned_partial_addresses_follow_the_union_healing_rule():
+    """A satisfied `complete where` is one arm of the partition a covering
+    union would assemble, so a pin heals a `~` exactly when the union would:
+    a partition on the key's own property completes it, a partition on an
+    unrelated key does not."""
+    src = """
+key channel enum<string>['WEB', 'STORE'];
+key order_id int;
+key item_id int;
+property order_id.order_date date;
+
+datasource web_orders (
+    order_id: ~order_id,
+    order_date: order_date,
+) grain(order_id)
+complete where order_date <= cast('2024-01-01' as date)
+address web_orders_table;
+
+partial datasource store_returns (
+    raw(''' 'STORE' '''): channel,
+    order_id: ~order_id,
+    item_id: ~item_id,
+) grain(channel, order_id, item_id)
+complete where channel = 'STORE'
+address store_returns_table;
+"""
+    env, _ = parse(src)
+    build_env = env.materialize_for_select()
+    assert build_env.datasources["web_orders"].pinned_partial_addresses == set()
+    assert build_env.datasources["store_returns"].pinned_partial_addresses == {
+        "local.order_id",
+        "local.item_id",
+    }
+
+
 def test_intrinsic_partial_survives_unrelated_discriminator():
     """When the discriminator is unrelated to the intrinsic concept (neither
     equal nor a property of it), the intrinsic partial survives — the union

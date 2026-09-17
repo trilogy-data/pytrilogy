@@ -11,14 +11,19 @@ from trilogy.core.models.build import (
     BuildGrain,
     BuildParenthetical,
     BuildSubselectComparison,
+    BuildUnionDatasource,
     BuildWhereClause,
 )
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import QueryDatasource
 from trilogy.core.processing.node_generators.select_helpers.condition_routing import (
+    absence_atoms,
     covered_conditions,
     datasource_conditions,
     preexisting_conditions,
+)
+from trilogy.core.processing.node_generators.select_helpers.datasource_nodes import (
+    create_union_datasource_candidate,
 )
 from trilogy.core.processing.node_generators.select_merge_node import (
     _condition_can_apply_after_node_merge,
@@ -168,6 +173,8 @@ def test_datasource_conditions_drops_non_nullable_is_not_null_atom():
 
 
 def test_datasource_conditions_keeps_non_nullable_is_null_atom():
+    """On a scan without `~` an `is null` atom is a plain value test on the
+    scan's own rows and routes into it as before."""
     build_env = _build_sales_environment()
     ds = build_env.datasources["items"]
     is_null_cond = _condition(
@@ -179,6 +186,102 @@ def test_datasource_conditions_keeps_non_nullable_is_null_atom():
     )
 
     assert routed == is_null_cond
+
+
+def test_datasource_conditions_leaves_partial_scan_is_null_atom_to_the_merge():
+    """A scan binding a key `~` is the side an outer merge can leave absent:
+    `x is null` on its own column tests absence, so it is never pushed into
+    the scan (direct or injected) and is not claimed as applied."""
+    build_env = _build_sales_environment()
+    ds = build_env.datasources["sales"]
+    is_null_cond = _condition(
+        build_env.concepts["sale_year"], MagicConstants.NULL, ComparisonOperator.IS
+    )
+    where = BuildWhereClause(conditional=is_null_cond)
+
+    own = ds.where.conditional
+    assert datasource_conditions(ds, where, None, partial_is_full=True) == own
+    assert datasource_conditions(ds, None, is_null_cond, partial_is_full=True) == own
+    assert (
+        preexisting_conditions(
+            ds, where, partial_is_full=False, satisfies_conditions=True
+        )
+        is None
+    )
+
+
+def test_absence_atoms_spellings():
+    """Either operand order names the tested concept; an `is null` with no
+    concept operand is not an absence test."""
+    build_env = _build_sales_environment()
+    ds = build_env.datasources["sales"]
+    year = build_env.concepts["sale_year"]
+    reversed_null = _condition(MagicConstants.NULL, year, ComparisonOperator.IS)
+    literal_null = _condition(5, MagicConstants.NULL, ComparisonOperator.IS)
+    assert absence_atoms(ds, reversed_null) == [reversed_null]
+    assert absence_atoms(ds, literal_null) == []
+    assert absence_atoms(build_env.datasources["items"], reversed_null) == []
+
+
+def _build_returns_union_environment():
+    env = Environment()
+    env.parse(
+        """
+key order_id int;
+key channel string;
+properties <order_id, channel> (returned bool?);
+
+partial datasource web_returns (
+    raw(''' 'WEB' '''): channel,
+    order_id: ~order_id,
+    raw(''' true '''): returned,
+)
+grain (channel, order_id)
+complete where channel = 'WEB'
+address web_returns_table;
+
+partial datasource store_returns (
+    raw(''' 'STORE' '''): channel,
+    order_id: ~order_id,
+    raw(''' true '''): returned,
+)
+grain (channel, order_id)
+complete where channel = 'STORE'
+address store_returns_table;
+""",
+        persist=True,
+    )
+    return env.materialize_for_select()
+
+
+def test_union_candidate_leaves_absence_atom_unclaimed():
+    """A condition no arm's `complete where` implies is injected into every
+    arm; its absence atom on the arms' `~` scans is neither injected nor
+    claimed by the union, while the rest of the condition is."""
+    build_env = _build_returns_union_environment()
+    children = [
+        build_env.datasources["web_returns"],
+        build_env.datasources["store_returns"],
+    ]
+    absent = _condition(
+        build_env.concepts["returned"], MagicConstants.NULL, ComparisonOperator.IS
+    )
+    order_gt = _condition(build_env.concepts["order_id"], 5, ComparisonOperator.GT)
+    conditions = BuildWhereClause(
+        conditional=BuildConditional(
+            left=absent, right=order_gt, operator=BooleanOperator.AND
+        )
+    )
+    union, _group, _count = create_union_datasource_candidate(
+        datasource=BuildUnionDatasource(children=children),
+        all_concepts=[build_env.concepts["order_id"], build_env.concepts["returned"]],
+        environment=build_env,
+        depth=0,
+        conditions=conditions,
+    )
+    assert union.preexisting_conditions == order_gt
+    for parent in union.parents:
+        assert parent.conditions == order_gt
 
 
 def test_datasource_conditions_ignores_existence_condition():

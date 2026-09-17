@@ -2414,6 +2414,16 @@ class BuildDatasource:
             if c.concept.address in self.column_level_partial_addresses
         ]
 
+    @property
+    def pinned_partial_addresses(self) -> set[str]:
+        """Column-level ``~`` that a satisfied ``complete where`` does NOT
+        complete. A pin selects one arm of the partition a covering union
+        would assemble, so the healing rule is the union's
+        (``union_unhealed_partial_addresses``): ``~order_id`` partitioned on
+        its own property ``order_date`` is complete under the pin; ``~order_id``
+        on a returns arm partitioned on ``channel`` stays an extension license."""
+        return union_unhealed_partial_addresses([self])
+
     def get_alias(
         self,
         concept: BuildConcept,
