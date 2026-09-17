@@ -48,9 +48,15 @@ keeps them apart end to end:
 
 A `partial datasource ... complete where channel = 'STORE'` arm becomes a
 complete source once the statement WHERE implies its partition
-(`partial_is_full`). That completes the TABLE-level stamp only. A
-column-level `~` on the same arm (`SR_TICKET_NUMBER: ~order_id`) is an
-extension license and survives the pin at every layer: the graph
+(`partial_is_full`). That completes the TABLE-level stamp, and a
+column-level `~` only when the partition heals it. A pin selects one arm of
+the partition a covering union would assemble, so the healing rule is the
+union's (`union_unhealed_partial_addresses`, exposed per datasource as
+`pinned_partial_addresses`): `~order_id` partitioned on its own property
+(`complete where order_date <= X`) is complete under the pin, because every
+order has one date. `~order_id` on a returns arm partitioned on `channel` is
+not: the pin covers every STORE return, not every STORE order, so the `~`
+remains an extension license and survives at every layer: the graph
 (`_graph_partial_concepts`), the scan's stamps (`scan_stamps`), and join
 licensing. Clearing it made the returns arm INNER-join its sales sibling.
 

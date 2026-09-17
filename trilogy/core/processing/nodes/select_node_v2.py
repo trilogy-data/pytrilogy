@@ -46,9 +46,10 @@ def scan_stamps(
     nullable_lcl = CanonicalBuildConceptList(
         concepts=[c.concept for c in datasource.columns if c.is_nullable]
     )
-    # A satisfied partition pin completes the table-level stamp only; a
-    # column-level ~ is an extension license and keeps its join preservation.
-    structural = datasource.column_level_partial_addresses
+    # A satisfied partition pin completes the table-level stamp and any ~ the
+    # partition heals; a ~ it does not heal is an extension license and keeps
+    # its join preservation.
+    structural = datasource.pinned_partial_addresses
     partials = [
         c
         for c in outputs

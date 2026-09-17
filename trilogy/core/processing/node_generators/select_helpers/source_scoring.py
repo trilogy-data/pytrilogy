@@ -30,13 +30,17 @@ LOGGER_PREFIX = "[GEN_ROOT_MERGE_NODE]"
 def _structural_partial_concepts(
     ds: "BuildDatasource | BuildUnionDatasource",
 ) -> list[BuildConcept]:
-    """Column-level (``~``) partials, which survive a satisfied complete-where.
+    """Column-level (``~``) partials that survive a satisfied complete-where.
 
     For a union these are the children's unhealed intrinsic partials (see
     ``union_unhealed_partial_addresses``): a union of subset-covering bindings
     is still subset-covering, so it must not score as complete against a rival
-    union whose children bind the same keys fully.
+    union whose children bind the same keys fully. A single datasource applies
+    the same healing rule to its own partition (``pinned_partial_addresses``).
     """
+    if isinstance(ds, BuildDatasource):
+        pinned = ds.pinned_partial_addresses
+        return [c.concept for c in ds.columns if c.concept.address in pinned]
     return ds.column_level_partial_concepts or []
 
 
