@@ -23,8 +23,8 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.aggregate_rollup import (
-    _is_additive_aggregate,
     get_additive_rollup_concepts,
+    merge_rollup_concepts,
 )
 from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
@@ -49,7 +49,6 @@ from trilogy.core.processing.node_generators.select_helpers.condition_routing im
 )
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
-    union_derived_concepts,
 )
 from trilogy.core.processing.node_generators.select_helpers.datasource_nodes import (
     SourceNodeCandidate,
@@ -145,8 +144,6 @@ def create_pruned_concept_graph(
         g.datasources[node_address] = BuildUnionDatasource(
             children=ds_list, non_partial_for=reduced_non_partial_for
         )
-        if environment is not None:
-            common |= set(union_derived_concepts(ds_list, environment))
         for c in common:
             cnode = concept_to_node(c)
             g.concepts.setdefault(cnode, c)
@@ -821,40 +818,15 @@ def gen_select_merge_node(
             _merge_condition_routing(parents, all_concepts, conditions)
         )
 
-        # When the merge's joined grain is finer than the target grain and the
-        # target is reachable from it via property-of-key, the merge must
-        # SUM-roll additive aggregates up: force_group + rollup_concepts make
-        # the renderer emit SUM and GROUP BY at the merge level.
-        additive_aggs = [
-            c for c in all_concepts if c.is_aggregate and _is_additive_aggregate(c)
-        ]
-        rollup_at_merge: list[BuildConcept] = []
-        force_merge_group: bool | None = None
-        if additive_aggs and len(additive_aggs) == sum(
-            1 for c in all_concepts if c.is_aggregate
-        ):
-            merge_components: set[str] = set()
-            for parent_node in parents:
-                pg = parent_node.grain
-                if pg and pg.components:
-                    merge_components.update(pg.components)
-            target_components = {c.address for c in all_concepts if not c.is_aggregate}
-            unreached = target_components - merge_components
-            unreached_via_property = bool(unreached) and all(
-                (concept := environment.concepts.get(tc)) is not None
-                and concept.purpose == Purpose.PROPERTY
-                and concept.keys
-                and concept.keys.issubset(merge_components)
-                for tc in unreached
-            )
-            if (
-                merge_components
-                and target_components
-                and target_components != merge_components
-                and unreached_via_property
-            ):
-                rollup_at_merge = additive_aggs
-                force_merge_group = True
+        # The joined rows sit at the parents' finer grain; SUM-roll additive
+        # aggregates up to the target (force_group + rollup_concepts make the
+        # renderer emit SUM and GROUP BY at the merge level).
+        rollup_at_merge = merge_rollup_concepts(
+            (parent_node.grain for parent_node in parents),
+            all_concepts,
+            environment.concepts,
+        )
+        force_merge_group: bool | None = True if rollup_at_merge else None
 
         # A parent whose group was deferred past this merge contributes its
         # ungrouped, finer row grain. Left alone, the merge's grain defaults to

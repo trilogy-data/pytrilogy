@@ -24,10 +24,15 @@ from trilogy.core.graph_models import (
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
+    BuildGrain,
     BuildUnionDatasource,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.aggregate_rollup import (
+    filter_finer_row_args,
+    get_additive_rollup_concepts,
+)
 from trilogy.core.processing.condition_utility import (
     condition_implies,
     merge_conditions,
@@ -150,6 +155,61 @@ def _emitted_addresses(graph: ReferenceGraph, node: str) -> set[str]:
     }
 
 
+def rollup_concepts_by_node(
+    terminals: list[BuildConcept],
+    environment: BuildEnvironment,
+    graph: ReferenceGraph,
+    conditions: BuildWhereClause | None,
+    deferred_conditions: BuildWhereClause | None = None,
+) -> dict[str, list[BuildConcept]]:
+    """Datasource node -> the requested additive aggregates it SUM-rolls up to
+    at THIS request's grain. The graph's own rollup edges were drawn at each
+    metric's declared grain, so a summary at (origin, destination, date) never
+    offers `flight_count` to a request at (origin, date) through them; only a
+    per-request check sees that the dropped component is safe to sum away.
+    The candidate binds them as non-stored columns; `_network_source` draws
+    the same edges into the bridge graph so the emitter can attach them, and
+    the scan / merge nodes apply the GROUP BY."""
+    if not any(concept.is_aggregate for concept in terminals):
+        return {}
+    datasources = [
+        datasource
+        for datasource in environment.datasources.values()
+        if isinstance(datasource, BuildDatasource)
+    ]
+    target_grain = BuildGrain.from_concepts(terminals)
+    # A filter FINER than the target grain splits the groups the roll would sum,
+    # so the summary has to be filtered before it is aggregated. A binding says
+    # only "this source can produce that address"; it cannot also say "and the
+    # predicate must land on this scan", and the emitter routes the predicate on
+    # its own -- to whichever source binds the filter column, which for a
+    # property of another table's key is not this one. The roll then sums
+    # unfiltered rows and joins them to a filtered fact scan, which both drops
+    # the filter and fans the aggregate out. `_plan_finer_filter_rollup` is the
+    # path that serves this shape safely, by PINNING one datasource that carries
+    # the aggregate and the finer column together and pushing the filter into it.
+    if any(
+        filter_finer_row_args(clause, target_grain, environment.concepts)
+        for clause in (conditions, deferred_conditions)
+    ):
+        return {}
+    out: dict[str, list[BuildConcept]] = {}
+    for node, datasource in graph.datasources.items():
+        if not isinstance(datasource, BuildDatasource):
+            continue
+        rolled = get_additive_rollup_concepts(
+            datasource=datasource,
+            requested_concepts=terminals,
+            concepts_by_address=environment.concepts,
+            datasources=datasources,
+            target_grain=target_grain,
+            conditions=conditions,
+        )
+        if rolled:
+            out[node] = rolled
+    return out
+
+
 def _probe_offers(
     graph: ReferenceGraph, emitted_by_node: dict[str, set[str]]
 ) -> dict[str, set[str]]:
@@ -210,17 +270,21 @@ def _candidate_for(
     conditions: BuildWhereClause | None,
     equivalence: dict[str, str],
     owners: dict[str, frozenset[str]],
+    rolled: frozenset[str] = frozenset(),
 ) -> SourceCandidate | None:
     emitted = {
         address for address in node_emitted if _may_bind(datasource, address, owners)
     }
     if not emitted:
         return None
+    # A rollup binding may share its address with a stored column (a named
+    # metric's summary column), but at this request's grain it is a GROUP over
+    # that column, not the column itself.
     return _candidate(
         node,
         datasource,
         emitted,
-        stored={column.concept.address for column in datasource.columns},
+        stored={column.concept.address for column in datasource.columns} - rolled,
         conditions=conditions,
         equivalence=equivalence,
     )
@@ -393,16 +457,16 @@ def _subsumed_arms(candidates: dict[str, SourceCandidate]) -> dict[str, str]:
     return out
 
 
-def _terminal_addresses(terminals: list[BuildConcept]) -> list[str]:
+def terminal_addresses(terminals: list[BuildConcept]) -> list[str]:
     """Single-row / abstract-grain concepts join by cross product, never by a
     key, so they must not drive connectivity: sourcing them is a cross join the
-    caller adds. Internal addresses are never terminals."""
+    caller adds. The `__preql_internal` concepts are declared single-row, so
+    this is also what keeps them out."""
     return sorted(
         {
             concept.address
             for concept in terminals
             if concept.granularity != Granularity.SINGLE_ROW
-            and "__preql_internal" not in concept.address
         }
     )
 
@@ -634,16 +698,22 @@ def build_source_network(
     environment: BuildEnvironment,
     graph: ReferenceGraph,
     conditions: BuildWhereClause | None = None,
+    deferred_conditions: BuildWhereClause | None = None,
 ) -> SourceNetwork:
-    addresses = _terminal_addresses(terminals)
+    addresses = terminal_addresses(terminals)
     all_addresses = set(addresses)
     # The one place a node's emitted set is derived; `_probe_offers` and
     # `_candidate_for` read it rather than re-walking the graph's neighbors
     # (three walks per node otherwise, and the graph does not change here).
     emitted_by_node: dict[str, set[str]] = {}
+    rollups = rollup_concepts_by_node(
+        terminals, environment, graph, conditions, deferred_conditions
+    )
     for node in graph.datasources:
         if node in graph:
-            emitted_by_node[node] = _emitted_addresses(graph, node)
+            emitted_by_node[node] = _emitted_addresses(graph, node) | {
+                concept.address for concept in rollups.get(node, [])
+            }
             all_addresses |= emitted_by_node[node]
     equivalence = _equivalence_map(
         environment, all_addresses, _graph_pseudonym_pairs(graph)
@@ -684,7 +754,13 @@ def build_source_network(
         if node not in relevant:
             continue
         candidate = _candidate_for(
-            node, datasource, emitted_by_node[node], conditions, equivalence, owners
+            node,
+            datasource,
+            emitted_by_node[node],
+            conditions,
+            equivalence,
+            owners,
+            frozenset(concept.address for concept in rollups.get(node, [])),
         )
         if candidate is not None and not candidate.condition.disqualifying:
             candidates[node] = candidate

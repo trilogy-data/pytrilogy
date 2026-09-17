@@ -14,6 +14,7 @@ def _case(
     body: str,
     oracle_body: str,
     accepted_compile_errors: tuple[str, ...] = (),
+    model_extra: str = "",
 ) -> FuzzCase:
     case_id = f"{seed.name}__{family}__{name}"
     oracle = f"with {seed.oracle_ctes()}\n{oracle_body.strip()}"
@@ -26,7 +27,7 @@ def _case(
         family=family,
         description=description,
         tags=normalized_tags,
-        trilogy=seed.trilogy_model() + body.strip() + "\n",
+        trilogy=seed.trilogy_model() + model_extra + body.strip() + "\n",
         oracle_sql=oracle,
         accepted_compile_errors=accepted_compile_errors,
     )
@@ -3530,6 +3531,222 @@ property event_id.tier_amount int;
     ]
 
 
+def _summary_rollup_cases(seed: SeedData) -> list[FuzzCase]:
+    """A pre-aggregated summary read at a COARSER grain than it stores.
+
+    The corpus had no datasource binding an aggregate at all, so this whole
+    class -- a materialized metric served by SUM-rolling a finer summary --
+    ran unexercised, and a planner bug that summed unfiltered rows and then
+    fanned them out over a join passed 238/238. Every oracle here reads
+    `events` only: the summary is derived from the same rows, so whichever
+    source the planner picks it owes the same answer.
+
+    The filter cases are the sharp ones. `active` is a grain component the
+    roll DROPS, so a filter on it is correct only if it reaches the summary
+    BEFORE the aggregate; `group_name` is a property of the target grain, so
+    a filter there is safe either way; and `event_amount` lives only on the
+    raw fact, so the summary cannot serve that request at all.
+    """
+    rolls_dropped_key = (
+        "select group_id, event_count order by group_id asc;",
+        "select gid, count(eid) from events group by gid order by gid",
+    )
+    rolls_two_aggregates = (
+        "select group_id, event_count, event_total order by group_id asc;",
+        (
+            "select gid, count(eid), sum(amount) from events"
+            " group by gid order by gid"
+        ),
+    )
+    filter_dropped = (
+        "where active select group_id, event_count order by group_id asc;",
+        (
+            "select gid, count(eid) from events where active"
+            " group by gid order by gid"
+        ),
+    )
+    filter_dropped_negated = (
+        "where not active select group_id, event_count order by group_id asc;",
+        (
+            "select gid, count(eid) from events where not active"
+            " group by gid order by gid"
+        ),
+    )
+    # Whichever name the seed actually carries, so the case is never vacuous.
+    first_group = seed.groups.rows[0][1]
+    filter_target_grain = (
+        (
+            f"where group_name = '{first_group}' select group_id, event_count"
+            " order by group_id asc;"
+        ),
+        (
+            "select e.gid, count(e.eid) from events e join groups g"
+            f" on e.gid = g.gid where g.name = '{first_group}'"
+            " group by e.gid order by e.gid"
+        ),
+    )
+    filter_below_summary = (
+        "where event_amount > 4 select group_id, event_count order by group_id asc;",
+        (
+            "select gid, count(eid) from events where amount > 4"
+            " group by gid order by gid"
+        ),
+    )
+    # The shape that actually breaks: group by a dimension PROPERTY, so the
+    # summary's own grain key leaves the output too and the read is reached
+    # through the dimension table, while the filter names a grain component
+    # the roll drops. Condition routing then has somewhere else to put the
+    # predicate, and a summary rolled without it is both unfiltered and
+    # fannable. Grouping by `group_id` cannot expose this: the summary binds
+    # that key itself, so the filter lands on the summary scan anyway.
+    property_grain_filtered = (
+        "where active select group_name, event_count order by group_name asc;",
+        (
+            "select g.name, count(e.eid) from events e join groups g"
+            " on e.gid = g.gid where e.active group by g.name order by g.name"
+        ),
+    )
+    property_grain_filtered_sum = (
+        "where active select group_name, event_total order by group_name asc;",
+        (
+            "select g.name, sum(e.amount) from events e join groups g"
+            " on e.gid = g.gid where e.active group by g.name order by g.name"
+        ),
+    )
+    property_grain_required_filtered = (
+        (
+            "where active select required_name, event_count"
+            " order by required_name asc;"
+        ),
+        (
+            "select g.required_name, count(e.eid) from events e join groups g"
+            " on e.gid = g.gid where e.active"
+            " group by g.required_name order by g.required_name"
+        ),
+    )
+    property_grain_unfiltered = (
+        "select group_name, event_count order by group_name asc;",
+        (
+            "select g.name, count(e.eid) from events e join groups g"
+            " on e.gid = g.gid group by g.name order by g.name"
+        ),
+    )
+    attribute_beside_grain = (
+        "select group_id, group_name, event_count order by group_id asc;",
+        (
+            "select e.gid, g.name, count(e.eid) from events e"
+            " left join groups g on e.gid = g.gid"
+            " group by e.gid, g.name order by e.gid"
+        ),
+    )
+    specs = (
+        (
+            "rolls_dropped_key_away",
+            "The summary stores (group, active); the request drops active.",
+            ("aggregate", "rollup_source"),
+            *rolls_dropped_key,
+        ),
+        (
+            "rolls_two_aggregates",
+            "Both materialized metrics roll to the coarser grain together.",
+            ("aggregate", "rollup_source"),
+            *rolls_two_aggregates,
+        ),
+        (
+            "filter_on_dropped_key",
+            (
+                "Filter on the grain component the roll drops, so it must"
+                " be applied before the summary is aggregated, never after."
+            ),
+            ("aggregate", "rollup_source", "where"),
+            *filter_dropped,
+        ),
+        (
+            "filter_on_dropped_key_negated",
+            (
+                "The complement of the same filter, so a plan that ignores it"
+                " cannot pass by happening to match the whole population."
+            ),
+            ("aggregate", "rollup_source", "where", "not"),
+            *filter_dropped_negated,
+        ),
+        (
+            "filter_at_target_grain",
+            "Filter on a property of the target grain key: the roll is safe.",
+            ("aggregate", "rollup_source", "where"),
+            *filter_target_grain,
+        ),
+        (
+            "filter_below_the_summary",
+            (
+                "Filter on a fact column the summary does not store, so the"
+                " summary cannot answer it and the raw fact must."
+            ),
+            ("aggregate", "rollup_source", "where"),
+            *filter_below_summary,
+        ),
+        (
+            "property_grain_filter_on_dropped_key",
+            (
+                "Group by a dimension property, filter on a grain component"
+                " the roll drops: the summary must not answer this unfiltered."
+            ),
+            ("aggregate", "rollup_source", "where"),
+            *property_grain_filtered,
+        ),
+        (
+            "property_grain_filter_on_dropped_key_sum",
+            (
+                "The same shape for SUM, where a fanned-out join inflates the"
+                " measure instead of the row count."
+            ),
+            ("aggregate", "rollup_source", "where"),
+            *property_grain_filtered_sum,
+        ),
+        (
+            "property_grain_required_filter_on_dropped_key",
+            (
+                "The same shape reached through a non-nullable property, so a"
+                " nullability difference cannot be what saves it."
+            ),
+            ("aggregate", "rollup_source", "where"),
+            *property_grain_required_filtered,
+        ),
+        (
+            "property_grain_unfiltered",
+            (
+                "The control for those three: with no filter the roll to the"
+                " dimension property is correct and should still happen."
+            ),
+            ("aggregate", "rollup_source"),
+            *property_grain_unfiltered,
+        ),
+        (
+            "attribute_beside_the_grain",
+            (
+                "A dimension attribute rides the target grain rather than"
+                " coarsening it, so the read must not regroup a second time."
+            ),
+            ("aggregate", "rollup_source"),
+            *attribute_beside_grain,
+        ),
+    )
+    model = seed.summary_model()
+    return [
+        _case(
+            seed,
+            "summary_rollup",
+            name,
+            description,
+            tags,
+            body,
+            oracle,
+            model_extra=model,
+        )
+        for name, description, tags, body, oracle in specs
+    ]
+
+
 def generate_cases(seeds: Iterable[SeedData] = SEEDS) -> list[FuzzCase]:
     cases = []
     builders = (
@@ -3558,6 +3775,7 @@ def generate_cases(seeds: Iterable[SeedData] = SEEDS) -> list[FuzzCase]:
         _composite_membership_cases,
         _padding_provenance_cases,
         _partition_cover_cases,
+        _summary_rollup_cases,
     )
     for seed in seeds:
         for builder in builders:

@@ -290,12 +290,19 @@ def test_seventeen(engine):
         '"sale_line_count"',
     ):
         assert f" as {alias}" in query, query
+    # The star is already at the rollup's own (user, product) grain; the
+    # dimension attributes ride that grain, so regrouping only re-sums one
+    # row per group.
+    assert "GROUP BY" not in query, query
+    assert "sum(" not in query, query
 
 
 def test_eighteen(engine):
     query = run_query(engine, 18)
     assert '"user_product_sales"' in query, query
     assert '"order_items"' not in query, query
+    # One roll to user grain in the CTE, none above it.
+    assert query.count("GROUP BY") == 1, query
 
 
 def test_nineteen(engine):

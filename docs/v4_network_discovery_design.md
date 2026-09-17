@@ -306,6 +306,108 @@ calls across both corpora, **zero** with a non-empty baseline — every cover
 `_functional_reach`, which had no production caller and now lives in the test
 that pins `chain_completers` against it. Gate: corpus byte-identical 132/132.
 
+### The second cover search is gone (s58)
+
+Until s58, `plan_source` ended in a pre-v4 cover search: after `_network_source`
+declined, `_direct_source` -> `gen_select_node` -> `gen_select_merge_node` ->
+`_source_concepts_via_graph` ran `create_pruned_concept_graph` +
+`resolve_subgraphs` over the reference graph and merged whatever came back. That
+is an independent search with none of the search's connectivity rules, and it
+could accept a cover the network had just judged disconnected (the `ON 1=1`
+plan behind `test_duckdb_derived_key_union_lookup`: a union scan merged with a
+lookup regrouped to a single non-key property). It is deleted. `_direct_source`
+keeps ONE role: rendering a solution the network already found (a one-scan
+answer, or one the bridge emitter cannot carry), and it is called only behind a
+`NetworkDecision`. The search's verdict on a cover is final.
+
+An instrumented pass over the corpora and the test chunks recorded every
+request the fallback used to answer. They were four shapes, each of which now
+has a home:
+
+- **Additive rollup at a coarser grain** (a summary at (origin, destination,
+  date) serving (origin, date)). The graph's rollup edges are drawn at each
+  metric's declared grain, so the network never saw the binding; only the
+  fallback recomputed `get_additive_rollup_concepts` per request.
+  `network_build.rollup_concepts_by_node` now labels the candidate with the
+  request-grain binding (FULL, not stored), `_network_source` draws the same
+  edge on the bridge's private graph so the emitter's neighbor walk attaches
+  it, and `_merge_component_sources` SUM-rolls at the merge through the same
+  `aggregate_rollup.merge_rollup_concepts` the legacy merge used. A one-scan
+  rollup still renders through `_direct_source`, whose graph carries the
+  rollup edges; that block in `create_pruned_concept_graph` stays for it and
+  for the grand-total shape below.
+
+  Extracting that predicate exposed a gap in it. It asked only whether some
+  target component was unreached by the merge's grain, which is also true of
+  a merge that reaches the target grain exactly and carries dimension
+  ATTRIBUTES beside it: thelook q17 reads a (user, product) pair rollup
+  alongside both keys' attributes, and grouping there re-sums one row per
+  group for an identical answer and a spurious GROUP BY. It now also requires
+  that a grain component actually be summed AWAY (`merge_components -
+  target_components` non-empty), which is what distinguishes rolling a
+  per-customer count up to region from reading a pair rollup at its own
+  grain. The guard corrected the legacy merge too: thelook q18's outer
+  `sum(...) GROUP BY` over a CTE already at the requested grain is gone. That
+  is the ONE plan change in the corpora (below).
+
+  A second, worse defect in the same binding came out of adversarial review
+  rather than any suite. A summary is only a legal source for a rolled
+  aggregate if every filter the statement applies is applied BEFORE the roll,
+  and a binding cannot carry that requirement: it says "this source can
+  produce that address" and the emitter routes predicates on its own. Given
+  `select origin_region, flight_count where flight_date = ...` against a
+  summary keyed (origin, destination, date), the roll summed every row and the
+  plan then INNER-joined it to a filtered, non-distinct fact scan and re-summed
+  -- dropping the filter and fanning the aggregate out in one step (`west 6,
+  east 2` over a five-row table). `rollup_concepts_by_node` now withholds the
+  binding whenever `filter_finer_row_args` sees a filter below the target
+  grain, leaving the shape to `_plan_finer_filter_rollup`, which serves it
+  safely by PINNING one datasource that carries the aggregate and the finer
+  column together. The filter is usually not on the request that asks for the
+  aggregate -- `gen_root` re-plans the row scan unconditioned and applies the
+  WHERE above -- so `SourceRequest.deferred_conditions` carries the dropped
+  clause for LABELING only, and joins the network verdict cache key so two
+  requests differing only in what was deferred cannot share a verdict. The
+  information has to travel: the unconditioned sub-request is otherwise the
+  same request as an unfiltered query, whose correct answer IS the rollup.
+  Inside the planner, `_deferred_conditions(request)` is the one seam a
+  sub-request that drops the WHERE reads (this request's clause AND whatever
+  it was already deferring); `gen_root` sets it at the top.
+- **A connector alone as the cover.** A `connector~` candidate binds the merged
+  key's class, reads zero scans and so out-prices the one scan holding the
+  column (`select l_key subset join web_cust.cust_sk = l_key`); the emitter,
+  with nothing to scan, declined. `network_search._reads_a_scan` refuses a
+  cover with no scan in it. Pinned at the search level in
+  `test_v4_network_search.py` and end-to-end by
+  `test_subset_join_rowset_onto_root.py`.
+- **A request with no join axis** (grand-total aggregates, a `<*>` watermark).
+  Single-row concepts are dropped from the terminals, so the search had nothing
+  to connect and declined without judging anything. `plan_source._no_join_axis`
+  routes such a request straight to the render role: a cross product of scalar
+  scans is its meaning. It is defined as "`terminal_addresses` is empty", so it
+  cannot drift from what the search actually drops.
+- **The error surface.** `validate_query_is_resolvable` lived only on the
+  fallback path. `plan_source` now calls the same helper on a decline, so a
+  requested ROOT concept bound nowhere under any spelling raises
+  `NoDatasourceException` instead of returning `None` into a render.
+
+Also gone: the `union_derived_concepts` injection in
+`create_pruned_concept_graph`, added by the derived-key union fix purely to keep
+the fallback consistent with the network's union candidates. The `[v4]` decline
+log no longer speaks of "falling through to the single-scan planners". The two
+typed tails after a decline (`_cross_component_source`, the unconditioned
+retry) remain: an instrumented pass showed the retry answering conditioned
+rollup requests in the discovery suite and the cross-component assembly firing
+in the engine suite; neither fires on TPC-DS generation.
+
+Gates: TPC-DS generation byte-identical 109/109, and every query in tpc_h,
+thelook_duckdb, ncaa, hackernews and tpc_ds unchanged except the q18 regroup
+above (304 queries diffed against the branch point, with the same five
+generation failures on both sides). `tests/engine` 948, its `scripts/` runner
+and `tests/io` 241, and the processing/discovery/join-matrix,
+complex/generators/nodes/optimization, modeling and TPC-DS batteries green,
+and the differential fuzzer corpus 238/238.
+
 ## 0. Progress (s32)
 
 **Landed (inert — no production code path imports it):**
@@ -1459,7 +1561,8 @@ silent wrong-rows regression, not a build error.
   by cross product; driving the search with them invents a spurious join key
   and raises false ambiguity). Today: the `Granularity.SINGLE_ROW` filter in
   `_resolve_bridge_graph`.
-- **`__preql_internal` addresses are not terminals.**
+- **`__preql_internal` concepts are declared `SINGLE_ROW`**, so the same
+  filter keeps them out; there is no separate name test.
 - **Derivation purge**: CONSTANT / AGGREGATE / FILTER nodes are not path
   material — EXCEPT a mandatory concept whose canonical is
   datasource-materialized (a summary table binding `count(x) by k` makes that

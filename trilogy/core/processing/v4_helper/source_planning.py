@@ -2,8 +2,9 @@
 
 Turns the network search's chosen sources into StrategyNodes: scans each chosen
 datasource, materializes derived connectors, completes partial bindings, and
-merges the components. Also hosts the typed fallbacks a declined search falls
-through to.
+merges the components. The search's verdict on a cover is final: no second
+cover search runs behind it. What follows a decline is typed and narrow (the
+lineage-related cross product, the unconditioned retry), never a re-search.
 """
 
 from __future__ import annotations
@@ -27,8 +28,10 @@ from trilogy.core.processing.aggregate_rollup import (
     _is_additive_aggregate,
     filter_finer_row_args,
     get_additive_rollup_concepts,
+    merge_rollup_concepts,
 )
 from trilogy.core.processing.condition_utility import (
+    and_optional,
     condition_implies,
     merge_conditions,
 )
@@ -52,6 +55,9 @@ from trilogy.core.processing.node_generators.select_helpers.datasource_nodes imp
     create_select_node_candidate,
     finalize_select_node,
 )
+from trilogy.core.processing.node_generators.select_node import (
+    validate_query_is_resolvable,
+)
 from trilogy.core.processing.nodes import History, MergeNode, SelectNode, StrategyNode
 from trilogy.core.processing.v4_helper.condition_injection import condition_row_args
 from trilogy.core.processing.v4_helper.constants import ROW_SHAPE_BARRIER_DERIVATIONS
@@ -60,6 +66,8 @@ from trilogy.core.processing.v4_helper.history import V4History
 from trilogy.core.processing.v4_helper.network_build import (
     build_source_network,
     connector_join_keys,
+    rollup_concepts_by_node,
+    terminal_addresses,
 )
 from trilogy.core.processing.v4_helper.network_model import (
     CONNECTOR_NODE_PREFIX,
@@ -90,6 +98,12 @@ class SourceRequest:
     # cannot re-enter `_complete_partial_requested` on itself (infinite loop when
     # the concept has no complete source).
     complete_partials: bool = True
+    # The statement WHERE this request has deliberately dropped, because some
+    # caller above will apply it instead. Never rendered here -- it is carried
+    # only so LABELING can see it, and today only the rollup binding reads it:
+    # a pre-aggregated summary is not a legal source for an aggregate that a
+    # later step will filter to a subset of the rows it already summed.
+    deferred_conditions: BuildWhereClause | None = None
 
 
 @dataclass(frozen=True)
@@ -99,8 +113,10 @@ class NetworkDecision:
     `None` from `_network_source` means the search DECLINED: it found no
     solution, or found one the emitter cannot express. A decision with
     `bridge=None` is not a decline: the search succeeded and the answer is a
-    single scan, which `_direct_source` renders. A decline needs another home,
-    a single-scan does not."""
+    single scan, which `_direct_source` renders. `_direct_source` runs its own
+    graph-scored cover search, so it is ONLY ever handed a request the network
+    already answered (or one with nothing to search, see `_no_join_axis`);
+    behind a decline it could accept a cover the network judged disconnected."""
 
     bridge: BridgePlan | None
 
@@ -133,6 +149,31 @@ def _requested_concepts(request: SourceRequest) -> list[BuildConcept]:
     return unique(
         request.outputs + condition_row_args(request.conditions),
         "address",
+    )
+
+
+def _no_join_axis(request: SourceRequest) -> bool:
+    """Every requested concept is single-row: a grand-total aggregate, a `<*>`
+    watermark. The search drops such concepts from its terminals (they join by
+    cross product, never by a key), so it has nothing to connect and declines
+    without judging anything. The read is a cross product of scalar scans by
+    definition, which `_direct_source` renders."""
+    return not terminal_addresses(_requested_concepts(request))
+
+
+def _deferred_conditions(request: SourceRequest) -> BuildWhereClause | None:
+    """What a sub-request that drops `request.conditions` must still carry for
+    labeling: the clause this request applies, and whatever it was already
+    deferring. Dropping only the former would let a summary roll up rows a
+    grandparent will filter."""
+    if request.conditions is None:
+        return request.deferred_conditions
+    if request.deferred_conditions is None:
+        return request.conditions
+    return BuildWhereClause(
+        conditional=and_optional(
+            request.deferred_conditions.conditional, request.conditions.conditional
+        )
     )
 
 
@@ -313,6 +354,38 @@ def _inject_union_datasources(
     graph.add_edges_from(union_edges)
 
 
+def _inject_rollup_edges(
+    graph: ReferenceGraph,
+    concepts: list[BuildConcept],
+    request: SourceRequest,
+    chosen: set[str],
+) -> set[str]:
+    """A rollup binding (`network_build.rollup_concepts_by_node`) has no edge
+    in the reference graph, which relates a summary only to the metric at its
+    declared grain. Draw the request-grain edge on the bridge's private graph
+    so the emitter's neighbor walk attaches the aggregate to the chosen scan.
+    Returns the concept nodes drawn: they spell the aggregate's grain-pinned
+    canonical, not the terminal address the pruning below keeps by."""
+    rollups = rollup_concepts_by_node(
+        concepts,
+        request.environment,
+        graph,
+        request.conditions,
+        request.deferred_conditions,
+    )
+    edges: list[tuple[str, str]] = []
+    drawn: set[str] = set()
+    for node in sorted(chosen & set(rollups)):
+        for concept in rollups[node]:
+            concept_node = concept_to_node(concept)
+            graph.concepts[concept_node] = concept
+            edges.append((node, concept_node))
+            edges.append((concept_node, node))
+            drawn.add(concept_node)
+    graph.add_edges_from(edges)
+    return drawn
+
+
 def _memoized_search(network: SourceNetwork, history: History) -> SearchResult:
     """The search, memoized for this build request on the network's structural
     signature. The ROOT planner re-asks the same question several times per
@@ -335,17 +408,17 @@ def _report_truncation(network: SourceNetwork, result: SearchResult) -> None:
 
     With a solution in hand the plan is valid but need not be cost-minimal.
     Without one the search DECLINED FOR LACK OF BUDGET, which is not the same
-    claim as "no solution exists", yet `plan_source` falls through to
-    `_direct_source` and the unconditioned retry identically for both. Saying
-    so is the difference between a known limitation and a silent one."""
+    claim as "no solution exists", yet `plan_source` treats it as a decline
+    identically. Saying so is the difference between a known limitation and a
+    silent one."""
     logger.warning(
         "[v4] source search hit %s over %d candidates for terminals %s: %s",
         result.limit.value if result.limit else "no limit",
         len(network.candidates),
         ",".join(network.terminals),
         (
-            "no solution emitted, falling through to the single-scan planners, "
-            "which is a guess, not evidence that none exists"
+            "no solution emitted; the request is declined, which is a budget "
+            "verdict, not evidence that no solution exists"
             if result.exhausted
             else "solution kept but it may not be cost-minimal"
         ),
@@ -369,7 +442,7 @@ def _network_source(
     if v4_history is not None:
         verdict_key = (
             "-".join(sorted(c.address for c in concepts)),
-            str(request.conditions),
+            f"{request.conditions}|{request.deferred_conditions}",
             defer_single_scan,
         )
         cached_verdict = v4_history.network_verdicts.get(verdict_key)
@@ -378,7 +451,11 @@ def _network_source(
         if cached_verdict == "defer":
             return NetworkDecision(bridge=None)
     network = build_source_network(
-        concepts, request.environment, request.graph, request.conditions
+        concepts,
+        request.environment,
+        request.graph,
+        request.conditions,
+        request.deferred_conditions,
     )
     result = _memoized_search(network, request.history)
     if result.truncated:
@@ -389,8 +466,7 @@ def _network_source(
         # fall-through is evidence-based (contrast _report_truncation).
         logger.info(
             "[v4] source search declined: terminals %s share no join-component "
-            "with the rest of the request, no connected cover exists; falling "
-            "through to the single-scan planners",
+            "with the rest of the request, no connected cover exists",
             ",".join(sorted(result.split)),
         )
     if result.solution is None:
@@ -425,6 +501,7 @@ def _network_source(
     # convention, so injecting here makes its chosen node addresses resolvable.
     _inject_union_datasources(graph, concepts, request.environment)
     chosen = set(result.solution.sources)
+    rollup_nodes = _inject_rollup_edges(graph, concepts, request, chosen)
     # A derived-connector choice (`connector~<alias>`) is not a scan: its alias
     # concept rides in `plan.concepts` and `_derived_connector_nodes` plans the
     # `alias_origin_lookup` origin as a parent. Only real scans face the
@@ -509,7 +586,7 @@ def _network_source(
     # carries an `@grain` suffix that need not match the default-grain spelling, and
     # deleting the graph's own node severs the datasource edge that binds it.
     def _keep(node: str) -> bool:
-        if node in chosen:
+        if node in chosen or node in rollup_nodes:
             return True
         if not node.startswith("c~"):
             return False
@@ -1109,6 +1186,18 @@ def _merge_component_sources(
                 else None
             ),
         )
+    # A summary read below the target grain (a rollup binding) is summed at
+    # the merge, where the dimension supplying the coarser key has been joined.
+    # Judged on the request's own concepts: the join spine the bridge carried
+    # in is what the regroup sums away, so it leaves the outputs too.
+    requested = {concept.address for concept in _requested_concepts(request)}
+    rollup = merge_rollup_concepts(
+        (parent.grain for parent in parents),
+        [concept for concept in outputs if concept.address in requested],
+        request.environment.concepts,
+    )
+    if rollup:
+        outputs = [concept for concept in outputs if concept.address in requested]
     return MergeNode(
         input_concepts=inputs,
         output_concepts=outputs,
@@ -1118,6 +1207,8 @@ def _merge_component_sources(
         conditions=(
             request.conditions.conditional if request.conditions is not None else None
         ),
+        force_group=True if rollup else None,
+        rollup_concepts=rollup or None,
     )
 
 
@@ -1362,6 +1453,7 @@ def _plan_finer_filter_rollup(request: SourceRequest) -> StrategyNode | None:
             graph=request.graph,
             history=request.history,
             conditions=None,
+            deferred_conditions=_deferred_conditions(request),
             depth=request.depth + 1,
             require_full=request.require_full,
         )
@@ -1516,7 +1608,11 @@ def _cross_component_source(request: SourceRequest) -> StrategyNode | None:
         return None
     concepts = _search_concepts_for_bridge(request)
     network = build_source_network(
-        concepts, request.environment, request.graph, request.conditions
+        concepts,
+        request.environment,
+        request.graph,
+        request.conditions,
+        request.deferred_conditions,
     )
     groups = _terminal_components(network)
     if len(groups) < 2:
@@ -1565,6 +1661,7 @@ def _cross_component_source(request: SourceRequest) -> StrategyNode | None:
                 graph=request.graph,
                 history=request.history,
                 conditions=None,
+                deferred_conditions=_deferred_conditions(request),
                 depth=request.depth + 1,
                 require_full=request.require_full,
                 complete_partials=request.complete_partials,
@@ -1605,18 +1702,30 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
     if pinned_rollup is not None:
         return pinned_rollup
     decision = _network_source(request)
-    if decision is not None and decision.bridge is not None:
+    if decision is None and _no_join_axis(request):
+        # Nothing was searched: the terminal set is empty. Render the scalar
+        # scans; their cross product is the request's meaning.
+        decision = NetworkDecision(bridge=None)
+    if decision is None:
+        # The search's verdict is final: no second cover search runs behind
+        # it. What it can still say is WHY, when the reason is a column that
+        # exists nowhere.
+        validate_query_is_resolvable(
+            (concept.address for concept in _requested_concepts(request)),
+            request.environment,
+        )
+    elif decision.bridge is not None:
         merged = _emit_bridge(request, decision.bridge)
         if merged is not None:
             return merged
-    # Either the search answered with a single scan (`_direct_source` is that
-    # solution's renderer), or it declined and this is the last read that might
-    # still work. The escalation is only "may this read accept a partial
-    # binding"; it is not a re-search.
-    for accept_partial in ((False,) if request.require_full else (False, True)):
-        direct = _direct_source(request, accept_partial)
-        if direct is not None:
-            return direct
+    else:
+        # The search answered with a single scan; `_direct_source` is that
+        # solution's renderer. The escalation is only "may this read accept a
+        # partial binding"; it is not a re-search.
+        for accept_partial in (False,) if request.require_full else (False, True):
+            direct = _direct_source(request, accept_partial)
+            if direct is not None:
+                return direct
     if decision is not None and decision.bridge is None:
         # The single-scan solution `_direct_source` could not render: a derived
         # output only the bridge's concept-node assembly computes (the
@@ -1639,6 +1748,7 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
                 graph=request.graph,
                 history=request.history,
                 conditions=None,
+                deferred_conditions=_deferred_conditions(request),
                 depth=request.depth,
                 require_full=request.require_full,
             )

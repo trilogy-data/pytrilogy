@@ -7,6 +7,7 @@ from trilogy.core.processing.v4_helper import network_search as ns
 from trilogy.core.processing.v4_helper import network_topology as nt
 from trilogy.core.processing.v4_helper.network_build import build_source_network
 from trilogy.core.processing.v4_helper.network_model import (
+    CONNECTOR_NODE_PREFIX,
     BindingStrength,
     ConditionFit,
     Obligation,
@@ -301,6 +302,47 @@ merge first_parent into pid;
 """
 
 
+ROWSET_SUBSET_MODEL = """
+key l_id int;
+property l_id.l_key int;
+property l_id.l_val int;
+datasource lsrc (i: l_id, k: l_key, v: l_val) grain (l_id)
+query '''select 1 i, 1 k, 1 v union all select 2 i, 2 k, 4 v''';
+
+key r_id int;
+property r_id.r_key int;
+property r_id.r_val int;
+datasource rsrc (i: r_id, k: r_key, v: r_val) grain (r_id)
+query '''select 1 i, 1 k, 100 v union all select 2 i, 2 k, 400 v''';
+
+with web_cust as
+where r_val < 800
+select r_key as cust_sk;
+"""
+
+ROLLUP_SUMMARY_MODEL = """
+key id int;
+key origin_code string;
+key destination_code string;
+property id.flight_date date;
+
+auto flight_count <- count(id);
+
+datasource flight (id: id, origin_code: origin_code, destination_code: destination_code, flight_date: flight_date)
+grain (id)
+query '''select 1 as id, 'A' as origin_code, 'X' as destination_code, '2024-01-01'::date as flight_date''';
+
+datasource flight_summary (
+    origin_code: origin_code,
+    destination_code: destination_code,
+    flight_date: flight_date,
+    flight_count: flight_count,
+)
+grain (origin_code, destination_code, flight_date)
+query '''select 'A' as origin_code, 'X' as destination_code, '2024-01-01'::date as flight_date, 1 as flight_count''';
+"""
+
+
 def _build(model: str):
     env = Environment()
     env.parse(model)
@@ -353,6 +395,32 @@ class TestNetworkLabels:
         )
 
         assert set(network.terminals) == {"local.customer_id", "local.item_id"}
+
+    def test_rollup_binding_labels_summary_at_request_grain(self, monkeypatch):
+        """The graph relates a summary only to the metric at its declared
+        grain; the label must also offer the metric at THIS request's coarser
+        grain when the dropped component sums away, or the summary is never a
+        candidate for the rollup and the raw fact is re-aggregated."""
+        requests = _captured_network_requests(
+            monkeypatch,
+            ROLLUP_SUMMARY_MODEL,
+            "select origin_code, flight_date, flight_count;",
+        )
+        rollup_requests = [
+            request
+            for request in requests
+            if {c.address for c in request[0]} >= {"local.flight_count"}
+        ]
+        assert rollup_requests
+        network = build_source_network(*rollup_requests[0])
+
+        binding = network.candidates["ds~flight_summary"].bindings["local.flight_count"]
+        assert binding.strength is BindingStrength.FULL
+        assert not binding.stored
+        assert "local.flight_count" not in network.candidates["ds~flight"].bindings
+        result = search_sources(network)
+        assert result.solution is not None
+        assert result.solution.sources == ("ds~flight_summary",)
 
 
 class TestNetworkSearch:
@@ -646,6 +714,34 @@ class TestNetworkSearch:
         assert result.solution is not None
         assert "connector~local.first_parent" in result.solution.sources
         assert any(node.startswith("ds~") for node in result.solution.sources)
+
+    def test_connector_alone_is_not_a_cover(self, monkeypatch):
+        """A rowset connector binds the merged key's whole class, so on
+        bindings alone it covers a request for that key by itself -- and,
+        reading zero scans, it prices below the one scan that actually holds
+        the column. A connector relates scans; a cover containing none reads no
+        rows and the emitter, with nothing to scan, can only decline."""
+        requests = _captured_network_requests(
+            monkeypatch,
+            ROWSET_SUBSET_MODEL,
+            "select l_key subset join web_cust.cust_sk = l_key;",
+        )
+        networks = [build_source_network(*request) for request in requests]
+        candidates = [
+            network
+            for network in networks
+            if any(
+                node.startswith(CONNECTOR_NODE_PREFIX) for node in network.candidates
+            )
+        ]
+        assert candidates, "no request offered a connector candidate"
+        for network in candidates:
+            assert "ds~lsrc" in network.candidates
+            solution = search_sources(network).solution
+            assert solution is not None
+            assert any(
+                node.startswith("ds~") for node in solution.sources
+            ), solution.sources
 
     def test_solution_is_deterministic_across_runs(self):
         benv, graph = _build(BRIDGE_MODEL)
@@ -998,9 +1094,11 @@ def _captured_network_requests(monkeypatch, model: str, query: str):
 
     captured = []
 
-    def capturing_build(concepts, environment, graph, conditions=None):
-        captured.append((concepts, environment, graph, conditions))
-        return real_build(concepts, environment, graph, conditions)
+    def capturing_build(
+        concepts, environment, graph, conditions=None, deferred_conditions=None
+    ):
+        captured.append((concepts, environment, graph, conditions, deferred_conditions))
+        return real_build(concepts, environment, graph, conditions, deferred_conditions)
 
     monkeypatch.setattr(sp, "build_source_network", capturing_build)
     env = Environment()
@@ -1025,7 +1123,7 @@ class TestUnofferedProbePinning:
             COALESCING_ARMS_MODEL,
             "where s_cust is null select c_cust union join s_cust = c_cust;",
         )
-        for concepts, benv, graph, conditions in requests:
+        for concepts, benv, graph, conditions, _ in requests:
             probe_nodes = [
                 node
                 for node in graph.nodes

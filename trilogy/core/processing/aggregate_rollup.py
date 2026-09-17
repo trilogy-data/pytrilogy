@@ -220,3 +220,45 @@ def get_additive_rollup_concepts(
         ):
             rollups.append(concept)
     return rollups
+
+
+def merge_rollup_concepts(
+    parent_grains: Iterable[BuildGrain | None],
+    all_concepts: list[BuildConcept],
+    concepts_by_address: Mapping[str, BuildConcept],
+) -> list[BuildConcept]:
+    """The additive aggregates a merge of `parent_grains` must SUM-roll up to
+    reach `all_concepts`' grain: the joined rows sit at the parents' finer
+    grain and every target component the join does not reach is a property
+    keyed within it (a per-customer count joined to a customer's region rolls
+    to region). Empty when no rollup applies, including when any requested
+    aggregate is non-additive: a merge cannot regroup a distinct count."""
+    additive = [c for c in all_concepts if c.is_aggregate and _is_additive_aggregate(c)]
+    if not additive or len(additive) != sum(1 for c in all_concepts if c.is_aggregate):
+        return []
+    merge_components: set[str] = set()
+    for grain in parent_grains:
+        if grain and grain.components:
+            merge_components.update(grain.components)
+    target_components = {c.address for c in all_concepts if not c.is_aggregate}
+    # A grain component must actually be summed AWAY. When every one of them
+    # survives into the output the merge already sits at the target's row
+    # identity, and the outputs beyond it are attributes the join carried in at
+    # that same grain: grouping there re-sums one row per group, buying an
+    # identical answer and a GROUP BY (thelook q17's pair rollup read beside
+    # both its keys' dimension attributes).
+    if not merge_components - target_components:
+        return []
+    unreached = target_components - merge_components
+    if not (merge_components and unreached):
+        return []
+    for address in unreached:
+        concept = concepts_by_address.get(address)
+        if (
+            concept is None
+            or concept.purpose != Purpose.PROPERTY
+            or not concept.keys
+            or not concept.keys.issubset(merge_components)
+        ):
+            return []
+    return additive
