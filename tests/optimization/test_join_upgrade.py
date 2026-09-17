@@ -103,7 +103,9 @@ def _block_pin_heal(executor):
     """A sibling source carrying `region` inside a larger grain: it anchors the
     `~region` binding, so `heal_pinned_partials` leaves the FULL join in place
     for the optimizer passes under test (otherwise the WHERE proof heals the
-    partial pre-discovery and no join is ever emitted)."""
+    partial pre-discovery and no join is ever emitted). It also carries
+    `amount`: an anchor whose rows the WHERE proof (`amount > 5`) can never
+    kill is not dispensable, which is what keeps the anchor blocking."""
     executor.execute_text("""
         key rm_id int;
         property <rm_id, region>.rm_note string;
@@ -112,10 +114,11 @@ def _block_pin_heal(executor):
             rm_id: rm_id,
             region: ~region,
             rm_note: rm_note,
+            amount: amount,
         )
         grain (rm_id, region)
         query '''
-        SELECT 1 AS rm_id, 'NA' AS region, 'x' AS rm_note
+        SELECT 1 AS rm_id, 'NA' AS region, 'x' AS rm_note, 10 AS amount
         ''';
     """)
 
