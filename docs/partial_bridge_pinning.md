@@ -87,10 +87,23 @@ Guards, each load-bearing:
   (`partial datasource ... complete where`) is a row-subset contract the union
   machinery completes across siblings; healing it breaks that assembly
   (`test_partial_key_union_matrix`).
-- **Sibling anchor blocks.** If another row-source carries the key inside a
-  LARGER grain (store_sales anchoring store_returns' `~` grain keys), the pin
-  does not shrink the population to this datasource's rows — the key stays
-  partial and the sibling-stitch machinery owns the merge.
+- **Sibling anchor blocks unless dispensable.** If another row-source carries
+  the key inside a LARGER grain (store_sales anchoring store_returns' `~`
+  grain keys), a pin that kills dimension extensions does not by itself
+  shrink the population to this datasource's rows: anchor-only rows carry the
+  anchor's own values, not manufactured NULLs. The key still heals when the
+  anchor is dispensable (`_anchors_dispensable`): (a) some killer lies
+  outside what the anchor's rows can carry by keyed lookup
+  (`_lookup_supply`, which walks complete lookups and stops at `~` bindings;
+  the FD closure is the wrong tool because a same-grain sibling's columns are
+  in it), and (b) every statement reference in the fact's component is
+  reachable from the fact without an anchor. (b) is load-bearing: with an
+  anchor-only measure selected, the healed key would license an INNER merge
+  that drops the fact's own unmatched rows. Partition-disjoint `complete
+  where` siblings never anchor and never count as suppliers. This is what
+  lets `where sales.return_date.week_seq in (...)` (TPC-DS q83, q01, q91)
+  plan the returns partitions alone instead of stitching the sales union in
+  and filtering it away.
 - **Killers must be bound and component-local.** A derived tautology
   (`coalesce(x, 5) is not null`) or a concept from a disconnected subgraph
   (attached via a cross-join gate) is non-null on extension rows too and
@@ -116,7 +129,12 @@ generates the table above.
 
 ## Known residual
 
-None. The by-key-aggregate shape (`min(amount) by user_id` compared against a
+A `~`-keyed fact row with no anchor row (a return whose sale is absent) is
+dropped when a pin on the fact's own concept sits beside an anchor-only
+measure: the anchor merge renders INNER. Pinned as a strict xfail
+(`test_anchor_needed_keeps_saleless_return`); TPC-DS data never exercises it.
+
+The by-key-aggregate shape (`min(amount) by user_id` compared against a
 row value, selected beside additional keys and metrics) — a pre-existing
 discovery defect that reproduced with no `~` in the model — is fixed by the
 mixed-scalar spine widening in `group_graph.py`

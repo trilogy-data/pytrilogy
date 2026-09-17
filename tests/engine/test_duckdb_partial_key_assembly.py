@@ -396,3 +396,91 @@ def test_forked_full_column_set(forked):
             (None, None, 30, None, None, "C", "LATER", None, None),
         ]
     )
+
+
+# sales anchors returns' `~` grain keys (the store_sales / store_returns
+# shape); return 9 has no sale, return date is a nullable key on returns only.
+_ANCHORED = """
+key order_id int;
+key item_id int;
+key date_id int;
+property date_id.week int;
+properties <order_id, item_id> (
+    amount int?,
+    refund int?,
+);
+
+root datasource sales (
+    order_id: order_id,
+    item_id: item_id,
+    amount: amount,
+)
+grain (order_id, item_id)
+query '''
+select 1 as order_id, 10 as item_id, 50 as amount union all
+select 1, 20, 60 union all
+select 2, 10, 70
+''';
+
+root datasource returns (
+    order_id: ~order_id,
+    item_id: ~item_id,
+    date_id: ?date_id,
+    refund: refund,
+)
+grain (order_id, item_id)
+query '''
+select 1 as order_id, 10 as item_id, 5 as date_id, 5 as refund union all
+select 2, 10, 6, 7 union all
+select 9, 10, 5, 9
+''';
+
+root datasource dates (
+    date_id: date_id,
+    week: week,
+)
+grain (date_id)
+query '''
+select 5 as date_id, 1 as week union all
+select 6, 2
+''';
+"""
+
+
+@pytest.fixture(scope="module")
+def anchored():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_ANCHORED)
+    return executor
+
+
+def test_anchor_exclusive_pin_heals(anchored):
+    """A pin on a concept only the `~` fact can supply (its return date) kills
+    every sales-only row, so the returns keys heal for the statement: no
+    sibling stitch, no sales scan, and the saleless return is a plain fact row."""
+    query = "where week = 1 select order_id, sum(refund) as total_refund order by order_id asc;"
+    sql = anchored.generate_sql(query)[-1]
+    assert "FULL JOIN" not in sql, sql
+    assert "50 as amount" not in sql, sql
+    assert _rows(anchored, query) == [(1, 5), (9, 9)]
+
+
+_ANCHOR_NEEDED = "where week = 1 select order_id, sum(refund) as total_refund, sum(amount) as total_amount order by order_id asc;"
+
+
+def test_anchor_needed_stays_partial(anchored):
+    """The same pin beside a sales-only measure: the anchor is not dispensable,
+    so the keys stay `~` and sales is still merged in."""
+    sql = anchored.generate_sql(_ANCHOR_NEEDED)[-1]
+    assert "50 as amount" in sql, sql
+    assert _rows(anchored, _ANCHOR_NEEDED)[0] == (1, 5, 50)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="pre-existing: the anchor merge renders INNER under the pin, dropping the saleless return",
+)
+def test_anchor_needed_keeps_saleless_return(anchored):
+    """A return with no sale is a fact row of the `~` binding and must survive
+    the pin with a NULL amount."""
+    assert _rows(anchored, _ANCHOR_NEEDED) == [(1, 5, 50), (9, 9, None)]
