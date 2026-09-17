@@ -26,8 +26,10 @@ from trilogy.core.processing.condition_utility import (
     filter_union_children,
 )
 from trilogy.core.processing.node_generators.select_helpers.condition_routing import (
+    absence_atoms,
     datasource_conditions,
     preexisting_conditions,
+    strip_atoms,
 )
 from trilogy.core.processing.node_generators.select_helpers.source_scoring import (
     membership_complete_grain_keys,
@@ -441,7 +443,12 @@ def create_union_datasource_candidate(
     force_group = False
     group_source_count = 0
     parents = []
+    # An absence atom (`flag is null` on a column an arm never NULLs) is a
+    # merge-level test no arm can apply, so the union must not claim it.
+    unclaimed: list[BoolExpr] = []
     for child, injected_cond in effective:
+        if injected_cond is not None:
+            unclaimed.extend(absence_atoms(child, injected_cond))
         subnode, fg = create_datasource_node(
             child,
             all_concepts,
@@ -456,6 +463,9 @@ def create_union_datasource_candidate(
     # Computed over the condition-filtered branches, not the full child list:
     # a dropped branch can't contribute (or heal) partiality.
     intrinsic_addrs = union_unhealed_partial_addresses(child for child, _ in effective)
+    union_preexisting = (
+        strip_atoms(conditions.conditional, unclaimed) if conditions else None
+    )
     union_partials: list[BuildConcept] = (
         [c for c in all_concepts if c.address in intrinsic_addrs]
         if intrinsic_addrs
@@ -472,7 +482,7 @@ def create_union_datasource_candidate(
             parents=parents,
             depth=depth,
             partial_concepts=union_partials,
-            preexisting_conditions=conditions.conditional if conditions else None,
+            preexisting_conditions=union_preexisting,
         ),
         force_group,
         group_source_count,

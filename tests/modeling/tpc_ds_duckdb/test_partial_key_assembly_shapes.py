@@ -273,3 +273,35 @@ def test_return_date_pin_heals_unified_returns(engine_sf001: Executor):
         assert _scans(sql, table) == 0, (table, sql)
     for table in ("store_returns", "catalog_returns", "web_returns"):
         assert _scans(sql, table) == 1, (table, sql)
+
+
+def test_partition_pin_keeps_returns_absence_at_merge(engine_sf001: Executor):
+    """`channel = 'STORE'` lets the STORE returns partition scan alone (its
+    table-level `complete where` is satisfied), but its column-level `~` keys
+    are still an extension license: the scan joins LEFT and `is_returned is
+    null` (a raw `true` on returns) is tested after the join, never inside the
+    scan where it reads `true is null`."""
+    engine_sf001.environment = Environment(working_path=working_path)
+    sql = engine_sf001.generate_sql("""import all_sales as sales;
+
+where
+    sales.channel = 'STORE' and sales.is_returned is null
+    and sales.sale_date.year = 2000 and sales.billing_customer.sk is not null
+select
+    sales.sale_date.year,
+    sales.item.sk,
+    sales.billing_customer.sk,
+    sum(sales.quantity) as qty,
+;""")[-1]
+    assert "true  is null" not in sql, sql
+    rows = engine_sf001.execute_raw_sql(sql).fetchall()
+    truth = engine_sf001.execute_raw_sql("""select count(*), sum(qty) from (
+            select d_year, ss_item_sk, ss_customer_sk, sum(ss_quantity) as qty
+            from memory.store_sales
+            join memory.date_dim on ss_sold_date_sk = d_date_sk
+            left join memory.store_returns
+              on sr_ticket_number = ss_ticket_number and sr_item_sk = ss_item_sk
+            where sr_ticket_number is null and d_year = 2000
+              and ss_customer_sk is not null
+            group by 1, 2, 3)""").fetchone()
+    assert (len(rows), sum(r[3] for r in rows if r[3] is not None)) == truth

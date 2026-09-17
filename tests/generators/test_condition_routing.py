@@ -168,6 +168,8 @@ def test_datasource_conditions_drops_non_nullable_is_not_null_atom():
 
 
 def test_datasource_conditions_keeps_non_nullable_is_null_atom():
+    """On a scan without `~` an `is null` atom is a plain value test on the
+    scan's own rows and routes into it as before."""
     build_env = _build_sales_environment()
     ds = build_env.datasources["items"]
     is_null_cond = _condition(
@@ -179,6 +181,28 @@ def test_datasource_conditions_keeps_non_nullable_is_null_atom():
     )
 
     assert routed == is_null_cond
+
+
+def test_datasource_conditions_leaves_partial_scan_is_null_atom_to_the_merge():
+    """A scan binding a key `~` is the side an outer merge can leave absent:
+    `x is null` on its own column tests absence, so it is never pushed into
+    the scan (direct or injected) and is not claimed as applied."""
+    build_env = _build_sales_environment()
+    ds = build_env.datasources["sales"]
+    is_null_cond = _condition(
+        build_env.concepts["sale_year"], MagicConstants.NULL, ComparisonOperator.IS
+    )
+    where = BuildWhereClause(conditional=is_null_cond)
+
+    own = ds.where.conditional
+    assert datasource_conditions(ds, where, None, partial_is_full=True) == own
+    assert datasource_conditions(ds, None, is_null_cond, partial_is_full=True) == own
+    assert (
+        preexisting_conditions(
+            ds, where, partial_is_full=False, satisfies_conditions=True
+        )
+        is None
+    )
 
 
 def test_datasource_conditions_ignores_existence_condition():

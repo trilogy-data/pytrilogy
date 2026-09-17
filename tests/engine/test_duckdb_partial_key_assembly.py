@@ -484,3 +484,57 @@ def test_anchor_needed_keeps_saleless_return(anchored):
     """A return with no sale is a fact row of the `~` binding and must survive
     the pin with a NULL amount."""
     assert _rows(anchored, _ANCHOR_NEEDED) == [(1, 5, 50), (9, 9, None)]
+
+
+# returns binds `returned` as a raw literal: the flag is true on a returns row
+# and NULL only where the merge finds no returns row. Line (2, 10) is returned.
+_FLAGGED = """
+key order_id int;
+key item_id int;
+properties <order_id, item_id> (
+    amount int?,
+    returned bool?,
+);
+
+root datasource sales (
+    order_id: order_id,
+    item_id: item_id,
+    amount: amount,
+)
+grain (order_id, item_id)
+query '''
+select 1 as order_id, 10 as item_id, 50 as amount union all
+select 1, 20, 60 union all
+select 2, 10, 70
+''';
+
+root datasource returns (
+    order_id: ~order_id,
+    item_id: ~item_id,
+    raw(''' true '''): returned,
+)
+grain (order_id, item_id)
+query '''
+select 2 as order_id, 10 as item_id
+''';
+"""
+
+
+@pytest.fixture(scope="module")
+def flagged():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_FLAGGED)
+    return executor
+
+
+def test_absence_pin_on_raw_flag(flagged):
+    """`returned is null` tests the ABSENCE of a returns row. That is a
+    merge-level fact: pushed into the returns scan it renders `true is null`
+    and empties the scan, so every line looks unreturned."""
+    query = "where returned is null select order_id, sum(amount) as total order by order_id asc;"
+    assert _rows(flagged, query) == [(1, 110)]
+
+
+def test_presence_pin_on_raw_flag(flagged):
+    query = "where returned is not null select order_id, sum(amount) as total order by order_id asc;"
+    assert _rows(flagged, query) == [(2, 70)]

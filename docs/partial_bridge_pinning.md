@@ -44,6 +44,25 @@ keeps them apart end to end:
   rows. A join keyed ON the preserving join's own coalesced spine keys keeps
   both-ways preservation (every family carries the spine).
 
+## A partition pin is not an extension pin
+
+A `partial datasource ... complete where channel = 'STORE'` arm becomes a
+complete source once the statement WHERE implies its partition
+(`partial_is_full`). That completes the TABLE-level stamp only. A
+column-level `~` on the same arm (`SR_TICKET_NUMBER: ~order_id`) is an
+extension license and survives the pin at every layer: the graph
+(`_graph_partial_concepts`), the scan's stamps (`scan_stamps`), and join
+licensing. Clearing it made the returns arm INNER-join its sales sibling.
+
+The same scan is the side an outer merge can leave absent, so `x is null` on
+one of its own columns is a merge-level test (`absence_atoms` in
+`condition_routing.py`): it is never routed into the scan, directly or as a
+union-arm injection, and never claimed as applied. Pushed in, a filtered-out
+row and a never-present row look the same, and a raw `true` returns flag
+renders `true is null` and empties the scan. The gate on `~` is load-bearing:
+on a scan without it the atom is a plain value test on the driving rows and
+must push (`test_union_arm_where_partition`).
+
 ## The span shape (customer x product through a partial fact)
 
 `select customer.sk, product.sk, total` over a fact binding both keys `~`
