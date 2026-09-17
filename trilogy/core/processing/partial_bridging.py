@@ -98,42 +98,113 @@ def _proven_bound(
 def _extension_killed(
     environment: BuildEnvironment,
     key: BuildConcept,
-    proven_bound: set[str],
-    reachable: set[str],
+    killers: set[str],
 ) -> bool:
     """True when the WHERE filters out every extension row ``key`` licenses.
 
     An extension row carries values only for ``key``'s own functional closure;
     everything else on it is manufactured NULL. A proven-non-null bound concept
-    outside that closure therefore kills the row. ``reachable`` limits killers
-    to concepts related to the key's own model component: a concept from a
-    disconnected subgraph attaches to the result via a cross-join gate and is
-    non-null on extension rows too, so it proves nothing.
+    outside that closure therefore kills the row.
     """
-    candidates = {p for p in proven_bound if p in reachable}
-    if not candidates:
-        return False
     closure = build_fd_closure(environment, _spellings(key), include_empty_grain=True)
-    return any(p not in closure for p in candidates)
+    return any(p not in closure for p in killers)
 
 
-def _pair_anchored(
+def _partition_disjoint(a: BuildDatasource, b: BuildDatasource) -> bool:
+    """``complete where`` partitions whose predicates exclude each other never
+    share a row, so neither can anchor the other's keys."""
+    return (
+        a.non_partial_for is not None
+        and b.non_partial_for is not None
+        and conditions_mutually_exclusive(
+            a.non_partial_for.conditional, b.non_partial_for.conditional
+        )
+    )
+
+
+def _pair_anchors(
     key_spellings: set[str], ds: BuildDatasource, datasources: list[BuildDatasource]
-) -> bool:
-    """True when a sibling row-source carries this key inside a LARGER grain.
+) -> list[BuildDatasource]:
+    """Sibling row-sources carrying this key inside a LARGER grain.
 
-    Such a sibling supplies key combinations beyond ``ds``'s subset, so even a
-    pin that kills dimension extensions does not shrink the population to
-    ``ds``'s own rows; the binding stays partial and the sibling-stitch
-    machinery owns the merge.
+    Such a sibling supplies key combinations beyond ``ds``'s subset, so a pin
+    that kills dimension extensions does not by itself shrink the population
+    to ``ds``'s own rows; unless the anchors are dispensable for the statement
+    the binding stays partial and the sibling-stitch machinery owns the merge.
     """
+    anchors: list[BuildDatasource] = []
     for other in datasources:
-        if other.identifier == ds.identifier:
+        if other.identifier == ds.identifier or _partition_disjoint(ds, other):
             continue
         grain = set(other.grain.components)
         if grain & key_spellings and grain - key_spellings:
-            return True
-    return False
+            anchors.append(other)
+    return anchors
+
+
+def _lookup_supply(
+    anchor: BuildDatasource, datasources: list[BuildDatasource]
+) -> set[str]:
+    """Spellings an ``anchor`` row can carry a value for: its own bindings plus
+    every datasource reachable by keyed lookup on what it already carries.
+
+    The FD closure is the wrong tool here: a sibling at the SAME grain binding
+    its keys ``~`` puts its columns in the closure, yet may hold no row for the
+    anchor's key, so the lookup walk stops at partial key bindings. Sources it
+    does enter over-approximate (a nullable FK may miss), which is the safe
+    direction: a killer counted as suppliable only blocks healing.
+    """
+    supply = _bound_spellings([anchor])
+    remaining = [d for d in datasources if d.identifier != anchor.identifier]
+    changed = True
+    while changed:
+        changed = False
+        still: list[BuildDatasource] = []
+        for d in remaining:
+            grain = set(d.grain.components)
+            partial_key = any(
+                _structural_partial(d, c) and c.concept.address in grain
+                for c in d.columns
+            )
+            if grain <= supply and not partial_key:
+                supply |= _bound_spellings([d])
+                changed = True
+            else:
+                still.append(d)
+        remaining = still
+    return supply
+
+
+def _anchors_dispensable(
+    ds: BuildDatasource,
+    anchors: list[BuildDatasource],
+    killers: set[str],
+    referenced_bound: set[str],
+    datasources: list[BuildDatasource],
+) -> bool:
+    """True when the WHERE filters out every anchor-only row and the statement
+    can be answered from ``ds``'s own rows without any anchor.
+
+    An anchor's rows carry values only for what they bind or can look up and
+    are NULL elsewhere, so a proven-non-null concept outside that supply kills
+    them exactly as it kills a dimension extension. The second guard is
+    load-bearing: were the statement to reference a concept ``ds`` can only
+    reach through an anchor (a sales measure, or a dimension hung off the
+    sale's own key), the healed key would license an INNER merge with the
+    anchor that drops the fact's own unmatched rows (a return whose sale is
+    absent). Partition-disjoint siblings never serve ``ds``'s rows, so their
+    bindings do not count either.
+    """
+    for anchor in anchors:
+        if killers <= _lookup_supply(anchor, datasources):
+            return False
+    anchor_ids = {a.identifier for a in anchors}
+    usable = [
+        d
+        for d in datasources
+        if d.identifier not in anchor_ids and not _partition_disjoint(ds, d)
+    ]
+    return referenced_bound <= _lookup_supply(ds, usable)
 
 
 def _component_reach(
@@ -184,18 +255,34 @@ def heal_pinned_partials(
     proven_bound = _proven_bound(conditions, datasources)
     if not proven_bound:
         return
+    referenced_bound = (environment.statement_authored_addresses or set()) & (
+        _bound_spellings(datasources)
+    )
     reach_cache: dict[str, set[str]] = {}
     replacements: dict[str, BuildDatasource] = {}
     for ds in partial_hosts:
+        # A killer must be related to the key's own model component: a concept
+        # from a disconnected subgraph attaches via a cross-join gate and is
+        # non-null on extension rows too, so it proves nothing.
         reach = _reach(ds, datasources, reach_cache)
+        killers = proven_bound & reach
+        if not killers:
+            continue
+        # References outside the component (a membership set built from a
+        # separately imported dimension) are sourced by their own subquery,
+        # never through an anchor.
+        component_refs = referenced_bound & reach
         healed: set[str] = set()
         for column in ds.columns:
             if not _structural_partial(ds, column):
                 continue
             key = column.concept
-            if _pair_anchored(_spellings(key), ds, datasources):
+            anchors = _pair_anchors(_spellings(key), ds, datasources)
+            if anchors and not _anchors_dispensable(
+                ds, anchors, killers, component_refs, datasources
+            ):
                 continue
-            if _extension_killed(environment, key, proven_bound, reach):
+            if _extension_killed(environment, key, killers):
                 healed.add(key.address)
         if not healed:
             continue

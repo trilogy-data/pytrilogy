@@ -256,3 +256,20 @@ select
 ;""")[-1]
     rows = engine_sf001.execute_raw_sql(sql).fetchall()
     assert rows
+
+
+def test_return_date_pin_heals_unified_returns(engine_sf001: Executor):
+    """query83 pins the return date, which only the returns partitions carry:
+    every sales-only line is filtered out, so the returns' `~` keys heal and
+    the plan is the returns union alone - no sales scan, no FULL stitch. A
+    sales measure beside the same pin keeps the stitch (see
+    `_q83_sales_returns_full_join.preql`)."""
+    engine_sf001.environment = Environment(working_path=working_path)
+    sql = engine_sf001.generate_sql(
+        (working_path / "query83.preql").read_text(encoding="utf-8")
+    )[-1]
+    assert sql.count("FULL JOIN") == 0, sql
+    for table in ("store_sales", "catalog_sales", "web_sales"):
+        assert _scans(sql, table) == 0, (table, sql)
+    for table in ("store_returns", "catalog_returns", "web_returns"):
+        assert _scans(sql, table) == 1, (table, sql)

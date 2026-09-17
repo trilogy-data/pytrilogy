@@ -30,14 +30,16 @@ def _sql(dialect, env, statements) -> str:
     return dialect.compile_statement(dialect.generate_queries(env, statements)[0])
 
 
-@pytest.mark.parametrize("name", ["query83.preql", "query97-one.preql"])
+@pytest.mark.parametrize(
+    "name", ["_q83_sales_returns_full_join.preql", "query97-one.preql"]
+)
 def test_query_emits_full_join_on_duckdb(name: str):
     env, statements = _statements(name)
     assert "FULL JOIN" in _sql(DuckDBDialect(), env, statements).upper()
 
 
 def test_shared_key_full_join_lowers_to_spine():
-    env, statements = _statements("query83.preql")
+    env, statements = _statements("_q83_sales_returns_full_join.preql")
 
     sql = _sql(MySQLDialect(), env, statements)
 

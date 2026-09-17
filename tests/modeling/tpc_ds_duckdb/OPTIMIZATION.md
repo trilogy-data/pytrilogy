@@ -8,202 +8,134 @@ Dotted variant query ids such as `97.1` are excluded from the priority ranking;
 those are intentionally testing alternate shapes and are known-bad performance
 cases.
 
-Current main-query timing snapshot:
+TPC-H and thelook are not listed: every delta there is single-digit
+milliseconds, inside timer jitter.
 
-| Query | Trilogy | Reference | Delta | Ratio | Primary suspected cause |
-| --- | ---: | ---: | ---: | ---: | --- |
-| q09 | 0.478s | 0.039s | +0.439s | 12.25x | Filtered aggregate expansion |
-| q97 | 0.382s | 0.068s | +0.314s | 5.62x | Late date filtering + broad merge |
-| q28 | 0.216s | 0.043s | +0.174s | 5.04x | Wide conditional aggregate scan |
-| q66 | 0.305s | 0.143s | +0.162s | 2.13x | Very large generated join/aggregate plan |
-| q78 | 0.304s | 0.188s | +0.116s | 1.62x | Multi-branch sales/returns alignment |
-| q65 | 0.202s | 0.090s | +0.112s | 2.24x | Repeated scans + late dimension joins |
-| q73 | 0.142s | 0.037s | +0.105s | 3.86x | Repeated filtered store-sales graph |
-| q25 | 0.135s | 0.041s | +0.094s | 3.31x | Outer-join merge instead of direct join graph |
-| q85 | 0.709s | 0.623s | +0.087s | 1.14x | Large but near-reference shape |
-| q29 | 0.163s | 0.078s | +0.085s | 2.10x | Outer-join merge instead of direct join graph |
-| q81 | 0.117s | 0.032s | +0.084s | 3.60x | Wide CTE/grouping expansion |
+Snapshot (2026-09-16, sf=1, `amd64-...-16`; `exec` and `comp` from
+`zquery_timing_*.log`, ratios reproduced standalone with DuckDB profiling):
+
+| Query | Trilogy | Reference | Ratio | Root cause (measured, not guessed) |
+| --- | ---: | ---: | ---: | --- |
+| q05 | 0.87s | 0.08s | 10.8x | 5M-row FULL JOIN chain at line grain before the date filter; model-inherent (see 1) |
+| q83 | 0.26s | 0.05s | 5.6x | FIXED: dead sibling stitch to the sales union under a returns-only pin (see 2) |
+| q78 | 0.62s | 0.43s | 1.4x | one 9-CASE GROUP BY over the 3-channel union vs three narrow per-channel aggregates (see 3) |
+| q75 | 0.23s | 0.10s | 2.2x | DuckDB join order inside the shared union CTE; no planner lever found |
+| q23 | 0.63s | 0.42s | 1.5x | inside run-to-run noise when interleaved (min 0.32s vs 0.24s) |
+
+Everything the previous snapshot listed (q09, q97, q28, q66, q65, q73, q25,
+q85, q29, q81) now sits within +0.05s of the reference; those sections are
+kept below only where the pattern is still live.
 
 ## Highest-impact Patterns
 
-### 1. Filtered aggregate expansion can be slower than filtered branches
+### 1. q05: sales x returns unified at line grain, filtered by an OR across sides
 
-Queries q09 and q28 are the clearest measured regressions. The generated shape
-tries to compute many filtered aggregates from one broad scan using large
-`CASE WHEN ... THEN value ELSE NULL END` expressions. DuckDB's reference SQL
-uses separate filtered scalar subqueries or branch subqueries.
+`all_sales` unifies sales and returns onto one (item, order, channel) row, so
+`entity_text <- coalesce(sale dim, return dim)` couples the two sides and the
+row gate `sale_date in window OR return_date in window` cannot be pushed into
+either side. The generated plan FULL JOINs every sales row to every returns row
+(5,041,336 rows through four hash joins, 7.7s of operator time) and filters to
+55K rows afterwards; the reference filters each UNION ALL branch by date first
+and never joins sales to returns.
 
-This is counterintuitive: one broad scan looks cheaper, but the generated plan
-does more per-row expression work, materializes wide intermediate columns, and
-can force `count(distinct CASE ...)` over a larger input than necessary.
+This is the query's semantics, not a planner defect: splitting the OR into
+per-side pre-filters would move a return whose sale is out of window from the
+sale's entity to the return's entity. Two smaller, real inefficiencies remain:
 
-Examples:
+- `young` and `vacuous` are two unions over the same returns tables (split
+  only because the WEB return dim id lives on `web_sales`), FULL-joined to each
+  other on the same keys. Merging same-source union arms would save one
+  5M-row join (~1.3s operator time).
+- The return-date `date_dim` join renders FULL instead of LEFT; harmless for
+  cost, but every unmatched calendar row becomes an all-NULL line.
 
-- `zquery09.log` builds a `highfalutin` CTE with 15 filtered virtual columns,
-  then five scalar aggregate CTEs read from it. This is the largest main-query
-  regression: +0.439s, 12.25x slower than reference.
-- `query09.sql` uses scalar subqueries filtered per quantity bucket. Despite
-  repeated references to `store_sales`, DuckDB executes this much faster.
-- `zquery28.log` computes all bucket metrics in one SELECT with repeated
-  `CASE` filters and `count(distinct CASE ...)` expressions over
-  `ss_quantity between 0 and 30`.
-- `query28.sql` computes each bucket in its own filtered subquery and combines
-  the scalar results.
+Rewriting the query as a `union`-first shape is the only route to the
+reference's cost.
 
-Potential optimizer work:
+### 2. q83: a pin only the partial fact can satisfy heals its `~` keys (landed)
 
-- Add a cost heuristic for filtered aggregate fanout. When many filtered
-  aggregates have disjoint selective predicates, prefer branch-local filtered
-  aggregate CTEs over one wide CASE-projection scan.
-- For `count(distinct CASE WHEN predicate THEN x END)`, consider rendering as a
-  filtered subquery with `count(distinct x)` when the predicate is selective.
-- Avoid materializing wide virtual-filter CTEs when every consumer immediately
-  aggregates them.
-- Treat q09 and q28 as the first benchmark pair for this pass.
+`where sales.return_date.week_seq in (...)` can only be true on a returns
+row, yet the plan FULL-joined the 3.4M-row sales union to the returns union to
+"complete" the returns' `~order_id`/`~item.sk`, then dropped every sales-only
+row at the date join. The sibling-anchor guard in `heal_pinned_partials`
+blocked healing whenever any sibling carried the key in a larger grain.
 
-### 2. Push filters before merge/align joins
+The guard is now conditional (`_anchors_dispensable`): an anchor is
+dispensable when (a) some proven-non-null concept is outside what the anchor's
+rows can carry by keyed lookup (`_lookup_supply`, which stops at `~`
+bindings - the FD closure is the wrong tool because a same-grain sibling puts
+its columns in the closure), and (b) everything the statement references in
+the fact's component is reachable from the fact without an anchor.
+Partition-disjoint `complete where` siblings never anchor and never count as
+suppliers. q83: 0.45s -> 0.11s, planning 0.99s -> 0.14s, rows unchanged.
 
-q97 is the second-largest main-query regression. The reference query filters
-store/catalog sales by month before grouping customer-item pairs, then full
-joins the two small grouped sets. The generated SQL first dedupes broader
-store/catalog rows, merges through item/customer/date dimensions, and only then
-applies month filters as `CASE` expressions.
+Not healed on purpose: q78 (`sale_date.year = 2000` is suppliable by the
+sales anchor) and any q83 variant selecting a sales measure (guard (b)).
 
-Examples:
+### 3. q78: per-channel filtered aggregates over a partitioned union
 
-- `zquery97.log` materializes sales rows, joins date later, then computes
-  `store_sales` and `catalog_sales` flags from month-filtered CASE expressions.
-- `query97.sql` applies `d_month_seq between 1200 and 1211` inside each sales
-  CTE before grouping and full joining.
+All nine measures are `sum(metric ? sales.channel = C) by keys`. Each
+`channel = C` filter implies exactly one `complete where channel = C` arm,
+but `_datasource_materializes` only prunes arms against the statement WHERE,
+so the aggregate runs over the 3-arm union (970K rows, 873K groups, nine
+`CASE` sums; 3.5s of GROUP BY operator time vs 1.8s for the reference's three
+narrow groups). A hand-written per-arm shape (three aggregates on the group
+keys, LEFT-joined onto the STORE side) returns identical rows in 0.55s vs
+0.74s.
 
-Potential optimizer work:
+Planner work: when a FILTER derivation's condition implies a partition
+predicate, plan its parent with that condition as the row bound so the arm
+qualifies alone and its siblings are excluded; a same-grain aggregate over the
+filtered concept then becomes a per-arm aggregate and the existing by-key merge
+joins the channels. Gate on the group keys being bound on every arm.
 
-- Push relation-local filters into each branch before MERGE/align.
-- Prefer grouping branch keys before joining dimensions that are only needed
-  for filters.
-- Detect "presence by filtered branch" patterns and render as filtered branch
-  CTEs plus an outer join, not as a broad merged rowset with CASE flags.
-- Use q97 as the first regression test for filter-before-merge planning.
+### 4. Filtered aggregate expansion (q09/q28) - resolved
 
-### 3. Avoid outer-join merge shapes when the reference is a direct inner join
+The wide `CASE WHEN ... THEN value` scan is now within noise of the reference
+(q09 +0.03s, q28 +0.10s). Keep as the fuzz shape for pattern 3.
 
-Several slower queries build a broad nullable merge with `LEFT`, `RIGHT`, or
-`FULL` joins, then apply predicates that require rows from both sides. This is
-not just cosmetic: it can prevent join reordering, delay filters, and preserve
-too many nullable rows before aggregation.
+The same heal also fires on q01 (`ss.return_date.year = 2000`) and q91
+(`cs.return_date.year = ...`): the sales-fact INNER join that only served to
+"complete" the returns' `~` keys is gone (q01 0.047s -> 0.019s, now under the
+0.027s reference).
 
-Examples:
+## Retained Patterns (no longer measured regressions)
 
-- `zquery25.log` creates two separate branches (`vacuous`, `yummy`) over
-  `store_sales`, `store_returns`, `catalog_sales`, `date_dim`, `store`, and
-  `item`, using left joins that are null-rejected by later date/customer/return
-  predicates. `query25.sql` is a direct inner join over the same tables with one
-  aggregate.
-- `zquery29.log` has the same broad TPC-DS q25/q29 family shape.
-- `zquery17.log` uses nullable joins across store sales, returns, catalog
-  sales, date, and item, with filters that require return/catalog dates.
-- `zquery65.log` uses `FULL JOIN abundant` and `RIGHT OUTER JOIN vacuous`, but
-  the final `WHERE juicy.item_revenue <= 0.1 * vacuous.store_avg_revenue`
-  requires the revenue side.
+These shapes still appear in the generated SQL but no longer cost measurable
+time on this corpus. Keep them as watch items, not work items.
 
-Potential optimizer work:
-
-- Add null-rejection analysis for joined aliases and convert eligible outer
-  joins to inner joins.
-- Run existence-predicate normalization before join simplification so patterns
-  like `CASE WHEN return_key THEN TRUE ELSE FALSE END` become visible as
-  `return_key IS NOT NULL`.
-- When all measures come from a shared fact grain, prefer one direct join graph
-  plus grouped measures over separately aggregated branches joined later.
-- Use q25/q29/q17/q65 as validation cases.
-
-### 4. Repeated filtered fact graphs are expensive
-
-q65 and q73 show repeated scans over the same filtered store-sales shape. These
-are not as dramatic as q09/q97, but they are consistent regressions and likely
-generalize.
-
-Examples:
-
-- `zquery65.log` computes item revenue, then separately rebuilds store and item
-  dimension CTEs from `store_sales` with the same date range. `query65.sql`
-  computes the revenue subquery once, computes the store average from it, then
-  joins `store` and `item` directly at the end.
-- `zquery73.log` builds `cooperative`, `abundant`, `yummy`, and `questionable`
-  around the same `store_sales` + `date_dim` + `store` +
-  `household_demographics` filter. `query73.sql` performs one filtered grouped
-  aggregate, then joins `customer`.
-
-Potential optimizer work:
-
-- Extract shared filtered fact graphs into one CTE when the source table set,
-  join graph, and predicates match.
-- Delay decorative dimension columns until after the selective aggregate when
-  the reference only needs them for final projection/order.
-- Prefer "aggregate first, decorate later" for queries whose output grain is
-  narrower than the base fact grain.
-
-### 5. Over-broad GROUP BY is a secondary performance issue
-
-The generated SQL contains many `GROUP BY` blocks without local aggregates.
-This should still be cleaned up, but timing suggests it is usually not the
-first-order runtime driver unless it appears inside one of the expensive shapes
-above.
-
-Examples:
-
-- `zquery53.log` final SELECT groups by `1, 2, 3` after joining two already
-  aggregated CTEs. This is a small, clean correctness-preserving cleanup case,
-  not a major runtime target.
-- `zquery59.log` has projection CTEs grouped by every selected column.
-- `zquery64.log` groups raw projection CTEs before later aggregation, but q64 is
-  not currently a top measured regression.
-
-Potential optimizer work:
-
-- Add a report-only no-op GROUP BY detector.
-- Remove `GROUP BY` when upstream grain guarantees uniqueness.
-- Keep distinct-at-hidden-grain behavior explicit; do not remove grouping just
-  because the local SELECT has no aggregate.
-
-### 6. Scalar `FULL JOIN on 1=1` is probably cleanup, not priority
-
-Scalar/cartesian `FULL JOIN ... on 1=1` looks odd and appears in q09, q59,
-q77, q76, q66, and others. It is probably not the main runtime driver when both
-inputs are single-row aggregate CTEs. In q09, the expensive part is the wide
-filtered aggregate expansion, not the final five-row scalar combine.
-
-Potential optimizer work:
-
-- Track scalar cardinality and render scalar combines as `CROSS JOIN` or a
-  single projection when null-extension semantics are not required.
-- Keep this behind the filtered-aggregate and filter-pushdown work.
+- **Outer-join merge where the reference inner-joins** (q25, q29, q17, q65):
+  null-rejection analysis converting LEFT/RIGHT/FULL to INNER remains a valid
+  cleanup; all four are now within +0.03s of the reference.
+- **Repeated filtered fact graphs** (q65, q73): shared filtered CTE extraction
+  and aggregate-first/decorate-later planning. q73 is +0.03s.
+- **Over-broad GROUP BY without local aggregates** (q53, q59, q64): a
+  report-only no-op GROUP BY detector first; any cleanup must preserve rollup
+  grain and `grouping()` (see `STATUS.md` for q36/q70/q86).
+- **Scalar `FULL JOIN on 1=1`** (q09, q59, q77, q76, q66): cosmetic when both
+  inputs are single-row aggregates; render as CROSS JOIN only after tracking
+  scalar cardinality.
 
 ## Suggested Implementation Order
 
-1. Filtered aggregate fanout heuristic for q09/q28.
-2. Filter-before-merge planning for q97-style branch presence queries.
-3. Null-rejection analysis and outer-to-inner join simplification for
-   q25/q29/q17/q65.
-4. Shared filtered fact-graph extraction for q65/q73.
-5. Aggregate-first/decorate-later planning for q65/q73 and similar dimension
-   projection queries.
-6. Report-only no-op GROUP BY detector, then selective cleanup.
-7. Scalar-cardinality rendering cleanup for `FULL JOIN on 1=1`.
+1. Per-arm filtered aggregates over a partitioned union (pattern 3; q78 first,
+   q09/q28 as the fuzz shape).
+2. Same-source union arm merging for q05's `young`/`vacuous` pair.
+3. Null-rejection outer-to-inner join simplification (retained pattern).
+4. Report-only no-op GROUP BY detector, then selective cleanup.
+
+## Known Semantic Gap (pre-existing, pinned)
+
+`tests/engine/test_duckdb_partial_key_assembly.py::test_anchor_needed_keeps_saleless_return`
+(strict xfail): a `~`-keyed fact row with no anchor row (a return whose sale is
+absent) is dropped when the pin sits beside an anchor-only measure, because the
+anchor merge renders INNER. Not exercised by TPC-DS data (every return has a
+sale) and unchanged by the q83 heal, which never fires in that shape.
 
 ## Query Size Minimization
 
 `query67.preql`: let a bare rank/rollup inherit the grain dimensions from the
 select, same as a bare aggregate. This saves redefining those dimensions.
-
-## Watchlist
-
-- q09, q28: filtered aggregate rendering.
-- q97: branch filter pushdown before merge.
-- q25, q29, q17, q65: null-rejected outer joins and direct join graph planning.
-- q73, q65: repeated fact graph extraction.
-- q66, q78, q81, q77, q75: large CTE expansions that need more targeted
-  inspection after the first passes land.
 
 ## Notes
 
@@ -214,4 +146,5 @@ select, same as a bare aggregate. This saves redefining those dimensions.
   null semantics unless the filtered key is known non-null.
 - DuckDB may already optimize some generated shapes internally. Prioritize
   changes that improve the slower-than-reference queries above, not just SQL
-  aesthetics.
+  aesthetics. Interleave trilogy/reference runs when measuring: q23's gap
+  vanished under interleaving.

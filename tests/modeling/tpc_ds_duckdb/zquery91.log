@@ -1,5 +1,5 @@
 query_id = "91"
-gen_length = 2748
+gen_length = 2533
 preql_size = 1089
 comp_size = 982
 generated_sql = """
@@ -9,8 +9,7 @@ SELECT
     \"cs_return_call_center_call_center\".\"CC_MANAGER\" as \"manager\",
     sum(\"cs_catalog_returns\".\"CR_NET_LOSS\") as \"returns_loss\"
 FROM
-    \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
-    INNER JOIN \"memory\".\"catalog_returns\" as \"cs_catalog_returns\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_catalog_returns\".\"CR_ITEM_SK\" AND \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" = \"cs_catalog_returns\".\"CR_ORDER_NUMBER\"
+    \"memory\".\"catalog_returns\" as \"cs_catalog_returns\"
     INNER JOIN \"memory\".\"date_dim\" as \"cs_return_date_date\" on \"cs_catalog_returns\".\"CR_RETURNED_DATE_SK\" = \"cs_return_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer\" as \"cs_return_customer_customers\" on \"cs_catalog_returns\".\"CR_RETURNING_CUSTOMER_SK\" = \"cs_return_customer_customers\".\"C_CUSTOMER_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"cs_return_customer_current_address_customer_address\" on \"cs_return_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"cs_return_customer_current_address_customer_address\".\"CA_ADDRESS_SK\"
