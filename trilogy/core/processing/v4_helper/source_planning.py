@@ -744,6 +744,7 @@ def _datasource_nodes_for_bridge(
             environment=request.environment,
             depth=request.depth + 1,
             conditions=ds_conditions,
+            requested=request.outputs,
         )
         parents.append(
             finalize_select_node(
@@ -928,6 +929,21 @@ def _datasource_can_output(
     return all(
         any(concept.address == address for concept in child.output_concepts)
         for child in datasource.children
+    )
+
+
+def _datasource_binds_canonical(
+    datasource: BuildDatasource | BuildUnionDatasource, concept: BuildConcept
+) -> bool:
+    children = (
+        [datasource] if isinstance(datasource, BuildDatasource) else datasource.children
+    )
+    return all(
+        any(
+            bound.canonical_address == concept.canonical_address
+            for bound in child.output_concepts
+        )
+        for child in children
     )
 
 
@@ -1137,7 +1153,9 @@ def _local_concept_nodes_for_datasource(
                 )
                 and datasource is not None
                 and (
-                    _datasource_can_output(datasource, canonical.address)
+                    # By canonical: when two requested names share one, the
+                    # `canonical_concepts` winner need not be the bound one.
+                    _datasource_binds_canonical(datasource, canonical)
                     # ...or it binds a finer additive aggregate that rolls up to
                     # it, which is how an anonymous alias reaches a summary table.
                     or _datasource_rolls_up_to(datasource, canonical, environment)
@@ -1418,6 +1436,7 @@ def _plan_complete_where_source(request: SourceRequest) -> StrategyNode | None:
         environment=environment,
         depth=request.depth + 1,
         conditions=conditions,
+        requested=outputs,
     )
 
 
@@ -1435,6 +1454,7 @@ def _plan_finer_filter_rollup(request: SourceRequest) -> StrategyNode | None:
         environment=environment,
         depth=request.depth + 1,
         conditions=request.conditions,
+        requested=outputs,
     )
     target_components = set(
         BuildGrain.from_concepts(outputs, environment=environment).components

@@ -318,6 +318,7 @@ def _source_concepts_via_graph(
                 environment=environment,
                 depth=depth,
                 conditions=select_conditions,
+                requested=attempt_concepts,
             )
             for k, subgraph in sub_nodes.items()
         ]
@@ -352,6 +353,7 @@ def _source_concepts_via_graph(
                     environment=environment,
                     depth=depth,
                     conditions=None,
+                    requested=attempt_concepts,
                 )
                 for k, subgraph in sub_nodes.items()
             ]

@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -42,6 +43,7 @@ from trilogy.core.processing.nodes import (
 )
 from trilogy.core.processing.nodes.select_node_v2 import scan_stamps
 from trilogy.core.processing.utility import padding
+from trilogy.utility import unique
 
 if TYPE_CHECKING:
     from trilogy.core.processing.nodes.union_node import UnionNode
@@ -145,6 +147,22 @@ def finalize_select_node(
     return candidate.node
 
 
+def _canonical_siblings(
+    concepts: list[BuildConcept], requested: Sequence[BuildConcept]
+) -> list[BuildConcept]:
+    """Requested concepts a graph node stands for without naming. The graph
+    keys a node by canonical address, so two names for one expression
+    (`total` beside `sum(amount) by order_id as explicit`) are one node and
+    only one of them comes back from `canonical_concepts`."""
+    addresses = {c.address for c in concepts}
+    canonicals = {c.canonical_address for c in concepts}
+    return [
+        c
+        for c in unique(list(requested), "address")
+        if c.canonical_address in canonicals and c.address not in addresses
+    ]
+
+
 def create_select_node_candidate(
     ds_name: str,
     subgraph: list[str],
@@ -152,12 +170,14 @@ def create_select_node_candidate(
     environment: BuildEnvironment,
     depth: int,
     conditions: BuildWhereClause | None = None,
+    requested: Sequence[BuildConcept] = (),
 ) -> SourceNodeCandidate:
     all_concepts = [
         environment.canonical_concepts[extract_address(c)]
         for c in subgraph
         if c.startswith("c~")
     ]
+    all_concepts += _canonical_siblings(all_concepts, requested)
 
     if all(c.derivation == Derivation.CONSTANT for c in all_concepts):
         logger.info(
@@ -233,6 +253,7 @@ def create_select_node(
     depth: int,
     conditions: BuildWhereClause | None = None,
     defer_group: bool = False,
+    requested: Sequence[BuildConcept] = (),
 ) -> StrategyNode:
     candidate = create_select_node_candidate(
         ds_name,
@@ -241,6 +262,7 @@ def create_select_node(
         environment,
         depth,
         conditions,
+        requested,
     )
     return finalize_select_node(candidate, environment, depth, defer_group)
 

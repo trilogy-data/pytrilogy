@@ -1,6 +1,6 @@
 # Handoff: an abstract aggregate's identity depends on how its grain is *spelled*
 
-Status: fixed at the author-side grain (2026-09-18, branch `agg-grain-fd-canonicalization`). One sibling bug found and left open, see the end.
+Status: fixed at the author-side grain (2026-09-18, PR #697), with the sibling duplicate-name bug it widened, see the end.
 
 Locked by `tests/discovery/test_aggregate_grain_fd_canonical.py` and the former strict xfail `test_merged_key_grain_reads_bound_derived.py::test_summary_reads_at_fd_equivalent_grain[beside_surviving_key_spelling]`.
 
@@ -49,14 +49,19 @@ How this lands against the concerns in the original proposal:
 
 Bonus: the recompute path gets cheaper. Two spellings in one statement (`count(id)` at `Grain<org.code, state.code>` beside `count(id) by org.code`) used to be two GROUP BYs over the joined org table; they are now one aggregate over `launches` alone.
 
-## Open: two names for one materialized aggregate (pre-existing on main)
+## Also fixed: two names for one materialized aggregate (pre-existing on main)
 
-Once two outputs share a canonical *and* a datasource materializes it, v4 marks both as materialized roots and source planning binds the column to only one of them:
+Collapsing more spellings onto one canonical widens a bug main already had: once two outputs share a canonical *and* a datasource materializes it, only one name survived the root scan.
 
 ```
 select order_id, total, sum(amount) by order_id as explicit;               # main: `total` silently missing from the result
 select order_id, customer_id, total, sum(amount) by order_id as explicit;  # main: "Missing source reference to local.amount"
-select order_id, region, total, sum(amount) by order_id as explicit;       # main: rows (6.0 beside 96.0); now "Missing rollup source reference"
+select order_id, region, total, sum(amount) by order_id as explicit;       # main: rows (6.0 beside 96.0); with the grain fix alone, a render error
 ```
 
-The first two fail on main as-is. The third used to dodge the bug only because its two spellings hashed apart; it now joins them. Verified workaround (monkeypatched, not landed): when several mandatory concepts share a canonical, drop them all from `_materialized_root_addresses` so the shape derives from base; all three then return correct, complete rows. The real fix is for the root scan to bind one column to every address sharing its canonical.
+The reference graph keys a concept node by canonical address, and `BuildEnvironment.canonical_concepts` keeps one concept per canonical. Two seams read the winner's *address* where they meant the expression, and both had to change:
+
+- **Discovery** (`source_planning._local_concept_nodes_for_datasource`): the "this table binds it as a column" guard compared the winner's address (`explicit`) to the summary's column (`total`), so in a multi-table plan the summary scan lost the aggregate node. It now compares canonicals (`_datasource_binds_canonical`).
+- **Binding** (`create_select_node_candidate`): the scan was rebuilt with one concept per node, so the other requested name had no output. Callers now pass the requested concepts and the scan emits every one sharing a canonical with a node it reads (`_canonical_siblings`).
+
+Either alone is not enough: discovery alone still drops the second name (silently, in the single-table case); binding alone never reaches the summary in a multi-table plan.

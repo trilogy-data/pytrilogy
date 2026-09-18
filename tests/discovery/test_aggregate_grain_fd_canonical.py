@@ -189,3 +189,17 @@ def test_two_spellings_share_one_group_by():
     sql = engine.generate_sql(query)[-1]
     assert sql.count("GROUP BY") == 1, sql
     assert _rows(engine, query) == [("CASC", "CN", 1, 1), ("NASA", "US", 2, 2)]
+
+
+# Two names for one materialized expression share a canonical, and the graph
+# keys a node by canonical: the summary scan has to emit both names.
+@pytest.mark.parametrize(
+    "dims", ["order_id", "order_id, customer_id", "order_id, region"]
+)
+def test_two_names_for_one_materialized_aggregate(dims: str):
+    rows = _rows(
+        _engine(),
+        f"select {dims}, total, sum(amount) by order_id as explicit"
+        " order by order_id asc;",
+    )
+    assert [r[-2:] for r in rows] == [(96.0, 96.0), (94.0, 94.0), (94.5, 94.5)]
