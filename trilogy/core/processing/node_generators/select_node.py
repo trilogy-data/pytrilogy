@@ -23,23 +23,29 @@ from trilogy.core.processing.utility import padding
 LOGGER_PREFIX = "[GEN_SELECT_NODE]"
 
 
+def root_is_unsourced(concept: BuildConcept, environment: BuildEnvironment) -> bool:
+    """A ROOT concept no datasource in the environment binds, under any
+    spelling."""
+    if concept.derivation != Derivation.ROOT:
+        return False
+    if concept.canonical_address in environment.materialized_canonical_concepts:
+        return False
+    return not any(_pseudonym_is_sourced(p, environment) for p in concept.pseudonyms)
+
+
 def validate_query_is_resolvable(
     addresses: Iterable[str],
     environment: BuildEnvironment,
 ) -> None:
-    """A requested ROOT concept no datasource in the environment binds, under
-    any spelling, is a model defect no planner can repair: no retry with other
-    conditions or a wider output set will conjure a column. Say so."""
+    """A requested unsourced ROOT is a model defect no planner can repair: no
+    retry with other conditions or a wider output set will conjure a column.
+    Say so."""
     for address in addresses:
         concept = environment.concepts.get(address)
         # Locally derived, or a pseudonym spelling: not this concept's own claim.
         if concept is None or concept.address != address:
             continue
-        if concept.derivation != Derivation.ROOT:
-            continue
-        if concept.canonical_address in environment.materialized_canonical_concepts:
-            continue
-        if any(_pseudonym_is_sourced(p, environment) for p in concept.pseudonyms):
+        if not root_is_unsourced(concept, environment):
             continue
         raise NoDatasourceException(
             f"No datasource exists for root concept {concept}, and no resolvable "
