@@ -139,8 +139,10 @@ def test_adhoc06(engine: Executor):
     query = engine.generate_sql(text)[0]
     results = list(engine.execute_raw_sql(query).fetchall())
     assert "dashboard_agg_1" in query, query
-    # adhoc06 selects total_orders as the second column
-    assert results[0][1] == 150000, results[0]
+    # total_revenue first: it shares a canonical with the imported metric, and
+    # the cache scan used to emit only one name for the column.
+    assert len(results[0]) == 4, results[0]
+    assert results[0][2] == 150000, results[0]
 
 
 def test_one(engine):
