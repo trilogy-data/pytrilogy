@@ -13,12 +13,13 @@ import pytest
 
 EVAL_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(EVAL_DIR.parent))
-sys.path.insert(0, str(EVAL_DIR))
 
-import db_build
 from common import scoring
 from common.prompts import active_prompts
-from spec import SPEC
+from common.siblings import load_sibling
+
+db_build = load_sibling(__file__, "db_build")
+SPEC = load_sibling(__file__, "spec").SPEC
 
 MODEL_DIR = EVAL_DIR / "enriched_model"
 BLOG_IDS = [p["id"] for p in active_prompts(SPEC) if p["kind"] == "blog"]

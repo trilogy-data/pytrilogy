@@ -7,7 +7,7 @@ property <symbol.id, provider.id>.qty float;
 property <symbol.id, provider.id>.cost_basis float::usd;
 property <symbol.id, provider.id>.value float::usd;
 property <symbol.id, provider.id>.appreciation <- (value - cost_basis);
-property <symbol.id, provider.id>.return <- CASE WHEN SUM(cost_basis) = 0 then 0.0 else SUM(appreciation) / SUM(cost_basis) END::float::percent ;
+auto return <- CASE WHEN SUM(cost_basis) = 0 then 0.0 else SUM(appreciation) / SUM(cost_basis) END::float::percent ;
 
 auto profitable <- case when appreciation > 0 then true else false end;
 

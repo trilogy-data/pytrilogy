@@ -889,12 +889,55 @@ def _get_relevant_parent_concepts(arg) -> tuple[list[ConceptRef], bool]:
             all += refs
             flag = flag or local_flag
         return all, flag
+    elif isinstance(arg, (CaseWhen, CaseSimpleWhen, CaseElse)):
+        all = []
+        flag = False
+        for y in _case_arm_expressions(arg):
+            refs, local_flag = get_relevant_parent_concepts(y)
+            all += refs
+            flag = flag or local_flag
+        return all, flag
     return get_concept_arguments(arg), False
+
+
+def _case_arm_expressions(arm: CaseWhen | CaseSimpleWhen | CaseElse) -> list[Any]:
+    if isinstance(arm, CaseWhen):
+        return [arm.comparison, arm.expr]
+    if isinstance(arm, CaseSimpleWhen):
+        return [arm.value_expr, arm.expr]
+    return [arm.expr]
 
 
 def get_relevant_parent_concepts(arg) -> tuple[list[ConceptRef], bool]:
     concepts, status = _get_relevant_parent_concepts(arg)
     return unique(concepts, "address"), status
+
+
+def _is_query_grained(concept: Concept) -> bool:
+    """An aggregate with no grain of its own takes the grain of whatever
+    selects it. It contributes no row identity to an expression over it."""
+    return not concept.grain.components and (
+        concept.derivation == Derivation.AGGREGATE or concept.purpose == Purpose.METRIC
+    )
+
+
+def _row_parents(
+    parent: Any, environment: Environment
+) -> tuple[list[Concept], list[Concept], bool]:
+    """The concepts an expression reads, the subset that give it row identity,
+    and whether it is a metric. A query-grained aggregate makes it one by name
+    (`order_count / len(region)`) exactly as inline (`count(order_id) /
+    len(region)`): read as a row input instead, the expression lands in the
+    select grain and the aggregate groups by the expression being built."""
+    ref_args, is_metric = get_relevant_parent_concepts(parent)
+    concrete_args = [environment.concepts[c.address] for c in ref_args]
+    pkeys = [
+        x
+        for x in concrete_args
+        if x.derivation != Derivation.CONSTANT and not _is_query_grained(x)
+    ]
+    is_metric = is_metric or any(_is_query_grained(x) for x in concrete_args)
+    return concrete_args, pkeys, is_metric
 
 
 def group_function_to_concept(
@@ -1034,15 +1077,8 @@ def function_to_concept(
                 f"'{source.address}' is derived from, so the rename refers back to "
                 f"itself. Use a distinct output name (e.g. '{name}_out')."
             )
-    is_metric = False
-    ref_args, is_metric = get_relevant_parent_concepts(parent)
-    concrete_args = [environment.concepts[c.address] for c in ref_args]
-    pkeys += [
-        x
-        for x in concrete_args
-        if x.derivation != Derivation.CONSTANT
-        and not (x.derivation == Derivation.AGGREGATE and not x.grain.components)
-    ]
+    concrete_args, row_parents, is_metric = _row_parents(parent, environment)
+    pkeys += row_parents
     grain: Grain | None = Grain()
     for x in pkeys:
         grain += x.grain
@@ -1881,15 +1917,8 @@ def comparison_to_concept(
 
     pkeys: list[Concept] = []
     namespace = namespace or environment.namespace
-    is_metric = False
-    ref_args, is_metric = get_relevant_parent_concepts(parent)
-    concrete_args = [environment.concepts[c.address] for c in ref_args]
-    pkeys += [
-        x
-        for x in concrete_args
-        if x.derivation != Derivation.CONSTANT
-        and not (x.derivation == Derivation.AGGREGATE and not x.grain.components)
-    ]
+    concrete_args, row_parents, is_metric = _row_parents(parent, environment)
+    pkeys += row_parents
     grain: Grain | None = Grain()
     for x in pkeys:
         grain += x.grain

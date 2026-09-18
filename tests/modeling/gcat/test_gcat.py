@@ -918,7 +918,7 @@ select
 ;
 """)
     headline_name = base.environment.concepts["headline_name"]
-    assert headline_name.purpose == Purpose.PROPERTY
+    assert headline_name.purpose == Purpose.METRIC
 
     sql = base.generate_sql(queries[-1])
     results = base.execute_query(queries[-1])
