@@ -51,6 +51,7 @@ from trilogy.core.processing.discovery_utility import (
     depth_to_prefix,
     raise_if_filter_disconnected,
 )
+from trilogy.core.processing.node_generators.select_node import root_is_unsourced
 from trilogy.core.processing.nodes import History, StrategyNode
 from trilogy.core.processing.v4_helper import (
     FINAL_NODE_ID,
@@ -60,6 +61,9 @@ from trilogy.core.processing.v4_helper import (
     build_concept_graph,
     build_group_graph,
     build_strategy_node,
+)
+from trilogy.core.processing.v4_helper.functional_dependency import (
+    build_fd_determines,
 )
 from trilogy.core.processing.v4_node_generators.multiselect import gen_multiselect
 from trilogy.core.processing.v4_node_generators.union_select import gen_union_select
@@ -197,6 +201,164 @@ def _datasource_materializes(
     )
 
 
+def _scan_rows_at_grain(
+    ds: BuildDatasource, target_grain: BuildGrain, environment: BuildEnvironment
+) -> bool:
+    """One scan row per `target_grain` tuple: the datasource's declared grain,
+    or that grain plus components it functionally determines, which are
+    constant per scan row. A merge is how a query grain outgrows a table that
+    still answers it: `merge org.state_code into state.code` respells a
+    property of `org.code` as a KEY, and every request naming it sits at
+    `Grain<org.code, state.code>` over a `Grain<org.code>` table."""
+    if ds.grain == target_grain:
+        return True
+    if ds.grain.abstract or not ds.grain.issubset(target_grain):
+        return False
+    return all(
+        build_fd_determines(
+            environment, ds.grain.components, component, include_empty_grain=False
+        )
+        for component in target_grain.components - ds.grain.components
+    )
+
+
+def _lineage_sourceable(
+    concept: BuildConcept, environment: BuildEnvironment, seen: set[str]
+) -> bool:
+    """Some plan can produce `concept`: a datasource binds it, or every leaf
+    of its lineage is a sourced root."""
+    if concept.canonical_address in environment.materialized_canonical_concepts:
+        return True
+    if concept.lineage is None:
+        return not root_is_unsourced(concept, environment)
+    if concept.address in seen:
+        return True
+    seen.add(concept.address)
+    return all(
+        _lineage_sourceable(
+            environment.concepts.get(arg.address) or arg, environment, seen
+        )
+        for arg in concept.lineage.concept_arguments
+    )
+
+
+def _lineage_closure(
+    concept: BuildConcept, environment: BuildEnvironment
+) -> list[BuildConcept]:
+    out: dict[str, BuildConcept] = {}
+    stack = [concept]
+    while stack:
+        current = stack.pop()
+        if current.address in out:
+            continue
+        out[current.address] = current
+        if current.lineage is not None:
+            stack.extend(
+                environment.concepts.get(arg.address) or arg
+                for arg in current.lineage.concept_arguments
+            )
+    return list(out.values())
+
+
+# Derivations a stored column reproduces row for row. The rest (FILTER/UNNEST/
+# ROWSET/RECURSIVE/...) generate or drop rows and stay with their own gates.
+_COLUMN_READABLE = frozenset(
+    {
+        Derivation.ROOT,
+        Derivation.CONSTANT,
+        Derivation.BASIC,
+        Derivation.AGGREGATE,
+        Derivation.WINDOW,
+    }
+)
+
+
+def _conditions_cannot_move(
+    concept: BuildConcept,
+    derivations: set[Derivation],
+    ds: BuildDatasource,
+    where: BuildWhereClause | None,
+    environment: BuildEnvironment,
+) -> bool:
+    """The query's conditions leave the value `ds` stores unchanged. A
+    row-level value always survives: a filter removes rows, never rewrites
+    them. A WINDOW never does, since any filter reshapes its partition. An
+    AGGREGATE does when the table sits at the aggregate's own grain, where
+    every condition the table can express is constant within a group; stored
+    below that grain (a customer total denormalized onto orders), a filter on
+    `order_date` is expressible yet splits the groups the column summed."""
+    if not where or not derivations & {Derivation.AGGREGATE, Derivation.WINDOW}:
+        return True
+    if Derivation.WINDOW in derivations:
+        return False
+    return _scan_rows_at_grain(ds, concept.grain, environment)
+
+
+def _lineage_derivations(
+    concept: BuildConcept, environment: BuildEnvironment
+) -> set[Derivation]:
+    return {c.derivation for c in _lineage_closure(concept, environment)}
+
+
+def _column_reproduces(
+    concept: BuildConcept,
+    environment: BuildEnvironment,
+    datasources: list[BuildDatasource],
+    where: BuildWhereClause | None,
+) -> bool:
+    derivations = _lineage_derivations(concept, environment)
+    if not derivations <= _COLUMN_READABLE:
+        return False
+    if not where or not derivations & {Derivation.AGGREGATE, Derivation.WINDOW}:
+        return True
+    return any(
+        _conditions_cannot_move(concept, derivations, ds, where, environment)
+        and _datasource_materializes(concept, ds, where, environment)
+        for ds in datasources
+    )
+
+
+def _binding_only_roots(
+    candidates: list[BuildConcept],
+    environment: BuildEnvironment,
+    datasources: list[BuildDatasource],
+    where: BuildWhereClause | None,
+) -> set[str]:
+    """Bound derived concepts, anywhere in the candidates' lineage, that cannot
+    be re-derived: `short_e_name <- coalesce(_short_e_name, short_name)` bound
+    as a column beside a `_short_e_name` no table binds. The column is the
+    concept's only source, so it reads like any bound property: at every
+    grain, and as an input to other derivations.
+
+    No grain gate is needed. A canonical address pins an aggregate's grain, so
+    a column match already means the stored value is this query's value; the
+    scan's multiplicity is then source planning's concern, as for any root.
+    What a column cannot absorb is a condition (`_conditions_cannot_move`)."""
+    out: set[str] = set()
+    seen: set[str] = set()
+    stack = list(candidates)
+    while stack:
+        concept = stack.pop()
+        if concept.address in seen or concept.lineage is None:
+            continue
+        seen.add(concept.address)
+        args = [
+            environment.concepts.get(arg.address) or arg
+            for arg in concept.lineage.concept_arguments
+        ]
+        if (
+            concept.canonical_address in environment.materialized_canonical_concepts
+            and not all(_lineage_sourceable(arg, environment, set()) for arg in args)
+            and _column_reproduces(concept, environment, datasources, where)
+        ):
+            out.add(concept.address)
+            continue
+        # A rowset's content is planned by its own search.
+        if concept.derivation != Derivation.ROWSET:
+            stack.extend(args)
+    return out
+
+
 def _materialized_root_addresses(
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
@@ -210,9 +372,14 @@ def _materialized_root_addresses(
     Eligibility is one rule (`_datasource_materializes`): a datasource binds the
     concept's canonical expression as a COMPLETE column (or a partial one the
     query's conditions complete) and can express the conditions. EXACT-grain
-    AGGREGATE/BASIC additionally require `ds.grain == target_grain` so the scan's
-    row multiplicity matches; an UNNEST is exempt (a persisted unnest table's
-    declared grain is the coarser key, understating its per-value rows).
+    AGGREGATE/BASIC additionally require one scan row per target-grain tuple
+    (`_scan_rows_at_grain`) so the scan's row multiplicity matches; an UNNEST is
+    exempt (a persisted unnest table's declared grain is the coarser key,
+    understating its per-value rows).
+
+    Binding-only: a bound derived concept with no sourceable lineage has no
+    derive-from-base plan to prefer, so it is a root wherever the lineage walk
+    meets it (`_binding_only_roots`).
 
     Additive rollup: an additive AGGREGATE (sum/count) that no datasource has at
     the exact grain, but a *finer*-grain table binds, is also treated as a root
@@ -239,7 +406,6 @@ def _materialized_root_addresses(
         for arg in clause.row_arguments:
             if arg.address not in mandatory_addresses:
                 condition_args_by_address.setdefault(arg.address, arg)
-    out: set[str] = set()
     candidates = mandatory_list + list(condition_args_by_address.values())
     # An unbound bare KEY whose pseudonym origin recomposes it (`merge
     # composite_id_alt into composite_id`, alt <- concat(first, second)) is
@@ -260,6 +426,7 @@ def _materialized_root_addresses(
             for arg in origin.lineage.concept_arguments:
                 if isinstance(arg, BuildConcept):
                     candidates.append(environment.concepts.get(arg.address) or arg)
+    out = _binding_only_roots(candidates, environment, datasources, where)
     seen_candidates: set[str] = set()
     for concept in candidates:
         if concept.address in seen_candidates:
@@ -288,8 +455,13 @@ def _materialized_root_addresses(
         # EXACT: a datasource at the target grain materializes the concept.
         exact = False
         if concept.canonical_address in environment.materialized_canonical_concepts:
+            derivations = _lineage_derivations(concept, environment)
             for ds in datasources:
-                if ds.grain != target_grain:
+                if not _scan_rows_at_grain(ds, target_grain, environment):
+                    continue
+                if not _conditions_cannot_move(
+                    concept, derivations, ds, where, environment
+                ):
                     continue
                 if _datasource_materializes(concept, ds, where, environment):
                     out.add(concept.address)

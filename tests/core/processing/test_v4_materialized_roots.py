@@ -12,11 +12,17 @@ import pytest
 
 from trilogy import Environment
 from trilogy.core.enums import BooleanOperator, Derivation
-from trilogy.core.models.build import BuildConcept, BuildWhereClause, Factory
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildGrain,
+    BuildWhereClause,
+    Factory,
+)
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.concept_strategies_v4 import (
     _datasource_materializes,
     _materialized_root_addresses,
+    _scan_rows_at_grain,
 )
 from trilogy.core.processing.condition_utility import combine_where_clauses
 from trilogy.core.processing.v4_helper.concept_graph import build_concept_graph
@@ -177,6 +183,60 @@ grain (order_id)
 query '''select 1 as order_id, 101 as customer_id, date '2024-01-01' as order_date, 10.0 as amount''';
 """
 
+# `label` is bound but cannot be re-derived (`_raw_label` has no column);
+# `region_upper` is bound and re-derivable. `merge state_code into state_id`
+# respells a customer property as a key, so requests naming it sit at
+# Grain<customer_id, state_id> over the customer-grain tables.
+MODEL_UNSOURCED_LINEAGE = """
+key order_id int;
+key customer_id int;
+key state_id string;
+key order_date date;
+property customer_id.region string;
+property customer_id.state_code string;
+property customer_id._raw_label string;
+auto label <- coalesce(_raw_label, region);
+auto region_upper <- upper(region);
+auto order_count <- count(order_id);
+auto orders_per_label_char <- order_count / len(label);
+property order_id._raw_amount float;
+auto cust_total <- sum(_raw_amount) by customer_id;
+auto cust_rank <- rank customer_id by cust_total desc;
+auto raw_rank <- rank order_id by _raw_amount desc;
+auto big_label <- CASE WHEN cust_total > 5 THEN label ELSE 'small' END;
+auto east_label <- filter label where region = 'east';
+
+merge state_code into state_id;
+
+datasource orders (
+    order_id: order_id, customer_id: customer_id, order_date: order_date,
+    raw_rank: raw_rank,
+)
+grain (order_id)
+query '''select 1 as order_id, 101 as customer_id, date '2024-01-01' as order_date, 1 as raw_rank''';
+
+datasource customers (
+    customer_id: customer_id, region: region, state_code: state_code,
+    label: label, region_upper: region_upper, cust_total: cust_total,
+    cust_rank: cust_rank, big_label: big_label, east_label: east_label,
+)
+grain (customer_id)
+query '''select 101 as customer_id, 'east' as region, 'VT' as state_code, 'East' as label, 'EAST' as region_upper, 10.0 as cust_total, 1 as cust_rank, 'East' as big_label, 'East' as east_label''';
+
+datasource order_totals (
+    order_id: order_id, order_date: order_date, cust_total: cust_total,
+)
+grain (order_id)
+query '''select 1 as order_id, date '2024-01-01' as order_date, 10.0 as cust_total''';
+
+datasource agg_by_customer (
+    customer_id: customer_id, order_count: order_count,
+    orders_per_label_char: orders_per_label_char,
+)
+grain (customer_id)
+query '''select 101 as customer_id, 1 as order_count, 0.25 as orders_per_label_char''';
+"""
+
 
 def _build(
     select: str, model: str = MODEL
@@ -300,6 +360,108 @@ def test_complete_where_summary_skipped_without_condition():
     # aggregate column can't be trusted; total_revenue stays derived from base.
     roots = _roots("SELECT customer_id, total_revenue;", MODEL_COMPLETE_WHERE)
     assert "local.total_revenue" not in roots
+
+
+# ---------- binding-only roots (unsourceable lineage) ----------
+
+
+@pytest.mark.parametrize(
+    "select",
+    [
+        "SELECT customer_id, label;",
+        "SELECT label;",
+        "SELECT order_id, label;",
+        "SELECT customer_id, upper(label) -> shout;",
+        "SELECT label, count(order_id) -> orders;",
+        "SELECT order_date, count(label) -> labels;",
+        "WHERE label = 'East' SELECT order_id;",
+    ],
+)
+def test_unsourced_lineage_binding_is_root_everywhere(select: str):
+    assert _roots(select, MODEL_UNSOURCED_LINEAGE) == {"local.label"}
+
+
+def test_rederivable_binding_off_grain_stays_derived():
+    assert _roots("SELECT order_id, region_upper;", MODEL_UNSOURCED_LINEAGE) == set()
+    assert _roots("SELECT customer_id, region_upper;", MODEL_UNSOURCED_LINEAGE) == {
+        "local.region_upper"
+    }
+
+
+def test_query_grained_value_matches_only_at_its_binding_grain():
+    # The canonical pins the aggregate's grain: at any other query grain the
+    # column is a different value, never a candidate.
+    target = "local.orders_per_label_char"
+    assert target in _roots(
+        "SELECT customer_id, orders_per_label_char;", MODEL_UNSOURCED_LINEAGE
+    )
+    assert target not in _roots(
+        "SELECT customer_id, order_date, orders_per_label_char;",
+        MODEL_UNSOURCED_LINEAGE,
+    )
+
+
+@pytest.mark.parametrize(
+    "select,expected",
+    [
+        ("SELECT order_id, cust_total;", {"local.cust_total"}),
+        ("SELECT customer_id, raw_rank;", {"local.raw_rank"}),
+        # bound inputs make a bound value re-derivable: the inputs are the roots
+        ("SELECT order_id, cust_rank;", {"local.cust_total"}),
+        ("SELECT order_id, big_label;", {"local.cust_total", "local.label"}),
+        ("WHERE region = 'east' SELECT order_id, cust_total;", {"local.cust_total"}),
+        # order_date splits the customer-grain groups the column stores
+        ("WHERE order_date = '2024-01-01'::date SELECT order_id, cust_total;", set()),
+        # any filter reshapes a window's partition
+        ("WHERE region = 'east' SELECT customer_id, raw_rank;", set()),
+        # order_totals stores cust_total below its grain, where order_date is
+        # expressible but not constant per customer
+        (
+            "WHERE order_date = '2024-01-01'::date SELECT customer_id, cust_total;",
+            set(),
+        ),
+        # row-level: a condition removes rows, never changes the value
+        (
+            "WHERE order_date = '2024-01-01'::date SELECT order_id, label;",
+            {"local.label"},
+        ),
+        # a stored FILTER drops rows a scan would not
+        ("SELECT order_id, east_label;", {"local.label"}),
+    ],
+)
+def test_unsourced_cross_row_binding(select: str, expected: set[str]):
+    assert _roots(select, MODEL_UNSOURCED_LINEAGE) == expected
+
+
+# ---------- _scan_rows_at_grain (grain gate, modulo FD) ----------
+
+
+@pytest.mark.parametrize(
+    "components,expected",
+    [
+        ({"local.customer_id"}, True),
+        # customer_id -> state_id through the merged property, bound elsewhere
+        ({"local.customer_id", "local.state_id"}, True),
+        # a second independent key fans the scan out
+        ({"local.customer_id", "local.order_date"}, False),
+        # coarser and disjoint targets are not the scan's rows
+        ({"local.state_id"}, False),
+        (set(), False),
+    ],
+)
+def test_scan_rows_at_grain(components: set[str], expected: bool):
+    be, _, _ = _build("SELECT customer_id, order_count;", MODEL_UNSOURCED_LINEAGE)
+    summary = be.datasources["agg_by_customer"]
+    assert (
+        _scan_rows_at_grain(summary, BuildGrain(components=components), be) == expected
+    )
+
+
+def test_summary_aggregate_read_beside_merged_key():
+    roots = _roots(
+        "SELECT customer_id, state_code, order_count;", MODEL_UNSOURCED_LINEAGE
+    )
+    assert roots == {"local.order_count"}
 
 
 # ---------- _datasource_materializes (predicate, unit) ----------
