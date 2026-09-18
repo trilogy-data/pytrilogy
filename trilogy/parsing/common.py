@@ -833,6 +833,31 @@ def _keys_reduce_to(
     return True
 
 
+def fd_minimal_addresses(
+    addresses: Iterable[str], environment: Environment
+) -> set[str]:
+    """`addresses` less every member the rest functionally determine through
+    declared keys: `{order.id, customer.region}` -> `{order.id}`.
+
+    Over a key DAG the result is unique, whatever the iteration order; only a
+    key cycle leans on `sorted`. The author twin of the key-hierarchy fold in
+    `concepts_to_build_grain_concepts`."""
+    out = set(addresses)
+    for address in sorted(out):
+        if any(
+            _keys_reduce_to(
+                keys,
+                out - {address},
+                environment.concepts.get,
+                environment,
+                frozenset({address}),
+            )
+            for keys in _declared_keys(address, environment.concepts.get, environment)
+        ):
+            out.discard(address)
+    return out
+
+
 def concepts_to_grain_concepts_ordered(
     concepts: Iterable[Concept | ConceptRef | str],
     environment: Environment | None,
@@ -879,19 +904,6 @@ def concepts_to_grain_concepts_ordered(
         seen.add(sub.address)
         output.append(sub.address)
 
-    # Key-hierarchy reduction, the author twin of
-    # `concepts_to_build_grain_concepts`: `concept_is_relevant` only drops a
-    # component one step from its keys, so `{order.id, customer.region}` kept a
-    # column `order.id -> customer.id -> region` already determines. An
-    # abstract aggregate hashes this grain into its identity, so each spelling
-    # of one grouping has to reduce to the same set.
-    for address in sorted(output):
-        retained = {x for x in output if x != address}
-        if any(
-            _keys_reduce_to(keys, retained, _lookup, environment, frozenset({address}))
-            for keys in _declared_keys(address, _lookup, environment)
-        ):
-            output.remove(address)
     return output
 
 

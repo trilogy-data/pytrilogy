@@ -3,16 +3,17 @@
 An abstract aggregate is pinned at the select grain and that grain is hashed
 into its canonical name, so two spellings of one grouping were two concepts:
 `select order_id, region, total` missed the `order_id`-grain summary that
-`select order_id, customer_id, region, total` read. The author-side grain now
-folds the whole key chain (`order_id -> customer_id -> region`) and a global
-non-partial merge's identity, as the build-side grain already did.
+`select order_id, customer_id, region, total` read. The canonical name now
+hashes the FD-minimal `by` (the whole key chain `order_id -> customer_id ->
+region`, and a global non-partial merge's identity). Only the name: the
+lineage keeps its full `by`, so a query no summary answers plans as before.
 """
 
 import pytest
 
 from trilogy import Dialects
-from trilogy.core.models.author import Grain
 from trilogy.core.models.environment import Environment
+from trilogy.parsing.common import fd_minimal_addresses
 
 _MODEL = """
 key order_id int;
@@ -71,18 +72,16 @@ def _rows(engine, query: str) -> list[tuple]:
         ["region", "order_id"],
     ],
 )
-def test_grain_folds_key_chain(components: list[str]):
+def test_key_chain_folds(components: list[str]):
     env = _engine().environment
-    assert Grain.from_concepts(components, environment=env).components == {
-        "local.order_id"
-    }
+    addresses = [f"local.{c}" for c in components]
+    assert fd_minimal_addresses(addresses, env) == {"local.order_id"}
 
 
-def test_grain_keeps_undetermined_property():
+def test_undetermined_property_stays():
     env = _engine().environment
-    assert Grain.from_concepts(
-        ["customer_id", "amount"], environment=env
-    ).components == {"local.customer_id", "local.amount"}
+    addresses = ["local.customer_id", "local.amount"]
+    assert fd_minimal_addresses(addresses, env) == set(addresses)
 
 
 @pytest.mark.parametrize(
@@ -160,34 +159,29 @@ def _merge_env(target: str) -> Environment:
     return _merge_engine(target).environment
 
 
-def test_grain_folds_equal_merge_target():
+def test_equal_merge_target_folds():
     env = _merge_env("state")
-    assert Grain.from_concepts(["org_code", "state"], environment=env).components == {
+    assert fd_minimal_addresses(["local.org_code", "local.state"], env) == {
         "local.org_code"
     }
-    assert Grain.from_concepts(
-        ["org_code", "state_name"], environment=env
-    ).components == {"local.org_code"}
-
-
-# A partial merge holds only on matched rows: it is not an identity, and the
-# grain keeps both keys.
-def test_grain_keeps_partial_merge_target():
-    env = _merge_env("~state")
-    assert Grain.from_concepts(["org_code", "state"], environment=env).components == {
-        "local.org_code",
-        "local.state",
+    assert fd_minimal_addresses(["local.org_code", "local.state_name"], env) == {
+        "local.org_code"
     }
 
 
-def test_two_spellings_share_one_group_by():
+# A partial merge holds only on matched rows: it is not an identity.
+def test_partial_merge_target_stays():
+    env = _merge_env("~state")
+    addresses = ["local.org_code", "local.state"]
+    assert fd_minimal_addresses(addresses, env) == set(addresses)
+
+
+def test_two_spellings_agree():
     engine = _merge_engine("state")
     query = (
         "select org_code, state, count(launch_id) as launches,"
         " count(launch_id) by org_code as explicit order by org_code asc;"
     )
-    sql = engine.generate_sql(query)[-1]
-    assert sql.count("GROUP BY") == 1, sql
     assert _rows(engine, query) == [("CASC", "CN", 1, 1), ("NASA", "US", 2, 2)]
 
 
