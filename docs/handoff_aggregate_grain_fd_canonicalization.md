@@ -1,51 +1,62 @@
 # Handoff: an abstract aggregate's identity depends on how its grain is *spelled*
 
-Status: open, not started. Found auditing PR #695; written up with PR #696 (2026-09-18).
+Status: fixed at the author-side grain (2026-09-18, branch `agg-grain-fd-canonicalization`). One sibling bug found and left open, see the end.
 
-Pinned today as a strict xfail in `tests/discovery/test_merged_key_grain_reads_bound_derived.py::test_summary_reads_at_fd_equivalent_grain[beside_surviving_key_spelling]` (landed with #695).
+Locked by `tests/discovery/test_aggregate_grain_fd_canonical.py` and the former strict xfail `test_merged_key_grain_reads_bound_derived.py::test_summary_reads_at_fd_equivalent_grain[beside_surviving_key_spelling]`.
 
-## What happens
+## What happened
 
 ```
 merge org.state_code into state.code;          # a property of org.code, respelled as a KEY
 auto launch_count <- count(id);
 datasource org_summary (Code: org.code, N: launch_count) grain (org.code) ...
 
-select org.code, org.state_code, launch_count;  # reads org_summary
-select org.code, state.code,     launch_count;  # recomputes from base
+select org.code, org.state_code, launch_count;  # read org_summary
+select org.code, state.code,     launch_count;  # recomputed from base
 ```
 
-Same query, same rows, two plans. An abstract aggregate has no grain of its own: the Factory resolves it at the select grain (`__build_concept` -> `_abstract_resolution_grain` -> `get_select_grain_and_keys`), and that grain becomes the `by` list of its lineage. The canonical name is a hash of that lineage (`generate_concept_name`), so **the grain is part of the aggregate's identity**:
+An abstract aggregate has no grain of its own: the Factory resolves it at the select grain (`__build_concept` -> `_abstract_resolution_grain` -> `get_select_grain_and_keys`), that grain becomes the `by` list of its lineage, and the canonical name hashes the lineage. **The grain is part of the aggregate's identity**, so every canonical-keyed lookup (materialized roots, prebuilt-aggregate reuse, sibling dedupe) saw two spellings of one grouping as two concepts.
 
-| query grain | canonical | matches `org_summary.N`? |
+## Root cause: the author-side grain was only one FD step deep
+
+The merge case was one instance of a wider, much more common gap. The select grain is already FD-minimized on the author side, by `concept_is_relevant`: a property whose keys are present drops out, as does a KEY whose `effective_keys` (FK-derived) are present. That check is **one step**, and it tests against the *unreduced* component list, so the answer depended on whether the middle link was named:
+
+| components | grain before | after |
 |---|---|---|
-| `Grain<org.code>` | `_virt_agg_count_1670...` | yes (same hash as an explicit `count(id) by org.code`) |
-| `Grain<org.code, state.code>` | `_virt_agg_count_7356...` | no |
+| `order_id, customer_id, region` | `order_id` | `order_id` |
+| `order_id, region` | `order_id, region` | `order_id` |
+| `org.code, org.state_code` | `org.code` | `org.code` |
+| `org.code, state.code` (merge target) | `org.code, state.code` | `org.code` |
 
-`org.code -> state.code`, so both grains have exactly the same groups, but the second spelling is a different concept as far as every canonical-keyed lookup is concerned. #695's `_scan_rows_at_grain` FD gate never gets consulted, because the candidate check before it (`canonical_address in materialized_canonical_concepts`) already failed. The `org.state_code` spelling happens to pin at `Grain<org.code>` (observed; I have not traced why the merged-away address drops out of the pin), which is the only reason it reads the summary.
+`select order_id, region, total` recomputed from base beside an `order_id`-grain summary that `select order_id, customer_id, region, total` read. That also answers the open question in the original write-up: the `org.state_code` spelling pinned at `Grain<org.code>` because a global merge does not rewrite the author environment, so `org.state_code` is still a PROPERTY of `org.code` there and the one-step rule drops it. `state.code` is a bare KEY with no keys, so it stayed.
 
-This is wider than the summary-table case. Anything keyed on aggregate canonicals sees FD-equivalent grains as distinct. Materialized-root matching is the confirmed case; prebuilt-aggregate reuse and sibling-aggregate / CTE dedupe key on the same canonicals and are worth checking. (Additive rollup is not affected: it matches on lineage signature, not canonical.) It cannot produce wrong rows (the plans are each correct); it produces missed reuse, redundant group-bys, and -- where the recompute path has no source -- an avoidable `NoDatasourceException`.
+The build side never had this problem: `concepts_to_build_grain_concepts` already folds the whole FK chain (`_key_reduces_to`). The aggregate is pinned from the *author* grain, before a `BuildEnvironment` exists, so it never saw that reduction.
 
-## Proposal: canonicalize an aggregate's grain to its FD-minimal key set
+## The fix
 
-When pinning an abstract aggregate, reduce the resolution grain to a minimal set of components whose FD closure covers the rest: `{org.code, state.code}` -> `{org.code}`. Two spellings of one grouping then hash to one concept.
+`concepts_to_grain_concepts_ordered` (`trilogy/parsing/common.py`) now runs the author twin of the build-side key-hierarchy reduction: a component drops when some declared key set of it reduces, transitively, to the retained components.
 
-There is precedent and machinery already:
-- `v4_helper/functional_dependency.minimize_build_grain` (declared keys/grains + pseudonyms; the engine `check_if_group_required` and #695's gate use).
-- `concept_graph._aggregate_input_grain` already returns `minimize_build_grain(environment, input_grain)` for the aggregate *input* side. This would do the same for the *output* side.
+- **Chain links are ROOT concepts only** (`_declared_keys`): a KEY's `effective_keys`, a PROPERTY's `keys`. A derived concept's keys can be conditional (an empty-grain FILTER virtual, `keys_are_conditional_fd`), so nothing chains through one.
+- **Merge identity**: a KEY that a *global, non-partial* `merge s into t` equates to `s` is determined by whatever determines `s` (`Environment.equal_merge_sources`). Partial merges (`into ~t`) and statement-scoped joins hold only on matched rows and contribute nothing; that is the scoped-join equality that caused the LEFT->FULL flip when it was used for group elision, and why this does not read `environment.domain_graph`.
 
-## Why it is its own PR
+How this lands against the concerns in the original proposal:
 
-1. **Seam.** The pin happens in the author-side Factory, before a `BuildEnvironment` exists; `minimize_build_grain` takes a `BuildEnvironment`. The options are (a) minimize in the Factory off `environment.domain_graph` -- but that graph's equivalence classes include authored scoped-join equalities, which hold only on matched rows and already caused a LEFT->FULL flip when used for group elision; or (b) keep the pinned `by` for rendering and minimize only the grain that feeds the canonical hash. (b) is smaller but means identity and rendered GROUP BY diverge, which every consumer of `lineage.by` has to tolerate.
-2. **Which minimal set.** Minimal covers are not unique (`{a, b}` with `a <-> b`). The choice has to be deterministic and stable across statements and across the datasource-column build vs the query build, or the two sides hash differently again. `minimize_build_grain` iterates `sorted()` addresses, which is deterministic but namespace-spelling-dependent.
-3. **Partial keys.** The declared-FD engine is `~`-blind; `DomainGraph.determines(population=)` is not. A `~state.code` binding proves `org.code -> state.code` only on the rows where it is present. For row multiplicity that is harmless (#695's gate relies on it); for *dropping a GROUP BY column from identity* it needs an argument, since a NULL-extended key is still one value per `org.code`.
-4. **Blast radius.** Canonical names feed the model fingerprint / refresh system and the build cache key. Every aggregate selected beside an FD-determined column gets a new canonical, so expect zquery log churn across tpc_ds / thelook even where the SQL is equivalent, and a fingerprint migration question for persisted state.
-5. **The GROUP BY itself.** Once identity is minimal, the rendered `GROUP BY org.code, state.code` is still needed to *project* `state.code`; that is the select's concern, not the aggregate's, and is where the "three seams" FD-closure work (`check_if_group_required`, `has_condition_key_outside_grain`, `_lineage_pinned_grain`) already lives.
+1. **Seam.** Neither option (a) nor (b). The existing author-side reducer is the seam: identity and the rendered `by` stay one thing, and nothing downstream has to tolerate a divergence.
+2. **Which minimal set.** Chain reduction over a key DAG has a unique result (the undetermined sources), independent of iteration order. Only a key cycle (`a <-> b`) is order-dependent, and there `sorted()` addresses decide; the datasource-column build and the query build share addresses, so both sides agree.
+3. **Partial keys.** Sidestepped for merges (partial merges excluded). For `~` *bindings* the rows are unchanged: A/B with the reduction patched off, on a fixture with extension rows, is identical for plain, `~` and `?` bindings of the middle key (`test_partial_determined_key_rows`).
+4. **Blast radius.** Fingerprints hash authored lineage, not the pinned grain, so concept fingerprints are untouched. A `persist` whose select names a transitively-determined column gets a one-time fingerprint change through `SelectLineage.grain` (one model-aware rebuild). See the suite notes below for SQL churn.
+5. **The GROUP BY itself.** Unchanged: projecting `state.code` beside an `org.code`-grain aggregate is the select's concern, and is exactly the plan the `org.state_code` spelling already produced.
 
-## Suggested acceptance tests for that PR
+Bonus: the recompute path gets cheaper. Two spellings in one statement (`count(id)` at `Grain<org.code, state.code>` beside `count(id) by org.code`) used to be two GROUP BYs over the joined org table; they are now one aggregate over `launches` alone.
 
-- Flip the strict xfail above.
-- `select k, prop_of_k_respelled_as_key, agg` and `select k, agg` produce the same canonical for `agg`.
-- Two spellings in one statement (`count(id) by org.code` beside an abstract `count(id)` at `Grain<org.code, state.code>`) collapse to one aggregate CTE.
-- A `~`-bound determined key: rows unchanged vs main on a fixture with extension rows.
-- Blob-hash A/B of `zquery*.log` to separate "canonical renamed" churn from real SQL change.
+## Open: two names for one materialized aggregate (pre-existing on main)
+
+Once two outputs share a canonical *and* a datasource materializes it, v4 marks both as materialized roots and source planning binds the column to only one of them:
+
+```
+select order_id, total, sum(amount) by order_id as explicit;               # main: `total` silently missing from the result
+select order_id, customer_id, total, sum(amount) by order_id as explicit;  # main: "Missing source reference to local.amount"
+select order_id, region, total, sum(amount) by order_id as explicit;       # main: rows (6.0 beside 96.0); now "Missing rollup source reference"
+```
+
+The first two fail on main as-is. The third used to dodge the bug only because its two spellings hashed apart; it now joins them. Verified workaround (monkeypatched, not landed): when several mandatory concepts share a canonical, drop them all from `_materialized_root_addresses` so the shape derives from base; all three then return correct, complete rows. The real fix is for the root scan to bind one column to every address sharing its canonical.

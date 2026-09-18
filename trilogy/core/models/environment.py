@@ -873,6 +873,8 @@ class Environment:
     # (len(merges) it covers, declared-edge graph over them): the merge lint's
     # base graph, extended per accepted merge instead of rebuilt per check.
     _merge_lint_graph: tuple[int, DomainGraph] | None = None
+    # (len(merges) it covers, target -> sources) for equal_merge_sources.
+    _equal_merge_sources: tuple[int, dict[str, frozenset[str]]] | None = None
 
     def freeze(self):
         self.frozen = True
@@ -922,6 +924,18 @@ class Environment:
                 out[address] = new_keys
         self._fk_derived_keys = (stamp, out)
         return out
+
+    def equal_merge_sources(self, address: str) -> frozenset[str]:
+        """Concepts a global non-partial `merge` declared identical to `address`."""
+        cached = self._equal_merge_sources
+        if cached is None or cached[0] != len(self.merges):
+            index: dict[str, set[str]] = defaultdict(set)
+            for source, target, join_type in self.merges:
+                if join_type is JoinType.FULL:
+                    index[target].add(source)
+            frozen = {k: frozenset(v) for k, v in index.items()}
+            self._equal_merge_sources = cached = (len(self.merges), frozen)
+        return cached[1].get(address, frozenset())
 
     def materialize_for_select(
         self,

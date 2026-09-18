@@ -788,6 +788,51 @@ def _grain_contribution(
     return [x]
 
 
+def _declared_keys(
+    address: str,
+    lookup: Callable[[str], Concept | None],
+    environment: Environment | None,
+) -> list[set[str]]:
+    """Each key set that functionally determines a ROOT concept. A derived
+    concept's keys can be conditional (a filter virtual's), so nothing chains
+    through one.
+
+    A global non-partial `merge s into t` declares one identity, so whatever
+    determines `s` determines `t`. Partial merges and statement joins hold only
+    on matched rows and contribute nothing."""
+    concept = lookup(address)
+    if concept is None or concept.lineage is not None:
+        return []
+    out: list[set[str]] = []
+    if concept.purpose == Purpose.KEY:
+        keys = concept.effective_keys(environment)
+        if environment:
+            out += [{s} for s in sorted(environment.equal_merge_sources(address))]
+    elif concept.purpose == Purpose.PROPERTY:
+        keys = concept.keys
+    else:
+        keys = None
+    return [set(keys)] + out if keys else out
+
+
+def _keys_reduce_to(
+    keys: set[str],
+    target: set[str],
+    lookup: Callable[[str], Concept | None],
+    environment: Environment | None,
+    _seen: frozenset[str] = frozenset(),
+) -> bool:
+    for key in keys:
+        if key in target:
+            continue
+        if key in _seen or not any(
+            _keys_reduce_to(parents, target, lookup, environment, _seen | {key})
+            for parents in _declared_keys(key, lookup, environment)
+        ):
+            return False
+    return True
+
+
 def concepts_to_grain_concepts_ordered(
     concepts: Iterable[Concept | ConceptRef | str],
     environment: Environment | None,
@@ -834,6 +879,19 @@ def concepts_to_grain_concepts_ordered(
         seen.add(sub.address)
         output.append(sub.address)
 
+    # Key-hierarchy reduction, the author twin of
+    # `concepts_to_build_grain_concepts`: `concept_is_relevant` only drops a
+    # component one step from its keys, so `{order.id, customer.region}` kept a
+    # column `order.id -> customer.id -> region` already determines. An
+    # abstract aggregate hashes this grain into its identity, so each spelling
+    # of one grouping has to reduce to the same set.
+    for address in sorted(output):
+        retained = {x for x in output if x != address}
+        if any(
+            _keys_reduce_to(keys, retained, _lookup, environment, frozenset({address}))
+            for keys in _declared_keys(address, _lookup, environment)
+        ):
+            output.remove(address)
     return output
 
 
