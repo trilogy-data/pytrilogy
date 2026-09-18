@@ -8,9 +8,9 @@ behavior instead."""
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
-import db_build
 import pytest
 
 from trilogy import Dialects, Executor
@@ -18,6 +18,11 @@ from trilogy.core.models.environment import Environment
 from trilogy.dialect.config import DuckDBConfig
 
 EVAL_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(EVAL_DIR.parent))
+
+from common.siblings import load_sibling
+
+db_build = load_sibling(__file__, "db_build")
 MODEL_DIR = EVAL_DIR / "enriched_model"
 IMPORTS = "import order_items as order_item;\n"
 

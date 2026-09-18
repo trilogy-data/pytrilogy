@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
-EVAL_DIR = Path(__file__).resolve().parent
-if str(EVAL_DIR) not in sys.path:
-    sys.path.insert(0, str(EVAL_DIR))
-
-import db_build
+from common.siblings import load_sibling
 from common.spec import BenchmarkSpec
+
+EVAL_DIR = Path(__file__).resolve().parent
+
+# By bare name every eval's db_build shares one sys.modules slot.
+db_build = load_sibling(__file__, "db_build")
 
 SPEC = BenchmarkSpec(
     name="thelook Partial Bridge",

@@ -8,18 +8,15 @@ validated against the published dev-split answers (see query_prompts.json).
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
+
+from common.siblings import load_sibling
+from common.spec import BenchmarkSpec
 
 EVAL_DIR = Path(__file__).resolve().parent
 
-# The viewer imports this spec by file path (no package context), so the
-# sibling db_build import needs the eval dir on sys.path explicitly.
-if str(EVAL_DIR) not in sys.path:
-    sys.path.insert(0, str(EVAL_DIR))
-
-import db_build
-from common.spec import BenchmarkSpec
+# By bare name every eval's db_build shares one sys.modules slot.
+db_build = load_sibling(__file__, "db_build")
 
 SPEC = BenchmarkSpec(
     name="DABstep",
