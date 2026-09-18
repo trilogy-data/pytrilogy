@@ -197,6 +197,30 @@ def _datasource_materializes(
     )
 
 
+def _scan_rows_at_grain(ds: BuildDatasource, target_grain: BuildGrain) -> bool:
+    """One scan row per `target_grain` tuple: the datasource's declared grain,
+    or that grain plus keys the scan itself binds. A datasource's grain is its
+    unique key, so every column it binds is determined by it -- a
+    `Grain<org.code>` table carrying `state.code` has exactly one row per
+    (org.code, state.code) pair. The extra key is how a merge spells a bound
+    property: `merge org.state_code into state.code` makes the property read
+    as `state.code`, a KEY, and the grain of any request naming it grows by a
+    component the table never needed to declare."""
+    if ds.grain == target_grain:
+        return True
+    if ds.grain.abstract or not ds.grain.issubset(target_grain):
+        return False
+    bound: set[str] = set()
+    for column in ds.columns:
+        if column.is_complete:
+            bound.add(column.concept.address)
+            bound.add(column.concept.canonical_address)
+    return all(
+        component in bound
+        for component in target_grain.components - ds.grain.components
+    )
+
+
 def _materialized_root_addresses(
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
@@ -289,7 +313,7 @@ def _materialized_root_addresses(
         exact = False
         if concept.canonical_address in environment.materialized_canonical_concepts:
             for ds in datasources:
-                if ds.grain != target_grain:
+                if not _scan_rows_at_grain(ds, target_grain):
                     continue
                 if _datasource_materializes(concept, ds, where, environment):
                     out.add(concept.address)
