@@ -441,10 +441,13 @@ class MergeNode(StrategyNode):
                     filtered_ids.add(source.identifier)
         # Authored coalescing (union/full) relations declare row intent: only
         # the provably-row-identical narrowing pass may tighten them, the same
-        # registry veto `get_join_type` honors.
-        coalescing = self.environment.domain_graph.outer_relation_keys() | set(
-            self.environment.domain_graph.coalescing_relation_members()
-        )
+        # registry veto `get_join_type` honors. A `merge` declares identity,
+        # not row intent: its FULL is licensed by domains that are equal
+        # UNFILTERED, and a WHERE only one side can apply breaks that.
+        graph = self.environment.domain_graph
+        coalescing = (
+            graph.outer_relation_keys() - graph.equal_narrowable_keys()
+        ) | graph.coalescing_relation_members()
         return JoinProofs(
             proofs=proofs,
             branch_proofs=branch_proofs,

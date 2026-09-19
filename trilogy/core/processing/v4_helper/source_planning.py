@@ -54,6 +54,7 @@ from trilogy.core.processing.node_generators.select_helpers.datasource_nodes imp
     create_select_node,
     create_select_node_candidate,
     finalize_select_node,
+    subgraph_concepts,
 )
 from trilogy.core.processing.node_generators.select_node import (
     validate_query_is_resolvable,
@@ -739,7 +740,7 @@ def _datasource_nodes_for_bridge(
         )
         candidate = create_select_node_candidate(
             ds_node,
-            concept_nodes,
+            subgraph_concepts(concept_nodes, request.environment, request.outputs),
             g=plan.graph,
             environment=request.environment,
             depth=request.depth + 1,
@@ -928,6 +929,21 @@ def _datasource_can_output(
     return all(
         any(concept.address == address for concept in child.output_concepts)
         for child in datasource.children
+    )
+
+
+def _datasource_binds_canonical(
+    datasource: BuildDatasource | BuildUnionDatasource, concept: BuildConcept
+) -> bool:
+    children = (
+        [datasource] if isinstance(datasource, BuildDatasource) else datasource.children
+    )
+    return all(
+        any(
+            bound.canonical_address == concept.canonical_address
+            for bound in child.output_concepts
+        )
+        for child in children
     )
 
 
@@ -1137,7 +1153,9 @@ def _local_concept_nodes_for_datasource(
                 )
                 and datasource is not None
                 and (
-                    _datasource_can_output(datasource, canonical.address)
+                    # By canonical: when two requested names share one, the
+                    # `canonical_concepts` winner need not be the bound one.
+                    _datasource_binds_canonical(datasource, canonical)
                     # ...or it binds a finer additive aggregate that rolls up to
                     # it, which is how an anonymous alias reaches a summary table.
                     or _datasource_rolls_up_to(datasource, canonical, environment)
@@ -1410,10 +1428,9 @@ def _plan_complete_where_source(request: SourceRequest) -> StrategyNode | None:
         return None
     matches.sort(key=lambda ds: ds.name)
     ds = matches[0]
-    scan_nodes = [concept_to_node(c.with_default_grain()) for c in outputs]
     return create_select_node(
         f"ds~{ds.name}",
-        scan_nodes,
+        outputs,
         g=request.graph,
         environment=environment,
         depth=request.depth + 1,
@@ -1427,10 +1444,9 @@ def _plan_finer_filter_rollup(request: SourceRequest) -> StrategyNode | None:
         return None
     environment = request.environment
     outputs = list(request.outputs)
-    scan_nodes = [concept_to_node(c.with_default_grain()) for c in outputs]
     scan = create_select_node(
         f"ds~{ds.name}",
-        scan_nodes,
+        outputs,
         g=request.graph,
         environment=environment,
         depth=request.depth + 1,

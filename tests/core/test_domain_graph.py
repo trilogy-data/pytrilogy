@@ -201,6 +201,26 @@ def test_fd_composite_and_equivalence():
     assert not graph.determines({"a2"}, "c")
 
 
+def test_fd_minimal_folds_chain_and_equal_class():
+    graph = DomainGraph(
+        edges=[equal("b", "b2")],
+        fd_edges=[
+            FDEdge(determinants=frozenset({"a"}), dependent="b"),
+            FDEdge(determinants=frozenset({"b"}), dependent="c"),
+        ],
+    )
+    assert graph.fd_minimal(["a", "c"]) == {"a"}
+    assert graph.fd_minimal(["c", "b2", "a"]) == {"a"}
+    assert graph.fd_minimal(["b", "x"]) == {"b", "x"}
+
+
+def test_fd_minimal_memo_tracks_new_edges():
+    graph = DomainGraph()
+    assert graph.fd_minimal(["a", "b"]) == {"a", "b"}
+    graph.add_fd(FDEdge(determinants=frozenset({"a"}), dependent="b"))
+    assert graph.fd_minimal(["a", "b"]) == {"a"}
+
+
 def test_fd_population_scope():
     scoped = FDEdge(
         determinants=frozenset({"k"}),

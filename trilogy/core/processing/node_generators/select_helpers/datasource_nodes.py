@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -42,6 +43,7 @@ from trilogy.core.processing.nodes import (
 )
 from trilogy.core.processing.nodes.select_node_v2 import scan_stamps
 from trilogy.core.processing.utility import padding
+from trilogy.utility import unique
 
 if TYPE_CHECKING:
     from trilogy.core.processing.nodes.union_node import UnionNode
@@ -145,20 +147,37 @@ def finalize_select_node(
     return candidate.node
 
 
+def subgraph_concepts(
+    subgraph: list[str],
+    environment: BuildEnvironment,
+    requested: Sequence[BuildConcept],
+) -> list[BuildConcept]:
+    """The concepts a datasource subgraph reads. The graph keys a node by
+    canonical address, so two requested names for one expression (`total`
+    beside `sum(amount) by order_id as explicit`) are one node: each of them
+    comes back, not only the `canonical_concepts` winner."""
+    concepts = [
+        environment.canonical_concepts[extract_address(c)]
+        for c in subgraph
+        if c.startswith("c~")
+    ]
+    addresses = {c.address for c in concepts}
+    canonicals = {c.canonical_address for c in concepts}
+    return concepts + [
+        c
+        for c in unique(list(requested), "address")
+        if c.canonical_address in canonicals and c.address not in addresses
+    ]
+
+
 def create_select_node_candidate(
     ds_name: str,
-    subgraph: list[str],
+    all_concepts: list[BuildConcept],
     g: ReferenceGraph,
     environment: BuildEnvironment,
     depth: int,
     conditions: BuildWhereClause | None = None,
 ) -> SourceNodeCandidate:
-    all_concepts = [
-        environment.canonical_concepts[extract_address(c)]
-        for c in subgraph
-        if c.startswith("c~")
-    ]
-
     if all(c.derivation == Derivation.CONSTANT for c in all_concepts):
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} All concepts {[x.address for x in all_concepts]} are constants, returning constant node"
@@ -227,7 +246,7 @@ def create_select_node_candidate(
 
 def create_select_node(
     ds_name: str,
-    subgraph: list[str],
+    all_concepts: list[BuildConcept],
     g: ReferenceGraph,
     environment: BuildEnvironment,
     depth: int,
@@ -236,7 +255,7 @@ def create_select_node(
 ) -> StrategyNode:
     candidate = create_select_node_candidate(
         ds_name,
-        subgraph,
+        all_concepts,
         g,
         environment,
         depth,

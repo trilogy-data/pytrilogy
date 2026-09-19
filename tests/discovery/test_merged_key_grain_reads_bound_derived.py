@@ -201,14 +201,10 @@ def test_unsourced_lineage_reads_the_binding(
             [("CASC", "CN", 42), ("NASA", "US", 41)],
             id="beside_merged_key",
         ),
-        # Naming the surviving key pins the aggregate's canonical at
-        # Grain<org.code, state.code>, which no column matches: the gate is
-        # never consulted and the count is recomputed from base.
         pytest.param(
             "select org.code, state.code, launch_count order by org.code asc;",
             [("CASC", "CN", 42), ("NASA", "US", 41)],
             id="beside_surviving_key_spelling",
-            marks=pytest.mark.xfail(strict=True, reason="grain pin is not FD-minimal"),
         ),
     ],
 )

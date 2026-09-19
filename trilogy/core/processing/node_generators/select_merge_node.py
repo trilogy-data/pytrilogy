@@ -56,6 +56,7 @@ from trilogy.core.processing.node_generators.select_helpers.datasource_nodes imp
     create_select_node,
     create_select_node_candidate,
     finalize_select_node,
+    subgraph_concepts,
 )
 from trilogy.core.processing.node_generators.select_helpers.source_scoring import (
     deduplicate_datasources,
@@ -310,16 +311,20 @@ def _source_concepts_via_graph(
         requested_concepts = (
             orig_concepts if attempt_concepts is not orig_concepts else None
         )
+        scans = {
+            k: subgraph_concepts(subgraph, environment, attempt_concepts)
+            for k, subgraph in sub_nodes.items()
+        }
         candidates = [
             create_select_node_candidate(
                 k,
-                subgraph,
+                scan,
                 g=pruned,
                 environment=environment,
                 depth=depth,
                 conditions=select_conditions,
             )
-            for k, subgraph in sub_nodes.items()
+            for k, scan in scans.items()
         ]
         covering_candidates = [
             candidate
@@ -347,13 +352,13 @@ def _source_concepts_via_graph(
             trial = [
                 create_select_node_candidate(
                     k,
-                    subgraph,
+                    scan,
                     g=pruned,
                     environment=environment,
                     depth=depth,
                     conditions=None,
                 )
-                for k, subgraph in sub_nodes.items()
+                for k, scan in scans.items()
             ]
             # Only defer for a flat star: every source must be a single ungrouped
             # scan, so the merge can apply the WHERE across the joined rowset.
