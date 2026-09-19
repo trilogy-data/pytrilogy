@@ -51,7 +51,7 @@ from .constants import (
     EdgeKind,
 )
 from .edges import EdgeMap, add_edge, edge_kind
-from .functional_dependency import minimize_build_grain
+from .functional_dependency import build_fd_determines, minimize_build_grain
 from .models import ConceptAttrs
 from .projection import concept_satisfiable, lineage_existence_only
 from .staged_where import cross_row_stage_args
@@ -1884,6 +1884,131 @@ def _constraint_crosses_rowset(
     )
 
 
+_ROW_SCALAR_DERIVATIONS = (Derivation.ROOT, Derivation.BASIC, Derivation.CONSTANT)
+
+
+def _is_row_scalar(
+    graph: nx.DiGraph, edges: EdgeMap, attrs: dict[str, ConceptAttrs], nid: str
+) -> bool:
+    return all(
+        attrs[n].derivation in _ROW_SCALAR_DERIVATIONS
+        for n in {nid, *_lineage_ancestors(graph, edges, nid)}
+    )
+
+
+def _whole_grain_determines(
+    environment: BuildEnvironment, grain: frozenset[str], address: str
+) -> bool:
+    """`grain` determines `address` and no proper subset of it does: the value
+    belongs to the grain's own row (a fact property, a dimension behind a
+    foreign key the fact binds), not to one of its keys' dimension tables.
+
+    `covers`, not `determines`: hosting reads the value off the grain's rows,
+    so those rows must hold its whole domain as well as fix it uniquely."""
+    graph = environment.domain_graph
+    return graph.covers(grain, address) and not any(
+        graph.determines(grain - {key}, address) for key in grain
+    )
+
+
+def _host_outputs_on_row_preserving_aggregates(
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
+    graph: nx.DiGraph,
+    edges: EdgeMap,
+    attrs: dict[str, ConceptAttrs],
+    root_like: frozenset[str],
+) -> None:
+    """Widen the grouping grain of an aggregate that reduces nothing with the
+    select outputs only its whole grain determines.
+
+    An aggregate's `by` is FD-minimal (`Factory._fd_minimal_lineage`), so
+    `state` beside `sum(net_paid)` at the fact grain `(item, ticket)` is an
+    output, not a grouping key. When the grain also determines the aggregate's
+    input grain, its input rows are already one per group: carrying the column
+    through the GROUP BY is free, while sourcing it apart re-reads the one
+    table keyed by that grain, which is the fact being aggregated. An aggregate
+    that truly reduces keeps the split, and joins the dimension after its rows
+    collapse; so does a column one grain key alone determines (`brand` by
+    `item`), which joins from that key's own table.
+
+    Values only, never a KEY. A key in a grouping grain is a FINAL merge axis,
+    not a carried value, so hosting one re-shapes how the contributors stitch:
+    `order_id` beside `sum(qty)` at `item_id` makes the aggregate two-keyed,
+    and a two-`~` span then null-safe joins its extension families on their
+    NULL `item_id` (the same wrong rows `sum(qty) by item_id, order_id` gives
+    when spelled out)."""
+    hosts = [
+        nid
+        for nid, node in attrs.items()
+        if node.label == ""
+        and node.derivation == Derivation.AGGREGATE
+        and node.grouping_mode == AggregateGroupingMode.STANDARD
+        and node.grain_components
+        and node.aggregate_input_grain
+        and all(
+            environment.domain_graph.determines(node.grain_components, addr)
+            for addr in node.aggregate_input_grain - node.grain_components
+        )
+    ]
+    if not hosts:
+        return
+    candidates = [
+        nid
+        for concept in mandatory_list
+        if (nid := node_id(_effective_label(concept, "", root_like), concept.address))
+        in attrs
+        and attrs[nid].purpose != Purpose.KEY
+        and _is_row_scalar(graph, edges, attrs, nid)
+    ]
+    for host in hosts:
+        grain = attrs[host].grain_components
+        riders = [
+            nid
+            for nid in candidates
+            if attrs[nid].address not in grain
+            and _whole_grain_determines(environment, grain, attrs[nid].address)
+        ]
+        attrs[host].grain_components = grain | {attrs[nid].address for nid in riders}
+        for nid in riders:
+            if not graph.has_edge(nid, host):
+                add_edge(graph, edges, nid, host, EdgeKind.LINEAGE)
+
+
+def _stamp_determining_key_roots(
+    attrs: dict[str, ConceptAttrs], environment: BuildEnvironment
+) -> None:
+    """Record, on each ROOT the query reads without naming its keys, the KEY
+    roots of the same scope that jointly determine it.
+
+    Root bucketing co-sources a property with its declared key, which is one FD
+    step. `state` beside `(item, ticket)` hangs off the fact through
+    `customer -> address`, none of which the query names, so without the chain
+    it reads as unrelated to the fact and is scanned alone, keyless."""
+    roots_by_label: dict[str, list[ConceptAttrs]] = defaultdict(list)
+    for node_attrs in attrs.values():
+        if node_attrs.derivation == Derivation.ROOT:
+            roots_by_label[node_attrs.label].append(node_attrs)
+    for roots in roots_by_label.values():
+        present = {root.address for root in roots}
+        keys = sorted(root.address for root in roots if root.purpose == Purpose.KEY)
+        for root in roots:
+            if root.keys & present:
+                continue
+            kept = [key for key in keys if key != root.address]
+            if not kept or not build_fd_determines(
+                environment, set(kept), root.address, include_empty_grain=False
+            ):
+                continue
+            for key in list(kept):
+                rest = [k for k in kept if k != key]
+                if rest and build_fd_determines(
+                    environment, set(rest), root.address, include_empty_grain=False
+                ):
+                    kept = rest
+            root.determining_key_roots = frozenset(kept)
+
+
 def build_concept_graph(
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
@@ -1921,6 +2046,9 @@ def build_concept_graph(
             datasource_addresses=datasource_addresses,
             pinned_probes=pinned_probes,
         )
+    _host_outputs_on_row_preserving_aggregates(
+        mandatory_list, environment, graph, edges, attrs, root_like
+    )
     # Outer WHERE: condition-phase label "@condition". The same concept that
     # also appears in the SELECT gets a separate node here, so depth labels
     # are never retro-promoted. A later `then where` stage's
@@ -2120,6 +2248,7 @@ def build_concept_graph(
     resolve_alternatives(
         graph, edges, attrs, environment, datasource_addresses, sink_ids
     )
+    _stamp_determining_key_roots(attrs, environment)
 
     # Classify how each atom uses its concept arguments. A row-argument
     # gets joined into the consumer's row stream; an existence-argument

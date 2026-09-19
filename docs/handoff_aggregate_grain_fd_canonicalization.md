@@ -1,6 +1,6 @@
 # Handoff: an abstract aggregate's identity depends on how its grain is *spelled*
 
-Status: fixed at the aggregate's canonical name (2026-09-18, PR #697), with the sibling duplicate-name bug it widened, see the end.
+Status: fixed at the aggregate's canonical name (2026-09-18, PR #697), with the sibling duplicate-name bug it widened, see the end. The lineage `by` followed on 2026-09-19, see "Follow-up".
 
 Locked by `tests/discovery/test_aggregate_grain_fd_canonical.py` and the former strict xfail `test_merged_key_grain_reads_bound_derived.py::test_summary_reads_at_fd_equivalent_grain[beside_surviving_key_spelling]`.
 
@@ -32,7 +32,7 @@ The merge case was one instance of a wider, much more common gap. The select gra
 
 ## The fix: minimize the grain that feeds the hash, not the grain
 
-`Factory._identity_lineage` (`trilogy/core/models/build.py`) reduces an aggregate's `by` to its FD-minimal key set **only for `generate_concept_name`**. The lineage keeps its full `by`. This is option (b) of the original proposal.
+`Factory._identity_lineage` (`trilogy/core/models/build.py`, since renamed `_fd_minimal_lineage`) reduces an aggregate's `by` to its FD-minimal key set. In #697 this was **only for `generate_concept_name`** and the lineage kept its full `by` (option (b) of the original proposal); the follow-up below applies it to the lineage itself.
 
 The reduction is `DomainGraph.determines` over the build's full graph (`assemble_full_graph`), the same closure the planner already trusts to say "grouping by `{grain, component}` reduces to `{grain}`" (`grain_utility`). A `by` member drops when the rest determine it. No second FD engine:
 
@@ -51,51 +51,73 @@ The first cut reduced the select grain in `concepts_to_grain_concepts_ordered`. 
 
 All 9 pass with the identity-only seam, and a query no summary answers plans exactly as on main.
 
-**Where reducing the lineage `by` stands now** (Factory seam: `build_lineage = _identity_lineage(...)`, `final_grain` from its `by`). With both fixes above it is row-correct across TPC-DS, TPC-H, thelook and the engine suites, and plan-neutral on 98 of 99 TPC-DS queries (q23 shrinks 8%). One blocker left, and it is plan quality, not correctness: `test_partial_grain_star_under_not_null` scans `store_sales` twice where the wide pin is one star and one GROUP BY.
+## Follow-up: the lineage carries the minimal `by` too (2026-09-19)
 
-Traced cause: the fact is asked for by two independent requests that nothing unifies. The aggregate at `(item, ticket)` reads `{net_paid, return_amount, item, ticket}` (`sales ⟕ returns`, with the WHERE); the FINAL merge needs `{state, item, ticket}`, and `state` is reachable from that grain only through the off-grain `customer.sk`, so it reads `sales ⟕ customer ⟕ address`. Under the wide pin `state` is in the aggregate's `by` and rides the first request. What does *not* cause it, each ruled out by a planning probe:
+Name and lineage are now one grouping. `Factory._fd_minimal_lineage` reduces the built aggregate's `by`, the concept's grain is that `by`, and the canonical name hashes the lineage as is: no second, name-only view of the aggregate. A ROLLUP/CUBE `by` is left alone, since each key there is a subtotal level and not only a grouping key (`test_rollup_by_is_not_reduced`).
 
-- the composite dim peel (`dim:item.sk|ticket_number`): off, the SQL is byte-identical;
-- `_fresh_final_root_projection` re-planning the ROOT contributor: forced to reuse the built root, still two reads.
+The wide pin was doing the planner three favours by accident. Each is now a planner rule with its own proof obligation, so the plan is a function of the query's meaning and the explicit `by` spelling (which never had the wide pin, and crashed or double-scanned on main) gets them too.
 
-Each consumer prunes the root to its own columns, so one logical root renders as two CTEs sharing a `sales ⟕ returns ... WHERE` spine but differing in columns and in two extra LEFT JOINs, and the CTE-merge pass only folds identical sources. A single-fact model whose two base scans *are* identical folds to one CTE, which is why only the two-fact TPC-DS shape shows it.
+### 1. A row-preserving aggregate hosts what its whole grain determines
 
-### Two ways to close it
+The blocker. `test_partial_grain_star_under_not_null` scanned `store_sales` twice: under the wide pin `state` was a grouping key and rode the aggregate's fact read; under the minimal `by` it is an output the composite grain `(item, ticket)` determines, so it peeled to a second read of the only table keyed by that grain, the fact itself. Main had the same defect wherever the one-step rule already dropped the column:
 
-Either one lets the lineage carry the same minimal `by` the name hashes. Both move plans across the battery, so both want a zquery-log A/B.
+```
+select ss.item.sk, ss.ticket_number, ss.quantity, sum(ss.net_paid);
+-- main: store_sales INNER JOIN store_sales on (item, ticket). Now: one scan.
+```
 
-**Option A: spine-subsumption CTE merge (optimizer). Preferred.**
+`concept_graph._host_outputs_on_row_preserving_aggregates` widens the aggregate's *physical* grouping grain (`ConceptAttrs.grain_components`, the same seam `_aggregate_axis_members` widens) with a select output `X` when:
 
-Teach the optimizer that two CTEs are one read when they share a spine and differ only by row-preserving joins. Today sources fold by identity only (same identifier or shape, `MergeNode._resolve`), so `questionable` and `cheerful`/`thoughtful` above stay apart although one is the other plus two dimension lookups.
+- the aggregate is **row-preserving**: its grain determines its whole `aggregate_input_grain`, so the input rows are already one per group and the GROUP BY reduces nothing;
+- the **whole grain** determines `X` and no proper subset does (`_whole_grain_determines`): `X` belongs to the grain's own row (a fact property, a dimension behind a foreign key the fact binds off its grain). A column one key alone determines (`brand` by `item.sk`) still joins from that key's table after the fact;
+- the grain **covers** `X`, not only determines it (`DomainGraph.covers`). An FD says `X` is unique per grain row, and a `~` binding proves that as well as any other: `order_item.id -> ~user.id` is true. Hosting reads `X` off the fact's rows, so those rows must also hold every value `X` owes, and a `~` binding says they do not (a user who never ordered has no `order_items` row). `covers` is `determines` that refuses an FD whose dependent some table binds partially beside the determinants, and so anything reached through it (`user.state` via `~user.id`);
+- `X` is a **value, not a KEY**. A key in a grouping grain is a FINAL merge axis rather than a carried column, so hosting one re-shapes how contributors stitch. That is a second, separate reason from coverage: `order_id` is completely bound and covered, and hosting it still made a `sum(qty)` at `item_id` two-keyed (see the latent bug below). Values (a fact property, a dimension attribute, a scalar over either) ride without touching the join topology, and are row-correct inside a two-`~` span;
+- `X` is a row scalar (ROOT/BASIC/CONSTANT lineage only).
 
-The rule: CTE `B` subsumes CTE `A` when
+From there everything downstream is main's wide-pin path, which is why the blocker query renders byte-identical SQL to main. An aggregate that truly reduces (`sum(qty)` over the finer `sale_lines`) keeps the peel and joins the dimension after its rows collapse. It also covers single-key fact grains (`select order_id, region, total`), which TPC-DS cannot show: every fact there has a composite grain.
 
-- they read the same base relations with the same join conditions between them, and `B` has only *extra* joins on top;
-- every extra join is LEFT, and its right side is at grain on the join keys (the dimension's key is within the pair), so it neither drops nor fans out a row. This is the safety argument `join_hoist.py` already makes for its at-grain dimension joins;
-- their WHEREs are equivalent (`condition_implies` both ways), or `A`'s is pushed onto the merged CTE only when it references spine columns and `B` had none. Unequal filters do not merge;
-- neither is grouped, limited or windowed (`is_grouped_cte`): a row-shape barrier makes the projection part of the identity.
+This is the narrow form of the "host-first" option. The optimizer option (spine-subsumption CTE merge) is not built and nothing now needs it.
 
-Then `A` is rewritten as a projection of `B` (`B`'s columns become the union) and consumers re-point through the usual `MergedCTEMap`. Column pruning stays as it is; this pass just undoes its accidental split. It should run after `InlineDatasource`, for the reason `join_hoist` does: the comparison wants physical tables, not CTEs about to disappear.
+### 2. ROOT co-sourcing follows the FD chain, not one step
 
-Why preferred: it is a local, provably row-identical rewrite with an existing precedent and harness (flip the rule off, diff zquery logs), it cannot produce wrong rows when its guards hold, and it pays off beyond this shape. Any query where two groups read one fact with different dimension lookups gets one scan, whatever produced the split.
+`select ss.customer.sk, upper(state), sum(net_paid)` crashed with a keyless join under the minimal `by` (and on main under an explicit `by`). `partition_roots` splits ROOTs the concept graph never relates; `_property_key_pairs` related a property to its *declared* key only, the same one-step pattern as the original bug. `state`'s key is `address.sk`, which the query never names, and the wide pin had been papering over it with a `by` lineage edge. `_stamp_determining_key_roots` records the KEY roots that determine such a ROOT through the environment closure, and the pair rule reads them.
 
-Cost: it only recovers reads that are *syntactically* one spine. Two requests planned through different join orders or different bridge tables will not match, so it shrinks the gap rather than closing it by construction.
+### 3. A scalar over a peeled dimension carries the peel key
 
-**Option B: host-first group formation (planner).**
+Once co-sourced, `state` peels to a `customer -> address` scan keyed by `customer.sk`, but `upper(state)` stayed pinned at `address.sk`, so it could not carry the key to FINAL. `_anchor_scalars_to_dim_peel_key` re-anchors a BASIC that reads only a dim-peel scan to that scan's key. Relatedly, `_projected_scalar_root_args` no longer peels the arg of a scalar that is itself a grouping key (read before the GROUP BY, not after): `select order_id, upper(region), sum(amount)` crashed on main.
 
-Decide at group formation that a dimension reachable from a grouping grain only *through the fact* belongs to the fact's root request: `state` rides the aggregate's input read, the aggregate groups by its minimal `by`, and the FINAL takes `state` from the same node (passed through the group, which is sound because the grain determines it). No second request is ever issued, so there is nothing to merge afterwards.
+### Latent on main: a two-keyed aggregate in a two-`~` span cross-pairs its extension families
 
-This closes the gap by construction and is the structural fix `fd-grain` work has pointed at before (v4 is derivation-first; every (derivation, grain-signature) group root-searches its own scan tree). But it changes group formation, the most plan-shaping decision there is: it interacts with the dim peel (which exists precisely to pull dimensions *off* the fact read, and is a win when the dimension's key is itself a grouping key), with `_fresh_final_root_projection`, and with partial-key extension rows (a dimension hosted on a `~` fact read sees only the fact's members). Earlier eager variants of "demand the axis at formation" each broke something. High ceiling, wide blast radius.
+Found by hosting a key, not caused by it. In `tests/engine/test_duckdb_partial_key_assembly.py`'s forked model (`items` binds `~product_id` and `~user_id`):
 
-**Order:** A first. It is safe to land alone, it turns `test_partial_grain_star_under_not_null` green under a minimal `by`, and it leaves B as a pure plan-quality question with no correctness or reuse pressure behind it.
+```
+select item_id, order_id, product_id, user_id, state, sum(qty) by item_id, order_id as tq;
+-- main: (None, None, 30, 3, 'TX', None)   one invented pairing
+-- owed: (None, None, 30, None, None, None) and (None, None, None, 3, 'TX', None)
+```
+
+The FINAL stitches the user family to the product family with `INNER JOIN ... ON item_id IS NOT DISTINCT FROM item_id`, which pairs the two extension rows on their NULL `item_id`. With the aggregate at `item_id` alone the span assembly gets it right. Not fixed here; values-only hosting keeps the implicit spelling off it. CI caught this on #698 (13 failures, all from hosting `order_id`), because the local verification had covered only `tests/modeling`, `tests/discovery` and the domain graph.
+
+### Two spellings, two populations: the model's doing, not the planner's
+
+```
+select ss.customer.sk, ss.customer.first_name, sum(ss.net_paid);            -- main: 1001 rows (FULL JOIN customer)
+select ss.customer.sk, ss.customer.current_address.state, sum(ss.net_paid); -- main:  915 rows (one GROUP BY over the fact)
+```
+
+`first_name` is one FD step from the key so it never entered main's pin; `state` is two, so it did. Under the minimal `by` both return 1001. That reads like a semantics change and is not one: `store_sales` binds `?customer.sk` with no `~`, which claims the fact holds the whole customer domain, and under that claim the two plans are the same rows. The data has 86 customers with no store sale. With a truthful `~?customer.sk`, main's two-hop plan returns 1001 as well (checked on sf0.01). Main's planner was principled; the model is not.
+
+`trilogy integration` already says so. Concept validation (`validate_multi_datasource_concept`) reports `ss.customer.sk is missing values in datasource store_sales (max 1000, datasource 914) but is not marked as partial`, and the same for some twenty other foreign keys of the store channel alone (dates, times, demographics, addresses, `return_customer`). Nobody runs it on the benchmark model. Tagging them is its own change: every `~` key owes extension rows, and the TPC-DS reference SQL is inner joins.
+
+Locks: `test_fact_grain_aggregate_reads_the_fact_once` and `test_scalar_over_dimension_two_hops_off_the_grouping_key` (TPC-DS), `tests/discovery/test_dim_peel_composite_grain_axis.py` (hosting, the reducing-aggregate peel that keeps #697's keyless-join fix exercised, both scalar shapes), and `test_lineage_and_grain_carry_the_minimal_by`.
 
 How this lands against the concerns in the original proposal:
 
 1. **Seam.** Option (b). The divergence it warned about is narrow: same-canonical concepts with different `by` lists are FD-equivalent groupings, and the consumers that treat a canonical as one expression (the root scan) were fixed below to emit every name.
 2. **Which minimal set.** Chain reduction over a key DAG has a unique result (the undetermined sources), independent of iteration order. Only a key cycle (`a <-> b`) is order-dependent, and there `sorted()` addresses decide; the datasource-column build and the query build share addresses, so both sides agree.
 3. **Partial keys.** Sidestepped for merges (partial merges excluded), and moot for the GROUP BY since it is not touched. Rows are locked for plain and `~` bindings of the middle key, extension rows included (`test_partial_determined_key_rows`).
-4. **Blast radius.** Only canonical names move, and only for aggregates beside a transitively-determined column. Fingerprints hash authored lineage, so they are untouched.
-5. **The GROUP BY itself.** Untouched.
+4. **Blast radius.** In #697 only canonical names moved. With the follow-up the `by` moves too, for aggregates beside a transitively-determined column; see the follow-up for where plans and one row population change. Fingerprints hash authored lineage, so they are untouched.
+5. **The GROUP BY itself.** Untouched in #697; FD-minimal since the follow-up, re-widened by the planner only for a row-preserving aggregate.
 
 ## Also fixed: two names for one materialized aggregate (pre-existing on main)
 

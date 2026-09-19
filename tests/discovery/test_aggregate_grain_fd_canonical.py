@@ -3,10 +3,10 @@
 An abstract aggregate is pinned at the select grain and that grain is hashed
 into its canonical name, so two spellings of one grouping were two concepts:
 `select order_id, region, total` missed the `order_id`-grain summary that
-`select order_id, customer_id, region, total` read. The canonical name now
-hashes the FD-minimal `by` (the whole key chain `order_id -> customer_id ->
-region`, and a global non-partial merge's identity). Only the name: the
-lineage keeps its full `by`, so a query no summary answers plans as before.
+`select order_id, customer_id, region, total` read. The aggregate is now built
+at its FD-minimal `by` (the whole key chain `order_id -> customer_id ->
+region`, and a global non-partial merge's identity): lineage, grain and
+canonical name are one grouping, whatever the select spelled.
 """
 
 import pytest
@@ -62,14 +62,16 @@ def _rows(engine, query: str) -> list[tuple]:
     return [tuple(r) for r in engine.execute_text(query)[-1].fetchall()]
 
 
-def _identity(engine, dims: str, aggregate: str) -> str:
+def _built(engine, dims: str, aggregate: str):
     env = engine.environment
     select = env.parse(f"select {dims}, {aggregate} as agg;")[1][-1]
     built: list = []
     get_query_node(env, select.as_lineage(env), build_lineage_sink=built)
-    return next(
-        c.canonical_address for c in built[-1].output_components if c.name == "agg"
-    )
+    return next(c for c in built[-1].output_components if c.name == "agg")
+
+
+def _identity(engine, dims: str, aggregate: str) -> str:
+    return _built(engine, dims, aggregate).canonical_address
 
 
 @pytest.mark.parametrize(
@@ -86,6 +88,34 @@ def test_key_chain_folds(dims: str):
     engine = _engine()
     assert _identity(engine, dims, "sum(amount)") == _identity(
         engine, "order_id", "sum(amount)"
+    )
+
+
+def test_lineage_and_grain_carry_the_minimal_by():
+    agg = _built(_engine(), "order_id, customer_id, region", "sum(amount)")
+    assert {c.address for c in agg.lineage.by} == {"local.order_id"}
+    assert agg.grain.components == {"local.order_id"}
+
+
+# A ROLLUP key is a subtotal level: `customer_id` is determined by `order_id`
+# and still owns a row per order.
+def test_rollup_by_is_not_reduced():
+    rows = _rows(
+        _engine(summary=False),
+        "select order_id, customer_id, sum(amount) as t"
+        " by rollup (order_id, customer_id);",
+    )
+    assert sorted(rows, key=str) == sorted(
+        [
+            (1, 101, 6.0),
+            (2, 101, 4.0),
+            (3, 102, 4.0),
+            (1, None, 6.0),
+            (2, None, 4.0),
+            (3, None, 4.0),
+            (None, None, 14.0),
+        ],
+        key=str,
     )
 
 

@@ -221,6 +221,32 @@ def test_fd_minimal_memo_tracks_new_edges():
     assert graph.fd_minimal(["a", "b"]) == {"a"}
 
 
+def test_covers_stops_at_a_partial_binding():
+    """`id -> user` is one user per item whether or not `items` binds `user`
+    completely; only a complete binding says the items' rows hold every user."""
+    fds = [
+        FDEdge(determinants=frozenset({"id"}), dependent="order"),
+        FDEdge(determinants=frozenset({"id"}), dependent="user"),
+        FDEdge(determinants=frozenset({"user"}), dependent="state"),
+    ]
+    graph = DomainGraph(
+        binding_edges=[
+            BindingEdge("items", "items", "id"),
+            BindingEdge("items", "items", "order"),
+            BindingEdge("items", "items", "user", complete=False),
+            BindingEdge("users", "users", "user"),
+            BindingEdge("users", "users", "state"),
+        ],
+        fd_edges=fds,
+    )
+    assert graph.determines({"id"}, "user")
+    assert graph.determines({"id"}, "state")
+    assert graph.covers({"id"}, "order")
+    assert not graph.covers({"id"}, "user")
+    assert not graph.covers({"id"}, "state")
+    assert graph.covers({"user"}, "state")
+
+
 def test_fd_population_scope():
     scoped = FDEdge(
         determinants=frozenset({"k"}),
