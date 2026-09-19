@@ -12,7 +12,7 @@ Parents are explicit, derived from the group graph's lineage edges;
 generator dispatch lives in `v4_node_generators.dispatch.build_node`."""
 
 from collections import Counter, defaultdict
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from dataclasses import replace as dc_replace
 from datetime import date, datetime
@@ -3350,7 +3350,26 @@ def _relevant_root_preserve_keys(
             for concept in output_concepts
         ):
             relevant.add(key)
+    # A composite merge grain reaches a dimension through a foreign key OFF
+    # the grain (`(item, ticket)` -> customer -> region): the keys determine
+    # the output jointly and none does alone, which is the composite peel
+    # `_composite_determining_grain` hands this scan.
+    if any(
+        concept.address not in preserve_keys
+        and not _fd_determined(environment, relevant, concept)
+        and _fd_determined(environment, preserve_keys, concept)
+        for concept in output_concepts
+    ):
+        return preserve_keys
     return frozenset(relevant)
+
+
+def _fd_determined(
+    environment: BuildEnvironment, keys: Iterable[str], concept: BuildConcept
+) -> bool:
+    return build_fd_determines(
+        environment, set(keys), concept.address, include_empty_grain=False
+    )
 
 
 def _group_to_grain_if_required(

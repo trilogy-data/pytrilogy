@@ -192,19 +192,22 @@ select
     assert len(set(keys)) == len(keys)
 
 
-def test_partial_grain_with_customer_dim(engine_sf001: Executor):
+@pytest.mark.parametrize("by", ["", " by ss.item.sk, ss.ticket_number"])
+def test_partial_grain_with_customer_dim(engine_sf001: Executor, by: str):
     """customer.sk is bound `?` (nullable), not `~` (partial), so no domain
-    extension is licensed: no NULL-key rows for never-purchasing customers."""
+    extension is licensed: no NULL-key rows for never-purchasing customers.
+    The by-key spelling re-attaches the state through the off-grain customer
+    key, which the composite grain determines only jointly."""
     engine_sf001.environment = Environment(working_path=working_path)
-    sql = engine_sf001.generate_sql("""import store_sales as ss;
+    sql = engine_sf001.generate_sql(f"""import store_sales as ss;
 
 select
     ss.item.sk,
     ss.ticket_number,
     ss.item.brand_name,
     ss.customer.current_address.state,
-    sum(ss.net_paid) as total_paid,
-    sum(ss.return_amount) as total_returned,
+    sum(ss.net_paid){by} as total_paid,
+    sum(ss.return_amount){by} as total_returned,
 ;""")[-1]
     rows = engine_sf001.execute_raw_sql(sql).fetchall()
     keys = [(r[0], r[1]) for r in rows]
