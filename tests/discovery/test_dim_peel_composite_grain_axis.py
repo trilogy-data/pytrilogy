@@ -137,3 +137,22 @@ def test_scalar_over_peeled_dimension_keeps_the_peel_key():
         (103, "NORTH", None),
         (None, None, 1.0),
     ]
+
+
+# Through `~customer_id` the query owes customer 103 a row the fact lacks,
+# hosted or not. (The plan-shape lock for refusing to host a `~` column is
+# thelook `test_nineteen`: hosted, its FINAL stitch goes null-safe.)
+_PARTIAL = _MODEL.replace("?customer_id", "~?customer_id")
+
+
+@pytest.mark.parametrize("column", ["customer_id", "region"])
+def test_partial_foreign_key_keeps_its_extension_row(column: str):
+    engine = Dialects.DUCK_DB.default_executor(environment=Environment())
+    engine.parse_text(_PARTIAL)
+    rows = engine.execute_text(
+        f"select item_id, ticket, {column}, sum(amount) as total;"
+    )[-1].fetchall()
+    assert len(rows) == 5
+    assert [tuple(r)[2:] for r in rows if r[0] is None] == [
+        (103 if column == "customer_id" else "north", None)
+    ]

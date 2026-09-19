@@ -1901,14 +1901,13 @@ def _whole_grain_determines(
 ) -> bool:
     """`grain` determines `address` and no proper subset of it does: the value
     belongs to the grain's own row (a fact property, a dimension behind a
-    foreign key the fact binds), not to one of its keys' dimension tables."""
-    return build_fd_determines(
-        environment, set(grain), address, include_empty_grain=False
-    ) and not any(
-        build_fd_determines(
-            environment, set(grain - {key}), address, include_empty_grain=False
-        )
-        for key in grain
+    foreign key the fact binds), not to one of its keys' dimension tables.
+
+    `covers`, not `determines`: hosting reads the value off the grain's rows,
+    so those rows must hold its whole domain as well as fix it uniquely."""
+    graph = environment.domain_graph
+    return graph.covers(grain, address) and not any(
+        graph.determines(grain - {key}, address) for key in grain
     )
 
 
@@ -1931,11 +1930,7 @@ def _host_outputs_on_row_preserving_aggregates(
     table keyed by that grain, which is the fact being aggregated. An aggregate
     that truly reduces keeps the split, and joins the dimension after its rows
     collapse; so does a column one grain key alone determines (`brand` by
-    `item`), which joins from that key's own table.
-
-    Never a KEY: it is a join axis with a domain of its own (`~user.id` beside
-    an `order_items` aggregate owes the users no order names), and hosting it
-    would pull that domain's extension rows under the GROUP BY."""
+    `item`), which joins from that key's own table."""
     hosts = [
         nid
         for nid, node in attrs.items()
@@ -1945,12 +1940,7 @@ def _host_outputs_on_row_preserving_aggregates(
         and node.grain_components
         and node.aggregate_input_grain
         and all(
-            build_fd_determines(
-                environment,
-                set(node.grain_components),
-                addr,
-                include_empty_grain=False,
-            )
+            environment.domain_graph.determines(node.grain_components, addr)
             for addr in node.aggregate_input_grain - node.grain_components
         )
     ]
@@ -1961,7 +1951,6 @@ def _host_outputs_on_row_preserving_aggregates(
         for concept in mandatory_list
         if (nid := node_id(_effective_label(concept, "", root_like), concept.address))
         in attrs
-        and attrs[nid].purpose != Purpose.KEY
         and _is_row_scalar(graph, edges, attrs, nid)
     ]
     for host in hosts:
