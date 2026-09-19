@@ -1931,7 +1931,11 @@ def _host_outputs_on_row_preserving_aggregates(
     table keyed by that grain, which is the fact being aggregated. An aggregate
     that truly reduces keeps the split, and joins the dimension after its rows
     collapse; so does a column one grain key alone determines (`brand` by
-    `item`), which joins from that key's own table."""
+    `item`), which joins from that key's own table.
+
+    Never a KEY: it is a join axis with a domain of its own (`~user.id` beside
+    an `order_items` aggregate owes the users no order names), and hosting it
+    would pull that domain's extension rows under the GROUP BY."""
     hosts = [
         nid
         for nid, node in attrs.items()
@@ -1957,6 +1961,7 @@ def _host_outputs_on_row_preserving_aggregates(
         for concept in mandatory_list
         if (nid := node_id(_effective_label(concept, "", root_like), concept.address))
         in attrs
+        and attrs[nid].purpose != Purpose.KEY
         and _is_row_scalar(graph, edges, attrs, nid)
     ]
     for host in hosts:

@@ -55,30 +55,55 @@ All 9 pass with the identity-only seam, and a query no summary answers plans exa
 
 Name and lineage are now one grouping. `Factory._fd_minimal_lineage` reduces the built aggregate's `by`, the concept's grain is that `by`, and the canonical name hashes the lineage as is: no second, name-only view of the aggregate. A ROLLUP/CUBE `by` is left alone, since each key there is a subtotal level and not only a grouping key (`test_rollup_by_is_not_reduced`).
 
-The two planner gaps above (EQUAL-merge filtered FULL, keyless composite peel) were the correctness blockers. The last one was plan quality: `test_partial_grain_star_under_not_null` scanned `store_sales` twice. Under the wide pin `state` was a grouping key, and the dim peel never peels a grouping key, so it rode the aggregate's fact read. Under the minimal `by` it is an output the composite grain `(item, ticket)` determines, so `_split_root_dimension_clusters` peeled it to a `dim:item.sk|ticket_number` scan: a second read of the only table keyed by that grain, which is the fact the aggregate already scans.
+The wide pin was doing the planner three favours by accident. Each is now a planner rule with its own proof obligation, so the plan is a function of the query's meaning and the explicit `by` spelling (which never had the wide pin, and crashed or double-scanned on main) gets them too.
 
-That is not specific to the minimal `by`. Main did the same for a plain fact property:
+### 1. A row-preserving aggregate hosts what its whole grain determines
+
+The blocker. `test_partial_grain_star_under_not_null` scanned `store_sales` twice: under the wide pin `state` was a grouping key and rode the aggregate's fact read; under the minimal `by` it is an output the composite grain `(item, ticket)` determines, so it peeled to a second read of the only table keyed by that grain, the fact itself. Main had the same defect wherever the one-step rule already dropped the column:
 
 ```
 select ss.item.sk, ss.ticket_number, ss.quantity, sum(ss.net_paid);
 -- main: store_sales INNER JOIN store_sales on (item, ticket). Now: one scan.
 ```
 
-**The fix is at group formation, not in the optimizer** (a narrow form of the host-first option this doc used to list second). A grouping bucket is *row-preserving* when its grain determines its whole `aggregate_input_grain`: the input rows are already one per group and the GROUP BY reduces nothing. Such a bucket carries a column its grain determines for free, while a peel can only re-read a table keyed by that grain. So `_split_root_dimension_clusters` asks `_row_preserving_host` before a composite peel, and on a hit the member stays in the fact ROOT bucket and is recorded on the host as a `grain_riders` entry. `_compute_concept_sets` treats riders like grain keys: preservable through the group and exposable to FINAL. The ROOT bucket then stops offering the column to FINAL (the existing "a grouping descendant already outputs it" rule), so exactly one request reaches the fact.
+`concept_graph._host_outputs_on_row_preserving_aggregates` widens the aggregate's *physical* grouping grain (`ConceptAttrs.grain_components`, the same seam `_aggregate_axis_members` widens) with a select output `X` when:
 
-A bucket that truly reduces (`sum(qty)` over the finer `sale_lines`, grouped to `(item, ticket)`) keeps the composite peel, because joining the dimension after the rows collapse is the better plan there. Single-entity peels (`brand` by `item.sk`) are untouched.
+- the aggregate is **row-preserving**: its grain determines its whole `aggregate_input_grain`, so the input rows are already one per group and the GROUP BY reduces nothing;
+- the **whole grain** determines `X` and no proper subset does (`_whole_grain_determines`): `X` belongs to the grain's own row (a fact property, a dimension behind a foreign key the fact binds off its grain). A column one key alone determines (`brand` by `item.sk`) still joins from that key's table after the fact;
+- `X` is a row scalar (ROOT/BASIC/CONSTANT lineage only).
 
-For the blocker query the minimal `by` now renders byte-identical SQL to the wide pin. Locked by `test_fact_grain_aggregate_reads_the_fact_once` (TPC-DS), and in `tests/discovery/test_dim_peel_composite_grain_axis.py` by `test_fact_grain_aggregate_hosts_its_dimensions` plus `test_reducing_aggregate_peels_onto_the_grain_scan`, which keeps the composite peel's keyless-join fix exercised now that the fact-grain shapes no longer reach it.
+From there everything downstream is main's wide-pin path, which is why the blocker query renders byte-identical SQL to main. An aggregate that truly reduces (`sum(qty)` over the finer `sale_lines`) keeps the peel and joins the dimension after its rows collapse. It also covers single-key fact grains (`select order_id, region, total`), which TPC-DS cannot show: every fact there has a composite grain.
 
-Not done, and no longer blocking anything: the spine-subsumption CTE merge (fold two CTEs that share a spine and differ by row-preserving LEFT joins). It would still pay off where two *different* groups read one fact with different dimension lookups, but with riders in place no known shape needs it.
+This is the narrow form of the "host-first" option. The optimizer option (spine-subsumption CTE merge) is not built and nothing now needs it.
+
+### 2. ROOT co-sourcing follows the FD chain, not one step
+
+`select ss.customer.sk, upper(state), sum(net_paid)` crashed with a keyless join under the minimal `by` (and on main under an explicit `by`). `partition_roots` splits ROOTs the concept graph never relates; `_property_key_pairs` related a property to its *declared* key only, the same one-step pattern as the original bug. `state`'s key is `address.sk`, which the query never names, and the wide pin had been papering over it with a `by` lineage edge. `_stamp_determining_key_roots` records the KEY roots that determine such a ROOT through the environment closure, and the pair rule reads them.
+
+### 3. A scalar over a peeled dimension carries the peel key
+
+Once co-sourced, `state` peels to a `customer -> address` scan keyed by `customer.sk`, but `upper(state)` stayed pinned at `address.sk`, so it could not carry the key to FINAL. `_anchor_scalars_to_dim_peel_key` re-anchors a BASIC that reads only a dim-peel scan to that scan's key. Relatedly, `_projected_scalar_root_args` no longer peels the arg of a scalar that is itself a grouping key (read before the GROUP BY, not after): `select order_id, upper(region), sum(amount)` crashed on main.
+
+### One population change, on purpose
+
+Main's row population depended on the spelling:
+
+```
+select ss.customer.sk, ss.customer.first_name, sum(ss.net_paid);            -- FULL JOIN customer: every customer
+select ss.customer.sk, ss.customer.current_address.state, sum(ss.net_paid); -- fact rows only
+```
+
+`first_name` is one FD step from the key so it never entered the pin; `state` is two, so it did, and the query became a single GROUP BY over the fact. Under the minimal `by` both are the first form. That is the documented semantics of a dimension beside its key; the second form was the accident.
+
+Locks: `test_fact_grain_aggregate_reads_the_fact_once` and `test_scalar_over_dimension_two_hops_off_the_grouping_key` (TPC-DS), `tests/discovery/test_dim_peel_composite_grain_axis.py` (hosting, the reducing-aggregate peel that keeps #697's keyless-join fix exercised, both scalar shapes), and `test_lineage_and_grain_carry_the_minimal_by`.
 
 How this lands against the concerns in the original proposal:
 
 1. **Seam.** Option (b). The divergence it warned about is narrow: same-canonical concepts with different `by` lists are FD-equivalent groupings, and the consumers that treat a canonical as one expression (the root scan) were fixed below to emit every name.
 2. **Which minimal set.** Chain reduction over a key DAG has a unique result (the undetermined sources), independent of iteration order. Only a key cycle (`a <-> b`) is order-dependent, and there `sorted()` addresses decide; the datasource-column build and the query build share addresses, so both sides agree.
 3. **Partial keys.** Sidestepped for merges (partial merges excluded), and moot for the GROUP BY since it is not touched. Rows are locked for plain and `~` bindings of the middle key, extension rows included (`test_partial_determined_key_rows`).
-4. **Blast radius.** Only canonical names move, and only for aggregates beside a transitively-determined column. Fingerprints hash authored lineage, so they are untouched.
-5. **The GROUP BY itself.** Untouched.
+4. **Blast radius.** In #697 only canonical names moved. With the follow-up the `by` moves too, for aggregates beside a transitively-determined column; see the follow-up for where plans and one row population change. Fingerprints hash authored lineage, so they are untouched.
+5. **The GROUP BY itself.** Untouched in #697; FD-minimal since the follow-up, re-widened by the planner only for a row-preserving aggregate.
 
 ## Also fixed: two names for one materialized aggregate (pre-existing on main)
 
