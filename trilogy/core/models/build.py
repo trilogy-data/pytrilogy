@@ -3364,22 +3364,24 @@ class Factory:
 
     def _identity_lineage(self, lineage: Any) -> Any:
         """`lineage` as it is hashed into a canonical name: an aggregate's `by`
-        reduced to its FD-minimal key set, so `count(id) by order.id` and the
-        same count pinned at `Grain<order.id, customer.region>` are one concept
-        to every canonical-keyed lookup (a summary table's column, above all).
+        less every member the rest functionally determine, so `count(id) by
+        order.id` and the same count pinned at `Grain<order.id, customer.region>`
+        are one concept to every canonical-keyed lookup (a summary table's
+        column, above all).
 
-        Only the name changes. The lineage keeps its full `by`, so the plan
-        still groups by what the select projects."""
+        Only the name: a lineage with the reduced `by` plans as aggregate-at-key
+        plus a dimension re-attach, which reads the fact twice when the
+        dimension hangs off a foreign key outside the grain
+        (test_partial_grain_star_under_not_null)."""
         if not isinstance(lineage, BuildAggregateWrapper) or len(lineage.by) < 2:
             return lineage
-        from trilogy.parsing.common import fd_minimal_addresses
-
-        minimal = fd_minimal_addresses(
-            [c.address for c in lineage.by], self.environment
-        )
-        if len(minimal) == len(lineage.by):
+        # Statement joins declare SUBSET/INCOMPARABLE, never EQUAL, so the
+        # closure is the same for a datasource column and a query's concept.
+        graph = assemble_full_graph(self.environment, self.domain_graph)
+        kept = graph.fd_minimal(c.address for c in lineage.by)
+        if len(kept) == len(lineage.by):
             return lineage
-        return dc_replace(lineage, by=[c for c in lineage.by if c.address in minimal])
+        return dc_replace(lineage, by=[c for c in lineage.by if c.address in kept])
 
     def _abstract_resolution_grain(self) -> Grain:
         """Factory grain for resolving an abstract aggregate, with any metric

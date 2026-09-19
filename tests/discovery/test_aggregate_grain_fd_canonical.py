@@ -13,7 +13,7 @@ import pytest
 
 from trilogy import Dialects
 from trilogy.core.models.environment import Environment
-from trilogy.parsing.common import fd_minimal_addresses
+from trilogy.core.query_processor import get_query_node
 
 _MODEL = """
 key order_id int;
@@ -62,26 +62,38 @@ def _rows(engine, query: str) -> list[tuple]:
     return [tuple(r) for r in engine.execute_text(query)[-1].fetchall()]
 
 
+def _identity(engine, dims: str, aggregate: str) -> str:
+    env = engine.environment
+    select = env.parse(f"select {dims}, {aggregate} as agg;")[1][-1]
+    built: list = []
+    get_query_node(env, select.as_lineage(env), build_lineage_sink=built)
+    return next(
+        c.canonical_address for c in built[-1].output_components if c.name == "agg"
+    )
+
+
 @pytest.mark.parametrize(
-    "components",
+    "dims",
     [
-        ["order_id"],
-        ["order_id", "customer_id"],
-        ["order_id", "region"],
-        ["order_id", "customer_id", "region"],
-        ["region", "order_id"],
+        "order_id, customer_id",
+        "order_id, region",
+        "order_id, customer_id, region",
+        "region, order_id",
+        "order_id, upper(region) as shout",
     ],
 )
-def test_key_chain_folds(components: list[str]):
-    env = _engine().environment
-    addresses = [f"local.{c}" for c in components]
-    assert fd_minimal_addresses(addresses, env) == {"local.order_id"}
+def test_key_chain_folds(dims: str):
+    engine = _engine()
+    assert _identity(engine, dims, "sum(amount)") == _identity(
+        engine, "order_id", "sum(amount)"
+    )
 
 
 def test_undetermined_property_stays():
-    env = _engine().environment
-    addresses = ["local.customer_id", "local.amount"]
-    assert fd_minimal_addresses(addresses, env) == set(addresses)
+    engine = _engine()
+    assert _identity(engine, "customer_id, amount", "sum(amount)") != _identity(
+        engine, "customer_id", "sum(amount)"
+    )
 
 
 @pytest.mark.parametrize(
@@ -155,25 +167,21 @@ def _merge_engine(target: str):
     return engine
 
 
-def _merge_env(target: str) -> Environment:
-    return _merge_engine(target).environment
-
-
-def test_equal_merge_target_folds():
-    env = _merge_env("state")
-    assert fd_minimal_addresses(["local.org_code", "local.state"], env) == {
-        "local.org_code"
-    }
-    assert fd_minimal_addresses(["local.org_code", "local.state_name"], env) == {
-        "local.org_code"
-    }
+@pytest.mark.parametrize("dim", ["state", "state_name"])
+def test_equal_merge_target_folds(dim: str):
+    engine = _merge_engine("state")
+    assert _identity(engine, f"org_code, {dim}", "count(launch_id)") == _identity(
+        engine, "org_code", "count(launch_id)"
+    )
 
 
 # A partial merge holds only on matched rows: it is not an identity.
-def test_partial_merge_target_stays():
-    env = _merge_env("~state")
-    addresses = ["local.org_code", "local.state"]
-    assert fd_minimal_addresses(addresses, env) == set(addresses)
+@pytest.mark.parametrize("dim", ["state", "state_name"])
+def test_partial_merge_target_stays(dim: str):
+    engine = _merge_engine("~state")
+    assert _identity(engine, f"org_code, {dim}", "count(launch_id)") != _identity(
+        engine, "org_code", "count(launch_id)"
+    )
 
 
 def test_two_spellings_agree():

@@ -165,6 +165,7 @@ class DomainGraph:
         self._eq_classes: dict[str, str] | None = None
         self._subset_sources: set[str] | None = None
         self._declared_subset_pairs: list[tuple[str, str]] | None = None
+        self._fd_minimal: dict[frozenset[str], frozenset[str]] = {}
         for e in edges or []:
             self.add_edge(e)
         for b in binding_edges or []:
@@ -196,6 +197,7 @@ class DomainGraph:
         self._eq_classes = None
         self._subset_sources = None
         self._declared_subset_pairs = None
+        self._fd_minimal.clear()
         return True
 
     def add_binding(self, edge: BindingEdge) -> bool:
@@ -204,6 +206,7 @@ class DomainGraph:
             return False
         self._binding_keys.add(key)
         self.binding_edges.append(edge)
+        self._fd_minimal.clear()
         return True
 
     def add_fd(self, edge: FDEdge) -> bool:
@@ -212,6 +215,7 @@ class DomainGraph:
             return False
         self._fd_keys.add(key)
         self.fd_edges.append(edge)
+        self._fd_minimal.clear()
         return True
 
     def with_overlay(self, edges: Iterable[DomainEdge] | None = None) -> "DomainGraph":
@@ -630,6 +634,20 @@ class DomainGraph:
                         closure.add(dep)
                         changed = True
         return goal in closure
+
+    def fd_minimal(self, addresses: Iterable[str]) -> frozenset[str]:
+        """`addresses` less every member the rest determine globally:
+        `{order.id, customer.region}` -> `{order.id}`. Over a key DAG the
+        result is unique; only a key cycle leans on `sorted`."""
+        key = frozenset(addresses)
+        cached = self._fd_minimal.get(key)
+        if cached is None:
+            kept = set(key)
+            for address in sorted(key):
+                if self.determines(kept - {address}, address):
+                    kept.discard(address)
+            cached = self._fd_minimal[key] = frozenset(kept)
+        return cached
 
     # --- contradiction lint --------------------------------------------------
 
