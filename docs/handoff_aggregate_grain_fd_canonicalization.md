@@ -70,7 +70,8 @@ select ss.item.sk, ss.ticket_number, ss.quantity, sum(ss.net_paid);
 
 - the aggregate is **row-preserving**: its grain determines its whole `aggregate_input_grain`, so the input rows are already one per group and the GROUP BY reduces nothing;
 - the **whole grain** determines `X` and no proper subset does (`_whole_grain_determines`): `X` belongs to the grain's own row (a fact property, a dimension behind a foreign key the fact binds off its grain). A column one key alone determines (`brand` by `item.sk`) still joins from that key's table after the fact;
-- `X` is a row scalar (ROOT/BASIC/CONSTANT lineage only) and **not a KEY**. A key is a join axis with a domain of its own: hosting `~user.id` and `~product.id` on thelook q19's `order_items` aggregate pulled both extension spines under the GROUP BY and turned the FINAL stitch null-safe. With keys excluded q19 is byte-identical to main.
+- the grain **covers** `X`, not only determines it (`DomainGraph.covers`). An FD says `X` is unique per grain row, and a `~` binding proves that as well as any other: `order_item.id -> ~user.id` is true. Hosting reads `X` off the fact's rows, so those rows must also hold every value `X` owes, and a `~` binding says they do not (a user who never ordered has no `order_items` row). `covers` is `determines` that refuses an FD whose dependent some table binds partially beside the determinants, and so anything reached through it (`user.state` via `~user.id`). A first cut asked `determines` and then excluded KEYs to make thelook q19 pass; that was a proxy, and it would have hosted `user.state`. Hosted anyway, q19's rows stay right but its aggregate input becomes the whole extension spine, no longer one row per `id`, and the FINAL stitch goes null-safe. Under `covers` q19 hosts the completely bound `order.id` and refuses the two `~` keys: one `order_items` re-join fewer than main, no null-safe stitch;
+- `X` is a row scalar (ROOT/BASIC/CONSTANT lineage only).
 
 From there everything downstream is main's wide-pin path, which is why the blocker query renders byte-identical SQL to main. An aggregate that truly reduces (`sum(qty)` over the finer `sale_lines`) keeps the peel and joins the dimension after its rows collapse. It also covers single-key fact grains (`select order_id, region, total`), which TPC-DS cannot show: every fact there has a composite grain.
 
@@ -84,16 +85,16 @@ This is the narrow form of the "host-first" option. The optimizer option (spine-
 
 Once co-sourced, `state` peels to a `customer -> address` scan keyed by `customer.sk`, but `upper(state)` stayed pinned at `address.sk`, so it could not carry the key to FINAL. `_anchor_scalars_to_dim_peel_key` re-anchors a BASIC that reads only a dim-peel scan to that scan's key. Relatedly, `_projected_scalar_root_args` no longer peels the arg of a scalar that is itself a grouping key (read before the GROUP BY, not after): `select order_id, upper(region), sum(amount)` crashed on main.
 
-### One population change, on purpose
-
-Main's row population depended on the spelling:
+### Two spellings, two populations: the model's doing, not the planner's
 
 ```
-select ss.customer.sk, ss.customer.first_name, sum(ss.net_paid);            -- FULL JOIN customer: every customer
-select ss.customer.sk, ss.customer.current_address.state, sum(ss.net_paid); -- fact rows only
+select ss.customer.sk, ss.customer.first_name, sum(ss.net_paid);            -- main: 1001 rows (FULL JOIN customer)
+select ss.customer.sk, ss.customer.current_address.state, sum(ss.net_paid); -- main:  915 rows (one GROUP BY over the fact)
 ```
 
-`first_name` is one FD step from the key so it never entered the pin; `state` is two, so it did, and the query became a single GROUP BY over the fact. Under the minimal `by` both are the first form. That is the documented semantics of a dimension beside its key; the second form was the accident.
+`first_name` is one FD step from the key so it never entered main's pin; `state` is two, so it did. Under the minimal `by` both return 1001. That reads like a semantics change and is not one: `store_sales` binds `?customer.sk` with no `~`, which claims the fact holds the whole customer domain, and under that claim the two plans are the same rows. The data has 86 customers with no store sale. With a truthful `~?customer.sk`, main's two-hop plan returns 1001 as well (checked on sf0.01). Main's planner was principled; the model is not.
+
+`trilogy integration` already says so. Concept validation (`validate_multi_datasource_concept`) reports `ss.customer.sk is missing values in datasource store_sales (max 1000, datasource 914) but is not marked as partial`, and the same for some twenty other foreign keys of the store channel alone (dates, times, demographics, addresses, `return_customer`). Nobody runs it on the benchmark model. Tagging them is its own change: every `~` key owes extension rows, and the TPC-DS reference SQL is inner joins.
 
 Locks: `test_fact_grain_aggregate_reads_the_fact_once` and `test_scalar_over_dimension_two_hops_off_the_grouping_key` (TPC-DS), `tests/discovery/test_dim_peel_composite_grain_axis.py` (hosting, the reducing-aggregate peel that keeps #697's keyless-join fix exercised, both scalar shapes), and `test_lineage_and_grain_carry_the_minimal_by`.
 
