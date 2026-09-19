@@ -147,16 +147,23 @@ def finalize_select_node(
     return candidate.node
 
 
-def _canonical_siblings(
-    concepts: list[BuildConcept], requested: Sequence[BuildConcept]
+def subgraph_concepts(
+    subgraph: list[str],
+    environment: BuildEnvironment,
+    requested: Sequence[BuildConcept],
 ) -> list[BuildConcept]:
-    """Requested concepts a graph node stands for without naming. The graph
-    keys a node by canonical address, so two names for one expression
-    (`total` beside `sum(amount) by order_id as explicit`) are one node and
-    only one of them comes back from `canonical_concepts`."""
+    """The concepts a datasource subgraph reads. The graph keys a node by
+    canonical address, so two requested names for one expression (`total`
+    beside `sum(amount) by order_id as explicit`) are one node: each of them
+    comes back, not only the `canonical_concepts` winner."""
+    concepts = [
+        environment.canonical_concepts[extract_address(c)]
+        for c in subgraph
+        if c.startswith("c~")
+    ]
     addresses = {c.address for c in concepts}
     canonicals = {c.canonical_address for c in concepts}
-    return [
+    return concepts + [
         c
         for c in unique(list(requested), "address")
         if c.canonical_address in canonicals and c.address not in addresses
@@ -165,20 +172,12 @@ def _canonical_siblings(
 
 def create_select_node_candidate(
     ds_name: str,
-    subgraph: list[str],
+    all_concepts: list[BuildConcept],
     g: ReferenceGraph,
     environment: BuildEnvironment,
     depth: int,
     conditions: BuildWhereClause | None = None,
-    requested: Sequence[BuildConcept] = (),
 ) -> SourceNodeCandidate:
-    all_concepts = [
-        environment.canonical_concepts[extract_address(c)]
-        for c in subgraph
-        if c.startswith("c~")
-    ]
-    all_concepts += _canonical_siblings(all_concepts, requested)
-
     if all(c.derivation == Derivation.CONSTANT for c in all_concepts):
         logger.info(
             f"{padding(depth)}{LOGGER_PREFIX} All concepts {[x.address for x in all_concepts]} are constants, returning constant node"
@@ -247,22 +246,20 @@ def create_select_node_candidate(
 
 def create_select_node(
     ds_name: str,
-    subgraph: list[str],
+    all_concepts: list[BuildConcept],
     g: ReferenceGraph,
     environment: BuildEnvironment,
     depth: int,
     conditions: BuildWhereClause | None = None,
     defer_group: bool = False,
-    requested: Sequence[BuildConcept] = (),
 ) -> StrategyNode:
     candidate = create_select_node_candidate(
         ds_name,
-        subgraph,
+        all_concepts,
         g,
         environment,
         depth,
         conditions,
-        requested,
     )
     return finalize_select_node(candidate, environment, depth, defer_group)
 
