@@ -642,36 +642,6 @@ def _composite_determining_grain(
     return min(determining, key=lambda grain: (len(grain), sorted(grain)))
 
 
-def _row_preserving_host(
-    grouping_buckets: list[GroupBucket],
-    grain: frozenset[str],
-    environment: BuildEnvironment,
-) -> GroupBucket | None:
-    """The grouping bucket at `grain` whose input rows are already one per
-    group: its grain determines its whole input grain, so the GROUP BY reduces
-    nothing.
-
-    A column that grain determines costs such a bucket nothing to carry, while
-    peeling it re-reads a table keyed by the grain, which is the fact the
-    bucket already scans (a fact property, or a dimension behind a foreign key
-    the fact binds off its grain). A bucket that truly reduces keeps the peel:
-    it joins the dimension after the rows collapse."""
-    hosts = [
-        bucket
-        for bucket in grouping_buckets
-        if bucket.grain_components == grain
-        and bucket.aggregate_input_grain
-        and not bucket.nulls_grouping_keys
-        and all(
-            build_fd_determines(
-                environment, set(grain), addr, include_empty_grain=False
-            )
-            for addr in bucket.aggregate_input_grain - grain
-        )
-    ]
-    return min(hosts, key=_group_id_for) if hosts else None
-
-
 def _row_arg_lineage_closure(arg: BuildConcept) -> set[str]:
     """The arg's address plus every address reachable through its lineage: a
     derived filter arg (``label <- concat(name, '-', variant)``) needs its
@@ -794,8 +764,17 @@ def _post_aggregate_basic_args(
 _SCALAR_PROJECTION_DERIVATIONS = {Derivation.BASIC, Derivation.FILTER}
 
 
+def _grouping_keys(buckets: dict[str, GroupBucket]) -> set[str]:
+    keys: set[str] = set()
+    for bucket in buckets.values():
+        if bucket.derivation in GROUPING_DERIVATIONS:
+            keys |= set(bucket.grain_components)
+    return keys
+
+
 def _projected_scalar_root_args(
     mandatory_list: list[BuildConcept],
+    grouping_keys: set[str],
 ) -> frozenset[str]:
     """ROOT leaves projected through a scalar output alias.
 
@@ -807,12 +786,16 @@ def _projected_scalar_root_args(
     and the key-join reintroduces it at the wrong multiplicity, so barrier
     args stay on the fact bucket. A filter is scalar in that sense: it subsets
     rows without changing any surviving row's value. Other non-barrier
-    derivations (MULTISELECT/TVF_UNION/SUBSELECT) are not walked."""
+    derivations (MULTISELECT/TVF_UNION/SUBSELECT) are not walked.
+
+    Nor is a scalar that is itself a grouping key: the GROUP BY reads it on the
+    fact rows, before any post-aggregate join could bring its arg back."""
     args: set[str] = set()
     for concept in mandatory_list:
         if (
             concept.derivation not in _SCALAR_PROJECTION_DERIVATIONS
             or concept.lineage is None
+            or concept.address in grouping_keys
         ):
             continue
         stack = list(concept.lineage.concept_arguments)
@@ -922,10 +905,7 @@ def _split_root_dimension_clusters(
     visible. ``include_empty_grain=False`` so a constant is never treated as
     a dim member.
     """
-    grouping_keys: set[str] = set()
-    for bucket in buckets.values():
-        if bucket.derivation in GROUPING_DERIVATIONS:
-            grouping_keys |= set(bucket.grain_components)
+    grouping_keys = _grouping_keys(buckets)
     if not grouping_keys:
         return
     d0_grouping_buckets = [
@@ -1046,12 +1026,7 @@ def _split_root_dimension_clusters(
             composite = _composite_determining_grain(
                 composite_grains, addr, environment
             )
-            if composite is None:
-                continue
-            host = _row_preserving_host(d0_grouping_buckets, composite, environment)
-            if host is not None and addr in output_addresses:
-                host.grain_riders.add(addr)
-            else:
+            if composite is not None:
                 assignment[addr] = composite
         if not assignment:
             continue
@@ -1203,7 +1178,6 @@ def _materialize_group_graph(
             member_depths=dict(bucket.member_depths),
             aggregate_input_grain=bucket.aggregate_input_grain,
             aggregate_distinct_addrs=frozenset(bucket.aggregate_distinct_addrs),
-            grain_riders=frozenset(bucket.grain_riders),
             grouping_mode=bucket.grouping_mode,
         )
         group_graph.add_node(gid)
@@ -2365,6 +2339,42 @@ def _apply_grouping_parent_grain_overrides(
         pass
 
 
+def _anchor_scalars_to_dim_peel_key(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    facts: dict[str, GroupFacts],
+    attrs: dict[str, GroupAttrs],
+) -> None:
+    """A BASIC reading only a dim-peel scan runs on that scan's rows, one per
+    entity key, whatever grain its own lineage pins.
+
+    `upper(address.state)` beside `sum(net_paid) by customer.sk` peels `state`
+    onto a `customer -> address` scan keyed by `customer.sk`, while the scalar
+    stays pinned at `address.sk`, which the FINAL merge never names. Left
+    there it cannot carry the entity key and joins its siblings keyless."""
+    for gid, fact in facts.items():
+        if gid == FINAL_NODE_ID or fact.derivation != Derivation.BASIC:
+            continue
+        parents = [
+            pred
+            for pred in group_graph.predecessors(gid)
+            if edge_kind(group_edges, pred, gid) == EdgeKind.LINEAGE
+        ]
+        keys = {
+            frozenset(attrs[pred].secondary_members)
+            for pred in parents
+            if facts[pred].derivation == Derivation.ROOT
+        }
+        if len(keys) != 1 or len(parents) != sum(
+            facts[pred].derivation == Derivation.ROOT for pred in parents
+        ):
+            continue
+        key = next(iter(keys))
+        if key and not fact.grain <= key:
+            fact.grain = key
+            fact.native_grain = key
+
+
 def _widen_window_grain_to_grouping_parent(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -2614,6 +2624,7 @@ def _compute_concept_sets(
         group_graph, group_edges, facts, lineage_parents
     )
     _widen_window_grain_to_grouping_parent(group_graph, group_edges, facts)
+    _anchor_scalars_to_dim_peel_key(group_graph, group_edges, facts, attrs)
     _widen_mixed_scalar_basic_to_final_spine(
         group_graph,
         group_edges,
@@ -2697,7 +2708,7 @@ def _compute_concept_sets(
         # A global-merge pseudonym twin is the same story without a statement
         # relation: `merge stages.stage into step` makes the two one value, so a
         # group at grain {step} preserves a parent-supplied `stages.stage`.
-        grain_mates: set[str] = set(attrs[gid].grain_riders)
+        grain_mates: set[str] = set()
         if fact.derivation in GROUPING_DERIVATIONS:
             for component in fact.grain:
                 if scoped_axis_mates:
@@ -2778,7 +2789,7 @@ def _compute_concept_sets(
             if succ == FINAL_NODE_ID:
                 mand = cap_gid & mandatory_alias_addresses
                 if fact.derivation in GROUPING_DERIVATIONS:
-                    mand &= fact.primary | fact.grain | attrs[gid].grain_riders
+                    mand &= fact.primary | fact.grain
                 for desc in nx.descendants(lineage_sub, gid):
                     if facts[desc].derivation in GROUPING_DERIVATIONS:
                         mand -= io.outputs[desc]
@@ -3021,7 +3032,9 @@ def build_group_graph(
     _fold_rollup_key_dims(
         concept_graph, concept_edges, concept_attrs, primary_group, buckets
     )
-    projected_scalar_root_args = _projected_scalar_root_args(mandatory_list)
+    projected_scalar_root_args = _projected_scalar_root_args(
+        mandatory_list, _grouping_keys(buckets)
+    )
     _split_root_dimension_clusters(
         buckets,
         primary_group,

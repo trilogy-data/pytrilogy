@@ -1,6 +1,6 @@
 # Handoff: an abstract aggregate's identity depends on how its grain is *spelled*
 
-Status: fixed at the aggregate's canonical name (2026-09-18, PR #697), with the sibling duplicate-name bug it widened, see the end.
+Status: fixed at the aggregate's canonical name (2026-09-18, PR #697), with the sibling duplicate-name bug it widened, see the end. The lineage `by` followed on 2026-09-19, see "Follow-up".
 
 Locked by `tests/discovery/test_aggregate_grain_fd_canonical.py` and the former strict xfail `test_merged_key_grain_reads_bound_derived.py::test_summary_reads_at_fd_equivalent_grain[beside_surviving_key_spelling]`.
 
@@ -32,7 +32,7 @@ The merge case was one instance of a wider, much more common gap. The select gra
 
 ## The fix: minimize the grain that feeds the hash, not the grain
 
-`Factory._identity_lineage` (`trilogy/core/models/build.py`) reduces an aggregate's `by` to its FD-minimal key set **only for `generate_concept_name`**. The lineage keeps its full `by`. This is option (b) of the original proposal.
+`Factory._identity_lineage` (`trilogy/core/models/build.py`, since renamed `_fd_minimal_lineage`) reduces an aggregate's `by` to its FD-minimal key set. In #697 this was **only for `generate_concept_name`** and the lineage kept its full `by` (option (b) of the original proposal); the follow-up below applies it to the lineage itself.
 
 The reduction is `DomainGraph.determines` over the build's full graph (`assemble_full_graph`), the same closure the planner already trusts to say "grouping by `{grain, component}` reduces to `{grain}`" (`grain_utility`). A `by` member drops when the rest determine it. No second FD engine:
 
@@ -51,43 +51,26 @@ The first cut reduced the select grain in `concepts_to_grain_concepts_ordered`. 
 
 All 9 pass with the identity-only seam, and a query no summary answers plans exactly as on main.
 
-**Where reducing the lineage `by` stands now** (Factory seam: `build_lineage = _identity_lineage(...)`, `final_grain` from its `by`). With both fixes above it is row-correct across TPC-DS, TPC-H, thelook and the engine suites, and plan-neutral on 98 of 99 TPC-DS queries (q23 shrinks 8%). One blocker left, and it is plan quality, not correctness: `test_partial_grain_star_under_not_null` scans `store_sales` twice where the wide pin is one star and one GROUP BY.
+## Follow-up: the lineage carries the minimal `by` too (2026-09-19)
 
-Traced cause: the fact is asked for by two independent requests that nothing unifies. The aggregate at `(item, ticket)` reads `{net_paid, return_amount, item, ticket}` (`sales ⟕ returns`, with the WHERE); the FINAL merge needs `{state, item, ticket}`, and `state` is reachable from that grain only through the off-grain `customer.sk`, so it reads `sales ⟕ customer ⟕ address`. Under the wide pin `state` is in the aggregate's `by` and rides the first request. What does *not* cause it, each ruled out by a planning probe:
+Name and lineage are now one grouping. `Factory._fd_minimal_lineage` reduces the built aggregate's `by`, the concept's grain is that `by`, and the canonical name hashes the lineage as is: no second, name-only view of the aggregate. A ROLLUP/CUBE `by` is left alone, since each key there is a subtotal level and not only a grouping key (`test_rollup_by_is_not_reduced`).
 
-- the composite dim peel (`dim:item.sk|ticket_number`): off, the SQL is byte-identical;
-- `_fresh_final_root_projection` re-planning the ROOT contributor: forced to reuse the built root, still two reads.
+The two planner gaps above (EQUAL-merge filtered FULL, keyless composite peel) were the correctness blockers. The last one was plan quality: `test_partial_grain_star_under_not_null` scanned `store_sales` twice. Under the wide pin `state` was a grouping key, and the dim peel never peels a grouping key, so it rode the aggregate's fact read. Under the minimal `by` it is an output the composite grain `(item, ticket)` determines, so `_split_root_dimension_clusters` peeled it to a `dim:item.sk|ticket_number` scan: a second read of the only table keyed by that grain, which is the fact the aggregate already scans.
 
-Each consumer prunes the root to its own columns, so one logical root renders as two CTEs sharing a `sales ⟕ returns ... WHERE` spine but differing in columns and in two extra LEFT JOINs, and the CTE-merge pass only folds identical sources. A single-fact model whose two base scans *are* identical folds to one CTE, which is why only the two-fact TPC-DS shape shows it.
+That is not specific to the minimal `by`. Main did the same for a plain fact property:
 
-### Two ways to close it
+```
+select ss.item.sk, ss.ticket_number, ss.quantity, sum(ss.net_paid);
+-- main: store_sales INNER JOIN store_sales on (item, ticket). Now: one scan.
+```
 
-Either one lets the lineage carry the same minimal `by` the name hashes. Both move plans across the battery, so both want a zquery-log A/B.
+**The fix is at group formation, not in the optimizer** (a narrow form of the host-first option this doc used to list second). A grouping bucket is *row-preserving* when its grain determines its whole `aggregate_input_grain`: the input rows are already one per group and the GROUP BY reduces nothing. Such a bucket carries a column its grain determines for free, while a peel can only re-read a table keyed by that grain. So `_split_root_dimension_clusters` asks `_row_preserving_host` before a composite peel, and on a hit the member stays in the fact ROOT bucket and is recorded on the host as a `grain_riders` entry. `_compute_concept_sets` treats riders like grain keys: preservable through the group and exposable to FINAL. The ROOT bucket then stops offering the column to FINAL (the existing "a grouping descendant already outputs it" rule), so exactly one request reaches the fact.
 
-**Option A: spine-subsumption CTE merge (optimizer). Preferred.**
+A bucket that truly reduces (`sum(qty)` over the finer `sale_lines`, grouped to `(item, ticket)`) keeps the composite peel, because joining the dimension after the rows collapse is the better plan there. Single-entity peels (`brand` by `item.sk`) are untouched.
 
-Teach the optimizer that two CTEs are one read when they share a spine and differ only by row-preserving joins. Today sources fold by identity only (same identifier or shape, `MergeNode._resolve`), so `questionable` and `cheerful`/`thoughtful` above stay apart although one is the other plus two dimension lookups.
+For the blocker query the minimal `by` now renders byte-identical SQL to the wide pin. Locked by `test_fact_grain_aggregate_reads_the_fact_once` (TPC-DS), and in `tests/discovery/test_dim_peel_composite_grain_axis.py` by `test_fact_grain_aggregate_hosts_its_dimensions` plus `test_reducing_aggregate_peels_onto_the_grain_scan`, which keeps the composite peel's keyless-join fix exercised now that the fact-grain shapes no longer reach it.
 
-The rule: CTE `B` subsumes CTE `A` when
-
-- they read the same base relations with the same join conditions between them, and `B` has only *extra* joins on top;
-- every extra join is LEFT, and its right side is at grain on the join keys (the dimension's key is within the pair), so it neither drops nor fans out a row. This is the safety argument `join_hoist.py` already makes for its at-grain dimension joins;
-- their WHEREs are equivalent (`condition_implies` both ways), or `A`'s is pushed onto the merged CTE only when it references spine columns and `B` had none. Unequal filters do not merge;
-- neither is grouped, limited or windowed (`is_grouped_cte`): a row-shape barrier makes the projection part of the identity.
-
-Then `A` is rewritten as a projection of `B` (`B`'s columns become the union) and consumers re-point through the usual `MergedCTEMap`. Column pruning stays as it is; this pass just undoes its accidental split. It should run after `InlineDatasource`, for the reason `join_hoist` does: the comparison wants physical tables, not CTEs about to disappear.
-
-Why preferred: it is a local, provably row-identical rewrite with an existing precedent and harness (flip the rule off, diff zquery logs), it cannot produce wrong rows when its guards hold, and it pays off beyond this shape. Any query where two groups read one fact with different dimension lookups gets one scan, whatever produced the split.
-
-Cost: it only recovers reads that are *syntactically* one spine. Two requests planned through different join orders or different bridge tables will not match, so it shrinks the gap rather than closing it by construction.
-
-**Option B: host-first group formation (planner).**
-
-Decide at group formation that a dimension reachable from a grouping grain only *through the fact* belongs to the fact's root request: `state` rides the aggregate's input read, the aggregate groups by its minimal `by`, and the FINAL takes `state` from the same node (passed through the group, which is sound because the grain determines it). No second request is ever issued, so there is nothing to merge afterwards.
-
-This closes the gap by construction and is the structural fix `fd-grain` work has pointed at before (v4 is derivation-first; every (derivation, grain-signature) group root-searches its own scan tree). But it changes group formation, the most plan-shaping decision there is: it interacts with the dim peel (which exists precisely to pull dimensions *off* the fact read, and is a win when the dimension's key is itself a grouping key), with `_fresh_final_root_projection`, and with partial-key extension rows (a dimension hosted on a `~` fact read sees only the fact's members). Earlier eager variants of "demand the axis at formation" each broke something. High ceiling, wide blast radius.
-
-**Order:** A first. It is safe to land alone, it turns `test_partial_grain_star_under_not_null` green under a minimal `by`, and it leaves B as a pure plan-quality question with no correctness or reuse pressure behind it.
+Not done, and no longer blocking anything: the spine-subsumption CTE merge (fold two CTEs that share a spine and differ by row-preserving LEFT joins). It would still pay off where two *different* groups read one fact with different dimension lookups, but with riders in place no known shape needs it.
 
 How this lands against the concerns in the original proposal:
 

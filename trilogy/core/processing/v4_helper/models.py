@@ -124,8 +124,6 @@ class GroupAttrs:
     # (count-of-a-key over a finer row stream): render COUNT(DISTINCT ...)
     # instead of dedup-then-COUNT.
     aggregate_distinct_addrs: frozenset[str] = frozenset()
-    # See `GroupBucket.grain_riders`.
-    grain_riders: frozenset[str] = frozenset()
     # Atoms (BoolExpr) applied AT this group. A clause like
     # `state='TN' AND year=2000` is decomposed and each atom finds its own
     # highest-allowed group independently, so a single clause may live at
@@ -187,6 +185,11 @@ class ConceptAttrs:
     # rendering COUNT(DISTINCT ...) instead of dedup-then-COUNT.
     aggregate_distinct_rewritable: bool = False
     keys: frozenset[str] = frozenset()
+    # For a ROOT whose declared keys the query never names: the KEY roots that
+    # jointly determine it through the environment's FD closure (a dimension
+    # behind a foreign key the fact binds). `keys` is one FD step; this is the
+    # chain.
+    determining_key_roots: frozenset[str] = frozenset()
     # Addresses this concept answers for under another identity (scoped-join
     # canonical collapse, `merge into`): lets grouping relate a property root
     # to its key root when the key was collapsed onto a different address.
@@ -283,10 +286,6 @@ class GroupBucket:
     # Member addresses to render COUNT(DISTINCT ...), merged in from a
     # coarser-input-grain sibling whose dedup folds into the aggregate.
     aggregate_distinct_addrs: set[str] = field(default_factory=set)
-    # ROOT columns this grouping bucket carries beside its grain: its grain
-    # determines them and its input rows are already one per group, so they
-    # ride the fact read it aggregates instead of a second read of that fact.
-    grain_riders: set[str] = field(default_factory=set)
     # SEMANTICS of this group's GROUP BY, as opposed to `discriminator`, which
     # only exists to keep distinct buckets at distinct group ids. Ask
     # `nulls_grouping_keys`, never the id string.
