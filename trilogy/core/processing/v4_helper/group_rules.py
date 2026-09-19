@@ -419,7 +419,7 @@ def _property_key_pairs(main_items: list[NodeItem]) -> list[tuple[str, str]]:
     for node, data in main_items:
         if data.purpose != Purpose.PROPERTY:
             continue
-        for key_addr in data.keys:
+        for key_addr in data.keys | data.determining_key_roots:
             key_node = node_by_addr.get(key_addr) or node_by_pseudonym.get(key_addr)
             if key_node is not None and key_node != node:
                 pairs.append((node, key_node))

@@ -185,6 +185,11 @@ class ConceptAttrs:
     # rendering COUNT(DISTINCT ...) instead of dedup-then-COUNT.
     aggregate_distinct_rewritable: bool = False
     keys: frozenset[str] = frozenset()
+    # For a ROOT whose declared keys the query never names: the KEY roots that
+    # jointly determine it through the environment's FD closure (a dimension
+    # behind a foreign key the fact binds). `keys` is one FD step; this is the
+    # chain.
+    determining_key_roots: frozenset[str] = frozenset()
     # Addresses this concept answers for under another identity (scoped-join
     # canonical collapse, `merge into`): lets grouping relate a property root
     # to its key root when the key was collapsed onto a different address.

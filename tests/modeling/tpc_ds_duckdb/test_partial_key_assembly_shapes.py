@@ -192,6 +192,46 @@ select
     assert len(set(keys)) == len(keys)
 
 
+@pytest.mark.parametrize("column", ["ss.quantity", "ss.customer.current_address.state"])
+def test_fact_grain_aggregate_reads_the_fact_once(engine_sf001: Executor, column: str):
+    """An aggregate at its fact's own grain reduces nothing, so a column that
+    grain determines (a fact property, a dimension behind an off-grain foreign
+    key) rides the read it already makes instead of a self-join on the grain."""
+    engine_sf001.environment = Environment(working_path=working_path)
+    sql = engine_sf001.generate_sql(f"""import store_sales as ss;
+
+select
+    ss.item.sk,
+    ss.ticket_number,
+    {column},
+    sum(ss.net_paid) as total_paid,
+;""")[-1]
+    assert _scans(sql, "store_sales") == 1, sql
+
+
+def test_scalar_over_dimension_two_hops_off_the_grouping_key(engine_sf001: Executor):
+    """`state` hangs off `customer.sk` through `current_address.sk`, which the
+    query never names: the scalar reads the same population as the bare
+    column, joined back on the customer key."""
+    engine_sf001.environment = Environment(working_path=working_path)
+    select = """import store_sales as ss;
+
+select
+    ss.customer.sk,
+    {state} as st,
+    sum(ss.net_paid) as total_paid
+order by ss.customer.sk asc nulls last;"""
+    bare = engine_sf001.execute_text(
+        select.format(state="ss.customer.current_address.state")
+    )[-1].fetchall()
+    upper = engine_sf001.execute_text(
+        select.format(state="upper(ss.customer.current_address.state)")
+    )[-1].fetchall()
+    assert [tuple(r) for r in upper] == [
+        (sk, st.upper() if st else st, paid) for sk, st, paid in bare
+    ]
+
+
 @pytest.mark.parametrize("by", ["", " by ss.item.sk, ss.ticket_number"])
 def test_partial_grain_with_customer_dim(engine_sf001: Executor, by: str):
     """customer.sk is bound `?` (nullable), not `~` (partial), so no domain

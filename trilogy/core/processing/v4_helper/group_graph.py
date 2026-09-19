@@ -764,8 +764,17 @@ def _post_aggregate_basic_args(
 _SCALAR_PROJECTION_DERIVATIONS = {Derivation.BASIC, Derivation.FILTER}
 
 
+def _grouping_keys(buckets: dict[str, GroupBucket]) -> set[str]:
+    keys: set[str] = set()
+    for bucket in buckets.values():
+        if bucket.derivation in GROUPING_DERIVATIONS:
+            keys |= set(bucket.grain_components)
+    return keys
+
+
 def _projected_scalar_root_args(
     mandatory_list: list[BuildConcept],
+    grouping_keys: set[str],
 ) -> frozenset[str]:
     """ROOT leaves projected through a scalar output alias.
 
@@ -777,12 +786,16 @@ def _projected_scalar_root_args(
     and the key-join reintroduces it at the wrong multiplicity, so barrier
     args stay on the fact bucket. A filter is scalar in that sense: it subsets
     rows without changing any surviving row's value. Other non-barrier
-    derivations (MULTISELECT/TVF_UNION/SUBSELECT) are not walked."""
+    derivations (MULTISELECT/TVF_UNION/SUBSELECT) are not walked.
+
+    Nor is a scalar that is itself a grouping key: the GROUP BY reads it on the
+    fact rows, before any post-aggregate join could bring its arg back."""
     args: set[str] = set()
     for concept in mandatory_list:
         if (
             concept.derivation not in _SCALAR_PROJECTION_DERIVATIONS
             or concept.lineage is None
+            or concept.address in grouping_keys
         ):
             continue
         stack = list(concept.lineage.concept_arguments)
@@ -892,10 +905,7 @@ def _split_root_dimension_clusters(
     visible. ``include_empty_grain=False`` so a constant is never treated as
     a dim member.
     """
-    grouping_keys: set[str] = set()
-    for bucket in buckets.values():
-        if bucket.derivation in GROUPING_DERIVATIONS:
-            grouping_keys |= set(bucket.grain_components)
+    grouping_keys = _grouping_keys(buckets)
     if not grouping_keys:
         return
     d0_grouping_buckets = [
@@ -2329,6 +2339,42 @@ def _apply_grouping_parent_grain_overrides(
         pass
 
 
+def _anchor_scalars_to_dim_peel_key(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    facts: dict[str, GroupFacts],
+    attrs: dict[str, GroupAttrs],
+) -> None:
+    """A BASIC reading only a dim-peel scan runs on that scan's rows, one per
+    entity key, whatever grain its own lineage pins.
+
+    `upper(address.state)` beside `sum(net_paid) by customer.sk` peels `state`
+    onto a `customer -> address` scan keyed by `customer.sk`, while the scalar
+    stays pinned at `address.sk`, which the FINAL merge never names. Left
+    there it cannot carry the entity key and joins its siblings keyless."""
+    for gid, fact in facts.items():
+        if gid == FINAL_NODE_ID or fact.derivation != Derivation.BASIC:
+            continue
+        parents = [
+            pred
+            for pred in group_graph.predecessors(gid)
+            if edge_kind(group_edges, pred, gid) == EdgeKind.LINEAGE
+        ]
+        keys = {
+            frozenset(attrs[pred].secondary_members)
+            for pred in parents
+            if facts[pred].derivation == Derivation.ROOT
+        }
+        if len(keys) != 1 or len(parents) != sum(
+            facts[pred].derivation == Derivation.ROOT for pred in parents
+        ):
+            continue
+        key = next(iter(keys))
+        if key and not fact.grain <= key:
+            fact.grain = key
+            fact.native_grain = key
+
+
 def _widen_window_grain_to_grouping_parent(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -2578,6 +2624,7 @@ def _compute_concept_sets(
         group_graph, group_edges, facts, lineage_parents
     )
     _widen_window_grain_to_grouping_parent(group_graph, group_edges, facts)
+    _anchor_scalars_to_dim_peel_key(group_graph, group_edges, facts, attrs)
     _widen_mixed_scalar_basic_to_final_spine(
         group_graph,
         group_edges,
@@ -2985,7 +3032,9 @@ def build_group_graph(
     _fold_rollup_key_dims(
         concept_graph, concept_edges, concept_attrs, primary_group, buckets
     )
-    projected_scalar_root_args = _projected_scalar_root_args(mandatory_list)
+    projected_scalar_root_args = _projected_scalar_root_args(
+        mandatory_list, _grouping_keys(buckets)
+    )
     _split_root_dimension_clusters(
         buckets,
         primary_group,

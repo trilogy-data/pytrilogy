@@ -1,11 +1,11 @@
 query_id = "23"
-gen_length = 7656
+gen_length = 7006
 preql_size = 1595
 comp_size = 2441
 generated_sql = """
 
 WITH 
-sweltering as (
+young as (
 SELECT
      'STORE'  as \"sales_channel\",
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
@@ -17,77 +17,61 @@ FROM
 WHERE
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" is not null
 ),
-kaput as (
+macho as (
 SELECT
-    \"sweltering\".\"sales_billing_customer_sk\" as \"_best_customers_best_customer_id\",
-    sum(\"sweltering\".\"sales_quantity\" * \"sweltering\".\"sales_sales_price\") as \"customer_total_overall\"
+    \"young\".\"sales_billing_customer_sk\" as \"_best_customers_best_customer_id\",
+    sum(\"young\".\"sales_quantity\" * \"young\".\"sales_sales_price\") as \"customer_total_overall\"
 FROM
-    \"sweltering\"
+    \"young\"
 GROUP BY
     1),
-late as (
+sparkling as (
 SELECT
-    sum(\"sweltering\".\"sales_quantity\" * \"sweltering\".\"sales_sales_price\") as \"customer_total_in_window\"
+    sum(\"young\".\"sales_quantity\" * \"young\".\"sales_sales_price\") as \"customer_total_in_window\"
 FROM
-    \"sweltering\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sweltering\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
+    \"young\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"young\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"sweltering\".\"sales_channel\" = 'STORE' and (\"sales_sale_date_date\".\"D_YEAR\" is not null and \"sales_sale_date_date\".\"D_YEAR\" in (2000,2001,2002,2003))
+    \"young\".\"sales_channel\" = 'STORE' and (\"sales_sale_date_date\".\"D_YEAR\" is not null and \"sales_sale_date_date\".\"D_YEAR\" in (2000,2001,2002,2003))
 
 GROUP BY
-    \"sweltering\".\"sales_billing_customer_sk\"),
-scrawny as (
+    \"young\".\"sales_billing_customer_sk\"),
+sweltering as (
 SELECT
-    max(\"late\".\"customer_total_in_window\") as \"max_total_cmax\"
+    max(\"sparkling\".\"customer_total_in_window\") as \"max_total_cmax\"
 FROM
-    \"late\"),
-busy as (
+    \"sparkling\"),
+friendly as (
 SELECT
-    \"kaput\".\"_best_customers_best_customer_id\" as \"best_customers_best_customer_id\"
+    \"macho\".\"_best_customers_best_customer_id\" as \"best_customers_best_customer_id\"
 FROM
-    \"kaput\"
-    INNER JOIN \"scrawny\" on 1=1
+    \"macho\"
+    INNER JOIN \"sweltering\" on 1=1
 WHERE
-    \"kaput\".\"customer_total_overall\" > 0.5 * \"scrawny\".\"max_total_cmax\"
+    \"macho\".\"customer_total_overall\" > 0.5 * \"sweltering\".\"max_total_cmax\"
 
 GROUP BY
     1),
-yummy as (
+abundant as (
 SELECT
-    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_sk\",
-    \"sales_store_sales_unified\".\"SS_TICKET_NUMBER\" as \"sales_order_id\",
-    cast(\"sales_sale_date_date\".\"D_DATE\" as date) as \"sales_sale_date_date\"
+    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_sk\"
 FROM
     \"memory\".\"store_sales\" as \"sales_store_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
      'STORE'  = 'STORE' and (\"sales_sale_date_date\".\"D_YEAR\" is not null and \"sales_sale_date_date\".\"D_YEAR\" in (2000,2001,2002,2003))
-),
-abundant as (
-SELECT
-    \"sales_item_items\".\"I_ITEM_SK\" as \"_frequent_items_frequent_item_id\",
-    \"sales_item_items\".\"I_ITEM_SK\" as \"sales_item_sk\",
-    SUBSTRING(\"sales_item_items\".\"I_ITEM_DESC\",1,30) as \"sales_item_desc_truncated\"
-FROM
-    \"memory\".\"item\" as \"sales_item_items\"),
-juicy as (
-SELECT
-    \"abundant\".\"sales_item_sk\" as \"sales_item_sk\"
-FROM
-    \"yummy\"
-    INNER JOIN \"abundant\" on \"yummy\".\"sales_item_sk\" = \"abundant\".\"_frequent_items_frequent_item_id\"
+
 GROUP BY
     1,
-    \"abundant\".\"sales_item_desc_truncated\",
-    \"yummy\".\"sales_sale_date_date\"
+    cast(\"sales_sale_date_date\".\"D_DATE\" as date)
 HAVING
-    count(\"yummy\".\"sales_order_id\") > 4
+    count(\"sales_store_sales_unified\".\"SS_TICKET_NUMBER\") > 4
 ),
-concerned as (
+yummy as (
 SELECT
-    \"juicy\".\"sales_item_sk\" as \"frequent_items_frequent_item_id\"
+    \"abundant\".\"sales_item_sk\" as \"frequent_items_frequent_item_id\"
 FROM
-    \"juicy\"
+    \"abundant\"
 GROUP BY
     1),
 thoughtful as (
@@ -102,7 +86,7 @@ FROM
     INNER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    exists (select 1 from concerned where concerned.\"frequent_items_frequent_item_id\" is not distinct from \"sales_catalog_sales_unified\".\"CS_ITEM_SK\") and exists (select 1 from busy where busy.\"best_customers_best_customer_id\" is not distinct from \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\") and \"sales_sale_date_date\".\"D_YEAR\" = 2000 and \"sales_sale_date_date\".\"D_MOY\" = 2
+    exists (select 1 from yummy where yummy.\"frequent_items_frequent_item_id\" is not distinct from \"sales_catalog_sales_unified\".\"CS_ITEM_SK\") and exists (select 1 from friendly where friendly.\"best_customers_best_customer_id\" is not distinct from \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\") and \"sales_sale_date_date\".\"D_YEAR\" = 2000 and \"sales_sale_date_date\".\"D_MOY\" = 2
 
 UNION ALL
 SELECT
@@ -116,7 +100,7 @@ FROM
     INNER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_store_sales_unified\".\"SS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    exists (select 1 from concerned where concerned.\"frequent_items_frequent_item_id\" is not distinct from \"sales_store_sales_unified\".\"SS_ITEM_SK\") and exists (select 1 from busy where busy.\"best_customers_best_customer_id\" is not distinct from \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\") and \"sales_sale_date_date\".\"D_YEAR\" = 2000 and \"sales_sale_date_date\".\"D_MOY\" = 2
+    exists (select 1 from yummy where yummy.\"frequent_items_frequent_item_id\" is not distinct from \"sales_store_sales_unified\".\"SS_ITEM_SK\") and exists (select 1 from friendly where friendly.\"best_customers_best_customer_id\" is not distinct from \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\") and \"sales_sale_date_date\".\"D_YEAR\" = 2000 and \"sales_sale_date_date\".\"D_MOY\" = 2
 
 UNION ALL
 SELECT
@@ -130,7 +114,7 @@ FROM
     INNER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    exists (select 1 from concerned where concerned.\"frequent_items_frequent_item_id\" is not distinct from \"sales_web_sales_unified\".\"WS_ITEM_SK\") and exists (select 1 from busy where busy.\"best_customers_best_customer_id\" is not distinct from \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\") and \"sales_sale_date_date\".\"D_YEAR\" = 2000 and \"sales_sale_date_date\".\"D_MOY\" = 2
+    exists (select 1 from yummy where yummy.\"frequent_items_frequent_item_id\" is not distinct from \"sales_web_sales_unified\".\"WS_ITEM_SK\") and exists (select 1 from friendly where friendly.\"best_customers_best_customer_id\" is not distinct from \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\") and \"sales_sale_date_date\".\"D_YEAR\" = 2000 and \"sales_sale_date_date\".\"D_MOY\" = 2
 ),
 questionable as (
 SELECT
@@ -143,7 +127,7 @@ FROM
     \"thoughtful\"
     INNER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"thoughtful\".\"sales_billing_customer_sk\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
 WHERE
-    exists (select 1 from concerned where concerned.\"frequent_items_frequent_item_id\" is not distinct from \"thoughtful\".\"sales_item_sk\") and exists (select 1 from busy where busy.\"best_customers_best_customer_id\" is not distinct from \"thoughtful\".\"sales_billing_customer_sk\")
+    exists (select 1 from yummy where yummy.\"frequent_items_frequent_item_id\" is not distinct from \"thoughtful\".\"sales_item_sk\") and exists (select 1 from friendly where friendly.\"best_customers_best_customer_id\" is not distinct from \"thoughtful\".\"sales_billing_customer_sk\")
 )
 SELECT
     \"questionable\".\"sales_billing_customer_last_name\" as \"c_last_name\",
