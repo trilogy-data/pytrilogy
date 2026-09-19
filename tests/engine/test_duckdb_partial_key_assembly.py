@@ -538,3 +538,110 @@ def test_absence_pin_on_raw_flag(flagged):
 def test_presence_pin_on_raw_flag(flagged):
     query = "where returned is not null select order_id, sum(amount) as total order by order_id asc;"
     assert _rows(flagged, query) == [(2, 70)]
+
+
+# A composite-grain fact: `~product_id` hangs off the whole grain, `~user_id`
+# off `order_id` alone, so an aggregate at that grain peels the two extension
+# families under different keys.
+_COMPOSITE = """
+key user_id int;
+property user_id.state string;
+key product_id int;
+property product_id.brand string;
+key order_id int;
+key line_no int;
+property <order_id, line_no>.qty int;
+
+root datasource users (
+    user_id: user_id,
+    state: state,
+)
+grain (user_id)
+query '''
+select 1 as user_id, 'CA' as state union all
+select 2, 'NY' union all
+select 3, 'TX'
+''';
+
+root datasource products (
+    product_id: product_id,
+    brand: brand,
+)
+grain (product_id)
+query '''
+select 10 as product_id, 'A' as brand union all
+select 20, 'B' union all
+select 30, 'C'
+''';
+
+root datasource orders (
+    order_id: order_id,
+    user_id: ~user_id,
+)
+grain (order_id)
+query '''
+select 100 as order_id, 1 as user_id union all
+select 101, 2 union all
+select 102, 1
+''';
+
+root datasource lines (
+    order_id: order_id,
+    line_no: line_no,
+    product_id: ~product_id,
+    qty: qty,
+)
+grain (order_id, line_no)
+query '''
+select 100 as order_id, 1 as line_no, 10 as product_id, 5 as qty union all
+select 100, 2, 20, 7 union all
+select 101, 1, 10, 11 union all
+select 102, 1, 20, 13
+''';
+"""
+
+_COMPOSITE_ORDER = """ order by order_id asc nulls last, line_no asc nulls last,
+    user_id asc nulls last, product_id asc nulls last;"""
+
+
+@pytest.fixture(scope="module")
+def composite():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_COMPOSITE)
+    return executor
+
+
+@pytest.mark.parametrize("metric", ["qty", "sum(qty) as total"])
+def test_composite_grain_families_do_not_cross_pair(composite, metric):
+    query = f"select order_id, line_no, product_id, user_id, state, {metric}"
+    assert _rows(composite, query + _COMPOSITE_ORDER) == [
+        (100, 1, 10, 1, "CA", 5),
+        (100, 2, 20, 1, "CA", 7),
+        (101, 1, 10, 2, "NY", 11),
+        (102, 1, 20, 1, "CA", 13),
+        (None, None, None, 3, "TX", None),
+        (None, None, 30, None, None, None),
+    ]
+
+
+def test_composite_grain_families_with_both_attributes(composite):
+    query = "select order_id, line_no, brand, state, sum(qty) as total"
+    order = " order by order_id asc nulls last, line_no asc nulls last, state asc nulls last;"
+    assert _rows(composite, query + order) == [
+        (100, 1, "A", "CA", 5),
+        (100, 2, "B", "CA", 7),
+        (101, 1, "A", "NY", 11),
+        (102, 1, "B", "CA", 13),
+        (None, None, None, "TX", None),
+        (None, None, "C", None, None),
+    ]
+
+
+def test_composite_grain_families_pinned(composite):
+    query = f"{_PIN}select order_id, line_no, product_id, user_id, state, sum(qty) as total"
+    assert _rows(composite, query + _COMPOSITE_ORDER) == [
+        (100, 1, 10, 1, "CA", 5),
+        (100, 2, 20, 1, "CA", 7),
+        (101, 1, 10, 2, "NY", 11),
+        (102, 1, 20, 1, "CA", 13),
+    ]
