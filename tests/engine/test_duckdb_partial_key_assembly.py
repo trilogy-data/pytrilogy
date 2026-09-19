@@ -655,12 +655,9 @@ auto line_status <- case when qty = user_first_qty then 'FIRST' else 'LATER' end
 """
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="`user_id` as a grouping key keeps its family on the fact bucket while "
-    "`~product_id` peels; the BASIC merge pairs their padding null-safely",
-)
 def test_composite_grain_families_with_by_span_aggregate():
+    """`user_id` as a grouping key keeps its family on the fact bucket while
+    `~product_id` peels: two sides padded for different spans never pair."""
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_text(_COMPOSITE + _COMPOSITE_STATUS)
     query = (

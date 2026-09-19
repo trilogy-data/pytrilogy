@@ -22,22 +22,12 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from trilogy.core import graph as nx
-from trilogy.core.models.build import BuildDatasource
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.join_resolution import licensed_extension_spans
 
 from .constants import FINAL_NODE_ID
 from .functional_dependency import build_fd_determines
 from .models import ExtentOwnership, GroupAttrs
-
-
-def licensed_extension_spans(environment: BuildEnvironment) -> frozenset[str]:
-    """Addresses some datasource binds with a column-level ``~``."""
-    return frozenset(
-        address
-        for datasource in environment.datasources.values()
-        if isinstance(datasource, BuildDatasource)
-        for address in datasource.column_level_partial_addresses
-    )
 
 
 def demanded_extension_spans(
