@@ -51,7 +51,43 @@ The first cut reduced the select grain in `concepts_to_grain_concepts_ordered`. 
 
 All 9 pass with the identity-only seam, and a query no summary answers plans exactly as on main.
 
-**Where reducing the lineage `by` stands now** (Factory seam: `build_lineage = _identity_lineage(...)`, `final_grain` from its `by`). With both fixes above it is row-correct across TPC-DS, TPC-H, thelook and the engine suites, and plan-neutral on 98 of 99 TPC-DS queries (q23 shrinks 8%). One blocker left, and it is plan quality, not correctness: `test_partial_grain_star_under_not_null` scans `store_sales` twice, once for the aggregate and once to carry the off-grain foreign key to the dimension, where the wide pin is one star and one GROUP BY. That is the host-first gap: an aggregate whose grain IS its fact's grain should host the dimension join instead of re-reading the fact. Close it and the lineage can carry the same minimal `by` the name hashes.
+**Where reducing the lineage `by` stands now** (Factory seam: `build_lineage = _identity_lineage(...)`, `final_grain` from its `by`). With both fixes above it is row-correct across TPC-DS, TPC-H, thelook and the engine suites, and plan-neutral on 98 of 99 TPC-DS queries (q23 shrinks 8%). One blocker left, and it is plan quality, not correctness: `test_partial_grain_star_under_not_null` scans `store_sales` twice where the wide pin is one star and one GROUP BY.
+
+Traced cause: the fact is asked for by two independent requests that nothing unifies. The aggregate at `(item, ticket)` reads `{net_paid, return_amount, item, ticket}` (`sales ⟕ returns`, with the WHERE); the FINAL merge needs `{state, item, ticket}`, and `state` is reachable from that grain only through the off-grain `customer.sk`, so it reads `sales ⟕ customer ⟕ address`. Under the wide pin `state` is in the aggregate's `by` and rides the first request. What does *not* cause it, each ruled out by a planning probe:
+
+- the composite dim peel (`dim:item.sk|ticket_number`): off, the SQL is byte-identical;
+- `_fresh_final_root_projection` re-planning the ROOT contributor: forced to reuse the built root, still two reads.
+
+Each consumer prunes the root to its own columns, so one logical root renders as two CTEs sharing a `sales ⟕ returns ... WHERE` spine but differing in columns and in two extra LEFT JOINs, and the CTE-merge pass only folds identical sources. A single-fact model whose two base scans *are* identical folds to one CTE, which is why only the two-fact TPC-DS shape shows it.
+
+### Two ways to close it
+
+Either one lets the lineage carry the same minimal `by` the name hashes. Both move plans across the battery, so both want a zquery-log A/B.
+
+**Option A: spine-subsumption CTE merge (optimizer). Preferred.**
+
+Teach the optimizer that two CTEs are one read when they share a spine and differ only by row-preserving joins. Today sources fold by identity only (same identifier or shape, `MergeNode._resolve`), so `questionable` and `cheerful`/`thoughtful` above stay apart although one is the other plus two dimension lookups.
+
+The rule: CTE `B` subsumes CTE `A` when
+
+- they read the same base relations with the same join conditions between them, and `B` has only *extra* joins on top;
+- every extra join is LEFT, and its right side is at grain on the join keys (the dimension's key is within the pair), so it neither drops nor fans out a row. This is the safety argument `join_hoist.py` already makes for its at-grain dimension joins;
+- their WHEREs are equivalent (`condition_implies` both ways), or `A`'s is pushed onto the merged CTE only when it references spine columns and `B` had none. Unequal filters do not merge;
+- neither is grouped, limited or windowed (`is_grouped_cte`): a row-shape barrier makes the projection part of the identity.
+
+Then `A` is rewritten as a projection of `B` (`B`'s columns become the union) and consumers re-point through the usual `MergedCTEMap`. Column pruning stays as it is; this pass just undoes its accidental split. It should run after `InlineDatasource`, for the reason `join_hoist` does: the comparison wants physical tables, not CTEs about to disappear.
+
+Why preferred: it is a local, provably row-identical rewrite with an existing precedent and harness (flip the rule off, diff zquery logs), it cannot produce wrong rows when its guards hold, and it pays off beyond this shape. Any query where two groups read one fact with different dimension lookups gets one scan, whatever produced the split.
+
+Cost: it only recovers reads that are *syntactically* one spine. Two requests planned through different join orders or different bridge tables will not match, so it shrinks the gap rather than closing it by construction.
+
+**Option B: host-first group formation (planner).**
+
+Decide at group formation that a dimension reachable from a grouping grain only *through the fact* belongs to the fact's root request: `state` rides the aggregate's input read, the aggregate groups by its minimal `by`, and the FINAL takes `state` from the same node (passed through the group, which is sound because the grain determines it). No second request is ever issued, so there is nothing to merge afterwards.
+
+This closes the gap by construction and is the structural fix `fd-grain` work has pointed at before (v4 is derivation-first; every (derivation, grain-signature) group root-searches its own scan tree). But it changes group formation, the most plan-shaping decision there is: it interacts with the dim peel (which exists precisely to pull dimensions *off* the fact read, and is a win when the dimension's key is itself a grouping key), with `_fresh_final_root_projection`, and with partial-key extension rows (a dimension hosted on a `~` fact read sees only the fact's members). Earlier eager variants of "demand the axis at formation" each broke something. High ceiling, wide blast radius.
+
+**Order:** A first. It is safe to land alone, it turns `test_partial_grain_star_under_not_null` green under a minimal `by`, and it leaves B as a pure plan-quality question with no correctness or reuse pressure behind it.
 
 How this lands against the concerns in the original proposal:
 
