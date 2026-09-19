@@ -647,3 +647,30 @@ def test_composite_grain_families_pinned(composite):
         (101, 1, 10, 2, "NY", 11),
         (102, 1, 20, 1, "CA", 13),
     ]
+
+
+_COMPOSITE_STATUS = """
+auto user_first_qty <- min(qty) by user_id;
+auto line_status <- case when qty = user_first_qty then 'FIRST' else 'LATER' end;
+"""
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="`user_id` as a grouping key keeps its family on the fact bucket while "
+    "`~product_id` peels; the BASIC merge pairs their padding null-safely",
+)
+def test_composite_grain_families_with_by_span_aggregate():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_COMPOSITE + _COMPOSITE_STATUS)
+    query = (
+        "select order_id, line_no, product_id, user_id, line_status, sum(qty) as total"
+    )
+    assert _rows(executor, query + _COMPOSITE_ORDER) == [
+        (100, 1, 10, 1, "FIRST", 5),
+        (100, 2, 20, 1, "LATER", 7),
+        (101, 1, 10, 2, "FIRST", 11),
+        (102, 1, 20, 1, "LATER", 13),
+        (None, None, None, 3, "LATER", None),
+        (None, None, 30, None, "LATER", None),
+    ]
