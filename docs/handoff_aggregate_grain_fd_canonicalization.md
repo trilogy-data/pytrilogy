@@ -70,7 +70,7 @@ select ss.item.sk, ss.ticket_number, ss.quantity, sum(ss.net_paid);
 
 - the aggregate is **row-preserving**: its grain determines its whole `aggregate_input_grain`, so the input rows are already one per group and the GROUP BY reduces nothing;
 - the **whole grain** determines `X` and no proper subset does (`_whole_grain_determines`): `X` belongs to the grain's own row (a fact property, a dimension behind a foreign key the fact binds off its grain). A column one key alone determines (`brand` by `item.sk`) still joins from that key's table after the fact;
-- `X` is a row scalar (ROOT/BASIC/CONSTANT lineage only).
+- `X` is a row scalar (ROOT/BASIC/CONSTANT lineage only) and **not a KEY**. A key is a join axis with a domain of its own: hosting `~user.id` and `~product.id` on thelook q19's `order_items` aggregate pulled both extension spines under the GROUP BY and turned the FINAL stitch null-safe. With keys excluded q19 is byte-identical to main.
 
 From there everything downstream is main's wide-pin path, which is why the blocker query renders byte-identical SQL to main. An aggregate that truly reduces (`sum(qty)` over the finer `sale_lines`) keeps the peel and joins the dimension after its rows collapse. It also covers single-key fact grains (`select order_id, region, total`), which TPC-DS cannot show: every fact there has a composite grain.
 
