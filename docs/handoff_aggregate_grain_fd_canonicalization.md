@@ -1,6 +1,6 @@
 # Handoff: an abstract aggregate's identity depends on how its grain is *spelled*
 
-Status: fixed at the author-side grain (2026-09-18, PR #697), with the sibling duplicate-name bug it widened, see the end.
+Status: fixed at the aggregate's canonical name (2026-09-18, PR #697), with the sibling duplicate-name bug it widened, see the end.
 
 Locked by `tests/discovery/test_aggregate_grain_fd_canonical.py` and the former strict xfail `test_merged_key_grain_reads_bound_derived.py::test_summary_reads_at_fd_equivalent_grain[beside_surviving_key_spelling]`.
 
@@ -34,10 +34,10 @@ The merge case was one instance of a wider, much more common gap. The select gra
 
 `Factory._identity_lineage` (`trilogy/core/models/build.py`) reduces an aggregate's `by` to its FD-minimal key set **only for `generate_concept_name`**. The lineage keeps its full `by`. This is option (b) of the original proposal.
 
-`fd_minimal_addresses` (`trilogy/parsing/common.py`) is the author twin of the build-side key-hierarchy fold (`_key_reduces_to` in `concepts_to_build_grain_concepts`): a component drops when some declared key set of it reduces, transitively, to the rest.
+The reduction is `DomainGraph.determines` over the build's full graph (`assemble_full_graph`), the same closure the planner already trusts to say "grouping by `{grain, component}` reduces to `{grain}`" (`grain_utility`). A `by` member drops when the rest determine it. No second FD engine:
 
-- **Chain links are ROOT concepts only** (`_declared_keys`): a KEY's `effective_keys`, a PROPERTY's `keys`. A derived concept's keys can be conditional (an empty-grain FILTER virtual, `keys_are_conditional_fd`), so nothing chains through one.
-- **Merge identity**: a KEY that a *global, non-partial* `merge s into t` equates to `s` is determined by whatever determines `s` (`Environment.equal_merge_sources`). Partial merges (`into ~t`) and statement-scoped joins hold only on matched rows and contribute nothing; that is the scoped-join equality that caused the LEFT->FULL flip when it was used for group elision, and why this does not read `environment.domain_graph`.
+- **Key chains** come from the graph's declared FD edges (`effective_keys`), closed transitively.
+- **Merge identity** comes from its EQUAL classes. A *global, non-partial* `merge s into t` declares EQUAL, so whatever determines `s` determines `t`. A partial merge declares SUBSET and a statement join SUBSET or INCOMPARABLE; neither enters an equivalence class, so they contribute nothing (that scoped-join equality is what caused the LEFT->FULL flip when it was used for group elision). It also makes the name a function of the environment alone: a datasource column and a query concept hash alike whatever joins the statement carries.
 
 With the names equal, the candidate check in `_materialized_root_addresses` passes and #695's `_scan_rows_at_grain` FD gate finally gets consulted, which is what it was written for.
 
@@ -45,11 +45,13 @@ With the names equal, the candidate check in `_materialized_root_addresses` pass
 
 The first cut reduced the select grain in `concepts_to_grain_concepts_ordered`. It is the cleaner model (identity and `by` stay one thing, and two spellings in one statement collapse to one GROUP BY) and it fixed reuse, but CI came back with 9 failures, all real. An implicit `sum(x)` beside a determined column is the most common aggregate spelling there is, and shrinking its pin moves all of those queries off "group by key and property" onto "aggregate at the key, re-attach the property", a path with latent gaps that the explicit `by` spelling already hits on main:
 
-- **Wrong rows** (5x `join_matrix/test_subset_presence_probe.py`): `merge st into store_id; where yr = 2001 select st, sname, sum(amt) by st` returns `(40, 'S40', None)` on main. The plan uses the `stores` dimension as the join spine and applies the WHERE only inside the aggregate, so a store with no 2001 sales leaks in. The implicit spelling was protected only by its wider pin. **Still open on main.**
-- **`UnresolvableQueryException: keyless join`** (2x `tpc_ds_duckdb/test_partial_key_assembly_shapes.py`): two-fact aggregates at `{item.sk, ticket_number}` cannot re-attach `customer.current_address.state` once the customer key is off the grain.
-- q64 SQL grew 16.7k -> 25.7k chars; one semi-join pushdown shape lost.
+- **Wrong rows** (5x `join_matrix/test_subset_presence_probe.py`): `merge st into store_id; where yr = 2001 select st, sname, sum(amt) by st` returned `(40, 'S40', None)` on main: the `stores` scan cannot apply the WHERE, and it was FULL-joined to the filtered aggregate, so a store with no 2001 sales leaked in. Not specific to the explicit `by`: `select store_id, sname, sum(amt)` pins `{store_id}` and leaked too. **Fixed in this PR** (`MergeNode` join proofs): the filtered-branch narrowing (`tighten_join_for_filtered_branch`) stood down for every `outer_relation_keys()` member, which includes EQUAL merge keys. Its veto is for authored union/full joins, which declare row intent; a `merge` declares identity over domains that are equal *unfiltered*, so the side that applied the WHERE drives. Locked by `tests/join_matrix/test_equal_merge_filtered_aggregate_at_key.py`.
+- **`UnresolvableQueryException: keyless join`** (2x `tpc_ds_duckdb/test_partial_key_assembly_shapes.py`), also reachable on main with an explicit `by`: `select item_id, ticket, region, sum(amount) by item_id, ticket` where `sales` is keyed `(item_id, ticket)` and binds `customer_id` off the grain. The peeled `region` scan kept a merge key only when that *single* key FD-determined an output (`_relevant_root_preserve_keys`); a composite grain determines it only jointly, so the scan carried no key. **Fixed in this PR**: when the merge grain jointly determines an output no single key does, the scan keeps the whole grain, the assembly twin of the composite peel (`_composite_determining_grain`). Locked by `tests/discovery/test_dim_peel_composite_grain_axis.py` and the by-key parametrization of `test_partial_grain_with_customer_dim` (row-identical to the implicit spelling on TPC-DS sf0.01).
+- q64 SQL grew 16.7k -> 25.7k chars and one semi-join pushdown shape was lost. Both belonged to the select-grain seam: reducing only the aggregate's `by` in the Factory moves neither.
 
-All 9 pass with the identity-only seam, and a query no summary answers plans exactly as on main. If those planner gaps are closed later, reducing the pin itself becomes viable and buys the sibling-GROUP-BY dedupe.
+All 9 pass with the identity-only seam, and a query no summary answers plans exactly as on main.
+
+**Where reducing the lineage `by` stands now** (Factory seam: `build_lineage = _identity_lineage(...)`, `final_grain` from its `by`). With both fixes above it is row-correct across TPC-DS, TPC-H, thelook and the engine suites, and plan-neutral on 98 of 99 TPC-DS queries (q23 shrinks 8%). One blocker left, and it is plan quality, not correctness: `test_partial_grain_star_under_not_null` scans `store_sales` twice, once for the aggregate and once to carry the off-grain foreign key to the dimension, where the wide pin is one star and one GROUP BY. That is the host-first gap: an aggregate whose grain IS its fact's grain should host the dimension join instead of re-reading the fact. Close it and the lineage can carry the same minimal `by` the name hashes.
 
 How this lands against the concerns in the original proposal:
 
@@ -72,6 +74,6 @@ select order_id, region, total, sum(amount) by order_id as explicit;       # mai
 The reference graph keys a concept node by canonical address, and `BuildEnvironment.canonical_concepts` keeps one concept per canonical. Two seams read the winner's *address* where they meant the expression, and both had to change:
 
 - **Discovery** (`source_planning._local_concept_nodes_for_datasource`): the "this table binds it as a column" guard compared the winner's address (`explicit`) to the summary's column (`total`), so in a multi-table plan the summary scan lost the aggregate node. It now compares canonicals (`_datasource_binds_canonical`).
-- **Binding** (`create_select_node_candidate`): the scan was rebuilt with one concept per node, so the other requested name had no output. Callers now pass the requested concepts and the scan emits every one sharing a canonical with a node it reads (`_canonical_siblings`).
+- **Binding** (`subgraph_concepts`): a subgraph's nodes were resolved back to one concept per node, so the other requested name had no output. The graph-driven callers now resolve a subgraph against their request and get every requested name sharing a canonical with a node; the scan builders take concepts, not node names (two callers were a pure concept -> node name -> concept round trip).
 
 Either alone is not enough: discovery alone still drops the second name (silently, in the single-table case); binding alone never reaches the summary in a multi-table plan.
