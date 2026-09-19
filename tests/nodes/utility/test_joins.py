@@ -338,6 +338,34 @@ def test_reduce_concept_pairs_fd_never_prunes_grain_pair():
     assert any(p.right == b for p in reduced), reduced
 
 
+def _null_safe_pairs(a, b, left_qds) -> list[ConceptPair]:
+    return [
+        ConceptPair(
+            left=a, right=a, existing_datasource=left_qds, modifiers=[Modifier.NULLABLE]
+        ),
+        ConceptPair(
+            left=b, right=b, existing_datasource=left_qds, modifiers=[Modifier.NULLABLE]
+        ),
+    ]
+
+
+def test_reduce_concept_pairs_null_safe_key_prunes_no_dependent():
+    """A null-safe key also matches NULL to NULL, where a -> b says nothing:
+    the b pair is what still tells two padded rows apart."""
+    build_env, a, b, left_qds, right_qds = _fd_test_sources()
+    reduced = reduce_concept_pairs(
+        _null_safe_pairs(a, b, left_qds), right_qds, domain_graph=build_env.domain_graph
+    )
+    assert {p.right.address for p in reduced} == {a.address, b.address}
+
+
+def test_reduce_concept_pairs_null_safe_grain_is_no_restriction():
+    _, a, b, left_qds, right_qds = _fd_test_sources()
+    right_qds.grain = BuildGrain(components={a.address})
+    reduced = reduce_concept_pairs(_null_safe_pairs(a, b, left_qds), right_qds)
+    assert {p.right.address for p in reduced} == {a.address, b.address}
+
+
 def test_reduce_concept_pairs_fd_transitive():
     """Pure transitive closure: A → B, B → C prunes the c pair when a is
     joined, even though no single declaration relates a to c."""

@@ -1168,10 +1168,16 @@ def reduce_concept_pairs(
     # over a working determinant set so mutually-dependent keys keep exactly
     # one pair; grain pairs are never pruned (the grain restriction below
     # relies on them).
+    # Only a key paired on plain equality vouches for its dependents. A
+    # null-safe pair also matches NULL to NULL, and an FD says nothing about
+    # rows with no key: two extension families both pad `item_id`, and
+    # `product_id` is the one pair that still tells them apart.
+    null_safe_left = {pair.left.address for pair in pairs if pair.is_nullable}
+    null_safe_right = {pair.right.address for pair in pairs if pair.is_nullable}
     fd_pruned: set[int] = set()
     if domain_graph is not None and domain_graph.fd_edges:
-        working_left = set(left_keys)
-        working_right = set(right_keys)
+        working_left = set(left_keys) - null_safe_left
+        working_right = set(right_keys) - null_safe_right
         for index, pair in enumerate(pairs):
             left_addr, right_addr = pair.left.address, pair.right.address
             if right_addr in grain_components:
@@ -1224,8 +1230,10 @@ def reduce_concept_pairs(
         right_left_seen[rl_key] = right_left_seen.get(rl_key, False) or pair.is_partial
         final.append(pair)
     all_keys = {x.right.address for x in final}
-    if right_source.grain.components and right_source.grain.components.issubset(
-        all_keys
+    if (
+        right_source.grain.components
+        and right_source.grain.components.issubset(all_keys)
+        and not right_source.grain.components & null_safe_right
     ):
         return [
             x
