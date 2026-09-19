@@ -642,6 +642,36 @@ def _composite_determining_grain(
     return min(determining, key=lambda grain: (len(grain), sorted(grain)))
 
 
+def _row_preserving_host(
+    grouping_buckets: list[GroupBucket],
+    grain: frozenset[str],
+    environment: BuildEnvironment,
+) -> GroupBucket | None:
+    """The grouping bucket at `grain` whose input rows are already one per
+    group: its grain determines its whole input grain, so the GROUP BY reduces
+    nothing.
+
+    A column that grain determines costs such a bucket nothing to carry, while
+    peeling it re-reads a table keyed by the grain, which is the fact the
+    bucket already scans (a fact property, or a dimension behind a foreign key
+    the fact binds off its grain). A bucket that truly reduces keeps the peel:
+    it joins the dimension after the rows collapse."""
+    hosts = [
+        bucket
+        for bucket in grouping_buckets
+        if bucket.grain_components == grain
+        and bucket.aggregate_input_grain
+        and not bucket.nulls_grouping_keys
+        and all(
+            build_fd_determines(
+                environment, set(grain), addr, include_empty_grain=False
+            )
+            for addr in bucket.aggregate_input_grain - grain
+        )
+    ]
+    return min(hosts, key=_group_id_for) if hosts else None
+
+
 def _row_arg_lineage_closure(arg: BuildConcept) -> set[str]:
     """The arg's address plus every address reachable through its lineage: a
     derived filter arg (``label <- concat(name, '-', variant)``) needs its
@@ -1016,7 +1046,12 @@ def _split_root_dimension_clusters(
             composite = _composite_determining_grain(
                 composite_grains, addr, environment
             )
-            if composite is not None:
+            if composite is None:
+                continue
+            host = _row_preserving_host(d0_grouping_buckets, composite, environment)
+            if host is not None and addr in output_addresses:
+                host.grain_riders.add(addr)
+            else:
                 assignment[addr] = composite
         if not assignment:
             continue
@@ -1168,6 +1203,7 @@ def _materialize_group_graph(
             member_depths=dict(bucket.member_depths),
             aggregate_input_grain=bucket.aggregate_input_grain,
             aggregate_distinct_addrs=frozenset(bucket.aggregate_distinct_addrs),
+            grain_riders=frozenset(bucket.grain_riders),
             grouping_mode=bucket.grouping_mode,
         )
         group_graph.add_node(gid)
@@ -2661,7 +2697,7 @@ def _compute_concept_sets(
         # A global-merge pseudonym twin is the same story without a statement
         # relation: `merge stages.stage into step` makes the two one value, so a
         # group at grain {step} preserves a parent-supplied `stages.stage`.
-        grain_mates: set[str] = set()
+        grain_mates: set[str] = set(attrs[gid].grain_riders)
         if fact.derivation in GROUPING_DERIVATIONS:
             for component in fact.grain:
                 if scoped_axis_mates:
@@ -2742,7 +2778,7 @@ def _compute_concept_sets(
             if succ == FINAL_NODE_ID:
                 mand = cap_gid & mandatory_alias_addresses
                 if fact.derivation in GROUPING_DERIVATIONS:
-                    mand &= fact.primary | fact.grain
+                    mand &= fact.primary | fact.grain | attrs[gid].grain_riders
                 for desc in nx.descendants(lineage_sub, gid):
                     if facts[desc].derivation in GROUPING_DERIVATIONS:
                         mand -= io.outputs[desc]

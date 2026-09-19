@@ -3362,18 +3362,18 @@ class Factory:
     def _(self, base: Concept) -> BuildConcept:
         return self._build_concept(base)
 
-    def _identity_lineage(self, lineage: Any) -> Any:
-        """`lineage` as it is hashed into a canonical name: an aggregate's `by`
-        less every member the rest functionally determine, so `count(id) by
-        order.id` and the same count pinned at `Grain<order.id, customer.region>`
-        are one concept to every canonical-keyed lookup (a summary table's
-        column, above all).
-
-        Only the name: a lineage with the reduced `by` plans as aggregate-at-key
-        plus a dimension re-attach, which reads the fact twice when the
-        dimension hangs off a foreign key outside the grain
-        (test_partial_grain_star_under_not_null)."""
+    def _fd_minimal_lineage(self, lineage: Any) -> Any:
+        """An aggregate's `by` less every member the rest functionally
+        determine, so `count(id) by order.id` and the same count pinned at
+        `Grain<order.id, customer.region>` are one concept: one lineage, one
+        grain, and one canonical name to every canonical-keyed lookup (a
+        summary table's column, above all). The planner carries a determined
+        column beside the aggregate where that is the cheaper read
+        (`GroupBucket.grain_riders`)."""
         if not isinstance(lineage, BuildAggregateWrapper) or len(lineage.by) < 2:
+            return lineage
+        # A ROLLUP/CUBE key is a subtotal level, not only a grouping key.
+        if lineage.grouping.nulls_grouping_keys:
             return lineage
         # Statement joins declare SUBSET/INCOMPARABLE, never EQUAL, so the
         # closure is the same for a datasource column and a query's concept.
@@ -3528,7 +3528,10 @@ class Factory:
             final_grain = Grain(components={x.address for x in stamped_lineage.by})
 
         if new_lineage:
-            build_lineage = self.build(new_lineage)
+            full_lineage = self.build(new_lineage)
+            build_lineage = self._fd_minimal_lineage(full_lineage)
+            if build_lineage is not full_lineage:
+                final_grain = Grain(components={x.address for x in build_lineage.by})
             if isinstance(build_lineage, BuildConcept):
                 merge_concepts = self.scoped_merge_sources_by_target.get(base.address)
                 if not merge_concepts:
@@ -3562,7 +3565,7 @@ class Factory:
             if PRESENCE_PROBE_PREFIX in base.name
             else (
                 generate_concept_name(
-                    self._identity_lineage(build_lineage),
+                    build_lineage,
                     self.scoped_merge_sources_by_target.get(base.address),
                 )
                 if build_lineage
