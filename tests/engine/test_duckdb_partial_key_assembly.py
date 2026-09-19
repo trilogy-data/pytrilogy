@@ -638,7 +638,9 @@ def test_composite_grain_families_with_both_attributes(composite):
 
 
 def test_composite_grain_families_pinned(composite):
-    query = f"{_PIN}select order_id, line_no, product_id, user_id, state, sum(qty) as total"
+    query = (
+        f"{_PIN}select order_id, line_no, product_id, user_id, state, sum(qty) as total"
+    )
     assert _rows(composite, query + _COMPOSITE_ORDER) == [
         (100, 1, 10, 1, "CA", 5),
         (100, 2, 20, 1, "CA", 7),
