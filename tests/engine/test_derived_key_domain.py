@@ -43,6 +43,9 @@ auto status <- case when delivery_date is not null then 'delivered' else 'in-tra
 auto undelivered <- delivery_date is null;
 auto amount_or_zero <- coalesce(amount, 0);
 auto label <- concat(name, '-', status);
+auto flag <- case when undelivered then 1 else 0 end;
+auto order_seq <- row_number order_id over customer_id order by amount asc;
+auto order_rank <- rank order_id by amount desc;
 """
 
 _MATERIALIZED = _BASE + f"""
@@ -50,12 +53,16 @@ property order_id.status string;
 property order_id.undelivered bool;
 property order_id.amount_or_zero int;
 property order_id.label string;
+property order_id.flag int;
+property order_id.order_seq int;
+property order_id.order_rank int;
 
 root datasource orders (
     order_id: order_id, customer_id: ~customer_id,
     delivery_date: delivery_date, amount: amount,
     status: status, undelivered: undelivered,
     amount_or_zero: amount_or_zero, label: label,
+    flag: flag, order_seq: order_seq, order_rank: order_rank,
 )
 grain (order_id)
 query '''
@@ -63,7 +70,10 @@ select o.*,
     case when o.delivery_date is not null then 'delivered' else 'in-transit' end as status,
     o.delivery_date is null as undelivered,
     coalesce(o.amount, 0) as amount_or_zero,
-    concat(c.name, '-', case when o.delivery_date is not null then 'delivered' else 'in-transit' end) as label
+    concat(c.name, '-', case when o.delivery_date is not null then 'delivered' else 'in-transit' end) as label,
+    case when o.delivery_date is null then 1 else 0 end as flag,
+    row_number() over (partition by o.customer_id order by o.amount asc) as order_seq,
+    rank() over (order by o.amount desc) as order_rank
 from ({_ORDER_ROWS}) o
 join (select 1 as customer_id, 'ann' as name union all select 2, 'bob') c
     on o.customer_id = c.customer_id
@@ -89,6 +99,22 @@ QUERIES = [
     "select customer_id, name where status = 'in-transit'",
     "select customer_id, status, activity",
     "select status, count(customer_id) as customers",
+    "select customer_id, sum(flag) as n_undelivered",
+    "select customer_id, order_id, order_seq",
+    "select customer_id, order_seq",
+    "select customer_id, order_id, order_rank",
+    "select customer_id, count(order_seq) as numbered",
+    "select customer_id, name where order_seq = 1",
+]
+
+# the same expression spelled inline and as a named concept
+SPELLINGS = [
+    ("sum(flag)", "sum(case when undelivered then 1 else 0 end)"),
+    ("count(amount_or_zero)", "count(coalesce(amount, 0))"),
+    (
+        "max(status)",
+        "max(case when delivery_date is not null then 'delivered' else 'in-transit' end)",
+    ),
 ]
 
 
@@ -118,6 +144,13 @@ def test_materialization_invariance(
     derived: Executor, materialized: Executor, query: str
 ):
     assert _rows(derived, query) == _rows(materialized, query)
+
+
+@pytest.mark.parametrize("named,inline", SPELLINGS)
+def test_inline_spelling_matches_named(derived: Executor, named: str, inline: str):
+    assert _rows(derived, f"select customer_id, {named} as v") == _rows(
+        derived, f"select customer_id, {inline} as v"
+    )
 
 
 def test_orderless_customer_has_no_status(derived: Executor):
