@@ -68,6 +68,7 @@ from .edges import (
     remove_edge,
 )
 from .extent_ownership import (
+    absent_on_extension,
     elect_extent_owners,
     licensed_extension_spans,
     span_members,
@@ -1123,12 +1124,12 @@ def _span_determines(environment: BuildEnvironment, span: str, address: str) -> 
 
 def _null_on_padding(value: object, span: str, environment: BuildEnvironment) -> bool:
     """Whether `value` is NULL on an extension row of `span` however it is
-    planned: it cannot be non-null unless something the span does not determine
-    is (`sale_price - cost`). Padding already gives the rule's answer there, so
-    only a null-opaque derivation (CASE, COALESCE, IS NULL, a window) needs the
-    span kept off its row stream. CONCAT skips NULL arguments on some dialects."""
+    planned: it cannot be non-null unless something absent there is
+    (`sale_price - cost`). Padding already gives the rule's answer, so only a
+    null-opaque derivation (CASE, COALESCE, IS NULL, a window) needs the span
+    kept off its row stream. CONCAT skips NULL arguments on some dialects."""
     if isinstance(value, BuildConcept):
-        if _span_determines(environment, span, value.address):
+        if not absent_on_extension(value, span, environment):
             return False
         if value.derivation == Derivation.ROOT:
             return True
@@ -1150,14 +1151,14 @@ def _has_off_span_inline_argument(
 ) -> bool:
     """An aggregate argument written inline (`sum(coalesce(amount, 0))`) is a
     derivation no concept node stands for; it is off-span when it reads
-    something `span` does not determine."""
+    something absent on `span`'s extension rows."""
     concept = environment.concepts.get(address)
     if concept is None or not isinstance(concept.lineage, BuildAggregateWrapper):
         return False
     return any(
         not _null_on_padding(arg, span, environment)
-        and not all(
-            _span_determines(environment, span, read.address)
+        and any(
+            absent_on_extension(read, span, environment)
             for read in arg.concept_arguments
         )
         for arg in concept.lineage.function.arguments
@@ -1173,9 +1174,9 @@ def _reads_off_span(
     concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
 ) -> bool:
-    """Whether a row-stream derivation over `members` is keyed on something
-    `span` does not determine and would take a value on its extension rows: its
-    entity is absent there, so it is NULL. An aggregate ends the walk (it is
+    """Whether a row-stream derivation over `members` is keyed on an entity
+    `span`'s extension rows have none of (`absent_on_extension`), and would
+    take a value there all the same. An aggregate ends the walk (it is
     evaluated over the extended rows), but its inline arguments are row-stream
     too."""
     seen = set(members)
@@ -1196,7 +1197,7 @@ def _reads_off_span(
             concept = environment.concepts.get(a.address)
             if (
                 concept is not None
-                and not _span_determines(environment, span, a.address)
+                and absent_on_extension(concept, span, environment)
                 and not _null_on_padding(concept, span, environment)
             ):
                 return True
