@@ -103,6 +103,16 @@ statement fails to bind at render time.
 The reunion machinery (the padding-provenance matrix) is now a safety net for plans that still split a
 span across owners, not the mechanism that makes the common case correct.
 
+That net had a hole: it paired any two padded keys null-safely, assuming the
+padding shared provenance. Two sides padded for *different* spans (a product
+never sold, a user who never ordered) name different members, and pairing them
+invents a row. `join_resolution._span_padded_addresses` attributes padding to
+the span that caused it; disjoint attributions join FULL on plain equality
+(`docs/handoff_aggregate_grain_fd_canonicalization.md`). The group graph also
+keeps such families together where it can
+(`group_graph._keep_extension_families_together`), so rule 3 above has a joint
+owner to elect.
+
 `PruneInvisibleOuterJoins` is gone. It survived this landing because it still
 changed two statements outside the tpc corpus (gcat's aggregate query, thelook
 `adhoc04`), and in both the dead join was keyed on something that is not a `~`

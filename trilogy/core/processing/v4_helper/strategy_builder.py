@@ -3952,11 +3952,19 @@ def _assemble_final_node(
             # Foreign keys stay preserved only for the carrier-less case the
             # widen exists for: no own key means no join path, and the merge
             # would cross-join ON 1=1.
+            # Only when the own keys determine what the ROOT delivers: a span
+            # carrying `order_id` beside a `product_id` the composite
+            # `(order_id, line_no)` determines repeats per line, and joining on
+            # `order_id` alone pairs every line with every product of its order.
             own_join_keys = preserve_keys & (
                 {concept.address for concept in group_concepts}
                 | {concept.address for concept in node.usable_outputs}
             )
-            if own_join_keys:
+            if own_join_keys and all(
+                concept.address in preserve_keys
+                or _fd_determined(environment, own_join_keys, concept)
+                for concept in group_concepts
+            ):
                 preserve_keys = frozenset(own_join_keys)
         # A preserved join key must survive the wrap: grouping the contributor
         # to a grain that excludes the key it was just re-sourced to carry

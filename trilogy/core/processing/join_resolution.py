@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
@@ -273,6 +274,101 @@ def extension_padded_addresses(
     )
 
 
+def _span_padded_addresses(
+    datasource: DataSource, span: str, memo: dict[int, set[str]]
+) -> set[str]:
+    """Addresses this source emits NULL for on the rows that carry `span`'s
+    extension members.
+
+    Wider than ``extension_padded_addresses`` by one step: a lookup chained off
+    an already padded key (`users LEFT orders` on the span, then `LEFT lines`
+    on `order_id`) pads for the same member, though the span does not key it."""
+    cached = memo.get(id(datasource))
+    if cached is not None:
+        return cached
+    out: set[str] = set()
+    memo[id(datasource)] = out
+    if isinstance(datasource, BuildDatasource):
+        return out
+    child_padded = {
+        child.identifier: _span_padded_addresses(child, span, memo)
+        for child in datasource.datasources
+    }
+    base_joins = [j for j in datasource.joins if isinstance(j, BaseJoin)]
+    right_ids = {j.right_datasource.identifier for j in base_joins}
+    extended: set[str] = set()
+    accumulated = {i for i in child_padded if i not in right_ids}
+    spans = frozenset({span})
+    for join in base_joins:
+        right_id = join.right_datasource.identifier
+        pairs = join.concept_pairs or []
+        keyed = _span_keyed(join, spans)
+        left_padded = any(
+            pair.existing_datasource.identifier in extended
+            or pair.left.address
+            in child_padded.get(pair.existing_datasource.identifier, set())
+            for pair in pairs
+        )
+        right_padded = any(
+            pair.right.address in child_padded.get(right_id, set()) for pair in pairs
+        )
+        if join.join_type in (JoinType.LEFT_OUTER, JoinType.FULL) and (
+            keyed or left_padded
+        ):
+            extended.add(right_id)
+        if join.join_type in (JoinType.RIGHT_OUTER, JoinType.FULL) and (
+            keyed or right_padded
+        ):
+            extended |= accumulated
+        accumulated.add(right_id)
+    for address, providers in datasource.source_map.items():
+        idents = {
+            p.identifier
+            for p in providers
+            if isinstance(p, (BuildDatasource, QueryDatasource))
+        }
+        if idents and all(
+            ident in extended or address in child_padded.get(ident, set())
+            for ident in idents
+        ):
+            out.add(address)
+    for concept in datasource.output_concepts:
+        if concept.address in out:
+            out.update(concept.pseudonyms)
+    return out
+
+
+def licensed_extension_spans(environment: BuildEnvironment) -> frozenset[str]:
+    """Addresses some datasource binds with a column-level ``~``."""
+    return frozenset(
+        address
+        for datasource in environment.datasources.values()
+        if isinstance(datasource, BuildDatasource)
+        for address in datasource.column_level_partial_addresses
+    )
+
+
+def _pads_for_different_members(
+    left: str,
+    right: str,
+    keys: set[str],
+    span_padding: dict[str, dict[str, frozenset[str]]] | None,
+) -> bool:
+    """Both sides NULL the connecting keys to carry extension members, and of
+    different ``~`` spans: a product never sold beside a user who never
+    ordered. Those NULLs name nothing in common, so pairing them invents a
+    (product, user) row; each side's padding has to survive on its own."""
+    if not span_padding:
+        return False
+    left_spans: frozenset[str] = frozenset().union(
+        *(span_padding.get(left, {}).get(key, frozenset()) for key in keys)
+    )
+    right_spans: frozenset[str] = frozenset().union(
+        *(span_padding.get(right, {}).get(key, frozenset()) for key in keys)
+    )
+    return bool(left_spans and right_spans and left_spans.isdisjoint(right_spans))
+
+
 def _is_nullable_grain_aligned_merge(
     left: str,
     right: str,
@@ -324,6 +420,7 @@ def get_join_type(
     extent_nullables: dict[str, list[str]] | None = None,
     extent_free_keys: set[str] | None = None,
     span_binding_sources: dict[str, dict[str, frozenset[str]]] | None = None,
+    span_padding: dict[str, dict[str, frozenset[str]]] | None = None,
 ) -> JoinType:
     # Rendering is row-preserving by default: a relation declares DOMAIN
     # knowledge, never row intent, and no join silently drops a row
@@ -466,6 +563,10 @@ def get_join_type(
             right_is_host = right in host_nodes
             if left_is_host != right_is_host:
                 return JoinType.LEFT_OUTER if left_is_host else JoinType.RIGHT_OUTER
+        # Padding for different spans never pairs (`get_node_joins` drops the
+        # null-safe equality), so INNER would shed both extension families.
+        if _pads_for_different_members(left, right, all_connecting_keys, span_padding):
+            return JoinType.FULL
         # Grain-aligned sides both weakened their EQUAL-domain claims on the
         # merge axis itself, so INNER would drop each side's exclusive
         # members; preserve both and let the null-safe equality pair the
@@ -618,6 +719,7 @@ def resolve_join_order_v2(
     extent_nullables: dict[str, list[str]] | None = None,
     extent_free_keys: set[str] | None = None,
     span_binding_sources: dict[str, dict[str, frozenset[str]]] | None = None,
+    span_padding: dict[str, dict[str, frozenset[str]]] | None = None,
 ) -> list[JoinOrderOutput]:
     """Greedily order the datasources into a join tree.
 
@@ -771,6 +873,7 @@ def resolve_join_order_v2(
                     extent_nullables,
                     extent_free_keys,
                     span_binding_sources,
+                    span_padding,
                 )
                 join_types.add(join_type)
                 joinkeys[left_candidate] = all_connecting_keys
@@ -1065,10 +1168,16 @@ def reduce_concept_pairs(
     # over a working determinant set so mutually-dependent keys keep exactly
     # one pair; grain pairs are never pruned (the grain restriction below
     # relies on them).
+    # Only a key paired on plain equality vouches for its dependents. A
+    # null-safe pair also matches NULL to NULL, and an FD says nothing about
+    # rows with no key: two extension families both pad `item_id`, and
+    # `product_id` is the one pair that still tells them apart.
+    null_safe_left = {pair.left.address for pair in pairs if pair.is_nullable}
+    null_safe_right = {pair.right.address for pair in pairs if pair.is_nullable}
     fd_pruned: set[int] = set()
     if domain_graph is not None and domain_graph.fd_edges:
-        working_left = set(left_keys)
-        working_right = set(right_keys)
+        working_left = set(left_keys) - null_safe_left
+        working_right = set(right_keys) - null_safe_right
         for index, pair in enumerate(pairs):
             left_addr, right_addr = pair.left.address, pair.right.address
             if right_addr in grain_components:
@@ -1121,8 +1230,10 @@ def reduce_concept_pairs(
         right_left_seen[rl_key] = right_left_seen.get(rl_key, False) or pair.is_partial
         final.append(pair)
     all_keys = {x.right.address for x in final}
-    if right_source.grain.components and right_source.grain.components.issubset(
-        all_keys
+    if (
+        right_source.grain.components
+        and right_source.grain.components.issubset(all_keys)
+        and not right_source.grain.components & null_safe_right
     ):
         return [
             x
@@ -1552,6 +1663,21 @@ def get_node_joins(
         }
         for ds_node, datasource in ds_node_map.items()
     }
+    span_padding: dict[str, dict[str, frozenset[str]]] = {}
+    if sum(1 for marks in nullables.values() if marks) > 1:
+        span_memos: dict[str, dict[int, set[str]]] = {
+            span: {} for span in sorted(licensed_extension_spans(environment))
+        }
+        for ds_node, datasource in ds_node_map.items():
+            by_key: dict[str, set[str]] = defaultdict(set)
+            for span, span_memo in span_memos.items():
+                for address in _span_padded_addresses(datasource, span, span_memo):
+                    by_key[canon_node(address)].add(span)
+            span_padding[ds_node] = {
+                key: frozenset(found)
+                for key, found in by_key.items()
+                if key in nullables[ds_node]
+            }
     host_nodes: set[str] | None = None
     if host_grain:
         host_canon = {canon_node(a) for a in host_grain}
@@ -1608,6 +1734,7 @@ def get_node_joins(
         extent_nullables=extent_nullables,
         extent_free_keys=extent_free_key_nodes,
         span_binding_sources=span_binding_sources,
+        span_padding=span_padding,
     )
     _raise_if_keyless_row_bearing_join(
         joins,
@@ -1632,11 +1759,15 @@ def get_node_joins(
                         left=ds_concept_map[(k, concept)],
                         right=ds_concept_map[(j.right, concept)],
                         existing_datasource=ds_node_map[k],
-                        modifiers=get_modifiers(
-                            ds_concept_map[(k, concept)],
-                            ds_concept_map[(j.right, concept)],
-                            ds_node_map[k],
-                            ds_node_map[j.right],
+                        modifiers=(
+                            []
+                            if _pads_for_different_members(k, j.right, v, span_padding)
+                            else get_modifiers(
+                                ds_concept_map[(k, concept)],
+                                ds_concept_map[(j.right, concept)],
+                                ds_node_map[k],
+                                ds_node_map[j.right],
+                            )
                         )
                         + (
                             [Modifier.PARTIAL] if concept in partials.get(k, []) else []

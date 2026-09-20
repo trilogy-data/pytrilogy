@@ -71,7 +71,7 @@ select ss.item.sk, ss.ticket_number, ss.quantity, sum(ss.net_paid);
 - the aggregate is **row-preserving**: its grain determines its whole `aggregate_input_grain`, so the input rows are already one per group and the GROUP BY reduces nothing;
 - the **whole grain** determines `X` and no proper subset does (`_whole_grain_determines`): `X` belongs to the grain's own row (a fact property, a dimension behind a foreign key the fact binds off its grain). A column one key alone determines (`brand` by `item.sk`) still joins from that key's table after the fact;
 - the grain **covers** `X`, not only determines it (`DomainGraph.covers`). An FD says `X` is unique per grain row, and a `~` binding proves that as well as any other: `order_item.id -> ~user.id` is true. Hosting reads `X` off the fact's rows, so those rows must also hold every value `X` owes, and a `~` binding says they do not (a user who never ordered has no `order_items` row). `covers` is `determines` that refuses an FD whose dependent some table binds partially beside the determinants, and so anything reached through it (`user.state` via `~user.id`);
-- `X` is a **value, not a KEY**. A key in a grouping grain is a FINAL merge axis rather than a carried column, so hosting one re-shapes how contributors stitch. That is a second, separate reason from coverage: `order_id` is completely bound and covered, and hosting it still made a `sum(qty)` at `item_id` two-keyed (see the latent bug below). Values (a fact property, a dimension attribute, a scalar over either) ride without touching the join topology, and are row-correct inside a two-`~` span;
+- `X` is a **value, not a KEY**. A key in a grouping grain is a FINAL merge axis rather than a carried column, so hosting one re-shapes how contributors stitch. That is a second, separate reason from coverage: `order_id` is completely bound and covered, and hosting it still made a `sum(qty)` at `item_id` two-keyed (see the cross-pairing section below; its fixes clear 12 of the 13 failures key hosting caused, and the rule stays for the last). Values (a fact property, a dimension attribute, a scalar over either) ride without touching the join topology, and are row-correct inside a two-`~` span;
 - `X` is a row scalar (ROOT/BASIC/CONSTANT lineage only).
 
 From there everything downstream is main's wide-pin path, which is why the blocker query renders byte-identical SQL to main. An aggregate that truly reduces (`sum(qty)` over the finer `sale_lines`) keeps the peel and joins the dimension after its rows collapse. It also covers single-key fact grains (`select order_id, region, total`), which TPC-DS cannot show: every fact there has a composite grain.
@@ -86,17 +86,32 @@ This is the narrow form of the "host-first" option. The optimizer option (spine-
 
 Once co-sourced, `state` peels to a `customer -> address` scan keyed by `customer.sk`, but `upper(state)` stayed pinned at `address.sk`, so it could not carry the key to FINAL. `_anchor_scalars_to_dim_peel_key` re-anchors a BASIC that reads only a dim-peel scan to that scan's key. Relatedly, `_projected_scalar_root_args` no longer peels the arg of a scalar that is itself a grouping key (read before the GROUP BY, not after): `select order_id, upper(region), sum(amount)` crashed on main.
 
-### Latent on main: a two-keyed aggregate in a two-`~` span cross-pairs its extension families
+### Fixed: a two-keyed aggregate in a two-`~` span cross-paired its extension families
 
-Found by hosting a key, not caused by it. In `tests/engine/test_duckdb_partial_key_assembly.py`'s forked model (`items` binds `~product_id` and `~user_id`):
+Found by hosting a key, not caused by it. In `tests/engine/test_duckdb_partial_key_assembly.py`'s forked model (`items` binds `~product_id` and `~user_id`), with `order_id` hosted on `sum(qty)` at `item_id`:
 
 ```
-select item_id, order_id, product_id, user_id, state, sum(qty) by item_id, order_id as tq;
--- main: (None, None, 30, 3, 'TX', None)   one invented pairing
+select item_id, order_id, product_id, user_id, state, total_qty;
+-- was:  (None, None, 30, 3, 'TX', None)   one invented pairing
 -- owed: (None, None, 30, None, None, None) and (None, None, None, 3, 'TX', None)
 ```
 
-The FINAL stitches the user family to the product family with `INNER JOIN ... ON item_id IS NOT DISTINCT FROM item_id`, which pairs the two extension rows on their NULL `item_id`. With the aggregate at `item_id` alone the span assembly gets it right. Not fixed here; values-only hosting keeps the implicit spelling off it. CI caught this on #698 (13 failures, all from hosting `order_id`), because the local verification had covered only `tests/modeling`, `tests/discovery` and the domain graph.
+The spelled-out `sum(qty) by item_id, order_id` no longer shows it (the `by` reduces to `item_id`), but a composite-grain fact reaches it on main with no hosting at all: `lines` at `(order_id, line_no)` binding `~product_id`, `orders` binding `~user_id`, and `select order_id, line_no, product_id, user_id, state, sum(qty)` (`_COMPOSITE` in the same test file).
+
+Cause: `_split_root_dimension_clusters` peels each dimension under its *finest* determining grain key, so `product_id` clustered under the fact grain and `user_id, state` under `order_id`. Each cluster sourced apart and padded its own span, no group exposed every span, `elect_extent_owners` had no joint owner to pick (rule 3 of `docs/extent_ownership.md`), and the FINAL merge reunited the two families with `INNER JOIN ... ON order_id IS NOT DISTINCT FROM order_id`, pairing their padding on NULL.
+
+Two changes:
+
+- `group_graph._keep_extension_families_together` merges the peel clusters that reach a demanded `~` span through another key into one cluster keyed by both. It then sources as one span (`users LEFT orders LEFT lines FULL products`), which is what the same select plans without the aggregate. A cluster keyed by the span itself (`state` under `dim:user_id` when `user_id` is a grouping key) reads the dimension's own table, pads nothing, and stays apart.
+- `_assemble_final_node`'s "a ROOT that already carries a merge key joins on that key alone" shortcut now requires those keys to determine what the ROOT delivers. The merged span carried `order_id`, the shortcut dropped `line_no`, and every line paired with every product of its order.
+
+**A second route, fixed in join typing.** When a span is also a grouping key of another aggregate (`min(qty) by user_id` beside `sum(qty)` on the composite model), `user_id` is never a peel candidate: it stays on the fact bucket, which pads the user family there, while `~product_id` peels and pads its own. There are no clusters to merge, and folding the peel back into the fact bucket breaks `test_forked_with_status` (the product extension row is lost), so bucketing cannot reach it.
+
+The pairing itself was a join-typing premise. `get_modifiers` makes a key null-safe when both sides can be NULL and neither NULL is a value, on the reasoning that "both sides extended" means the padding shares provenance. That is true of one extension member manufactured in two branches and false here: both NULLs are known padding, for *different* members. `join_resolution._span_padded_addresses` now attributes each padded key to the `~` span whose preserving join padded it, following lookups chained off an already padded key (`users LEFT orders` on the span, then `LEFT lines` on `order_id`). When the two sides pad the connecting keys for disjoint spans, `get_join_type` returns FULL and `get_node_joins` drops the null-safe modifier, so each family's extension rows survive unpaired on plain equality. Unattributed padding (an ordinary outer lookup, twin rollups) keeps its typing.
+
+Both fixes stay, because they act at different layers. With the bucketing rule off, `select order_id, line_no, brand, state, sum(qty)` loses the user family outright: ownership elects the product group, the user side is extent-free and INNER, and no join typing can restore rows nobody padded.
+
+Key hosting is still off. With both fixes its 13 failures are down to one (`test_forked_full_column_set`): the host pads for *both* families and is reunited with the product contributor on `item_id` alone, so user 3's padding pairs with product 30's. That one needs the span key in the reunion join, not a typing change.
 
 ### Two spellings, two populations: the model's doing, not the planner's
 

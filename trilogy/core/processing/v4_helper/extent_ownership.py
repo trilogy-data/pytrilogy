@@ -19,23 +19,15 @@ contributor dangling at render time.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from trilogy.core import graph as nx
-from trilogy.core.models.build import BuildDatasource
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.join_resolution import licensed_extension_spans
 
 from .constants import FINAL_NODE_ID
 from .functional_dependency import build_fd_determines
 from .models import ExtentOwnership, GroupAttrs
-
-
-def licensed_extension_spans(environment: BuildEnvironment) -> frozenset[str]:
-    """Addresses some datasource binds with a column-level ``~``."""
-    return frozenset(
-        address
-        for datasource in environment.datasources.values()
-        if isinstance(datasource, BuildDatasource)
-        for address in datasource.column_level_partial_addresses
-    )
 
 
 def demanded_extension_spans(
@@ -54,16 +46,32 @@ def demanded_extension_spans(
     final = attrs.get(FINAL_NODE_ID)
     if final is None or final.final_contract is None:
         return frozenset()
-    outputs = final.final_contract.output_addresses
-    return frozenset(
-        span
-        for span in licensed
-        if span in outputs
-        or any(
-            build_fd_determines(environment, {span}, out, include_empty_grain=False)
-            for out in outputs
-        )
+    return spans_demanded_by(
+        licensed, final.final_contract.output_addresses, environment
     )
+
+
+def spans_demanded_by(
+    licensed: frozenset[str],
+    outputs: Iterable[str],
+    environment: BuildEnvironment,
+) -> frozenset[str]:
+    return frozenset(
+        span for span in licensed if span_members(span, outputs, environment)
+    )
+
+
+def span_members(
+    span: str, addresses: Iterable[str], environment: BuildEnvironment
+) -> list[str]:
+    """The addresses an extension row of `span` carries: the key itself and
+    whatever it functionally determines."""
+    return [
+        address
+        for address in addresses
+        if address == span
+        or build_fd_determines(environment, {span}, address, include_empty_grain=False)
+    ]
 
 
 def elect_extent_owners(

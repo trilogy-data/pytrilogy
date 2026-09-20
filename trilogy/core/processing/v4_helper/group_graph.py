@@ -61,7 +61,12 @@ from .edges import (
     lineage_subgraph,
     remove_edge,
 )
-from .extent_ownership import elect_extent_owners
+from .extent_ownership import (
+    elect_extent_owners,
+    licensed_extension_spans,
+    span_members,
+    spans_demanded_by,
+)
 from .functional_dependency import build_fd_determines, concept_attr_fd_determines
 from .group_behaviors import Behavior, behavior_for
 from .group_rules import DEFAULT_RULE, GROUPING_RULES
@@ -873,6 +878,39 @@ def _preaggregate_filter_allows_dimension_member(
     )
 
 
+def _keep_extension_families_together(
+    assignment: dict[str, frozenset[str]],
+    output_addresses: frozenset[str],
+    environment: BuildEnvironment,
+) -> None:
+    """Merge the peel clusters that carry a demanded ``~`` extension span.
+
+    Each peeled cluster sources apart and pads its own span, so two families
+    hanging off different grain keys (`~product` off the fact grain, `~user` off
+    `order_id`) leave no group exposing every span: ownership splits and the
+    FINAL merge pairs the families' padding null-safely, inventing a
+    (product, user) row. One cluster keyed by both peel keys sources them as one
+    span, the shape the same select has without the aggregate.
+
+    A cluster keyed by the span itself reads the dimension's own table and pads
+    nothing, so it stays apart."""
+    spans = spans_demanded_by(
+        licensed_extension_spans(environment), output_addresses, environment
+    )
+    carrying = {
+        assignment[address]
+        for span in spans
+        for address in span_members(span, assignment, environment)
+        if span not in assignment[address]
+    }
+    if len(carrying) < 2:
+        return
+    merged = frozenset().union(*carrying)
+    for address, key in assignment.items():
+        if key in carrying:
+            assignment[address] = merged
+
+
 def _split_root_dimension_clusters(
     buckets: dict[str, GroupBucket],
     primary_group: dict[str, str],
@@ -1030,6 +1068,7 @@ def _split_root_dimension_clusters(
                 assignment[addr] = composite
         if not assignment:
             continue
+        _keep_extension_families_together(assignment, output_addresses, environment)
         clusters: dict[frozenset[str], list[int]] = defaultdict(list)
         for idx, addr in enumerate(bucket.primary_members):
             if addr in assignment:

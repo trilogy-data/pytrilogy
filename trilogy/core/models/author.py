@@ -1357,7 +1357,9 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
             # Keep the rowset's own grain (abstract for a union, since its stack
             # has no narrower key than the full row).
             return new_lineage, self.grain, keys
-        if grain.components and isinstance(new_lineage, Function) and self.is_aggregate:
+        # A bare aggregate function is a responsive aggregate like an empty `by`:
+        # it resolves to this statement's grain, the abstract grain included.
+        if isinstance(new_lineage, Function) and self.is_aggregate:
             aggregate_grain_components = cast(
                 list[ConceptRef | Concept],
                 _aggregate_pinnable_grain_refs(grain, environment),
