@@ -71,7 +71,7 @@ select ss.item.sk, ss.ticket_number, ss.quantity, sum(ss.net_paid);
 - the aggregate is **row-preserving**: its grain determines its whole `aggregate_input_grain`, so the input rows are already one per group and the GROUP BY reduces nothing;
 - the **whole grain** determines `X` and no proper subset does (`_whole_grain_determines`): `X` belongs to the grain's own row (a fact property, a dimension behind a foreign key the fact binds off its grain). A column one key alone determines (`brand` by `item.sk`) still joins from that key's table after the fact;
 - the grain **covers** `X`, not only determines it (`DomainGraph.covers`). An FD says `X` is unique per grain row, and a `~` binding proves that as well as any other: `order_item.id -> ~user.id` is true. Hosting reads `X` off the fact's rows, so those rows must also hold every value `X` owes, and a `~` binding says they do not (a user who never ordered has no `order_items` row). `covers` is `determines` that refuses an FD whose dependent some table binds partially beside the determinants, and so anything reached through it (`user.state` via `~user.id`);
-- `X` is a **value, not a KEY**. A key in a grouping grain is a FINAL merge axis rather than a carried column, so hosting one re-shapes how contributors stitch. That is a second, separate reason from coverage: `order_id` is completely bound and covered, and hosting it still made a `sum(qty)` at `item_id` two-keyed (see the cross-pairing section below; its fixes clear 12 of the 13 failures key hosting caused, and the rule stays for the last). Values (a fact property, a dimension attribute, a scalar over either) ride without touching the join topology, and are row-correct inside a two-`~` span;
+- a covered **KEY hosts like any value**. #698 shipped this as values-only, because hosting `order_id` on `sum(qty)` at `item_id` made the grouping grain two-keyed and a two-`~` span then cross-paired its extension families. That class is closed (see the cross-pairing section below), so the restriction is gone and thelook q19 hosts `order.id`: one `order_items` re-join fewer than main;
 - `X` is a row scalar (ROOT/BASIC/CONSTANT lineage only).
 
 From there everything downstream is main's wide-pin path, which is why the blocker query renders byte-identical SQL to main. An aggregate that truly reduces (`sum(qty)` over the finer `sale_lines`) keeps the peel and joins the dimension after its rows collapse. It also covers single-key fact grains (`select order_id, region, total`), which TPC-DS cannot show: every fact there has a composite grain.
@@ -111,7 +111,20 @@ The pairing itself was a join-typing premise. `get_modifiers` makes a key null-s
 
 Both fixes stay, because they act at different layers. With the bucketing rule off, `select order_id, line_no, brand, state, sum(qty)` loses the user family outright: ownership elects the product group, the user side is extent-free and INNER, and no join typing can restore rows nobody padded.
 
-Key hosting is still off. With both fixes its 13 failures are down to one (`test_forked_full_column_set`): the host pads for *both* families and is reunited with the product contributor on `item_id` alone, so user 3's padding pairs with product 30's. That one needs the span key in the reunion join, not a typing change.
+**A null-safe key vouches for no dependent pair.** The last cross-pairing under key hosting: the host pads for *both* families and is reunited with the product contributor, and `reduce_concept_pairs` cut the join to `item_id` alone, first by FD (`item_id -> product_id`) and again by the grain-only restriction. Both rest on "equality on the key implies equality here". A null-safe pair also matches NULL to NULL, where an FD says nothing, so user 3's padding picked up product 30's brand. Null-safe pairs no longer serve as determinants and no longer trigger the grain restriction; `product_id` stays in the ON clause and tells the padding rows apart.
+
+### Decided: a derived concept over an absent entity is NULL on an extension row
+
+`order_status <- case when amount = user_first_amount then 'FIRST' else 'LATER' end` reads the order's `amount`. On an extension row (user 3, who never ordered) there is no order. Two spellings gave two answers:
+
+```
+select order_id, product_id, user_id, big, sum(qty);   -- NULL    the CASE runs on the orders scan, then LEFT joins
+select order_id, product_id, user_id, big;             -- 'SMALL' the CASE runs over the padded row, ELSE fires
+```
+
+The owner's call (2026-09-19) is NULL: a `~` extension row carries its own dimension's attributes and NULL for everything outside that key's closure, and a CASE over an absent order is outside it. Key hosting moves `test_forked_with_status` and `test_forked_full_column_set` onto the first path, so their extension rows are re-pinned from `'LATER'` to NULL.
+
+Still owed: the no-aggregate spelling. A non-null-propagating BASIC (`CASE ... ELSE`, `coalesce`) evaluated over a padded row fires its fallback. It needs either evaluating on the entity's own rows before the span join, or a presence guard on the absent entity's key; a guard on the argument itself would conflate absence with a `?` value NULL. Pinned as the strict xfail `test_status_on_extension_rows_is_null_without_an_aggregate`. `test_composite_grain_families_with_by_span_aggregate` still pins `'LATER'` on its extension rows for the same reason and flips with it.
 
 ### Two spellings, two populations: the model's doing, not the planner's
 
