@@ -927,7 +927,9 @@ def _derives_from(node: StrategyNode, other: StrategyNode) -> bool:
     return False
 
 
-def _drop_ancestor_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
+def _drop_ancestor_parents(
+    parents: list[StrategyNode], keep: set[int] | None = None
+) -> list[StrategyNode]:
     """Drop a parent that IS the relation another parent derives from.
 
     The planner can hand a consumer both a derived node and the very relation
@@ -941,12 +943,15 @@ def _drop_ancestor_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
     matching them back on their shared columns is a 1:1 self-lookup that can
     neither filter nor fan out. The `<=` guard makes that exact: the
     descendant must already expose every column the ancestor would contribute,
-    so dropping it removes a join and nothing else."""
+    so dropping it removes a join and nothing else.
+
+    `keep` names a span domain: a descendant that paired it on solid keys holds
+    fewer rows than it does, and those extra rows are what it is here for."""
     if len(parents) <= 1:
         return parents
     dropped: set[int] = set()
     for ancestor in parents:
-        if id(ancestor) in dropped:
+        if id(ancestor) in dropped or (keep and id(ancestor) in keep):
             continue
         ancestor_outputs = {c.address for c in ancestor.output_concepts}
         for descendant in parents:
@@ -2166,7 +2171,7 @@ def _pre_merge_parents(
     parents = _fold_passthrough_parents(parents, keep=span_domains)
     if len(parents) <= 1:
         return parents
-    parents = _drop_ancestor_parents(parents)
+    parents = _drop_ancestor_parents(parents, keep=span_domains)
     if len(parents) <= 1:
         return parents
     _widen_merge_join_keys(parents, environment, join_key_addresses)

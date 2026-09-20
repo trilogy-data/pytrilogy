@@ -109,11 +109,19 @@ HOLDS = [
     "select customer_id, status where status = 'delivered'",
     "select customer_id, status where name = 'cat'",
     "select customer_id, status where amount > 15",
+    "select customer_id, status where status is null",
+    "select customer_id, status where status is null or status = 'delivered'",
+    "select customer_id, status, amount where amount is null",
+    "select customer_id, status, amount where amount is null or amount > 15",
+    "select customer_id, status, activity",
+    "select customer_id, activity",
 ]
 
 OWED = [
-    "select customer_id, status, activity",
+    # the span is demanded only as an aggregate argument
     "select status, count(customer_id) as customers",
+    # a WHERE over an off-span column the statement does not project
+    "select customer_id, status where amount is null",
 ]
 
 QUERIES = HOLDS + [
