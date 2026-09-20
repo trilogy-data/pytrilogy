@@ -2144,6 +2144,7 @@ def _pre_merge_parents(
     group_graph: nx.DiGraph | None = None,
     built: dict[str, StrategyNode] | None = None,
     force_join_type: JoinType | None = None,
+    span_domains: set[int] | None = None,
 ) -> list[StrategyNode]:
     """Collapse a multi-parent set into a single MergeNode that auto-joins
     on shared output concepts. Non-merging generators (GroupNode for
@@ -2162,7 +2163,7 @@ def _pre_merge_parents(
     parents = _fold_constant_parents(parents, needed or set())
     if len(parents) <= 1:
         return parents
-    parents = _fold_passthrough_parents(parents)
+    parents = _fold_passthrough_parents(parents, keep=span_domains)
     if len(parents) <= 1:
         return parents
     parents = _drop_ancestor_parents(parents)
@@ -4434,6 +4435,11 @@ def build_strategy_node(
                 group_graph=group_graph,
                 built=built,
                 force_join_type=JoinType.INNER if filter_scan else None,
+                span_domains={
+                    id(parent.node)
+                    for parent in parent_builds
+                    if attrs[parent.group_id].extent_span
+                },
             )
         # ROOT scans source columns from datasources directly, not from their
         # group-graph predecessors. A `constraint`-edge predecessor (e.g. a

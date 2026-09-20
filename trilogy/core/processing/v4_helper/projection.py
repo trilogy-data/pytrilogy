@@ -15,6 +15,8 @@ from trilogy.core.models.build_environment import (
 )
 from trilogy.core.processing.nodes import SelectNode, StrategyNode, UnionNode
 
+from .constants import ROW_STREAM_DERIVATIONS
+
 
 def parent_output_addresses(node: StrategyNode) -> set[str]:
     # A hidden parent output is dropped from that parent's CTE SELECT, so a
@@ -69,6 +71,18 @@ def row_lineage_arguments(concept: BuildConcept) -> list[BuildConcept]:
     if not existence:
         return args
     return [arg for arg in args if arg.address not in existence]
+
+
+def reads_rows_only(concept: BuildConcept) -> bool:
+    """A row-stream derivation whose lineage never crosses an aggregate. One
+    over an aggregate is evaluated on a ``~`` extension row (`count(...) > 0`
+    is false there, not NULL); one over rows alone is NULL there."""
+    if concept.derivation not in ROW_STREAM_DERIVATIONS or concept.lineage is None:
+        return False
+    return all(
+        arg.derivation in (Derivation.ROOT, Derivation.CONSTANT) or reads_rows_only(arg)
+        for arg in concept.lineage.concept_arguments
+    )
 
 
 def concept_satisfiable(
