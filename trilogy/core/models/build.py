@@ -2626,6 +2626,27 @@ def requires_concept_nesting(
     return None
 
 
+def _propagates_nulls(expr: Any) -> bool:
+    """Whether a NULL argument always makes `expr` NULL, through inline nesting."""
+    from trilogy.core.functions import NULL_SUPPRESSING_FUNCTIONS
+
+    if isinstance(expr, BuildFunction):
+        return expr.operator not in NULL_SUPPRESSING_FUNCTIONS and all(
+            _propagates_nulls(arg) for arg in expr.arguments
+        )
+    if isinstance(expr, BuildComparison):
+        return (
+            expr.operator not in (ComparisonOperator.IS, ComparisonOperator.IS_NOT)
+            and _propagates_nulls(expr.left)
+            and _propagates_nulls(expr.right)
+        )
+    if isinstance(expr, BuildParenthetical):
+        return _propagates_nulls(expr.content)
+    return not isinstance(
+        expr, (BuildConditional, BuildBetween, BuildSubselectComparison)
+    )
+
+
 FOLDED_SCALARS = (str, int, float, Decimal, date, datetime, MagicConstants)
 
 
@@ -3567,6 +3588,7 @@ class Factory:
                     output_purpose=Purpose.CONSTANT,
                 )
 
+            build_lineage = self._domain_guarded(base, build_lineage)
         else:
             build_lineage = None
         # A presence probe's whole point is per-SIDE identity: two probes over
@@ -3665,6 +3687,54 @@ class Factory:
         # this is a global cache that can be reused across Factory instances
         self.build_cache[cache_address] = rval
         return rval
+
+    def _domain_guarded(self, base: Concept, lineage: Any) -> Any:
+        """A derived concept is a function of its keys: NULL where one is absent.
+
+        A NULL-suppressing expression (CASE ELSE, coalesce, `is null`) evaluated
+        over a row padded for a `~` extension would otherwise invent a value for
+        an entity that does not exist, so its key domain is made explicit."""
+        if not self._model_licenses_extension:
+            return lineage
+        if Concept.calculate_derivation(lineage, base.purpose) != Derivation.BASIC:
+            return lineage
+        if _propagates_nulls(lineage):
+            return lineage
+        keys = sorted(
+            k
+            for k in base.effective_keys(self.environment) or set()
+            if k != base.address and k in self.environment.concepts
+        )
+        if not keys:
+            return lineage
+        present: BuildComparison | BuildConditional | None = None
+        for key in keys:
+            check = BuildComparison(
+                left=self._build_concept(self.environment.concepts[key]),
+                right=MagicConstants.NULL,
+                operator=ComparisonOperator.IS_NOT,
+            )
+            present = (
+                check
+                if present is None
+                else BuildConditional(
+                    left=present, right=check, operator=BooleanOperator.AND
+                )
+            )
+        assert present is not None
+        return BuildFunction(
+            operator=FunctionType.CASE,
+            arguments=[BuildCaseWhen(comparison=present, expr=lineage)],
+            output_data_type=base.datatype,
+            output_purpose=base.purpose,
+        )
+
+    @property
+    def _model_licenses_extension(self) -> bool:
+        return any(
+            ds.column_level_partial_addresses
+            for ds in self.environment.datasources.values()
+        )
 
     @_build_dispatch.register
     def _(self, base: AggregateWrapper) -> BuildAggregateWrapper:
