@@ -1619,6 +1619,9 @@ class BuildNumberingWindowItem(DataTyped, BuildConceptArgs):
     arguments: list[BuildConcept]
     order_by: list[BuildOrderItem]
     over: list[BuildConcept] = field(default_factory=list)
+    # Keys whose absence marks a row padded for a `~` extension: such a row is
+    # partitioned apart and numbered NULL, never ranked among real rows.
+    domain_keys: list[BuildConcept] = field(default_factory=list)
 
     def __post_init__(self):
         assert (
@@ -1642,6 +1645,7 @@ class BuildNumberingWindowItem(DataTyped, BuildConceptArgs):
             output += order.concept_arguments
         for item in self.over:
             output += [item]
+        output += self.domain_keys
         return output
 
     @property
@@ -1660,6 +1664,7 @@ class BuildNavigationWindowItem(DataTyped, BuildConceptArgs):
     order_by: list[BuildOrderItem]
     over: list[BuildConcept] = field(default_factory=list)
     offset: int | None = None
+    domain_keys: list[BuildConcept] = field(default_factory=list)
 
     def __post_init__(self):
         assert (
@@ -1679,6 +1684,7 @@ class BuildNavigationWindowItem(DataTyped, BuildConceptArgs):
             output += order.concept_arguments
         for item in self.over:
             output += [item]
+        output += self.domain_keys
         return output
 
     @property
@@ -2647,7 +2653,7 @@ def _propagates_nulls(expr: Any) -> bool:
     )
 
 
-def _domain_keys(concepts: Sequence["BuildConcept"]) -> set[str]:
+def _domain_keys(concepts: Sequence[BuildConcept]) -> set[str]:
     """The keys an expression over `concepts` is a function of."""
     keys: set[str] = set()
     for concept in concepts:
@@ -3745,9 +3751,18 @@ class Factory:
             output_purpose=purpose,
         )
 
+    def _window_domain_keys(self, row: Sequence[BuildConcept]) -> list[BuildConcept]:
+        if not self._model_licenses_extension:
+            return []
+        return [
+            self._build_concept(self.environment.concepts[key])
+            for key in sorted(_domain_keys(row))
+            if key in self.environment.concepts
+        ]
+
     def _keys_present(
         self, keys: set[str]
-    ) -> "BuildComparison | BuildConditional | None":
+    ) -> BuildComparison | BuildConditional | None:
         present: BuildComparison | BuildConditional | None = None
         for key in sorted(k for k in keys if k in self.environment.concepts):
             check = BuildComparison(
@@ -4043,11 +4058,13 @@ class Factory:
         # implicit grain — the rank's argument concepts define the row.
         anchor = base.arguments[0] if base.arguments else None
         final_by = self._window_order_by_items(base.order_by, anchor)
+        arguments = [self._build_concept_ref(x) for x in base.arguments]
         return BuildNumberingWindowItem(
             type=base.type,
-            arguments=[self._build_concept_ref(x) for x in base.arguments],
+            arguments=arguments,
             order_by=[self.build(x) for x in final_by],
             over=self._build_over_items(list(base.over)),
+            domain_keys=self._window_domain_keys(arguments),
         )
 
     def _build_navigation_window_item(
@@ -4059,12 +4076,14 @@ class Factory:
             content, _ = self.instantiate_concept(validation)
         anchor = content if isinstance(content, (ConceptRef, Concept)) else None
         final_by = self._window_order_by_items(base.order_by, anchor)
+        built_content = self.build(content)
         return BuildNavigationWindowItem(
             type=base.type,
-            content=self.build(content),
+            content=built_content,
             order_by=[self.build(x) for x in final_by],
             over=self._build_over_items(list(base.over)),
             offset=base.offset,
+            domain_keys=self._window_domain_keys(get_concept_arguments(built_content)),
         )
 
     @_build_dispatch.register
