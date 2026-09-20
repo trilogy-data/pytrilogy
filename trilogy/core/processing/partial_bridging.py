@@ -41,8 +41,8 @@ from trilogy.core.processing.condition_utility import (
     conditions_mutually_exclusive,
     gate_allowed_values,
 )
-from trilogy.core.processing.v4_helper.constants import ROW_STREAM_DERIVATIONS
 from trilogy.core.processing.v4_helper.functional_dependency import build_fd_closure
+from trilogy.core.processing.v4_helper.projection import reads_rows_only
 
 
 def _spellings(concept: BuildConcept) -> set[str]:
@@ -87,10 +87,8 @@ def _proven_bound(
     A proven derivation counts through its keys: a row-stream derivation is a
     function of its keys and NULL wherever one's entity is absent, so
     ``status = 'delivered'`` proves an order exists exactly as ``order_id is
-    not null`` would. An aggregate proves nothing about a row's origin
-    (``count(order_id) by customer_id`` is 0, not NULL, for an orderless
-    customer), and anything keyed inside the span's own closure is filtered out
-    by ``_extension_killed``.
+    not null`` would. Anything keyed inside the span's own closure is filtered
+    out by ``_extension_killed``.
     """
     if conditions is None:
         return set()
@@ -99,7 +97,7 @@ def _proven_bound(
         return set()
     for address in list(proven):
         concept = environment.concepts.get(address)
-        if concept is not None and concept.derivation in ROW_STREAM_DERIVATIONS:
+        if concept is not None and reads_rows_only(concept):
             proven |= set(concept.keys or ())
     return proven & _bound_spellings(datasources)
 

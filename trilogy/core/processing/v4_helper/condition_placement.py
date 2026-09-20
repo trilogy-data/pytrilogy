@@ -67,6 +67,9 @@ class PlacementReason(Enum):
     # exposes: hosted on FINAL, which pairs the gate's scan to the
     # boundary on that key.
     FINAL_ROWSET_BASE_KEY = "final_rowset_base_key"
+    # A row atom over something a span domain's key does not determine,
+    # restated at FINAL where the domain's extension rows join back.
+    FINAL_SPAN_DOMAIN = "final_span_domain"
 
 
 @dataclass(frozen=True)
@@ -608,6 +611,29 @@ def _preserved_final_branch(
         and gid in buckets
         and buckets[gid].depth_label not in (DepthLabel.D1, ROOT_D1_DEPTH)
         for gid in group_graph.predecessors(FINAL_NODE_ID)
+    )
+
+
+def _reads_past_span_domain(
+    row_inputs: set[str],
+    buckets: dict[str, GroupBucket],
+    environment: BuildEnvironment,
+) -> bool:
+    """Whether the atom reads something a span domain's key does not determine.
+
+    Any host below FINAL pairs on solid keys and never sees the extension rows
+    the domain adds back there: a customer whose every order the atom rejected
+    would return as an extension row, and `status is null` would never test the
+    customer with no order. So the atom is hosted at FINAL only, over the
+    extended rows. A null-rejecting atom never gets here: `heal_pinned_partials`
+    has already dropped the span's license."""
+    return any(
+        bucket.extent_span
+        and not build_fd_determines(
+            environment, {bucket.extent_span}, address, include_empty_grain=True
+        )
+        for bucket in buckets.values()
+        for address in row_inputs
     )
 
 
@@ -1273,6 +1299,17 @@ def plan_condition_placements(
                         atom=atom,
                         group_ids=(FINAL_NODE_ID,),
                         reason=PlacementReason.FINAL_RECONVERGENCE,
+                    )
+                )
+                continue
+            if not atom.existence_arguments and _reads_past_span_domain(
+                row_inputs, buckets, environment
+            ):
+                placements.append(
+                    ConditionPlacement(
+                        atom=atom,
+                        group_ids=(FINAL_NODE_ID,),
+                        reason=PlacementReason.FINAL_SPAN_DOMAIN,
                     )
                 )
                 continue

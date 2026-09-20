@@ -66,31 +66,9 @@ def _predicate_safe_past_null_extension(
     the parent it reads real rows instead and inverts meaning. Only
     null-rejecting predicates commute with a null-extending join: rows they
     keep must have real parent values, so pre- and post-join filtering agree."""
-    if not isinstance(cte, CTE):
-        return True
-    null_extended = False
-    for join in cte.joins:
-        if not isinstance(join, Join):
-            continue
-        sides: list[str] = [join.right_cte.name]
-        if join.left_cte is not None:
-            sides.append(join.left_cte.name)
-        if parent_cte.name not in sides:
-            continue
-        if (
-            join.jointype is JoinType.FULL
-            or (
-                join.jointype is JoinType.LEFT_OUTER
-                and join.right_cte.name == parent_cte.name
-            )
-            or (
-                join.jointype is JoinType.RIGHT_OUTER
-                and join.left_cte is not None
-                and join.left_cte.name == parent_cte.name
-            )
-        ):
-            null_extended = True
-    if not null_extended:
+    # `null_padded_nodes` also names the implicit left of a RIGHT/FULL join
+    # (`left_cte` unset, the accumulated FROM side) through its joinkey pairs.
+    if not isinstance(cte, CTE) or not _parent_nullable_in_cte(cte, parent_cte.name):
         return True
     proven = condition_proves_non_null(candidate)
     return {x.address for x in candidate.row_arguments} <= proven
