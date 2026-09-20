@@ -1780,7 +1780,7 @@ def try_create_auto_derived(
 
     If the suffix matches a single-arg function valid for the parent's
     datatype, returns the derived Concept. Otherwise returns None."""
-    from trilogy.parsing.common import agg_wrapper_to_concept
+    from trilogy.core.models.author import Grain
 
     try:
         ftype = FunctionType(suffix)
@@ -1802,13 +1802,14 @@ def try_create_auto_derived(
     func = FunctionFactory(environment).create_function(args=[parent], operator=ftype)
 
     if ftype in FunctionClass.AGGREGATE_FUNCTIONS.value:
-        # same shape as an authored `auto x <- count(key)`: the planner reads an
-        # aggregate off its wrapper, never off a bare aggregate function
-        return agg_wrapper_to_concept(
-            AggregateWrapper(function=func),
-            namespace=parent.namespace,
+        return Concept(
             name=f"{parent.name}.{suffix}",
-            environment=environment,
+            datatype=func.output_datatype,
+            purpose=Purpose.METRIC,
+            lineage=func,
+            grain=Grain(),
+            namespace=parent.namespace,
+            keys=set(),
         )
 
     purpose = (

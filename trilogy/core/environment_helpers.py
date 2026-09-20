@@ -4,13 +4,7 @@ from typing import TYPE_CHECKING
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.enums import ConceptSource, DatePart, FunctionType, Purpose
 from trilogy.core.functions import FunctionFactory
-from trilogy.core.models.author import (
-    AggregateWrapper,
-    Concept,
-    Function,
-    Metadata,
-    TraitDataType,
-)
+from trilogy.core.models.author import Concept, Function, Grain, Metadata, TraitDataType
 from trilogy.core.models.core import DataType, StructType, arg_to_datatype
 from trilogy.core.models.environment import Environment
 
@@ -141,8 +135,6 @@ def generate_datetime_concepts(concept: Concept, environment: Environment):
 
 
 def generate_key_concepts(concept: Concept, environment: Environment):
-    from trilogy.parsing.common import agg_wrapper_to_concept
-
     if concept.metadata and concept.metadata.line_number:
         base_line_number = concept.metadata.line_number
     else:
@@ -152,20 +144,23 @@ def generate_key_concepts(concept: Concept, environment: Environment):
         if address in environment.concepts:
             continue
         fname = ftype.name.lower()
+        default_type = Purpose.METRIC
         const_function: Function = Function(
             operator=ftype,
             output_datatype=DataType.INTEGER,
-            output_purpose=Purpose.METRIC,
+            output_purpose=default_type,
             arguments=[concept.reference],
         )
-        # same shape as an authored `auto x <- count(key)`: the planner reads an
-        # aggregate off its wrapper, never off a bare aggregate function
-        new_concept = agg_wrapper_to_concept(
-            AggregateWrapper(function=const_function),
-            namespace=concept.namespace,
+        new_concept = Concept(
             name=f"{concept.name}.{fname}",
-            environment=environment,
+            datatype=DataType.INTEGER,
+            purpose=default_type,
+            lineage=const_function,
+            grain=Grain(),
+            namespace=concept.namespace,
+            keys=set(),
             metadata=Metadata(
+                # description=f"Auto-derived integer. The {ftype.value} of {concept.address}, {base_description}",
                 line_number=base_line_number,
                 concept_source=ConceptSource.AUTO_DERIVED,
             ),
