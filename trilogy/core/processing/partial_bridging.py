@@ -42,7 +42,6 @@ from trilogy.core.processing.condition_utility import (
     gate_allowed_values,
 )
 from trilogy.core.processing.v4_helper.functional_dependency import build_fd_closure
-from trilogy.core.processing.v4_helper.projection import reads_rows_only
 
 
 def _spellings(concept: BuildConcept) -> set[str]:
@@ -80,25 +79,19 @@ def _build_datasources(environment: BuildEnvironment) -> list[BuildDatasource]:
 def _proven_bound(
     conditions: BuildWhereClause | None,
     datasources: list[BuildDatasource],
-    environment: BuildEnvironment,
 ) -> set[str]:
     """WHERE-proven non-null addresses that are physically bound somewhere.
 
-    A proven derivation counts through its keys: a row-stream derivation is a
-    function of its keys and NULL wherever one's entity is absent, so
-    ``status = 'delivered'`` proves an order exists exactly as ``order_id is
-    not null`` would. Anything keyed inside the span's own closure is filtered
-    out by ``_extension_killed``.
+    Restricting proofs to bound columns guards against tautologies: a derived
+    ``coalesce(x, 5) is not null`` proves the derivation's own address non-null
+    while saying nothing about any row's origin, so it must not count as
+    evidence that extension rows are filtered out.
     """
     if conditions is None:
         return set()
     proven = condition_proves_non_null(conditions.conditional)
     if not proven:
         return set()
-    for address in list(proven):
-        concept = environment.concepts.get(address)
-        if concept is not None and reads_rows_only(concept):
-            proven |= set(concept.keys or ())
     return proven & _bound_spellings(datasources)
 
 
@@ -259,7 +252,7 @@ def heal_pinned_partials(
     ]
     if not partial_hosts:
         return
-    proven_bound = _proven_bound(conditions, datasources, environment)
+    proven_bound = _proven_bound(conditions, datasources)
     if not proven_bound:
         return
     referenced_bound = (environment.statement_authored_addresses or set()) & (

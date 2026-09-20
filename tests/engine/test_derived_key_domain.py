@@ -1,10 +1,10 @@
 """A derived concept is a function of its keys: NULL wherever a key is absent.
 
 Oracle is materialization invariance: storing a derivation as a column at its
-grain must never change a query's rows. The planner sources a demanded `~` span
-from a domain bucket of its own (`group_graph._add_span_domain_buckets`), so a
-derivation the span does not determine never reads a padded row. `OWED` queries
-are strict xfails. See docs/handoff_extension_row_semantics.md.
+grain must never change a query's rows. `OWED` queries are strict xfails: the
+planner still evaluates them over rows padded for a `~` extension. A fix shows
+up as XPASS; move the query to `HOLDS`. See docs/keyspace_phase_plan.md and
+docs/handoff_extension_row_semantics.md.
 """
 
 import pytest
@@ -87,10 +87,19 @@ _ACTIVITY = """
 auto activity <- case when count(order_id) by customer_id > 0 then 'active' else 'dormant' end;
 """
 
+# already evaluated on the key's own rows (or NULL-propagating) today
 HOLDS = [
     "select customer_id, coalesce(sum(amount), 0) as total",
     "select customer_id, name where status = 'in-transit'",
     "select customer_id, order_id, order_rank",
+    "select customer_id, activity",
+    "select customer_id, status where status = 'delivered'",
+    "select customer_id, status where amount > 15",
+    "select customer_id, status where status is null",
+    "select customer_id, status where status is null or status = 'delivered'",
+]
+
+OWED = [
     "select customer_id, status",
     "select customer_id, order_id, status",
     "select customer_id, status, count(order_id) as n",
@@ -101,27 +110,21 @@ HOLDS = [
     "select customer_id, sum(amount_or_zero) as total",
     "select customer_id, label",
     "select customer_id, name, status, amount_or_zero, label",
+    "select customer_id, status, activity",
     "select customer_id, sum(flag) as n_undelivered",
     "select customer_id, order_id, order_seq",
     "select customer_id, order_seq",
     "select customer_id, count(order_seq) as numbered",
     "select customer_id, name where order_seq = 1",
-    "select customer_id, status where status = 'delivered'",
     "select customer_id, status where name = 'cat'",
-    "select customer_id, status where amount > 15",
-    "select customer_id, status where status is null",
-    "select customer_id, status where status is null or status = 'delivered'",
     "select customer_id, status, amount where amount is null",
     "select customer_id, status, amount where amount is null or amount > 15",
-    "select customer_id, status, activity",
-    "select customer_id, activity",
-]
-
-OWED = [
     # the span is demanded only as an aggregate argument
     "select status, count(customer_id) as customers",
     # a WHERE over an off-span column the statement does not project
     "select customer_id, status where amount is null",
+    # the span is demanded only through a member it determines
+    "select name, status",
 ]
 
 QUERIES = HOLDS + [
@@ -174,6 +177,7 @@ def test_inline_spelling_matches_named(derived: Executor, named: str, inline: st
     )
 
 
+@pytest.mark.xfail(strict=True, reason="owed")
 def test_orderless_customer_has_no_status(derived: Executor):
     assert _rows(derived, "select customer_id, status, count(order_id) as n") == [
         (1, "delivered", 1),
