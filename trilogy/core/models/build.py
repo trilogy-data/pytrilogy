@@ -1619,9 +1619,6 @@ class BuildNumberingWindowItem(DataTyped, BuildConceptArgs):
     arguments: list[BuildConcept]
     order_by: list[BuildOrderItem]
     over: list[BuildConcept] = field(default_factory=list)
-    # Keys whose absence marks a row padded for a `~` extension: such a row is
-    # partitioned apart and numbered NULL, never ranked among real rows.
-    domain_keys: list[BuildConcept] = field(default_factory=list)
 
     def __post_init__(self):
         assert (
@@ -1645,7 +1642,6 @@ class BuildNumberingWindowItem(DataTyped, BuildConceptArgs):
             output += order.concept_arguments
         for item in self.over:
             output += [item]
-        output += self.domain_keys
         return output
 
     @property
@@ -1664,7 +1660,6 @@ class BuildNavigationWindowItem(DataTyped, BuildConceptArgs):
     order_by: list[BuildOrderItem]
     over: list[BuildConcept] = field(default_factory=list)
     offset: int | None = None
-    domain_keys: list[BuildConcept] = field(default_factory=list)
 
     def __post_init__(self):
         assert (
@@ -1684,7 +1679,6 @@ class BuildNavigationWindowItem(DataTyped, BuildConceptArgs):
             output += order.concept_arguments
         for item in self.over:
             output += [item]
-        output += self.domain_keys
         return output
 
     @property
@@ -2632,38 +2626,6 @@ def requires_concept_nesting(
     return None
 
 
-def _propagates_nulls(expr: Any) -> bool:
-    """Whether a NULL argument always makes `expr` NULL, through inline nesting."""
-    from trilogy.core.functions import NULL_SUPPRESSING_FUNCTIONS
-
-    if isinstance(expr, BuildFunction):
-        return expr.operator not in NULL_SUPPRESSING_FUNCTIONS and all(
-            _propagates_nulls(arg) for arg in expr.arguments
-        )
-    if isinstance(expr, BuildComparison):
-        return (
-            expr.operator not in (ComparisonOperator.IS, ComparisonOperator.IS_NOT)
-            and _propagates_nulls(expr.left)
-            and _propagates_nulls(expr.right)
-        )
-    if isinstance(expr, BuildParenthetical):
-        return _propagates_nulls(expr.content)
-    return not isinstance(
-        expr, (BuildConditional, BuildBetween, BuildSubselectComparison)
-    )
-
-
-def _domain_keys(concepts: Sequence[BuildConcept]) -> set[str]:
-    """The keys an expression over `concepts` is a function of."""
-    keys: set[str] = set()
-    for concept in concepts:
-        if concept.purpose == Purpose.KEY:
-            keys.add(concept.address)
-        elif concept.keys:
-            keys |= concept.keys
-    return keys
-
-
 FOLDED_SCALARS = (str, int, float, Decimal, date, datetime, MagicConstants)
 
 
@@ -3320,8 +3282,6 @@ class Factory:
                 )
 
         farguments: list[Any] = [self.handle_constant(self.build(c)) for c in raw_args]
-        if base.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
-            farguments = [self._guard_aggregate_argument(a) for a in farguments]
         if base.operator == FunctionType.CASE:
             case_args: list[Any] = []
             for arg in farguments:
@@ -3608,7 +3568,6 @@ class Factory:
                     output_purpose=Purpose.CONSTANT,
                 )
 
-            build_lineage = self._domain_guarded(base, build_lineage)
         else:
             build_lineage = None
         # A presence probe's whole point is per-SIDE identity: two probes over
@@ -3707,90 +3666,6 @@ class Factory:
         # this is a global cache that can be reused across Factory instances
         self.build_cache[cache_address] = rval
         return rval
-
-    def _domain_guarded(self, base: Concept, lineage: Any) -> Any:
-        """A derived concept is a function of its keys: NULL where one is absent.
-
-        A NULL-suppressing expression (CASE ELSE, coalesce, `is null`) evaluated
-        over a row padded for a `~` extension would otherwise invent a value for
-        an entity that does not exist, so its key domain is made explicit."""
-        if Concept.calculate_derivation(lineage, base.purpose) != Derivation.BASIC:
-            return lineage
-        keys = {
-            k
-            for k in base.effective_keys(self.environment) or set()
-            if k != base.address
-        }
-        return self._guard_expression(lineage, keys, base.datatype, base.purpose)
-
-    def _guard_aggregate_argument(self, arg: Any) -> Any:
-        """An aggregate reads its argument's key domain: an inline expression is
-        NULL (so ignored) on a row padded for an entity that does not exist,
-        exactly as the same expression is when spelled as a named concept."""
-        if isinstance(arg, BuildConcept) or not isinstance(arg, BuildConceptArgs):
-            return arg
-        return self._guard_expression(
-            arg,
-            _domain_keys(arg.concept_arguments),
-            arg_to_datatype(arg),
-            Purpose.PROPERTY,
-        )
-
-    def _guard_expression(
-        self, expr: Any, keys: set[str], datatype: Any, purpose: Purpose
-    ) -> Any:
-        if not self._model_licenses_extension or _propagates_nulls(expr):
-            return expr
-        present = self._keys_present(keys)
-        if present is None:
-            return expr
-        return BuildFunction(
-            operator=FunctionType.CASE,
-            arguments=[BuildCaseWhen(comparison=present, expr=expr)],
-            output_data_type=datatype,
-            output_purpose=purpose,
-        )
-
-    def _window_domain_keys(self, keys: set[str]) -> list[BuildConcept]:
-        if not self._model_licenses_extension:
-            return []
-        return self._entity_keys(keys)
-
-    def _entity_keys(self, keys: set[str]) -> list[BuildConcept]:
-        """Only an entity KEY witnesses absence: it is never NULL on a real row,
-        where a property is (`?`, a ROLLUP subtotal, a genuine NULL group)."""
-        return [
-            self._build_concept(self.environment.concepts[key])
-            for key in sorted(keys)
-            if key in self.environment.concepts
-            and self.environment.concepts[key].purpose == Purpose.KEY
-        ]
-
-    def _keys_present(
-        self, keys: set[str]
-    ) -> BuildComparison | BuildConditional | None:
-        present: BuildComparison | BuildConditional | None = None
-        for key in self._entity_keys(keys):
-            check = BuildComparison(
-                left=key,
-                right=MagicConstants.NULL,
-                operator=ComparisonOperator.IS_NOT,
-            )
-            present = (
-                check
-                if present is None
-                else BuildConditional(
-                    left=present, right=check, operator=BooleanOperator.AND
-                )
-            )
-        return present
-
-    @property
-    def _model_licenses_extension(self) -> bool:
-        return any(
-            ds.column_level_partial_addresses
-            for ds in self.environment.datasources.values()
-        )
 
     @_build_dispatch.register
     def _(self, base: AggregateWrapper) -> BuildAggregateWrapper:
@@ -4064,14 +3939,11 @@ class Factory:
         # implicit grain — the rank's argument concepts define the row.
         anchor = base.arguments[0] if base.arguments else None
         final_by = self._window_order_by_items(base.order_by, anchor)
-        arguments = [self._build_concept_ref(x) for x in base.arguments]
         return BuildNumberingWindowItem(
             type=base.type,
-            arguments=arguments,
+            arguments=[self._build_concept_ref(x) for x in base.arguments],
             order_by=[self.build(x) for x in final_by],
             over=self._build_over_items(list(base.over)),
-            # the ranked argument IS the row: a property ranks value groups
-            domain_keys=self._window_domain_keys({x.address for x in arguments}),
         )
 
     def _build_navigation_window_item(
@@ -4083,16 +3955,12 @@ class Factory:
             content, _ = self.instantiate_concept(validation)
         anchor = content if isinstance(content, (ConceptRef, Concept)) else None
         final_by = self._window_order_by_items(base.order_by, anchor)
-        built_content = self.build(content)
         return BuildNavigationWindowItem(
             type=base.type,
-            content=built_content,
+            content=self.build(content),
             order_by=[self.build(x) for x in final_by],
             over=self._build_over_items(list(base.over)),
             offset=base.offset,
-            domain_keys=self._window_domain_keys(
-                _domain_keys(get_concept_arguments(built_content))
-            ),
         )
 
     @_build_dispatch.register

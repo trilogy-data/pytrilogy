@@ -284,19 +284,6 @@ def _is_build_row_tuple(x: Any) -> bool:
 INLINE_SAFE_PARAM_DATATYPES = frozenset({DataType.INTEGER, DataType.BOOL})
 
 
-def _padding_partitions(domain_keys: list[str]) -> list[str]:
-    """Partition terms that keep rows padded for a `~` extension apart from real
-    rows (CASE, since not every dialect has a boolean expression type)."""
-    return [f"CASE WHEN {key} IS NULL THEN 1 ELSE 0 END" for key in domain_keys]
-
-
-def _null_outside_domain(sql: str, domain_keys: list[str]) -> str:
-    if not domain_keys:
-        return sql
-    present = " AND ".join(f"{key} IS NOT NULL" for key in domain_keys)
-    return f"CASE WHEN {present} THEN {sql} END"
-
-
 def _constant_bindable(lineage: BuildFunction) -> bool:
     """A CONSTANT whose value is a MagicConstants (e.g. NULL) cannot be bound: no
     driver can transform the enum into a value. Render it inline instead."""
@@ -1381,15 +1368,7 @@ class BaseDialect:
                     )
                     for x in c.lineage.over
                 ]
-                domain_keys = [
-                    self.render_concept_sql(
-                        x, cte, alias=False, raise_invalid=raise_invalid
-                    )
-                    for x in c.lineage.domain_keys
-                ]
-                window_str = ",".join(
-                    rendered_over_components + _padding_partitions(domain_keys)
-                )
+                window_str = ",".join(rendered_over_components)
                 sort_str = ",".join(rendered_order_components)
                 rval: str | None
                 if isinstance(c.lineage, BuildNumberingWindowItem):
@@ -1407,7 +1386,6 @@ class BaseDialect:
                         sort_str,
                         c.lineage.offset,
                     )
-                rval = _null_outside_domain(rval, domain_keys)
             elif isinstance(c.lineage, FILTER_ITEMS):
                 # The per-row CASE WHEN is redundant when the CTE's WHERE implies
                 # the filter's predicate, or when its sole parent guarantees it
@@ -2310,36 +2288,21 @@ class BaseDialect:
                 )
                 for x in e.over
             ]
-            domain_keys = [
-                self.render_expr(
-                    x,
-                    cte,
-                    raise_invalid=raise_invalid,
-                    materialized_addresses=materialized_addresses,
-                )
-                for x in e.domain_keys
-            ]
-            window_str = ",".join(
-                rendered_over_components + _padding_partitions(domain_keys)
-            )
+            window_str = ",".join(rendered_over_components)
             sort_str = ",".join(rendered_order_components)
             if isinstance(e, BuildNumberingWindowItem):
-                windowed = self.NUMBERING_WINDOW_FUNCTION_MAP[e.type](
-                    window_str, sort_str
-                )
-            else:
-                windowed = self.NAVIGATION_WINDOW_FUNCTION_MAP[e.type](
-                    self.render_expr(
-                        e.content,
-                        cte=cte,
-                        raise_invalid=raise_invalid,
-                        materialized_addresses=materialized_addresses,
-                    ),
-                    window_str,
-                    sort_str,
-                    e.offset,
-                )
-            return _null_outside_domain(windowed, domain_keys)
+                return self.NUMBERING_WINDOW_FUNCTION_MAP[e.type](window_str, sort_str)
+            return self.NAVIGATION_WINDOW_FUNCTION_MAP[e.type](
+                self.render_expr(
+                    e.content,
+                    cte=cte,
+                    raise_invalid=raise_invalid,
+                    materialized_addresses=materialized_addresses,
+                ),
+                window_str,
+                sort_str,
+                e.offset,
+            )
         elif isinstance(e, PARENTHETICAL_ITEMS):
             # conditions need to be nested in parentheses
             if isinstance(e.content, list):
