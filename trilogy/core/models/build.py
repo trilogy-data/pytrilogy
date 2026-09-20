@@ -2647,6 +2647,17 @@ def _propagates_nulls(expr: Any) -> bool:
     )
 
 
+def _domain_keys(concepts: Sequence["BuildConcept"]) -> set[str]:
+    """The keys an expression over `concepts` is a function of."""
+    keys: set[str] = set()
+    for concept in concepts:
+        if concept.purpose == Purpose.KEY:
+            keys.add(concept.address)
+        elif concept.keys:
+            keys |= concept.keys
+    return keys
+
+
 FOLDED_SCALARS = (str, int, float, Decimal, date, datetime, MagicConstants)
 
 
@@ -3303,6 +3314,8 @@ class Factory:
                 )
 
         farguments: list[Any] = [self.handle_constant(self.build(c)) for c in raw_args]
+        if base.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
+            farguments = [self._guard_aggregate_argument(a) for a in farguments]
         if base.operator == FunctionType.CASE:
             case_args: list[Any] = []
             for arg in farguments:
@@ -3695,21 +3708,48 @@ class Factory:
         A NULL-suppressing expression (CASE ELSE, coalesce, `is null`) evaluated
         over a row padded for a `~` extension would otherwise invent a value for
         an entity that does not exist, so its key domain is made explicit."""
-        if not self._model_licenses_extension:
-            return lineage
         if Concept.calculate_derivation(lineage, base.purpose) != Derivation.BASIC:
             return lineage
-        if _propagates_nulls(lineage):
-            return lineage
-        keys = sorted(
+        keys = {
             k
             for k in base.effective_keys(self.environment) or set()
-            if k != base.address and k in self.environment.concepts
+            if k != base.address
+        }
+        return self._guard_expression(lineage, keys, base.datatype, base.purpose)
+
+    def _guard_aggregate_argument(self, arg: Any) -> Any:
+        """An aggregate reads its argument's key domain: an inline expression is
+        NULL (so ignored) on a row padded for an entity that does not exist,
+        exactly as the same expression is when spelled as a named concept."""
+        if isinstance(arg, BuildConcept) or not isinstance(arg, BuildConceptArgs):
+            return arg
+        return self._guard_expression(
+            arg,
+            _domain_keys(arg.concept_arguments),
+            arg_to_datatype(arg),
+            Purpose.PROPERTY,
         )
-        if not keys:
-            return lineage
+
+    def _guard_expression(
+        self, expr: Any, keys: set[str], datatype: Any, purpose: Purpose
+    ) -> Any:
+        if not self._model_licenses_extension or _propagates_nulls(expr):
+            return expr
+        present = self._keys_present(keys)
+        if present is None:
+            return expr
+        return BuildFunction(
+            operator=FunctionType.CASE,
+            arguments=[BuildCaseWhen(comparison=present, expr=expr)],
+            output_data_type=datatype,
+            output_purpose=purpose,
+        )
+
+    def _keys_present(
+        self, keys: set[str]
+    ) -> "BuildComparison | BuildConditional | None":
         present: BuildComparison | BuildConditional | None = None
-        for key in keys:
+        for key in sorted(k for k in keys if k in self.environment.concepts):
             check = BuildComparison(
                 left=self._build_concept(self.environment.concepts[key]),
                 right=MagicConstants.NULL,
@@ -3722,13 +3762,7 @@ class Factory:
                     left=present, right=check, operator=BooleanOperator.AND
                 )
             )
-        assert present is not None
-        return BuildFunction(
-            operator=FunctionType.CASE,
-            arguments=[BuildCaseWhen(comparison=present, expr=lineage)],
-            output_data_type=base.datatype,
-            output_purpose=base.purpose,
-        )
+        return present
 
     @property
     def _model_licenses_extension(self) -> bool:
