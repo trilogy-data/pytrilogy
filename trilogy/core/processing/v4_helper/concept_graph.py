@@ -1932,12 +1932,10 @@ def _host_outputs_on_row_preserving_aggregates(
     collapse; so does a column one grain key alone determines (`brand` by
     `item`), which joins from that key's own table.
 
-    Values only, never a KEY. A key in a grouping grain is a FINAL merge axis,
-    not a carried value, so hosting one re-shapes how the contributors stitch:
-    `order_id` beside `sum(qty)` at `item_id` makes the aggregate two-keyed,
-    and a two-`~` span then null-safe joins its extension families on their
-    NULL `item_id` (the same wrong rows `sum(qty) by item_id, order_id` gives
-    when spelled out)."""
+    A covered KEY hosts like any value (`order_id` beside `sum(qty)` at
+    `item_id`). It makes the grouping grain two-keyed, which is only safe
+    because a two-`~` span keeps its extension families apart on its own
+    (`docs/handoff_aggregate_grain_fd_canonicalization.md`)."""
     hosts = [
         nid
         for nid, node in attrs.items()
@@ -1958,7 +1956,6 @@ def _host_outputs_on_row_preserving_aggregates(
         for concept in mandatory_list
         if (nid := node_id(_effective_label(concept, "", root_like), concept.address))
         in attrs
-        and attrs[nid].purpose != Purpose.KEY
         and _is_row_scalar(graph, edges, attrs, nid)
     ]
     for host in hosts:

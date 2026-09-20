@@ -346,6 +346,9 @@ def test_forked_with_brand_only(forked):
 
 
 def test_forked_with_status(forked):
+    """`order_status` reads the order's `amount`. An extension row has no
+    order, so it is NULL there like everything outside the span's closure; the
+    CASE's ELSE does not fire on padding."""
     assert (
         _rows(
             forked,
@@ -357,8 +360,8 @@ def test_forked_with_status(forked):
             (1001, 100, 20, 1, "FIRST", 7, 150),
             (1002, 101, 10, 2, "FIRST", 11, 120),
             (1003, 102, 20, 1, "LATER", 13, 210),
-            (None, None, 30, None, "LATER", None, None),
-            (None, None, None, 3, "LATER", None, None),
+            (None, None, 30, None, None, None, None),
+            (None, None, None, 3, None, None, None),
         ]
     )
 
@@ -392,8 +395,8 @@ def test_forked_full_column_set(forked):
             (1001, 100, 20, 1, "CA", "B", "FIRST", 7, 150),
             (1002, 101, 10, 2, "NY", "A", "FIRST", 11, 120),
             (1003, 102, 20, 1, "CA", "B", "LATER", 13, 210),
-            (None, None, None, 3, "TX", None, "LATER", None, None),
-            (None, None, 30, None, None, "C", "LATER", None, None),
+            (None, None, None, 3, "TX", None, None, None, None),
+            (None, None, 30, None, None, "C", None, None, None),
         ]
     )
 
@@ -670,4 +673,20 @@ def test_composite_grain_families_with_by_span_aggregate():
         (102, 1, 20, 1, "LATER", 13),
         (None, None, None, 3, "LATER", None),
         (None, None, 30, None, "LATER", None),
+    ]
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="without an aggregate the CASE is evaluated over the padded row and "
+    "its ELSE fires ('LATER'); owed NULL, as the aggregate spelling returns",
+)
+def test_status_on_extension_rows_is_null_without_an_aggregate(forked):
+    query = """select order_id, user_id, order_status
+        order by order_id asc nulls last, user_id asc nulls last;"""
+    assert _rows(forked, query) == [
+        (100, 1, "FIRST"),
+        (101, 2, "FIRST"),
+        (102, 1, "LATER"),
+        (None, 3, None),
     ]
