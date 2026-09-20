@@ -3581,9 +3581,10 @@ class Factory:
                 # TYPED_CONSTANT renders inline: a CONSTANT would bind as a
                 # `:param` the author concept (still a CASE) cannot hydrate.
                 folded_type = arg_to_datatype(build_lineage)
+                folded_args: list[Any] = [build_lineage, folded_type]
                 build_lineage = BuildFunction(
                     operator=FunctionType.TYPED_CONSTANT,
-                    arguments=[build_lineage, folded_type],
+                    arguments=folded_args,
                     output_data_type=folded_type,
                     output_purpose=Purpose.CONSTANT,
                 )
