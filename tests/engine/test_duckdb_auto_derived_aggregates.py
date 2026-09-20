@@ -1,11 +1,15 @@
-"""`<concept>.<aggregate>` shorthand must plan exactly like the authored aggregate."""
+"""A bare aggregate function (the `<concept>.<aggregate>` shorthand) resolves to
+the statement grain at build, exactly like the authored aggregate."""
 
 import pytest
 
 from trilogy import Dialects, Environment
-from trilogy.core.enums import Derivation
-from trilogy.core.models.author import AggregateWrapper
+from trilogy.core.enums import FunctionType, Purpose
+from trilogy.core.models.author import Function
+from trilogy.core.models.build import BuildAggregateWrapper
+from trilogy.core.models.core import DataType
 from trilogy.executor import Executor
+from trilogy.parsing.common import function_to_concept
 
 _SINGLE = """
 key nation_id int;
@@ -96,13 +100,41 @@ def test_aggregate_shorthand_matches_inline(
     assert _rows(model, shorthand) == expected
 
 
-def test_aggregate_shorthand_is_an_aggregate_wrapper():
+def test_aggregate_shorthand_builds_like_the_authored_aggregate():
     executor = _executor(_SINGLE)
-    executor.parse_text("select supplier_id.count;")
-    shorthand = executor.environment.concepts["supplier_id.count"]
-    executor.parse_text("auto authored <- count(supplier_id);")
-    authored = executor.environment.concepts["authored"]
-    assert isinstance(shorthand.lineage, AggregateWrapper)
+    executor.parse_text(
+        "auto authored <- count(supplier_id); select supplier_id.count;"
+    )
+    built = executor.environment.materialize_for_select().concepts
+    shorthand, authored = built["supplier_id.count"], built["authored"]
+    assert isinstance(shorthand.lineage, BuildAggregateWrapper)
     assert shorthand.lineage == authored.lineage
-    assert shorthand.derivation == authored.derivation == Derivation.AGGREGATE
-    assert shorthand.granularity == authored.granularity
+    assert shorthand.canonical_address == authored.canonical_address
+
+
+def test_bare_aggregate_function_concepts_resolve_at_build():
+    """Any producer of a bare aggregate function, not only the shorthand."""
+    executor = _executor(_SINGLE)
+    environment = executor.environment
+    for name, key in (("suppliers", "supplier_id"), ("nations", "nation_id")):
+        environment.add_concept(
+            function_to_concept(
+                parent=Function(
+                    operator=FunctionType.COUNT,
+                    arguments=[environment.concepts[key].reference],
+                    output_datatype=DataType.INTEGER,
+                    output_purpose=Purpose.METRIC,
+                ),
+                name=name,
+                environment=environment,
+            )
+        )
+    assert [
+        tuple(r) for r in executor.execute_text("select suppliers, nations;")[-1]
+    ] == [(6, 3)]
+    by_nation = "select nation_id, suppliers order by nation_id asc;"
+    assert [tuple(r) for r in executor.execute_text(by_nation)[-1]] == [
+        (10, 3),
+        (20, 2),
+        (30, 1),
+    ]

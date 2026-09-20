@@ -754,11 +754,7 @@ class CTE:
 
             if c.derivation == Derivation.CONSTANT:
                 return True
-            if (
-                c.purpose == Purpose.CONSTANT
-                and isinstance(c.lineage, BuildFunction)
-                and c.lineage.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
-            ):
+            if c.purpose == Purpose.CONSTANT and c.is_aggregate:
                 return True
 
             if self.filter_collapses_to_grain(c):
