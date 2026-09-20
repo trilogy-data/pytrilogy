@@ -191,7 +191,8 @@ def test_else_fires_when_the_key_is_present(derived: Executor):
     ]
 
 
-# `key is null` does not witness absence: both shapes have a NULL key on a REAL row.
+# `key is null` does not witness absence: these shapes have a NULL key or an
+# unbound property on a REAL row.
 _NULLABLE_FK = """
 key customer_id int;
 property customer_id.name string;
@@ -215,6 +216,34 @@ def test_nullable_key_is_a_value_not_absence():
     assert _rows(executor, "select order_id, customer_label") == [
         (100, "ann"),
         (101, "unknown"),
+    ]
+
+
+# `returns` binds its OWN grain keys `~`: a line with no return still has its
+# (order, item) entity, from `lines`, so a derivation keyed on it evaluates.
+_PARTIAL_PROPERTY_SOURCE = """
+key order_id int;
+key item_id int;
+properties <order_id, item_id> (qty int, ret_order int?);
+auto is_returned <- ret_order is not null;
+
+root datasource lines (o: order_id, i: item_id, q: qty)
+grain (order_id, item_id)
+query '''select 1 as o, 10 as i, 5 as q union all select 2, 10, 7''';
+
+root datasource returns (o: ~order_id, i: ~item_id, ro: ret_order)
+grain (order_id, item_id)
+query '''select 1 as o, 10 as i, 1 as ro''';
+"""
+
+
+def test_present_entity_with_an_unbound_property_still_evaluates():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_PARTIAL_PROPERTY_SOURCE)
+    assert _rows(executor, "select order_id, is_returned") == [(1, True), (2, False)]
+    assert _rows(executor, "select order_id, bool_or(is_returned) as any_return") == [
+        (1, True),
+        (2, False),
     ]
 
 

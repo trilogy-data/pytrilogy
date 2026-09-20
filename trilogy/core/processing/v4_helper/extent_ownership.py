@@ -23,6 +23,7 @@ from collections.abc import Iterable
 
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation
+from trilogy.core.models.build import BuildConcept, BuildDatasource
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.join_resolution import licensed_extension_spans
 
@@ -73,6 +74,30 @@ def span_members(
         if address == span
         or build_fd_determines(environment, {span}, address, include_empty_grain=False)
     ]
+
+
+def absent_on_extension(
+    concept: BuildConcept, span: str, environment: BuildEnvironment
+) -> bool:
+    """Whether one of `concept`'s keys names an entity an extension row of
+    `span` has none of.
+
+    An extension row is a row of a source binding the span completely, so it
+    carries whatever that source binds beside it. `orders` binds `~customer_id`:
+    a customer's extension row comes from `customers`, which has no `order_id`,
+    so anything keyed on the order is absent there. `returns` binding
+    `~order_id, ~item_id` is the other shape: the row comes from `lines`, which
+    binds both keys, so `is_returned <- _ret_order is not null` has its entity
+    and evaluates (to false) on it."""
+    present: set[str] = set()
+    for datasource in environment.datasources.values():
+        if not isinstance(datasource, BuildDatasource):
+            continue
+        bound = {column.concept.address for column in datasource.columns}
+        if span in bound and span not in datasource.column_level_partial_addresses:
+            present |= bound
+    keys = concept.keys or (concept.grain.components if concept.grain else set())
+    return any(key not in present for key in keys)
 
 
 def elect_extent_owners(
