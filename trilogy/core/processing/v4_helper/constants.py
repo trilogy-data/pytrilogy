@@ -62,4 +62,15 @@ GROUPING_DERIVATIONS: set[Derivation] = {
     Derivation.GROUP_TO,
 }
 
+# Derivations evaluated against their input row stream as it stands: per row,
+# or (WINDOW) one row ranked against the others. A row padded for a ``~``
+# extension is an input like any other, so it gets a value, or takes a rank, it
+# has no entity to own. An aggregate is not one: it is evaluated OVER the
+# extended rows (`count(order_id)` is 0 for a customer with no order).
+ROW_STREAM_DERIVATIONS: set[Derivation] = {
+    Derivation.BASIC,
+    Derivation.FILTER,
+    Derivation.WINDOW,
+}
+
 FINAL_NODE_ID = "__final__"

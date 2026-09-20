@@ -22,10 +22,11 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from trilogy.core import graph as nx
+from trilogy.core.enums import Derivation
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.join_resolution import licensed_extension_spans
 
-from .constants import FINAL_NODE_ID
+from .constants import FINAL_NODE_ID, ROW_STREAM_DERIVATIONS
 from .functional_dependency import build_fd_determines
 from .models import ExtentOwnership, GroupAttrs
 
@@ -126,11 +127,70 @@ def elect_extent_owners(
         for span in sorted(ownable):
             candidates = [gid for gid, owned in exposes.items() if span in owned]
             owner_by_span[span] = max(candidates, key=rank)
+    # A span with a domain bucket of its own is sourced there and nowhere else.
+    domains = {
+        a.extent_span: gid for gid, a in attrs.items() if a.extent_span in ownable
+    }
+    owner_by_span.update(domains)
 
     permitted: dict[str, frozenset[str]] = {}
     for span, owner in owner_by_span.items():
-        for gid in (owner, *nx.ancestors(group_graph, owner)):
+        if span in domains:
+            # The domain holds the members; whatever reads it extends, except
+            # the row streams that must never see an extension row.
+            allowed = ({owner} | nx.descendants(group_graph, owner)) - _solid_groups(
+                group_graph, attrs, span, environment
+            )
+        else:
+            allowed = {owner} | nx.ancestors(group_graph, owner)
+        for gid in allowed - {FINAL_NODE_ID}:
             permitted[gid] = permitted.get(gid, frozenset()) | {span}
+    carried = {
+        address: gid
+        for gid in domains.values()
+        for address in attrs[gid].primary_members
+    }
     return ExtentOwnership(
-        spans=ownable, owner_by_span=owner_by_span, permitted=permitted
+        spans=ownable,
+        owner_by_span=owner_by_span,
+        permitted=permitted,
+        carried=carried,
     )
+
+
+def _solid_groups(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    span: str,
+    environment: BuildEnvironment,
+) -> set[str]:
+    """Groups that must not see `span`'s extension rows: each row-stream
+    derivation the span does not determine, and the row stream feeding it. A
+    derived concept is NULL where its key's entity is absent, which it can only
+    be if it never reads a row padded to stand in for that entity. An aggregate
+    above one is not part of its row stream, and may extend."""
+    solid: set[str] = set()
+    stack = [
+        gid
+        for gid, a in attrs.items()
+        if a.derivation in ROW_STREAM_DERIVATIONS
+        and not all(
+            build_fd_determines(environment, {span}, address, include_empty_grain=True)
+            for address in a.primary_members
+        )
+    ]
+    while stack:
+        gid = stack.pop()
+        if gid in solid:
+            continue
+        solid.add(gid)
+        stack.extend(
+            parent
+            for parent in group_graph.predecessors(gid)
+            if attrs[parent].derivation in ROW_STREAM_DERIVATIONS
+            or (
+                attrs[parent].derivation == Derivation.ROOT
+                and not attrs[parent].extent_span
+            )
+        )
+    return solid

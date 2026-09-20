@@ -1,9 +1,10 @@
 """A derived concept is a function of its keys: NULL wherever a key is absent.
 
 Oracle is materialization invariance: storing a derivation as a column at its
-grain must never change a query's rows. `OWED` queries are strict xfails: the
-planner still evaluates them over rows padded for a `~` extension. See
-docs/handoff_extension_row_semantics.md.
+grain must never change a query's rows. The planner sources a demanded `~` span
+from a domain bucket of its own (`group_graph._add_span_domain_buckets`), so a
+derivation the span does not determine never reads a padded row. `OWED` queries
+are strict xfails. See docs/handoff_extension_row_semantics.md.
 """
 
 import pytest
@@ -86,14 +87,10 @@ _ACTIVITY = """
 auto activity <- case when count(order_id) by customer_id > 0 then 'active' else 'dormant' end;
 """
 
-# already evaluated on the key's own rows (or NULL-propagating) today
 HOLDS = [
     "select customer_id, coalesce(sum(amount), 0) as total",
     "select customer_id, name where status = 'in-transit'",
     "select customer_id, order_id, order_rank",
-]
-
-OWED = [
     "select customer_id, status",
     "select customer_id, order_id, status",
     "select customer_id, status, count(order_id) as n",
@@ -104,13 +101,19 @@ OWED = [
     "select customer_id, sum(amount_or_zero) as total",
     "select customer_id, label",
     "select customer_id, name, status, amount_or_zero, label",
-    "select customer_id, status, activity",
-    "select status, count(customer_id) as customers",
     "select customer_id, sum(flag) as n_undelivered",
     "select customer_id, order_id, order_seq",
     "select customer_id, order_seq",
     "select customer_id, count(order_seq) as numbered",
     "select customer_id, name where order_seq = 1",
+    "select customer_id, status where status = 'delivered'",
+    "select customer_id, status where name = 'cat'",
+    "select customer_id, status where amount > 15",
+]
+
+OWED = [
+    "select customer_id, status, activity",
+    "select status, count(customer_id) as customers",
 ]
 
 QUERIES = HOLDS + [
@@ -163,7 +166,6 @@ def test_inline_spelling_matches_named(derived: Executor, named: str, inline: st
     )
 
 
-@pytest.mark.xfail(strict=True, reason="owed")
 def test_orderless_customer_has_no_status(derived: Executor):
     assert _rows(derived, "select customer_id, status, count(order_id) as n") == [
         (1, "delivered", 1),

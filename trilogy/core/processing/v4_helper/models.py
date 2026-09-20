@@ -69,6 +69,9 @@ class ExtentOwnership:
     owner_by_span: dict[str, str] = field(default_factory=dict)
     # gid -> spans that group may extend (it owns them, or an owner is downstream)
     permitted: dict[str, frozenset[str]] = field(default_factory=dict)
+    # address -> the span domain group carrying it: on an extension row only
+    # that group has the member's value
+    carried: dict[str, str] = field(default_factory=dict)
 
     def permitted_for(self, gid: str) -> frozenset[str]:
         return self.permitted.get(gid, frozenset())
@@ -77,7 +80,7 @@ class ExtentOwnership:
         return self.spans - self.permitted_for(gid)
 
     def owner_of(self, address: str) -> str | None:
-        return self.owner_by_span.get(address)
+        return self.owner_by_span.get(address) or self.carried.get(address)
 
 
 @dataclass
@@ -146,6 +149,9 @@ class GroupAttrs:
     # physically satisfies or prunes, and the statement's extent routing.
     final_contract: FinalAssemblyContract | None = None
     extent_ownership: ExtentOwnership | None = None
+    # Set on a ROOT group that exists only to carry one ``~`` span's own domain
+    # (`group_graph._add_span_domain_buckets`).
+    extent_span: str = ""
     # Populated for non-FINAL groups after `_compute_concept_sets`.
     input_contracts: tuple[GroupInputContract, ...] = ()
 
@@ -290,6 +296,7 @@ class GroupBucket:
     # only exists to keep distinct buckets at distinct group ids. Ask
     # `nulls_grouping_keys`, never the id string.
     grouping_mode: AggregateGroupingMode = AggregateGroupingMode.STANDARD
+    extent_span: str = ""
 
     @property
     def nulls_grouping_keys(self) -> bool:
