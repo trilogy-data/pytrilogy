@@ -3751,22 +3751,28 @@ class Factory:
             output_purpose=purpose,
         )
 
-    def _window_domain_keys(self, row: Sequence[BuildConcept]) -> list[BuildConcept]:
+    def _window_domain_keys(self, keys: set[str]) -> list[BuildConcept]:
         if not self._model_licenses_extension:
             return []
+        return self._entity_keys(keys)
+
+    def _entity_keys(self, keys: set[str]) -> list[BuildConcept]:
+        """Only an entity KEY witnesses absence: it is never NULL on a real row,
+        where a property is (`?`, a ROLLUP subtotal, a genuine NULL group)."""
         return [
             self._build_concept(self.environment.concepts[key])
-            for key in sorted(_domain_keys(row))
+            for key in sorted(keys)
             if key in self.environment.concepts
+            and self.environment.concepts[key].purpose == Purpose.KEY
         ]
 
     def _keys_present(
         self, keys: set[str]
     ) -> BuildComparison | BuildConditional | None:
         present: BuildComparison | BuildConditional | None = None
-        for key in sorted(k for k in keys if k in self.environment.concepts):
+        for key in self._entity_keys(keys):
             check = BuildComparison(
-                left=self._build_concept(self.environment.concepts[key]),
+                left=key,
                 right=MagicConstants.NULL,
                 operator=ComparisonOperator.IS_NOT,
             )
@@ -4064,7 +4070,8 @@ class Factory:
             arguments=arguments,
             order_by=[self.build(x) for x in final_by],
             over=self._build_over_items(list(base.over)),
-            domain_keys=self._window_domain_keys(arguments),
+            # the ranked argument IS the row: a property ranks value groups
+            domain_keys=self._window_domain_keys({x.address for x in arguments}),
         )
 
     def _build_navigation_window_item(
@@ -4083,7 +4090,9 @@ class Factory:
             order_by=[self.build(x) for x in final_by],
             over=self._build_over_items(list(base.over)),
             offset=base.offset,
-            domain_keys=self._window_domain_keys(get_concept_arguments(built_content)),
+            domain_keys=self._window_domain_keys(
+                _domain_keys(get_concept_arguments(built_content))
+            ),
         )
 
     @_build_dispatch.register
