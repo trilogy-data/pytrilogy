@@ -20,15 +20,11 @@ from dataclasses import dataclass, field
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation, FunctionType, Purpose
+from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.models.author import SelectLineage
 from trilogy.core.models.build import (
     BoolExpr,
-    BuildAggregateWrapper,
     BuildConcept,
-    BuildConceptArgs,
-    BuildFilterItem,
-    BuildFunction,
     BuildGrain,
     BuildRowsetItem,
     BuildWhereClause,
@@ -38,7 +34,6 @@ from trilogy.core.models.build_environment import (
     BuildEnvironment,
     resolve_rowset_content_address,
 )
-from trilogy.core.processing.condition_utility import concepts_implied_non_null
 from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
 
 from .concept_graph import (
@@ -52,7 +47,6 @@ from .constants import (
     FINAL_NODE_ID,
     GROUPING_DERIVATIONS,
     ROW_SHAPE_BARRIER_DERIVATIONS,
-    ROW_STREAM_DERIVATIONS,
     DepthLabel,
     EdgeKind,
     EdgePhase,
@@ -68,7 +62,6 @@ from .edges import (
     remove_edge,
 )
 from .extent_ownership import (
-    absent_on_extension,
     elect_extent_owners,
     licensed_extension_spans,
     span_members,
@@ -86,7 +79,7 @@ from .models import (
     GroupInputContract,
     InputChannel,
 )
-from .projection import output_rowset_base_keys, reads_rows_only
+from .projection import output_rowset_base_keys
 
 # depth_label for the secondary root bucket that feeds d1 (in-WHERE) aggregate
 # calculations. Distinct from ``root`` so the bucket gets its own group id.
@@ -1118,224 +1111,6 @@ def _split_root_dimension_clusters(
         bucket.primary_node_ids = [bucket.primary_node_ids[i] for i in kept]
 
 
-def _span_determines(environment: BuildEnvironment, span: str, address: str) -> bool:
-    return build_fd_determines(environment, {span}, address, include_empty_grain=True)
-
-
-def _null_on_padding(value: object, span: str, environment: BuildEnvironment) -> bool:
-    """Whether `value` is NULL on an extension row of `span` however it is
-    planned: it cannot be non-null unless something absent there is
-    (`sale_price - cost`). Padding already gives the rule's answer, so only a
-    null-opaque derivation (CASE, COALESCE, IS NULL, a window) needs the span
-    kept off its row stream. CONCAT skips NULL arguments on some dialects."""
-    if isinstance(value, BuildConcept):
-        if not absent_on_extension(value, span, environment):
-            return False
-        if value.derivation == Derivation.ROOT:
-            return True
-        value = value.lineage
-    # `content ? condition` is NULL wherever its content is.
-    if isinstance(value, BuildFilterItem):
-        return _null_on_padding(value.content, span, environment)
-    if isinstance(value, BuildFunction) and value.operator == FunctionType.CONCAT:
-        return False
-    return any(
-        _null_on_padding(environment.concepts[address], span, environment)
-        for address in concepts_implied_non_null(value)
-        if address in environment.concepts
-    )
-
-
-def _has_off_span_inline_argument(
-    address: str, span: str, environment: BuildEnvironment
-) -> bool:
-    """An aggregate argument written inline (`sum(coalesce(amount, 0))`) is a
-    derivation no concept node stands for; it is off-span when it reads
-    something absent on `span`'s extension rows."""
-    concept = environment.concepts.get(address)
-    if concept is None or not isinstance(concept.lineage, BuildAggregateWrapper):
-        return False
-    return any(
-        not _null_on_padding(arg, span, environment)
-        and any(
-            absent_on_extension(read, span, environment)
-            for read in arg.concept_arguments
-        )
-        for arg in concept.lineage.function.arguments
-        if isinstance(arg, BuildConceptArgs) and not isinstance(arg, BuildConcept)
-    )
-
-
-def _reads_off_span(
-    members: list[str],
-    span: str,
-    concept_graph: nx.DiGraph,
-    concept_edges: EdgeMap,
-    concept_attrs: dict[str, ConceptAttrs],
-    environment: BuildEnvironment,
-) -> bool:
-    """Whether a row-stream derivation over `members` is keyed on an entity
-    `span`'s extension rows have none of (`absent_on_extension`), and would
-    take a value there all the same. An aggregate ends the walk (it is
-    evaluated over the extended rows), but its inline arguments are row-stream
-    too."""
-    seen = set(members)
-    stack = list(members)
-    while stack:
-        cur = stack.pop()
-        for nxt in concept_graph.successors(cur):
-            if nxt in seen or edge_kind(concept_edges, cur, nxt) != EdgeKind.LINEAGE:
-                continue
-            seen.add(nxt)
-            a = concept_attrs[nxt]
-            if a.derivation == Derivation.AGGREGATE:
-                if _has_off_span_inline_argument(a.address, span, environment):
-                    return True
-                continue
-            if a.derivation not in ROW_STREAM_DERIVATIONS:
-                continue
-            concept = environment.concepts.get(a.address)
-            if (
-                concept is not None
-                and absent_on_extension(concept, span, environment)
-                and not _null_on_padding(concept, span, environment)
-            ):
-                return True
-            stack.append(nxt)
-    return False
-
-
-def _filters_span_domain(
-    address: str,
-    span: str,
-    carried: set[str],
-    output_addresses: frozenset[str],
-    environment: BuildEnvironment,
-) -> bool:
-    """Whether a WHERE reading `address` still filters a span domain's rows.
-
-    The domain reaches FINAL beside the filtered row stream, not through it, so
-    an atom hosted anywhere else is lost on the rows the domain adds back. Two
-    shapes are delivered: a column the domain carries is filtered on the domain
-    itself, and an off-span value read from rows alone is restated at FINAL
-    over the extended rows (`condition_placement._reads_past_span_domain`),
-    which can only read what the statement projects. Anything else (a scalar
-    over an aggregate) has no such host, so the statement gets no domain."""
-    if address in carried:
-        return True
-    concept = environment.concepts.get(address)
-    return (
-        concept is not None
-        and address in output_addresses
-        and not _span_determines(environment, span, address)
-        and (concept.derivation == Derivation.ROOT or reads_rows_only(concept))
-    )
-
-
-def _add_span_domain_buckets(
-    buckets: dict[str, GroupBucket],
-    concept_graph: nx.DiGraph,
-    concept_edges: EdgeMap,
-    concept_attrs: dict[str, ConceptAttrs],
-    environment: BuildEnvironment,
-    output_addresses: frozenset[str],
-    condition_arg_addresses: frozenset[str],
-) -> None:
-    """Give a demanded ``~`` span its own ROOT bucket when the statement derives
-    something the span does not determine.
-
-    A derived concept is a function of its keys and NULL where a key's entity is
-    absent. Sourced with the span, the derivation's inputs are padded and it
-    evaluates over rows that have no such entity (`case ... else 'in-transit'`
-    for a customer with no order). The domain bucket carries the dimension's own
-    rows instead and owns the extent (`elect_extent_owners`): everything feeding
-    the derivation pairs on solid keys, and the extension rows join back above
-    it, at FINAL or at a scalar over an aggregate by the span
-    (`_feed_span_domains_to_on_span_scalars`)."""
-    spans = spans_demanded_by(
-        licensed_extension_spans(environment), output_addresses, environment
-    )
-    # Two families need one joint owner or the FINAL merge pairs their padding
-    # (`_keep_extension_families_together`); a domain per span splits it. And a
-    # domain joins FINAL on the span key, so the statement has to project it.
-    if len(spans) != 1:
-        return
-    for span in sorted(spans & output_addresses):
-        for gid in list(buckets):
-            bucket = buckets[gid]
-            if (
-                bucket.derivation != Derivation.ROOT
-                or bucket.depth_label != DepthLabel.ROOT
-                or bucket.discriminator
-            ):
-                continue
-            carried = set(span_members(span, bucket.primary_members, environment))
-            if span not in carried or carried == set(bucket.primary_members):
-                continue
-            if not all(
-                _filters_span_domain(
-                    address, span, carried, output_addresses, environment
-                )
-                for address in condition_arg_addresses
-            ):
-                continue
-            if not _reads_off_span(
-                bucket.primary_node_ids,
-                span,
-                concept_graph,
-                concept_edges,
-                concept_attrs,
-                environment,
-            ):
-                continue
-            domain = GroupBucket(
-                depth_label=DepthLabel.ROOT,
-                derivation=Derivation.ROOT,
-                grain_components=frozenset(),
-                label=bucket.label,
-                discriminator=f"extent:{span}",
-                extent_span=span,
-            )
-            for addr, node_id in zip(bucket.primary_members, bucket.primary_node_ids):
-                if addr in carried:
-                    domain.primary_members.append(addr)
-                    domain.primary_node_ids.append(node_id)
-                    domain.member_depths[addr] = bucket.member_depths.get(
-                        addr, DepthLabel.ROOT
-                    )
-            buckets[_group_id_for(domain)] = domain
-
-
-def _feed_span_domains_to_on_span_scalars(
-    group_graph: nx.DiGraph,
-    group_edges: EdgeMap,
-    attrs: dict[str, GroupAttrs],
-    environment: BuildEnvironment,
-) -> None:
-    """A scalar over an aggregate by the span is keyed on the span, which IS
-    present on an extension row, so it evaluates there: `case when
-    count(order_id) by customer_id > 0 ... else 'dormant'` is 'dormant' for a
-    customer with no order. The aggregate below it pairs on solid keys, so the
-    scalar reads the span's domain beside it."""
-    for domain_gid, domain in list(attrs.items()):
-        if not domain.extent_span:
-            continue
-        for gid, a in attrs.items():
-            if (
-                a.derivation in ROW_STREAM_DERIVATIONS
-                and a.label == domain.label
-                and all(
-                    _span_determines(environment, domain.extent_span, address)
-                    for address in a.primary_members
-                )
-                and any(
-                    attrs[parent].derivation == Derivation.AGGREGATE
-                    for parent in group_graph.predecessors(gid)
-                )
-            ):
-                add_edge(group_graph, group_edges, domain_gid, gid, EdgeKind.LINEAGE)
-
-
 def _fold_rollup_key_dims(
     concept_graph: nx.DiGraph,
     concept_edges: EdgeMap,
@@ -1443,7 +1218,6 @@ def _materialize_group_graph(
             aggregate_input_grain=bucket.aggregate_input_grain,
             aggregate_distinct_addrs=frozenset(bucket.aggregate_distinct_addrs),
             grouping_mode=bucket.grouping_mode,
-            extent_span=bucket.extent_span,
         )
         group_graph.add_node(gid)
 
@@ -2181,10 +1955,6 @@ def _refresh_final_contract(
         preserve_keys = (
             merge_grain if attrs[gid].derivation == Derivation.ROOT else frozenset()
         )
-        # A span domain pairs on the span alone: widening it to the merge grain
-        # re-sources it through the fact, the row stream it exists to stay off.
-        if attrs[gid].extent_span:
-            preserve_keys = frozenset({attrs[gid].extent_span})
         contributors.append(
             FinalContributorContract(
                 group_id=gid,
@@ -3315,15 +3085,6 @@ def build_group_graph(
         | _post_aggregate_basic_args(mandatory_list),
         _finer_filter_grains(conditions),
     )
-    _add_span_domain_buckets(
-        buckets,
-        concept_graph,
-        concept_edges,
-        concept_attrs,
-        environment,
-        output_addresses,
-        condition_arg_addresses,
-    )
     d1_calc_roots_by_stage, d1_subgraph = _d1_calc_subgraph(
         concept_graph, concept_edges, concept_attrs, environment
     )
@@ -3349,7 +3110,6 @@ def build_group_graph(
         d1_calc_roots_by_stage=d1_calc_roots_by_stage,
         d1_subgraph=d1_subgraph,
     )
-    _feed_span_domains_to_on_span_scalars(group_graph, group_edges, attrs, environment)
     # FINAL must exist before injection so a cross-arm post-merge filter can
     # land on it (no pre-final group can host one); `_color_phases` then colors
     # its merge edges along with the rest.
