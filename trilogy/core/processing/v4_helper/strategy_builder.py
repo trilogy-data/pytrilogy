@@ -971,7 +971,9 @@ def _is_row_preserving_filter(node: StrategyNode) -> bool:
     )
 
 
-def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
+def _fold_passthrough_parents(
+    parents: list[StrategyNode], keep: set[int] | None = None
+) -> list[StrategyNode]:
     """Absorb a parent into a row-preserving sibling that can render it.
 
     When a plain projection B (a non-grouping SelectNode) can render every one
@@ -1016,6 +1018,8 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
         available = parent_output_addresses(b)
         for a in parents:
             if a is b or id(a) in dropped or not a.output_concepts:
+                continue
+            if keep and id(a) in keep:
                 continue
             # Never dissolve a row-shape barrier into a row sibling. Foldable:
             # SelectNode, non-grouping MergeNode, or a row-preserving FilterNode
@@ -3915,6 +3919,9 @@ def _assemble_final_node(
     grouping_sibling = any(node_nulls_grouping_keys(built[g]) for g in contributing)
 
     parents: list[StrategyNode] = []
+    # A span domain contributes ROWS (the span's extension members), so a
+    # sibling that can render its columns still cannot stand in for it.
+    span_domains: set[int] = set()
     for gid in contributing:
         node = built[gid]
         is_root = attrs[gid].derivation == Derivation.ROOT
@@ -4045,15 +4052,16 @@ def _assemble_final_node(
             merge_concepts = [
                 c for c in group_concepts if c not in filter_only_concepts
             ]
-            parents.extend(
-                _wrap_for_grain(
-                    node,
-                    merge_concepts,
-                    environment,
-                    projection_grain,
-                    dedup_orthogonal=grouping_sibling,
-                )
+            wrapped = _wrap_for_grain(
+                node,
+                merge_concepts,
+                environment,
+                projection_grain,
+                dedup_orthogonal=grouping_sibling,
             )
+            if attrs[gid].extent_span:
+                span_domains.update(id(w) for w in wrapped)
+            parents.extend(wrapped)
         else:
             parents.append(node)
 
@@ -4073,7 +4081,7 @@ def _assemble_final_node(
         final_merge_grain,
         environment,
     )
-    parents = _fold_passthrough_parents(parents)
+    parents = _fold_passthrough_parents(parents, keep=span_domains)
     _widen_merge_join_keys(parents, environment, final_merge_grain)
     parents = _fold_covered_contributors(
         parents,

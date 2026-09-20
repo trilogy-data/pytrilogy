@@ -41,6 +41,7 @@ from trilogy.core.processing.condition_utility import (
     conditions_mutually_exclusive,
     gate_allowed_values,
 )
+from trilogy.core.processing.v4_helper.constants import ROW_STREAM_DERIVATIONS
 from trilogy.core.processing.v4_helper.functional_dependency import build_fd_closure
 
 
@@ -79,19 +80,27 @@ def _build_datasources(environment: BuildEnvironment) -> list[BuildDatasource]:
 def _proven_bound(
     conditions: BuildWhereClause | None,
     datasources: list[BuildDatasource],
+    environment: BuildEnvironment,
 ) -> set[str]:
     """WHERE-proven non-null addresses that are physically bound somewhere.
 
-    Restricting proofs to bound columns guards against tautologies: a derived
-    ``coalesce(x, 5) is not null`` proves the derivation's own address non-null
-    while saying nothing about any row's origin, so it must not count as
-    evidence that extension rows are filtered out.
+    A proven derivation counts through its keys: a row-stream derivation is a
+    function of its keys and NULL wherever one's entity is absent, so
+    ``status = 'delivered'`` proves an order exists exactly as ``order_id is
+    not null`` would. An aggregate proves nothing about a row's origin
+    (``count(order_id) by customer_id`` is 0, not NULL, for an orderless
+    customer), and anything keyed inside the span's own closure is filtered out
+    by ``_extension_killed``.
     """
     if conditions is None:
         return set()
     proven = condition_proves_non_null(conditions.conditional)
     if not proven:
         return set()
+    for address in list(proven):
+        concept = environment.concepts.get(address)
+        if concept is not None and concept.derivation in ROW_STREAM_DERIVATIONS:
+            proven |= set(concept.keys or ())
     return proven & _bound_spellings(datasources)
 
 
@@ -252,7 +261,7 @@ def heal_pinned_partials(
     ]
     if not partial_hosts:
         return
-    proven_bound = _proven_bound(conditions, datasources)
+    proven_bound = _proven_bound(conditions, datasources, environment)
     if not proven_bound:
         return
     referenced_bound = (environment.statement_authored_addresses or set()) & (
