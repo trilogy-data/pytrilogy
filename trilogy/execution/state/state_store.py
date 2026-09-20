@@ -16,6 +16,14 @@ from trilogy.core.models.datasource import (
 )
 from trilogy.core.models.environment import Environment
 from trilogy.execution.state.cache import ColumnStatsCache
+from trilogy.execution.state.declaration import (
+    DeclarationKey,
+    canonical,
+    declaration_key,
+    group_declarations,
+    rekey_partitions,
+    rekey_watermark,
+)
 from trilogy.execution.state.isolation import hidden_datasources
 from trilogy.execution.state.partitions import (
     PartitionObservation,
@@ -140,6 +148,10 @@ class BaseStateStore:
         # describes the PRE-refresh build, so once invalidate*() runs the
         # claim must not resurrect — same rule as re-seeding watermarks.
         self._model_refreshed: set[str] = set()
+        # ds_id -> the declaration it spells. Every spelling of a declaration
+        # reads the same bytes, so one probe serves them all and one refresh
+        # invalidates them all — see ``declaration.py``.
+        self._declarations: dict[str, DeclarationKey] = {}
         # Mutations to the caches happen from parallel managed-node executions;
         # serialize them to keep the dicts consistent.
         self._lock = threading.Lock()
@@ -161,16 +173,63 @@ class BaseStateStore:
         return result
 
     def invalidate(self, ds_id: str) -> None:
-        """Drop cached watermark for a single datasource.
+        """Drop cached watermarks for a datasource and every other spelling
+        of its declaration — a survivor would be shared straight back.
 
         Also clears concept_max_watermarks (cheap to recompute and depends on
         the full root set).
         """
         with self._lock:
-            self.watermarks.pop(ds_id, None)
-            self.partitions.pop(ds_id, None)
-            self._model_refreshed.add(ds_id)
+            declaration = self._declarations.get(ds_id)
+            spellings = {ds_id} | {
+                other
+                for other, key in self._declarations.items()
+                if declaration is not None and key == declaration
+            }
+            for spelling in spellings:
+                self.watermarks.pop(spelling, None)
+                self.partitions.pop(spelling, None)
+                self._model_refreshed.add(spelling)
             self.concept_max_watermarks.clear()
+
+    def _index_declarations(self, env: Environment) -> None:
+        with self._lock:
+            for ds in env.datasources.values():
+                self._declarations[ds.identifier] = declaration_key(ds)
+
+    def _shared_watermark(
+        self, ds: Datasource, env: Environment
+    ) -> DatasourceWatermark | None:
+        """Another spelling's probe of this declaration, translated onto
+        ``ds``'s own concept addresses. None means probe."""
+        key = declaration_key(ds)
+        for other in list(env.datasources.values()):
+            if other.identifier == ds.identifier or declaration_key(other) != key:
+                continue
+            with self._lock:
+                held = self.watermarks.get(other.identifier)
+            if held is None:
+                continue
+            shared = rekey_watermark(held, other, ds)
+            if shared is not None:
+                return shared
+        return None
+
+    def _shared_partitions(
+        self, ds: Datasource, env: Environment
+    ) -> tuple[list[PartitionObservation], list[PartitionObservation]] | None:
+        key = declaration_key(ds)
+        for other in list(env.datasources.values()):
+            if other.identifier == ds.identifier or declaration_key(other) != key:
+                continue
+            with self._lock:
+                held = self.partitions.get(other.identifier)
+            if held is None:
+                continue
+            shared = rekey_partitions(held, other, ds)
+            if shared is not None:
+                return shared
+        return None
 
     def invalidate_address(self, env: Environment, address: str) -> None:
         """Drop cached watermarks and probe memo for every datasource at a
@@ -241,6 +300,11 @@ class BaseStateStore:
     def watermark_asset(
         self, datasource: Datasource, executor: Executor
     ) -> DatasourceWatermark:
+        self._declarations[datasource.identifier] = declaration_key(datasource)
+        shared = self._shared_watermark(datasource, executor.environment)
+        if shared is not None:
+            self.watermarks[datasource.identifier] = shared
+            return shared
         if is_missing_local_file(datasource):
             watermarks = DatasourceWatermark(keys={})
             self.watermarks[datasource.identifier] = watermarks
@@ -285,6 +349,12 @@ class BaseStateStore:
             cached = self.partitions.get(ds_id)
         if cached is not None:
             return cached
+        self._declarations[ds_id] = declaration_key(ds)
+        shared = self._shared_partitions(ds, env)
+        if shared is not None:
+            with self._lock:
+                self.partitions[ds_id] = shared
+            return shared
         if root_assets is None:
             root_assets = {d.identifier for d in env.datasources.values() if d.is_root}
         probed = (
@@ -311,6 +381,7 @@ class BaseStateStore:
     ) -> dict[str, DatasourceWatermark]:
         """Watermark all datasources in the environment."""
         skip_datasources = skip_datasources or set()
+        self._index_declarations(env)
 
         needed_concepts: set[str] = set()
         for ds in env.datasources.values():
@@ -333,8 +404,12 @@ class BaseStateStore:
                         if ref.address in needed_concepts
                     ]
                     if target_refs:
-                        watermark = get_concept_max_watermarks(
-                            ds, target_refs, executor
+                        shared = self._shared_watermark(ds, env)
+                        wanted = {ref.address for ref in target_refs}
+                        watermark = (
+                            shared
+                            if shared is not None and wanted <= set(shared.keys)
+                            else get_concept_max_watermarks(ds, target_refs, executor)
                         )
                         if watermark.keys:
                             self.watermarks[ds.identifier] = watermark
@@ -620,11 +695,16 @@ class BaseStateStore:
         self._ensure_concept_max_watermarks(env, executor, root_assets)
 
         stale: list[StaleAsset] = []
+        # One verdict per declaration, reached through its canonical spelling:
+        # the other spellings name the same table, and judging each would plan
+        # the same rebuild once per import path. A declaration is skipped when
+        # any spelling of it is — the caller named the table, not the path.
         # Materialized: is_stale's partition probe hides non-root datasources for
-        # the duration of its query, mutating this dict mid-iteration.
-        for ds_id in list(env.datasources):
-            if ds_id in skip_datasources:
+        # the duration of its query, mutating the env's dict mid-iteration.
+        for group in list(group_declarations(env.datasources.values()).values()):
+            if any(ds.identifier in skip_datasources for ds in group):
                 continue
+            ds_id = canonical(group).identifier
             asset = self.is_stale(env, executor, ds_id, root_assets=root_assets)
             if asset is not None:
                 stale.append(asset)

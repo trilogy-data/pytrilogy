@@ -117,6 +117,11 @@ def parse_text(
     )
     start = datetime.now()
 
+    # ``root`` is a file for every caller that parses one, and a directory for
+    # the few that only want a working path.
+    declaring = root if root is not None and root.suffix else None
+    previous = environment.declaring_file
+    environment.declaring_file = declaring or previous
     try:
         document = parse_syntax(text)
         output = parser.parse(document, ephemeral=ephemeral)
@@ -127,5 +132,7 @@ def parse_text(
         )
     except SyntaxError as e:
         raise InvalidSyntaxException(str(e)).with_traceback(e.__traceback__)
+    finally:
+        environment.declaring_file = previous
 
     return environment, output

@@ -21,6 +21,39 @@ are canonical; across environments the bridge is **physical**:
   identifier, which only matches when the namespaces — and therefore the inner
   addresses — match too; a non-matching identifier just re-probes.
 
+### Declarations, not identifiers (`declaration.py`)
+
+A datasource is declared once, in one file, and reached by one identifier per
+import path to that file (`stages`, `stage.stages`, `vehicle.stage.stages`).
+State belongs to the **declaration** — `(physical address, Datasource.declared_in,
+declared name)` — and every identifier is a view of it.
+
+- `Datasource.declared_in` is stamped by `Environment.add_datasource` from the
+  file being parsed (`env_file_path` for an imported file, `declaring_file` for
+  the span of an entrypoint parse) and carried through `with_namespace`. It is
+  never set on an imported copy.
+- **One probe per declaration.** `watermark_asset`, the root branch of
+  `watermark_all_assets` and `partition_asset` first look for another
+  spelling's result and translate it through the physical column
+  (`rekey_watermark`). A key with no column to bridge through declines, and the
+  spelling probes for itself.
+- **One verdict per declaration.** `get_stale_assets` judges the canonical
+  spelling (shortest import path) and skips a declaration when any spelling of
+  it is skipped. `PhaseRecorder.record_plan` files that verdict under every
+  spelling.
+- **`invalidate(ds_id)` drops every spelling**, or the survivor's pre-refresh
+  watermark would be shared straight back and the asset refreshed twice.
+- **A snapshot holds one entry per declaration**: `datasource_id` is the
+  declared name, `script` the declaring file, `aliases` the identifiers. Both
+  producers (`snapshot_for_parsed_script`, `_snapshot_from_directory`) build the
+  entry from the spelling that holds the evidence (`evidenced_spelling`), since
+  watermark keys are addresses in one spelling's namespace. The directory probe
+  judges an address only in its owner script, so without this its other
+  spellings were emitted as separate, unjudged entries reading `fresh` or
+  `unknown` beside the owner's `stale`.
+- `tests/scripts/test_state_declarations.py` holds the two producers, and
+  `refresh` pointed at a script versus its directory, to identical output.
+
 ### BaseStateStore
 
 Central class for watermark collection and staleness detection.

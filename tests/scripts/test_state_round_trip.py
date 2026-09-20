@@ -323,9 +323,15 @@ def test_subdirectory_scripts_key_against_the_config_root(runner, tmp_path):
     }
     owners = {a.address: a.owner_script for a in snapshot.assets}
     assert owners["data/target_events.parquet"] == "models/base.preql"
-    # The defining script is recorded project-relative too, not as a basename.
-    scripts = {ds.script for asset in snapshot.assets for ds in asset.datasources}
-    assert scripts == {"models/base.preql"}
+    # The declaring script is recorded project-relative too, not as a basename.
+    scripts = {
+        asset.address: {ds.script for ds in asset.datasources}
+        for asset in snapshot.assets
+    }
+    assert scripts == {
+        "data/target_events.parquet": {"models/base.preql"},
+        "data/src_events.parquet": {"models/source.preql"},
+    }
 
     b = tmp_path / "checkout_b" / "proj"
     src_b, target_b = _nested_checkout(b, AHEAD_ROWS)

@@ -867,6 +867,11 @@ class Environment:
     # TODO: support freezing environments to avoid mutation
     frozen: bool = False
     env_file_path: Path | str | None = None
+    # The entrypoint file being parsed into this environment, for the span of
+    # that parse. ``env_file_path`` names an imported file for its whole life;
+    # an entrypoint environment outlives any one file, so its declarations are
+    # attributed per parse instead. See ``Datasource.declared_in``.
+    declaring_file: Path | str | None = None
     parameters: dict[str, Any] = field(default_factory=dict)
     # (content stamp, map) for fk_derived_keys.
     _fk_derived_keys: tuple[tuple[int, int], dict[str, frozenset[str]]] | None = None
@@ -1445,7 +1450,7 @@ class Environment:
         # Copy to list to avoid mutation issues during self-import
         if projection is None:
             for _, datasource in list(source.datasources.items()):
-                self.add_datasource(datasource)
+                self.add_datasource(datasource, imported=True)
                 self.imported.datasources.add(datasource.identifier)
             for key, val in list(source.alias_origin_lookup.items()):
                 self.alias_origin_lookup[key] = val
@@ -1462,7 +1467,7 @@ class Environment:
             return self
 
         for datasource in projection.datasources:
-            self.add_datasource(datasource)
+            self.add_datasource(datasource, imported=True)
             self.imported.datasources.add(datasource.identifier)
         for key, val in projection.alias_origins:
             self.alias_origin_lookup[key] = val
@@ -1704,11 +1709,15 @@ class Environment:
         self,
         datasource: Datasource,
         meta: Meta | None = None,
+        imported: bool = False,
     ):
         if self.frozen:
             raise FrozenEnvironmentException(
                 "Environment is frozen, cannot add datasource"
             )
+        origin = self.declaring_file or self.env_file_path
+        if not imported and datasource.declared_in is None and origin:
+            datasource.declared_in = str(origin)
         if datasource.is_root and (
             datasource.freshness_by or datasource.incremental_by
         ):

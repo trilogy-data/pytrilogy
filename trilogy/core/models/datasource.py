@@ -292,6 +292,10 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     # column is missing values even within the table's complete-for slice —
     # and survive a covering UNION. Table-level stamps do not.
     column_level_partial_addresses: set[str] = Field(default_factory=set)
+    # The file this datasource was declared in; None when it was declared in
+    # the entrypoint text itself. With ``name`` it identifies the declaration
+    # across every namespace an import chain spells it under.
+    declared_in: str | None = None
 
     @property
     def safe_address(self) -> str:
@@ -441,6 +445,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
                 address_with_namespace(addr, namespace)
                 for addr in self.column_level_partial_addresses
             },
+            declared_in=self.declared_in,
         )
         return new
 
