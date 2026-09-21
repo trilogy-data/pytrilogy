@@ -122,6 +122,17 @@ HOLDS = [
     "select status, count(customer_id) as customers",
     # a WHERE over an off-span column the statement does not project
     "select customer_id, status where amount is null",
+    # the span is never named and the aggregate groups by a member it carries:
+    # the solid stream holds that member for customers WITH an order only
+    "select name, count(status) as n",
+    "select status, name, count(order_id) as n",
+    "select name, label, order_seq",
+    # aggregates over the region beside aggregates absent on it
+    "select status, count(customer_id) as c, sum(amount) as s",
+    "select status, count(customer_id) as c, count(order_id) as o",
+    "select status, count(name) as n",
+    "select label, count(customer_id) as n",
+    "select status, activity, count(customer_id) as n",
 ]
 
 OWED: list[str] = []
@@ -254,3 +265,64 @@ def test_rollup_subtotal_row_keeps_its_value(derived: Executor):
         "select customer_id, coalesce(sum(amount), 0) as total by rollup (customer_id)"
     )
     assert _rows(derived, query) == [(1, 30), (2, 30), (3, 0), (None, 60)]
+
+
+# An OPTIONAL entity: `returns` is looked up through its `~` bound (order, item)
+# and brings a further key. A line with no return has no `return_id` entity, so
+# a derivation keyed on it is NULL there, not its COALESCE default.
+_LINES = """
+key order_id int;
+key item_id int;
+key return_id int;
+properties <order_id, item_id> (qty int);
+property return_id.reason string?;
+
+root datasource lines (o: order_id, i: item_id, q: qty)
+grain (order_id, item_id)
+query '''select 1 as o, 10 as i, 5 as q union all select 2, 10, 7 union all select 3, 11, 9''';
+"""
+
+_OPTIONAL_DERIVED = (
+    _LINES
+    + """
+root datasource returns (o: ~order_id, i: ~item_id, r: return_id, reason: reason)
+grain (return_id)
+query '''select 1 as o, 10 as i, 900 as r, 'broken' as reason union all select 3, 11, 901, null''';
+
+auto reason_label <- coalesce(reason, 'none');
+"""
+)
+
+_OPTIONAL_MATERIALIZED = (
+    _LINES
+    + """
+property return_id.reason_label string;
+
+root datasource returns (
+    o: ~order_id, i: ~item_id, r: return_id, reason: reason, rl: reason_label,
+)
+grain (return_id)
+query '''select 1 as o, 10 as i, 900 as r, 'broken' as reason, 'broken' as rl
+union all select 3, 11, 901, null, 'none' ''';
+"""
+)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "select order_id, item_id, reason_label",
+        "select order_id, reason_label",
+        "select item_id, qty, reason_label",
+        "select order_id, item_id, qty, return_id, reason_label",
+        "select order_id, count(reason_label) as n",
+    ],
+)
+def test_optional_entity_is_absent_on_rows_without_it(query: str):
+    derived = Dialects.DUCK_DB.default_executor()
+    derived.execute_text(_OPTIONAL_DERIVED)
+    materialized = Dialects.DUCK_DB.default_executor()
+    materialized.execute_text(_OPTIONAL_MATERIALIZED)
+    rows = _rows(derived, query)
+    assert rows == _rows(materialized, query)
+    assert any(r[-1] in (None, 0) for r in rows)

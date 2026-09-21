@@ -425,3 +425,65 @@ def test_partial_sources_completing_each_other_each_lack_the_others_rows(monkeyp
     )
     assert pinned.binding_is_complete("web_orders", ORDER)
     assert not pinned.binding_is_complete("store_orders", ORDER)
+
+
+def _domains(info) -> dict[str, frozenset[str]]:
+    return {
+        gid: attrs.extent_spans
+        for gid, attrs in info.group_attrs.items()
+        if attrs.extent_spans
+    }
+
+
+def test_basic_over_an_aggregate_is_keyed_on_what_it_reads():
+    keyspace = _keyspace(
+        _DERIVED, "select customer_id, coalesce(sum(amount), 0) as total;"
+    )
+    (extension,) = keyspace.extensions
+    assert keyspace.defined_on("local.total", extension)
+
+
+def test_extension_row_carries_what_its_span_reaches():
+    keyspace = _keyspace(_DERIVED, "select customer_id, name, status;")
+    (extension,) = keyspace.extensions
+    assert keyspace.carried_on("local.name", extension)
+    assert not keyspace.carried_on("local.status", extension)
+    assert keyspace.region_of(extension.spans) is extension
+
+
+def test_region_with_an_absent_derivation_gets_a_domain():
+    info, _ = _plan(_DERIVED, "select customer_id, status;")
+    assert set(_domains(info).values()) == {frozenset({CUSTOMER})}
+
+
+def test_region_gets_no_domain_when_nothing_absent_takes_a_value():
+    info, _ = _plan(_DERIVED, "select customer_id, amount;")
+    assert not _domains(info)
+
+
+def test_unnamed_span_rides_the_domain_as_a_hidden_member():
+    info, _ = _plan(_DERIVED, "select name, status;")
+    ((gid, spans),) = _domains(info).items()
+    assert spans == frozenset({CUSTOMER})
+    assert CUSTOMER in info.group_attrs[gid].secondary_members
+    assert CUSTOMER in info.group_attrs[gid].output_concepts
+
+
+def test_each_extension_family_gets_its_own_domain():
+    info, _ = _plan(
+        FIELD_REPORT,
+        "auto big <- case when price > 1 then 'big' else 'small' end;"
+        " select order_id, item_id, user_id, product_id, big;",
+    )
+    assert len(_domains(info)) == len(info.keyspace.extensions) == 2
+
+
+def test_aggregate_over_a_region_reads_its_domain():
+    info, _ = _plan(_DERIVED, "select status, count(customer_id) as customers;")
+    ((domain, _),) = _domains(info).items()
+    readers = {
+        info.group_attrs[gid].derivation.value
+        for gid in info.group_graph.successors(domain)
+        if gid != FINAL_NODE_ID
+    }
+    assert "aggregate" in readers

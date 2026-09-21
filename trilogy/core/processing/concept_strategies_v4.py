@@ -553,6 +553,7 @@ def _build_from_graph(
     # environment; a rowset body planned mid-build recurses through here, so
     # restore whatever the outer plan had rather than leaving it cleared.
     outer_extent_free = environment.extent_free_spans
+    outer_carried = environment.extent_free_carried
     outer_in_play = environment.in_play_spans
     environment.in_play_spans = keyspace.in_play_spans
     try:
@@ -570,6 +571,7 @@ def _build_from_graph(
         )
     finally:
         environment.extent_free_spans = outer_extent_free
+        environment.extent_free_carried = outer_carried
         environment.in_play_spans = outer_in_play
     audit_plan(
         keyspace,

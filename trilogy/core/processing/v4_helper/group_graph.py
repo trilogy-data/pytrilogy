@@ -74,6 +74,7 @@ from .extent_ownership import (
 from .functional_dependency import build_fd_determines, concept_attr_fd_determines
 from .group_behaviors import Behavior, behavior_for
 from .group_rules import DEFAULT_RULE, GROUPING_RULES
+from .keyspace_audit import audit_undelivered_where
 from .models import (
     ConceptAttrs,
     FinalAssemblyContract,
@@ -1204,7 +1205,7 @@ def _filters_region_domain(
     an atom hosted anywhere else is lost on the rows the domain adds back. Two
     shapes are delivered: a column the domain carries is filtered on the domain
     itself, and an absent value read from rows alone is restated at FINAL
-    over the extended rows (`condition_placement._reads_past_span_domain`),
+    over the extended rows (`condition_placement._reads_past_region_domain`),
     riding there as a hidden column when the statement does not project it.
     Anything else (a scalar over an aggregate) has no such host, so the
     statement gets no domain."""
@@ -1225,6 +1226,16 @@ def _splits_for_region(bucket: GroupBucket) -> bool:
         and bucket.depth_label == DepthLabel.ROOT
         and (not bucket.discriminator or bucket.discriminator.startswith("dim:"))
     )
+
+
+def _mixes_region(bucket: GroupBucket, region: Region, keyspace: Keyspace) -> bool:
+    held = [keyspace.carried_on(m, region) for m in bucket.primary_members]
+    return any(held) and not all(held)
+
+
+def _keyed_by_region(bucket: GroupBucket, region: Region) -> bool:
+    keys = frozenset(bucket.discriminator.removeprefix("dim:").split("|"))
+    return bucket.discriminator.startswith("dim:") and keys <= region.spans
 
 
 def _add_region_domain_buckets(
@@ -1252,29 +1263,43 @@ def _add_region_domain_buckets(
         ):
             continue
         for label in sorted({b.label for b in buckets.values()}):
-            sources = [
+            eligible = [
                 b
                 for b in buckets.values()
-                if b.label == label
-                and _splits_for_region(b)
-                and any(not keyspace.carried_on(m, region) for m in b.primary_members)
+                if b.label == label and _splits_for_region(b)
             ]
+            # the buckets that pad: something the region carries sourced
+            # beside something absent on it. Their rows become the solid stream
+            sources = [b for b in eligible if _mixes_region(b, region, keyspace)]
+            # a dim peel keyed by the span is the region's own rows already;
+            # the domain takes its members too, or FINAL reads them off a solid
+            # sibling that passes them through
             carried = {
                 m
-                for b in sources
+                for b in eligible
+                if b in sources or _keyed_by_region(b, region)
                 for m in b.primary_members
                 if keyspace.carried_on(m, region)
             }
-            if not carried:
+            if (
+                not sources
+                or not carried
+                or not _evaluates_where_absent(
+                    label, region, keyspace, concept_attrs, environment
+                )
+            ):
                 continue
-            if not all(
-                _filters_region_domain(address, region, keyspace, carried, environment)
+            undelivered = sorted(
+                address
                 for address in condition_arg_addresses
-            ):
-                continue
-            if not _evaluates_where_absent(
-                label, region, keyspace, concept_attrs, environment
-            ):
+                if not _filters_region_domain(
+                    address, region, keyspace, carried, environment
+                )
+            )
+            if undelivered:
+                # phase 5 (WHERE by region): no host filters the domain's rows
+                # by these, so the region keeps its padded plan
+                audit_undelivered_where(region, undelivered)
                 continue
             domain = GroupBucket(
                 depth_label=DepthLabel.ROOT,
@@ -1284,7 +1309,9 @@ def _add_region_domain_buckets(
                 discriminator=f"extent:{'|'.join(sorted(region.spans))}",
                 extent_spans=region.spans,
             )
-            for bucket in sources:
+            for bucket in eligible:
+                if bucket not in sources and not _keyed_by_region(bucket, region):
+                    continue
                 for addr, node_id in zip(
                     bucket.primary_members, bucket.primary_node_ids
                 ):
@@ -1581,6 +1608,7 @@ def _inject_conditions(
     statement_relation_addresses: frozenset[str],
     environment: BuildEnvironment,
     staged_conditions: list[BuildWhereClause] | None = None,
+    keyspace: Keyspace | None = None,
 ) -> set[str]:
     """Apply the typed condition-placement plan to the mutable group attrs."""
     condition_group_ids: set[str] = set()
@@ -1595,6 +1623,7 @@ def _inject_conditions(
         concept_attrs,
         statement_relation_addresses,
         staged_conditions,
+        keyspace,
     )
     for placement in placements:
         for gid in placement.group_ids:
@@ -3441,6 +3470,7 @@ def build_group_graph(
         _statement_relation_addresses(environment),
         environment,
         staged_conditions,
+        keyspace,
     )
     condition_group_ids |= _propagate_raw_filters_to_d1_roots(
         group_graph,

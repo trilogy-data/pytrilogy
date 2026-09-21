@@ -3048,6 +3048,26 @@ def _aggregate_reused_from_twin(
     return False
 
 
+def _distinct_projection(
+    node: StrategyNode, concepts: list[BuildConcept], environment: BuildEnvironment
+) -> StrategyNode:
+    """`node` deduplicated to `concepts`, whole; itself when already there."""
+    usable = {o.address for o in node.usable_outputs}
+    outputs = unique([c for c in concepts if c.address in usable], "address")
+    grain = set(node.grain.components) if node.grain else set()
+    if not outputs or (grain and grain <= {c.address for c in outputs}):
+        return node
+    return GroupNode(
+        output_concepts=outputs,
+        input_concepts=outputs,
+        environment=environment,
+        parents=[node],
+        partial_concepts=node.partial_concepts,
+        preexisting_conditions=node.preexisting_conditions,
+        force_group=True,
+    )
+
+
 def _wrap_for_grain(
     parent_node: StrategyNode,
     needed_concepts: list[BuildConcept],
@@ -4079,15 +4099,20 @@ def _assemble_final_node(
             merge_concepts = [
                 c for c in group_concepts if c not in filter_only_concepts
             ]
-            wrapped = _wrap_for_grain(
-                node,
-                merge_concepts,
-                environment,
-                projection_grain,
-                dedup_orthogonal=grouping_sibling,
-            )
             if attrs[gid].extent_spans:
+                # A region's rows are identified by ALL its spans together:
+                # bucketing the keys by natural grain would stitch each back
+                # on its own and NULL the rest on the extension rows.
+                wrapped = [_distinct_projection(node, merge_concepts, environment)]
                 span_domains.update(id(w) for w in wrapped)
+            else:
+                wrapped = _wrap_for_grain(
+                    node,
+                    merge_concepts,
+                    environment,
+                    projection_grain,
+                    dedup_orthogonal=grouping_sibling,
+                )
             parents.extend(wrapped)
         else:
             parents.append(node)
@@ -4323,6 +4348,7 @@ def build_strategy_node(
         # Scope the group's extent routing over its whole build, including the
         # consumer-side re-sources `_parent_nodes_for` plans below.
         environment.extent_free_spans = ownership.suppressed_for(gid)
+        environment.extent_free_carried = ownership.suppressed_carried_for(gid)
         a = attrs[gid]
         # Only the FINAL sink carries a None derivation, and it is skipped above.
         assert a.derivation is not None
@@ -4677,6 +4703,7 @@ def build_strategy_node(
     # The FINAL assembly is where the owner and the extent-free branches meet;
     # it must see every span again to host the owner's rows.
     environment.extent_free_spans = frozenset()
+    environment.extent_free_carried = {}
     if not built:
         return None
     feeder_cache = _CleanFeederCache(environment, g, history)
