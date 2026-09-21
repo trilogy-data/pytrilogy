@@ -2640,6 +2640,7 @@ def _add_relation_axis_contributors(
 
 
 def _add_region_domain_contributors(
+    group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     built: dict[str, StrategyNode],
     per_group: dict[str, list[BuildConcept]],
@@ -2648,10 +2649,14 @@ def _add_region_domain_contributors(
     everything absent there. The mandatory cover only sees columns, so a domain
     whose every column some sibling also renders (`select order_id, max(amount)
     by user_id`: the user with no order is a row of all NULLs) is added as a
-    contributor of no concepts."""
+    contributor of no concepts. Not when a contributor already read it: an
+    aggregate evaluated over the region's rows has them in its groups."""
     for gid in sorted(built):
-        if attrs[gid].extent_spans:
-            per_group.setdefault(gid, [])
+        if not attrs[gid].extent_spans or gid in per_group:
+            continue
+        readers = nx.descendants(group_graph, gid)
+        if not any(other in readers for other in per_group):
+            per_group[gid] = []
 
 
 def _add_partial_completion_contributors(
@@ -3771,7 +3776,7 @@ def _assemble_final_node(
         group_graph, built, per_group, final_contract, environment
     )
     _add_partial_completion_contributors(built, per_group, environment)
-    _add_region_domain_contributors(attrs, built, per_group)
+    _add_region_domain_contributors(group_graph, attrs, built, per_group)
     _fold_descendant_contributors(group_graph, attrs, built, per_group)
     _promote_final_aliases_to_grouping_contributors(
         group_graph, attrs, built, per_group, mandatory_list, environment
