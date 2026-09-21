@@ -225,3 +225,134 @@ def test_election_from_the_keyspace_drops_a_span_no_read_source_binds():
         info.keyspace.output_demanded_spans,
     )
     assert elected.spans == frozenset()
+
+
+_GRAINLESS_DIMENSION = """
+key customer_id int;
+key nation_id int;
+property nation_id.nation_name string;
+key order_id int;
+
+datasource nations (nation_id: nation_id, nation_name: nation_name)
+address nations;
+
+datasource customers (customer_id: customer_id, nation_id: nation_id)
+address customers;
+
+datasource orders (order_id: order_id, customer_id: ~customer_id)
+grain (order_id) address orders;
+"""
+
+
+def test_source_without_a_grain_is_identified_by_its_own_key():
+    """`customers` declares no grain; `nation_id` identifies `nations`, so
+    `customers` is one row per customer and an order reaches its nation."""
+    keyspace = _keyspace(_GRAINLESS_DIMENSION, "select order_id, nation_name;")
+    (extension,) = keyspace.extensions
+    assert extension.present == frozenset({"local.nation_id"})
+    assert extension.spans == frozenset({CUSTOMER})
+
+
+_PROPERTY_AS_GRAIN = """
+key id int;
+property id.region string;
+property id.amount int;
+
+datasource fact (id: id, region: ~?region, amount: amount)
+grain (id) address fact;
+
+datasource region_dim (region: region)
+grain (region) address region_dim;
+"""
+
+
+def test_property_identifying_a_source_is_an_entity():
+    keyspace = _keyspace(_PROPERTY_AS_GRAIN, "select region, sum(amount) as total;")
+    (extension,) = keyspace.extensions
+    assert extension.present == frozenset({"local.region"})
+    assert keyspace.output_demanded_spans == frozenset({"local.region"})
+
+
+def test_row_computed_key_lives_on_its_arguments_entity():
+    keyspace = _keyspace(
+        _DERIVED + "auto name_key <- upper(name);",
+        "select name_key, count(order_id) as n;",
+    )
+    assert keyspace.keys_by_address["local.name_key"] == frozenset({CUSTOMER})
+    assert keyspace.output_demanded_spans == frozenset({CUSTOMER})
+
+
+_GENERATED_DOMAIN = """
+key orid int;
+auto orid_2 <- unnest([1, 2, 3, 4, 5]);
+property orid.val int;
+
+datasource orders (orid: ~orid, val: val)
+grain (orid) address orders;
+
+merge orid into ~orid_2;
+"""
+
+
+def test_generated_key_is_the_complete_side_of_a_partial_merge():
+    keyspace = _keyspace(_GENERATED_DOMAIN, "select orid_2, val;")
+    (base,) = keyspace.regions
+    assert base.completes == frozenset({"local.orid"})
+    assert keyspace.output_demanded_spans == frozenset({"local.orid"})
+
+
+_BRIDGED = """
+key engine_id int;
+property engine_id.engine_group string;
+key stage_id int;
+key vehicle_id int;
+key launch_id int;
+
+datasource engines (engine_id: engine_id, engine_group: engine_group)
+grain (engine_id) address engines;
+
+datasource stages (stage_id: stage_id, vehicle_id: vehicle_id, engine_id: ~engine_id)
+grain (stage_id) address stages;
+
+datasource launches (launch_id: launch_id, vehicle_id: vehicle_id)
+grain (launch_id) address launches;
+"""
+
+
+def test_fan_out_bridge_keeps_the_unmatched_members_a_region():
+    """No lookup leads from a launch to its engines (a vehicle has many
+    stages), so no single source carries both; `stages` is the bridge."""
+    keyspace = _keyspace(_BRIDGED, "select engine_group, count(launch_id) as n;")
+    (extension,) = keyspace.extensions
+    assert extension.present == frozenset({"local.engine_id"})
+    assert extension.spans == frozenset({"local.engine_id"})
+
+
+_PEER_PARTIALS = """
+key order_id int;
+property order_id.web_id int;
+property order_id.store_id int;
+
+datasource web_orders (order_id: ~order_id, web_id: web_id)
+grain (order_id) address web_orders;
+
+datasource store_orders (order_id: ~order_id, store_id: store_id)
+grain (order_id) address store_orders;
+"""
+
+
+def test_partial_sources_with_no_complete_one_complete_each_other():
+    keyspace = _keyspace(_PEER_PARTIALS, "select order_id, web_id, store_id;")
+    (base,) = keyspace.regions
+    assert base.completes == frozenset({ORDER})
+
+
+_ROWSET = _DERIVED + """
+rowset delivered <- select customer_id, order_id where delivery_date is not null;
+"""
+
+
+def test_rowset_key_is_its_own_entity():
+    """A customer no order references is not a row of the rowset."""
+    keyspace = _keyspace(_ROWSET, "select delivered.customer_id, delivered.order_id;")
+    assert keyspace.output_demanded_spans == frozenset()

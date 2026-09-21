@@ -45,6 +45,12 @@ from .models import ConceptAttrs, Keyspace, Region
 # remaining gaps are closed (docs/keyspace_phase_plan.md).
 ELECT_FROM_KEYSPACE = bool(os.environ.get("TRILOGY_KEYSPACE_ELECT"))
 
+_Declared = tuple[Purpose, Derivation, frozenset[str]]
+
+# derivations that GENERATE their key's values, so the concept is that key's
+# whole domain rather than a function or a subset of some source's rows
+_DOMAIN_GENERATORS = frozenset({Derivation.UNNEST, Derivation.CONSTANT})
+
 # key -> the `~` bindings between a source's rows and that key's whole domain
 Carried = dict[str, frozenset[str]]
 
@@ -66,6 +72,8 @@ class _ModelFacts:
     canonical: dict[str, str]
     sources: tuple[_SourceFacts, ...]
     carried: dict[str, Carried]
+    # every spelling of an address that is part of some source's row identity
+    identifying: frozenset[str] = frozenset()
     reach: dict[str, frozenset[str]] = field(default_factory=dict)
 
     def reach_of(self, key: str) -> frozenset[str]:
@@ -106,7 +114,45 @@ def _better(new: frozenset[str], old: frozenset[str] | None) -> bool:
     return old is None or len(new) < len(old)
 
 
-def _source_facts(ds: BuildDatasource, canonical: dict[str, str]) -> _SourceFacts:
+def _fewest_keys_first(item: tuple[str, frozenset[str]]) -> tuple[int, str]:
+    return len(item[1]), item[0]
+
+
+def _row_identities(datasources: list[BuildDatasource]) -> dict[str, frozenset[str]]:
+    """What identifies a row of each source: its declared grain, else its KEY
+    columns less the ones that identify ANOTHER source on their own, which it
+    holds as foreign keys (`customers` binding `id, nation.id` with no grain is
+    one row per `id` once `nation` is known to be one row per `nation.id`)."""
+    out = {
+        ds.identifier: frozenset(ds.grain.components)
+        for ds in datasources
+        if not ds.grain.abstract
+    }
+    pending = {
+        ds.identifier: frozenset(
+            c.concept.address for c in ds.columns if c.concept.purpose == Purpose.KEY
+        )
+        for ds in datasources
+        if ds.grain.abstract
+    }
+    sole = {next(iter(grain)) for grain in out.values() if len(grain) == 1}
+    settled = True
+    while settled:
+        settled = False
+        for identifier, keys in sorted(pending.items(), key=_fewest_keys_first):
+            own = keys - sole if len(keys) > 1 else keys
+            if len(own) == 1:
+                out[identifier] = own
+                sole |= own
+                del pending[identifier]
+                settled = True
+                break
+    return {**out, **pending}
+
+
+def _source_facts(
+    ds: BuildDatasource, canonical: dict[str, str], identity: frozenset[str]
+) -> _SourceFacts:
     partial_addresses = ds.column_level_partial_addresses
     bound: Carried = {}
     for column in ds.columns:
@@ -118,17 +164,38 @@ def _source_facts(ds: BuildDatasource, canonical: dict[str, str]) -> _SourceFact
         cause = frozenset(spelled)
         if _better(cause, bound.get(key)):
             bound[key] = cause
-    grain = (
-        frozenset()
-        if ds.grain.abstract
-        else frozenset(canonical.get(g, g) for g in ds.grain.components)
-    )
+    grain = frozenset(canonical.get(g, g) for g in identity)
     return _SourceFacts(
         identifier=ds.identifier,
         grain=grain,
         grain_is_partial=any(bound.get(g) for g in grain),
         bound=bound,
     )
+
+
+def _generated_domains(
+    environment: BuildEnvironment,
+    canonical: dict[str, str],
+    bound: tuple[_SourceFacts, ...],
+) -> tuple[_SourceFacts, ...]:
+    """A key some source binds `~` whose complete side is a derivation, not a
+    table: `merge orid into ~orid_2` with `orid_2 <- unnest([1, 2, 3])`."""
+    partial_keys = {key for s in bound for key, cause in s.bound.items() if cause}
+    out: dict[str, _SourceFacts] = {}
+    for concept in environment.concepts.values():
+        key = canonical.get(concept.address, concept.address)
+        if (
+            concept.purpose == Purpose.KEY
+            and concept.derivation in _DOMAIN_GENERATORS
+            and key in partial_keys
+        ):
+            out[concept.address] = _SourceFacts(
+                identifier=f"generated:{concept.address}",
+                grain=frozenset({key}),
+                grain_is_partial=False,
+                bound={key: frozenset()},
+            )
+    return tuple(out[address] for address in sorted(out))
 
 
 def _carried(anchor: _SourceFacts, sources: tuple[_SourceFacts, ...]) -> Carried:
@@ -157,13 +224,22 @@ def _compute_facts(
     environment: BuildEnvironment, datasources: list[BuildDatasource]
 ) -> _ModelFacts:
     canonical = _canonical_addresses(environment)
-    sources = tuple(_source_facts(ds, canonical) for ds in datasources)
+    identities = _row_identities(datasources)
+    bound = tuple(
+        _source_facts(ds, canonical, identities[ds.identifier]) for ds in datasources
+    )
+    sources = bound + _generated_domains(environment, canonical, bound)
     return _ModelFacts(
         # pin-heal and partition exclusion swap datasources before planning
         stamp=tuple(id(ds) for ds in datasources),
         canonical=canonical,
         sources=sources,
         carried={s.identifier: _carried(s, sources) for s in sources},
+        identifying=frozenset(
+            address
+            for address, key in canonical.items()
+            if any(key in s.grain for s in sources)
+        ),
     )
 
 
@@ -187,26 +263,38 @@ def _model_facts(environment: BuildEnvironment) -> _ModelFacts:
 
 def _entity_keys(
     address: str,
-    declared: dict[str, tuple[Purpose, frozenset[str]]],
+    declared: dict[str, _Declared],
+    identifying: frozenset[str],
     environment: BuildEnvironment,
     seen: frozenset[str] = frozenset(),
 ) -> frozenset[str]:
     """The entity keys a concept is a function of. A key is its own entity:
     the `keys` it carries are an FK-path addressing artifact (`customer_id`
-    bound on `orders` lists `order_id`), not a determinant. Anything else lives
-    on its keys' entities: an aggregate `by status` is keyed on the order."""
+    bound on `orders` lists `order_id`), not a determinant. So is a property
+    that identifies the rows of some source (`region`, the grain of
+    `region_dim`). Anything else lives on its keys' entities: an aggregate `by
+    status` is keyed on the order, and a key computed row by row (`orbit_code
+    <- upper(category)`) on whatever its arguments are keyed on.
+
+    A rowset key stays its OWN entity: the rowset is a row source, and stores
+    no order references are not rows of `select even_orders.store_id`."""
     known = declared.get(address)
     if known is None:
         concept = environment.concepts.get(address)
         if concept is None:
             return frozenset()
-        known = (concept.purpose, frozenset(concept.keys or ()))
-    purpose, keys = known
-    if purpose == Purpose.KEY:
+        known = (concept.purpose, concept.derivation, frozenset(concept.keys or ()))
+    purpose, derivation, keys = known
+    own_entity = purpose == Purpose.KEY and derivation != Derivation.BASIC
+    if own_entity or address in identifying:
         return frozenset({address})
     seen = seen | {address}
     return frozenset().union(
-        *(_entity_keys(k, declared, environment, seen) for k in keys if k not in seen)
+        *(
+            _entity_keys(k, declared, identifying, environment, seen)
+            for k in keys
+            if k not in seen
+        )
     )
 
 
@@ -259,22 +347,44 @@ def _extension_spans(
     return frozenset().union(*blocking)
 
 
+def _bridges(
+    source: _SourceFacts,
+    present: frozenset[str],
+    entities: frozenset[str],
+    facts: _ModelFacts,
+) -> bool:
+    """`source` shares a column with a source carrying an entity outside
+    `present`: the fan-out join that relates this region to the rest of the
+    statement (`stages` between `engines` and the launches)."""
+    return any(
+        other is not source
+        and source.bound.keys() & other.bound.keys()
+        and (facts.carried[other.identifier].keys() & entities) - present
+        for other in facts.sources
+    )
+
+
 def _completion_spans(
     present: frozenset[str],
     sources: list[_SourceFacts],
     requested_roots: frozenset[str],
+    entities: frozenset[str],
     facts: _ModelFacts,
 ) -> frozenset[str]:
-    """The `~` keys of a source the plan needs (it alone binds something
-    requested) that holds only some of this region's rows, beside a source
-    holding all of them: `returns` beside `lines`."""
+    """The `~` keys of a source the plan needs that holds only some of this
+    region's rows, beside a source holding all of them: `returns` beside
+    `lines`. Needed means it alone binds something requested, or it is what
+    joins the region to the rest of the statement. With no complete source at
+    all, every partial one completes the others."""
     causes = {
         s.identifier: _identity_cause(s, _identifying_keys(s, present), facts)
         for s in sources
     }
     complete = [s for s in sources if not causes[s.identifier]]
     if not complete:
-        return frozenset()
+        # no source holds the whole domain: the partial ones ARE the domain,
+        # each holding members the others lack (`web_orders`, `store_orders`)
+        return frozenset().union(*causes.values()) if len(sources) > 1 else frozenset()
     held: frozenset[str] = frozenset().union(
         *(facts.carried[s.identifier].keys() for s in complete)
     )
@@ -282,7 +392,11 @@ def _completion_spans(
         *(
             causes[s.identifier]
             for s in sources
-            if causes[s.identifier] and (s.bound.keys() & requested_roots) - held
+            if causes[s.identifier]
+            and (
+                (s.bound.keys() & requested_roots) - held
+                or _bridges(s, present, entities, facts)
+            )
         )
     )
 
@@ -290,13 +404,21 @@ def _completion_spans(
 def _connected(
     entities: frozenset[str], facts: _ModelFacts
 ) -> dict[str, frozenset[str]]:
-    """entity -> the entities some single source's rows carry beside it."""
-    out: dict[str, frozenset[str]] = {e: frozenset({e}) for e in entities}
+    """entity -> the entities of its model component: sources sharing a column
+    can be joined, so their entities meet on some row."""
+    components: list[tuple[set[str], set[str]]] = []
     for source in facts.sources:
-        together = frozenset(facts.carried[source.identifier].keys() & entities)
-        merged = together.union(*(out[e] for e in together))
-        for entity in merged:
-            out[entity] = merged
+        columns = set(facts.carried[source.identifier])
+        found = columns & entities
+        for other in [c for c in components if c[0] & columns]:
+            components.remove(other)
+            columns |= other[0]
+            found |= other[1]
+        components.append((columns, found))
+    out = {e: frozenset({e}) for e in entities}
+    for _, found in components:
+        for entity in found:
+            out[entity] = frozenset(found)
     return out
 
 
@@ -334,15 +456,17 @@ def build_keyspace(
     else:
         facts = _compute_facts(environment, datasources)
     canonical = facts.canonical if facts else {}
+    identifying = facts.identifying if facts else frozenset()
     # an existence-only node is a semijoin's subselect, not a row of this plan
     declared = {
-        a.address: (a.purpose, a.keys)
+        a.address: (a.purpose, a.derivation, a.keys)
         for a in concept_attrs.values()
         if not a.existence_only
     }
     keys_by_address = {
         address: frozenset(
-            canonical.get(k, k) for k in _entity_keys(address, declared, environment)
+            canonical.get(k, k)
+            for k in _entity_keys(address, declared, identifying, environment)
         )
         for address in declared
     }
@@ -370,7 +494,7 @@ def build_keyspace(
         dataclasses.replace(
             base,
             completes=_completion_spans(
-                entities, witnesses.get(entities, []), requested_roots, facts
+                entities, witnesses.get(entities, []), requested_roots, entities, facts
             ),
         )
     ]
@@ -381,7 +505,11 @@ def build_keyspace(
             s.identifier: _extension_spans(present, s, witnesses, facts)
             for s in sources
         }
-        spans: frozenset[str] = frozenset().union(*spans_by_witness.values())
+        completes = _completion_spans(
+            present, sources, requested_roots, entities, facts
+        )
+        # kept out of the larger regions by a lookup's `~`, or by a bridge's
+        spans: frozenset[str] = completes.union(*spans_by_witness.values())
         if not spans:
             continue
         # an entity no source relates to this region's rows is cross-joined
@@ -392,7 +520,7 @@ def build_keyspace(
             Region(
                 present=full,
                 spans=spans,
-                completes=_completion_spans(present, sources, requested_roots, facts),
+                completes=completes,
                 sources=frozenset(i for i, found in spans_by_witness.items() if found),
                 emptied_by=frozenset(
                     a
