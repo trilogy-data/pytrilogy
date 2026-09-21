@@ -80,6 +80,80 @@ class ExtentOwnership:
         return self.owner_by_span.get(address)
 
 
+@dataclass(frozen=True)
+class Region:
+    """One kind of row a plan can return: the entity keys PRESENT on it.
+
+    ``spans`` are the ``~`` bindings that keep this kind of row from being
+    absorbed into a larger one (a customer no order references); empty for the
+    base region. ``emptied_by`` are the concepts the plan's WHERE null-rejects
+    that are ABSENT here, so no row of this kind survives the statement."""
+
+    present: frozenset[str]
+    spans: frozenset[str] = frozenset()
+    sources: frozenset[str] = frozenset()
+    emptied_by: frozenset[str] = frozenset()
+
+    @property
+    def is_extension(self) -> bool:
+        return bool(self.spans)
+
+    @property
+    def is_empty(self) -> bool:
+        return bool(self.emptied_by)
+
+    def describe(self) -> str:
+        body = "{" + ", ".join(sorted(self.present)) + "}"
+        if self.spans:
+            body += f" ~{sorted(self.spans)}"
+        if self.emptied_by:
+            body += f" EMPTY by {sorted(self.emptied_by)}"
+        return body
+
+
+@dataclass(frozen=True)
+class Keyspace:
+    """A plan's row universe (``keyspace.build_keyspace``): disjoint regions
+    over the requested entity keys. A concept is DEFINED on a region when every
+    one of its keys is present there; elsewhere it is absent, which renders as
+    NULL but is not a NULL value."""
+
+    entities: frozenset[str] = frozenset()
+    regions: tuple[Region, ...] = ()
+    # requested concept address -> the entity keys it is a function of
+    keys_by_address: dict[str, frozenset[str]] = field(default_factory=dict)
+    # entity keys an OUTPUT is a function of (the election's notion of demand)
+    output_entities: frozenset[str] = frozenset()
+
+    @property
+    def extensions(self) -> tuple[Region, ...]:
+        return tuple(r for r in self.regions if r.is_extension)
+
+    @property
+    def live_regions(self) -> tuple[Region, ...]:
+        return tuple(r for r in self.regions if not r.is_empty)
+
+    @property
+    def demanded_spans(self) -> frozenset[str]:
+        return frozenset().union(*(r.spans for r in self.live_regions))
+
+    @property
+    def output_demanded_spans(self) -> frozenset[str]:
+        """Spans of the live extension regions an output is defined on."""
+        return frozenset().union(
+            *(r.spans for r in self.live_regions if r.present & self.output_entities)
+        )
+
+    def defined_on(self, address: str, region: Region) -> bool:
+        return self.keys_by_address.get(address, frozenset()) <= region.present
+
+    def absent_regions(self, address: str) -> tuple[Region, ...]:
+        return tuple(r for r in self.live_regions if not self.defined_on(address, r))
+
+    def describe(self) -> str:
+        return " | ".join(r.describe() for r in self.regions)
+
+
 @dataclass
 class FinalAssemblyContract:
     """Logical contract for assembling the FINAL sink.
@@ -237,6 +311,7 @@ class BuildInfo:
     concept_edges: EdgeMap = field(default_factory=dict)
     group_edges: EdgeMap = field(default_factory=dict)
     strategy_node: StrategyNode | None = None
+    keyspace: Keyspace = field(default_factory=Keyspace)
 
     def copy(self) -> "BuildInfo":
         """Only the strategy node is mutated downstream; the graphs and
@@ -249,6 +324,7 @@ class BuildInfo:
             concept_edges=self.concept_edges,
             group_edges=self.group_edges,
             strategy_node=self.strategy_node.copy() if self.strategy_node else None,
+            keyspace=self.keyspace,
         )
 
 

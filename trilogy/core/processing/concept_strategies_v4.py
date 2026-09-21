@@ -65,6 +65,7 @@ from trilogy.core.processing.v4_helper import (
 from trilogy.core.processing.v4_helper.functional_dependency import (
     build_fd_determines,
 )
+from trilogy.core.processing.v4_helper.keyspace import build_keyspace
 from trilogy.core.processing.v4_node_generators.multiselect import gen_multiselect
 from trilogy.core.processing.v4_node_generators.union_select import gen_union_select
 
@@ -526,6 +527,11 @@ def _build_from_graph(
         materialized_roots,
         staged_conditions=staged_conditions,
     )
+    keyspace = build_keyspace(concept_attrs, mandatory_list, environment, conditions)
+    if len(keyspace.regions) > 1:
+        logger.info(
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} keyspace: {keyspace.describe()}"
+        )
     datasource_columns = [
         frozenset(c.address for c in ds.output_concepts)
         for ds in environment.datasources.values()
@@ -567,6 +573,7 @@ def _build_from_graph(
         concept_edges=concept_edges,
         group_edges=group_edges,
         strategy_node=strategy_node,
+        keyspace=keyspace,
     )
 
 
