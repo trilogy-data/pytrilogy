@@ -15,10 +15,18 @@ are the region's spans. Two sources carrying the same entities are one region
 (`returns` binding `~order_id, ~item_id` beside `lines`), and there is no
 `{user, product}` cell because no source carries exactly that.
 
+A region also records whose rows it is (`witnesses`) and its `completions`: a
+source holding only SOME of its rows beside sources holding the rest. No entity
+is absent on the rows such a source lacks, so they are not a region of their
+own, but a WHERE null-rejecting what only that source supplies still removes
+them. `Keyspace.binding_is_complete` is pin-heal's question, asked of both.
+
 Not modelled yet: a lookup through a source whose own grain is bound `~` (it
 may miss, which makes the looked-up entity optional on the row), `complete
-where` partitions (the union machinery owns them), and regions only a JOIN of
-two facts can witness (the base region stands in for them).
+where` partitions as regions (the union machinery owns them; they are read
+only to know that mutually exclusive slices are not each other's missing
+rows), and regions only a JOIN of two facts can witness (the base region
+stands in for them).
 """
 
 from __future__ import annotations

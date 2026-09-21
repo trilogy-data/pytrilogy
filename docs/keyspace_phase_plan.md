@@ -1,5 +1,7 @@
 # Project plan: a keyspace phase in discovery
 
+> **Where this stands (2026-09-21): phases 0-3 are BUILT, on branch `extension-row-null-semantics`, draft PR #702. Phase 4 is next. A fresh session should read "The problem" and "The idea" for the vocabulary, then jump to [Status](#status) and start from "Pick up here".** The sections before Status are the original plan, left unedited on purpose: where they say "nothing here is built" or list a site as re-deriving its own answer, Status is the truth.
+
 Written 2026-09-20, from scratch, for a fresh session. It proposes one new analysis in v4 discovery and a strangler migration onto it. Nothing here is built. Background: `docs/handoff_extension_row_semantics.md` (the rule this serves, and a prototype that was backed out), `docs/extent_ownership.md`, `docs/domain_graph_design.md`.
 
 ## The problem
@@ -96,7 +98,9 @@ How regions are computed, since the plan left it open:
 - An entity no source relates to a region's rows is cross-joined onto them, so it is present there.
 - `emptied_by`: a WHERE null-rejecting a concept that is absent on a region empties it. This follows the RULE, so a derived concept counts (`status = 'delivered'`); pin-heal only trusts bound columns.
 
-Not modelled: a lookup that may miss (a source whose grain is bound `~` and that binds a further key makes that entity OPTIONAL on the row: the same bug class from the other side), `complete where` partitions, and regions only a join of two facts can witness (the base region stands in).
+Not modelled: a lookup that may miss (a source whose grain is bound `~` and that binds a further key makes that entity OPTIONAL on the row: the same bug class from the other side), `complete where` partitions (as regions; site 5 does read `non_partial_for`, only to know that mutually exclusive slices are not each other's missing rows), and regions only a join of two facts can witness (the base region stands in).
+
+Added by site 5, described there: `Region.witnesses` and `Region.completions`.
 
 ### Phase 2: the audit (`v4_helper/keyspace_audit.py`)
 
@@ -183,10 +187,12 @@ Method, again: both judgments computed side by side inside the anchor guards, th
 
 ### Pick up here
 
+0. **Before any phase 4 code: owner questions 4 and 5 below need answers.** Both are visible behaviour changes phase 4 makes on purpose (an orderless customer counted under `status = NULL`; `filter ... where` in a SELECT becoming a value, outside `~` models too). Ask; do not guess. Phase 4 is also the first phase that is NOT byte-identical, so the side-by-side agreement audit stops being the method: the oracle (`tests/engine/test_derived_key_domain.py`, strict xfails as targets), row capture (`local_scripts/keyspace_ab/ks_rowdump.py`) and the SQL-size budgets are.
 1. Phase 3 is complete. Two heal improvements are parked behind phase 4 because they need derived null-rejections to be true in the rendered SQL: merged `~` keys (above) and `status = 'delivered'`-style pins (`test_where_null_rejecting_an_absent_concept_empties_the_region`, `test_materialization_invariance`, `test_merge_discovery`). When phase 4 lands, drop `null_rejected=` from `_statement_keyspace` and A/B with row checks. "Pin-heal stops rewriting datasources" is further out: the network search reads partiality as one FULL/PARTIAL bit per binding off the datasource (phase 0), so something has to keep clearing that bit.
 2. Phase 4 has its spec: `Keyspace.absent_regions(address)` is the prototype's `absent_on_extension`, per region instead of per span, and the worklist is the audit's `owner_pads` list: the oracle's owed queries, `test_status_on_extension_rows_is_null_without_an_aggregate`, `test_composite_grain_families_with_by_span_aggregate`, `test_by_dim_key_aggregate_vs_row_value`, `test_forked_with_status`, four gcat statements, two rowset tests, `test_inline_broadcast_join_key`. No TPC-DS or TPC-H benchmark query is on it, which is what the prototype's `_null_on_padding` gate bought by hand. The prototype's three gates map to keyspace facts: "one span" becomes one bucket per live extension region (regions are disjoint, so families cannot cross-pair); "span key projected" becomes the region's identifying keys demanded as hidden columns; "WHERE deliverable" becomes `emptied_by` (region dead, no bucket), an atom over concepts defined on the region (filter the bucket), or a null-accepting atom over an absent concept (host at FINAL).
 3. Not modelled and needed by phase 4: an OPTIONAL entity (a lookup through a source whose grain is bound `~` and that binds a further key). Same bug from the other side: `coalesce(return_reason, 'none')` keyed on a return evaluates on sale lines that have none. And a rowset as a witness, related to model keys only through an authored scoped join; `tree_in_play_spans` is the stopgap that lets join typing see through one.
 4. Phase 7 inherits one more piece of span plumbing: `BuildEnvironment.in_play_spans` / `MergeNode.in_play_spans`, beside `extent_free_spans`.
+5. Process. Commit early, push to PR #702 and let CI run the full suite (it only triggers on pull requests; the local full suite is 2h+ and gets killed for memory, as do long idle background runs). Locally: one pytest at a time, targeted files or the ~20 minute planner suites. A known CI flake, not a finding: `tests/modeling/gcat/test_gcat.py` failing as one `UnicodeDecodeError` in `duckdb_engine` followed by "Current transaction is aborted" on every later gcat test is the test's own raw-SQL `httpfs` fetch from GCS erroring; re-run the job. `tests/engine/test_bigquery.py::test_readme` with a Google `RefreshError` is the same kind.
 
 The owner questions below are still open; 1 and 3 were taken as proposed (entity keys, widened to anything that identifies a source's rows; `BuildInfo`), 2 stays with the union machinery, 4 and 5 only matter from phase 4.
 
