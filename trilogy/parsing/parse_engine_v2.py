@@ -117,6 +117,14 @@ def parse_text(
     )
     start = datetime.now()
 
+    # ``root`` is the file being parsed for every caller that has one, and a
+    # directory for the few that only want a working path (an import hands its
+    # child env the parent directory and relies on ``env_file_path`` instead).
+    # Tested by ``is_dir`` rather than by the extension, so a directory whose
+    # name happens to carry one does not become every declaration's origin.
+    declaring = root if root is not None and not root.is_dir() else None
+    previous = environment.declaring_file
+    environment.declaring_file = declaring or previous
     try:
         document = parse_syntax(text)
         output = parser.parse(document, ephemeral=ephemeral)
@@ -127,5 +135,7 @@ def parse_text(
         )
     except SyntaxError as e:
         raise InvalidSyntaxException(str(e)).with_traceback(e.__traceback__)
+    finally:
+        environment.declaring_file = previous
 
     return environment, output

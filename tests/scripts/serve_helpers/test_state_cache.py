@@ -102,6 +102,18 @@ def test_corrupt_entry_reads_as_a_miss(project):
     assert cache.get(".", fp) is None
 
 
+def test_an_entry_from_an_older_schema_reads_as_a_miss(project):
+    """Validity is keyed on model files, not on the trilogy that wrote the
+    entry, so an upgrade has to be caught on read. Seeding a job from it would
+    fail the job rather than miss."""
+    cache = StateSnapshotCache(project)
+    fp = fingerprint_directory(project)
+    cache.put(".", _snapshot().model_copy(update={"schema_version": 1}), fp, "t")
+
+    assert cache.get(".", fp) is None
+    assert cache.state_input_path(".", fp) is None
+
+
 def test_state_input_path_only_for_a_live_entry(project):
     cache = StateSnapshotCache(project)
     fp = fingerprint_directory(project)

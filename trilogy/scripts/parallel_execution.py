@@ -656,11 +656,10 @@ def _dispatch_single_script_execution(
             exec.parse_text(text, root=base if isinstance(base, Path) else None)
             result = execute_refresh_mode(
                 exec,
-                policy=rp.policy(),
+                policy=rp.policy(base if isinstance(base, Path) else None),
                 print_watermarks=rp.print_watermarks,
                 dry_run=rp.dry_run,
                 interactive=rp.interactive,
-                script_path=base if isinstance(base, Path) else None,
             )
             if debug:
                 flush_debugging_hooks(exec)

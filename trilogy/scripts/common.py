@@ -134,19 +134,33 @@ class RefreshParams:
     #: ``--partition`` concept address -> value: the slice this run owns.
     #: Empty means "let staleness decide", which is the normal refresh.
     partitions: Mapping[str, str] = field(default_factory=dict)
+    #: ``--include-imports``: also build what the entrypoint reaches by import,
+    #: not only what it declares. The scope itself is set where the entrypoint
+    #: is known (see ``single_execution``); this only records the intent.
+    include_imports: bool = False
 
-    def policy(self) -> "RefreshPolicy":
+    def policy(self, script_path: "PathlibPath | str | None" = None) -> "RefreshPolicy":
         """The planning half of these params — THE CLI-to-plan mapping.
 
         A new planning option is added to `RefreshPolicy` and mapped here, once;
         every call site that plans a refresh then carries it unedited. The rest
         of this dataclass is presentation and does not cross into the plan.
+
+        ``script_path`` is the entrypoint being refreshed, and scopes the build
+        to what that file declares. A directory run passes nothing: it assigns
+        one owner script per address itself, across the whole dependency graph.
         """
         from trilogy.execution.state import RefreshPolicy
+        from trilogy.execution.state.declaration import build_scope_for
 
         return RefreshPolicy(
             force_sources=frozenset(self.force_sources),
             partition_selector=dict(self.partitions),
+            build_scope=(
+                frozenset()
+                if self.include_imports or script_path is None
+                else build_scope_for(script_path)
+            ),
         )
 
 
@@ -163,8 +177,15 @@ def parse_force_sources(force_sources: Iterable[str]) -> frozenset[str]:
 def validate_force_sources(
     force_sources: set[str] | frozenset[str] | None,
     available_sources: Iterable[str],
+    imported_sources: Iterable[str] = (),
 ) -> None:
-    """Fail fast when --force includes unknown datasource names."""
+    """Fail fast when --force names a datasource this run cannot build.
+
+    ``--force`` says *skip staleness detection*, not *widen the scope*: what a
+    run may build is the same with it as without. ``imported_sources`` are the
+    ones only an imported file declares, so a name aimed past the scope says so
+    rather than reading as a typo.
+    """
     if not force_sources:
         return
 
@@ -173,19 +194,31 @@ def validate_force_sources(
         return
 
     noun = "datasource" if len(missing) == 1 else "datasources"
-    print_error(f"Unknown {noun} passed to --force: {', '.join(missing)}")
+    hint = (
+        ". Declared in an imported file, and this file builds only what it"
+        " declares — pass --include-imports"
+        if set(missing) & set(imported_sources)
+        else ""
+    )
+    print_error(f"Unknown {noun} passed to --force: {', '.join(missing)}{hint}")
     raise Exit(1)
 
 
 def validate_partition_selector(
     selector: Mapping[str, str],
     available_keys: Iterable[str],
+    imported_keys: Iterable[str] = (),
 ) -> None:
-    """Fail fast when --partition names a concept nothing is partitioned by.
+    """Fail fast when --partition names a concept nothing this run builds is
+    partitioned by.
 
     A selector matching no datasource does not narrow anything — the plan keeps
     whatever staleness decided and the written snapshot claims the whole table.
     Both are the widening the flag exists to prevent, and both are silent.
+
+    ``imported_keys`` are the ones only an imported declaration is partitioned
+    by, so a selector aimed past the build scope says so rather than reading as
+    a typo.
     """
     if not selector:
         return
@@ -195,21 +228,43 @@ def validate_partition_selector(
         return
 
     noun = "concept" if len(missing) == 1 else "concepts"
+    hint = (
+        ". An imported declaration is partitioned by it, and this file builds"
+        " only what it declares — pass --include-imports"
+        if set(missing) & set(imported_keys)
+        else ""
+    )
     print_error(
         f"No datasource is partitioned by {noun} passed to --partition:"
-        f" {', '.join(missing)}"
+        f" {', '.join(missing)}{hint}"
     )
     raise Exit(1)
 
 
 def validate_refresh_policy(policy: "RefreshPolicy", environment: Environment) -> None:
-    """Fail fast on --force/--partition values this model cannot honor."""
-    from trilogy.execution.state import partition_key_addresses
+    """Fail fast on --force/--partition values this run cannot honor.
 
-    validate_force_sources(policy.force_sources, environment.datasources)
+    Both are validated against what the run will *build*, not against everything
+    it can see. Neither flag widens the scope: ``--force`` drops the staleness
+    gate and ``--partition`` narrows to a slice, and a value naming only an
+    imported declaration would do nothing at all.
+    """
+    from trilogy.execution.state import partition_key_addresses
+    from trilogy.execution.state.declaration import declared_within
+
+    in_scope: list[Datasource] = []
+    imported: list[Datasource] = []
+    for ds in environment.datasources.values():
+        (in_scope if declared_within(ds, policy.build_scope) else imported).append(ds)
+    validate_force_sources(
+        policy.force_sources,
+        [ds.identifier for ds in in_scope],
+        [ds.identifier for ds in imported],
+    )
     validate_partition_selector(
         policy.partition_selector,
-        partition_key_addresses(environment.datasources.values()),
+        partition_key_addresses(in_scope),
+        partition_key_addresses(imported),
     )
 
 

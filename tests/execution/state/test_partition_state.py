@@ -380,19 +380,36 @@ def test_merge_recomputes_status_from_merged_slices(executor):
     assert merged.summary.fresh == 1
 
 
-def test_merge_keys_datasources_by_id_not_script(executor):
+def test_merge_keys_datasources_by_declaration(executor):
     """A delta comes from the per-partition build script, the base from the
-    model — the same asset must not be filed twice."""
+    model — the same asset must not be filed twice. ``script`` is the declaring
+    file, so both sides name the model whichever script did the probing."""
     base = _snapshot(executor, _slices(executor, {"2024-01-01": "stale"}))
     base.assets[0].datasources[0].script = "model.preql"
     delta = scope_to_partitions(
         _snapshot(executor, _slices(executor, {"2024-01-01": "fresh"})),
         {"order_date=2024-01-01"},
     )
-    delta.assets[0].datasources[0].script = "build_partition.preql"
+    delta.assets[0].datasources[0].script = "model.preql"
     merged = merge_snapshots(base, delta)
     assert len(merged.assets[0].datasources) == 1
     assert merged.assets[0].datasources[0].script == "model.preql"
+
+
+def test_merge_keeps_two_declarations_of_one_address_apart(executor):
+    """A writer and a reader can model one file under the same name from two
+    files. Folding them would drop one's slices."""
+    base = _snapshot(executor, _slices(executor, {"2024-01-01": "stale"}))
+    base.assets[0].datasources[0].script = "writer.preql"
+    delta = _snapshot(executor, _slices(executor, {"2024-01-01": "fresh"}))
+    delta.assets[0].datasources[0].script = "reader.preql"
+
+    merged = merge_snapshots(base, delta)
+
+    assert [d.script for d in merged.assets[0].datasources] == [
+        "reader.preql",
+        "writer.preql",
+    ]
 
 
 HOLE_MODEL = """

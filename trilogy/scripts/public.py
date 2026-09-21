@@ -3,7 +3,7 @@
 import json
 import re
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from time import sleep
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -118,6 +118,35 @@ def _is_example(component: dict[str, Any]) -> bool:
     return EXAMPLE_MARKER in urlparse(component["url"]).path
 
 
+#: A refreshable root's probe and refresh scripts, as their clauses spell them.
+#: Both take a backtick-quoted path; the column form of ``freshness by`` takes a
+#: bare identifier, so keying on the backticks distinguishes them.
+_SCRIPT_CLAUSE = re.compile(r"(?:freshness\s+by|refresh)\s+`([^`\n]+)`")
+
+
+def _referenced_scripts(text: str) -> list[str]:
+    """Paths a model file expects to find beside it, relative to its own
+    directory. A model fetched without them parses and queries but cannot
+    refresh the roots that name them.
+
+    Remote and absolute paths are somebody else's to provide, and a path that
+    climbs out of the model directory is not fetched at all."""
+    found: list[str] = []
+    for raw in _SCRIPT_CLAUSE.findall(text):
+        path = PurePosixPath(raw.strip().replace("\\", "/"))
+        if (
+            path.suffix != ".py"
+            or path.is_absolute()
+            or ".." in path.parts
+            or "://" in raw
+        ):
+            continue
+        relative = str(path).removeprefix("./")
+        if relative not in found:
+            found.append(relative)
+    return found
+
+
 @click.group()
 def public() -> None:
     """Work with trilogy-public-models hosted at trilogy-data/trilogy-public-models."""
@@ -167,6 +196,40 @@ def list_cmd(engine: str | None, tag: str | None) -> None:
         )
     click.echo()
     click.echo("Fetch a model with: trilogy public fetch <name> [<path>]")
+
+
+def _fetch_referenced_scripts(
+    sources: list[tuple[str, str]], target_root: Path, written: list[Path]
+) -> list[str]:
+    """Fetch every probe/refresh script the fetched model files name, keeping
+    each at the relative path its clause spells, and return the ones that could
+    not be fetched.
+
+    Model files are flattened into the target root, so a clause's directory
+    prefix resolves the same locally as it does beside the file upstream. The
+    manifest does not list these — they are declaration detail inside the
+    ``.preql`` — but a model without them cannot refresh."""
+    absent: list[str] = []
+    for url, text in sources:
+        base = url.rsplit("/", 1)[0]
+        for relative in _referenced_scripts(text):
+            dest = target_root / relative
+            # Two model files can name one script; a file left by an earlier
+            # fetch is replaced like the model files are under --force.
+            if dest in written:
+                continue
+            try:
+                payload = _http_get(f"{base}/{relative}")
+            except (HTTPError, URLError, TimeoutError) as exc:
+                absent.append(relative)
+                print_warning(f"  no {relative} upstream ({exc})")
+                continue
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(payload)
+            written.append(dest)
+            if not is_json_mode():
+                click.echo(f"  wrote {relative}")
+    return absent
 
 
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]")
@@ -233,6 +296,7 @@ def fetch_cmd(model: str, path: str | None, examples: bool, force: bool) -> None
 
     print_info(f"Fetching {entry.name} ({entry.engine}) into {target_root}")
     written: list[Path] = []
+    sources: list[tuple[str, str]] = []
     for component in components:
         dest = _component_target(component, target_root)
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -249,9 +313,13 @@ def fetch_cmd(model: str, path: str | None, examples: bool, force: bool) -> None
             raise click.exceptions.Exit(1) from exc
         dest.write_bytes(payload)
         written.append(dest)
+        if component.get("type") == "trilogy":
+            sources.append((component["url"], payload.decode("utf-8", "replace")))
         rel = dest.relative_to(target_root)
         if not is_json_mode():
             click.echo(f"  wrote {rel}")
+
+    missing = _fetch_referenced_scripts(sources, target_root, written)
 
     readme_path = target_root / "README.md"
     if not readme_path.exists() and manifest.get("description"):
@@ -286,10 +354,17 @@ def fetch_cmd(model: str, path: str | None, examples: bool, force: bool) -> None
             target=str(target_root),
             count=len(written),
             files=[str(p.relative_to(target_root)) for p in written],
+            missing_scripts=missing,
         )
         return
 
     print_success(f"Fetched {len(written)} file(s) for {entry.name}.")
+    if missing:
+        print_warning(
+            f"{len(missing)} referenced script(s) are not published: "
+            + ", ".join(missing)
+            + ". The roots that name them cannot be refreshed."
+        )
     click.echo("\nNext steps:")
     click.echo(f"  cd {target_root}")
     click.echo("  trilogy refresh .        # build any managed assets")

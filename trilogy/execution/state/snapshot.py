@@ -30,6 +30,14 @@ Keying rules (load-bearing — see ``trilogy/scripts/AGENTS.md``):
   file; only inline ``query '''...'''`` is ``AddressType.QUERY``.
 - The owning script rides as ``PhysicalAssetState.owner_script`` — attribute
   data, deliberately not part of the key.
+- Beneath an address, an entry is a **declaration**: the file a datasource
+  statement lives in (``DatasourceState.script``) and the name it declares
+  (``datasource_id``). Import paths multiply the identifiers a declaration is
+  reached by (``stages``, ``stage.stages``, ``vehicle.stage.stages``) without
+  making more of it, so they ride as ``aliases`` and never as entries — a
+  snapshot says the same thing about a table whichever script probed it, and
+  whether it probed one file or the directory. See ``declaration.py``.
+  (Schema 1 wrote one entry per identifier, with ``script`` the probing file.)
 - **Every datasource is an asset, roots included.** A root is the *expected*
   side of staleness and is never seeded from a snapshot (see
   :func:`managed_states_by_address`) — but it is still state worth reporting.
@@ -95,6 +103,7 @@ fields/values are added without a bump. Consumers must ignore unknown fields.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Container
 from datetime import date, datetime
 from pathlib import PurePath
 from typing import Literal
@@ -109,6 +118,7 @@ from trilogy.core.models.datasource import (
     UpdateKey,
     UpdateKeyType,
 )
+from trilogy.execution.state.declaration import by_import_depth
 from trilogy.execution.state.partitions import (
     PartitionObservation,
     PartitionValue,
@@ -125,7 +135,11 @@ from trilogy.execution.state.watermarks import (
 )
 from trilogy.utility import utc_now_iso
 
-SNAPSHOT_SCHEMA_VERSION = 1
+SNAPSHOT_SCHEMA_VERSION = 2
+
+#: First schema whose entries are declarations rather than identifiers. Below
+#: it, ``datasource_id`` is an identifier and ``script`` the probing file.
+DECLARATION_SCHEMA = 2
 
 AssetStatus = Literal["fresh", "stale", "unknown"]
 
@@ -265,10 +279,12 @@ class PlanVerdict(BaseModel):
 
 
 class DatasourceState(BaseModel):
-    """State of one logical datasource (script-scoped view of an address)."""
+    """State of one datasource declaration at an address."""
 
-    datasource_id: str  # ds.identifier — attribute data, NOT the key
-    script: str | None = None  # defining script path, project-relative
+    datasource_id: str  # the declared name, free of any import namespace
+    script: str | None = None  # the declaring file, project-relative
+    # Every identifier the probing environment(s) reached this declaration by.
+    aliases: list[str] = Field(default_factory=list)
     is_root: bool = False
     refresh_kind: Literal["sql", "script"] | None = None
     # The end-phase merged view, kept for existing consumers. Consumers that
@@ -835,8 +851,12 @@ def build_datasource_state(
     script: str | None = None,
     partitions: list[PartitionState] | None = None,
     partition_summary: PartitionSummary | None = None,
+    aliases: list[str] | None = None,
 ) -> DatasourceState:
-    """Build the per-datasource state entry from probe results.
+    """Build a declaration's state entry from probe results.
+
+    ``ds`` is the spelling the evidence was gathered under (see
+    :func:`evidenced_spelling`); ``aliases`` names every spelling of it.
 
     ``concept_max`` is the expected-side map (root-derived max per concept);
     only entries matching this datasource's observed watermark keys are
@@ -880,8 +900,9 @@ def build_datasource_state(
     observations, plan = _phase_observations(ds, observed, expected, probed_at)
 
     return DatasourceState(
-        datasource_id=ds.identifier,
+        datasource_id=ds.name,
         script=script,
+        aliases=sorted(aliases or [ds.identifier]),
         is_root=ds.is_root,
         refresh_kind=refresh_kind,
         status=status,
@@ -896,6 +917,23 @@ def build_datasource_state(
         partitions_complete=not ds.partition_by or partitions is not None,
         partition_summary=partition_summary,
     )
+
+
+def evidenced_spelling(
+    group: list[Datasource], *evidence: Container[str]
+) -> Datasource:
+    """The spelling of a declaration to build its entry from.
+
+    Watermark keys are concept addresses in the spelling's own namespace, so an
+    entry has to be built from one spelling end to end. Earlier ``evidence``
+    outranks later: a verdict beats a bare watermark, and with none at all the
+    canonical spelling stands in."""
+    ordered = by_import_depth(group)
+    for held in evidence:
+        for ds in ordered:
+            if ds.identifier in held:
+                return ds
+    return ordered[0]
 
 
 def _phase_observations(
@@ -952,6 +990,30 @@ def _phase_observations(
     return observations, plan_verdict
 
 
+def _same_declaration(
+    bucket: list[DatasourceState], ds_state: DatasourceState
+) -> DatasourceState | None:
+    """The entry in ``bucket`` for the declaration ``ds_state`` describes.
+
+    A declaration is a name *and* a declaring file, and both have to match: two
+    declarations at one address may legitimately share a name (a writer and a
+    reader that model the same file differently), and folding them would drop
+    one's state. The declaring file is the same whichever script did the
+    probing, which is what lets a delta from a per-partition build script pair
+    with a base written from the model.
+
+    Pairing a record written before :data:`DECLARATION_SCHEMA` is not attempted;
+    ``persistence.read_state_snapshot`` rejects one on the way in.
+    """
+    for existing in bucket:
+        if (
+            existing.datasource_id == ds_state.datasource_id
+            and existing.script == ds_state.script
+        ):
+            return existing
+    return None
+
+
 def merge_into_snapshot(
     entries: list[tuple[str, DatasourceState]],
     managed_addresses: set[str] | None = None,
@@ -963,25 +1025,25 @@ def merge_into_snapshot(
 ) -> StateSnapshot:
     """Group per-datasource entries by physical address and roll up status.
 
-    ``entries``: (physical_address, DatasourceState) pairs. Duplicate
-    (script, datasource_id) pairs at an address are dropped. Address status is
-    stale if any datasource is stale, else unknown if any is unknown, else
-    fresh."""
+    ``entries``: (physical_address, DatasourceState) pairs. A declaration
+    arriving twice at an address keeps its first entry and the union of the
+    aliases. Address status is stale if any datasource is stale, else unknown
+    if any is unknown, else fresh."""
     managed_addresses = managed_addresses or set()
     by_address: dict[str, list[DatasourceState]] = {}
     for address, ds_state in entries:
         bucket = by_address.setdefault(address, [])
-        if any(
-            existing.datasource_id == ds_state.datasource_id
-            and existing.script == ds_state.script
-            for existing in bucket
-        ):
+        existing = _same_declaration(bucket, ds_state)
+        if existing is not None:
+            existing.aliases = sorted({*existing.aliases, *ds_state.aliases})
             continue
         bucket.append(ds_state)
 
     assets: list[PhysicalAssetState] = []
     for address in sorted(by_address):
-        datasources = sorted(by_address[address], key=lambda d: d.datasource_id)
+        datasources = sorted(
+            by_address[address], key=lambda d: (d.datasource_id, d.script or "")
+        )
         assets.append(
             PhysicalAssetState(
                 address=address,
@@ -1302,19 +1364,21 @@ def merge_snapshots(base: StateSnapshot, *deltas: StateSnapshot) -> StateSnapsho
             if existing is None:
                 assets[incoming.address] = incoming.model_copy(deep=True)
                 continue
-            # Keyed by datasource id alone, never by script: the defining script
-            # is attribute data, and a delta legitimately comes from a different
-            # one (the per-partition build script rather than the model). Keying
-            # on the pair would file the same asset twice.
-            by_key = {d.datasource_id: d for d in existing.datasources}
+            # Paired by declaration, which is the same whichever script did
+            # the probing — a delta legitimately comes from a per-partition
+            # build script that imports the model, not from the model itself.
+            merged = list(existing.datasources)
             for ds_state in incoming.datasources:
-                current = by_key.get(ds_state.datasource_id)
-                by_key[ds_state.datasource_id] = (
-                    ds_state.model_copy(deep=True)
-                    if current is None
-                    else _merge_datasource_state(current, ds_state)
-                )
-            existing.datasources = [by_key[k] for k in sorted(by_key)]
+                current = _same_declaration(merged, ds_state)
+                if current is None:
+                    merged.append(ds_state.model_copy(deep=True))
+                    continue
+                folded = _merge_datasource_state(current, ds_state)
+                folded.aliases = sorted({*current.aliases, *ds_state.aliases})
+                merged[merged.index(current)] = folded
+            existing.datasources = sorted(
+                merged, key=lambda d: (d.datasource_id, d.script or "")
+            )
             existing.status = _rollup_status([d.status for d in existing.datasources])
             existing.managed = existing.managed or incoming.managed
             existing.owner_script = existing.owner_script or incoming.owner_script
@@ -1353,6 +1417,7 @@ __all__ = [
     "build_datasource_state",
     "build_partition_states",
     "cap_partitions",
+    "evidenced_spelling",
     "is_remote_address",
     "managed_states_by_address",
     "merge_into_snapshot",

@@ -6,6 +6,26 @@ The refresh system has two distinct paths:
 
 **Directory**: `_preview_directory_refresh` (in `refresh.py`) → preview phases → `run_parallel_execution` with a `ManagedRefreshNode` graph
 
+### What a file refresh builds
+
+**A file builds what it declares.** `RefreshParams.policy(script_path)` stamps
+`RefreshPolicy.build_scope` with the entrypoint, and `create_refresh_plan` moves
+any judged-stale asset declared elsewhere (`Datasource.declared_in`) from
+`stale_assets` to `RefreshPlan.out_of_scope`: probed, reported, never executed.
+An asset reached only by import belongs to a run of the file that declares it —
+the same rule a directory run applies through `addr_to_owner`, one owner script
+per address.
+
+- `build_scope` is **not** `skip_datasources`. A skipped datasource is not probed
+  at all (another owner script covered it); an out-of-scope one *is*, because its
+  watermark is the expected side of the assets this run does build.
+- **`--include-imports` is the only flag that changes what a run may build.**
+  `--force` drops the staleness gate and `--partition` narrows to a slice;
+  neither widens the scope, and `validate_refresh_policy` rejects a value of
+  either that names only an imported declaration rather than letting it silently
+  do nothing.
+- A directory run and stdin pass no `script_path`, so their scope is empty.
+
 ### Phase structure in directory refresh
 
 1. **Phase 1 — parse only, no DB**: all scripts parsed to collect `address_map`, `ds_to_scripts`, `ds_is_root`, `ds_is_refreshable_root`, `all_needed_concepts`, `root_addr_to_concepts`
@@ -48,6 +68,7 @@ It belongs to the **verdict**, not to a path: both single-file entry points (`ex
   - Local files (`CSV`/`TSV`/`PARQUET`/`SQL`) are keyed by their **project-relative path**. Note `AddressType.SQL` is a `.sql` *file*; only inline `query '''...'''` is `AddressType.QUERY`.
   - Two types aren't plain data artifacts and carry a type label: `PYTHON_SCRIPT` → `script::<project-relative path>` (a procedure that emits rows), and `QUERY` → `query::<16-hex digest of whitespace-collapsed SQL>` (no artifact at all; raw inline SQL is multi-line and churns on reformatting).
 - **The project root is `trilogy.toml`'s directory** (`state.py::project_root_for`), falling back to the input directory when there is no config. This is the only anchor every invocation agrees on — a subdirectory script, a single script run directly, and a whole-directory run all key identically. Anchoring on the script's own directory instead cannot express `../data/...` and silently reverts to absolute, unportable paths.
+- **Beneath an address, an entry is a declaration** — the declaring file (`DatasourceState.script`) and the declared name (`datasource_id`), with the import-path identifiers as `aliases`. A script probed alone and the directory probed whole must emit the same entry for it; see `trilogy/execution/state/AGENTS.md`.
 - **The owning script is attribute data** (`PhysicalAssetState.owner_script`, project-relative), set only where trilogy manages the address — `addr_to_owner` also names the script that merely *declares* an unmanaged root.
 - **Every datasource is an asset, roots included.** Unmanaged is `PhysicalAssetState.managed = False`, never an omission from `assets[]`. Roots are still never *seeded* from a snapshot (`managed_states_by_address` excludes them) — they are the expected side of every staleness comparison and must be re-probed live.
 - `--state-input` seeding recomputes the key from the physical address against the reader's own project root and looks it up directly (`persistence.py::_recorded_state`); the raw address is tried first for snapshots written before stable keys.

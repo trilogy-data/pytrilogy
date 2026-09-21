@@ -89,6 +89,11 @@ class ProcessedQueryPersist(ProcessedQuery, PersistQueryMixin):
 class ProcessedCopyStatement(ProcessedQuery, CopyQueryMixin):
     column_aliases: dict[str, str] = field(default_factory=dict)
     options: dict[str, Any] = field(default_factory=dict)
+    # Set when this copy carries an APPEND persist: a file is rewritten whole,
+    # so the rows already at the target are part of what has to be written.
+    # Holds the target's address for its type; the location is re-pointed at
+    # the resolved copy target before it is read.
+    append_to: Address | None = None
 
 
 @dataclass

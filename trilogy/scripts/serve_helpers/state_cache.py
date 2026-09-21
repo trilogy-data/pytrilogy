@@ -104,9 +104,7 @@ class StateSnapshotCache:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
             if meta.get("fingerprint") != fingerprint:
                 return None
-            snapshot = StateSnapshot.model_validate_json(
-                snapshot_path.read_text(encoding="utf-8")
-            )
+            snapshot = read_state_snapshot(snapshot_path)
         except (OSError, ValueError) as e:
             logger.debug("%s miss for %r: %s", LOGGER_PREFIX, target, e)
             return None

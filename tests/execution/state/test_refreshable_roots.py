@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -523,3 +524,49 @@ def test_render_round_trip_preserves_refresh_script():
     # Path may be normalized by the OS; just check the refresh keyword + path tail.
     assert "refresh `" in rendered
     assert "refresh.py" in rendered
+
+
+REFRESHABLE_ROOT = """key id int;
+property id.value string;
+
+root datasource raw (id: id, value: value)
+grain (id)
+address raw_t
+freshness by `probe.py`
+refresh `build.py`;
+"""
+
+
+def _imported_refreshable_root(tmp_path):
+    (tmp_path / "source.preql").write_text(REFRESHABLE_ROOT, encoding="utf-8")
+    (tmp_path / "top.preql").write_text("import source as src;", encoding="utf-8")
+    from trilogy import Environment
+
+    e = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=tmp_path)
+    )
+    e.parse_text("import source as src;", root=tmp_path / "top.preql")
+    e.execute_raw_sql("CREATE TABLE raw_t (id INTEGER, value VARCHAR)")
+    return e
+
+
+def test_import_keeps_a_root_refreshable_under_its_alias(tmp_path):
+    e = _imported_refreshable_root(tmp_path)
+
+    ds = e.environment.datasources["src.raw"]
+    assert ds.is_refreshable_root
+    assert Path(ds.freshness_probe).name == "probe.py"
+    assert Path(ds.refresh_script).name == "build.py"
+
+
+def test_an_imported_refreshable_root_is_probed_and_planned(tmp_path):
+    e = _imported_refreshable_root(tmp_path)
+
+    with patch(
+        "trilogy.execution.state.state_store.run_freshness_probe", return_value=False
+    ) as mock_probe:
+        stale = BaseStateStore().get_stale_assets(e.environment, e)
+
+    assert [Path(c.args[0]).name for c in mock_probe.call_args_list] == ["probe.py"]
+    script_stale = [a for a in stale if a.kind == RefreshKind.SCRIPT]
+    assert [a.datasource_id for a in script_stale] == ["src.raw"]

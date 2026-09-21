@@ -12,9 +12,10 @@ The same snapshot is produced post-execution by ``run``/``refresh``
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path as PathlibPath
+from typing import TypeVar
 
 from click import UNPROCESSED, argument, option, pass_context
 from click import Path as ClickPath
@@ -25,6 +26,7 @@ from trilogy.dialect.enums import Dialects
 from trilogy.execution.config import RuntimeConfig
 from trilogy.execution.report import emit_report, get_report_sink, report_run
 from trilogy.execution.staged_write import write_text_staged
+from trilogy.execution.state.declaration import by_import_depth, group_declarations
 from trilogy.execution.state.partitions import PartitionObservation
 from trilogy.execution.state.persistence import (
     ENV_STATE_FILE,
@@ -43,6 +45,7 @@ from trilogy.execution.state.snapshot import (
     build_datasource_state,
     build_partition_states,
     cap_snapshot,
+    evidenced_spelling,
     merge_into_snapshot,
     merge_snapshots,
     project_relative_path,
@@ -92,9 +95,29 @@ def _asset_key(ds: Datasource, address: str, project_root: PathlibPath) -> str:
     return stable_asset_key(address, address_type_of(ds), project_root)
 
 
+T = TypeVar("T")
+
 ProbedPartitions = dict[
     str, tuple[list[PartitionObservation], list[PartitionObservation]]
 ]
+
+
+def _declaring_script(
+    ds: Datasource, probing_script: PathlibPath | None, project_root: PathlibPath
+) -> str | None:
+    """The file a datasource was declared in, project-relative. A datasource
+    with no recorded file was declared by the script being probed."""
+    declared = ds.declared_in or probing_script
+    return project_relative_path(str(declared), project_root) if declared else None
+
+
+def _first_recorded(recorded: Mapping[str, T], group: list[Datasource]) -> T | None:
+    """A per-identifier record under whichever spelling of the declaration it
+    was filed — the record describes the table, not the import path."""
+    for ds in by_import_depth(group):
+        if ds.identifier in recorded:
+            return recorded[ds.identifier]
+    return None
 
 
 def _partition_states(
@@ -147,7 +170,9 @@ def _snapshot_from_directory(
 
     keys_by_address: dict[str, str] = {}
     entries: list[tuple[str, DatasourceState]] = []
-    for ds_id, ds in probe.ds_objects.items():
+    for group in group_declarations(probe.ds_objects.values()).values():
+        ds = evidenced_spelling(group, stale_map, merged_partitions, merged_watermarks)
+        ds_id = ds.identifier
         address = probe.address_map.get(ds_id, ds.safe_address)
         key = _asset_key(ds, address, project_root)
         keys_by_address.setdefault(address, key)
@@ -158,15 +183,14 @@ def _snapshot_from_directory(
             merged_watermarks.get(ds_id),
             stale_map.get(ds_id),
             merged_concept_max,
-            script=(
-                project_relative_path(str(scripts[0].path), project_root)
-                if scripts
-                else None
+            script=_declaring_script(
+                ds, scripts[0].path if scripts else None, project_root
             ),
             partitions=partitions,
             partition_summary=partition_summary,
+            aliases=[d.identifier for d in group],
         )
-        recorded_fp = probe.model_fingerprints.get(ds_id)
+        recorded_fp = _first_recorded(probe.model_fingerprints, group)
         if recorded_fp is not None:
             state.model_fingerprint = recorded_fp
         entries.append((key, state))
@@ -246,7 +270,9 @@ def snapshot_for_parsed_script(
     script_attr = project_relative_path(str(script_path), project_root)
     keys_by_address: dict[str, str] = {}
     entries: list[tuple[str, DatasourceState]] = []
-    for ds in executor.environment.datasources.values():
+    groups = group_declarations(executor.environment.datasources.values())
+    for group in groups.values():
+        ds = evidenced_spelling(group, stale_map, probed_partitions, watermarks)
         key = _asset_key(ds, ds.safe_address, project_root)
         keys_by_address.setdefault(ds.safe_address, key)
         partitions, partition_summary = _partition_states(ds, probed_partitions, run_id)
@@ -255,11 +281,12 @@ def snapshot_for_parsed_script(
             watermarks.get(ds.identifier),
             stale_map.get(ds.identifier),
             store.concept_max_watermarks,
-            script=script_attr,
+            script=_declaring_script(ds, script_path, project_root),
             partitions=partitions,
             partition_summary=partition_summary,
+            aliases=[d.identifier for d in group],
         )
-        recorded = model_fingerprints.get(ds.identifier)
+        recorded = _first_recorded(model_fingerprints, group)
         if recorded is not None:
             state.model_fingerprint = recorded.effective
         entries.append((key, state))

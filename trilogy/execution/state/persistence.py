@@ -28,6 +28,7 @@ from trilogy.core.models.environment import Environment
 from trilogy.execution.state.cache import ColumnStatsCache
 from trilogy.execution.state.partitions import PartitionObservation
 from trilogy.execution.state.snapshot import (
+    DECLARATION_SCHEMA,
     DatasourceState,
     StateSnapshot,
     address_type_of,
@@ -49,10 +50,32 @@ ENV_STATE_PARTITION = "TRILOGY_STATE_PARTITION"
 ENV_STATE_MAX_PARTITIONS = "TRILOGY_STATE_MAX_PARTITIONS"
 
 
+class StateSchemaError(ValueError):
+    """A snapshot file this build cannot read. A ``ValueError`` so a reader
+    that already degrades on a malformed file degrades on this one too."""
+
+
 def read_state_snapshot(path: Path | str) -> StateSnapshot:
     """Parse a snapshot file. Unknown fields are ignored by the model, so a
-    file written by a newer trilogy still loads."""
-    return StateSnapshot.model_validate_json(Path(path).read_text(encoding="utf-8"))
+    file written by a newer trilogy still loads.
+
+    A file written *before* :data:`DECLARATION_SCHEMA` is rejected rather than
+    adapted. Its entries are keyed by import path, with the probing script under
+    ``script``, so they cannot be paired with declaration-keyed ones — and the
+    declaring file it needs is not in the file at all. Re-probing recovers it;
+    rewriting the file cannot.
+    """
+    snapshot = StateSnapshot.model_validate_json(Path(path).read_text(encoding="utf-8"))
+    if snapshot.schema_version < DECLARATION_SCHEMA:
+        raise StateSchemaError(
+            f"'{path}' is a state snapshot at schema"
+            f" {snapshot.schema_version}; this build reads"
+            f" {DECLARATION_SCHEMA} and above. Its entries are keyed by import"
+            " path rather than by declaration, and the declaring file they need"
+            " is not recorded. Regenerate it against the model:"
+            " trilogy state <target> --output <file>"
+        )
+    return snapshot
 
 
 def resolve_state_input(state_input: str | None) -> Path | None:

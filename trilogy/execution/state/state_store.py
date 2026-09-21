@@ -16,6 +16,15 @@ from trilogy.core.models.datasource import (
 )
 from trilogy.core.models.environment import Environment
 from trilogy.execution.state.cache import ColumnStatsCache
+from trilogy.execution.state.declaration import (
+    DeclarationKey,
+    canonical,
+    declaration_key,
+    declared_within,
+    group_declarations,
+    rekey_partitions,
+    rekey_watermark,
+)
 from trilogy.execution.state.isolation import hidden_datasources
 from trilogy.execution.state.partitions import (
     PartitionObservation,
@@ -140,6 +149,10 @@ class BaseStateStore:
         # describes the PRE-refresh build, so once invalidate*() runs the
         # claim must not resurrect — same rule as re-seeding watermarks.
         self._model_refreshed: set[str] = set()
+        # ds_id -> the declaration it spells. Every spelling of a declaration
+        # reads the same bytes, so one probe serves them all and one refresh
+        # invalidates them all — see ``declaration.py``.
+        self._declarations: dict[str, DeclarationKey] = {}
         # Mutations to the caches happen from parallel managed-node executions;
         # serialize them to keep the dicts consistent.
         self._lock = threading.Lock()
@@ -161,16 +174,71 @@ class BaseStateStore:
         return result
 
     def invalidate(self, ds_id: str) -> None:
-        """Drop cached watermark for a single datasource.
+        """Drop cached watermarks for a datasource and every other spelling
+        of its declaration — a survivor would be shared straight back.
 
         Also clears concept_max_watermarks (cheap to recompute and depends on
         the full root set).
         """
         with self._lock:
-            self.watermarks.pop(ds_id, None)
-            self.partitions.pop(ds_id, None)
-            self._model_refreshed.add(ds_id)
+            declaration = self._declarations.get(ds_id)
+            spellings = {ds_id}
+            if declaration is not None:
+                spellings |= {
+                    other
+                    for other, key in self._declarations.items()
+                    if key == declaration
+                }
+            for spelling in spellings:
+                self.watermarks.pop(spelling, None)
+                self.partitions.pop(spelling, None)
+                self._model_refreshed.add(spelling)
             self.concept_max_watermarks.clear()
+
+    def _note_declaration(self, ds: Datasource) -> None:
+        """Under the lock: ``invalidate`` iterates this map, and probes run in
+        parallel."""
+        with self._lock:
+            self._declarations[ds.identifier] = declaration_key(ds)
+
+    def _index_declarations(self, env: Environment) -> None:
+        with self._lock:
+            for ds in env.datasources.values():
+                self._declarations[ds.identifier] = declaration_key(ds)
+
+    def _shared_watermark(
+        self, ds: Datasource, env: Environment
+    ) -> DatasourceWatermark | None:
+        """Another spelling's probe of this declaration, translated onto
+        ``ds``'s own concept addresses. None means probe."""
+        key = declaration_key(ds)
+        for other in list(env.datasources.values()):
+            if other.identifier == ds.identifier or declaration_key(other) != key:
+                continue
+            with self._lock:
+                held = self.watermarks.get(other.identifier)
+            if held is None:
+                continue
+            shared = rekey_watermark(held, other, ds)
+            if shared is not None:
+                return shared
+        return None
+
+    def _shared_partitions(
+        self, ds: Datasource, env: Environment
+    ) -> tuple[list[PartitionObservation], list[PartitionObservation]] | None:
+        key = declaration_key(ds)
+        for other in list(env.datasources.values()):
+            if other.identifier == ds.identifier or declaration_key(other) != key:
+                continue
+            with self._lock:
+                held = self.partitions.get(other.identifier)
+            if held is None:
+                continue
+            shared = rekey_partitions(held, other, ds)
+            if shared is not None:
+                return shared
+        return None
 
     def invalidate_address(self, env: Environment, address: str) -> None:
         """Drop cached watermarks and probe memo for every datasource at a
@@ -241,6 +309,11 @@ class BaseStateStore:
     def watermark_asset(
         self, datasource: Datasource, executor: Executor
     ) -> DatasourceWatermark:
+        self._note_declaration(datasource)
+        shared = self._shared_watermark(datasource, executor.environment)
+        if shared is not None:
+            self.watermarks[datasource.identifier] = shared
+            return shared
         if is_missing_local_file(datasource):
             watermarks = DatasourceWatermark(keys={})
             self.watermarks[datasource.identifier] = watermarks
@@ -285,6 +358,12 @@ class BaseStateStore:
             cached = self.partitions.get(ds_id)
         if cached is not None:
             return cached
+        self._note_declaration(ds)
+        shared = self._shared_partitions(ds, env)
+        if shared is not None:
+            with self._lock:
+                self.partitions[ds_id] = shared
+            return shared
         if root_assets is None:
             root_assets = {d.identifier for d in env.datasources.values() if d.is_root}
         probed = (
@@ -311,6 +390,7 @@ class BaseStateStore:
     ) -> dict[str, DatasourceWatermark]:
         """Watermark all datasources in the environment."""
         skip_datasources = skip_datasources or set()
+        self._index_declarations(env)
 
         needed_concepts: set[str] = set()
         for ds in env.datasources.values():
@@ -333,8 +413,12 @@ class BaseStateStore:
                         if ref.address in needed_concepts
                     ]
                     if target_refs:
-                        watermark = get_concept_max_watermarks(
-                            ds, target_refs, executor
+                        shared = self._shared_watermark(ds, env)
+                        wanted = {ref.address for ref in target_refs}
+                        watermark = (
+                            shared
+                            if shared is not None and wanted <= set(shared.keys)
+                            else get_concept_max_watermarks(ds, target_refs, executor)
                         )
                         if watermark.keys:
                             self.watermarks[ds.identifier] = watermark
@@ -620,11 +704,16 @@ class BaseStateStore:
         self._ensure_concept_max_watermarks(env, executor, root_assets)
 
         stale: list[StaleAsset] = []
+        # One verdict per declaration, reached through its canonical spelling:
+        # the other spellings name the same table, and judging each would plan
+        # the same rebuild once per import path. A declaration is skipped when
+        # any spelling of it is — the caller named the table, not the path.
         # Materialized: is_stale's partition probe hides non-root datasources for
-        # the duration of its query, mutating this dict mid-iteration.
-        for ds_id in list(env.datasources):
-            if ds_id in skip_datasources:
+        # the duration of its query, mutating the env's dict mid-iteration.
+        for group in list(group_declarations(env.datasources.values()).values()):
+            if any(ds.identifier in skip_datasources for ds in group):
                 continue
+            ds_id = canonical(group).identifier
             asset = self.is_stale(env, executor, ds_id, root_assets=root_assets)
             if asset is not None:
                 stale.append(asset)
@@ -735,6 +824,17 @@ class RefreshPolicy:
     #: Concept address -> value naming the slice this run owns
     #: (``--partition``). Empty means "let staleness decide".
     partition_selector: Mapping[str, str] = field(default_factory=dict)
+    #: Declaring files (``Datasource.declared_in``, resolved) whose declarations
+    #: this run may build. A declaration reached only by import is still probed
+    #: — its watermark is the expected side of what *is* built — and reported as
+    #: stale, but never refreshed: it belongs to a run of its own file. Empty
+    #: means every file, which is what ``--include-imports`` asks for.
+    #:
+    #: The one rule for *what* a run builds. ``force_sources`` and
+    #: ``partition_selector`` say how that set is gated and narrowed; neither
+    #: widens it, so a value naming only an imported declaration is rejected up
+    #: front rather than silently doing nothing.
+    build_scope: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -745,7 +845,11 @@ class RefreshPolicy:
         # The generated one would hash the (unhashable) mapping, leaving a frozen
         # dataclass that raises wherever anything treats it as a value.
         return hash(
-            (self.force_sources, tuple(sorted(self.partition_selector.items())))
+            (
+                self.force_sources,
+                tuple(sorted(self.partition_selector.items())),
+                self.build_scope,
+            )
         )
 
 
@@ -764,6 +868,11 @@ class RefreshPlan:
     partitions: dict[
         str, tuple[list[PartitionObservation], list[PartitionObservation]]
     ] = field(default_factory=dict)
+    # Judged stale, but declared in a file this run is not scoped to build (see
+    # RefreshPolicy.build_scope). Deliberately outside refresh_assets and
+    # reported instead, so "I did not rebuild your stale upstream" is visible
+    # rather than silent.
+    out_of_scope: list[StaleAsset] = field(default_factory=list)
 
     @property
     def refresh_assets(self) -> list[StaleAsset]:
@@ -776,6 +885,24 @@ class RefreshPlan:
     @property
     def had_stale(self) -> bool:
         return self.stale_count > 0
+
+
+def split_build_scope(
+    env: Environment,
+    assets: list[StaleAsset],
+    build_scope: frozenset[str],
+) -> tuple[list[StaleAsset], list[StaleAsset]]:
+    """Judged-stale assets split into the ones this run may build and the ones
+    it may only report. See :attr:`RefreshPolicy.build_scope`."""
+    if not build_scope:
+        return assets, []
+    inside: list[StaleAsset] = []
+    outside: list[StaleAsset] = []
+    for asset in assets:
+        ds = env.datasources.get(asset.datasource_id)
+        covered = ds is None or declared_within(ds, build_scope)
+        (inside if covered else outside).append(asset)
+    return inside, outside
 
 
 def create_refresh_plan(
@@ -792,6 +919,8 @@ def create_refresh_plan(
         See :class:`RefreshPolicy`; it is one object precisely so a new kind of
         intent cannot reach some planning call sites and not others.
     skip_datasources: ds_ids to completely ignore (already covered by another owner script).
+        Distinct from ``policy.build_scope``, which still probes what it will
+        not build — a stale upstream is the expected side of this run.
     initial_watermarks: pre-collected watermarks (e.g. root watermarks from a prior phase).
     state_store: alternate StateStore backend; defaults to a fresh in-memory
         BaseStateStore. Pre-seeded watermarks on the store are respected
@@ -804,19 +933,32 @@ def create_refresh_plan(
         state_store.watermarks.update(initial_watermarks)
     force_sources = set(policy.force_sources)
     extra_skip = skip_datasources or set()
-    all_skip = force_sources | extra_skip
+    # A forced source is skipped by detection because it is rebuilt regardless —
+    # which only holds for one this run may build. Out of scope it is neither
+    # forced nor detected, so it has to stay detectable to be reported at all.
+    all_skip = {
+        ds.identifier
+        for ds in executor.environment.datasources.values()
+        if ds.identifier in force_sources and declared_within(ds, policy.build_scope)
+    } | extra_skip
 
     stale_assets = state_store.get_stale_assets(
         executor.environment, executor, skip_datasources=all_skip
+    )
+    stale_assets, out_of_scope = split_build_scope(
+        executor.environment, stale_assets, policy.build_scope
     )
 
     stale_ids = {a.datasource_id for a in stale_assets}
     forced_assets: list[StaleAsset] = []
     for ds in executor.environment.datasources.values():
+        # ``force_sources`` drops the staleness gate; it does not widen the
+        # scope. What a run may build is the same with it as without.
         if (
             ds.identifier in force_sources
             and ds.identifier not in stale_ids
             and ds.identifier not in extra_skip
+            and declared_within(ds, policy.build_scope)
         ):
             kind = (
                 RefreshKind.SCRIPT
@@ -866,6 +1008,7 @@ def create_refresh_plan(
         all_assets=all_assets,
         root_watermarks=root_watermarks,
         partitions=partitions,
+        out_of_scope=out_of_scope,
     )
     if policy.partition_selector:
         # ``extra_skip``, not ``all_skip``: a forced source is skipped by
@@ -874,7 +1017,11 @@ def create_refresh_plan(
         # ds's X, stale or not" — dropping the selector there would rebuild every
         # slice while the state delta still claimed only X.
         target_partition_selector(
-            executor, plan, dict(policy.partition_selector), extra_skip
+            executor,
+            plan,
+            dict(policy.partition_selector),
+            extra_skip,
+            policy.build_scope,
         )
 
     # Begin-phase capture: the planning probe is the last look at state
@@ -892,6 +1039,7 @@ def target_partition_selector(
     plan: RefreshPlan,
     selector: dict[str, str],
     skip: set[str],
+    build_scope: frozenset[str] = frozenset(),
 ) -> None:
     """Point the plan at exactly the slice ``selector`` names. Mutates ``plan``.
 
@@ -900,10 +1048,13 @@ def target_partition_selector(
     entirely (never loaded, or a backfill of a day the watermark is past) — and
     narrowed to that slice, so healthy neighbours are untouched. Datasources the
     selector does not name plan normally.
+
+    ``build_scope`` still applies: the selector narrows what this run builds, it
+    does not widen it. Same for ``--force``; nothing reaches past the scope.
     """
     targeted: dict[str, StaleAsset] = {}
     for ds_id, ds in executor.environment.datasources.items():
-        if ds_id in skip or ds.is_root:
+        if ds_id in skip or ds.is_root or not declared_within(ds, build_scope):
             continue
         slice_ = selected_slice(ds, executor.environment, selector)
         if slice_ is None:

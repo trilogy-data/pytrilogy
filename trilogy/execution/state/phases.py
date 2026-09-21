@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from trilogy.core.models.datasource import UpdateKey
+from trilogy.execution.state.declaration import DeclarationKey, declaration_key
 from trilogy.execution.state.watermarks import DatasourceWatermark
 from trilogy.utility import utc_now_iso
 
@@ -104,13 +105,20 @@ class PhaseRecorder:
         probed_at = utc_now_iso()
         forced_ids = {asset.datasource_id for asset in plan.forced_assets}
         verdicts: dict[str, PlanRecord] = {}
+        by_declaration: dict[DeclarationKey, PlanRecord] = {}
         for asset in plan.refresh_assets:
-            verdicts[asset.datasource_id] = PlanRecord(
+            record = PlanRecord(
                 judged_stale=True,
                 reason=asset.reason,
                 kind=asset.kind.value,
                 forced=asset.datasource_id in forced_ids,
             )
+            verdicts[asset.datasource_id] = record
+            # The plan judges a declaration once, through one spelling; the
+            # verdict is about the table, so every spelling of it carries it.
+            judged = environment.datasources.get(asset.datasource_id)
+            if judged is not None:
+                by_declaration[declaration_key(judged)] = record
         # The expected side is snapshotted per plan: a later plan in the same
         # run rebuilds it, and begin must keep what THIS probe compared against.
         concept_max = dict(plan.concept_max_watermarks)
@@ -125,8 +133,9 @@ class PhaseRecorder:
                 ds_id = ds.identifier
                 if ds_id in skipped:
                     continue
-                if ds_id in verdicts:
-                    self._plans.setdefault(ds_id, verdicts[ds_id])
+                verdict = verdicts.get(ds_id) or by_declaration.get(declaration_key(ds))
+                if verdict is not None:
+                    self._plans.setdefault(ds_id, verdict)
                 elif ds.is_managed:
                     kind: Literal["sql", "script"] = "script" if ds.is_root else "sql"
                     self._plans.setdefault(

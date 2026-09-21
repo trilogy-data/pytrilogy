@@ -1,3 +1,4 @@
+import glob as glob_module
 from collections.abc import ItemsView, ValuesView
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -6,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
-from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants
+from trilogy.constants import DEFAULT_NAMESPACE, REMOTE_PREFIXES, MagicConstants
 from trilogy.core.enums import (
     AddressType,
     BooleanOperator,
@@ -221,6 +222,14 @@ class Address:
             return [self.location, *self.additional_locations]
         return [self.location]
 
+    @property
+    def is_missing_locally(self) -> bool:
+        """Whether a local file address currently matches nothing on disk.
+        A remote location is assumed present: there is nothing cheap to stat."""
+        if not self.is_file or self.location.startswith(REMOTE_PREFIXES):
+            return False
+        return len(glob_module.glob(self.location)) == 0
+
 
 @dataclass
 class Query:
@@ -292,6 +301,10 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     # column is missing values even within the table's complete-for slice —
     # and survive a covering UNION. Table-level stamps do not.
     column_level_partial_addresses: set[str] = Field(default_factory=set)
+    # The file this datasource was declared in; None when it was declared in
+    # the entrypoint text itself. With ``name`` it identifies the declaration
+    # across every namespace an import chain spells it under.
+    declared_in: str | None = None
 
     @property
     def safe_address(self) -> str:
@@ -434,6 +447,11 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             incremental_by=[c.with_namespace(namespace) for c in self.incremental_by],
             partition_by=[c.with_namespace(namespace) for c in self.partition_by],
             freshness_by=[c.with_namespace(namespace) for c in self.freshness_by],
+            # Paths to scripts, not concepts: a namespace has nothing to say
+            # about them, and dropping them makes an imported refreshable root
+            # unrefreshable under its alias.
+            freshness_probe=self.freshness_probe,
+            refresh_script=self.refresh_script,
             allowed_lag=self.allowed_lag,
             is_root=self.is_root,
             is_partial=self.is_partial,
@@ -441,6 +459,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
                 address_with_namespace(addr, namespace)
                 for addr in self.column_level_partial_addresses
             },
+            declared_in=self.declared_in,
         )
         return new
 

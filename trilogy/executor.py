@@ -596,8 +596,11 @@ class Executor:
         if not dry_run and not is_file_backed:
             create_stmt = CreateStatement(
                 scope=ValidationScope.DATASOURCES,
+                # Identifier, not name: the target is looked up in
+                # ``environment.datasources``, which is keyed by identifier, so a
+                # bare name misses every imported datasource.
+                targets=[datasource.identifier],
                 create_mode=CreateMode.CREATE_IF_NOT_EXISTS,
-                targets=[datasource.name],
             )
             self.execute_statement(create_stmt)
         select_stmt = datasource.create_update_statement(
@@ -814,6 +817,15 @@ class Executor:
         addr = query.output_to.address
         if addr.is_file:
             io_type = self._address_type_to_io_type(addr.type)
+            appending = query.persist_mode == PersistMode.APPEND
+            if appending and query.partition_by:
+                raise NotImplementedError(
+                    "Cannot append to a partitioned file target"
+                    f" '{addr.location}': replacing one slice means rewriting"
+                    " the whole file, and the partition keys are columns in it"
+                    " rather than a directory layout. Persist to a table, or"
+                    " drop the `partition by` clause."
+                )
             # Build column alias mapping from datasource columns
             column_aliases: dict[str, str] = {}
             for col in query.datasource.columns:
@@ -831,6 +843,7 @@ class Executor:
                 target=addr.write_location or addr.location,
                 target_type=io_type,
                 column_aliases=column_aliases,
+                append_to=addr if appending else None,
             )
             self.execute_query(copy_statement)
             if query.persist_mode == PersistMode.OVERWRITE:
@@ -892,10 +905,39 @@ class Executor:
             return str(self.environment.working_path / target_path)
         return target
 
+    def _with_existing_rows(self, sql: str, existing: Address) -> str:
+        """The select an append to a file writes: its new rows plus the ones
+        already in the file, which a whole-file rewrite would otherwise drop.
+
+        Unified by name rather than position — the target's column order is
+        whatever the last write left it, not the select's — and read through
+        the dialect's own reader for the type. Nothing to union before the
+        first build."""
+        if existing.is_missing_locally:
+            return sql
+        return (
+            f"SELECT * FROM {self.generator.render_source(existing)}"
+            "\nUNION ALL BY NAME\n"
+            f"SELECT * FROM ({sql}) as _trilogy_appended"
+        )
+
     @execute_query.register
     def _(self, query: ProcessedCopyStatement) -> ResultProtocol | None:
         sql = self._build_aliased_copy_sql(query)
         target = self._resolve_copy_target(query.target)
+        if query.append_to is not None:
+            # Only the file being rewritten: an address that also names sibling
+            # locations reads them all, and folding those in would duplicate
+            # their rows into this one.
+            sql = self._with_existing_rows(
+                sql,
+                dc_replace(
+                    query.append_to,
+                    location=target,
+                    write_location=None,
+                    additional_locations=[],
+                ),
+            )
         if self.dialect == Dialects.DUCK_DB:
             # Check for GCS write credentials if target is a GCS path
             if target.startswith(("gcs://", "gs://")):
