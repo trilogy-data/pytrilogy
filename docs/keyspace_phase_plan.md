@@ -212,6 +212,11 @@ The owner questions below are still open; 1 and 3 were taken as proposed (entity
 4. `select status, count(customer_id)`: the customer key is demanded only as an aggregate ARGUMENT. Under the region model the `{customer}` region exists and the orderless customer counts under `status = NULL`, which is what the materialized twin returns. Confirm that is the intended answer, since no output carries the key.
 5. `undelivered_customer <- filter name where undelivered` in a SELECT restricts the row stream today (returns only customer 1, on the materialized twin too). Under the region model it is a value, NULL where the predicate fails. Confirm, because that is a visible behaviour change outside `~` models.
 
+### Answers (owner, 2026-09-21)
+
+- **4: yes.** An aggregate ARGUMENT demands its key's region: `select status, count(customer_id)` counts the orderless customer under `status = NULL`, as the materialized twin does.
+- **5: it is a bug, not a choice.** A filter narrows only the concept it defines, never the other columns' rows: `select customer_id, undelivered_customer` returns every customer, NULL where the predicate fails. The materialized twin restricting the stream is the same bug, so the oracle cannot judge this one; it needs its own expected-rows test. It reaches outside `~` models.
+
 ## What already exists to start from
 
 The prototype (commits `e0f6424b7`..`d1c482137` on `extension-row-null-semantics`, backed out in the commit after them) implements phase 4 for ONE region shape and passes the oracle for it. Read it as evidence, not as a base:
