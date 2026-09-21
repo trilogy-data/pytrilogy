@@ -39,6 +39,11 @@ Record vocabulary (fields with ``None`` values are omitted):
 - ``state_snapshot``: a full StateSnapshot payload (see
   ``trilogy.execution.state.snapshot``), or {path} when written to a file
 - ``error``: error_type, message, file (fatal errors outside the file loop)
+- ``warning``: code, message, plus fields particular to the code — something
+  the run chose not to do that its exit code cannot say. Never decides the
+  outcome. Codes: ``stale_imports_not_built`` (datasources: the stale imported
+  datasource ids a file refresh probed and left unbuilt; a run building none of
+  its own exits 2, which reads as "up to date")
 - ``output``: name, kind ("link" | "text" | "json"), value, source (the
   program that declared it) — a value a ``call``ed program handed back via a
   ``::trilogy-output`` stdout marker (see ``trilogy.execution.outputs``)
