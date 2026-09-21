@@ -156,3 +156,41 @@ def test_field_report_has_one_region_per_family():
         frozenset({USER}),
         frozenset({PRODUCT}),
     }
+
+
+def test_needed_partial_source_beside_a_complete_one_is_a_completion():
+    keyspace = _keyspace(_PARTIAL_PROPERTY_SOURCE, "select order_id, is_returned;")
+    (base,) = keyspace.regions
+    assert base.completes == frozenset({ORDER, ITEM})
+    # the election's question: whose unmatched members carry an output
+    assert keyspace.output_demanded_spans == frozenset({ORDER})
+
+
+def test_unneeded_partial_source_demands_nothing():
+    keyspace = _keyspace(_PARTIAL_PROPERTY_SOURCE, "select order_id, qty;")
+    (base,) = keyspace.regions
+    assert base.completes == frozenset()
+    assert keyspace.output_demanded_spans == frozenset()
+
+
+_MERGED_PARTIAL = """
+key customer_id int;
+property customer_id.name string;
+key order_id int;
+key order_customer_id int;
+
+datasource customers (customer_id: customer_id, name: name)
+grain (customer_id) address customers;
+
+datasource orders (order_id: order_id, customer_id: ~order_customer_id)
+grain (order_id) address orders;
+
+merge order_customer_id into customer_id;
+"""
+
+
+def test_partial_binding_survives_a_merge_onto_its_target():
+    keyspace = _keyspace(_MERGED_PARTIAL, "select name, order_id;")
+    (extension,) = keyspace.extensions
+    assert extension.present == frozenset({CUSTOMER})
+    assert extension.spans == frozenset({"local.order_customer_id"})

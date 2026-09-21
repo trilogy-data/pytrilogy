@@ -13,13 +13,17 @@ import os
 from typing import Any
 from weakref import ReferenceType, ref
 
+from trilogy.core import graph as nx
+from trilogy.core.enums import Derivation
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.execute import QueryDatasource
 from trilogy.core.processing.join_resolution import licensed_extension_spans
+from trilogy.core.processing.nodes import StrategyNode
 
 from .constants import FINAL_NODE_ID
 from .extent_ownership import demanded_extension_spans
@@ -27,6 +31,9 @@ from .keyspace import build_keyspace
 from .models import ConceptAttrs, GroupAttrs, Keyspace
 
 AUDIT_PATH = os.environ.get("TRILOGY_KEYSPACE_AUDIT")
+
+# evaluated per row of the stream they read, so padding reaches them as input
+_ROW_STREAM = frozenset({Derivation.BASIC, Derivation.FILTER, Derivation.WINDOW})
 
 # id(environment) -> (live handle, datasources before pin-heal, what it healed)
 _PRE_HEAL: dict[
@@ -50,11 +57,31 @@ def _emit(kind: str, **details: Any) -> None:
         handle.write(json.dumps(row, sort_keys=True, default=sorted) + "\n")
 
 
+def _scanned(node: QueryDatasource | BuildDatasource) -> list[BuildDatasource]:
+    if isinstance(node, BuildDatasource):
+        return [node]
+    return [ds for child in node.datasources for ds in _scanned(child)]
+
+
+def _partial_binders_read(strategy_node: StrategyNode | None, span: str) -> list[str]:
+    """Sources the built plan reads that bind `span` with a `~`."""
+    if strategy_node is None:
+        return []
+    return sorted(
+        {
+            ds.identifier
+            for ds in _scanned(strategy_node.resolve())
+            if span in ds.column_level_partial_addresses
+        }
+    )
+
+
 def _audit_demand(
     keyspace: Keyspace,
     attrs: dict[str, GroupAttrs],
     environment: BuildEnvironment,
     outputs: list[str],
+    strategy_node: StrategyNode | None,
 ) -> None:
     elected = demanded_extension_spans(
         attrs, licensed_extension_spans(environment), environment
@@ -66,14 +93,24 @@ def _audit_demand(
             election=elected,
             keyspace=keyspace.output_demanded_spans,
             regions=keyspace.describe(),
+            # an election-only span no scanned source binds `~` is inert
+            read={
+                span: _partial_binders_read(strategy_node, span)
+                for span in elected - keyspace.output_demanded_spans
+            },
         )
 
 
 def _audit_owner(
-    keyspace: Keyspace, attrs: dict[str, GroupAttrs], outputs: list[str]
+    keyspace: Keyspace,
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    concept_attrs: dict[str, ConceptAttrs],
+    outputs: list[str],
 ) -> None:
-    """Members of a span's owner group that are ABSENT on the span's region:
-    what the owner evaluates over padded rows today (phase 4's worklist)."""
+    """Derivations the plan evaluates on rows of a region they are ABSENT on
+    (phase 4's worklist): they read the span owner's padded row stream."""
+    derived = {a.address for a in concept_attrs.values() if a.derivation in _ROW_STREAM}
     ownership = attrs[FINAL_NODE_ID].extent_ownership
     if ownership is None:
         return
@@ -81,9 +118,15 @@ def _audit_owner(
         for region in keyspace.live_regions:
             if span not in region.spans:
                 continue
-            absent = [
-                m for m in attrs[owner].members if not keyspace.defined_on(m, region)
+            readers = [
+                m
+                for gid in (owner, *nx.descendants(group_graph, owner))
+                if gid != FINAL_NODE_ID
+                for m in attrs[gid].members
             ]
+            absent = sorted(
+                m for m in set(readers) & derived if not keyspace.defined_on(m, region)
+            )
             if absent:
                 _emit(
                     "owner_pads",
@@ -112,8 +155,10 @@ def _audit_heal(
         *(r.spans for r in replay.regions if r.is_empty)
     )
     in_play: frozenset[str] = frozenset().union(*(r.spans for r in replay.regions))
-    # pin-heal also heals `~` keys the statement never asks extension rows of
-    if healed & in_play != emptied:
+    # Emptied is a fact about ROWS; healing also has to be safe for every
+    # other merge the dropped `~` would license, so pin-heal may decline. It
+    # must never heal a span whose region is live.
+    if not healed & in_play <= emptied:
         _emit(
             "heal",
             outputs=[c.address for c in mandatory_list],
@@ -126,7 +171,9 @@ def _audit_heal(
 def audit_plan(
     keyspace: Keyspace,
     concept_attrs: dict[str, ConceptAttrs],
+    group_graph: nx.DiGraph,
     group_attrs: dict[str, GroupAttrs],
+    strategy_node: StrategyNode | None,
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     conditions: list[BuildWhereClause],
@@ -134,6 +181,6 @@ def audit_plan(
     if not AUDIT_PATH or FINAL_NODE_ID not in group_attrs:
         return
     outputs = [c.address for c in mandatory_list]
-    _audit_demand(keyspace, group_attrs, environment, outputs)
-    _audit_owner(keyspace, group_attrs, outputs)
+    _audit_demand(keyspace, group_attrs, environment, outputs, strategy_node)
+    _audit_owner(keyspace, group_graph, group_attrs, concept_attrs, outputs)
     _audit_heal(concept_attrs, mandatory_list, environment, conditions)

@@ -86,11 +86,15 @@ class Region:
 
     ``spans`` are the ``~`` bindings that keep this kind of row from being
     absorbed into a larger one (a customer no order references); empty for the
-    base region. ``emptied_by`` are the concepts the plan's WHERE null-rejects
-    that are ABSENT here, so no row of this kind survives the statement."""
+    base region. ``completes`` are the ``~`` keys of a source the plan needs
+    that holds only some of this region's rows (``returns`` beside ``lines``):
+    no entity is absent, but the rest still have to come from somewhere.
+    ``emptied_by`` are the concepts the plan's WHERE null-rejects that are
+    ABSENT here, so no row of this kind survives the statement."""
 
     present: frozenset[str]
     spans: frozenset[str] = frozenset()
+    completes: frozenset[str] = frozenset()
     sources: frozenset[str] = frozenset()
     emptied_by: frozenset[str] = frozenset()
 
@@ -106,6 +110,8 @@ class Region:
         body = "{" + ", ".join(sorted(self.present)) + "}"
         if self.spans:
             body += f" ~{sorted(self.spans)}"
+        if self.completes:
+            body += f" completes {sorted(self.completes)}"
         if self.emptied_by:
             body += f" EMPTY by {sorted(self.emptied_by)}"
         return body
@@ -122,8 +128,11 @@ class Keyspace:
     regions: tuple[Region, ...] = ()
     # requested concept address -> the entity keys it is a function of
     keys_by_address: dict[str, frozenset[str]] = field(default_factory=dict)
-    # entity keys an OUTPUT is a function of (the election's notion of demand)
+    # entity keys an OUTPUT is a function of
     output_entities: frozenset[str] = frozenset()
+    outputs: tuple[str, ...] = ()
+    # span -> the entities a keyed lookup from that span alone arrives at
+    span_reach: dict[str, frozenset[str]] = field(default_factory=dict)
 
     @property
     def extensions(self) -> tuple[Region, ...]:
@@ -139,9 +148,19 @@ class Keyspace:
 
     @property
     def output_demanded_spans(self) -> frozenset[str]:
-        """Spans of the live extension regions an output is defined on."""
-        return frozenset().union(
-            *(r.spans for r in self.live_regions if r.present & self.output_entities)
+        """What the extent election asks: the spans whose unmatched members
+        carry an OUTPUT, one that is a function of what the span alone reaches."""
+        in_play: frozenset[str] = frozenset().union(
+            *(r.spans | r.completes for r in self.live_regions)
+        )
+        return frozenset(
+            span
+            for span in in_play
+            if any(
+                self.keys_by_address.get(o)
+                and self.keys_by_address[o] <= self.span_reach.get(span, frozenset())
+                for o in self.outputs
+            )
         )
 
     def defined_on(self, address: str, region: Region) -> bool:
