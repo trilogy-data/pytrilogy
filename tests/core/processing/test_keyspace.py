@@ -137,6 +137,8 @@ def test_where_null_rejecting_an_absent_concept_empties_the_region(monkeypatch):
     (extension,) = keyspace.extensions
     assert extension.emptied_by == frozenset({"local.status"})
     assert keyspace.demanded_spans == frozenset()
+    # a merge below the WHERE still sees the dead region's padding
+    assert keyspace.in_play_spans == frozenset({CUSTOMER})
 
 
 def test_where_over_a_present_concept_leaves_the_region_live(monkeypatch):

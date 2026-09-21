@@ -338,16 +338,6 @@ def _span_padded_addresses(
     return out
 
 
-def licensed_extension_spans(environment: BuildEnvironment) -> frozenset[str]:
-    """Addresses some datasource binds with a column-level ``~``."""
-    return frozenset(
-        address
-        for datasource in environment.datasources.values()
-        if isinstance(datasource, BuildDatasource)
-        for address in datasource.column_level_partial_addresses
-    )
-
-
 def _pads_for_different_members(
     left: str,
     right: str,
@@ -1549,12 +1539,51 @@ def _padding_sources(
     return found
 
 
+def _span_spellings(
+    spans: frozenset[str], environment: BuildEnvironment
+) -> dict[str, str]:
+    """Every address a join pair can spell one of `spans` with -> one name for
+    it. A scoped join substitutes its canonical for the member bound `~`
+    (`subset join pr.item.sk = ss.item.sk` keys the join on `ss.item.sk`)."""
+    out = {span: span for span in spans}
+    for canonical, members in environment.scoped_join_key_groups.items():
+        group = {canonical, *members}
+        if group & spans:
+            out.update(dict.fromkeys(group, canonical))
+    return out
+
+
+def _span_padding_matrix(
+    ds_node_map: dict[str, DataSource],
+    nullables: dict[str, list[str]],
+    spellings: dict[str, str],
+    canon_node: Callable[[str], str],
+) -> dict[str, dict[str, frozenset[str]]]:
+    """Per side, per nullable key: the spans whose extension rows NULL it."""
+    span_memos: dict[str, dict[int, set[str]]] = {
+        spelling: {} for spelling in sorted(spellings)
+    }
+    out: dict[str, dict[str, frozenset[str]]] = {}
+    for ds_node, datasource in ds_node_map.items():
+        by_key: dict[str, set[str]] = defaultdict(set)
+        for spelling, span_memo in span_memos.items():
+            for address in _span_padded_addresses(datasource, spelling, span_memo):
+                by_key[canon_node(address)].add(spellings[spelling])
+        out[ds_node] = {
+            key: frozenset(found)
+            for key, found in by_key.items()
+            if key in nullables[ds_node]
+        }
+    return out
+
+
 def get_node_joins(
     datasources: list[DataSource],
     environment: BuildEnvironment,
     host_grain: set[str] | None = None,
     demanded_domains: set[str] | None = None,
     extent_free_spans: frozenset[str] = frozenset(),
+    in_play_spans: frozenset[str] = frozenset(),
 ) -> list[BaseJoin]:
     from trilogy.core import graph as nx
 
@@ -1665,19 +1694,12 @@ def get_node_joins(
     }
     span_padding: dict[str, dict[str, frozenset[str]]] = {}
     if sum(1 for marks in nullables.values() if marks) > 1:
-        span_memos: dict[str, dict[int, set[str]]] = {
-            span: {} for span in sorted(licensed_extension_spans(environment))
-        }
-        for ds_node, datasource in ds_node_map.items():
-            by_key: dict[str, set[str]] = defaultdict(set)
-            for span, span_memo in span_memos.items():
-                for address in _span_padded_addresses(datasource, span, span_memo):
-                    by_key[canon_node(address)].add(span)
-            span_padding[ds_node] = {
-                key: frozenset(found)
-                for key, found in by_key.items()
-                if key in nullables[ds_node]
-            }
+        span_padding = _span_padding_matrix(
+            ds_node_map,
+            nullables,
+            _span_spellings(in_play_spans, environment),
+            canon_node,
+        )
     host_nodes: set[str] | None = None
     if host_grain:
         host_canon = {canon_node(a) for a in host_grain}
