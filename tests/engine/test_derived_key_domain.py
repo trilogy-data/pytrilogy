@@ -133,9 +133,23 @@ HOLDS = [
     "select status, count(name) as n",
     "select label, count(customer_id) as n",
     "select status, activity, count(customer_id) as n",
+    # no output is a function of the customer: the region is not demanded, and
+    # the orderless customer is not a row of the statement
+    "select order_id, status",
+    "select order_id, status where name = 'ann'",
+    "select order_id, order_seq where name = 'ann'",
+    "select status, order_seq where customer_id = 1",
+    "select order_id, status where customer_id in (1, 3)",
+    # a rename of what the region carries is rendered on the domain
+    "select name as n2, status",
+    "select customer_id as c2, status",
+    "select name as n2, customer_id, count(coalesce(amount, 0)) as n",
 ]
 
-OWED: list[str] = []
+OWED = [
+    # the count's zero-fill is lost once a renamed group key moves to the domain
+    "select name as n2, count(status) as n",
+]
 
 QUERIES = HOLDS + [
     pytest.param(q, marks=pytest.mark.xfail(strict=True, reason="owed")) for q in OWED
@@ -282,20 +296,15 @@ grain (order_id, item_id)
 query '''select 1 as o, 10 as i, 5 as q union all select 2, 10, 7 union all select 3, 11, 9''';
 """
 
-_OPTIONAL_DERIVED = (
-    _LINES
-    + """
+_OPTIONAL_DERIVED = _LINES + """
 root datasource returns (o: ~order_id, i: ~item_id, r: return_id, reason: reason)
 grain (return_id)
 query '''select 1 as o, 10 as i, 900 as r, 'broken' as reason union all select 3, 11, 901, null''';
 
 auto reason_label <- coalesce(reason, 'none');
 """
-)
 
-_OPTIONAL_MATERIALIZED = (
-    _LINES
-    + """
+_OPTIONAL_MATERIALIZED = _LINES + """
 property return_id.reason_label string;
 
 root datasource returns (
@@ -305,7 +314,6 @@ grain (return_id)
 query '''select 1 as o, 10 as i, 900 as r, 'broken' as reason, 'broken' as rl
 union all select 3, 11, 901, null, 'none' ''';
 """
-)
 
 
 @pytest.mark.parametrize(

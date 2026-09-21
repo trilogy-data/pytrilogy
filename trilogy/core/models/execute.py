@@ -1572,9 +1572,10 @@ class QueryDatasource:
         # keeps BOTH joins onto one alias.
         preserving = ""
         outer = sorted(
-            f"{join.join_type.value}_{join.right_datasource.identifier}"
+            side
             for join in self.joins
-            if isinstance(join, BaseJoin) and join.join_type != JoinType.INNER
+            if isinstance(join, BaseJoin)
+            for side in _null_extended_sides(join)
         )
         if outer:
             preserving = f"_preserving_{string_to_hash('|'.join(outer))}"
@@ -2118,6 +2119,29 @@ class Join:
                 f" {self.right_name} on {','.join([str(k) for k in pairs])}"
             )
         return f"{self.jointype.value} JOIN  {self.right_name} on {','.join([str(k) for k in pairs])}"
+
+
+def _null_extended_sides(join: BaseJoin) -> list[str]:
+    """The members a join may NULL-extend, whichever way it is written:
+    `a LEFT JOIN b` and `b RIGHT JOIN a` are one relation."""
+    right = [join.right_datasource.identifier]
+    left = sorted(
+        {
+            ds.identifier
+            for ds in (
+                join.left_datasource,
+                *(pair.existing_datasource for pair in join.concept_pairs or []),
+            )
+            if ds is not None
+        }
+    )
+    if join.join_type == JoinType.LEFT_OUTER:
+        return right
+    if join.join_type == JoinType.RIGHT_OUTER:
+        return left
+    if join.join_type == JoinType.FULL:
+        return left + right
+    return []
 
 
 def coalesce_duplicate_joins(

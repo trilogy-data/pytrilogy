@@ -58,3 +58,33 @@ def test_null_dimension_group_survives_branch_rejoin(query):
     env.parse(MODEL)
     executor = Dialects.DUCK_DB.default_executor(environment=env)
     assert executor.execute_query(query).fetchall() == EXPECTED
+
+
+# An item no sale references: `grain(order_number, item_sk)` is keyed on the
+# sale line, so it is absent there and the counts are 0, not 1 for a hash of
+# padding (docs/keyspace_phase_plan.md, phase 4).
+UNSOLD_MODEL = MODEL.replace(
+    "union all select 30, cast(null as varchar)'''",
+    "union all select 30, cast(null as varchar) union all select 40, 'gamma' '''",
+)
+UNSOLD_EXPECTED = [("alpha", 1, 0), ("beta", 1, 1), ("gamma", 0, 0), (None, 2, 1)]
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        DIRECT_QUERY,
+        pytest.param(
+            ROWSET_QUERY,
+            marks=pytest.mark.xfail(
+                strict=True,
+                reason="owed: a rowset body is its own plan, and pads inside it",
+            ),
+        ),
+    ],
+)
+def test_unsold_item_counts_no_lines(query):
+    env = Environment()
+    env.parse(UNSOLD_MODEL)
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    assert executor.execute_query(query).fetchall() == UNSOLD_EXPECTED

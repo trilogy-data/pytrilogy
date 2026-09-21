@@ -110,9 +110,7 @@ def elect_extent_owners(
 
     # A region with a domain group of its own is sourced there and nowhere else.
     domain_of_span = {
-        span: gid
-        for gid, region in domains.items()
-        for span in region.spans & ownable
+        span: gid for gid, region in domains.items() for span in region.spans & ownable
     }
     owner_by_span.update(domain_of_span)
 
