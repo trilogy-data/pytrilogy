@@ -97,9 +97,6 @@ HOLDS = [
     "select customer_id, status where amount > 15",
     "select customer_id, status where status is null",
     "select customer_id, status where status is null or status = 'delivered'",
-]
-
-OWED = [
     "select customer_id, status",
     "select customer_id, order_id, status",
     "select customer_id, status, count(order_id) as n",
@@ -119,6 +116,9 @@ OWED = [
     "select customer_id, status where name = 'cat'",
     "select customer_id, status, amount where amount is null",
     "select customer_id, status, amount where amount is null or amount > 15",
+]
+
+OWED = [
     # the span is demanded only as an aggregate argument
     "select status, count(customer_id) as customers",
     # a WHERE over an off-span column the statement does not project
@@ -177,7 +177,6 @@ def test_inline_spelling_matches_named(derived: Executor, named: str, inline: st
     )
 
 
-@pytest.mark.xfail(strict=True, reason="owed")
 def test_orderless_customer_has_no_status(derived: Executor):
     assert _rows(derived, "select customer_id, status, count(order_id) as n") == [
         (1, "delivered", 1),

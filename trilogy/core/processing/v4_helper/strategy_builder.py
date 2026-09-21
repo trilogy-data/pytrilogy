@@ -927,7 +927,9 @@ def _derives_from(node: StrategyNode, other: StrategyNode) -> bool:
     return False
 
 
-def _drop_ancestor_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
+def _drop_ancestor_parents(
+    parents: list[StrategyNode], keep: set[int] | None = None
+) -> list[StrategyNode]:
     """Drop a parent that IS the relation another parent derives from.
 
     The planner can hand a consumer both a derived node and the very relation
@@ -941,12 +943,15 @@ def _drop_ancestor_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
     matching them back on their shared columns is a 1:1 self-lookup that can
     neither filter nor fan out. The `<=` guard makes that exact: the
     descendant must already expose every column the ancestor would contribute,
-    so dropping it removes a join and nothing else."""
+    so dropping it removes a join and nothing else.
+
+    `keep` names a span domain: a descendant that paired it on solid keys holds
+    fewer rows than it does, and those extra rows are what it is here for."""
     if len(parents) <= 1:
         return parents
     dropped: set[int] = set()
     for ancestor in parents:
-        if id(ancestor) in dropped:
+        if id(ancestor) in dropped or (keep and id(ancestor) in keep):
             continue
         ancestor_outputs = {c.address for c in ancestor.output_concepts}
         for descendant in parents:
@@ -971,7 +976,9 @@ def _is_row_preserving_filter(node: StrategyNode) -> bool:
     )
 
 
-def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
+def _fold_passthrough_parents(
+    parents: list[StrategyNode], keep: set[int] | None = None
+) -> list[StrategyNode]:
     """Absorb a parent into a row-preserving sibling that can render it.
 
     When a plain projection B (a non-grouping SelectNode) can render every one
@@ -1016,6 +1023,8 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
         available = parent_output_addresses(b)
         for a in parents:
             if a is b or id(a) in dropped or not a.output_concepts:
+                continue
+            if keep and id(a) in keep:
                 continue
             # Never dissolve a row-shape barrier into a row sibling. Foldable:
             # SelectNode, non-grouping MergeNode, or a row-preserving FilterNode
@@ -2140,6 +2149,7 @@ def _pre_merge_parents(
     group_graph: nx.DiGraph | None = None,
     built: dict[str, StrategyNode] | None = None,
     force_join_type: JoinType | None = None,
+    span_domains: set[int] | None = None,
 ) -> list[StrategyNode]:
     """Collapse a multi-parent set into a single MergeNode that auto-joins
     on shared output concepts. Non-merging generators (GroupNode for
@@ -2158,10 +2168,10 @@ def _pre_merge_parents(
     parents = _fold_constant_parents(parents, needed or set())
     if len(parents) <= 1:
         return parents
-    parents = _fold_passthrough_parents(parents)
+    parents = _fold_passthrough_parents(parents, keep=span_domains)
     if len(parents) <= 1:
         return parents
-    parents = _drop_ancestor_parents(parents)
+    parents = _drop_ancestor_parents(parents, keep=span_domains)
     if len(parents) <= 1:
         return parents
     _widen_merge_join_keys(parents, environment, join_key_addresses)
@@ -3915,6 +3925,9 @@ def _assemble_final_node(
     grouping_sibling = any(node_nulls_grouping_keys(built[g]) for g in contributing)
 
     parents: list[StrategyNode] = []
+    # A span domain contributes ROWS (the span's extension members), so a
+    # sibling that can render its columns still cannot stand in for it.
+    span_domains: set[int] = set()
     for gid in contributing:
         node = built[gid]
         is_root = attrs[gid].derivation == Derivation.ROOT
@@ -4045,15 +4058,16 @@ def _assemble_final_node(
             merge_concepts = [
                 c for c in group_concepts if c not in filter_only_concepts
             ]
-            parents.extend(
-                _wrap_for_grain(
-                    node,
-                    merge_concepts,
-                    environment,
-                    projection_grain,
-                    dedup_orthogonal=grouping_sibling,
-                )
+            wrapped = _wrap_for_grain(
+                node,
+                merge_concepts,
+                environment,
+                projection_grain,
+                dedup_orthogonal=grouping_sibling,
             )
+            if attrs[gid].extent_spans:
+                span_domains.update(id(w) for w in wrapped)
+            parents.extend(wrapped)
         else:
             parents.append(node)
 
@@ -4073,7 +4087,7 @@ def _assemble_final_node(
         final_merge_grain,
         environment,
     )
-    parents = _fold_passthrough_parents(parents)
+    parents = _fold_passthrough_parents(parents, keep=span_domains)
     _widen_merge_join_keys(parents, environment, final_merge_grain)
     parents = _fold_covered_contributors(
         parents,
@@ -4426,6 +4440,11 @@ def build_strategy_node(
                 group_graph=group_graph,
                 built=built,
                 force_join_type=JoinType.INNER if filter_scan else None,
+                span_domains={
+                    id(parent.node)
+                    for parent in parent_builds
+                    if attrs[parent.group_id].extent_spans
+                },
             )
         # ROOT scans source columns from datasources directly, not from their
         # group-graph predecessors. A `constraint`-edge predecessor (e.g. a

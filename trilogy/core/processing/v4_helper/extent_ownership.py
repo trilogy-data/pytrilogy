@@ -22,11 +22,12 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from trilogy.core import graph as nx
+from trilogy.core.enums import Derivation
 from trilogy.core.models.build_environment import BuildEnvironment
 
-from .constants import FINAL_NODE_ID
+from .constants import FINAL_NODE_ID, ROW_STREAM_DERIVATIONS
 from .functional_dependency import build_fd_determines
-from .models import ExtentOwnership, GroupAttrs
+from .models import ExtentOwnership, GroupAttrs, Keyspace, Region
 
 
 def span_members(
@@ -47,11 +48,21 @@ def elect_extent_owners(
     attrs: dict[str, GroupAttrs],
     environment: BuildEnvironment,
     spans: frozenset[str],
+    keyspace: Keyspace | None = None,
 ) -> ExtentOwnership:
     """`spans` are the ones the statement asks extension rows of
     (`Keyspace.output_demanded_spans`). A `~` FK that only shows up as a join
     axis is not among them, and with none the whole mechanism is inert (the
     common case: TPC-DS and TPC-H rarely demand one)."""
+    keyspace = keyspace or Keyspace()
+    # a region with a domain group of its own is demanded by that alone: a
+    # derivation absent on it is an output no lookup from the span reaches
+    domains = {
+        gid: region
+        for gid, a in attrs.items()
+        if a.extent_spans and (region := keyspace.region_of(a.extent_spans))
+    }
+    spans = spans.union(*(r.spans for r in domains.values()))
     if not spans:
         return ExtentOwnership()
     exposes: dict[str, frozenset[str]] = {}
@@ -97,10 +108,67 @@ def elect_extent_owners(
             candidates = [gid for gid, owned in exposes.items() if span in owned]
             owner_by_span[span] = max(candidates, key=rank)
 
+    # A region with a domain group of its own is sourced there and nowhere else.
+    domain_of_span = {
+        span: gid
+        for gid, region in domains.items()
+        for span in region.spans & ownable
+    }
+    owner_by_span.update(domain_of_span)
+
     permitted: dict[str, frozenset[str]] = {}
     for span, owner in owner_by_span.items():
-        for gid in (owner, *nx.ancestors(group_graph, owner)):
+        if span in domain_of_span:
+            # The domain holds the members; whatever reads it extends, except
+            # the row streams that must never see an extension row.
+            allowed = ({owner} | nx.descendants(group_graph, owner)) - _solid_groups(
+                group_graph, attrs, domains[owner], keyspace
+            )
+        else:
+            allowed = {owner} | nx.ancestors(group_graph, owner)
+        for gid in allowed - {FINAL_NODE_ID}:
             permitted[gid] = permitted.get(gid, frozenset()) | {span}
+    carried = {
+        address: gid for gid in domains for address in attrs[gid].primary_members
+    }
     return ExtentOwnership(
-        spans=ownable, owner_by_span=owner_by_span, permitted=permitted
+        spans=ownable,
+        owner_by_span=owner_by_span,
+        permitted=permitted,
+        carried=carried,
     )
+
+
+def _solid_groups(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    region: Region,
+    keyspace: Keyspace,
+) -> set[str]:
+    """Groups that must not see `region`'s rows: each row-stream derivation
+    absent there, and the row stream feeding it. A derived concept is NULL
+    where its key's entity is absent, which it can only be if it never reads a
+    row padded to stand in for that entity. An aggregate above one is not part
+    of its row stream, and may extend."""
+    solid: set[str] = set()
+    stack = [
+        gid
+        for gid, a in attrs.items()
+        if a.derivation in ROW_STREAM_DERIVATIONS
+        and not all(keyspace.defined_on(m, region) for m in a.primary_members)
+    ]
+    while stack:
+        gid = stack.pop()
+        if gid in solid:
+            continue
+        solid.add(gid)
+        stack.extend(
+            parent
+            for parent in group_graph.predecessors(gid)
+            if attrs[parent].derivation in ROW_STREAM_DERIVATIONS
+            or (
+                attrs[parent].derivation == Derivation.ROOT
+                and not attrs[parent].extent_spans
+            )
+        )
+    return solid
