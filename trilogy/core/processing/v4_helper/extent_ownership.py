@@ -78,9 +78,14 @@ def elect_extent_owners(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     environment: BuildEnvironment,
+    demanded: frozenset[str] | None = None,
 ) -> ExtentOwnership:
-    spans = demanded_extension_spans(
-        attrs, licensed_extension_spans(environment), environment
+    spans = (
+        demanded_extension_spans(
+            attrs, licensed_extension_spans(environment), environment
+        )
+        if demanded is None
+        else demanded
     )
     if not spans:
         return ExtentOwnership()

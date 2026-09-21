@@ -24,6 +24,7 @@ two facts can witness (the base region stands in for them).
 from __future__ import annotations
 
 import dataclasses
+import os
 from dataclasses import dataclass, field
 from functools import partial
 from weakref import ReferenceType, ref
@@ -38,6 +39,11 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import condition_proves_non_null
 
 from .models import ConceptAttrs, Keyspace, Region
+
+# Phase 3 switch: the extent election and the dim peel's family guard read
+# demand from the keyspace instead of re-deriving it. Off until the audit's
+# remaining gaps are closed (docs/keyspace_phase_plan.md).
+ELECT_FROM_KEYSPACE = bool(os.environ.get("TRILOGY_KEYSPACE_ELECT"))
 
 # key -> the `~` bindings between a source's rows and that key's whole domain
 Carried = dict[str, frozenset[str]]
