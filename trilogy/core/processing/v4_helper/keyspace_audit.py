@@ -1,9 +1,11 @@
-"""Phase 2 of docs/keyspace_phase_plan.md: does the keyspace agree with the
-sites that re-derive its answers today?
+"""Does the keyspace agree with the sites that still re-derive its answers
+(docs/keyspace_phase_plan.md, phase 2)?
 
 Inert unless `TRILOGY_KEYSPACE_AUDIT` names a file; then every plan appends one
-JSON line per disagreement. Nothing here feeds a plan. Delete with the sites it
-audits.
+JSON line per finding. Nothing here feeds a plan. `heal`: pin-heal healed a
+span whose region is live. `owner_pads`: a derivation evaluated on rows of a
+region it is absent on (phase 4's worklist). The `demand` check went with the
+derivation it audited, once the election started reading the keyspace.
 """
 
 from __future__ import annotations
@@ -21,12 +23,8 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.models.execute import QueryDatasource
-from trilogy.core.processing.join_resolution import licensed_extension_spans
-from trilogy.core.processing.nodes import StrategyNode
 
 from .constants import FINAL_NODE_ID
-from .extent_ownership import demanded_extension_spans
 from .keyspace import build_keyspace
 from .models import ConceptAttrs, GroupAttrs, Keyspace
 
@@ -55,50 +53,6 @@ def _emit(kind: str, **details: Any) -> None:
     row = {"kind": kind, "test": os.environ.get("PYTEST_CURRENT_TEST", ""), **details}
     with open(AUDIT_PATH, "a", encoding="utf-8", newline="\n") as handle:
         handle.write(json.dumps(row, sort_keys=True, default=sorted) + "\n")
-
-
-def _scanned(node: QueryDatasource | BuildDatasource) -> list[BuildDatasource]:
-    if isinstance(node, BuildDatasource):
-        return [node]
-    return [ds for child in node.datasources for ds in _scanned(child)]
-
-
-def _partial_binders_read(strategy_node: StrategyNode | None, span: str) -> list[str]:
-    """Sources the built plan reads that bind `span` with a `~`."""
-    if strategy_node is None:
-        return []
-    return sorted(
-        {
-            ds.identifier
-            for ds in _scanned(strategy_node.resolve())
-            if span in ds.column_level_partial_addresses
-        }
-    )
-
-
-def _audit_demand(
-    keyspace: Keyspace,
-    attrs: dict[str, GroupAttrs],
-    environment: BuildEnvironment,
-    outputs: list[str],
-    strategy_node: StrategyNode | None,
-) -> None:
-    elected = demanded_extension_spans(
-        attrs, licensed_extension_spans(environment), environment
-    )
-    if elected != keyspace.output_demanded_spans:
-        _emit(
-            "demand",
-            outputs=outputs,
-            election=elected,
-            keyspace=keyspace.output_demanded_spans,
-            regions=keyspace.describe(),
-            # an election-only span no scanned source binds `~` is inert
-            read={
-                span: _partial_binders_read(strategy_node, span)
-                for span in elected - keyspace.output_demanded_spans
-            },
-        )
 
 
 def _audit_owner(
@@ -173,7 +127,6 @@ def audit_plan(
     concept_attrs: dict[str, ConceptAttrs],
     group_graph: nx.DiGraph,
     group_attrs: dict[str, GroupAttrs],
-    strategy_node: StrategyNode | None,
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     conditions: list[BuildWhereClause],
@@ -181,6 +134,5 @@ def audit_plan(
     if not AUDIT_PATH or FINAL_NODE_ID not in group_attrs:
         return
     outputs = [c.address for c in mandatory_list]
-    _audit_demand(keyspace, group_attrs, environment, outputs, strategy_node)
     _audit_owner(keyspace, group_graph, group_attrs, concept_attrs, outputs)
     _audit_heal(concept_attrs, mandatory_list, environment, conditions)

@@ -15,7 +15,6 @@ from tests.engine.test_duckdb_partial_fk_field_report import MODEL as FIELD_REPO
 from trilogy import Dialects
 from trilogy.core.processing import concept_strategies_v4
 from trilogy.core.processing.v4_helper.constants import FINAL_NODE_ID
-from trilogy.core.processing.v4_helper.extent_ownership import elect_extent_owners
 from trilogy.core.processing.v4_helper.keyspace import build_keyspace
 from trilogy.core.processing.v4_helper.models import Keyspace
 
@@ -198,33 +197,22 @@ def test_partial_binding_survives_a_merge_onto_its_target():
     assert extension.spans == frozenset({"local.order_customer_id"})
 
 
-def test_election_from_the_keyspace_matches_where_a_span_is_in_play():
-    info, build_env = _plan(
+def test_election_routes_the_spans_the_keyspace_demands():
+    info, _ = _plan(
         FIELD_REPORT,
         "select order_id, item_id, user_id, product_id, total_revenue,"
         " total_quantity, total_cost;",
     )
-    elected = elect_extent_owners(
-        info.group_graph,
-        info.group_attrs,
-        build_env,
-        info.keyspace.output_demanded_spans,
-    )
-    assert elected == info.group_attrs[FINAL_NODE_ID].extent_ownership
+    ownership = info.group_attrs[FINAL_NODE_ID].extent_ownership
+    assert ownership.spans == info.keyspace.output_demanded_spans
 
 
-def test_election_from_the_keyspace_drops_a_span_no_read_source_binds():
-    """`select user_id, state` reads `users` alone: the model-wide license
-    demands `user_id`, the keyspace has one region and demands nothing."""
-    info, build_env = _plan(_SIMPLE, "select user_id, state;")
-    assert info.group_attrs[FINAL_NODE_ID].extent_ownership.spans == frozenset({USER})
-    elected = elect_extent_owners(
-        info.group_graph,
-        info.group_attrs,
-        build_env,
-        info.keyspace.output_demanded_spans,
-    )
-    assert elected.spans == frozenset()
+def test_span_no_read_source_binds_is_not_routed():
+    """`select user_id, state` reads `users` alone. `orders` binding `~user_id`
+    somewhere in the model demands nothing of this statement."""
+    info, _ = _plan(_SIMPLE, "select user_id, state;")
+    assert len(info.keyspace.regions) == 1
+    assert info.group_attrs[FINAL_NODE_ID].extent_ownership.spans == frozenset()
 
 
 _GRAINLESS_DIMENSION = """

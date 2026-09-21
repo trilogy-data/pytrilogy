@@ -72,7 +72,7 @@ Every eager structural change to root grouping has broken something (see the mem
 
 ## Status
 
-Phases 0-2 are built (2026-09-20, same branch). Everything below this heading is a record of what they found; the sections above are the original plan, unedited.
+Phases 0-2 are built and the first two phase 3 sites are moved (2026-09-20, same branch). Everything below this heading is a record of what they found; the sections above are the original plan, unedited.
 
 ### Phase 0: what the source search actually consumes
 
@@ -102,7 +102,7 @@ Not modelled: a lookup that may miss (a source whose grain is bound `~` and that
 
 Inert unless `TRILOGY_KEYSPACE_AUDIT=<file>`; then each plan (sub-plans included) appends a JSON line per disagreement. Three checks:
 
-- `demand`: the election's `demanded_extension_spans` against `Keyspace.output_demanded_spans`. Each election-only span also reports which sources the BUILT plan reads that bind it `~` (`read`); none means the election's demand cannot have changed anything.
+- `demand` (deleted with the derivation it audited, once the election read the keyspace; `8d7b0d469`..`2fdbb632a` have it): the election's `demanded_extension_spans` against `Keyspace.output_demanded_spans`. Each election-only span also reported which sources the BUILT plan reads that bound it `~` (`read`); none meant the election's demand could not have changed anything.
 - `heal`: pin-heal must never heal a span whose region is live (`healed <= emptied`, over a keyspace replayed on the pre-heal datasources). Not equality: emptied is a fact about rows, healing also has to be safe for every other merge the dropped `~` would license, so pin-heal may decline (`test_anchor_needed_stays_partial`).
 - `owner_pads`: BASIC / FILTER / WINDOW members of a span owner (or its descendants) that are absent on the span's region. Not a disagreement: it is phase 4's worklist.
 
@@ -115,42 +115,43 @@ Run it over the planner suites (`tests/core tests/discovery tests/engine tests/j
 - **A `~` survives a merge.** `merge a into b` respells the bound column onto `b` while `column_level_partial_addresses` keeps `a`; the binding is found through `origin_concept_address`. `partial_bridging._structural_partial` compares `column.concept.address` only, so pin-heal never heals a merged `~` key today (conservative, a lost optimization, not a wrong answer; gcat `payload.launch.launch_tag`).
 - An existence-only node is a semijoin's subselect, not a row of the plan; spans are named by the address bound `~` (the spelling every other site uses), entities by the canonical spelling.
 
-#### Where it stands (round 3, 289 `demand` rows over 3405 tests; no `heal` rows; no keyspace-only span)
+#### Closing the gaps (rounds 4-8)
 
-| rows | what | verdict |
-|---|---|---|
-| 224 | election demands a span, keyspace sees no region, and the built plan reads NO source binding it `~` | election over-demand: `licensed_extension_spans` is model-wide, so `select item.category, sum(price)` over `store_sales` "demands" `item.sk` because `store_returns` exists. Inert |
-| 29 | election demands a span whose region the WHERE empties | keyspace is tighter, by the rule: `status = 'delivered'` null-rejects a concept absent on `{customer}`. Pin-heal declines these (it trusts bound columns only, or an anchor is needed) |
-| 36 -> 27 after the merge fix | a `~` binder IS read and the keyspace shows no region / no demand | keyspace gaps, below |
+Round 3 left 289 `demand` rows over 3405 tests: 224 where the election demanded a span and the built plan read NO source binding it `~` (`licensed_extension_spans` was model-wide: `select item.category, sum(price)` over `store_sales` "demanded" `item.sk` because `store_returns` exists), 29 where the WHERE empties the span's region, and 36 where a `~` binder WAS read and the keyspace saw nothing. Those 36 were keyspace bugs, fixed one kind at a time:
 
-The gaps, each a modelling decision rather than a bug hunt:
+| what was missing | shape that found it |
+|---|---|
+| a `~` recorded under the merged-away address (`origin_concept_address`) | gcat `payload.launch.launch_tag` |
+| a source with no declared grain: identified by its KEY columns less the ones that identify ANOTHER source (its foreign keys), so a lookup can enter it | TPC-H instantiated `customers` (adhoc07) |
+| a property that identifies some source's rows is an entity | `region_dim` grain `(region)`, `fact` binding `~?region` (`test_join_upgrade`) |
+| a key computed row by row is a function of its arguments' entity, not an entity | gcat `orbit_code` |
+| a GENERATED key (`unnest`, constant) is the complete side of a `~` merged onto it | `merge orid into ~orid_2` (`test_const_equivalence_merge`) |
+| a fan-out BRIDGE: no lookup leads from a launch to its engines (a vehicle has many stages), so no single source carries both; the partial source that joins the region to the rest keeps the unmatched members a region | gcat `test_should_group` |
+| no complete source at all: the partial ones ARE the domain and complete each other | `web_orders` / `store_orders` (`test_dataset_merge`), enum unions |
+| model components (sources sharing a column), not single rows, decide which entity is cross-joined onto a region | fell out of the bridge |
 
-1. **Rowset boundary.** A rowset output key (`_r_isk`) is its own entity in the outer plan and no source binds it, while the election sees through to `item_sk` (`test_duckdb_aliased_dim_attr_join_axis`, `test_duckdb_rowset_null_group_rejoin`, `test_complex::test_rowset*`). Needs `resolve_rowset_content_address` in entity resolution, or a region contract on the rowset's own keyspace.
-2. **A derived domain is a witness.** `merge orid into ~orid_2` with `orid_2 <- unnest(...)`: the complete side of the span is a derivation, not a datasource (`test_const_equivalence_merge`).
-3. **`complete where` partitions** (`test_enum_unions`): out of scope by design (owner question 2), but the election demands them, so phase 3 has to answer it.
-4. **Grand totals and materialized aggregates.** `select order_count` from `agg_by_customer(~customer_id)`: no entity at all, the election still demands `customer_id`. Probably election over-demand; unverified.
-5. **Multi-namespace facts** (TPC-DS q25 / q64 / `test_where_clause_inputs`, TPC-H adhoc07, `test_join_upgrade`): merged item keys across `ss` / `cs` / `sr`. Not yet read case by case.
+Tried and reverted: resolving a rowset key to the key it wraps. A rowset is a row SOURCE; `select even_orders.store_id` must not gain the stores no order references (`test_complex::test_rowset*` turned into keyspace-only demand).
 
-#### Phase 4's worklist is small
+Round 8: 3410 passed, SQL byte-identical, no keyspace-only span, no `heal` row. The 11 rows left where a `~` binder is read and the keyspace demands nothing, all election over-demand:
 
-`owner_pads` over the whole corpus: the oracle's owed queries, the two pinned targets in `test_duckdb_partial_key_assembly.py` (`test_status_on_extension_rows_is_null_without_an_aggregate`, `test_composite_grain_families_with_by_span_aggregate`) plus `test_by_dim_key_aggregate_vs_row_value` and `test_forked_with_status`, four gcat statements, two rowset tests and `test_inline_broadcast_join_key`. No TPC-DS or TPC-H benchmark query is on it, which is what the prototype's `_null_on_padding` gate bought by hand: those plans should stay byte-identical through phase 4.
+- **Grand totals** (2): `select order_count` from `agg_by_customer(~customer_id)`. No entity, one row, nothing to extend.
+- **Rowset inner plans** (4: TPC-DS q64 x3, `test_aliased_outputs_keep_the_fk_axis`): the `~` source is read inside the rowset's OWN plan (`ss.is_returned` lives in `ss_rows_99` / `ss_rows_00`), which has its own keyspace and election; `extent_free_spans` is scoped per plan, so the outer demand never reached it.
+- **`complete where` partitions** (1): `~city` is the partition discriminator, the union rule heals it, and no source holds a city no partition has.
+- One test that truncates the source search on purpose.
 
-### Phase 3, first two sites: built behind a switch, NOT flipped
+Plus a whole-corpus SQL diff (a pytest plugin wrapping `BaseDialect.compile_statement`), election reading the keyspace vs not, over the 25 files holding every disagreement: 1028 statements, 2 differ. TPC-DS q29 (CTE renames and a reordered WHERE, 45 characters shorter: `extent_free_spans` leaves a CTE identifier once nothing suppresses a span there) and one gcat statement (two SELECT columns swap). Same rows.
 
-`TRILOGY_KEYSPACE_ELECT=1` (`keyspace.ELECT_FROM_KEYSPACE`) makes `elect_extent_owners` and the dim peel's `_keep_extension_families_together` take `Keyspace.output_demanded_spans` instead of calling `spans_demanded_by(licensed_extension_spans(...))`. Both already accept the demand as a parameter; the switch only chooses who computes it.
+### Phase 3, sites 1 and 2: DONE
 
-A/B over the planner suites with the switch on: **3408 passed, and one committed SQL log moves.** `tests/modeling/tpc_ds_duckdb/zquery29.log`: two CTEs are renamed and one WHERE's conjuncts reorder, 45 characters shorter, same rows (the test compares against the reference). The rename is `extent_free_spans` leaving a CTE identifier: the election no longer suppresses a span for q29 that nothing extends.
-
-It is off by default because of the 27 gap rows above, not because anything failed. With the switch on, a statement in one of those gaps elects NO owner where today it elects one, and falls back to per-branch padding plus the reunion machinery. The corpus does not notice. That is weak evidence for shapes outside it, and an under-demand is a silent planner skip. Flip it after gaps 1-3 are closed (or ruled election over-demand), then delete `demanded_extension_spans`, `spans_demanded_by` and the `demand` audit.
+`elect_extent_owners` and the dim peel's `_keep_extension_families_together` take the demanded spans as an argument, and `_build_from_graph` passes `Keyspace.output_demanded_spans`. `demanded_extension_spans`, `spans_demanded_by` and the `demand` audit are deleted; `span_members` stays (it is an FD question: what an extension row of a span carries). `zquery29.log` regenerated.
 
 ### Pick up here
 
-1. Close gaps 1-3, re-run the audit (`TRILOGY_KEYSPACE_AUDIT=<file>`, triage by the `read` field: only rows where a `~` binder is read matter), flip `ELECT_FROM_KEYSPACE`, regenerate `zquery29.log`, delete the old derivation.
-2. Remaining phase 3 sites, in the order the audit can check them: `MergeNode._extent_free_partials` and `join_resolution.extension_padded_addresses` (both downstream of the election, so they follow it), then `_cover_groups_for_mandatory`. Pin-heal is different in kind: the keyspace says which regions are EMPTY, pin-heal additionally decides whether dropping the `~` is safe for every merge it would license. Keep its anchor guards; take its "is this region dead" from `Region.emptied_by`, which also gives it derived null-rejections and merged `~` keys for free.
-3. Phase 4 has its spec now: `Keyspace.absent_regions(address)` is the prototype's `absent_on_extension`, per region instead of per span, and the worklist is the `owner_pads` list. The prototype's three gates map to keyspace facts: "one span" becomes one bucket per live extension region (regions are disjoint, so families cannot cross-pair); "span key projected" becomes the region's identifying keys demanded as hidden columns; "WHERE deliverable" becomes `emptied_by` (region dead, no bucket), an atom over concepts defined on the region (filter the bucket), or a null-accepting atom over an absent concept (host at FINAL).
-4. Not modelled and needed by phase 4: an OPTIONAL entity (a lookup through a source whose grain is bound `~` and that binds a further key). It is the same bug from the other side: `coalesce(return_reason, 'none')` keyed on a return evaluates on sale lines that have none.
+1. Remaining phase 3 sites. `MergeNode._extent_free_partials` and `join_resolution.extension_padded_addresses` / `_span_padded_addresses` are downstream of the election and follow it; `join_resolution` still calls `licensed_extension_spans` for the padding-provenance matrix, which is the next model-wide over-approximation to replace (with the plan's in-play spans). Then `_cover_groups_for_mandatory`. Pin-heal is different in kind: the keyspace says which regions are EMPTY, pin-heal additionally decides whether dropping the `~` is safe for every merge it would license. Keep its anchor guards; take "is this region dead" from `Region.emptied_by`, which also gives it derived null-rejections and merged `~` keys (`_structural_partial` compares `column.concept.address` only, so it never heals a merged `~` key today).
+2. Phase 4 has its spec: `Keyspace.absent_regions(address)` is the prototype's `absent_on_extension`, per region instead of per span, and the worklist is the audit's `owner_pads` list: the oracle's owed queries, `test_status_on_extension_rows_is_null_without_an_aggregate`, `test_composite_grain_families_with_by_span_aggregate`, `test_by_dim_key_aggregate_vs_row_value`, `test_forked_with_status`, four gcat statements, two rowset tests, `test_inline_broadcast_join_key`. No TPC-DS or TPC-H benchmark query is on it, which is what the prototype's `_null_on_padding` gate bought by hand. The prototype's three gates map to keyspace facts: "one span" becomes one bucket per live extension region (regions are disjoint, so families cannot cross-pair); "span key projected" becomes the region's identifying keys demanded as hidden columns; "WHERE deliverable" becomes `emptied_by` (region dead, no bucket), an atom over concepts defined on the region (filter the bucket), or a null-accepting atom over an absent concept (host at FINAL).
+3. Not modelled and needed by phase 4: an OPTIONAL entity (a lookup through a source whose grain is bound `~` and that binds a further key). Same bug from the other side: `coalesce(return_reason, 'none')` keyed on a return evaluates on sale lines that have none. And a rowset as a witness, related to model keys only through an authored scoped join.
 
-The owner questions below are still open; 1 and 3 were taken as proposed (entity keys; `BuildInfo`), 2 is gap 3, 4 and 5 only matter from phase 4.
+The owner questions below are still open; 1 and 3 were taken as proposed (entity keys, widened to anything that identifies a source's rows; `BuildInfo`), 2 stays with the union machinery, 4 and 5 only matter from phase 4.
 
 ## Guards
 
