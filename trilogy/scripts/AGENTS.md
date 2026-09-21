@@ -19,9 +19,11 @@ per address.
 - `build_scope` is **not** `skip_datasources`. A skipped datasource is not probed
   at all (another owner script covered it); an out-of-scope one *is*, because its
   watermark is the expected side of the assets this run does build.
-- `--include-imports` clears the scope, restoring the transitive build.
-- `--force <ds>` reaches an out-of-scope asset: naming it is scoping it. Forced
-  assets are built from `forced_assets` and never scope-filtered.
+- **`--include-imports` is the only flag that changes what a run may build.**
+  `--force` drops the staleness gate and `--partition` narrows to a slice;
+  neither widens the scope, and `validate_refresh_policy` rejects a value of
+  either that names only an imported declaration rather than letting it silently
+  do nothing.
 - A directory run and stdin pass no `script_path`, so their scope is empty.
 
 ### Phase structure in directory refresh

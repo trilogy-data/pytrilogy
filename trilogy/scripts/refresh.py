@@ -1047,8 +1047,10 @@ def run_refresh_command(cli_params: CLIRuntimeParams) -> ParallelExecutionSummar
         "Also build the assets an entrypoint reaches by import, not only the"
         " ones it declares. By default a file builds what it declares and"
         " reports an imported asset it found stale, because that asset belongs"
-        " to a run of the file that declares it. No effect on a directory run,"
-        " which assigns one owner script per address across the whole graph."
+        " to a run of the file that declares it. This is the only flag that"
+        " changes what a run may build: --force and --partition gate and narrow"
+        " that set without widening it. No effect on a directory run, which"
+        " assigns one owner script per address across the whole graph."
     ),
 )
 @option(

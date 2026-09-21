@@ -56,7 +56,9 @@ declared name)` — and every identifier is a view of it.
   of the judged-stale set into `RefreshPlan.out_of_scope`, which nothing
   executes. That is what makes `trilogy refresh <file>` build what the file
   declares rather than everything it imports — see `trilogy/scripts/AGENTS.md`.
-  Distinct from `skip_datasources`, which suppresses the probe as well.
+  Distinct from `skip_datasources`, which suppresses the probe as well. It is the
+  only thing that decides *what* a run builds: `force_sources` and
+  `partition_selector` gate and narrow that set, never widen it.
 - A pre-declaration snapshot (schema < `DECLARATION_SCHEMA`) is **rejected** by
   `read_state_snapshot`, not adapted: its entries are keyed by import path with
   the *probing* script under `script`, and the declaring file they would need was

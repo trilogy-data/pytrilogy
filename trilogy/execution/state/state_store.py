@@ -829,6 +829,11 @@ class RefreshPolicy:
     #: — its watermark is the expected side of what *is* built — and reported as
     #: stale, but never refreshed: it belongs to a run of its own file. Empty
     #: means every file, which is what ``--include-imports`` asks for.
+    #:
+    #: The one rule for *what* a run builds. ``force_sources`` and
+    #: ``partition_selector`` say how that set is gated and narrowed; neither
+    #: widens it, so a value naming only an imported declaration is rejected up
+    #: front rather than silently doing nothing.
     build_scope: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
@@ -928,7 +933,14 @@ def create_refresh_plan(
         state_store.watermarks.update(initial_watermarks)
     force_sources = set(policy.force_sources)
     extra_skip = skip_datasources or set()
-    all_skip = force_sources | extra_skip
+    # A forced source is skipped by detection because it is rebuilt regardless —
+    # which only holds for one this run may build. Out of scope it is neither
+    # forced nor detected, so it has to stay detectable to be reported at all.
+    all_skip = {
+        ds.identifier
+        for ds in executor.environment.datasources.values()
+        if ds.identifier in force_sources and declared_within(ds, policy.build_scope)
+    } | extra_skip
 
     stale_assets = state_store.get_stale_assets(
         executor.environment, executor, skip_datasources=all_skip
@@ -940,10 +952,13 @@ def create_refresh_plan(
     stale_ids = {a.datasource_id for a in stale_assets}
     forced_assets: list[StaleAsset] = []
     for ds in executor.environment.datasources.values():
+        # ``force_sources`` drops the staleness gate; it does not widen the
+        # scope. What a run may build is the same with it as without.
         if (
             ds.identifier in force_sources
             and ds.identifier not in stale_ids
             and ds.identifier not in extra_skip
+            and declared_within(ds, policy.build_scope)
         ):
             kind = (
                 RefreshKind.SCRIPT
@@ -1034,9 +1049,8 @@ def target_partition_selector(
     narrowed to that slice, so healthy neighbours are untouched. Datasources the
     selector does not name plan normally.
 
-    ``build_scope`` still applies: the selector names a slice by concept, not a
-    datasource, so it means "that slice, of what this run builds". Only
-    ``--force``, which names a datasource outright, reaches past the scope.
+    ``build_scope`` still applies: the selector narrows what this run builds, it
+    does not widen it. Same for ``--force``; nothing reaches past the scope.
     """
     targeted: dict[str, StaleAsset] = {}
     for ds_id, ds in executor.environment.datasources.items():

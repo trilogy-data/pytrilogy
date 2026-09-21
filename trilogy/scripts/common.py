@@ -177,8 +177,15 @@ def parse_force_sources(force_sources: Iterable[str]) -> frozenset[str]:
 def validate_force_sources(
     force_sources: set[str] | frozenset[str] | None,
     available_sources: Iterable[str],
+    imported_sources: Iterable[str] = (),
 ) -> None:
-    """Fail fast when --force includes unknown datasource names."""
+    """Fail fast when --force names a datasource this run cannot build.
+
+    ``--force`` says *skip staleness detection*, not *widen the scope*: what a
+    run may build is the same with it as without. ``imported_sources`` are the
+    ones only an imported file declares, so a name aimed past the scope says so
+    rather than reading as a typo.
+    """
     if not force_sources:
         return
 
@@ -187,7 +194,13 @@ def validate_force_sources(
         return
 
     noun = "datasource" if len(missing) == 1 else "datasources"
-    print_error(f"Unknown {noun} passed to --force: {', '.join(missing)}")
+    hint = (
+        ". Declared in an imported file, and this file builds only what it"
+        " declares — pass --include-imports"
+        if set(missing) & set(imported_sources)
+        else ""
+    )
+    print_error(f"Unknown {noun} passed to --force: {', '.join(missing)}{hint}")
     raise Exit(1)
 
 
@@ -229,21 +242,25 @@ def validate_partition_selector(
 
 
 def validate_refresh_policy(policy: "RefreshPolicy", environment: Environment) -> None:
-    """Fail fast on --force/--partition values this model cannot honor.
+    """Fail fast on --force/--partition values this run cannot honor.
 
-    ``--partition`` is validated against what the run will *build*: it names a
-    slice by concept, so one matching only an imported declaration narrows
-    nothing. ``--force`` names a datasource outright and reaches past the scope,
-    so it is validated against the whole environment.
+    Both are validated against what the run will *build*, not against everything
+    it can see. Neither flag widens the scope: ``--force`` drops the staleness
+    gate and ``--partition`` narrows to a slice, and a value naming only an
+    imported declaration would do nothing at all.
     """
     from trilogy.execution.state import partition_key_addresses
     from trilogy.execution.state.declaration import declared_within
 
-    validate_force_sources(policy.force_sources, environment.datasources)
     in_scope: list[Datasource] = []
     imported: list[Datasource] = []
     for ds in environment.datasources.values():
         (in_scope if declared_within(ds, policy.build_scope) else imported).append(ds)
+    validate_force_sources(
+        policy.force_sources,
+        [ds.identifier for ds in in_scope],
+        [ds.identifier for ds in imported],
+    )
     validate_partition_selector(
         policy.partition_selector,
         partition_key_addresses(in_scope),

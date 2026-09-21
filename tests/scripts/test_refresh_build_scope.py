@@ -3,7 +3,10 @@
 A datasource reached only by import belongs to a run of the file that declares
 it — which is also how a directory run assigns ownership, one script per
 address. It is still probed: its watermark is the expected side of the assets
-that *do* get built. ``--include-imports`` asks for the transitive behaviour.
+that *do* get built.
+
+``--include-imports`` is the only flag that changes that set. ``--force`` drops
+the staleness gate and ``--partition`` narrows to a slice; neither widens it.
 """
 
 import duckdb
@@ -119,11 +122,36 @@ def test_include_imports_restores_the_transitive_build(runner, project):
     assert [r[0] for r in _rows(data / "downstream.parquet")] == [1, 2]
 
 
-def test_force_reaches_an_imported_asset_without_the_flag(runner, project):
-    """Naming a datasource *is* scoping it; --force is an explicit request."""
+def test_force_does_not_reach_past_the_scope(runner, project):
+    """``--force`` drops the staleness gate; it does not widen what a run may
+    build. Naming an imported asset says so rather than silently no-opping."""
     root, data = project
 
     result = _refresh(runner, str(root / "top.preql"), "--force", "upstream")
+
+    assert result.exit_code == 1, result.output
+    assert "--include-imports" in result.output
+    assert [r[0] for r in _rows(data / "upstream.parquet")] == [1]
+
+
+def test_force_gates_staleness_within_the_scope(runner, project):
+    """In scope it still means "rebuild whether or not it looks stale"."""
+    root, data = project
+    _refresh(runner, str(root / "top.preql"))
+    assert [r[0] for r in _rows(data / "downstream.parquet")] == [1, 2]
+
+    result = _refresh(runner, str(root / "top.preql"), "--force", "downstream")
+
+    assert result.exit_code == 0, result.output
+    assert "forced rebuild" in result.output
+
+
+def test_force_with_include_imports_builds_the_import(runner, project):
+    root, data = project
+
+    result = _refresh(
+        runner, str(root / "top.preql"), "--include-imports", "--force", "upstream"
+    )
 
     assert result.exit_code == 0, result.output
     assert [r[0] for r in _rows(data / "upstream.parquet")] == [1, 2]
@@ -218,3 +246,27 @@ def test_an_imported_table_datasource_can_be_refreshed(runner, tmp_path):
 
     assert result.exit_code == 0, result.output
     assert "Refreshed 1 asset(s)" in result.output
+
+
+def test_the_plan_honors_the_scope_without_cli_validation(project):
+    """``RefreshPolicy`` is the injection seam for a library caller, and
+    ``validate_refresh_policy`` lives in the CLI layer. The scope has to hold at
+    the plan, or it would mean different things by entry point."""
+    from trilogy import Dialects, Environment
+    from trilogy.execution.state import RefreshPolicy, create_refresh_plan
+    from trilogy.execution.state.declaration import build_scope_for
+
+    root, _ = project
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=root)
+    )
+    executor.parse_text((root / "top.preql").read_text(), root=root / "top.preql")
+    policy = RefreshPolicy(
+        force_sources=frozenset({"upstream"}),
+        build_scope=build_scope_for(root / "top.preql"),
+    )
+
+    plan = create_refresh_plan(executor, policy=policy)
+
+    assert [a.datasource_id for a in plan.refresh_assets] == ["downstream"]
+    assert [a.datasource_id for a in plan.out_of_scope] == ["upstream"]
