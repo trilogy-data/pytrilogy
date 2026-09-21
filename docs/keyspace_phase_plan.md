@@ -196,6 +196,7 @@ The owner questions below are still open; 1 and 3 were taken as proposed (entity
 - `tests/engine/test_duckdb_partial_key_assembly.py`, `test_duckdb_partial_fk_field_report.py`, `test_multi_fact_nullable_fk_extent.py`, `tests/optimization/test_join_upgrade.py`.
 - `tests/modeling` SQL-size budgets and `zquery<N>.log` hashes: the byte-identical check for phases 1-3.
 - Process notes in the handoff still apply (one pytest at a time, `-v` to a log file, never `stash`/`reset` in this tree).
+- `local_scripts/keyspace_ab/`: the A/B tooling phase 3 was verified with (compiled-SQL and row capture as pytest plugins, a per-plan keyspace printer, a distinct-SQL differ) and the traps in using it.
 
 ## Questions for the owner
 
