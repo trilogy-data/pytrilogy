@@ -112,6 +112,68 @@ def test_an_unbuilt_stale_import_is_reported(runner, project):
     assert "--include-imports" in result.output
 
 
+def _records(path) -> list[dict]:
+    import json
+
+    return [
+        json.loads(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
+def test_an_unbuilt_stale_import_is_a_report_warning(runner, project, tmp_path):
+    root, _ = project
+    report = tmp_path / "exec.jsonl"
+
+    result = runner.invoke(
+        cli,
+        ["refresh", str(root / "top.preql"), "duckdb", "--report-file", str(report)],
+    )
+
+    assert result.exit_code == 0, result.output
+    (warning,) = [r for r in _records(report) if r["type"] == "warning"]
+    assert warning["code"] == "stale_imports_not_built"
+    assert warning["datasources"] == ["upstream"]
+    assert "--include-imports" in warning["message"]
+
+
+def test_nothing_of_its_own_to_build_still_warns(runner, project, tmp_path):
+    """The case the warning exists for: exit 2 reads as "up to date" to an
+    orchestrator while the imports it depends on sit stale."""
+    root, _ = project
+    _refresh(runner, str(root / "top.preql"))
+    report = tmp_path / "exec.jsonl"
+
+    result = runner.invoke(
+        cli,
+        ["refresh", str(root / "top.preql"), "duckdb", "--report-file", str(report)],
+    )
+
+    assert result.exit_code == 2, result.output
+    warnings = [r for r in _records(report) if r["type"] == "warning"]
+    assert [w["datasources"] for w in warnings] == [["upstream"]]
+
+
+def test_include_imports_leaves_nothing_to_warn_about(runner, project, tmp_path):
+    root, _ = project
+    report = tmp_path / "exec.jsonl"
+
+    runner.invoke(
+        cli,
+        [
+            "refresh",
+            str(root / "top.preql"),
+            "duckdb",
+            "--include-imports",
+            "--report-file",
+            str(report),
+        ],
+    )
+
+    assert not [r for r in _records(report) if r["type"] == "warning"]
+
+
 def test_include_imports_restores_the_transitive_build(runner, project):
     root, data = project
 

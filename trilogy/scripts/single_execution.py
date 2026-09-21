@@ -14,6 +14,7 @@ from trilogy.execution.report import (
     emit_asset_refresh,
     emit_asset_refresh_query,
     emit_refresh_plan,
+    emit_report,
     emit_statement_end,
 )
 from trilogy.execution.state import RefreshPlan
@@ -427,13 +428,23 @@ def _plan_and_execute_refresh(
         suffix = f" in {name}" if name else ""
         print_warning(f"{label} {plan.stale_count} stale asset(s){suffix}")
 
-    if plan.out_of_scope and not quiet:
+    if plan.out_of_scope:
         # Never silent: this run judged them stale and chose not to build them.
-        names = ", ".join(sorted(a.datasource_id for a in plan.out_of_scope))
-        print_warning(
-            f"{len(plan.out_of_scope)} stale imported asset(s) not built: {names}."
+        # The report record is what an orchestrator sees — to it, a run that
+        # built nothing of its own exits 2 and reads as "up to date".
+        stale = sorted(a.datasource_id for a in plan.out_of_scope)
+        message = (
+            f"{len(stale)} stale imported asset(s) not built: {', '.join(stale)}."
             " Refresh the file that declares them, or pass --include-imports."
         )
+        emit_report(
+            "warning",
+            code="stale_imports_not_built",
+            message=message,
+            datasources=stale,
+        )
+        if not quiet:
+            print_warning(message)
 
     if plan.concept_max_watermarks and not quiet:
         show_root_probe_breakdown(plan.root_watermarks, plan.concept_max_watermarks)
