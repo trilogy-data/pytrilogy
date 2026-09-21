@@ -23,42 +23,10 @@ from collections.abc import Iterable
 
 from trilogy.core import graph as nx
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.join_resolution import licensed_extension_spans
 
 from .constants import FINAL_NODE_ID
 from .functional_dependency import build_fd_determines
 from .models import ExtentOwnership, GroupAttrs
-
-
-def demanded_extension_spans(
-    attrs: dict[str, GroupAttrs],
-    licensed: frozenset[str],
-    environment: BuildEnvironment,
-) -> frozenset[str]:
-    """Licensed keys whose extension rows this statement actually asks for.
-
-    An extension row exists to carry one dimension member's own attributes, so
-    the demand is the key itself in the output or something the key functionally
-    determines there. A key that only shows up as a join axis (the `~` FK
-    linking two facts under an aggregate nobody groups by it) licenses no
-    extension rows, needs no owner, and leaves the whole election inert.
-    """
-    final = attrs.get(FINAL_NODE_ID)
-    if final is None or final.final_contract is None:
-        return frozenset()
-    return spans_demanded_by(
-        licensed, final.final_contract.output_addresses, environment
-    )
-
-
-def spans_demanded_by(
-    licensed: frozenset[str],
-    outputs: Iterable[str],
-    environment: BuildEnvironment,
-) -> frozenset[str]:
-    return frozenset(
-        span for span in licensed if span_members(span, outputs, environment)
-    )
 
 
 def span_members(
@@ -78,15 +46,12 @@ def elect_extent_owners(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     environment: BuildEnvironment,
-    demanded: frozenset[str] | None = None,
+    spans: frozenset[str],
 ) -> ExtentOwnership:
-    spans = (
-        demanded_extension_spans(
-            attrs, licensed_extension_spans(environment), environment
-        )
-        if demanded is None
-        else demanded
-    )
+    """`spans` are the ones the statement asks extension rows of
+    (`Keyspace.output_demanded_spans`). A `~` FK that only shows up as a join
+    axis is not among them, and with none the whole mechanism is inert (the
+    common case: TPC-DS and TPC-H rarely demand one)."""
     if not spans:
         return ExtentOwnership()
     exposes: dict[str, frozenset[str]] = {}

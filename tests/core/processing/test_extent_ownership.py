@@ -16,10 +16,6 @@ from trilogy.core.processing.concept_strategies_v4 import (
 )
 from trilogy.core.processing.nodes import History
 from trilogy.core.processing.v4_helper.constants import FINAL_NODE_ID
-from trilogy.core.processing.v4_helper.extent_ownership import (
-    demanded_extension_spans,
-    licensed_extension_spans,
-)
 from trilogy.parser import parse_text
 
 _SIMPLE = """
@@ -116,22 +112,15 @@ def test_dimension_attribute_demands_its_key_span():
     """A dimension attribute in the output demands its key's extension rows,
     even though the key itself is never projected. Reading demand off the merge
     grain instead would sweep in join axes nobody asks extension rows of."""
-    info, build_env = _plan(_SIMPLE, "select state, brand;")
-    licensed = licensed_extension_spans(build_env)
-    assert licensed == frozenset({"local.user_id", "local.product_id"})
-    assert demanded_extension_spans(info.group_attrs, licensed, build_env) == frozenset(
+    info, _ = _plan(_SIMPLE, "select state, brand;")
+    assert info.keyspace.output_demanded_spans == frozenset(
         {"local.user_id", "local.product_id"}
     )
 
 
 def test_span_nobody_projects_is_not_demanded():
-    info, build_env = _plan(_SIMPLE, "select order_id, total_qty;")
-    assert (
-        demanded_extension_spans(
-            info.group_attrs, licensed_extension_spans(build_env), build_env
-        )
-        == frozenset()
-    )
+    info, _ = _plan(_SIMPLE, "select order_id, total_qty;")
+    assert info.keyspace.output_demanded_spans == frozenset()
     ownership = info.group_attrs[FINAL_NODE_ID].extent_ownership
     assert ownership is not None
     assert ownership.spans == frozenset()

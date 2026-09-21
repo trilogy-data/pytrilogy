@@ -63,9 +63,7 @@ from .edges import (
 )
 from .extent_ownership import (
     elect_extent_owners,
-    licensed_extension_spans,
     span_members,
-    spans_demanded_by,
 )
 from .functional_dependency import build_fd_determines, concept_attr_fd_determines
 from .group_behaviors import Behavior, behavior_for
@@ -880,9 +878,8 @@ def _preaggregate_filter_allows_dimension_member(
 
 def _keep_extension_families_together(
     assignment: dict[str, frozenset[str]],
-    output_addresses: frozenset[str],
+    demanded_spans: frozenset[str],
     environment: BuildEnvironment,
-    demanded: frozenset[str] | None = None,
 ) -> None:
     """Merge the peel clusters that carry a demanded ``~`` extension span.
 
@@ -895,16 +892,9 @@ def _keep_extension_families_together(
 
     A cluster keyed by the span itself reads the dimension's own table and pads
     nothing, so it stays apart."""
-    spans = (
-        spans_demanded_by(
-            licensed_extension_spans(environment), output_addresses, environment
-        )
-        if demanded is None
-        else demanded
-    )
     carrying = {
         assignment[address]
-        for span in spans
+        for span in demanded_spans
         for address in span_members(span, assignment, environment)
         if span not in assignment[address]
     }
@@ -925,7 +915,7 @@ def _split_root_dimension_clusters(
     pre_aggregate_filter_args: frozenset[str],
     post_aggregate_args: frozenset[str],
     finer_filter_grains: frozenset[frozenset[str]],
-    demanded: frozenset[str] | None = None,
+    demanded_spans: frozenset[str],
 ) -> None:
     """Peel single-entity FD dimension clusters out of a keyed ROOT bucket into
     their own ``grp:root:root:dim:<entity_key>`` ROOT buckets.
@@ -1074,9 +1064,7 @@ def _split_root_dimension_clusters(
                 assignment[addr] = composite
         if not assignment:
             continue
-        _keep_extension_families_together(
-            assignment, output_addresses, environment, demanded
-        )
+        _keep_extension_families_together(assignment, demanded_spans, environment)
         clusters: dict[frozenset[str], list[int]] = defaultdict(list)
         for idx, addr in enumerate(bucket.primary_members):
             if addr in assignment:
@@ -3047,7 +3035,7 @@ def build_group_graph(
     *,
     environment: BuildEnvironment,
     staged_conditions: list[BuildWhereClause] | None = None,
-    demanded_spans: frozenset[str] | None = None,
+    demanded_spans: frozenset[str] = frozenset(),
 ) -> tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs]]:
     """Collapse compatible concepts into groups and append a single FINAL sink.
 
