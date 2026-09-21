@@ -81,6 +81,19 @@ class ExtentOwnership:
 
 
 @dataclass(frozen=True)
+class Completion:
+    """A source holding only SOME rows of a region, beside sources holding the
+    rest (``returns`` beside ``lines``; ``web_orders`` beside ``store_orders``).
+    ``spans`` are the ``~`` keys that say so. ``emptied_by`` are the concepts
+    the WHERE null-rejects that only this source supplies: no entity is absent
+    on the rows it lacks, but none of them survives the statement."""
+
+    source: str
+    spans: frozenset[str]
+    emptied_by: frozenset[str] = frozenset()
+
+
+@dataclass(frozen=True)
 class Region:
     """One kind of row a plan can return: the entity keys PRESENT on it.
 
@@ -97,6 +110,9 @@ class Region:
     completes: frozenset[str] = frozenset()
     sources: frozenset[str] = frozenset()
     emptied_by: frozenset[str] = frozenset()
+    # every source whose rows ARE this kind of row
+    witnesses: frozenset[str] = frozenset()
+    completions: tuple[Completion, ...] = ()
 
     @property
     def is_extension(self) -> bool:
@@ -169,6 +185,26 @@ class Keyspace:
                 for o in self.outputs
             )
         )
+
+    def binding_is_complete(self, source: str, span: str) -> bool:
+        """Does ``source``'s ``~`` on ``span`` cost this plan nothing? The
+        binding says the source lacks some of the key's members. Those live on
+        the regions other sources witness, and on the rows of its own region it
+        holds no match for; when the WHERE empties every one of them, the
+        source is complete for this plan. False when the span is not in play."""
+        if span not in self.in_play_spans:
+            return False
+        for region in self.regions:
+            if region.is_empty:
+                continue
+            if span in region.spans and source not in region.witnesses:
+                return False
+            if any(
+                c.source == source and span in c.spans and not c.emptied_by
+                for c in region.completions
+            ):
+                return False
+        return True
 
     def defined_on(self, address: str, region: Region) -> bool:
         return self.keys_by_address.get(address, frozenset()) <= region.present

@@ -576,8 +576,6 @@ def _build_from_graph(
         group_graph,
         group_attrs,
         mandatory_list,
-        environment,
-        conditions,
     )
     return BuildInfo(
         concept_graph=concept_graph,

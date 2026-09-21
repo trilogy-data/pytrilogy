@@ -4,13 +4,16 @@ A ``~`` binding licenses domain extension: unmatched members of that key's
 dimension enter the result once, carrying their own attributes, with every
 concept outside the key's functional closure NULL.
 
-``heal_pinned_partials``: when the statement WHERE proves non-null a bound
-concept OUTSIDE a partial key's closure, every extension row that key could
-license is filtered out (the concept is manufactured-NULL on those rows), so
-the binding is complete for this query. Dropping the modifier up front lets
-the fact anchor the plan with INNER star joins instead of extension
-scaffolding that is then filtered away. Running at one seam
-(``get_query_node``) keeps every downstream consumer on one judgment.
+``heal_pinned_partials``: when the statement WHERE empties every kind of row
+a ``~`` binding's source has no match for, the binding is complete for this
+query. WHICH rows those are is the keyspace's answer
+(``Keyspace.binding_is_complete``, over the statement's bindings as authored
+and the WHERE's bound-column proofs); whether dropping the ``~`` is also safe
+for every other merge it would license is decided here (the anchor guards).
+Dropping the modifier up front lets the fact anchor the plan with INNER star
+joins instead of extension scaffolding that is then filtered away. Running at
+one seam (``get_query_node``), before the reference graph captures the
+datasource objects, keeps every downstream consumer on one judgment.
 
 ``drop_excluded_partials``: a ``complete where`` source whose partition
 predicate is mutually exclusive with the statement's row gate cannot contribute
@@ -41,8 +44,9 @@ from trilogy.core.processing.condition_utility import (
     conditions_mutually_exclusive,
     gate_allowed_values,
 )
-from trilogy.core.processing.v4_helper.functional_dependency import build_fd_closure
-from trilogy.core.processing.v4_helper.keyspace_audit import record_heal
+from trilogy.core.processing.v4_helper.concept_graph import build_concept_graph
+from trilogy.core.processing.v4_helper.keyspace import build_keyspace
+from trilogy.core.processing.v4_helper.models import Keyspace
 
 
 def _spellings(concept: BuildConcept) -> set[str]:
@@ -78,7 +82,7 @@ def _build_datasources(environment: BuildEnvironment) -> list[BuildDatasource]:
 
 
 def _proven_bound(
-    conditions: BuildWhereClause | None,
+    conditions: list[BuildWhereClause],
     datasources: list[BuildDatasource],
 ) -> set[str]:
     """WHERE-proven non-null addresses that are physically bound somewhere.
@@ -88,27 +92,12 @@ def _proven_bound(
     while saying nothing about any row's origin, so it must not count as
     evidence that extension rows are filtered out.
     """
-    if conditions is None:
-        return set()
-    proven = condition_proves_non_null(conditions.conditional)
+    proven: set[str] = set()
+    for clause in conditions:
+        proven |= condition_proves_non_null(clause.conditional)
     if not proven:
         return set()
     return proven & _bound_spellings(datasources)
-
-
-def _extension_killed(
-    environment: BuildEnvironment,
-    key: BuildConcept,
-    killers: set[str],
-) -> bool:
-    """True when the WHERE filters out every extension row ``key`` licenses.
-
-    An extension row carries values only for ``key``'s own functional closure;
-    everything else on it is manufactured NULL. A proven-non-null bound concept
-    outside that closure therefore kills the row.
-    """
-    closure = build_fd_closure(environment, _spellings(key), include_empty_grain=True)
-    return any(p not in closure for p in killers)
 
 
 def _partition_disjoint(a: BuildDatasource, b: BuildDatasource) -> bool:
@@ -239,8 +228,25 @@ def _reach(
     return reach
 
 
+def _statement_keyspace(
+    environment: BuildEnvironment,
+    outputs: list[BuildConcept],
+    conditions: list[BuildWhereClause],
+    proven_bound: set[str],
+) -> Keyspace:
+    """The statement's row universe over its bindings as authored. Healing
+    runs before the reference graph exists (the graph holds the datasource
+    objects, so they have to be final by then); the keyspace needs neither."""
+    _, attrs, _ = build_concept_graph(outputs, environment, conditions)
+    return build_keyspace(
+        attrs, outputs, environment, conditions, null_rejected=proven_bound
+    )
+
+
 def heal_pinned_partials(
-    environment: BuildEnvironment, conditions: BuildWhereClause | None
+    environment: BuildEnvironment,
+    outputs: list[BuildConcept],
+    conditions: list[BuildWhereClause],
 ) -> None:
     """Drop ``~`` from bindings whose licensed extensions this WHERE kills.
 
@@ -253,16 +259,15 @@ def heal_pinned_partials(
     ]
     if not partial_hosts:
         return
-    record_heal(environment, datasources, frozenset())
     proven_bound = _proven_bound(conditions, datasources)
     if not proven_bound:
         return
+    keyspace = _statement_keyspace(environment, outputs, conditions, proven_bound)
     referenced_bound = (environment.statement_authored_addresses or set()) & (
         _bound_spellings(datasources)
     )
     reach_cache: dict[str, set[str]] = {}
     replacements: dict[str, BuildDatasource] = {}
-    all_healed: set[str] = set()
     for ds in partial_hosts:
         # A killer must be related to the key's own model component: a concept
         # from a disconnected subgraph attaches via a cross-join gate and is
@@ -285,11 +290,10 @@ def heal_pinned_partials(
                 ds, anchors, killers, component_refs, datasources
             ):
                 continue
-            if _extension_killed(environment, key, killers):
+            if keyspace.binding_is_complete(ds.identifier, key.address):
                 healed.add(key.address)
         if not healed:
             continue
-        all_healed |= healed
         new_columns = [
             (
                 BuildColumnAssignment(
@@ -311,7 +315,6 @@ def heal_pinned_partials(
         )
     if not replacements:
         return
-    record_heal(environment, datasources, frozenset(all_healed))
     for name, existing in list(environment.datasources.items()):
         if (
             isinstance(existing, BuildDatasource)

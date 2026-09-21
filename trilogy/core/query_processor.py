@@ -1183,7 +1183,11 @@ def get_query_node(
     if isinstance(build_statement, BuildSelectLineage) and not (
         build_statement.where_clauses
     ):
-        heal_pinned_partials(build_environment, build_statement.where_clause)
+        heal_pinned_partials(
+            build_environment,
+            list(build_statement.output_components),
+            [build_statement.where_clause] if build_statement.where_clause else [],
+        )
     # A partition source the row gate contradicts holds no usable row for this
     # statement; hiding it keeps a sibling partition's bindings from standing
     # in for a `merge` origin or seeding a union that filters to nothing.

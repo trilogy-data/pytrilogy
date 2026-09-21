@@ -35,9 +35,12 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.condition_utility import condition_proves_non_null
+from trilogy.core.processing.condition_utility import (
+    condition_proves_non_null,
+    conditions_mutually_exclusive,
+)
 
-from .models import ConceptAttrs, Keyspace, Region
+from .models import Completion, ConceptAttrs, Keyspace, Region
 
 _Declared = tuple[Purpose, Derivation, frozenset[str]]
 
@@ -56,6 +59,8 @@ class _SourceFacts:
     grain_is_partial: bool
     # bound address -> ({address} when bound `~`, else empty)
     bound: Carried
+    # `complete where`: the slice of the key's domain this source is all of
+    partition: BuildWhereClause | None = None
 
 
 @dataclass
@@ -164,6 +169,19 @@ def _source_facts(
         grain=grain,
         grain_is_partial=any(bound.get(g) for g in grain),
         bound=bound,
+        partition=ds.non_partial_for,
+    )
+
+
+def _disjoint_partitions(a: _SourceFacts, b: _SourceFacts) -> bool:
+    """`complete where` slices that exclude each other share no member: the
+    union machinery stacks them, neither holds rows the other is missing."""
+    return (
+        a.partition is not None
+        and b.partition is not None
+        and conditions_mutually_exclusive(
+            a.partition.conditional, b.partition.conditional
+        )
     )
 
 
@@ -358,18 +376,20 @@ def _bridges(
     )
 
 
-def _completion_spans(
+def _completions(
     present: frozenset[str],
     sources: list[_SourceFacts],
     requested_roots: frozenset[str],
     entities: frozenset[str],
+    rejected: frozenset[str],
     facts: _ModelFacts,
-) -> frozenset[str]:
+) -> tuple[frozenset[str], tuple[Completion, ...]]:
     """The `~` keys of a source the plan needs that holds only some of this
     region's rows, beside a source holding all of them: `returns` beside
     `lines`. Needed means it alone binds something requested, or it is what
     joins the region to the rest of the statement. With no complete source at
-    all, every partial one completes the others."""
+    all, every partial one completes the others, except across `complete
+    where` slices."""
     causes = {
         s.identifier: _identity_cause(s, _identifying_keys(s, present), facts)
         for s in sources
@@ -378,21 +398,48 @@ def _completion_spans(
     if not complete:
         # no source holds the whole domain: the partial ones ARE the domain,
         # each holding members the others lack (`web_orders`, `store_orders`)
-        return frozenset().union(*causes.values()) if len(sources) > 1 else frozenset()
+        if len(sources) < 2:
+            return frozenset(), ()
+        rivals = {
+            s.identifier: [
+                o for o in sources if o is not s and not _disjoint_partitions(s, o)
+            ]
+            for s in sources
+        }
+        mutual = tuple(
+            Completion(
+                source=s.identifier,
+                spans=causes[s.identifier],
+                emptied_by=rejected
+                & (
+                    facts.carried[s.identifier].keys()
+                    - frozenset().union(
+                        *(facts.carried[o.identifier].keys() for o in others)
+                    )
+                ),
+            )
+            for s in sources
+            if (others := rivals[s.identifier])
+        )
+        return frozenset().union(*causes.values()), mutual
     held: frozenset[str] = frozenset().union(
         *(facts.carried[s.identifier].keys() for s in complete)
     )
-    return frozenset().union(
-        *(
-            causes[s.identifier]
-            for s in sources
-            if causes[s.identifier]
-            and (
-                (s.bound.keys() & requested_roots) - held
-                or _bridges(s, present, entities, facts)
-            )
+    found = tuple(
+        Completion(
+            source=s.identifier,
+            spans=causes[s.identifier],
+            # NULL on every row of the region this source has no match for
+            emptied_by=rejected & (facts.carried[s.identifier].keys() - held),
+        )
+        for s in sources
+        if causes[s.identifier]
+        and (
+            (s.bound.keys() & requested_roots) - held
+            or _bridges(s, present, entities, facts)
         )
     )
+    return frozenset().union(*(c.spans for c in found)), found
 
 
 def _connected(
@@ -436,19 +483,13 @@ def build_keyspace(
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     conditions: list[BuildWhereClause],
-    datasources: list[BuildDatasource] | None = None,
+    null_rejected: set[str] | None = None,
 ) -> Keyspace:
-    """`datasources` overrides the environment's own (the audit replays a
-    statement against its bindings as they stood before pin-heal)."""
-    licensed = _has_extension_license(
-        _build_datasources(environment) if datasources is None else datasources
-    )
-    if not licensed:
-        facts = None
-    elif datasources is None:
-        facts = _model_facts(environment)
-    else:
-        facts = _compute_facts(environment, datasources)
+    """`null_rejected` overrides what the WHERE is read to reject: pin-heal
+    trusts bound columns only, since a derivation over an absent entity still
+    renders a value until phase 4 places it by region."""
+    licensed = _has_extension_license(_build_datasources(environment))
+    facts = _model_facts(environment) if licensed else None
     canonical = facts.canonical if facts else {}
     identifying = facts.identifying if facts else frozenset()
     # an existence-only node is a semijoin's subselect, not a row of this plan
@@ -483,13 +524,18 @@ def build_keyspace(
     )
     witnesses = _witnesses(entities, facts)
     connected = _connected(entities, facts)
-    rejected = _null_rejected(conditions)
+    rejected = _null_rejected(conditions) if null_rejected is None else null_rejected
+    rejected_roots = frozenset(canonical.get(a, a) for a in rejected)
+    base_sources = witnesses.get(entities, [])
+    base_completes, base_completions = _completions(
+        entities, base_sources, requested_roots, entities, rejected_roots, facts
+    )
     regions = [
         dataclasses.replace(
             base,
-            completes=_completion_spans(
-                entities, witnesses.get(entities, []), requested_roots, entities, facts
-            ),
+            completes=base_completes,
+            witnesses=frozenset(s.identifier for s in base_sources),
+            completions=base_completions,
         )
     ]
     for present, sources in sorted(witnesses.items(), key=_region_order):
@@ -499,8 +545,8 @@ def build_keyspace(
             s.identifier: _extension_spans(present, s, witnesses, facts)
             for s in sources
         }
-        completes = _completion_spans(
-            present, sources, requested_roots, entities, facts
+        completes, completions = _completions(
+            present, sources, requested_roots, entities, rejected_roots, facts
         )
         # kept out of the larger regions by a lookup's `~`, or by a bridge's
         spans: frozenset[str] = completes.union(*spans_by_witness.values())
@@ -516,6 +562,8 @@ def build_keyspace(
                 spans=spans,
                 completes=completes,
                 sources=frozenset(i for i, found in spans_by_witness.items() if found),
+                witnesses=frozenset(s.identifier for s in sources),
+                completions=completions,
                 emptied_by=frozenset(
                     a
                     for a in rejected

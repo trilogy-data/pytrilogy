@@ -13,7 +13,7 @@ from tests.engine.test_derived_key_domain import (
 )
 from tests.engine.test_duckdb_partial_fk_field_report import MODEL as FIELD_REPORT
 from trilogy import Dialects
-from trilogy.core.processing import concept_strategies_v4
+from trilogy.core.processing import concept_strategies_v4, partial_bridging
 from trilogy.core.processing.v4_helper.constants import FINAL_NODE_ID
 from trilogy.core.processing.v4_helper.keyspace import build_keyspace
 from trilogy.core.processing.v4_helper.models import Keyspace
@@ -43,6 +43,17 @@ def _planned_keyspace(monkeypatch, model: str, query: str) -> Keyspace:
     """Through the full statement path, so the WHERE reaches the plan."""
     capture = _Capture()
     monkeypatch.setattr(concept_strategies_v4, "build_keyspace", capture)
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(model)
+    executor.generate_sql(query)
+    return capture.seen[0]
+
+
+def _heal_keyspace(monkeypatch, model: str, query: str) -> Keyspace:
+    """What pin-heal asks: the statement's bindings as authored, and only the
+    WHERE's bound-column proofs."""
+    capture = _Capture()
+    monkeypatch.setattr(partial_bridging, "build_keyspace", capture)
     executor = Dialects.DUCK_DB.default_executor()
     executor.parse_text(model)
     executor.generate_sql(query)
@@ -346,3 +357,71 @@ def test_rowset_key_is_its_own_entity():
     """A customer no order references is not a row of the rowset."""
     keyspace = _keyspace(_ROWSET, "select delivered.customer_id, delivered.order_id;")
     assert keyspace.output_demanded_spans == frozenset()
+
+
+def test_binding_is_complete_once_the_where_empties_the_rows_it_lacks(monkeypatch):
+    dead = _planned_keyspace(
+        monkeypatch, _DERIVED, "select customer_id, status where status = 'delivered';"
+    )
+    assert dead.binding_is_complete("orders", CUSTOMER)
+
+
+def test_binding_stays_partial_while_the_rows_it_lacks_are_live(monkeypatch):
+    live = _planned_keyspace(
+        monkeypatch, _DERIVED, "select customer_id, status where name = 'cat';"
+    )
+    assert not live.binding_is_complete("orders", CUSTOMER)
+
+
+def test_binding_out_of_play_is_not_called_complete(monkeypatch):
+    keyspace = _planned_keyspace(
+        monkeypatch, _DERIVED, "select order_id, status where status = 'delivered';"
+    )
+    assert CUSTOMER not in keyspace.in_play_spans
+    assert not keyspace.binding_is_complete("orders", CUSTOMER)
+
+
+def test_completion_is_emptied_by_a_column_only_the_partial_source_binds(monkeypatch):
+    """No entity is absent on a line with no return, so no region dies; the
+    rows `returns` lacks are still gone once `ret_order` must be non-null."""
+    pinned = _heal_keyspace(
+        monkeypatch,
+        _PARTIAL_PROPERTY_SOURCE,
+        "select order_id, item_id, ret_order where ret_order is not null;",
+    )
+    (base,) = pinned.regions
+    (completion,) = base.completions
+    assert completion.source == "returns"
+    assert completion.emptied_by == frozenset({"local.ret_order"})
+    assert pinned.binding_is_complete("returns", ORDER)
+
+
+def test_completion_stays_live_under_a_column_both_sources_reach(monkeypatch):
+    unpinned = _heal_keyspace(
+        monkeypatch,
+        _PARTIAL_PROPERTY_SOURCE,
+        "select order_id, item_id, ret_order where qty > 1;",
+    )
+    assert not unpinned.binding_is_complete("returns", ORDER)
+
+
+def test_pin_heal_reads_bound_columns_only(monkeypatch):
+    """`status` is derived: by the rule it is absent on an orderless customer,
+    but the rendered CASE still yields a value there until phase 4."""
+    keyspace = _heal_keyspace(
+        monkeypatch,
+        _DERIVED,
+        "select customer_id, status where status = 'delivered' and name = 'cat';",
+    )
+    assert not keyspace.binding_is_complete("orders", CUSTOMER)
+
+
+def test_partial_sources_completing_each_other_each_lack_the_others_rows(monkeypatch):
+    # only web_orders binds web_id: a store-only order does not survive it
+    pinned = _heal_keyspace(
+        monkeypatch,
+        _PEER_PARTIALS,
+        "select order_id, web_id where web_id is not null;",
+    )
+    assert pinned.binding_is_complete("web_orders", ORDER)
+    assert not pinned.binding_is_complete("store_orders", ORDER)
