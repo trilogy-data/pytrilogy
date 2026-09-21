@@ -72,7 +72,7 @@ Every eager structural change to root grouping has broken something (see the mem
 
 ## Status
 
-Phases 0-2 are built and the first two phase 3 sites are moved (2026-09-20, same branch). Everything below this heading is a record of what they found; the sections above are the original plan, unedited.
+Phases 0-2 are built and four phase 3 sites are moved (2026-09-20 and 09-21, same branch). Everything below this heading is a record of what they found; the sections above are the original plan, unedited.
 
 ### Phase 0: what the source search actually consumes
 
@@ -145,11 +145,36 @@ Plus a whole-corpus SQL diff (a pytest plugin wrapping `BaseDialect.compile_stat
 
 `elect_extent_owners` and the dim peel's `_keep_extension_families_together` take the demanded spans as an argument, and `_build_from_graph` passes `Keyspace.output_demanded_spans`. `demanded_extension_spans`, `spans_demanded_by` and the `demand` audit are deleted; `span_members` stays (it is an FD question: what an extension row of a span carries). `zquery29.log` regenerated.
 
+### Phase 3, sites 3 and 4: DONE (2026-09-21)
+
+The two remaining model-wide scans of `column_level_partial_addresses` in join typing now read `Keyspace.in_play_spans` (every region's `spans | completes`, emptied regions INCLUDED: their rows are gone once the WHERE has run, and a merge below that point still sees their padding). `_build_from_graph` scopes it on `BuildEnvironment.in_play_spans`; each `MergeNode` captures it at construction, the way it captures `extent_free_spans` and for the same reason.
+
+- **Site 3, the padding-provenance matrix** (`get_node_joins`, now `_span_padding_matrix`; `licensed_extension_spans` deleted).
+- **Site 4, the host grain** (`MergeNode`, `host_stitch`): which `~` outputs make a side the host. Not on the original inventory; it had its own inline copy of the model-wide set.
+
+Method: both answers computed side by side under the audit flag, the plan still built on the old one. 250 matrix computations and 166 host grains over the planner suites; 30 and 28 disagreed. What they were:
+
+| what | shape that found it | outcome |
+|---|---|---|
+| a rowset body is its own plan with its own keyspace; the OUTER plan's merge reads padding made inside it | TPC-DS q64 (`ss_rows_99` / `ss_rows_00`), `test_semi_join_pushdown` | fixed: the matrix reads the spans of every merge below it (`merge_node.tree_in_play_spans`). On the node tree, not the environment, so a history-cached sub-plan still carries its spans. First place the unmodelled "rowset as a witness" is consumed. |
+| a scoped join keys the pair on its canonical, not on the member bound `~` (`subset join pr.item.sk = ss.item.sk`; the keyspace names the span `pr.item.sk`). The model-wide set only matched because an unrelated `ss` source also binds `~ss.item.sk` | `test_q64_rowset_join_with_second_fact_join_hoist` | fixed: `_span_spellings` names a span through its `scoped_join_key_groups` group |
+| model-wide over-approximation: an authored `union join`'s padding, or a plain dimension lookup, called `~` padding because some source the plan never reads binds the key `~` | q29 existence feeder x2, `test_join_hoist_inlined_dim_group_key_no_dangling_source` | the keyspace's answer stands |
+| a composite-key join names `vehicle.variant` beside `vehicle.name`; only the requested key is an entity. Both sides shrink alike | gcat `test_full_join_issue_2` | the keyspace's answer stands |
+| host grain `{ticket_number}` because `store_returns` exists in the model, in plans with no span in play | TPC-DS q34 / q73 / q79 / q64, the `complete where` city model | the keyspace's answer stands: it is what the code's own comment says ("with no licensed keys in play, grain coverage decides"). The host grain reads its OWN plan's spans, not the tree's: a rowset below is a row source, its extension rows are not this plan's to host. |
+
+Then flipped with the audit still comparing: 3417 passed, every `zquery<N>.log` byte-identical, the residual rows exactly the explained ones above. A compiled-SQL diff over every file holding a disagreement (178 tests) moved nothing. (`gcat::test_environment` reorders two SELECT columns BETWEEN TWO IDENTICAL RUNS: pre-existing nondeterminism, and very likely the "one gcat statement" of the sites 1-2 diff. Compare distinct SQL per test, not by statement index: the benchmark tests compile a varying number of times.)
+
+Already done by transitivity, no change needed: `MergeNode._extent_free_partials`, `extension_padded_addresses` and `_cover_groups_for_mandatory` read the election (`extent_free_spans`, `ownership.owner_of`), and the election has read the keyspace since site 1.
+
 ### Pick up here
 
-1. Remaining phase 3 sites. `MergeNode._extent_free_partials` and `join_resolution.extension_padded_addresses` / `_span_padded_addresses` are downstream of the election and follow it; `join_resolution` still calls `licensed_extension_spans` for the padding-provenance matrix, which is the next model-wide over-approximation to replace (with the plan's in-play spans). Then `_cover_groups_for_mandatory`. Pin-heal is different in kind: the keyspace says which regions are EMPTY, pin-heal additionally decides whether dropping the `~` is safe for every merge it would license. Keep its anchor guards; take "is this region dead" from `Region.emptied_by`, which also gives it derived null-rejections and merged `~` keys (`_structural_partial` compares `column.concept.address` only, so it never heals a merged `~` key today).
+1. **Pin-heal is the last phase 3 site, and it is NOT a byte-identical move.** Two facts the earlier note glossed:
+   - Ordering. `heal_pinned_partials` runs in `query_processor.get_query_node`, on the statement, BEFORE any concept graph exists; `build_keyspace` needs `concept_attrs`. Taking "is this region dead" from `Region.emptied_by` means either building a statement-level keyspace before healing (the audit's `_audit_heal` replay already does this after the fact, on the pre-heal datasources: that is the prototype) or moving healing inside `_build_from_graph`, where sub-plans would start healing too.
+   - It will move SQL, on purpose: `emptied_by` follows the rule, so derived null-rejections (`status = 'delivered'`) and merged `~` keys (`_structural_partial` compares `column.concept.address` only) become heals that do not happen today. Plan it as an optimization with its own A/B and row checks, keep the anchor guards (`_pair_anchors` / `_anchors_dispensable`: emptied is a fact about rows, healing must also be safe for every other merge the dropped `~` licenses), and keep the `then where` exclusion.
+   - "Pin-heal stops rewriting datasources" is further out still: the network search reads partiality as one FULL/PARTIAL bit per binding off the datasource (phase 0), so something has to keep clearing that bit.
 2. Phase 4 has its spec: `Keyspace.absent_regions(address)` is the prototype's `absent_on_extension`, per region instead of per span, and the worklist is the audit's `owner_pads` list: the oracle's owed queries, `test_status_on_extension_rows_is_null_without_an_aggregate`, `test_composite_grain_families_with_by_span_aggregate`, `test_by_dim_key_aggregate_vs_row_value`, `test_forked_with_status`, four gcat statements, two rowset tests, `test_inline_broadcast_join_key`. No TPC-DS or TPC-H benchmark query is on it, which is what the prototype's `_null_on_padding` gate bought by hand. The prototype's three gates map to keyspace facts: "one span" becomes one bucket per live extension region (regions are disjoint, so families cannot cross-pair); "span key projected" becomes the region's identifying keys demanded as hidden columns; "WHERE deliverable" becomes `emptied_by` (region dead, no bucket), an atom over concepts defined on the region (filter the bucket), or a null-accepting atom over an absent concept (host at FINAL).
-3. Not modelled and needed by phase 4: an OPTIONAL entity (a lookup through a source whose grain is bound `~` and that binds a further key). Same bug from the other side: `coalesce(return_reason, 'none')` keyed on a return evaluates on sale lines that have none. And a rowset as a witness, related to model keys only through an authored scoped join.
+3. Not modelled and needed by phase 4: an OPTIONAL entity (a lookup through a source whose grain is bound `~` and that binds a further key). Same bug from the other side: `coalesce(return_reason, 'none')` keyed on a return evaluates on sale lines that have none. And a rowset as a witness, related to model keys only through an authored scoped join; `tree_in_play_spans` is the stopgap that lets join typing see through one.
+4. Phase 7 inherits one more piece of span plumbing: `BuildEnvironment.in_play_spans` / `MergeNode.in_play_spans`, beside `extent_free_spans`.
 
 The owner questions below are still open; 1 and 3 were taken as proposed (entity keys, widened to anything that identifies a source's rows; `BuildInfo`), 2 stays with the union machinery, 4 and 5 only matter from phase 4.
 

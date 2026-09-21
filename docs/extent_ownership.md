@@ -113,7 +113,10 @@ padding shared provenance. Two sides padded for *different* spans (a product
 never sold, a user who never ordered) name different members, and pairing them
 invents a row. `join_resolution._span_padded_addresses` attributes padding to
 the span that caused it; disjoint attributions join FULL on plain equality
-(`docs/handoff_aggregate_grain_fd_canonicalization.md`). The group graph also
+(`docs/handoff_aggregate_grain_fd_canonicalization.md`). The spans it looks for
+are the ones the keyspace has a region for, in this plan or a rowset body below
+it (`merge_node.tree_in_play_spans`), not every `~` address in the model; the
+host grain reads the same set for its own plan. The group graph also
 keeps such families together where it can
 (`group_graph._keep_extension_families_together`), so rule 3 above has a joint
 owner to elect.
