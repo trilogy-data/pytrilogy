@@ -1566,6 +1566,18 @@ class QueryDatasource:
                 extent_free = "_extent_free_" + "_".join(
                     sorted(a.replace(".", "_") for a in live_spans)
                 )
+        # A preserving join is identity: two merges of the same members that
+        # type a join differently (one consumer's scan projects a `~` key the
+        # other's does not) are different row sets, and merging their CTEs
+        # keeps BOTH joins onto one alias.
+        preserving = ""
+        outer = sorted(
+            f"{join.join_type.value}_{join.right_datasource.identifier}"
+            for join in self.joins
+            if isinstance(join, BaseJoin) and join.join_type != JoinType.INNER
+        )
+        if outer:
+            preserving = f"_preserving_{string_to_hash('|'.join(outer))}"
         return (
             "_join_".join(
                 sorted(
@@ -1578,6 +1590,7 @@ class QueryDatasource:
             + limited
             + unnested
             + extent_free
+            + preserving
         )
 
     def get_alias(self, concept: BuildConcept, source: str | None = None):

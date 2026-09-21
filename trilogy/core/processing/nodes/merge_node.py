@@ -202,6 +202,7 @@ class MergeNode(StrategyNode):
         host_stitch: bool = False,
         extent_free_spans: frozenset[str] | None = None,
         in_play_spans: frozenset[str] | None = None,
+        extent_free_carried: dict[str, frozenset[str]] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -244,6 +245,11 @@ class MergeNode(StrategyNode):
             environment.extent_free_spans
             if extent_free_spans is None
             else extent_free_spans
+        )
+        self.extent_free_carried = (
+            environment.extent_free_carried
+            if extent_free_carried is None
+            else extent_free_carried
         )
         # The spans the plan this merge belongs to has a region for. Captured
         # for the same reason: a rowset body's merge can resolve after the
@@ -847,13 +853,19 @@ class MergeNode(StrategyNode):
         away."""
         if not self.extent_free_spans:
             return []
+        bound_partially = {
+            span
+            for span in self.extent_free_spans
+            if any(partial_binding_sources(source, span) for source in sources)
+        }
+        # what the span's region domain carries is held here for those same
+        # members only (the names of customers WITH an order)
         return [
             concept
             for concept in outputs
-            if concept.address in self.extent_free_spans
-            and any(
-                partial_binding_sources(source, concept.address) for source in sources
-            )
+            if concept.address in bound_partially
+            or self.extent_free_carried.get(concept.address, frozenset())
+            & bound_partially
         ]
 
     def copy(self) -> "MergeNode":
@@ -880,4 +892,5 @@ class MergeNode(StrategyNode):
             host_stitch=self.host_stitch,
             extent_free_spans=self.extent_free_spans,
             in_play_spans=self.in_play_spans,
+            extent_free_carried=self.extent_free_carried,
         )

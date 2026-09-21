@@ -3,7 +3,9 @@
 
 Inert unless `TRILOGY_KEYSPACE_AUDIT` names a file; then every plan appends one
 JSON line per finding. Nothing here feeds a plan. `owner_pads`: a derivation
-evaluated on rows of a region it is absent on (phase 4's worklist). The
+evaluated on rows of a region it is absent on (what phase 4 left). `where`: a
+region that needed a domain and got none, because no host delivers the WHERE
+to the domain's rows (phase 5's worklist). The
 `demand` and `heal` checks went with the derivations they audited, once the
 election and pin-heal started reading the keyspace.
 """
@@ -19,7 +21,7 @@ from trilogy.core.enums import Derivation
 from trilogy.core.models.build import BuildConcept
 
 from .constants import FINAL_NODE_ID
-from .models import ConceptAttrs, GroupAttrs, Keyspace
+from .models import ConceptAttrs, GroupAttrs, Keyspace, Region
 
 AUDIT_PATH = os.environ.get("TRILOGY_KEYSPACE_AUDIT")
 
@@ -69,6 +71,11 @@ def _audit_owner(
                     absent=absent,
                     region=region.describe(),
                 )
+
+
+def audit_undelivered_where(region: Region, addresses: list[str]) -> None:
+    if AUDIT_PATH:
+        _emit("where", region=region.describe(), undelivered=addresses)
 
 
 def audit_plan(

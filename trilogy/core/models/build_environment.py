@@ -158,6 +158,10 @@ class BuildEnvironment:
     # re-deciding after resolution would leave the padding's nullable marks
     # behind. `build_strategy_node` sets and clears it around each group.
     extent_free_spans: frozenset[str] = frozenset()
+    # Same scope: address -> the extent-free spans whose region domain carries
+    # it. The group holds that member only for the rows its facts bound (the
+    # names of customers WITH an order), exactly like the span key itself.
+    extent_free_carried: dict[str, frozenset[str]] = field(default_factory=dict)
     # Plan scope: the `~` spans the plan being built has a region for
     # (`Keyspace.in_play_spans`), the only ones a join of it can pad for.
     # `_build_from_graph` sets and restores it; merges capture it like the above.

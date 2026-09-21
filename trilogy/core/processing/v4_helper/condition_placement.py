@@ -32,7 +32,7 @@ from .concept_graph import computed_origin_relation_members
 from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS, DepthLabel, EdgeKind
 from .edges import EdgeMap, lineage_subgraph, subgraph_of_kinds
 from .functional_dependency import build_fd_determines
-from .models import ConceptAttrs, GroupBucket
+from .models import ConceptAttrs, GroupBucket, Keyspace
 from .projection import output_rowset_base_keys
 from .staged_where import (
     CROSS_ROW_DERIVATIONS,
@@ -67,8 +67,8 @@ class PlacementReason(Enum):
     # exposes: hosted on FINAL, which pairs the gate's scan to the
     # boundary on that key.
     FINAL_ROWSET_BASE_KEY = "final_rowset_base_key"
-    # A row atom over something a span domain's key does not determine,
-    # restated at FINAL where the domain's extension rows join back.
+    # A row atom over something absent on a region that has a domain,
+    # restated at FINAL where the domain's rows join back.
     FINAL_SPAN_DOMAIN = "final_span_domain"
 
 
@@ -614,25 +614,28 @@ def _preserved_final_branch(
     )
 
 
-def _reads_past_span_domain(
+def _reads_past_region_domain(
     row_inputs: set[str],
     buckets: dict[str, GroupBucket],
-    environment: BuildEnvironment,
+    keyspace: Keyspace,
 ) -> bool:
-    """Whether the atom reads something a span domain's key does not determine.
+    """Whether the atom reads something absent on a region that has a domain.
 
-    Any host below FINAL pairs on solid keys and never sees the extension rows
-    the domain adds back there: a customer whose every order the atom rejected
-    would return as an extension row, and `status is null` would never test the
+    Any host below FINAL pairs on solid keys and never sees the rows the domain
+    adds back there: a customer whose every order the atom rejected would
+    return as an extension row, and `status is null` would never test the
     customer with no order. So the atom is hosted at FINAL only, over the
-    extended rows. A null-rejecting atom never gets here: `heal_pinned_partials`
-    has already dropped the span's license."""
-    return any(
-        bucket.extent_spans
-        and not build_fd_determines(
-            environment, set(bucket.extent_spans), address, include_empty_grain=True
-        )
+    extended rows. A null-rejecting atom never gets here: it empties the
+    region, and an empty region gets no domain."""
+    regions = [
+        region
         for bucket in buckets.values()
+        if bucket.extent_spans
+        and (region := keyspace.region_of(bucket.extent_spans)) is not None
+    ]
+    return any(
+        not keyspace.defined_on(address, region)
+        for region in regions
         for address in row_inputs
     )
 
@@ -913,8 +916,10 @@ def plan_condition_placements(
     concept_attrs: dict[str, ConceptAttrs] | None = None,
     statement_relation_addresses: frozenset[str] = frozenset(),
     staged_conditions: list[BuildWhereClause] | None = None,
+    keyspace: Keyspace | None = None,
 ) -> list[ConditionPlacement]:
     """Return where each decomposed condition atom should be injected."""
+    keyspace = keyspace or Keyspace()
     scoped_join_key_groups = scoped_join_key_groups or {}
     # A GLOBAL merge whose collapsed member keeps a row-shape computed origin
     # (`merge recursive_parent into root_parent.id`) null-extends exactly like
@@ -1302,8 +1307,8 @@ def plan_condition_placements(
                     )
                 )
                 continue
-            if not atom.existence_arguments and _reads_past_span_domain(
-                row_inputs, buckets, environment
+            if not atom.existence_arguments and _reads_past_region_domain(
+                row_inputs, buckets, keyspace
             ):
                 placements.append(
                     ConditionPlacement(

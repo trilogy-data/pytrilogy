@@ -79,6 +79,20 @@ class ExtentOwnership:
     def suppressed_for(self, gid: str) -> frozenset[str]:
         return self.spans - self.permitted_for(gid)
 
+    def suppressed_carried_for(self, gid: str) -> dict[str, frozenset[str]]:
+        """address -> the spans `gid` may not extend whose domain carries it."""
+        suppressed = self.suppressed_for(gid)
+        out: dict[str, frozenset[str]] = {}
+        for address, domain in self.carried.items():
+            spans = frozenset(
+                span
+                for span, owner in self.owner_by_span.items()
+                if owner == domain and span in suppressed
+            )
+            if spans and domain != gid:
+                out[address] = spans
+        return out
+
     def owner_of(self, address: str) -> str | None:
         return self.owner_by_span.get(address) or self.carried.get(address)
 
