@@ -343,18 +343,15 @@ class MergeNode(StrategyNode):
                 # `~`-licensed keys, the side covering ALL of them owns every
                 # extension family; a feeder exposing only the stitch key is not
                 # a host even when it covers the merge grain. With no licensed
-                # keys in play, grain coverage decides.
+                # keys in play, grain coverage decides. This plan's spans only:
+                # a rowset below is a row source, its extension rows are not
+                # this plan's to host.
                 host_grain: set[str] | None = None
                 if self.host_stitch:
-                    licensed = {
-                        address
-                        for datasource in environment.datasources.values()
-                        for address in datasource.column_level_partial_addresses
-                    }
                     licensed_outputs = {
                         c.address
                         for c in self.output_concepts
-                        if c.address in licensed
+                        if c.address in self.in_play_spans
                         and c.address not in self.extent_free_spans
                     }
                     host_grain = licensed_outputs or set(grain.components)
