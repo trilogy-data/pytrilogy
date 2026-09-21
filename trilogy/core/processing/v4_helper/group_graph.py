@@ -1162,43 +1162,32 @@ def _has_absent_inline_argument(
 
 
 def _evaluates_where_absent(
-    members: list[str],
+    label: str,
     region: Region,
     keyspace: Keyspace,
-    concept_graph: nx.DiGraph,
-    concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
 ) -> bool:
-    """Whether a row-stream derivation over `members` is absent on `region`
-    and would take a value there all the same. An aggregate ends the walk (it
-    is evaluated OVER the region's rows), but its inline arguments are
+    """Whether the `label` sub-graph holds a row-stream derivation that is
+    absent on `region` and would take a value there all the same. An aggregate
+    is evaluated OVER the region's rows, but its inline arguments are
     row-stream too."""
-    seen = set(members)
-    stack = list(members)
-    while stack:
-        cur = stack.pop()
-        for nxt in concept_graph.successors(cur):
-            if nxt in seen or edge_kind(concept_edges, cur, nxt) != EdgeKind.LINEAGE:
-                continue
-            seen.add(nxt)
-            a = concept_attrs[nxt]
-            if a.derivation == Derivation.AGGREGATE:
-                if _has_absent_inline_argument(
-                    a.address, region, keyspace, environment
-                ):
-                    return True
-                continue
-            if a.derivation not in ROW_STREAM_DERIVATIONS:
-                continue
-            concept = environment.concepts.get(a.address)
-            if (
-                concept is not None
-                and not keyspace.defined_on(a.address, region)
-                and not _null_on_padding(concept, region, keyspace, environment)
-            ):
+    for a in concept_attrs.values():
+        if a.label != label or a.existence_only:
+            continue
+        if a.derivation == Derivation.AGGREGATE:
+            if _has_absent_inline_argument(a.address, region, keyspace, environment):
                 return True
-            stack.append(nxt)
+            continue
+        if a.derivation not in ROW_STREAM_DERIVATIONS:
+            continue
+        concept = environment.concepts.get(a.address)
+        if (
+            concept is not None
+            and not keyspace.defined_on(a.address, region)
+            and not _null_on_padding(concept, region, keyspace, environment)
+        ):
+            return True
     return False
 
 
@@ -1216,7 +1205,7 @@ def _filters_region_domain(
     an atom hosted anywhere else is lost on the rows the domain adds back. Two
     shapes are delivered: a column the domain carries is filtered on the domain
     itself, and an absent value read from rows alone is restated at FINAL
-    over the extended rows (`condition_placement._reads_past_region_domain`),
+    over the extended rows (`condition_placement._reads_past_span_domain`),
     which can only read what the statement projects. Anything else (a scalar
     over an aggregate) has no such host, so the statement gets no domain."""
     if address in carried:
@@ -1230,10 +1219,17 @@ def _filters_region_domain(
     )
 
 
+def _splits_for_region(bucket: GroupBucket) -> bool:
+    """A plain keyed ROOT bucket, or a cluster the dim peel took out of one."""
+    return (
+        bucket.derivation == Derivation.ROOT
+        and bucket.depth_label == DepthLabel.ROOT
+        and (not bucket.discriminator or bucket.discriminator.startswith("dim:"))
+    )
+
+
 def _add_region_domain_buckets(
     buckets: dict[str, GroupBucket],
-    concept_graph: nx.DiGraph,
-    concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
     keyspace: Keyspace,
@@ -1250,27 +1246,28 @@ def _add_region_domain_buckets(
     region's own rows instead and owns their extent (`elect_extent_owners`):
     everything feeding the derivation pairs on solid keys, and the region's
     rows join back above it, at FINAL or at a scalar over an aggregate by the
-    span (`_feed_region_domains_to_present_scalars`)."""
-    regions = [r for r in keyspace.live_regions if r.is_extension]
-    # TODO(phase 4): one domain per region; a domain joins FINAL on the span
-    # key, so the statement has to project it.
-    if len(regions) != 1:
-        return
-    for region in regions:
-        if not region.spans <= output_addresses:
+    span (`_feed_region_domains_to_present_scalars`). One domain per region:
+    regions are disjoint, so two families' rows never pair."""
+    for region in keyspace.live_regions:
+        if not region.is_extension or not all(
+            span in environment.concepts for span in region.spans
+        ):
             continue
-        for gid in list(buckets):
-            bucket = buckets[gid]
-            if (
-                bucket.derivation != Derivation.ROOT
-                or bucket.depth_label != DepthLabel.ROOT
-                or bucket.discriminator
-            ):
-                continue
+        for label in sorted({b.label for b in buckets.values()}):
+            sources = [
+                b
+                for b in buckets.values()
+                if b.label == label
+                and _splits_for_region(b)
+                and any(not keyspace.carried_on(m, region) for m in b.primary_members)
+            ]
             carried = {
-                m for m in bucket.primary_members if keyspace.carried_on(m, region)
+                m
+                for b in sources
+                for m in b.primary_members
+                if keyspace.carried_on(m, region)
             }
-            if not region.spans <= carried or carried == set(bucket.primary_members):
+            if not carried:
                 continue
             if not all(
                 _filters_region_domain(
@@ -1280,30 +1277,34 @@ def _add_region_domain_buckets(
             ):
                 continue
             if not _evaluates_where_absent(
-                bucket.primary_node_ids,
-                region,
-                keyspace,
-                concept_graph,
-                concept_edges,
-                concept_attrs,
-                environment,
+                label, region, keyspace, concept_attrs, environment
             ):
                 continue
             domain = GroupBucket(
                 depth_label=DepthLabel.ROOT,
                 derivation=Derivation.ROOT,
                 grain_components=frozenset(),
-                label=bucket.label,
+                label=label,
                 discriminator=f"extent:{'|'.join(sorted(region.spans))}",
                 extent_spans=region.spans,
             )
-            for addr, node_id in zip(bucket.primary_members, bucket.primary_node_ids):
-                if addr in carried:
-                    domain.primary_members.append(addr)
-                    domain.primary_node_ids.append(node_id)
-                    domain.member_depths[addr] = bucket.member_depths.get(
-                        addr, DepthLabel.ROOT
-                    )
+            for bucket in sources:
+                for addr, node_id in zip(
+                    bucket.primary_members, bucket.primary_node_ids
+                ):
+                    if addr in carried and addr not in domain.primary_members:
+                        domain.primary_members.append(addr)
+                        domain.primary_node_ids.append(node_id)
+                        domain.member_depths[addr] = bucket.member_depths.get(
+                            addr, DepthLabel.ROOT
+                        )
+            # the region's rows join back on its spans: a span the statement
+            # never names rides both sides as a hidden column
+            for span in sorted(region.spans - carried):
+                for side in (domain, *sources):
+                    if span not in side.secondary_members:
+                        side.secondary_members.append(span)
+                        side.member_depths[span] = DepthLabel.ROOT
             buckets[_group_id_for(domain)] = domain
 
 
@@ -2918,6 +2919,10 @@ def _compute_concept_sets(
     pseudonym_mates = {k: frozenset(v) for k, v in mate_accumulator.items()}
 
     io = GroupIOPlan.for_groups(group_graph)
+    # what a region domain's rows join back on, at FINAL
+    region_join_keys: frozenset[str] = frozenset().union(
+        *(a.extent_spans for a in attrs.values())
+    )
     # Non-ROWSET members of authored statement relations that NO group hosts:
     # the axis vocabulary a fresh scan may advertise below. A member some group
     # already carries as a primary needs no re-sourcing, and advertising it
@@ -2962,6 +2967,9 @@ def _compute_concept_sets(
             # their grain keys through their own fact parents.
             for addr in attrs[gid].secondary_members:
                 if addr in cap:
+                    continue
+                if addr in region_join_keys:
+                    cap.add(addr)
                     continue
                 if any(
                     succ != FINAL_NODE_ID
@@ -3067,6 +3075,7 @@ def _compute_concept_sets(
                 outs |= mand
                 final_args_here = cap_gid & final_condition_args
                 outs |= final_args_here
+                outs |= cap_gid & region_join_keys
                 # A FINAL-deferred presence-probe filter joins its producer
                 # back on the probe's KEY (`ord_cust` ~ the anchor's key via
                 # the scoped-join pseudonym); expose the key alongside the
@@ -3323,8 +3332,6 @@ def build_group_graph(
     keyspace = keyspace or Keyspace()
     _add_region_domain_buckets(
         buckets,
-        concept_graph,
-        concept_edges,
         concept_attrs,
         environment,
         keyspace,

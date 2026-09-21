@@ -671,8 +671,8 @@ def test_composite_grain_families_with_by_span_aggregate():
         (100, 2, 20, 1, "LATER", 7),
         (101, 1, 10, 2, "FIRST", 11),
         (102, 1, 20, 1, "LATER", 13),
-        (None, None, None, 3, "LATER", None),
-        (None, None, 30, None, "LATER", None),
+        (None, None, None, 3, None, None),
+        (None, None, 30, None, None, None),
     ]
 
 
