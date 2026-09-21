@@ -547,9 +547,6 @@ def _build_from_graph(
         environment=environment,
         staged_conditions=staged_conditions,
     )
-    audit_plan(
-        keyspace, concept_attrs, group_attrs, mandatory_list, environment, conditions
-    )
     # `build_strategy_node` scopes each group's extent routing on the shared
     # environment; a rowset body planned mid-build recurses through here, so
     # restore whatever the outer plan had rather than leaving it cleared.
@@ -569,6 +566,16 @@ def _build_from_graph(
         )
     finally:
         environment.extent_free_spans = outer_extent_free
+    audit_plan(
+        keyspace,
+        concept_attrs,
+        group_graph,
+        group_attrs,
+        strategy_node,
+        mandatory_list,
+        environment,
+        conditions,
+    )
     return BuildInfo(
         concept_graph=concept_graph,
         group_graph=group_graph,

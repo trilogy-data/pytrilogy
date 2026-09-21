@@ -23,11 +23,12 @@ two facts can witness (the base region stands in for them).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import dataclasses
+from dataclasses import dataclass, field
 from functools import partial
 from weakref import ReferenceType, ref
 
-from trilogy.core.enums import Purpose
+from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
@@ -59,6 +60,15 @@ class _ModelFacts:
     canonical: dict[str, str]
     sources: tuple[_SourceFacts, ...]
     carried: dict[str, Carried]
+    reach: dict[str, frozenset[str]] = field(default_factory=dict)
+
+    def reach_of(self, key: str) -> frozenset[str]:
+        """Addresses a keyed lookup arrives at from `key` alone."""
+        cached = self.reach.get(key)
+        if cached is None:
+            seed = _SourceFacts("", frozenset(), False, {key: frozenset()})
+            cached = self.reach[key] = frozenset(_carried(seed, self.sources))
+        return cached
 
 
 _FACTS_CACHE: dict[int, tuple[ReferenceType[BuildEnvironment], _ModelFacts]] = {}
@@ -96,7 +106,10 @@ def _source_facts(ds: BuildDatasource, canonical: dict[str, str]) -> _SourceFact
     for column in ds.columns:
         address = column.concept.address
         key = canonical.get(address, address)
-        cause = frozenset({key}) if address in partial_addresses else frozenset()
+        # a merge respells the column onto its target; the `~` stays recorded
+        # under the address it was authored on
+        spelled = {address, column.origin_concept_address} & partial_addresses
+        cause = frozenset(spelled)
         if _better(cause, bound.get(key)):
             bound[key] = cause
     grain = (
@@ -199,34 +212,73 @@ def _identifying_keys(source: _SourceFacts, present: frozenset[str]) -> frozense
     return present
 
 
-def _extension_regions(
+def _witnesses(
     entities: frozenset[str], facts: _ModelFacts
-) -> dict[frozenset[str], tuple[set[str], set[str]]]:
-    """present -> (spans, witnessing sources) for each proper sub-region."""
-    projected = {
-        s.identifier: frozenset(facts.carried[s.identifier].keys() & entities)
-        for s in facts.sources
-    }
-    out: dict[frozenset[str], tuple[set[str], set[str]]] = {}
+) -> dict[frozenset[str], list[_SourceFacts]]:
+    """present -> the sources whose rows carry exactly those entities."""
+    out: dict[frozenset[str], list[_SourceFacts]] = {}
     for source in facts.sources:
-        present = projected[source.identifier]
-        if not present or present == entities:
-            continue
-        identity = _identifying_keys(source, present)
-        own = facts.carried[source.identifier]
-        if any(own[k] for k in identity):
-            continue
-        larger = [o for o in facts.sources if projected[o.identifier] > present]
-        blocking = [
-            frozenset().union(*(facts.carried[o.identifier][k] for k in identity))
-            for o in larger
-        ]
-        if not blocking or not all(blocking):
-            continue
-        spans, witnesses = out.setdefault(present, (set(), set()))
-        spans.update(*blocking)
-        witnesses.add(source.identifier)
+        present = frozenset(facts.carried[source.identifier].keys() & entities)
+        if present:
+            out.setdefault(present, []).append(source)
     return out
+
+
+def _identity_cause(
+    source: _SourceFacts, identity: frozenset[str], facts: _ModelFacts
+) -> frozenset[str]:
+    carried = facts.carried[source.identifier]
+    return frozenset().union(*(carried[k] for k in identity))
+
+
+def _extension_spans(
+    present: frozenset[str],
+    witness: _SourceFacts,
+    witnesses: dict[frozenset[str], list[_SourceFacts]],
+    facts: _ModelFacts,
+) -> frozenset[str]:
+    """The `~` keys that keep `witness`'s rows out of every larger region;
+    empty when it holds only some of its own, or a larger source holds them all."""
+    identity = _identifying_keys(witness, present)
+    if _identity_cause(witness, identity, facts):
+        return frozenset()
+    blocking = [
+        _identity_cause(larger, identity, facts)
+        for cell, sources in witnesses.items()
+        if cell > present
+        for larger in sources
+    ]
+    if not blocking or not all(blocking):
+        return frozenset()
+    return frozenset().union(*blocking)
+
+
+def _completion_spans(
+    present: frozenset[str],
+    sources: list[_SourceFacts],
+    requested_roots: frozenset[str],
+    facts: _ModelFacts,
+) -> frozenset[str]:
+    """The `~` keys of a source the plan needs (it alone binds something
+    requested) that holds only some of this region's rows, beside a source
+    holding all of them: `returns` beside `lines`."""
+    causes = {
+        s.identifier: _identity_cause(s, _identifying_keys(s, present), facts)
+        for s in sources
+    }
+    complete = [s for s in sources if not causes[s.identifier]]
+    if not complete:
+        return frozenset()
+    held: frozenset[str] = frozenset().union(
+        *(facts.carried[s.identifier].keys() for s in complete)
+    )
+    return frozenset().union(
+        *(
+            causes[s.identifier]
+            for s in sources
+            if causes[s.identifier] and (s.bound.keys() & requested_roots) - held
+        )
+    )
 
 
 def _connected(
@@ -276,7 +328,12 @@ def build_keyspace(
     else:
         facts = _compute_facts(environment, datasources)
     canonical = facts.canonical if facts else {}
-    declared = {a.address: (a.purpose, a.keys) for a in concept_attrs.values()}
+    # an existence-only node is a semijoin's subselect, not a row of this plan
+    declared = {
+        a.address: (a.purpose, a.keys)
+        for a in concept_attrs.values()
+        if not a.existence_only
+    }
     keys_by_address = {
         address: frozenset(
             canonical.get(k, k) for k in _entity_keys(address, declared, environment)
@@ -295,12 +352,32 @@ def build_keyspace(
             keys_by_address=keys_by_address,
             output_entities=output_entities,
         )
+    requested_roots = frozenset(
+        canonical.get(a.address, a.address)
+        for a in concept_attrs.values()
+        if a.derivation == Derivation.ROOT
+    )
+    witnesses = _witnesses(entities, facts)
     connected = _connected(entities, facts)
     rejected = _null_rejected(conditions)
-    regions = [base]
-    for present, (spans, witnesses) in sorted(
-        _extension_regions(entities, facts).items(), key=_region_order
-    ):
+    regions = [
+        dataclasses.replace(
+            base,
+            completes=_completion_spans(
+                entities, witnesses.get(entities, []), requested_roots, facts
+            ),
+        )
+    ]
+    for present, sources in sorted(witnesses.items(), key=_region_order):
+        if present == entities:
+            continue
+        spans_by_witness = {
+            s.identifier: _extension_spans(present, s, witnesses, facts)
+            for s in sources
+        }
+        spans: frozenset[str] = frozenset().union(*spans_by_witness.values())
+        if not spans:
+            continue
         # an entity no source relates to this region's rows is cross-joined
         # onto every row, so it is present here too
         reach: frozenset[str] = frozenset().union(*(connected[e] for e in present))
@@ -308,8 +385,9 @@ def build_keyspace(
         regions.append(
             Region(
                 present=full,
-                spans=frozenset(spans),
-                sources=frozenset(witnesses),
+                spans=spans,
+                completes=_completion_spans(present, sources, requested_roots, facts),
+                sources=frozenset(i for i, found in spans_by_witness.items() if found),
                 emptied_by=frozenset(
                     a
                     for a in rejected
@@ -317,9 +395,17 @@ def build_keyspace(
                 ),
             )
         )
+    in_play: frozenset[str] = frozenset().union(
+        *(r.spans | r.completes for r in regions)
+    )
     return Keyspace(
         entities=entities,
         regions=tuple(regions),
         keys_by_address=keys_by_address,
         output_entities=output_entities,
+        outputs=tuple(c.address for c in mandatory_list),
+        span_reach={
+            span: frozenset(facts.reach_of(canonical.get(span, span)) & entities)
+            for span in in_play
+        },
     )
