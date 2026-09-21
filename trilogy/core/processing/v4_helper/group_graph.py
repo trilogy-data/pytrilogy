@@ -882,6 +882,7 @@ def _keep_extension_families_together(
     assignment: dict[str, frozenset[str]],
     output_addresses: frozenset[str],
     environment: BuildEnvironment,
+    demanded: frozenset[str] | None = None,
 ) -> None:
     """Merge the peel clusters that carry a demanded ``~`` extension span.
 
@@ -894,8 +895,12 @@ def _keep_extension_families_together(
 
     A cluster keyed by the span itself reads the dimension's own table and pads
     nothing, so it stays apart."""
-    spans = spans_demanded_by(
-        licensed_extension_spans(environment), output_addresses, environment
+    spans = (
+        spans_demanded_by(
+            licensed_extension_spans(environment), output_addresses, environment
+        )
+        if demanded is None
+        else demanded
     )
     carrying = {
         assignment[address]
@@ -920,6 +925,7 @@ def _split_root_dimension_clusters(
     pre_aggregate_filter_args: frozenset[str],
     post_aggregate_args: frozenset[str],
     finer_filter_grains: frozenset[frozenset[str]],
+    demanded: frozenset[str] | None = None,
 ) -> None:
     """Peel single-entity FD dimension clusters out of a keyed ROOT bucket into
     their own ``grp:root:root:dim:<entity_key>`` ROOT buckets.
@@ -1068,7 +1074,9 @@ def _split_root_dimension_clusters(
                 assignment[addr] = composite
         if not assignment:
             continue
-        _keep_extension_families_together(assignment, output_addresses, environment)
+        _keep_extension_families_together(
+            assignment, output_addresses, environment, demanded
+        )
         clusters: dict[frozenset[str], list[int]] = defaultdict(list)
         for idx, addr in enumerate(bucket.primary_members):
             if addr in assignment:
@@ -3039,6 +3047,7 @@ def build_group_graph(
     *,
     environment: BuildEnvironment,
     staged_conditions: list[BuildWhereClause] | None = None,
+    demanded_spans: frozenset[str] | None = None,
 ) -> tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs]]:
     """Collapse compatible concepts into groups and append a single FINAL sink.
 
@@ -3084,6 +3093,7 @@ def build_group_graph(
         _post_aggregate_filter_args(conditions)
         | _post_aggregate_basic_args(mandatory_list),
         _finer_filter_grains(conditions),
+        demanded_spans,
     )
     d1_calc_roots_by_stage, d1_subgraph = _d1_calc_subgraph(
         concept_graph, concept_edges, concept_attrs, environment
@@ -3213,7 +3223,7 @@ def build_group_graph(
         relation_edge_members=relation_edge_members,
     )
     attrs[FINAL_NODE_ID].extent_ownership = elect_extent_owners(
-        group_graph, attrs, environment
+        group_graph, attrs, environment, demanded_spans
     )
     return group_graph, group_edges, attrs
 
