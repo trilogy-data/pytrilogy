@@ -116,6 +116,8 @@ HOLDS = [
     "select customer_id, status where name = 'cat'",
     "select customer_id, status, amount where amount is null",
     "select customer_id, status, amount where amount is null or amount > 15",
+    # the span is demanded only through a member it determines
+    "select name, status",
 ]
 
 OWED = [
@@ -123,8 +125,6 @@ OWED = [
     "select status, count(customer_id) as customers",
     # a WHERE over an off-span column the statement does not project
     "select customer_id, status where amount is null",
-    # the span is demanded only through a member it determines
-    "select name, status",
 ]
 
 QUERIES = HOLDS + [

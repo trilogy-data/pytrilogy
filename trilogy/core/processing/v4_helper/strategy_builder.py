@@ -2639,6 +2639,21 @@ def _add_relation_axis_contributors(
                 chosen.add(provider)
 
 
+def _add_region_domain_contributors(
+    attrs: dict[str, GroupAttrs],
+    built: dict[str, StrategyNode],
+    per_group: dict[str, list[BuildConcept]],
+) -> None:
+    """A region domain contributes ROWS: the region's own members, NULL on
+    everything absent there. The mandatory cover only sees columns, so a domain
+    whose every column some sibling also renders (`select order_id, max(amount)
+    by user_id`: the user with no order is a row of all NULLs) is added as a
+    contributor of no concepts."""
+    for gid in sorted(built):
+        if attrs[gid].extent_spans:
+            per_group.setdefault(gid, [])
+
+
 def _add_partial_completion_contributors(
     built: dict[str, StrategyNode],
     per_group: dict[str, list[BuildConcept]],
@@ -3756,6 +3771,7 @@ def _assemble_final_node(
         group_graph, built, per_group, final_contract, environment
     )
     _add_partial_completion_contributors(built, per_group, environment)
+    _add_region_domain_contributors(attrs, built, per_group)
     _fold_descendant_contributors(group_graph, attrs, built, per_group)
     _promote_final_aliases_to_grouping_contributors(
         group_graph, attrs, built, per_group, mandatory_list, environment
@@ -4161,7 +4177,18 @@ def _assemble_final_node(
                 for addr in sorted((relation - mandatory_addresses) & available)
                 if (c := _concept_at(environment, addr)) is not None
             )
-    outputs = unique(outputs + axis_mates, "address")
+    # A region domain's rows join back on its spans. One the statement never
+    # names still has to be an output of this merge: the host side is the one
+    # carrying the licensed keys the merge EMITS.
+    region_keys = [
+        c
+        for gid in contributing
+        for span in sorted(attrs[gid].extent_spans)
+        if span in available
+        and span not in mandatory_addresses
+        and (c := _concept_at(environment, span)) is not None
+    ]
+    outputs = unique(outputs + axis_mates + region_keys, "address")
     parents = parents + arg_nodes
     merge_inputs = unique(
         [c for c in outputs if c.address not in pseudonym_only]
@@ -4170,7 +4197,8 @@ def _assemble_final_node(
         "address",
     )
     hidden = {
-        c.address for c in (*arg_concepts, *supplied_filter_args, *axis_mates)
+        c.address
+        for c in (*arg_concepts, *supplied_filter_args, *axis_mates, *region_keys)
     } - mandatory_addresses
     # A non-grouping dimension contributor only supplies FD attributes; if it
     # sits at a finer (row-level) grain it must not widen the merge grain, or it
@@ -4210,8 +4238,9 @@ def _assemble_final_node(
     # merge's claimed grain predates that fan, so grain-satisfaction checks
     # (including MergeNode's own rowset-output carve-out) wave the dedup
     # through, same trap as the probe-feeder branch above. Collapse explicitly
-    # to the coalesced axis.
-    if axis_mates and final_contract.deduplicate_to_grain:
+    # to the coalesced axis. A hidden region join key is the same story: the
+    # in-place narrowing would take it off the merge that hosts by it.
+    if (axis_mates or region_keys) and final_contract.deduplicate_to_grain:
         targets = [
             o for o in merged.output_concepts if o.address in mandatory_addresses
         ] or list(merged.output_concepts)

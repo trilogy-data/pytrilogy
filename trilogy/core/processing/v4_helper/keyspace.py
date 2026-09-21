@@ -293,8 +293,10 @@ def _entity_keys(
     bound on `orders` lists `order_id`), not a determinant. So is a property
     that identifies the rows of some source (`region`, the grain of
     `region_dim`). Anything else lives on its keys' entities: an aggregate `by
-    status` is keyed on the order, and a key computed row by row (`orbit_code
-    <- upper(category)`) on whatever its arguments are keyed on.
+    status` is keyed on the order. A BASIC is a function of what it READS
+    (`orbit_code <- upper(category)`), not of its declared keys: over an
+    aggregate those still name the aggregate's argument (`coalesce(sum(amount),
+    0)` lists `order_id`), which the aggregate is evaluated OVER, not on.
 
     A rowset key stays its OWN entity: the rowset is a row source, and stores
     no order references are not rows of `select even_orders.store_id`."""
@@ -308,6 +310,8 @@ def _entity_keys(
     own_entity = purpose == Purpose.KEY and derivation != Derivation.BASIC
     if own_entity or address in identifying:
         return frozenset({address})
+    if derivation == Derivation.BASIC:
+        keys = _read_addresses(address, environment) or keys
     seen = seen | {address}
     return frozenset().union(
         *(
@@ -316,6 +320,13 @@ def _entity_keys(
             if k not in seen
         )
     )
+
+
+def _read_addresses(address: str, environment: BuildEnvironment) -> frozenset[str]:
+    concept = environment.concepts.get(address)
+    if concept is None or concept.lineage is None:
+        return frozenset()
+    return frozenset(arg.address for arg in concept.lineage.concept_arguments)
 
 
 def _identifying_keys(source: _SourceFacts, present: frozenset[str]) -> frozenset[str]:
