@@ -547,6 +547,7 @@ def _build_from_graph(
         environment=environment,
         staged_conditions=staged_conditions,
         demanded_spans=keyspace.output_demanded_spans,
+        keyspace=keyspace,
     )
     # `build_strategy_node` scopes each group's extent routing on the shared
     # environment; a rowset body planned mid-build recurses through here, so

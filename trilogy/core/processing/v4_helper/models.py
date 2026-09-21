@@ -69,6 +69,9 @@ class ExtentOwnership:
     owner_by_span: dict[str, str] = field(default_factory=dict)
     # gid -> spans that group may extend (it owns them, or an owner is downstream)
     permitted: dict[str, frozenset[str]] = field(default_factory=dict)
+    # address -> the region domain group carrying it: on an extension row only
+    # that group has the member's value
+    carried: dict[str, str] = field(default_factory=dict)
 
     def permitted_for(self, gid: str) -> frozenset[str]:
         return self.permitted.get(gid, frozenset())
@@ -77,7 +80,7 @@ class ExtentOwnership:
         return self.spans - self.permitted_for(gid)
 
     def owner_of(self, address: str) -> str | None:
-        return self.owner_by_span.get(address)
+        return self.owner_by_span.get(address) or self.carried.get(address)
 
 
 @dataclass(frozen=True)
@@ -212,6 +215,19 @@ class Keyspace:
     def absent_regions(self, address: str) -> tuple[Region, ...]:
         return tuple(r for r in self.live_regions if not self.defined_on(address, r))
 
+    def region_of(self, spans: frozenset[str]) -> Region | None:
+        return next((r for r in self.regions if r.spans == spans), None)
+
+    def carried_on(self, address: str, region: Region) -> bool:
+        """Does an extension row of ``region`` hold a value for ``address``: it
+        is keyed on what a lookup from the region's spans reaches. An entity
+        merely cross-joined onto the region is present, but not carried."""
+        keys = self.keys_by_address.get(address, frozenset())
+        reach: frozenset[str] = frozenset().union(
+            *(self.span_reach.get(span, frozenset()) for span in region.spans)
+        )
+        return bool(keys) and keys <= reach
+
     def describe(self) -> str:
         return " | ".join(r.describe() for r in self.regions)
 
@@ -282,6 +298,9 @@ class GroupAttrs:
     # physically satisfies or prunes, and the statement's extent routing.
     final_contract: FinalAssemblyContract | None = None
     extent_ownership: ExtentOwnership | None = None
+    # Set on a ROOT group that exists only to carry one extension region's own
+    # rows (`group_graph._add_region_domain_buckets`): the region's spans.
+    extent_spans: frozenset[str] = frozenset()
     # Populated for non-FINAL groups after `_compute_concept_sets`.
     input_contracts: tuple[GroupInputContract, ...] = ()
 
@@ -428,6 +447,7 @@ class GroupBucket:
     # only exists to keep distinct buckets at distinct group ids. Ask
     # `nulls_grouping_keys`, never the id string.
     grouping_mode: AggregateGroupingMode = AggregateGroupingMode.STANDARD
+    extent_spans: frozenset[str] = frozenset()
 
     @property
     def nulls_grouping_keys(self) -> bool:

@@ -20,11 +20,15 @@ from dataclasses import dataclass, field
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation, Purpose
+from trilogy.core.enums import Derivation, FunctionType, Purpose
 from trilogy.core.models.author import SelectLineage
 from trilogy.core.models.build import (
     BoolExpr,
+    BuildAggregateWrapper,
     BuildConcept,
+    BuildConceptArgs,
+    BuildFilterItem,
+    BuildFunction,
     BuildGrain,
     BuildRowsetItem,
     BuildWhereClause,
@@ -34,6 +38,7 @@ from trilogy.core.models.build_environment import (
     BuildEnvironment,
     resolve_rowset_content_address,
 )
+from trilogy.core.processing.condition_utility import concepts_implied_non_null
 from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
 
 from .concept_graph import (
@@ -47,6 +52,7 @@ from .constants import (
     FINAL_NODE_ID,
     GROUPING_DERIVATIONS,
     ROW_SHAPE_BARRIER_DERIVATIONS,
+    ROW_STREAM_DERIVATIONS,
     DepthLabel,
     EdgeKind,
     EdgePhase,
@@ -76,8 +82,10 @@ from .models import (
     GroupBucket,
     GroupInputContract,
     InputChannel,
+    Keyspace,
+    Region,
 )
-from .projection import output_rowset_base_keys
+from .projection import output_rowset_base_keys, reads_rows_only
 
 # depth_label for the secondary root bucket that feeds d1 (in-WHERE) aggregate
 # calculations. Distinct from ``root`` so the bucket gets its own group id.
@@ -1107,6 +1115,228 @@ def _split_root_dimension_clusters(
         bucket.primary_node_ids = [bucket.primary_node_ids[i] for i in kept]
 
 
+def _null_on_padding(
+    value: object, region: Region, keyspace: Keyspace, environment: BuildEnvironment
+) -> bool:
+    """Whether `value` is NULL on a row of `region` however it is planned: it
+    cannot be non-null unless something absent there is (`sale_price - cost`).
+    Padding already gives the rule's answer, so only a null-opaque derivation
+    (CASE, COALESCE, IS NULL, a window) needs the region kept off its row
+    stream. CONCAT skips NULL arguments on some dialects."""
+    if isinstance(value, BuildConcept):
+        if keyspace.defined_on(value.address, region):
+            return False
+        if value.derivation == Derivation.ROOT:
+            return True
+        value = value.lineage
+    # `content ? condition` is NULL wherever its content is.
+    if isinstance(value, BuildFilterItem):
+        return _null_on_padding(value.content, region, keyspace, environment)
+    if isinstance(value, BuildFunction) and value.operator == FunctionType.CONCAT:
+        return False
+    return any(
+        _null_on_padding(environment.concepts[address], region, keyspace, environment)
+        for address in concepts_implied_non_null(value)
+        if address in environment.concepts
+    )
+
+
+def _has_absent_inline_argument(
+    address: str, region: Region, keyspace: Keyspace, environment: BuildEnvironment
+) -> bool:
+    """An aggregate argument written inline (`sum(coalesce(amount, 0))`) is a
+    derivation no concept node stands for; it takes a value on `region`'s rows
+    when it reads something absent there and is not NULL for it."""
+    concept = environment.concepts.get(address)
+    if concept is None or not isinstance(concept.lineage, BuildAggregateWrapper):
+        return False
+    return any(
+        not _null_on_padding(arg, region, keyspace, environment)
+        and any(
+            not keyspace.defined_on(read.address, region)
+            for read in arg.concept_arguments
+        )
+        for arg in concept.lineage.function.arguments
+        if isinstance(arg, BuildConceptArgs) and not isinstance(arg, BuildConcept)
+    )
+
+
+def _evaluates_where_absent(
+    members: list[str],
+    region: Region,
+    keyspace: Keyspace,
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    environment: BuildEnvironment,
+) -> bool:
+    """Whether a row-stream derivation over `members` is absent on `region`
+    and would take a value there all the same. An aggregate ends the walk (it
+    is evaluated OVER the region's rows), but its inline arguments are
+    row-stream too."""
+    seen = set(members)
+    stack = list(members)
+    while stack:
+        cur = stack.pop()
+        for nxt in concept_graph.successors(cur):
+            if nxt in seen or edge_kind(concept_edges, cur, nxt) != EdgeKind.LINEAGE:
+                continue
+            seen.add(nxt)
+            a = concept_attrs[nxt]
+            if a.derivation == Derivation.AGGREGATE:
+                if _has_absent_inline_argument(
+                    a.address, region, keyspace, environment
+                ):
+                    return True
+                continue
+            if a.derivation not in ROW_STREAM_DERIVATIONS:
+                continue
+            concept = environment.concepts.get(a.address)
+            if (
+                concept is not None
+                and not keyspace.defined_on(a.address, region)
+                and not _null_on_padding(concept, region, keyspace, environment)
+            ):
+                return True
+            stack.append(nxt)
+    return False
+
+
+def _filters_region_domain(
+    address: str,
+    region: Region,
+    keyspace: Keyspace,
+    carried: set[str],
+    output_addresses: frozenset[str],
+    environment: BuildEnvironment,
+) -> bool:
+    """Whether a WHERE reading `address` still filters a region domain's rows.
+
+    The domain reaches FINAL beside the filtered row stream, not through it, so
+    an atom hosted anywhere else is lost on the rows the domain adds back. Two
+    shapes are delivered: a column the domain carries is filtered on the domain
+    itself, and an absent value read from rows alone is restated at FINAL
+    over the extended rows (`condition_placement._reads_past_region_domain`),
+    which can only read what the statement projects. Anything else (a scalar
+    over an aggregate) has no such host, so the statement gets no domain."""
+    if address in carried:
+        return True
+    concept = environment.concepts.get(address)
+    return (
+        concept is not None
+        and address in output_addresses
+        and not keyspace.defined_on(address, region)
+        and (concept.derivation == Derivation.ROOT or reads_rows_only(concept))
+    )
+
+
+def _add_region_domain_buckets(
+    buckets: dict[str, GroupBucket],
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    environment: BuildEnvironment,
+    keyspace: Keyspace,
+    output_addresses: frozenset[str],
+    condition_arg_addresses: frozenset[str],
+) -> None:
+    """Give a live extension region its own ROOT bucket when the statement
+    derives something absent on it.
+
+    A derived concept is a function of its keys and NULL where a key's entity
+    is absent. Sourced with the region's rows, the derivation's inputs are
+    padded and it evaluates over rows that have no such entity (`case ... else
+    'in-transit'` for a customer with no order). The domain bucket carries the
+    region's own rows instead and owns their extent (`elect_extent_owners`):
+    everything feeding the derivation pairs on solid keys, and the region's
+    rows join back above it, at FINAL or at a scalar over an aggregate by the
+    span (`_feed_region_domains_to_present_scalars`)."""
+    regions = [r for r in keyspace.live_regions if r.is_extension]
+    # TODO(phase 4): one domain per region; a domain joins FINAL on the span
+    # key, so the statement has to project it.
+    if len(regions) != 1:
+        return
+    for region in regions:
+        if not region.spans <= output_addresses:
+            continue
+        for gid in list(buckets):
+            bucket = buckets[gid]
+            if (
+                bucket.derivation != Derivation.ROOT
+                or bucket.depth_label != DepthLabel.ROOT
+                or bucket.discriminator
+            ):
+                continue
+            carried = {
+                m for m in bucket.primary_members if keyspace.carried_on(m, region)
+            }
+            if not region.spans <= carried or carried == set(bucket.primary_members):
+                continue
+            if not all(
+                _filters_region_domain(
+                    address, region, keyspace, carried, output_addresses, environment
+                )
+                for address in condition_arg_addresses
+            ):
+                continue
+            if not _evaluates_where_absent(
+                bucket.primary_node_ids,
+                region,
+                keyspace,
+                concept_graph,
+                concept_edges,
+                concept_attrs,
+                environment,
+            ):
+                continue
+            domain = GroupBucket(
+                depth_label=DepthLabel.ROOT,
+                derivation=Derivation.ROOT,
+                grain_components=frozenset(),
+                label=bucket.label,
+                discriminator=f"extent:{'|'.join(sorted(region.spans))}",
+                extent_spans=region.spans,
+            )
+            for addr, node_id in zip(bucket.primary_members, bucket.primary_node_ids):
+                if addr in carried:
+                    domain.primary_members.append(addr)
+                    domain.primary_node_ids.append(node_id)
+                    domain.member_depths[addr] = bucket.member_depths.get(
+                        addr, DepthLabel.ROOT
+                    )
+            buckets[_group_id_for(domain)] = domain
+
+
+def _feed_region_domains_to_present_scalars(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    keyspace: Keyspace,
+) -> None:
+    """A scalar over an aggregate by the span is keyed on the span, which IS
+    present on the region, so it evaluates there: `case when count(order_id)
+    by customer_id > 0 ... else 'dormant'` is 'dormant' for a customer with no
+    order. The aggregate below it pairs on solid keys, so the scalar reads the
+    region's domain beside it."""
+    for domain_gid, domain in list(attrs.items()):
+        region = (
+            keyspace.region_of(domain.extent_spans) if domain.extent_spans else None
+        )
+        if region is None:
+            continue
+        for gid, a in attrs.items():
+            if (
+                a.derivation in ROW_STREAM_DERIVATIONS
+                and a.label == domain.label
+                and all(keyspace.carried_on(m, region) for m in a.primary_members)
+                and any(
+                    attrs[parent].derivation == Derivation.AGGREGATE
+                    for parent in group_graph.predecessors(gid)
+                )
+            ):
+                add_edge(group_graph, group_edges, domain_gid, gid, EdgeKind.LINEAGE)
+
+
 def _fold_rollup_key_dims(
     concept_graph: nx.DiGraph,
     concept_edges: EdgeMap,
@@ -1214,6 +1444,7 @@ def _materialize_group_graph(
             aggregate_input_grain=bucket.aggregate_input_grain,
             aggregate_distinct_addrs=frozenset(bucket.aggregate_distinct_addrs),
             grouping_mode=bucket.grouping_mode,
+            extent_spans=bucket.extent_spans,
         )
         group_graph.add_node(gid)
 
@@ -1951,6 +2182,11 @@ def _refresh_final_contract(
         preserve_keys = (
             merge_grain if attrs[gid].derivation == Derivation.ROOT else frozenset()
         )
+        # A region domain pairs on its spans alone: widening it to the merge
+        # grain re-sources it through the fact, the row stream it exists to
+        # stay off.
+        if attrs[gid].extent_spans:
+            preserve_keys = attrs[gid].extent_spans
         contributors.append(
             FinalContributorContract(
                 group_id=gid,
@@ -3036,6 +3272,7 @@ def build_group_graph(
     environment: BuildEnvironment,
     staged_conditions: list[BuildWhereClause] | None = None,
     demanded_spans: frozenset[str] = frozenset(),
+    keyspace: Keyspace | None = None,
 ) -> tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs]]:
     """Collapse compatible concepts into groups and append a single FINAL sink.
 
@@ -3083,6 +3320,17 @@ def build_group_graph(
         _finer_filter_grains(conditions),
         demanded_spans,
     )
+    keyspace = keyspace or Keyspace()
+    _add_region_domain_buckets(
+        buckets,
+        concept_graph,
+        concept_edges,
+        concept_attrs,
+        environment,
+        keyspace,
+        output_addresses,
+        condition_arg_addresses,
+    )
     d1_calc_roots_by_stage, d1_subgraph = _d1_calc_subgraph(
         concept_graph, concept_edges, concept_attrs, environment
     )
@@ -3108,6 +3356,7 @@ def build_group_graph(
         d1_calc_roots_by_stage=d1_calc_roots_by_stage,
         d1_subgraph=d1_subgraph,
     )
+    _feed_region_domains_to_present_scalars(group_graph, group_edges, attrs, keyspace)
     # FINAL must exist before injection so a cross-arm post-merge filter can
     # land on it (no pre-final group can host one); `_color_phases` then colors
     # its merge edges along with the rest.
@@ -3211,7 +3460,7 @@ def build_group_graph(
         relation_edge_members=relation_edge_members,
     )
     attrs[FINAL_NODE_ID].extent_ownership = elect_extent_owners(
-        group_graph, attrs, environment, demanded_spans
+        group_graph, attrs, environment, demanded_spans, keyspace
     )
     return group_graph, group_edges, attrs
 
