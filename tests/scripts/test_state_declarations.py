@@ -10,6 +10,7 @@ at the directory or at a script that imports all of it (with
 
 import json
 import shutil
+from datetime import date
 from pathlib import Path
 
 import duckdb
@@ -25,6 +26,7 @@ from trilogy.execution.state.declaration import (
     group_declarations,
     rekey_watermark,
 )
+from trilogy.execution.state.partitions import PartitionObservation
 from trilogy.execution.state.snapshot import (
     DatasourceState,
     merge_into_snapshot,
@@ -442,3 +444,123 @@ def test_a_parse_rooted_at_a_directory_has_no_declaring_file(tmp_path):
     )
 
     assert [ds.declared_in for ds in env.datasources.values()] == [None]
+
+
+def test_a_snapshot_without_fingerprints_keeps_every_declaration(
+    runner, tmp_path, monkeypatch
+):
+    from trilogy.core import fingerprint
+
+    def unavailable(environment):
+        raise RuntimeError("fingerprinting unavailable")
+
+    monkeypatch.setattr(fingerprint, "build_environment_fingerprint", unavailable)
+    project = _project(tmp_path / "p")
+
+    snapshot = _state(runner, project / "top.preql", tmp_path / "top.json")
+
+    assert {
+        ds.datasource_id: ds.model_fingerprint
+        for asset in snapshot.assets
+        for ds in asset.datasources
+    } == {"src_events": None, "target_events": None, "mirror_events": None}
+
+
+ORDERS = """key order_id int;
+property order_id.order_date date;
+property order_id.updated_at datetime;
+
+root datasource raw_orders (
+    order_id: order_id,
+    order_date: order_date,
+    updated_at: updated_at
+)
+grain (order_id)
+query '''
+SELECT 1 as order_id, DATE '2024-01-01' as order_date,
+       TIMESTAMP '2024-01-05 06:00:00' as updated_at
+UNION ALL
+SELECT 2, DATE '2024-01-02', TIMESTAMP '2024-01-05 06:01:00'
+''';
+
+auto max_updated_at <- max(updated_at) by order_date;
+
+datasource daily_orders (
+    order_date: order_date,
+    max_updated_at: max_updated_at
+)
+grain (order_date)
+address daily_orders
+freshness by max_updated_at
+partition by order_date;
+"""
+
+
+def _orders_imported_twice(root: Path):
+    root.mkdir(parents=True)
+    (root / "orders.preql").write_text(ORDERS, encoding="utf-8")
+    top = root / "top.preql"
+    top.write_text("import orders as a;\nimport orders as b;\n", encoding="utf-8")
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=root)
+    )
+    executor.parse_text(top.read_text(), root=top)
+    executor.execute_raw_sql(
+        "CREATE TABLE daily_orders (order_date DATE, max_updated_at TIMESTAMP)"
+    )
+    executor.execute_raw_sql(
+        "INSERT INTO daily_orders VALUES"
+        " (DATE '2024-01-01', TIMESTAMP '2024-01-05 06:00:00')"
+    )
+    return executor
+
+
+@pytest.fixture
+def partition_probes(monkeypatch) -> list[str]:
+    from trilogy.execution.state import state_store as module
+
+    probed: list[str] = []
+    real = module.probe_observed_partitions
+
+    def counting(datasource, executor):
+        probed.append(datasource.identifier)
+        return real(datasource, executor)
+
+    monkeypatch.setattr(module, "probe_observed_partitions", counting)
+    return probed
+
+
+def test_a_declaration_is_partition_probed_once(tmp_path, partition_probes):
+    executor = _orders_imported_twice(tmp_path / "p")
+    env = executor.environment
+    store = BaseStateStore()
+
+    first = store.partition_asset(env, executor, "a.daily_orders")
+    second = store.partition_asset(env, executor, "b.daily_orders")
+
+    assert partition_probes == ["a.daily_orders"]
+    assert first is not None and second is not None
+    for a_side, b_side in zip(first, second, strict=True):
+        assert [o.id for o in b_side] == [o.id for o in a_side]
+        assert [list(o.keys) for o in b_side] == [["b.max_updated_at"]] * len(b_side)
+
+
+def test_an_untranslatable_partition_key_is_probed(tmp_path, partition_probes):
+    executor = _orders_imported_twice(tmp_path / "p")
+    store = BaseStateStore()
+    lineage = UpdateKey(
+        "a.max_updated_at.date", UpdateKeyType.UPDATE_TIME, "2024-01-05"
+    )
+    store.partitions["a.daily_orders"] = (
+        [
+            PartitionObservation(
+                values={"order_date": date(2024, 1, 1)},
+                keys={lineage.concept_name: lineage},
+            )
+        ],
+        [],
+    )
+
+    store.partition_asset(executor.environment, executor, "b.daily_orders")
+
+    assert partition_probes == ["b.daily_orders"]

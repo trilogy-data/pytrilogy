@@ -1003,7 +1003,7 @@ def _same_declaration(
     with a base written from the model.
 
     Pairing a record written before :data:`DECLARATION_SCHEMA` is not attempted;
-    :func:`require_declaration_schema` rejects one on the way in.
+    ``persistence.read_state_snapshot`` rejects one on the way in.
     """
     for existing in bucket:
         if (

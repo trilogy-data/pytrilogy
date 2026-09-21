@@ -214,7 +214,9 @@ def _fetch_referenced_scripts(
         base = url.rsplit("/", 1)[0]
         for relative in _referenced_scripts(text):
             dest = target_root / relative
-            if dest.exists():
+            # Two model files can name one script; a file left by an earlier
+            # fetch is replaced like the model files are under --force.
+            if dest in written:
                 continue
             try:
                 payload = _http_get(f"{base}/{relative}")

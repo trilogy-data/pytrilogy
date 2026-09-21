@@ -143,6 +143,19 @@ def test_a_missing_target_is_built_from_scratch(tmp_path):
     assert [r[0] for r in _rows(target)] == [1, 2]
 
 
+def test_an_authored_append_to_a_missing_file_writes_only_its_rows(tmp_path):
+    src = tmp_path / "src.parquet"
+    target = tmp_path / "target.parquet"
+    _write(src, SOURCE_ROWS)
+    executor = _executor(tmp_path, MODEL, src=src.as_posix(), target=target.as_posix())
+
+    executor.execute_text(
+        "append into target from where ev_id = 2 select ev_id, ev_ts;"
+    )
+
+    assert [r[0] for r in _rows(target)] == [2]
+
+
 def test_a_csv_target_keeps_its_rows_too(tmp_path):
     src = tmp_path / "src.parquet"
     target = tmp_path / "target.csv"

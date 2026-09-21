@@ -240,3 +240,100 @@ def test_public_list_network_failure():
         result = runner.invoke(cli, ["public", "list"])
     assert result.exit_code == 1
     assert "Failed to fetch" in result.output
+
+
+MODEL_WITH_SCRIPTS = b"""key id int;
+
+root datasource raw (id: id)
+grain (id)
+address raw
+freshness by `./ingest/probe.py`
+refresh `ingest/build.py`;
+
+root datasource elsewhere (id: id)
+grain (id)
+address elsewhere
+freshness by `../outside.py`
+refresh `gs://bucket/remote.py`;
+"""
+
+SECOND_MODEL = b"""import boulder_data;
+
+root datasource other (id: id)
+grain (id)
+address other
+freshness by `ingest/probe.py`;
+"""
+
+SCRIPTED_MANIFEST = {
+    **SAMPLE_MANIFEST,
+    "components": [
+        *SAMPLE_MANIFEST["components"],
+        {
+            "alias": "denver_data",
+            "name": "denver_data",
+            "purpose": "source",
+            "type": "trilogy",
+            "url": (
+                "https://trilogy-data.github.io/trilogy-public-models/"
+                "trilogy_public_models/duckdb/bike_data/denver_data.preql"
+            ),
+        },
+    ],
+}
+
+
+def _scripted_urlopen(requested: list[str]):
+    def _side_effect(url_or_req, *args, **kwargs):
+        url = url_or_req.full_url if hasattr(url_or_req, "full_url") else url_or_req
+        requested.append(url)
+        if url.endswith("/studio/bike_data.json"):
+            return io.BytesIO(json.dumps(SCRIPTED_MANIFEST).encode("utf-8"))
+        if url.endswith("/bike_data/boulder_data.preql"):
+            return io.BytesIO(MODEL_WITH_SCRIPTS)
+        if url.endswith("/bike_data/denver_data.preql"):
+            return io.BytesIO(SECOND_MODEL)
+        if url.endswith("/bike_data/ingest/probe.py"):
+            return io.BytesIO(b"print('probe')\n")
+        return _fake_urlopen(url_or_req, *args, **kwargs)
+
+    return _side_effect
+
+
+def test_public_fetch_ships_the_scripts_a_model_references():
+    requested: list[str] = []
+    runner = CliRunner()
+    with (
+        patch(
+            "trilogy.scripts.public.urlopen",
+            side_effect=_scripted_urlopen(requested),
+        ),
+        tempfile.TemporaryDirectory() as tmpdir,
+    ):
+        target = Path(tmpdir) / "out"
+        result = runner.invoke(cli, ["public", "fetch", "bike_data", str(target)])
+
+        assert result.exit_code == 0, result.output
+        assert (target / "ingest" / "probe.py").read_bytes() == b"print('probe')\n"
+        assert not (target / "ingest" / "build.py").exists()
+        assert "not published: ingest/build.py" in result.output
+    assert len([u for u in requested if u.endswith("/ingest/probe.py")]) == 1
+    assert not [u for u in requested if "outside.py" in u or "remote.py" in u]
+
+
+def test_public_fetch_force_replaces_a_stale_script():
+    runner = CliRunner()
+    with (
+        patch("trilogy.scripts.public.urlopen", side_effect=_scripted_urlopen([])),
+        tempfile.TemporaryDirectory() as tmpdir,
+    ):
+        target = Path(tmpdir) / "out"
+        (target / "ingest").mkdir(parents=True)
+        (target / "ingest" / "probe.py").write_bytes(b"print('stale')\n")
+
+        result = runner.invoke(
+            cli, ["public", "fetch", "bike_data", str(target), "--force"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert (target / "ingest" / "probe.py").read_bytes() == b"print('probe')\n"

@@ -17,7 +17,7 @@ from collections.abc import Iterable
 from dataclasses import replace
 from pathlib import Path
 
-from trilogy.core.models.datasource import Datasource
+from trilogy.core.models.datasource import Datasource, UpdateKey
 from trilogy.execution.state.partitions import PartitionObservation
 from trilogy.execution.state.watermarks import DatasourceWatermark
 
@@ -96,7 +96,9 @@ def _key_map(source: Datasource, target: Datasource) -> dict[str, str]:
     }
 
 
-def _rekey(keys: dict, mapping: dict[str, str]) -> dict | None:
+def _rekey(
+    keys: dict[str, UpdateKey], mapping: dict[str, str]
+) -> dict[str, UpdateKey] | None:
     out = {}
     for key, value in keys.items():
         target = key if key == UPDATE_TIME_KEY else mapping.get(key)

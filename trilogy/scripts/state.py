@@ -12,9 +12,10 @@ The same snapshot is produced post-execution by ``run``/``refresh``
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path as PathlibPath
+from typing import TypeVar
 
 from click import UNPROCESSED, argument, option, pass_context
 from click import Path as ClickPath
@@ -94,6 +95,8 @@ def _asset_key(ds: Datasource, address: str, project_root: PathlibPath) -> str:
     return stable_asset_key(address, address_type_of(ds), project_root)
 
 
+T = TypeVar("T")
+
 ProbedPartitions = dict[
     str, tuple[list[PartitionObservation], list[PartitionObservation]]
 ]
@@ -108,7 +111,7 @@ def _declaring_script(
     return project_relative_path(str(declared), project_root) if declared else None
 
 
-def _first_recorded(recorded: dict, group: list[Datasource]):
+def _first_recorded(recorded: Mapping[str, T], group: list[Datasource]) -> T | None:
     """A per-identifier record under whichever spelling of the declaration it
     was filed — the record describes the table, not the import path."""
     for ds in by_import_depth(group):

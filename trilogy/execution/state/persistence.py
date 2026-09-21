@@ -50,8 +50,9 @@ ENV_STATE_PARTITION = "TRILOGY_STATE_PARTITION"
 ENV_STATE_MAX_PARTITIONS = "TRILOGY_STATE_MAX_PARTITIONS"
 
 
-class StateSchemaError(Exception):
-    """A snapshot file this build cannot read."""
+class StateSchemaError(ValueError):
+    """A snapshot file this build cannot read. A ``ValueError`` so a reader
+    that already degrades on a malformed file degrades on this one too."""
 
 
 def read_state_snapshot(path: Path | str) -> StateSnapshot:
