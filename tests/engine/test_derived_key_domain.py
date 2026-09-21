@@ -118,14 +118,13 @@ HOLDS = [
     "select customer_id, status, amount where amount is null or amount > 15",
     # the span is demanded only through a member it determines
     "select name, status",
-]
-
-OWED = [
     # the span is demanded only as an aggregate argument
     "select status, count(customer_id) as customers",
     # a WHERE over an off-span column the statement does not project
     "select customer_id, status where amount is null",
 ]
+
+OWED: list[str] = []
 
 QUERIES = HOLDS + [
     pytest.param(q, marks=pytest.mark.xfail(strict=True, reason="owed")) for q in OWED

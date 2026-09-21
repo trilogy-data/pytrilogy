@@ -1196,7 +1196,6 @@ def _filters_region_domain(
     region: Region,
     keyspace: Keyspace,
     carried: set[str],
-    output_addresses: frozenset[str],
     environment: BuildEnvironment,
 ) -> bool:
     """Whether a WHERE reading `address` still filters a region domain's rows.
@@ -1206,14 +1205,14 @@ def _filters_region_domain(
     shapes are delivered: a column the domain carries is filtered on the domain
     itself, and an absent value read from rows alone is restated at FINAL
     over the extended rows (`condition_placement._reads_past_span_domain`),
-    which can only read what the statement projects. Anything else (a scalar
-    over an aggregate) has no such host, so the statement gets no domain."""
+    riding there as a hidden column when the statement does not project it.
+    Anything else (a scalar over an aggregate) has no such host, so the
+    statement gets no domain."""
     if address in carried:
         return True
     concept = environment.concepts.get(address)
     return (
         concept is not None
-        and address in output_addresses
         and not keyspace.defined_on(address, region)
         and (concept.derivation == Derivation.ROOT or reads_rows_only(concept))
     )
@@ -1233,7 +1232,6 @@ def _add_region_domain_buckets(
     concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
     keyspace: Keyspace,
-    output_addresses: frozenset[str],
     condition_arg_addresses: frozenset[str],
 ) -> None:
     """Give a live extension region its own ROOT bucket when the statement
@@ -1270,9 +1268,7 @@ def _add_region_domain_buckets(
             if not carried:
                 continue
             if not all(
-                _filters_region_domain(
-                    address, region, keyspace, carried, output_addresses, environment
-                )
+                _filters_region_domain(address, region, keyspace, carried, environment)
                 for address in condition_arg_addresses
             ):
                 continue
@@ -1308,11 +1304,33 @@ def _add_region_domain_buckets(
             buckets[_group_id_for(domain)] = domain
 
 
+def _aggregates_over_region(
+    members: tuple[str, ...],
+    region: Region,
+    keyspace: Keyspace,
+    environment: BuildEnvironment,
+) -> bool:
+    """An aggregate is evaluated OVER a region's rows when they hold its
+    argument: `count(customer_id) by status` counts the customer with no order,
+    under the NULL status of a row that has none."""
+    for member in members:
+        concept = environment.concepts.get(member)
+        if concept is None or not isinstance(concept.lineage, BuildAggregateWrapper):
+            return False
+        arguments = concept.lineage.function.concept_arguments
+        if not arguments or not all(
+            keyspace.carried_on(arg.address, region) for arg in arguments
+        ):
+            return False
+    return bool(members)
+
+
 def _feed_region_domains_to_present_scalars(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     keyspace: Keyspace,
+    environment: BuildEnvironment,
 ) -> None:
     """A scalar over an aggregate by the span is keyed on the span, which IS
     present on the region, so it evaluates there: `case when count(order_id)
@@ -1333,6 +1351,12 @@ def _feed_region_domains_to_present_scalars(
                 and any(
                     attrs[parent].derivation == Derivation.AGGREGATE
                     for parent in group_graph.predecessors(gid)
+                )
+            ) or (
+                a.derivation == Derivation.AGGREGATE
+                and a.label == domain.label
+                and _aggregates_over_region(
+                    a.primary_members, region, keyspace, environment
                 )
             ):
                 add_edge(group_graph, group_edges, domain_gid, gid, EdgeKind.LINEAGE)
@@ -3335,7 +3359,6 @@ def build_group_graph(
         concept_attrs,
         environment,
         keyspace,
-        output_addresses,
         condition_arg_addresses,
     )
     d1_calc_roots_by_stage, d1_subgraph = _d1_calc_subgraph(
@@ -3363,7 +3386,9 @@ def build_group_graph(
         d1_calc_roots_by_stage=d1_calc_roots_by_stage,
         d1_subgraph=d1_subgraph,
     )
-    _feed_region_domains_to_present_scalars(group_graph, group_edges, attrs, keyspace)
+    _feed_region_domains_to_present_scalars(
+        group_graph, group_edges, attrs, keyspace, environment
+    )
     # FINAL must exist before injection so a cross-arm post-merge filter can
     # land on it (no pre-final group can host one); `_color_phases` then colors
     # its merge edges along with the rest.
