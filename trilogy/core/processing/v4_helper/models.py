@@ -147,6 +147,13 @@ class Keyspace:
         return frozenset().union(*(r.spans for r in self.live_regions))
 
     @property
+    def in_play_spans(self) -> frozenset[str]:
+        """Every span a join of this plan can pad for. An emptied region still
+        counts: its rows are gone once the WHERE has run, and a merge below
+        that point still sees their padding."""
+        return frozenset().union(*(r.spans | r.completes for r in self.regions))
+
+    @property
     def output_demanded_spans(self) -> frozenset[str]:
         """What the extent election asks: the spans whose unmatched members
         carry an OUTPUT, one that is a function of what the span alone reaches."""

@@ -158,6 +158,10 @@ class BuildEnvironment:
     # re-deciding after resolution would leave the padding's nullable marks
     # behind. `build_strategy_node` sets and clears it around each group.
     extent_free_spans: frozenset[str] = frozenset()
+    # Plan scope: the `~` spans the plan being built has a region for
+    # (`Keyspace.in_play_spans`), the only ones a join of it can pad for.
+    # `_build_from_graph` sets and restores it; merges capture it like the above.
+    in_play_spans: frozenset[str] = frozenset()
 
     def _distinct_scoped_join_groups(self) -> list[tuple[str, list[str]]]:
         """Per scoped-join key group, its canonical plus the members that keep

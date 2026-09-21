@@ -162,6 +162,19 @@ def deduplicate_nodes_and_joins(
     return joins, merged
 
 
+def tree_in_play_spans(node: StrategyNode, seen: set[int]) -> frozenset[str]:
+    """The spans any merge under `node` was built with in play. Padding is
+    made by merges, and a rowset body is its own plan with its own keyspace, so
+    the merge reading that body's rows has to look below its own plan."""
+    if id(node) in seen:
+        return frozenset()
+    seen.add(id(node))
+    out = node.in_play_spans if isinstance(node, MergeNode) else frozenset()
+    for parent in node.parents:
+        out |= tree_in_play_spans(parent, seen)
+    return out
+
+
 class MergeNode(StrategyNode):
     source_type = SourceType.MERGE
 
@@ -188,6 +201,7 @@ class MergeNode(StrategyNode):
         preserve_parents: bool = False,
         host_stitch: bool = False,
         extent_free_spans: frozenset[str] | None = None,
+        in_play_spans: frozenset[str] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -230,6 +244,12 @@ class MergeNode(StrategyNode):
             environment.extent_free_spans
             if extent_free_spans is None
             else extent_free_spans
+        )
+        # The spans the plan this merge belongs to has a region for. Captured
+        # for the same reason: a rowset body's merge can resolve after the
+        # outer plan's scope is back on the environment.
+        self.in_play_spans = (
+            environment.in_play_spans if in_play_spans is None else in_play_spans
         )
 
         final_joins: list[NodeJoin] = []
@@ -363,6 +383,7 @@ class MergeNode(StrategyNode):
                     host_grain=host_grain,
                     demanded_domains=demanded_domains,
                     extent_free_spans=self.extent_free_spans,
+                    in_play_spans=tree_in_play_spans(self, set()),
                 )
         elif final_joins:
             logger.info(
@@ -861,4 +882,5 @@ class MergeNode(StrategyNode):
             preserve_parents=self.preserve_parents,
             host_stitch=self.host_stitch,
             extent_free_spans=self.extent_free_spans,
+            in_play_spans=self.in_play_spans,
         )
