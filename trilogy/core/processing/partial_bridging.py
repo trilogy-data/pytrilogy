@@ -42,6 +42,7 @@ from trilogy.core.processing.condition_utility import (
     gate_allowed_values,
 )
 from trilogy.core.processing.v4_helper.functional_dependency import build_fd_closure
+from trilogy.core.processing.v4_helper.keyspace_audit import record_heal
 
 
 def _spellings(concept: BuildConcept) -> set[str]:
@@ -252,6 +253,7 @@ def heal_pinned_partials(
     ]
     if not partial_hosts:
         return
+    record_heal(environment, datasources, frozenset())
     proven_bound = _proven_bound(conditions, datasources)
     if not proven_bound:
         return
@@ -260,6 +262,7 @@ def heal_pinned_partials(
     )
     reach_cache: dict[str, set[str]] = {}
     replacements: dict[str, BuildDatasource] = {}
+    all_healed: set[str] = set()
     for ds in partial_hosts:
         # A killer must be related to the key's own model component: a concept
         # from a disconnected subgraph attaches via a cross-join gate and is
@@ -286,6 +289,7 @@ def heal_pinned_partials(
                 healed.add(key.address)
         if not healed:
             continue
+        all_healed |= healed
         new_columns = [
             (
                 BuildColumnAssignment(
@@ -307,6 +311,7 @@ def heal_pinned_partials(
         )
     if not replacements:
         return
+    record_heal(environment, datasources, frozenset(all_healed))
     for name, existing in list(environment.datasources.items()):
         if (
             isinstance(existing, BuildDatasource)

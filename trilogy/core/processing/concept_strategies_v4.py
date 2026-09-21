@@ -66,6 +66,7 @@ from trilogy.core.processing.v4_helper.functional_dependency import (
     build_fd_determines,
 )
 from trilogy.core.processing.v4_helper.keyspace import build_keyspace
+from trilogy.core.processing.v4_helper.keyspace_audit import audit_plan
 from trilogy.core.processing.v4_node_generators.multiselect import gen_multiselect
 from trilogy.core.processing.v4_node_generators.union_select import gen_union_select
 
@@ -545,6 +546,9 @@ def _build_from_graph(
         datasource_columns,
         environment=environment,
         staged_conditions=staged_conditions,
+    )
+    audit_plan(
+        keyspace, concept_attrs, group_attrs, mandatory_list, environment, conditions
     )
     # `build_strategy_node` scopes each group's extent routing on the shared
     # environment; a rowset body planned mid-build recurses through here, so

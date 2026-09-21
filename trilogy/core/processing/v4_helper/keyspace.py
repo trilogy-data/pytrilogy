@@ -134,22 +134,31 @@ def _carried(anchor: _SourceFacts, sources: tuple[_SourceFacts, ...]) -> Carried
     return carried
 
 
-def _model_facts(environment: BuildEnvironment) -> _ModelFacts:
-    datasources = _build_datasources(environment)
-    # pin-heal and partition exclusion swap datasources in place before planning
-    stamp = tuple(id(ds) for ds in datasources)
-    cache_key = id(environment)
-    cached = _FACTS_CACHE.get(cache_key)
-    if cached is not None and cached[0]() is environment and cached[1].stamp == stamp:
-        return cached[1]
+def _compute_facts(
+    environment: BuildEnvironment, datasources: list[BuildDatasource]
+) -> _ModelFacts:
     canonical = _canonical_addresses(environment)
     sources = tuple(_source_facts(ds, canonical) for ds in datasources)
-    facts = _ModelFacts(
-        stamp=stamp,
+    return _ModelFacts(
+        # pin-heal and partition exclusion swap datasources before planning
+        stamp=tuple(id(ds) for ds in datasources),
         canonical=canonical,
         sources=sources,
         carried={s.identifier: _carried(s, sources) for s in sources},
     )
+
+
+def _model_facts(environment: BuildEnvironment) -> _ModelFacts:
+    datasources = _build_datasources(environment)
+    cache_key = id(environment)
+    cached = _FACTS_CACHE.get(cache_key)
+    if (
+        cached is not None
+        and cached[0]() is environment
+        and cached[1].stamp == tuple(id(ds) for ds in datasources)
+    ):
+        return cached[1]
+    facts = _compute_facts(environment, datasources)
     _FACTS_CACHE[cache_key] = (
         ref(environment, partial(_evict_facts, cache_key)),
         facts,
@@ -244,10 +253,8 @@ def _null_rejected(conditions: list[BuildWhereClause]) -> set[str]:
     return out
 
 
-def _has_extension_license(environment: BuildEnvironment) -> bool:
-    return any(
-        ds.column_level_partial_addresses for ds in _build_datasources(environment)
-    )
+def _has_extension_license(datasources: list[BuildDatasource]) -> bool:
+    return any(ds.column_level_partial_addresses for ds in datasources)
 
 
 def build_keyspace(
@@ -255,9 +262,20 @@ def build_keyspace(
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     conditions: list[BuildWhereClause],
+    datasources: list[BuildDatasource] | None = None,
 ) -> Keyspace:
-    licensed = _has_extension_license(environment)
-    canonical = _model_facts(environment).canonical if licensed else {}
+    """`datasources` overrides the environment's own (the audit replays a
+    statement against its bindings as they stood before pin-heal)."""
+    licensed = _has_extension_license(
+        _build_datasources(environment) if datasources is None else datasources
+    )
+    if not licensed:
+        facts = None
+    elif datasources is None:
+        facts = _model_facts(environment)
+    else:
+        facts = _compute_facts(environment, datasources)
+    canonical = facts.canonical if facts else {}
     declared = {a.address: (a.purpose, a.keys) for a in concept_attrs.values()}
     keys_by_address = {
         address: frozenset(
@@ -270,14 +288,13 @@ def build_keyspace(
         *(keys_by_address.get(c.address, frozenset()) for c in mandatory_list)
     )
     base = Region(present=entities)
-    if not licensed or not entities:
+    if facts is None or not entities:
         return Keyspace(
             entities=entities,
             regions=(base,),
             keys_by_address=keys_by_address,
             output_entities=output_entities,
         )
-    facts = _model_facts(environment)
     connected = _connected(entities, facts)
     rejected = _null_rejected(conditions)
     regions = [base]
