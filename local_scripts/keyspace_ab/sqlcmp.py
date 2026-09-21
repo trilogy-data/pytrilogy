@@ -1,9 +1,20 @@
 """Diff two ks_sqldump files: the tests whose DISTINCT compiled SQL differs.
-Distinct, because the benchmark tests compile a varying number of times."""
+Distinct, because the benchmark tests compile a varying number of times. CTE
+names are numbered by first appearance first: they come from a pool shared by a
+whole session, so one more CTE in an early statement renames every later one."""
 
 import json
+import re
 import sys
 from collections import defaultdict
+
+_CTE = re.compile(r"^(\w+) as \($", re.MULTILINE)
+
+
+def normalize(sql: str) -> str:
+    for index, name in enumerate(dict.fromkeys(_CTE.findall(sql))):
+        sql = re.sub(rf"(?<![\w.]){name}(?![\w])", f"cte{index}", sql)
+    return sql
 
 
 def load(path: str) -> dict[str, set[str]]:
@@ -11,7 +22,7 @@ def load(path: str) -> dict[str, set[str]]:
     with open(path, encoding="utf-8") as handle:
         for line in handle:
             row = json.loads(line)
-            out[row["test"]].add(row["sql"])
+            out[row["test"]].add(normalize(row["sql"]))
     return out
 
 

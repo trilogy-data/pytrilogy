@@ -2650,13 +2650,52 @@ def _add_region_domain_contributors(
     whose every column some sibling also renders (`select order_id, max(amount)
     by user_id`: the user with no order is a row of all NULLs) is added as a
     contributor of no concepts. Not when a contributor already read it: an
-    aggregate evaluated over the region's rows has them in its groups."""
+    aggregate evaluated over the region's rows has them in its groups.
+
+    A rename of something the domain carries (`item_desc as d`) is rendered on
+    the domain: any other host holds it for the matched members only."""
     for gid in sorted(built):
-        if not attrs[gid].extent_spans or gid in per_group:
+        if not attrs[gid].extent_spans:
             continue
         readers = nx.descendants(group_graph, gid)
-        if not any(other in readers for other in per_group):
-            per_group[gid] = []
+        if gid not in per_group and any(other in readers for other in per_group):
+            continue
+        per_group.setdefault(gid, [])
+        carried = set(attrs[gid].primary_members)
+        renames = [
+            concept
+            for other, concepts in per_group.items()
+            if other != gid
+            for concept in concepts
+            if isinstance(concept.lineage, BuildFunction)
+            and concept.lineage.operator == FunctionType.ALIAS
+            and {a.address for a in concept.lineage.concept_arguments} <= carried
+        ]
+        if not renames:
+            continue
+        base = built[gid]
+        projected = SelectNode(
+            output_concepts=list(base.output_concepts),
+            input_concepts=list(base.output_concepts),
+            environment=base.environment,
+            parents=[base],
+            partial_concepts=list(base.partial_concepts),
+        )
+        widen_projection(projected, renames)
+        built[gid] = projected
+        moved = {c.address for c in renames}
+        for other in [o for o in per_group if o != gid]:
+            per_group[other] = [c for c in per_group[other] if c.address not in moved]
+            # still an output there, and a rename canonicalizes to its source:
+            # left visible it reads as a COMPLETE copy of what the domain
+            # carries, and the merge drops the domain as redundant
+            exposed = moved & {o.address for o in built[other].output_concepts}
+            if exposed:
+                built[other].hidden_concepts = (
+                    set(built[other].hidden_concepts) | exposed
+                )
+                built[other].rebuild_cache()
+        per_group[gid].extend(renames)
 
 
 def _add_partial_completion_contributors(
@@ -3796,11 +3835,13 @@ def _assemble_final_node(
         group_graph, built, per_group, final_contract, environment
     )
     _add_partial_completion_contributors(built, per_group, environment)
-    _add_region_domain_contributors(group_graph, attrs, built, per_group)
     _fold_descendant_contributors(group_graph, attrs, built, per_group)
     _promote_final_aliases_to_grouping_contributors(
         group_graph, attrs, built, per_group, mandatory_list, environment
     )
+    # last: the promotion above drops a contributor left with no concepts,
+    # which is all a row-only domain ever has
+    _add_region_domain_contributors(group_graph, attrs, built, per_group)
     contributing = list(per_group.keys())
     final_probe_args = (
         [

@@ -577,10 +577,14 @@ class MergeNode(StrategyNode):
                 for other in final_datasets
             ):
                 continue
+            # a hidden output is not supplied downstream (as in the dedup above)
+            withheld = {x.address for x in dataset.partial_concepts} | (
+                set(dataset.hidden_concepts)
+                if isinstance(dataset, QueryDatasource)
+                else set()
+            )
             output_set = {
-                c.address
-                for c in dataset.output_concepts
-                if c.address not in [x.address for x in dataset.partial_concepts]
+                c.address for c in dataset.output_concepts if c.address not in withheld
             }
             if (
                 all(c.address in output_set for c in self.all_concepts)

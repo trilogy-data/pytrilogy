@@ -136,6 +136,14 @@ class Region:
         return bool(self.spans)
 
     @property
+    def has_own_rows(self) -> bool:
+        """Some source's rows ARE this kind of row and no larger source holds
+        them all: the unmatched members of a dimension. A region kept only by a
+        completion (a partial aggregate table beside its fact) has none: every
+        row of it is a row of the larger source, where nothing is absent."""
+        return bool(self.sources)
+
+    @property
     def is_empty(self) -> bool:
         return bool(self.emptied_by)
 

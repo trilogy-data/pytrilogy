@@ -1228,6 +1228,25 @@ def _splits_for_region(bucket: GroupBucket) -> bool:
     )
 
 
+def _region_is_demanded(
+    label: str,
+    region: Region,
+    keyspace: Keyspace,
+    demanded_spans: frozenset[str],
+    concept_attrs: dict[str, ConceptAttrs],
+    environment: BuildEnvironment,
+) -> bool:
+    if region.spans & demanded_spans:
+        return True
+    return any(
+        a.label == label
+        and a.derivation == Derivation.AGGREGATE
+        and not a.existence_only
+        and _aggregates_over_region((a.address,), region, keyspace, environment)
+        for a in concept_attrs.values()
+    )
+
+
 def _mixes_region(bucket: GroupBucket, region: Region, keyspace: Keyspace) -> bool:
     held = [keyspace.carried_on(m, region) for m in bucket.primary_members]
     return any(held) and not all(held)
@@ -1244,6 +1263,7 @@ def _add_region_domain_buckets(
     environment: BuildEnvironment,
     keyspace: Keyspace,
     condition_arg_addresses: frozenset[str],
+    demanded_spans: frozenset[str],
 ) -> None:
     """Give a live extension region its own ROOT bucket when the statement
     derives something absent on it.
@@ -1256,9 +1276,14 @@ def _add_region_domain_buckets(
     everything feeding the derivation pairs on solid keys, and the region's
     rows join back above it, at FINAL or at a scalar over an aggregate by the
     span (`_feed_region_domains_to_present_scalars`). One domain per region:
-    regions are disjoint, so two families' rows never pair."""
+    regions are disjoint, so two families' rows never pair.
+
+    Only a region the statement asks rows of: an output is a function of what
+    its span reaches (`demanded_spans`, the election's question), or an
+    aggregate counts them. `select order_id, status where name = 'ann'` asks
+    for orders; the customer with none is not a row of it."""
     for region in keyspace.live_regions:
-        if not region.is_extension or not all(
+        if not region.has_own_rows or not all(
             span in environment.concepts for span in region.spans
         ):
             continue
@@ -1284,6 +1309,9 @@ def _add_region_domain_buckets(
             if (
                 not sources
                 or not carried
+                or not _region_is_demanded(
+                    label, region, keyspace, demanded_spans, concept_attrs, environment
+                )
                 or not _evaluates_where_absent(
                     label, region, keyspace, concept_attrs, environment
                 )
@@ -3389,6 +3417,7 @@ def build_group_graph(
         environment,
         keyspace,
         condition_arg_addresses,
+        demanded_spans,
     )
     d1_calc_roots_by_stage, d1_subgraph = _d1_calc_subgraph(
         concept_graph, concept_edges, concept_attrs, environment
