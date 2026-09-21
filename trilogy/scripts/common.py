@@ -134,19 +134,33 @@ class RefreshParams:
     #: ``--partition`` concept address -> value: the slice this run owns.
     #: Empty means "let staleness decide", which is the normal refresh.
     partitions: Mapping[str, str] = field(default_factory=dict)
+    #: ``--include-imports``: also build what the entrypoint reaches by import,
+    #: not only what it declares. The scope itself is set where the entrypoint
+    #: is known (see ``single_execution``); this only records the intent.
+    include_imports: bool = False
 
-    def policy(self) -> "RefreshPolicy":
+    def policy(self, script_path: "PathlibPath | str | None" = None) -> "RefreshPolicy":
         """The planning half of these params — THE CLI-to-plan mapping.
 
         A new planning option is added to `RefreshPolicy` and mapped here, once;
         every call site that plans a refresh then carries it unedited. The rest
         of this dataclass is presentation and does not cross into the plan.
+
+        ``script_path`` is the entrypoint being refreshed, and scopes the build
+        to what that file declares. A directory run passes nothing: it assigns
+        one owner script per address itself, across the whole dependency graph.
         """
         from trilogy.execution.state import RefreshPolicy
+        from trilogy.execution.state.declaration import build_scope_for
 
         return RefreshPolicy(
             force_sources=frozenset(self.force_sources),
             partition_selector=dict(self.partitions),
+            build_scope=(
+                frozenset()
+                if self.include_imports or script_path is None
+                else build_scope_for(script_path)
+            ),
         )
 
 
@@ -180,12 +194,18 @@ def validate_force_sources(
 def validate_partition_selector(
     selector: Mapping[str, str],
     available_keys: Iterable[str],
+    imported_keys: Iterable[str] = (),
 ) -> None:
-    """Fail fast when --partition names a concept nothing is partitioned by.
+    """Fail fast when --partition names a concept nothing this run builds is
+    partitioned by.
 
     A selector matching no datasource does not narrow anything — the plan keeps
     whatever staleness decided and the written snapshot claims the whole table.
     Both are the widening the flag exists to prevent, and both are silent.
+
+    ``imported_keys`` are the ones only an imported declaration is partitioned
+    by, so a selector aimed past the build scope says so rather than reading as
+    a typo.
     """
     if not selector:
         return
@@ -195,21 +215,39 @@ def validate_partition_selector(
         return
 
     noun = "concept" if len(missing) == 1 else "concepts"
+    hint = (
+        ". An imported declaration is partitioned by it, and this file builds"
+        " only what it declares — pass --include-imports"
+        if set(missing) & set(imported_keys)
+        else ""
+    )
     print_error(
         f"No datasource is partitioned by {noun} passed to --partition:"
-        f" {', '.join(missing)}"
+        f" {', '.join(missing)}{hint}"
     )
     raise Exit(1)
 
 
 def validate_refresh_policy(policy: "RefreshPolicy", environment: Environment) -> None:
-    """Fail fast on --force/--partition values this model cannot honor."""
+    """Fail fast on --force/--partition values this model cannot honor.
+
+    ``--partition`` is validated against what the run will *build*: it names a
+    slice by concept, so one matching only an imported declaration narrows
+    nothing. ``--force`` names a datasource outright and reaches past the scope,
+    so it is validated against the whole environment.
+    """
     from trilogy.execution.state import partition_key_addresses
+    from trilogy.execution.state.declaration import declared_within
 
     validate_force_sources(policy.force_sources, environment.datasources)
+    in_scope: list[Datasource] = []
+    imported: list[Datasource] = []
+    for ds in environment.datasources.values():
+        (in_scope if declared_within(ds, policy.build_scope) else imported).append(ds)
     validate_partition_selector(
         policy.partition_selector,
-        partition_key_addresses(environment.datasources.values()),
+        partition_key_addresses(in_scope),
+        partition_key_addresses(imported),
     )
 
 

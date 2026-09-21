@@ -1159,7 +1159,7 @@ dependencies = [
 
 [[package]]
 name = "trilogy-io"
-version = "0.3.341"
+version = "0.3.367"
 dependencies = [
  "arrow",
  "clap",

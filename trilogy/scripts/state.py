@@ -25,7 +25,7 @@ from trilogy.dialect.enums import Dialects
 from trilogy.execution.config import RuntimeConfig
 from trilogy.execution.report import emit_report, get_report_sink, report_run
 from trilogy.execution.staged_write import write_text_staged
-from trilogy.execution.state.declaration import group_declarations
+from trilogy.execution.state.declaration import by_import_depth, group_declarations
 from trilogy.execution.state.partitions import PartitionObservation
 from trilogy.execution.state.persistence import (
     ENV_STATE_FILE,
@@ -111,7 +111,7 @@ def _declaring_script(
 def _first_recorded(recorded: dict, group: list[Datasource]):
     """A per-identifier record under whichever spelling of the declaration it
     was filed — the record describes the table, not the import path."""
-    for ds in sorted(group, key=lambda d: (d.identifier.count("."), d.identifier)):
+    for ds in by_import_depth(group):
         if ds.identifier in recorded:
             return recorded[ds.identifier]
     return None

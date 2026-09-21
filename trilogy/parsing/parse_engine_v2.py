@@ -117,9 +117,12 @@ def parse_text(
     )
     start = datetime.now()
 
-    # ``root`` is a file for every caller that parses one, and a directory for
-    # the few that only want a working path.
-    declaring = root if root is not None and root.suffix else None
+    # ``root`` is the file being parsed for every caller that has one, and a
+    # directory for the few that only want a working path (an import hands its
+    # child env the parent directory and relies on ``env_file_path`` instead).
+    # Tested by ``is_dir`` rather than by the extension, so a directory whose
+    # name happens to carry one does not become every declaration's origin.
+    declaring = root if root is not None and not root.is_dir() else None
     previous = environment.declaring_file
     environment.declaring_file = declaring or previous
     try:

@@ -6,6 +6,24 @@ The refresh system has two distinct paths:
 
 **Directory**: `_preview_directory_refresh` (in `refresh.py`) → preview phases → `run_parallel_execution` with a `ManagedRefreshNode` graph
 
+### What a file refresh builds
+
+**A file builds what it declares.** `RefreshParams.policy(script_path)` stamps
+`RefreshPolicy.build_scope` with the entrypoint, and `create_refresh_plan` moves
+any judged-stale asset declared elsewhere (`Datasource.declared_in`) from
+`stale_assets` to `RefreshPlan.out_of_scope`: probed, reported, never executed.
+An asset reached only by import belongs to a run of the file that declares it —
+the same rule a directory run applies through `addr_to_owner`, one owner script
+per address.
+
+- `build_scope` is **not** `skip_datasources`. A skipped datasource is not probed
+  at all (another owner script covered it); an out-of-scope one *is*, because its
+  watermark is the expected side of the assets this run does build.
+- `--include-imports` clears the scope, restoring the transitive build.
+- `--force <ds>` reaches an out-of-scope asset: naming it is scoping it. Forced
+  assets are built from `forced_assets` and never scope-filtered.
+- A directory run and stdin pass no `script_path`, so their scope is empty.
+
 ### Phase structure in directory refresh
 
 1. **Phase 1 — parse only, no DB**: all scripts parsed to collect `address_map`, `ds_to_scripts`, `ds_is_root`, `ds_is_refreshable_root`, `all_needed_concepts`, `root_addr_to_concepts`

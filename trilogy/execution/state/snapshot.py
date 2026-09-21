@@ -118,6 +118,7 @@ from trilogy.core.models.datasource import (
     UpdateKey,
     UpdateKeyType,
 )
+from trilogy.execution.state.declaration import by_import_depth
 from trilogy.execution.state.partitions import (
     PartitionObservation,
     PartitionValue,
@@ -135,6 +136,10 @@ from trilogy.execution.state.watermarks import (
 from trilogy.utility import utc_now_iso
 
 SNAPSHOT_SCHEMA_VERSION = 2
+
+#: First schema whose entries are declarations rather than identifiers. Below
+#: it, ``datasource_id`` is an identifier and ``script`` the probing file.
+DECLARATION_SCHEMA = 2
 
 AssetStatus = Literal["fresh", "stale", "unknown"]
 
@@ -923,7 +928,7 @@ def evidenced_spelling(
     entry has to be built from one spelling end to end. Earlier ``evidence``
     outranks later: a verdict beats a bare watermark, and with none at all the
     canonical spelling stands in."""
-    ordered = sorted(group, key=lambda d: (d.identifier.count("."), d.identifier))
+    ordered = by_import_depth(group)
     for held in evidence:
         for ds in ordered:
             if ds.identifier in held:
@@ -990,15 +995,23 @@ def _same_declaration(
 ) -> DatasourceState | None:
     """The entry in ``bucket`` for the declaration ``ds_state`` describes.
 
-    The declaring file settles it where two declarations at the address share
-    a name. Otherwise the name alone pairs them: a schema-1 record filed the
-    probing script under ``script``, and the same declaration probed from two
-    scripts must not be filed twice."""
-    named = [d for d in bucket if d.datasource_id == ds_state.datasource_id]
-    for existing in named:
-        if existing.script == ds_state.script:
+    A declaration is a name *and* a declaring file, and both have to match: two
+    declarations at one address may legitimately share a name (a writer and a
+    reader that model the same file differently), and folding them would drop
+    one's state. The declaring file is the same whichever script did the
+    probing, which is what lets a delta from a per-partition build script pair
+    with a base written from the model.
+
+    Pairing a record written before :data:`DECLARATION_SCHEMA` is not attempted;
+    :func:`require_declaration_schema` rejects one on the way in.
+    """
+    for existing in bucket:
+        if (
+            existing.datasource_id == ds_state.datasource_id
+            and existing.script == ds_state.script
+        ):
             return existing
-    return named[0] if len(named) == 1 else None
+    return None
 
 
 def merge_into_snapshot(

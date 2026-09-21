@@ -15,6 +15,7 @@ and a reader that model the same file differently); those stay distinct.
 
 from collections.abc import Iterable
 from dataclasses import replace
+from pathlib import Path
 
 from trilogy.core.models.datasource import Datasource
 from trilogy.execution.state.partitions import PartitionObservation
@@ -23,6 +24,31 @@ from trilogy.execution.state.watermarks import DatasourceWatermark
 DeclarationKey = tuple[str, str | None, str]
 
 UPDATE_TIME_KEY = "update_time"
+
+
+def normalized_file(path: Path | str) -> str:
+    """One spelling for a declaring file, so an entrypoint and a
+    ``declared_in`` stamp compare equal. Resolved rather than merely
+    absolute: on Windows the two can differ in drive-letter case alone."""
+    return str(Path(path).resolve())
+
+
+def build_scope_for(path: Path | str) -> frozenset[str]:
+    """The build scope of a single-file run: that file's own declarations.
+
+    What a file *declares* is what a run of it builds. Everything it reaches by
+    import belongs to a run of the file that declares it — which is also how a
+    directory run assigns ownership, one script per address."""
+    return frozenset({normalized_file(path)})
+
+
+def declared_within(ds: Datasource, build_scope: frozenset[str]) -> bool:
+    """Whether a build scope covers this declaration. A datasource with no
+    recorded file (parsed from text, not from a path) is always covered: there
+    is no other run that would claim it."""
+    if not build_scope or ds.declared_in is None:
+        return True
+    return normalized_file(ds.declared_in) in build_scope
 
 
 def declaration_key(ds: Datasource) -> DeclarationKey:
@@ -38,10 +64,20 @@ def group_declarations(
     return groups
 
 
+def import_depth(ds: Datasource) -> tuple[int, str]:
+    """Sort key ranking a spelling by how far it is from the declaration: the
+    shortest import path first, ties broken by name, so every caller that has to
+    pick one spelling picks the same one as a pure function of the environment."""
+    return (ds.identifier.count("."), ds.identifier)
+
+
+def by_import_depth(group: Iterable[Datasource]) -> list[Datasource]:
+    return sorted(group, key=import_depth)
+
+
 def canonical(group: list[Datasource]) -> Datasource:
-    """The spelling that speaks for a declaration: the shortest import path,
-    ties broken by name, so the choice is a pure function of the environment."""
-    return min(group, key=lambda ds: (ds.identifier.count("."), ds.identifier))
+    """The spelling that speaks for a declaration."""
+    return min(group, key=import_depth)
 
 
 def _key_map(source: Datasource, target: Datasource) -> dict[str, str]:

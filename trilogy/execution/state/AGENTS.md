@@ -51,8 +51,19 @@ declared name)` — and every identifier is a view of it.
   judges an address only in its owner script, so without this its other
   spellings were emitted as separate, unjudged entries reading `fresh` or
   `unknown` beside the owner's `stale`.
+- **A declaring file also scopes a build.** `RefreshPolicy.build_scope` names the
+  files whose declarations a run may rebuild; `split_build_scope` moves the rest
+  of the judged-stale set into `RefreshPlan.out_of_scope`, which nothing
+  executes. That is what makes `trilogy refresh <file>` build what the file
+  declares rather than everything it imports — see `trilogy/scripts/AGENTS.md`.
+  Distinct from `skip_datasources`, which suppresses the probe as well.
+- A pre-declaration snapshot (schema < `DECLARATION_SCHEMA`) is **rejected** by
+  `read_state_snapshot`, not adapted: its entries are keyed by import path with
+  the *probing* script under `script`, and the declaring file they would need was
+  never written down. Re-probing recovers it; rewriting the file cannot.
 - `tests/scripts/test_state_declarations.py` holds the two producers, and
-  `refresh` pointed at a script versus its directory, to identical output.
+  `refresh` pointed at a script versus its directory, to identical output;
+  `tests/scripts/test_refresh_build_scope.py` pins the build scope.
 
 ### BaseStateStore
 

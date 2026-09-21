@@ -1,4 +1,3 @@
-import glob as glob_module
 import subprocess
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -215,25 +214,11 @@ def _resolve_table_ref(datasource: Datasource, executor: Executor) -> str:
     return datasource.safe_address
 
 
-_CLOUD_PREFIXES = (
-    "s3://",
-    "gs://",
-    "gcs://",
-    "abfs://",
-    "az://",
-    "http://",
-    "https://",
-)
-
-
 def is_missing_local_file(datasource: Datasource) -> bool:
     """Return True if the datasource points to a local file pattern that matches no files."""
-    if not isinstance(datasource.address, Address) or not datasource.address.is_file:
+    if not isinstance(datasource.address, Address):
         return False
-    location = datasource.address.location
-    if any(location.startswith(p) for p in _CLOUD_PREFIXES):
-        return False
-    return len(glob_module.glob(location)) == 0
+    return datasource.address.is_missing_locally
 
 
 def has_schema_mismatch(

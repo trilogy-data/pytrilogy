@@ -1040,6 +1040,18 @@ def run_refresh_command(cli_params: CLIRuntimeParams) -> ParallelExecutionSummar
     help="Force rebuild of specific datasources by name (skip staleness detection)",
 )
 @option(
+    "--include-imports",
+    is_flag=True,
+    default=False,
+    help=(
+        "Also build the assets an entrypoint reaches by import, not only the"
+        " ones it declares. By default a file builds what it declares and"
+        " reports an imported asset it found stale, because that asset belongs"
+        " to a run of the file that declares it. No effect on a directory run,"
+        " which assigns one owner script per address across the whole graph."
+    ),
+)
+@option(
     "--interactive",
     "-i",
     is_flag=True,
@@ -1067,6 +1079,7 @@ def refresh(
     partition: tuple[str, ...],
     env,
     force,
+    include_imports: bool,
     interactive,
     dry_run,
     environment: str | None,
@@ -1100,6 +1113,7 @@ def refresh(
         interactive=interactive,
         dry_run=dry_run,
         partitions=selected_partitions,
+        include_imports=include_imports,
     )
 
     cli_params = CLIRuntimeParams(

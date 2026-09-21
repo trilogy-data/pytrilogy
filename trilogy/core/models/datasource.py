@@ -1,3 +1,4 @@
+import glob as glob_module
 from collections.abc import ItemsView, ValuesView
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -6,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
-from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants
+from trilogy.constants import DEFAULT_NAMESPACE, REMOTE_PREFIXES, MagicConstants
 from trilogy.core.enums import (
     AddressType,
     BooleanOperator,
@@ -220,6 +221,14 @@ class Address:
         if self.additional_locations:
             return [self.location, *self.additional_locations]
         return [self.location]
+
+    @property
+    def is_missing_locally(self) -> bool:
+        """Whether a local file address currently matches nothing on disk.
+        A remote location is assumed present: there is nothing cheap to stat."""
+        if not self.is_file or self.location.startswith(REMOTE_PREFIXES):
+            return False
+        return len(glob_module.glob(self.location)) == 0
 
 
 @dataclass
@@ -438,6 +447,11 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             incremental_by=[c.with_namespace(namespace) for c in self.incremental_by],
             partition_by=[c.with_namespace(namespace) for c in self.partition_by],
             freshness_by=[c.with_namespace(namespace) for c in self.freshness_by],
+            # Paths to scripts, not concepts: a namespace has nothing to say
+            # about them, and dropping them makes an imported refreshable root
+            # unrefreshable under its alias.
+            freshness_probe=self.freshness_probe,
+            refresh_script=self.refresh_script,
             allowed_lag=self.allowed_lag,
             is_root=self.is_root,
             is_partial=self.is_partial,

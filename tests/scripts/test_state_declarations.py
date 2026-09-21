@@ -4,7 +4,8 @@ A datasource is declared in one file and reached through as many identifiers as
 there are import paths to it. These tests hold the two snapshot producers — the
 single-script probe and the directory probe — to one answer per declaration,
 and hold ``refresh`` to the same plan and the same result whether it is pointed
-at the directory or at a script that imports all of it.
+at the directory or at a script that imports all of it (with
+``--include-imports``, since a file otherwise builds only what it declares).
 """
 
 import json
@@ -23,6 +24,10 @@ from trilogy.execution.state.declaration import (
     declaration_key,
     group_declarations,
     rekey_watermark,
+)
+from trilogy.execution.state.snapshot import (
+    DatasourceState,
+    merge_into_snapshot,
 )
 from trilogy.execution.state.state_store import BaseStateStore, create_refresh_plan
 from trilogy.execution.state.watermarks import DatasourceWatermark
@@ -200,8 +205,19 @@ def test_single_script_state_matches_the_directory(runner, tmp_path, script):
 
 
 def _refresh(runner: CliRunner, target: Path, state_file: Path) -> StateSnapshot:
+    # ``--include-imports`` because the comparison is against a directory run,
+    # which owns every declaration in the project. A file otherwise builds only
+    # what it declares, and ``top.preql`` declares nothing.
     result = runner.invoke(
-        cli, ["refresh", str(target), "duckdb", "--state-file", str(state_file)]
+        cli,
+        [
+            "refresh",
+            str(target),
+            "duckdb",
+            "--include-imports",
+            "--state-file",
+            str(state_file),
+        ],
     )
     assert result.exit_code == 0, result.output
     return StateSnapshot.model_validate(
@@ -343,3 +359,86 @@ def test_rekey_declines_a_key_with_no_column(tmp_path):
         )
         is None
     )
+
+
+def _entry(name: str, script: str, aliases: list[str], status: str = "fresh"):
+    return DatasourceState(
+        datasource_id=name, script=script, aliases=aliases, status=status
+    )
+
+
+def test_two_declarations_of_one_address_stay_separate():
+    """A writer and a reader can model one file under the same name from two
+    files. They are two declarations, and folding them drops one's verdict."""
+    snapshot = merge_into_snapshot(
+        [
+            ("data/x.parquet", _entry("x", "writer.preql", ["x"], "stale")),
+            ("data/x.parquet", _entry("x", "reader.preql", ["read.x"])),
+        ]
+    )
+
+    assert [(d.script, d.status) for d in snapshot.assets[0].datasources] == [
+        ("reader.preql", "fresh"),
+        ("writer.preql", "stale"),
+    ]
+
+
+def test_one_declaration_probed_from_two_scripts_is_one_entry():
+    snapshot = merge_into_snapshot(
+        [
+            ("data/x.parquet", _entry("x", "model.preql", ["x"])),
+            ("data/x.parquet", _entry("x", "model.preql", ["mid.x"])),
+        ]
+    )
+
+    assert [d.aliases for d in snapshot.assets[0].datasources] == [["mid.x", "x"]]
+
+
+def test_a_pre_declaration_snapshot_is_rejected(tmp_path):
+    """Schema 1 keyed entries by import path and filed the *probing* script
+    under ``script``, so its records pair with nothing here — and the declaring
+    file they would need was never written down. Re-probing recovers it."""
+    from trilogy.execution.state import StateSchemaError, read_state_snapshot
+
+    path = tmp_path / "old.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "snapshot_ts": "2024-01-01T00:00:00Z",
+                "assets": [
+                    {
+                        "address": "data/x.parquet",
+                        "datasources": [
+                            {"datasource_id": "mid.x", "script": "mid.preql"}
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(StateSchemaError, match="trilogy state <target>"):
+        read_state_snapshot(path)
+
+
+def test_a_parse_rooted_at_a_directory_has_no_declaring_file(tmp_path):
+    """The declaring file is the file being parsed. A parse rooted at a
+    directory has none — including a directory whose name carries a suffix,
+    which would otherwise become the origin of every declaration under it and
+    fold two files' same-named declarations into one."""
+    from trilogy.parser import parse_text
+
+    root = tmp_path / "models.v2"
+    data = tmp_path / "data"
+    data.mkdir(parents=True)
+    root.mkdir()
+
+    env, _ = parse_text(
+        SOURCE.format(data=data.as_posix()),
+        Environment(working_path=root),
+        root=root,
+    )
+
+    assert [ds.declared_in for ds in env.datasources.values()] == [None]
