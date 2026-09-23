@@ -74,8 +74,7 @@ Still true, whichever route is taken:
 
 - KEPT from the prototype session: `predicate_pushdown._predicate_safe_past_null_extension` hand-rolled its outer-join check and missed a RIGHT/FULL join whose left is implicit (`left_cte` unset), so a null-accepting predicate could be copied below the null-supplying side. It now asks `null_padded_nodes` like its neighbours. No committed SQL log moves. (The prototype itself narrowed one tpc_ds q05 `date_dim` lookup from FULL to LEFT with matching rows; that went away with it, so it came from the planner change, most likely the pin-heal extension, not from this fix.)
 - VERIFIED, pre-existing, not touched: `undelivered_customer <- filter name where undelivered`, `select customer_id, undelivered_customer` returns only `(1, 'ann')` on the materialized twin too. A FILTER in the SELECT restricts the row stream.
-- Pre-existing crash: `select customer_id, status where activity = 'dormant'` fails to render (`Missing source map entry for local.order_id`).
-- `select customer_id, status where customer_id in (2, 3)` returns only `(2, 'delivered')` on BOTH oracle models: the key filter lands on the fact side. Looks wrong under the rule, not investigated.
+- FIXED in keyspace phase 5 (2026-09-23): `select customer_id, status where activity = 'dormant'` renders and returns `(3, NULL)` on both models; `select customer_id, status where customer_id in (2, 3)` returns `(2, 'delivered'), (3, NULL)` on both. See the plan's phase 5 section.
 
 ## Also on this branch
 
