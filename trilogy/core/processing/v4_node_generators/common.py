@@ -87,10 +87,14 @@ def outputs_with_parent_grain_keys(
     outputs: list[BuildConcept],
     parents: list[StrategyNode],
 ) -> list[BuildConcept]:
-    """Expose a derived output's declared grain keys when parents provide them."""
+    """Expose a derived output's declared grain keys when parents provide them.
+
+    A key a parent hides is not rendered by its CTE, so it cannot be read."""
     parent_outputs: dict[str, BuildConcept] = {}
     for parent in parents:
         for concept in parent.output_concepts:
+            if concept.address in parent.hidden_concepts:
+                continue
             parent_outputs.setdefault(concept.address, concept)
 
     result = list(outputs)

@@ -4115,18 +4115,24 @@ def _assemble_final_node(
                 and (c := _concept_at(environment, address)) is not None
             ]
             group_concepts.extend(filter_only_concepts)
-            root_conditions = _wrap_atoms(
-                _root_atoms_satisfiable_from(_atoms_at(attrs, gid), group_concepts)
-            )
-            fresh = _fresh_final_root_projection(
-                group_concepts,
-                environment,
-                graph,
-                history,
-                # The fresh re-source must keep the root group's own WHERE;
-                # without it the scan widens and a constant sibling's `1=1`
-                # merge returns the unfiltered rows.
-                conditions=root_conditions,
+            root_atoms = _atoms_at(attrs, gid)
+            satisfiable = _root_atoms_satisfiable_from(root_atoms, group_concepts)
+            # The fresh re-source must keep the root group's own WHERE;
+            # without it the scan widens and a constant sibling's `1=1`
+            # merge returns the unfiltered rows. An atom the scan cannot
+            # state (its value comes from a constraint parent: `where
+            # n_orders > 1` beside this dim's key) is applied inside `node`
+            # only, so a re-source would silently drop it.
+            fresh = (
+                _fresh_final_root_projection(
+                    group_concepts,
+                    environment,
+                    graph,
+                    history,
+                    conditions=_wrap_atoms(satisfiable),
+                )
+                if len(satisfiable) == len(root_atoms)
+                else None
             )
             if fresh is not None:
                 node = fresh
