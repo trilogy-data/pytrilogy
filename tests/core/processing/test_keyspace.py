@@ -487,3 +487,57 @@ def test_aggregate_over_a_region_reads_its_domain():
         if gid != FINAL_NODE_ID
     }
     assert "aggregate" in readers
+
+
+def _planned_info(monkeypatch, model: str, query: str):
+    """The statement's plan through the full path, WHERE included."""
+    from trilogy.core import query_processor
+
+    seen = []
+    original = query_processor.search_concepts_v4
+
+    def capture(*args, **kwargs):
+        seen.append(original(*args, **kwargs))
+        return seen[-1]
+
+    monkeypatch.setattr(query_processor, "search_concepts_v4", capture)
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(model)
+    executor.generate_sql(query)
+    return seen[0]
+
+
+def test_where_over_a_carried_scalar_keeps_the_domain(monkeypatch):
+    """`activity` is keyed on the span, so the region's rows hold it: the
+    condition branch that computes it reads the domain, and the atom is
+    hosted at FINAL over the united rows."""
+    info = _planned_info(
+        monkeypatch,
+        _DERIVED + _ACTIVITY,
+        "select customer_id, status where activity = 'dormant';",
+    )
+    ((domain, spans),) = _domains(info).items()
+    assert spans == frozenset({CUSTOMER})
+    readers = {
+        gid
+        for gid in info.group_graph.successors(domain)
+        if "local.activity" in info.group_attrs[gid].primary_members
+    }
+    assert readers
+    assert [str(a) for a in info.group_attrs[FINAL_NODE_ID].condition_atoms] == [
+        "local.activity = dormant"
+    ]
+    assert not any(
+        info.group_attrs[gid].condition_atoms
+        for gid in info.group_graph.nodes
+        if gid != FINAL_NODE_ID
+    )
+
+
+def test_where_over_an_absent_null_rejecting_value_empties_the_region(monkeypatch):
+    info = _planned_info(
+        monkeypatch, _DERIVED, "select customer_id, status where status = 'delivered';"
+    )
+    assert not _domains(info)
+    (extension,) = info.keyspace.extensions
+    assert extension.is_empty

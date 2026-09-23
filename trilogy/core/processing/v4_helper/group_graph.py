@@ -42,11 +42,16 @@ from trilogy.core.processing.condition_utility import concepts_implied_non_null
 from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
 
 from .concept_graph import (
+    _scope_and_phase,
     _statement_scoped_relation_members,
     computed_origin_relation_members,
     condition_stage_of_label,
 )
-from .condition_placement import PlacementReason, plan_condition_placements
+from .condition_placement import (
+    ConditionPlacement,
+    PlacementReason,
+    plan_condition_placements,
+)
 from .constants import (
     DEPENDENCY_EDGE_KINDS,
     FINAL_NODE_ID,
@@ -1202,14 +1207,14 @@ def _filters_region_domain(
     """Whether a WHERE reading `address` still filters a region domain's rows.
 
     The domain reaches FINAL beside the filtered row stream, not through it, so
-    an atom hosted anywhere else is lost on the rows the domain adds back. Two
-    shapes are delivered: a column the domain carries is filtered on the domain
-    itself, and an absent value read from rows alone is restated at FINAL
-    over the extended rows (`condition_placement._reads_past_region_domain`),
-    riding there as a hidden column when the statement does not project it.
-    Anything else (a scalar over an aggregate) has no such host, so the
-    statement gets no domain."""
-    if address in carried:
+    an atom hosted anywhere else is lost on the rows the domain adds back. A
+    column the domain carries is filtered on the domain itself. Anything else
+    the region's rows hold a value for is restated at FINAL over the extended
+    rows (`condition_placement._reads_past_region_domain`), riding there as a
+    hidden column when the statement does not project it: a value carried on
+    the region (a scalar over an aggregate by the span, read off the domain),
+    or an absent value read from rows alone, NULL on the extension row."""
+    if address in carried or keyspace.carried_on(address, region):
         return True
     concept = environment.concepts.get(address)
     return (
@@ -1306,14 +1311,26 @@ def _add_region_domain_buckets(
                 for m in b.primary_members
                 if keyspace.carried_on(m, region)
             }
+            # a WHERE over a value the region's rows carry that no solid
+            # bucket holds (`activity`, a scalar over an aggregate by the span)
+            # is evaluated on the region's rows: they need a domain to come
+            # from, whether or not anything absent takes a value on them
+            solid_members = {m for b in eligible for m in b.primary_members}
+            where_over_region = any(
+                address not in solid_members and keyspace.carried_on(address, region)
+                for address in condition_arg_addresses
+            )
             if (
                 not sources
                 or not carried
                 or not _region_is_demanded(
                     label, region, keyspace, demanded_spans, concept_attrs, environment
                 )
-                or not _evaluates_where_absent(
-                    label, region, keyspace, concept_attrs, environment
+                or not (
+                    where_over_region
+                    or _evaluates_where_absent(
+                        label, region, keyspace, concept_attrs, environment
+                    )
                 )
             ):
                 continue
@@ -1325,8 +1342,8 @@ def _add_region_domain_buckets(
                 )
             )
             if undelivered:
-                # phase 5 (WHERE by region): no host filters the domain's rows
-                # by these, so the region keeps its padded plan
+                # no host filters the domain's rows by these, so the region
+                # keeps its padded plan
                 audit_undelivered_where(region, undelivered)
                 continue
             domain = GroupBucket(
@@ -1391,17 +1408,20 @@ def _feed_region_domains_to_present_scalars(
     present on the region, so it evaluates there: `case when count(order_id)
     by customer_id > 0 ... else 'dormant'` is 'dormant' for a customer with no
     order. The aggregate below it pairs on solid keys, so the scalar reads the
-    region's domain beside it."""
+    region's domain beside it. A WHERE's own copy of such a scalar (the
+    condition phase of the same scope) reads it the same way, or the atom
+    restated at FINAL never sees the region's rows."""
     for domain_gid, domain in list(attrs.items()):
         region = (
             keyspace.region_of(domain.extent_spans) if domain.extent_spans else None
         )
         if region is None:
             continue
+        scope = _scope_and_phase(domain.label)[0]
         for gid, a in attrs.items():
             if (
                 a.derivation in ROW_STREAM_DERIVATIONS
-                and a.label == domain.label
+                and _scope_and_phase(a.label)[0] == scope
                 and all(keyspace.carried_on(m, region) for m in a.primary_members)
                 and any(
                     attrs[parent].derivation == Derivation.AGGREGATE
@@ -1670,7 +1690,35 @@ def _inject_conditions(
             if placement.reason is PlacementReason.STAGE_PRECONDITION:
                 continue
             condition_group_ids.add(gid)
+    _detach_final_span_domain_producers(group_graph, group_edges, buckets, placements)
     return condition_group_ids
+
+
+def _detach_final_span_domain_producers(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    buckets: dict[str, GroupBucket],
+    placements: list[ConditionPlacement],
+) -> None:
+    """An atom restated at FINAL over a region domain's rows is applied there
+    only. The constraint edges from its value's producer (a condition branch)
+    into the row-stream hosts below would join that branch into the solid
+    stream and apply the atom there, pairing on solid keys the region's rows
+    never match; without them the producer reaches FINAL as a contributor of
+    its own, read off the domain, and FINAL tests every row."""
+    for placement in placements:
+        if placement.reason is not PlacementReason.FINAL_SPAN_DOMAIN:
+            continue
+        inputs = {a.address for a in placement.atom.row_arguments}
+        for gid, bucket in buckets.items():
+            if not inputs & set(bucket.primary_members):
+                continue
+            for succ in list(group_graph.successors(gid)):
+                if (
+                    succ != FINAL_NODE_ID
+                    and edge_kind(group_edges, gid, succ) == EdgeKind.CONSTRAINT
+                ):
+                    remove_edge(group_graph, group_edges, gid, succ)
 
 
 def _virtual_filter_scoped_columns(
