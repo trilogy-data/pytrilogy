@@ -153,6 +153,11 @@ HOLDS = [
     "select customer_id, status, activity where activity = 'dormant'",
     "select name, status where activity = 'dormant'",
     "select customer_id, status where activity = 'dormant' or status = 'delivered'",
+    # a WHERE over the span key itself: the extension row carries the
+    # dimension's key, so the customer with no order passes
+    "select customer_id, status where customer_id in (2, 3)",
+    "select customer_id, status where customer_id = 3",
+    "select name, status where customer_id in (2, 3)",
 ]
 
 OWED = [

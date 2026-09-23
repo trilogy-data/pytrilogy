@@ -35,6 +35,7 @@ from trilogy.core.processing.grain_utility import (
 )
 from trilogy.core.processing.join_resolution import (
     compute_outer_null_status,
+    deep_extent_free_spans,
     get_node_joins,
     merge_partial_addresses,
     narrow_keyless_joins,
@@ -203,6 +204,7 @@ class MergeNode(StrategyNode):
         extent_free_spans: frozenset[str] | None = None,
         in_play_spans: frozenset[str] | None = None,
         extent_free_carried: dict[str, frozenset[str]] | None = None,
+        demanded_spans: frozenset[str] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -256,6 +258,9 @@ class MergeNode(StrategyNode):
         # outer plan's scope is back on the environment.
         self.in_play_spans = (
             environment.in_play_spans if in_play_spans is None else in_play_spans
+        )
+        self.demanded_spans = (
+            environment.demanded_spans if demanded_spans is None else demanded_spans
         )
 
         final_joins: list[NodeJoin] = []
@@ -440,6 +445,25 @@ class MergeNode(StrategyNode):
             partial_addresses |= source_outputs & source_partial
         branch_proofs &= output_addresses
         branch_proofs -= complete_addresses & partial_addresses
+        # A `~` key a branch was built not to extend is partial there
+        # whatever the other branches expose (a region domain projected down
+        # to what it carries): its filter proves nothing about the rows the
+        # domain adds back.
+        branch_proofs -= partial_addresses & frozenset().union(
+            *(deep_extent_free_spans(source) for source in final_datasets)
+        )
+        # The same for this merge's own WHERE over a `~` key it pads for whose
+        # extension rows the plan returns: the extension row carries the
+        # dimension's key, so `customer_id in (2, 3)` keeps the customer with
+        # no order and says nothing about the fact side. Proven non-null is
+        # the coalesced key, not a side's column.
+        coalesced = (
+            complete_addresses
+            & partial_addresses
+            & (self.demanded_spans - self.extent_free_spans)
+        )
+        proofs -= coalesced
+        side_proofs -= coalesced
         # A branch carrying an atom of this merge's PRE-APPLIED request WHERE
         # (preexisting_conditions the merge itself does not re-render) is the
         # population: every final row must have a match there. Branch-local
@@ -840,6 +864,11 @@ class MergeNode(StrategyNode):
             hidden_concepts=self.hidden_concepts,
             ordering=self.ordering,
             extent_free_spans=self.extent_free_spans,
+            extent_free_carried=frozenset(
+                address
+                for address, spans in self.extent_free_carried.items()
+                if spans & self.extent_free_spans
+            ),
         )
         return qds
 
@@ -897,4 +926,5 @@ class MergeNode(StrategyNode):
             extent_free_spans=self.extent_free_spans,
             in_play_spans=self.in_play_spans,
             extent_free_carried=self.extent_free_carried,
+            demanded_spans=self.demanded_spans,
         )

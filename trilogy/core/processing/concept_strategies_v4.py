@@ -555,7 +555,9 @@ def _build_from_graph(
     outer_extent_free = environment.extent_free_spans
     outer_carried = environment.extent_free_carried
     outer_in_play = environment.in_play_spans
+    outer_demanded = environment.demanded_spans
     environment.in_play_spans = keyspace.in_play_spans
+    environment.demanded_spans = keyspace.output_demanded_spans
     try:
         strategy_node = build_strategy_node(
             group_graph,
@@ -573,6 +575,7 @@ def _build_from_graph(
         environment.extent_free_spans = outer_extent_free
         environment.extent_free_carried = outer_carried
         environment.in_play_spans = outer_in_play
+        environment.demanded_spans = outer_demanded
     audit_plan(
         keyspace,
         concept_attrs,

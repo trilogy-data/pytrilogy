@@ -166,6 +166,10 @@ class BuildEnvironment:
     # (`Keyspace.in_play_spans`), the only ones a join of it can pad for.
     # `_build_from_graph` sets and restores it; merges capture it like the above.
     in_play_spans: frozenset[str] = frozenset()
+    # Plan scope: the spans whose unmatched members carry an output
+    # (`Keyspace.output_demanded_spans`), the only extension rows the plan
+    # returns. Set and restored beside `in_play_spans`.
+    demanded_spans: frozenset[str] = frozenset()
 
     def _distinct_scoped_join_groups(self) -> list[tuple[str, list[str]]]:
         """Per scoped-join key group, its canonical plus the members that keep
