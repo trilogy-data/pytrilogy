@@ -33,7 +33,7 @@ from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS, DepthLabel, EdgeKind
 from .edges import EdgeMap, lineage_subgraph, subgraph_of_kinds
 from .functional_dependency import build_fd_determines
 from .models import ConceptAttrs, GroupBucket, Keyspace
-from .projection import output_rowset_base_keys
+from .projection import decided_at_output_grain, output_rowset_base_keys
 from .staged_where import (
     CROSS_ROW_DERIVATIONS,
     concept_is_cross_row,
@@ -618,6 +618,8 @@ def _reads_past_region_domain(
     row_inputs: set[str],
     buckets: dict[str, GroupBucket],
     keyspace: Keyspace,
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
 ) -> bool:
     """Whether the atom reads something a region domain's rows hold that the
     domain itself does not carry as a column.
@@ -641,8 +643,10 @@ def _reads_past_region_domain(
         for address in row_inputs:
             if address in members:
                 continue
-            if not keyspace.defined_on(address, region) or keyspace.carried_on(
-                address, region
+            if not keyspace.defined_on(address, region):
+                return True
+            if keyspace.carried_on(address, region) and decided_at_output_grain(
+                address, mandatory_list, environment
             ):
                 return True
     return False
@@ -1316,7 +1320,7 @@ def plan_condition_placements(
                 )
                 continue
             if not atom.existence_arguments and _reads_past_region_domain(
-                row_inputs, buckets, keyspace
+                row_inputs, buckets, keyspace, mandatory_list, environment
             ):
                 placements.append(
                     ConditionPlacement(

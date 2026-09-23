@@ -251,3 +251,22 @@ def output_rowset_base_keys(
             if resolved != component:
                 keys.add(resolved)
     return keys
+
+
+def decided_at_output_grain(
+    address: str, outputs: Iterable[BuildConcept], environment: BuildEnvironment
+) -> bool:
+    """Whether a WHERE reading `address` can be applied to the statement's
+    final rows: every output that crosses an aggregate is grouped at a grain
+    determining it, so the rows it rejects above the aggregate are the rows
+    the aggregate's input would have lost. A launch-day filter under a
+    per-month count is not: the count must see the filter."""
+    from .functional_dependency import build_fd_determines
+
+    for concept in outputs:
+        if reads_rows_only(concept):
+            continue
+        grain = frozenset(concept.grain.components) if concept.grain else frozenset()
+        if not grain or not build_fd_determines(environment, grain, address):
+            return False
+    return True

@@ -158,11 +158,17 @@ HOLDS = [
     "select customer_id, status where customer_id in (2, 3)",
     "select customer_id, status where customer_id = 3",
     "select name, status where customer_id in (2, 3)",
+    # the aggregate is grouped at a grain that determines the atom's input, so
+    # the atom restated at FINAL rejects the rows its input would have lost
+    "select customer_id, count(order_id) as n where activity = 'dormant'",
 ]
 
 OWED = [
     # the count's zero-fill is lost once a renamed group key moves to the domain
     "select name as n2, count(status) as n",
+    # the aggregate's grain does not determine the atom's input: restating the
+    # atom above it is unsound, so the region keeps the padded plan
+    "select status, count(customer_id) as n where activity = 'dormant'",
 ]
 
 QUERIES = HOLDS + [
