@@ -1126,6 +1126,17 @@ def deep_extent_free_spans(ds: DataSource) -> frozenset[str]:
     return out
 
 
+def deep_extent_free_carried(ds: DataSource) -> frozenset[str]:
+    """What the region domains of `deep_extent_free_spans` carry: held in this
+    source's tree for the members its facts bound only."""
+    if not isinstance(ds, QueryDatasource):
+        return frozenset()
+    out = ds.extent_free_carried
+    for sub in ds.datasources:
+        out |= deep_extent_free_carried(sub)
+    return out
+
+
 def _is_authored_coalescing_pair(pair: ConceptPair, members: set[str]) -> bool:
     return pair.left.address in members or pair.right.address in members
 

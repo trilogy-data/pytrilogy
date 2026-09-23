@@ -1179,6 +1179,10 @@ class QueryDatasource:
     # them are different relations, and merging the two under one CTE name
     # concatenates their join lists.
     extent_free_spans: frozenset[str] = frozenset()
+    # What those spans' region domains carry, held here for the members the
+    # scan's facts bound only (the names of customers WITH an order). Not
+    # identity: it follows from `extent_free_spans` and the model.
+    extent_free_carried: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         if self.set_operator is SetOperator.UNION_ALL:

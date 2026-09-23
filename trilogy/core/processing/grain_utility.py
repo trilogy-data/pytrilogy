@@ -31,7 +31,10 @@ from trilogy.core.processing.condition_utility import (
     is_scalar_condition,
     opaque_binding_addresses,
 )
-from trilogy.core.processing.join_resolution import deep_extent_free_spans
+from trilogy.core.processing.join_resolution import (
+    deep_extent_free_carried,
+    deep_extent_free_spans,
+)
 
 GrainSource = QueryDatasource | BuildDatasource
 
@@ -413,17 +416,19 @@ def _is_filter_population(
 
     It has to have applied the WHERE, and it must not owe its narrowness to
     anything else. An extent-free branch covers only the span members its facts
-    bound (docs/extent_ownership.md), so a row missing there is a member nobody
-    referenced, not a row the WHERE rejected, and the other side stays
-    preserved. That only matters when the other side binds the axis complete;
-    a partner partial on it carries no extension member to preserve."""
+    bound (docs/extent_ownership.md), and what the span's region domain
+    carries (the names of customers WITH an order) for those same members, so
+    a row missing there is a member nobody referenced, not a row the WHERE
+    rejected, and the other side stays preserved. That only matters when the
+    other side binds the axis complete; a partner partial on it carries no
+    extension member to preserve."""
     if identifier not in filtered_ids:
         return False
     source = by_id.get(identifier)
     if source is None:
         return True
-    suppressed = {c.address for c in source.partial_concepts} & deep_extent_free_spans(
-        source
+    suppressed = {c.address for c in source.partial_concepts} & (
+        deep_extent_free_spans(source) | deep_extent_free_carried(source)
     )
     if not (join_addresses & suppressed):
         return True
