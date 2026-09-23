@@ -91,7 +91,11 @@ from .models import (
     Keyspace,
     Region,
 )
-from .projection import output_rowset_base_keys, reads_rows_only
+from .projection import (
+    decided_at_output_grain,
+    output_rowset_base_keys,
+    reads_rows_only,
+)
 
 # depth_label for the secondary root bucket that feeds d1 (in-WHERE) aggregate
 # calculations. Distinct from ``root`` so the bucket gets its own group id.
@@ -1203,6 +1207,7 @@ def _filters_region_domain(
     keyspace: Keyspace,
     carried: set[str],
     environment: BuildEnvironment,
+    outputs: list[BuildConcept],
 ) -> bool:
     """Whether a WHERE reading `address` still filters a region domain's rows.
 
@@ -1214,8 +1219,10 @@ def _filters_region_domain(
     hidden column when the statement does not project it: a value carried on
     the region (a scalar over an aggregate by the span, read off the domain),
     or an absent value read from rows alone, NULL on the extension row."""
-    if address in carried or keyspace.carried_on(address, region):
+    if address in carried:
         return True
+    if keyspace.carried_on(address, region):
+        return decided_at_output_grain(address, outputs, environment)
     concept = environment.concepts.get(address)
     return (
         concept is not None
@@ -1269,6 +1276,7 @@ def _add_region_domain_buckets(
     keyspace: Keyspace,
     condition_arg_addresses: frozenset[str],
     demanded_spans: frozenset[str],
+    mandatory_list: list[BuildConcept],
 ) -> None:
     """Give a live extension region its own ROOT bucket when the statement
     derives something absent on it.
@@ -1338,7 +1346,7 @@ def _add_region_domain_buckets(
                 address
                 for address in condition_arg_addresses
                 if not _filters_region_domain(
-                    address, region, keyspace, carried, environment
+                    address, region, keyspace, carried, environment, mandatory_list
                 )
             )
             if undelivered:
@@ -3466,6 +3474,7 @@ def build_group_graph(
         keyspace,
         condition_arg_addresses,
         demanded_spans,
+        mandatory_list,
     )
     d1_calc_roots_by_stage, d1_subgraph = _d1_calc_subgraph(
         concept_graph, concept_edges, concept_attrs, environment
