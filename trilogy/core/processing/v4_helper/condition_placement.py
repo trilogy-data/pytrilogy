@@ -619,25 +619,33 @@ def _reads_past_region_domain(
     buckets: dict[str, GroupBucket],
     keyspace: Keyspace,
 ) -> bool:
-    """Whether the atom reads something absent on a region that has a domain.
+    """Whether the atom reads something a region domain's rows hold that the
+    domain itself does not carry as a column.
 
     Any host below FINAL pairs on solid keys and never sees the rows the domain
     adds back there: a customer whose every order the atom rejected would
     return as an extension row, and `status is null` would never test the
     customer with no order. So the atom is hosted at FINAL only, over the
-    extended rows. A null-rejecting atom never gets here: it empties the
-    region, and an empty region gets no domain."""
-    regions = [
-        region
-        for bucket in buckets.values()
-        if bucket.extent_spans
-        and (region := keyspace.region_of(bucket.extent_spans)) is not None
-    ]
-    return any(
-        not keyspace.defined_on(address, region)
-        for region in regions
-        for address in row_inputs
-    )
+    extended rows. The same for a value the region's rows carry but the domain
+    does not hold (`activity`, a scalar over an aggregate by the span): its
+    producer reads the domain, and only FINAL joins the two. A null-rejecting
+    atom over an absent value never gets here: it empties the region, and an
+    empty region gets no domain."""
+    for bucket in buckets.values():
+        if not bucket.extent_spans:
+            continue
+        region = keyspace.region_of(bucket.extent_spans)
+        if region is None:
+            continue
+        members = set(bucket.primary_members) | set(bucket.secondary_members)
+        for address in row_inputs:
+            if address in members:
+                continue
+            if not keyspace.defined_on(address, region) or keyspace.carried_on(
+                address, region
+            ):
+                return True
+    return False
 
 
 def _grouping_barrier_host(

@@ -144,6 +144,15 @@ HOLDS = [
     "select name as n2, status",
     "select customer_id as c2, status",
     "select name as n2, customer_id, count(coalesce(amount, 0)) as n",
+    # a WHERE over a value the region's rows carry but no domain column holds
+    # (a scalar over an aggregate by the span): its producer reads the domain
+    # and the atom is restated at FINAL, over the united rows
+    "select customer_id, status where activity = 'dormant'",
+    "select customer_id, status where activity = 'active'",
+    "select customer_id, name where activity = 'dormant'",
+    "select customer_id, status, activity where activity = 'dormant'",
+    "select name, status where activity = 'dormant'",
+    "select customer_id, status where activity = 'dormant' or status = 'delivered'",
 ]
 
 OWED = [
