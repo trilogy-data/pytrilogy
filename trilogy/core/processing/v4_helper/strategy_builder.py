@@ -2129,7 +2129,27 @@ def _drop_unadvertised_rowset_handles(node: StrategyNode, advertised: set[str]) 
     node.set_output_concepts(keep)
 
 
-def _filter_intrinsic_pushdown_safe(group_graph: nx.DiGraph, gid: str) -> bool:
+def _filter_intrinsic_pushdown_safe(
+    group_graph: nx.DiGraph,
+    gid: str,
+    outputs: list[BuildConcept],
+    mandatory_list: list[BuildConcept],
+) -> bool:
+    """May this filter group's predicate narrow its ROWS? Only when the plan
+    shows nothing but filter values over that one predicate (a NULL row is one
+    nothing would keep) and this group is what produces them; an intermediate
+    filter, read by an aggregate or beside a sibling, stays a per-row CASE.
+    And not when a consumer also reads an unfiltered ancestor of it, which the
+    narrowed stream would then pair against."""
+    from trilogy.core.processing.v4_node_generators.filter import (  # cycle
+        statement_filter_population,
+    )
+
+    if statement_filter_population(mandatory_list) is None:
+        return False
+    mandatory = {c.address for c in mandatory_list}
+    if not any(o.address in mandatory for o in outputs):
+        return False
     ancestors = nx.ancestors(group_graph, gid)
     if not ancestors:
         return True
@@ -4733,9 +4753,15 @@ def build_strategy_node(
             environment=environment,
             conditions=condition_for_generator,
             preexisting_conditions=preexisting,
-            intrinsic_filter_pushdown=_filter_intrinsic_pushdown_safe(group_graph, gid),
+            intrinsic_filter_pushdown=_filter_intrinsic_pushdown_safe(
+                group_graph, gid, outputs, mandatory_list
+            ),
             existence_source=any(
                 edge_kind(group_edges, gid, succ) == EdgeKind.EXISTENCE
+                for succ in group_graph.successors(gid)
+            ),
+            collapse_to_grain=all(
+                attrs[succ].derivation != Derivation.AGGREGATE
                 for succ in group_graph.successors(gid)
             ),
             complete_partials=complete_partials,

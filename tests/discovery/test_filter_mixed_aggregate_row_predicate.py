@@ -116,6 +116,8 @@ select product_name ? count(order_id) by customer_id > 1 as filtered;
 
 
 def test_filter_with_optional_preserves_non_qualifying_rows():
+    """A filter beside its key is a value of the key: `customer_id` if any of
+    the customer's rows qualifies, NULL otherwise, one row per customer."""
     rows = fetch("""
 select
     customer_id ? count(order_id) by customer_id > 1
@@ -125,8 +127,6 @@ select
     assert set(rows) == {
         (101, 101),
         (102, 102),
-        (None, 101),
-        (None, 102),
         (None, 103),
         (None, 104),
     }, rows

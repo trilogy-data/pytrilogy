@@ -1,5 +1,5 @@
 query_id = "41"
-gen_length = 2066
+gen_length = 2084
 preql_size = 1244
 comp_size = 1166
 generated_sql = """
@@ -22,12 +22,9 @@ HAVING
 highfalutin as (
 SELECT
     \"item_items\".\"I_MANUFACT\" as \"item_manufact\",
-    \"item_items\".\"I_PRODUCT_NAME\" as \"filtered_product_name\"
+    CASE WHEN \"item_items\".\"I_MANUFACT_ID\" BETWEEN 1 AND 500 THEN \"item_items\".\"I_PRODUCT_NAME\" ELSE NULL END as \"filtered_product_name\"
 FROM
-    \"memory\".\"item\" as \"item_items\"
-WHERE
-    \"item_items\".\"I_MANUFACT_ID\" BETWEEN 1 AND 500
-)
+    \"memory\".\"item\" as \"item_items\")
 SELECT
     \"highfalutin\".\"filtered_product_name\" as \"filtered_product_name\"
 FROM

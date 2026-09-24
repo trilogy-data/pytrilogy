@@ -107,6 +107,9 @@ from trilogy.core.processing.v4_helper.staged_where import (
     CROSS_ROW_DERIVATIONS,
     universal_row_bound,
 )
+from trilogy.core.processing.v4_node_generators.filter import (
+    statement_filter_population,
+)
 from trilogy.core.scope_diagnostics import (
     DerivedValueScope,
     extract_derived_value_scopes,
@@ -1177,16 +1180,26 @@ def get_query_node(
 
     # Effective partiality is a per-query fact: a `~` binding whose licensed
     # extension rows the WHERE filters out is complete for this statement.
-    # One rewrite here keeps every downstream consumer consistent.
+    # One rewrite here keeps every downstream consumer consistent. A statement
+    # showing nothing but filter values over one predicate is filtered by it
+    # (`statement_filter_population`), the same as by a WHERE.
     # Staged (`then where`) chains are excluded: intermediate stages see
     # populations the combined WHERE has not yet filtered.
     if isinstance(build_statement, BuildSelectLineage) and not (
         build_statement.where_clauses
     ):
+        outputs = list(build_statement.output_components)
         heal_pinned_partials(
             build_environment,
-            list(build_statement.output_components),
-            [build_statement.where_clause] if build_statement.where_clause else [],
+            outputs,
+            [
+                clause
+                for clause in (
+                    build_statement.where_clause,
+                    statement_filter_population(outputs),
+                )
+                if clause is not None
+            ],
         )
     # A partition source the row gate contradicts holds no usable row for this
     # statement; hiding it keeps a sibling partition's bindings from standing
