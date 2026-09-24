@@ -153,15 +153,16 @@ def test_dim_attribute_peels_through_a_filter_alias():
 
     `us_size <- store_size ? region = 'US'` reads a dim attribute (store grain)
     under a condition at the finer sale grain. Peeling `store_size` onto
-    `dim:store_id` must still restrict to stores with a US sale: store 2 is
-    EU-only and drops, store 1 keeps its unfiltered total beside its size.
+    `dim:store_id` must still evaluate the condition on the store's sales: the
+    filter is a value, so EU-only store 2 keeps its row with a NULL size, and
+    store 1 keeps its unfiltered total beside its size.
     """
     engine = Dialects.DUCK_DB.default_executor(environment=Environment())
     engine.parse_text(_FILTER_MODEL)
     rows = engine.execute_text(
         "SELECT store_id, total_amount, us_size ORDER BY store_id asc;"
     )[-1].fetchall()
-    assert [tuple(r) for r in rows] == [(1, 30.0, 100)]
+    assert [tuple(r) for r in rows] == [(1, 30.0, 100), (2, 30.0, None)]
 
 
 def test_dim_peel_aggregate_is_not_dragged_below_the_dimension_join():

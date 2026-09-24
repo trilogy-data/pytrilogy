@@ -58,6 +58,7 @@ def build_node(
     preexisting_conditions: BuildWhereClause | None = None,
     intrinsic_filter_pushdown: bool = True,
     existence_source: bool = False,
+    collapse_to_grain: bool = True,
     complete_partials: bool = True,
     history: History,
     g: ReferenceGraph,
@@ -134,6 +135,7 @@ def build_node(
             preexisting_conditions=preexisting_conditions,
             intrinsic_filter_pushdown=intrinsic_filter_pushdown,
             existence_source=existence_source,
+            collapse_to_grain=collapse_to_grain,
         )
     return fn(
         outputs,

@@ -50,8 +50,7 @@ def _planned_keyspace(monkeypatch, model: str, query: str) -> Keyspace:
 
 
 def _heal_keyspace(monkeypatch, model: str, query: str) -> Keyspace:
-    """What pin-heal asks: the statement's bindings as authored, and only the
-    WHERE's bound-column proofs."""
+    """What pin-heal asks: the statement's bindings as authored."""
     capture = _Capture()
     monkeypatch.setattr(partial_bridging, "build_keyspace", capture)
     executor = Dialects.DUCK_DB.default_executor()
@@ -142,7 +141,7 @@ def test_rollup_subtotal_is_not_a_region():
 
 
 def test_where_null_rejecting_an_absent_concept_empties_the_region(monkeypatch):
-    keyspace = _planned_keyspace(
+    keyspace = _heal_keyspace(
         monkeypatch, _DERIVED, "select customer_id, status where status = 'delivered';"
     )
     (extension,) = keyspace.extensions
@@ -360,10 +359,18 @@ def test_rowset_key_is_its_own_entity():
 
 
 def test_binding_is_complete_once_the_where_empties_the_rows_it_lacks(monkeypatch):
-    dead = _planned_keyspace(
+    dead = _heal_keyspace(
         monkeypatch, _DERIVED, "select customer_id, status where status = 'delivered';"
     )
     assert dead.binding_is_complete("orders", CUSTOMER)
+
+
+def test_a_healed_binding_leaves_the_plan_no_region(monkeypatch):
+    planned = _planned_keyspace(
+        monkeypatch, _DERIVED, "select customer_id, status where status = 'delivered';"
+    )
+    assert planned.extensions == ()
+    assert planned.in_play_spans == frozenset()
 
 
 def test_binding_stays_partial_while_the_rows_it_lacks_are_live(monkeypatch):
@@ -405,15 +412,16 @@ def test_completion_stays_live_under_a_column_both_sources_reach(monkeypatch):
     assert not unpinned.binding_is_complete("returns", ORDER)
 
 
-def test_pin_heal_reads_bound_columns_only(monkeypatch):
-    """`status` is derived: by the rule it is absent on an orderless customer,
-    but the rendered CASE still yields a value there until phase 4."""
+def test_pin_heal_reads_a_derived_null_rejection(monkeypatch):
+    """`status` is derived and absent on an orderless customer: a WHERE that
+    rejects NULL `status` empties the customer region, and orders' `~` on the
+    customer key is complete for the statement."""
     keyspace = _heal_keyspace(
         monkeypatch,
         _DERIVED,
         "select customer_id, status where status = 'delivered' and name = 'cat';",
     )
-    assert not keyspace.binding_is_complete("orders", CUSTOMER)
+    assert keyspace.binding_is_complete("orders", CUSTOMER)
 
 
 def test_partial_sources_completing_each_other_each_lack_the_others_rows(monkeypatch):
@@ -535,9 +543,9 @@ def test_where_over_a_carried_scalar_keeps_the_domain(monkeypatch):
 
 
 def test_where_over_an_absent_null_rejecting_value_empties_the_region(monkeypatch):
+    """Healed before the plan: the region is gone, not merely empty."""
     info = _planned_info(
         monkeypatch, _DERIVED, "select customer_id, status where status = 'delivered';"
     )
     assert not _domains(info)
-    (extension,) = info.keyspace.extensions
-    assert extension.is_empty
+    assert info.keyspace.extensions == ()

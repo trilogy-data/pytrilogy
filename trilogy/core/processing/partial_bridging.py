@@ -8,7 +8,7 @@ concept outside the key's functional closure NULL.
 a ``~`` binding's source has no match for, the binding is complete for this
 query. WHICH rows those are is the keyspace's answer
 (``Keyspace.binding_is_complete``, over the statement's bindings as authored
-and the WHERE's bound-column proofs); whether dropping the ``~`` is also safe
+and the WHERE's non-null proofs); whether dropping the ``~`` is also safe
 for every other merge it would license is decided here (the anchor guards).
 Dropping the modifier up front lets the fact anchor the plan with INNER star
 joins instead of extension scaffolding that is then filtered away. Running at
@@ -82,22 +82,26 @@ def _build_datasources(environment: BuildEnvironment) -> list[BuildDatasource]:
 
 
 def _proven_bound(
-    conditions: list[BuildWhereClause],
+    proven: set[str],
     datasources: list[BuildDatasource],
+    environment: BuildEnvironment,
+    keyspace: Keyspace,
 ) -> set[str]:
-    """WHERE-proven non-null addresses that are physically bound somewhere.
+    """The bound spellings the WHERE's non-null proofs stand for.
 
-    Restricting proofs to bound columns guards against tautologies: a derived
-    ``coalesce(x, 5) is not null`` proves the derivation's own address non-null
-    while saying nothing about any row's origin, so it must not count as
-    evidence that extension rows are filtered out.
+    A derived concept is NULL wherever one of its entity keys is absent, so a
+    null-rejection over it (``status = 'delivered'``, ``coalesce(amount, 0) is
+    not null``) rejects the rows its keys are absent on, exactly as a proof
+    over the keys' own bindings would; the keyspace names those keys
+    (``keys_by_address``, what the derivation READS).
     """
-    proven: set[str] = set()
-    for clause in conditions:
-        proven |= condition_proves_non_null(clause.conditional)
-    if not proven:
-        return set()
-    return proven & _bound_spellings(datasources)
+    bound = _bound_spellings(datasources)
+    out = proven & bound
+    for address in proven - bound:
+        for key in keyspace.keys_by_address.get(address, ()):
+            concept = environment.concepts.get(key)
+            out |= (_spellings(concept) if concept is not None else {key}) & bound
+    return out
 
 
 def _partition_disjoint(a: BuildDatasource, b: BuildDatasource) -> bool:
@@ -232,15 +236,12 @@ def _statement_keyspace(
     environment: BuildEnvironment,
     outputs: list[BuildConcept],
     conditions: list[BuildWhereClause],
-    proven_bound: set[str],
 ) -> Keyspace:
     """The statement's row universe over its bindings as authored. Healing
     runs before the reference graph exists (the graph holds the datasource
     objects, so they have to be final by then); the keyspace needs neither."""
     _, attrs, _ = build_concept_graph(outputs, environment, conditions)
-    return build_keyspace(
-        attrs, outputs, environment, conditions, null_rejected=proven_bound
-    )
+    return build_keyspace(attrs, outputs, environment, conditions)
 
 
 def heal_pinned_partials(
@@ -259,10 +260,15 @@ def heal_pinned_partials(
     ]
     if not partial_hosts:
         return
-    proven_bound = _proven_bound(conditions, datasources)
+    proven: set[str] = set()
+    for clause in conditions:
+        proven |= condition_proves_non_null(clause.conditional)
+    if not proven:
+        return
+    keyspace = _statement_keyspace(environment, outputs, conditions)
+    proven_bound = _proven_bound(proven, datasources, environment, keyspace)
     if not proven_bound:
         return
-    keyspace = _statement_keyspace(environment, outputs, conditions, proven_bound)
     referenced_bound = (environment.statement_authored_addresses or set()) & (
         _bound_spellings(datasources)
     )

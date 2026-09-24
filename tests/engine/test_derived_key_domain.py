@@ -85,6 +85,9 @@ join (select 1 as customer_id, 'ann' as name union all select 2, 'bob') c
 
 _ACTIVITY = """
 auto activity <- case when count(order_id) by customer_id > 0 then 'active' else 'dormant' end;
+auto late_name <- filter name where status = 'in-transit';
+auto undelivered_customer <- filter name where undelivered;
+auto big_name <- filter name where count(order_id) by customer_id > 1;
 """
 
 # already evaluated on the key's own rows (or NULL-propagating) today
@@ -161,6 +164,20 @@ HOLDS = [
     # the aggregate is grouped at a grain that determines the atom's input, so
     # the atom restated at FINAL rejects the rows its input would have lost
     "select customer_id, count(order_id) as n where activity = 'dormant'",
+    # a filter concept is a value beside other outputs (owner answer 5), and
+    # the statement's population when it is the only output
+    "select customer_id, late_name",
+    "select customer_id, undelivered_customer",
+    "select customer_id, big_name",
+    "select name, late_name",
+    "select order_id, late_name",
+    "select late_name",
+    "select undelivered_customer",
+    "select big_name",
+    # a derived null-rejection heals the `~`: the orderless customer is not a
+    # row, on either model
+    "select customer_id, amount_or_zero where amount_or_zero is not null",
+    "select customer_id, name where undelivered",
 ]
 
 OWED = [
@@ -169,6 +186,11 @@ OWED = [
     # the aggregate's grain does not determine the atom's input: restating the
     # atom above it is unsound, so the region keeps the padded plan
     "select status, count(customer_id) as n where activity = 'dormant'",
+    # the filter is a function of the customer, so the orderless customer is a
+    # row: `(NULL, 0)`. The derived model loses the count's zero-fill (above);
+    # the materialized twin reads the filter's bound input and never demands
+    # the region
+    "select late_name, count(order_id) as n",
 ]
 
 QUERIES = HOLDS + [

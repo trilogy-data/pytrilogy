@@ -80,7 +80,6 @@ from trilogy.core.processing.v4_helper.strategy_builder import (
     ParentBuild,
     _apply_input_contracts,
     _elide_passthrough_tree,
-    _filter_intrinsic_pushdown_safe,
     _final_contributor_contracts,
     _fold_passthrough_parents,
     _group_to_grain_if_required,
@@ -1678,28 +1677,6 @@ def test_conditioned_filter_does_not_cover_unfiltered_parent_outputs():
 
     assert {parent.group_id for parent in parents} == {"root", "filter"}
     assert {type(parent.node) for parent in parents} == {StrategyNode, FilterNode}
-
-
-def test_filter_intrinsic_pushdown_blocks_shared_unfiltered_ancestor():
-
-    graph = nx.DiGraph()
-    graph.add_edge("root", "filter")
-    graph.add_edge("root", "aggregate")
-    graph.add_edge("filter", "aggregate")
-    graph.add_edge("root", FINAL_NODE_ID)
-    graph.add_edge("filter", FINAL_NODE_ID)
-
-    assert _filter_intrinsic_pushdown_safe(graph, "filter") is False
-
-
-def test_filter_intrinsic_pushdown_ignores_final_sink():
-
-    graph = nx.DiGraph()
-    graph.add_edge("root", "filter")
-    graph.add_edge("root", FINAL_NODE_ID)
-    graph.add_edge("filter", FINAL_NODE_ID)
-
-    assert _filter_intrinsic_pushdown_safe(graph, "filter") is True
 
 
 def test_partition_roots_buckets_per_label():

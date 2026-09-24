@@ -502,11 +502,7 @@ def build_keyspace(
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     conditions: list[BuildWhereClause],
-    null_rejected: set[str] | None = None,
 ) -> Keyspace:
-    """`null_rejected` overrides what the WHERE is read to reject: pin-heal
-    trusts bound columns only, since a derivation over an absent entity still
-    renders a value until phase 4 places it by region."""
     licensed = _has_extension_license(_build_datasources(environment))
     facts = _model_facts(environment) if licensed else None
     canonical = facts.canonical if facts else {}
@@ -543,7 +539,7 @@ def build_keyspace(
     )
     witnesses = _witnesses(entities, facts)
     connected = _connected(entities, facts)
-    rejected = _null_rejected(conditions) if null_rejected is None else null_rejected
+    rejected = _null_rejected(conditions)
     rejected_roots = frozenset(canonical.get(a, a) for a in rejected)
     base_sources = witnesses.get(entities, [])
     base_completes, base_completions = _completions(
