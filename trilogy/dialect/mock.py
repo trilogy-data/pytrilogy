@@ -1475,7 +1475,9 @@ def _mock_targets(
     for datasource in synthesis_order(
         [ds for ds in targets if ds not in rollups], mock_manager.canon
     ):
-        mock_datasource(datasource, mock_manager, executor, address_for(datasource))
+        mock_datasource(
+            datasource, mock_manager, executor, address_for(datasource), environment
+        )
         available.add(datasource.identifier)
     pending = list(rollups)
     while pending:
@@ -1492,7 +1494,11 @@ def _mock_targets(
                     datasource.identifier,
                 )
                 mock_datasource(
-                    datasource, mock_manager, executor, address_for(datasource)
+                    datasource,
+                    mock_manager,
+                    executor,
+                    address_for(datasource),
+                    environment,
                 )
                 available.add(datasource.identifier)
             break
@@ -1557,11 +1563,24 @@ def derive_datasource(
         f"CREATE OR REPLACE TABLE {address} ({columns}) AS "
         f'SELECT * FROM ({sql.strip().rstrip(";")})'
     )
-    datasource.address = Address(location=address)
+    _repoint(environment, datasource, address)
+
+
+def _repoint(environment: Environment, datasource: Datasource, address: str) -> None:
+    """Swap in a repointed copy rather than editing the datasource, which a
+    bare import shares with the process-wide import cache."""
+    mocked = datasource.model_copy(update={"address": Address(location=address)})
+    for key, value in list(environment.datasources.items()):
+        if value is datasource:
+            environment.datasources[key] = mocked
 
 
 def mock_datasource(
-    datasource: Datasource, manager: MockManager, executor, address: str
+    datasource: Datasource,
+    manager: MockManager,
+    executor,
+    address: str,
+    environment: Environment,
 ):
     table = manager.create_mock_table(datasource)
 
@@ -1572,5 +1591,4 @@ def mock_datasource(
     executor.execute_write_sql(
         f"""CREATE OR REPLACE TABLE {address} AS SELECT * FROM mock_tbl"""
     )
-    # overwrite the address since we've mangled the name
-    datasource.address = Address(location=address)
+    _repoint(environment, datasource, address)

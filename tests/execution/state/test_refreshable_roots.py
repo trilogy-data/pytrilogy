@@ -31,6 +31,7 @@ def _executor_with_refreshable_root(probe_path: str, refresh_path: str):
         """)
     e.execute_raw_sql("CREATE TABLE raw_table (id INTEGER, value VARCHAR)")
     e.execute_raw_sql("INSERT INTO raw_table VALUES (1, 'a'), (2, 'b')")
+    e.connection.commit()
 
     raw = e.environment.datasources["raw"]
     e.environment.datasources["raw"] = raw.model_copy(
