@@ -9,6 +9,7 @@ from trilogy.constants import logger
 from trilogy.core.enums import Purpose
 from trilogy.core.models.author import ConceptRef
 from trilogy.core.models.build import Factory
+from trilogy.core.models.core import DataType
 from trilogy.core.models.datasource import (
     Address,
     ColumnAssignment,
@@ -221,24 +222,60 @@ def is_missing_local_file(datasource: Datasource) -> bool:
     return datasource.address.is_missing_locally
 
 
+def _is_table_address(datasource: Datasource) -> bool:
+    return not (
+        isinstance(datasource.address, Address)
+        and (datasource.address.is_file or datasource.address.is_query)
+    )
+
+
+def _table_columns(
+    datasource: Datasource, executor: Executor, cache: ColumnStatsCache | None
+) -> dict[str, DataType] | None:
+    table_name = datasource.safe_address
+    if cache is None:
+        return executor.generator.get_table_columns(executor, table_name)
+    hit, actual = cache.get_columns(table_name)
+    if not hit:
+        actual = executor.generator.get_table_columns(executor, table_name)
+        cache.set_columns(table_name, actual)
+    return actual
+
+
+def is_missing_table(
+    datasource: Datasource,
+    executor: Executor,
+    cache: ColumnStatsCache | None = None,
+) -> bool:
+    """Return True if a table-addressed datasource has no table behind it.
+
+    The information_schema lookup can't resolve a schema-qualified or quoted
+    address, so a miss there is only confirmed by the engine itself rejecting a
+    zero-row read as a missing source."""
+    if not _is_table_address(datasource):
+        return False
+    if _table_columns(datasource, executor, cache) is not None:
+        return False
+    table_ref = _resolve_table_ref(datasource, executor)
+    try:
+        executor.execute_raw_sql(f"SELECT 1 FROM {table_ref} WHERE 1 = 0").fetchall()
+    except Exception as e:
+        if is_missing_source_error(e, executor.generator):
+            executor.connection.rollback()
+            return True
+        raise
+    return False
+
+
 def has_schema_mismatch(
     datasource: Datasource,
     executor: Executor,
     cache: ColumnStatsCache | None = None,
 ) -> bool:
     """Return True if the existing table's columns (names or types) differ from the definition."""
-    if isinstance(datasource.address, Address) and (
-        datasource.address.is_file or datasource.address.is_query
-    ):
+    if not _is_table_address(datasource):
         return False
-    table_name = datasource.safe_address
-    if cache is not None:
-        hit, actual = cache.get_columns(table_name)
-        if not hit:
-            actual = executor.generator.get_table_columns(executor, table_name)
-            cache.set_columns(table_name, actual)
-    else:
-        actual = executor.generator.get_table_columns(executor, table_name)
+    actual = _table_columns(datasource, executor, cache)
     if actual is None:
         return False
     expected = {}
@@ -256,8 +293,6 @@ def has_schema_mismatch(
     if set(actual) != set(expected):
         return True
     # Check types where the dialect can resolve them (skip UNKNOWN — can't map the type)
-    from trilogy.core.models.core import DataType
-
     return any(
         actual[name] != expected[name]
         for name in expected

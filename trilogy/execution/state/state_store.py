@@ -48,6 +48,7 @@ from trilogy.execution.state.watermarks import (
     get_unique_key_hash_watermarks,
     has_schema_mismatch,
     is_missing_local_file,
+    is_missing_table,
     run_freshness_probe,
     run_refresh_script,
     within_allowed_lag,
@@ -584,6 +585,13 @@ class BaseStateStore:
             return StaleAsset(
                 datasource_id=ds_id,
                 reason="file not found",
+                filters=UpdateKeys(),
+            )
+
+        if is_missing_table(ds, executor, cache=self._cache):
+            return StaleAsset(
+                datasource_id=ds_id,
+                reason="table not found",
                 filters=UpdateKeys(),
             )
 

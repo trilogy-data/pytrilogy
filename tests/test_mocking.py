@@ -1293,3 +1293,25 @@ def test_mock_reports_a_where_clause_it_cannot_honour(caplog):
     with caplog.at_level(logging.WARNING, logger="trilogy"):
         executor.execute_text(_UNHONOURABLE_MODEL)
     assert "cannot honour part of the `where` on datasource events" in caplog.text
+
+
+def _parse_bare_import(path):
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.environment.working_path = path
+    executor.parse_text("import source;")
+    return executor
+
+
+def test_mocking_an_import_leaves_later_parses_untouched(tmp_path):
+    from trilogy.dialect.mock import mock_environment
+
+    (tmp_path / "source.preql").write_text(
+        "key x int;\n\ndatasource x_source (x) grain (x) address x_table;\n",
+        encoding="utf-8",
+    )
+    mocked = _parse_bare_import(tmp_path)
+    mock_environment(mocked.environment, mocked, address_for=lambda ds: "mock_x")
+    assert mocked.environment.datasources["x_source"].safe_address == "mock_x"
+
+    fresh = _parse_bare_import(tmp_path).environment.datasources["x_source"]
+    assert fresh.safe_address == "x_table"

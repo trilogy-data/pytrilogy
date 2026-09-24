@@ -282,16 +282,17 @@ def require_a_source_of_truth(
     """Fail a refresh that found nothing to do over an asset that is empty and
     has no source of truth to fill it from.
 
-    With no ``root datasource`` there is no expected side, so everything reads
-    fresh — including a target that has never been built. "All assets are up to
-    date" is then false in a way that looks exactly like success.
+    With no ``root datasource`` there is no expected side, so every existing
+    asset reads fresh, including a target that holds no rows. "All assets are
+    up to date" is then false in a way that looks exactly like success. (A
+    target whose table is missing is stale on its own and never reaches here.)
 
     Narrow on purpose; every condition must hold. Callers only reach here with
     an **empty plan**, so ``--force`` never does. Beyond that: no root is
     declared anywhere; some asset declares an incremental/freshness key (which
     is what marks it something refresh maintains, as opposed to an inline-query
     source, which is not a table anyone builds); and that asset observed no
-    watermark value, i.e. it is missing or empty. A populated table that merely
+    watermark value, i.e. it is empty. A populated table that merely
     cannot be judged is uninformative, not a lie, and stays a plain no-op.
 
     ``trilogy state`` never calls this — observing what exists is useful with or
