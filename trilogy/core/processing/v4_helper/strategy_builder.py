@@ -98,6 +98,7 @@ from .projection import (
     renderable_addresses,
     row_lineage_arguments,
     satisfiable_outputs,
+    statement_filter_population,
     widen_projection,
 )
 from .source_planning import SourceRequest, plan_source
@@ -2141,10 +2142,6 @@ def _filter_intrinsic_pushdown_safe(
     filter, read by an aggregate or beside a sibling, stays a per-row CASE.
     And not when a consumer also reads an unfiltered ancestor of it, which the
     narrowed stream would then pair against."""
-    from trilogy.core.processing.v4_node_generators.filter import (  # cycle
-        statement_filter_population,
-    )
-
     if statement_filter_population(mandatory_list) is None:
         return False
     mandatory = {c.address for c in mandatory_list}

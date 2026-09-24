@@ -8,6 +8,7 @@ from trilogy.core.models.build import (
     BuildConceptArgs,
     BuildFilterItem,
     BuildRowsetItem,
+    BuildWhereClause,
 )
 from trilogy.core.models.build_environment import (
     BuildEnvironment,
@@ -16,6 +17,7 @@ from trilogy.core.models.build_environment import (
 from trilogy.core.processing.nodes import SelectNode, StrategyNode, UnionNode
 
 from .constants import ROW_STREAM_DERIVATIONS
+from .functional_dependency import build_fd_determines
 
 
 def parent_output_addresses(node: StrategyNode) -> set[str]:
@@ -261,8 +263,6 @@ def decided_at_output_grain(
     determining it, so the rows it rejects above the aggregate are the rows
     the aggregate's input would have lost. A launch-day filter under a
     per-month count is not: the count must see the filter."""
-    from .functional_dependency import build_fd_determines
-
     for concept in outputs:
         if reads_rows_only(concept):
             continue
@@ -270,3 +270,41 @@ def decided_at_output_grain(
         if not grain or not build_fd_determines(environment, grain, address):
             return False
     return True
+
+
+def _has_concept_existence(where: BuildWhereClause) -> bool:
+    """True only for a REAL subselect arg (`x in <other column/select>`), one
+    whose existence side carries concepts. A literal IN-list (`month in (1,2,3,4)`)
+    is also modeled as a subselect comparison but has no existence concepts, so it
+    is a plain scalar predicate safe to push into a WHERE."""
+    return any(arg for tup in (where.existence_arguments or ()) for arg in tup)
+
+
+def shared_filter_predicate(concepts: list[BuildConcept]) -> BuildWhereClause | None:
+    """The one predicate every filter concept among `concepts` is gated on, or
+    None. Distinct predicates are fused conditional columns (`price ? channel =
+    'STORE'`, `price ? channel = 'WEB'`), each its own CASE over the shared
+    scan: AND-ing them into one WHERE would null out every row. A predicate
+    with an existence arg needs its subselect source wired as a side parent,
+    which no WHERE push does."""
+    distinct: dict[str, BuildWhereClause] = {}
+    for c in concepts:
+        if isinstance(c.lineage, BuildFilterItem):
+            distinct.setdefault(str(c.lineage.where.conditional), c.lineage.where)
+    if len(distinct) != 1:
+        return None
+    where = next(iter(distinct.values()))
+    return None if _has_concept_existence(where) else where
+
+
+def statement_filter_population(
+    mandatory_list: list[BuildConcept],
+) -> BuildWhereClause | None:
+    """When every output a statement shows is a filter value over one
+    predicate, a NULL row is one nothing would keep: `gen_filter` pushes the
+    predicate into its WHERE, and the keyspace and pin-heal read it as the
+    statement's own, so a region those rows are absent on is emptied and the
+    `~` it would pad for is healed, never padded back."""
+    if not all(isinstance(c.lineage, BuildFilterItem) for c in mandatory_list):
+        return None
+    return shared_filter_predicate(mandatory_list)

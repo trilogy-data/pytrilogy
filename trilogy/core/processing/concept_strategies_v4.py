@@ -67,7 +67,7 @@ from trilogy.core.processing.v4_helper.functional_dependency import (
 )
 from trilogy.core.processing.v4_helper.keyspace import build_keyspace
 from trilogy.core.processing.v4_helper.keyspace_audit import audit_plan
-from trilogy.core.processing.v4_node_generators.filter import (
+from trilogy.core.processing.v4_helper.projection import (
     statement_filter_population,
 )
 from trilogy.core.processing.v4_node_generators.multiselect import gen_multiselect
@@ -562,7 +562,6 @@ def _build_from_graph(
         datasource_columns,
         environment=environment,
         staged_conditions=staged_conditions,
-        demanded_spans=keyspace.output_demanded_spans,
         keyspace=keyspace,
     )
     # `build_strategy_node` scopes each group's extent routing on the shared

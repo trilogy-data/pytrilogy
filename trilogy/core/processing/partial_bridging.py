@@ -40,12 +40,15 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import EnumType
 from trilogy.core.processing.condition_utility import (
-    condition_proves_non_null,
     conditions_mutually_exclusive,
     gate_allowed_values,
 )
 from trilogy.core.processing.v4_helper.concept_graph import build_concept_graph
-from trilogy.core.processing.v4_helper.keyspace import build_keyspace
+from trilogy.core.processing.v4_helper.keyspace import (
+    build_datasources,
+    build_keyspace,
+    null_rejected,
+)
 from trilogy.core.processing.v4_helper.models import Keyspace
 
 
@@ -73,12 +76,6 @@ def _structural_partial(ds: BuildDatasource, column: BuildColumnAssignment) -> b
         Modifier.PARTIAL in column.modifiers
         and column.concept.address in ds.column_level_partial_addresses
     )
-
-
-def _build_datasources(environment: BuildEnvironment) -> list[BuildDatasource]:
-    return [
-        ds for ds in environment.datasources.values() if isinstance(ds, BuildDatasource)
-    ]
 
 
 def _proven_bound(
@@ -254,15 +251,13 @@ def heal_pinned_partials(
     Copy-on-write: affected datasources are replaced in the environment's (per-
     statement) mapping; the shared build-cache objects are never mutated.
     """
-    datasources = _build_datasources(environment)
+    datasources = build_datasources(environment)
     partial_hosts = [
         ds for ds in datasources if any(_structural_partial(ds, c) for c in ds.columns)
     ]
     if not partial_hosts:
         return
-    proven: set[str] = set()
-    for clause in conditions:
-        proven |= condition_proves_non_null(clause.conditional)
+    proven = null_rejected(conditions)
     if not proven:
         return
     keyspace = _statement_keyspace(environment, outputs, conditions)
