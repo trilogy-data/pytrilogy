@@ -54,22 +54,28 @@ def _make_engine(sf: float, subdir: str) -> Executor:
     return engine
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="package")
 def engine():
-    yield _make_engine(sf=1, subdir="memory")
+    engine = _make_engine(sf=1, subdir="memory")
+    yield engine
+    engine.close()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="package")
 def engine_sf01():
     """sf=0.1 dataset for tests where the sf=1 reference PRAGMA hangs/OOMs."""
-    yield _make_engine(sf=0.1, subdir="memory_sf01")
+    engine = _make_engine(sf=0.1, subdir="memory_sf01")
+    yield engine
+    engine.close()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="package")
 def engine_sf001():
     """sf=0.01 dataset for tests where the reference PRAGMA is slow even at sf=0.1
     (e.g. query 72's non-equi inventory x catalog_sales join)."""
-    yield _make_engine(sf=0.01, subdir="memory_sf001")
+    engine = _make_engine(sf=0.01, subdir="memory_sf001")
+    yield engine
+    engine.close()
 
 
 @pytest.fixture(autouse=True, scope="session")

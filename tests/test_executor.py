@@ -1,8 +1,11 @@
+import gc
+import weakref
 from pathlib import Path
 
 from trilogy import Dialects, parse
 from trilogy.core.models.environment import Environment
 from trilogy.dialect.results import MockResult, MockResultRow
+from trilogy.parsing.render import Renderer
 
 
 def test_file_parsing():
@@ -136,3 +139,15 @@ def test_generate_sql_from_text_covers_every_executable_statement():
     assert from_text == from_statements
     assert len(from_text) == 2
     assert "CREATE OR REPLACE TABLE" in from_text[0]
+
+
+def test_executor_is_released_after_dispatching():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_query("select 1 -> one;")
+    executor.generate_sql("select 1 -> one;")
+    renderer = Renderer()
+    renderer.to_string(executor.environment)
+    refs = [weakref.ref(executor), weakref.ref(renderer)]
+    del executor, renderer
+    gc.collect()
+    assert [r() for r in refs] == [None, None]

@@ -28,6 +28,11 @@ from trilogy.core.models.datasource import ColumnAssignment, Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.scripts import display_core
 
+# On Windows OpenBLAS commits a buffer per thread at numpy import (~520MB on a
+# 16-core box vs ~40MB single-threaded) and no test does heavy linear algebra.
+# numpy is first imported lazily during collection, after this runs.
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+
 #: Ambient terminal state the rich consoles read. `COLUMNS`/`LINES` size them,
 #: `FORCE_COLOR`/`CLICOLOR_FORCE` make them emit ANSI, and
 #: `TRILOGY_OUTPUT_FORMAT` swaps rendering for JSON events.

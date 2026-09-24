@@ -55,15 +55,19 @@ def _make_engine(sf: float, subdir: str) -> Executor:
     return engine
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="package")
 def engine():
-    yield _make_engine(sf=0.1, subdir="memory")
+    engine = _make_engine(sf=0.1, subdir="memory")
+    yield engine
+    engine.close()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="package")
 def engine_sf001():
     """sf=0.01 dataset for tests where the sf=0.1 reference is slow."""
-    yield _make_engine(sf=0.01, subdir="memory_sf001")
+    engine = _make_engine(sf=0.01, subdir="memory_sf001")
+    yield engine
+    engine.close()
 
 
 @pytest.fixture(autouse=True, scope="session")
