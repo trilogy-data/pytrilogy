@@ -1275,7 +1275,6 @@ def _add_region_domain_buckets(
     environment: BuildEnvironment,
     keyspace: Keyspace,
     condition_arg_addresses: frozenset[str],
-    demanded_spans: frozenset[str],
     mandatory_list: list[BuildConcept],
 ) -> None:
     """Give a live extension region its own ROOT bucket when the statement
@@ -1292,7 +1291,7 @@ def _add_region_domain_buckets(
     regions are disjoint, so two families' rows never pair.
 
     Only a region the statement asks rows of: an output is a function of what
-    its span reaches (`demanded_spans`, the election's question), or an
+    its span reaches (`output_demanded_spans`, the election's question), or an
     aggregate counts them. `select order_id, status where name = 'ann'` asks
     for orders; the customer with none is not a row of it."""
     for region in keyspace.live_regions:
@@ -1332,7 +1331,12 @@ def _add_region_domain_buckets(
                 not sources
                 or not carried
                 or not _region_is_demanded(
-                    label, region, keyspace, demanded_spans, concept_attrs, environment
+                    label,
+                    region,
+                    keyspace,
+                    keyspace.output_demanded_spans,
+                    concept_attrs,
+                    environment,
                 )
                 or not (
                     where_over_region
@@ -3417,7 +3421,6 @@ def build_group_graph(
     *,
     environment: BuildEnvironment,
     staged_conditions: list[BuildWhereClause] | None = None,
-    demanded_spans: frozenset[str] = frozenset(),
     keyspace: Keyspace | None = None,
 ) -> tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs]]:
     """Collapse compatible concepts into groups and append a single FINAL sink.
@@ -3454,6 +3457,8 @@ def build_group_graph(
     projected_scalar_root_args = _projected_scalar_root_args(
         mandatory_list, _grouping_keys(buckets)
     )
+    keyspace = keyspace or Keyspace()
+    demanded_spans = keyspace.output_demanded_spans
     _split_root_dimension_clusters(
         buckets,
         primary_group,
@@ -3466,14 +3471,12 @@ def build_group_graph(
         _finer_filter_grains(conditions),
         demanded_spans,
     )
-    keyspace = keyspace or Keyspace()
     _add_region_domain_buckets(
         buckets,
         concept_attrs,
         environment,
         keyspace,
         condition_arg_addresses,
-        demanded_spans,
         mandatory_list,
     )
     d1_calc_roots_by_stage, d1_subgraph = _d1_calc_subgraph(
@@ -3608,7 +3611,7 @@ def build_group_graph(
         relation_edge_members=relation_edge_members,
     )
     attrs[FINAL_NODE_ID].extent_ownership = elect_extent_owners(
-        group_graph, attrs, environment, demanded_spans, keyspace
+        group_graph, attrs, environment, keyspace
     )
     return group_graph, group_edges, attrs
 

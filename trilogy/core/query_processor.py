@@ -103,12 +103,12 @@ from trilogy.core.processing.partial_bridging import (
     heal_pinned_partials,
 )
 from trilogy.core.processing.utility import unrenderable_outputs
+from trilogy.core.processing.v4_helper.projection import (
+    statement_filter_population,
+)
 from trilogy.core.processing.v4_helper.staged_where import (
     CROSS_ROW_DERIVATIONS,
     universal_row_bound,
-)
-from trilogy.core.processing.v4_node_generators.filter import (
-    statement_filter_population,
 )
 from trilogy.core.scope_diagnostics import (
     DerivedValueScope,

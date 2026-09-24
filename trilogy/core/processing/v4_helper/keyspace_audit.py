@@ -1,13 +1,9 @@
-"""What the keyspace says the plan still gets wrong
-(docs/keyspace_phase_plan.md, phase 2).
+"""What the keyspace says the plan still gets wrong (docs/keyspace_phase_plan.md).
 
 Inert unless `TRILOGY_KEYSPACE_AUDIT` names a file; then every plan appends one
 JSON line per finding. Nothing here feeds a plan. `owner_pads`: a derivation
-evaluated on rows of a region it is absent on (what phase 4 left). `where`: a
-region that needed a domain and got none, because no host delivers the WHERE
-to the domain's rows (phase 5's worklist). The
-`demand` and `heal` checks went with the derivations they audited, once the
-election and pin-heal started reading the keyspace.
+evaluated on rows of a region it is absent on. `where`: a region that needed a
+domain and got none, because no host delivers the WHERE to the domain's rows.
 """
 
 from __future__ import annotations
@@ -17,16 +13,12 @@ import os
 from typing import Any
 
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation
 from trilogy.core.models.build import BuildConcept
 
-from .constants import FINAL_NODE_ID
+from .constants import FINAL_NODE_ID, ROW_STREAM_DERIVATIONS
 from .models import ConceptAttrs, GroupAttrs, Keyspace, Region
 
 AUDIT_PATH = os.environ.get("TRILOGY_KEYSPACE_AUDIT")
-
-# evaluated per row of the stream they read, so padding reaches them as input
-_ROW_STREAM = frozenset({Derivation.BASIC, Derivation.FILTER, Derivation.WINDOW})
 
 
 def _emit(kind: str, **details: Any) -> None:
@@ -43,9 +35,13 @@ def _audit_owner(
     concept_attrs: dict[str, ConceptAttrs],
     outputs: list[str],
 ) -> None:
-    """Derivations the plan evaluates on rows of a region they are ABSENT on
-    (phase 4's worklist): they read the span owner's padded row stream."""
-    derived = {a.address for a in concept_attrs.values() if a.derivation in _ROW_STREAM}
+    """Derivations the plan evaluates on rows of a region they are ABSENT on:
+    they read the span owner's padded row stream."""
+    derived = {
+        a.address
+        for a in concept_attrs.values()
+        if a.derivation in ROW_STREAM_DERIVATIONS
+    }
     ownership = attrs[FINAL_NODE_ID].extent_ownership
     if ownership is None:
         return

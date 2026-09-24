@@ -99,7 +99,7 @@ def _evict_facts(key: int, _dead: ReferenceType) -> None:
     _FACTS_CACHE.pop(key, None)
 
 
-def _build_datasources(environment: BuildEnvironment) -> list[BuildDatasource]:
+def build_datasources(environment: BuildEnvironment) -> list[BuildDatasource]:
     return [
         ds for ds in environment.datasources.values() if isinstance(ds, BuildDatasource)
     ]
@@ -264,7 +264,7 @@ def _compute_facts(
 
 
 def _model_facts(environment: BuildEnvironment) -> _ModelFacts:
-    datasources = _build_datasources(environment)
+    datasources = build_datasources(environment)
     cache_key = id(environment)
     cached = _FACTS_CACHE.get(cache_key)
     if (
@@ -486,7 +486,7 @@ def _region_order(item: tuple[frozenset[str], object]) -> list[str]:
     return sorted(item[0])
 
 
-def _null_rejected(conditions: list[BuildWhereClause]) -> set[str]:
+def null_rejected(conditions: list[BuildWhereClause]) -> set[str]:
     out: set[str] = set()
     for clause in conditions:
         out |= condition_proves_non_null(clause.conditional)
@@ -503,7 +503,7 @@ def build_keyspace(
     environment: BuildEnvironment,
     conditions: list[BuildWhereClause],
 ) -> Keyspace:
-    licensed = _has_extension_license(_build_datasources(environment))
+    licensed = _has_extension_license(build_datasources(environment))
     facts = _model_facts(environment) if licensed else None
     canonical = facts.canonical if facts else {}
     identifying = facts.identifying if facts else frozenset()
@@ -521,16 +521,12 @@ def build_keyspace(
         for address in declared
     }
     entities: frozenset[str] = frozenset().union(*keys_by_address.values())
-    output_entities: frozenset[str] = frozenset().union(
-        *(keys_by_address.get(c.address, frozenset()) for c in mandatory_list)
-    )
     base = Region(present=entities)
     if facts is None or not entities:
         return Keyspace(
             entities=entities,
             regions=(base,),
             keys_by_address=keys_by_address,
-            output_entities=output_entities,
         )
     requested_roots = frozenset(
         canonical.get(a.address, a.address)
@@ -539,7 +535,7 @@ def build_keyspace(
     )
     witnesses = _witnesses(entities, facts)
     connected = _connected(entities, facts)
-    rejected = _null_rejected(conditions)
+    rejected = null_rejected(conditions)
     rejected_roots = frozenset(canonical.get(a, a) for a in rejected)
     base_sources = witnesses.get(entities, [])
     base_completes, base_completions = _completions(
@@ -593,7 +589,6 @@ def build_keyspace(
         entities=entities,
         regions=tuple(regions),
         keys_by_address=keys_by_address,
-        output_entities=output_entities,
         outputs=tuple(c.address for c in mandatory_list),
         span_reach={
             span: frozenset(facts.reach_of(canonical.get(span, span)) & entities)

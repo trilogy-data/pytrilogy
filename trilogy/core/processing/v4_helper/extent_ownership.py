@@ -47,14 +47,12 @@ def elect_extent_owners(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     environment: BuildEnvironment,
-    spans: frozenset[str],
-    keyspace: Keyspace | None = None,
+    keyspace: Keyspace,
 ) -> ExtentOwnership:
-    """`spans` are the ones the statement asks extension rows of
+    """Elect an owner for each span the statement asks extension rows of
     (`Keyspace.output_demanded_spans`). A `~` FK that only shows up as a join
     axis is not among them, and with none the whole mechanism is inert (the
     common case: TPC-DS and TPC-H rarely demand one)."""
-    keyspace = keyspace or Keyspace()
     # a region with a domain group of its own is demanded by that alone: a
     # derivation absent on it is an output no lookup from the span reaches
     domains = {
@@ -62,7 +60,7 @@ def elect_extent_owners(
         for gid, a in attrs.items()
         if a.extent_spans and (region := keyspace.region_of(a.extent_spans))
     }
-    spans = spans.union(*(r.spans for r in domains.values()))
+    spans = keyspace.output_demanded_spans.union(*(r.spans for r in domains.values()))
     if not spans:
         return ExtentOwnership()
     exposes: dict[str, frozenset[str]] = {}

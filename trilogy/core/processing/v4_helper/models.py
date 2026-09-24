@@ -169,8 +169,6 @@ class Keyspace:
     regions: tuple[Region, ...] = ()
     # requested concept address -> the entity keys it is a function of
     keys_by_address: dict[str, frozenset[str]] = field(default_factory=dict)
-    # entity keys an OUTPUT is a function of
-    output_entities: frozenset[str] = frozenset()
     outputs: tuple[str, ...] = ()
     # span -> the entities a keyed lookup from that span alone arrives at
     span_reach: dict[str, frozenset[str]] = field(default_factory=dict)
