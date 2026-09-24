@@ -747,6 +747,28 @@ def test_serve_nested_csv_file():
         assert "2024-01-01,100" in response.text
 
 
+@pytest.fixture
+def stop_servers(monkeypatch):
+    """Ends a `serve --timeout` run once the test is done with it, instead of
+    idling out the rest of the timeout."""
+    import uvicorn
+
+    servers: list[uvicorn.Server] = []
+    original_init = uvicorn.Server.__init__
+
+    def recording_init(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        servers.append(self)
+
+    monkeypatch.setattr(uvicorn.Server, "__init__", recording_init)
+
+    def stop():
+        for server in servers:
+            server.should_exit = True
+
+    return stop
+
+
 def _wait_for_server(base_url, get_cli_result, thread, max_wait=10.0):
     """Poll until the server answers. On failure, surface the CLI thread's
     output/exception instead of a bare "did not start" so CI is debuggable."""
@@ -845,7 +867,7 @@ def test_serve_cli():
     assert cli_result.exit_code == 0
 
 
-def test_serve_cli_uses_trilogy_toml_connection():
+def test_serve_cli_uses_trilogy_toml_connection(stop_servers):
     """Serving a directory whose trilogy.toml has [serve.connection] should
     surface that connection through /index.json."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -900,13 +922,14 @@ def test_serve_cli_uses_trilogy_toml_connection():
             "options": {"account": "acme", "warehouse": "wh"},
         }
 
+        stop_servers()
         thread.join(timeout=20.0)
         assert cli_result is not None
         if cli_result.exception:
             raise cli_result.exception
 
 
-def test_serve_cli_advertises_bigquery_project_from_engine_config():
+def test_serve_cli_advertises_bigquery_project_from_engine_config(stop_servers):
     """A plain `trilogy init`-shaped BigQuery config — no [serve.connection] —
     should hand the client the project it needs, not an optionless bigquery
     connection it cannot query with."""
@@ -961,6 +984,7 @@ def test_serve_cli_advertises_bigquery_project_from_engine_config():
             "options": {"projectId": "preqldata"},
         }
 
+        stop_servers()
         thread.join(timeout=20.0)
         assert cli_result is not None
         if cli_result.exception:

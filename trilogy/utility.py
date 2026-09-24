@@ -2,6 +2,8 @@ import hashlib
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from functools import partial
+from functools import singledispatchmethod as _stdlib_singledispatchmethod
 from os import PathLike
 from typing import TextIO, TypeVar, cast
 
@@ -65,3 +67,18 @@ def unique(inputs: list[UniqueArg], property: str | Callable) -> list[UniqueArg]
         dedupe.add(key)
         final.append(input)
     return final
+
+
+def _dispatch_bound(dispatch: Callable, obj, cls, arg, *args, **kwargs):
+    return dispatch(arg.__class__).__get__(obj, cls)(arg, *args, **kwargs)
+
+
+class singledispatchmethod(_stdlib_singledispatchmethod):
+    """`functools.singledispatchmethod` without its per-instance method cache.
+
+    On CPython 3.12.8 and 3.13.0-3.13.1 that cache is a WeakKeyDictionary whose
+    values close over their own key, so every instance that ever called the
+    method is kept alive for the life of the process (gh-127750)."""
+
+    def __get__(self, obj, cls=None):
+        return partial(_dispatch_bound, self.dispatcher.dispatch, obj, cls)

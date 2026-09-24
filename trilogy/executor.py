@@ -8,7 +8,6 @@ import uuid
 from collections.abc import Callable, Generator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import replace as dc_replace
-from functools import singledispatchmethod
 from pathlib import Path
 from typing import Any, TypeVar, cast
 
@@ -105,7 +104,7 @@ from trilogy.hooks.base_hook import BaseHook
 from trilogy.parser import parse_text
 from trilogy.render import get_dialect_generator
 from trilogy.staging import StagingConfig
-from trilogy.utility import safe_open
+from trilogy.utility import safe_open, singledispatchmethod
 
 ValidationDatasourceT = TypeVar("ValidationDatasourceT", Datasource, BuildDatasource)
 

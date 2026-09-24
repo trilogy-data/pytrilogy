@@ -3,7 +3,6 @@ from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime
-from functools import singledispatchmethod
 from pathlib import Path
 from typing import Any
 
@@ -111,6 +110,7 @@ from trilogy.core.statements.author import (
 )
 from trilogy.parsing.pretty import Break, DocPart
 from trilogy.parsing.pretty import render as pretty_render
+from trilogy.utility import singledispatchmethod
 
 QUERY_TEMPLATE = Template(
     """{% for where in wheres %}{{ 'where' if loop.first else 'then where' }}
