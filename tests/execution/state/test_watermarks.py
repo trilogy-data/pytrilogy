@@ -411,7 +411,7 @@ def test_last_update_time_watermarks(duckdb_engine: Executor):
 
     assert "update_time" in watermarks.keys
     assert watermarks.keys["update_time"].type == UpdateKeyType.UPDATE_TIME
-    assert watermarks.keys["update_time"].value is not None
+    assert watermarks.keys["update_time"].value is None
 
 
 def test_incremental_key_watermarks(duckdb_engine: Executor):
@@ -1763,6 +1763,54 @@ def test_get_stale_assets_missing_parquet(tmp_path):
     assert len(stale) == 1
     assert stale[0].datasource_id == "out"
     assert stale[0].reason == "file not found"
+
+
+MISSING_TABLE_MODELS = {
+    "aggregate": """
+        key row_id int;
+        property row_id.val int;
+        metric total <- sum(val);
+        root datasource src (row_id, val) grain (row_id)
+        query '''SELECT 1 as row_id, 2 as val''';
+        datasource out (total) address {address};
+        """,
+    "keyed": """
+        key row_id int;
+        root datasource src (row_id) grain (row_id)
+        query '''SELECT 1 as row_id''';
+        datasource out (row_id) grain (row_id) address {address};
+        """,
+}
+
+
+@pytest.mark.parametrize("model", MISSING_TABLE_MODELS)
+def test_get_stale_assets_missing_table(model: str):
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(MISSING_TABLE_MODELS[model].format(address="out_table"))
+
+    stale = BaseStateStore().get_stale_assets(
+        executor.environment, executor, root_assets={"src"}
+    )
+
+    assert [(s.datasource_id, s.reason) for s in stale] == [("out", "table not found")]
+
+
+@pytest.mark.parametrize("model", MISSING_TABLE_MODELS)
+def test_get_stale_assets_existing_schema_qualified_table(model: str):
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_raw_sql("CREATE SCHEMA analytics")
+    executor.execute_raw_sql(
+        "CREATE TABLE analytics.out_table AS SELECT 1 as row_id, 2 as total"
+    )
+    executor.execute_text(
+        MISSING_TABLE_MODELS[model].format(address="analytics.out_table")
+    )
+
+    stale = BaseStateStore().get_stale_assets(
+        executor.environment, executor, root_assets={"src"}
+    )
+
+    assert all(s.reason != "table not found" for s in stale)
 
 
 def _write_corrupt_parquet(executor: Executor, path: str, kind: str) -> None:

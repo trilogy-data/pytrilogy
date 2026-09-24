@@ -543,7 +543,7 @@ import base;
     assert result.exit_code == 2, result.output
     assert confirm.call_count == 1
     assert "target_events_table" in result.output
-    assert "incremental key 'local.event_ts' behind" in result.output
+    assert "table not found" in result.output
     assert "Asset Status:" in result.output
 
 
@@ -1153,7 +1153,9 @@ incremental by created_at.date
 """
 
 
-def _rootless_workspace(tmp_path: Path, root: bool = False) -> Path:
+def _rootless_workspace(
+    tmp_path: Path, root: bool = False, empty_target: bool = False
+) -> Path:
     (tmp_path / "model.preql").write_text(
         ROOTLESS_MODEL.format(root="root " if root else ""), encoding="utf-8"
     )
@@ -1163,6 +1165,15 @@ def _rootless_workspace(tmp_path: Path, root: bool = False) -> Path:
         + '"\n',
         encoding="utf-8",
     )
+    if empty_target:
+        assert CliRunner().invoke(cli, ["refresh", str(tmp_path)]).exit_code == 0
+        import duckdb
+
+        con = duckdb.connect(str(tmp_path / "w.duckdb"))
+        try:
+            con.execute("DELETE FROM daily")
+        finally:
+            con.close()
     return tmp_path
 
 
@@ -1170,12 +1181,13 @@ class TestRefreshWithoutASourceOfTruth:
     """A refresh that can never do anything must say so.
 
     With no `root datasource` there is no expected side, so every managed asset
-    reads fresh and refresh reports "all assets are up to date" — for a target
-    table that does not exist. That is indistinguishable from success.
+    that exists reads fresh and refresh reports "all assets are up to date",
+    even for a target table that holds nothing. That is indistinguishable from
+    success.
     """
 
     def test_rootless_refresh_that_did_nothing_errors(self, tmp_path):
-        ws = _rootless_workspace(tmp_path)
+        ws = _rootless_workspace(tmp_path, empty_target=True)
         result = CliRunner().invoke(cli, ["refresh", str(ws)])
 
         assert result.exit_code == 1, result.output
@@ -1186,7 +1198,7 @@ class TestRefreshWithoutASourceOfTruth:
     def test_a_single_file_refresh_errors_the_same_way(self, tmp_path):
         """The guard belongs to the verdict, not to directory mode. Refreshing
         the file directly reaches the same false "up to date"."""
-        ws = _rootless_workspace(tmp_path)
+        ws = _rootless_workspace(tmp_path, empty_target=True)
         result = CliRunner().invoke(cli, ["refresh", str(ws / "model.preql")])
 
         assert result.exit_code == 1, result.output
@@ -1223,6 +1235,20 @@ class TestRefreshWithoutASourceOfTruth:
 
         assert result.exit_code == 0, result.output
 
+    def test_rootless_missing_target_builds_without_force(self, tmp_path):
+        ws = _rootless_workspace(tmp_path)
+        result = CliRunner().invoke(cli, ["refresh", str(ws)])
+
+        assert result.exit_code == 0, result.output
+        import duckdb
+
+        con = duckdb.connect(str(ws / "w.duckdb"))
+        try:
+            rows = con.execute("select count(*) from daily").fetchone()
+        finally:
+            con.close()
+        assert rows == (2,)
+
     def test_rootless_refresh_with_force_still_builds(self, tmp_path):
         """--force is the escape hatch the error points at, so it must work."""
         ws = _rootless_workspace(tmp_path)
@@ -1256,11 +1282,7 @@ class TestRefreshWithoutASourceOfTruth:
         plain no-op. Only an empty target makes "up to date" false.
         """
         ws = _rootless_workspace(tmp_path)
-        # Build it the only way a rootless project can.
-        assert (
-            CliRunner().invoke(cli, ["refresh", str(ws), "--force", "daily"]).exit_code
-            == 0
-        )
+        assert CliRunner().invoke(cli, ["refresh", str(ws)]).exit_code == 0
 
         result = CliRunner().invoke(cli, ["refresh", str(ws)])
         assert result.exit_code in (0, 2), result.output

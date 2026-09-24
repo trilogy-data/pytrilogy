@@ -1095,9 +1095,8 @@ class BaseDialect:
     def get_table_last_modified(
         self, executor, table_name: str, schema: str | None = None
     ) -> str | None:
-        from datetime import datetime, timezone
-
-        return datetime.now(timezone.utc).isoformat()
+        """None means unknown; a dialect that can read a table's mtime overrides this."""
+        return None
 
     def hash_column_value(self, column_name: str) -> str:
         return f"md5(CAST({self.safe_quote(column_name)} AS VARCHAR))"

@@ -785,7 +785,7 @@ def test_refresh_folder():
             "duckdb",
         ],
     )
-    assert result.exit_code == 2
+    assert result.exit_code == 0, result.output
 
 
 def test_refresh_exception():
