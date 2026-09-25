@@ -66,7 +66,6 @@ from trilogy.core.processing.v4_helper.functional_dependency import (
     build_fd_determines,
 )
 from trilogy.core.processing.v4_helper.keyspace import build_keyspace
-from trilogy.core.processing.v4_helper.keyspace_audit import audit_plan
 from trilogy.core.processing.v4_helper.projection import (
     statement_filter_population,
 )
@@ -531,13 +530,9 @@ def _build_from_graph(
         materialized_roots,
         staged_conditions=staged_conditions,
     )
-    # A statement showing nothing but filter values over one predicate is
-    # filtered by it (`gen_filter` pushes the predicate into its WHERE), so the
-    # row universe is: a region those rows are absent on is emptied, never
-    # padded back by a domain. The plan's own atoms stay as authored: placed as
-    # a statement WHERE, a row atom would narrow the input of an aggregate the
-    # predicate also reads (`customer_id ? count(order_id) by customer_id > 1
-    # and product_name = 'Mouse'` counts EVERY order).
+    # A statement showing only filter values over one predicate is filtered by
+    # it, so the keyspace empties the regions it rejects. Only the keyspace
+    # sees it: as a plan WHERE it would narrow aggregates the predicate reads.
     population = statement_filter_population(mandatory_list)
     keyspace = build_keyspace(
         concept_attrs,
@@ -586,13 +581,6 @@ def _build_from_graph(
         )
     finally:
         environment.span_scope = outer_scope
-    audit_plan(
-        keyspace,
-        concept_attrs,
-        group_graph,
-        group_attrs,
-        mandatory_list,
-    )
     return BuildInfo(
         concept_graph=concept_graph,
         group_graph=group_graph,

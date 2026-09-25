@@ -4,6 +4,7 @@ group of their own so a derivation absent there never reads padded rows
 evaluate on the region, and restated at FINAL for the WHERE atoms over it.
 """
 
+from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, FunctionType
 from trilogy.core.models.build import (
@@ -20,7 +21,6 @@ from .concept_graph import _scope_and_phase
 from .condition_placement import ConditionPlacement, PlacementReason
 from .constants import FINAL_NODE_ID, ROW_STREAM_DERIVATIONS, DepthLabel, EdgeKind
 from .edges import EdgeMap, add_edge, edge_kind, remove_edge
-from .keyspace_audit import audit_undelivered_where
 from .models import ConceptAttrs, GroupAttrs, GroupBucket, Keyspace, Region
 from .projection import decided_at_output_grain, reads_rows_only
 
@@ -255,7 +255,10 @@ def add_region_domain_buckets(
             if undelivered:
                 # no host filters the domain's rows by these, so the region
                 # keeps its padded plan
-                audit_undelivered_where(region, undelivered)
+                logger.info(
+                    f"region {region.describe()} keeps its padded plan: no host"
+                    f" filters its rows by {undelivered}"
+                )
                 continue
             domain = GroupBucket(
                 depth_label=DepthLabel.ROOT,
