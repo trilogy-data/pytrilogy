@@ -145,6 +145,8 @@ class CTE:
     nullable_concepts: list[BuildConcept] = field(default_factory=list)
     join_derived_concepts: list[BuildConcept] = field(default_factory=list)
     hidden_concepts: set[str] = field(default_factory=set)
+    # COUNT outputs padded here on a region's rows: rendered coalesced to 0
+    zero_filled: frozenset[str] = frozenset()
     order_by: BuildOrderBy | None = None
     limit: int | None = None
     base_name_override: Address | str | None = None
@@ -347,6 +349,7 @@ class CTE:
         self.nullable_concepts = unique(
             self.nullable_concepts + other.nullable_concepts, "address"
         )
+        self.zero_filled = self.zero_filled | other.zero_filled
         self.hidden_concepts = mutually_hidden
         self.existence_source_map = {
             **self.existence_source_map,
@@ -1183,6 +1186,15 @@ class QueryDatasource:
     # scan's facts bound only (the names of customers WITH an order). Not
     # identity: it follows from `extent_free_spans` and the model.
     extent_free_carried: frozenset[str] = frozenset()
+    # COUNT outputs this merge pads on a region's rows (a side holding the
+    # region's rows joined to one that was evaluated on the solid rows only):
+    # a count over an empty group is 0, so they render coalesced. Not identity.
+    zero_filled: frozenset[str] = frozenset()
+    # The region domains under this source (`nodes.base_node.region_reads`):
+    # the spans whose extension rows are rows of it. A join between a side
+    # holding a region's rows and one that does not preserves the holder.
+    # Stamped by `StrategyNode.resolve`; not identity.
+    region_spans: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         if self.set_operator is SetOperator.UNION_ALL:

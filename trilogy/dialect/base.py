@@ -1528,22 +1528,31 @@ class BaseDialect:
                     rval = INVALID_REFERENCE_STRING(
                         f"Missing source reference to {c.address}"
                     )
-        # A pre-aggregated COUNT sourced from a sparse materialization leaks
-        # NULL through a LEFT/FULL JOIN when a dim row has no matching fact
-        # row, while the granular `count(...)` path returns 0 there. Coalesce
-        # to keep the two paths result-equivalent. SUM is left alone: SUM over
-        # an empty group is NULL in both paths.
+        # A COUNT padded onto a region's rows by this merge (`cte.zero_filled`)
+        # counts an empty group: 0. Otherwise, a pre-aggregated COUNT sourced
+        # from a sparse materialization leaks NULL through a LEFT/FULL JOIN
+        # when a dim row has no matching fact row, while the granular
+        # `count(...)` path returns 0 there. Coalesce to keep the two paths
+        # result-equivalent. SUM is left alone: SUM over an empty group is NULL
+        # in both paths.
         if (
             isinstance(c.lineage, BuildAggregateWrapper)
             and c.lineage.function.operator == FunctionType.COUNT
             and isinstance(cte, CTE)
-            and any(n.address == c.address for n in cte.nullable_concepts)
-            # A multiselect-align merge CTE is the exception: a NULL count there
-            # means "this entity is absent from this arm", not "0 facts", and
-            # must stay NULL so a cross-arm comparison excludes single-arm rows.
-            and not any(
-                isinstance(o.lineage, BuildMultiSelectLineage)
-                for o in cte.output_columns
+            and (
+                c.address in cte.zero_filled
+                or (
+                    not cte.group_to_grain
+                    and any(n.address == c.address for n in cte.nullable_concepts)
+                    # A multiselect-align merge CTE is the exception: a NULL
+                    # count there means "this entity is absent from this arm",
+                    # not "0 facts", and must stay NULL so a cross-arm
+                    # comparison excludes single-arm rows.
+                    and not any(
+                        isinstance(o.lineage, BuildMultiSelectLineage)
+                        for o in cte.output_columns
+                    )
+                )
             )
         ):
             rval = self.FUNCTION_MAP[FunctionType.COALESCE]([rval, "0"], [])

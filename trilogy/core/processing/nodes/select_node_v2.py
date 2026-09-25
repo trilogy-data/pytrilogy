@@ -321,6 +321,7 @@ class SelectNode(StrategyNode):
             non_null_proofs=set(self.non_null_proofs),
         )
         node.limit = self.limit
+        node.region_spans = self.region_spans
         return node
 
 

@@ -2864,10 +2864,9 @@ def _compute_concept_sets(
                 final_args_here = cap_gid & final_condition_args
                 outs |= final_args_here
                 outs |= cap_gid & region_join_keys
-                # a dim peel beside other contributors joins them on its keys
-                if attrs[gid].dim_keys and any(
-                    other != gid for other in group_graph.predecessors(succ)
-                ):
+                # a dim peel beside a region domain joins the region's rows
+                # back on its keys (the fact's FK cluster is the bridge)
+                if attrs[gid].dim_keys and region_join_keys:
                     outs |= cap_gid & attrs[gid].dim_keys
                 # A FINAL-deferred presence-probe filter joins its producer
                 # back on the probe's KEY (`ord_cust` ~ the anchor's key via
