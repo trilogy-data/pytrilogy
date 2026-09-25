@@ -564,3 +564,58 @@ def test_where_over_an_absent_null_rejecting_value_empties_the_region(monkeypatc
     )
     assert not _domains(info)
     assert info.keyspace.extensions == ()
+
+
+# What the heal audit (`keyspace_audit.py`) established: the keyspace over the
+# bindings as authored and the one over the rewritten bindings answer the same
+# reader-visible questions, with heal a STATEMENT fact every plan inherits.
+
+
+def test_emptied_completion_demands_nothing(monkeypatch):
+    """Authored view: `returns` completes the base region but every row it
+    holds is gone, so it is in play (a merge below the WHERE still sees its
+    padding) and demanded by no output."""
+    keyspace = _heal_keyspace(
+        monkeypatch,
+        _PARTIAL_PROPERTY_SOURCE,
+        "select order_id, item_id, ret_order where ret_order is not null;",
+    )
+    (base,) = keyspace.regions
+    assert base.completes == frozenset({ORDER, ITEM})
+    assert base.live_completes == frozenset()
+    assert keyspace.in_play_spans == frozenset({ORDER, ITEM})
+    assert keyspace.output_demanded_spans == frozenset()
+
+
+def test_entity_is_spelled_the_same_with_and_without_a_license(monkeypatch):
+    """`customer_id as c2` earlier in the session makes `c2` the canonical
+    spelling. Healing the last `~` must not change that: the plan keyspace
+    (no license left) and heal's (as authored) key `late_name` alike."""
+    healed, planned = _Capture(), _Capture()
+    monkeypatch.setattr(partial_bridging, "build_keyspace", healed)
+    monkeypatch.setattr(concept_strategies_v4, "build_keyspace", planned)
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(_DERIVED + _ACTIVITY)
+    executor.generate_sql("select customer_id as c2, status;")
+    healed.seen.clear()
+    planned.seen.clear()
+    executor.generate_sql("select late_name;")
+    assert planned.seen[0].extensions == ()
+    spelled = healed.seen[0].keys_by_address["local.late_name"]
+    assert spelled == frozenset({"local.c2"})
+    assert planned.seen[0].keys_by_address["local.late_name"] == spelled
+
+
+def test_sub_plan_without_the_where_inherits_the_statement_heal(monkeypatch):
+    """The window feeder plans `order_seq` with no WHERE of its own. Were it
+    to read the authored bindings it would pad the orderless customer and
+    number the padding row: `order_seq = 1` for a customer with no order.
+    Heal is decided once per statement and every plan under it is complete."""
+    capture = _Capture()
+    monkeypatch.setattr(concept_strategies_v4, "build_keyspace", capture)
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(_DERIVED)
+    executor.generate_sql("select customer_id, name where order_seq = 1;")
+    feeders = [k for k in capture.seen if "local.order_seq" in k.keys_by_address]
+    assert feeders
+    assert all(k.demanded_spans == frozenset() for k in capture.seen)

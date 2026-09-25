@@ -341,6 +341,7 @@ def heal_pinned_partials(
         )
     if not replacements:
         return
+    environment.authored_datasources = datasources
     for name, existing in list(environment.datasources.items()):
         if (
             isinstance(existing, BuildDatasource)

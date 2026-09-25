@@ -66,6 +66,7 @@ from trilogy.core.processing.v4_helper.functional_dependency import (
     build_fd_determines,
 )
 from trilogy.core.processing.v4_helper.keyspace import build_keyspace
+from trilogy.core.processing.v4_helper.keyspace_audit import audit_heal_keyspace
 from trilogy.core.processing.v4_helper.projection import (
     statement_filter_population,
 )
@@ -553,6 +554,13 @@ def _build_from_graph(
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} keyspace: {keyspace.describe()}"
         )
+    audit_heal_keyspace(
+        keyspace,
+        concept_attrs,
+        mandatory_list,
+        environment,
+        conditions + ([population] if population is not None else []),
+    )
     datasource_columns = [
         frozenset(c.address for c in ds.output_concepts)
         for ds in environment.datasources.values()

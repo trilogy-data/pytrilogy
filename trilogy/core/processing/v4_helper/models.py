@@ -148,6 +148,14 @@ class Region:
     def is_empty(self) -> bool:
         return bool(self.emptied_by)
 
+    @property
+    def live_completes(self) -> frozenset[str]:
+        """``completes`` less the keys every completion of which the WHERE
+        empties: a partial source whose rows are all gone demands nothing."""
+        return frozenset().union(
+            *(c.spans for c in self.completions if not c.emptied_by)
+        )
+
     def describe(self) -> str:
         body = "{" + ", ".join(sorted(self.present)) + "}"
         if self.spans:
@@ -198,7 +206,7 @@ class Keyspace:
         """What the extent election asks: the spans whose unmatched members
         carry an OUTPUT, one that is a function of what the span alone reaches."""
         in_play: frozenset[str] = frozenset().union(
-            *(r.spans | r.completes for r in self.live_regions)
+            *(r.spans | r.live_completes for r in self.live_regions)
         )
         return frozenset(
             span
