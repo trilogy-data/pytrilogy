@@ -1,12 +1,14 @@
 from trilogy.constants import logger
 from trilogy.core.enums import (
     Derivation,
+    FunctionType,
     JoinType,
     Modifier,
     SourceType,
 )
 from trilogy.core.models.build import (
     BoolExpr,
+    BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
     BuildGrain,
@@ -46,6 +48,7 @@ from trilogy.core.processing.join_resolution import (
 from trilogy.core.processing.nodes.base_node import (
     NodeJoin,
     StrategyNode,
+    region_reads,
     resolve_concept_map,
     resolve_existence_map,
 )
@@ -808,6 +811,25 @@ class MergeNode(StrategyNode):
         joined_partials = merge_partial_addresses(
             final_datasets, qd_joins, final_output_concepts
         )
+        # a COUNT evaluated on the solid rows, padded here onto a region's
+        # rows, counts an empty group there
+        zero_filled: frozenset[str] = frozenset()
+        if any(region_reads(p) for p in self.parents) and not all(
+            region_reads(p) for p in self.parents
+        ):
+            solid_outputs = {
+                o.address
+                for p in self.parents
+                if not region_reads(p)
+                for o in p.output_concepts
+            }
+            zero_filled = frozenset(
+                c.address
+                for c in final_output_concepts
+                if c.address in solid_outputs
+                and isinstance(c.lineage, BuildAggregateWrapper)
+                and c.lineage.function.operator == FunctionType.COUNT
+            )
         qds = QueryDatasource(
             input_concepts=unique(self.input_concepts, "address"),
             output_concepts=final_output_concepts,
@@ -843,6 +865,7 @@ class MergeNode(StrategyNode):
                 for address, spans in self.span_scope.extent_free_carried.items()
                 if spans & self.span_scope.extent_free
             ),
+            zero_filled=zero_filled,
         )
         return qds
 
@@ -876,7 +899,7 @@ class MergeNode(StrategyNode):
         ]
 
     def copy(self) -> "MergeNode":
-        return type(self)(
+        node = type(self)(
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
@@ -899,3 +922,5 @@ class MergeNode(StrategyNode):
             host_stitch=self.host_stitch,
             span_scope=self.span_scope,
         )
+        node.region_spans = self.region_spans
+        return node

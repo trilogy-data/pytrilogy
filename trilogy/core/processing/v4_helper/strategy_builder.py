@@ -64,6 +64,7 @@ from trilogy.core.processing.nodes import (
     UnionNode,
     WindowNode,
 )
+from trilogy.core.processing.nodes.base_node import region_reads
 from trilogy.utility import unique
 
 from .concept_graph import _relation_mates, _statement_scoped_relation_members
@@ -868,6 +869,9 @@ def _parent_nodes_for(
                 or pgid in nx.ancestors(group_graph, other_pgid)
             ):
                 continue
+            # a region's rows are covered by nothing that does not hold them
+            if not region_reads(node) <= region_reads(other_node):
+                continue
             if my_provides <= provides(other_pgid, other_node):
                 covered_by_descendant = True
                 break
@@ -928,16 +932,7 @@ def _derives_from(node: StrategyNode, other: StrategyNode) -> bool:
     return False
 
 
-def _region_reads(node: StrategyNode) -> frozenset[str]:
-    """The region domains under `node`: the spans whose extension rows are
-    rows of its stream. Two contributors can stand in for each other's columns
-    only when they read the same regions: a derivation absent on a region is
-    re-derived on the padded rows if it moves onto a stream that holds them,
-    and a value the region carries is lost if it moves onto one that does not."""
-    out = node.region_spans
-    for parent in node.parents:
-        out |= _region_reads(parent)
-    return out
+_region_reads = region_reads
 
 
 def _drop_ancestor_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
@@ -1262,19 +1257,19 @@ def _project_basic_aggregate_inputs(
     outputs: list[BuildConcept],
     primary_addrs: set[str],
     parents: list[StrategyNode],
-    solid_scan: bool = False,
+    region_spans: frozenset[str] = frozenset(),
 ) -> list[StrategyNode]:
     """Project scalar aggregate inputs without exposing the merge's join inputs.
 
-    `solid_scan`: the parent is the solid row stream beside a region domain,
-    so a plain scan is projected too. Its BASIC arguments are computed on the
-    solid rows and the domain's rows pad them NULL, instead of being re-derived
-    over the padded rows (`count(status)` must not count the customer with no
-    order)."""
+    `region_spans`: the parent is the solid row stream beside a region domain
+    (so a plain scan is projected too, and the spans it joins the domain on
+    are kept). Its BASIC arguments are computed on the solid rows and the
+    domain's rows pad them NULL, instead of being re-derived over the padded
+    rows (`count(status)` must not count the customer with no order)."""
     if len(parents) != 1 or not (
         isinstance(parents[0], MergeNode)
         or (
-            solid_scan
+            region_spans
             and isinstance(parents[0], SelectNode)
             and not parents[0].force_group
         )
@@ -1300,16 +1295,23 @@ def _project_basic_aggregate_inputs(
         available |= renderable_addresses(parent)
     if not all(concept_satisfiable(concept, available) for concept in scalar_inputs):
         return parents
-    widen_projection(
-        parent,
-        scalar_inputs,
-        input_candidates=(
-            lineage
-            for concept in scalar_inputs
-            for lineage in _row_lineage_closure(concept)
-        ),
-        available_addresses=available,
-    )
+    # one the parent already computes is not an input to hand it
+    to_widen = [
+        concept
+        for concept in scalar_inputs
+        if concept.address not in {o.address for o in parent.output_concepts}
+    ]
+    if to_widen:
+        widen_projection(
+            parent,
+            to_widen,
+            input_candidates=(
+                lineage
+                for concept in to_widen
+                for lineage in _row_lineage_closure(concept)
+            ),
+            available_addresses=available,
+        )
 
     # Keep every direct argument this group reads, not just the BASIC ones
     # widened above: narrowing to the widened subset drops a sibling aggregate's
@@ -1320,7 +1322,7 @@ def _project_basic_aggregate_inputs(
     # are also direct arguments, and their key grain is not part of the row
     # stream this group aggregates over. A FILTER argument renders inline as
     # a CASE over its content and WHERE row inputs, so those count as direct.
-    keep = {concept.address for concept in outputs}
+    keep = {concept.address for concept in outputs} | set(region_spans)
     for concept in outputs:
         if concept.address not in primary_addrs or concept.lineage is None:
             continue
@@ -2628,7 +2630,12 @@ def _cover_groups_for_mandatory(
         )
         winner = candidates[0]
         owner = ownership.owner_of(addr)
-        if owner is not None and owner in candidates:
+        # a group that READ the owner carries its rows too, and more besides
+        if (
+            owner is not None
+            and owner in candidates
+            and not any(owner in nx.ancestors(group_graph, gid) for gid in candidates)
+        ):
             winner = owner
         per_group[winner].append(concept)
     return per_group
@@ -4613,11 +4620,6 @@ def build_strategy_node(
                 and edge_kind(group_edges, parent.group_id, gid) == EdgeKind.CONSTRAINT
                 for parent in parent_builds
             )
-            for built_parent in parent_builds:
-                if attrs[built_parent.group_id].extent_spans:
-                    built_parent.node.region_spans = attrs[
-                        built_parent.group_id
-                    ].extent_spans
             parents = _apply_input_contracts(parent_builds, a, needed, environment)
             domains = [p for p in parents if p.region_spans]
             if derivation == Derivation.AGGREGATE and domains:
@@ -4634,7 +4636,12 @@ def build_strategy_node(
                 )
                 parents = (
                     _project_basic_aggregate_inputs(
-                        outputs, primary_addrs, solid, solid_scan=True
+                        outputs,
+                        primary_addrs,
+                        solid,
+                        region_spans=frozenset().union(
+                            *(d.region_spans for d in domains)
+                        ),
                     )
                     + domains
                 )
@@ -4707,7 +4714,12 @@ def build_strategy_node(
             condition_for_generator = None
             condition_host_node = wrapper
         if derivation == Derivation.AGGREGATE and parents:
-            parents = _project_basic_aggregate_inputs(outputs, primary_addrs, parents)
+            parents = _project_basic_aggregate_inputs(
+                outputs,
+                primary_addrs,
+                parents,
+                region_spans=frozenset().union(*(_region_reads(p) for p in parents)),
+            )
         # Normalize aggregate inputs to the row grain implied by their
         # arguments before the aggregate runs. This is generic across aggregate
         # functions: the normalization preserves both the input-grain keys and
@@ -4823,6 +4835,9 @@ def build_strategy_node(
         )
         if node is None:
             continue
+        if a.extent_spans:
+            # the region contract: this node's rows are the region's own
+            node.region_spans = a.extent_spans
         if derivation == Derivation.ROOT:
             _drop_unadvertised_rowset_handles(node, set(select_addrs))
         # Elide here, not only in the tree pass: consumers take their own copy

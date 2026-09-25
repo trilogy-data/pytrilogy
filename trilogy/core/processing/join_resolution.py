@@ -571,6 +571,13 @@ def get_join_type(
             right_is_host = right in host_nodes
             if left_is_host != right_is_host:
                 return JoinType.LEFT_OUTER if left_is_host else JoinType.RIGHT_OUTER
+        # A value NULL on one side (a guest order's address, grouped) names a
+        # real row; the other side's padding names nothing. Keep the row.
+        if extent_nullables is not None:
+            left_values = _has_any(all_connecting_keys, left, extent_nullables)
+            right_values = _has_any(all_connecting_keys, right, extent_nullables)
+            if left_values != right_values:
+                return JoinType.LEFT_OUTER if left_values else JoinType.RIGHT_OUTER
         # Padding for different spans never pairs (`get_node_joins` drops the
         # null-safe equality), so INNER would shed both extension families.
         if _pads_for_different_members(left, right, all_connecting_keys, span_padding):
@@ -1747,6 +1754,19 @@ def get_node_joins(
                 - {canon_node(c.address) for c in datasource.partial_concepts}
             )
         }
+        # A side holding a region's rows (its domain, or whatever read it)
+        # hosts that region's extension rows whatever columns it emits: the
+        # contract, not an inference from the bindings.
+        region_holders = {
+            ds_node: {canon_node(span) for span in datasource.region_spans}
+            for ds_node, datasource in ds_node_map.items()
+            if isinstance(datasource, QueryDatasource) and datasource.region_spans
+        }
+        if region_holders:
+            held: set[str] = set().union(*region_holders.values())
+            host_nodes = {
+                ds_node for ds_node, spans in region_holders.items() if spans >= held
+            }
     # Keys whose join typing is owned by an authored relation (query-scoped
     # subset/coalescing joins, declared anchors): host/dim direction inference
     # stands down on these.

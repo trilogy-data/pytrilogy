@@ -1244,7 +1244,14 @@ def _complete_partial_requested(
     guard.
     """
     requested = {c.address for c in _requested_concepts(request)}
-    partial_requested = [c for c in node.partial_concepts if c.address in requested]
+    # a span this group is built not to extend is completed by its region
+    # domain, above: the fact's own column is the solid stream's key
+    partial_requested = [
+        c
+        for c in node.partial_concepts
+        if c.address in requested
+        and c.address not in request.environment.span_scope.extent_free
+    ]
     if not partial_requested:
         return node
     partial_addresses = {c.address for c in partial_requested}

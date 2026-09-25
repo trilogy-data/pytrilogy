@@ -411,22 +411,27 @@ def _is_filter_population(
     filtered_ids: set[str],
     join_addresses: set[str],
     partner_partial: set[str],
+    partner_regions: frozenset[str] = frozenset(),
 ) -> bool:
     """Whether this side's row set IS the request WHERE's population.
 
     It has to have applied the WHERE, and it must not owe its narrowness to
-    anything else. An extent-free branch covers only the span members its facts
-    bound (docs/extent_ownership.md), and what the span's region domain
-    carries (the names of customers WITH an order) for those same members, so
-    a row missing there is a member nobody referenced, not a row the WHERE
-    rejected, and the other side stays preserved. That only matters when the
-    other side binds the axis complete; a partner partial on it carries no
-    extension member to preserve."""
+    anything else. A side joined on a region's span to a partner holding that
+    region's rows covers only the members its facts bound: a row missing there
+    is a member nobody referenced, not a row the WHERE rejected, and the
+    partner stays preserved. The same for an extent-free branch
+    (docs/extent_ownership.md) and what the span's region domain carries (the
+    names of customers WITH an order), which only matters when the other side
+    binds the axis complete; a partner partial on it carries no extension
+    member to preserve."""
     if identifier not in filtered_ids:
         return False
     source = by_id.get(identifier)
     if source is None:
         return True
+    held = source.region_spans if isinstance(source, QueryDatasource) else frozenset()
+    if join_addresses & partner_regions and not join_addresses & held:
+        return False
     suppressed = {c.address for c in source.partial_concepts} & (
         deep_extent_free_spans(source) | deep_extent_free_carried(source)
     )
@@ -551,21 +556,34 @@ def tighten_join_for_filtered_branch(
     for pair in join.concept_pairs or []:
         left_ids.add(pair.existing_datasource.identifier)
     left_partial: set[str] = set()
+    left_regions: frozenset[str] = frozenset()
     for identifier in left_ids:
         source = by_id.get(identifier)
         if source is not None:
             left_partial |= {c.address for c in source.partial_concepts}
-    right_partial = {c.address for c in join.right_datasource.partial_concepts}
+            if isinstance(source, QueryDatasource):
+                left_regions |= source.region_spans
+    right = join.right_datasource
+    right_partial = {c.address for c in right.partial_concepts}
+    right_regions = (
+        right.region_spans if isinstance(right, QueryDatasource) else frozenset()
+    )
     right_filtered = _is_filter_population(
-        join.right_datasource.identifier,
+        right.identifier,
         by_id,
         filtered_ids,
         join_addresses,
         left_partial,
+        left_regions,
     )
     left_filtered = any(
         _is_filter_population(
-            identifier, by_id, filtered_ids, join_addresses, right_partial
+            identifier,
+            by_id,
+            filtered_ids,
+            join_addresses,
+            right_partial,
+            right_regions,
         )
         for identifier in left_ids
     )

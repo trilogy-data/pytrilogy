@@ -248,11 +248,15 @@ def _candidate(
     stored: set[str],
     conditions: BuildWhereClause | None,
     equivalence: dict[str, str],
+    promoted: frozenset[str] = frozenset(),
 ) -> SourceCandidate:
     """Label one scan. The only thing a caller decides is which addresses the
     scan emits and which of those are STORED columns rather than inline
-    derivations; everything else follows from the datasource."""
-    partial = {concept.address for concept in datasource.partial_concepts}
+    derivations; everything else follows from the datasource. `promoted`: `~`
+    keys whose members this request need not complete (a region domain does,
+    above it), so the fact's own column binds them as fully as the request
+    needs."""
+    partial = {concept.address for concept in datasource.partial_concepts} - promoted
     return SourceCandidate(
         node=node,
         datasource=datasource,
@@ -271,6 +275,7 @@ def _candidate_for(
     equivalence: dict[str, str],
     owners: dict[str, frozenset[str]],
     rolled: frozenset[str] = frozenset(),
+    promoted: frozenset[str] = frozenset(),
 ) -> SourceCandidate | None:
     emitted = {
         address for address in node_emitted if _may_bind(datasource, address, owners)
@@ -287,6 +292,7 @@ def _candidate_for(
         stored={column.concept.address for column in datasource.columns} - rolled,
         conditions=conditions,
         equivalence=equivalence,
+        promoted=promoted,
     )
 
 
@@ -761,6 +767,9 @@ def build_source_network(
             equivalence,
             owners,
             frozenset(concept.address for concept in rollups.get(node, [])),
+            # the spans this group is built not to extend: its region domain
+            # completes them, so the fact's `~` column is a full binding here
+            promoted=environment.span_scope.extent_free,
         )
         if candidate is not None and not candidate.condition.disqualifying:
             candidates[node] = candidate

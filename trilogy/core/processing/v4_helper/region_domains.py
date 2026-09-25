@@ -194,10 +194,15 @@ def add_region_domain_buckets(
     its span reaches (`output_demanded_spans`, the election's question), or an
     aggregate counts them. `select order_id, status where name = 'ann'` asks
     for orders; the customer with none is not a row of it."""
+    # an authored coalescing relation (`union join ocust = cid`) IS its key's
+    # domain, and the union machinery builds it; no region domain beside it
+    coalescing = environment.domain_graph.coalescing_relation_members()
     for region in keyspace.live_regions:
         if not region.has_own_rows or not all(
             span in environment.concepts for span in region.spans
         ):
+            continue
+        if region.spans & coalescing:
             continue
         for label in sorted({b.label for b in buckets.values()}):
             eligible = [
@@ -312,11 +317,19 @@ def feed_region_domains_to_present_scalars(
     condition phase of the same scope) reads it the same way, or the atom
     restated at FINAL never sees the region's rows.
 
-    An aggregate reads the domain only when the region's rows are what it
-    counts (`_aggregates_over_region`); otherwise it is evaluated on the solid
-    rows and a region row it never saw shows its empty-group value (a COUNT's
-    zero-fill, NULL for the rest) where the domain pads it. Never when a row
-    stream that must not see an extension row reads it (`_solid_groups`)."""
+    An aggregate is evaluated OVER the region's rows when they survive it: a
+    grouping key the region carries keeps each extension row its own group
+    (`count(order_id) by customer_id` is 0 for the customer with no order, and
+    `coalesce(sum(amount), 0)` above it is 0), or the argument is what it
+    counts (`count(customer_id) by status`). Its named BASIC arguments are
+    computed on the solid rows first (`_project_basic_aggregate_inputs`), but
+    an INLINE argument has no node to compute on, so one that takes a value on
+    a padded row (`sum(case when undelivered then 1 else 0 end)`) keeps the
+    aggregate solid. Grouped by nothing the region carries (`sum(qty) by
+    order_id`) every extension row would collapse into one NULL group: the
+    aggregate pairs on solid keys and the domain pads it at FINAL. Never when
+    a row stream that must not see an extension row reads it
+    (`_solid_groups`)."""
     for domain_gid, domain in list(attrs.items()):
         region = (
             keyspace.region_of(domain.extent_spans) if domain.extent_spans else None
@@ -337,8 +350,19 @@ def feed_region_domains_to_present_scalars(
                 a.derivation == Derivation.AGGREGATE
                 and a.label == domain.label
                 and not solid & nx.descendants(group_graph, gid)
-                and _aggregates_over_region(
-                    a.primary_members, region, keyspace, environment
+                and (
+                    _aggregates_over_region(
+                        a.primary_members, region, keyspace, environment
+                    )
+                    or (
+                        any(keyspace.carried_on(g, region) for g in a.grain_components)
+                        and not any(
+                            _has_absent_inline_argument(
+                                m, region, keyspace, environment
+                            )
+                            for m in a.primary_members
+                        )
+                    )
                 )
             ):
                 add_edge(group_graph, group_edges, domain_gid, gid, EdgeKind.LINEAGE)
