@@ -2709,6 +2709,15 @@ def _compute_concept_sets(
     region_join_keys: frozenset[str] = frozenset().union(
         *(a.extent_spans for a in attrs.values())
     )
+    # what a region domain carries: a solid ROOT beside it does not emit those
+    # to a consumer that reads the domain (FINAL, an aggregate over the
+    # region), or the scan joins the dimension for a column it never uses
+    domain_gids = {gid for gid, a in attrs.items() if a.extent_spans}
+    domain_carried: dict[str, set[str]] = {}
+    for gid in domain_gids:
+        domain_carried.setdefault(attrs[gid].label, set()).update(
+            m for m in attrs[gid].primary_members if m not in region_join_keys
+        )
     # Non-ROWSET members of authored statement relations that NO group hosts:
     # the axis vocabulary a fresh scan may advertise below. A member some group
     # already carries as a primary needs no re-sourcing, and advertising it
@@ -2852,6 +2861,10 @@ def _compute_concept_sets(
         outs |= _hosted_condition_outputs(
             attrs[gid].condition_atoms, fact.derivation, cap_gid
         )
+        # a group that reads no domain holds the solid rows only
+        solid_root = bool(domain_gids) and not domain_gids & (
+            {gid} | nx.ancestors(group_graph, gid)
+        )
         for succ in group_graph.successors(gid):
             if succ == FINAL_NODE_ID:
                 mand = cap_gid & mandatory_alias_addresses
@@ -2860,6 +2873,8 @@ def _compute_concept_sets(
                 for desc in nx.descendants(lineage_sub, gid):
                     if facts[desc].derivation in GROUPING_DERIVATIONS:
                         mand -= io.outputs[desc]
+                if solid_root:
+                    mand -= domain_carried.get(attrs[gid].label, set())
                 outs |= mand
                 final_args_here = cap_gid & final_condition_args
                 outs |= final_args_here
@@ -2968,6 +2983,10 @@ def _compute_concept_sets(
             if edge_kind(group_edges, gid, succ) == EdgeKind.EXISTENCE:
                 continue
             demanded = io.inputs.get(succ, set()) & cap_gid
+            if solid_root and any(
+                pred in domain_gids for pred in group_graph.predecessors(succ)
+            ):
+                demanded -= domain_carried.get(attrs[gid].label, set())
             if fact.derivation in GROUPING_DERIVATIONS:
                 sibling_providable: set[str] = set()
                 for sib in group_graph.predecessors(succ):
