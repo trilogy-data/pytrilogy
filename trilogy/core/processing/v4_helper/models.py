@@ -475,3 +475,13 @@ class GroupBucket:
     @property
     def nulls_grouping_keys(self) -> bool:
         return nulls_grouping_keys(self.grouping_mode)
+
+    @property
+    def group_id(self) -> str:
+        grain_key = "|".join(sorted(self.grain_components)) or "∅"
+        label_prefix = f"[{self.label}]" if self.label else ""
+        suffix = f":{self.discriminator}" if self.discriminator else ""
+        return (
+            f"grp:{label_prefix}{self.derivation.value}:{self.depth_label.value}:"
+            f"{grain_key}{suffix}"
+        )
