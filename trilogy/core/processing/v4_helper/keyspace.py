@@ -322,6 +322,12 @@ def _entity_keys(
     )
 
 
+def entity_keys(address: str, environment: BuildEnvironment) -> frozenset[str]:
+    """The entity keys `address` is a function of (`_entity_keys`)."""
+    identifying = _model_facts(environment).identifying
+    return _entity_keys(address, {}, identifying, environment)
+
+
 def _read_addresses(address: str, environment: BuildEnvironment) -> frozenset[str]:
     concept = environment.concepts.get(address)
     if concept is None or concept.lineage is None:

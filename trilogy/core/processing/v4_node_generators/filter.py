@@ -1,4 +1,4 @@
-from trilogy.core.enums import Derivation, Purpose
+from trilogy.core.enums import Derivation
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
@@ -15,22 +15,10 @@ from trilogy.core.processing.nodes import FilterNode, StrategyNode
 from trilogy.core.processing.v4_helper.functional_dependency import (
     build_fd_determines,
 )
+from trilogy.core.processing.v4_helper.keyspace import entity_keys
 from trilogy.core.processing.v4_helper.projection import shared_filter_predicate
 
 from .common import parent_outputs_needed
-
-
-def _entity_grain(outputs: list[BuildConcept]) -> set[str]:
-    """The entity keys the outputs are functions of: a property stands for its
-    keys, whether or not they are projected beside it (`select name, late_name`
-    is at customer grain), anything else for itself."""
-    grain: set[str] = set()
-    for o in outputs:
-        if o.purpose == Purpose.PROPERTY and o.keys:
-            grain |= set(o.keys)
-        else:
-            grain.add(o.address)
-    return grain
 
 
 def gen_filter(
@@ -107,7 +95,11 @@ def gen_filter(
 
     grain: BuildGrain | None = None
     if filter_lineages and intrinsic is None and collapse_to_grain:
-        entity_grain = _entity_grain(outputs)
+        # projected or not, a property stands for its keys: `select name,
+        # late_name` is at customer grain
+        entity_grain: set[str] = set().union(
+            *(entity_keys(o.address, environment) or {o.address} for o in outputs)
+        )
         collapsible = all(
             bool(o.keys) and set(o.keys or ()) <= entity_grain
             for o in outputs
