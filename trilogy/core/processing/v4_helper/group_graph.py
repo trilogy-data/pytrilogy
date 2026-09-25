@@ -1802,6 +1802,9 @@ def _final_merge_grain(
         # mandatory-concept pass below.
         if attrs[gid].derivation != Derivation.ROWSET:
             grain |= set(attrs[gid].grain_components)
+        # a region domain's rows are keyed by its spans, and every solid
+        # contributor joins them there
+        grain |= set(attrs[gid].extent_spans)
     for concept in mandatory_list:
         if concept.derivation in GROUPING_DERIVATIONS and concept.grain:
             grain |= set(concept.grain.components)
@@ -1905,6 +1908,8 @@ def _group_final_grain_contribution(
         return frozenset()
     if attrs[gid].derivation in GROUPING_DERIVATIONS:
         return attrs[gid].grain_components
+    if attrs[gid].extent_spans:
+        return attrs[gid].extent_spans
     if attrs[gid].derivation == Derivation.ROWSET:
         return merge_grain
     # A BASIC group projecting a rowset rename has a namespaced grain
@@ -2740,6 +2745,8 @@ def _compute_concept_sets(
             # scalar), the scan must be able to supply it or the consumer's
             # merge goes keyless. Grouping consumers are excluded; they source
             # their grain keys through their own fact parents.
+            # a dim peel's keys identify its rows: the axis it joins back on
+            cap |= attrs[gid].dim_keys
             for addr in attrs[gid].secondary_members:
                 if addr in cap:
                     continue
@@ -2851,6 +2858,11 @@ def _compute_concept_sets(
                 final_args_here = cap_gid & final_condition_args
                 outs |= final_args_here
                 outs |= cap_gid & region_join_keys
+                # a dim peel beside other contributors joins them on its keys
+                if attrs[gid].dim_keys and any(
+                    other != gid for other in group_graph.predecessors(succ)
+                ):
+                    outs |= cap_gid & attrs[gid].dim_keys
                 # A FINAL-deferred presence-probe filter joins its producer
                 # back on the probe's KEY (`ord_cust` ~ the anchor's key via
                 # the scoped-join pseudonym); expose the key alongside the
