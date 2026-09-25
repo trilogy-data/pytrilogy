@@ -33,37 +33,19 @@ def gen_filter(
 ) -> StrategyNode | None:
     """Project filter concepts over already-built parents.
 
-    A filter concept (`filter X where COND`) is a VALUE: `X` where COND holds,
-    NULL elsewhere. It narrows only itself, never a sibling's rows, so it
-    renders as the per-row `CASE WHEN COND THEN X ELSE NULL` (`select
-    customer_id, late_name` keeps every customer). The one shape whose rows it
-    does narrow is a statement showing nothing but filter values over one
-    predicate, where a NULL row is one nothing would keep: the caller says so
-    (`intrinsic_filter_pushdown`, since the group's own outputs carry keys the
-    statement never shows) and the predicate is pushed into this node's WHERE
-    over the parents as built, so an aggregate it also reads keeps its own
-    population (`customer_id ? count(order_id) by customer_id > 1 and
-    product_name = 'Mouse'` counts EVERY order). Pushed when the predicate is a
-    plain scalar, or an aggregate predicate whose every referenced concept is
-    already a parent output (a precomputed column, never a re-aggregation).
+    A filter concept (`X ? COND`) is a VALUE: `X` where COND holds, NULL
+    elsewhere, rendered as a per-row CASE that narrows no sibling's rows. The
+    predicate moves into this node's WHERE only when the caller says the rows
+    may narrow (`intrinsic_filter_pushdown`: the statement shows nothing but
+    this predicate's filter values) or for a semijoin RHS (`existence_source`,
+    where a CASE's NULL member would make `not in` match nothing).
 
-    Pass through every parent output as well as the filter's own primaries: a
-    downstream consumer (an aggregate that needs a grain key) can then reach
-    back through the filter. The optimizer prunes unused columns later. An
-    ``existence_source`` filter is a semijoin RHS (`pcid in store_buyers`) whose
-    only consumer reads the set value: no pass-through, and its predicate is
-    always pushed, since a CASE would put a NULL member in the set and `not in`
-    over a NULL member matches nothing.
-
-    A CASE over predicate inputs the outputs' grain does not determine fans a
-    property out into {content, NULL}, one row per input row (`filter name
-    where undelivered` beside `customer_id`: one row per order). A keyed
-    filter groups to the grain so the renderer collapses it (`CTE.filter_collapses_to_grain`), the
-    way the same filter renders when computed beside its content; the
-    pass-through then keeps only what that grain determines. Not when an
-    aggregate consumes it (``collapse_to_grain`` False): `count(line_no ?
-    commit_date < receipt_date)` counts the per-row CASE, and the aggregate
-    pushes a sole predicate into its own WHERE."""
+    Parent outputs pass through so a consumer can reach back through the
+    filter. A keyed filter whose predicate reads finer than its outputs'
+    entity grain groups to that grain (the renderer MAX-collapses it), else the
+    CASE fans a property into {content, NULL} per input row; not under an
+    aggregate consumer (`collapse_to_grain`), which counts the per-row CASE.
+    """
     pass_through: list[BuildConcept] = []
     seen = {c.address for c in outputs}
     if not existence_source:

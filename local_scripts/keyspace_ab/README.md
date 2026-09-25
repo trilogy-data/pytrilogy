@@ -16,7 +16,9 @@ without its environment variable.
 
 The phase 3 method: compute the old and the new answer side by side under
 `TRILOGY_KEYSPACE_AUDIT=<file>`, plan on the old one, triage every logged
-difference, flip with the audit still comparing, then strip it.
+difference, flip with the audit still comparing, then strip it. The audit
+module (`v4_helper/keyspace_audit.py`) was deleted once phase 5 landed; git
+history has it.
 
 The phase 4 method, since it is not byte-identical: capture rows and SQL over
 the planner suites with the change switched off, then on, and triage every
