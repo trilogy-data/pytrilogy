@@ -423,6 +423,7 @@ def get_join_type(
     extent_free_keys: set[str] | None = None,
     span_binding_sources: dict[str, dict[str, frozenset[str]]] | None = None,
     span_padding: dict[str, dict[str, frozenset[str]]] | None = None,
+    region_holders: dict[str, set[str]] | None = None,
 ) -> JoinType:
     # Rendering is row-preserving by default: a relation declares DOMAIN
     # knowledge, never row intent, and no join silently drops a row
@@ -438,6 +439,32 @@ def get_join_type(
     # never fire.
     if full_join_keys and all_connecting_keys & full_join_keys:
         return JoinType.FULL
+    # The region contract: a side holding a region's rows, joined on that
+    # region's span, is preserved; the other side is too only where its key
+    # carries a value NULL (a guest order), else its unmatched rows are
+    # members nobody referenced. Two holders of the same region pair plainly.
+    if region_holders and not (authored_keys and all_connecting_keys & authored_keys):
+        left_holds = bool(region_holders.get(left, set()) & all_connecting_keys)
+        right_holds = bool(region_holders.get(right, set()) & all_connecting_keys)
+        if left_holds and right_holds:
+            # two holders of one region (its domain and a reader of it) pair
+            # on what they hold; neither out-hosts the other by its bindings
+            host_nodes = None
+        if left_holds != right_holds:
+            feeder = right if left_holds else left
+            feeder_values = (
+                value_nullables is not None
+                and _has_any(all_connecting_keys, feeder, value_nullables)
+            ) or (
+                extent_nullables is not None
+                and _has_any(all_connecting_keys, feeder, extent_nullables)
+            )
+            # with a second family in the merge, the rows already joined
+            # carry its extension rows (NULL on this key): only FULL keeps them
+            families: set[str] = set().union(*region_holders.values())
+            if feeder_values or len(families) > 1:
+                return JoinType.FULL
+            return JoinType.LEFT_OUTER if left_holds else JoinType.RIGHT_OUTER
     left_is_partial = _has_any(all_connecting_keys, left, partials)
     right_is_partial = _has_any(all_connecting_keys, right, partials)
     left_is_nullable = _has_any(all_connecting_keys, left, nullables)
@@ -735,6 +762,7 @@ def resolve_join_order_v2(
     extent_free_keys: set[str] | None = None,
     span_binding_sources: dict[str, dict[str, frozenset[str]]] | None = None,
     span_padding: dict[str, dict[str, frozenset[str]]] | None = None,
+    region_holders: dict[str, set[str]] | None = None,
 ) -> list[JoinOrderOutput]:
     """Greedily order the datasources into a join tree.
 
@@ -889,6 +917,7 @@ def resolve_join_order_v2(
                     extent_free_keys,
                     span_binding_sources,
                     span_padding,
+                    region_holders,
                 )
                 join_types.add(join_type)
                 joinkeys[left_candidate] = all_connecting_keys
@@ -1754,19 +1783,14 @@ def get_node_joins(
                 - {canon_node(c.address) for c in datasource.partial_concepts}
             )
         }
-        # A side holding a region's rows (its domain, or whatever read it)
-        # hosts that region's extension rows whatever columns it emits: the
-        # contract, not an inference from the bindings.
-        region_holders = {
-            ds_node: {canon_node(span) for span in datasource.region_spans}
-            for ds_node, datasource in ds_node_map.items()
-            if isinstance(datasource, QueryDatasource) and datasource.region_spans
-        }
-        if region_holders:
-            held: set[str] = set().union(*region_holders.values())
-            host_nodes = {
-                ds_node for ds_node, spans in region_holders.items() if spans >= held
-            }
+    # A side holding a region's rows (its domain, or whatever read it) hosts
+    # that region's extension rows on the join keyed by its span, whatever
+    # columns it emits: the contract, not an inference from the bindings.
+    region_holders = {
+        ds_node: {canon_node(span) for span in datasource.region_spans}
+        for ds_node, datasource in ds_node_map.items()
+        if isinstance(datasource, QueryDatasource) and datasource.region_spans
+    }
     # Keys whose join typing is owned by an authored relation (query-scoped
     # subset/coalescing joins, declared anchors): host/dim direction inference
     # stands down on these.
@@ -1806,6 +1830,7 @@ def get_node_joins(
         extent_free_keys=extent_free_key_nodes,
         span_binding_sources=span_binding_sources,
         span_padding=span_padding,
+        region_holders=region_holders,
     )
     _raise_if_keyless_row_bearing_join(
         joins,

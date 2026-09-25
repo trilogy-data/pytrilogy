@@ -211,8 +211,20 @@ def add_region_domain_buckets(
                 if b.label == label and _splits_for_region(b)
             ]
             # the buckets that pad: something the region carries sourced
-            # beside something absent on it. Their rows become the solid stream
-            sources = [b for b in eligible if _mixes_region(b, region, keyspace)]
+            # beside something absent on it. Their rows become the solid stream.
+            # A bucket reading a MATERIALIZED aggregate (a summary table rolled
+            # up to the statement's grain) is a rollup over the region's rows
+            # that the group graph holds as a ROOT: not modelled yet, it keeps
+            # the padded plan.
+            sources = [
+                b
+                for b in eligible
+                if _mixes_region(b, region, keyspace)
+                and not any(
+                    (c := environment.concepts.get(m)) is not None and c.is_aggregate
+                    for m in b.primary_members
+                )
+            ]
             # a dim peel keyed by the span is the region's own rows already;
             # the domain takes its members too, or FINAL reads them off a solid
             # sibling that passes them through

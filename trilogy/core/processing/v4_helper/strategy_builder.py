@@ -28,6 +28,7 @@ from trilogy.core.enums import (
     Purpose,
 )
 from trilogy.core.exceptions import UnresolvableQueryException
+from trilogy.core.functions import propagates_argument_nulls
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
     BoolExpr,
@@ -1285,6 +1286,10 @@ def _project_basic_aggregate_inputs(
             aggregate_input
             for aggregate_input in _aggregate_row_preserving_inputs(concept)
             if aggregate_input.derivation == Derivation.BASIC
+            # beside a region domain only a null-opaque argument (CASE,
+            # COALESCE) has to be computed before the padding; arithmetic is
+            # NULL on a padded row either way and inlines
+            and not (region_spans and propagates_argument_nulls(aggregate_input))
         )
     if not scalar_inputs:
         return parents
@@ -4299,6 +4304,14 @@ def _assemble_final_node(
         for c in mandatory_list
         if c.address in available or c.address in pseudonym_only
     ]
+    # a requested column no contributor renders is a wrong answer, not a
+    # narrower one (a group that failed to build was skipped above)
+    missing = [c.address for c in mandatory_list if c not in outputs]
+    if missing:
+        raise UnresolvableQueryException(
+            f"No FINAL contributor renders {missing}; the group producing it"
+            " could not be built. This is a planner bug."
+        )
     # Pull in any filter-only condition arg (e.g. the global aggregate) not
     # already supplied by a contributor, as a hidden cross-join input.
     arg_nodes, arg_concepts = _filter_arg_parents(

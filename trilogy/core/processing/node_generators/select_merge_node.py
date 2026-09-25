@@ -172,9 +172,10 @@ def create_pruned_concept_graph(
     relevant_concepts: list[str] = list(relevant_concepts_pre.keys())
     # a span this group is built not to extend is completed by its region
     # domain above: the fact's own `~` column is as full as this scan needs
-    partial = get_graph_partial_nodes(
-        g, conditions, excluding=environment.span_scope.extent_free
+    promoted = (
+        environment.span_scope.extent_free if environment is not None else frozenset()
     )
+    partial = get_graph_partial_nodes(g, conditions, excluding=promoted)
     if criteria == SearchCriteria.FULL_ONLY:
         datasource_map = orig_g.datasources
         to_remove = [
