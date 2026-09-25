@@ -1465,6 +1465,12 @@ class QueryDatasource:
             # only same-identifier QDSs merge, so limits agree; keep it
             limit=self.limit if self.limit is not None else other.limit,
             base_datasource=merged_base,
+            # the LHS is the key the merge folded `other` under, and the joins
+            # carried above reference the sides by that identity
+            extent_free_spans=self.extent_free_spans,
+            extent_free_carried=self.extent_free_carried | other.extent_free_carried,
+            zero_filled=self.zero_filled | other.zero_filled,
+            region_spans=self.region_spans | other.region_spans,
         )
         logger.debug(
             f"[Query Datasource] merged with {[c.address for c in qds.output_concepts]} concepts"

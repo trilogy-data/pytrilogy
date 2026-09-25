@@ -22,8 +22,10 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation
+from trilogy.core.enums import Derivation, FunctionType
+from trilogy.core.models.build import BuildConcept, BuildFilterItem, BuildFunction
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_utility import concepts_implied_non_null
 
 from .constants import FINAL_NODE_ID, ROW_STREAM_DERIVATIONS
 from .functional_dependency import build_fd_determines
@@ -118,7 +120,7 @@ def elect_extent_owners(
             # The domain holds the members; whatever reads it extends, except
             # the row streams that must never see an extension row.
             allowed = ({owner} | nx.descendants(group_graph, owner)) - _solid_groups(
-                group_graph, attrs, domains[owner], keyspace
+                group_graph, attrs, domains[owner], keyspace, environment
             )
         else:
             allowed = {owner} | nx.ancestors(group_graph, owner)
@@ -135,23 +137,66 @@ def elect_extent_owners(
     )
 
 
+def null_on_padding(
+    value: object, region: Region, keyspace: Keyspace, environment: BuildEnvironment
+) -> bool:
+    """Whether `value` is NULL on a row of `region` however it is planned: it
+    cannot be non-null unless something absent there is (`sale_price - cost`).
+    Padding already gives the rule's answer, so only a null-opaque derivation
+    (CASE, COALESCE, IS NULL, a window) needs the region kept off its row
+    stream. CONCAT skips NULL arguments on some dialects."""
+    if isinstance(value, BuildConcept):
+        if keyspace.defined_on(value.address, region):
+            return False
+        if value.derivation == Derivation.ROOT:
+            return True
+        value = value.lineage
+    # `content ? condition` is NULL wherever its content is.
+    if isinstance(value, BuildFilterItem):
+        return null_on_padding(value.content, region, keyspace, environment)
+    if isinstance(value, BuildFunction) and value.operator == FunctionType.CONCAT:
+        return False
+    return any(
+        null_on_padding(environment.concepts[address], region, keyspace, environment)
+        for address in concepts_implied_non_null(value)
+        if address in environment.concepts
+    )
+
+
+def _takes_a_value_on_padding(
+    address: str, region: Region, keyspace: Keyspace, environment: BuildEnvironment
+) -> bool:
+    concept = environment.concepts.get(address)
+    return (
+        concept is not None
+        and not keyspace.defined_on(address, region)
+        and not null_on_padding(concept, region, keyspace, environment)
+    )
+
+
 def _solid_groups(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     region: Region,
     keyspace: Keyspace,
+    environment: BuildEnvironment,
 ) -> set[str]:
     """Groups that must not see `region`'s rows: each row-stream derivation
-    absent there, and the row stream feeding it. A derived concept is NULL
-    where its key's entity is absent, which it can only be if it never reads a
-    row padded to stand in for that entity. An aggregate above one is not part
-    of its row stream, and may extend."""
+    absent there that would take a value on a padded row, and the row stream
+    feeding it. A derived concept is NULL where its key's entity is absent,
+    which it can only be if it never reads a row padded to stand in for that
+    entity; one NULL on the padding however it is planned (`null_on_padding`)
+    may read the region's rows. An aggregate above one is not part of its row
+    stream, and may extend."""
     solid: set[str] = set()
     stack = [
         gid
         for gid, a in attrs.items()
         if a.derivation in ROW_STREAM_DERIVATIONS
-        and not all(keyspace.defined_on(m, region) for m in a.primary_members)
+        and any(
+            _takes_a_value_on_padding(m, region, keyspace, environment)
+            for m in a.primary_members
+        )
     ]
     while stack:
         gid = stack.pop()

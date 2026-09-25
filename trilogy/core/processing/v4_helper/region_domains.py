@@ -6,50 +6,22 @@ evaluate on the region, and restated at FINAL for the WHERE atoms over it.
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation, FunctionType
+from trilogy.core.enums import Derivation
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
     BuildConceptArgs,
-    BuildFilterItem,
-    BuildFunction,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.condition_utility import concepts_implied_non_null
 
 from .concept_graph import _scope_and_phase
 from .condition_placement import ConditionPlacement, PlacementReason
 from .constants import FINAL_NODE_ID, ROW_STREAM_DERIVATIONS, DepthLabel, EdgeKind
 from .edges import EdgeMap, add_edge, edge_kind, remove_edge
 from .extent_ownership import _solid_groups as solid_groups
+from .extent_ownership import null_on_padding
 from .models import ConceptAttrs, GroupAttrs, GroupBucket, Keyspace, Region
 from .projection import decided_at_output_grain, reads_rows_only
-
-
-def _null_on_padding(
-    value: object, region: Region, keyspace: Keyspace, environment: BuildEnvironment
-) -> bool:
-    """Whether `value` is NULL on a row of `region` however it is planned: it
-    cannot be non-null unless something absent there is (`sale_price - cost`).
-    Padding already gives the rule's answer, so only a null-opaque derivation
-    (CASE, COALESCE, IS NULL, a window) needs the region kept off its row
-    stream. CONCAT skips NULL arguments on some dialects."""
-    if isinstance(value, BuildConcept):
-        if keyspace.defined_on(value.address, region):
-            return False
-        if value.derivation == Derivation.ROOT:
-            return True
-        value = value.lineage
-    # `content ? condition` is NULL wherever its content is.
-    if isinstance(value, BuildFilterItem):
-        return _null_on_padding(value.content, region, keyspace, environment)
-    if isinstance(value, BuildFunction) and value.operator == FunctionType.CONCAT:
-        return False
-    return any(
-        _null_on_padding(environment.concepts[address], region, keyspace, environment)
-        for address in concepts_implied_non_null(value)
-        if address in environment.concepts
-    )
 
 
 def _has_absent_inline_argument(
@@ -62,7 +34,7 @@ def _has_absent_inline_argument(
     if concept is None or not isinstance(concept.lineage, BuildAggregateWrapper):
         return False
     return any(
-        not _null_on_padding(arg, region, keyspace, environment)
+        not null_on_padding(arg, region, keyspace, environment)
         and any(
             not keyspace.defined_on(read.address, region)
             for read in arg.concept_arguments
@@ -70,36 +42,6 @@ def _has_absent_inline_argument(
         for arg in concept.lineage.function.arguments
         if isinstance(arg, BuildConceptArgs) and not isinstance(arg, BuildConcept)
     )
-
-
-def _evaluates_where_absent(
-    label: str,
-    region: Region,
-    keyspace: Keyspace,
-    concept_attrs: dict[str, ConceptAttrs],
-    environment: BuildEnvironment,
-) -> bool:
-    """Whether the `label` sub-graph holds a row-stream derivation that is
-    absent on `region` and would take a value there all the same. An aggregate
-    is evaluated OVER the region's rows, but its inline arguments are
-    row-stream too."""
-    for a in concept_attrs.values():
-        if a.label != label or a.existence_only:
-            continue
-        if a.derivation == Derivation.AGGREGATE:
-            if _has_absent_inline_argument(a.address, region, keyspace, environment):
-                return True
-            continue
-        if a.derivation not in ROW_STREAM_DERIVATIONS:
-            continue
-        concept = environment.concepts.get(a.address)
-        if (
-            concept is not None
-            and not keyspace.defined_on(a.address, region)
-            and not _null_on_padding(concept, region, keyspace, environment)
-        ):
-            return True
-    return False
 
 
 def _filters_region_domain(
@@ -314,6 +256,18 @@ def _aggregates_over_region(
     return bool(members)
 
 
+def _reads_carried(
+    address: str, region: Region, keyspace: Keyspace, environment: BuildEnvironment
+) -> bool:
+    concept = environment.concepts.get(address)
+    if concept is None or concept.lineage is None:
+        return False
+    return any(
+        keyspace.carried_on(arg.address, region)
+        for arg in concept.lineage.concept_arguments
+    )
+
+
 def feed_region_domains_to_present_scalars(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -341,7 +295,25 @@ def feed_region_domains_to_present_scalars(
     order_id`) every extension row would collapse into one NULL group: the
     aggregate pairs on solid keys and the domain pads it at FINAL. Never when
     a row stream that must not see an extension row reads it
-    (`_solid_groups`)."""
+    (`_solid_groups`).
+
+    A row-stream derivation that READS something a region domain carries
+    (`sale_price - cost` reads the product's `cost`) reads the domain of
+    every region it is NULL on the padding of however it is planned
+    (`null_on_padding`), unless it feeds a stream that must stay solid:
+    evaluated over the padded rows it is NULL exactly where the rule says, it
+    holds the same regions as its consumer's other contributors, and the
+    solid stream beside the domain re-sources nothing the domain carries
+    (thelook: `users LEFT JOIN order_items FULL JOIN products` stays one
+    SELECT). One that reads nothing carried (a rename of the fact's own
+    column) has no use for the domain's rows; reading them would only pad
+    its stream."""
+    domain_regions = [
+        region
+        for domain in attrs.values()
+        if domain.extent_spans
+        and (region := keyspace.region_of(domain.extent_spans)) is not None
+    ]
     for domain_gid, domain in list(attrs.items()):
         region = (
             keyspace.region_of(domain.extent_spans) if domain.extent_spans else None
@@ -351,13 +323,31 @@ def feed_region_domains_to_present_scalars(
         scope = _scope_and_phase(domain.label)[0]
         # a row stream that must never see an extension row (`_solid_groups`)
         # keeps every aggregate it reads solid too
-        solid = solid_groups(group_graph, attrs, region, keyspace)
+        solid = solid_groups(group_graph, attrs, region, keyspace, environment)
         for gid, a in attrs.items():
             if (
                 a.derivation in ROW_STREAM_DERIVATIONS
                 and _scope_and_phase(a.label)[0] == scope
                 and a.primary_members
-                and all(keyspace.carried_on(m, region) for m in a.primary_members)
+                and (
+                    all(keyspace.carried_on(m, region) for m in a.primary_members)
+                    or (
+                        gid not in solid
+                        and any(
+                            _reads_carried(m, r, keyspace, environment)
+                            for m in a.primary_members
+                            for r in domain_regions
+                        )
+                        and all(
+                            keyspace.carried_on(m, region)
+                            or (
+                                (c := environment.concepts.get(m)) is not None
+                                and null_on_padding(c, region, keyspace, environment)
+                            )
+                            for m in a.primary_members
+                        )
+                    )
+                )
             ) or (
                 a.derivation == Derivation.AGGREGATE
                 and a.label == domain.label
