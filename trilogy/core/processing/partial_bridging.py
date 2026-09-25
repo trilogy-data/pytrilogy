@@ -11,9 +11,12 @@ query. WHICH rows those are is the keyspace's answer
 and the WHERE's non-null proofs); whether dropping the ``~`` is also safe
 for every other merge it would license is decided here (the anchor guards).
 Dropping the modifier up front lets the fact anchor the plan with INNER star
-joins instead of extension scaffolding that is then filtered away. Running at
-one seam (``get_query_node``), before the reference graph captures the
-datasource objects, keeps every downstream consumer on one judgment.
+joins instead of extension scaffolding that is then filtered away. It runs
+once per PLAN, on the plan's own outputs, WHERE and references
+(``scope_statement``): the statement at ``get_query_node`` and every nested
+select (a rowset body, a union arm) in the fresh build environment it plans
+in, before the reference graph captures the datasource objects, so every
+downstream consumer of that plan reads one judgment.
 
 ``drop_excluded_partials``: a ``complete where`` source whose partition
 predicate is mutually exclusive with the statement's row gate cannot contribute
@@ -31,14 +34,25 @@ import dataclasses
 from collections.abc import Iterable
 
 from trilogy.core.enums import Modifier
+from trilogy.core.models.author import (
+    Concept,
+    HavingClause,
+    MultiSelectLineage,
+    OrderBy,
+    SelectLineage,
+    WhereClause,
+)
 from trilogy.core.models.build import (
     BuildColumnAssignment,
     BuildConcept,
     BuildDatasource,
+    BuildMultiSelectLineage,
+    BuildSelectLineage,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import EnumType
+from trilogy.core.models.environment import Environment
 from trilogy.core.processing.condition_utility import (
     conditions_mutually_exclusive,
     gate_allowed_values,
@@ -50,6 +64,8 @@ from trilogy.core.processing.v4_helper.keyspace import (
     null_rejected,
 )
 from trilogy.core.processing.v4_helper.models import Keyspace
+from trilogy.core.processing.v4_helper.projection import statement_filter_population
+from trilogy.core.processing.v4_helper.staged_where import universal_row_bound
 
 
 def _spellings(concept: BuildConcept) -> set[str]:
@@ -378,3 +394,95 @@ def drop_excluded_partials(
     ]
     for name in excluded:
         del environment.datasources[name]
+
+
+def authored_reference_addresses(
+    statement: SelectLineage | MultiSelectLineage,
+    environment: Environment,
+    include_where: bool = True,
+) -> set[str]:
+    """Transitive closure of author-referenced concept addresses for this
+    select: outputs, WHERE/HAVING/ORDER BY arguments, and their lineage,
+    walked on author objects before scoped-join canonical substitution
+    rewrites addresses. Scoped-join declarations are excluded: a declared
+    relation whose far side the author never references is domain metadata
+    and must not force that side into the plan. `include_where=False` drops
+    the WHERE clauses; the outputs-only closure distinguishes row-stream
+    contributors from population-scope (condition) references."""
+    selects = (
+        statement.selects if isinstance(statement, MultiSelectLineage) else [statement]
+    )
+    stack: list[str] = []
+    locals_pool: dict[str, Concept] = {}
+    clauses: list[WhereClause | HavingClause | OrderBy | None] = [
+        statement.having_clause,
+        statement.order_by,
+    ]
+    if include_where:
+        clauses.append(statement.where_clause)
+    for select in selects:
+        stack.extend(ref.address for ref in select.output_components)
+        clauses.extend([select.having_clause, select.order_by])
+        if include_where:
+            clauses.append(select.where_clause)
+        locals_pool.update(select.local_concepts)
+    for clause in clauses:
+        if clause is not None:
+            stack.extend(ref.address for ref in clause.concept_arguments)
+    closure: set[str] = set()
+    while stack:
+        address = stack.pop()
+        if address in closure:
+            continue
+        closure.add(address)
+        concept = locals_pool.get(address) or environment.concepts.get(address)
+        if concept is None:
+            continue
+        stack.extend(ref.address for ref in concept.concept_arguments)
+    return closure
+
+
+def scope_statement(
+    build_environment: BuildEnvironment,
+    statement: SelectLineage | MultiSelectLineage,
+    environment: Environment,
+    build_statement: BuildSelectLineage | BuildMultiSelectLineage,
+) -> None:
+    """Make ``build_environment`` this one plan's: record what the select
+    references, heal the ``~`` bindings its WHERE completes, hide the
+    partitions its row bound contradicts. Runs before the reference graph is
+    generated, at every seam that materializes a build environment for a plan.
+
+    Staged (``then where``) chains are not healed: intermediate stages see
+    populations the combined WHERE has not yet filtered. A statement showing
+    nothing but filter values over one predicate is filtered by it
+    (``statement_filter_population``), the same as by a WHERE.
+    """
+    build_environment.statement_authored_addresses = authored_reference_addresses(
+        statement, environment
+    )
+    build_environment.statement_output_addresses = authored_reference_addresses(
+        statement, environment, include_where=False
+    )
+    if not isinstance(build_statement, BuildSelectLineage):
+        return
+    if not build_statement.where_clauses:
+        outputs = list(build_statement.output_components)
+        heal_pinned_partials(
+            build_environment,
+            outputs,
+            [
+                clause
+                for clause in (
+                    build_statement.where_clause,
+                    statement_filter_population(outputs),
+                )
+                if clause is not None
+            ],
+        )
+    drop_excluded_partials(
+        build_environment,
+        universal_row_bound(
+            build_statement.where_clauses, build_statement.where_clause
+        ),
+    )

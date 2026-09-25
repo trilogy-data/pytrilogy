@@ -28,6 +28,7 @@ from trilogy.core.processing.discovery_utility import (
     raise_if_disconnected_for,
 )
 from trilogy.core.processing.nodes import BuildCaches, SelectNode, StrategyNode
+from trilogy.core.processing.partial_bridging import scope_statement
 from trilogy.core.processing.v4_helper.history import V4History
 
 from .common import search_parent
@@ -188,6 +189,9 @@ def build_nested_select(
         datasource_build_cache=caches.datasource_build_cache,
         scoped_joins=scoped_joins,
     )
+    # This select is its own plan: its WHERE completes `~` bindings and rules
+    # out partitions over ITS references, not the enclosing statement's.
+    scope_statement(build_env, select, author_env, built)
     return built, build_env, built.where_clause
 
 
