@@ -1,5 +1,5 @@
 query_id = "06"
-gen_length = 557
+gen_length = 518
 preql_size = 94
 comp_size = 175
 generated_sql = """
@@ -7,7 +7,7 @@ generated_sql = """
 WITH 
 wakeful as (
 SELECT
-    coalesce(\"order_items\".\"user_id\",\"user_users\".\"id\") as \"user_id\",
+    \"user_users\".\"id\" as \"user_id\",
     sum(\"order_items\".\"sale_price\") as \"revenue\"
 FROM
     \"users\" as \"user_users\"
@@ -19,7 +19,7 @@ SELECT
     \"user_users\".\"state\" as \"user_state\",
     \"wakeful\".\"revenue\" as \"revenue\"
 FROM
-    \"wakeful\"
-    LEFT OUTER JOIN \"users\" as \"user_users\" on \"wakeful\".\"user_id\" = \"user_users\".\"id\"
+    \"users\" as \"user_users\"
+    INNER JOIN \"wakeful\" on \"user_users\".\"id\" = \"wakeful\".\"user_id\"
 ORDER BY 
     \"wakeful\".\"user_id\" asc"""
