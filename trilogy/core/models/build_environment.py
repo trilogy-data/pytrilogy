@@ -174,6 +174,9 @@ class BuildEnvironment:
     # Set around each plan (`_build_from_graph`) and each group
     # (`build_strategy_node`); merges capture it.
     span_scope: SpanScope = field(default_factory=SpanScope)
+    # The datasources as authored, set by `heal_pinned_partials` when it
+    # rewrites any of them; the heal audit builds the keyspace over these.
+    authored_datasources: list[BuildDatasource] | None = None
 
     def _distinct_scoped_join_groups(self) -> list[tuple[str, list[str]]]:
         """Per scoped-join key group, its canonical plus the members that keep

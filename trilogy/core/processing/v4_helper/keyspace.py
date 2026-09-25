@@ -480,11 +480,22 @@ def build_keyspace(
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     conditions: list[BuildWhereClause],
+    datasources: list[BuildDatasource] | None = None,
 ) -> Keyspace:
-    licensed = _has_extension_license(build_datasources(environment))
-    facts = _model_facts(environment) if licensed else None
-    canonical = facts.canonical if facts else {}
-    identifying = facts.identifying if facts else frozenset()
+    """`datasources` overrides the environment's (uncached): the heal audit
+    builds over the bindings as authored after pin-heal has rewritten them.
+
+    The facts are read whether or not any `~` survives (pin-heal may have
+    dropped the last one): an entity is spelled by the same canonical
+    address either way, and a plan's keys are compared across plans."""
+    if datasources is None:
+        datasources = build_datasources(environment)
+        facts = _model_facts(environment)
+    else:
+        facts = _compute_facts(environment, datasources)
+    licensed = _has_extension_license(datasources)
+    canonical = facts.canonical
+    identifying = facts.identifying
     # an existence-only node is a semijoin's subselect, not a row of this plan
     declared = {
         a.address: (a.purpose, a.derivation, a.keys)
@@ -500,7 +511,7 @@ def build_keyspace(
     }
     entities: frozenset[str] = frozenset().union(*keys_by_address.values())
     base = Region(present=entities)
-    if facts is None or not entities:
+    if not licensed or not entities:
         return Keyspace(
             entities=entities,
             regions=(base,),
