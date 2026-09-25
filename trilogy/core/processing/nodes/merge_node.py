@@ -13,7 +13,7 @@ from trilogy.core.models.build import (
     BuildOrderBy,
     nonstandard_grouping_lineage,
 )
-from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.build_environment import BuildEnvironment, SpanScope
 from trilogy.core.models.execute import BaseJoin, QueryDatasource, UnnestJoin
 from trilogy.core.processing.condition_utility import (
     decompose_condition,
@@ -170,7 +170,7 @@ def tree_in_play_spans(node: StrategyNode, seen: set[int]) -> frozenset[str]:
     if id(node) in seen:
         return frozenset()
     seen.add(id(node))
-    out = node.in_play_spans if isinstance(node, MergeNode) else frozenset()
+    out = node.span_scope.in_play if isinstance(node, MergeNode) else frozenset()
     for parent in node.parents:
         out |= tree_in_play_spans(parent, seen)
     return out
@@ -201,10 +201,7 @@ class MergeNode(StrategyNode):
         ordering: BuildOrderBy | None = None,
         preserve_parents: bool = False,
         host_stitch: bool = False,
-        extent_free_spans: frozenset[str] | None = None,
-        in_play_spans: frozenset[str] | None = None,
-        extent_free_carried: dict[str, frozenset[str]] | None = None,
-        demanded_spans: frozenset[str] | None = None,
+        span_scope: SpanScope | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -238,30 +235,7 @@ class MergeNode(StrategyNode):
         # host basis and preserves only the span owner. Mid-plan merges keep
         # plain domain-preserving semantics.
         self.host_stitch = host_stitch
-        # `~` spans this merge must NOT extend: another group owns those
-        # extension members (v4_helper/extent_ownership.py), so padding here
-        # would manufacture a second copy. Captured from the environment at
-        # construction so a merge built deep inside a generator inherits its
-        # group's routing.
-        self.extent_free_spans = (
-            environment.extent_free_spans
-            if extent_free_spans is None
-            else extent_free_spans
-        )
-        self.extent_free_carried = (
-            environment.extent_free_carried
-            if extent_free_carried is None
-            else extent_free_carried
-        )
-        # The spans the plan this merge belongs to has a region for. Captured
-        # for the same reason: a rowset body's merge can resolve after the
-        # outer plan's scope is back on the environment.
-        self.in_play_spans = (
-            environment.in_play_spans if in_play_spans is None else in_play_spans
-        )
-        self.demanded_spans = (
-            environment.demanded_spans if demanded_spans is None else demanded_spans
-        )
+        self.span_scope = environment.span_scope if span_scope is None else span_scope
 
         final_joins: list[NodeJoin] = []
         if self.node_joins is not None:
@@ -362,8 +336,8 @@ class MergeNode(StrategyNode):
                     licensed_outputs = {
                         c.address
                         for c in self.output_concepts
-                        if c.address in self.in_play_spans
-                        and c.address not in self.extent_free_spans
+                        if c.address in self.span_scope.in_play
+                        and c.address not in self.span_scope.extent_free
                     }
                     host_grain = licensed_outputs or set(grain.components)
                 # Domains this node emits: visible outputs and the grain,
@@ -384,13 +358,13 @@ class MergeNode(StrategyNode):
                     component_concept = environment.concepts.get(component)
                     if component_concept is not None and component_concept.keys:
                         demanded_domains |= set(component_concept.keys)
-                demanded_domains -= self.extent_free_spans
+                demanded_domains -= self.span_scope.extent_free
                 joins = get_node_joins(
                     dataset_list,
                     environment=environment,
                     host_grain=host_grain,
                     demanded_domains=demanded_domains,
-                    extent_free_spans=self.extent_free_spans,
+                    extent_free_spans=self.span_scope.extent_free,
                     in_play_spans=tree_in_play_spans(self, set()),
                 )
         elif final_joins:
@@ -460,7 +434,7 @@ class MergeNode(StrategyNode):
         coalesced = (
             complete_addresses
             & partial_addresses
-            & (self.demanded_spans - self.extent_free_spans)
+            & (self.span_scope.demanded - self.span_scope.extent_free)
         )
         proofs -= coalesced
         side_proofs -= coalesced
@@ -863,11 +837,11 @@ class MergeNode(StrategyNode):
             condition=self.conditions,
             hidden_concepts=self.hidden_concepts,
             ordering=self.ordering,
-            extent_free_spans=self.extent_free_spans,
+            extent_free_spans=self.span_scope.extent_free,
             extent_free_carried=frozenset(
                 address
-                for address, spans in self.extent_free_carried.items()
-                if spans & self.extent_free_spans
+                for address, spans in self.span_scope.extent_free_carried.items()
+                if spans & self.span_scope.extent_free
             ),
         )
         return qds
@@ -884,11 +858,11 @@ class MergeNode(StrategyNode):
         members belong to the elected owner. Marking them partial makes the
         assembly above preserve the owner's rows instead of INNER-joining them
         away."""
-        if not self.extent_free_spans:
+        if not self.span_scope.extent_free:
             return []
         bound_partially = {
             span
-            for span in self.extent_free_spans
+            for span in self.span_scope.extent_free
             if any(partial_binding_sources(source, span) for source in sources)
         }
         # what the span's region domain carries is held here for those same
@@ -897,7 +871,7 @@ class MergeNode(StrategyNode):
             concept
             for concept in outputs
             if concept.address in bound_partially
-            or self.extent_free_carried.get(concept.address, frozenset())
+            or self.span_scope.extent_free_carried.get(concept.address, frozenset())
             & bound_partially
         ]
 
@@ -923,8 +897,5 @@ class MergeNode(StrategyNode):
             ordering=self.ordering,
             preserve_parents=self.preserve_parents,
             host_stitch=self.host_stitch,
-            extent_free_spans=self.extent_free_spans,
-            in_play_spans=self.in_play_spans,
-            extent_free_carried=self.extent_free_carried,
-            demanded_spans=self.demanded_spans,
+            span_scope=self.span_scope,
         )

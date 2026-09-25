@@ -4168,9 +4168,7 @@ def _assemble_final_node(
                 # with its constraint parent. A peeled dim's own key, a key a
                 # sibling carries and a preserved key are the merge axis, so
                 # they must render, and the siblings are widened to match.
-                axis: set[str] = set(preserve_keys)
-                if ":dim:" in gid:
-                    axis |= set(gid.rpartition(":dim:")[2].split("|"))
+                axis: set[str] = set(preserve_keys) | attrs[gid].dim_keys
                 for other in contributing:
                     if other != gid and other in built:
                         axis |= {o.address for o in built[other].output_concepts}
@@ -4440,8 +4438,11 @@ def build_strategy_node(
             continue
         # Scope the group's extent routing over its whole build, including the
         # consumer-side re-sources `_parent_nodes_for` plans below.
-        environment.extent_free_spans = ownership.suppressed_for(gid)
-        environment.extent_free_carried = ownership.suppressed_carried_for(gid)
+        environment.span_scope = dc_replace(
+            environment.span_scope,
+            extent_free=ownership.suppressed_for(gid),
+            extent_free_carried=ownership.suppressed_carried_for(gid),
+        )
         a = attrs[gid]
         # Only the FINAL sink carries a None derivation, and it is skipped above.
         assert a.derivation is not None
@@ -4801,8 +4802,9 @@ def build_strategy_node(
 
     # The FINAL assembly is where the owner and the extent-free branches meet;
     # it must see every span again to host the owner's rows.
-    environment.extent_free_spans = frozenset()
-    environment.extent_free_carried = {}
+    environment.span_scope = dc_replace(
+        environment.span_scope, extent_free=frozenset(), extent_free_carried={}
+    )
     if not built:
         return None
     feeder_cache = _CleanFeederCache(environment, g, history)

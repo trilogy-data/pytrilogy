@@ -96,6 +96,26 @@ class BuildEnvironmentDatasourceDict(dict):
         return super().items()
 
 
+@dataclass(frozen=True)
+class SpanScope:
+    """The `~` routing every merge built under it captures at construction, so
+    the decision is fixed before the node resolves (a rowset body's merge can
+    resolve after the outer plan's scope is restored)."""
+
+    # plan: the spans the plan has a region for (`Keyspace.in_play_spans`), the
+    # only ones a join of it can pad for
+    in_play: frozenset[str] = frozenset()
+    # plan: the spans whose unmatched members carry an output
+    # (`Keyspace.output_demanded_spans`), the only extension rows it returns
+    demanded: frozenset[str] = frozenset()
+    # group: the spans this group may NOT extend, because another group owns
+    # those extension members (v4_helper/extent_ownership.py)
+    extent_free: frozenset[str] = frozenset()
+    # group: address -> the extent-free spans whose region domain carries it;
+    # held here only for the members the group's facts bound
+    extent_free_carried: dict[str, frozenset[str]] = field(default_factory=dict)
+
+
 @dataclass
 class BuildEnvironment:
     concepts: BuildEnvironmentConceptDict = field(
@@ -151,25 +171,9 @@ class BuildEnvironment:
     # referenced only in a condition is population-scope (d1) demand, not a
     # row-stream contributor. Set by `get_query_node`.
     statement_output_addresses: set[str] | None = None
-    # Build-loop scope: the `~` spans the group currently being built may NOT
-    # extend, because another group was elected to carry those extension rows
-    # (v4_helper/extent_ownership.py). Every merge constructed while this is set
-    # captures it, so the decision is fixed before the node ever resolves:
-    # re-deciding after resolution would leave the padding's nullable marks
-    # behind. `build_strategy_node` sets and clears it around each group.
-    extent_free_spans: frozenset[str] = frozenset()
-    # Same scope: address -> the extent-free spans whose region domain carries
-    # it. The group holds that member only for the rows its facts bound (the
-    # names of customers WITH an order), exactly like the span key itself.
-    extent_free_carried: dict[str, frozenset[str]] = field(default_factory=dict)
-    # Plan scope: the `~` spans the plan being built has a region for
-    # (`Keyspace.in_play_spans`), the only ones a join of it can pad for.
-    # `_build_from_graph` sets and restores it; merges capture it like the above.
-    in_play_spans: frozenset[str] = frozenset()
-    # Plan scope: the spans whose unmatched members carry an output
-    # (`Keyspace.output_demanded_spans`), the only extension rows the plan
-    # returns. Set and restored beside `in_play_spans`.
-    demanded_spans: frozenset[str] = frozenset()
+    # Set around each plan (`_build_from_graph`) and each group
+    # (`build_strategy_node`); merges capture it.
+    span_scope: SpanScope = field(default_factory=SpanScope)
 
     def _distinct_scoped_join_groups(self) -> list[tuple[str, list[str]]]:
         """Per scoped-join key group, its canonical plus the members that keep

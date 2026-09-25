@@ -1094,8 +1094,9 @@ def _split_root_dimension_clusters(
                 derivation=Derivation.ROOT,
                 grain_components=frozenset(),
                 label=bucket.label,
+                discriminator=f"dim:{'|'.join(sorted(key))}",
+                dim_keys=frozenset(key),
             )
-            dim_bucket.discriminator = f"dim:{'|'.join(sorted(key))}"
             for idx in indices:
                 addr = bucket.primary_members[idx]
                 node_id = bucket.primary_node_ids[idx]
@@ -1236,7 +1237,7 @@ def _splits_for_region(bucket: GroupBucket) -> bool:
     return (
         bucket.derivation == Derivation.ROOT
         and bucket.depth_label == DepthLabel.ROOT
-        and (not bucket.discriminator or bucket.discriminator.startswith("dim:"))
+        and (not bucket.discriminator or bool(bucket.dim_keys))
     )
 
 
@@ -1265,8 +1266,7 @@ def _mixes_region(bucket: GroupBucket, region: Region, keyspace: Keyspace) -> bo
 
 
 def _keyed_by_region(bucket: GroupBucket, region: Region) -> bool:
-    keys = frozenset(bucket.discriminator.removeprefix("dim:").split("|"))
-    return bucket.discriminator.startswith("dim:") and keys <= region.spans
+    return bool(bucket.dim_keys) and bucket.dim_keys <= region.spans
 
 
 def _add_region_domain_buckets(
@@ -1557,6 +1557,7 @@ def _materialize_group_graph(
             aggregate_distinct_addrs=frozenset(bucket.aggregate_distinct_addrs),
             grouping_mode=bucket.grouping_mode,
             extent_spans=bucket.extent_spans,
+            dim_keys=bucket.dim_keys,
         )
         group_graph.add_node(gid)
 
@@ -3866,11 +3867,13 @@ def _synthetic_dimension_regraft_parent(
             grain_components=frozenset(),
             primary_members=tuple(inputs),
             members=tuple(inputs),
+            dim_keys=frozenset(key),
         )
         bucket = GroupBucket(
             depth_label=DepthLabel.ROOT,
             derivation=Derivation.ROOT,
             grain_components=frozenset(),
+            dim_keys=frozenset(key),
         )
         bucket.primary_members = list(inputs)
         buckets[root_gid] = bucket
@@ -3891,7 +3894,7 @@ def _covering_dimension_root(
         bucket = buckets.get(root_id)
         if (
             bucket is not None
-            and bucket.discriminator.startswith("dim:")
+            and bucket.dim_keys
             and required <= set(attrs[root_id].members)
         ):
             return root_id
