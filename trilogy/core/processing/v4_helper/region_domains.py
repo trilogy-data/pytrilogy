@@ -217,15 +217,6 @@ def add_region_domain_buckets(
                 for m in b.primary_members
                 if keyspace.carried_on(m, region)
             }
-            # a WHERE over a value the region's rows carry that no solid
-            # bucket holds (`activity`, a scalar over an aggregate by the span)
-            # is evaluated on the region's rows: they need a domain to come
-            # from, whether or not anything absent takes a value on them
-            solid_members = {m for b in eligible for m in b.primary_members}
-            where_over_region = any(
-                address not in solid_members and keyspace.carried_on(address, region)
-                for address in condition_arg_addresses
-            )
             if (
                 not sources
                 or not carried
@@ -236,12 +227,6 @@ def add_region_domain_buckets(
                     keyspace.output_demanded_spans,
                     concept_attrs,
                     environment,
-                )
-                or not (
-                    where_over_region
-                    or _evaluates_where_absent(
-                        label, region, keyspace, concept_attrs, environment
-                    )
                 )
             ):
                 continue
