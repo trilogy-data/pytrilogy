@@ -38,6 +38,7 @@ from weakref import ReferenceType, ref
 
 from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.models.build import (
+    BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
     BuildWhereClause,
@@ -312,6 +313,9 @@ def _entity_keys(
         return frozenset({address})
     if derivation == Derivation.BASIC:
         keys = _read_addresses(address, environment) or keys
+    elif derivation == Derivation.AGGREGATE and not keys:
+        # a ROLLUP aggregate declares no keys; it is still evaluated by its `by`
+        keys = _grouping_addresses(address, environment)
     seen = seen | {address}
     return frozenset().union(
         *(
@@ -333,6 +337,13 @@ def _read_addresses(address: str, environment: BuildEnvironment) -> frozenset[st
     if concept is None or concept.lineage is None:
         return frozenset()
     return frozenset(arg.address for arg in concept.lineage.concept_arguments)
+
+
+def _grouping_addresses(address: str, environment: BuildEnvironment) -> frozenset[str]:
+    concept = environment.concepts.get(address)
+    if concept is None or not isinstance(concept.lineage, BuildAggregateWrapper):
+        return frozenset()
+    return frozenset(b.address for b in concept.lineage.by)
 
 
 def _identifying_keys(source: _SourceFacts, present: frozenset[str]) -> frozenset[str]:

@@ -21,6 +21,7 @@ from .concept_graph import _scope_and_phase
 from .condition_placement import ConditionPlacement, PlacementReason
 from .constants import FINAL_NODE_ID, ROW_STREAM_DERIVATIONS, DepthLabel, EdgeKind
 from .edges import EdgeMap, add_edge, edge_kind, remove_edge
+from .extent_ownership import _solid_groups as solid_groups
 from .models import ConceptAttrs, GroupAttrs, GroupBucket, Keyspace, Region
 from .projection import decided_at_output_grain, reads_rows_only
 
@@ -309,7 +310,13 @@ def feed_region_domains_to_present_scalars(
     order. The aggregate below it pairs on solid keys, so the scalar reads the
     region's domain beside it. A WHERE's own copy of such a scalar (the
     condition phase of the same scope) reads it the same way, or the atom
-    restated at FINAL never sees the region's rows."""
+    restated at FINAL never sees the region's rows.
+
+    An aggregate reads the domain only when the region's rows are what it
+    counts (`_aggregates_over_region`); otherwise it is evaluated on the solid
+    rows and a region row it never saw shows its empty-group value (a COUNT's
+    zero-fill, NULL for the rest) where the domain pads it. Never when a row
+    stream that must not see an extension row reads it (`_solid_groups`)."""
     for domain_gid, domain in list(attrs.items()):
         region = (
             keyspace.region_of(domain.extent_spans) if domain.extent_spans else None
@@ -317,18 +324,19 @@ def feed_region_domains_to_present_scalars(
         if region is None:
             continue
         scope = _scope_and_phase(domain.label)[0]
+        # a row stream that must never see an extension row (`_solid_groups`)
+        # keeps every aggregate it reads solid too
+        solid = solid_groups(group_graph, attrs, region, keyspace)
         for gid, a in attrs.items():
             if (
                 a.derivation in ROW_STREAM_DERIVATIONS
                 and _scope_and_phase(a.label)[0] == scope
+                and a.primary_members
                 and all(keyspace.carried_on(m, region) for m in a.primary_members)
-                and any(
-                    attrs[parent].derivation == Derivation.AGGREGATE
-                    for parent in group_graph.predecessors(gid)
-                )
             ) or (
                 a.derivation == Derivation.AGGREGATE
                 and a.label == domain.label
+                and not solid & nx.descendants(group_graph, gid)
                 and _aggregates_over_region(
                     a.primary_members, region, keyspace, environment
                 )

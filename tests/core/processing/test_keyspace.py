@@ -464,9 +464,11 @@ def test_region_with_an_absent_derivation_gets_a_domain():
     assert set(_domains(info).values()) == {frozenset({CUSTOMER})}
 
 
-def test_region_gets_no_domain_when_nothing_absent_takes_a_value():
+def test_demanded_region_gets_a_domain_whatever_the_outputs():
+    """The region's rows come from its domain even when nothing absent would
+    take a value on a padded row: one ownership mechanism, not two."""
     info, _ = _plan(_DERIVED, "select customer_id, amount;")
-    assert not _domains(info)
+    assert set(_domains(info).values()) == {frozenset({CUSTOMER})}
 
 
 def test_unnamed_span_rides_the_domain_as_a_hidden_member():

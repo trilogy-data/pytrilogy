@@ -534,9 +534,18 @@ def _build_from_graph(
     # it, so the keyspace empties the regions it rejects. Only the keyspace
     # sees it: as a plan WHERE it would narrow aggregates the predicate reads.
     population = statement_filter_population(mandatory_list)
+    # Only what the STATEMENT projects asks for a region's rows. A sub-plan
+    # (a condition's aggregate feeder, `sum(...) by part.id`) lists its grain
+    # keys as outputs, but those are the axis it joins back on, not rows.
+    statement_outputs = environment.statement_output_addresses
     keyspace = build_keyspace(
         concept_attrs,
-        mandatory_list,
+        [
+            c
+            for c in mandatory_list
+            if statement_outputs is None
+            or {c.address, *c.pseudonyms} & statement_outputs
+        ],
         environment,
         conditions + ([population] if population is not None else []),
     )

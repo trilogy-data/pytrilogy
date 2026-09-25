@@ -89,7 +89,10 @@ def _ownership(model: str, query: str):
     return info, info.group_attrs[FINAL_NODE_ID].extent_ownership
 
 
-def test_every_span_routes_to_one_owner():
+def test_every_span_is_owned_by_its_region_domain():
+    """Each demanded region has a domain group of its own, and that domain is
+    the span's owner; every other group is told not to manufacture either
+    family, each domain not to manufacture the other's."""
     info, ownership = _ownership(
         MODEL,
         "select order_id, item_id, user_id, product_id, total_revenue,"
@@ -97,12 +100,20 @@ def test_every_span_routes_to_one_owner():
     )
     assert ownership is not None
     assert ownership.spans == frozenset({"local.user_id", "local.product_id"})
-    assert len(set(ownership.owner_by_span.values())) == 1
-    owner = ownership.owner_by_span["local.user_id"]
-    assert "local.user_id" in info.group_attrs[owner].primary_members
+    domains = {
+        gid: attrs.extent_spans
+        for gid, attrs in info.group_attrs.items()
+        if attrs.extent_spans
+    }
+    assert len(domains) == 2
+    for span, owner in ownership.owner_by_span.items():
+        assert domains[owner] == frozenset({span})
+        assert span in info.group_attrs[owner].primary_members
+        assert ownership.suppressed_for(owner) == ownership.spans - {span}
 
-    # every other group is told not to manufacture either family
-    others = [gid for gid in info.group_attrs if gid not in (owner, FINAL_NODE_ID)]
+    others = [
+        gid for gid in info.group_attrs if gid not in domains and gid != FINAL_NODE_ID
+    ]
     assert others
     for gid in others:
         assert ownership.suppressed_for(gid) == ownership.spans
@@ -126,11 +137,12 @@ def test_span_nobody_projects_is_not_demanded():
     assert ownership.spans == frozenset()
 
 
-def test_span_no_group_delivers_stays_unmanaged():
-    """Demand is not enough: a key nothing exposes cannot be routed, and
-    suppressing what has no owner would delete its extension rows outright.
-    The `select state, brand` plan reaches both keys only through joins."""
-    _, ownership = _ownership(_SIMPLE, "select state, brand;")
+def test_span_reached_only_through_joins_is_owned_by_its_domain():
+    """`select state, brand` names neither key, so no bucket exposes one; the
+    region domains carry the keys as hidden members and own the spans."""
+    info, ownership = _ownership(_SIMPLE, "select state, brand;")
     assert ownership is not None
-    assert ownership.spans == frozenset()
-    assert ownership.owner_by_span == {}
+    assert ownership.spans == frozenset({"local.user_id", "local.product_id"})
+    for span, owner in ownership.owner_by_span.items():
+        assert info.group_attrs[owner].extent_spans == frozenset({span})
+        assert span in info.group_attrs[owner].secondary_members
