@@ -128,8 +128,17 @@ def _pair_anchors(
         if other.identifier == ds.identifier or _partition_disjoint(ds, other):
             continue
         grain = set(other.grain.components)
-        if grain & key_spellings and grain - key_spellings:
-            anchors.append(other)
+        if not (grain & key_spellings and grain - key_spellings):
+            continue
+        # a sibling itself `~` on the key holds no full set of anything: two
+        # partial bindings have no defined relationship, so it cannot be what
+        # keeps this one partial (a pair-grain rollup beside its fact)
+        if any(
+            _structural_partial(other, c) and c.concept.address in key_spellings
+            for c in other.columns
+        ):
+            continue
+        anchors.append(other)
     return anchors
 
 

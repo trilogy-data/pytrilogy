@@ -100,19 +100,21 @@ def test_full_unchanged_without_guard():
 
 
 def _block_pin_heal(executor):
-    """A sibling source carrying `region` inside a larger grain: it anchors the
-    `~region` binding, so `heal_pinned_partials` leaves the FULL join in place
-    for the optimizer passes under test (otherwise the WHERE proof heals the
-    partial pre-discovery and no join is ever emitted). It also carries
-    `amount`: an anchor whose rows the WHERE proof (`amount > 5`) can never
-    kill is not dispensable, which is what keeps the anchor blocking."""
+    """A sibling source carrying `region` complete inside a larger grain: it
+    anchors the `~region` binding, so `heal_pinned_partials` leaves the FULL
+    join in place for the optimizer passes under test (otherwise the WHERE
+    proof heals the partial pre-discovery and no join is ever emitted). It
+    also carries `amount`: an anchor whose rows the WHERE proof (`amount > 5`)
+    can never kill is not dispensable, which is what keeps the anchor
+    blocking. A sibling itself `~` on `region` would anchor nothing: two
+    partial bindings have no defined relationship."""
     executor.execute_text("""
         key rm_id int;
         property <rm_id, region>.rm_note string;
 
         datasource region_notes (
             rm_id: rm_id,
-            region: ~region,
+            region: region,
             rm_note: rm_note,
             amount: amount,
         )
