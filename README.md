@@ -59,11 +59,12 @@ uv tool install "pytrilogy[cli,serve]"
 
 ### Hello World
 
-Trilogy includes a public model registry with fun datasets you can explore. 
+Trilogy includes a public model registry with prebuilt models
+to let you get started on the data work fast. 
 Run the below to import, query, and explore one of these models directly.
 
 ```bash
-# 1. Pull a public model (fetches all source .preql + setup.sql + trilogy.toml).
+# 1. Pull a public model (fetches all source .preql files and trilogy.toml).
 trilogy public fetch faa ./faa-demo
 cd faa-demo
 
