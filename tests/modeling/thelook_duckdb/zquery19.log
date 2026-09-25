@@ -1,59 +1,54 @@
 query_id = "19"
-gen_length = 1868
+gen_length = 1777
 preql_size = 280
 comp_size = 758
 generated_sql = """
 
 WITH 
-abundant as (
-SELECT
-    \"order_items\".\"id\" as \"id\",
-    \"order_items\".\"order_id\" as \"order_id\",
-    coalesce(\"order_items\".\"product_id\",\"product_products\".\"id\") as \"product_id\",
-    coalesce(\"order_items\".\"user_id\",\"user_users\".\"id\") as \"user_id\"
-FROM
-    \"users\" as \"user_users\"
-    LEFT OUTER JOIN \"order_items\" as \"order_items\" on \"user_users\".\"id\" = \"order_items\".\"user_id\"
-    FULL JOIN \"products\" as \"product_products\" on \"order_items\".\"product_id\" = \"product_products\".\"id\"),
 wakeful as (
 SELECT
     \"order_items\".\"id\" as \"id\",
     \"order_items\".\"order_id\" as \"order_id\",
     \"order_items\".\"sale_price\" - \"product_products\".\"cost\" as \"item_margin\",
-    \"order_items\".\"sale_price\" as \"sale_price\"
+    \"order_items\".\"sale_price\" as \"sale_price\",
+    \"order_items\".\"user_id\" as \"user_id\",
+    \"product_products\".\"id\" as \"product_id\"
 FROM
     \"products\" as \"product_products\"
     INNER JOIN \"order_items\" as \"order_items\" on \"product_products\".\"id\" = \"order_items\".\"product_id\"),
-thoughtful as (
+cheerful as (
 SELECT
     \"wakeful\".\"id\" as \"id\",
     \"wakeful\".\"item_margin\" as \"margin\",
     \"wakeful\".\"order_id\" as \"order_id\",
-    \"wakeful\".\"sale_price\" as \"revenue\"
+    \"wakeful\".\"product_id\" as \"product_id\",
+    \"wakeful\".\"sale_price\" as \"revenue\",
+    \"wakeful\".\"user_id\" as \"user_id\"
 FROM
     \"wakeful\"),
-cooperative as (
+thoughtful as (
 SELECT
-    \"thoughtful\".\"order_id\" as \"order_id\",
-    sum(\"thoughtful\".\"revenue\") as \"total_order_revenue\"
+    \"cheerful\".\"order_id\" as \"order_id\",
+    sum(\"cheerful\".\"revenue\") as \"total_order_revenue\"
 FROM
-    \"thoughtful\"
+    \"cheerful\"
 GROUP BY
     1)
 SELECT
-    \"abundant\".\"order_id\" as \"order_id\",
-    \"abundant\".\"id\" as \"id\",
-    \"abundant\".\"user_id\" as \"user_id\",
-    \"abundant\".\"product_id\" as \"product_id\",
-    \"thoughtful\".\"revenue\" as \"revenue\",
-    \"thoughtful\".\"margin\" as \"margin\",
-    \"cooperative\".\"total_order_revenue\" as \"total_order_revenue\"
+    \"cheerful\".\"order_id\" as \"order_id\",
+    \"cheerful\".\"id\" as \"id\",
+    coalesce(\"cheerful\".\"user_id\",\"user_users\".\"id\") as \"user_id\",
+    coalesce(\"cheerful\".\"product_id\",\"product_products\".\"id\") as \"product_id\",
+    \"cheerful\".\"revenue\" as \"revenue\",
+    \"cheerful\".\"margin\" as \"margin\",
+    \"thoughtful\".\"total_order_revenue\" as \"total_order_revenue\"
 FROM
-    \"abundant\"
-    LEFT OUTER JOIN \"thoughtful\" on \"abundant\".\"id\" = \"thoughtful\".\"id\"
-    LEFT OUTER JOIN \"cooperative\" on \"abundant\".\"order_id\" = \"cooperative\".\"order_id\"
+    \"users\" as \"user_users\"
+    LEFT OUTER JOIN \"cheerful\" on \"user_users\".\"id\" = \"cheerful\".\"user_id\"
+    LEFT OUTER JOIN \"thoughtful\" on \"cheerful\".\"order_id\" = \"thoughtful\".\"order_id\"
+    FULL JOIN \"products\" as \"product_products\" on \"cheerful\".\"product_id\" = \"product_products\".\"id\"
 ORDER BY 
-    \"abundant\".\"order_id\" asc nulls first,
-    \"abundant\".\"id\" asc nulls first,
-    \"abundant\".\"user_id\" asc nulls first,
-    \"abundant\".\"product_id\" asc nulls first"""
+    \"cheerful\".\"order_id\" asc nulls first,
+    \"cheerful\".\"id\" asc nulls first,
+    coalesce(\"cheerful\".\"user_id\",\"user_users\".\"id\") asc nulls first,
+    coalesce(\"cheerful\".\"product_id\",\"product_products\".\"id\") asc nulls first"""

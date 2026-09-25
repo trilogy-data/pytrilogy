@@ -86,17 +86,24 @@ def carry_child_state(parent: CTE, cte: CTE) -> None:
 
 def null_padded_nodes(cte: CTE) -> list[CTE | UnionCTE]:
     """The sides ``cte``'s own outer joins NULL-pad: the right of a LEFT/FULL,
-    and the accumulated left (plus every joinkey source) of a RIGHT/FULL."""
+    and the accumulated left (the FROM base and every side joined before it,
+    plus every joinkey source) of a RIGHT/FULL."""
     padded: list[CTE | UnionCTE] = []
+    base_name = cte.base_name
+    accumulated: list[CTE | UnionCTE] = [
+        parent for parent in cte.parent_ctes if parent.name == base_name
+    ]
     for join in cte.joins or []:
-        if not isinstance(join, Join) or join.jointype == JoinType.INNER:
+        if not isinstance(join, Join):
             continue
         if join.jointype in (JoinType.LEFT_OUTER, JoinType.FULL):
             padded.append(join.right_cte)
         if join.jointype in (JoinType.RIGHT_OUTER, JoinType.FULL):
+            padded.extend(accumulated)
             if join.left_cte is not None:
                 padded.append(join.left_cte)
             padded.extend(pair.cte for pair in join.joinkey_pairs or [])
+        accumulated.append(join.right_cte)
     return padded
 
 
