@@ -1,5 +1,5 @@
 query_id = "16"
-gen_length = 625
+gen_length = 563
 preql_size = 185
 comp_size = 222
 generated_sql = """
@@ -12,7 +12,7 @@ FROM
     INNER JOIN \"order_items\" as \"order_items\" on \"user_users\".\"id\" = \"order_items\".\"user_id\"
     INNER JOIN \"products\" as \"product_products\" on \"order_items\".\"product_id\" = \"product_products\".\"id\"
 WHERE
-    coalesce(\"order_items\".\"user_id\",\"user_users\".\"id\") is not null and coalesce(\"order_items\".\"product_id\",\"product_products\".\"id\") is not null
+    \"order_items\".\"user_id\" is not null and \"order_items\".\"product_id\" is not null
 
 GROUP BY
     1,

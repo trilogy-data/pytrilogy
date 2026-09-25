@@ -44,10 +44,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.condition_utility import (
-    conditions_mutually_exclusive,
-    gather_non_null_proofs,
-)
+from trilogy.core.processing.condition_utility import gather_non_null_proofs
 
 from .models import Completion, ConceptAttrs, Keyspace, Region
 
@@ -68,8 +65,6 @@ class _SourceFacts:
     grain_is_partial: bool
     # bound address -> ({address} when bound `~`, else empty)
     bound: Carried
-    # `complete where`: the slice of the key's domain this source is all of
-    partition: BuildWhereClause | None = None
 
 
 @dataclass
@@ -178,19 +173,6 @@ def _source_facts(
         grain=grain,
         grain_is_partial=any(bound.get(g) for g in grain),
         bound=bound,
-        partition=ds.non_partial_for,
-    )
-
-
-def _disjoint_partitions(a: _SourceFacts, b: _SourceFacts) -> bool:
-    """`complete where` slices that exclude each other share no member: the
-    union machinery stacks them, neither holds rows the other is missing."""
-    return (
-        a.partition is not None
-        and b.partition is not None
-        and conditions_mutually_exclusive(
-            a.partition.conditional, b.partition.conditional
-        )
     )
 
 
@@ -423,41 +405,17 @@ def _completions(
     """The `~` keys of a source the plan needs that holds only some of this
     region's rows, beside a source holding all of them: `returns` beside
     `lines`. Needed means it alone binds something requested, or it is what
-    joins the region to the rest of the statement. With no complete source at
-    all, every partial one completes the others, except across `complete
-    where` slices."""
+    joins the region to the rest of the statement."""
     causes = {
         s.identifier: _identity_cause(s, _identifying_keys(s, present), facts)
         for s in sources
     }
     complete = [s for s in sources if not causes[s.identifier]]
     if not complete:
-        # no source holds the whole domain: the partial ones ARE the domain,
-        # each holding members the others lack (`web_orders`, `store_orders`)
-        if len(sources) < 2:
-            return frozenset(), ()
-        rivals = {
-            s.identifier: [
-                o for o in sources if o is not s and not _disjoint_partitions(s, o)
-            ]
-            for s in sources
-        }
-        mutual = tuple(
-            Completion(
-                source=s.identifier,
-                spans=causes[s.identifier],
-                emptied_by=rejected
-                & (
-                    facts.carried[s.identifier].keys()
-                    - frozenset().union(
-                        *(facts.carried[o.identifier].keys() for o in others)
-                    )
-                ),
-            )
-            for s in sources
-            if (others := rivals[s.identifier])
-        )
-        return frozenset().union(*causes.values()), mutual
+        # two partial sources have no defined relationship: the full set is a
+        # complete source (or a `complete where` slice the union machinery
+        # stacks), never the partial ones completing each other
+        return frozenset(), ()
     held: frozenset[str] = frozenset().union(
         *(facts.carried[s.identifier].keys() for s in complete)
     )

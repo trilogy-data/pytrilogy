@@ -352,10 +352,13 @@ grain (order_id) address store_orders;
 """
 
 
-def test_partial_sources_with_no_complete_one_complete_each_other():
+def test_partial_sources_with_no_complete_one_do_not_complete_each_other():
+    """Two partial bindings have no defined relationship: the full set of a
+    key is a complete source, never the partial ones completing each other."""
     keyspace = _keyspace(_PEER_PARTIALS, "select order_id, web_id, store_id;")
     (base,) = keyspace.regions
-    assert base.completes == frozenset({ORDER})
+    assert base.completes == frozenset()
+    assert keyspace.in_play_spans == frozenset()
 
 
 _ROWSET = _DERIVED + """
@@ -435,14 +438,13 @@ def test_pin_heal_reads_a_derived_null_rejection(monkeypatch):
     assert keyspace.binding_is_complete("orders", CUSTOMER)
 
 
-def test_partial_sources_completing_each_other_each_lack_the_others_rows(monkeypatch):
-    # only web_orders binds web_id: a store-only order does not survive it
-    pinned = _heal_keyspace(
-        monkeypatch,
-        _PEER_PARTIALS,
-        "select order_id, web_id where web_id is not null;",
+def test_partial_sources_with_no_complete_one_never_heal():
+    """With no complete source the key is not in play: nothing says which
+    members either partial source lacks, so neither binding is complete."""
+    pinned = _keyspace(
+        _PEER_PARTIALS, "select order_id, web_id where web_id is not null;"
     )
-    assert pinned.binding_is_complete("web_orders", ORDER)
+    assert not pinned.binding_is_complete("web_orders", ORDER)
     assert not pinned.binding_is_complete("store_orders", ORDER)
 
 
