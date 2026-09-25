@@ -1757,6 +1757,9 @@ def get_node_joins(
         }
         for ds_node, datasource in ds_node_map.items()
     }
+    # Still live beside the region contract: without it a FULL join between
+    # two families' padding pairs NULL with NULL null-safely (gcat
+    # `test_full_join_issue_2`, `test_aliased_outputs_keep_the_fk_axis`).
     span_padding: dict[str, dict[str, frozenset[str]]] = {}
     if sum(1 for marks in nullables.values() if marks) > 1:
         span_padding = _span_padding_matrix(

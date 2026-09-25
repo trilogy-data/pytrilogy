@@ -892,7 +892,10 @@ def _keep_extension_families_together(
     span, the shape the same select has without the aggregate.
 
     A cluster keyed by the span itself reads the dimension's own table and pads
-    nothing, so it stays apart."""
+    nothing, so it stays apart. Not dead under the region contract: the merged
+    cluster is the bucket `add_region_domain_buckets` finds a region's solid
+    source in; split apart, the user family's cluster mixes nothing and the
+    region gets no domain (`test_field_report_select`)."""
     carrying = {
         assignment[address]
         for span in demanded_spans
