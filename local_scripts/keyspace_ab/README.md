@@ -13,6 +13,7 @@ without its environment variable.
 | `ks_plans.py` | prints each plan's keyspace (outputs, in-play spans, regions) as it is built; run with `-s` | none |
 | `sqlcmp.py` | `python sqlcmp.py a.jsonl b.jsonl`: tests whose DISTINCT compiled SQL differs, CTE names normalized | |
 | `rowcmp.py` | `python rowcmp.py a.jsonl b.jsonl`: tests whose result sets differ, with the rows each side lacks | |
+| `sqlshow.py` | `python sqlshow.py a.jsonl b.jsonl <test substring>`: the unified diff of each matching test's differing SQL | |
 
 The phase 3 method: compute the old and the new answer side by side under
 `TRILOGY_KEYSPACE_AUDIT=<file>`, plan on the old one, triage every logged
@@ -49,6 +50,9 @@ Traps:
   shared environment adds a datasource every later statement sees. Reproduce
   an order-dependent diff by running the preceding files, not the test alone.
 - A failing modeling run rewrites `zquery<N>.log`; a passing run restores them.
+- A/B from two worktrees: absolute paths in file-source SQL differ by the
+  worktree name. Normalize first (`sed 's/pytrilogy-base/pytrilogy-new/g'`); the
+  pytest temp dirs and `trilogy_py_*` temp-table hashes still differ run to run.
 - One pytest at a time. The planner suites (`tests/core tests/discovery
   tests/engine tests/join_matrix tests/modeling tests/optimization
   tests/complex`) are about 16 minutes; leave the full suite to CI.
