@@ -321,6 +321,8 @@ class GroupAttrs:
     # Set on a ROOT group that exists only to carry one extension region's own
     # rows (`group_graph._add_region_domain_buckets`): the region's spans.
     extent_spans: frozenset[str] = frozenset()
+    # Set on a single-entity dimension ROOT group: the entity's key(s).
+    dim_keys: frozenset[str] = frozenset()
     # Populated for non-FINAL groups after `_compute_concept_sets`.
     input_contracts: tuple[GroupInputContract, ...] = ()
 
@@ -468,6 +470,7 @@ class GroupBucket:
     # `nulls_grouping_keys`, never the id string.
     grouping_mode: AggregateGroupingMode = AggregateGroupingMode.STANDARD
     extent_spans: frozenset[str] = frozenset()
+    dim_keys: frozenset[str] = frozenset()
 
     @property
     def nulls_grouping_keys(self) -> bool:

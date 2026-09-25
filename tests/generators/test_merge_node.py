@@ -1,4 +1,5 @@
 from trilogy.core.enums import JoinType
+from trilogy.core.models.build_environment import SpanScope
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.nodes import ConstantNode, MergeNode, NodeJoin
 from trilogy.core.processing.nodes.merge_node import tree_in_play_spans
@@ -37,16 +38,16 @@ def test_tree_in_play_spans_reads_the_plans_nested_below(
     test_environment: Environment,
 ):
     environment = test_environment.materialize_for_select()
-    environment.in_play_spans = frozenset({"local.inner_span"})
+    environment.span_scope = SpanScope(in_play=frozenset({"local.inner_span"}))
     inner = MergeNode(
         input_concepts=[], output_concepts=[], environment=environment, parents=[]
     )
-    environment.in_play_spans = frozenset({"local.outer_span"})
+    environment.span_scope = SpanScope(in_play=frozenset({"local.outer_span"}))
     outer = MergeNode(
         input_concepts=[], output_concepts=[], environment=environment, parents=[inner]
     )
-    assert outer.in_play_spans == frozenset({"local.outer_span"})
-    assert outer.copy().in_play_spans == outer.in_play_spans
+    assert outer.span_scope.in_play == frozenset({"local.outer_span"})
+    assert outer.copy().span_scope == outer.span_scope
     assert tree_in_play_spans(outer, set()) == frozenset(
         {"local.inner_span", "local.outer_span"}
     )
