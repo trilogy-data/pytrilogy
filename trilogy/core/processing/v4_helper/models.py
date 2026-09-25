@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from functools import cached_property
 from enum import Enum
 
 from trilogy.core import graph as nx
@@ -185,14 +186,14 @@ class Keyspace:
     def demanded_spans(self) -> frozenset[str]:
         return frozenset().union(*(r.spans for r in self.live_regions))
 
-    @property
+    @cached_property
     def in_play_spans(self) -> frozenset[str]:
         """Every span a join of this plan can pad for. An emptied region still
         counts: its rows are gone once the WHERE has run, and a merge below
         that point still sees their padding."""
         return frozenset().union(*(r.spans | r.completes for r in self.regions))
 
-    @property
+    @cached_property
     def output_demanded_spans(self) -> frozenset[str]:
         """What the extent election asks: the spans whose unmatched members
         carry an OUTPUT, one that is a function of what the span alone reaches."""
