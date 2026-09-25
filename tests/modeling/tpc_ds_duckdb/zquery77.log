@@ -1,5 +1,5 @@
 query_id = "77"
-gen_length = 9153
+gen_length = 8535
 preql_size = 3178
 comp_size = 3255
 generated_sql = """
@@ -18,14 +18,13 @@ WHERE
 
 GROUP BY
     1),
-dapper as (
+resonant as (
 SELECT
     \"ws_web_returns\".\"WR_WEB_PAGE_SK\" as \"wr_grouped_wr_wp_id\",
     sum(\"ws_web_returns\".\"WR_NET_LOSS\") as \"wr_grouped_wr_loss\",
     sum(\"ws_web_returns\".\"WR_RETURN_AMT\") as \"wr_grouped_wr_returns\"
 FROM
-    \"memory\".\"web_sales\" as \"ws_web_sales\"
-    INNER JOIN \"memory\".\"web_returns\" as \"ws_web_returns\" on \"ws_web_sales\".\"WS_ITEM_SK\" = \"ws_web_returns\".\"WR_ITEM_SK\" AND \"ws_web_sales\".\"WS_ORDER_NUMBER\" = \"ws_web_returns\".\"WR_ORDER_NUMBER\"
+    \"memory\".\"web_returns\" as \"ws_web_returns\"
     INNER JOIN \"memory\".\"date_dim\" as \"ws_return_date_date\" on \"ws_web_returns\".\"WR_RETURNED_DATE_SK\" = \"ws_return_date_date\".\"D_DATE_SK\"
 WHERE
     cast(\"ws_return_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end
@@ -34,15 +33,15 @@ GROUP BY
     1),
 ceaseless as (
 SELECT
-    \"dapper\".\"wr_grouped_wr_loss\" as \"wr_grouped_wr_loss\",
-    \"dapper\".\"wr_grouped_wr_returns\" as \"wr_grouped_wr_returns\",
+    \"resonant\".\"wr_grouped_wr_loss\" as \"wr_grouped_wr_loss\",
+    \"resonant\".\"wr_grouped_wr_returns\" as \"wr_grouped_wr_returns\",
     \"wary\".\"ws_grouped_ws_profit\" as \"ws_grouped_ws_profit\",
     \"wary\".\"ws_grouped_ws_sales\" as \"ws_grouped_ws_sales\",
-    coalesce(\"dapper\".\"wr_grouped_wr_wp_id\",\"wary\".\"ws_grouped_ws_wp_id\") as \"wr_grouped_wr_wp_id\",
-    coalesce(\"dapper\".\"wr_grouped_wr_wp_id\",\"wary\".\"ws_grouped_ws_wp_id\") as \"ws_grouped_ws_wp_id\"
+    coalesce(\"resonant\".\"wr_grouped_wr_wp_id\",\"wary\".\"ws_grouped_ws_wp_id\") as \"wr_grouped_wr_wp_id\",
+    coalesce(\"resonant\".\"wr_grouped_wr_wp_id\",\"wary\".\"ws_grouped_ws_wp_id\") as \"ws_grouped_ws_wp_id\"
 FROM
     \"wary\"
-    LEFT OUTER JOIN \"dapper\" on \"wary\".\"ws_grouped_ws_wp_id\" is not distinct from \"dapper\".\"wr_grouped_wr_wp_id\"
+    LEFT OUTER JOIN \"resonant\" on \"wary\".\"ws_grouped_ws_wp_id\" is not distinct from \"resonant\".\"wr_grouped_wr_wp_id\"
 WHERE
     \"wary\".\"ws_grouped_ws_sales\" is not null
 ),
@@ -68,14 +67,13 @@ WHERE
 
 GROUP BY
     1),
-scrawny as (
+macho as (
 SELECT
     \"ss_store_returns\".\"SR_STORE_SK\" as \"sr_grouped_sr_store_id\",
     sum(\"ss_store_returns\".\"SR_NET_LOSS\") as \"sr_grouped_sr_loss\",
     sum(\"ss_store_returns\".\"SR_RETURN_AMT\") as \"sr_grouped_sr_returns\"
 FROM
-    \"memory\".\"store_sales\" as \"ss_store_sales\"
-    INNER JOIN \"memory\".\"store_returns\" as \"ss_store_returns\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_store_returns\".\"SR_ITEM_SK\" AND \"ss_store_sales\".\"SS_TICKET_NUMBER\" = \"ss_store_returns\".\"SR_TICKET_NUMBER\"
+    \"memory\".\"store_returns\" as \"ss_store_returns\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_return_date_date\" on \"ss_store_returns\".\"SR_RETURNED_DATE_SK\" = \"ss_return_date_date\".\"D_DATE_SK\"
 WHERE
     cast(\"ss_return_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end
@@ -86,13 +84,13 @@ waggish as (
 SELECT
     \"charming\".\"ss_grouped_ss_profit\" as \"ss_grouped_ss_profit\",
     \"charming\".\"ss_grouped_ss_sales\" as \"ss_grouped_ss_sales\",
-    \"scrawny\".\"sr_grouped_sr_loss\" as \"sr_grouped_sr_loss\",
-    \"scrawny\".\"sr_grouped_sr_returns\" as \"sr_grouped_sr_returns\",
-    coalesce(\"charming\".\"ss_grouped_ss_store_id\",\"scrawny\".\"sr_grouped_sr_store_id\") as \"sr_grouped_sr_store_id\",
-    coalesce(\"charming\".\"ss_grouped_ss_store_id\",\"scrawny\".\"sr_grouped_sr_store_id\") as \"ss_grouped_ss_store_id\"
+    \"macho\".\"sr_grouped_sr_loss\" as \"sr_grouped_sr_loss\",
+    \"macho\".\"sr_grouped_sr_returns\" as \"sr_grouped_sr_returns\",
+    coalesce(\"charming\".\"ss_grouped_ss_store_id\",\"macho\".\"sr_grouped_sr_store_id\") as \"sr_grouped_sr_store_id\",
+    coalesce(\"charming\".\"ss_grouped_ss_store_id\",\"macho\".\"sr_grouped_sr_store_id\") as \"ss_grouped_ss_store_id\"
 FROM
     \"charming\"
-    LEFT OUTER JOIN \"scrawny\" on \"charming\".\"ss_grouped_ss_store_id\" is not distinct from \"scrawny\".\"sr_grouped_sr_store_id\"
+    LEFT OUTER JOIN \"macho\" on \"charming\".\"ss_grouped_ss_store_id\" is not distinct from \"macho\".\"sr_grouped_sr_store_id\"
 WHERE
     \"charming\".\"ss_grouped_ss_sales\" is not null
 ),
@@ -118,14 +116,13 @@ WHERE
 
 GROUP BY
     1),
-cheerful as (
+wakeful as (
 SELECT
     \"cs_catalog_returns\".\"CR_CALL_CENTER_SK\" as \"cr_grouped_cr_cc_id\",
     sum(\"cs_catalog_returns\".\"CR_NET_LOSS\") as \"cr_grouped_cr_loss\",
     sum(\"cs_catalog_returns\".\"CR_RETURN_AMOUNT\") as \"cr_grouped_cr_returns\"
 FROM
-    \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
-    INNER JOIN \"memory\".\"catalog_returns\" as \"cs_catalog_returns\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_catalog_returns\".\"CR_ITEM_SK\" AND \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" = \"cs_catalog_returns\".\"CR_ORDER_NUMBER\"
+    \"memory\".\"catalog_returns\" as \"cs_catalog_returns\"
     INNER JOIN \"memory\".\"date_dim\" as \"cs_return_date_date\" on \"cs_catalog_returns\".\"CR_RETURNED_DATE_SK\" = \"cs_return_date_date\".\"D_DATE_SK\"
 WHERE
     cast(\"cs_return_date_date\".\"D_DATE\" as date) BETWEEN :period_start AND :period_end
@@ -134,15 +131,15 @@ GROUP BY
     1),
 concerned as (
 SELECT
-    \"cheerful\".\"cr_grouped_cr_loss\" as \"cr_grouped_cr_loss\",
-    \"cheerful\".\"cr_grouped_cr_returns\" as \"cr_grouped_cr_returns\",
     \"uneven\".\"cs_grouped_cs_profit\" as \"cs_grouped_cs_profit\",
     \"uneven\".\"cs_grouped_cs_sales\" as \"cs_grouped_cs_sales\",
-    coalesce(\"cheerful\".\"cr_grouped_cr_cc_id\",\"uneven\".\"cs_grouped_cs_cc_id\") as \"cr_grouped_cr_cc_id\",
-    coalesce(\"cheerful\".\"cr_grouped_cr_cc_id\",\"uneven\".\"cs_grouped_cs_cc_id\") as \"cs_grouped_cs_cc_id\"
+    \"wakeful\".\"cr_grouped_cr_loss\" as \"cr_grouped_cr_loss\",
+    \"wakeful\".\"cr_grouped_cr_returns\" as \"cr_grouped_cr_returns\",
+    coalesce(\"uneven\".\"cs_grouped_cs_cc_id\",\"wakeful\".\"cr_grouped_cr_cc_id\") as \"cr_grouped_cr_cc_id\",
+    coalesce(\"uneven\".\"cs_grouped_cs_cc_id\",\"wakeful\".\"cr_grouped_cr_cc_id\") as \"cs_grouped_cs_cc_id\"
 FROM
     \"uneven\"
-    LEFT OUTER JOIN \"cheerful\" on \"uneven\".\"cs_grouped_cs_cc_id\" is not distinct from \"cheerful\".\"cr_grouped_cr_cc_id\"
+    LEFT OUTER JOIN \"wakeful\" on \"uneven\".\"cs_grouped_cs_cc_id\" is not distinct from \"wakeful\".\"cr_grouped_cr_cc_id\"
 WHERE
     \"uneven\".\"cs_grouped_cs_sales\" is not null
 ),
