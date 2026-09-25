@@ -2713,8 +2713,11 @@ def _add_region_domain_contributors(
     contributor of no concepts. Not when a contributor already read it: an
     aggregate evaluated over the region's rows has them in its groups.
 
-    A rename of something the domain carries (`item_desc as d`) is rendered on
-    the domain: any other host holds it for the matched members only."""
+    A rename of something the domain carries (`item_desc as d`, `customer_id
+    as c2`) is rendered on the domain: any other host holds it for the matched
+    members only. Still reachable: the alias rides its source's ROOT bucket,
+    so `feed_region_domains_to_present_scalars` never sees it as a group of
+    its own (`test_unsold_item_counts_no_lines`, the oracle's `c2` case)."""
     for gid in sorted(built):
         if not attrs[gid].extent_spans:
             continue
@@ -4068,8 +4071,6 @@ def _assemble_final_node(
     grouping_sibling = any(node_nulls_grouping_keys(built[g]) for g in contributing)
 
     parents: list[StrategyNode] = []
-    # join keys a kept ROOT node had to unhide; its siblings carry them too
-    kept_axis: set[str] = set()
     for gid in contributing:
         node = built[gid]
         is_root = attrs[gid].derivation == Derivation.ROOT
@@ -4090,14 +4091,6 @@ def _assemble_final_node(
                 if other != gid and other in attrs
                 for address in attrs[other].grain_components
             }
-            # A sibling that reads a region domain carries the region's rows,
-            # keyed by the domain's spans, whatever grain it advertises.
-            for other in contributing:
-                if other == gid or other not in attrs:
-                    continue
-                for ancestor in (other, *nx.ancestors(group_graph, other)):
-                    if ancestor in attrs and attrs[ancestor].extent_spans:
-                        sibling_grain |= set(attrs[ancestor].extent_spans)
             preserve_keys |= contributor_contract.preserve_keys & sibling_grain
             preserve_keys = _relevant_root_preserve_keys(
                 environment,
@@ -4204,23 +4197,6 @@ def _assemble_final_node(
             )
             if fresh is not None:
                 node = fresh
-            else:
-                # The kept node hides the join keys it sourced only to pair
-                # with its constraint parent. A peeled dim's own key, a key a
-                # sibling carries and a preserved key are the merge axis, so
-                # they must render, and the siblings are widened to match.
-                axis: set[str] = set(preserve_keys) | attrs[gid].dim_keys
-                for other in contributing:
-                    if other != gid and other in built:
-                        axis |= {o.address for o in built[other].output_concepts}
-                hidden_axis = [
-                    c
-                    for c in node.output_concepts
-                    if c.address in node.hidden_concepts and c.address in axis
-                ]
-                if hidden_axis:
-                    node = node.copy().unhide_output_concepts(hidden_axis)
-                    kept_axis |= {c.address for c in hidden_axis}
             # The filter-only args above exist so the scan can SOURCE and APPLY
             # the WHERE; they are not columns the merge consumes. Bucketing them
             # by natural grain shatters off a GroupNode at the filter's own grain
@@ -4266,7 +4242,7 @@ def _assemble_final_node(
         environment,
     )
     parents = _fold_passthrough_parents(parents)
-    _widen_merge_join_keys(parents, environment, final_merge_grain | kept_axis)
+    _widen_merge_join_keys(parents, environment, final_merge_grain)
     parents = _fold_covered_contributors(
         parents,
         environment,

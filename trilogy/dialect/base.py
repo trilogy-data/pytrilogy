@@ -1535,6 +1535,9 @@ class BaseDialect:
         # `count(...)` path returns 0 there. Coalesce to keep the two paths
         # result-equivalent. SUM is left alone: SUM over an empty group is NULL
         # in both paths.
+        # The guess is still live where no region domain says it (gcat
+        # `test_case_key`: a vehicle with no launch counts 0 through the
+        # LEFT JOIN, `coalesce(launch_count, 0)`).
         if (
             isinstance(c.lineage, BuildAggregateWrapper)
             and c.lineage.function.operator == FunctionType.COUNT

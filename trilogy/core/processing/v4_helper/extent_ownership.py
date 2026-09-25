@@ -10,11 +10,16 @@ through the owner. Without a single owner each branch touching the key pads
 its own copy, and the FINAL assembly must either reunite copies null-safely or
 discard one through a plain equality.
 
-The ranking (most downstream, then primary membership, then joint coverage of
-every span) is the same judgment ``_cover_groups_for_mandatory`` applies to
-already-built nodes. The cover consumes this result rather than re-deriving
-it, since a predicted election that diverges from the actual one leaves a
-contributor dangling at render time.
+A region with a domain group of its own is owned by that domain. The ranking
+(most downstream, then primary membership, then joint coverage of every span)
+elects an owner for a demanded span whose region got NO domain: a region the
+keyspace does not model yet (gcat's composite-key `~` region, `test_case_key`;
+TPC-DS q64's `store_returns` beside `store_sales`), where leaving the span
+unmanaged pads every branch (the aggregate reads the padded root, the fact
+FULL-joins its returns). It is the same judgment ``_cover_groups_for_mandatory``
+applies to already-built nodes. The cover consumes this result rather than
+re-deriving it, since a predicted election that diverges from the actual one
+leaves a contributor dangling at render time.
 """
 
 from __future__ import annotations

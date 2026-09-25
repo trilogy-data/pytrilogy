@@ -334,6 +334,9 @@ class MergeNode(StrategyNode):
                 # keys in play, grain coverage decides. This plan's spans only:
                 # a rowset below is a row source, its extension rows are not
                 # this plan's to host.
+                # Still live beside the region contract: without it a domain
+                # merge FULL-joins its readers with coalesced keys
+                # (`test_materialization_invariance`, gcat `test_case_key`).
                 host_grain: set[str] | None = None
                 if self.host_stitch:
                     licensed_outputs = {
@@ -578,12 +581,7 @@ class MergeNode(StrategyNode):
                 for other in final_datasets
             ):
                 continue
-            # a hidden output is not supplied downstream (as in the dedup above)
-            withheld = {x.address for x in dataset.partial_concepts} | (
-                set(dataset.hidden_concepts)
-                if isinstance(dataset, QueryDatasource)
-                else set()
-            )
+            withheld = {x.address for x in dataset.partial_concepts}
             output_set = {
                 c.address for c in dataset.output_concepts if c.address not in withheld
             }
@@ -880,7 +878,8 @@ class MergeNode(StrategyNode):
         column holds just the members the facts below bound; the unmatched
         members belong to the elected owner. Marking them partial makes the
         assembly above preserve the owner's rows instead of INNER-joining them
-        away."""
+        away. Still live beside the region contract
+        (`test_unsold_item_counts_no_lines`)."""
         if not self.span_scope.extent_free:
             return []
         bound_partially = {
