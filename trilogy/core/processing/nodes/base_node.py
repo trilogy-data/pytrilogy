@@ -176,6 +176,10 @@ class StrategyNode:
     # construction so QueryDatasource.__post_init__ preserves arm order for
     # EXCEPT.
     set_operator: SetOperator = SetOperator.UNION_ALL
+    # Set on the node a region domain group builds: the region's spans. It
+    # contributes ROWS (the region's own members), so no sibling that renders
+    # its columns can stand in for it. A copy is an ordinary node again.
+    region_spans: frozenset[str] = frozenset()
 
     def __init__(
         self,

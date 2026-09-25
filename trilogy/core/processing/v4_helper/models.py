@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
-from functools import cached_property
 from enum import Enum
+from functools import cached_property
 
 from trilogy.core import graph as nx
 from trilogy.core.enums import (
