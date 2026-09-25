@@ -181,6 +181,7 @@ def _padded_addresses(
     leaf_addresses: Callable[[BuildDatasource], set[str]],
     join_extends: Callable[[BaseJoin], bool],
     memo: dict[int, set[str]],
+    chain: bool = False,
 ) -> set[str]:
     """Addresses this source emits NULL for because an outer join `join_extends`
     licenses padded them, or because a leaf declared them nullable.
@@ -198,7 +199,9 @@ def _padded_addresses(
         out.update(leaf_addresses(datasource))
         return out
     child_padded = {
-        child.identifier: _padded_addresses(child, leaf_addresses, join_extends, memo)
+        child.identifier: _padded_addresses(
+            child, leaf_addresses, join_extends, memo, chain
+        )
         for child in datasource.datasources
     }
     base_joins = [j for j in datasource.joins if isinstance(j, BaseJoin)]
@@ -207,7 +210,15 @@ def _padded_addresses(
     accumulated = {i for i in child_padded if i not in right_ids}
     for join in base_joins:
         right_id = join.right_datasource.identifier
-        if join_extends(join):
+        # a lookup keyed on a column already padded here pads for the same
+        # rows (a guest order's customer, then that customer's address)
+        keyed_on_padding = chain and any(
+            pair.existing_datasource.identifier in extended
+            or pair.left.address
+            in child_padded.get(pair.existing_datasource.identifier, set())
+            for pair in join.concept_pairs or []
+        )
+        if join_extends(join) or keyed_on_padding:
             if join.join_type in (JoinType.LEFT_OUTER, JoinType.FULL):
                 extended.add(right_id)
             if join.join_type in (JoinType.RIGHT_OUTER, JoinType.FULL):
@@ -248,6 +259,7 @@ def extent_null_addresses(
         _leaf_null_addresses,
         _value_null_driven,
         _memo if _memo is not None else {},
+        chain=True,
     )
 
 
@@ -488,8 +500,14 @@ def get_join_type(
             right_is_host = right in host_nodes
             if left_is_host != right_is_host:
                 feeder = right if left_is_host else left
-                if value_nullables is None or not _has_any(
-                    all_connecting_keys, feeder, value_nullables
+                # a key null-extended off a value-null one below (a guest
+                # order's address) is a value null here too
+                if not (
+                    value_nullables is not None
+                    and _has_any(all_connecting_keys, feeder, value_nullables)
+                ) and not (
+                    extent_nullables is not None
+                    and _has_any(all_connecting_keys, feeder, extent_nullables)
                 ):
                     return JoinType.LEFT_OUTER if left_is_host else JoinType.RIGHT_OUTER
         partial_keys = {

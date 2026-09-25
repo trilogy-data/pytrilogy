@@ -2198,6 +2198,11 @@ def _refresh_input_contracts(
                     rowset_base_keys |= _unwrapped_rowset_grain(
                         attrs[pred].grain_components, environment, rollup_padded
                     )
+        # a region domain among the parents joins the rest on its spans: the
+        # axis every side keeps, whatever the consumer's grain
+        domain_spans: frozenset[str] = frozenset().union(
+            *(attrs[pred].extent_spans for pred in row_parents)
+        )
         contracts: list[GroupInputContract] = []
         for pred in sorted(group_graph.predecessors(gid)):
             if pred == FINAL_NODE_ID or pred not in attrs:
@@ -2216,6 +2221,7 @@ def _refresh_input_contracts(
                         | bridge_keys
                         | grouping_parent_grain
                         | rowset_base_keys
+                        | domain_spans
                     ),
                     channel=(
                         InputChannel.EXISTENCE

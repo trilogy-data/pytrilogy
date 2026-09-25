@@ -928,6 +928,18 @@ def _derives_from(node: StrategyNode, other: StrategyNode) -> bool:
     return False
 
 
+def _region_reads(node: StrategyNode) -> frozenset[str]:
+    """The region domains under `node`: the spans whose extension rows are
+    rows of its stream. Two contributors can stand in for each other's columns
+    only when they read the same regions: a derivation absent on a region is
+    re-derived on the padded rows if it moves onto a stream that holds them,
+    and a value the region carries is lost if it moves onto one that does not."""
+    out = node.region_spans
+    for parent in node.parents:
+        out |= _region_reads(parent)
+    return out
+
+
 def _drop_ancestor_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
     """Drop a parent that IS the relation another parent derives from.
 
@@ -942,19 +954,21 @@ def _drop_ancestor_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
     matching them back on their shared columns is a 1:1 self-lookup that can
     neither filter nor fan out. The `<=` guard makes that exact: the
     descendant must already expose every column the ancestor would contribute,
-    so dropping it removes a join and nothing else. Never a region domain: a
-    descendant that paired it on solid keys holds fewer rows than it does."""
+    so dropping it removes a join and nothing else. Never a region's rows: a
+    descendant that paired the ancestor on solid keys holds fewer rows."""
     if len(parents) <= 1:
         return parents
     dropped: set[int] = set()
     for ancestor in parents:
-        if id(ancestor) in dropped or ancestor.region_spans:
+        if id(ancestor) in dropped:
             continue
         ancestor_outputs = {c.address for c in ancestor.output_concepts}
         for descendant in parents:
             if descendant is ancestor or id(descendant) in dropped:
                 continue
             if not ancestor_outputs <= {c.address for c in descendant.output_concepts}:
+                continue
+            if not _region_reads(ancestor) <= _region_reads(descendant):
                 continue
             if not _derives_from(descendant, ancestor):
                 continue
@@ -1016,10 +1030,11 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
         if id(b) in dropped or not isinstance(b, SelectNode) or b.force_group:
             continue
         available = parent_output_addresses(b)
+        b_regions = _region_reads(b)
         for a in parents:
             if a is b or id(a) in dropped or not a.output_concepts:
                 continue
-            if a.region_spans:
+            if _region_reads(a) != b_regions:
                 continue
             # Never dissolve a row-shape barrier into a row sibling. Foldable:
             # SelectNode, non-grouping MergeNode, or a row-preserving FilterNode
@@ -1247,9 +1262,23 @@ def _project_basic_aggregate_inputs(
     outputs: list[BuildConcept],
     primary_addrs: set[str],
     parents: list[StrategyNode],
+    solid_scan: bool = False,
 ) -> list[StrategyNode]:
-    """Project scalar aggregate inputs without exposing the merge's join inputs."""
-    if len(parents) != 1 or not isinstance(parents[0], MergeNode):
+    """Project scalar aggregate inputs without exposing the merge's join inputs.
+
+    `solid_scan`: the parent is the solid row stream beside a region domain,
+    so a plain scan is projected too. Its BASIC arguments are computed on the
+    solid rows and the domain's rows pad them NULL, instead of being re-derived
+    over the padded rows (`count(status)` must not count the customer with no
+    order)."""
+    if len(parents) != 1 or not (
+        isinstance(parents[0], MergeNode)
+        or (
+            solid_scan
+            and isinstance(parents[0], SelectNode)
+            and not parents[0].force_group
+        )
+    ):
         return parents
     scalar_inputs: list[BuildConcept] = []
     for concept in outputs:
@@ -1267,6 +1296,8 @@ def _project_basic_aggregate_inputs(
 
     parent = parents[0].copy()
     available = {output.address for output in parent.output_concepts}
+    if isinstance(parent, SelectNode):
+        available |= renderable_addresses(parent)
     if not all(concept_satisfiable(concept, available) for concept in scalar_inputs):
         return parents
     widen_projection(
@@ -1972,6 +2003,11 @@ def _fold_covered_contributors(
             continue
         live = [j for j in range(len(parents)) if j not in dropped]
         others = [j for j in live if j != idx]
+        # its rows are a region's: only a survivor holding them can stand in
+        if _region_reads(parent) and not any(
+            _region_reads(parent) <= _region_reads(parents[j]) for j in others
+        ):
+            continue
         contribution = visible[idx] & needed
         # Nothing at all in `needed` means this is an axis contributor whose
         # value is the join itself, not a column; only a cover contributor
@@ -2202,6 +2238,9 @@ def _pre_merge_parents(
         environment=environment,
         parents=parents,
         force_join_type=force_join_type,
+        # a region domain hosts its spans' extension rows: preserve it, and
+        # the feeder only where it holds a value-NULL key
+        host_stitch=any(p.region_spans for p in parents),
     )
     return [merged]
 
@@ -4288,13 +4327,12 @@ def _assemble_final_node(
                 for addr in sorted((relation - mandatory_addresses) & available)
                 if (c := _concept_at(environment, addr)) is not None
             )
-    # A region domain's rows join back on its spans. One the statement never
-    # names still has to be an output of this merge: the host side is the one
-    # carrying the licensed keys the merge EMITS.
+    # A region's rows join back on its spans, from the domain or from whatever
+    # read it. One the statement never names still has to be an output of this
+    # merge: the host side is the one carrying the licensed keys the merge EMITS.
     region_keys = [
         c
-        for gid in contributing
-        for span in sorted(attrs[gid].extent_spans)
+        for span in sorted(frozenset().union(*(_region_reads(p) for p in parents)))
         if span in available
         and span not in mandatory_addresses
         and (c := _concept_at(environment, span)) is not None
@@ -4581,6 +4619,25 @@ def build_strategy_node(
                         built_parent.group_id
                     ].extent_spans
             parents = _apply_input_contracts(parent_builds, a, needed, environment)
+            domains = [p for p in parents if p.region_spans]
+            if derivation == Derivation.AGGREGATE and domains:
+                # an aggregate evaluated OVER a region: its row-stream
+                # arguments are computed on the solid rows first, then the
+                # region's rows pad them
+                solid = _pre_merge_parents(
+                    [p for p in parents if not p.region_spans],
+                    environment,
+                    join_key_addresses=join_key_addresses,
+                    needed=needed,
+                    group_graph=group_graph,
+                    built=built,
+                )
+                parents = (
+                    _project_basic_aggregate_inputs(
+                        outputs, primary_addrs, solid, solid_scan=True
+                    )
+                    + domains
+                )
             parents = _pre_merge_parents(
                 parents,
                 environment,

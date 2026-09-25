@@ -1536,7 +1536,6 @@ class BaseDialect:
         if (
             isinstance(c.lineage, BuildAggregateWrapper)
             and c.lineage.function.operator == FunctionType.COUNT
-            and not cte.group_to_grain
             and isinstance(cte, CTE)
             and any(n.address == c.address for n in cte.nullable_concepts)
             # A multiselect-align merge CTE is the exception: a NULL count there
