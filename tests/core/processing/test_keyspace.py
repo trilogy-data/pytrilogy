@@ -151,6 +151,17 @@ def test_where_null_rejecting_an_absent_concept_empties_the_region(monkeypatch):
     assert keyspace.in_play_spans == frozenset({CUSTOMER})
 
 
+def test_where_between_on_an_absent_concept_empties_the_region(monkeypatch):
+    keyspace = _heal_keyspace(
+        monkeypatch,
+        _DERIVED,
+        "select customer_id, status where amount between 1 and 9;",
+    )
+    (extension,) = keyspace.extensions
+    assert extension.emptied_by == frozenset({"local.amount"})
+    assert keyspace.binding_is_complete("orders", CUSTOMER)
+
+
 def test_where_over_a_present_concept_leaves_the_region_live(monkeypatch):
     keyspace = _planned_keyspace(
         monkeypatch, _DERIVED, "select customer_id, status where name = 'cat';"
