@@ -45,8 +45,8 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import (
-    condition_proves_non_null,
     conditions_mutually_exclusive,
+    gather_non_null_proofs,
 )
 
 from .models import Completion, ConceptAttrs, Keyspace, Region
@@ -504,9 +504,12 @@ def _region_order(item: tuple[frozenset[str], object]) -> list[str]:
 
 
 def null_rejected(conditions: list[BuildWhereClause]) -> set[str]:
+    """What the statement's WHERE forces non-null, BETWEEN included: an absent
+    concept is NULL however it renders, so every atom that rejects NULL empties
+    the region it is absent on."""
     out: set[str] = set()
     for clause in conditions:
-        out |= condition_proves_non_null(clause.conditional)
+        out |= gather_non_null_proofs(clause.conditional)
     return out
 
 
