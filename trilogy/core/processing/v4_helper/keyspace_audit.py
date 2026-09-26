@@ -21,7 +21,7 @@ from typing import Any
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 
-from .keyspace import build_keyspace
+from .keyspace import RowsetWitness, build_keyspace
 from .models import ConceptAttrs, Keyspace
 
 AUDIT_ENV = "TRILOGY_KEYSPACE_HEAL_AUDIT"
@@ -65,6 +65,7 @@ def audit_heal_keyspace(
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     conditions: list[BuildWhereClause],
+    witnesses: tuple[RowsetWitness, ...] = (),
 ) -> None:
     path = os.environ.get(AUDIT_ENV)
     if not path or environment.authored_datasources is None:
@@ -75,6 +76,7 @@ def audit_heal_keyspace(
         environment,
         conditions,
         datasources=environment.authored_datasources,
+        rowset_witnesses=witnesses,
     )
     common = authored.in_play_spans & planned.in_play_spans
     left, right = _facts(authored, common), _facts(planned, common)

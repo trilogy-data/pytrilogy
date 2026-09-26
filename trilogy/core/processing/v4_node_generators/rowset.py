@@ -183,12 +183,36 @@ def resolve_rowset(
     select: SelectLineage | MultiSelectLineage = lineage.rowset.select
     derived = lineage.rowset.derived_concepts
 
+    # This boundary is built not to extend a span another group owns (the
+    # rowset's own region domain, reading the padded body beside it): the
+    # body is planned for it without those regions' rows, in its spelling.
+    witness = history.rowset_witnesses.get(lineage.rowset.name)
+    owned = (
+        witness.body_spans_of(environment.span_scope.extent_free)
+        if witness is not None
+        else frozenset()
+    )
+    # the spans handed over, in this plan's spelling: this boundary holds
+    # their members only where the solid rows bound them, and what the
+    # region carries likewise (`MergeNode._extent_free_partials`)
+    owned_handles: frozenset[str] = (
+        frozenset().union(
+            *(
+                r.spans
+                for r in witness.regions
+                if r.spans and r.spans <= environment.span_scope.extent_free
+            )
+        )
+        if witness is not None and owned
+        else frozenset()
+    )
     plan = plan_nested_select(
         select,
         history,
         depth,
         f"rowset {lineage.rowset.name} inner select",
         exclude_derived=derived,
+        owned_spans=owned,
     )
     if plan is None:
         return None
@@ -454,6 +478,17 @@ def resolve_rowset(
             or _anchors_all_rowset(declared_anchors.get(h.address, set()), environment)
         )
     ]
+    if owned_handles:
+        carried = environment.span_scope.extent_free_carried
+        scoped_partial.extend(
+            h
+            for h in handles
+            if h not in scoped_partial
+            and (
+                h.address in owned_handles
+                or carried.get(h.address, frozenset()) & owned_handles
+            )
+        )
     # nullability propagates by ADDRESS between nodes, but a rowset handle is a
     # new address wrapping its body content; map through the BuildRowsetItem
     # content (and pseudonyms) so a `?` column's nullability survives the

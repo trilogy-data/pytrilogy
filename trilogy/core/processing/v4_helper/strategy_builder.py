@@ -1097,6 +1097,9 @@ def _elide_single_parent_passthrough(node: StrategyNode) -> StrategyNode:
     collapsed.partial_concepts = collapsed.derive_partials(list(node.partial_concepts))
     collapsed.nullable_concepts = list(node.nullable_concepts)
     collapsed.rollup_concepts = list(node.rollup_concepts)
+    # the region contract rides the projection (a rowset boundary that is a
+    # region's domain), not only what it projects from
+    collapsed.region_spans = parent.region_spans | node.region_spans
     collapsed.resolution_cache = None
     return collapsed
 
@@ -4464,7 +4467,7 @@ def build_strategy_node(
         # consumer-side re-sources `_parent_nodes_for` plans below.
         environment.span_scope = dc_replace(
             environment.span_scope,
-            extent_free=ownership.suppressed_for(gid),
+            extent_free=ownership.suppressed_for(gid) | environment.span_scope.owned,
             extent_free_carried=ownership.suppressed_carried_for(gid),
         )
         a = attrs[gid]
@@ -4852,9 +4855,12 @@ def build_strategy_node(
         built[gid] = node
 
     # The FINAL assembly is where the owner and the extent-free branches meet;
-    # it must see every span again to host the owner's rows.
+    # it must see every span again to host the owner's rows, except the ones
+    # the plan above holds.
     environment.span_scope = dc_replace(
-        environment.span_scope, extent_free=frozenset(), extent_free_carried={}
+        environment.span_scope,
+        extent_free=environment.span_scope.owned,
+        extent_free_carried={},
     )
     if not built:
         return None

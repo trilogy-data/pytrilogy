@@ -65,11 +65,6 @@ from trilogy.core.processing.v4_helper import (
 from trilogy.core.processing.v4_helper.functional_dependency import (
     build_fd_determines,
 )
-from trilogy.core.processing.v4_helper.keyspace import build_keyspace
-from trilogy.core.processing.v4_helper.keyspace_audit import audit_heal_keyspace
-from trilogy.core.processing.v4_helper.projection import (
-    statement_filter_population,
-)
 from trilogy.core.processing.v4_node_generators.multiselect import gen_multiselect
 from trilogy.core.processing.v4_node_generators.union_select import gen_union_select
 
@@ -524,6 +519,10 @@ def _build_from_graph(
     staged_conditions: list[BuildWhereClause] | None = None,
     depth: int = 0,
 ) -> BuildInfo:
+    from trilogy.core.processing.v4_node_generators.rowset_witness import (  # cycle
+        statement_keyspace,
+    )
+
     concept_graph, concept_attrs, concept_edges = build_concept_graph(
         mandatory_list,
         environment,
@@ -531,36 +530,13 @@ def _build_from_graph(
         materialized_roots,
         staged_conditions=staged_conditions,
     )
-    # A statement showing only filter values over one predicate is filtered by
-    # it, so the keyspace empties the regions it rejects. Only the keyspace
-    # sees it: as a plan WHERE it would narrow aggregates the predicate reads.
-    population = statement_filter_population(mandatory_list)
-    # Only what the STATEMENT projects asks for a region's rows. A sub-plan
-    # (a condition's aggregate feeder, `sum(...) by part.id`) lists its grain
-    # keys as outputs, but those are the axis it joins back on, not rows.
-    statement_outputs = environment.statement_output_addresses
-    keyspace = build_keyspace(
-        concept_attrs,
-        [
-            c
-            for c in mandatory_list
-            if statement_outputs is None
-            or {c.address, *c.pseudonyms} & statement_outputs
-        ],
-        environment,
-        conditions + ([population] if population is not None else []),
+    keyspace = statement_keyspace(
+        concept_attrs, mandatory_list, environment, conditions, history
     )
     if len(keyspace.regions) > 1:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} keyspace: {keyspace.describe()}"
         )
-    audit_heal_keyspace(
-        keyspace,
-        concept_attrs,
-        mandatory_list,
-        environment,
-        conditions + ([population] if population is not None else []),
-    )
     datasource_columns = [
         frozenset(c.address for c in ds.output_concepts)
         for ds in environment.datasources.values()
@@ -581,7 +557,9 @@ def _build_from_graph(
     # restore whatever the outer plan had rather than leaving it cleared.
     outer_scope = environment.span_scope
     environment.span_scope = SpanScope(
-        in_play=keyspace.in_play_spans, demanded=keyspace.output_demanded_spans
+        in_play=keyspace.in_play_spans,
+        demanded=keyspace.output_demanded_spans,
+        owned=history.owned_spans,
     )
     try:
         strategy_node = build_strategy_node(
