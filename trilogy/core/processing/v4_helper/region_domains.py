@@ -45,6 +45,28 @@ def _has_absent_inline_argument(
     )
 
 
+def _fed_by_region_domain(
+    concept: BuildConcept,
+    region: Region,
+    keyspace: Keyspace,
+    environment: BuildEnvironment,
+) -> bool:
+    """An aggregate output evaluated OVER the region's rows, the bucket-level
+    reading of `feed_region_domains_to_present_scalars`' aggregate branch:
+    it counts what the region holds, or groups by something the region
+    carries with no inline argument taking a value on the padding."""
+    if not isinstance(concept.lineage, BuildAggregateWrapper):
+        return False
+    if _aggregates_over_region((concept.address,), region, keyspace, environment):
+        return True
+    grain = concept.grain.components if concept.grain else ()
+    return any(
+        keyspace.carried_on(g, region) for g in grain
+    ) and not _has_absent_inline_argument(
+        concept.address, region, keyspace, environment
+    )
+
+
 def _filters_region_domain(
     address: str,
     region: Region,
@@ -66,7 +88,18 @@ def _filters_region_domain(
     if address in carried:
         return True
     if keyspace.carried_on(address, region):
-        return decided_at_output_grain(address, outputs, environment)
+        # an aggregate the domain feeds unites the region's rows on its
+        # input, and the atom is applied there, before it, whatever its grain
+        # (`count(customer_id) by status where activity = 'dormant'`)
+        return decided_at_output_grain(
+            address,
+            [
+                c
+                for c in outputs
+                if not _fed_by_region_domain(c, region, keyspace, environment)
+            ],
+            environment,
+        )
     concept = environment.concepts.get(address)
     return (
         concept is not None
@@ -461,7 +494,21 @@ def detach_final_span_domain_producers(
     into the row-stream hosts below would join that branch into the solid
     stream and apply the atom there, pairing on solid keys the region's rows
     never match; without them the producer reaches FINAL as a contributor of
-    its own, read off the domain, and FINAL tests every row."""
+    its own, read off the domain, and FINAL tests every row.
+
+    A host the domain itself feeds (an aggregate by the span, evaluated over
+    the region's rows) unites them below FINAL: the producer stays its
+    contributor, FINAL collapses into it, and the atom is applied there, on
+    every united row before the aggregate (`count(order_id) by customer_id
+    where flag = 1 or flag is null`: the padded row has no flag and counts 0,
+    a rejected order is not counted)."""
+    domain_fed = {
+        succ
+        for gid, bucket in buckets.items()
+        if bucket.extent_spans
+        for succ in group_graph.successors(gid)
+        if edge_kind(group_edges, gid, succ) == EdgeKind.LINEAGE
+    }
     for placement in placements:
         if placement.reason is not PlacementReason.FINAL_SPAN_DOMAIN:
             continue
@@ -472,6 +519,7 @@ def detach_final_span_domain_producers(
             for succ in list(group_graph.successors(gid)):
                 if (
                     succ != FINAL_NODE_ID
+                    and succ not in domain_fed
                     and edge_kind(group_edges, gid, succ) == EdgeKind.CONSTRAINT
                 ):
                     remove_edge(group_graph, group_edges, gid, succ)

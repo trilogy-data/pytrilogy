@@ -182,13 +182,31 @@ HOLDS = [
     # that adds the region's rows is 0 there, grouped or not
     "select name as n2, count(status) as n",
     "select late_name, count(order_id) as n",
+    # a null-accepting atom over an absent value under an aggregate the domain
+    # feeds: applied on the aggregate's input, over the united rows, where the
+    # padded row is NULL and a rejected order is not counted
+    "select customer_id, count(order_id) as n where flag = 1 or flag is null",
+    "select customer_id, count(order_id) as n where status is null",
+    "select customer_id, count(order_id) as n where status is null or status = 'delivered'",
+    "select customer_id, sum(amount) as t where flag = 0 or flag is null",
+    "select customer_id, count(order_id) as n where order_seq = 1 or order_seq is null",
+    "select customer_id, count(order_id) as n where amount_or_zero > 10 or amount_or_zero is null",
+    "select name, count(order_id) as n where order_seq = 1 or order_seq is null",
+    "select customer_id, status, count(order_id) as n where order_seq = 1 or order_seq is null",
+    "select customer_id, status, count(order_id) as n where flag = 1 or flag is null",
+    "select order_id, count(customer_id) as n where order_seq = 1 or order_seq is null",
+    # the aggregate is grouped by something absent on the region and counts the
+    # span: the domain feeds it, so a carried atom is applied on its input
+    # whatever the grain
+    "select status, count(customer_id) as n where activity = 'dormant'",
+    "select status, count(customer_id) as n where activity = 'active'",
+    "select label, count(customer_id) as n where activity = 'dormant'",
+    "select status, count(customer_id) as n where big_name is null",
+    "select status, count(customer_id) as n where late_name is null",
 ]
 
-OWED = [
-    # the aggregate's grain does not determine the atom's input: restating the
-    # atom above it is unsound, so the region keeps the padded plan
-    "select status, count(customer_id) as n where activity = 'dormant'",
-]
+# none owed today; a strict xfail here is the target for the next planner fix
+OWED: list[str] = []
 
 QUERIES = HOLDS + [
     pytest.param(q, marks=pytest.mark.xfail(strict=True, reason="owed")) for q in OWED
@@ -289,6 +307,35 @@ def test_orderless_customer_has_no_status(derived: Executor):
         (2, "delivered", 1),
         (3, None, 0),
     ]
+
+
+# The twin is blind here: a bound `amount` is a ROOT value on both models, and
+# both restated the atom above the aggregate (order 100 counted, the orderless
+# customer dropped). The atom is applied on the aggregate's input, over the
+# united rows: the padded row has no amount and no flag.
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select status, count(customer_id) as n where amount > 15 or amount is null",
+            [("delivered", 1), ("in-transit", 1), (None, 1)],
+        ),
+        (
+            "select status, count(customer_id) as n where flag = 1 or flag is null",
+            [("in-transit", 1), (None, 1)],
+        ),
+        ("select status, count(customer_id) as n where order_seq is null", [(None, 1)]),
+        (
+            "select customer_id, count(order_id) as n where amount > 15 or amount is null",
+            [(1, 1), (2, 1), (3, 0)],
+        ),
+    ],
+)
+def test_atom_under_an_aggregate_the_domain_feeds(
+    derived: Executor, materialized: Executor, query: str, expected: list[tuple]
+):
+    assert _rows(derived, query) == expected
+    assert _rows(materialized, query) == expected
 
 
 def test_else_fires_when_the_key_is_present(derived: Executor):
