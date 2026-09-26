@@ -153,7 +153,9 @@ def null_on_padding(
     if isinstance(value, BuildConcept):
         if keyspace.defined_on(value.address, region):
             return False
-        if value.derivation == Derivation.ROOT:
+        # a rowset handle is a column of its boundary, NULL on a padded row
+        # as a ROOT column is: the body's own keyspace made it so
+        if value.derivation in (Derivation.ROOT, Derivation.ROWSET):
             return True
         value = value.lineage
     # `content ? condition` is NULL wherever its content is.

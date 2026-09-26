@@ -181,6 +181,9 @@ class Keyspace:
     outputs: tuple[str, ...] = ()
     # span -> the entities a keyed lookup from that span alone arrives at
     span_reach: dict[str, frozenset[str]] = field(default_factory=dict)
+    # a spelling a join below this plan (a rowset body) pads a span under ->
+    # the span in this plan's spelling (`RowsetWitness.spellings`)
+    witnessed: dict[str, str] = field(default_factory=dict)
 
     @property
     def extensions(self) -> tuple[Region, ...]:

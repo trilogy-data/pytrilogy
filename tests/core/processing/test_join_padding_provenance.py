@@ -171,6 +171,31 @@ def test_unrelated_scoped_join_adds_no_spelling():
     assert _span_spellings(frozenset({USER}), environment) == {USER: USER}
 
 
+HANDLE = "local.s.user"
+
+
+def test_rowset_body_padding_is_named_by_the_readers_handle():
+    """The body pads under `USER`; the plan reading the handle attributes it
+    to the handle, and to the handle's scoped canonical when it has one. A
+    spelling the plan uses for a span of its own keeps that name."""
+    environment = BuildEnvironment()
+    witnessed = {USER: HANDLE}
+    assert _span_spellings(frozenset({HANDLE}), environment, witnessed) == {
+        HANDLE: HANDLE,
+        USER: HANDLE,
+    }
+    assert _matrix(USER, {USER: HANDLE}) == {ORDER: frozenset({HANDLE})}
+    environment.scoped_join_key_groups = {CANON: {HANDLE}}
+    assert _span_spellings(frozenset({HANDLE}), environment, witnessed) == {
+        HANDLE: CANON,
+        CANON: CANON,
+        USER: CANON,
+    }
+    assert _span_spellings(frozenset({USER}), BuildEnvironment(), witnessed) == {
+        USER: USER
+    }
+
+
 _SPAN, _ATTR = "c~local.item_sk", "c~local.item_desc"
 
 

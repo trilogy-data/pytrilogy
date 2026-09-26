@@ -15,6 +15,8 @@ def _showing(concept_attrs, mandatory_list, environment, conditions, **kwargs):
         [c.address for c in mandatory_list][:6],
         "in_play=",
         sorted(keyspace.in_play_spans),
+        "witnessed=",
+        keyspace.witnessed,
         "regions=",
         keyspace.describe(),
     )

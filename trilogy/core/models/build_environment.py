@@ -108,6 +108,9 @@ class SpanScope:
     # plan: the spans whose unmatched members carry an output
     # (`Keyspace.output_demanded_spans`), the only extension rows it returns
     demanded: frozenset[str] = frozenset()
+    # plan: a rowset body's spelling of a span in play -> the plan's own
+    # (`Keyspace.witnessed`): padding made below a boundary is named up here
+    witnessed: dict[str, str] = field(default_factory=dict)
     # plan: the spans whose extension rows the plan READING this one holds (a
     # rowset body built for a consumer that pads the region itself): no group
     # of this plan extends them, FINAL included
