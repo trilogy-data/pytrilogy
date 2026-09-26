@@ -479,7 +479,12 @@ def downgrade_join_for_proofs(
 ) -> None:
     """Narrow a FULL when ``proofs`` (concepts forced non-null in every
     surviving row) rule out the padded rows it preserves: only the side
-    whose proof holds is kept, both forced is INNER."""
+    whose proof holds is kept, both forced is INNER. A side-only column
+    bound partially or opaquely proves nothing (``_unprovable_addresses``):
+    a value the region domain carries is partial on the solid stream, and a
+    WHERE over it keeps the domain's rows. The key tuple still forces a
+    side through a `~` key: a span the plan does not extend has no
+    extension row to keep."""
     if not isinstance(join, BaseJoin):
         return
     if join.join_type != JoinType.FULL or not proofs:
@@ -487,8 +492,12 @@ def downgrade_join_for_proofs(
     left_keys, right_keys = _join_key_addresses(join)
     left_all = _left_join_addresses(join, final_datasets)
     right_all = _datasource_addresses(join.right_datasource)
-    left_forced = _side_forced(proofs, [], left_all - right_all, left_keys, set())
-    right_forced = _side_forced(proofs, [], right_all - left_all, right_keys, set())
+    left_only = (left_all - right_all) - _unprovable_addresses(
+        _left_join_sources(join, final_datasets)
+    )
+    right_only = (right_all - left_all) - _unprovable_addresses([join.right_datasource])
+    left_forced = _side_forced(proofs, [], left_only, left_keys, set())
+    right_forced = _side_forced(proofs, [], right_only, right_keys, set())
     if left_forced and right_forced:
         join.join_type = JoinType.INNER
     elif left_forced:

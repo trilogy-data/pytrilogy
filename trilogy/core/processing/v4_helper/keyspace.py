@@ -161,8 +161,18 @@ def rowset_witness(
         c: frozenset(h for h, hc in contents.items() if hc == c)
         for c in contents.values()
     }
+    # a value-nullable stand-in (`item_desc string?`) pairs its NULL member
+    # with a NULL-keyed guest's row and vetoes the join into a FULL, so a
+    # handle that cannot be NULL spells the key first
+    nullable = {
+        h.address
+        for h in handles
+        if isinstance(h.lineage, BuildRowsetItem) and h.lineage.content.is_nullable
+    }
     for key in sorted(frozenset().union(*keys.values()) - handles_of.keys()):
-        carriers = sorted(h for h, k in keys.items() if k == {key})
+        carriers = sorted(
+            (h for h, k in keys.items() if k == {key}), key=lambda h: (h in nullable, h)
+        )
         if carriers:
             handles_of[key] = frozenset(carriers[:1])
     entity_handles = {
@@ -675,9 +685,16 @@ def build_keyspace(
     witnessed = {s: h for w in rowset_witnesses for s, h in w.spellings.items()}
     canonical = facts.canonical
     identifying = facts.identifying
-    # an existence-only node is a semijoin's subselect, not a row of this plan
+    # an existence-only node is a semijoin's subselect, not a row of this plan.
+    # A rowset handle declares no keys; its entity is the handle the witness
+    # spells its key by (`s.n` lives on `s.d`, the stand-in for the item).
+    handle_keys = {
+        handle: keys
+        for witness in rowset_witnesses
+        for handle, keys in witness.entity_handles.items()
+    }
     declared = {
-        a.address: (a.purpose, a.derivation, a.keys)
+        a.address: (a.purpose, a.derivation, handle_keys.get(a.address, a.keys))
         for a in concept_attrs.values()
         if not a.existence_only
     }
