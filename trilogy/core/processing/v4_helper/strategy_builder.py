@@ -2185,6 +2185,7 @@ def _filter_intrinsic_pushdown_safe(
     gid: str,
     outputs: list[BuildConcept],
     mandatory_list: list[BuildConcept],
+    hidden: set[str] | None = None,
 ) -> bool:
     """May this filter group's predicate narrow its ROWS? Only when the plan
     shows nothing but filter values over that one predicate (a NULL row is one
@@ -2192,7 +2193,7 @@ def _filter_intrinsic_pushdown_safe(
     filter, read by an aggregate or beside a sibling, stays a per-row CASE.
     And not when a consumer also reads an unfiltered ancestor of it, which the
     narrowed stream would then pair against."""
-    if statement_filter_population(mandatory_list) is None:
+    if statement_filter_population(mandatory_list, hidden) is None:
         return False
     mandatory = {c.address for c in mandatory_list}
     if not any(o.address in mandatory for o in outputs):
@@ -4820,7 +4821,11 @@ def build_strategy_node(
             conditions=condition_for_generator,
             preexisting_conditions=preexisting,
             intrinsic_filter_pushdown=_filter_intrinsic_pushdown_safe(
-                group_graph, gid, outputs, mandatory_list
+                group_graph,
+                gid,
+                outputs,
+                mandatory_list,
+                environment.statement_hidden_addresses,
             ),
             existence_source=any(
                 edge_kind(group_edges, gid, succ) == EdgeKind.EXISTENCE

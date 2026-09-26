@@ -465,6 +465,9 @@ def scope_statement(
     build_environment.statement_output_addresses = authored_reference_addresses(
         statement, environment, include_where=False
     )
+    build_environment.statement_hidden_addresses = set(
+        build_statement.hidden_components
+    )
     if not isinstance(build_statement, BuildSelectLineage):
         return
     if not build_statement.where_clauses:
@@ -476,7 +479,9 @@ def scope_statement(
                 clause
                 for clause in (
                     build_statement.where_clause,
-                    statement_filter_population(outputs),
+                    statement_filter_population(
+                        outputs, build_statement.hidden_components
+                    ),
                 )
                 if clause is not None
             ],

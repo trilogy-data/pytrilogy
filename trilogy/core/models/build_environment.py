@@ -176,6 +176,10 @@ class BuildEnvironment:
     # referenced only in a condition is population-scope (d1) demand, not a
     # row-stream contributor. Set by `get_query_node`.
     statement_output_addresses: set[str] | None = None
+    # Outputs the statement carries but does not show (a HAVING's aggregate
+    # promoted to the projection, an ORDER BY carry); what it SHOWS decides
+    # whether a filter value's NULL rows are rows nobody would keep.
+    statement_hidden_addresses: set[str] | None = None
     # Set around each plan (`_build_from_graph`) and each group
     # (`build_strategy_node`); merges capture it.
     span_scope: SpanScope = field(default_factory=SpanScope)
