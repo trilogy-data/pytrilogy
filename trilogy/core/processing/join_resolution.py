@@ -414,15 +414,21 @@ def _unpaired_value_nulls(
     value_nullables: dict[str, list[str]],
     extent_nullables: dict[str, list[str]],
 ) -> bool:
-    """A value NULL the feeder carries on a join key with nothing to pair it:
-    on the region's own key always (a guest order names no member), on any
-    other key only when the holder carries no value NULL there, since two
-    value NULLs pair null-safely (``get_modifiers``)."""
+    """A NULL the feeder carries on a join key with nothing to pair it. On the
+    region's own key an extent NULL always vetoes (a guest order names no
+    member, and no holder row is that absence); a value NULL there, and on
+    any other key, vetoes only when the holder carries no value NULL of its
+    own, since two value NULLs pair null-safely (``get_modifiers``): a region
+    spelled by a nullable stand-in (`item_desc string?`) has a member whose
+    key IS NULL, on the domain and on the solid rows alike."""
     for key in keys:
         feeder_value = key in value_nullables.get(feeder, [])
-        if not (feeder_value or key in extent_nullables.get(feeder, [])):
+        feeder_extent = key in extent_nullables.get(feeder, [])
+        if not (feeder_value or feeder_extent):
             continue
-        if key in held or not (feeder_value and key in value_nullables.get(holder, [])):
+        if key in held and feeder_extent:
+            return True
+        if not (feeder_value and key in value_nullables.get(holder, [])):
             return True
     return False
 

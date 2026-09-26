@@ -193,10 +193,71 @@ def test_rowset_matches_direct_spelling(rowset_query, direct_query):
     )
 
 
-@pytest.mark.parametrize("query,expected", KEYLESS_CASES + ROW_STREAM_CASES)
+# A rename of what the region carries (`item_desc as d`) beside a derivation
+# that reads something absent there (`grain(order_number, item_sk)`) landed in
+# one BASIC bucket, computed on the solid rows: the unsold item's label was
+# NULL while its source rode the domain beside it. The rename gets a bucket of
+# its own and reads the domain.
+RENAME_BESIDE_HASH_CASES = [
+    (
+        (
+            "select item_desc as d, count(order_number) as total,"
+            " count(grain(order_number, item_sk) ? quantity > 10) as hi"
+            " order by d asc nulls last;"
+        ),
+        [("alpha", 1, 0), ("beta", 1, 1), ("gamma", 0, 0), (None, 2, 1)],
+    ),
+    (
+        (
+            "select item_desc as d, count(order_number) as total,"
+            " count(grain(order_number, item_desc) ? quantity > 10) as hi"
+            " order by d asc nulls last;"
+        ),
+        [("alpha", 1, 0), ("beta", 1, 1), ("gamma", 0, 0), (None, 2, 1)],
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "query,expected", KEYLESS_CASES + ROW_STREAM_CASES + RENAME_BESIDE_HASH_CASES
+)
 def test_region_no_handle_spells(query, expected):
     env = Environment()
     env.parse(UNSOLD_MODEL)
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    assert executor.execute_query(query).fetchall() == expected
+
+
+# A `~?` guest sale (no item) beside the item with no description: both are
+# `s.d IS NULL`, so a plain and a filtered read of them collide at the output
+# grain. The FINAL merge of the region's domain onto the band stream (keyed
+# `s.d`, one row per SALE) pairs many rows per key, and must still dedup to
+# the selected columns: `_concept_covers_grain` took the key being ONE grain
+# component of the stream for the whole grain and skipped the GROUP BY.
+GUEST_MODEL = UNSOLD_MODEL.replace("i_sk: ~item_sk", "i_sk: ~?item_sk").replace(
+    "union all select 4, 30, 3'''",
+    "union all select 4, 30, 3 union all select 5, null, 7'''",
+)
+GUEST_CASES = [
+    (
+        KEYLESS_ROWSET
+        + "select s.d, case when s.q > 10 then 'hi' else 'lo' end as band"
+        " order by s.d asc nulls last, band asc nulls last;",
+        [("alpha", "lo"), ("beta", "hi"), ("gamma", None), (None, "hi"), (None, "lo")],
+    ),
+    (
+        KEYLESS_ROWSET
+        + "select s.d, count(grain(s.o, s.d)) as total order by s.d asc nulls last;",
+        [("alpha", 1), ("beta", 1), ("gamma", 0), (None, 3)],
+    ),
+]
+
+
+@pytest.mark.parametrize("query,expected", GUEST_CASES)
+def test_guest_rows_dedup_at_the_output_grain(query, expected):
+    assert "~?item_sk" in GUEST_MODEL and "select 5, null, 7" in GUEST_MODEL
+    env = Environment()
+    env.parse(GUEST_MODEL)
     executor = Dialects.DUCK_DB.default_executor(environment=env)
     assert executor.execute_query(query).fetchall() == expected
 

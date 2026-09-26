@@ -137,6 +137,17 @@ def test_concept_covers_grain_multiselect_keys_branch():
     assert not _concept_covers_grain(no_overlap, BuildGrain(components={"test.a"}))
 
 
+def test_concept_covers_grain_needs_the_whole_grain():
+    """A key that is one of several grain components admits many right rows
+    per key value; only a grain that IS the key (under any spelling) is
+    covered."""
+    key = _concept("a")
+    assert _concept_covers_grain(key, BuildGrain(components={key.address}))
+    assert not _concept_covers_grain(
+        key, BuildGrain(components={key.address, "test.q"})
+    )
+
+
 def test_join_right_preserves_cardinality_unnest_join_returns_false():
     """Type-narrowing guard: UnnestJoin can't preserve right cardinality."""
     assert (
