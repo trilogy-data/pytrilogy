@@ -179,6 +179,21 @@ EQUIVALENT_SPELLINGS = [
             " order by d asc nulls last, per_item asc nulls last;"
         ),
     ),
+    # named-argument aggregates (evaluated over the region: the domain merges
+    # onto their solid pre-merge) beside a filtered count(grain(...)) that
+    # stays solid. The FINAL INNER-joins the aggregate on `s.sk`, and that
+    # equality flowed back as a proof that the pre-merge's solid side had a
+    # key, turning the domain's LEFT into INNER and dropping the unsold item.
+    (
+        KEYED_ROWSET
+        + "select s.sk, s.d, count(s.o) as n, sum(s.q) as tq, max(s.q) as mq,"
+        " count(grain(s.o, s.sk) ? s.q > 10) as hi order by s.sk asc;",
+        (
+            "select item_sk as sk, item_desc as d, count(order_number) as n,"
+            " sum(quantity) as tq, max(quantity) as mq,"
+            " count(grain(order_number, item_sk) ? quantity > 10) as hi order by sk asc;"
+        ),
+    ),
 ]
 
 
@@ -312,6 +327,173 @@ def test_guest_survives_a_rename_of_the_description(query, expected):
     env.parse(GUEST_ALLDESC_MODEL)
     executor = Dialects.DUCK_DB.default_executor(environment=env)
     assert executor.execute_query(query).fetchall() == expected
+
+
+def _with_item_name(model: str) -> str:
+    out = (
+        model.replace(
+            "property item_sk.item_desc string?;",
+            "property item_sk.item_desc string?;\nproperty item_sk.item_name string;",
+        )
+        .replace("i_desc: item_desc)", "i_desc: item_desc, i_name: item_name)")
+        .replace("'alpha' as i_desc", "'alpha' as i_desc, 'A' as i_name")
+        .replace("select 20, 'beta'", "select 20, 'beta', 'B'")
+        .replace(
+            "select 30, cast(null as varchar)", "select 30, cast(null as varchar), 'C'"
+        )
+        .replace("select 30, 'delta'", "select 30, 'delta', 'C'")
+        .replace("select 40, 'gamma'", "select 40, 'gamma', 'G'")
+    )
+    assert "i_name: item_name" in out and "'G'" in out
+    return out
+
+
+# A second property of the item. The witness spells the region by the handle
+# that cannot be NULL (`item_name`: a `string?` stand-in pairs its NULL member
+# with a NULL-keyed guest and vetoes the join into a FULL), and `s.d` lives on
+# that handle (`RowsetWitness.entity_handles`). Before, the first carrier by
+# name was the span and a read of the OTHER property resolved to no entity at
+# all: the reader saw one region and counted the unsold item's padded hash.
+TWO_PROP_MODEL = _with_item_name(UNSOLD_MODEL)
+TWO_PROP_GUEST_ALLDESC_MODEL = _with_item_name(GUEST_ALLDESC_MODEL)
+TWO_PROP_ROWSET = (
+    "rowset s <- select order_number as o, item_desc as d, item_name as n,"
+    " quantity as q;\n"
+)
+NAME_ONLY_ROWSET = (
+    "rowset s <- select order_number as o, item_name as n, quantity as q;\n"
+)
+TWO_PROP_SPELLINGS = [
+    (
+        TWO_PROP_ROWSET
+        + "select s.n, count(s.o) as total order by s.n asc nulls last;",
+        "select item_name as n, count(order_number) as total order by n asc nulls last;",
+    ),
+    (
+        TWO_PROP_ROWSET + "select s.n, sum(s.q) as total order by s.n asc nulls last;",
+        "select item_name as n, sum(quantity) as total order by n asc nulls last;",
+    ),
+    (
+        TWO_PROP_ROWSET
+        + "select s.n, s.d, count(s.o) as total order by s.n asc nulls last, s.d asc nulls last;",
+        (
+            "select item_name as n, item_desc as d, count(order_number) as total"
+            " order by n asc nulls last, d asc nulls last;"
+        ),
+    ),
+    (
+        TWO_PROP_ROWSET
+        + "select s.n, count(s.o) as total where s.d is null order by s.n asc nulls last;",
+        (
+            "select item_name as n, count(order_number) as total"
+            " where item_desc is null order by n asc nulls last;"
+        ),
+    ),
+    # a WHERE over the property the statement does not project: on the `~?`
+    # model the merge of the solid stream and the domain is FULL (the guest's
+    # key is a value NULL), and the FULL narrowing took the proof over
+    # `item_name` as forcing the solid side, whose copy is partial (the
+    # domain carries it), so the unsold item was dropped
+    (
+        TWO_PROP_ROWSET
+        + "select s.d, count(s.o) as total where s.n != 'B' order by s.d asc nulls last;",
+        (
+            "select item_desc as d, count(order_number) as total"
+            " where item_name != 'B' order by d asc nulls last;"
+        ),
+    ),
+]
+# the stand-in itself as a join key: solid on the `~` model; owed on `~?`
+# where the guest's `item_name` is a NULL VALUE through its NULL key. The
+# solid boundary strips that NULL as extension padding of the span and the
+# reader classifies it as absence, so the guest's NULL group never pairs
+# with the boundary's row for it (docs/keyspace_phase_plan.md, open items).
+STAND_IN_KEY_SPELLINGS = [
+    (
+        TWO_PROP_ROWSET
+        + "select s.n, count(grain(s.o, s.n)) as total order by s.n asc nulls last;",
+        "select item_name as n, count(grain(order_number, item_name)) as total order by n asc nulls last;",
+    ),
+    (
+        TWO_PROP_ROWSET
+        + "select s.n, case when s.q > 10 then 'hi' else 'lo' end as band"
+        " order by s.n asc nulls last, band asc nulls last;",
+        (
+            "select item_name as n, case when quantity > 10 then 'hi' else 'lo' end as band"
+            " order by n asc nulls last, band asc nulls last;"
+        ),
+    ),
+    (
+        TWO_PROP_ROWSET
+        + "select s.n, count(s.o) as total, count(grain(s.o, s.n) ? s.q > 10) as hi"
+        " order by s.n asc nulls last;",
+        (
+            "select item_name as n, count(order_number) as total,"
+            " count(grain(order_number, item_name) ? quantity > 10) as hi"
+            " order by n asc nulls last;"
+        ),
+    ),
+    (
+        NAME_ONLY_ROWSET
+        + "select s.n, count(grain(s.o, s.n)) as total order by s.n asc nulls last;",
+        "select item_name as n, count(grain(order_number, item_name)) as total order by n asc nulls last;",
+    ),
+    (
+        NAME_ONLY_ROWSET
+        + "select s.n, case when s.q > 10 then 'hi' else 'lo' end as band"
+        " order by s.n asc nulls last, band asc nulls last;",
+        (
+            "select item_name as n, case when quantity > 10 then 'hi' else 'lo' end as band"
+            " order by n asc nulls last, band asc nulls last;"
+        ),
+    ),
+]
+
+
+@pytest.mark.parametrize("rowset_query,direct_query", TWO_PROP_SPELLINGS)
+@pytest.mark.parametrize("model", ["TWO_PROP_MODEL", "TWO_PROP_GUEST_ALLDESC_MODEL"])
+def test_stand_in_beside_a_second_property(model, rowset_query, direct_query):
+    env = Environment()
+    env.parse(globals()[model])
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    rows = executor.execute_query(rowset_query).fetchall()
+    assert rows == executor.execute_query(direct_query).fetchall()
+    assert rows
+
+
+@pytest.mark.parametrize("rowset_query,direct_query", STAND_IN_KEY_SPELLINGS)
+@pytest.mark.parametrize(
+    "model",
+    [
+        "TWO_PROP_MODEL",
+        pytest.param(
+            "TWO_PROP_GUEST_ALLDESC_MODEL",
+            marks=pytest.mark.xfail(strict=True, reason="owed: guest NULL stand-in"),
+        ),
+    ],
+)
+def test_stand_in_key_pairs_the_guest(model, rowset_query, direct_query):
+    env = Environment()
+    env.parse(globals()[model])
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    rows = executor.execute_query(rowset_query).fetchall()
+    assert rows == executor.execute_query(direct_query).fetchall()
+    assert ("G", 0) in rows or ("G", None) in rows or ("G", 0, 0) in rows, rows
+
+
+def test_unprojected_property_where_keeps_the_region_on_a_guest_model():
+    env = Environment()
+    env.parse(TWO_PROP_GUEST_ALLDESC_MODEL)
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    query = (
+        "select item_desc as d, count(order_number) as total"
+        " where item_name != 'B' order by d asc nulls last;"
+    )
+    assert executor.execute_query(query).fetchall() == [
+        ("alpha", 1),
+        ("delta", 2),
+        ("gamma", 0),
+    ]
 
 
 @pytest.mark.parametrize("query", [DIRECT_QUERY, ROWSET_QUERY, NESTED_ROWSET_QUERY])
