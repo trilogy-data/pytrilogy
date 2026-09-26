@@ -30,7 +30,7 @@ from trilogy.core.processing.node_generators.presence_probe import is_presence_p
 
 from .concept_graph import computed_origin_relation_members
 from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS, DepthLabel, EdgeKind
-from .edges import EdgeMap, lineage_subgraph, subgraph_of_kinds
+from .edges import EdgeMap, edge_kind, lineage_subgraph, subgraph_of_kinds
 from .functional_dependency import build_fd_determines
 from .models import ConceptAttrs, GroupBucket, Keyspace
 from .projection import decided_at_output_grain, output_rowset_base_keys
@@ -650,6 +650,63 @@ def _reads_past_region_domain(
             ):
                 return True
     return False
+
+
+def _region_domain_grouping_hosts(
+    candidates: list[str],
+    buckets: dict[str, GroupBucket],
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+) -> tuple[str, ...]:
+    """The candidate grouping groups a region domain feeds. Such a group is
+    evaluated over the region's rows (`count(order_id) by customer_id`,
+    `count(customer_id) by status`): the domain's rows and the solid stream
+    unite on its input, below FINAL, so an atom restated "where the domain's
+    rows join back" belongs there, on every united row before the aggregate.
+    Restated at FINAL instead it would filter aggregated rows by a per-row
+    value (fanning out through its producer, or silently dropping the rows
+    the aggregate should have lost)."""
+    return tuple(
+        gid
+        for gid in candidates
+        if gid in buckets
+        and buckets[gid].derivation in _EMITS_GROUP_BY
+        and any(
+            pred in buckets
+            and buckets[pred].extent_spans
+            and edge_kind(group_edges, pred, gid) == EdgeKind.LINEAGE
+            for pred in group_graph.predecessors(gid)
+        )
+    )
+
+
+def _hosts_carrying_condition_grain(
+    restricted: list[str],
+    row_inputs: set[str],
+    buckets: dict[str, GroupBucket],
+    group_own_keys: dict[str, set[str]],
+) -> list[str]:
+    """Hosts that can pair a condition-phase aggregate's branch: an atom over
+    `sum(amount) by status` joins that branch on `status`, so a host without
+    the grain (the ROOT scan, when `status` is a derivation of a sibling
+    group) cannot render it (`Missing source map entry`). Leaves the pool
+    alone when no host carries the grain."""
+    grains: list[set[str]] = [
+        set(b.grain_components)
+        for b in buckets.values()
+        if b.derivation in _EMITS_GROUP_BY
+        and b.depth_label in (DepthLabel.D1, ROOT_D1_DEPTH)
+        and b.grain_components
+        and row_inputs & set(b.primary_members)
+    ]
+    if not grains:
+        return restricted
+    carrying = [
+        gid
+        for gid in restricted
+        if all(grain <= group_own_keys.get(gid, set()) for grain in grains)
+    ]
+    return carrying or restricted
 
 
 def _grouping_barrier_host(
@@ -1325,7 +1382,10 @@ def plan_condition_placements(
                 placements.append(
                     ConditionPlacement(
                         atom=atom,
-                        group_ids=(FINAL_NODE_ID,),
+                        group_ids=_region_domain_grouping_hosts(
+                            candidates, buckets, group_graph, group_edges
+                        )
+                        or (FINAL_NODE_ID,),
                         reason=PlacementReason.FINAL_SPAN_DOMAIN,
                     )
                 )
@@ -1432,6 +1492,9 @@ def plan_condition_placements(
                         - consumed_barriers
                     )
                 ]
+            restricted = _hosts_carrying_condition_grain(
+                restricted, row_inputs, buckets, group_own_keys
+            )
             if not restricted:
                 placements.append(
                     ConditionPlacement(

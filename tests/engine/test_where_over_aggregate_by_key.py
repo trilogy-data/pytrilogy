@@ -71,3 +71,19 @@ def test_scalar_over_aggregate_where_beside_a_row_derivation():
         (1, "delivered"),
         (1, "in-transit"),
     ]
+
+
+# The condition branch is grouped by a DERIVED concept: its host must carry
+# that grain to join the branch on it (the ROOT scan has no `status`; it
+# rendered `Missing source map entry for local.status`).
+def test_aggregate_by_a_derived_grain_in_where():
+    executor = _executor()
+    assert _rows(
+        executor, "select customer_id, status where count(order_id) by status > 1;"
+    ) == [(1, "delivered"), (2, "delivered")]
+    assert _rows(
+        executor, "select order_id, status where count(order_id) by status > 1;"
+    ) == [(100, "delivered"), (102, "delivered")]
+    assert _rows(
+        executor, "select customer_id, name where count(order_id) by status > 1;"
+    ) == [(1, "ann"), (2, "bob")]
