@@ -24,7 +24,6 @@ that evidence wherever credentials exist."""
 
 import re
 
-from tests.engine.test_derived_key_domain import _ACTIVITY, _DERIVED
 from trilogy import parse
 from trilogy.core.enums import JoinType, Modifier
 from trilogy.dialect.bigquery import BigqueryDialect, null_wrapper
@@ -100,12 +99,38 @@ select
 ;
 """
 
-# A NULLABLE coalesced key: `name` is a function of the customer, which the
-# orders fact binds `~`, so the aggregate by name and the row stream meet on a
-# FULL join whose key is a coalesce over the padded customer region.
-NULLABLE_MERGED_KEY_MODEL = (
-    _DERIVED + _ACTIVITY + "select name as n2, count(status) as n;"
-)
+# A NULLABLE coalesced key: three facts related by a query-scoped `union join`
+# on derived keys (tests/join_matrix/test_multiway_matrix.py). The FULL joins
+# are the declaration's own, their key the coalesce over every member joined
+# so far, and null-safe since each side pads the others' exclusive members. (An
+# aggregate over a `~`-bound key meeting its region's domain no longer joins
+# FULL: the domain is preserved over the solid reader, typed at plan time.)
+NULLABLE_MERGED_KEY_MODEL = """
+key a_id int;
+property a_id.a_key int;
+property a_id.a_val int;
+datasource asrc (i: a_id, k: a_key, v: a_val) grain (a_id)
+query '''select 1 i, 1 k, 1 v union all select 2 i, 3 k, 8 v''';
+
+key b_id int;
+property b_id.b_key int;
+property b_id.b_val int;
+datasource bsrc (i: b_id, k: b_key, v: b_val) grain (b_id)
+query '''select 1 i, 1 k, 100 v union all select 2 i, 4 k, 800 v''';
+
+key c_id int;
+property c_id.c_key int;
+property c_id.c_val int;
+datasource csrc (i: c_id, k: c_key, v: c_val) grain (c_id)
+query '''select 1 i, 1 k, 7 v union all select 2 i, 5 k, 777 v''';
+
+auto ka <- a_key + 1;
+auto kb <- b_key + 1;
+auto kc <- c_key + 1;
+
+union join ka = kb = kc
+select ka, sum(a_val) as lv, sum(b_val) as rv, sum(c_val) as cv;
+"""
 
 # `alias`.`column`, or a bare `column`. Anything else is an expression to
 # BigQuery's join planner.
