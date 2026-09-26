@@ -336,32 +336,15 @@ def _downgrade(
     left_opaque = {a for lc in left_ctes for a in opaque_binding_addresses(lc)}
     left_only = left_only - left_opaque
 
-    # A direct proof names the column as this CTE RENDERS it, off the source
-    # in its source map: a key read from the preserved side says nothing about
-    # the other side's copy (a domain's key, forced non-null by a consumer's
-    # INNER join, is not the solid stream's), and a COALESCE over both proves
-    # neither.
-    def renders_from(c: CTE | UnionCTE, address: str) -> bool:
-        sources = set(cte.source_map.get(address, ()))
-        return bool(sources) and sources <= _cte_source_keys(c)
-
     def proves_left_key(c: CTE | UnionCTE, address: str) -> bool:
-        if (c.name, address) in proofs.cte_keys:
-            return True
-        return (
-            address not in left_block
-            and address in proofs.direct
-            and renders_from(c, address)
-        )
+        if address in left_block:
+            return (c.name, address) in proofs.cte_keys
+        return proofs.proves_cte_key(c, address)
 
     def proves_right_key(address: str) -> bool:
-        if (join.right_cte.name, address) in proofs.cte_keys:
-            return True
-        return (
-            address not in right_block
-            and address in proofs.direct
-            and renders_from(join.right_cte, address)
-        )
+        if address in right_block:
+            return (join.right_cte.name, address) in proofs.cte_keys
+        return proofs.proves_cte_key(join.right_cte, address)
 
     # A side is forced present when the WHERE references a concept that only
     # exists on it, or when every join key is proven non-null for the specific
