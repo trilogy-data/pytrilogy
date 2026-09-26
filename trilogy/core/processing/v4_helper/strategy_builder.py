@@ -4624,7 +4624,9 @@ def build_strategy_node(
                 for parent in parent_builds
             )
             parents = _apply_input_contracts(parent_builds, a, needed, environment)
-            domains = [p for p in parents if p.region_spans]
+            # a parent holds a region's rows when it reads its domain, the
+            # domain itself or a derivation over what it carries (`upper(name)`)
+            domains = [p for p in parents if _region_reads(p)]
             if derivation == Derivation.AGGREGATE and domains:
                 # an aggregate evaluated OVER a region: its row-stream
                 # arguments are computed on the solid rows first, then the
@@ -4632,7 +4634,7 @@ def build_strategy_node(
                 # keys: this group may extend the spans (it reads the
                 # domain), the merge below the domain may not.
                 domain_spans: frozenset[str] = frozenset().union(
-                    *(d.region_spans for d in domains)
+                    *(_region_reads(d) for d in domains)
                 )
                 group_scope = environment.span_scope
                 environment.span_scope = dc_replace(
@@ -4640,7 +4642,7 @@ def build_strategy_node(
                 )
                 try:
                     solid = _pre_merge_parents(
-                        [p for p in parents if not p.region_spans],
+                        [p for p in parents if p not in domains],
                         environment,
                         join_key_addresses=join_key_addresses,
                         needed=needed,

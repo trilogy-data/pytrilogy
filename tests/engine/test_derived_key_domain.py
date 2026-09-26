@@ -240,6 +240,48 @@ def test_inline_spelling_matches_named(derived: Executor, named: str, inline: st
     )
 
 
+# A derivation PRESENT on the region (`upper(name)` reads what the customer
+# carries) beside one absent there: it is the region's rows, evaluated on the
+# domain and not on the solid stream it was split from (one row per order,
+# fanning a consumer out), and the aggregate over it is padded, not inlined.
+_CUSTOMERS = """root datasource customers (customer_id: customer_id, name: name)
+grain (customer_id)
+query '''
+select 1 as customer_id, 'ann' as name union all
+select 2, 'bob' union all
+select 3, 'cat'
+''';"""
+_CUSTOMERS_UPPER = """property customer_id.upper_name string;
+root datasource customers (customer_id: customer_id, name: name, upper_name: upper_name)
+grain (customer_id)
+query '''
+select 1 as customer_id, 'ann' as name, 'ANN' as upper_name union all
+select 2, 'bob', 'BOB' union all
+select 3, 'cat', 'CAT'
+''';"""
+_UPPER_DERIVED = _DERIVED + "auto upper_name <- upper(name);"
+_UPPER_MATERIALIZED = _MATERIALIZED.replace(_CUSTOMERS, _CUSTOMERS_UPPER)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "select customer_id, upper_name, status",
+        "select upper_name, status",
+        "select upper_name, count(status) as n",
+        "select customer_id, upper_name, count(order_id) as n",
+        "select customer_id, upper_name, label",
+    ],
+)
+def test_present_derivation_beside_an_absent_one(query: str):
+    assert _CUSTOMERS in _MATERIALIZED
+    derived = _executor(_UPPER_DERIVED)
+    materialized = _executor(_UPPER_MATERIALIZED)
+    rows = _rows(derived, query)
+    assert rows == _rows(materialized, query)
+    assert any("CAT" in r for r in rows)
+
+
 def test_orderless_customer_has_no_status(derived: Executor):
     assert _rows(derived, "select customer_id, status, count(order_id) as n") == [
         (1, "delivered", 1),
