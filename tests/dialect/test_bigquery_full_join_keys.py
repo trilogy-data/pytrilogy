@@ -24,6 +24,7 @@ that evidence wherever credentials exist."""
 
 import re
 
+from tests.engine.test_derived_key_domain import _ACTIVITY, _DERIVED
 from trilogy import parse
 from trilogy.core.enums import JoinType, Modifier
 from trilogy.dialect.bigquery import BigqueryDialect, null_wrapper
@@ -31,7 +32,9 @@ from trilogy.dialect.duckdb import DuckDBDialect
 
 # One fact split across two sources over partial keys, with aggregates that
 # have to be computed apart and merged back on the shared grain -- the shape
-# that makes a join key a COALESCE over several CTEs.
+# that makes a join key a COALESCE over several CTEs. Since the keyspace's
+# region contract the key family carries every item on both sides, so this
+# coalesced key is COMPLETE and renders as the bare equality BigQuery accepts.
 MERGED_KEY_MODEL = """
 key order_id int;
 key user_id int;
@@ -96,6 +99,13 @@ select
     total_margin,
 ;
 """
+
+# A NULLABLE coalesced key: `name` is a function of the customer, which the
+# orders fact binds `~`, so the aggregate by name and the row stream meet on a
+# FULL join whose key is a coalesce over the padded customer region.
+NULLABLE_MERGED_KEY_MODEL = (
+    _DERIVED + _ACTIVITY + "select name as n2, count(status) as n;"
+)
 
 # `alias`.`column`, or a bare `column`. Anything else is an expression to
 # BigQuery's join planner.
@@ -168,10 +178,17 @@ def test_null_wrapper_encodes_only_illegal_full_join_keys():
 
 
 def test_merged_full_join_key_compiles_for_bigquery():
-    sql = render(BigqueryDialect(), MERGED_KEY_MODEL)
+    sql = render(BigqueryDialect(), NULLABLE_MERGED_KEY_MODEL)
     # the model still produces the coalesced key this is all about
     assert re.search(r"FULL JOIN .*coalesce", sql), sql
     assert "TO_JSON_STRING(coalesce(" in sql, sql
+    assert bigquery_illegal_full_join_keys(sql) == []
+
+
+def test_complete_merged_key_keeps_the_bare_equality():
+    sql = render(BigqueryDialect(), MERGED_KEY_MODEL)
+    assert re.search(r"FULL JOIN .*coalesce", sql), sql
+    assert "TO_JSON_STRING" not in sql, sql
     assert bigquery_illegal_full_join_keys(sql) == []
 
 
@@ -187,7 +204,7 @@ def test_field_keyed_full_joins_keep_the_cheaper_form():
 
 
 def test_other_dialects_are_untouched():
-    sql = render(DuckDBDialect(), MERGED_KEY_MODEL)
+    sql = render(DuckDBDialect(), NULLABLE_MERGED_KEY_MODEL)
     assert "TO_JSON_STRING" not in sql
     # duckdb spells the same key with the operator BigQuery lacks
     assert re.search(r"FULL JOIN .*coalesce.*is not distinct from", sql), sql
