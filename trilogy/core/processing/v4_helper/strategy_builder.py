@@ -60,6 +60,7 @@ from trilogy.core.processing.nodes import (
     GroupNode,
     History,
     MergeNode,
+    RowsetNode,
     SelectNode,
     StrategyNode,
     UnionNode,
@@ -1787,6 +1788,15 @@ def _carry_join_keys(
     mangled_contents = _mangled_rowset_content_addresses(environment)
 
     for parent in parents:
+        # A rowset domain joins the rest on its spans, which it emits already:
+        # its boundary can render the body's grain keys, but those are absent
+        # on the region, so carrying one widens the domain past the region's
+        # members. A ROOT domain is a dimension scan and carries a key it
+        # binds.
+        if parent.region_spans and any(
+            isinstance(node, RowsetNode) for node in _iter_strategy_nodes(parent)
+        ):
+            continue
         # A pure dedup GroupNode (every output rides through from its parents;
         # nothing aggregated locally, force_group dedups included) can safely
         # carry a declared join key: the key joins its parents' row stream, and
@@ -4617,23 +4627,30 @@ def build_strategy_node(
             if derivation == Derivation.AGGREGATE and domains:
                 # an aggregate evaluated OVER a region: its row-stream
                 # arguments are computed on the solid rows first, then the
-                # region's rows pad them
-                solid = _pre_merge_parents(
-                    [p for p in parents if not p.region_spans],
-                    environment,
-                    join_key_addresses=join_key_addresses,
-                    needed=needed,
-                    group_graph=group_graph,
-                    built=built,
+                # region's rows pad them. The solid merge pairs on solid
+                # keys: this group may extend the spans (it reads the
+                # domain), the merge below the domain may not.
+                domain_spans: frozenset[str] = frozenset().union(
+                    *(d.region_spans for d in domains)
                 )
+                group_scope = environment.span_scope
+                environment.span_scope = dc_replace(
+                    group_scope, extent_free=group_scope.extent_free | domain_spans
+                )
+                try:
+                    solid = _pre_merge_parents(
+                        [p for p in parents if not p.region_spans],
+                        environment,
+                        join_key_addresses=join_key_addresses,
+                        needed=needed,
+                        group_graph=group_graph,
+                        built=built,
+                    )
+                finally:
+                    environment.span_scope = group_scope
                 parents = (
                     _project_basic_aggregate_inputs(
-                        outputs,
-                        primary_addrs,
-                        solid,
-                        region_spans=frozenset().union(
-                            *(d.region_spans for d in domains)
-                        ),
+                        outputs, primary_addrs, solid, region_spans=domain_spans
                     )
                     + domains
                 )
@@ -4828,6 +4845,19 @@ def build_strategy_node(
         if node is None:
             continue
         if a.extent_spans:
+            if derivation == Derivation.ROWSET:
+                # a boundary's rows are the body's (a sold item once per sale
+                # line, its grain claim notwithstanding); the domain's are the
+                # region's own members, once each
+                members = [o for o in node.output_concepts if o.address in select_addrs]
+                node = GroupNode(
+                    output_concepts=members,
+                    input_concepts=members,
+                    environment=environment,
+                    parents=[node],
+                    partial_concepts=list(node.partial_concepts),
+                    force_group=True,
+                )
             # the region contract: this node's rows are the region's own
             node.region_spans = a.extent_spans
         if derivation == Derivation.ROOT:

@@ -186,8 +186,13 @@ def test_merged_full_join_key_compiles_for_bigquery():
 
 
 def test_complete_merged_key_keeps_the_bare_equality():
+    """The merged key is still emitted as a COALESCE over the row-preserving
+    sources; since the solid stream beside a region domain pairs on solid keys
+    it is no longer a FULL join's ON key here (the rule for one that is:
+    `test_null_wrapper_encodes_only_illegal_full_join_keys`)."""
     sql = render(BigqueryDialect(), MERGED_KEY_MODEL)
-    assert re.search(r"FULL JOIN .*coalesce", sql), sql
+    assert re.search(r"coalesce\(.*item_id", sql), sql
+    assert "FULL JOIN" in sql, sql
     assert "TO_JSON_STRING" not in sql, sql
     assert bigquery_illegal_full_join_keys(sql) == []
 

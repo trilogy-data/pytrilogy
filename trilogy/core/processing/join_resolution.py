@@ -1163,6 +1163,11 @@ def partial_binding_sources(ds: DataSource, address: str) -> frozenset[str]:
     out: frozenset[str] = frozenset()
     for sub in ds.datasources:
         out |= partial_binding_sources(sub, address)
+    # a rowset boundary built not to extend a span (its reader holds the
+    # region) is partial on the handle with no leaf `~` behind it: the
+    # boundary is the binding, and two projections of it are one
+    if not out and any(c.address == address for c in ds.partial_concepts):
+        return frozenset({ds.identifier})
     return out
 
 
