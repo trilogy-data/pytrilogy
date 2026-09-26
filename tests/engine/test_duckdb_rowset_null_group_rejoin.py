@@ -150,26 +150,34 @@ EQUIVALENT_SPELLINGS = [
     (
         KEYLESS_ROWSET
         + "select s.d, count(s.o) as total where s.d != 'beta' order by s.d asc nulls last;",
-        "select item_desc as d, count(order_number) as total where item_desc != 'beta'"
-        " order by d asc nulls last;",
+        (
+            "select item_desc as d, count(order_number) as total"
+            " where item_desc != 'beta' order by d asc nulls last;"
+        ),
     ),
     (
         KEYED_ROWSET
         + "select s.d, count(s.o) as total where s.o is not null order by s.d asc nulls last;",
-        "select item_desc as d, count(order_number) as total where order_number is not null"
-        " order by d asc nulls last;",
+        (
+            "select item_desc as d, count(order_number) as total"
+            " where order_number is not null order by d asc nulls last;"
+        ),
     ),
     (
         KEYED_ROWSET
         + "select s.sk, count(s.o) as total where s.d is not null order by s.sk asc;",
-        "select item_sk, count(order_number) as total where item_desc is not null"
-        " order by item_sk asc;",
+        (
+            "select item_sk, count(order_number) as total"
+            " where item_desc is not null order by item_sk asc;"
+        ),
     ),
     (
         KEYED_ROWSET
         + "select s.d, sum(s.q) by s.sk as per_item order by s.d asc nulls last, per_item asc nulls last;",
-        "select item_desc as d, sum(quantity) by item_sk as per_item"
-        " order by d asc nulls last, per_item asc nulls last;",
+        (
+            "select item_desc as d, sum(quantity) by item_sk as per_item"
+            " order by d asc nulls last, per_item asc nulls last;"
+        ),
     ),
 ]
 
