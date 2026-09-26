@@ -98,11 +98,8 @@ class PythonDatasourceError(RuntimeError):
 
 def final_error_line(stderr: str) -> str:
     """The exception line a traceback ends on: the last unindented line."""
-    lines = [line for line in stderr.strip().splitlines() if line.strip()]
-    for line in reversed(lines):
-        if not line[0].isspace():
-            return line
-    return lines[-1].strip()
+    lines = reversed(stderr.strip().splitlines())
+    return next((line for line in lines if line and not line[0].isspace()), "")
 
 
 def parse_script_error(stderr: str) -> dict[str, Any] | None:

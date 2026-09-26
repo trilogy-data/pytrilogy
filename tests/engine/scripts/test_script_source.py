@@ -250,6 +250,28 @@ def test_windows_pipe_failure_names_the_script_not_the_wrapper(tmp_path: Path):
     )
 
 
+def test_pipe_failure_without_a_sidecar_still_names_the_script(tmp_path: Path):
+    missing = (tmp_path / "gone.err").as_posix()
+    error = python_datasource_failure(
+        Exception(
+            "Pipe process exited abnormally code=2: "
+            f"uv run --no-project --quiet /w/a.py  2>'{missing}' |"
+        )
+    )
+
+    assert error is not None
+    assert (error.script, error.return_code, error.stderr) == ("/w/a.py", 2, "")
+
+
+def test_unrecognized_pipe_command_falls_back_to_the_command():
+    error = python_datasource_failure(
+        Exception("Pipe process exited abnormally code=1: some other cmd |")
+    )
+
+    assert error is not None
+    assert error.script == "some other cmd"
+
+
 def test_non_pipe_errors_are_not_script_failures():
     assert python_datasource_failure(Exception("Binder Error: no column")) is None
 
