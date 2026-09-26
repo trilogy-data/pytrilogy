@@ -233,8 +233,11 @@ def test_extent_free_span_pairs_inner_with_its_complete_domain():
 
 def test_region_holder_preserves_over_a_feeder_whose_value_null_pairs():
     """A value NULL the feeder carries on an attribute the holder carries
-    nullable too pairs null-safely: the holder is preserved, not both. One on
-    the region's own key, or one the holder cannot pair, keeps FULL."""
+    nullable too pairs null-safely: the holder is preserved, not both. One the
+    holder cannot pair keeps FULL. On the region's own key the same holds for
+    a VALUE null (a region spelled by a nullable stand-in has a member whose
+    key is NULL, on both sides); an EXTENT null there is a guest order naming
+    no member, and keeps FULL whatever the holder carries."""
     typed = {
         "partials": {},
         "nullables": {_LEFT: [_ATTR], _RIGHT: [_ATTR]},
@@ -250,8 +253,18 @@ def test_region_holder_preserves_over_a_feeder_whose_value_null_pairs():
     )
     on_key = {_LEFT: [_ATTR, _SPAN], _RIGHT: [_ATTR, _SPAN]}
     assert get_join_type(_LEFT, _RIGHT, value_nullables=on_key, **typed) == (
-        JoinType.FULL
+        JoinType.LEFT_OUTER
     )
+    assert get_join_type(
+        _LEFT, _RIGHT, value_nullables={_RIGHT: [_ATTR, _SPAN]}, **typed
+    ) == (JoinType.FULL)
+    assert get_join_type(
+        _LEFT,
+        _RIGHT,
+        value_nullables=on_key,
+        extent_nullables={_RIGHT: [_SPAN]},
+        **typed,
+    ) == (JoinType.FULL)
 
 
 def _scan(name: str, outputs: list[str], partial: list[str] | None = None):

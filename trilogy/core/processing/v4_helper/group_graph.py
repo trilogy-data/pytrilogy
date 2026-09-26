@@ -88,6 +88,7 @@ from .region_domains import (
     add_region_domain_buckets,
     detach_final_span_domain_producers,
     feed_region_domains_to_present_scalars,
+    split_carried_only_row_streams,
 )
 
 # depth_label for the secondary root bucket that feeds d1 (in-WHERE) aggregate
@@ -3156,6 +3157,7 @@ def build_group_graph(
         condition_arg_addresses,
         mandatory_list,
     )
+    split_carried_only_row_streams(buckets, primary_group, keyspace, environment)
     d1_calc_roots_by_stage, d1_subgraph = _d1_calc_subgraph(
         concept_graph, concept_edges, concept_attrs, environment
     )

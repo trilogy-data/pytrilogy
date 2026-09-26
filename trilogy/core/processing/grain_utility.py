@@ -139,7 +139,10 @@ def _source_concept_for_address(
 
 
 def _concept_covers_grain(concept: BuildConcept, grain: BuildGrain) -> bool:
-    if grain.components & concept.equivalent_addresses:
+    """The join key IS the right side's whole grain, under any spelling. A key
+    that is only ONE of several grain components admits many right rows per
+    key (`s.d` against a row stream at `(s.d, s.q)`), so it covers nothing."""
+    if grain.components and grain.components <= concept.equivalent_addresses:
         return True
     return bool(
         concept.derivation == Derivation.MULTISELECT

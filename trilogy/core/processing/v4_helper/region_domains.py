@@ -312,6 +312,81 @@ def add_region_domain_buckets(
             buckets[domain.group_id] = domain
 
 
+def split_carried_only_row_streams(
+    buckets: dict[str, GroupBucket],
+    primary_group: dict[str, str],
+    keyspace: Keyspace,
+    environment: BuildEnvironment,
+) -> None:
+    """A row-stream bucket holding a member that reads only what a region
+    carries (`item_desc as d`) beside one that reads something absent there
+    (`grain(order_number, item_sk)`) is split: the carried-only members get a
+    bucket of their own, which `feed_region_domains_to_present_scalars` then
+    sources from the domain. Kept together, the whole bucket is computed on
+    the solid rows and the rename is NULL for the region's unmatched member
+    (`gamma` came back as `(None, 0, 0)`), while its source `item_desc` rode
+    the domain beside it."""
+    domains = [
+        (bucket, region)
+        for bucket in list(buckets.values())
+        if bucket.extent_spans
+        and (region := keyspace.region_of(bucket.extent_spans)) is not None
+    ]
+    for domain, region in domains:
+        for gid in list(buckets):
+            bucket = buckets[gid]
+            if (
+                bucket.derivation != Derivation.BASIC
+                or bucket.label != domain.label
+                or bucket.extent_spans
+                or len(bucket.primary_members) < 2
+            ):
+                continue
+            carried_only = [
+                idx
+                for idx, member in enumerate(bucket.primary_members)
+                if _reads_only_carried(member, region, keyspace, environment)
+            ]
+            if not carried_only or len(carried_only) == len(bucket.primary_members):
+                continue
+            moved_concepts = [
+                c
+                for idx in carried_only
+                if (c := environment.concepts.get(bucket.primary_members[idx]))
+                is not None
+            ]
+            grain = frozenset(
+                component
+                for c in moved_concepts
+                if c.grain
+                for component in c.grain.components
+            )
+            split = GroupBucket(
+                depth_label=bucket.depth_label,
+                derivation=bucket.derivation,
+                grain_components=grain or bucket.grain_components,
+                label=bucket.label,
+                discriminator=(
+                    f"{bucket.discriminator}:reads:{'|'.join(sorted(region.spans))}"
+                ),
+            )
+            for idx in carried_only:
+                addr = bucket.primary_members[idx]
+                node_id = bucket.primary_node_ids[idx]
+                split.primary_members.append(addr)
+                split.primary_node_ids.append(node_id)
+                split.member_depths[addr] = bucket.member_depths.get(
+                    addr, bucket.depth_label
+                )
+                primary_group[node_id] = split.group_id
+            buckets[split.group_id] = split
+            kept = [
+                i for i in range(len(bucket.primary_members)) if i not in carried_only
+            ]
+            bucket.primary_members = [bucket.primary_members[i] for i in kept]
+            bucket.primary_node_ids = [bucket.primary_node_ids[i] for i in kept]
+
+
 def _aggregates_over_region(
     members: tuple[str, ...],
     region: Region,
