@@ -1165,33 +1165,45 @@ class BaseDialect:
                 siblings.append(other)
         return siblings
 
-    def _filter_guaranteed_by_sole_parent(
+    def _filter_guaranteed_by_parents(
         self, lineage: BuildFilterItem, cte: CTE | UnionCTE
     ) -> bool:
-        """A filter-item's per-row CASE is redundant when the CTE's SOLE parent
-        already guarantees the filter's predicate, e.g. when predicate pushdown
-        places the filter's aggregate condition in a group parent's HAVING. A
-        single-parent (no join) projection cannot NULL-pad rows, so every
-        surviving row satisfies the where; rendering the content bare also lets
-        CollapseSingleParent fold this passthrough into the group parent.
+        """A filter-item's per-row CASE is redundant when the parents already
+        guarantee the filter's predicate, e.g. when predicate pushdown places
+        the filter's aggregate condition in a group parent's HAVING, or the
+        filter's own predicate in every scan it reads. Rendering the content
+        bare also lets CollapseSingleParent fold a passthrough into its parent.
 
-        Gated to a single plain-CTE parent whose condition implies the where and
-        which supplies every column the filter references, so no row that fails
-        the predicate can reach this projection."""
-        if len(cte.parent_ctes) != 1:
+        Gated to plain-CTE parents whose condition implies the where, supplying
+        every column the filter references between them, under no join that
+        could NULL-pad a row (INNER only): then every row of this CTE is built
+        from parent rows that each satisfy the predicate."""
+        if not cte.parent_ctes:
             return False
-        parent = cte.parent_ctes[0]
-        if not isinstance(parent, CTE) or parent.condition is None:
+        if isinstance(cte, CTE) and any(
+            not isinstance(join, Join) or join.jointype != JoinType.INNER
+            for join in cte.joins
+        ):
             return False
         where_cond = lineage.where.conditional
-        if not (
-            where_cond == parent.condition
-            or condition_implies(parent.condition, where_cond)
-        ):
+        guaranteeing = {
+            parent.name
+            for parent in cte.parent_ctes
+            if isinstance(parent, CTE)
+            and parent.condition is not None
+            and (
+                where_cond == parent.condition
+                or condition_implies(parent.condition, where_cond)
+            )
+        }
+        if not guaranteeing:
             return False
         refs = {a.address for a in lineage.content_concept_arguments}
         refs |= {a.address for a in lineage.where.row_arguments}
-        return all(parent.name in (cte.source_map.get(r) or []) for r in refs)
+        return all(
+            (sources := cte.source_map.get(r)) and set(sources) <= guaranteeing
+            for r in refs
+        )
 
     def safe_get_cte_value(
         self, cte: CTE | UnionCTE, c: BuildConcept, raise_invalid: bool = False
@@ -1387,8 +1399,8 @@ class BaseDialect:
                     )
             elif isinstance(c.lineage, FILTER_ITEMS):
                 # The per-row CASE WHEN is redundant when the CTE's WHERE implies
-                # the filter's predicate, or when its sole parent guarantees it
-                # (_filter_guaranteed_by_sole_parent): emit just the content.
+                # the filter's predicate, or when its parents guarantee it
+                # (_filter_guaranteed_by_parents): emit just the content.
                 where_cond = c.lineage.where.conditional
                 if (
                     cte.condition is not None
@@ -1396,7 +1408,7 @@ class BaseDialect:
                         cte.condition == where_cond
                         or condition_implies(cte.condition, where_cond)
                     )
-                ) or self._filter_guaranteed_by_sole_parent(c.lineage, cte):
+                ) or self._filter_guaranteed_by_parents(c.lineage, cte):
                     rval = self.render_expr(
                         c.lineage.content, cte=cte, raise_invalid=raise_invalid
                     )
