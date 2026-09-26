@@ -13,6 +13,7 @@ from tests.engine.test_derived_key_domain import (
 )
 from tests.engine.test_duckdb_partial_fk_field_report import MODEL as FIELD_REPORT
 from tests.engine.test_duckdb_rowset_null_group_rejoin import (
+    KEYLESS_CASES,
     NESTED_ROWSET_QUERY,
     ROWSET_QUERY,
     UNSOLD_MODEL,
@@ -396,6 +397,17 @@ def test_rowset_witness_spells_the_body_padding_by_the_handle(monkeypatch):
     outer = next(k for k in seen if "s.d" in k.outputs)
     assert outer.in_play_spans == frozenset({"s.sk"})
     assert outer.witnessed == {"local.item_sk": "s.sk", "local._s_sk": "s.sk"}
+
+
+def test_key_no_handle_spells_is_spelled_by_what_carries_it(monkeypatch):
+    """`select order_number as o, item_desc as d, quantity as q` exposes no
+    item key; the reader identifies the item's rows by `s.d` alone, so the
+    region and its padding are spelled by it."""
+    seen = _plan_keyspaces(monkeypatch, UNSOLD_MODEL, KEYLESS_CASES[0][0])
+    outer = next(k for k in seen if "s.d" in k.outputs)
+    assert outer.describe() == "{s.d, s.o} | {s.d} ~['s.d']"
+    assert outer.keys_by_address["s.d"] == frozenset({"s.d"})
+    assert outer.witnessed == {"local.item_sk": "s.d"}
 
 
 def test_rowset_over_a_rowset_is_a_region_of_the_reader(monkeypatch):

@@ -137,10 +137,13 @@ def rowset_witness(
     body: Keyspace,
     body_environment: BuildEnvironment,
 ) -> RowsetWitness:
-    """The body's live regions respelled in the rowset's handles. A region
-    whose span no handle spells is one the reader cannot name, so it is not
-    a region of the reader's plan (its rows are read as the base region's,
-    as before)."""
+    """The body's live regions respelled in the rowset's handles. A body key
+    no handle spells is spelled by a handle keyed on it alone (`item_desc`
+    for the item the rowset exposes no key of): the reader identifies those
+    rows by what they carry, as a property identifying a source is an entity
+    (`_row_identities`). A region whose span nothing spells is one the reader
+    cannot name, so it is not a region of the reader's plan (its rows are
+    read as the base region's)."""
     canonical = _model_facts(body_environment).canonical
     contents = {
         h.address: canonical.get(h.lineage.content.address, h.lineage.content.address)
@@ -154,19 +157,29 @@ def rowset_witness(
         )
         for handle, content in contents.items()
     }
+    handles_of: dict[str, frozenset[str]] = {
+        c: frozenset(h for h, hc in contents.items() if hc == c)
+        for c in contents.values()
+    }
+    for key in sorted(frozenset().union(*keys.values()) - handles_of.keys()):
+        carriers = sorted(h for h, k in keys.items() if k == {key})
+        if carriers:
+            handles_of[key] = frozenset(carriers[:1])
     entity_handles = {
-        handle: frozenset(h for h, c in contents.items() if c in keys[handle])
+        handle: frozenset().union(
+            *(handles_of.get(k, frozenset()) for k in keys[handle])
+        )
         for handle in contents
     }
     # the body pads for a span under its own spelling and, for a rowset it
     # reads in turn, under that body's; the reader names all of them by the
-    # handle. A span no handle spells stays unnamed here.
-    handle_of = {c: h for h, c in sorted(contents.items(), reverse=True)}
+    # handle. A span nothing spells stays unnamed here.
     spellings: dict[str, str] = {}
     for span in body.in_play_spans:
-        handle = handle_of.get(canonical.get(span, span))
-        if handle is None:
+        spelled_by = handles_of.get(canonical.get(span, span))
+        if not spelled_by:
             continue
+        handle = min(spelled_by)
         spellings[span] = spellings[canonical.get(span, span)] = handle
         spellings.update(
             (below, handle)
@@ -176,16 +189,15 @@ def rowset_witness(
     regions: list[RowsetRegion] = []
     for region in body.live_regions:
         body_spans = {canonical.get(s, s) for s in region.spans}
-        spans = frozenset(h for h, c in contents.items() if c in body_spans)
-        if not body_spans <= set(contents.values()):
+        if not body_spans <= handles_of.keys():
             continue
         regions.append(
             RowsetRegion(
-                present=frozenset(
-                    h for h, c in contents.items() if c in region.present
+                present=frozenset().union(
+                    *(handles_of.get(k, frozenset()) for k in region.present)
                 ),
                 bound=frozenset(h for h, k in keys.items() if k <= region.present),
-                spans=spans,
+                spans=frozenset().union(*(handles_of[s] for s in body_spans)),
                 body_spans=region.spans,
             )
         )
