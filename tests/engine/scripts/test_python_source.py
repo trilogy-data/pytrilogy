@@ -10,6 +10,7 @@ from trilogy.dialect.python_source import (
     ParquetStreamWriter,
     PythonDatasourceError,
     build_uv_command,
+    final_error_line,
     is_retryable,
     normalize_object_uri,
     open_uri_sink,
@@ -97,6 +98,25 @@ def test_the_error_prefers_what_the_script_said_over_raw_stderr():
     error = PythonDatasourceError("s.py", SCRIPT_ERROR_EXIT_CODE, stderr)
     assert "ContractError: no such column" in str(error)
     assert "Traceback" not in str(error)
+
+
+def test_the_error_leads_with_the_traceback_final_line_then_the_traceback():
+    stderr = (
+        "Traceback (most recent call last):\n"
+        '  File "s.py", line 1, in <module>\n'
+        "    raise HTTPError(msg)\n"
+        "requests.exceptions.HTTPError: 403 Forbidden\n"
+    )
+    headline, *rest = str(PythonDatasourceError("s.py", 1, stderr)).splitlines()
+    assert headline == (
+        "Python datasource script 's.py' failed (exit code 1): "
+        "requests.exceptions.HTTPError: 403 Forbidden"
+    )
+    assert rest[:3] == ["", "Script output:", "Traceback (most recent call last):"]
+
+
+def test_final_error_line_skips_indented_and_blank_lines():
+    assert final_error_line("  x\nValueError: a\n    detail\n\n") == "ValueError: a"
 
 
 def test_the_error_falls_back_to_stderr_then_to_the_cause():

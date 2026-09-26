@@ -59,6 +59,18 @@ def test_handle_execution_exception_labels_syntax_errors(capsys):
     assert "Syntax error:" not in combined, combined
 
 
+def test_handle_execution_exception_labels_script_datasource_errors(capsys):
+    from trilogy.dialect.python_source import PythonDatasourceError
+
+    with raises(Exit):
+        handle_execution_exception(
+            PythonDatasourceError("a.py", 1, "ValueError: bad"), source="m.preql"
+        )
+    combined = "".join(capsys.readouterr())
+    assert "Script datasource error in m.preql:" in combined, combined
+    assert "Unexpected error" not in combined, combined
+
+
 def test_handle_execution_exception_does_not_label_nothing_executed_as_syntax(capsys):
     """The script parsed; it just does nothing. A `Syntax error:` prefix would
     send the reader hunting for a parse mistake that isn't there."""

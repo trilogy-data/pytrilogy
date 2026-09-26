@@ -93,6 +93,12 @@ def failure_report(summary: "ParallelExecutionSummary") -> str:
     return "\n".join(lines)
 
 
+def _first_line(error: object) -> str:
+    """A live progress line carries the headline; the failure report below it
+    repeats every script's error in full."""
+    return next(iter(str(error).strip().splitlines()), "")
+
+
 def _node_label(node: "ExecutionNode") -> str:
     from trilogy.scripts.dependency import ScriptNode
 
@@ -230,11 +236,11 @@ def show_script_result(
         else:
             if isinstance(result.node, ScriptNode):
                 _core.console.print(
-                    f"  [red]\u2717[/red] {result.node.path.name} ({result.duration:.2f}s) - {result.error}"
+                    f"  [red]\u2717[/red] {result.node.path.name} ({result.duration:.2f}s) - {_first_line(result.error)}"
                 )
             elif isinstance(result.node, ManagedRefreshNode):
                 _core.console.print(
-                    f"  [red]\u2717[/red] {result.node.address} ({result.duration:.2f}s) - {result.error}"
+                    f"  [red]\u2717[/red] {result.node.address} ({result.duration:.2f}s) - {_first_line(result.error)}"
                 )
             else:
                 _core.console.print(str(result))
@@ -253,11 +259,11 @@ def show_script_result(
         else:
             if isinstance(result.node, ScriptNode):
                 print(
-                    f"  \u2717 {result.node.path.name} ({result.duration:.2f}s) - {result.error}"
+                    f"  \u2717 {result.node.path.name} ({result.duration:.2f}s) - {_first_line(result.error)}"
                 )
             else:
                 print(
-                    f"  \u2717 {result.node.address} ({result.duration:.2f}s) - {result.error}"
+                    f"  \u2717 {result.node.address} ({result.duration:.2f}s) - {_first_line(result.error)}"
                 )
 
 

@@ -1031,6 +1031,7 @@ def handle_execution_exception(
         UndefinedConceptException,
         UnresolvableQueryException,
     )
+    from trilogy.dialect.python_source import PythonDatasourceError
     from trilogy.parsing.v2.model import HydrationError
 
     location = f" in {source}" if source else ""
@@ -1069,6 +1070,9 @@ def handle_execution_exception(
         # The caller asked for this abort; reporting it as an unexpected error
         # would send the reader hunting for a fault that isn't there.
         print_error(f"Timeout{location}: {e}")
+    elif isinstance(e, PythonDatasourceError):
+        # The failure is in the user's script, not trilogy; lead with that.
+        print_error(f"Script datasource error{location}: {e}")
     elif isinstance(e, ConfigurationException):
         # A bad connection/config parameter is a fixable invocation mistake.
         print_error(f"Configuration error{location}: {e}")

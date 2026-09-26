@@ -6,8 +6,12 @@ from trilogy import Dialects, Environment, Executor
 from trilogy.core.enums import ValidationScope
 from trilogy.core.validation.environment import validate_environment
 from trilogy.dialect import duckdb_uv
-from trilogy.dialect.duckdb import get_python_datasource_setup_sql
+from trilogy.dialect.duckdb import (
+    get_python_datasource_setup_sql,
+    python_datasource_failure,
+)
 from trilogy.dialect.duckdb_uv import is_retryable_uv_error, run_with_retry
+from trilogy.dialect.python_source import PythonDatasourceError
 from trilogy.execution import DuckDBConfig
 
 
@@ -179,10 +183,97 @@ def test_uv_run_error_passing():
         conf=DuckDBConfig(enable_python_datasources=True),
     )
     script_path = Path(__file__).parent / "error.py"
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(PythonDatasourceError) as exc_info:
         executor.execute_raw_sql(f"SELECT * FROM uv_run('{script_path}')")
 
-    assert "Pipe process exited" in str(exc_info.value)
+    message = str(exc_info.value)
+    assert message.startswith(f"Python datasource script '{script_path}' failed")
+    headline = message.splitlines()[0]
+    assert headline.endswith("SyntaxError: A helpful error describing what went wrong.")
+    assert "Traceback (most recent call last)" in message
+    assert "Pipe process exited" not in message
+
+
+def test_uv_run_script_stderr_stays_off_the_terminal(capfd: pytest.CaptureFixture[str]):
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=Path(__file__).parent),
+        conf=DuckDBConfig(enable_python_datasources=True),
+    )
+    script_path = Path(__file__).parent / "error.py"
+    with pytest.raises(PythonDatasourceError):
+        executor.execute_raw_sql(f"SELECT * FROM uv_run('{script_path}')")
+
+    assert "Traceback" not in capfd.readouterr().err
+
+
+def test_posix_pipe_failure_reads_the_stderr_sidecar(tmp_path: Path):
+    sidecar = tmp_path / "abc.err"
+    sidecar.write_text(
+        "Traceback (most recent call last):\n"
+        '  File "/w/raw/a.py", line 3, in <module>\n'
+        "    fetch()\n"
+        "requests.exceptions.HTTPError: 403 Client Error: Forbidden\n",
+        encoding="utf-8",
+    )
+    error = python_datasource_failure(
+        Exception(
+            "(_duckdb.IOException) IO Error: Pipe process exited abnormally code=1: "
+            f"uv run --no-project --quiet /w/raw/a.py --limit 5 2>'{sidecar.as_posix()}' |"
+            "\n\nLINE 7:     uv_run('/w/raw/a.py')"
+        )
+    )
+
+    assert error is not None
+    assert (error.script, error.return_code) == ("/w/raw/a.py", 1)
+    assert str(error).splitlines()[0] == (
+        "Python datasource script '/w/raw/a.py' failed (exit code 1): "
+        "requests.exceptions.HTTPError: 403 Client Error: Forbidden"
+    )
+    assert 'File "/w/raw/a.py", line 3' in str(error)
+
+
+def test_windows_pipe_failure_names_the_script_not_the_wrapper(tmp_path: Path):
+    sidecar = tmp_path / "abc.err"
+    sidecar.write_text("ValueError: bad\n", encoding="utf-8")
+    error = python_datasource_failure(
+        Exception(
+            "IO Error: Pipe process exited abnormally code=1: call "
+            '"C:/py.exe" -m trilogy.dialect.duckdb_uv "C:/t/abc.arrow" '
+            f'"{sidecar.as_posix()}" "C:\\raw\\a.py" "" |'
+        )
+    )
+
+    assert error is not None
+    assert error.script == "C:\\raw\\a.py"
+    assert str(error) == (
+        "Python datasource script 'C:\\raw\\a.py' failed (exit code 1): ValueError: bad"
+    )
+
+
+def test_pipe_failure_without_a_sidecar_still_names_the_script(tmp_path: Path):
+    missing = (tmp_path / "gone.err").as_posix()
+    error = python_datasource_failure(
+        Exception(
+            "Pipe process exited abnormally code=2: "
+            f"uv run --no-project --quiet /w/a.py  2>'{missing}' |"
+        )
+    )
+
+    assert error is not None
+    assert (error.script, error.return_code, error.stderr) == ("/w/a.py", 2, "")
+
+
+def test_unrecognized_pipe_command_falls_back_to_the_command():
+    error = python_datasource_failure(
+        Exception("Pipe process exited abnormally code=1: some other cmd |")
+    )
+
+    assert error is not None
+    assert error.script == "some other cmd"
+
+
+def test_non_pipe_errors_are_not_script_failures():
+    assert python_datasource_failure(Exception("Binder Error: no column")) is None
 
 
 def test_windows_uv_run_uses_retry_wrapper():

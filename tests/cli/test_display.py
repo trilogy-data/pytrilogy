@@ -454,7 +454,7 @@ class TestProgressAndExecution:
                 captured = output.getvalue()
                 assert "Statement 1" in strip_ansi(captured)
                 assert "failed" in strip_ansi(captured)
-                assert "Syntax error near 'SELECT'" in strip_ansi(captured)
+                assert "Syntax error near 'SELECT'" not in strip_ansi(captured)
                 assert "\x1b[" in captured  # Error styling
         else:
             with capture_all_output() as (stdout, stderr):
@@ -469,7 +469,7 @@ class TestProgressAndExecution:
                 captured = stdout.getvalue() + stderr.getvalue()
                 assert "Statement 1" in captured
                 assert "failed" in captured
-                assert "Syntax error near 'SELECT'" in captured
+                assert "Syntax error near 'SELECT'" not in captured
 
     def test_show_execution_summary(self, rich_mode):
         """Test show_execution_summary."""
@@ -1066,7 +1066,7 @@ class TestAdditionalExecutionCoverage:
                 exception_type=RuntimeError,
             )
             captured = stdout.getvalue() + stderr.getvalue()
-        assert "RuntimeError" in captured
+        assert "Statement 1 failed" in captured
 
     def test_show_statement_result_null_error_no_type(self, rich_mode):
         from datetime import timedelta

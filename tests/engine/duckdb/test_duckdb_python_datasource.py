@@ -21,6 +21,16 @@ def test_python_datasource_enabled_unix():
     assert "uv run" in sql
 
 
+def test_python_datasource_unix_redirects_stderr_to_a_local_sidecar():
+    staging = StagingConfig(path="gs://my-bucket/staging")
+    sql = get_python_datasource_setup_sql(
+        enabled=True, is_windows=False, instance_id="test", staging=staging
+    )
+    assert "2>'''" in sql
+    assert "gs://" not in sql
+    assert "test/" in sql
+
+
 def test_python_datasource_enabled_windows_unique_ids():
     """Test that Windows mode generates unique executor subdirs per instance_id."""
     sql1 = get_python_datasource_setup_sql(
