@@ -60,5 +60,7 @@ Traps:
   worktree name. Normalize first (`sed 's/pytrilogy-base/pytrilogy-new/g'`); the
   pytest temp dirs and `trilogy_py_*` temp-table hashes still differ run to run.
 - One pytest at a time. The planner suites (`tests/core tests/discovery
-  tests/engine tests/join_matrix tests/modeling tests/optimization
-  tests/complex`) are about 16 minutes; leave the full suite to CI.
+  tests/dialect tests/engine tests/join_matrix tests/modeling
+  tests/optimization tests/complex`) are about 16 minutes; leave the full
+  suite to CI. `tests/dialect` renders planner output too (the BigQuery
+  FULL-join key tests broke unnoticed when it was left out).
