@@ -85,6 +85,58 @@ order by s.d2 asc nulls last;
 """
 
 
+# The rowset exposes the item's description but not its key: the reader has
+# no handle spelling the region's span, and must still hold the region (the
+# materialized twin holds a row for the unsold item with `o` and `q` NULL).
+KEYLESS_ROWSET = """
+rowset s <- select order_number as o, item_desc as d, quantity as q;
+"""
+KEYLESS_CASES = [
+    (
+        KEYLESS_ROWSET
+        + "select s.d, count(grain(s.o, s.d)) as total order by s.d asc nulls last;",
+        [("alpha", 1), ("beta", 1), ("gamma", 0), (None, 2)],
+    ),
+    (
+        KEYLESS_ROWSET
+        + "select s.d, case when s.q > 10 then 'hi' else 'lo' end as band"
+        " order by s.d asc nulls last, band asc nulls last;",
+        [("alpha", "lo"), ("beta", "hi"), ("gamma", None), (None, "hi"), (None, "lo")],
+    ),
+]
+
+
+# A row-stream derivation over the solid rows beside the region's domain: the
+# split has to carry the span the domain joins back on, whether the statement
+# names it (`s.sk`) or not (`s.d` beside it), or FINAL cross-joins the two.
+ROW_STREAM_CASES = [
+    (
+        (
+            "rowset s <- select order_number as o, item_sk as sk, quantity as q;\n"
+            "select s.sk, case when s.q > 10 then 'hi' else 'lo' end as band"
+            " order by s.sk asc, band asc nulls last;"
+        ),
+        [(10, "lo"), (20, "hi"), (30, "hi"), (30, "lo"), (40, None)],
+    ),
+    (
+        (
+            ROWSET_QUERY.split("select\n")[0]
+            + "select s.d, case when s.q > 10 then 'hi' else 'lo' end as band"
+            " order by s.d asc nulls last, band asc nulls last;"
+        ),
+        [("alpha", "lo"), ("beta", "hi"), ("gamma", None), (None, "hi"), (None, "lo")],
+    ),
+]
+
+
+@pytest.mark.parametrize("query,expected", KEYLESS_CASES + ROW_STREAM_CASES)
+def test_region_no_handle_spells(query, expected):
+    env = Environment()
+    env.parse(UNSOLD_MODEL)
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    assert executor.execute_query(query).fetchall() == expected
+
+
 @pytest.mark.parametrize("query", [DIRECT_QUERY, ROWSET_QUERY, NESTED_ROWSET_QUERY])
 def test_unsold_item_counts_no_lines(query):
     env = Environment()

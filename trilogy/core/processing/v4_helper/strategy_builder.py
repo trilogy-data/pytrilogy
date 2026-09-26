@@ -1853,13 +1853,18 @@ def _carry_join_keys(
             # A non-rowset parent may substitute a handle only when a declared
             # relation licenses it (the anchor under `subset join rs.k = l_key`);
             # unlicensed, the synthesis silently joins a query that is
-            # disconnected. A renamed output's mangled content (`_rs_k`) is
-            # equally internal: the licensed plan joins the anchor's own column
-            # against the boundary's handle, never a synthesized body-local.
+            # disconnected. A handle the parent's own inputs emit (a derivation
+            # over the boundary, split from the region's domain) is passed
+            # through, not synthesized. A renamed output's mangled content
+            # (`_rs_k`) is equally internal: the licensed plan joins the
+            # anchor's own column against the boundary's handle, never a
+            # synthesized body-local.
             if not parent_rowsets:
-                if isinstance(
-                    concept.lineage, BuildRowsetItem
-                ) and not _relation_licenses_handle(environment, concept):
+                if (
+                    isinstance(concept.lineage, BuildRowsetItem)
+                    and concept.address not in parent_output_addresses(parent)
+                    and not _relation_licenses_handle(environment, concept)
+                ):
                     continue
                 if concept.address in mangled_contents and not _scoped_relation_member(
                     environment, concept.address

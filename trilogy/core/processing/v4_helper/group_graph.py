@@ -2811,6 +2811,10 @@ def _compute_concept_sets(
             (fact.primary | fact.grain) & scoped_relation_members
         ):
             cap |= unwrapped_grain
+        # a boundary split for a region carries the span its domain joins
+        # back on, a handle of its own the statement never named
+        if fact.derivation == Derivation.ROWSET:
+            cap |= region_join_keys & set(attrs[gid].secondary_members)
         for pgid in group_graph.predecessors(gid):
             if pgid == FINAL_NODE_ID:
                 continue
