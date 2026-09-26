@@ -117,6 +117,8 @@ FINAL                                    customers LEFT JOIN status-stream ON cu
 
 ### Aggregates over a region
 
+- **A scalar aggregate `by *` over a `~` region is rows-correct as planned** (TPC-H q22, once listed here as "keeps its padded plan"): `avg(bal) by *` under `then where ... and order_id is null` is evaluated over its argument's key rows, each customer once whatever stage 1 rejected on the order side, and the LEFT JOIN + `is null` plan is the anti-join. Eight spellings against reference SQL in `tests/engine/test_scalar_aggregate_over_region.py`; the emitter no longer fires on q22.
+
 - **An aggregate is evaluated OVER the region** when a grouping key is carried (`count(order_id) by customer_id` is 0; `coalesce(sum(amount), 0) by rollup (customer_id)` is 0 on the orderless customer and 60 on the grand total) or when its argument is (`count(customer_id) by status`, `_aggregates_over_region`). The domain is then not a FINAL contributor a second time.
 - **Its named BASIC arguments are computed on the solid rows FIRST** (`_project_basic_aggregate_inputs`), then the domain merges in: `count(status)` must not count a padded row. The seam classifies parents by `region_reads`, the solid side being the complement.
 - **An INLINE argument that takes a value on padding** (`sum(case when undelivered then 1 else 0 end)`, `count(grain(...))`: the hash coalesces NULLs) keeps the aggregate solid, and the domain pads at FINAL. Never over the region when a row stream that must not see an extension row reads it (`order_status <- case when qty = min(qty) by user_id ...`).
@@ -212,18 +214,17 @@ The step-2 retirement list was tried by deletion. These are the fallback for reg
 
 In the order to take them:
 
-1. **TPC-H q22** keeps the padded plan (the `ks_pfb.py` "keeps its padded plan" emitter). `avg_bal_in_target` is an aggregate scalar over a `~` customer region under a per-country count, and the region does not carry country. Not yet probed with a rows test; do that before calling it plan quality.
-2. **The redundant CASE over pushed rows** (`test_a_having_responsive_aggregate_is_not_shown`): the filter node collapses into the aggregate's SELECT, and its CASE is always its THEN branch.
-3. **Retiring `_preserved_final_branch`**: its own A/B, with the `ks_pfb.py` list as the worklist.
-4. **Rowset witness leftovers**: 5(c), an unsplit boundary is not stamped as the region holder (see tried). A region no handle is keyed on alone is still skipped, and with two properties of the key the first by name is picked.
-5. **Unmodelled regions** that keep the fallbacks alive: composite-key `~` demand, regions only a join of two facts witnesses, a materialized aggregate beside a region. Also merged-`~` pin-heal (above).
+1. **The redundant CASE over pushed rows** (`test_a_having_responsive_aggregate_is_not_shown`): the filter node collapses into the aggregate's SELECT, and its CASE is always its THEN branch.
+2. **Retiring `_preserved_final_branch`**: its own A/B, with the `ks_pfb.py` list as the worklist.
+3. **Rowset witness leftovers**: 5(c), an unsplit boundary is not stamped as the region holder (see tried). A region no handle is keyed on alone is still skipped, and with two properties of the key the first by name is picked.
+4. **Unmodelled regions** that keep the fallbacks alive: composite-key `~` demand, regions only a join of two facts witnesses, a materialized aggregate beside a region. Also merged-`~` pin-heal (above).
 
 **Lesson that held every session: every item labelled "plan quality", "cosmetic" or "not split" was wrong rows once a rows test existed.** Write the rows test first. Reasoning-based diagnoses were one cause short each time; trace instead.
 
 ## Guards
 
 - `tests/engine/test_derived_key_domain.py`: the oracle (materialization invariance: storing a derivation as a column at its grain must never change a query's rows). It has 100+ cases, `OWED` strict xfails as targets (currently none), traps (`?` key, ROLLUP subtotal, present entity with an unbound property), the `upper_name` twin, and hand-computed rows where the twin is blind.
-- `tests/engine/test_where_over_aggregate_by_key.py` (plain model), `test_filter_concept_is_a_value.py` (incl. the HAVING cases), `test_row_stream_outputs_share_a_scan.py`.
+- `tests/engine/test_where_over_aggregate_by_key.py` (plain model), `test_filter_concept_is_a_value.py` (incl. the HAVING cases), `test_row_stream_outputs_share_a_scan.py`, `test_scalar_aggregate_over_region.py` (q22's shape against reference SQL).
 - `tests/engine/test_duckdb_rowset_null_group_rejoin.py`: `test_unsold_item_counts_no_lines` (direct, rowset, nested rowset), `RENAME_BESIDE_HASH_CASES`, `GUEST_CASES`, `GUEST_ALLDESC_CASES` (a `~?` guest with every item described: the NULL group has no member to pair with), and the rowset-vs-direct pairs in `test_rowset_matches_direct_spelling` on both models.
 - `tests/core/processing/test_keyspace.py` (shapes table, domains, witnesses, heal inheritance), `test_extent_ownership.py`, `test_join_padding_provenance.py` (`get_join_type` rules, `complete_key_domain`), `test_v4_group_behaviors.py` (give new planner-helper params a default).
 - `tests/engine/test_duckdb_partial_key_assembly.py`, `test_duckdb_partial_fk_field_report.py`, `test_duckdb_nullability_matrix.py`, `test_multi_fact_nullable_fk_extent.py`, `tests/optimization/test_join_upgrade.py`, `test_duckdb_fuzzer_regressions.py::test_rollup_label_over_union_joined_rowsets`.
