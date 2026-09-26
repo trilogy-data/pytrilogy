@@ -2191,13 +2191,18 @@ def _filter_intrinsic_pushdown_safe(
     outputs: list[BuildConcept],
     mandatory_list: list[BuildConcept],
     hidden: set[str] | None = None,
+    attrs: dict[str, GroupAttrs] | None = None,
+    environment: BuildEnvironment | None = None,
 ) -> bool:
     """May this filter group's predicate narrow its ROWS? Only when the plan
     shows nothing but filter values over that one predicate (a NULL row is one
     nothing would keep) and this group is what produces them; an intermediate
     filter, read by an aggregate or beside a sibling, stays a per-row CASE.
-    And not when a consumer also reads an unfiltered ancestor of it, which the
-    narrowed stream would then pair against."""
+    And not when a consumer also reads an unfiltered ancestor of it for
+    something this group does not carry, which the narrowed stream would then
+    pair against; a HAVING's responsive aggregate (`count(order_id) by
+    even_name`) reads the ancestor only for what rides this group's row
+    stream, and the plan reads it through this group alone."""
     if statement_filter_population(mandatory_list, hidden) is None:
         return False
     mandatory = {c.address for c in mandatory_list}
@@ -2206,12 +2211,30 @@ def _filter_intrinsic_pushdown_safe(
     ancestors = nx.ancestors(group_graph, gid)
     if not ancestors:
         return True
+    emitted = {o.address for o in outputs}
     for succ in group_graph.successors(gid):
         if succ == FINAL_NODE_ID:
             continue
-        if ancestors & set(group_graph.predecessors(succ)):
+        unfiltered = ancestors & set(group_graph.predecessors(succ))
+        if not unfiltered:
+            continue
+        if attrs is None or environment is None:
+            return False
+        supplied = frozenset().union(*(attrs[a].members for a in unfiltered))
+        if not _consumer_reads(attrs[succ], environment) & supplied <= emitted:
             return False
     return True
+
+
+def _consumer_reads(consumer: GroupAttrs, environment: BuildEnvironment) -> set[str]:
+    """The addresses a group reads off its parents: what it derives reads its
+    arguments; its grain and what rides through it are read as themselves."""
+    read: set[str] = set(consumer.grain_components) | set(consumer.secondary_members)
+    for member in consumer.primary_members:
+        concept = environment.concepts.get(member)
+        if concept is not None and concept.lineage is not None:
+            read |= {a.address for a in concept.lineage.concept_arguments}
+    return read
 
 
 def _pre_merge_parents(
@@ -4833,6 +4856,8 @@ def build_strategy_node(
                 outputs,
                 mandatory_list,
                 environment.statement_hidden_addresses,
+                attrs,
+                environment,
             ),
             existence_source=any(
                 edge_kind(group_edges, gid, succ) == EdgeKind.EXISTENCE
