@@ -80,6 +80,9 @@ def rowset_witnesses(
     for name in sorted(lineages):
         witness = history.rowset_witnesses.get(name)
         if witness is None:
+            # a body reading its own rowset (TPC-DS q64: a membership over
+            # `cs_ui` inside `cs_ui`) cannot witness itself
+            history.rowset_witnesses[name] = RowsetWitness(name=name, regions=())
             witness = _witness(lineages[name], environment, history)
             history.rowset_witnesses[name] = witness
         out.append(witness)
