@@ -2468,15 +2468,26 @@ def _satisfy_parent_projection_contract(
         # it, leaving the consuming aggregate with no source for that output.
         # Carry those through. Restricted to FD-at-grain so the projection's
         # row count is unchanged, and to what no sibling parent already
-        # supplies, so this never re-shapes a plain dimension re-join.
-        carry = {
+        # supplies, so this never re-shapes a plain dimension re-join. One
+        # that is NOT FD at the grain (`quantity as q` beside `count(...) by
+        # item_desc`) cannot be projected to it at all: the parent stays as
+        # built, like an input in `non_fd_needed`.
+        own_needed = {
             output.address
             for output in parent.usable_outputs
             if output.address in needed
             and output.address not in parent_needed
             and output.address not in other_outputs
-            and _fd_at_grain(output, projection_grain_components)
         }
+        carry = {
+            addr
+            for addr in own_needed
+            if (c := _concept_at(environment, addr)) is not None
+            and _fd_at_grain(c, projection_grain_components)
+        }
+        if own_needed - carry:
+            projected.append(parent)
+            continue
         concepts.extend(
             c
             for addr in sorted(carry)
