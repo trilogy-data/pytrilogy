@@ -152,6 +152,7 @@ FINAL                                    customers LEFT JOIN status-stream ON cu
 - **No push in intermediate shapes.** `gen_filter`'s carve-outs are deleted. A filter group's predicate narrows its ROWS only when the statement SHOWS nothing but filter values over that one predicate AND this group produces them (`_filter_intrinsic_pushdown_safe`, on `statement_filter_population`). The push is over the parents as built, never a statement WHERE (`test_filter_mixed_aggregate_row_predicate`).
 - **A hidden output is not shown.** `statement_filter_population(mandatory_list, hidden)` reads `BuildEnvironment.statement_hidden_addresses` (set in `scope_statement`), so a HAVING aggregate promoted into the mandatory list does not block the push (TPC-DS q41; it was wrong rows on the plain model too).
 - **A responsive aggregate in the HAVING** blocks the push only when the consumer reads something off the unfiltered ancestor that the filter group does not emit (`_consumer_reads`: a group's grain and what rides through it are read as themselves). `select even_name having count(order_id) > 1` returned the NULL group before this.
+- **A pushed predicate is not rendered twice.** `dialect/base.py::_filter_guaranteed_by_parents`: the per-row CASE is elided when every source of every column the filter reads is a parent whose WHERE implies the predicate and no join in the CTE can NULL-pad a row (INNER only). The sole-parent form of this rule predates it; the responsive-HAVING shape pushed the predicate into both scans and rendered the CASE over their join.
 - **A property collapses to its grain.** The FilterNode groups to the outputs' entity grain (`keyspace.entity_keys`) whenever a predicate input is not FD-determined by that grain (`build_fd_determines`), and `CTE.filter_collapses_to_grain` MAX-collapses it. This does not apply under an aggregate consumer (`count(line_no ? ...)` counts the per-row CASE: TPC-H q4).
 - **The population reaches the row universe.** The keyspace (`emptied_by`) and pin-heal both read it; otherwise an emptied region still pads and `delivery_date is null` is TRUE on the pad.
 
@@ -214,10 +215,9 @@ The step-2 retirement list was tried by deletion. These are the fallback for reg
 
 In the order to take them:
 
-1. **The redundant CASE over pushed rows** (`test_a_having_responsive_aggregate_is_not_shown`): the filter node collapses into the aggregate's SELECT, and its CASE is always its THEN branch.
-2. **Retiring `_preserved_final_branch`**: its own A/B, with the `ks_pfb.py` list as the worklist.
-3. **Rowset witness leftovers**: 5(c), an unsplit boundary is not stamped as the region holder (see tried). A region no handle is keyed on alone is still skipped, and with two properties of the key the first by name is picked.
-4. **Unmodelled regions** that keep the fallbacks alive: composite-key `~` demand, regions only a join of two facts witnesses, a materialized aggregate beside a region. Also merged-`~` pin-heal (above).
+1. **Retiring `_preserved_final_branch`**: its own A/B, with the `ks_pfb.py` list as the worklist.
+2. **Rowset witness leftovers**: 5(c), an unsplit boundary is not stamped as the region holder (see tried). A region no handle is keyed on alone is still skipped, and with two properties of the key the first by name is picked.
+3. **Unmodelled regions** that keep the fallbacks alive: composite-key `~` demand, regions only a join of two facts witnesses, a materialized aggregate beside a region. Also merged-`~` pin-heal (above).
 
 **Lesson that held every session: every item labelled "plan quality", "cosmetic" or "not split" was wrong rows once a rows test existed.** Write the rows test first. Reasoning-based diagnoses were one cause short each time; trace instead.
 
