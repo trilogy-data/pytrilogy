@@ -312,6 +312,18 @@ def _reads_carried(
     )
 
 
+def _reads_only_carried(
+    address: str, region: Region, keyspace: Keyspace, environment: BuildEnvironment
+) -> bool:
+    concept = environment.concepts.get(address)
+    if concept is None or concept.lineage is None:
+        return False
+    arguments = concept.lineage.concept_arguments
+    return bool(arguments) and all(
+        keyspace.carried_on(arg.address, region) for arg in arguments
+    )
+
+
 def feed_region_domains_to_present_scalars(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -369,6 +381,30 @@ def feed_region_domains_to_present_scalars(
         # keeps every aggregate it reads solid too
         solid = solid_groups(group_graph, attrs, region, keyspace, environment)
         for gid, a in attrs.items():
+            # a row stream reading nothing but what the region carries
+            # (`upper(name)`) is the region's rows: the domain replaces the
+            # solid stream it was split from as its source, or it is evaluated
+            # over both, one row per fact row, and a consumer joining it back
+            # fans out. Every read, not the member's keys: a filter is keyed on
+            # its content and reads its predicate off the solid rows too.
+            if (
+                a.derivation in ROW_STREAM_DERIVATIONS
+                and _scope_and_phase(a.label)[0] == scope
+                and a.primary_members
+                and gid not in solid
+                and all(
+                    _reads_only_carried(m, region, keyspace, environment)
+                    for m in a.primary_members
+                )
+            ):
+                for pred in list(group_graph.predecessors(gid)):
+                    if (
+                        attrs[pred].derivation == Derivation.ROOT
+                        and not attrs[pred].extent_spans
+                        and _scope_and_phase(attrs[pred].label)[0] == scope
+                        and edge_kind(group_edges, pred, gid) == EdgeKind.LINEAGE
+                    ):
+                        remove_edge(group_graph, group_edges, pred, gid)
             if (
                 a.derivation in ROW_STREAM_DERIVATIONS
                 and _scope_and_phase(a.label)[0] == scope
