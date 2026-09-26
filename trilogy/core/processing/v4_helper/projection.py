@@ -299,12 +299,16 @@ def shared_filter_predicate(concepts: list[BuildConcept]) -> BuildWhereClause | 
 
 def statement_filter_population(
     mandatory_list: list[BuildConcept],
+    hidden: set[str] | None = None,
 ) -> BuildWhereClause | None:
     """When every output a statement shows is a filter value over one
     predicate, a NULL row is one nothing would keep: `gen_filter` pushes the
     predicate into its WHERE, and the keyspace and pin-heal read it as the
     statement's own, so a region those rows are absent on is emptied and the
-    `~` it would pad for is healed, never padded back."""
-    if not all(isinstance(c.lineage, BuildFilterItem) for c in mandatory_list):
+    `~` it would pad for is healed, never padded back. A hidden output (a
+    HAVING's aggregate promoted to the projection) is not shown: it is
+    evaluated over the rows the shown values keep."""
+    shown = [c for c in mandatory_list if not hidden or c.address not in hidden]
+    if not all(isinstance(c.lineage, BuildFilterItem) for c in shown):
         return None
-    return shared_filter_predicate(mandatory_list)
+    return shared_filter_predicate(shown)

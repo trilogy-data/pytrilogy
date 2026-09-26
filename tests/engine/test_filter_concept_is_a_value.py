@@ -107,6 +107,17 @@ def test_predicate_finer_than_the_content_collapses_to_its_grain(executor: Execu
     ]
 
 
+def test_a_having_aggregate_is_not_shown(executor: Executor):
+    """A HAVING's aggregate rides the projection hidden; the statement still
+    shows nothing but the filter value, so its NULL rows are dropped and the
+    predicate is a WHERE, not a CASE (TPC-DS q41). Orderless products are
+    absent by the model's complete binding, not by the filter."""
+    query = "select even_name having n_orders >= 0"
+    assert _rows(executor, query) == [("bean",)]
+    sql = executor.generate_sql(query + ";")[-1]
+    assert "CASE" not in sql, sql
+
+
 def test_grouped_by_the_value_the_null_group_stays(executor: Executor):
     assert _rows(executor, "select even_name, count(order_id) as n") == [
         ("bean", 1),

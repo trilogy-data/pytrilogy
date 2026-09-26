@@ -44,7 +44,9 @@ def statement_keyspace(
     a region's rows: a sub-plan (a condition's aggregate feeder, `sum(...) by
     part.id`) lists its grain keys as outputs, but those are the axis it joins
     back on, not rows."""
-    population = statement_filter_population(mandatory_list)
+    population = statement_filter_population(
+        mandatory_list, environment.statement_hidden_addresses
+    )
     if population is not None:
         conditions = conditions + [population]
     statement_outputs = environment.statement_output_addresses
