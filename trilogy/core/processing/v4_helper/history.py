@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.processing.nodes import History
 
+from .keyspace import RowsetWitness
 from .models import BuildInfo
 from .network_model import SearchResult
 
@@ -46,6 +47,13 @@ class V4History(History):
     # hide both, or whichever it can still see bridges the check through the
     # construct being defined. Managed by `plan_nested_select`.
     nested_exclusions: frozenset[str] = frozenset()
+    # Each rowset the statement reads, as a source of the plans reading it
+    # (`keyspace.rowset_witness`): a fact of the rowset, computed once.
+    rowset_witnesses: dict[str, RowsetWitness] = field(default_factory=dict)
+    # Spans of the body regions the plan reading a rowset holds the rows of:
+    # the body, and every plan under it, is built without them. Managed by
+    # `plan_nested_select`; part of the build key.
+    owned_spans: frozenset[str] = frozenset()
 
     def _v4_key(
         self,
@@ -58,6 +66,8 @@ class V4History(History):
         conditioned = base + str(conditions) if conditions else base
         if staged_conditions:
             conditioned += f"|staged={staged_conditions}"
+        if self.owned_spans:
+            conditioned += f"|owned={sorted(self.owned_spans)}"
         return f"{conditioned}|complete_partials={complete_partials}"
 
     def get_build_history(

@@ -62,7 +62,9 @@ def test_null_dimension_group_survives_branch_rejoin(query):
 
 # An item no sale references: `grain(order_number, item_sk)` is keyed on the
 # sale line, so it is absent there and the counts are 0, not 1 for a hash of
-# padding (docs/keyspace_phase_plan.md, phase 4).
+# padding (docs/keyspace_phase_plan.md, phase 4). Through the rowset too: the
+# body pads the item, and the plan reading it holds the same region
+# (`keyspace.RowsetWitness`), so the counts read the body's solid rows.
 UNSOLD_MODEL = MODEL.replace(
     "union all select 30, cast(null as varchar)'''",
     "union all select 30, cast(null as varchar) union all select 40, 'gamma' '''",
@@ -70,19 +72,7 @@ UNSOLD_MODEL = MODEL.replace(
 UNSOLD_EXPECTED = [("alpha", 1, 0), ("beta", 1, 1), ("gamma", 0, 0), (None, 2, 1)]
 
 
-@pytest.mark.parametrize(
-    "query",
-    [
-        DIRECT_QUERY,
-        pytest.param(
-            ROWSET_QUERY,
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="owed: a rowset body is its own plan, and pads inside it",
-            ),
-        ),
-    ],
-)
+@pytest.mark.parametrize("query", [DIRECT_QUERY, ROWSET_QUERY])
 def test_unsold_item_counts_no_lines(query):
     env = Environment()
     env.parse(UNSOLD_MODEL)

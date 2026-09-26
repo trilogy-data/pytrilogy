@@ -1788,11 +1788,20 @@ def get_node_joins(
         }
     # A side holding a region's rows (its domain, or whatever read it) hosts
     # that region's extension rows on the join keyed by its span, whatever
-    # columns it emits: the contract, not an inference from the bindings.
+    # columns it emits: the contract, not an inference from the bindings. Not
+    # on a span this merge is built not to extend (a rowset body whose reader
+    # holds the region): those rows are not this plan's to return.
     region_holders = {
-        ds_node: {canon_node(span) for span in datasource.region_spans}
+        ds_node: held
         for ds_node, datasource in ds_node_map.items()
-        if isinstance(datasource, QueryDatasource) and datasource.region_spans
+        if isinstance(datasource, QueryDatasource)
+        and (
+            held := {
+                canon_node(span)
+                for span in datasource.region_spans
+                if span not in extent_free_spans
+            }
+        )
     }
     # Keys whose join typing is owned by an authored relation (query-scoped
     # subset/coalescing joins, declared anchors): host/dim direction inference

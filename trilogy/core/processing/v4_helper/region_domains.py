@@ -19,6 +19,7 @@ from .condition_placement import ConditionPlacement, PlacementReason
 from .constants import FINAL_NODE_ID, ROW_STREAM_DERIVATIONS, DepthLabel, EdgeKind
 from .edges import EdgeMap, add_edge, edge_kind, remove_edge
 from .extent_ownership import _solid_groups as solid_groups
+from .extent_ownership import _takes_a_value_on_padding as takes_a_value_on_padding
 from .extent_ownership import null_on_padding
 from .models import ConceptAttrs, GroupAttrs, GroupBucket, Keyspace, Region
 from .projection import decided_at_output_grain, reads_rows_only
@@ -75,12 +76,42 @@ def _filters_region_domain(
 
 
 def _splits_for_region(bucket: GroupBucket) -> bool:
-    """A plain keyed ROOT bucket, or a cluster the dim peel took out of one."""
+    """A plain keyed ROOT bucket, or a cluster the dim peel took out of one,
+    or a rowset boundary (a row source whose body padded the region)."""
+    if bucket.derivation == Derivation.ROWSET:
+        return not bucket.extent_spans
     return (
         bucket.derivation == Derivation.ROOT
         and bucket.depth_label == DepthLabel.ROOT
         and (not bucket.discriminator or bool(bucket.dim_keys))
     )
+
+
+def _needs_solid_rows(
+    buckets: dict[str, GroupBucket],
+    label: str,
+    region: Region,
+    keyspace: Keyspace,
+    environment: BuildEnvironment,
+) -> bool:
+    """Whether something in `label` must be evaluated on rows the region is
+    absent from: a row-stream derivation that takes a value on the padding
+    (`count(grain(s.o, s.sk))`: the hash coalesces NULLs), or an aggregate
+    whose inline argument does."""
+    for bucket in buckets.values():
+        if bucket.label != label:
+            continue
+        if bucket.derivation in ROW_STREAM_DERIVATIONS and any(
+            takes_a_value_on_padding(m, region, keyspace, environment)
+            for m in bucket.primary_members
+        ):
+            return True
+        if bucket.derivation == Derivation.AGGREGATE and any(
+            _has_absent_inline_argument(m, region, keyspace, environment)
+            for m in bucket.primary_members
+        ):
+            return True
+    return False
 
 
 def _region_is_demanded(
@@ -135,7 +166,12 @@ def add_region_domain_buckets(
     Only a region the statement asks rows of: an output is a function of what
     its span reaches (`output_demanded_spans`, the election's question), or an
     aggregate counts them. `select order_id, status where name = 'ann'` asks
-    for orders; the customer with none is not a row of it."""
+    for orders; the customer with none is not a row of it.
+
+    A ROWSET boundary already holds the region's rows (its body padded them),
+    so it is split only when something must be evaluated on the solid rows
+    (`_needs_solid_rows`): the domain is the boundary again, and the solid
+    side is the body planned without the region (`SpanScope.owned`)."""
     # an authored coalescing relation (`union join ocust = cid`) IS its key's
     # domain, and the union machinery builds it; no region domain beside it
     coalescing = environment.domain_graph.coalescing_relation_members()
@@ -190,6 +226,11 @@ def add_region_domain_buckets(
                 )
             ):
                 continue
+            rowset = [b for b in sources if b.derivation == Derivation.ROWSET]
+            if rowset and not _needs_solid_rows(
+                buckets, label, region, keyspace, environment
+            ):
+                continue
             undelivered = sorted(
                 address
                 for address in condition_arg_addresses
@@ -205,12 +246,15 @@ def add_region_domain_buckets(
                     f" filters its rows by {undelivered}"
                 )
                 continue
+            extent = f"extent:{'|'.join(sorted(region.spans))}"
             domain = GroupBucket(
-                depth_label=DepthLabel.ROOT,
-                derivation=Derivation.ROOT,
+                depth_label=rowset[0].depth_label if rowset else DepthLabel.ROOT,
+                derivation=Derivation.ROWSET if rowset else Derivation.ROOT,
                 grain_components=frozenset(),
                 label=label,
-                discriminator=f"extent:{'|'.join(sorted(region.spans))}",
+                discriminator=(
+                    f"{rowset[0].discriminator}:{extent}" if rowset else extent
+                ),
                 extent_spans=region.spans,
             )
             for bucket in eligible:

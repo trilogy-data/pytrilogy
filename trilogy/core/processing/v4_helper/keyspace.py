@@ -21,6 +21,13 @@ is absent on the rows such a source lacks, so they are not a region of their
 own, but a WHERE null-rejecting what only that source supplies still removes
 them. `Keyspace.binding_is_complete` is pin-heal's question, asked of both.
 
+A ROWSET the plan reads is a source too (`RowsetWitness`): its rows are its
+body's regions, spelled in the handles that expose them. `select order_number
+as o, item_sk as sk` holds a row for the item no sale references, with `o`
+absent on it, so the plan reading `s.o, s.sk` has the same two regions the body
+had. A body region the plan above holds the rows of (`owned_spans`) is not part
+of a body plan built for that consumer: the body then reads the solid rows.
+
 Not modelled yet: a lookup through a source whose own grain is bound `~` (it
 may miss, which makes the looked-up entity optional on the row), `complete
 where` partitions as regions (the union machinery owns them; they are read
@@ -41,6 +48,7 @@ from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
+    BuildRowsetItem,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -86,6 +94,112 @@ class _ModelFacts:
             seed = _SourceFacts("", frozenset(), False, {key: frozenset()})
             cached = self.reach[key] = frozenset(_carried(seed, self.sources))
         return cached
+
+
+@dataclass(frozen=True)
+class RowsetRegion:
+    """One live region of a rowset body, in the handles that expose it:
+    `present` the key handles on it, `bound` every handle defined on it,
+    `spans` the handles spelling the body region's spans (`body_spans`)."""
+
+    present: frozenset[str]
+    bound: frozenset[str]
+    spans: frozenset[str]
+    body_spans: frozenset[str]
+
+
+@dataclass(frozen=True)
+class RowsetWitness:
+    """A rowset the plan reads, as a source of it (`rowset_witness`)."""
+
+    name: str
+    regions: tuple[RowsetRegion, ...]
+    # handle -> the key handles it is a function of, within this rowset
+    entity_handles: dict[str, frozenset[str]] = field(default_factory=dict)
+
+    @property
+    def licensed(self) -> bool:
+        return any(r.spans for r in self.regions)
+
+    def body_spans_of(self, spans: frozenset[str]) -> frozenset[str]:
+        """The body's spelling of every region `spans` covers."""
+        return frozenset().union(
+            *(r.body_spans for r in self.regions if r.spans and r.spans <= spans)
+        )
+
+
+def rowset_witness(
+    name: str,
+    handles: list[BuildConcept],
+    body: Keyspace,
+    body_environment: BuildEnvironment,
+) -> RowsetWitness:
+    """The body's live regions respelled in the rowset's handles. A region
+    whose span no handle spells is one the reader cannot name, so it is not
+    a region of the reader's plan (its rows are read as the base region's,
+    as before)."""
+    canonical = _model_facts(body_environment).canonical
+    contents = {
+        h.address: canonical.get(h.lineage.content.address, h.lineage.content.address)
+        for h in handles
+        if isinstance(h.lineage, BuildRowsetItem)
+    }
+    keys = {
+        handle: body.keys_by_address.get(content)
+        or frozenset(
+            canonical.get(k, k) for k in entity_keys(content, body_environment)
+        )
+        for handle, content in contents.items()
+    }
+    entity_handles = {
+        handle: frozenset(h for h, c in contents.items() if c in keys[handle])
+        for handle in contents
+    }
+    regions: list[RowsetRegion] = []
+    for region in body.live_regions:
+        body_spans = {canonical.get(s, s) for s in region.spans}
+        spans = frozenset(h for h, c in contents.items() if c in body_spans)
+        if not body_spans <= set(contents.values()):
+            continue
+        regions.append(
+            RowsetRegion(
+                present=frozenset(
+                    h for h, c in contents.items() if c in region.present
+                ),
+                bound=frozenset(h for h, k in keys.items() if k <= region.present),
+                spans=spans,
+                body_spans=region.spans,
+            )
+        )
+    return RowsetWitness(
+        name=name, regions=tuple(regions), entity_handles=entity_handles
+    )
+
+
+def _rowset_sources(witnesses: tuple[RowsetWitness, ...]) -> tuple[_SourceFacts, ...]:
+    """One source per witnessed region. A handle is bound `~` when a smaller
+    region of the same body spells its key as a span: the larger rows reach
+    the smaller region's rows through it, as `sales` reaches the items no sale
+    references through `~item_sk`."""
+    out: list[_SourceFacts] = []
+    for witness in witnesses:
+        for region in witness.regions:
+            partial = frozenset().union(
+                *(r.spans for r in witness.regions if r.present < region.present)
+            )
+            bound: Carried = {
+                handle: witness.entity_handles.get(handle, frozenset()) & partial
+                for handle in region.bound
+            }
+            out.append(
+                _SourceFacts(
+                    identifier=f"rowset:{witness.name}:{'|'.join(sorted(region.present))}",
+                    grain=region.present,
+                    grain_is_partial=any(bound.get(g) for g in region.present),
+                    bound=bound,
+                )
+            )
+    return tuple(out)
 
 
 _FACTS_CACHE: dict[int, tuple[ReferenceType[BuildEnvironment], _ModelFacts]] = {}
@@ -224,14 +338,16 @@ def _carried(anchor: _SourceFacts, sources: tuple[_SourceFacts, ...]) -> Carried
 
 
 def _compute_facts(
-    environment: BuildEnvironment, datasources: list[BuildDatasource]
+    environment: BuildEnvironment,
+    datasources: list[BuildDatasource],
+    rowsets: tuple[_SourceFacts, ...] = (),
 ) -> _ModelFacts:
     canonical = _canonical_addresses(environment)
     identities = _row_identities(datasources)
     bound = tuple(
         _source_facts(ds, canonical, identities[ds.identifier]) for ds in datasources
     )
-    sources = bound + _generated_domains(environment, canonical, bound)
+    sources = bound + _generated_domains(environment, canonical, bound) + rowsets
     return _ModelFacts(
         # pin-heal and partition exclusion swap datasources before planning
         stamp=tuple(id(ds) for ds in datasources),
@@ -481,19 +597,27 @@ def build_keyspace(
     environment: BuildEnvironment,
     conditions: list[BuildWhereClause],
     datasources: list[BuildDatasource] | None = None,
+    rowset_witnesses: tuple[RowsetWitness, ...] = (),
 ) -> Keyspace:
     """`datasources` overrides the environment's (uncached): the heal audit
     builds over the bindings as authored after pin-heal has rewritten them.
+    `rowset_witnesses` are the rowsets the plan reads, sources beside them.
 
     The facts are read whether or not any `~` survives (pin-heal may have
     dropped the last one): an entity is spelled by the same canonical
     address either way, and a plan's keys are compared across plans."""
-    if datasources is None:
+    rowsets = _rowset_sources(rowset_witnesses)
+    if datasources is None and not rowsets:
         datasources = build_datasources(environment)
         facts = _model_facts(environment)
     else:
-        facts = _compute_facts(environment, datasources)
-    licensed = _has_extension_license(datasources)
+        datasources = (
+            build_datasources(environment) if datasources is None else datasources
+        )
+        facts = _compute_facts(environment, datasources, rowsets)
+    licensed = _has_extension_license(datasources) or any(
+        w.licensed for w in rowset_witnesses
+    )
     canonical = facts.canonical
     identifying = facts.identifying
     # an existence-only node is a semijoin's subselect, not a row of this plan

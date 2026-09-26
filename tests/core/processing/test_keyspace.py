@@ -13,10 +13,11 @@ from tests.engine.test_derived_key_domain import (
 )
 from tests.engine.test_duckdb_partial_fk_field_report import MODEL as FIELD_REPORT
 from trilogy import Dialects
-from trilogy.core.processing import concept_strategies_v4, partial_bridging
+from trilogy.core.processing import partial_bridging
 from trilogy.core.processing.v4_helper.constants import FINAL_NODE_ID
 from trilogy.core.processing.v4_helper.keyspace import build_keyspace
 from trilogy.core.processing.v4_helper.models import Keyspace
+from trilogy.core.processing.v4_node_generators import rowset_witness
 
 CUSTOMER = "local.customer_id"
 ORDER = "local.order_id"
@@ -42,7 +43,7 @@ class _Capture:
 def _planned_keyspace(monkeypatch, model: str, query: str) -> Keyspace:
     """Through the full statement path, so the WHERE reaches the plan."""
     capture = _Capture()
-    monkeypatch.setattr(concept_strategies_v4, "build_keyspace", capture)
+    monkeypatch.setattr(rowset_witness, "build_keyspace", capture)
     executor = Dialects.DUCK_DB.default_executor()
     executor.parse_text(model)
     executor.generate_sql(query)
@@ -593,7 +594,7 @@ def test_entity_is_spelled_the_same_with_and_without_a_license(monkeypatch):
     (no license left) and heal's (as authored) key `late_name` alike."""
     healed, planned = _Capture(), _Capture()
     monkeypatch.setattr(partial_bridging, "build_keyspace", healed)
-    monkeypatch.setattr(concept_strategies_v4, "build_keyspace", planned)
+    monkeypatch.setattr(rowset_witness, "build_keyspace", planned)
     executor = Dialects.DUCK_DB.default_executor()
     executor.parse_text(_DERIVED + _ACTIVITY)
     executor.generate_sql("select customer_id as c2, status;")
@@ -612,7 +613,7 @@ def test_sub_plan_without_the_where_inherits_the_statement_heal(monkeypatch):
     number the padding row: `order_seq = 1` for a customer with no order.
     Heal is decided once per statement and every plan under it is complete."""
     capture = _Capture()
-    monkeypatch.setattr(concept_strategies_v4, "build_keyspace", capture)
+    monkeypatch.setattr(rowset_witness, "build_keyspace", capture)
     executor = Dialects.DUCK_DB.default_executor()
     executor.parse_text(_DERIVED)
     executor.generate_sql("select customer_id, name where order_seq = 1;")

@@ -108,8 +108,13 @@ class SpanScope:
     # plan: the spans whose unmatched members carry an output
     # (`Keyspace.output_demanded_spans`), the only extension rows it returns
     demanded: frozenset[str] = frozenset()
+    # plan: the spans whose extension rows the plan READING this one holds (a
+    # rowset body built for a consumer that pads the region itself): no group
+    # of this plan extends them, FINAL included
+    owned: frozenset[str] = frozenset()
     # group: the spans this group may NOT extend, because another group owns
-    # those extension members (v4_helper/extent_ownership.py)
+    # those extension members (v4_helper/extent_ownership.py), or the plan
+    # above does (`owned`)
     extent_free: frozenset[str] = frozenset()
     # group: address -> the extent-free spans whose region domain carries it;
     # held here only for the members the group's facts bound
