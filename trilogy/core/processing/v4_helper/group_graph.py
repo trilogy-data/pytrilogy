@@ -3727,6 +3727,14 @@ def _regraft_group_sources(
                 group_graph, attrs, gid, provider_gid
             ):
                 parent_gid = provider_gid
+                # Placed at the provider's grain, the projection has no use for
+                # a finer relation the provider was built from. Joined back, it
+                # pairs the provider's groups on a non-key (a region domain on
+                # a nullable description) and drops or multiplies them.
+                provider_ancestors = nx.ancestors(group_graph, provider_gid)
+                for pred in _lineage_predecessors(group_graph, group_edges, gid):
+                    if pred in provider_ancestors:
+                        remove_edge(group_graph, group_edges, pred, gid)
         if parent_gid is None:
             parent_gid = _regraft_candidate(
                 group_graph, group_edges, attrs, gid, allow_partial=False

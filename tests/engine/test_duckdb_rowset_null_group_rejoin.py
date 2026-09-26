@@ -183,9 +183,10 @@ EQUIVALENT_SPELLINGS = [
 
 
 @pytest.mark.parametrize("rowset_query,direct_query", EQUIVALENT_SPELLINGS)
-def test_rowset_matches_direct_spelling(rowset_query, direct_query):
+@pytest.mark.parametrize("model", ["UNSOLD_MODEL", "GUEST_ALLDESC_MODEL"])
+def test_rowset_matches_direct_spelling(model, rowset_query, direct_query):
     env = Environment()
-    env.parse(UNSOLD_MODEL)
+    env.parse(globals()[model])
     executor = Dialects.DUCK_DB.default_executor(environment=env)
     assert (
         executor.execute_query(rowset_query).fetchall()
@@ -258,6 +259,57 @@ def test_guest_rows_dedup_at_the_output_grain(query, expected):
     assert "~?item_sk" in GUEST_MODEL and "select 5, null, 7" in GUEST_MODEL
     env = Environment()
     env.parse(GUEST_MODEL)
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    assert executor.execute_query(query).fetchall() == expected
+
+
+# Every item described: the guest's NULL group has no NULL-desc member to
+# pair with. A rename of the nullable description beside an aggregate by it
+# was rendered off the item domain, joined back to the aggregate ON the
+# description, and the guest's group had no item to match.
+GUEST_ALLDESC_MODEL = GUEST_MODEL.replace("cast(null as varchar)", "'delta'")
+GUEST_ALLDESC_CASES = [
+    (
+        "select item_desc, count(order_number) as total order by item_desc asc nulls last;",
+        [("alpha", 1), ("beta", 1), ("delta", 2), ("gamma", 0), (None, 1)],
+    ),
+    (
+        "select item_desc as d, count(order_number) as total order by d asc nulls last;",
+        [("alpha", 1), ("beta", 1), ("delta", 2), ("gamma", 0), (None, 1)],
+    ),
+    (
+        "select item_desc as d, sum(quantity) as total order by d asc nulls last;",
+        [("alpha", 5), ("beta", 15), ("delta", 23), ("gamma", None), (None, 7)],
+    ),
+    (
+        (
+            "select item_desc as d, count(order_number) as total,"
+            " count(grain(order_number, item_sk) ? quantity > 10) as hi"
+            " order by d asc nulls last;"
+        ),
+        [
+            ("alpha", 1, 0),
+            ("beta", 1, 1),
+            ("delta", 2, 1),
+            ("gamma", 0, 0),
+            (None, 1, 0),
+        ],
+    ),
+    # the guest's description is a NULL VALUE (`?`), and `!= 'beta'` rejects it
+    (
+        (
+            "select item_desc as d, count(order_number) as total"
+            " where item_desc != 'beta' order by d asc nulls last;"
+        ),
+        [("alpha", 1), ("delta", 2), ("gamma", 0)],
+    ),
+]
+
+
+@pytest.mark.parametrize("query,expected", GUEST_ALLDESC_CASES)
+def test_guest_survives_a_rename_of_the_description(query, expected):
+    env = Environment()
+    env.parse(GUEST_ALLDESC_MODEL)
     executor = Dialects.DUCK_DB.default_executor(environment=env)
     assert executor.execute_query(query).fetchall() == expected
 

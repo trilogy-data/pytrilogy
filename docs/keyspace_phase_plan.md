@@ -180,6 +180,7 @@ These are not about `~`; they are worth knowing so they are not reintroduced.
 - A WHERE over an aggregate by a key was dropped when the key and a property were both projected. The fresh FINAL re-source now replaces the built node only when it can restate every atom. `outputs_with_parent_grain_keys` no longer offers a parent's HIDDEN outputs.
 - An atom over an aggregate BY A DERIVED grain crashed (`Missing source map entry`); `_hosts_carrying_condition_grain` fixes it.
 - `_concept_covers_grain`: a key covers a grain only when the WHOLE grain is that key. Otherwise a FINAL merge onto a finer row stream skipped its dedup (since #522).
+- `_regraft_group_sources`: a projection placed at a grouping provider's grain (`item_desc as d` at `count(order_number)` by `item_desc`) drops the lineage parents the provider was built from. Left attached, the region domain stayed load-bearing for the span every FINAL feeder emits (`_compute_concept_sets`, `region_join_keys`), so the rename was merged back onto the aggregate ON the nullable description, and a `~?` guest's NULL group had no item to match (`GUEST_ALLDESC_CASES`). The strategy-side `_drop_ancestor_parents` could not fold it: the domain carried a column the aggregate lacked.
 
 ## What stays, and why
 
@@ -211,12 +212,11 @@ The step-2 retirement list was tried by deletion. These are the fallback for reg
 
 In the order to take them:
 
-1. **A `~?` guest is dropped by a rename of a NULLABLE region property beside an aggregate by it** (pre-existing, wrong rows). The model is `sales (i_sk: ~?item_sk)` with a guest sale, `item_desc string?`, and every item described. `select item_desc, count(order_number)` keeps `(None, 1)`; `select item_desc as d, count(order_number)` drops it. The rename is rendered on the items scan (the rename rule), and the FINAL merge is typed RIGHT OUTER toward items by the both-nullable host rule (`get_join_type` ~line 637). Nothing then distinguishes the guest's NULL group from a NULL-desc member. The aggregate grouped by the source holds every group, so the rename need not move to the domain when a contributor groups by its source. Probe: `probes/probe_guest2.py`; `trace_join_type.py` for the flags.
-2. **TPC-H q22** keeps the padded plan (the `ks_pfb.py` "keeps its padded plan" emitter). `avg_bal_in_target` is an aggregate scalar over a `~` customer region under a per-country count, and the region does not carry country. Not yet probed with a rows test; do that before calling it plan quality.
-3. **The redundant CASE over pushed rows** (`test_a_having_responsive_aggregate_is_not_shown`): the filter node collapses into the aggregate's SELECT, and its CASE is always its THEN branch.
-4. **Retiring `_preserved_final_branch`**: its own A/B, with the `ks_pfb.py` list as the worklist.
-5. **Rowset witness leftovers**: 5(c), an unsplit boundary is not stamped as the region holder (see tried). A region no handle is keyed on alone is still skipped, and with two properties of the key the first by name is picked.
-6. **Unmodelled regions** that keep the fallbacks alive: composite-key `~` demand, regions only a join of two facts witnesses, a materialized aggregate beside a region. Also merged-`~` pin-heal (above).
+1. **TPC-H q22** keeps the padded plan (the `ks_pfb.py` "keeps its padded plan" emitter). `avg_bal_in_target` is an aggregate scalar over a `~` customer region under a per-country count, and the region does not carry country. Not yet probed with a rows test; do that before calling it plan quality.
+2. **The redundant CASE over pushed rows** (`test_a_having_responsive_aggregate_is_not_shown`): the filter node collapses into the aggregate's SELECT, and its CASE is always its THEN branch.
+3. **Retiring `_preserved_final_branch`**: its own A/B, with the `ks_pfb.py` list as the worklist.
+4. **Rowset witness leftovers**: 5(c), an unsplit boundary is not stamped as the region holder (see tried). A region no handle is keyed on alone is still skipped, and with two properties of the key the first by name is picked.
+5. **Unmodelled regions** that keep the fallbacks alive: composite-key `~` demand, regions only a join of two facts witnesses, a materialized aggregate beside a region. Also merged-`~` pin-heal (above).
 
 **Lesson that held every session: every item labelled "plan quality", "cosmetic" or "not split" was wrong rows once a rows test existed.** Write the rows test first. Reasoning-based diagnoses were one cause short each time; trace instead.
 
@@ -224,7 +224,7 @@ In the order to take them:
 
 - `tests/engine/test_derived_key_domain.py`: the oracle (materialization invariance: storing a derivation as a column at its grain must never change a query's rows). It has 100+ cases, `OWED` strict xfails as targets (currently none), traps (`?` key, ROLLUP subtotal, present entity with an unbound property), the `upper_name` twin, and hand-computed rows where the twin is blind.
 - `tests/engine/test_where_over_aggregate_by_key.py` (plain model), `test_filter_concept_is_a_value.py` (incl. the HAVING cases), `test_row_stream_outputs_share_a_scan.py`.
-- `tests/engine/test_duckdb_rowset_null_group_rejoin.py`: `test_unsold_item_counts_no_lines` (direct, rowset, nested rowset), `RENAME_BESIDE_HASH_CASES`, `GUEST_CASES`, and the rowset-vs-direct pairs in `test_rowset_matches_direct_spelling`.
+- `tests/engine/test_duckdb_rowset_null_group_rejoin.py`: `test_unsold_item_counts_no_lines` (direct, rowset, nested rowset), `RENAME_BESIDE_HASH_CASES`, `GUEST_CASES`, `GUEST_ALLDESC_CASES` (a `~?` guest with every item described: the NULL group has no member to pair with), and the rowset-vs-direct pairs in `test_rowset_matches_direct_spelling` on both models.
 - `tests/core/processing/test_keyspace.py` (shapes table, domains, witnesses, heal inheritance), `test_extent_ownership.py`, `test_join_padding_provenance.py` (`get_join_type` rules, `complete_key_domain`), `test_v4_group_behaviors.py` (give new planner-helper params a default).
 - `tests/engine/test_duckdb_partial_key_assembly.py`, `test_duckdb_partial_fk_field_report.py`, `test_duckdb_nullability_matrix.py`, `test_multi_fact_nullable_fk_extent.py`, `tests/optimization/test_join_upgrade.py`, `test_duckdb_fuzzer_regressions.py::test_rollup_label_over_union_joined_rowsets`.
 - `tests/dialect/test_bigquery_full_join_keys.py`: renders planner output, anchored on a three-fact `union join`. It breaks silently when a fixture's FULL join tightens away.
