@@ -78,3 +78,8 @@ def test_unsold_item_counts_no_lines(query):
     env.parse(UNSOLD_MODEL)
     executor = Dialects.DUCK_DB.default_executor(environment=env)
     assert executor.execute_query(query).fetchall() == UNSOLD_EXPECTED
+    # the plan is typed at plan time, not narrowed after: the fact pairs
+    # INNER with its complete dimension, the region's domain is preserved
+    # over its solid readers, and nothing is FULL
+    sql = executor.generate_sql(query)[-1]
+    assert "FULL JOIN" not in sql, sql
