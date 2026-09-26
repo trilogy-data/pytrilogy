@@ -170,7 +170,12 @@ def create_pruned_concept_graph(
         if (x := concepts.get(n, None)) and x.canonical_address in target_addresses
     }
     relevant_concepts: list[str] = list(relevant_concepts_pre.keys())
-    partial = get_graph_partial_nodes(g, conditions)
+    # a span this group is built not to extend is completed by its region
+    # domain above: the fact's own `~` column is as full as this scan needs
+    promoted = (
+        environment.span_scope.extent_free if environment is not None else frozenset()
+    )
+    partial = get_graph_partial_nodes(g, conditions, excluding=promoted)
     if criteria == SearchCriteria.FULL_ONLY:
         datasource_map = orig_g.datasources
         to_remove = [
@@ -301,6 +306,7 @@ def _source_concepts_via_graph(
                 criteria=attempt,
                 conditions=select_conditions,
                 depth=depth,
+                excluding=environment.span_scope.extent_free,
             )
             break
         if not pruned:

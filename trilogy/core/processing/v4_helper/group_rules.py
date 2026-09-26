@@ -601,6 +601,7 @@ def _cosource_component_groups(
     # output root maps to its concept-graph component id, and roots sharing
     # one merge. `reaches` holds node ids; map to addresses to test membership.
     output_component: dict[int, int] = {}
+    aggregate_reach: list[bool] = []
     if output_addresses:
         output_roots = [
             i
@@ -660,12 +661,25 @@ def _cosource_component_groups(
         for i in output_roots:
             output_component[i] = comp_of.get(main_items[i][0], -1 - i)
 
+    # Two output roots whose reach is a ROW STREAM (`upper(name)` beside
+    # `quantity * 2`) recombine at FINAL as one row stream, and the axis that
+    # pairs them (the fact's FK) is a datasource fact no lineage edge shows:
+    # sourced apart, the merge has nothing to join on (`ON 1=1`). Co-source
+    # them whatever their component, as the direct spelling `name, quantity`
+    # is (a leaf output has no reach, so it never splits). An aggregate
+    # defines its own input domain and keeps its independent source.
     related = [
         (i, j)
         for i in range(n)
         for j in range(i + 1, n)
         if reaches[i] & reaches[j]
         or (i in output_component and output_component[i] == output_component.get(j))
+        or (
+            i in output_component
+            and j in output_component
+            and not aggregate_reach[i]
+            and not aggregate_reach[j]
+        )
         or (feeds_union[i] and feeds_union[j])
     ]
     return [

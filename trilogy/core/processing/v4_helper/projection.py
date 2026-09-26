@@ -8,12 +8,16 @@ from trilogy.core.models.build import (
     BuildConceptArgs,
     BuildFilterItem,
     BuildRowsetItem,
+    BuildWhereClause,
 )
 from trilogy.core.models.build_environment import (
     BuildEnvironment,
     resolve_rowset_content_address,
 )
 from trilogy.core.processing.nodes import SelectNode, StrategyNode, UnionNode
+
+from .constants import ROW_STREAM_DERIVATIONS
+from .functional_dependency import build_fd_determines
 
 
 def parent_output_addresses(node: StrategyNode) -> set[str]:
@@ -69,6 +73,18 @@ def row_lineage_arguments(concept: BuildConcept) -> list[BuildConcept]:
     if not existence:
         return args
     return [arg for arg in args if arg.address not in existence]
+
+
+def reads_rows_only(concept: BuildConcept) -> bool:
+    """A row-stream derivation whose lineage never crosses an aggregate. One
+    over an aggregate is evaluated on a ``~`` extension row (`count(...) > 0`
+    is false there, not NULL); one over rows alone is NULL there."""
+    if concept.derivation not in ROW_STREAM_DERIVATIONS or concept.lineage is None:
+        return False
+    return all(
+        arg.derivation in (Derivation.ROOT, Derivation.CONSTANT) or reads_rows_only(arg)
+        for arg in concept.lineage.concept_arguments
+    )
 
 
 def concept_satisfiable(
@@ -237,3 +253,62 @@ def output_rowset_base_keys(
             if resolved != component:
                 keys.add(resolved)
     return keys
+
+
+def decided_at_output_grain(
+    address: str, outputs: Iterable[BuildConcept], environment: BuildEnvironment
+) -> bool:
+    """Whether a WHERE reading `address` can be applied to the statement's
+    final rows: every output that crosses an aggregate is grouped at a grain
+    determining it, so the rows it rejects above the aggregate are the rows
+    the aggregate's input would have lost. A launch-day filter under a
+    per-month count is not: the count must see the filter."""
+    for concept in outputs:
+        if reads_rows_only(concept):
+            continue
+        grain = frozenset(concept.grain.components) if concept.grain else frozenset()
+        if not grain or not build_fd_determines(environment, grain, address):
+            return False
+    return True
+
+
+def _has_concept_existence(where: BuildWhereClause) -> bool:
+    """True only for a REAL subselect arg (`x in <other column/select>`), one
+    whose existence side carries concepts. A literal IN-list (`month in (1,2,3,4)`)
+    is also modeled as a subselect comparison but has no existence concepts, so it
+    is a plain scalar predicate safe to push into a WHERE."""
+    return any(arg for tup in (where.existence_arguments or ()) for arg in tup)
+
+
+def shared_filter_predicate(concepts: list[BuildConcept]) -> BuildWhereClause | None:
+    """The one predicate every filter concept among `concepts` is gated on, or
+    None. Distinct predicates are fused conditional columns (`price ? channel =
+    'STORE'`, `price ? channel = 'WEB'`), each its own CASE over the shared
+    scan: AND-ing them into one WHERE would null out every row. A predicate
+    with an existence arg needs its subselect source wired as a side parent,
+    which no WHERE push does."""
+    distinct: dict[str, BuildWhereClause] = {}
+    for c in concepts:
+        if isinstance(c.lineage, BuildFilterItem):
+            distinct.setdefault(str(c.lineage.where.conditional), c.lineage.where)
+    if len(distinct) != 1:
+        return None
+    where = next(iter(distinct.values()))
+    return None if _has_concept_existence(where) else where
+
+
+def statement_filter_population(
+    mandatory_list: list[BuildConcept],
+    hidden: set[str] | None = None,
+) -> BuildWhereClause | None:
+    """When every output a statement shows is a filter value over one
+    predicate, a NULL row is one nothing would keep: `gen_filter` pushes the
+    predicate into its WHERE, and the keyspace and pin-heal read it as the
+    statement's own, so a region those rows are absent on is emptied and the
+    `~` it would pad for is healed, never padded back. A hidden output (a
+    HAVING's aggregate promoted to the projection) is not shown: it is
+    evaluated over the rows the shown values keep."""
+    shown = [c for c in mandatory_list if not hidden or c.address not in hidden]
+    if not all(isinstance(c.lineage, BuildFilterItem) for c in shown):
+        return None
+    return shared_filter_predicate(shown)

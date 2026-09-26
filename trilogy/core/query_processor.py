@@ -24,13 +24,10 @@ from trilogy.core.exceptions import (
 )
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.author import (
-    Concept,
     ConceptRef,
     Conditional,
     Function,
-    HavingClause,
     MultiSelectLineage,
-    OrderBy,
     RowsetItem,
     SelectLineage,
     WhereClause,
@@ -98,15 +95,9 @@ from trilogy.core.processing.nodes import (
     SelectNode,
     StrategyNode,
 )
-from trilogy.core.processing.partial_bridging import (
-    drop_excluded_partials,
-    heal_pinned_partials,
-)
+from trilogy.core.processing.partial_bridging import scope_statement
 from trilogy.core.processing.utility import unrenderable_outputs
-from trilogy.core.processing.v4_helper.staged_where import (
-    CROSS_ROW_DERIVATIONS,
-    universal_row_bound,
-)
+from trilogy.core.processing.v4_helper.staged_where import CROSS_ROW_DERIVATIONS
 from trilogy.core.scope_diagnostics import (
     DerivedValueScope,
     extract_derived_value_scopes,
@@ -516,6 +507,7 @@ def datasource_to_cte(
         nullable_concepts=query_datasource.nullable_concepts,
         join_derived_concepts=query_datasource.join_derived_concepts,
         hidden_concepts=query_datasource.hidden_concepts,
+        zero_filled=query_datasource.zero_filled,
         base_name_override=base_name,
         base_alias_override=base_alias,
         order_by=query_datasource.ordering,
@@ -982,52 +974,6 @@ def _plan_query_node(
     return ds
 
 
-def _authored_reference_addresses(
-    statement: SelectLineage | MultiSelectLineage,
-    environment: Environment,
-    include_where: bool = True,
-) -> set[str]:
-    """Transitive closure of author-referenced concept addresses for this
-    select: outputs, WHERE/HAVING/ORDER BY arguments, and their lineage,
-    walked on author objects before scoped-join canonical substitution
-    rewrites addresses. Scoped-join declarations are excluded: a declared
-    relation whose far side the author never references is domain metadata
-    and must not force that side into the plan. `include_where=False` drops
-    the WHERE clauses; the outputs-only closure distinguishes row-stream
-    contributors from population-scope (condition) references."""
-    selects = (
-        statement.selects if isinstance(statement, MultiSelectLineage) else [statement]
-    )
-    stack: list[str] = []
-    locals_pool: dict[str, Concept] = {}
-    clauses: list[WhereClause | HavingClause | OrderBy | None] = [
-        statement.having_clause,
-        statement.order_by,
-    ]
-    if include_where:
-        clauses.append(statement.where_clause)
-    for select in selects:
-        stack.extend(ref.address for ref in select.output_components)
-        clauses.extend([select.having_clause, select.order_by])
-        if include_where:
-            clauses.append(select.where_clause)
-        locals_pool.update(select.local_concepts)
-    for clause in clauses:
-        if clause is not None:
-            stack.extend(ref.address for ref in clause.concept_arguments)
-    closure: set[str] = set()
-    while stack:
-        address = stack.pop()
-        if address in closure:
-            continue
-        closure.add(address)
-        concept = locals_pool.get(address) or environment.concepts.get(address)
-        if concept is None:
-            continue
-        stack.extend(ref.address for ref in concept.concept_arguments)
-    return closure
-
-
 # id(environment) -> (weak handle, {stamp: {join key: BuildCaches}}). Same
 # identity idiom + mutation stamp as domain_graph._MINTED_CACHE.
 _SESSION_CACHE_STORE: dict[int, tuple] = {}
@@ -1166,34 +1112,10 @@ def get_query_node(
         datasource_build_cache=caches.datasource_build_cache,
         scoped_joins=caches.scoped_joins,
     )
-    build_environment.statement_authored_addresses = _authored_reference_addresses(
-        statement, environment
-    )
-    build_environment.statement_output_addresses = _authored_reference_addresses(
-        statement, environment, include_where=False
-    )
-
     _carry_order_by_concepts(build_statement)
-
-    # Effective partiality is a per-query fact: a `~` binding whose licensed
-    # extension rows the WHERE filters out is complete for this statement.
-    # One rewrite here keeps every downstream consumer consistent.
-    # Staged (`then where`) chains are excluded: intermediate stages see
-    # populations the combined WHERE has not yet filtered.
-    if isinstance(build_statement, BuildSelectLineage) and not (
-        build_statement.where_clauses
-    ):
-        heal_pinned_partials(build_environment, build_statement.where_clause)
-    # A partition source the row gate contradicts holds no usable row for this
-    # statement; hiding it keeps a sibling partition's bindings from standing
-    # in for a `merge` origin or seeding a union that filters to nothing.
-    if isinstance(build_statement, BuildSelectLineage):
-        drop_excluded_partials(
-            build_environment,
-            universal_row_bound(
-                build_statement.where_clauses, build_statement.where_clause
-            ),
-        )
+    # Effective partiality is a per-plan fact (`partial_bridging`): one
+    # rewrite here keeps every downstream consumer consistent.
+    scope_statement(build_environment, statement, environment, build_statement)
 
     graph = generate_graph(build_environment)
 

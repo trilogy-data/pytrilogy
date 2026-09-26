@@ -70,12 +70,19 @@ def carry_child_state(parent: CTE, cte: CTE) -> None:
     dropping NULL-keyed groups. Existence references: an `IN (<set>)` resolves
     its set columns through existence_source_map, and dropping those entries
     strands the membership and lets the feeder CTE be pruned as unreferenced.
-    LIMIT is the last logical operation of a SELECT, so the child's limit and
-    ORDER BY apply unchanged to the merged CTE."""
+    Partiality: a dropped partial mark lets UpgradeJoinOnGuards read a proof
+    on a key the merged CTE binds partially (a region domain's span on the
+    solid stream) as forcing it present, and INNER-narrow the join that pads
+    it. LIMIT is the last logical operation of a SELECT, so the child's limit
+    and ORDER BY apply unchanged to the merged CTE."""
     nullable_addresses = {c.address for c in parent.nullable_concepts}
     for column in cte.nullable_concepts:
         if column.address not in nullable_addresses:
             parent.nullable_concepts.append(column)
+    partial_addresses = {c.address for c in parent.partial_concepts}
+    for column in cte.partial_concepts:
+        if column.address not in partial_addresses:
+            parent.partial_concepts.append(column)
     for address, sources in cte.existence_source_map.items():
         if address not in parent.existence_source_map:
             parent.existence_source_map[address] = sources
@@ -86,17 +93,24 @@ def carry_child_state(parent: CTE, cte: CTE) -> None:
 
 def null_padded_nodes(cte: CTE) -> list[CTE | UnionCTE]:
     """The sides ``cte``'s own outer joins NULL-pad: the right of a LEFT/FULL,
-    and the accumulated left (plus every joinkey source) of a RIGHT/FULL."""
+    and the accumulated left (the FROM base and every side joined before it,
+    plus every joinkey source) of a RIGHT/FULL."""
     padded: list[CTE | UnionCTE] = []
+    base_name = cte.base_name
+    accumulated: list[CTE | UnionCTE] = [
+        parent for parent in cte.parent_ctes if parent.name == base_name
+    ]
     for join in cte.joins or []:
-        if not isinstance(join, Join) or join.jointype == JoinType.INNER:
+        if not isinstance(join, Join):
             continue
         if join.jointype in (JoinType.LEFT_OUTER, JoinType.FULL):
             padded.append(join.right_cte)
         if join.jointype in (JoinType.RIGHT_OUTER, JoinType.FULL):
+            padded.extend(accumulated)
             if join.left_cte is not None:
                 padded.append(join.left_cte)
             padded.extend(pair.cte for pair in join.joinkey_pairs or [])
+        accumulated.append(join.right_cte)
     return padded
 
 

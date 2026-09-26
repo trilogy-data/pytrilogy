@@ -51,7 +51,7 @@ class FilterNode(StrategyNode):
         )
 
     def copy(self) -> "FilterNode":
-        return FilterNode(
+        node = FilterNode(
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
@@ -64,3 +64,5 @@ class FilterNode(StrategyNode):
             grain=self.grain,
             existence_concepts=list(self.existence_concepts),
         )
+        node.region_spans = self.region_spans
+        return node

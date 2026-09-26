@@ -23,12 +23,17 @@ Extent routing is now a decision, taken once, before any node is built.
 `trilogy/core/processing/v4_helper/extent_ownership.py`, called at the end of
 `build_group_graph` once the FINAL contract is known.
 
-1. **Which spans are in play.** A licensed key qualifies when the statement
-   projects it, or projects something it functionally determines, because an
-   extension row exists to carry one dimension member's own attributes. A `~` FK
-   that only shows up as a join axis licenses nothing, so the election returns
-   empty and the whole mechanism is inert (that is the common case: TPC-DS and
-   TPC-H never demand one).
+1. **Which spans are in play.** The election does not decide this; it is handed
+   `Keyspace.output_demanded_spans` (`v4_helper/keyspace.py`,
+   `docs/keyspace_phase_plan.md`). A span is in play when the statement's row
+   universe has a live region that span keeps apart (unmatched dimension
+   members, or a needed source holding only part of a region beside one holding
+   all of it), and some output is a function of what the span alone reaches,
+   because an extension row exists to carry one dimension member's own
+   attributes. A `~` FK that only shows up as a join axis, or a `~` on a source
+   the statement never needs, puts nothing in play, so the election returns
+   empty and the whole mechanism is inert (the common case: TPC-DS and TPC-H
+   rarely demand one).
 2. **Who owns each span.** Among the groups that expose the key, the most
    downstream wins: its rows have already absorbed everything upstream, so
    routing extent there keeps one copy instead of one per branch. Ties break
@@ -108,7 +113,11 @@ padding shared provenance. Two sides padded for *different* spans (a product
 never sold, a user who never ordered) name different members, and pairing them
 invents a row. `join_resolution._span_padded_addresses` attributes padding to
 the span that caused it; disjoint attributions join FULL on plain equality
-(`docs/handoff_aggregate_grain_fd_canonicalization.md`). The group graph also
+(`docs/handoff_aggregate_grain_fd_canonicalization.md`). The spans it looks for
+are the ones the keyspace has a region for, not every `~` address in the model;
+a rowset body pads for its own regions under its own spelling, and its witness
+names each by the handle the plan reads (`Keyspace.witnessed`); the host grain
+reads the plan's own spans. The group graph also
 keeps such families together where it can
 (`group_graph._keep_extension_families_together`), so rule 3 above has a joint
 owner to elect.

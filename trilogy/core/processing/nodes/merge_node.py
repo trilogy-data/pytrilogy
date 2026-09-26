@@ -1,19 +1,21 @@
 from trilogy.constants import logger
 from trilogy.core.enums import (
     Derivation,
+    FunctionType,
     JoinType,
     Modifier,
     SourceType,
 )
 from trilogy.core.models.build import (
     BoolExpr,
+    BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
     BuildGrain,
     BuildOrderBy,
     nonstandard_grouping_lineage,
 )
-from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.build_environment import BuildEnvironment, SpanScope
 from trilogy.core.models.execute import BaseJoin, QueryDatasource, UnnestJoin
 from trilogy.core.processing.condition_utility import (
     decompose_condition,
@@ -35,6 +37,7 @@ from trilogy.core.processing.grain_utility import (
 )
 from trilogy.core.processing.join_resolution import (
     compute_outer_null_status,
+    deep_extent_free_spans,
     get_node_joins,
     merge_partial_addresses,
     narrow_keyless_joins,
@@ -45,6 +48,7 @@ from trilogy.core.processing.join_resolution import (
 from trilogy.core.processing.nodes.base_node import (
     NodeJoin,
     StrategyNode,
+    region_reads,
     resolve_concept_map,
     resolve_existence_map,
 )
@@ -187,7 +191,7 @@ class MergeNode(StrategyNode):
         ordering: BuildOrderBy | None = None,
         preserve_parents: bool = False,
         host_stitch: bool = False,
-        extent_free_spans: frozenset[str] | None = None,
+        span_scope: SpanScope | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -221,16 +225,7 @@ class MergeNode(StrategyNode):
         # host basis and preserves only the span owner. Mid-plan merges keep
         # plain domain-preserving semantics.
         self.host_stitch = host_stitch
-        # `~` spans this merge must NOT extend: another group owns those
-        # extension members (v4_helper/extent_ownership.py), so padding here
-        # would manufacture a second copy. Captured from the environment at
-        # construction so a merge built deep inside a generator inherits its
-        # group's routing.
-        self.extent_free_spans = (
-            environment.extent_free_spans
-            if extent_free_spans is None
-            else extent_free_spans
-        )
+        self.span_scope = environment.span_scope if span_scope is None else span_scope
 
         final_joins: list[NodeJoin] = []
         if self.node_joins is not None:
@@ -323,19 +318,19 @@ class MergeNode(StrategyNode):
                 # `~`-licensed keys, the side covering ALL of them owns every
                 # extension family; a feeder exposing only the stitch key is not
                 # a host even when it covers the merge grain. With no licensed
-                # keys in play, grain coverage decides.
+                # keys in play, grain coverage decides. This plan's spans only:
+                # a rowset below is a row source, its extension rows are not
+                # this plan's to host.
+                # Still live beside the region contract: without it a domain
+                # merge FULL-joins its readers with coalesced keys
+                # (`test_materialization_invariance`, gcat `test_case_key`).
                 host_grain: set[str] | None = None
                 if self.host_stitch:
-                    licensed = {
-                        address
-                        for datasource in environment.datasources.values()
-                        for address in datasource.column_level_partial_addresses
-                    }
                     licensed_outputs = {
                         c.address
                         for c in self.output_concepts
-                        if c.address in licensed
-                        and c.address not in self.extent_free_spans
+                        if c.address in self.span_scope.in_play
+                        and c.address not in self.span_scope.extent_free
                     }
                     host_grain = licensed_outputs or set(grain.components)
                 # Domains this node emits: visible outputs and the grain,
@@ -356,13 +351,15 @@ class MergeNode(StrategyNode):
                     component_concept = environment.concepts.get(component)
                     if component_concept is not None and component_concept.keys:
                         demanded_domains |= set(component_concept.keys)
-                demanded_domains -= self.extent_free_spans
+                demanded_domains -= self.span_scope.extent_free
                 joins = get_node_joins(
                     dataset_list,
                     environment=environment,
                     host_grain=host_grain,
                     demanded_domains=demanded_domains,
-                    extent_free_spans=self.extent_free_spans,
+                    extent_free_spans=self.span_scope.extent_free,
+                    in_play_spans=self.span_scope.in_play,
+                    witnessed=self.span_scope.witnessed,
                 )
         elif final_joins:
             logger.info(
@@ -416,6 +413,25 @@ class MergeNode(StrategyNode):
             partial_addresses |= source_outputs & source_partial
         branch_proofs &= output_addresses
         branch_proofs -= complete_addresses & partial_addresses
+        # A `~` key a branch was built not to extend is partial there
+        # whatever the other branches expose (a region domain projected down
+        # to what it carries): its filter proves nothing about the rows the
+        # domain adds back.
+        branch_proofs -= partial_addresses & frozenset().union(
+            *(deep_extent_free_spans(source) for source in final_datasets)
+        )
+        # The same for this merge's own WHERE over a `~` key it pads for whose
+        # extension rows the plan returns: the extension row carries the
+        # dimension's key, so `customer_id in (2, 3)` keeps the customer with
+        # no order and says nothing about the fact side. Proven non-null is
+        # the coalesced key, not a side's column.
+        coalesced = (
+            complete_addresses
+            & partial_addresses
+            & (self.span_scope.demanded - self.span_scope.extent_free)
+        )
+        proofs -= coalesced
+        side_proofs -= coalesced
         # A branch carrying an atom of this merge's PRE-APPLIED request WHERE
         # (preexisting_conditions the merge itself does not re-render) is the
         # population: every final row must have a match there. Branch-local
@@ -553,10 +569,9 @@ class MergeNode(StrategyNode):
                 for other in final_datasets
             ):
                 continue
+            withheld = {x.address for x in dataset.partial_concepts}
             output_set = {
-                c.address
-                for c in dataset.output_concepts
-                if c.address not in [x.address for x in dataset.partial_concepts]
+                c.address for c in dataset.output_concepts if c.address not in withheld
             }
             if (
                 all(c.address in output_set for c in self.all_concepts)
@@ -782,6 +797,25 @@ class MergeNode(StrategyNode):
         joined_partials = merge_partial_addresses(
             final_datasets, qd_joins, final_output_concepts
         )
+        # a COUNT evaluated on the solid rows, padded here onto a region's
+        # rows, counts an empty group there
+        zero_filled: frozenset[str] = frozenset()
+        if any(region_reads(p) for p in self.parents) and not all(
+            region_reads(p) for p in self.parents
+        ):
+            solid_outputs = {
+                o.address
+                for p in self.parents
+                if not region_reads(p)
+                for o in p.output_concepts
+            }
+            zero_filled = frozenset(
+                c.address
+                for c in final_output_concepts
+                if c.address in solid_outputs
+                and isinstance(c.lineage, BuildAggregateWrapper)
+                and c.lineage.function.operator == FunctionType.COUNT
+            )
         qds = QueryDatasource(
             input_concepts=unique(self.input_concepts, "address"),
             output_concepts=final_output_concepts,
@@ -811,7 +845,13 @@ class MergeNode(StrategyNode):
             condition=self.conditions,
             hidden_concepts=self.hidden_concepts,
             ordering=self.ordering,
-            extent_free_spans=self.extent_free_spans,
+            extent_free_spans=self.span_scope.extent_free,
+            extent_free_carried=frozenset(
+                address
+                for address, spans in self.span_scope.extent_free_carried.items()
+                if spans & self.span_scope.extent_free
+            ),
+            zero_filled=zero_filled,
         )
         return qds
 
@@ -826,20 +866,27 @@ class MergeNode(StrategyNode):
         column holds just the members the facts below bound; the unmatched
         members belong to the elected owner. Marking them partial makes the
         assembly above preserve the owner's rows instead of INNER-joining them
-        away."""
-        if not self.extent_free_spans:
+        away. Still live beside the region contract
+        (`test_unsold_item_counts_no_lines`)."""
+        if not self.span_scope.extent_free:
             return []
+        bound_partially = {
+            span
+            for span in self.span_scope.extent_free
+            if any(partial_binding_sources(source, span) for source in sources)
+        }
+        # what the span's region domain carries is held here for those same
+        # members only (the names of customers WITH an order)
         return [
             concept
             for concept in outputs
-            if concept.address in self.extent_free_spans
-            and any(
-                partial_binding_sources(source, concept.address) for source in sources
-            )
+            if concept.address in bound_partially
+            or self.span_scope.extent_free_carried.get(concept.address, frozenset())
+            & bound_partially
         ]
 
     def copy(self) -> "MergeNode":
-        return type(self)(
+        node = type(self)(
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
@@ -860,5 +907,7 @@ class MergeNode(StrategyNode):
             ordering=self.ordering,
             preserve_parents=self.preserve_parents,
             host_stitch=self.host_stitch,
-            extent_free_spans=self.extent_free_spans,
+            span_scope=self.span_scope,
         )
+        node.region_spans = self.region_spans
+        return node

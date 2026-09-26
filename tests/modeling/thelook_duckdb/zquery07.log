@@ -1,5 +1,5 @@
 query_id = "07"
-gen_length = 623
+gen_length = 581
 preql_size = 103
 comp_size = 181
 generated_sql = """
@@ -7,7 +7,7 @@ generated_sql = """
 WITH 
 wakeful as (
 SELECT
-    coalesce(\"order_items\".\"product_id\",\"product_products\".\"id\") as \"product_id\",
+    \"product_products\".\"id\" as \"product_id\",
     sum(\"order_items\".\"sale_price\") as \"revenue\"
 FROM
     \"products\" as \"product_products\"
@@ -19,7 +19,7 @@ SELECT
     \"product_products\".\"brand\" as \"product_brand\",
     \"wakeful\".\"revenue\" as \"revenue\"
 FROM
-    \"wakeful\"
-    LEFT OUTER JOIN \"products\" as \"product_products\" on \"wakeful\".\"product_id\" = \"product_products\".\"id\"
+    \"products\" as \"product_products\"
+    INNER JOIN \"wakeful\" on \"product_products\".\"id\" = \"wakeful\".\"product_id\"
 ORDER BY 
     \"wakeful\".\"product_id\" asc"""

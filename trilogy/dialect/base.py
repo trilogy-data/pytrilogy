@@ -1165,33 +1165,45 @@ class BaseDialect:
                 siblings.append(other)
         return siblings
 
-    def _filter_guaranteed_by_sole_parent(
+    def _filter_guaranteed_by_parents(
         self, lineage: BuildFilterItem, cte: CTE | UnionCTE
     ) -> bool:
-        """A filter-item's per-row CASE is redundant when the CTE's SOLE parent
-        already guarantees the filter's predicate, e.g. when predicate pushdown
-        places the filter's aggregate condition in a group parent's HAVING. A
-        single-parent (no join) projection cannot NULL-pad rows, so every
-        surviving row satisfies the where; rendering the content bare also lets
-        CollapseSingleParent fold this passthrough into the group parent.
+        """A filter-item's per-row CASE is redundant when the parents already
+        guarantee the filter's predicate, e.g. when predicate pushdown places
+        the filter's aggregate condition in a group parent's HAVING, or the
+        filter's own predicate in every scan it reads. Rendering the content
+        bare also lets CollapseSingleParent fold a passthrough into its parent.
 
-        Gated to a single plain-CTE parent whose condition implies the where and
-        which supplies every column the filter references, so no row that fails
-        the predicate can reach this projection."""
-        if len(cte.parent_ctes) != 1:
+        Gated to plain-CTE parents whose condition implies the where, supplying
+        every column the filter references between them, under no join that
+        could NULL-pad a row (INNER only): then every row of this CTE is built
+        from parent rows that each satisfy the predicate."""
+        if not cte.parent_ctes:
             return False
-        parent = cte.parent_ctes[0]
-        if not isinstance(parent, CTE) or parent.condition is None:
+        if isinstance(cte, CTE) and any(
+            not isinstance(join, Join) or join.jointype != JoinType.INNER
+            for join in cte.joins
+        ):
             return False
         where_cond = lineage.where.conditional
-        if not (
-            where_cond == parent.condition
-            or condition_implies(parent.condition, where_cond)
-        ):
+        guaranteeing = {
+            parent.name
+            for parent in cte.parent_ctes
+            if isinstance(parent, CTE)
+            and parent.condition is not None
+            and (
+                where_cond == parent.condition
+                or condition_implies(parent.condition, where_cond)
+            )
+        }
+        if not guaranteeing:
             return False
         refs = {a.address for a in lineage.content_concept_arguments}
         refs |= {a.address for a in lineage.where.row_arguments}
-        return all(parent.name in (cte.source_map.get(r) or []) for r in refs)
+        return all(
+            (sources := cte.source_map.get(r)) and set(sources) <= guaranteeing
+            for r in refs
+        )
 
     def safe_get_cte_value(
         self, cte: CTE | UnionCTE, c: BuildConcept, raise_invalid: bool = False
@@ -1387,8 +1399,8 @@ class BaseDialect:
                     )
             elif isinstance(c.lineage, FILTER_ITEMS):
                 # The per-row CASE WHEN is redundant when the CTE's WHERE implies
-                # the filter's predicate, or when its sole parent guarantees it
-                # (_filter_guaranteed_by_sole_parent): emit just the content.
+                # the filter's predicate, or when its parents guarantee it
+                # (_filter_guaranteed_by_parents): emit just the content.
                 where_cond = c.lineage.where.conditional
                 if (
                     cte.condition is not None
@@ -1396,7 +1408,7 @@ class BaseDialect:
                         cte.condition == where_cond
                         or condition_implies(cte.condition, where_cond)
                     )
-                ) or self._filter_guaranteed_by_sole_parent(c.lineage, cte):
+                ) or self._filter_guaranteed_by_parents(c.lineage, cte):
                     rval = self.render_expr(
                         c.lineage.content, cte=cte, raise_invalid=raise_invalid
                     )
@@ -1528,23 +1540,34 @@ class BaseDialect:
                     rval = INVALID_REFERENCE_STRING(
                         f"Missing source reference to {c.address}"
                     )
-        # A pre-aggregated COUNT sourced from a sparse materialization leaks
-        # NULL through a LEFT/FULL JOIN when a dim row has no matching fact
-        # row, while the granular `count(...)` path returns 0 there. Coalesce
-        # to keep the two paths result-equivalent. SUM is left alone: SUM over
-        # an empty group is NULL in both paths.
+        # A COUNT padded onto a region's rows by this merge (`cte.zero_filled`)
+        # counts an empty group: 0. Otherwise, a pre-aggregated COUNT sourced
+        # from a sparse materialization leaks NULL through a LEFT/FULL JOIN
+        # when a dim row has no matching fact row, while the granular
+        # `count(...)` path returns 0 there. Coalesce to keep the two paths
+        # result-equivalent. SUM is left alone: SUM over an empty group is NULL
+        # in both paths.
+        # The guess is still live where no region domain says it (gcat
+        # `test_case_key`: a vehicle with no launch counts 0 through the
+        # LEFT JOIN, `coalesce(launch_count, 0)`).
         if (
             isinstance(c.lineage, BuildAggregateWrapper)
             and c.lineage.function.operator == FunctionType.COUNT
-            and not cte.group_to_grain
             and isinstance(cte, CTE)
-            and any(n.address == c.address for n in cte.nullable_concepts)
-            # A multiselect-align merge CTE is the exception: a NULL count there
-            # means "this entity is absent from this arm", not "0 facts", and
-            # must stay NULL so a cross-arm comparison excludes single-arm rows.
-            and not any(
-                isinstance(o.lineage, BuildMultiSelectLineage)
-                for o in cte.output_columns
+            and (
+                c.address in cte.zero_filled
+                or (
+                    not cte.group_to_grain
+                    and any(n.address == c.address for n in cte.nullable_concepts)
+                    # A multiselect-align merge CTE is the exception: a NULL
+                    # count there means "this entity is absent from this arm",
+                    # not "0 facts", and must stay NULL so a cross-arm
+                    # comparison excludes single-arm rows.
+                    and not any(
+                        isinstance(o.lineage, BuildMultiSelectLineage)
+                        for o in cte.output_columns
+                    )
+                )
             )
         ):
             rval = self.FUNCTION_MAP[FunctionType.COALESCE]([rval, "0"], [])

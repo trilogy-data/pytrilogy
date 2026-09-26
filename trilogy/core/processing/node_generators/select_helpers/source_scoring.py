@@ -134,19 +134,24 @@ def _graph_partial_concepts(
 
 
 def get_graph_partial_nodes(
-    g: ReferenceGraph, conditions: BuildWhereClause | None
+    g: ReferenceGraph,
+    conditions: BuildWhereClause | None,
+    excluding: frozenset[str] = frozenset(),
 ) -> dict[str, list[str]]:
+    """`excluding`: addresses whose `~` binding this request treats as full."""
     return {
-        node: [concept_to_node(c) for c in concepts]
+        node: [concept_to_node(c) for c in concepts if c.address not in excluding]
         for node, concepts in _graph_partial_concepts(g, conditions).items()
     }
 
 
 def get_graph_partial_canonical(
-    g: ReferenceGraph, conditions: BuildWhereClause | None
+    g: ReferenceGraph,
+    conditions: BuildWhereClause | None,
+    excluding: frozenset[str] = frozenset(),
 ) -> dict[str, set[str]]:
     return {
-        node: {c.canonical_address for c in concepts}
+        node: {c.canonical_address for c in concepts if c.address not in excluding}
         for node, concepts in _graph_partial_concepts(g, conditions).items()
     }
 
@@ -358,8 +363,10 @@ def resolve_subgraphs(
     criteria: SearchCriteria,
     conditions: BuildWhereClause | None,
     depth: int = 0,
+    excluding: frozenset[str] = frozenset(),
 ) -> dict[str, list[str]]:
-    """Resolve competing datasource subgraphs to the preferred source set."""
+    """Resolve competing datasource subgraphs to the preferred source set.
+    `excluding`: `~` keys this request reads as full bindings."""
     datasources = sorted(n for n in g.nodes if n.startswith("ds~"))
     canonical_relevant = {c.canonical_address for c in relevant}
     canonical_map = {c.canonical_address: c.address for c in relevant}
@@ -373,7 +380,7 @@ def resolve_subgraphs(
         filtered_nodes = {concept_to_node(c) for c in filtered}
         subgraphs[ds] = [n for n in nodes if n not in concepts or n in filtered_nodes]
 
-    partial_canonical = get_graph_partial_canonical(g, conditions)
+    partial_canonical = get_graph_partial_canonical(g, conditions, excluding)
     exact_map = get_graph_exact_match(
         g, criteria, conditions, allow_filter_application=False
     )

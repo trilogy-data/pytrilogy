@@ -41,7 +41,10 @@ from .concept_graph import (
     computed_origin_relation_members,
     condition_stage_of_label,
 )
-from .condition_placement import PlacementReason, plan_condition_placements
+from .condition_placement import (
+    PlacementReason,
+    plan_condition_placements,
+)
 from .constants import (
     DEPENDENCY_EDGE_KINDS,
     FINAL_NODE_ID,
@@ -63,9 +66,7 @@ from .edges import (
 )
 from .extent_ownership import (
     elect_extent_owners,
-    licensed_extension_spans,
     span_members,
-    spans_demanded_by,
 )
 from .functional_dependency import build_fd_determines, concept_attr_fd_determines
 from .group_behaviors import Behavior, behavior_for
@@ -78,8 +79,17 @@ from .models import (
     GroupBucket,
     GroupInputContract,
     InputChannel,
+    Keyspace,
 )
-from .projection import output_rowset_base_keys
+from .projection import (
+    output_rowset_base_keys,
+)
+from .region_domains import (
+    add_region_domain_buckets,
+    detach_final_span_domain_producers,
+    feed_region_domains_to_present_scalars,
+    split_carried_only_row_streams,
+)
 
 # depth_label for the secondary root bucket that feeds d1 (in-WHERE) aggregate
 # calculations. Distinct from ``root`` so the bucket gets its own group id.
@@ -119,16 +129,6 @@ def _fd_on_key(
     `key`: it is a key, has no grain (constant), or its declared grain is a
     subset of the key."""
     return concept_attr_fd_determines(concept_attrs, key, address)
-
-
-def _group_id_for(bucket: GroupBucket) -> str:
-    grain_key = "|".join(sorted(bucket.grain_components)) or "∅"
-    label_prefix = f"[{bucket.label}]" if bucket.label else ""
-    suffix = f":{bucket.discriminator}" if bucket.discriminator else ""
-    return (
-        f"grp:{label_prefix}{bucket.derivation.value}:{bucket.depth_label.value}:"
-        f"{grain_key}{suffix}"
-    )
 
 
 def _d1_calc_subgraph(
@@ -412,7 +412,7 @@ def _add_d1_root_buckets(
             bucket.primary_members.append(address)
             bucket.primary_node_ids.append(node)
             bucket.member_depths[address] = concept_attrs[node].depth_label
-        gid = _group_id_for(bucket)
+        gid = bucket.group_id
         buckets[gid] = bucket
         gids[stage] = gid
     return gids
@@ -536,7 +536,7 @@ def _assign_groups(
             ensure_assigned,
             output_addresses,
         ):
-            group_id = _group_id_for(bucket)
+            group_id = bucket.group_id
             buckets[group_id] = bucket
             for node_id_member in bucket.primary_node_ids:
                 primary_group[node_id_member] = group_id
@@ -880,7 +880,7 @@ def _preaggregate_filter_allows_dimension_member(
 
 def _keep_extension_families_together(
     assignment: dict[str, frozenset[str]],
-    output_addresses: frozenset[str],
+    demanded_spans: frozenset[str],
     environment: BuildEnvironment,
 ) -> None:
     """Merge the peel clusters that carry a demanded ``~`` extension span.
@@ -893,13 +893,13 @@ def _keep_extension_families_together(
     span, the shape the same select has without the aggregate.
 
     A cluster keyed by the span itself reads the dimension's own table and pads
-    nothing, so it stays apart."""
-    spans = spans_demanded_by(
-        licensed_extension_spans(environment), output_addresses, environment
-    )
+    nothing, so it stays apart. Not dead under the region contract: the merged
+    cluster is the bucket `add_region_domain_buckets` finds a region's solid
+    source in; split apart, the user family's cluster mixes nothing and the
+    region gets no domain (`test_field_report_select`)."""
     carrying = {
         assignment[address]
-        for span in spans
+        for span in demanded_spans
         for address in span_members(span, assignment, environment)
         if span not in assignment[address]
     }
@@ -920,6 +920,7 @@ def _split_root_dimension_clusters(
     pre_aggregate_filter_args: frozenset[str],
     post_aggregate_args: frozenset[str],
     finer_filter_grains: frozenset[frozenset[str]],
+    demanded_spans: frozenset[str],
 ) -> None:
     """Peel single-entity FD dimension clusters out of a keyed ROOT bucket into
     their own ``grp:root:root:dim:<entity_key>`` ROOT buckets.
@@ -1068,7 +1069,7 @@ def _split_root_dimension_clusters(
                 assignment[addr] = composite
         if not assignment:
             continue
-        _keep_extension_families_together(assignment, output_addresses, environment)
+        _keep_extension_families_together(assignment, demanded_spans, environment)
         clusters: dict[frozenset[str], list[int]] = defaultdict(list)
         for idx, addr in enumerate(bucket.primary_members):
             if addr in assignment:
@@ -1080,8 +1081,9 @@ def _split_root_dimension_clusters(
                 derivation=Derivation.ROOT,
                 grain_components=frozenset(),
                 label=bucket.label,
+                discriminator=f"dim:{'|'.join(sorted(key))}",
+                dim_keys=frozenset(key),
             )
-            dim_bucket.discriminator = f"dim:{'|'.join(sorted(key))}"
             for idx in indices:
                 addr = bucket.primary_members[idx]
                 node_id = bucket.primary_node_ids[idx]
@@ -1102,7 +1104,7 @@ def _split_root_dimension_clusters(
                     ):
                         dim_bucket.secondary_members.append(key_address)
                         dim_bucket.member_depths[key_address] = DepthLabel.ROOT
-            dim_gid = _group_id_for(dim_bucket)
+            dim_gid = dim_bucket.group_id
             buckets[dim_gid] = dim_bucket
             for idx in indices:
                 primary_group[bucket.primary_node_ids[idx]] = dim_gid
@@ -1218,6 +1220,8 @@ def _materialize_group_graph(
             aggregate_input_grain=bucket.aggregate_input_grain,
             aggregate_distinct_addrs=frozenset(bucket.aggregate_distinct_addrs),
             grouping_mode=bucket.grouping_mode,
+            extent_spans=bucket.extent_spans,
+            dim_keys=bucket.dim_keys,
         )
         group_graph.add_node(gid)
 
@@ -1329,6 +1333,7 @@ def _inject_conditions(
     statement_relation_addresses: frozenset[str],
     environment: BuildEnvironment,
     staged_conditions: list[BuildWhereClause] | None = None,
+    keyspace: Keyspace | None = None,
 ) -> set[str]:
     """Apply the typed condition-placement plan to the mutable group attrs."""
     condition_group_ids: set[str] = set()
@@ -1343,6 +1348,7 @@ def _inject_conditions(
         concept_attrs,
         statement_relation_addresses,
         staged_conditions,
+        keyspace,
     )
     for placement in placements:
         for gid in placement.group_ids:
@@ -1361,6 +1367,7 @@ def _inject_conditions(
             if placement.reason is PlacementReason.STAGE_PRECONDITION:
                 continue
             condition_group_ids.add(gid)
+    detach_final_span_domain_producers(group_graph, group_edges, buckets, placements)
     return condition_group_ids
 
 
@@ -1799,6 +1806,9 @@ def _final_merge_grain(
         # mandatory-concept pass below.
         if attrs[gid].derivation != Derivation.ROWSET:
             grain |= set(attrs[gid].grain_components)
+        # a region domain's rows are keyed by its spans, and every solid
+        # contributor joins them there
+        grain |= set(attrs[gid].extent_spans)
     for concept in mandatory_list:
         if concept.derivation in GROUPING_DERIVATIONS and concept.grain:
             grain |= set(concept.grain.components)
@@ -1902,6 +1912,8 @@ def _group_final_grain_contribution(
         return frozenset()
     if attrs[gid].derivation in GROUPING_DERIVATIONS:
         return attrs[gid].grain_components
+    if attrs[gid].extent_spans:
+        return attrs[gid].extent_spans
     if attrs[gid].derivation == Derivation.ROWSET:
         return merge_grain
     # A BASIC group projecting a rowset rename has a namespaced grain
@@ -1955,6 +1967,11 @@ def _refresh_final_contract(
         preserve_keys = (
             merge_grain if attrs[gid].derivation == Derivation.ROOT else frozenset()
         )
+        # A region domain pairs on its spans alone: widening it to the merge
+        # grain re-sources it through the fact, the row stream it exists to
+        # stay off.
+        if attrs[gid].extent_spans:
+            preserve_keys = attrs[gid].extent_spans
         contributors.append(
             FinalContributorContract(
                 group_id=gid,
@@ -2185,6 +2202,11 @@ def _refresh_input_contracts(
                     rowset_base_keys |= _unwrapped_rowset_grain(
                         attrs[pred].grain_components, environment, rollup_padded
                     )
+        # a region domain among the parents joins the rest on its spans: the
+        # axis every side keeps, whatever the consumer's grain
+        domain_spans: frozenset[str] = frozenset().union(
+            *(attrs[pred].extent_spans for pred in row_parents)
+        )
         contracts: list[GroupInputContract] = []
         for pred in sorted(group_graph.predecessors(gid)):
             if pred == FINAL_NODE_ID or pred not in attrs:
@@ -2203,6 +2225,7 @@ def _refresh_input_contracts(
                         | bridge_keys
                         | grouping_parent_grain
                         | rowset_base_keys
+                        | domain_spans
                     ),
                     channel=(
                         InputChannel.EXISTENCE
@@ -2686,6 +2709,19 @@ def _compute_concept_sets(
     pseudonym_mates = {k: frozenset(v) for k, v in mate_accumulator.items()}
 
     io = GroupIOPlan.for_groups(group_graph)
+    # what a region domain's rows join back on, at FINAL
+    region_join_keys: frozenset[str] = frozenset().union(
+        *(a.extent_spans for a in attrs.values())
+    )
+    # what a region domain carries: a solid ROOT beside it does not emit those
+    # to a consumer that reads the domain (FINAL, an aggregate over the
+    # region), or the scan joins the dimension for a column it never uses
+    domain_gids = {gid for gid, a in attrs.items() if a.extent_spans}
+    domain_carried: dict[str, set[str]] = {}
+    for gid in domain_gids:
+        domain_carried.setdefault(attrs[gid].label, set()).update(
+            m for m in attrs[gid].primary_members if m not in region_join_keys
+        )
     # Non-ROWSET members of authored statement relations that NO group hosts:
     # the axis vocabulary a fresh scan may advertise below. A member some group
     # already carries as a primary needs no re-sourcing, and advertising it
@@ -2728,8 +2764,13 @@ def _compute_concept_sets(
             # scalar), the scan must be able to supply it or the consumer's
             # merge goes keyless. Grouping consumers are excluded; they source
             # their grain keys through their own fact parents.
+            # a dim peel's keys identify its rows: the axis it joins back on
+            cap |= attrs[gid].dim_keys
             for addr in attrs[gid].secondary_members:
                 if addr in cap:
+                    continue
+                if addr in region_join_keys:
+                    cap.add(addr)
                     continue
                 if any(
                     succ != FINAL_NODE_ID
@@ -2771,6 +2812,10 @@ def _compute_concept_sets(
             (fact.primary | fact.grain) & scoped_relation_members
         ):
             cap |= unwrapped_grain
+        # a boundary split for a region carries the span its domain joins
+        # back on, a handle of its own the statement never named
+        if fact.derivation == Derivation.ROWSET:
+            cap |= region_join_keys & set(attrs[gid].secondary_members)
         for pgid in group_graph.predecessors(gid):
             if pgid == FINAL_NODE_ID:
                 continue
@@ -2824,6 +2869,10 @@ def _compute_concept_sets(
         outs |= _hosted_condition_outputs(
             attrs[gid].condition_atoms, fact.derivation, cap_gid
         )
+        # a group that reads no domain holds the solid rows only
+        solid_root = bool(domain_gids) and not domain_gids & (
+            {gid} | nx.ancestors(group_graph, gid)
+        )
         for succ in group_graph.successors(gid):
             if succ == FINAL_NODE_ID:
                 mand = cap_gid & mandatory_alias_addresses
@@ -2832,9 +2881,16 @@ def _compute_concept_sets(
                 for desc in nx.descendants(lineage_sub, gid):
                     if facts[desc].derivation in GROUPING_DERIVATIONS:
                         mand -= io.outputs[desc]
+                if solid_root:
+                    mand -= domain_carried.get(attrs[gid].label, set())
                 outs |= mand
                 final_args_here = cap_gid & final_condition_args
                 outs |= final_args_here
+                outs |= cap_gid & region_join_keys
+                # a dim peel beside a region domain joins the region's rows
+                # back on its keys (the fact's FK cluster is the bridge)
+                if attrs[gid].dim_keys and region_join_keys:
+                    outs |= cap_gid & attrs[gid].dim_keys
                 # A FINAL-deferred presence-probe filter joins its producer
                 # back on the probe's KEY (`ord_cust` ~ the anchor's key via
                 # the scoped-join pseudonym); expose the key alongside the
@@ -2935,6 +2991,10 @@ def _compute_concept_sets(
             if edge_kind(group_edges, gid, succ) == EdgeKind.EXISTENCE:
                 continue
             demanded = io.inputs.get(succ, set()) & cap_gid
+            if solid_root and any(
+                pred in domain_gids for pred in group_graph.predecessors(succ)
+            ):
+                demanded -= domain_carried.get(attrs[gid].label, set())
             if fact.derivation in GROUPING_DERIVATIONS:
                 sibling_providable: set[str] = set()
                 for sib in group_graph.predecessors(succ):
@@ -3039,6 +3099,7 @@ def build_group_graph(
     *,
     environment: BuildEnvironment,
     staged_conditions: list[BuildWhereClause] | None = None,
+    keyspace: Keyspace | None = None,
 ) -> tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs]]:
     """Collapse compatible concepts into groups and append a single FINAL sink.
 
@@ -3074,6 +3135,8 @@ def build_group_graph(
     projected_scalar_root_args = _projected_scalar_root_args(
         mandatory_list, _grouping_keys(buckets)
     )
+    keyspace = keyspace or Keyspace()
+    demanded_spans = keyspace.output_demanded_spans
     _split_root_dimension_clusters(
         buckets,
         primary_group,
@@ -3084,7 +3147,17 @@ def build_group_graph(
         _post_aggregate_filter_args(conditions)
         | _post_aggregate_basic_args(mandatory_list),
         _finer_filter_grains(conditions),
+        demanded_spans,
     )
+    add_region_domain_buckets(
+        buckets,
+        concept_attrs,
+        environment,
+        keyspace,
+        condition_arg_addresses,
+        mandatory_list,
+    )
+    split_carried_only_row_streams(buckets, primary_group, keyspace, environment)
     d1_calc_roots_by_stage, d1_subgraph = _d1_calc_subgraph(
         concept_graph, concept_edges, concept_attrs, environment
     )
@@ -3109,6 +3182,9 @@ def build_group_graph(
         d1_root_gids=d1_root_gids,
         d1_calc_roots_by_stage=d1_calc_roots_by_stage,
         d1_subgraph=d1_subgraph,
+    )
+    feed_region_domains_to_present_scalars(
+        group_graph, group_edges, attrs, keyspace, environment
     )
     # FINAL must exist before injection so a cross-arm post-merge filter can
     # land on it (no pre-final group can host one); `_color_phases` then colors
@@ -3162,6 +3238,7 @@ def build_group_graph(
         _statement_relation_addresses(environment),
         environment,
         staged_conditions,
+        keyspace,
     )
     condition_group_ids |= _propagate_raw_filters_to_d1_roots(
         group_graph,
@@ -3213,7 +3290,7 @@ def build_group_graph(
         relation_edge_members=relation_edge_members,
     )
     attrs[FINAL_NODE_ID].extent_ownership = elect_extent_owners(
-        group_graph, attrs, environment
+        group_graph, attrs, environment, keyspace
     )
     return group_graph, group_edges, attrs
 
@@ -3468,11 +3545,13 @@ def _synthetic_dimension_regraft_parent(
             grain_components=frozenset(),
             primary_members=tuple(inputs),
             members=tuple(inputs),
+            dim_keys=frozenset(key),
         )
         bucket = GroupBucket(
             depth_label=DepthLabel.ROOT,
             derivation=Derivation.ROOT,
             grain_components=frozenset(),
+            dim_keys=frozenset(key),
         )
         bucket.primary_members = list(inputs)
         buckets[root_gid] = bucket
@@ -3493,7 +3572,7 @@ def _covering_dimension_root(
         bucket = buckets.get(root_id)
         if (
             bucket is not None
-            and bucket.discriminator.startswith("dim:")
+            and bucket.dim_keys
             and required <= set(attrs[root_id].members)
         ):
             return root_id
@@ -3648,6 +3727,14 @@ def _regraft_group_sources(
                 group_graph, attrs, gid, provider_gid
             ):
                 parent_gid = provider_gid
+                # Placed at the provider's grain, the projection has no use for
+                # a finer relation the provider was built from. Joined back, it
+                # pairs the provider's groups on a non-key (a region domain on
+                # a nullable description) and drops or multiplies them.
+                provider_ancestors = nx.ancestors(group_graph, provider_gid)
+                for pred in _lineage_predecessors(group_graph, group_edges, gid):
+                    if pred in provider_ancestors:
+                        remove_edge(group_graph, group_edges, pred, gid)
         if parent_gid is None:
             parent_gid = _regraft_candidate(
                 group_graph, group_edges, attrs, gid, allow_partial=False

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING
@@ -181,6 +181,7 @@ def _padded_addresses(
     leaf_addresses: Callable[[BuildDatasource], set[str]],
     join_extends: Callable[[BaseJoin], bool],
     memo: dict[int, set[str]],
+    chain: bool = False,
 ) -> set[str]:
     """Addresses this source emits NULL for because an outer join `join_extends`
     licenses padded them, or because a leaf declared them nullable.
@@ -198,7 +199,9 @@ def _padded_addresses(
         out.update(leaf_addresses(datasource))
         return out
     child_padded = {
-        child.identifier: _padded_addresses(child, leaf_addresses, join_extends, memo)
+        child.identifier: _padded_addresses(
+            child, leaf_addresses, join_extends, memo, chain
+        )
         for child in datasource.datasources
     }
     base_joins = [j for j in datasource.joins if isinstance(j, BaseJoin)]
@@ -207,7 +210,15 @@ def _padded_addresses(
     accumulated = {i for i in child_padded if i not in right_ids}
     for join in base_joins:
         right_id = join.right_datasource.identifier
-        if join_extends(join):
+        # a lookup keyed on a column already padded here pads for the same
+        # rows (a guest order's customer, then that customer's address)
+        keyed_on_padding = chain and any(
+            pair.existing_datasource.identifier in extended
+            or pair.left.address
+            in child_padded.get(pair.existing_datasource.identifier, set())
+            for pair in join.concept_pairs or []
+        )
+        if join_extends(join) or keyed_on_padding:
             if join.join_type in (JoinType.LEFT_OUTER, JoinType.FULL):
                 extended.add(right_id)
             if join.join_type in (JoinType.RIGHT_OUTER, JoinType.FULL):
@@ -248,6 +259,7 @@ def extent_null_addresses(
         _leaf_null_addresses,
         _value_null_driven,
         _memo if _memo is not None else {},
+        chain=True,
     )
 
 
@@ -338,16 +350,6 @@ def _span_padded_addresses(
     return out
 
 
-def licensed_extension_spans(environment: BuildEnvironment) -> frozenset[str]:
-    """Addresses some datasource binds with a column-level ``~``."""
-    return frozenset(
-        address
-        for datasource in environment.datasources.values()
-        if isinstance(datasource, BuildDatasource)
-        for address in datasource.column_level_partial_addresses
-    )
-
-
 def _pads_for_different_members(
     left: str,
     right: str,
@@ -404,6 +406,33 @@ def _is_nullable_grain_aligned_merge(
     return not (left_grain <= solid or right_grain <= solid)
 
 
+def _unpaired_value_nulls(
+    keys: set[str],
+    held: set[str],
+    feeder: str,
+    holder: str,
+    value_nullables: dict[str, list[str]],
+    extent_nullables: dict[str, list[str]],
+) -> bool:
+    """A NULL the feeder carries on a join key with nothing to pair it. On the
+    region's own key an extent NULL always vetoes (a guest order names no
+    member, and no holder row is that absence); a value NULL there, and on
+    any other key, vetoes only when the holder carries no value NULL of its
+    own, since two value NULLs pair null-safely (``get_modifiers``): a region
+    spelled by a nullable stand-in (`item_desc string?`) has a member whose
+    key IS NULL, on the domain and on the solid rows alike."""
+    for key in keys:
+        feeder_value = key in value_nullables.get(feeder, [])
+        feeder_extent = key in extent_nullables.get(feeder, [])
+        if not (feeder_value or feeder_extent):
+            continue
+        if key in held and feeder_extent:
+            return True
+        if not (feeder_value and key in value_nullables.get(holder, [])):
+            return True
+    return False
+
+
 def get_join_type(
     left: str,
     right: str,
@@ -421,6 +450,8 @@ def get_join_type(
     extent_free_keys: set[str] | None = None,
     span_binding_sources: dict[str, dict[str, frozenset[str]]] | None = None,
     span_padding: dict[str, dict[str, frozenset[str]]] | None = None,
+    region_holders: dict[str, set[str]] | None = None,
+    complete_spans: dict[str, set[str]] | None = None,
 ) -> JoinType:
     # Rendering is row-preserving by default: a relation declares DOMAIN
     # knowledge, never row intent, and no join silently drops a row
@@ -436,6 +467,33 @@ def get_join_type(
     # never fire.
     if full_join_keys and all_connecting_keys & full_join_keys:
         return JoinType.FULL
+    # The region contract: a side holding a region's rows, joined on that
+    # region's span, is preserved; the other side is too only where its key
+    # carries a value NULL (a guest order), else its unmatched rows are
+    # members nobody referenced. Two holders of the same region pair plainly.
+    if region_holders and not (authored_keys and all_connecting_keys & authored_keys):
+        left_holds = bool(region_holders.get(left, set()) & all_connecting_keys)
+        right_holds = bool(region_holders.get(right, set()) & all_connecting_keys)
+        if left_holds and right_holds:
+            # two holders of one region (its domain and a reader of it) pair
+            # on what they hold; neither out-hosts the other by its bindings
+            host_nodes = None
+        if left_holds != right_holds:
+            holder, feeder = (left, right) if left_holds else (right, left)
+            feeder_values = _unpaired_value_nulls(
+                all_connecting_keys,
+                region_holders[holder],
+                feeder,
+                holder,
+                value_nullables or {},
+                extent_nullables or {},
+            )
+            # with a second family in the merge, the rows already joined
+            # carry its extension rows (NULL on this key): only FULL keeps them
+            families: set[str] = set().union(*region_holders.values())
+            if feeder_values or len(families) > 1:
+                return JoinType.FULL
+            return JoinType.LEFT_OUTER if left_holds else JoinType.RIGHT_OUTER
     left_is_partial = _has_any(all_connecting_keys, left, partials)
     right_is_partial = _has_any(all_connecting_keys, right, partials)
     left_is_nullable = _has_any(all_connecting_keys, left, nullables)
@@ -456,6 +514,19 @@ def get_join_type(
             left_binds = bool(span_keys & set(partials.get(left, [])))
             right_binds = bool(span_keys & set(partials.get(right, [])))
             if left_binds != right_binds:
+                binder, other = (left, right) if left_binds else (right, left)
+                # The other side carrying the span's whole domain and the
+                # binder no NULL on it: every binder row has its partner, so
+                # anchoring preserves nothing. Typed INNER here rather than
+                # left to the narrowing pass, because the anchoring's stamp
+                # (the domain's columns nullable on this stream) would
+                # otherwise reach every merge above as a value NULL.
+                if (
+                    complete_spans is not None
+                    and all_connecting_keys <= complete_spans.get(other, set())
+                    and not _has_any(all_connecting_keys, binder, nullables)
+                ):
+                    return JoinType.INNER
                 return JoinType.LEFT_OUTER if left_binds else JoinType.RIGHT_OUTER
             # Both sides bind it. Two projections of ONE binding cover the same
             # subset, so the span carries no row intent between them and the
@@ -497,9 +568,16 @@ def get_join_type(
             left_is_host = left in host_nodes
             right_is_host = right in host_nodes
             if left_is_host != right_is_host:
-                feeder = right if left_is_host else left
-                if value_nullables is None or not _has_any(
-                    all_connecting_keys, feeder, value_nullables
+                host, feeder = (left, right) if left_is_host else (right, left)
+                # a key null-extended off a value-null one below (a guest
+                # order's address) is a value null here too
+                if not _unpaired_value_nulls(
+                    all_connecting_keys,
+                    set(),
+                    feeder,
+                    host,
+                    value_nullables or {},
+                    extent_nullables or {},
                 ):
                     return JoinType.LEFT_OUTER if left_is_host else JoinType.RIGHT_OUTER
         partial_keys = {
@@ -563,6 +641,13 @@ def get_join_type(
             right_is_host = right in host_nodes
             if left_is_host != right_is_host:
                 return JoinType.LEFT_OUTER if left_is_host else JoinType.RIGHT_OUTER
+        # A value NULL on one side (a guest order's address, grouped) names a
+        # real row; the other side's padding names nothing. Keep the row.
+        if extent_nullables is not None:
+            left_values = _has_any(all_connecting_keys, left, extent_nullables)
+            right_values = _has_any(all_connecting_keys, right, extent_nullables)
+            if left_values != right_values:
+                return JoinType.LEFT_OUTER if left_values else JoinType.RIGHT_OUTER
         # Padding for different spans never pairs (`get_node_joins` drops the
         # null-safe equality), so INNER would shed both extension families.
         if _pads_for_different_members(left, right, all_connecting_keys, span_padding):
@@ -720,6 +805,8 @@ def resolve_join_order_v2(
     extent_free_keys: set[str] | None = None,
     span_binding_sources: dict[str, dict[str, frozenset[str]]] | None = None,
     span_padding: dict[str, dict[str, frozenset[str]]] | None = None,
+    region_holders: dict[str, set[str]] | None = None,
+    complete_spans: dict[str, set[str]] | None = None,
 ) -> list[JoinOrderOutput]:
     """Greedily order the datasources into a join tree.
 
@@ -874,6 +961,8 @@ def resolve_join_order_v2(
                     extent_free_keys,
                     span_binding_sources,
                     span_padding,
+                    region_holders,
+                    complete_spans,
                 )
                 join_types.add(join_type)
                 joinkeys[left_candidate] = all_connecting_keys
@@ -1119,7 +1208,37 @@ def partial_binding_sources(ds: DataSource, address: str) -> frozenset[str]:
     out: frozenset[str] = frozenset()
     for sub in ds.datasources:
         out |= partial_binding_sources(sub, address)
+    # a rowset boundary built not to extend a span (its reader holds the
+    # region) is partial on the handle with no leaf `~` behind it: the
+    # boundary is the binding, and two projections of it are one
+    if not out and any(c.address == address for c in ds.partial_concepts):
+        return frozenset({ds.identifier})
     return out
+
+
+def complete_key_domain(ds: DataSource, address: str) -> bool:
+    """Whether this source carries every value of ``address``: an unfiltered
+    scan binding it complete, or an unfiltered, unlimited read keeping every
+    row of one (a group over it, a join preserving it).
+
+    The plan-time half of the optimizer's subset proof
+    (``_pair_side_fully_matches``): a `~` binding joined to this side has a
+    partner for every row."""
+    if any(c.address == address for c in ds.partial_concepts):
+        return False
+    if isinstance(ds, BuildDatasource):
+        return (
+            ds.where is None
+            and ds.non_partial_for is None
+            and any(c.address == address for c in ds.output_concepts)
+        )
+    if ds.condition is not None or ds.limit is not None:
+        return False
+    preserved = preserved_sources(ds.datasources, ds.joins)
+    return any(
+        sub.identifier in preserved and complete_key_domain(sub, address)
+        for sub in ds.datasources
+    )
 
 
 def deep_extent_free_spans(ds: DataSource) -> frozenset[str]:
@@ -1133,6 +1252,17 @@ def deep_extent_free_spans(ds: DataSource) -> frozenset[str]:
     out = ds.extent_free_spans
     for sub in ds.datasources:
         out |= deep_extent_free_spans(sub)
+    return out
+
+
+def deep_extent_free_carried(ds: DataSource) -> frozenset[str]:
+    """What the region domains of `deep_extent_free_spans` carry: held in this
+    source's tree for the members its facts bound only."""
+    if not isinstance(ds, QueryDatasource):
+        return frozenset()
+    out = ds.extent_free_carried
+    for sub in ds.datasources:
+        out |= deep_extent_free_carried(sub)
     return out
 
 
@@ -1549,12 +1679,58 @@ def _padding_sources(
     return found
 
 
+def _span_spellings(
+    spans: frozenset[str],
+    environment: BuildEnvironment,
+    witnessed: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    """Every address a join pair can spell one of `spans` with -> one name for
+    it. A scoped join substitutes its canonical for the member bound `~`
+    (`subset join pr.item.sk = ss.item.sk` keys the join on `ss.item.sk`); a
+    rowset body pads under its own spelling of the handle the plan reads
+    (`witnessed`), and a spelling the plan itself uses keeps its own name."""
+    out = {span: span for span in spans}
+    for canonical, members in environment.scoped_join_key_groups.items():
+        group = {canonical, *members}
+        if group & spans:
+            out.update(dict.fromkeys(group, canonical))
+    for below, handle in (witnessed or {}).items():
+        out.setdefault(below, out.get(handle, handle))
+    return out
+
+
+def _span_padding_matrix(
+    ds_node_map: dict[str, DataSource],
+    nullables: dict[str, list[str]],
+    spellings: dict[str, str],
+    canon_node: Callable[[str], str],
+) -> dict[str, dict[str, frozenset[str]]]:
+    """Per side, per nullable key: the spans whose extension rows NULL it."""
+    span_memos: dict[str, dict[int, set[str]]] = {
+        spelling: {} for spelling in sorted(spellings)
+    }
+    out: dict[str, dict[str, frozenset[str]]] = {}
+    for ds_node, datasource in ds_node_map.items():
+        by_key: dict[str, set[str]] = defaultdict(set)
+        for spelling, span_memo in span_memos.items():
+            for address in _span_padded_addresses(datasource, spelling, span_memo):
+                by_key[canon_node(address)].add(spellings[spelling])
+        out[ds_node] = {
+            key: frozenset(found)
+            for key, found in by_key.items()
+            if key in nullables[ds_node]
+        }
+    return out
+
+
 def get_node_joins(
     datasources: list[DataSource],
     environment: BuildEnvironment,
     host_grain: set[str] | None = None,
     demanded_domains: set[str] | None = None,
     extent_free_spans: frozenset[str] = frozenset(),
+    in_play_spans: frozenset[str] = frozenset(),
+    witnessed: Mapping[str, str] | None = None,
 ) -> list[BaseJoin]:
     from trilogy.core import graph as nx
 
@@ -1663,21 +1839,25 @@ def get_node_joins(
         }
         for ds_node, datasource in ds_node_map.items()
     }
+    complete_spans = {
+        ds_node: {
+            canon_node(address)
+            for address in extent_free_spans
+            if complete_key_domain(datasource, address)
+        }
+        for ds_node, datasource in ds_node_map.items()
+    }
+    # Still live beside the region contract: without it a FULL join between
+    # two families' padding pairs NULL with NULL null-safely (gcat
+    # `test_full_join_issue_2`, `test_aliased_outputs_keep_the_fk_axis`).
     span_padding: dict[str, dict[str, frozenset[str]]] = {}
     if sum(1 for marks in nullables.values() if marks) > 1:
-        span_memos: dict[str, dict[int, set[str]]] = {
-            span: {} for span in sorted(licensed_extension_spans(environment))
-        }
-        for ds_node, datasource in ds_node_map.items():
-            by_key: dict[str, set[str]] = defaultdict(set)
-            for span, span_memo in span_memos.items():
-                for address in _span_padded_addresses(datasource, span, span_memo):
-                    by_key[canon_node(address)].add(span)
-            span_padding[ds_node] = {
-                key: frozenset(found)
-                for key, found in by_key.items()
-                if key in nullables[ds_node]
-            }
+        span_padding = _span_padding_matrix(
+            ds_node_map,
+            nullables,
+            _span_spellings(in_play_spans, environment, witnessed),
+            canon_node,
+        )
     host_nodes: set[str] | None = None
     if host_grain:
         host_canon = {canon_node(a) for a in host_grain}
@@ -1696,6 +1876,23 @@ def get_node_joins(
                 - {canon_node(c.address) for c in datasource.partial_concepts}
             )
         }
+    # A side holding a region's rows (its domain, or whatever read it) hosts
+    # that region's extension rows on the join keyed by its span, whatever
+    # columns it emits: the contract, not an inference from the bindings. Not
+    # on a span this merge is built not to extend (a rowset body whose reader
+    # holds the region): those rows are not this plan's to return.
+    region_holders = {
+        ds_node: held
+        for ds_node, datasource in ds_node_map.items()
+        if isinstance(datasource, QueryDatasource)
+        and (
+            held := {
+                canon_node(span)
+                for span in datasource.region_spans
+                if span not in extent_free_spans
+            }
+        )
+    }
     # Keys whose join typing is owned by an authored relation (query-scoped
     # subset/coalescing joins, declared anchors): host/dim direction inference
     # stands down on these.
@@ -1735,6 +1932,8 @@ def get_node_joins(
         extent_free_keys=extent_free_key_nodes,
         span_binding_sources=span_binding_sources,
         span_padding=span_padding,
+        region_holders=region_holders,
+        complete_spans=complete_spans,
     )
     _raise_if_keyless_row_bearing_join(
         joins,

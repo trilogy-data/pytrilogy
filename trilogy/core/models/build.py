@@ -2626,6 +2626,9 @@ def requires_concept_nesting(
     return None
 
 
+FOLDED_SCALARS = (str, int, float, Decimal, date, datetime, MagicConstants)
+
+
 def is_constant(x):
     return isinstance(
         x, (str, int, float, bool, MagicConstants, BuildParamaterizedConceptReference)
@@ -3550,6 +3553,18 @@ class Factory:
                     operator=FunctionType.CONSTANT,
                     arguments=[build_lineage],
                     output_data_type=DataType.BOOL,
+                    output_purpose=Purpose.CONSTANT,
+                )
+            elif isinstance(build_lineage, FOLDED_SCALARS):
+                # A constant CASE folds to its winning branch's bare value.
+                # TYPED_CONSTANT renders inline: a CONSTANT would bind as a
+                # `:param` the author concept (still a CASE) cannot hydrate.
+                folded_type = arg_to_datatype(build_lineage)
+                folded_args: list[Any] = [build_lineage, folded_type]
+                build_lineage = BuildFunction(
+                    operator=FunctionType.TYPED_CONSTANT,
+                    arguments=folded_args,
+                    output_data_type=folded_type,
                     output_purpose=Purpose.CONSTANT,
                 )
 

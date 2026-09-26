@@ -31,7 +31,9 @@ from trilogy.dialect.duckdb import DuckDBDialect
 
 # One fact split across two sources over partial keys, with aggregates that
 # have to be computed apart and merged back on the shared grain -- the shape
-# that makes a join key a COALESCE over several CTEs.
+# that makes a join key a COALESCE over several CTEs. Since the keyspace's
+# region contract the key family carries every item on both sides, so this
+# coalesced key is COMPLETE and renders as the bare equality BigQuery accepts.
 MERGED_KEY_MODEL = """
 key order_id int;
 key user_id int;
@@ -95,6 +97,39 @@ select
     total_quantity,
     total_margin,
 ;
+"""
+
+# A NULLABLE coalesced key: three facts related by a query-scoped `union join`
+# on derived keys (tests/join_matrix/test_multiway_matrix.py). The FULL joins
+# are the declaration's own, their key the coalesce over every member joined
+# so far, and null-safe since each side pads the others' exclusive members. (An
+# aggregate over a `~`-bound key meeting its region's domain no longer joins
+# FULL: the domain is preserved over the solid reader, typed at plan time.)
+NULLABLE_MERGED_KEY_MODEL = """
+key a_id int;
+property a_id.a_key int;
+property a_id.a_val int;
+datasource asrc (i: a_id, k: a_key, v: a_val) grain (a_id)
+query '''select 1 i, 1 k, 1 v union all select 2 i, 3 k, 8 v''';
+
+key b_id int;
+property b_id.b_key int;
+property b_id.b_val int;
+datasource bsrc (i: b_id, k: b_key, v: b_val) grain (b_id)
+query '''select 1 i, 1 k, 100 v union all select 2 i, 4 k, 800 v''';
+
+key c_id int;
+property c_id.c_key int;
+property c_id.c_val int;
+datasource csrc (i: c_id, k: c_key, v: c_val) grain (c_id)
+query '''select 1 i, 1 k, 7 v union all select 2 i, 5 k, 777 v''';
+
+auto ka <- a_key + 1;
+auto kb <- b_key + 1;
+auto kc <- c_key + 1;
+
+union join ka = kb = kc
+select ka, sum(a_val) as lv, sum(b_val) as rv, sum(c_val) as cv;
 """
 
 # `alias`.`column`, or a bare `column`. Anything else is an expression to
@@ -168,10 +203,22 @@ def test_null_wrapper_encodes_only_illegal_full_join_keys():
 
 
 def test_merged_full_join_key_compiles_for_bigquery():
-    sql = render(BigqueryDialect(), MERGED_KEY_MODEL)
+    sql = render(BigqueryDialect(), NULLABLE_MERGED_KEY_MODEL)
     # the model still produces the coalesced key this is all about
     assert re.search(r"FULL JOIN .*coalesce", sql), sql
     assert "TO_JSON_STRING(coalesce(" in sql, sql
+    assert bigquery_illegal_full_join_keys(sql) == []
+
+
+def test_complete_merged_key_keeps_the_bare_equality():
+    """The merged key is still emitted as a COALESCE over the row-preserving
+    sources; since the solid stream beside a region domain pairs on solid keys
+    it is no longer a FULL join's ON key here (the rule for one that is:
+    `test_null_wrapper_encodes_only_illegal_full_join_keys`)."""
+    sql = render(BigqueryDialect(), MERGED_KEY_MODEL)
+    assert re.search(r"coalesce\(.*item_id", sql), sql
+    assert "FULL JOIN" in sql, sql
+    assert "TO_JSON_STRING" not in sql, sql
     assert bigquery_illegal_full_join_keys(sql) == []
 
 
@@ -187,7 +234,7 @@ def test_field_keyed_full_joins_keep_the_cheaper_form():
 
 
 def test_other_dialects_are_untouched():
-    sql = render(DuckDBDialect(), MERGED_KEY_MODEL)
+    sql = render(DuckDBDialect(), NULLABLE_MERGED_KEY_MODEL)
     assert "TO_JSON_STRING" not in sql
     # duckdb spells the same key with the operator BigQuery lacks
     assert re.search(r"FULL JOIN .*coalesce.*is not distinct from", sql), sql

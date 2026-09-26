@@ -16,10 +16,6 @@ from trilogy.core.processing.concept_strategies_v4 import (
 )
 from trilogy.core.processing.nodes import History
 from trilogy.core.processing.v4_helper.constants import FINAL_NODE_ID
-from trilogy.core.processing.v4_helper.extent_ownership import (
-    demanded_extension_spans,
-    licensed_extension_spans,
-)
 from trilogy.parser import parse_text
 
 _SIMPLE = """
@@ -93,7 +89,10 @@ def _ownership(model: str, query: str):
     return info, info.group_attrs[FINAL_NODE_ID].extent_ownership
 
 
-def test_every_span_routes_to_one_owner():
+def test_every_span_is_owned_by_its_region_domain():
+    """Each demanded region has a domain group of its own, and that domain is
+    the span's owner; every other group is told not to manufacture either
+    family, each domain not to manufacture the other's."""
     info, ownership = _ownership(
         MODEL,
         "select order_id, item_id, user_id, product_id, total_revenue,"
@@ -101,12 +100,20 @@ def test_every_span_routes_to_one_owner():
     )
     assert ownership is not None
     assert ownership.spans == frozenset({"local.user_id", "local.product_id"})
-    assert len(set(ownership.owner_by_span.values())) == 1
-    owner = ownership.owner_by_span["local.user_id"]
-    assert "local.user_id" in info.group_attrs[owner].primary_members
+    domains = {
+        gid: attrs.extent_spans
+        for gid, attrs in info.group_attrs.items()
+        if attrs.extent_spans
+    }
+    assert len(domains) == 2
+    for span, owner in ownership.owner_by_span.items():
+        assert domains[owner] == frozenset({span})
+        assert span in info.group_attrs[owner].primary_members
+        assert ownership.suppressed_for(owner) == ownership.spans - {span}
 
-    # every other group is told not to manufacture either family
-    others = [gid for gid in info.group_attrs if gid not in (owner, FINAL_NODE_ID)]
+    others = [
+        gid for gid in info.group_attrs if gid not in domains and gid != FINAL_NODE_ID
+    ]
     assert others
     for gid in others:
         assert ownership.suppressed_for(gid) == ownership.spans
@@ -116,32 +123,26 @@ def test_dimension_attribute_demands_its_key_span():
     """A dimension attribute in the output demands its key's extension rows,
     even though the key itself is never projected. Reading demand off the merge
     grain instead would sweep in join axes nobody asks extension rows of."""
-    info, build_env = _plan(_SIMPLE, "select state, brand;")
-    licensed = licensed_extension_spans(build_env)
-    assert licensed == frozenset({"local.user_id", "local.product_id"})
-    assert demanded_extension_spans(info.group_attrs, licensed, build_env) == frozenset(
+    info, _ = _plan(_SIMPLE, "select state, brand;")
+    assert info.keyspace.output_demanded_spans == frozenset(
         {"local.user_id", "local.product_id"}
     )
 
 
 def test_span_nobody_projects_is_not_demanded():
-    info, build_env = _plan(_SIMPLE, "select order_id, total_qty;")
-    assert (
-        demanded_extension_spans(
-            info.group_attrs, licensed_extension_spans(build_env), build_env
-        )
-        == frozenset()
-    )
+    info, _ = _plan(_SIMPLE, "select order_id, total_qty;")
+    assert info.keyspace.output_demanded_spans == frozenset()
     ownership = info.group_attrs[FINAL_NODE_ID].extent_ownership
     assert ownership is not None
     assert ownership.spans == frozenset()
 
 
-def test_span_no_group_delivers_stays_unmanaged():
-    """Demand is not enough: a key nothing exposes cannot be routed, and
-    suppressing what has no owner would delete its extension rows outright.
-    The `select state, brand` plan reaches both keys only through joins."""
-    _, ownership = _ownership(_SIMPLE, "select state, brand;")
+def test_span_reached_only_through_joins_is_owned_by_its_domain():
+    """`select state, brand` names neither key, so no bucket exposes one; the
+    region domains carry the keys as hidden members and own the spans."""
+    info, ownership = _ownership(_SIMPLE, "select state, brand;")
     assert ownership is not None
-    assert ownership.spans == frozenset()
-    assert ownership.owner_by_span == {}
+    assert ownership.spans == frozenset({"local.user_id", "local.product_id"})
+    for span, owner in ownership.owner_by_span.items():
+        assert info.group_attrs[owner].extent_spans == frozenset({span})
+        assert span in info.group_attrs[owner].secondary_members

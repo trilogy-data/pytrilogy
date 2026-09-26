@@ -321,6 +321,7 @@ class SelectNode(StrategyNode):
             non_null_proofs=set(self.non_null_proofs),
         )
         node.limit = self.limit
+        node.region_spans = self.region_spans
         return node
 
 
@@ -330,6 +331,8 @@ class RowsetNode(SelectNode):
     rows. A distinct type so the boundary is recognizable by `isinstance`;
     it adds no behavior of its own (a merge above it keeps the body's rows
     through the rowset-output check in `MergeNode._resolve`)."""
+
+    region_boundary = True
 
 
 class ConstantNode(SelectNode):

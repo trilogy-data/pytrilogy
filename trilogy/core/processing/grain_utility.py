@@ -31,7 +31,10 @@ from trilogy.core.processing.condition_utility import (
     is_scalar_condition,
     opaque_binding_addresses,
 )
-from trilogy.core.processing.join_resolution import deep_extent_free_spans
+from trilogy.core.processing.join_resolution import (
+    deep_extent_free_carried,
+    deep_extent_free_spans,
+)
 
 GrainSource = QueryDatasource | BuildDatasource
 
@@ -136,7 +139,10 @@ def _source_concept_for_address(
 
 
 def _concept_covers_grain(concept: BuildConcept, grain: BuildGrain) -> bool:
-    if grain.components & concept.equivalent_addresses:
+    """The join key IS the right side's whole grain, under any spelling. A key
+    that is only ONE of several grain components admits many right rows per
+    key (`s.d` against a row stream at `(s.d, s.q)`), so it covers nothing."""
+    if grain.components and grain.components <= concept.equivalent_addresses:
         return True
     return bool(
         concept.derivation == Derivation.MULTISELECT
@@ -408,22 +414,29 @@ def _is_filter_population(
     filtered_ids: set[str],
     join_addresses: set[str],
     partner_partial: set[str],
+    partner_regions: frozenset[str] = frozenset(),
 ) -> bool:
     """Whether this side's row set IS the request WHERE's population.
 
     It has to have applied the WHERE, and it must not owe its narrowness to
-    anything else. An extent-free branch covers only the span members its facts
-    bound (docs/extent_ownership.md), so a row missing there is a member nobody
-    referenced, not a row the WHERE rejected, and the other side stays
-    preserved. That only matters when the other side binds the axis complete;
-    a partner partial on it carries no extension member to preserve."""
+    anything else. A side joined on a region's span to a partner holding that
+    region's rows covers only the members its facts bound: a row missing there
+    is a member nobody referenced, not a row the WHERE rejected, and the
+    partner stays preserved. The same for an extent-free branch
+    (docs/extent_ownership.md) and what the span's region domain carries (the
+    names of customers WITH an order), which only matters when the other side
+    binds the axis complete; a partner partial on it carries no extension
+    member to preserve."""
     if identifier not in filtered_ids:
         return False
     source = by_id.get(identifier)
     if source is None:
         return True
-    suppressed = {c.address for c in source.partial_concepts} & deep_extent_free_spans(
-        source
+    held = source.region_spans if isinstance(source, QueryDatasource) else frozenset()
+    if join_addresses & partner_regions and not join_addresses & held:
+        return False
+    suppressed = {c.address for c in source.partial_concepts} & (
+        deep_extent_free_spans(source) | deep_extent_free_carried(source)
     )
     if not (join_addresses & suppressed):
         return True
@@ -466,7 +479,12 @@ def downgrade_join_for_proofs(
 ) -> None:
     """Narrow a FULL when ``proofs`` (concepts forced non-null in every
     surviving row) rule out the padded rows it preserves: only the side
-    whose proof holds is kept, both forced is INNER."""
+    whose proof holds is kept, both forced is INNER. A side-only column
+    bound partially or opaquely proves nothing (``_unprovable_addresses``):
+    a value the region domain carries is partial on the solid stream, and a
+    WHERE over it keeps the domain's rows. The key tuple still forces a
+    side through a `~` key: a span the plan does not extend has no
+    extension row to keep."""
     if not isinstance(join, BaseJoin):
         return
     if join.join_type != JoinType.FULL or not proofs:
@@ -474,8 +492,12 @@ def downgrade_join_for_proofs(
     left_keys, right_keys = _join_key_addresses(join)
     left_all = _left_join_addresses(join, final_datasets)
     right_all = _datasource_addresses(join.right_datasource)
-    left_forced = _side_forced(proofs, [], left_all - right_all, left_keys, set())
-    right_forced = _side_forced(proofs, [], right_all - left_all, right_keys, set())
+    left_only = (left_all - right_all) - _unprovable_addresses(
+        _left_join_sources(join, final_datasets)
+    )
+    right_only = (right_all - left_all) - _unprovable_addresses([join.right_datasource])
+    left_forced = _side_forced(proofs, [], left_only, left_keys, set())
+    right_forced = _side_forced(proofs, [], right_only, right_keys, set())
     if left_forced and right_forced:
         join.join_type = JoinType.INNER
     elif left_forced:
@@ -546,21 +568,34 @@ def tighten_join_for_filtered_branch(
     for pair in join.concept_pairs or []:
         left_ids.add(pair.existing_datasource.identifier)
     left_partial: set[str] = set()
+    left_regions: frozenset[str] = frozenset()
     for identifier in left_ids:
         source = by_id.get(identifier)
         if source is not None:
             left_partial |= {c.address for c in source.partial_concepts}
-    right_partial = {c.address for c in join.right_datasource.partial_concepts}
+            if isinstance(source, QueryDatasource):
+                left_regions |= source.region_spans
+    right = join.right_datasource
+    right_partial = {c.address for c in right.partial_concepts}
+    right_regions = (
+        right.region_spans if isinstance(right, QueryDatasource) else frozenset()
+    )
     right_filtered = _is_filter_population(
-        join.right_datasource.identifier,
+        right.identifier,
         by_id,
         filtered_ids,
         join_addresses,
         left_partial,
+        left_regions,
     )
     left_filtered = any(
         _is_filter_population(
-            identifier, by_id, filtered_ids, join_addresses, right_partial
+            identifier,
+            by_id,
+            filtered_ids,
+            join_addresses,
+            right_partial,
+            right_regions,
         )
         for identifier in left_ids
     )

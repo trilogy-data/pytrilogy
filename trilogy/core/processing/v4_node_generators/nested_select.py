@@ -28,6 +28,7 @@ from trilogy.core.processing.discovery_utility import (
     raise_if_disconnected_for,
 )
 from trilogy.core.processing.nodes import BuildCaches, SelectNode, StrategyNode
+from trilogy.core.processing.partial_bridging import scope_statement
 from trilogy.core.processing.v4_helper.history import V4History
 
 from .common import search_parent
@@ -188,6 +189,9 @@ def build_nested_select(
         datasource_build_cache=caches.datasource_build_cache,
         scoped_joins=scoped_joins,
     )
+    # This select is its own plan: its WHERE completes `~` bindings and rules
+    # out partitions over ITS references, not the enclosing statement's.
+    scope_statement(build_env, select, author_env, built)
     return built, build_env, built.where_clause
 
 
@@ -198,8 +202,13 @@ def plan_nested_select(
     label: str,
     exclude_derived: list[str] | None = None,
     hide_from_connectivity: list[str] | None = None,
+    owned_spans: frozenset[str] = frozenset(),
 ) -> NestedPlan | None:
-    """Plan one nested select to a producer node. See the module docstring."""
+    """Plan one nested select to a producer node. See the module docstring.
+
+    ``owned_spans`` are the spans of this select's regions whose rows the
+    consumer holds itself (a rowset read beside its own region domain): the
+    select, and every plan under it, is built not to extend them."""
     # `exclude_derived` also filters this scope's scoped joins, so the
     # connectivity set is tracked separately; widening the join filter to the
     # inherited set would drop joins a body legitimately carries.
@@ -227,8 +236,11 @@ def plan_nested_select(
     staged = (
         built.where_clauses or None if isinstance(built, BuildSelectLineage) else None
     )
-    # Constructs nested inside this select inherit the hidden set.
+    # Constructs nested inside this select inherit the hidden set. The owned
+    # spans are this select's own: a construct nested inside it starts over.
     history.nested_exclusions = hidden
+    outer_owned = history.owned_spans
+    history.owned_spans = owned_spans
     try:
         node = search_parent(
             list(built.output_components),
@@ -239,29 +251,30 @@ def plan_nested_select(
             conditions=[where] if where else [],
             staged_conditions=staged,
         )
+        if node is None:
+            logger.info(
+                f"{depth_to_prefix(depth)}{LOGGER_PREFIX} {label} "
+                f"{[c.address for c in built.output_components]} did not resolve"
+            )
+            return None
+
+        # HAVING is a post-aggregate filter over this select's own producer;
+        # the top-level `_get_query_node_v4` wrap only sees the outer query.
+        having = built.having_clause
+        if having is not None:
+            node = resolve_and_inject_condition(
+                node,
+                having,
+                list(built.output_components),
+                environment=env,
+                graph=graph,
+                history=history,
+                depth=depth,
+                partial_concepts=list(node.partial_concepts),
+            )
     finally:
         history.nested_exclusions = inherited
-    if node is None:
-        logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} {label} "
-            f"{[c.address for c in built.output_components]} did not resolve"
-        )
-        return None
-
-    # HAVING is a post-aggregate filter over this select's own producer; the
-    # top-level `_get_query_node_v4` wrap only sees the outer query.
-    having = built.having_clause
-    if having is not None:
-        node = resolve_and_inject_condition(
-            node,
-            having,
-            list(built.output_components),
-            environment=env,
-            graph=graph,
-            history=history,
-            depth=depth,
-            partial_concepts=list(node.partial_concepts),
-        )
+        history.owned_spans = outer_owned
 
     # The body's LIMIT (with the ORDER BY it selects under) defines its row set;
     # materialize it as a dedicated node so outer filters stay post-limit and

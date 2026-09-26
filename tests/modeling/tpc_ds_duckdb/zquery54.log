@@ -1,11 +1,11 @@
 query_id = "54"
-gen_length = 3695
+gen_length = 3674
 preql_size = 1047
 comp_size = 1699
 generated_sql = """
 
 WITH 
-cheerful as (
+wakeful as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_sk\"
 FROM
@@ -25,14 +25,14 @@ FROM
 WHERE
     \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null and \"sales_item_items\".\"I_CATEGORY\" = 'Women' and \"sales_item_items\".\"I_CLASS\" = 'maternity' and \"sales_sale_date_date\".\"D_YEAR\" = 1998 and \"sales_sale_date_date\".\"D_MOY\" = 12
 ),
-questionable as (
+cooperative as (
 SELECT
-    \"cheerful\".\"sales_billing_customer_sk\" as \"my_customers_my_cust_id\"
+    \"wakeful\".\"sales_billing_customer_sk\" as \"my_customers_my_cust_id\"
 FROM
-    \"cheerful\"
+    \"wakeful\"
 GROUP BY
     1),
-abhorrent as (
+sparkling as (
 SELECT
     \"ss_store_sales\".\"SS_CUSTOMER_SK\" as \"ss_customer_sk\",
     \"ss_store_sales\".\"SS_EXT_SALES_PRICE\" as \"ss_ext_sales_price\"
@@ -43,38 +43,38 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"ss_sale_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_sale_date_date\".\"D_DATE_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"ss_customer_current_address_customer_address\" on \"ss_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"ss_customer_current_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    \"ss_sale_date_date\".\"D_MONTH_SEQ\" >= 1188 and \"ss_sale_date_date\".\"D_MONTH_SEQ\" <= 1190 and \"ss_store_store\".\"S_COUNTY\" = \"ss_customer_current_address_customer_address\".\"CA_COUNTY\" and \"ss_store_store\".\"S_STATE\" = \"ss_customer_current_address_customer_address\".\"CA_STATE\" and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null and exists (select 1 from questionable where questionable.\"my_customers_my_cust_id\" is not distinct from \"ss_store_sales\".\"SS_CUSTOMER_SK\")
+    \"ss_sale_date_date\".\"D_MONTH_SEQ\" >= 1188 and \"ss_sale_date_date\".\"D_MONTH_SEQ\" <= 1190 and \"ss_store_store\".\"S_COUNTY\" = \"ss_customer_current_address_customer_address\".\"CA_COUNTY\" and \"ss_store_store\".\"S_STATE\" = \"ss_customer_current_address_customer_address\".\"CA_STATE\" and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null and exists (select 1 from cooperative where cooperative.\"my_customers_my_cust_id\" is not distinct from \"ss_store_sales\".\"SS_CUSTOMER_SK\")
 ),
-sweltering as (
+abhorrent as (
 SELECT
-    \"abhorrent\".\"ss_customer_sk\" as \"my_revenue_rev_cust_id\",
-    cast(round(sum(\"abhorrent\".\"ss_ext_sales_price\") / 50,0) as int) * 50 as \"segment_base\",
-    cast(round(sum(\"abhorrent\".\"ss_ext_sales_price\") / 50,0) as int) as \"segment\"
+    \"sparkling\".\"ss_customer_sk\" as \"my_revenue_rev_cust_id\",
+    cast(round(sum(\"sparkling\".\"ss_ext_sales_price\") / 50,0) as int) * 50 as \"segment_base\",
+    cast(round(sum(\"sparkling\".\"ss_ext_sales_price\") / 50,0) as int) as \"segment\"
+FROM
+    \"sparkling\"
+GROUP BY
+    1),
+scrawny as (
+SELECT
+    \"abhorrent\".\"segment\" as \"segment\",
+    count(\"abhorrent\".\"my_revenue_rev_cust_id\") as \"num_customers\"
 FROM
     \"abhorrent\"
 GROUP BY
-    1),
-friendly as (
-SELECT
-    \"sweltering\".\"segment\" as \"segment\",
-    count(\"sweltering\".\"my_revenue_rev_cust_id\") as \"num_customers\"
-FROM
-    \"sweltering\"
-GROUP BY
     1)
 SELECT
-    \"sweltering\".\"segment\" as \"segment\",
-    \"friendly\".\"num_customers\" as \"num_customers\",
-    \"sweltering\".\"segment_base\" as \"segment_base\"
+    \"abhorrent\".\"segment\" as \"segment\",
+    \"scrawny\".\"num_customers\" as \"num_customers\",
+    \"abhorrent\".\"segment_base\" as \"segment_base\"
 FROM
-    \"friendly\"
-    INNER JOIN \"sweltering\" on \"friendly\".\"segment\" = \"sweltering\".\"segment\"
+    \"scrawny\"
+    INNER JOIN \"abhorrent\" on \"scrawny\".\"segment\" = \"abhorrent\".\"segment\"
 GROUP BY
     1,
     2,
     3
 ORDER BY 
-    \"sweltering\".\"segment\" asc nulls first,
-    \"friendly\".\"num_customers\" asc nulls first,
-    \"sweltering\".\"segment_base\" asc nulls first
+    \"abhorrent\".\"segment\" asc nulls first,
+    \"scrawny\".\"num_customers\" asc nulls first,
+    \"abhorrent\".\"segment_base\" asc nulls first
 LIMIT (100)"""

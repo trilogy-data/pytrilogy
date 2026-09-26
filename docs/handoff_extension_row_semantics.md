@@ -1,87 +1,89 @@
-# Handoff: responsive aggregates, `~` family pairing, key hosting, and the extension-row NULL rule
+# Handoff: a derived concept lives on its key domain (extension-row semantics)
 
-Session of 2026-09-19. Two PRs are open; one semantic rule is decided and only half implemented. Start at "Pick up here".
+Session of 2026-09-20, branch `extension-row-null-semantics` (off `main` at #700). The rule is decided and the oracle exists. Two implementation routes were tried and backed out: a guard in the lineage, and a planner-side prototype that worked for one shape behind gates. The way forward is `docs/keyspace_phase_plan.md`; this file is the record of what the two attempts found.
 
-## State
+Earlier context (responsive aggregates, `~` family pairing, key hosting) landed as #699 and #700; `docs/handoff_aggregate_grain_fd_canonicalization.md` covers it.
 
-| PR | Branch | What | Status when written |
-|---|---|---|---|
-| #699 | `two-count-shorthand-and-two-key-span` | bug fixes, no plan changes | pushed `39ba1630d`; CI re-running (was 7/7 green before the last push) |
-| #700 | `host-keys-on-row-preserving-aggregates` | key hosting on; contains #699 by merge | pushed `03941c498`; CI re-running (was 7/7 green before the merge) |
+## The rule (decided by the owner)
 
-Merge #699 first. #700 is based on `main` only because the workflow triggers for `main`-based PRs (`pull_request: branches: [main]`), so until #699 lands its diff shows #699's commits too. Retargeting a PR's base does not fire the workflow; close and reopen does.
+A derived concept is a **function of its keys** and exists only on that key domain. On a row where a key's entity is absent it is NULL.
 
-Local verification of the final #699 code: `pytest tests --ignore=tests/modeling` 8622 passed, `tests/modeling` 438 passed, zero generated SQL moved. #700 adds exactly one plan change: thelook q19 (6 joins to 5, one `order_items` re-read fewer, `test_nineteen` row-checks it). The merged #700 branch got focused tests plus the thelook battery locally, not a full run; CI is its full run.
+Customers, orders, not every customer has an order (`orders.customer_id: ~customer_id`), `status <- case when delivery_date is not null then 'delivered' else 'in-transit' end`. `select customer_id, status, count(order_id)` gives the orderless customer `(3, NULL, 0)`, not `(3, 'in-transit', 0)`: `status` is a property of `order_id` (already auto-derived: `Purpose.PROPERTY`, keys `{order_id}`) and there is no order.
 
-## What landed, and the reasoning worth keeping
+- **It is a key-domain rule, not a CASE rule.** `is null`, `coalesce`, `concat` invent values the same way. Conversely `case when count(order_id) by customer_id > 0 then 'active' else 'dormant' end` is keyed on `customer_id`, which IS present, so its ELSE legitimately fires.
+- **Multi-key is strict.** `concat(name, '-', status)` is NULL for the orderless customer, not `'cat-'`.
+- **Defined on the semantic model.** A `~` binding makes the domain partial; joins are generated to conform to the logical model, never the reverse. Do not define correctness by join type.
+- **Not BASIC-only** (owner's challenge, confirmed). Any derivation keyed on K reads a row stream restricted to K's domain:
+  - row-local (BASIC, FILTER): the padded row only gets a wrong value for itself;
+  - row-set (AGGREGATE, WINDOW): the padded row is an INPUT. `count(coalesce(amount, 0))` counts it (1 for a customer with 0 orders); `row_number order_id over customer_id order by amount` numbers it 1; across a span it can shift real rows' ranks depending on NULL sort order.
+- **`?` is orthogonal to `~`.** A NULL foreign key is declared with `?`; that NULL is a value on a real row and `coalesce(customer.name, 'unknown')` must still evaluate there.
 
-### 1. A bare aggregate function is a responsive aggregate (#699)
+### The oracle: materialization invariance
 
-`select supplier_id.count, nation_id.count;` was a keyless cross join from 0.3.316 (`(18, 18)` for `(6, 3)`) and has raised the keyless-join guard since 0.3.330. The repro lives at `trilogy-public-models/local_examples/repro_two_count_shorthand.py`.
+Storing a derivation as a column at its grain must never change a query's rows. `tests/engine/test_derived_key_domain.py` runs every query against an `auto` model and a twin where the derivations are datasource columns, and compares rows.
 
-The model, as the owner states it: an empty `by` is **responsive**, it takes the statement's grain. A grand total is `by *`, the ALL_ROWS concept. A bare aggregate `Function` lineage (what the shorthand and `function_to_concept` build) and an empty-`by` `AggregateWrapper` (what the parser builds for `auto x <- count(a)`) are two spellings of that one thing.
+- `HOLDS`: pass today. `OWED`: strict xfail. A fix shows up as XPASS; move the query to `HOLDS`.
+- `test_inline_spelling_matches_named`: an inline aggregate argument and the same expression as a named concept must agree. It caught the backed-out guard making them disagree.
+- Three traps pinned as must-keep-passing: `test_nullable_key_is_a_value_not_absence`, `test_rollup_subtotal_row_keeps_its_value` and `test_present_entity_with_an_unbound_property_still_evaluates`.
+- In `test_duckdb_partial_key_assembly.py`: strict xfail `test_status_on_extension_rows_is_null_without_an_aggregate` is a target, and `test_composite_grain_families_with_by_span_aggregate` still pins `'LATER'` on its two extension rows, which must flip to `None` with the fix.
 
-`Concept.get_select_grain_and_keys` is where the statement grain is known, and it runs at build. It resolved the bare spelling only `if grain.components`, so a grainless select left it unresolved, and ~40 planner seams read an aggregate off `BuildAggregateWrapper`. The fix drops that condition. One render rule had to follow: `CTE.group_concepts` kept a constant aggregate out of the GROUP BY with `isinstance(lineage, BuildFunction)`; it asks `is_aggregate` now (validation's `grain_check <- sum(1)` has purpose CONSTANT and would otherwise land in the GROUP BY).
+What main returns today for the orderless customer, so the scale is clear: `status = 'in-transit'`, `count(status) = 1`, `sum(case when undelivered then 1 else 0 end) = 1`, while `where status = 'in-transit'` EXCLUDES them. Even the aggregate spelling is wrong when the derived concept is a grouping key; the previous handoff's "the aggregate spelling is right" held only for one plan shape.
 
-Two wrong turns, recorded so they are not repeated:
+## What was tried and backed out: a domain guard in the lineage
 
-- The first fix patched the producers (`functions.try_create_auto_derived`, which is the live one; `environment_helpers.generate_key_concepts` is not on the parse path). It worked and was reverted: it fixed two producers, not the rule.
-- A blanket build-phase wrap broke 17 tests, and I read that as "the two shapes mean different things at build". They do not. The failures were the `BuildFunction` type check above. When a canonicalization breaks something, find the seam that keys on the old shape before concluding the shapes differ.
+Build-time rewrite `case when <key> is not null then <expr> end`, the same guard on inline aggregate arguments, and windows partitioned by `key is null` then nulled. It passed the whole oracle with no planner change. It is unsound and was removed (`bdbed7102`; the WIP commits before it hold the code if you want to read it).
 
-### 2. Two `~` extension families never cross-pair (#699), three layers
+`key is not null` cannot witness `~` padding:
 
-Natural repro: `_COMPOSITE` in `tests/engine/test_duckdb_partial_key_assembly.py`. `lines` at `(order_id, line_no)` binds `~product_id`, `orders` binds `~user_id`; `select order_id, line_no, product_id, user_id, state, sum(qty)` invented `(None, None, 30, 3, 'TX', None)`.
+- a `?`-bound key is NULL on a real row;
+- ROLLUP/CUBE pads KEYS: tpc_ds q05 (`by rollup`) lost its grand-total values;
+- a property is never a witness: tpc_ds q70 ranks `store.state` value GROUPS, and pulling `store_sk` in as the "key" produced a fan-out that hung DuckDB for 40 minutes;
+- a model-wide gate (any `~` in the environment) failed 36 modeling tests, mostly `generated SQL grew` budgets. A statement-aware gate cannot live in the build: the baseline `BuildEnvironment` is "a pure function of the author environment" and shared across statements, and named concepts take their lineage from it (a flag on the statement's own `Factory` alone left 12 of 20 oracle queries wrong). `build_cache` itself is safe, its key embeds the lineage-hashed canonical name.
 
-- **Bucketing**, `group_graph._keep_extension_families_together`. The dim peel clusters each dimension under its finest determining grain key, so the families sourced apart and `elect_extent_owners` had no joint owner. Clusters reaching a demanded span through another key merge; a cluster keyed by the span itself is a plain dimension read and stays apart. `_assemble_final_node`'s "a ROOT carrying a merge key joins on that key alone" shortcut now needs those keys to determine the ROOT's outputs.
-- **Join typing**, `join_resolution._span_padded_addresses`. This was the real premise: `get_modifiers` paired two nullable keys null-safely because "both sides extended" was taken to mean shared provenance. It is not a value-NULL ambiguity (`nulls_are_values` already handles that); both NULLs are known padding, for different members. Padding is attributed per `~` span, transitively through lookups chained off a padded key; disjoint spans join FULL on plain `=`.
-- **Key-pair reduction**, `reduce_concept_pairs`. A null-safe pair no longer serves as an FD determinant or triggers the grain-only restriction: NULL matching NULL says nothing about dependents.
+Padding is a fact about a JOIN (a source row's presence), not about a column's value.
 
-Both bucketing and typing are needed. With bucketing off, ownership makes one side extent-free and INNER, and no typing restores rows nobody padded.
+## What was tried and backed out, second: a span domain bucket in the group graph
 
-### 3. Key hosting is on (#700)
+Commits `e0f6424b7`..`d1c482137` hold the code; the commit after them removes it. It passed 19 of the oracle's 20 queries with every suite green, and was backed out anyway: it only fires when exactly one span is demanded AND the statement projects the span key AND every WHERE input is deliverable, so `select name, customer_id, status` returned NULL for the orderless customer while `select name, status` returned `'in-transit'`. Dropping a key column changed another column's value. That boundary is harder to explain than main's consistent wrong answer, and each gate existed because the domain was bolted on after grouping. What it found is the requirements list for the keyspace phase.
 
-#698 shipped row-preserving aggregate hosting as values-only because a hosted KEY made the grouping grain two-keyed and triggered the pairing above. With section 2 in, `concept_graph._host_outputs_on_row_preserving_aggregates` hosts any covered output. `DomainGraph.covers` still gates it.
+How it worked. Padding happens because one ROOT bucket sources the complete span key beside a derivation's inputs, and the extent owner's ancestors may all pad. The prototype duplicated the span's own members into a second ROOT bucket, the **span domain** (`group_graph._add_span_domain_buckets`, id `grp:root:root:∅:extent:<span>`, `GroupAttrs.extent_span`), modelled on the `root_d1` duplication:
+
+```
+grp:root:root:∅                          (customer_id, delivery_date)  extent-free: orders rows only
+grp:basic:d*:…                           (status)                      over the solid stream
+grp:root:root:∅:extent:local.customer_id (customer_id[, name])         the owner: customers
+FINAL                                    customers LEFT JOIN status-stream ON customer_id
+```
+
+- **Election** (`extent_ownership.elect_extent_owners`): a domain always owns its span. `permitted` is the domain plus its descendants, minus `_solid_groups` (every row-stream derivation the span does not determine, and the ROOT / row-stream groups feeding it). `ExtentOwnership.carried` makes FINAL read every domain member (`name`) from the domain, not only the key.
+- **FINAL**: the domain preserves only its span as a join key (`_refresh_final_contract`), otherwise it is re-sourced through the fact at the merge grain. It is never folded into a sibling that can render its columns (`_fold_passthrough_parents(keep=)`, `_drop_ancestor_parents(keep=)`): its contribution is ROWS.
+- **Aggregates stay extent-free**, they do not read the domain. They inline their BASIC arguments from the root, so padding inside one re-evaluates `coalesce(amount, 0)` on the padded row. Extent-free plus the FINAL join is equivalent (NULL for sum, the existing count zero-fill for count) and is what makes INLINE aggregate arguments agree with named ones. A scalar over an aggregate by the span (`activity`) is the exception: it is keyed on the span, so it gets the domain as a parent (`_feed_span_domains_to_on_span_scalars`) and its ELSE fires for the orderless customer.
+- **WHERE**, three deliveries, anything else gets no domain (`_filters_span_domain`; an undelivered atom is a silently lost filter, tpc_ds q95's `where eligible_order` found that):
+  - a column the domain carries (`name = 'cat'`) filters the domain itself;
+  - a null-rejecting atom over an off-span derivation pin-healed the `~` (`partial_bridging._proven_bound`: `status = 'delivered'` proves an order exists through the derivation's keys). Only for derivations that never cross an aggregate (`projection.reads_rows_only`): `count(...) > 0` is false on an extension row, not NULL;
+  - a null-accepting atom over a projected off-span value (`status is null`) is hosted at FINAL ONLY (`PlacementReason.FINAL_SPAN_DOMAIN`), over the extended rows.
+- **Gates** (everything else planned byte-identically): exactly one demanded span, projected itself; a row-stream reader (or inline aggregate argument) whose key entity is ABSENT on the span's extension rows (`extent_ownership.absent_on_extension`) and that is not already NULL on padding (`_null_on_padding`: plain arithmetic, a `?` filter over an off-span content; CASE / COALESCE / IS NULL / CONCAT / a window are the null-opaque ones). The pass also runs in WHERE-phase sub-plans, which is where tpc_h q20 and tpc_ds q73/q79/q97 tripped their SQL budgets before the NULL-propagation gate.
+
+"The span does not determine it" is the WRONG test for absence, and the first cut used it. tpc_ds q94's shape (`tests/optimization/test_join_upgrade.py`, now also a trap in the oracle): `returns` binds `~order_id, ~item_id` as its own grain and `is_returned <- _ret_order is not null` is keyed on `(order_id, item_id)`. A line with no return still HAS that entity, from `lines`; `_ret_order` is a NULL value on a real row and `is_returned = false` is right. An extension row comes from a source binding the span completely and carries whatever that source binds beside it, so a key is absent only when no such source binds it (`customers` has no `order_id`).
 
 ## Pick up here
 
-### A. Confirm CI, merge
+`docs/keyspace_phase_plan.md`. Its phase 0 is reading the parts of discovery neither attempt read.
 
-`gh pr checks 699` and `gh pr checks 700`. `jq` is not installed in this Git Bash; parse the tab-separated output with awk. If #699 is green, merge it, then #700 (its diff collapses to the hosting commits once #699 is in).
+Still true, whichever route is taken:
 
-### B. The owed half of the extension-row rule
+- KEPT from the prototype session: `predicate_pushdown._predicate_safe_past_null_extension` hand-rolled its outer-join check and missed a RIGHT/FULL join whose left is implicit (`left_cte` unset), so a null-accepting predicate could be copied below the null-supplying side. It now asks `null_padded_nodes` like its neighbours. No committed SQL log moves. (The prototype itself narrowed one tpc_ds q05 `date_dim` lookup from FULL to LEFT with matching rows; that went away with it, so it came from the planner change, most likely the pin-heal extension, not from this fix.)
+- VERIFIED, pre-existing, not touched: `undelivered_customer <- filter name where undelivered`, `select customer_id, undelivered_customer` returns only `(1, 'ann')` on the materialized twin too. A FILTER in the SELECT restricts the row stream.
+- FIXED in keyspace phase 5 (2026-09-23): `select customer_id, status where activity = 'dormant'` renders and returns `(3, NULL)` on both models; `select customer_id, status where customer_id in (2, 3)` returns `(2, 'delivered'), (3, NULL)` on both. See the plan's phase 5 section.
 
-**Decided by the owner, 2026-09-19:** on a `~` extension row, a derived concept over an *absent* entity is NULL. An extension row carries its own dimension's attributes and NULL for everything outside that key's closure; a `CASE ... ELSE` over an order that does not exist is outside it.
+## Also on this branch
 
-Today two spellings disagree (forked model in the same test file, `big <- case when amount > 55 then 'BIG' else 'SMALL' end`):
+`f8779876f` + `10d90f610`: a constant CASE folding to a non-bool scalar (`auto x <- case when 1 = 1 then 'x' else 'y' end`) left a bare `str` lineage and broke graph generation for every later query. It now folds to `TYPED_CONSTANT` (CONSTANT derivation, rendered inline: a `CONSTANT` operator would bind a `:param` the author-side CASE cannot hydrate). Test: `test_constant_case_folds_to_inline_scalar`.
 
-```
-select order_id, product_id, user_id, big, sum(qty);   -- NULL     CASE runs on the orders scan, then LEFT joins
-select order_id, product_id, user_id, big;             -- 'SMALL'  CASE runs over the padded row, ELSE fires
-```
+## Process notes
 
-The first is right. Pinned:
-
-- strict xfail `test_status_on_extension_rows_is_null_without_an_aggregate` is the target;
-- `test_composite_grain_families_with_by_span_aggregate` still pins `'LATER'` on its extension rows and must flip to NULL with the fix;
-- `test_forked_with_status` and `test_forked_full_column_set` were already re-pinned `'LATER'` to NULL in #700.
-
-Scope: only non-null-propagating BASICs matter (`propagates_argument_nulls` in `join_resolution` is the existing predicate); `amount + 1` is already NULL on padding.
-
-Two candidate designs, neither started:
-
-1. **Evaluate before the span join.** Plan such a BASIC on its entity's own rows and join the result, which is what the aggregate spelling already does through the dim peel. Least new machinery; the question is whether group formation can do it without an aggregate forcing the peel.
-2. **Presence guard at render.** `CASE WHEN <entity key> IS NOT NULL THEN <expr> END`. The guard must be on the absent entity's KEY, not on the argument: guarding on `amount` conflates absence with a `?` value NULL on a real order. That means the key has to be carried to the node as a hidden output, and an expression over two entities (`order_status` reads `amount` and a by-user aggregate) needs every absent one guarded.
-
-Start by dumping the group graph for the two spellings (patch `concept_strategies_v4.build_group_graph`; set `PYTHONIOENCODING=utf-8`, group ids contain `∅`) and see where `big` is bucketed in each.
-
-### C. Small follow-ups
-
-- trilogy-public-models: drop the two tpc_h skips in `tests/test_examples.py` once a release carries #699.
-- `docs/handoff_aggregate_grain_fd_canonicalization.md` covers sections 2 and 3 in depth and the NULL decision; it does not mention the shorthand.
-
-## Process notes from this session
-
-- The full non-modeling suite took 33 to 35 minutes and ~10 GB RSS on this machine today. That is slow, not a runaway: check the `-v` log advances before killing anything.
-- Never run two pytest processes at once here. Run modeling last and read `git status` for generated-SQL moves; timing artifacts always churn and are committed by design.
-- A `-p` toggle plugin on `PYTHONPATH` bisects mechanisms without editing code. One that patches a name *before* another module does `from x import name` disables that importer too.
-- Restore generated or experimental files with `git show HEAD:path > path`, never `checkout --` / `reset` / `stash` in this shared tree.
+- `tests/modeling` (`-m "not adventureworks_execution"`) takes about 3.5 minutes. If it runs longer with no new `zquery*.log` written for 5 minutes, it is a runaway SQL execution, not a slow suite: reproduce the test alone under `faulthandler.dump_traceback_later(45, exit=True)`.
+- Run pytest `-v` to a log file, never through `| tail`, so a stall is visible.
+- Never run two pytest processes at once here. `tests/engine/test_clickhouse_server.py` errors locally without a server.
+- Restore files with `git show <rev>:path > path`; never `checkout --` / `reset` / `stash` in this shared tree. `git revert --quit` clears a stuck sequencer without touching the tree.
+- A `python - <<'EOF'` heredoc containing triple-quoted strings can break Git Bash quoting; write the script to a file and run it.

@@ -35,7 +35,7 @@ from trilogy.core.models.build import (
     BuildUnionSelectLineage,
     BuildWhereClause,
 )
-from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.build_environment import BuildEnvironment, SpanScope
 from trilogy.core.processing.aggregate_rollup import (
     _conditions_supported,
     _datasource_has_matching_additive_aggregate,
@@ -519,6 +519,10 @@ def _build_from_graph(
     staged_conditions: list[BuildWhereClause] | None = None,
     depth: int = 0,
 ) -> BuildInfo:
+    from trilogy.core.processing.v4_node_generators.rowset_witness import (  # cycle
+        statement_keyspace,
+    )
+
     concept_graph, concept_attrs, concept_edges = build_concept_graph(
         mandatory_list,
         environment,
@@ -526,6 +530,13 @@ def _build_from_graph(
         materialized_roots,
         staged_conditions=staged_conditions,
     )
+    keyspace = statement_keyspace(
+        concept_attrs, mandatory_list, environment, conditions, history
+    )
+    if len(keyspace.regions) > 1:
+        logger.info(
+            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} keyspace: {keyspace.describe()}"
+        )
     datasource_columns = [
         frozenset(c.address for c in ds.output_concepts)
         for ds in environment.datasources.values()
@@ -539,11 +550,18 @@ def _build_from_graph(
         datasource_columns,
         environment=environment,
         staged_conditions=staged_conditions,
+        keyspace=keyspace,
     )
     # `build_strategy_node` scopes each group's extent routing on the shared
     # environment; a rowset body planned mid-build recurses through here, so
     # restore whatever the outer plan had rather than leaving it cleared.
-    outer_extent_free = environment.extent_free_spans
+    outer_scope = environment.span_scope
+    environment.span_scope = SpanScope(
+        in_play=keyspace.in_play_spans,
+        demanded=keyspace.output_demanded_spans,
+        witnessed=keyspace.witnessed,
+        owned=history.owned_spans,
+    )
     try:
         strategy_node = build_strategy_node(
             group_graph,
@@ -558,7 +576,7 @@ def _build_from_graph(
             depth=depth,
         )
     finally:
-        environment.extent_free_spans = outer_extent_free
+        environment.span_scope = outer_scope
     return BuildInfo(
         concept_graph=concept_graph,
         group_graph=group_graph,
@@ -567,6 +585,7 @@ def _build_from_graph(
         concept_edges=concept_edges,
         group_edges=group_edges,
         strategy_node=strategy_node,
+        keyspace=keyspace,
     )
 
 

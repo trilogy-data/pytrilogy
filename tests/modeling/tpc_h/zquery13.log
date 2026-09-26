@@ -1,5 +1,5 @@
 query_id = "13"
-gen_length = 658
+gen_length = 620
 preql_size = 286
 comp_size = 365
 generated_sql = """
@@ -7,7 +7,7 @@ generated_sql = """
 WITH 
 wakeful as (
 SELECT
-    coalesce(\"orders_customer_customers\".\"c_custkey\",\"orders_orders\".\"o_custkey\") as \"orders_customer_id\",
+    \"orders_customer_customers\".\"c_custkey\" as \"orders_customer_id\",
     coalesce(count(\"orders_orders\".\"o_orderkey\"),0) as \"c_count\"
 FROM
     \"memory\".\"customer\" as \"orders_customer_customers\"

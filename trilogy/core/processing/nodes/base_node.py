@@ -166,6 +166,24 @@ def get_all_parent_nullable(
     )
 
 
+def region_reads(node: "StrategyNode") -> frozenset[str]:
+    """The region domains under `node`: the spans whose extension rows are
+    rows of its stream. Two nodes can stand in for each other's columns only
+    when they read the same regions: a derivation absent on a region is
+    re-derived on the padded rows if it moves onto a stream that holds them,
+    and a value the region carries is lost if it moves onto one that does not.
+
+    A rowset boundary is a row source: what its body read is the body's, in
+    the body's spelling; the regions the boundary holds are stamped on it in
+    its reader's (`resolve_rowset`)."""
+    out = node.region_spans
+    if node.region_boundary:
+        return out
+    for parent in node.parents:
+        out |= region_reads(parent)
+    return out
+
+
 class StrategyNode:
     source_type = SourceType.ABSTRACT
     # A node that only projects or filters emits its parents' rows. Subclasses
@@ -176,6 +194,12 @@ class StrategyNode:
     # construction so QueryDatasource.__post_init__ preserves arm order for
     # EXCEPT.
     set_operator: SetOperator = SetOperator.UNION_ALL
+    # Set on the node a region domain group builds: the region's spans. It
+    # contributes ROWS (the region's own members), so no sibling that renders
+    # its columns can stand in for it. A copy is an ordinary node again.
+    region_spans: frozenset[str] = frozenset()
+    # `region_reads` stops here: a rowset boundary's regions are its own stamp
+    region_boundary: bool = False
 
     def __init__(
         self,
@@ -512,6 +536,7 @@ class StrategyNode:
         if self.resolution_cache:
             return self.resolution_cache
         qds = self._resolve()
+        qds.region_spans = region_reads(self)
         self.resolution_cache = qds
         # Resolve-time nullability (outer-join null extension, ROLLUP padding) is
         # stamped on the QueryDatasource, but downstream nodes read the node
@@ -541,6 +566,7 @@ class StrategyNode:
             ordering=self.ordering,
         )
         node.limit = self.limit
+        node.region_spans = self.region_spans
         return node
 
 

@@ -96,6 +96,34 @@ class BuildEnvironmentDatasourceDict(dict):
         return super().items()
 
 
+@dataclass(frozen=True)
+class SpanScope:
+    """The `~` routing every merge built under it captures at construction, so
+    the decision is fixed before the node resolves (a rowset body's merge can
+    resolve after the outer plan's scope is restored)."""
+
+    # plan: the spans the plan has a region for (`Keyspace.in_play_spans`), the
+    # only ones a join of it can pad for
+    in_play: frozenset[str] = frozenset()
+    # plan: the spans whose unmatched members carry an output
+    # (`Keyspace.output_demanded_spans`), the only extension rows it returns
+    demanded: frozenset[str] = frozenset()
+    # plan: a rowset body's spelling of a span in play -> the plan's own
+    # (`Keyspace.witnessed`): padding made below a boundary is named up here
+    witnessed: dict[str, str] = field(default_factory=dict)
+    # plan: the spans whose extension rows the plan READING this one holds (a
+    # rowset body built for a consumer that pads the region itself): no group
+    # of this plan extends them, FINAL included
+    owned: frozenset[str] = frozenset()
+    # group: the spans this group may NOT extend, because another group owns
+    # those extension members (v4_helper/extent_ownership.py), or the plan
+    # above does (`owned`)
+    extent_free: frozenset[str] = frozenset()
+    # group: address -> the extent-free spans whose region domain carries it;
+    # held here only for the members the group's facts bound
+    extent_free_carried: dict[str, frozenset[str]] = field(default_factory=dict)
+
+
 @dataclass
 class BuildEnvironment:
     concepts: BuildEnvironmentConceptDict = field(
@@ -151,13 +179,16 @@ class BuildEnvironment:
     # referenced only in a condition is population-scope (d1) demand, not a
     # row-stream contributor. Set by `get_query_node`.
     statement_output_addresses: set[str] | None = None
-    # Build-loop scope: the `~` spans the group currently being built may NOT
-    # extend, because another group was elected to carry those extension rows
-    # (v4_helper/extent_ownership.py). Every merge constructed while this is set
-    # captures it, so the decision is fixed before the node ever resolves:
-    # re-deciding after resolution would leave the padding's nullable marks
-    # behind. `build_strategy_node` sets and clears it around each group.
-    extent_free_spans: frozenset[str] = frozenset()
+    # Outputs the statement carries but does not show (a HAVING's aggregate
+    # promoted to the projection, an ORDER BY carry); what it SHOWS decides
+    # whether a filter value's NULL rows are rows nobody would keep.
+    statement_hidden_addresses: set[str] | None = None
+    # Set around each plan (`_build_from_graph`) and each group
+    # (`build_strategy_node`); merges capture it.
+    span_scope: SpanScope = field(default_factory=SpanScope)
+    # The datasources as authored, set by `heal_pinned_partials` when it
+    # rewrites any of them; the heal audit builds the keyspace over these.
+    authored_datasources: list[BuildDatasource] | None = None
 
     def _distinct_scoped_join_groups(self) -> list[tuple[str, list[str]]]:
         """Per scoped-join key group, its canonical plus the members that keep

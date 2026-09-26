@@ -30,10 +30,10 @@ from trilogy.core.processing.node_generators.presence_probe import is_presence_p
 
 from .concept_graph import computed_origin_relation_members
 from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS, DepthLabel, EdgeKind
-from .edges import EdgeMap, lineage_subgraph, subgraph_of_kinds
+from .edges import EdgeMap, edge_kind, lineage_subgraph, subgraph_of_kinds
 from .functional_dependency import build_fd_determines
-from .models import ConceptAttrs, GroupBucket
-from .projection import output_rowset_base_keys
+from .models import ConceptAttrs, GroupBucket, Keyspace
+from .projection import decided_at_output_grain, output_rowset_base_keys
 from .staged_where import (
     CROSS_ROW_DERIVATIONS,
     concept_is_cross_row,
@@ -55,7 +55,6 @@ class PlacementReason(Enum):
     FINAL_CROSS_GRAIN_AGGREGATE = "final_cross_grain_aggregate"
     DISCONNECTED_GATE = "disconnected_gate"
     FINAL_UNCOVERED_CONTRIBUTOR = "final_uncovered_contributor"
-    FINAL_PRESERVED_BRANCH = "final_preserved_branch"
     CONJUNCTION_RECOMPUTE = "conjunction_recompute"
     # A row atom copied onto a select-phase aggregate that the elected host
     # does not feed, so both siblings aggregate the same filtered population.
@@ -67,6 +66,9 @@ class PlacementReason(Enum):
     # exposes: hosted on FINAL, which pairs the gate's scan to the
     # boundary on that key.
     FINAL_ROWSET_BASE_KEY = "final_rowset_base_key"
+    # A row atom over something absent on a region that has a domain,
+    # restated at FINAL where the domain's rows join back.
+    FINAL_SPAN_DOMAIN = "final_span_domain"
 
 
 @dataclass(frozen=True)
@@ -575,40 +577,99 @@ def _decided_per_group(
     return True
 
 
-def _preserved_final_branch(
-    chosen_groups: tuple[str, ...],
+def _reads_past_region_domain(
     row_inputs: set[str],
     buckets: dict[str, GroupBucket],
-    group_graph: nx.DiGraph,
-    mandatory_addrs: set[str],
+    keyspace: Keyspace,
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
 ) -> bool:
-    """Whether every chosen host is a side branch feeding ONLY the FINAL merge
-    while other select-phase contributors also enter it. The FINAL join against
-    such a filtered branch renders row-preserving whenever its axis is nullable
-    or partial (the enrichment contract), which re-admits the rows the WHERE
-    excluded as NULL-extended pads (a dimension filter hosted on a split
-    dimension cluster, LEFT-joined back to the qualifying aggregate). The
-    WHERE, not the join, owns row dropping, so the atom is re-asserted at
-    FINAL; the re-check is idempotent when the join is already row-identical
-    (the predicate is restated at its merge in the same shape).
-    Gated on the inputs being FINAL-visible mandatory outputs so the copy never
-    drags feeder scans in above the merge, and skipped under non-standard
-    grouping for the same subtotal-NULL reason as
-    ``_uncovered_exposing_output_contributor``."""
-    if any(b.nulls_grouping_keys for b in buckets.values()):
-        return False
-    if not chosen_groups or not row_inputs or not (row_inputs <= mandatory_addrs):
-        return False
-    if not all(
-        set(group_graph.successors(gid)) == {FINAL_NODE_ID} for gid in chosen_groups
-    ):
-        return False
-    return any(
-        gid not in chosen_groups
-        and gid in buckets
-        and buckets[gid].depth_label not in (DepthLabel.D1, ROOT_D1_DEPTH)
-        for gid in group_graph.predecessors(FINAL_NODE_ID)
+    """Whether the atom reads something a region domain's rows hold that the
+    domain itself does not carry as a column.
+
+    Any host below FINAL pairs on solid keys and never sees the rows the domain
+    adds back there: a customer whose every order the atom rejected would
+    return as an extension row, and `status is null` would never test the
+    customer with no order. So the atom is hosted at FINAL only, over the
+    extended rows. The same for a value the region's rows carry but the domain
+    does not hold (`activity`, a scalar over an aggregate by the span): its
+    producer reads the domain, and only FINAL joins the two. A null-rejecting
+    atom over an absent value never gets here: it empties the region, and an
+    empty region gets no domain."""
+    for bucket in buckets.values():
+        if not bucket.extent_spans:
+            continue
+        region = keyspace.region_of(bucket.extent_spans)
+        if region is None:
+            continue
+        members = set(bucket.primary_members) | set(bucket.secondary_members)
+        for address in row_inputs:
+            if address in members:
+                continue
+            if not keyspace.defined_on(address, region):
+                return True
+            if keyspace.carried_on(address, region) and decided_at_output_grain(
+                address, mandatory_list, environment
+            ):
+                return True
+    return False
+
+
+def _region_domain_grouping_hosts(
+    candidates: list[str],
+    buckets: dict[str, GroupBucket],
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+) -> tuple[str, ...]:
+    """The candidate grouping groups a region domain feeds. Such a group is
+    evaluated over the region's rows (`count(order_id) by customer_id`,
+    `count(customer_id) by status`): the domain's rows and the solid stream
+    unite on its input, below FINAL, so an atom restated "where the domain's
+    rows join back" belongs there, on every united row before the aggregate.
+    Restated at FINAL instead it would filter aggregated rows by a per-row
+    value (fanning out through its producer, or silently dropping the rows
+    the aggregate should have lost)."""
+    return tuple(
+        gid
+        for gid in candidates
+        if gid in buckets
+        and buckets[gid].derivation in _EMITS_GROUP_BY
+        and any(
+            pred in buckets
+            and buckets[pred].extent_spans
+            and edge_kind(group_edges, pred, gid) == EdgeKind.LINEAGE
+            for pred in group_graph.predecessors(gid)
+        )
     )
+
+
+def _hosts_carrying_condition_grain(
+    restricted: list[str],
+    row_inputs: set[str],
+    buckets: dict[str, GroupBucket],
+    group_own_keys: dict[str, set[str]],
+) -> list[str]:
+    """Hosts that can pair a condition-phase aggregate's branch: an atom over
+    `sum(amount) by status` joins that branch on `status`, so a host without
+    the grain (the ROOT scan, when `status` is a derivation of a sibling
+    group) cannot render it (`Missing source map entry`). Leaves the pool
+    alone when no host carries the grain."""
+    grains: list[set[str]] = [
+        set(b.grain_components)
+        for b in buckets.values()
+        if b.derivation in _EMITS_GROUP_BY
+        and b.depth_label in (DepthLabel.D1, ROOT_D1_DEPTH)
+        and b.grain_components
+        and row_inputs & set(b.primary_members)
+    ]
+    if not grains:
+        return restricted
+    carrying = [
+        gid
+        for gid in restricted
+        if all(grain <= group_own_keys.get(gid, set()) for grain in grains)
+    ]
+    return carrying or restricted
 
 
 def _grouping_barrier_host(
@@ -887,8 +948,10 @@ def plan_condition_placements(
     concept_attrs: dict[str, ConceptAttrs] | None = None,
     statement_relation_addresses: frozenset[str] = frozenset(),
     staged_conditions: list[BuildWhereClause] | None = None,
+    keyspace: Keyspace | None = None,
 ) -> list[ConditionPlacement]:
     """Return where each decomposed condition atom should be injected."""
+    keyspace = keyspace or Keyspace()
     scoped_join_key_groups = scoped_join_key_groups or {}
     # A GLOBAL merge whose collapsed member keeps a row-shape computed origin
     # (`merge recursive_parent into root_parent.id`) null-extends exactly like
@@ -1276,6 +1339,20 @@ def plan_condition_placements(
                     )
                 )
                 continue
+            if not atom.existence_arguments and _reads_past_region_domain(
+                row_inputs, buckets, keyspace, mandatory_list, environment
+            ):
+                placements.append(
+                    ConditionPlacement(
+                        atom=atom,
+                        group_ids=_region_domain_grouping_hosts(
+                            candidates, buckets, group_graph, group_edges
+                        )
+                        or (FINAL_NODE_ID,),
+                        reason=PlacementReason.FINAL_SPAN_DOMAIN,
+                    )
+                )
+                continue
             # A gate whose row inputs are only producible by groups disconnected
             # from the mandatory outputs (e.g. `where x = 1` beside a rootless
             # `unnest([...])`/constant output) has no covering contributor to host
@@ -1378,6 +1455,9 @@ def plan_condition_placements(
                         - consumed_barriers
                     )
                 ]
+            restricted = _hosts_carrying_condition_grain(
+                restricted, row_inputs, buckets, group_own_keys
+            )
             if not restricted:
                 placements.append(
                     ConditionPlacement(
@@ -1434,25 +1514,6 @@ def plan_condition_placements(
                         atom=atom,
                         group_ids=(FINAL_NODE_ID,),
                         reason=PlacementReason.FINAL_UNCOVERED_CONTRIBUTOR,
-                    )
-                )
-            elif (
-                mandatory_list
-                and not atom.existence_arguments
-                and not (row_inputs & scoped_join_member_addresses)
-                and _preserved_final_branch(
-                    chosen_groups,
-                    row_inputs,
-                    buckets,
-                    group_graph,
-                    {c.address for c in mandatory_list},
-                )
-            ):
-                placements.append(
-                    ConditionPlacement(
-                        atom=atom,
-                        group_ids=(FINAL_NODE_ID,),
-                        reason=PlacementReason.FINAL_PRESERVED_BRANCH,
                     )
                 )
         placements.extend(
