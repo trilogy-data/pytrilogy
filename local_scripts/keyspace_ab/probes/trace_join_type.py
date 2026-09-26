@@ -27,6 +27,8 @@ model = (
     )
     .replace("cast(null as varchar)", "'delta'")
 )
+if "--two" in sys.argv:
+    model = t.TWO_PROP_GUEST_ALLDESC_MODEL
 
 _orig = jr.get_join_type
 _sig = inspect.signature(_orig)

@@ -496,10 +496,12 @@ def resolve_rowset(
     # Every handle, not just the boundary's key-like ones: a non-key property
     # becomes a join key the moment split aggregate branches over the same
     # boundary rejoin on their GROUP BY keys, where a NULL is a group label
-    # and a plain `=` drops the whole group.
+    # and a plain `=` drops the whole group. Read off the RESOLVED body: the
+    # node attribute is a construction-time snapshot without the body's
+    # outer-join padding (a guest's property NULL through its `~?` key).
     base_nullable = {
         alias
-        for c in inner_node.nullable_concepts
+        for c in inner_node.resolve().nullable_concepts
         for alias in (c.address, *c.pseudonyms)
     }
     nullable_handles = [h for h in handles if _nullability_aliases(h) & base_nullable]

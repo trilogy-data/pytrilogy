@@ -404,11 +404,11 @@ TWO_PROP_SPELLINGS = [
         ),
     ),
 ]
-# the stand-in itself as a join key: solid on the `~` model; owed on `~?`
-# where the guest's `item_name` is a NULL VALUE through its NULL key. The
-# solid boundary strips that NULL as extension padding of the span and the
-# reader classifies it as absence, so the guest's NULL group never pairs
-# with the boundary's row for it (docs/keyspace_phase_plan.md, open items).
+# the stand-in itself as a join key. On `~?` the guest's `item_name` is a
+# NULL VALUE through its NULL key, and it reaches the handle only off the
+# RESOLVED body: the boundary read the body node's construction-time
+# nullability, which has no outer-join padding, so neither side of the FINAL
+# was nullable on `s.n` and the guest's NULL group never paired.
 STAND_IN_KEY_SPELLINGS = [
     (
         TWO_PROP_ROWSET
@@ -463,16 +463,7 @@ def test_stand_in_beside_a_second_property(model, rowset_query, direct_query):
 
 
 @pytest.mark.parametrize("rowset_query,direct_query", STAND_IN_KEY_SPELLINGS)
-@pytest.mark.parametrize(
-    "model",
-    [
-        "TWO_PROP_MODEL",
-        pytest.param(
-            "TWO_PROP_GUEST_ALLDESC_MODEL",
-            marks=pytest.mark.xfail(strict=True, reason="owed: guest NULL stand-in"),
-        ),
-    ],
-)
+@pytest.mark.parametrize("model", ["TWO_PROP_MODEL", "TWO_PROP_GUEST_ALLDESC_MODEL"])
 def test_stand_in_key_pairs_the_guest(model, rowset_query, direct_query):
     env = Environment()
     env.parse(globals()[model])
@@ -480,6 +471,87 @@ def test_stand_in_key_pairs_the_guest(model, rowset_query, direct_query):
     rows = executor.execute_query(rowset_query).fetchall()
     assert rows == executor.execute_query(direct_query).fetchall()
     assert ("G", 0) in rows or ("G", None) in rows or ("G", 0, 0) in rows, rows
+
+
+# Direct spellings that were wrong beside a right rowset spelling. A row
+# value beside an aggregate by the description: `q` is the `q` bucket's OWN
+# output, not FD at the FINAL projection grain (`item_sk`), and
+# `_satisfy_parent_projection_contract` projected the bucket down to the
+# grain, dropping it (`No FINAL contributor renders ['local.q']`).
+DIRECT_ROW_VALUE_BESIDE_AGGREGATE = (
+    "select item_desc as d, quantity as q, count(order_number) by item_desc as n"
+    " order by d asc nulls last, q asc nulls last;"
+)
+DIRECT_PATH_CASES = [
+    (
+        "UNSOLD_MODEL",
+        DIRECT_ROW_VALUE_BESIDE_AGGREGATE,
+        [
+            ("alpha", 5, 1),
+            ("beta", 15, 1),
+            ("gamma", None, 0),
+            (None, 3, 2),
+            (None, 20, 2),
+        ],
+    ),
+    # OWED: the FINAL reaches the aggregate through the item dimension (the
+    # bridge), which has no guest row, so the guest's `n` is NULL for 1. The
+    # rowset spelling unites sales and items first and joins the aggregate
+    # null-safely on the united description (docs/keyspace_phase_plan.md).
+    pytest.param(
+        "GUEST_ALLDESC_MODEL",
+        DIRECT_ROW_VALUE_BESIDE_AGGREGATE,
+        [
+            ("alpha", 5, 1),
+            ("beta", 15, 1),
+            ("delta", 3, 2),
+            ("delta", 20, 2),
+            ("gamma", None, 0),
+            (None, 7, 1),
+        ],
+        marks=pytest.mark.xfail(strict=True, reason="owed: guest reached via bridge"),
+    ),
+    # the guest's `sum(quantity) by item_desc` groups it with the NULL-desc
+    # items (GUEST_MODEL: item 30's 20 + 3 plus the guest's 7) or alone
+    (
+        "GUEST_MODEL",
+        (
+            "select item_sk, item_desc, count(order_number) as n,"
+            " sum(quantity) by item_desc as per_desc order by item_sk asc nulls last;"
+        ),
+        [
+            (10, "alpha", 1, 5),
+            (20, "beta", 1, 15),
+            (30, None, 2, 30),
+            (40, "gamma", 0, None),
+            (None, None, 1, 30),
+        ],
+    ),
+    (
+        "GUEST_ALLDESC_MODEL",
+        (
+            "select item_sk, item_desc, count(order_number) as n,"
+            " sum(quantity) by item_desc as per_desc order by item_sk asc nulls last;"
+        ),
+        [
+            (10, "alpha", 1, 5),
+            (20, "beta", 1, 15),
+            (30, "delta", 2, 23),
+            (40, "gamma", 0, None),
+            (None, None, 1, 7),
+        ],
+    ),
+]
+
+
+@pytest.mark.parametrize("model,query,expected", DIRECT_PATH_CASES)
+def test_direct_spelling_row_value_beside_aggregate_by_description(
+    model, query, expected
+):
+    env = Environment()
+    env.parse(globals()[model])
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    assert executor.execute_query(query).fetchall() == expected
 
 
 def test_unprojected_property_where_keeps_the_region_on_a_guest_model():
