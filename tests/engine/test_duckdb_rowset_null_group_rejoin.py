@@ -129,6 +129,62 @@ ROW_STREAM_CASES = [
 ]
 
 
+# Shapes that matched the direct spelling when the reader's stand-in key and
+# the split boundary's carry landed: kept as the guard that they still do.
+# A body's own WHERE heals its region inside the rowset, so the direct
+# spelling of `rowset ... where quantity > 3` is a filtered table, not a
+# filtered count.
+KEYED_ROWSET = (
+    "rowset s <- select order_number as o, item_sk as sk, item_desc as d,"
+    " quantity as q;\n"
+)
+EQUIVALENT_SPELLINGS = [
+    (
+        KEYLESS_ROWSET + "select s.d, count(s.o) as total order by s.d asc nulls last;",
+        "select item_desc as d, count(order_number) as total order by d asc nulls last;",
+    ),
+    (
+        KEYLESS_ROWSET + "select s.d, sum(s.q) as total order by s.d asc nulls last;",
+        "select item_desc as d, sum(quantity) as total order by d asc nulls last;",
+    ),
+    (
+        KEYLESS_ROWSET
+        + "select s.d, count(s.o) as total where s.d != 'beta' order by s.d asc nulls last;",
+        "select item_desc as d, count(order_number) as total where item_desc != 'beta'"
+        " order by d asc nulls last;",
+    ),
+    (
+        KEYED_ROWSET
+        + "select s.d, count(s.o) as total where s.o is not null order by s.d asc nulls last;",
+        "select item_desc as d, count(order_number) as total where order_number is not null"
+        " order by d asc nulls last;",
+    ),
+    (
+        KEYED_ROWSET
+        + "select s.sk, count(s.o) as total where s.d is not null order by s.sk asc;",
+        "select item_sk, count(order_number) as total where item_desc is not null"
+        " order by item_sk asc;",
+    ),
+    (
+        KEYED_ROWSET
+        + "select s.d, sum(s.q) by s.sk as per_item order by s.d asc nulls last, per_item asc nulls last;",
+        "select item_desc as d, sum(quantity) by item_sk as per_item"
+        " order by d asc nulls last, per_item asc nulls last;",
+    ),
+]
+
+
+@pytest.mark.parametrize("rowset_query,direct_query", EQUIVALENT_SPELLINGS)
+def test_rowset_matches_direct_spelling(rowset_query, direct_query):
+    env = Environment()
+    env.parse(UNSOLD_MODEL)
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    assert (
+        executor.execute_query(rowset_query).fetchall()
+        == executor.execute_query(direct_query).fetchall()
+    )
+
+
 @pytest.mark.parametrize("query,expected", KEYLESS_CASES + ROW_STREAM_CASES)
 def test_region_no_handle_spells(query, expected):
     env = Environment()
