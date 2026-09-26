@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from trilogy.constants import Rendering
     from trilogy.core.statements.execute import ProcessedQuery
     from trilogy.dialect.config import DialectConfig
+    from trilogy.dialect.python_source import PythonDatasourceError
     from trilogy.engine import ResultProtocol
     from trilogy.io.contract import SourceRequest
     from trilogy.staging import StagingConfig
@@ -246,15 +247,56 @@ LIMIT 1
 SELECT r.* FROM __build b, read_arrow(getvariable('__trilogy_uv_temp_dir') || md5(script || args) || '.arrow') AS r;
 """
     else:
-        return """
+        import uuid
+
+        from trilogy.staging import StagingConfig, StagingType
+
+        # A shell redirect needs a local path, so a remote staging root falls
+        # back to the system tempdir for the stderr sidecar.
+        if staging is None or staging.staging_type != StagingType.LOCAL:
+            staging = StagingConfig()
+        err_dir = staging.prepare_executor_subdir(instance_id or str(uuid.uuid4()))
+        return f"""
 INSTALL shellfs FROM community;
 INSTALL arrow FROM community;
 LOAD shellfs;
 LOAD arrow;
-
+SET VARIABLE __trilogy_uv_temp_dir = '{err_dir}';
 CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
-    SELECT * FROM read_arrow('uv run --no-project --quiet ' || script || ' ' || args || ' |');
+    SELECT * FROM read_arrow('uv run --no-project --quiet ' || script || ' ' || args || ' 2>''' || getvariable('__trilogy_uv_temp_dir') || md5(script || args) || '.err'' |');
 """
+
+
+# DuckDB reports a failed shellfs pipe only by its command line; both uv_run
+# forms above embed the script and its stderr sidecar there.
+_PIPE_FAILURE = re.compile(r"Pipe process exited abnormally code=(-?\d+): (.*?) \|")
+_PIPE_SCRIPT = re.compile(r'duckdb_uv "[^"]*" "[^"]*" "([^"]*)"|--quiet (\S+)')
+_PIPE_STDERR = re.compile(r"""["']([^"']+\.err)["']""")
+
+
+def python_datasource_failure(error: Exception) -> PythonDatasourceError | None:
+    """The script failure behind a DuckDB ``uv_run`` pipe error, if it is one."""
+    from trilogy.dialect.python_source import PythonDatasourceError
+
+    failure = _PIPE_FAILURE.search(str(error))
+    if failure is None:
+        return None
+    command = failure.group(2)
+    script = _PIPE_SCRIPT.search(command)
+    sidecar = _PIPE_STDERR.search(command)
+    stderr = ""
+    if sidecar is not None:
+        try:
+            stderr = Path(sidecar.group(1)).read_text(
+                encoding="utf-8", errors="replace"
+            )
+        except OSError:
+            pass
+    return PythonDatasourceError(
+        (script.group(1) or script.group(2)) if script else command,
+        int(failure.group(1)),
+        stderr,
+    )
 
 
 def get_gcs_setup_sql(enabled: bool) -> str:

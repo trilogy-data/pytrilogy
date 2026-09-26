@@ -159,6 +159,16 @@ class TestShowScriptResult:
         assert "bad.preql" in captured
         assert "some error" in captured
 
+    def test_script_node_failure_shows_only_the_headline(self, rich_mode):
+        node = _make_script_node("bad.preql")
+        error = "script 'a.py' failed: HTTPError\n\nScript output:\nTraceback"
+        result = _make_result(node, success=False, error=error)
+        with capture_rich_output() as buf:
+            show_script_result(result)
+            captured = buf.getvalue()
+        assert "failed: HTTPError" in captured
+        assert "Traceback" not in captured
+
     def test_managed_node_success(self, rich_mode):
         node = _make_managed_node("schema.my_table")
         result = _make_result(node, success=True)

@@ -47,9 +47,11 @@ def run_with_retry(script: str, args: str, output_path: Path, error_path: Path) 
             print('{"name": "done"}')
             return 0
 
-        error = _read_error(error_path)
-        if attempt == MAX_ATTEMPTS or not is_retryable_uv_error(error):
-            sys.stderr.write(error)
+        # The error sidecar is the report; the executor reads it back when
+        # DuckDB surfaces the pipe failure.
+        if attempt == MAX_ATTEMPTS or not is_retryable_uv_error(
+            _read_error(error_path)
+        ):
             return return_code
 
         time.sleep(retry_delay(attempt))

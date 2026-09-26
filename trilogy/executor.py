@@ -1368,6 +1368,13 @@ class Executor:
             return None
         return self.config.retry_config.get_policy_for_error(str(error))
 
+    def _script_failure(self, error: Exception) -> Exception | None:
+        if self.dialect != Dialects.DUCK_DB:
+            return None
+        from trilogy.dialect.duckdb import python_datasource_failure
+
+        return python_datasource_failure(error)
+
     def _execute_now(self, statement: Any, final_params: dict | None) -> ResultProtocol:
         if final_params:
             return self.connection.execute(statement, final_params)
@@ -1435,6 +1442,9 @@ class Executor:
             except Exception as e:
                 policy = self._get_retry_policy(e)
                 if policy is None or attempt >= policy.max_attempts:
+                    script_failure = self._script_failure(e)
+                    if script_failure is not None:
+                        raise script_failure from e
                     raise
                 delay = policy.get_delay(attempt)
                 self.logger.warning(

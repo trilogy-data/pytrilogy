@@ -281,20 +281,9 @@ def show_statement_result(
     duration_str = f"({format_duration(duration)})"
 
     if error is not None:
-        error_str = str(error).strip()
-        if not error_str or error_str in ["0", "None", "null", ""]:
-            if exception_type:
-                error_msg = f"{statement_num} failed with {exception_type.__name__}"
-                if error_str and error_str not in ["None", "null"]:
-                    error_msg += f" (code: {error_str})"
-            else:
-                error_msg = f"{statement_num} failed with unclear error"
-                if error_str:
-                    error_msg += f": '{error_str}'"
-        else:
-            error_msg = f"{statement_num} failed: {error_str}"
-
-        print_error(error_msg)
+        # Only which statement failed: the run re-raises the error and the
+        # CLI's exception handler prints its body once, labelled by kind.
+        print_error(f"{statement_num} failed {duration_str}")
     elif has_results:
         if _core.RICH_AVAILABLE and _core.console is not None:
             _core.console.print(

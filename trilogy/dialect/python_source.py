@@ -79,16 +79,30 @@ class PythonDatasourceError(RuntimeError):
         self.return_code = return_code
         self.stderr = stderr
         self.reported = parse_script_error(stderr)
-        # A script using trilogy.io states its own failure on one line; falling
-        # back to raw stderr means dumping a traceback plus whatever uv logged.
+        # A script using trilogy.io states its own failure on one line. Anything
+        # else leads with the traceback's final line, then the full stderr.
+        context = ""
         if self.reported:
             detail = f"{self.reported['type']}: {self.reported['message']}"
+        elif stderr.strip():
+            detail = final_error_line(stderr)
+            if stderr.strip() != detail:
+                context = f"\n\nScript output:\n{stderr.strip()}"
         else:
-            detail = stderr.strip() or (str(cause) if cause else "no output")
+            detail = str(cause) if cause else "no output"
         super().__init__(
             f"Python datasource script '{script}' failed "
-            f"(exit code {return_code}): {detail}"
+            f"(exit code {return_code}): {detail}{context}"
         )
+
+
+def final_error_line(stderr: str) -> str:
+    """The exception line a traceback ends on: the last unindented line."""
+    lines = [line for line in stderr.strip().splitlines() if line.strip()]
+    for line in reversed(lines):
+        if not line[0].isspace():
+            return line
+    return lines[-1].strip()
 
 
 def parse_script_error(stderr: str) -> dict[str, Any] | None:

@@ -1,4 +1,3 @@
-import traceback
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -35,7 +34,6 @@ from trilogy.scripts.display import (
     is_agent_mode,
     is_json_mode,
     print_chart_terminal,
-    print_error,
     print_info,
     print_results_table,
     print_success,
@@ -232,7 +230,6 @@ def execute_queries_with_progress(
             show_statement_result(
                 idx, total_queries, duration, False, str(error), type(error)
             )
-            print_error(f"Full traceback:\n{traceback.format_exc()}")
         else:
             show_statement_result(idx, total_queries, duration, bool(results))
             if results and not error:
