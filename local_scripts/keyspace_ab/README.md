@@ -14,8 +14,7 @@ without its environment variable.
 | `sqlcmp.py` | `python sqlcmp.py a.jsonl b.jsonl`: tests whose DISTINCT compiled SQL differs, CTE names normalized | |
 | `rowcmp.py` | `python rowcmp.py a.jsonl b.jsonl`: tests whose result sets differ, with the rows each side lacks | |
 | `sqlshow.py` | `python sqlshow.py a.jsonl b.jsonl <test substring>`: the unified diff of each matching test's differing SQL | |
-| `ks_pfb.py` | appends a JSONL line per test where `_preserved_final_branch` returns True or the "keeps its padded plan" emitter fires | `KS_PFB=<file>` |
-| `ks_nopfb.py` | `_preserved_final_branch` never fires: run the `ks_pfb.py` worklist under it to see where the FINAL restatement is load-bearing | `KS_NOPFB=1` |
+| `ks_pfb.py` | appends a JSONL line per test where the "keeps its padded plan" emitter fires (it traced `_preserved_final_branch` until that rule was retired; the retirement method was: sweep the rule's firings, switch it off with a one-line plugin, A/B the planner suites, read every SQL diff) | `KS_PFB=<file>` |
 | `probes/` | the fourth session's rows-first probes, run with the venv interpreter from any directory (paths are repo-relative): `probe_keyless.py` (keyless rowset vs direct spelling on `UNSOLD_MODEL`, a `~?` guest model and an all-described variant; `--sql` prints the FULL plans), `guest_sql.py` / `pair.py` (argv queries on the guest model / the oracle model pair), `trace_item3.py` / `trace_unsold.py` (buckets, group-graph edges and condition placements per plan), `trace_join_type.py` (every plan-time `get_join_type` call with each side's flags), `trace_dedup.py` (the FINAL dedup decision and the pregrain omissions), `probe_guest2.py` (the open `~?` rename bug across property nullability x fact grain). Run one under a HEAD worktree with `PYTHONPATH=<worktree>` for a baseline. | |
 
 The phase 3 method: compute the old and the new answer side by side under

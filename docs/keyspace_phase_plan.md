@@ -21,7 +21,7 @@ The original sites, and where each stands now:
 | `MergeNode._extent_free_partials`, `extension_padded_addresses`, `get_join_type` | which NULLs are absence, and whose? | read the election / `region_spans` / `SpanScope` |
 | `strategy_builder._cover_groups_for_mandatory` | which group holds a column's value on which rows? | reads the election and `region_reads` |
 | the three folds (`_fold_passthrough_parents`, `_drop_ancestor_parents`, `_fold_covered_contributors`) | can this contributor go? | read the region contract (`region_reads`); `keep=` gone |
-| `condition_placement._preserved_final_branch`, `_uncovered_exposing_output_contributor` | will a join re-admit rows this WHERE removed? | stay: load-bearing on ~20 non-`~` shapes |
+| `condition_placement._preserved_final_branch`, `_uncovered_exposing_output_contributor` | will a join re-admit rows this WHERE removed? | `_preserved_final_branch` retired (inert once joins were typed at plan time); `_uncovered_exposing_output_contributor` stays, unswept |
 | `optimizations/predicate_pushdown`, `join_upgrade`, `null_safe_join` | is this side null-extended, is that NULL a value? | unchanged consumers |
 
 `domain_graph_design.md` and `v4_network_discovery_design.md` each have a "nullability is not modeled" section. `DomainGraph` relates VALUE SETS across the model. The keyspace is its statement-level counterpart.
@@ -145,7 +145,7 @@ FINAL                                    customers LEFT JOIN status-stream ON cu
 - **An atom over the span key keeps the extension row** (`where customer_id in (2, 3)`).
 - **A null-rejecting atom over an absent value empties the region**: no domain, the filter sits on the fact side.
 - **`null_padded_nodes` walks the accumulated left** of a RIGHT/FULL join. A null-ACCEPTING atom must not push below it. `_push_having_into_group_parent` reads the same gate (`_predicate_safe_past_null_extension`). It must also stay blocked until the final join upgrade: pushing a null-rejecting HAVING early materializes a retained duplicate (usa_names `test_filter_constant_with_constant`).
-- **`_preserved_final_branch` and `_uncovered_exposing_output_contributor` stay.** A sweep (`ks_pfb.py`) shows them load-bearing on ~20 non-`~` tests: unnest, union-arm and rowset filter leaks, TPC-DS q81/q82, `test_preaggregate_dimension_peel_duplicates_filter_on_both_scans`.
+- **`_preserved_final_branch` is RETIRED.** It restated a side-branch atom at FINAL against a row-preserving join. Once joins were typed at plan time it fired on 23 planner-suite tests and changed the SQL of two, both redundantly (a WHERE pushed onto the rowset side of a LEFT join whose preserved side carried it; `city = 'USBOS'` over two sources `complete where city = 'USBOS'`); rows identical everywhere. The sweep that once showed it load-bearing on ~20 tests predates 5(a). `_uncovered_exposing_output_contributor` stays and has not had the same sweep.
 
 ### A filter concept is a value (owner answer 5)
 
@@ -215,9 +215,8 @@ The step-2 retirement list was tried by deletion. These are the fallback for reg
 
 In the order to take them:
 
-1. **Retiring `_preserved_final_branch`**: its own A/B, with the `ks_pfb.py` list as the worklist.
-2. **Rowset witness leftovers**: 5(c), an unsplit boundary is not stamped as the region holder (see tried). A region no handle is keyed on alone is still skipped, and with two properties of the key the first by name is picked.
-3. **Unmodelled regions** that keep the fallbacks alive: composite-key `~` demand, regions only a join of two facts witnesses, a materialized aggregate beside a region. Also merged-`~` pin-heal (above).
+1. **Rowset witness leftovers**: 5(c), an unsplit boundary is not stamped as the region holder (see tried). A region no handle is keyed on alone is still skipped, and with two properties of the key the first by name is picked.
+2. **Unmodelled regions** that keep the fallbacks alive: composite-key `~` demand, regions only a join of two facts witnesses, a materialized aggregate beside a region. Also merged-`~` pin-heal (above).
 
 **Lesson that held every session: every item labelled "plan quality", "cosmetic" or "not split" was wrong rows once a rows test existed.** Write the rows test first. Reasoning-based diagnoses were one cause short each time; trace instead.
 
