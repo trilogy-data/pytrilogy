@@ -166,19 +166,6 @@ def deduplicate_nodes_and_joins(
     return joins, merged
 
 
-def tree_in_play_spans(node: StrategyNode, seen: set[int]) -> frozenset[str]:
-    """The spans any merge under `node` was built with in play. Padding is
-    made by merges, and a rowset body is its own plan with its own keyspace, so
-    the merge reading that body's rows has to look below its own plan."""
-    if id(node) in seen:
-        return frozenset()
-    seen.add(id(node))
-    out = node.span_scope.in_play if isinstance(node, MergeNode) else frozenset()
-    for parent in node.parents:
-        out |= tree_in_play_spans(parent, seen)
-    return out
-
-
 class MergeNode(StrategyNode):
     source_type = SourceType.MERGE
 
@@ -371,7 +358,8 @@ class MergeNode(StrategyNode):
                     host_grain=host_grain,
                     demanded_domains=demanded_domains,
                     extent_free_spans=self.span_scope.extent_free,
-                    in_play_spans=tree_in_play_spans(self, set()),
+                    in_play_spans=self.span_scope.in_play,
+                    witnessed=self.span_scope.witnessed,
                 )
         elif final_joins:
             logger.info(

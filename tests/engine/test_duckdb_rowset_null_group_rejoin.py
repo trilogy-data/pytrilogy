@@ -71,8 +71,21 @@ UNSOLD_MODEL = MODEL.replace(
 )
 UNSOLD_EXPECTED = [("alpha", 1, 0), ("beta", 1, 1), ("gamma", 0, 0), (None, 2, 1)]
 
+# A rowset over a rowset: `t`'s witness is spelled in `t`'s handles, and the
+# body of `s` respells them (`t.o as o2`), so the witness must be read through
+# that body's canonical spelling to be a region of it at all.
+NESTED_ROWSET_QUERY = """
+rowset t <- select order_number as o, item_sk as sk, item_desc as d, quantity as q;
+rowset s <- select t.o as o2, t.sk as sk2, t.d as d2, t.q as q2;
+select
+    s.d2,
+    count(grain(s.o2, s.sk2)) as total,
+    count(grain(s.o2, s.sk2) ? s.q2 > 10) as hi
+order by s.d2 asc nulls last;
+"""
 
-@pytest.mark.parametrize("query", [DIRECT_QUERY, ROWSET_QUERY])
+
+@pytest.mark.parametrize("query", [DIRECT_QUERY, ROWSET_QUERY, NESTED_ROWSET_QUERY])
 def test_unsold_item_counts_no_lines(query):
     env = Environment()
     env.parse(UNSOLD_MODEL)

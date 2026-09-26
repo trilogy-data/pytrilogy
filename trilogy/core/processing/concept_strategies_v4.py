@@ -559,6 +559,7 @@ def _build_from_graph(
     environment.span_scope = SpanScope(
         in_play=keyspace.in_play_spans,
         demanded=keyspace.output_demanded_spans,
+        witnessed=keyspace.witnessed,
         owned=history.owned_spans,
     )
     try:

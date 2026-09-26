@@ -116,6 +116,9 @@ class RowsetWitness:
     regions: tuple[RowsetRegion, ...]
     # handle -> the key handles it is a function of, within this rowset
     entity_handles: dict[str, frozenset[str]] = field(default_factory=dict)
+    # every spelling a join inside the body pads one of its spans under (the
+    # body's own, and those of the rowsets it reads) -> the handle spelling it
+    spellings: dict[str, str] = field(default_factory=dict)
 
     @property
     def licensed(self) -> bool:
@@ -155,6 +158,21 @@ def rowset_witness(
         handle: frozenset(h for h, c in contents.items() if c in keys[handle])
         for handle in contents
     }
+    # the body pads for a span under its own spelling and, for a rowset it
+    # reads in turn, under that body's; the reader names all of them by the
+    # handle. A span no handle spells stays unnamed here.
+    handle_of = {c: h for h, c in sorted(contents.items(), reverse=True)}
+    spellings: dict[str, str] = {}
+    for span in body.in_play_spans:
+        handle = handle_of.get(canonical.get(span, span))
+        if handle is None:
+            continue
+        spellings[span] = spellings[canonical.get(span, span)] = handle
+        spellings.update(
+            (below, handle)
+            for below, spelled in body.witnessed.items()
+            if canonical.get(spelled, spelled) == canonical.get(span, span)
+        )
     regions: list[RowsetRegion] = []
     for region in body.live_regions:
         body_spans = {canonical.get(s, s) for s in region.spans}
@@ -172,7 +190,10 @@ def rowset_witness(
             )
         )
     return RowsetWitness(
-        name=name, regions=tuple(regions), entity_handles=entity_handles
+        name=name,
+        regions=tuple(regions),
+        entity_handles=entity_handles,
+        spellings=spellings,
     )
 
 
@@ -337,6 +358,23 @@ def _carried(anchor: _SourceFacts, sources: tuple[_SourceFacts, ...]) -> Carried
     return carried
 
 
+def _respelled(source: _SourceFacts, canonical: dict[str, str]) -> _SourceFacts:
+    """A rowset's facts are spelled in its handles; the plan reading it keys
+    its entities canonically, and a body reading `t.o as o2` makes the alias
+    the canonical spelling. The `~` cause keeps the handle it was spelled on,
+    as a datasource's keeps the address it was authored on."""
+    bound: Carried = {}
+    for address, cause in source.bound.items():
+        key = canonical.get(address, address)
+        if _better(cause, bound.get(key)):
+            bound[key] = cause
+    return dataclasses.replace(
+        source,
+        grain=frozenset(canonical.get(g, g) for g in source.grain),
+        bound=bound,
+    )
+
+
 def _compute_facts(
     environment: BuildEnvironment,
     datasources: list[BuildDatasource],
@@ -347,7 +385,11 @@ def _compute_facts(
     bound = tuple(
         _source_facts(ds, canonical, identities[ds.identifier]) for ds in datasources
     )
-    sources = bound + _generated_domains(environment, canonical, bound) + rowsets
+    sources = (
+        bound
+        + _generated_domains(environment, canonical, bound)
+        + tuple(_respelled(r, canonical) for r in rowsets)
+    )
     return _ModelFacts(
         # pin-heal and partition exclusion swap datasources before planning
         stamp=tuple(id(ds) for ds in datasources),
@@ -618,6 +660,7 @@ def build_keyspace(
     licensed = _has_extension_license(datasources) or any(
         w.licensed for w in rowset_witnesses
     )
+    witnessed = {s: h for w in rowset_witnesses for s, h in w.spellings.items()}
     canonical = facts.canonical
     identifying = facts.identifying
     # an existence-only node is a semijoin's subselect, not a row of this plan
@@ -640,6 +683,7 @@ def build_keyspace(
             entities=entities,
             regions=(base,),
             keys_by_address=keys_by_address,
+            witnessed=witnessed,
         )
     requested_roots = frozenset(
         canonical.get(a.address, a.address)
@@ -707,4 +751,5 @@ def build_keyspace(
             span: frozenset(facts.reach_of(canonical.get(span, span)) & entities)
             for span in in_play
         },
+        witnessed=witnessed,
     )

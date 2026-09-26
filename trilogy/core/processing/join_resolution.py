@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING
@@ -1674,16 +1674,22 @@ def _padding_sources(
 
 
 def _span_spellings(
-    spans: frozenset[str], environment: BuildEnvironment
+    spans: frozenset[str],
+    environment: BuildEnvironment,
+    witnessed: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
     """Every address a join pair can spell one of `spans` with -> one name for
     it. A scoped join substitutes its canonical for the member bound `~`
-    (`subset join pr.item.sk = ss.item.sk` keys the join on `ss.item.sk`)."""
+    (`subset join pr.item.sk = ss.item.sk` keys the join on `ss.item.sk`); a
+    rowset body pads under its own spelling of the handle the plan reads
+    (`witnessed`), and a spelling the plan itself uses keeps its own name."""
     out = {span: span for span in spans}
     for canonical, members in environment.scoped_join_key_groups.items():
         group = {canonical, *members}
         if group & spans:
             out.update(dict.fromkeys(group, canonical))
+    for below, handle in (witnessed or {}).items():
+        out.setdefault(below, out.get(handle, handle))
     return out
 
 
@@ -1718,6 +1724,7 @@ def get_node_joins(
     demanded_domains: set[str] | None = None,
     extent_free_spans: frozenset[str] = frozenset(),
     in_play_spans: frozenset[str] = frozenset(),
+    witnessed: Mapping[str, str] | None = None,
 ) -> list[BaseJoin]:
     from trilogy.core import graph as nx
 
@@ -1842,7 +1849,7 @@ def get_node_joins(
         span_padding = _span_padding_matrix(
             ds_node_map,
             nullables,
-            _span_spellings(in_play_spans, environment),
+            _span_spellings(in_play_spans, environment, witnessed),
             canon_node,
         )
     host_nodes: set[str] | None = None

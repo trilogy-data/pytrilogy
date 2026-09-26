@@ -12,6 +12,11 @@ from tests.engine.test_derived_key_domain import (
     _PARTIAL_PROPERTY_SOURCE,
 )
 from tests.engine.test_duckdb_partial_fk_field_report import MODEL as FIELD_REPORT
+from tests.engine.test_duckdb_rowset_null_group_rejoin import (
+    NESTED_ROWSET_QUERY,
+    ROWSET_QUERY,
+    UNSOLD_MODEL,
+)
 from trilogy import Dialects
 from trilogy.core.processing import partial_bridging
 from trilogy.core.processing.v4_helper.constants import FINAL_NODE_ID
@@ -371,6 +376,45 @@ def test_rowset_key_is_its_own_entity():
     """A customer no order references is not a row of the rowset."""
     keyspace = _keyspace(_ROWSET, "select delivered.customer_id, delivered.order_id;")
     assert keyspace.output_demanded_spans == frozenset()
+
+
+def _plan_keyspaces(monkeypatch, model: str, query: str) -> list[Keyspace]:
+    """Every keyspace the statement builds: witnesses, bodies and the plan."""
+    capture = _Capture()
+    monkeypatch.setattr(rowset_witness, "build_keyspace", capture)
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(model)
+    executor.generate_sql(query)
+    return capture.seen
+
+
+def test_rowset_witness_spells_the_body_padding_by_the_handle(monkeypatch):
+    """The body of `s` pads for `local.item_sk`; the plan reading `s.sk` names
+    that padding by the handle, so a merge above the boundary attributes it to
+    the region it holds rather than to a span of another plan."""
+    seen = _plan_keyspaces(monkeypatch, UNSOLD_MODEL, ROWSET_QUERY)
+    outer = next(k for k in seen if "s.d" in k.outputs)
+    assert outer.in_play_spans == frozenset({"s.sk"})
+    assert outer.witnessed == {"local.item_sk": "s.sk", "local._s_sk": "s.sk"}
+
+
+def test_rowset_over_a_rowset_is_a_region_of_the_reader(monkeypatch):
+    """`s` reads `t.sk` as `sk2`, and the alias is the canonical spelling of
+    that entity in `s`'s body, so `t`'s witness is read through it; spelled in
+    `t`'s handles alone it matched no entity, `s` had one region, and the
+    count ran over the padding. The plan above names every spelling below by
+    `s.sk2`."""
+    seen = _plan_keyspaces(monkeypatch, UNSOLD_MODEL, NESTED_ROWSET_QUERY)
+    body = next(k for k in seen if "local._s_o2" in k.outputs)
+    assert body.describe() == "{local._s_o2, local._s_sk2} | {local._s_sk2} ~['t.sk']"
+    outer = next(k for k in seen if "s.d2" in k.outputs)
+    assert outer.in_play_spans == frozenset({"s.sk2"})
+    assert outer.witnessed == {
+        "t.sk": "s.sk2",
+        "local._s_sk2": "s.sk2",
+        "local.item_sk": "s.sk2",
+        "local._t_sk": "s.sk2",
+    }
 
 
 def test_binding_is_complete_once_the_where_empties_the_rows_it_lacks(monkeypatch):
