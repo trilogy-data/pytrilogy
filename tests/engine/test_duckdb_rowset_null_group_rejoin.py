@@ -181,9 +181,10 @@ EQUIVALENT_SPELLINGS = [
     ),
     # named-argument aggregates (evaluated over the region: the domain merges
     # onto their solid pre-merge) beside a filtered count(grain(...)) that
-    # stays solid. The FINAL INNER-joins the aggregate on `s.sk`, and that
-    # equality flowed back as a proof that the pre-merge's solid side had a
-    # key, turning the domain's LEFT into INNER and dropping the unsold item.
+    # stays solid. The FINAL INNER-joins the aggregate on `s.sk`; that
+    # equality flowed back as a proof on the pre-merge, whose solid side had
+    # lost its partial mark on `s.sk` to a CTE collapse, so the domain's LEFT
+    # became INNER and the unsold item was dropped.
     (
         KEYED_ROWSET
         + "select s.sk, s.d, count(s.o) as n, sum(s.q) as tq, max(s.q) as mq,"

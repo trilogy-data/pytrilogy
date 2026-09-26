@@ -70,12 +70,19 @@ def carry_child_state(parent: CTE, cte: CTE) -> None:
     dropping NULL-keyed groups. Existence references: an `IN (<set>)` resolves
     its set columns through existence_source_map, and dropping those entries
     strands the membership and lets the feeder CTE be pruned as unreferenced.
-    LIMIT is the last logical operation of a SELECT, so the child's limit and
-    ORDER BY apply unchanged to the merged CTE."""
+    Partiality: a dropped partial mark lets UpgradeJoinOnGuards read a proof
+    on a key the merged CTE binds partially (a region domain's span on the
+    solid stream) as forcing it present, and INNER-narrow the join that pads
+    it. LIMIT is the last logical operation of a SELECT, so the child's limit
+    and ORDER BY apply unchanged to the merged CTE."""
     nullable_addresses = {c.address for c in parent.nullable_concepts}
     for column in cte.nullable_concepts:
         if column.address not in nullable_addresses:
             parent.nullable_concepts.append(column)
+    partial_addresses = {c.address for c in parent.partial_concepts}
+    for column in cte.partial_concepts:
+        if column.address not in partial_addresses:
+            parent.partial_concepts.append(column)
     for address, sources in cte.existence_source_map.items():
         if address not in parent.existence_source_map:
             parent.existence_source_map[address] = sources
