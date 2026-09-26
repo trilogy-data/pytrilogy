@@ -55,7 +55,6 @@ class PlacementReason(Enum):
     FINAL_CROSS_GRAIN_AGGREGATE = "final_cross_grain_aggregate"
     DISCONNECTED_GATE = "disconnected_gate"
     FINAL_UNCOVERED_CONTRIBUTOR = "final_uncovered_contributor"
-    FINAL_PRESERVED_BRANCH = "final_preserved_branch"
     CONJUNCTION_RECOMPUTE = "conjunction_recompute"
     # A row atom copied onto a select-phase aggregate that the elected host
     # does not feed, so both siblings aggregate the same filtered population.
@@ -576,42 +575,6 @@ def _decided_per_group(
         ):
             return False
     return True
-
-
-def _preserved_final_branch(
-    chosen_groups: tuple[str, ...],
-    row_inputs: set[str],
-    buckets: dict[str, GroupBucket],
-    group_graph: nx.DiGraph,
-    mandatory_addrs: set[str],
-) -> bool:
-    """Whether every chosen host is a side branch feeding ONLY the FINAL merge
-    while other select-phase contributors also enter it. The FINAL join against
-    such a filtered branch renders row-preserving whenever its axis is nullable
-    or partial (the enrichment contract), which re-admits the rows the WHERE
-    excluded as NULL-extended pads (a dimension filter hosted on a split
-    dimension cluster, LEFT-joined back to the qualifying aggregate). The
-    WHERE, not the join, owns row dropping, so the atom is re-asserted at
-    FINAL; the re-check is idempotent when the join is already row-identical
-    (the predicate is restated at its merge in the same shape).
-    Gated on the inputs being FINAL-visible mandatory outputs so the copy never
-    drags feeder scans in above the merge, and skipped under non-standard
-    grouping for the same subtotal-NULL reason as
-    ``_uncovered_exposing_output_contributor``."""
-    if any(b.nulls_grouping_keys for b in buckets.values()):
-        return False
-    if not chosen_groups or not row_inputs or not (row_inputs <= mandatory_addrs):
-        return False
-    if not all(
-        set(group_graph.successors(gid)) == {FINAL_NODE_ID} for gid in chosen_groups
-    ):
-        return False
-    return any(
-        gid not in chosen_groups
-        and gid in buckets
-        and buckets[gid].depth_label not in (DepthLabel.D1, ROOT_D1_DEPTH)
-        for gid in group_graph.predecessors(FINAL_NODE_ID)
-    )
 
 
 def _reads_past_region_domain(
@@ -1551,25 +1514,6 @@ def plan_condition_placements(
                         atom=atom,
                         group_ids=(FINAL_NODE_ID,),
                         reason=PlacementReason.FINAL_UNCOVERED_CONTRIBUTOR,
-                    )
-                )
-            elif (
-                mandatory_list
-                and not atom.existence_arguments
-                and not (row_inputs & scoped_join_member_addresses)
-                and _preserved_final_branch(
-                    chosen_groups,
-                    row_inputs,
-                    buckets,
-                    group_graph,
-                    {c.address for c in mandatory_list},
-                )
-            ):
-                placements.append(
-                    ConditionPlacement(
-                        atom=atom,
-                        group_ids=(FINAL_NODE_ID,),
-                        reason=PlacementReason.FINAL_PRESERVED_BRANCH,
                     )
                 )
         placements.extend(
