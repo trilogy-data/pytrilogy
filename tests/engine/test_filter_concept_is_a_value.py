@@ -118,6 +118,22 @@ def test_a_having_aggregate_is_not_shown(executor: Executor):
     assert "CASE" not in sql, sql
 
 
+def test_a_having_responsive_aggregate_is_not_shown(executor: Executor):
+    """`count(order_id)` in the HAVING is grouped by the shown value, so it
+    reads the unfiltered orders only for what rides the filter's own row
+    stream: the predicate is a WHERE, and the odd products' NULL group (two
+    orders between them) is not a row nobody would keep. The filter node
+    collapses into the aggregate's SELECT and its CASE is rendered over the
+    narrowed rows, always its THEN branch: redundant, not wrong."""
+    assert _rows(executor, "select even_name having count(order_id) > 1") == []
+    assert _rows(executor, "select even_name having count(order_id) >= 1") == [
+        ("bean",)
+    ]
+    assert _rows(executor, "select even_name having sum(quantity) > 5") == [("bean",)]
+    sql = executor.generate_sql("select even_name having count(order_id) > 1;")[-1]
+    assert sql.count('WHERE\n    "') == 2 and "% 2 = 0" in sql, sql
+
+
 def test_grouped_by_the_value_the_null_group_stays(executor: Executor):
     assert _rows(executor, "select even_name, count(order_id) as n") == [
         ("bean", 1),
