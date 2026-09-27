@@ -541,3 +541,17 @@ def test_optional_entity_is_absent_on_rows_without_it(query: str):
     rows = _rows(derived, query)
     assert rows == _rows(materialized, query)
     assert any(r[-1] in (None, 0) for r in rows)
+
+
+def test_optional_entity_solid_stream_reads_returns_alone():
+    """The solid stream beside the `{order, item}` domain is `returns` by
+    itself: re-sourced at FINAL under its group's own scope, it no longer
+    completes its `~` keys with `lines`, which the domain already holds
+    (`lines FULL JOIN (lines LEFT JOIN returns)` was the shape)."""
+    materialized = Dialects.DUCK_DB.default_executor()
+    materialized.execute_text(_OPTIONAL_MATERIALIZED)
+    sql = materialized.generate_sql(
+        "select order_id, item_id, qty, return_id, reason_label;"
+    )[-1]
+    assert sql.count('as "lines"') == 1
+    assert "FULL JOIN" not in sql

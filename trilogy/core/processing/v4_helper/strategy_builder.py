@@ -4245,24 +4245,38 @@ def _assemble_final_node(
             # state (its value comes from a constraint parent: `where
             # n_orders > 1` beside this dim's key) is applied inside `node`
             # only, so a re-source would silently drop it.
-            # This re-source runs at FINAL scope, unpromoted: a solid root
-            # beside a region domain completes its `~` keys itself (the
-            # optional-entity twin's redundant `lines FULL JOIN (lines LEFT JOIN
-            # returns)`). Planning it under the group's own scope was tried: a
-            # dim peel holding a member the domain does not carry (`brand`
-            # under `dim:item_id` beside `extent:product_id` carrying `cost`)
-            # then lost that member on the extension row.
-            fresh = (
-                _fresh_final_root_projection(
-                    group_concepts,
-                    environment,
-                    graph,
-                    history,
-                    conditions=_wrap_atoms(satisfiable),
+            # A solid root's re-source runs under its group's own scope, as
+            # its build did. At FINAL scope, unpromoted, it completed its `~`
+            # keys itself beside the domain holding them (the optional-entity
+            # twin's `lines FULL JOIN (lines LEFT JOIN returns)`), and a peel
+            # holding a member of the region (`brand` under `dim:item_id`) was
+            # the only thing putting that member on the extension row; the
+            # domain carries such a member now (`add_region_domain_buckets`).
+            # A domain is the FINAL's own rows and keeps the FINAL's scope: the
+            # customer domain completes its transitive `~` address there, and
+            # the orphan address's state is read off it
+            # (`test_licensed_transitive_attr_span`).
+            group_scope = environment.span_scope
+            if not attrs[gid].extent_spans:
+                environment.span_scope = dc_replace(
+                    group_scope,
+                    extent_free=ownership.suppressed_for(gid) | group_scope.owned,
+                    extent_free_carried=ownership.suppressed_carried_for(gid),
                 )
-                if len(satisfiable) == len(root_atoms)
-                else None
-            )
+            try:
+                fresh = (
+                    _fresh_final_root_projection(
+                        group_concepts,
+                        environment,
+                        graph,
+                        history,
+                        conditions=_wrap_atoms(satisfiable),
+                    )
+                    if len(satisfiable) == len(root_atoms)
+                    else None
+                )
+            finally:
+                environment.span_scope = group_scope
             if fresh is not None:
                 node = fresh
             # The filter-only args above exist so the scan can SOURCE and APPLY

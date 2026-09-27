@@ -210,6 +210,17 @@ def _keyed_by_region(bucket: GroupBucket, region: Region) -> bool:
     return bool(bucket.dim_keys) and bucket.dim_keys <= region.spans
 
 
+def _holds_a_materialized_aggregate(
+    bucket: GroupBucket, environment: BuildEnvironment
+) -> bool:
+    """A summary table rolled up to the statement's grain, held as a ROOT: a
+    rollup over the region's rows the keyspace does not model."""
+    return any(
+        (c := environment.concepts.get(m)) is not None and c.is_aggregate
+        for m in bucket.primary_members
+    )
+
+
 def add_region_domain_buckets(
     buckets: dict[str, GroupBucket],
     concept_attrs: dict[str, ConceptAttrs],
@@ -266,18 +277,28 @@ def add_region_domain_buckets(
                 b
                 for b in eligible
                 if _mixes_region(b, region, keyspace)
-                and not any(
-                    (c := environment.concepts.get(m)) is not None and c.is_aggregate
-                    for m in b.primary_members
+                and not _holds_a_materialized_aggregate(b, environment)
+            ]
+            rowset = [b for b in sources if b.derivation == Derivation.ROWSET]
+            # a dim peel keyed by the span is the region's own rows already;
+            # the domain takes its members too. So it takes a member of the
+            # region any other ROOT peel holds (`brand` under `dim:item_id`):
+            # left there alone, only an unpromoted completion of that peel at
+            # FINAL put the member's value on the extension row
+            holders = [
+                b
+                for b in eligible
+                if b in sources
+                or _keyed_by_region(b, region)
+                or (
+                    not rowset
+                    and b.derivation == Derivation.ROOT
+                    and not _holds_a_materialized_aggregate(b, environment)
                 )
             ]
-            # a dim peel keyed by the span is the region's own rows already;
-            # the domain takes its members too, or FINAL reads them off a solid
-            # sibling that passes them through
             carried = {
                 m
-                for b in eligible
-                if b in sources or _keyed_by_region(b, region)
+                for b in holders
                 for m in b.primary_members
                 if keyspace.carried_on(m, region)
             }
@@ -294,7 +315,6 @@ def add_region_domain_buckets(
                 )
             ):
                 continue
-            rowset = [b for b in sources if b.derivation == Derivation.ROWSET]
             if rowset and not _needs_solid_rows(
                 buckets, label, region, keyspace, environment
             ):
@@ -325,9 +345,7 @@ def add_region_domain_buckets(
                 ),
                 extent_spans=region.spans,
             )
-            for bucket in eligible:
-                if bucket not in sources and not _keyed_by_region(bucket, region):
-                    continue
+            for bucket in holders:
                 for addr, node_id in zip(
                     bucket.primary_members, bucket.primary_node_ids
                 ):
