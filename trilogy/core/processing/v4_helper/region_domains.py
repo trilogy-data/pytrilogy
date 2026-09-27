@@ -18,9 +18,11 @@ from .concept_graph import _scope_and_phase
 from .condition_placement import ConditionPlacement, PlacementReason
 from .constants import FINAL_NODE_ID, ROW_STREAM_DERIVATIONS, DepthLabel, EdgeKind
 from .edges import EdgeMap, add_edge, edge_kind, remove_edge
-from .extent_ownership import _solid_groups as solid_groups
-from .extent_ownership import _takes_a_value_on_padding as takes_a_value_on_padding
-from .extent_ownership import null_on_padding
+from .extent_ownership import (
+    null_on_padding,
+    solid_groups,
+    takes_a_value_on_padding,
+)
 from .models import ConceptAttrs, GroupAttrs, GroupBucket, Keyspace, Region
 from .projection import decided_at_output_grain, reads_rows_only
 
@@ -548,7 +550,7 @@ def feed_region_domains_to_present_scalars(
     order_id`) every extension row would collapse into one NULL group: the
     aggregate pairs on solid keys and the domain pads it at FINAL. Never when
     a row stream that must not see an extension row reads it
-    (`_solid_groups`).
+    (`solid_groups`).
 
     A row-stream derivation that READS something a region domain carries
     (`sale_price - cost` reads the product's `cost`) reads the domain of
@@ -574,7 +576,7 @@ def feed_region_domains_to_present_scalars(
         if region is None:
             continue
         scope = _scope_and_phase(domain.label)[0]
-        # a row stream that must never see an extension row (`_solid_groups`)
+        # a row stream that must never see an extension row (`solid_groups`)
         # keeps every aggregate it reads solid too
         solid = solid_groups(group_graph, attrs, region, keyspace, environment)
         for gid, a in attrs.items():

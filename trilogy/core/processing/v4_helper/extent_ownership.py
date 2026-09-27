@@ -124,7 +124,7 @@ def elect_extent_owners(
         if span in domain_of_span:
             # The domain holds the members; whatever reads it extends, except
             # the row streams that must never see an extension row.
-            allowed = ({owner} | nx.descendants(group_graph, owner)) - _solid_groups(
+            allowed = ({owner} | nx.descendants(group_graph, owner)) - solid_groups(
                 group_graph, attrs, domains[owner], keyspace, environment
             )
         else:
@@ -170,7 +170,7 @@ def null_on_padding(
     )
 
 
-def _takes_a_value_on_padding(
+def takes_a_value_on_padding(
     address: str, region: Region, keyspace: Keyspace, environment: BuildEnvironment
 ) -> bool:
     concept = environment.concepts.get(address)
@@ -181,7 +181,7 @@ def _takes_a_value_on_padding(
     )
 
 
-def _solid_groups(
+def solid_groups(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     region: Region,
@@ -201,7 +201,7 @@ def _solid_groups(
         for gid, a in attrs.items()
         if a.derivation in ROW_STREAM_DERIVATIONS
         and any(
-            _takes_a_value_on_padding(m, region, keyspace, environment)
+            takes_a_value_on_padding(m, region, keyspace, environment)
             for m in a.primary_members
         )
     ]
