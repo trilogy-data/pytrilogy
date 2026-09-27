@@ -773,6 +773,12 @@ def _parent_nodes_for(
             return node.copy()
         if attrs[gid].derivation not in GROUPING_DERIVATIONS:
             return node.copy()
+        # a region domain is read as built: a re-sourced slice is a fresh scan
+        # holding no region, so the aggregate would compute its row-stream
+        # arguments over the padded merge (`count(status)` counted the
+        # customer with no order once the slice stopped hitting a stale cache)
+        if region_reads(node):
+            return node.copy()
         parent_outputs = {concept.address for concept in node.output_concepts}
         slice_addresses = needed & parent_outputs
         # A scoped-relation member this scan carries for its MATE (the rowset
@@ -4239,6 +4245,13 @@ def _assemble_final_node(
             # state (its value comes from a constraint parent: `where
             # n_orders > 1` beside this dim's key) is applied inside `node`
             # only, so a re-source would silently drop it.
+            # This re-source runs at FINAL scope, unpromoted: a solid root
+            # beside a region domain completes its `~` keys itself (the
+            # optional-entity twin's redundant `lines FULL JOIN (lines LEFT JOIN
+            # returns)`). Planning it under the group's own scope was tried: a
+            # dim peel holding a member the domain does not carry (`brand`
+            # under `dim:item_id` beside `extent:product_id` carrying `cost`)
+            # then lost that member on the extension row.
             fresh = (
                 _fresh_final_root_projection(
                     group_concepts,

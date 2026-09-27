@@ -439,12 +439,14 @@ def _network_source(
     """
     concepts = _search_concepts_for_bridge(request)
     v4_history = request.history if isinstance(request.history, V4History) else None
-    verdict_key: tuple[str, str, bool] | None = None
+    verdict_key: tuple[str, str, bool, tuple[str, ...]] | None = None
     if v4_history is not None:
         verdict_key = (
             "-".join(sorted(c.address for c in concepts)),
             f"{request.conditions}|{request.deferred_conditions}",
             defer_single_scan,
+            # the promoted `~` keys change which scans bind fully
+            tuple(sorted(request.environment.span_scope.extent_free)),
         )
         cached_verdict = v4_history.network_verdicts.get(verdict_key)
         if cached_verdict == "none":
