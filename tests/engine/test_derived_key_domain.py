@@ -405,24 +405,45 @@ def test_orderless_customer_has_no_status(derived: Executor):
     ]
 
 
-# OWED. Aggregates are evaluated OVER a region's extended rows, which is right
-# for every operator whose padded-row answer equals its empty-group answer:
-# `count` is 0 both ways, `sum`/`min`/`max`/`avg` are NULL both ways.
-# `array_agg` is the one that disagrees -- it collects the padding's NULL into
-# `[NULL]` where no rows at all is NULL -- so it must not see a padded row.
-# Marking it in `NULL_OPAQUE_FUNCTIONS` fixes the condition proofs but not
-# this: the shape below builds no region domain at all, so the aggregate runs
-# at FINAL over `customers LEFT JOIN orders` and the planner never asks. See
-# the plan doc's open items for the two candidate fixes.
-@pytest.mark.xfail(strict=True, reason="owed: array_agg is evaluated on padding")
-def test_array_agg_over_a_region_is_empty_not_a_null_element(derived: Executor):
-    rows = [
-        (customer, sorted(amounts) if amounts is not None else None)
-        for customer, amounts in _rows(
-            derived, "select customer_id, array_agg(amount) as amts"
-        )
-    ]
-    assert rows == [(1, [10, 20]), (2, [30]), (3, None)]
+# Aggregates are evaluated OVER a region's extended rows, which is right for
+# every operator whose padded-row answer equals its empty-group answer (`count`
+# is 0 both ways, `sum`/`min`/`max`/`avg` are NULL both ways). `array_agg`
+# collects the padding's NULL into `[NULL]` where no rows at all is NULL, so it
+# is computed on the solid rows and the domain pads it (NULL_COLLECTING_AGGREGATES).
+# The oracle cannot judge it: the materialized twin pads the same way.
+ARRAY_AGG_CASES = [
+    (
+        "select customer_id, array_agg(amount) as amts",
+        [(1, [10, 20]), (2, [30]), (3, None)],
+    ),
+    (
+        "select customer_id, name, array_agg(amount) as amts",
+        [(1, "ann", [10, 20]), (2, "bob", [30]), (3, "cat", None)],
+    ),
+    (
+        "select customer_id, array_agg(amount) as amts, count(order_id) as n",
+        [(1, [10, 20], 2), (2, [30], 1), (3, None, 0)],
+    ),
+    # the argument is carried on the region: the orderless customer is a real
+    # element of the NULL status's group
+    (
+        "select status, array_agg(customer_id) as cs",
+        [("delivered", [1, 2]), ("in-transit", [1]), (None, [3])],
+    ),
+]
+
+
+def _sorted_arrays(rows: list[tuple]) -> list[tuple]:
+    return [tuple(sorted(v) if isinstance(v, list) else v for v in row) for row in rows]
+
+
+@pytest.mark.parametrize("query,expected", ARRAY_AGG_CASES)
+@pytest.mark.parametrize("model", ["derived", "materialized"])
+def test_array_agg_over_a_region_is_empty_not_a_null_element(
+    request: pytest.FixtureRequest, model: str, query: str, expected: list[tuple]
+):
+    executor: Executor = request.getfixturevalue(model)
+    assert _sorted_arrays(_rows(executor, query)) == _sorted_arrays(expected)
 
 
 # The twin is blind here: a bound `amount` is a ROOT value on both models, and

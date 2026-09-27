@@ -6,7 +6,7 @@ evaluate on the region, and restated at FINAL for the WHERE atoms over it.
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation
+from trilogy.core.enums import NULL_COLLECTING_AGGREGATES, Derivation
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
@@ -27,22 +27,34 @@ from .models import ConceptAttrs, GroupAttrs, GroupBucket, Keyspace, Region
 from .projection import decided_at_output_grain, reads_rows_only
 
 
-def _has_absent_inline_argument(
+def _argument_takes_a_value_on_padding(
     address: str, region: Region, keyspace: Keyspace, environment: BuildEnvironment
 ) -> bool:
-    """An aggregate argument written inline (`sum(coalesce(amount, 0))`) is a
-    derivation no concept node stands for; it takes a value on `region`'s rows
-    when it reads something absent there and is not NULL for it."""
+    """Whether the aggregate at `address` answers a padded row of `region`
+    differently from no row at all, so it must be computed on the solid rows.
+
+    An argument written inline (`sum(coalesce(amount, 0))`) is a derivation no
+    concept node stands for; it takes a value on the region's rows when it
+    reads something absent there and is not NULL for it. A NULL-collecting
+    operator (`array_agg(amount)`) takes the padding's NULL itself, `[NULL]`
+    where an empty group is NULL, so any argument absent there keeps it
+    solid."""
     concept = environment.concepts.get(address)
     if concept is None or not isinstance(concept.lineage, BuildAggregateWrapper):
         return False
+    function = concept.lineage.function
+    if function.operator in NULL_COLLECTING_AGGREGATES:
+        return any(
+            not keyspace.defined_on(read.address, region)
+            for read in function.concept_arguments
+        )
     return any(
         not null_on_padding(arg, region, keyspace, environment)
         and any(
             not keyspace.defined_on(read.address, region)
             for read in arg.concept_arguments
         )
-        for arg in concept.lineage.function.arguments
+        for arg in function.arguments
         if isinstance(arg, BuildConceptArgs) and not isinstance(arg, BuildConcept)
     )
 
@@ -64,7 +76,7 @@ def _fed_by_region_domain(
     grain = concept.grain.components if concept.grain else ()
     return any(
         keyspace.carried_on(g, region) for g in grain
-    ) and not _has_absent_inline_argument(
+    ) and not _argument_takes_a_value_on_padding(
         concept.address, region, keyspace, environment
     )
 
@@ -142,7 +154,7 @@ def _needs_solid_rows(
         ):
             return True
         if bucket.derivation == Derivation.AGGREGATE and any(
-            _has_absent_inline_argument(m, region, keyspace, environment)
+            _argument_takes_a_value_on_padding(m, region, keyspace, environment)
             for m in bucket.primary_members
         ):
             return True
@@ -638,7 +650,7 @@ def feed_region_domains_to_present_scalars(
                     or (
                         any(keyspace.carried_on(g, region) for g in a.grain_components)
                         and not any(
-                            _has_absent_inline_argument(
+                            _argument_takes_a_value_on_padding(
                                 m, region, keyspace, environment
                             )
                             for m in a.primary_members
