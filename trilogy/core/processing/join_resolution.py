@@ -263,6 +263,22 @@ def extent_null_addresses(
     )
 
 
+def guest_padded_addresses(
+    datasource: DataSource, _memo: dict[int, set[str]] | None = None
+) -> set[str]:
+    """Addresses this source emits NULL for because a VALUE-NULL key found no
+    partner: a `~?` guest sale's item columns, and whatever is chained off
+    them. ``extent_null_addresses`` without the `?` leaves: a leaf's NULL is a
+    member some holder of the key has a row for, and a guest's NULL is not."""
+    return _padded_addresses(
+        datasource,
+        _no_leaf_addresses,
+        _value_null_driven,
+        _memo if _memo is not None else {},
+        chain=True,
+    )
+
+
 def extension_padded_addresses(
     datasource: DataSource,
     spans: frozenset[str],
@@ -413,6 +429,7 @@ def _unpaired_value_nulls(
     holder: str,
     value_nullables: dict[str, list[str]],
     extent_nullables: dict[str, list[str]],
+    guest_padded: dict[str, list[str]] | None = None,
 ) -> bool:
     """A NULL the feeder carries on a join key with nothing to pair it. On the
     region's own key an extent NULL always vetoes (a guest order names no
@@ -420,7 +437,10 @@ def _unpaired_value_nulls(
     any other key, vetoes only when the holder carries no value NULL of its
     own, since two value NULLs pair null-safely (``get_modifiers``): a region
     spelled by a nullable stand-in (`item_desc string?`) has a member whose
-    key IS NULL, on the domain and on the solid rows alike."""
+    key IS NULL, on the domain and on the solid rows alike. A key the feeder
+    NULLs for a `~?` guest (the guest's description, through its NULL item)
+    is the exception: the holder's `?` member is not that guest, so only a
+    holder padded for the same guests pairs it."""
     for key in keys:
         feeder_value = key in value_nullables.get(feeder, [])
         feeder_extent = key in extent_nullables.get(feeder, [])
@@ -428,6 +448,10 @@ def _unpaired_value_nulls(
             continue
         if key in held and feeder_extent:
             return True
+        if guest_padded is not None and key in guest_padded.get(feeder, []):
+            if key not in guest_padded.get(holder, []):
+                return True
+            continue
         if not (feeder_value and key in value_nullables.get(holder, [])):
             return True
     return False
@@ -452,6 +476,7 @@ def get_join_type(
     span_padding: dict[str, dict[str, frozenset[str]]] | None = None,
     region_holders: dict[str, set[str]] | None = None,
     complete_spans: dict[str, set[str]] | None = None,
+    guest_padded: dict[str, list[str]] | None = None,
 ) -> JoinType:
     # Rendering is row-preserving by default: a relation declares DOMAIN
     # knowledge, never row intent, and no join silently drops a row
@@ -487,6 +512,7 @@ def get_join_type(
                 holder,
                 value_nullables or {},
                 extent_nullables or {},
+                guest_padded,
             )
             # with a second family in the merge, the rows already joined
             # carry its extension rows (NULL on this key): only FULL keeps them
@@ -578,6 +604,7 @@ def get_join_type(
                     host,
                     value_nullables or {},
                     extent_nullables or {},
+                    guest_padded,
                 ):
                     return JoinType.LEFT_OUTER if left_is_host else JoinType.RIGHT_OUTER
         partial_keys = {
@@ -807,6 +834,7 @@ def resolve_join_order_v2(
     span_padding: dict[str, dict[str, frozenset[str]]] | None = None,
     region_holders: dict[str, set[str]] | None = None,
     complete_spans: dict[str, set[str]] | None = None,
+    guest_padded: dict[str, list[str]] | None = None,
 ) -> list[JoinOrderOutput]:
     """Greedily order the datasources into a join tree.
 
@@ -861,10 +889,17 @@ def resolve_join_order_v2(
     # cheaper shared key seeds the tree instead, the sides pair on that key
     # alone and the authored predicate lands on a leaf dimension, where a
     # preserving join NULLs the dimension instead of un-pairing the rows.
+    # A span some side holds a region on pivots next: the stitch on the span
+    # unites the region's rows with its feeder first, and a key the region
+    # CARRIES (an aggregate by the description) joins the united rows after
+    # it. Pivoting on the carried key instead joins the aggregate to the
+    # domain alone, where a `~?` guest (a value-NULL key, so no domain row)
+    # never reaches its NULL group.
     authored = authored_key_nodes or set()
+    held: set[str] = set().union(*(region_holders or {}).values())
     pivots = sorted(
         [x for x in pivot_map if len(pivot_map[x]) > 1],
-        key=lambda x: (x not in authored, len(pivot_map[x]), len(x), x),
+        key=lambda x: (x not in authored, x not in held, len(pivot_map[x]), len(x), x),
     )
     solo = [x for x in pivot_map if len(pivot_map[x]) == 1]
     eligible_left: set[str] = set()
@@ -963,6 +998,7 @@ def resolve_join_order_v2(
                     span_padding,
                     region_holders,
                     complete_spans,
+                    guest_padded,
                 )
                 join_types.add(join_type)
                 joinkeys[left_candidate] = all_connecting_keys
@@ -1744,6 +1780,8 @@ def get_node_joins(
     nullables: dict[str, list[str]] = {}
     extent_nullables: dict[str, list[str]] = {}
     extent_memo: dict[int, set[str]] = {}
+    guest_padded: dict[str, list[str]] = {}
+    guest_memo: dict[int, set[str]] = {}
     pad_memo: dict[int, set[str]] = {}
     grain_size: dict[str, int] = {}
     value_nullables: dict[str, list[str]] = {}
@@ -1802,10 +1840,17 @@ def get_node_joins(
         nullables[ds_node] = n_list
         rollup_padded[ds_node] = r_list
         value_nullables[ds_node] = v_list
+        # Raw addresses against canonical nodes: an aliased key (`d` for
+        # `item_desc`) never counts as extent-null here. Matching through
+        # canon_node restates TPC-DS q64's pushed atoms at its FINAL; left as is.
         extent_addrs = extent_null_addresses(datasource, extent_memo)
         extent_nullables[ds_node] = [
             node for node in n_list if node.removeprefix("c~") in extent_addrs
         ]
+        guest_addrs = {
+            canon_node(a) for a in guest_padded_addresses(datasource, guest_memo)
+        }
+        guest_padded[ds_node] = [node for node in n_list if node in guest_addrs]
 
     # Canonical keys of query-scoped FULL joins (EQUAL/∦ declared edges),
     # mapped into graph concept nodes.
@@ -1934,6 +1979,7 @@ def get_node_joins(
         span_padding=span_padding,
         region_holders=region_holders,
         complete_spans=complete_spans,
+        guest_padded=guest_padded,
     )
     _raise_if_keyless_row_bearing_join(
         joins,

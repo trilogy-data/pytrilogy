@@ -45,6 +45,7 @@ from trilogy.core.processing.condition_utility import (
 from trilogy.core.processing.join_resolution import (
     OUTER_JOIN_TYPES,
     _padding_sources,
+    guest_padded_addresses,
     nulls_are_values,
 )
 
@@ -299,6 +300,26 @@ def _key_nullable(concept: BuildConcept, side_cte: CTE | UnionCTE) -> bool:
 
 def _identity(address: str) -> str:
     return address
+
+
+def _unpaired_guest_padding(
+    sub_concept: BuildConcept,
+    sub_cte: CTE | UnionCTE,
+    sup_concept: BuildConcept,
+    sup_cte: CTE | UnionCTE,
+) -> bool:
+    """The sub side NULLs the key for a `~?` guest (a value-NULL key that
+    found no partner: the guest sale's description) and the sup side does
+    not. Null-safe equality pairs that NULL only with a NULL member the sup
+    side happens to hold, so the sub side's preservation stays load-bearing."""
+    if not isinstance(sub_cte, CTE):
+        return False
+    if not _key_addresses(sub_concept) & guest_padded_addresses(sub_cte.source):
+        return False
+    return not (
+        isinstance(sup_cte, CTE)
+        and _key_addresses(sup_concept) & guest_padded_addresses(sup_cte.source)
+    )
 
 
 def _unshared_join_padding(pair, right_cte: CTE | UnionCTE) -> bool:
@@ -1009,6 +1030,9 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                 )
                 and (
                     pair.is_nullable
+                    and not _unpaired_guest_padding(
+                        pair.right, right_cte, pair.left, pair.cte
+                    )
                     or not _key_nullable(pair.right, right_cte)
                     or relative_right(pair)
                     and not _key_nullable(pair.left, pair.cte)
@@ -1033,6 +1057,9 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                 )
                 and (
                     pair.is_nullable
+                    and not _unpaired_guest_padding(
+                        pair.left, pair.cte, pair.right, right_cte
+                    )
                     or not _key_nullable(pair.left, pair.cte)
                     or relative_left(pair)
                     and not _key_nullable(pair.right, right_cte)

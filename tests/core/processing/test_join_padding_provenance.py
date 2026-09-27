@@ -19,6 +19,7 @@ from trilogy.core.processing.join_resolution import (
     _span_spellings,
     complete_key_domain,
     get_join_type,
+    guest_padded_addresses,
 )
 
 KEY = "local.padded"
@@ -327,3 +328,58 @@ def test_host_preserves_over_a_partial_feeder_whose_value_null_pairs():
     assert get_join_type(_LEFT, _RIGHT, value_nullables={_RIGHT: [_ATTR]}, **typed) == (
         JoinType.FULL
     )
+
+
+def test_guest_padding_on_the_feeder_is_unpaired_by_the_host_value_null():
+    """The feeder NULLs the attribute for a `~?` guest (its NULL key found no
+    row of the host's): the host's `?` member is not that guest, so the two
+    value NULLs do not pair and the feeder keeps FULL. A host padded for the
+    same guests pairs it again."""
+    typed = {
+        "partials": {_RIGHT: [_ATTR]},
+        "nullables": {_LEFT: [_ATTR], _RIGHT: [_ATTR]},
+        "all_connecting_keys": {_ATTR},
+        "host_nodes": {_LEFT},
+        "value_nullables": {_LEFT: [_ATTR], _RIGHT: [_ATTR]},
+    }
+    assert get_join_type(_LEFT, _RIGHT, guest_padded={_RIGHT: [_ATTR]}, **typed) == (
+        JoinType.FULL
+    )
+    assert get_join_type(
+        _LEFT, _RIGHT, guest_padded={_LEFT: [_ATTR], _RIGHT: [_ATTR]}, **typed
+    ) == (JoinType.LEFT_OUTER)
+    held = {**typed, "region_holders": {_LEFT: {_SPAN}}}
+    assert get_join_type(_LEFT, _RIGHT, guest_padded={_RIGHT: [_ATTR]}, **held) == (
+        JoinType.FULL
+    )
+
+
+def test_guest_padded_addresses_walks_a_value_null_join_without_leaves():
+    """`items` LEFT-joined onto a `~?` fact: the item's columns are NULL on the
+    guest sale, so they are guest padding downstream (through an aggregate
+    over the merge too), while the `?` leaf itself is not."""
+    attr = _ATTR.removeprefix("c~")
+    sales = _scan("sales", [USER, ORDER], partial=[USER])
+    sales.columns[0].modifiers.append(Modifier.NULLABLE)
+    items = _scan("items", [USER, attr])
+    merged = _qds([USER, ORDER, attr], [USER, attr], parents=[sales, items])
+    merged.source_map = {USER: {sales}, ORDER: {sales}, attr: {items}}
+    merged.joins = [
+        BaseJoin(
+            left_datasource=sales,
+            right_datasource=items,
+            join_type=JoinType.LEFT_OUTER,
+            concept_pairs=[
+                ConceptPair(
+                    left=_concept(USER),
+                    right=_concept(USER),
+                    existing_datasource=sales,
+                )
+            ],
+        )
+    ]
+    assert guest_padded_addresses(merged) == {attr}
+    grouped = _qds([attr], [attr], parents=[merged])
+    grouped.source_map = {attr: {merged}}
+    assert guest_padded_addresses(grouped) == {attr}
+    assert guest_padded_addresses(items) == set()
