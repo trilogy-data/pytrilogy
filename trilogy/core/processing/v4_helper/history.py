@@ -36,11 +36,15 @@ class V4History(History):
     # `_network_source` outcomes that hand out NO network objects: "none"
     # (decline to the fall-through planners) and "defer" (a one-scan solution
     # that is `_direct_source`'s job). Keyed on addresses + conditions like
-    # `_v4_key`, safe within one history for the same reason `build_history`
-    # is; a hit skips rebuilding a SourceNetwork just to re-learn "not mine".
-    # Solution-bearing outcomes are NOT cached here: emission needs the network,
-    # whose candidates are build-scoped objects a later request must not reuse.
-    network_verdicts: dict[tuple[str, str, bool], str] = field(default_factory=dict)
+    # `_v4_key`, plus the group's promoted spans (`SpanScope.extent_free`, read
+    # by the candidate labelling), safe within one history for the same reason
+    # `build_history` is; a hit skips rebuilding a SourceNetwork just to
+    # re-learn "not mine". Solution-bearing outcomes are NOT cached here:
+    # emission needs the network, whose candidates are build-scoped objects a
+    # later request must not reuse.
+    network_verdicts: dict[tuple[str, str, bool, tuple[str, ...]], str] = field(
+        default_factory=dict
+    )
     # Outputs of every nested construct enclosing the scope being planned
     # (rowset handles, merge/union align outputs), hidden from its connectivity
     # check only. Accumulates DOWNWARD: a union arm inside a rowset body must
