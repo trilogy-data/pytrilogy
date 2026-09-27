@@ -4003,26 +4003,28 @@ def _assemble_final_node(
             )
         ):
             final_already_applied = True
+        # Same again for a feeder joining a region holder on its span (`select
+        # name where status is null`: the condition scan carries `customer_id`,
+        # the domain hides it), which the dedup to `name` would strip.
         relation_paired_feeders = False
-        if (
-            final_conditions is not None
-            and not final_already_applied
-            and environment.scoped_join_key_groups
-        ):
+        region_paired_feeders = False
+        if final_conditions is not None and not final_already_applied:
             sole_avail = {o.address for o in sole_node.output_concepts}
             feeder_nodes, _ = _filter_arg_parents(
                 group_graph, built, filter_only_addrs - sole_avail
             )
+            feeder_outs = [{o.address for o in f.output_concepts} for f in feeder_nodes]
             scoped_addrs = {
                 addr
                 for canonical, members in environment.scoped_join_key_groups.items()
                 for addr in (canonical, *members)
             }
-            relation_paired_feeders = any(
-                {o.address for o in feeder.output_concepts} & scoped_addrs
-                for feeder in feeder_nodes
+            relation_paired_feeders = any(outs & scoped_addrs for outs in feeder_outs)
+            spans = region_reads(sole_node)
+            region_paired_feeders = any(
+                outs & spans - mandatory_addresses for outs in feeder_outs
             )
-        if final_probe_args or relation_paired_feeders:
+        if final_probe_args or relation_paired_feeders or region_paired_feeders:
             conditioned = _apply_final_conditions(sole_node)
             # The feeder join reads the probe at ITS OWN row grain (the fact
             # side of the relation), fanning the contributor out; the merge's
