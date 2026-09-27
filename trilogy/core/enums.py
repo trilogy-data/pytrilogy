@@ -427,9 +427,13 @@ class FunctionClass(Enum):
     RECURSIVE = [FunctionType.RECURSE_EDGE]  # noqa: RUF012
 
 
-# Aggregates whose value over an empty group is a non-NULL constant, so a join
-# that pads a row rather than aggregating no rows must coalesce them. Every
-# other aggregate is NULL both ways and needs no repair.
+# How each aggregate answers a group that is one NULL-padded row rather than no
+# rows at all. Most agree either way (`sum`/`min`/`max`/`avg`/`stddev`/
+# `variance`/`any_value`/`bool_or`/`bool_and` are NULL both times), so a join
+# that pads needs no repair for them. Two kinds do not:
+#
+# Aggregates whose empty-group value is a non-NULL constant, so a padded row
+# left NULL by the join must be coalesced back to it.
 ZERO_ON_EMPTY_AGGREGATES: frozenset[FunctionType] = frozenset(
     {FunctionType.COUNT, FunctionType.COUNT_DISTINCT}
 )
