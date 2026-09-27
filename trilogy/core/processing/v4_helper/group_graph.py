@@ -86,6 +86,7 @@ from .projection import (
 )
 from .region_domains import (
     add_region_domain_buckets,
+    carry_spans_to_condition_scans,
     detach_final_span_domain_producers,
     feed_region_domains_to_present_scalars,
     split_carried_only_row_streams,
@@ -3162,6 +3163,7 @@ def build_group_graph(
         concept_graph, concept_edges, concept_attrs, environment
     )
     d1_root_gids = _add_d1_root_buckets(concept_attrs, buckets, d1_calc_roots_by_stage)
+    carry_spans_to_condition_scans(buckets, keyspace)
     all_d1_calc_roots: set[str] = set().union(*d1_calc_roots_by_stage.values())
     _prune_existence_exclusive_roots(
         concept_graph,

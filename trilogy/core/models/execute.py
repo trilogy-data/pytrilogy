@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 
 from trilogy.constants import (
@@ -559,6 +559,41 @@ class CTE:
             return self.source.get_alias(concept, source=source)
         except ValueError as e:
             return f"INVALID_ALIAS: {e!s}"
+
+    def zero_fills_count(self, c: BuildConcept, rolled_up: bool = False) -> bool:
+        """A COUNT this CTE renders coalesced to 0: one a merge padded onto a
+        region's rows (``zero_filled``), or a pre-aggregated one a join here
+        left NULL, which the granular `count(...)` path returns 0 for. A COUNT
+        rolled up through this GROUP BY (`rolled_up`) is the same guess over
+        its sum. A multiselect-align merge is the exception: a NULL count there
+        means the entity is absent from that arm, not 0 facts, and a cross-arm
+        comparison must exclude it. The optimizer reads this too: a predicate
+        over such a count accepts the padded rows, so it proves nothing about
+        the side that padded them."""
+        if not (
+            isinstance(c.lineage, BuildAggregateWrapper)
+            and c.lineage.function.operator == FunctionType.COUNT
+        ):
+            return False
+        if c.address in self.zero_filled:
+            return True
+        if self.group_to_grain and not rolled_up:
+            return False
+        if not any(n.address == c.address for n in self.nullable_concepts):
+            return False
+        return not any(
+            isinstance(o.lineage, BuildMultiSelectLineage) for o in self.output_columns
+        )
+
+    def zero_filled_counts(self, concepts: Iterable[BuildConcept]) -> set[str]:
+        rolled = (
+            {r.address for r in self.rollup_concepts} if self.group_to_grain else set()
+        )
+        return {
+            c.address
+            for c in concepts
+            if self.zero_fills_count(c, rolled_up=c.address in rolled)
+        }
 
     def filter_collapses_to_grain(self, c: BuildConcept) -> bool:
         """A locally-computed filter virtual whose keys are covered by this

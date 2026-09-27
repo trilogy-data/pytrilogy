@@ -698,6 +698,10 @@ class PredicatePushdown(OptimizationRule):
                 return False
             if _parent_nullable_in_cte(child, parent_cte.name):
                 return False
+            # the consumer coalesces a padded COUNT to 0 (`zero_fills_count`):
+            # its `count = 0` accepts rows the group has no row for
+            if child.zero_filled_counts(candidate.row_arguments):
+                return False
             # The relocated predicate applies before any window the consumer
             # computes over the parent's rows, changing lead/lag/rank results
             # unless it only drops whole partitions.

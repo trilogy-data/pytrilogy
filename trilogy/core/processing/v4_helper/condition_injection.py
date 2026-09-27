@@ -16,6 +16,7 @@ from trilogy.core.processing.condition_utility import (
     decompose_condition,
 )
 from trilogy.core.processing.nodes import MergeNode, SelectNode, StrategyNode
+from trilogy.core.processing.nodes.base_node import region_reads
 from trilogy.utility import unique
 
 
@@ -79,6 +80,14 @@ def inject_condition_at_node(
         combined = and_optional(
             node.conditions if combine_existing else None, condition.conditional
         )
+        # A node holding a region's rows beside a feeder evaluated on the
+        # solid rows (`count(order_id) by customer_id = 0`): the feeder's
+        # missing row IS the aggregate's value there (a COUNT the merge
+        # zero-fills, a NULL sum), and the WHERE must test it, so the holder
+        # stays preserved and join typing decides (the region rule).
+        holds_region = bool(region_reads(node)) and any(
+            not region_reads(parent) for parent in sources.row_parents
+        )
         return MergeNode(
             input_concepts=unique(
                 list(
@@ -99,7 +108,7 @@ def inject_condition_at_node(
             # cross-joined by a keyless FULL) as an enrichment to LEFT-join.
             # Genuinely nullable keys are unaffected: both sides nullable
             # already infers INNER, paired null-safely by `get_modifiers`.
-            force_join_type=JoinType.INNER,
+            force_join_type=None if holds_region else JoinType.INNER,
             partial_concepts=(
                 partial_concepts
                 if partial_concepts is not None

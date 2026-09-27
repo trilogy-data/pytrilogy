@@ -312,6 +312,42 @@ def add_region_domain_buckets(
             buckets[domain.group_id] = domain
 
 
+def carry_spans_to_condition_scans(
+    buckets: dict[str, GroupBucket], keyspace: Keyspace
+) -> None:
+    """The condition phase's fact scan (`root_d1`, built after the domains)
+    rides the span too when it reads something absent on the region: a WHERE
+    over such a value beside dimension-only outputs (`select customer_id, name
+    where status is null`) reaches FINAL as a producer of its own, and pairs
+    with the domain only on the span. Without it the merge is keyless."""
+    domains = [
+        (b, region)
+        for b in buckets.values()
+        if b.extent_spans and (region := keyspace.region_of(b.extent_spans))
+    ]
+    if not domains:
+        return
+    for bucket in buckets.values():
+        if (
+            bucket.derivation != Derivation.ROOT
+            or bucket.depth_label != DepthLabel.ROOT_D1
+        ):
+            continue
+        scope = _scope_and_phase(bucket.label)[0]
+        for domain, region in domains:
+            if _scope_and_phase(domain.label)[0] != scope or all(
+                keyspace.carried_on(m, region) for m in bucket.primary_members
+            ):
+                continue
+            for span in sorted(region.spans):
+                if (
+                    span not in bucket.primary_members
+                    and span not in bucket.secondary_members
+                ):
+                    bucket.secondary_members.append(span)
+                    bucket.member_depths[span] = DepthLabel.ROOT
+
+
 def split_carried_only_row_streams(
     buckets: dict[str, GroupBucket],
     primary_group: dict[str, str],
@@ -572,18 +608,15 @@ def detach_final_span_domain_producers(
     its own, read off the domain, and FINAL tests every row.
 
     A host the domain itself feeds (an aggregate by the span, evaluated over
-    the region's rows) unites them below FINAL: the producer stays its
-    contributor, FINAL collapses into it, and the atom is applied there, on
-    every united row before the aggregate (`count(order_id) by customer_id
-    where flag = 1 or flag is null`: the padded row has no flag and counts 0,
-    a rejected order is not counted)."""
-    domain_fed = {
-        succ
-        for gid, bucket in buckets.items()
-        if bucket.extent_spans
-        for succ in group_graph.successors(gid)
-        if edge_kind(group_edges, gid, succ) == EdgeKind.LINEAGE
-    }
+    the region's rows) unites them below FINAL: when the atom is placed there
+    the producer stays its contributor, FINAL collapses into it, and the atom
+    is applied there, on every united row before the aggregate (`count(order_id)
+    by customer_id where flag = 1 or flag is null`: the padded row has no flag
+    and counts 0, a rejected order is not counted). The producer constrains
+    only the hosts the atom was placed at: an atom over an aggregate BY the
+    span is placed at FINAL, and merged into a sibling aggregate's input it
+    would drop whole items there, which the domain then pads back with the
+    count read off the filtered stream."""
     for placement in placements:
         if placement.reason is not PlacementReason.FINAL_SPAN_DOMAIN:
             continue
@@ -594,7 +627,7 @@ def detach_final_span_domain_producers(
             for succ in list(group_graph.successors(gid)):
                 if (
                     succ != FINAL_NODE_ID
-                    and succ not in domain_fed
+                    and succ not in placement.group_ids
                     and edge_kind(group_edges, gid, succ) == EdgeKind.CONSTRAINT
                 ):
                     remove_edge(group_graph, group_edges, gid, succ)

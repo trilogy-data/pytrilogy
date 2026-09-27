@@ -17,6 +17,7 @@ from trilogy.core.exceptions import (
 )
 from trilogy.core.models.build import (
     BoolExpr,
+    BuildAggregateWrapper,
     BuildConcept,
     BuildRowsetItem,
     BuildWhereClause,
@@ -613,6 +614,34 @@ def _reads_past_region_domain(
             ):
                 return True
     return False
+
+
+def _over_aggregates_by_span(
+    row_inputs: set[str],
+    buckets: dict[str, GroupBucket],
+    keyspace: Keyspace,
+    environment: BuildEnvironment,
+) -> bool:
+    """Every input is an aggregate keyed on a region domain's spans: a value
+    per member of the region, 0 on the member no fact row references."""
+    spans = [bucket.extent_spans for bucket in buckets.values() if bucket.extent_spans]
+    if not spans or not row_inputs:
+        return False
+    for address in row_inputs:
+        concept = environment.concepts.get(address)
+        if concept is None or not isinstance(concept.lineage, BuildAggregateWrapper):
+            return False
+        keys = keyspace.keys_by_address.get(address, frozenset())
+        if not keys or not any(keys <= s for s in spans):
+            return False
+    return True
+
+
+def _grain_within_a_span(bucket: GroupBucket, buckets: dict[str, GroupBucket]) -> bool:
+    grain = set(bucket.grain_components)
+    return bool(grain) and any(
+        grain <= b.extent_spans for b in buckets.values() if b.extent_spans
+    )
 
 
 def _region_domain_grouping_hosts(
@@ -1342,13 +1371,26 @@ def plan_condition_placements(
             if not atom.existence_arguments and _reads_past_region_domain(
                 row_inputs, buckets, keyspace, mandatory_list, environment
             ):
+                # an atom over aggregates BY the span (`count(return_id) by
+                # item_sk = 0`) is a per-member value. Applied on the input of
+                # a sibling aggregate keyed by the span it would drop the
+                # member's rows there, and the domain pads the member back
+                # (`count(sale_id) by item_sk`): that pair unites at FINAL. A
+                # host grouped by something else (`count(customer_id) by
+                # status`) still takes it on its input rows, member by member.
+                hosts = _region_domain_grouping_hosts(
+                    candidates, buckets, group_graph, group_edges
+                )
+                if _over_aggregates_by_span(row_inputs, buckets, keyspace, environment):
+                    hosts = tuple(
+                        h
+                        for h in hosts
+                        if not _grain_within_a_span(buckets[h], buckets)
+                    )
                 placements.append(
                     ConditionPlacement(
                         atom=atom,
-                        group_ids=_region_domain_grouping_hosts(
-                            candidates, buckets, group_graph, group_edges
-                        )
-                        or (FINAL_NODE_ID,),
+                        group_ids=hosts or (FINAL_NODE_ID,),
                         reason=PlacementReason.FINAL_SPAN_DOMAIN,
                     )
                 )
