@@ -115,8 +115,9 @@ def test_prior_left_outer_promotes_to_left_outer():
     assert join2.type == JoinType.LEFT_OUTER
 
 
-def test_prior_right_outer_promotes_to_right_outer():
-    """Test that a prior RIGHT_OUTER join promotes current join to RIGHT_OUTER."""
+def test_prior_right_outer_promotes_to_left_outer():
+    """A prior RIGHT_OUTER padded table_a into the accumulated stream; a join
+    keyed off table_a preserves that stream (its left), not table_c."""
     join1 = JoinOrderOutput(
         right="table_b", type=JoinType.RIGHT_OUTER, keys={"table_a": {"id"}}
     )
@@ -128,7 +129,19 @@ def test_prior_right_outer_promotes_to_right_outer():
     joins = [join1, join2]
     ensure_content_preservation(joins)
     assert join1.type == JoinType.RIGHT_OUTER
-    assert join2.type == JoinType.RIGHT_OUTER
+    assert join2.type == JoinType.LEFT_OUTER
+
+
+def test_prior_right_outer_keyed_on_its_preserved_side_unchanged():
+    join1 = JoinOrderOutput(
+        right="table_b", type=JoinType.RIGHT_OUTER, keys={"table_a": {"id"}}
+    )
+    join2 = JoinOrderOutput(
+        right="table_c", type=JoinType.INNER, keys={"table_b": {"id"}}
+    )
+    joins = [join1, join2]
+    ensure_content_preservation(joins)
+    assert join2.type == JoinType.INNER
 
 
 def test_prior_full_join_promotes_to_full():
@@ -161,8 +174,9 @@ def test_prior_full_join_order_invariant():
         assert j2.type == JoinType.FULL, (left, right)
 
 
-def test_both_prior_conditions_promote_to_full():
-    """Test that both prior left and right conditions promote to FULL join."""
+def test_both_prior_paddings_preserve_the_stream():
+    """A LEFT padded table_b and a RIGHT padded table_d, both into the
+    accumulated stream; a join keyed off both preserves that stream."""
     join1 = JoinOrderOutput(
         right="table_b", type=JoinType.LEFT_OUTER, keys={"table_a": {"id"}}
     )
@@ -178,7 +192,7 @@ def test_both_prior_conditions_promote_to_full():
     ensure_content_preservation(joins)
     assert join1.type == JoinType.LEFT_OUTER
     assert join2.type == JoinType.RIGHT_OUTER
-    assert join3.type == JoinType.FULL
+    assert join3.type == JoinType.LEFT_OUTER
 
 
 def test_complex_chain_with_multiple_promotions():

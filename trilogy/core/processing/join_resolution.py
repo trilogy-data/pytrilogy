@@ -756,10 +756,17 @@ def ensure_content_preservation(
                 ):
                     has_prior_right = True
                 continue
+            # Either way the padded relation is in the ACCUMULATED stream,
+            # the left of this join, so that is the side to preserve.
+            # Preserving this join's own right relation after a prior RIGHT
+            # handed it unmatched rows nothing licensed: the users dimension
+            # padded into a solid fact stream (`orders RIGHT JOIN items`, then
+            # users keyed off orders), and a CASE over its columns took its
+            # ELSE on the padding.
             if pred.type == JoinType.LEFT_OUTER and on_pred_right:
                 has_prior_left = True
             if pred.type == JoinType.RIGHT_OUTER and on_pred_left:
-                has_prior_right = True
+                has_prior_left = True
         if has_prior_left and has_prior_right:
             target = JoinType.FULL
         elif has_prior_left:

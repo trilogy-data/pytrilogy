@@ -333,9 +333,17 @@ def _downgrade(
     # cte_keys proof instead.
     right_ds = _source_datasources(join.right_cte)
     left_ds = {d for lc in left_ctes for d in _source_datasources(lc)}
-    right_block = _blocked_partials(cte, partial_addresses(join.right_cte), right_ds)
+    # A source both sides read is exclusively neither's: the solid stream of
+    # a region reads the domain's dimension scan for an attribute, and the
+    # span it binds partially renders from that scan on the domain's side.
+    left_names = {lc.name for lc in left_ctes}
+    right_block = _blocked_partials(
+        cte, partial_addresses(join.right_cte), right_ds - left_ds - left_names
+    )
     left_block = _blocked_partials(
-        cte, {a for lc in left_ctes for a in partial_addresses(lc)}, left_ds
+        cte,
+        {a for lc in left_ctes for a in partial_addresses(lc)},
+        left_ds - right_ds - {join.right_cte.name},
     )
     right_only = right_only - right_block
     left_only = left_only - left_block
