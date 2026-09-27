@@ -224,6 +224,14 @@ HOLDS = [
     "select customer_id where status is null",
     "select customer_id, name where status is null or amount > 15",
     "select customer_id, name where flag = 1 or flag is null",
+    # the status stream over the solid scan keeps the ORDER grain beside the
+    # span riding hidden on that scan (read as a dim-peel key, it was anchored
+    # to the customer, could not carry `amount` for the WHERE, and was joined
+    # to its own parent on the span: ann's delivered order passed on the other
+    # order's amount)
+    "select name, status where status is null or amount > 15",
+    "select name, status where status is null or amount > 15 or amount is null",
+    "select name, label where status is null or amount > 15",
     # the span is never named: the condition scan pairs with the domain on the
     # span it hides BEFORE the dedup to the output grain strips it
     "select name where status is null",

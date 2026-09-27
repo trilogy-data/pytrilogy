@@ -180,7 +180,9 @@ def undemanded_spans(
     relation's, and the union machinery decides."""
     coalescing = environment.domain_graph.coalescing_relation_members()
     labels = sorted({a.label for a in concept_attrs.values()})
-    out: set[str] = set()
+    # a rowset body's region this plan reads nothing of is padded below the
+    # boundary; the boundary plans its body without it (`rowset.owned_spans`)
+    out: set[str] = set(keyspace.unread_spans)
     for region in keyspace.live_regions:
         if not region.has_own_rows or region.spans & coalescing:
             continue
