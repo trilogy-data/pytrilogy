@@ -3002,16 +3002,29 @@ def _compute_concept_sets(
                             continue
                         sibling_fact = facts[sibling]
                         # Two ROW STREAMS at incomparable grains related by
-                        # FD: a scalar keyed on what it reads (`cost * amount`
-                        # at (order, product)) beside one at item grain, item
-                        # -> order and item -> product. The coarser exposes
-                        # its grain and the finer exposes the coarser's, or
-                        # the two pair on the one requested key and every item
-                        # fans out by its product's other orders. A grouping
+                        # FD, one solid and one reading a region domain: a
+                        # scalar keyed on what it reads (`cost * amount` at
+                        # (order, product), fed by the product domain) beside
+                        # `state_qty` at item grain over the solid rows, item
+                        # -> order and item -> product. Neither folds into the
+                        # other (the fold would put the solid derivation on
+                        # the padding, or the domain reader's rows on the
+                        # solid stream), so the coarser exposes its grain and
+                        # the finer the coarser's, or the two pair on the one
+                        # requested key and every item fans out by its
+                        # product's other orders. Two solid streams fold (TPC-DS
+                        # q23's customer rename beside its line values);
+                        # nested grains are the subset rule below; a grouping
                         # sibling pairs on its own grain, which it emits.
+                        sibling_solid = bool(domain_gids) and not domain_gids & (
+                            {sibling} | nx.ancestors(group_graph, sibling)
+                        )
                         if (
-                            fact.derivation not in GROUPING_DERIVATIONS
+                            solid_root != sibling_solid
+                            and fact.derivation not in GROUPING_DERIVATIONS
                             and sibling_fact.derivation not in GROUPING_DERIVATIONS
+                            and not fact.grain <= sibling_fact.grain
+                            and not sibling_fact.grain <= fact.grain
                         ):
                             if fact.grain <= io.capability[
                                 sibling
