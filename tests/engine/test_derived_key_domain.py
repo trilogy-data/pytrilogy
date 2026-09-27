@@ -405,6 +405,26 @@ def test_orderless_customer_has_no_status(derived: Executor):
     ]
 
 
+# OWED. Aggregates are evaluated OVER a region's extended rows, which is right
+# for every operator whose padded-row answer equals its empty-group answer:
+# `count` is 0 both ways, `sum`/`min`/`max`/`avg` are NULL both ways.
+# `array_agg` is the one that disagrees -- it collects the padding's NULL into
+# `[NULL]` where no rows at all is NULL -- so it must not see a padded row.
+# Marking it in `NULL_OPAQUE_FUNCTIONS` fixes the condition proofs but not
+# this: the shape below builds no region domain at all, so the aggregate runs
+# at FINAL over `customers LEFT JOIN orders` and the planner never asks. See
+# the plan doc's open items for the two candidate fixes.
+@pytest.mark.xfail(strict=True, reason="owed: array_agg is evaluated on padding")
+def test_array_agg_over_a_region_is_empty_not_a_null_element(derived: Executor):
+    rows = [
+        (customer, sorted(amounts) if amounts is not None else None)
+        for customer, amounts in _rows(
+            derived, "select customer_id, array_agg(amount) as amts"
+        )
+    ]
+    assert rows == [(1, [10, 20]), (2, [30]), (3, None)]
+
+
 # The twin is blind here: a bound `amount` is a ROOT value on both models, and
 # both restated the atom above the aggregate (order 100 counted, the orderless
 # customer dropped). The atom is applied on the aggregate's input, over the
