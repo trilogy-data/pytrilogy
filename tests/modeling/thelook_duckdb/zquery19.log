@@ -45,8 +45,8 @@ SELECT
 FROM
     \"users\" as \"user_users\"
     LEFT OUTER JOIN \"cheerful\" on \"user_users\".\"id\" = \"cheerful\".\"user_id\"
-    LEFT OUTER JOIN \"thoughtful\" on \"cheerful\".\"order_id\" = \"thoughtful\".\"order_id\"
     FULL JOIN \"products\" as \"product_products\" on \"cheerful\".\"product_id\" = \"product_products\".\"id\"
+    LEFT OUTER JOIN \"thoughtful\" on \"cheerful\".\"order_id\" = \"thoughtful\".\"order_id\"
 ORDER BY 
     \"cheerful\".\"order_id\" asc nulls first,
     \"cheerful\".\"id\" asc nulls first,

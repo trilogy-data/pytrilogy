@@ -482,6 +482,10 @@ DIRECT_ROW_VALUE_BESIDE_AGGREGATE = (
     "select item_desc as d, quantity as q, count(order_number) by item_desc as n"
     " order by d asc nulls last, q asc nulls last;"
 )
+DIRECT_COUNT_GRAIN_BY_DESCRIPTION = (
+    "select item_desc as d, count(grain(order_number, item_desc)) as total"
+    " order by d asc nulls last;"
+)
 DIRECT_PATH_CASES = [
     (
         "UNSOLD_MODEL",
@@ -494,11 +498,12 @@ DIRECT_PATH_CASES = [
             (None, 20, 2),
         ],
     ),
-    # OWED: the FINAL reaches the aggregate through the item dimension (the
-    # bridge), which has no guest row, so the guest's `n` is NULL for 1. The
-    # rowset spelling unites sales and items first and joins the aggregate
-    # null-safely on the united description (docs/keyspace_phase_plan.md).
-    pytest.param(
+    # the FINAL reached the aggregate through the item dimension (the bridge)
+    # before it stitched the dimension to the sales, and the guest, whose key
+    # is a value NULL, has no item row: its `n` was NULL for 1. The stitch on
+    # the span comes first, and the aggregate joins the united rows null-safely
+    # on the description, as the rowset spelling always did.
+    (
         "GUEST_ALLDESC_MODEL",
         DIRECT_ROW_VALUE_BESIDE_AGGREGATE,
         [
@@ -509,7 +514,24 @@ DIRECT_PATH_CASES = [
             ("gamma", None, 0),
             (None, 7, 1),
         ],
-        marks=pytest.mark.xfail(strict=True, reason="owed: guest reached via bridge"),
+    ),
+    # the hash takes a value on the padding, so the aggregate stays solid and
+    # the domain pads at FINAL. The guest's group (a NULL description through
+    # its NULL item) has no item row to pair with: that FINAL is FULL, typed
+    # so at plan time (`_unpaired_value_nulls`: the feeder's NULL is guest
+    # padding the holder lacks) and kept so by the optimizer's subset proof
+    # (`_unpaired_guest_padding`), which took the `?` on the description for
+    # a null-safe partner and narrowed it to LEFT.
+    (
+        "GUEST_ALLDESC_MODEL",
+        DIRECT_COUNT_GRAIN_BY_DESCRIPTION,
+        [("alpha", 1), ("beta", 1), ("delta", 2), ("gamma", 0), (None, 1)],
+    ),
+    # with a NULL-described item the guest shares that item's group
+    (
+        "GUEST_MODEL",
+        DIRECT_COUNT_GRAIN_BY_DESCRIPTION,
+        [("alpha", 1), ("beta", 1), ("gamma", 0), (None, 3)],
     ),
     # the guest's `sum(quantity) by item_desc` groups it with the NULL-desc
     # items (GUEST_MODEL: item 30's 20 + 3 plus the guest's 7) or alone
