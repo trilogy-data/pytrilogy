@@ -438,6 +438,12 @@ ZERO_ON_EMPTY_AGGREGATES: frozenset[FunctionType] = frozenset(
     {FunctionType.COUNT, FunctionType.COUNT_DISTINCT}
 )
 
+# Aggregates that collect the padded row's NULL as an element (`[NULL]` where
+# no rows at all is NULL), so they must never be evaluated over a padded row.
+NULL_COLLECTING_AGGREGATES: frozenset[FunctionType] = frozenset(
+    {FunctionType.ARRAY_AGG}
+)
+
 
 class Boolean(Enum):
     TRUE = "true"
