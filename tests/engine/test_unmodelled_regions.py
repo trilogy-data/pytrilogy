@@ -156,6 +156,27 @@ TWO_FACTS_CASES = [
         "select channel, count(item_sk) as items, count(return_id) as r",
         [("store", 1, 1), ("web", 2, 1), (None, 2, 1)],
     ),
+    # the same atom under an aggregate by a carried value: the returns count
+    # joins the UNITED rows of the host's input, or item 30 (a return, no
+    # sale) is padded past the sales-side merge and reads its count as 0
+    (
+        "select item_desc, count(sale_id) as s where count(return_id) by item_sk = 0",
+        [("beta", 1), ("delta", 0)],
+    ),
+    (
+        "select channel, count(item_sk) as items where count(return_id) by item_sk = 0",
+        [("web", 1), (None, 1)],
+    ),
+    (
+        "select reason, count(item_sk) as items where count(sale_id) by item_sk = 0",
+        [("late", 1), (None, 1)],
+    ),
+    (
+        "select channel, count(item_sk) as items where count(return_id) by item_sk = 0 or channel = 'store'",
+        [("store", 1), ("web", 1), (None, 1)],
+    ),
+    ("select item_desc where count(return_id) by item_sk = 0", [("beta",), ("delta",)]),
+    ("select item_desc where reason is null", [("beta",), ("delta",)]),
 ]
 
 

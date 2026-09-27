@@ -352,7 +352,11 @@ class MergeNode(StrategyNode):
                     component_concept = environment.concepts.get(component)
                     if component_concept is not None and component_concept.keys:
                         demanded_domains |= set(component_concept.keys)
-                demanded_domains -= self.span_scope.extent_free
+                # a visible dim attribute licenses its key here only when the
+                # STATEMENT demands that region: `name` under `label` does not
+                demanded_domains -= (
+                    self.span_scope.extent_free | self.span_scope.unextended
+                )
                 joins = get_node_joins(
                     dataset_list,
                     environment=environment,

@@ -54,7 +54,47 @@ def _traced(group_graph, group_edges, buckets, conditions, mandatory_list, *rest
 
 gg.plan_condition_placements = _traced
 
-derived = tdk._executor(tdk._DERIVED)
+if "--inject" in sys.argv:
+    # every condition injection, patched where it is imported
+    from trilogy.core.processing.v4_helper import condition_injection as ci
+    from trilogy.core.processing.v4_helper import strategy_builder as sb
+    from trilogy.core.processing.v4_node_generators import condition_sources as cs
+    from trilogy.core.processing.v4_node_generators import root as rt
+
+    _orig_inject = ci.inject_condition_at_node
+
+    def _traced_inject(node, condition, output_concepts, environment, sources, **kw):
+        out = _orig_inject(node, condition, output_concepts, environment, sources, **kw)
+        print(
+            f"  inject {condition.conditional} at {type(node).__name__}"
+            f"[{','.join(_short(c.address) for c in node.output_concepts)}]"
+            f" row_parents={[type(p).__name__ for p in sources.row_parents]}"
+            f" -> {type(out).__name__} cond={out.conditions}"
+            f" preexisting={out.preexisting_conditions}"
+        )
+        return out
+
+    for mod in (sb, cs, rt):
+        mod.inject_condition_at_node = _traced_inject
+
+    from trilogy.core.processing.nodes import base_node as bn
+
+    _orig_resolve = bn.StrategyNode.resolve
+
+    def _traced_node_resolve(self, *a, **k):
+        out = _orig_resolve(self, *a, **k)
+        print(
+            f"  resolve {type(self).__name__}"
+            f"[{','.join(_short(c.address) for c in self.output_concepts)}]"
+            f" cond={self.conditions} -> qds cond={out.condition}"
+        )
+        return out
+
+    bn.StrategyNode.resolve = _traced_node_resolve
+
+derived = tdk._executor(
+    tdk._MATERIALIZED if "--materialized" in sys.argv else tdk._DERIVED
+)
 for q in [a for a in sys.argv[1:] if not a.startswith("--")] or [
     "select customer_id, count(order_id) as n where amount > 15 or amount is null",
     "select customer_id, count(order_id) as n where flag = 1 or flag is null",

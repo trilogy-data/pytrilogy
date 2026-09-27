@@ -166,6 +166,39 @@ def _region_is_demanded(
     )
 
 
+def undemanded_spans(
+    keyspace: Keyspace,
+    concept_attrs: dict[str, ConceptAttrs],
+    environment: BuildEnvironment,
+) -> frozenset[str]:
+    """The spans of live regions with rows of their own that nothing in the
+    statement asks for: no output is a function of what they reach and no
+    aggregate counts them. Such a region is not a row of the statement, so no
+    group may extend its spans (`select order_id, label` is the orders; the
+    customer with none is not a row of it, and `label` is not evaluated on a
+    padding of her). A region under an authored coalescing relation is that
+    relation's, and the union machinery decides."""
+    coalescing = environment.domain_graph.coalescing_relation_members()
+    labels = sorted({a.label for a in concept_attrs.values()})
+    out: set[str] = set()
+    for region in keyspace.live_regions:
+        if not region.has_own_rows or region.spans & coalescing:
+            continue
+        if not any(
+            _region_is_demanded(
+                label,
+                region,
+                keyspace,
+                keyspace.output_demanded_spans,
+                concept_attrs,
+                environment,
+            )
+            for label in labels
+        ):
+            out |= region.spans
+    return frozenset(out)
+
+
 def _mixes_region(bucket: GroupBucket, region: Region, keyspace: Keyspace) -> bool:
     held = [keyspace.carried_on(m, region) for m in bucket.primary_members]
     return any(held) and not all(held)

@@ -65,6 +65,7 @@ from trilogy.core.processing.v4_helper import (
 from trilogy.core.processing.v4_helper.functional_dependency import (
     build_fd_determines,
 )
+from trilogy.core.processing.v4_helper.region_domains import undemanded_spans
 from trilogy.core.processing.v4_node_generators.multiselect import gen_multiselect
 from trilogy.core.processing.v4_node_generators.union_select import gen_union_select
 
@@ -555,12 +556,15 @@ def _build_from_graph(
     # `build_strategy_node` scopes each group's extent routing on the shared
     # environment; a rowset body planned mid-build recurses through here, so
     # restore whatever the outer plan had rather than leaving it cleared.
+    # a region nothing demands is not a row of the statement: no join of
+    # this plan extends its spans
     outer_scope = environment.span_scope
     environment.span_scope = SpanScope(
         in_play=keyspace.in_play_spans,
         demanded=keyspace.output_demanded_spans,
         witnessed=keyspace.witnessed,
         owned=history.owned_spans,
+        unextended=undemanded_spans(keyspace, concept_attrs, environment),
     )
     try:
         strategy_node = build_strategy_node(

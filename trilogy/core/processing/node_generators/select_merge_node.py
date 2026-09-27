@@ -45,6 +45,7 @@ from trilogy.core.processing.node_generators.presence_probe import (
     coalescing_axis_group,
 )
 from trilogy.core.processing.node_generators.select_helpers.condition_routing import (
+    absence_atoms,
     covered_conditions,
 )
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
@@ -69,6 +70,7 @@ from trilogy.core.processing.node_generators.select_helpers.source_scoring impor
 from trilogy.core.processing.nodes import (
     ConstantNode,
     MergeNode,
+    SelectNode,
     StrategyNode,
 )
 from trilogy.core.processing.utility import padding
@@ -602,6 +604,16 @@ def _condition_remaining_after_parents(
     )
 
 
+def _lone_scan(node: StrategyNode) -> SelectNode | None:
+    """The datasource scan under a chain of sole-parent wrappers (a
+    force-grouped scan), or None when the node is not one scan."""
+    while not isinstance(node, SelectNode):
+        if len(node.parents) != 1:
+            return None
+        node = node.parents[0]
+    return node
+
+
 def _merge_condition_routing(
     parents: list[StrategyNode],
     output_concepts: list[BuildConcept],
@@ -818,7 +830,21 @@ def gen_select_merge_node(
             return None
         parents.extend(abstract_nodes)
 
-    if len(parents) == 1 and not constants:
+    # a lone scan that routed an absence atom off its rows (`status is null`
+    # on a scan bound `~`, a merge-level test: `absence_atoms`) was not
+    # extended here, so nothing above re-applies it; the merge over it
+    # carries the remainder as the multi-parent path does. A tautology the
+    # scan dropped, or an atom over what it does not hold, is not that.
+    scan = _lone_scan(parents[0]) if len(parents) == 1 else None
+    unapplied = (
+        conditions is not None
+        and scan is not None
+        and scan.datasource is not None
+        and (remaining := _condition_remaining_after_parents(parents, conditions))
+        is not None
+        and bool(absence_atoms(scan.datasource, remaining))
+    )
+    if len(parents) == 1 and not constants and not unapplied:
         candidate: StrategyNode = parents[0]
     else:
         logger.info(
