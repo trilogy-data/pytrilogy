@@ -475,6 +475,7 @@ def get_join_type(
     span_binding_sources: dict[str, dict[str, frozenset[str]]] | None = None,
     span_padding: dict[str, dict[str, frozenset[str]]] | None = None,
     region_holders: dict[str, set[str]] | None = None,
+    region_partition: tuple[frozenset[str], ...] = (),
     complete_spans: dict[str, set[str]] | None = None,
     guest_padded: dict[str, list[str]] | None = None,
 ) -> JoinType:
@@ -515,8 +516,11 @@ def get_join_type(
                 guest_padded,
             )
             # with a second family in the merge, the rows already joined
-            # carry its extension rows (NULL on this key): only FULL keeps them
-            families: set[str] = set().union(*region_holders.values())
+            # carry its extension rows (NULL on this key): only FULL keeps
+            # them. Counted over the plan's regions, not the spans held: one
+            # composite-key region contributes every span of its grain.
+            held: set[str] = set().union(*region_holders.values())
+            families = {region for region in region_partition if region & held}
             if feeder_values or len(families) > 1:
                 return JoinType.FULL
             return JoinType.LEFT_OUTER if left_holds else JoinType.RIGHT_OUTER
@@ -840,6 +844,7 @@ def resolve_join_order_v2(
     span_binding_sources: dict[str, dict[str, frozenset[str]]] | None = None,
     span_padding: dict[str, dict[str, frozenset[str]]] | None = None,
     region_holders: dict[str, set[str]] | None = None,
+    region_partition: tuple[frozenset[str], ...] = (),
     complete_spans: dict[str, set[str]] | None = None,
     guest_padded: dict[str, list[str]] | None = None,
 ) -> list[JoinOrderOutput]:
@@ -1004,6 +1009,7 @@ def resolve_join_order_v2(
                     span_binding_sources,
                     span_padding,
                     region_holders,
+                    region_partition,
                     complete_spans,
                     guest_padded,
                 )
@@ -1774,6 +1780,7 @@ def get_node_joins(
     extent_free_spans: frozenset[str] = frozenset(),
     in_play_spans: frozenset[str] = frozenset(),
     witnessed: Mapping[str, str] | None = None,
+    regions: tuple[frozenset[str], ...] = (),
 ) -> list[BaseJoin]:
     from trilogy.core import graph as nx
 
@@ -1945,6 +1952,14 @@ def get_node_joins(
             }
         )
     }
+    # The plan's regions in this merge's node spelling. A holder unions the
+    # spans of every region it reads, so only this says how many families the
+    # merge has.
+    region_partition = tuple(
+        nodes
+        for spans in regions
+        if (nodes := frozenset(canon_node(span) for span in spans))
+    )
     # Keys whose join typing is owned by an authored relation (query-scoped
     # subset/coalescing joins, declared anchors): host/dim direction inference
     # stands down on these.
@@ -1985,6 +2000,7 @@ def get_node_joins(
         span_binding_sources=span_binding_sources,
         span_padding=span_padding,
         region_holders=region_holders,
+        region_partition=region_partition,
         complete_spans=complete_spans,
         guest_padded=guest_padded,
     )

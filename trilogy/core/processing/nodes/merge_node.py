@@ -365,6 +365,7 @@ class MergeNode(StrategyNode):
                     extent_free_spans=self.span_scope.extent_free,
                     in_play_spans=self.span_scope.in_play,
                     witnessed=self.span_scope.witnessed,
+                    regions=self.span_scope.regions,
                 )
         elif final_joins:
             logger.info(
