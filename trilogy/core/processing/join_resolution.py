@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from typing import TYPE_CHECKING
 
@@ -457,256 +457,318 @@ def _unpaired_value_nulls(
     return False
 
 
-def get_join_type(
+@dataclass(frozen=True)
+class JoinFacts:
+    """What a merge knows about every side, for typing any pair of them.
+
+    One object because these are merge-wide: only `left`, `right` and the
+    connecting keys change from pair to pair, and `get_node_joins` builds this
+    once per merge.
+    """
+
+    partials: dict[str, list[str]] = field(default_factory=dict)
+    nullables: dict[str, list[str]] = field(default_factory=dict)
+    full_join_keys: set[str] | None = None
+    rollup_padded: dict[str, list[str]] | None = None
+    host_nodes: set[str] | None = None
+    value_nullables: dict[str, list[str]] | None = None
+    demanded_domains: set[str] | None = None
+    node_grains: dict[str, set[str]] | None = None
+    authored_keys: set[str] | None = None
+    extent_nullables: dict[str, list[str]] | None = None
+    extent_free_keys: set[str] | None = None
+    span_binding_sources: dict[str, dict[str, frozenset[str]]] | None = None
+    span_padding: dict[str, dict[str, frozenset[str]]] | None = None
+    region_holders: dict[str, set[str]] | None = None
+    region_partition: tuple[frozenset[str], ...] = ()
+    complete_spans: dict[str, set[str]] | None = None
+    guest_padded: dict[str, list[str]] | None = None
+
+    def authored(self, keys: set[str]) -> bool:
+        """Whether an authored relation (`subset join` anchors, scoped
+        coalescing members) owns this axis and types the join itself."""
+        return bool(self.authored_keys and keys & self.authored_keys)
+
+    def unpaired_value_nulls(
+        self, keys: set[str], holder_spans: set[str], feeder: str, holder: str
+    ) -> bool:
+        return _unpaired_value_nulls(
+            keys,
+            holder_spans,
+            feeder,
+            holder,
+            self.value_nullables or {},
+            self.extent_nullables or {},
+            self.guest_padded,
+        )
+
+
+def _region_contract_join(
+    left: str, right: str, keys: set[str], facts: JoinFacts
+) -> tuple[JoinType | None, bool]:
+    """The region contract: a side holding a region's rows, joined on that
+    region's span, is preserved; the other side is too only where its key
+    carries a value NULL (a guest order), else its unmatched rows are members
+    nobody referenced.
+
+    Returns the type when the contract decides the pair, and whether hosting
+    is suppressed for the rules below: two holders of one region (its domain
+    and a reader of it) pair on what they hold, and neither out-hosts the
+    other by its bindings.
+    """
+    holders = facts.region_holders
+    if not holders or facts.authored(keys):
+        return None, False
+    left_holds = bool(holders.get(left, set()) & keys)
+    right_holds = bool(holders.get(right, set()) & keys)
+    if left_holds and right_holds:
+        return None, True
+    if not (left_holds or right_holds):
+        return None, False
+    holder, feeder = (left, right) if left_holds else (right, left)
+    # with a second family in the merge, the rows already joined carry its
+    # extension rows (NULL on this key): only FULL keeps them. Counted over
+    # the plan's regions, not the spans held: one composite-key region
+    # contributes every span of its grain.
+    held: set[str] = set().union(*holders.values())
+    families = {region for region in facts.region_partition if region & held}
+    if (
+        facts.unpaired_value_nulls(keys, holders[holder], feeder, holder)
+        or len(families) > 1
+    ):
+        return JoinType.FULL, False
+    return (JoinType.LEFT_OUTER if left_holds else JoinType.RIGHT_OUTER), False
+
+
+def _extent_free_join(
+    left: str, right: str, keys: set[str], facts: JoinFacts
+) -> tuple[JoinType | None, set[str] | None]:
+    """A span the statement elected another group to own
+    (v4_helper/extent_ownership.py). Its extension members are not this
+    merge's to manufacture, so its `~` mark grants no row intent here: with a
+    clean fact/dimension split anchor the fact and let equality shed the
+    members it never referenced.
+
+    Returns the type when the span decides the pair, else the keys partiality
+    should be re-read over (the span excluded) when both sides bind it.
+    """
+    free = facts.extent_free_keys
+    partials = facts.partials
+    if not free or facts.authored(keys):
+        return None, None
+    span_keys = {
+        key
+        for key in keys & free
+        if key in partials.get(left, []) or key in partials.get(right, [])
+    }
+    if not span_keys:
+        return None, None
+    left_binds = bool(span_keys & set(partials.get(left, [])))
+    right_binds = bool(span_keys & set(partials.get(right, [])))
+    if left_binds != right_binds:
+        binder, other = (left, right) if left_binds else (right, left)
+        # The other side carrying the span's whole domain and the binder no
+        # NULL on it: every binder row has its partner, so anchoring preserves
+        # nothing. Typed INNER here rather than left to the narrowing pass,
+        # because the anchoring's stamp (the domain's columns nullable on this
+        # stream) would otherwise reach every merge above as a value NULL.
+        if (
+            facts.complete_spans is not None
+            and keys <= facts.complete_spans.get(other, set())
+            and not _has_any(keys, binder, facts.nullables)
+        ):
+            return JoinType.INNER, None
+        return (JoinType.LEFT_OUTER if left_binds else JoinType.RIGHT_OUTER), None
+    # Both sides bind it. Two projections of ONE binding cover the same subset,
+    # so the span carries no row intent between them and the remaining keys
+    # decide the typing. PEER facts (sales and returns each referencing their
+    # own slice of the group domain) each hold rows the other lacks, and
+    # dropping either side's is a chasm, not an extension: their typing stands
+    # whoever owns the extent.
+    sources = facts.span_binding_sources
+    if sources is not None and all(
+        (bound := sources.get(left, {}).get(key))
+        and bound == sources.get(right, {}).get(key)
+        for key in span_keys
+    ):
+        return None, keys - free
+    return None, None
+
+
+def _partial_domain_join(
+    left: str, right: str, keys: set[str], facts: JoinFacts, hosting: set[str] | None
+) -> JoinType:
+    """A partial side declares a SUBSET domain. Subset speaks to VALUES and
+    NULL is not a value, so partiality and nullability never interact here:
+    render preserving, and the narrowing pass restores direction exactly when
+    the superset side provably carries the key's full domain and the subset
+    side's NULLs have a null-safe partner."""
+    authored = facts.authored(keys)
+    # Preservation exists to keep extension rows, and those ride the HOST: the
+    # side covering every `~`-licensed key the node emits (or the node's grain
+    # when none are in play). When exactly one side hosts, the other is a
+    # feeder whose unmatched rows carry no reachable content; preserving it
+    # manufactures padded join keys the FINAL merge then null-pairs across
+    # extension families. Symmetric or absent hosting stays row-preserving,
+    # and so does a feeder carrying VALUE nulls (`~?`) on the key: its
+    # NULL-keyed rows are real fact rows equality would drop. Padding NULLs on
+    # the feeder are exactly what the direction exists to shed, so only value
+    # nulls veto.
+    if hosting is not None and not authored:
+        left_is_host = left in hosting
+        if left_is_host != (right in hosting):
+            host, feeder = (left, right) if left_is_host else (right, left)
+            # a key null-extended off a value-null one below (a guest order's
+            # address) is a value null here too
+            if not facts.unpaired_value_nulls(keys, set(), feeder, host):
+                return JoinType.LEFT_OUTER if left_is_host else JoinType.RIGHT_OUTER
+    partial_keys = {
+        key
+        for key in keys
+        if key in facts.partials.get(left, []) or key in facts.partials.get(right, [])
+    }
+    # A `~` key the node never emits (not a visible output, no grain component
+    # keyed by it) licenses no extension rows here. When the pair is
+    # recognizably fact-to-dimension (one side's grain is the connecting keys
+    # themselves) the dimension is a pure lookup whose unmatched rows are
+    # grainless, so anchor the fact side. A demanded key, ambiguous topology,
+    # or a value-null fact key stays row-preserving.
+    if (
+        facts.demanded_domains is not None
+        and facts.node_grains is not None
+        and not authored
+        and partial_keys
+        and not partial_keys & facts.demanded_domains
+    ):
+        left_grain = facts.node_grains.get(left) or set()
+        right_grain = facts.node_grains.get(right) or set()
+        left_is_dim = bool(left_grain) and left_grain <= keys
+        right_is_dim = bool(right_grain) and right_grain <= keys
+        if left_is_dim != right_is_dim:
+            fact = left if right_is_dim else right
+            if facts.value_nullables is None or not _has_any(
+                keys, fact, facts.value_nullables
+            ):
+                return JoinType.LEFT_OUTER if right_is_dim else JoinType.RIGHT_OUTER
+    return JoinType.FULL
+
+
+def _nullable_join(
     left: str,
     right: str,
-    partials: dict[str, list[str]],
-    nullables: dict[str, list[str]],
-    all_connecting_keys: set[str],
-    full_join_keys: set[str] | None = None,
-    rollup_padded: dict[str, list[str]] | None = None,
-    host_nodes: set[str] | None = None,
-    value_nullables: dict[str, list[str]] | None = None,
-    demanded_domains: set[str] | None = None,
-    node_grains: dict[str, set[str]] | None = None,
-    authored_keys: set[str] | None = None,
-    extent_nullables: dict[str, list[str]] | None = None,
-    extent_free_keys: set[str] | None = None,
-    span_binding_sources: dict[str, dict[str, frozenset[str]]] | None = None,
-    span_padding: dict[str, dict[str, frozenset[str]]] | None = None,
-    region_holders: dict[str, set[str]] | None = None,
-    region_partition: tuple[frozenset[str], ...] = (),
-    complete_spans: dict[str, set[str]] | None = None,
-    guest_padded: dict[str, list[str]] | None = None,
+    keys: set[str],
+    facts: JoinFacts,
+    hosting: set[str] | None,
+    left_is_nullable: bool,
+    right_is_nullable: bool,
 ) -> JoinType:
-    # Rendering is row-preserving by default: a relation declares DOMAIN
-    # knowledge, never row intent, and no join silently drops a row
-    # (docs/subset_union_join_design.md). The narrowing pass
-    # (UpgradeOuterFromKeySetEquivalence) restores a directional/INNER form
-    # only when provably row-identical.
-    #
+    """Neither side partial: each binding declares the key's full domain
+    (EQUAL, mutual subset), whose narrowed form is INNER. NULL-key rows must
+    still never drop: when both sides are nullable the null-safe equality
+    (get_modifiers) pairs the NULL groups, and a nullable side with no
+    null-safe partner keeps the join preserving toward it."""
+    if left_is_nullable and right_is_nullable:
+        # Null-pairing is only sound when the padded rows name the same thing.
+        # When exactly one side carries the node's full grain (the host), its
+        # padding is the grain-bearing extension family; the other side's
+        # padding lacks grain columns entirely, so pairing the two invents rows
+        # (extension-family cross products). Preserve the host and let plain
+        # equality drop the feeder's padding. Authored relation keys keep their
+        # own machinery's typing.
+        if hosting is not None and not facts.authored(keys):
+            left_is_host = left in hosting
+            if left_is_host != (right in hosting):
+                return JoinType.LEFT_OUTER if left_is_host else JoinType.RIGHT_OUTER
+        # A value NULL on one side (a guest order's address, grouped) names a
+        # real row; the other side's padding names nothing. Keep the row.
+        if facts.extent_nullables is not None:
+            left_values = _has_any(keys, left, facts.extent_nullables)
+            if left_values != _has_any(keys, right, facts.extent_nullables):
+                return JoinType.LEFT_OUTER if left_values else JoinType.RIGHT_OUTER
+        # Padding for different spans never pairs (`get_node_joins` drops the
+        # null-safe equality), so INNER would shed both extension families.
+        if _pads_for_different_members(left, right, keys, facts.span_padding):
+            return JoinType.FULL
+        # Grain-aligned sides both weakened their EQUAL-domain claims on the
+        # merge axis itself, so INNER would drop each side's exclusive members;
+        # preserve both and let the null-safe equality pair the NULL groups.
+        if _is_nullable_grain_aligned_merge(
+            left, right, keys, facts.node_grains, facts.extent_nullables
+        ):
+            return JoinType.FULL
+        return JoinType.INNER
+    if left_is_nullable != right_is_nullable:
+        # A nullable key weakens that side's EQUAL-domain claim to "some
+        # subset, plus a NULL group". Between a fact and its lookup that still
+        # directs the join: the other side is a feeder whose unmatched rows
+        # carry no content. But when both sides are complete group-sets at the
+        # merge grain and the nullability rides the merge axis, a directional
+        # join would silently drop the non-nullable side's exclusive members,
+        # the very rows its intact domain claim promises. Preserve both, padded.
+        if _is_nullable_grain_aligned_merge(
+            left, right, keys, facts.node_grains, facts.extent_nullables
+        ):
+            return JoinType.FULL
+        return JoinType.LEFT_OUTER if left_is_nullable else JoinType.RIGHT_OUTER
+    return JoinType.INNER
+
+
+def get_join_type(
+    left: str, right: str, all_connecting_keys: set[str], facts: JoinFacts
+) -> JoinType:
+    """Type one pair of a merge's sides, by the first rule that decides it.
+
+    Rendering is row-preserving by default: a relation declares DOMAIN
+    knowledge, never row intent, and no join silently drops a row
+    (docs/subset_union_join_design.md). The narrowing pass
+    (UpgradeOuterFromKeySetEquivalence) restores a directional/INNER form only
+    when provably row-identical.
+    """
     # UNION-declared keys (query-scoped `full join` / `union join`, non-partial
     # merges): neither domain contains the other, so FULL with the key
     # coalesced by `_build_joinkeys`; the registry also vetoes narrowing.
     # Driving FULL from this registry rather than the partial flag keeps the
-    # key complete, so the unresolvable-source gate and rowset enrichment
-    # never fire.
-    if full_join_keys and all_connecting_keys & full_join_keys:
+    # key complete, so the unresolvable-source gate and rowset enrichment never
+    # fire.
+    if facts.full_join_keys and all_connecting_keys & facts.full_join_keys:
         return JoinType.FULL
-    # The region contract: a side holding a region's rows, joined on that
-    # region's span, is preserved; the other side is too only where its key
-    # carries a value NULL (a guest order), else its unmatched rows are
-    # members nobody referenced. Two holders of the same region pair plainly.
-    if region_holders and not (authored_keys and all_connecting_keys & authored_keys):
-        left_holds = bool(region_holders.get(left, set()) & all_connecting_keys)
-        right_holds = bool(region_holders.get(right, set()) & all_connecting_keys)
-        if left_holds and right_holds:
-            # two holders of one region (its domain and a reader of it) pair
-            # on what they hold; neither out-hosts the other by its bindings
-            host_nodes = None
-        if left_holds != right_holds:
-            holder, feeder = (left, right) if left_holds else (right, left)
-            feeder_values = _unpaired_value_nulls(
-                all_connecting_keys,
-                region_holders[holder],
-                feeder,
-                holder,
-                value_nullables or {},
-                extent_nullables or {},
-                guest_padded,
-            )
-            # with a second family in the merge, the rows already joined
-            # carry its extension rows (NULL on this key): only FULL keeps
-            # them. Counted over the plan's regions, not the spans held: one
-            # composite-key region contributes every span of its grain.
-            held: set[str] = set().union(*region_holders.values())
-            families = {region for region in region_partition if region & held}
-            if feeder_values or len(families) > 1:
-                return JoinType.FULL
-            return JoinType.LEFT_OUTER if left_holds else JoinType.RIGHT_OUTER
-    left_is_partial = _has_any(all_connecting_keys, left, partials)
-    right_is_partial = _has_any(all_connecting_keys, right, partials)
-    left_is_nullable = _has_any(all_connecting_keys, left, nullables)
-    right_is_nullable = _has_any(all_connecting_keys, right, nullables)
 
-    # A span the statement elected another group to own
-    # (v4_helper/extent_ownership.py). Its extension members are not this
-    # merge's to manufacture, so its `~` mark grants no row intent here: with a
-    # clean fact/dimension split anchor the fact and let equality shed the
-    # members it never referenced.
-    if extent_free_keys and not (authored_keys and all_connecting_keys & authored_keys):
-        span_keys = {
-            key
-            for key in all_connecting_keys & extent_free_keys
-            if key in partials.get(left, []) or key in partials.get(right, [])
-        }
-        if span_keys:
-            left_binds = bool(span_keys & set(partials.get(left, [])))
-            right_binds = bool(span_keys & set(partials.get(right, [])))
-            if left_binds != right_binds:
-                binder, other = (left, right) if left_binds else (right, left)
-                # The other side carrying the span's whole domain and the
-                # binder no NULL on it: every binder row has its partner, so
-                # anchoring preserves nothing. Typed INNER here rather than
-                # left to the narrowing pass, because the anchoring's stamp
-                # (the domain's columns nullable on this stream) would
-                # otherwise reach every merge above as a value NULL.
-                if (
-                    complete_spans is not None
-                    and all_connecting_keys <= complete_spans.get(other, set())
-                    and not _has_any(all_connecting_keys, binder, nullables)
-                ):
-                    return JoinType.INNER
-                return JoinType.LEFT_OUTER if left_binds else JoinType.RIGHT_OUTER
-            # Both sides bind it. Two projections of ONE binding cover the same
-            # subset, so the span carries no row intent between them and the
-            # remaining keys decide the typing. PEER facts (sales and returns
-            # each referencing their own slice of the group domain) each hold
-            # rows the other lacks, and dropping either side's is a chasm, not
-            # an extension: their typing stands whoever owns the extent.
-            if span_binding_sources is not None and all(
-                (sources := span_binding_sources.get(left, {}).get(key))
-                and sources == span_binding_sources.get(right, {}).get(key)
-                for key in span_keys
-            ):
-                typed_keys = all_connecting_keys - extent_free_keys
-                left_is_partial = _has_any(typed_keys, left, partials)
-                right_is_partial = _has_any(typed_keys, right, partials)
+    region_type, region_hosts_equally = _region_contract_join(
+        left, right, all_connecting_keys, facts
+    )
+    if region_type is not None:
+        return region_type
+    hosting = None if region_hosts_equally else facts.host_nodes
 
-    # A partial side declares a SUBSET domain. Subset speaks to VALUES and
-    # NULL is not a value, so partiality and nullability never interact here:
-    # render preserving, and the narrowing pass restores direction exactly
-    # when the superset side provably carries the key's full domain and the
-    # subset side's NULLs have a null-safe partner.
+    extent_type, typed_keys = _extent_free_join(left, right, all_connecting_keys, facts)
+    if extent_type is not None:
+        return extent_type
+    partial_keys = all_connecting_keys if typed_keys is None else typed_keys
+    left_is_partial = _has_any(partial_keys, left, facts.partials)
+    right_is_partial = _has_any(partial_keys, right, facts.partials)
+
     if left_is_partial or right_is_partial:
-        # An AUTHORED relation key (`subset join` anchors, scoped coalescing
-        # members) declares row intent of its own; its machinery types the
-        # join and host inference must not override it (the rowset-enrichment
-        # `subset join` preserves the anchor side, which hosting would flip).
-        authored = bool(authored_keys and all_connecting_keys & authored_keys)
-        # Preservation exists to keep extension rows, and those ride the HOST:
-        # the side covering every `~`-licensed key the node emits (or the
-        # node's grain when none are in play). When exactly one side hosts,
-        # the other is a feeder whose unmatched rows carry no reachable
-        # content; preserving it manufactures padded join keys the FINAL
-        # merge then null-pairs across extension families. Symmetric or
-        # absent hosting stays row-preserving, and so does a feeder carrying
-        # VALUE nulls (`~?`) on the key: its NULL-keyed rows are real fact
-        # rows equality would drop. Padding NULLs on the feeder are exactly
-        # what the direction exists to shed, so only value nulls veto.
-        if host_nodes is not None and not authored:
-            left_is_host = left in host_nodes
-            right_is_host = right in host_nodes
-            if left_is_host != right_is_host:
-                host, feeder = (left, right) if left_is_host else (right, left)
-                # a key null-extended off a value-null one below (a guest
-                # order's address) is a value null here too
-                if not _unpaired_value_nulls(
-                    all_connecting_keys,
-                    set(),
-                    feeder,
-                    host,
-                    value_nullables or {},
-                    extent_nullables or {},
-                    guest_padded,
-                ):
-                    return JoinType.LEFT_OUTER if left_is_host else JoinType.RIGHT_OUTER
-        partial_keys = {
-            key
-            for key in all_connecting_keys
-            if key in partials.get(left, []) or key in partials.get(right, [])
-        }
-        # A `~` key the node never emits (not a visible output, no grain
-        # component keyed by it) licenses no extension rows here. When the
-        # pair is recognizably fact-to-dimension (one side's grain is the
-        # connecting keys themselves) the dimension is a pure lookup whose
-        # unmatched rows are grainless, so anchor the fact side. A demanded
-        # key, ambiguous topology, or a value-null fact key stays
-        # row-preserving.
-        if (
-            demanded_domains is not None
-            and node_grains is not None
-            and not authored
-            and partial_keys
-            and not partial_keys & demanded_domains
-        ):
-            left_grain = node_grains.get(left) or set()
-            right_grain = node_grains.get(right) or set()
-            left_is_dim = bool(left_grain) and left_grain <= all_connecting_keys
-            right_is_dim = bool(right_grain) and right_grain <= all_connecting_keys
-            if left_is_dim != right_is_dim:
-                fact = left if right_is_dim else right
-                if value_nullables is None or not _has_any(
-                    all_connecting_keys, fact, value_nullables
-                ):
-                    return JoinType.LEFT_OUTER if right_is_dim else JoinType.RIGHT_OUTER
-        return JoinType.FULL
+        return _partial_domain_join(left, right, all_connecting_keys, facts, hosting)
+
     # A grouping-set NULL is padding, not a value: the subtotal/grand-total row
     # a ROLLUP/CUBE/GROUPING SETS emits has no counterpart on a side that does
     # not pad the same key, so null-safe equality has nothing to pair it with
     # and the INNER form below would silently drop it. Preserve toward the
     # padded side. Both sides padded is the ordinary case again: same grouping
     # sets, so the NULL groups do pair.
-    if rollup_padded:
-        left_pads = _has_any(all_connecting_keys, left, rollup_padded)
-        right_pads = _has_any(all_connecting_keys, right, rollup_padded)
-        if left_pads != right_pads:
+    if facts.rollup_padded:
+        left_pads = _has_any(all_connecting_keys, left, facts.rollup_padded)
+        if left_pads != _has_any(all_connecting_keys, right, facts.rollup_padded):
             return JoinType.LEFT_OUTER if left_pads else JoinType.RIGHT_OUTER
-    # Neither side partial: each binding declares the key's full domain
-    # (EQUAL, mutual subset), whose narrowed form is INNER. NULL-key rows
-    # must still never drop: when both sides are nullable the null-safe
-    # equality (get_modifiers) pairs the NULL groups, and a nullable side
-    # with no null-safe partner keeps the join preserving toward it.
-    if left_is_nullable and right_is_nullable:
-        # Null-pairing is only sound when the padded rows name the same thing.
-        # When exactly one side carries the node's full grain (the host), its
-        # padding is the grain-bearing extension family; the other side's
-        # padding lacks grain columns entirely, so pairing the two invents
-        # rows (extension-family cross products). Preserve the host and let
-        # plain equality drop the feeder's padding. Authored relation keys
-        # keep their own machinery's typing.
-        if host_nodes is not None and not (
-            authored_keys and all_connecting_keys & authored_keys
-        ):
-            left_is_host = left in host_nodes
-            right_is_host = right in host_nodes
-            if left_is_host != right_is_host:
-                return JoinType.LEFT_OUTER if left_is_host else JoinType.RIGHT_OUTER
-        # A value NULL on one side (a guest order's address, grouped) names a
-        # real row; the other side's padding names nothing. Keep the row.
-        if extent_nullables is not None:
-            left_values = _has_any(all_connecting_keys, left, extent_nullables)
-            right_values = _has_any(all_connecting_keys, right, extent_nullables)
-            if left_values != right_values:
-                return JoinType.LEFT_OUTER if left_values else JoinType.RIGHT_OUTER
-        # Padding for different spans never pairs (`get_node_joins` drops the
-        # null-safe equality), so INNER would shed both extension families.
-        if _pads_for_different_members(left, right, all_connecting_keys, span_padding):
-            return JoinType.FULL
-        # Grain-aligned sides both weakened their EQUAL-domain claims on the
-        # merge axis itself, so INNER would drop each side's exclusive
-        # members; preserve both and let the null-safe equality pair the
-        # NULL groups.
-        if _is_nullable_grain_aligned_merge(
-            left, right, all_connecting_keys, node_grains, extent_nullables
-        ):
-            return JoinType.FULL
-        return JoinType.INNER
-    if left_is_nullable != right_is_nullable:
-        # A nullable key weakens that side's EQUAL-domain claim to "some
-        # subset, plus a NULL group". Between a fact and its lookup that
-        # still directs the join: the other side is a feeder whose unmatched
-        # rows carry no content. But when both sides are complete group-sets
-        # at the merge grain and the nullability rides the merge axis, a
-        # directional join would silently drop the non-nullable side's
-        # exclusive members, the very rows its intact domain claim
-        # promises. Preserve both, padded.
-        if _is_nullable_grain_aligned_merge(
-            left, right, all_connecting_keys, node_grains, extent_nullables
-        ):
-            return JoinType.FULL
-        return JoinType.LEFT_OUTER if left_is_nullable else JoinType.RIGHT_OUTER
-    return JoinType.INNER
+    return _nullable_join(
+        left,
+        right,
+        all_connecting_keys,
+        facts,
+        hosting,
+        _has_any(all_connecting_keys, left, facts.nullables),
+        _has_any(all_connecting_keys, right, facts.nullables),
+    )
 
 
 def reduce_join_types(join_types: set[JoinType]) -> JoinType:
@@ -827,26 +889,10 @@ def _score_join_candidate(
 
 def resolve_join_order_v2(
     g: nx.Graph,
-    partials: dict[str, list[str]],
-    nullables: dict[str, list[str]],
+    facts: JoinFacts,
     grain_size: dict[str, int] | None = None,
-    full_join_keys: set[str] | None = None,
     anchor_key_nodes: set[str] | None = None,
     authored_key_nodes: set[str] | None = None,
-    rollup_padded: dict[str, list[str]] | None = None,
-    host_nodes: set[str] | None = None,
-    value_nullables: dict[str, list[str]] | None = None,
-    demanded_domains: set[str] | None = None,
-    node_grains: dict[str, set[str]] | None = None,
-    authored_veto_keys: set[str] | None = None,
-    extent_nullables: dict[str, list[str]] | None = None,
-    extent_free_keys: set[str] | None = None,
-    span_binding_sources: dict[str, dict[str, frozenset[str]]] | None = None,
-    span_padding: dict[str, dict[str, frozenset[str]]] | None = None,
-    region_holders: dict[str, set[str]] | None = None,
-    region_partition: tuple[frozenset[str], ...] = (),
-    complete_spans: dict[str, set[str]] | None = None,
-    guest_padded: dict[str, list[str]] | None = None,
 ) -> list[JoinOrderOutput]:
     """Greedily order the datasources into a join tree.
 
@@ -874,13 +920,13 @@ def resolve_join_order_v2(
         active_anchor_keys = {
             key
             for key in anchor_key_nodes
-            if any(key in partials.get(ds, []) for ds in datasources)
+            if any(key in facts.partials.get(ds, []) for ds in datasources)
         }
         anchor_sources = frozenset(
             ds
             for ds in datasources
             if (set(g.neighbors(ds)) & active_anchor_keys)
-            and not (active_anchor_keys & set(partials.get(ds, [])))
+            and not (active_anchor_keys & set(facts.partials.get(ds, [])))
         )
 
     all_connections: dict[tuple[str, str], set[str]] = {}
@@ -908,7 +954,7 @@ def resolve_join_order_v2(
     # domain alone, where a `~?` guest (a value-NULL key, so no domain row)
     # never reaches its NULL group.
     authored = authored_key_nodes or set()
-    held: set[str] = set().union(*(region_holders or {}).values())
+    held: set[str] = set().union(*(facts.region_holders or {}).values())
     pivots = sorted(
         [x for x in pivot_map if len(pivot_map[x]) > 1],
         key=lambda x: (x not in authored, x not in held, len(pivot_map[x]), len(x), x),
@@ -928,15 +974,15 @@ def resolve_join_order_v2(
 
         unjoined_for_root = [x for x in pivot_map[root] if x not in eligible_left]
         multi_partial = (
-            sum(1 for x in unjoined_for_root if root in partials.get(x, [])) > 1
+            sum(1 for x in unjoined_for_root if root in facts.partials.get(x, [])) > 1
         )
 
         score_key = partial(
             _score_join_candidate,
             root=root,
             eligible_left=eligible_left,
-            partials=partials,
-            nullables=nullables,
+            partials=facts.partials,
+            nullables=facts.nullables,
             grain_size=grain_size,
             multi_partial=multi_partial,
             anchor_sources=anchor_sources,
@@ -973,17 +1019,18 @@ def resolve_join_order_v2(
                 # redundant left here would drop that source from the coalesce and
                 # split rows present only on it. Non-FULL keys still dedup.
                 is_full_key = bool(
-                    full_join_keys and (all_connecting_keys & full_join_keys)
+                    facts.full_join_keys
+                    and (all_connecting_keys & facts.full_join_keys)
                 )
                 exists = False
                 if not is_full_key:
                     for existing_left, v in joinkeys.items():
                         if v == all_connecting_keys:
                             left_is_partial = _has_any(
-                                all_connecting_keys, left_candidate, partials
+                                all_connecting_keys, left_candidate, facts.partials
                             )
                             existing_is_partial = _has_any(
-                                all_connecting_keys, existing_left, partials
+                                all_connecting_keys, existing_left, facts.partials
                             )
                             if not (left_is_partial and existing_is_partial):
                                 exists = True
@@ -992,26 +1039,7 @@ def resolve_join_order_v2(
                     continue
 
                 join_type = get_join_type(
-                    left_candidate,
-                    right,
-                    partials,
-                    nullables,
-                    all_connecting_keys,
-                    full_join_keys,
-                    rollup_padded,
-                    host_nodes,
-                    value_nullables,
-                    demanded_domains,
-                    node_grains,
-                    authored_veto_keys,
-                    extent_nullables,
-                    extent_free_keys,
-                    span_binding_sources,
-                    span_padding,
-                    region_holders,
-                    region_partition,
-                    complete_spans,
-                    guest_padded,
+                    left_candidate, right, all_connecting_keys, facts
                 )
                 join_types.add(join_type)
                 joinkeys[left_candidate] = all_connecting_keys
@@ -1073,7 +1101,7 @@ def resolve_join_order_v2(
                 )
             eligible_left.add(ds)
 
-    authored_axis_keys = set(full_join_keys or set())
+    authored_axis_keys = set(facts.full_join_keys or set())
     if anchor_key_nodes:
         authored_axis_keys |= anchor_key_nodes
     if authored_key_nodes:
@@ -1983,26 +2011,28 @@ def get_node_joins(
         }
     joins = resolve_join_order_v2(
         graph,
-        partials=partials,
-        nullables=nullables,
+        JoinFacts(
+            partials=partials,
+            nullables=nullables,
+            full_join_keys=full_join_keys,
+            rollup_padded=rollup_padded,
+            host_nodes=host_nodes,
+            value_nullables=value_nullables,
+            demanded_domains=demanded_nodes,
+            node_grains=node_grains,
+            authored_keys=authored_veto_keys,
+            extent_nullables=extent_nullables,
+            extent_free_keys=extent_free_key_nodes,
+            span_binding_sources=span_binding_sources,
+            span_padding=span_padding,
+            region_holders=region_holders,
+            region_partition=region_partition,
+            complete_spans=complete_spans,
+            guest_padded=guest_padded,
+        ),
         grain_size=grain_size,
-        full_join_keys=full_join_keys,
         anchor_key_nodes=anchor_key_nodes,
         authored_key_nodes=authored_key_nodes,
-        rollup_padded=rollup_padded,
-        host_nodes=host_nodes,
-        value_nullables=value_nullables,
-        demanded_domains=demanded_nodes,
-        node_grains=node_grains,
-        authored_veto_keys=authored_veto_keys,
-        extent_nullables=extent_nullables,
-        extent_free_keys=extent_free_key_nodes,
-        span_binding_sources=span_binding_sources,
-        span_padding=span_padding,
-        region_holders=region_holders,
-        region_partition=region_partition,
-        complete_spans=complete_spans,
-        guest_padded=guest_padded,
     )
     _raise_if_keyless_row_bearing_join(
         joins,

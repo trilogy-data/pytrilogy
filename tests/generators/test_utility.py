@@ -2,6 +2,7 @@ from networkx import Graph
 
 from trilogy.core.enums import JoinType
 from trilogy.core.processing.join_resolution import (
+    JoinFacts,
     JoinOrderOutput,
     ensure_content_preservation,
     resolve_join_order_v2,
@@ -27,7 +28,7 @@ def test_resolve_join_order_v2():
         "ds~customer_address": ["c~customer_id"],
     }
 
-    output = resolve_join_order_v2(g, partials, {})
+    output = resolve_join_order_v2(g, JoinFacts(partials, {}))
 
     # every join here binds a partial (subset-declared) key, so all render
     # preserving — the optimizer narrows later when the superset side proves
@@ -335,7 +336,7 @@ def test_resolve_join_order_v2_multi_partial():
         "ds~fact2": ["c~shared_id"],
     }
 
-    output = resolve_join_order_v2(g, partials, {})
+    output = resolve_join_order_v2(g, JoinFacts(partials, {}))
 
     # Both fact tables should join to dim; fact tables join first
     # because multi_partial scoring boosts them.

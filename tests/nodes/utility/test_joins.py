@@ -14,6 +14,7 @@ from trilogy.core.models.execute import (
     QueryDatasource,
 )
 from trilogy.core.processing.join_resolution import (
+    JoinFacts,
     compute_outer_null_status,
     get_join_type,
     prune_outer_join_pairs,
@@ -454,7 +455,9 @@ def test_get_join_type_all_combinations(
     if right_nullable:
         nullables[right] = ["key1"]
 
-    result = get_join_type(left, right, partials, nullables, all_connecting_keys)
+    result = get_join_type(
+        left, right, all_connecting_keys, JoinFacts(partials, nullables)
+    )
     assert result == expected
 
 
@@ -466,7 +469,9 @@ def test_get_join_type_no_matching_keys():
     nullables = {"table_a": ["different_key"]}
     all_connecting_keys = {"key1", "key2"}
 
-    result = get_join_type(left, right, partials, nullables, all_connecting_keys)
+    result = get_join_type(
+        left, right, all_connecting_keys, JoinFacts(partials, nullables)
+    )
     assert result == JoinType.INNER
 
 
@@ -478,7 +483,9 @@ def test_get_join_type_empty_connecting_keys():
     nullables = {"table_a": ["key3"]}
     all_connecting_keys = set()
 
-    result = get_join_type(left, right, partials, nullables, all_connecting_keys)
+    result = get_join_type(
+        left, right, all_connecting_keys, JoinFacts(partials, nullables)
+    )
     assert result == JoinType.INNER
 
 
@@ -491,7 +498,9 @@ def test_get_join_type_multiple_connecting_keys():
     nullables = {}
     all_connecting_keys = {"key1", "key2", "key3"}
 
-    result = get_join_type(left, right, partials, nullables, all_connecting_keys)
+    result = get_join_type(
+        left, right, all_connecting_keys, JoinFacts(partials, nullables)
+    )
     assert result == JoinType.FULL
 
 
