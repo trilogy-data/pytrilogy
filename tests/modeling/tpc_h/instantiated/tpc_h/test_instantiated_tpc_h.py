@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 from trilogy import Dialects, Executor
@@ -14,7 +15,7 @@ def test_adhoc07():
     engine: Executor = Dialects.DUCK_DB.default_executor(environment=env, hooks=[])
 
     results = engine.generate_sql(text)[-1]
-    assert (
-        'INNER JOIN "wakeful" on "order_orders"."o_custkey" = "wakeful"."order_customer_id"'
-        in results
+    assert re.search(
+        r'INNER JOIN "(\w+)" on "order_orders"\."o_custkey" = "\1"\."order_customer_id"',
+        results,
     ), results
