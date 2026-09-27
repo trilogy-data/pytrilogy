@@ -232,6 +232,21 @@ HOLDS = [
     "select name where status is null and name != 'bob'",
     "select name where count(order_id) by customer_id = 0",
     "select name, count(order_id) as n where status is null",
+    # nothing demands the customer region: it is not a row of the statement,
+    # so its span is never extended and no order derivation is evaluated on a
+    # padding of the orderless customer (`label` was 'cat-in-transit')
+    "select order_id, label",
+    "select order_id, label where status is null",
+    "select status where count(order_id) by customer_id = 0",
+    "select status, sum(amount) as t where count(order_id) by customer_id = 0",
+    "select status, count(order_id) as n where count(order_id) by customer_id = 0",
+    "select status, sum(amount) as t where count(order_id) by customer_id < 2",
+    # a bare `is null` over a column the `~` scan binds is routed off the scan
+    # as a merge-level test; with no extension here it is applied over the
+    # lone scan, not lost (the plain model returned every order)
+    "select label where status is null",
+    "select order_id where status is null",
+    "select label where undelivered is null",
 ]
 
 # none owed today; a strict xfail here is the target for the next planner fix

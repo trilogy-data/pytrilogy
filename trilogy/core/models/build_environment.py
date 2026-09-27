@@ -115,6 +115,11 @@ class SpanScope:
     # rowset body built for a consumer that pads the region itself): no group
     # of this plan extends them, FINAL included
     owned: frozenset[str] = frozenset()
+    # plan: the spans of regions nothing in the statement demands
+    # (`region_domains.undemanded_spans`): no join of this plan preserves the
+    # dimension over them. Join typing only; the facts' bindings on them stay
+    # `~` for source planning, unlike `extent_free`
+    unextended: frozenset[str] = frozenset()
     # group: the spans this group may NOT extend, because another group owns
     # those extension members (v4_helper/extent_ownership.py), or the plan
     # above does (`owned`)

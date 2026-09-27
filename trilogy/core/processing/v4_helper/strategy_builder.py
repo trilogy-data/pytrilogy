@@ -4677,13 +4677,27 @@ def build_strategy_node(
                 domain_spans: frozenset[str] = frozenset().union(
                     *(_region_reads(d) for d in domains)
                 )
+                # a condition feeder keyed by the span (`count(return_id) by
+                # item_sk = 0`) is a value per member of the region: it joins
+                # the united rows, not the solid stream, or a member the solid
+                # stream lacks (an item with returns and no sale) is padded
+                # past it and reads its count as 0
+                feeders = [
+                    p
+                    for p, build in zip(parents, parent_builds)
+                    if p not in domains
+                    and edge_kind(group_edges, build.group_id, gid)
+                    == EdgeKind.CONSTRAINT
+                    and attrs[build.group_id].grain_components
+                    and attrs[build.group_id].grain_components <= domain_spans
+                ]
                 group_scope = environment.span_scope
                 environment.span_scope = dc_replace(
                     group_scope, extent_free=group_scope.extent_free | domain_spans
                 )
                 try:
                     solid = _pre_merge_parents(
-                        [p for p in parents if p not in domains],
+                        [p for p in parents if p not in domains and p not in feeders],
                         environment,
                         join_key_addresses=join_key_addresses,
                         needed=needed,
@@ -4697,6 +4711,7 @@ def build_strategy_node(
                         outputs, primary_addrs, solid, region_spans=domain_spans
                     )
                     + domains
+                    + feeders
                 )
             parents = _pre_merge_parents(
                 parents,
