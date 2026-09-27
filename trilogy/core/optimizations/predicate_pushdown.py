@@ -70,7 +70,11 @@ def _predicate_safe_past_null_extension(
     # the FROM base and every side joined before it.
     if not isinstance(cte, CTE) or not _parent_nullable_in_cte(cte, parent_cte.name):
         return True
-    proven = condition_proves_non_null(candidate)
+    # a COUNT this CTE coalesces to 0 (`zero_fills_count`) is accepted by
+    # `count = 0` on the very rows the join padded
+    proven = condition_proves_non_null(candidate) - cte.zero_filled_counts(
+        candidate.row_arguments
+    )
     return {x.address for x in candidate.row_arguments} <= proven
 
 

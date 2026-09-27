@@ -224,6 +224,14 @@ HOLDS = [
     "select customer_id where status is null",
     "select customer_id, name where status is null or amount > 15",
     "select customer_id, name where flag = 1 or flag is null",
+    # the span is never named: the condition scan pairs with the domain on the
+    # span it hides BEFORE the dedup to the output grain strips it
+    "select name where status is null",
+    "select name where status is null or status = 'delivered'",
+    "select name where undelivered is null",
+    "select name where status is null and name != 'bob'",
+    "select name where count(order_id) by customer_id = 0",
+    "select name, count(order_id) as n where status is null",
 ]
 
 # none owed today; a strict xfail here is the target for the next planner fix
@@ -321,16 +329,31 @@ def test_present_derivation_beside_an_absent_one(query: str):
     assert any("CAT" in r for r in rows)
 
 
-# OWED, and the twin is blind (both models return every customer under the
-# NULL status): the per-customer count feeds the status aggregate's input
-# merged INNER on the solid stream, so the customer with no order has no row
-# to test and the padded row passes `coalesce(count, 0) = 0` for everyone.
-@pytest.mark.xfail(strict=True, reason="owed: per-key atom under a non-span aggregate")
-def test_per_key_atom_under_an_aggregate_by_another_key(derived: Executor):
-    assert _rows(
-        derived,
-        "select status, count(customer_id) as n where count(order_id) by customer_id = 0",
-    ) == [(None, 1)]
+# The twin is blind (both models returned every customer under the NULL
+# status): the domain pads the per-customer count onto the status aggregate's
+# input, where `count = 0` renders coalesced and accepts the padded row, so the
+# optimizer must not read it as null-rejecting and push it below that join.
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select status, count(customer_id) as n where count(order_id) by customer_id = 0",
+            [(None, 1)],
+        ),
+        (
+            "select status, count(customer_id) as n where count(order_id) by customer_id > 0",
+            [("delivered", 2), ("in-transit", 1)],
+        ),
+        (
+            "select customer_id, name where count(order_id) by customer_id = 0",
+            [(3, "cat")],
+        ),
+    ],
+)
+def test_per_key_atom_under_an_aggregate_by_another_key(
+    derived: Executor, query: str, expected: list[tuple]
+):
+    assert _rows(derived, query) == expected
 
 
 def test_orderless_customer_has_no_status(derived: Executor):
