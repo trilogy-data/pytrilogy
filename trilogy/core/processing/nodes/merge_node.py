@@ -1,7 +1,7 @@
 from trilogy.constants import logger
 from trilogy.core.enums import (
+    ZERO_ON_EMPTY_AGGREGATES,
     Derivation,
-    FunctionType,
     JoinType,
     Modifier,
     SourceType,
@@ -407,7 +407,7 @@ class MergeNode(StrategyNode):
             for c in read
             if c.address in solid_outputs
             and isinstance(c.lineage, BuildAggregateWrapper)
-            and c.lineage.function.operator == FunctionType.COUNT
+            and c.lineage.function.operator in ZERO_ON_EMPTY_AGGREGATES
         )
 
     def _join_proofs(
