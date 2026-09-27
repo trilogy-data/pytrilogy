@@ -13,6 +13,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import DataType
 from trilogy.core.models.execute import BaseJoin, ConceptPair, QueryDatasource
 from trilogy.core.processing.join_resolution import (
+    JoinFacts,
     _padding_sources,
     _pads_for_different_members,
     _span_padding_matrix,
@@ -86,14 +87,11 @@ _BOTH_NULLABLE = {_LEFT: [_AXIS], _RIGHT: [_AXIS]}
 
 
 def _typed(padding: dict[str, dict[str, frozenset[str]]]) -> JoinType:
-    return get_join_type(
-        _LEFT,
-        _RIGHT,
-        partials={},
-        nullables=_BOTH_NULLABLE,
-        all_connecting_keys={_AXIS},
-        span_padding=padding,
-    )
+    return _join({_AXIS}, nullables=_BOTH_NULLABLE, span_padding=padding)
+
+
+def _join(keys: set[str], **facts) -> JoinType:
+    return get_join_type(_LEFT, _RIGHT, keys, JoinFacts(**facts))
 
 
 def test_padding_for_different_spans_never_pairs():
@@ -204,30 +202,17 @@ def test_extent_free_span_pairs_inner_with_its_complete_domain():
     """A `~` binding joined to the span's whole domain has a partner for every
     row, so it is INNER at plan time; a domain that is not the whole one, or a
     binder carrying a NULL on the span, keeps the binder anchored."""
-    typed = {
-        "partials": {_RIGHT: [_SPAN]},
-        "all_connecting_keys": {_SPAN},
-        "extent_free_keys": {_SPAN},
-    }
+    typed = {"partials": {_RIGHT: [_SPAN]}, "extent_free_keys": {_SPAN}}
     complete = {_LEFT: {_SPAN}}
     assert (
-        get_join_type(_LEFT, _RIGHT, nullables={}, complete_spans=complete, **typed)
-        == JoinType.INNER
+        _join({_SPAN}, nullables={}, complete_spans=complete, **typed) == JoinType.INNER
     )
     assert (
-        get_join_type(
-            _LEFT, _RIGHT, nullables={}, complete_spans={_LEFT: set()}, **typed
-        )
+        _join({_SPAN}, nullables={}, complete_spans={_LEFT: set()}, **typed)
         == JoinType.RIGHT_OUTER
     )
     assert (
-        get_join_type(
-            _LEFT,
-            _RIGHT,
-            nullables={_RIGHT: [_SPAN]},
-            complete_spans=complete,
-            **typed,
-        )
+        _join({_SPAN}, nullables={_RIGHT: [_SPAN]}, complete_spans=complete, **typed)
         == JoinType.RIGHT_OUTER
     )
 
@@ -239,33 +224,28 @@ def test_region_holder_preserves_over_a_feeder_whose_value_null_pairs():
     a VALUE null (a region spelled by a nullable stand-in has a member whose
     key is NULL, on both sides); an EXTENT null there is a guest order naming
     no member, and keeps FULL whatever the holder carries."""
+    keys = {_SPAN, _ATTR}
     typed = {
-        "partials": {},
         "nullables": {_LEFT: [_ATTR], _RIGHT: [_ATTR]},
-        "all_connecting_keys": {_SPAN, _ATTR},
         "region_holders": {_LEFT: {_SPAN}},
     }
     both = {_LEFT: [_ATTR], _RIGHT: [_ATTR]}
-    assert get_join_type(_LEFT, _RIGHT, value_nullables=both, **typed) == (
-        JoinType.LEFT_OUTER
-    )
-    assert get_join_type(_LEFT, _RIGHT, value_nullables={_RIGHT: [_ATTR]}, **typed) == (
-        JoinType.FULL
-    )
+    assert _join(keys, value_nullables=both, **typed) == JoinType.LEFT_OUTER
+    assert _join(keys, value_nullables={_RIGHT: [_ATTR]}, **typed) == JoinType.FULL
     on_key = {_LEFT: [_ATTR, _SPAN], _RIGHT: [_ATTR, _SPAN]}
-    assert get_join_type(_LEFT, _RIGHT, value_nullables=on_key, **typed) == (
-        JoinType.LEFT_OUTER
+    assert _join(keys, value_nullables=on_key, **typed) == JoinType.LEFT_OUTER
+    assert (
+        _join(keys, value_nullables={_RIGHT: [_ATTR, _SPAN]}, **typed) == JoinType.FULL
     )
-    assert get_join_type(
-        _LEFT, _RIGHT, value_nullables={_RIGHT: [_ATTR, _SPAN]}, **typed
-    ) == (JoinType.FULL)
-    assert get_join_type(
-        _LEFT,
-        _RIGHT,
-        value_nullables=on_key,
-        extent_nullables={_RIGHT: [_SPAN]},
-        **typed,
-    ) == (JoinType.FULL)
+    assert (
+        _join(
+            keys,
+            value_nullables=on_key,
+            extent_nullables={_RIGHT: [_SPAN]},
+            **typed,
+        )
+        == JoinType.FULL
+    )
 
 
 def _scan(name: str, outputs: list[str], partial: list[str] | None = None):
@@ -318,16 +298,11 @@ def test_host_preserves_over_a_partial_feeder_whose_value_null_pairs():
     typed = {
         "partials": {_RIGHT: [_ATTR]},
         "nullables": {_LEFT: [_ATTR], _RIGHT: [_ATTR]},
-        "all_connecting_keys": {_ATTR},
         "host_nodes": {_LEFT},
     }
     both = {_LEFT: [_ATTR], _RIGHT: [_ATTR]}
-    assert get_join_type(_LEFT, _RIGHT, value_nullables=both, **typed) == (
-        JoinType.LEFT_OUTER
-    )
-    assert get_join_type(_LEFT, _RIGHT, value_nullables={_RIGHT: [_ATTR]}, **typed) == (
-        JoinType.FULL
-    )
+    assert _join({_ATTR}, value_nullables=both, **typed) == JoinType.LEFT_OUTER
+    assert _join({_ATTR}, value_nullables={_RIGHT: [_ATTR]}, **typed) == JoinType.FULL
 
 
 def test_guest_padding_on_the_feeder_is_unpaired_by_the_host_value_null():
@@ -338,20 +313,16 @@ def test_guest_padding_on_the_feeder_is_unpaired_by_the_host_value_null():
     typed = {
         "partials": {_RIGHT: [_ATTR]},
         "nullables": {_LEFT: [_ATTR], _RIGHT: [_ATTR]},
-        "all_connecting_keys": {_ATTR},
         "host_nodes": {_LEFT},
         "value_nullables": {_LEFT: [_ATTR], _RIGHT: [_ATTR]},
     }
-    assert get_join_type(_LEFT, _RIGHT, guest_padded={_RIGHT: [_ATTR]}, **typed) == (
-        JoinType.FULL
+    assert _join({_ATTR}, guest_padded={_RIGHT: [_ATTR]}, **typed) == JoinType.FULL
+    assert (
+        _join({_ATTR}, guest_padded={_LEFT: [_ATTR], _RIGHT: [_ATTR]}, **typed)
+        == JoinType.LEFT_OUTER
     )
-    assert get_join_type(
-        _LEFT, _RIGHT, guest_padded={_LEFT: [_ATTR], _RIGHT: [_ATTR]}, **typed
-    ) == (JoinType.LEFT_OUTER)
     held = {**typed, "region_holders": {_LEFT: {_SPAN}}}
-    assert get_join_type(_LEFT, _RIGHT, guest_padded={_RIGHT: [_ATTR]}, **held) == (
-        JoinType.FULL
-    )
+    assert _join({_ATTR}, guest_padded={_RIGHT: [_ATTR]}, **held) == JoinType.FULL
 
 
 def test_guest_padded_addresses_walks_a_value_null_join_without_leaves():
