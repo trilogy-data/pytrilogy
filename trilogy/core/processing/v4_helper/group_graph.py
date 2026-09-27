@@ -68,7 +68,11 @@ from .extent_ownership import (
     elect_extent_owners,
     span_members,
 )
-from .functional_dependency import build_fd_determines, concept_attr_fd_determines
+from .functional_dependency import (
+    build_fd_closure,
+    build_fd_determines,
+    concept_attr_fd_determines,
+)
 from .group_behaviors import Behavior, behavior_for
 from .group_rules import DEFAULT_RULE, GROUPING_RULES
 from .models import (
@@ -1662,6 +1666,19 @@ def _resolved_rowset_grain(
     return frozenset(resolve_rowset_content_address(a, environment) for a in grain)
 
 
+def _grain_determines(
+    environment: BuildEnvironment,
+    determinants: frozenset[str],
+    targets: frozenset[str],
+) -> bool:
+    """Every key of `targets` is a function of `determinants` together."""
+    if not determinants or not targets:
+        return False
+    return targets <= build_fd_closure(
+        environment, determinants, include_empty_grain=False
+    )
+
+
 def _unwrapped_rowset_grain(
     grain: Iterable[str],
     environment: BuildEnvironment | None,
@@ -2850,6 +2867,21 @@ def _compute_concept_sets(
                         fact.native_grain,
                         addr,
                     )
+                    # a key with no concept node (a source grain the ROOT
+                    # advertises, `order_id` under `amount`) is invisible to
+                    # the concept-graph FD; the model's FD carries it through
+                    # a row stream keyed finer (item -> order)
+                    or (
+                        pointwise
+                        and addr not in concept_attrs
+                        and bool(fact.native_grain)
+                        and build_fd_determines(
+                            environment,
+                            fact.native_grain,
+                            addr,
+                            include_empty_grain=False,
+                        )
+                    )
                 ):
                     cap.add(addr)
         io.capability[gid] = cap
@@ -2969,6 +3001,28 @@ def _compute_concept_sets(
                         if sibling == gid or sibling == FINAL_NODE_ID:
                             continue
                         sibling_fact = facts[sibling]
+                        # Two ROW STREAMS at incomparable grains related by
+                        # FD: a scalar keyed on what it reads (`cost * amount`
+                        # at (order, product)) beside one at item grain, item
+                        # -> order and item -> product. The coarser exposes
+                        # its grain and the finer exposes the coarser's, or
+                        # the two pair on the one requested key and every item
+                        # fans out by its product's other orders. A grouping
+                        # sibling pairs on its own grain, which it emits.
+                        if (
+                            fact.derivation not in GROUPING_DERIVATIONS
+                            and sibling_fact.derivation not in GROUPING_DERIVATIONS
+                        ):
+                            if fact.grain <= io.capability[
+                                sibling
+                            ] and _grain_determines(
+                                environment, sibling_fact.grain, fact.grain
+                            ):
+                                outs |= (fact.grain - rollup_padded) & cap_gid
+                            if _grain_determines(
+                                environment, fact.grain, sibling_fact.grain
+                            ):
+                                outs |= (sibling_fact.grain - rollup_padded) & cap_gid
                         # Same-grain sibling: the grain IS the shared row
                         # identity. A STRICTLY FINER sibling that can also
                         # produce these components is the same story one level
