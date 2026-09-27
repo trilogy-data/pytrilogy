@@ -35,6 +35,7 @@ from trilogy.core.enums import (
     Modifier,
 )
 from trilogy.core.models.build import (
+    BuildConceptArgs,
     BuildDatasource,
 )
 from trilogy.core.models.execute import (
@@ -55,6 +56,15 @@ from trilogy.core.processing.condition_utility import (
     partial_addresses,
 )
 from trilogy.core.processing.join_resolution import OUTER_JOIN_TYPES
+
+
+def _zero_filled_proofs(cte: CTE) -> set[str]:
+    """Addresses of COUNTs this CTE's WHERE reads and renders coalesced to 0
+    (``CTE.zero_fills_count``): a null-rejecting atom over one is satisfied
+    by a padded row, so it is not a non-null proof."""
+    if not isinstance(cte.condition, BuildConceptArgs):
+        return set()
+    return cte.zero_filled_counts(cte.condition.row_arguments)
 
 
 @dataclass
@@ -620,7 +630,7 @@ def _external_forced_map(
                 if consumer.name not in consumer_proofs:
                     consumer_proofs[consumer.name] = gather_non_null_proofs(
                         consumer.condition
-                    )
+                    ) - _zero_filled_proofs(consumer)
                 contribution |= {
                     a
                     for a in consumer_proofs[consumer.name]
@@ -743,6 +753,12 @@ class UpgradeJoinOnGuards(OptimizationRule):
         )
         direct_proofs = direct_proofs | self._external_proofs(cte, inverse_map)
         or_groups = gather_or_groups(cte.condition) if cte.condition else []
+        # `count = 0` over a COUNT this CTE coalesces to 0 on the padded rows
+        # accepts those rows: it proves nothing about the side that padded them
+        zero = _zero_filled_proofs(cte)
+        if zero:
+            direct_proofs -= zero
+            or_groups = [[d - zero for d in group] for group in or_groups]
         if not direct_proofs and not or_groups:
             return False, None
         proofs = _ProofState(direct=direct_proofs, or_groups=or_groups)

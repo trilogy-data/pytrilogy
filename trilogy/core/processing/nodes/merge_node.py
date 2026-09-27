@@ -10,6 +10,7 @@ from trilogy.core.models.build import (
     BoolExpr,
     BuildAggregateWrapper,
     BuildConcept,
+    BuildConceptArgs,
     BuildDatasource,
     BuildGrain,
     BuildOrderBy,
@@ -377,6 +378,34 @@ class MergeNode(StrategyNode):
                     j.join_type = self.force_join_type
         return joins
 
+    def _zero_filled_counts(self) -> frozenset[str]:
+        """COUNTs evaluated on the solid rows and padded here onto a region's
+        rows: they count an empty group there, 0. The dialect coalesces them
+        (`QueryDatasource.zero_filled`), so a WHERE over one (`count(order_id)
+        by customer_id = 0`) accepts the padded row and proves nothing about
+        the side that padded it. The WHERE's own inputs count: such a count
+        need not be an output."""
+        if not any(region_reads(p) for p in self.parents) or all(
+            region_reads(p) for p in self.parents
+        ):
+            return frozenset()
+        solid_outputs = {
+            o.address
+            for p in self.parents
+            if not region_reads(p)
+            for o in p.output_concepts
+        }
+        read = list(self.output_concepts)
+        if isinstance(self.conditions, BuildConceptArgs):
+            read.extend(self.conditions.row_arguments)
+        return frozenset(
+            c.address
+            for c in read
+            if c.address in solid_outputs
+            and isinstance(c.lineage, BuildAggregateWrapper)
+            and c.lineage.function.operator == FunctionType.COUNT
+        )
+
     def _join_proofs(
         self, final_datasets: list[QueryDatasource | BuildDatasource]
     ) -> JoinProofs:
@@ -387,6 +416,11 @@ class MergeNode(StrategyNode):
             proofs = non_null_proofs(self.conditions)
             side_proofs = gather_non_null_proofs(self.conditions)
             or_groups = gather_or_groups(self.conditions)
+            zero = self._zero_filled_counts()
+            if zero:
+                proofs -= zero
+                side_proofs -= zero
+                or_groups = [[d - zero for d in group] for group in or_groups]
         # A MULTISELECT align supplies explicit ``node_joins`` whose FULL is
         # intentional (each arm's rows survive even where the other arm, with
         # its own HAVING, has none), so arm-local evidence must not narrow it.
@@ -797,25 +831,7 @@ class MergeNode(StrategyNode):
         joined_partials = merge_partial_addresses(
             final_datasets, qd_joins, final_output_concepts
         )
-        # a COUNT evaluated on the solid rows, padded here onto a region's
-        # rows, counts an empty group there
-        zero_filled: frozenset[str] = frozenset()
-        if any(region_reads(p) for p in self.parents) and not all(
-            region_reads(p) for p in self.parents
-        ):
-            solid_outputs = {
-                o.address
-                for p in self.parents
-                if not region_reads(p)
-                for o in p.output_concepts
-            }
-            zero_filled = frozenset(
-                c.address
-                for c in final_output_concepts
-                if c.address in solid_outputs
-                and isinstance(c.lineage, BuildAggregateWrapper)
-                and c.lineage.function.operator == FunctionType.COUNT
-            )
+        zero_filled = self._zero_filled_counts()
         qds = QueryDatasource(
             input_concepts=unique(self.input_concepts, "address"),
             output_concepts=final_output_concepts,

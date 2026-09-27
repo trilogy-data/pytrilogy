@@ -203,6 +203,27 @@ HOLDS = [
     "select label, count(customer_id) as n where activity = 'dormant'",
     "select status, count(customer_id) as n where big_name is null",
     "select status, count(customer_id) as n where late_name is null",
+    # a WHERE over an aggregate BY the span, evaluated over the region: the
+    # count is 0 (and the sum NULL) for the customer with no order, tested
+    # where the domain and the aggregate unite, never pushed into the
+    # aggregate's HAVING or read as proving the feeder present
+    "select customer_id, name where count(order_id) by customer_id = 0",
+    "select customer_id where count(order_id) by customer_id = 0",
+    "select customer_id, count(order_id) as n where count(order_id) by customer_id = 0",
+    "select customer_id, name where count(order_id) by customer_id < 2",
+    "select customer_id, name where count(order_id) by customer_id > 0",
+    "select customer_id, name where count(order_id) by customer_id = 0 or name = 'ann'",
+    "select customer_id, name where sum(amount) by customer_id is null",
+    "select customer_id, name where sum(amount) by customer_id > 25",
+    "select customer_id, status where count(order_id) by customer_id < 2",
+    "select name, count(order_id) as n where count(order_id) by customer_id < 2",
+    # a null-accepting WHERE over an absent value beside dimension-only
+    # outputs: its producer reaches FINAL on its own and pairs with the
+    # domain on the span the condition scan carries
+    "select customer_id, name where status is null",
+    "select customer_id where status is null",
+    "select customer_id, name where status is null or amount > 15",
+    "select customer_id, name where flag = 1 or flag is null",
 ]
 
 # none owed today; a strict xfail here is the target for the next planner fix
@@ -298,6 +319,18 @@ def test_present_derivation_beside_an_absent_one(query: str):
     rows = _rows(derived, query)
     assert rows == _rows(materialized, query)
     assert any("CAT" in r for r in rows)
+
+
+# OWED, and the twin is blind (both models return every customer under the
+# NULL status): the per-customer count feeds the status aggregate's input
+# merged INNER on the solid stream, so the customer with no order has no row
+# to test and the padded row passes `coalesce(count, 0) = 0` for everyone.
+@pytest.mark.xfail(strict=True, reason="owed: per-key atom under a non-span aggregate")
+def test_per_key_atom_under_an_aggregate_by_another_key(derived: Executor):
+    assert _rows(
+        derived,
+        "select status, count(customer_id) as n where count(order_id) by customer_id = 0",
+    ) == [(None, 1)]
 
 
 def test_orderless_customer_has_no_status(derived: Executor):

@@ -95,6 +95,13 @@ class _ModelFacts:
             cached = self.reach[key] = frozenset(_carried(seed, self.sources))
         return cached
 
+    def reach_of_all(self, keys: frozenset[str]) -> frozenset[str]:
+        """Addresses a keyed lookup arrives at from `keys` together: a
+        composite-key dimension (`grain (name, variant)`) is entered only
+        with its whole grain, so no span alone reaches its properties."""
+        seed = _SourceFacts("", frozenset(), False, {k: frozenset() for k in keys})
+        return frozenset(_carried(seed, self.sources))
+
 
 @dataclass(frozen=True)
 class RowsetRegion:
@@ -779,6 +786,14 @@ def build_keyspace(
         span_reach={
             span: frozenset(facts.reach_of(canonical.get(span, span)) & entities)
             for span in in_play
+        },
+        region_reach={
+            r.spans: frozenset(
+                facts.reach_of_all(frozenset(canonical.get(s, s) for s in r.spans))
+                & entities
+            )
+            for r in regions
+            if len(r.spans) > 1
         },
         witnessed=witnessed,
     )

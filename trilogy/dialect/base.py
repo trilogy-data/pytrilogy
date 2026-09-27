@@ -1356,7 +1356,13 @@ class BaseDialect:
                 rolled = INVALID_REFERENCE_STRING(
                     f"Missing rollup source reference to {c.address}"
                 )
-            return self.FUNCTION_MAP[FunctionType.SUM]([rolled], [])
+            summed = self.FUNCTION_MAP[FunctionType.SUM]([rolled], [])
+            # a pre-aggregated COUNT rolled up through a join that padded it
+            # (a sparse summary table beside its dimension): the group of one
+            # padded row counts nothing, 0, as the granular path says
+            if isinstance(cte, CTE) and cte.zero_fills_count(c, rolled_up=True):
+                return self.FUNCTION_MAP[FunctionType.COALESCE]([summed, "0"], [])
+            return summed
 
         # not sourced directly -> render from lineage. A pseudonym twin that IS
         # sourced is not consulted here: render_concept_sql probes it as a
@@ -1550,26 +1556,7 @@ class BaseDialect:
         # The guess is still live where no region domain says it (gcat
         # `test_case_key`: a vehicle with no launch counts 0 through the
         # LEFT JOIN, `coalesce(launch_count, 0)`).
-        if (
-            isinstance(c.lineage, BuildAggregateWrapper)
-            and c.lineage.function.operator == FunctionType.COUNT
-            and isinstance(cte, CTE)
-            and (
-                c.address in cte.zero_filled
-                or (
-                    not cte.group_to_grain
-                    and any(n.address == c.address for n in cte.nullable_concepts)
-                    # A multiselect-align merge CTE is the exception: a NULL
-                    # count there means "this entity is absent from this arm",
-                    # not "0 facts", and must stay NULL so a cross-arm
-                    # comparison excludes single-arm rows.
-                    and not any(
-                        isinstance(o.lineage, BuildMultiSelectLineage)
-                        for o in cte.output_columns
-                    )
-                )
-            )
-        ):
+        if isinstance(cte, CTE) and cte.zero_fills_count(c):
             rval = self.FUNCTION_MAP[FunctionType.COALESCE]([rval, "0"], [])
         assert rval is not None
         return rval

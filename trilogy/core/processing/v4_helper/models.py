@@ -181,6 +181,9 @@ class Keyspace:
     outputs: tuple[str, ...] = ()
     # span -> the entities a keyed lookup from that span alone arrives at
     span_reach: dict[str, frozenset[str]] = field(default_factory=dict)
+    # a region's spans, when there are several -> what a lookup from all of
+    # them TOGETHER arrives at (a composite-key dimension's properties)
+    region_reach: dict[frozenset[str], frozenset[str]] = field(default_factory=dict)
     # a spelling a join below this plan (a rowset body) pads a span under ->
     # the span in this plan's spelling (`RowsetWitness.spellings`)
     witnessed: dict[str, str] = field(default_factory=dict)
@@ -211,7 +214,7 @@ class Keyspace:
         in_play: frozenset[str] = frozenset().union(
             *(r.spans | r.live_completes for r in self.live_regions)
         )
-        return frozenset(
+        demanded = {
             span
             for span in in_play
             if any(
@@ -219,7 +222,17 @@ class Keyspace:
                 and self.keys_by_address[o] <= self.span_reach.get(span, frozenset())
                 for o in self.outputs
             )
-        )
+        }
+        # a composite-key region is demanded by an output its spans reach
+        # together (`vclass` of `grain (name, variant)`), and then every span is
+        for region in self.live_regions:
+            reach = self.region_reach.get(region.spans)
+            if reach and any(
+                self.keys_by_address.get(o) and self.keys_by_address[o] <= reach
+                for o in self.outputs
+            ):
+                demanded |= region.spans
+        return frozenset(demanded)
 
     def binding_is_complete(self, source: str, span: str) -> bool:
         """Does ``source``'s ``~`` on ``span`` cost this plan nothing? The
@@ -255,7 +268,9 @@ class Keyspace:
         is keyed on what a lookup from the region's spans reaches. An entity
         merely cross-joined onto the region is present, but not carried."""
         keys = self.keys_by_address.get(address, frozenset())
-        reach: frozenset[str] = frozenset().union(
+        reach: frozenset[str] = self.region_reach.get(
+            region.spans
+        ) or frozenset().union(
             *(self.span_reach.get(span, frozenset()) for span in region.spans)
         )
         return bool(keys) and keys <= reach
