@@ -184,11 +184,16 @@ def resolve_rowset(
     derived = lineage.rowset.derived_concepts
 
     # This boundary is built not to extend a span another group owns (the
-    # rowset's own region domain, reading the padded body beside it): the
-    # body is planned for it without those regions' rows, in its spelling.
+    # rowset's own region domain, reading the padded body beside it), nor one
+    # of a region the reading statement never demands (its rows are not rows
+    # of that statement, and a body extending them would hand them up as a
+    # row source): the body is planned for it without those regions' rows,
+    # in its spelling.
     witness = history.rowset_witnesses.get(lineage.rowset.name)
     owned = (
-        witness.body_spans_of(environment.span_scope.extent_free)
+        witness.body_spans_of(
+            environment.span_scope.extent_free | environment.span_scope.unextended
+        )
         if witness is not None
         else frozenset()
     )

@@ -714,12 +714,25 @@ def build_keyspace(
     }
     entities: frozenset[str] = frozenset().union(*keys_by_address.values())
     base = Region(present=entities)
+    # a body region no requested entity is present on: every handle read is
+    # absent on its rows, so they are not rows of this plan, whatever the
+    # body extended them for (`select s.o, s.st` over a body naming the
+    # customer; a product region under `select s.u, count(s.i)`)
+    unread: frozenset[str] = frozenset().union(
+        *(
+            r.spans
+            for w in rowset_witnesses
+            for r in w.regions
+            if r.spans and not {canonical.get(p, p) for p in r.present} & entities
+        )
+    )
     if not licensed or not entities:
         return Keyspace(
             entities=entities,
             regions=(base,),
             keys_by_address=keys_by_address,
             witnessed=witnessed,
+            unread_spans=unread,
         )
     requested_roots = frozenset(
         canonical.get(a.address, a.address)
@@ -796,4 +809,5 @@ def build_keyspace(
             if len(r.spans) > 1
         },
         witnessed=witnessed,
+        unread_spans=unread,
     )

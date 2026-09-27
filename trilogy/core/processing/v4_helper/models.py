@@ -187,6 +187,9 @@ class Keyspace:
     # a spelling a join below this plan (a rowset body) pads a span under ->
     # the span in this plan's spelling (`RowsetWitness.spellings`)
     witnessed: dict[str, str] = field(default_factory=dict)
+    # the spans of a rowset body's regions no requested entity is present on:
+    # the body pads them, and they are not rows of this plan
+    unread_spans: frozenset[str] = frozenset()
 
     @property
     def extensions(self) -> tuple[Region, ...]:

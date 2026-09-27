@@ -2414,7 +2414,15 @@ def _anchor_scalars_to_dim_peel_key(
     `upper(address.state)` beside `sum(net_paid) by customer.sk` peels `state`
     onto a `customer -> address` scan keyed by `customer.sk`, while the scalar
     stays pinned at `address.sk`, which the FINAL merge never names. Left
-    there it cannot carry the entity key and joins its siblings keyless."""
+    there it cannot carry the entity key and joins its siblings keyless.
+
+    A region's span riding hidden on a solid fact scan (`region_join_keys`)
+    is not the scan's key: `status` over the orders scan carrying
+    `customer_id` for the domain stays at the order grain, or it cannot carry
+    `amount` for the WHERE and is joined to its own parent on the span."""
+    region_join_keys: frozenset[str] = frozenset().union(
+        *(a.extent_spans for a in attrs.values())
+    )
     for gid, fact in facts.items():
         if gid == FINAL_NODE_ID or fact.derivation != Derivation.BASIC:
             continue
@@ -2424,7 +2432,7 @@ def _anchor_scalars_to_dim_peel_key(
             if edge_kind(group_edges, pred, gid) == EdgeKind.LINEAGE
         ]
         keys = {
-            frozenset(attrs[pred].secondary_members)
+            frozenset(attrs[pred].secondary_members) - region_join_keys
             for pred in parents
             if facts[pred].derivation == Derivation.ROOT
         }
@@ -2817,16 +2825,31 @@ def _compute_concept_sets(
         # back on, a handle of its own the statement never named
         if fact.derivation == Derivation.ROWSET:
             cap |= region_join_keys & set(attrs[gid].secondary_members)
+        # a region's span riding HIDDEN on a solid fact scan (a secondary
+        # member of a ROOT, `region_join_keys`) has no concept attributes of
+        # its own, so the FD rule below cannot see that the fact binds it at
+        # its grain; a pointwise child of that scan carries it, as the axis
+        # every FINAL feeder pairs the region's rows on
+        pointwise = fact.derivation not in GROUPING_DERIVATIONS
         for pgid in group_graph.predecessors(gid):
             if pgid == FINAL_NODE_ID:
                 continue
+            hidden_spans = (
+                region_join_keys & set(attrs[pgid].secondary_members)
+                if pointwise and facts[pgid].derivation == Derivation.ROOT
+                else frozenset()
+            )
             for addr in io.capability.get(pgid, set()):
-                if addr in grain_mates or fact.behavior.can_preserve(
-                    concept_graph,
-                    concept_edges,
-                    concept_attrs,
-                    fact.native_grain,
-                    addr,
+                if (
+                    addr in grain_mates
+                    or addr in hidden_spans
+                    or fact.behavior.can_preserve(
+                        concept_graph,
+                        concept_edges,
+                        concept_attrs,
+                        fact.native_grain,
+                        addr,
+                    )
                 ):
                     cap.add(addr)
         io.capability[gid] = cap
