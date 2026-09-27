@@ -73,4 +73,13 @@ ROW_STREAM_DERIVATIONS: set[Derivation] = {
     Derivation.WINDOW,
 }
 
+# An aggregate's argument that emits one value per input row, so the aggregate
+# reads the rows its input node already carries rather than needing a source of
+# its own.
+ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS: set[Derivation] = {
+    Derivation.ROOT,
+    Derivation.BASIC,
+    Derivation.FILTER,
+}
+
 FINAL_NODE_ID = "__final__"

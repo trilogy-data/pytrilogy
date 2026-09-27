@@ -98,7 +98,6 @@ from .region_domains import (
 
 # depth_label for the secondary root bucket that feeds d1 (in-WHERE) aggregate
 # calculations. Distinct from ``root`` so the bucket gets its own group id.
-ROOT_D1_DEPTH = DepthLabel.ROOT_D1
 
 _REGRAFTABLE_DERIVATIONS: set[Derivation] = {
     Derivation.BASIC,
@@ -406,7 +405,7 @@ def _add_d1_root_buckets(
         if not d1_calc_roots:
             continue
         bucket = GroupBucket(
-            depth_label=ROOT_D1_DEPTH,
+            depth_label=DepthLabel.ROOT_D1,
             derivation=Derivation.ROOT,
             grain_components=frozenset(),
         )
@@ -1155,7 +1154,7 @@ def _fold_rollup_key_dims(
             continue
         for node in bucket.primary_node_ids:
             attrs = concept_attrs[node]
-            if attrs.depth_label in (DepthLabel.D1, ROOT_D1_DEPTH):
+            if attrs.depth_label in (DepthLabel.D1, DepthLabel.ROOT_D1):
                 continue
             # A pure rename is a pseudonym of its source key; the renderer
             # resolves it to the rolled-up key column directly, so it neither
@@ -1442,7 +1441,7 @@ def _propagate_raw_filters_to_d1_roots(
     d1_roots = [
         gid
         for gid in group_graph.nodes
-        if gid in attrs and attrs[gid].depth_label == ROOT_D1_DEPTH
+        if gid in attrs and attrs[gid].depth_label == DepthLabel.ROOT_D1
     ]
     main_roots = [
         gid

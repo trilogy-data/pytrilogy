@@ -78,6 +78,7 @@ from .condition_injection import (
 from .constants import (
     FINAL_NODE_ID,
     GROUPING_DERIVATIONS,
+    ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS,
     ROW_SHAPE_BARRIER_DERIVATIONS,
     DepthLabel,
     EdgeKind,
@@ -109,12 +110,6 @@ from .source_planning import SourceRequest, plan_source
 _AGGREGATING_DERIVATIONS = {
     Derivation.AGGREGATE,
     Derivation.GROUP_TO,
-}
-
-_ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS = {
-    Derivation.ROOT,
-    Derivation.BASIC,
-    Derivation.FILTER,
 }
 
 
@@ -708,8 +703,7 @@ def _parent_nodes_for(
                     for other, built_other in built.items()
                 )
                 row_preserving_input = (
-                    attrs[pgid].derivation
-                    in _ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS
+                    attrs[pgid].derivation in ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS
                     and attrs[pgid].derivation != Derivation.ROOT
                     # Preserve a provider shared by grouping consumers.
                     # Re-rooting only this aggregate forces the other grouping
@@ -1156,7 +1150,7 @@ def _aggregate_row_preserving_inputs(concept: BuildConcept) -> list[BuildConcept
         arg
         for arg in concept.lineage.function.arguments
         if isinstance(arg, BuildConcept)
-        and arg.derivation in _ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS
+        and arg.derivation in ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS
         and not _lineage_crosses_row_shape_barrier(arg)
     ]
 
@@ -1233,7 +1227,7 @@ def _aggregate_inputs_are_row_preserving(
             if not isinstance(arg, BuildConcept):
                 return False
             if (
-                arg.derivation not in _ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS
+                arg.derivation not in ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS
                 or _lineage_crosses_row_shape_barrier(arg)
             ):
                 return False

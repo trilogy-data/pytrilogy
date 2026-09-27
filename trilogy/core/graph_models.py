@@ -5,6 +5,7 @@ from typing import cast
 from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
 from trilogy.core.graph import DiGraph
 from trilogy.core.models.build import (
+    ADDITIVE_ROLLUP_FUNCTIONS,
     BuildConcept,
     BuildDatasource,
     BuildUnionDatasource,
@@ -16,8 +17,6 @@ from trilogy.core.processing.condition_utility import (
     decompose_condition,
     is_scalar_condition,
 )
-
-ADDITIVE_ROLLUP_FUNCTIONS = {FunctionType.COUNT, FunctionType.SUM}
 
 
 def _aggregate_signature(
