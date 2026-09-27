@@ -70,6 +70,12 @@ def _cells(keyspace: Keyspace) -> set[frozenset[str]]:
     return {r.present for r in keyspace.regions}
 
 
+def _absent(keyspace: Keyspace, address: str) -> list[frozenset[str]]:
+    return [
+        r.present for r in keyspace.live_regions if not keyspace.defined_on(address, r)
+    ]
+
+
 def test_demanded_partial_key_adds_its_extension_region():
     keyspace = _keyspace(_DERIVED, "select customer_id, status;")
     assert _cells(keyspace) == {frozenset({CUSTOMER, ORDER}), frozenset({CUSTOMER})}
@@ -84,9 +90,7 @@ def test_concept_is_defined_only_where_its_keys_are_present():
     assert keyspace.defined_on("local.name", extension)
     assert not keyspace.defined_on("local.status", extension)
     assert not keyspace.defined_on("local.label", extension)
-    assert [r.present for r in keyspace.absent_regions("local.status")] == [
-        frozenset({CUSTOMER})
-    ]
+    assert _absent(keyspace, "local.status") == [frozenset({CUSTOMER})]
 
 
 def test_aggregate_by_the_span_is_defined_on_the_extension_region():
@@ -131,7 +135,7 @@ def test_completely_bound_key_is_absorbed_by_the_finer_source():
 def test_source_binding_its_own_grain_partially_is_the_same_region():
     keyspace = _keyspace(_PARTIAL_PROPERTY_SOURCE, "select order_id, is_returned;")
     assert _cells(keyspace) == {frozenset({ORDER, ITEM})}
-    assert keyspace.absent_regions("local.is_returned") == ()
+    assert _absent(keyspace, "local.is_returned") == []
 
 
 def test_nullable_key_is_a_value_on_one_region():

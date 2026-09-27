@@ -260,9 +260,6 @@ class Keyspace:
     def defined_on(self, address: str, region: Region) -> bool:
         return self.keys_by_address.get(address, frozenset()) <= region.present
 
-    def absent_regions(self, address: str) -> tuple[Region, ...]:
-        return tuple(r for r in self.live_regions if not self.defined_on(address, r))
-
     def region_of(self, spans: frozenset[str]) -> Region | None:
         return next((r for r in self.regions if r.spans == spans), None)
 
@@ -271,11 +268,14 @@ class Keyspace:
         is keyed on what a lookup from the region's spans reaches. An entity
         merely cross-joined onto the region is present, but not carried."""
         keys = self.keys_by_address.get(address, frozenset())
-        reach: frozenset[str] = self.region_reach.get(
-            region.spans
-        ) or frozenset().union(
-            *(self.span_reach.get(span, frozenset()) for span in region.spans)
-        )
+        # An entry here is the composite answer even when it is empty: falling
+        # back on emptiness would read the per-span union, the wider set this
+        # exists to replace.
+        reach = self.region_reach.get(region.spans)
+        if reach is None:
+            reach = frozenset().union(
+                *(self.span_reach.get(span, frozenset()) for span in region.spans)
+            )
         return bool(keys) and keys <= reach
 
     def describe(self) -> str:

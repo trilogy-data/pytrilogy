@@ -1505,7 +1505,13 @@ class QueryDatasource:
             # the LHS is the key the merge folded `other` under, and the joins
             # carried above reference the sides by that identity
             extent_free_spans=self.extent_free_spans,
-            extent_free_carried=self.extent_free_carried | other.extent_free_carried,
+            # follows `extent_free_spans`, so it takes the same side: the
+            # identifier's `_extent_free_` component is built from the spans
+            # that reach the outputs, so two same-identifier QDSs can disagree
+            # on the rest, and unioning here would claim an address carried by
+            # a span this merge no longer routes. `other`'s own tree keeps its
+            # marks, which `deep_extent_free_carried` still walks.
+            extent_free_carried=self.extent_free_carried,
             zero_filled=self.zero_filled | other.zero_filled,
             region_spans=self.region_spans | other.region_spans,
         )

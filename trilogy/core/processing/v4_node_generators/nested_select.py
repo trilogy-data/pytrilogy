@@ -241,6 +241,10 @@ def plan_nested_select(
     history.nested_exclusions = hidden
     outer_owned = history.owned_spans
     history.owned_spans = owned_spans
+    # The two scopes end at different points: the hidden set covers the body
+    # search alone, while the owned spans cover the HAVING sub-plan too. Left
+    # hidden across the HAVING, this select's own outputs are invisible to the
+    # connectivity check a predicate reaching through one of them must pass.
     try:
         node = search_parent(
             list(built.output_components),
@@ -251,6 +255,9 @@ def plan_nested_select(
             conditions=[where] if where else [],
             staged_conditions=staged,
         )
+    finally:
+        history.nested_exclusions = inherited
+    try:
         if node is None:
             logger.info(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} {label} "
@@ -273,7 +280,6 @@ def plan_nested_select(
                 partial_concepts=list(node.partial_concepts),
             )
     finally:
-        history.nested_exclusions = inherited
         history.owned_spans = outer_owned
 
     # The body's LIMIT (with the ORDER BY it selects under) defines its row set;

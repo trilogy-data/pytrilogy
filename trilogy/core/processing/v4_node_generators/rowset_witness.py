@@ -65,6 +65,11 @@ def statement_keyspace(
     return keyspace
 
 
+# The rowsets whose witness is mid-computation, so a nested one knows its own
+# answer was built against a placeholder and must not be cached.
+_PLACEHOLDER_STACK: list[str] = []
+
+
 def rowset_witnesses(
     concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
@@ -82,11 +87,27 @@ def rowset_witnesses(
     for name in sorted(lineages):
         witness = history.rowset_witnesses.get(name)
         if witness is None:
-            # a body reading its own rowset (TPC-DS q64: a membership over
-            # `cs_ui` inside `cs_ui`) cannot witness itself
+            # A body reading its own rowset (TPC-DS q64: a membership over
+            # `cs_ui` inside `cs_ui`) cannot witness itself, so it reads an
+            # empty placeholder. Anything witnessed while a placeholder was
+            # live understates it, so only this frame's own result is cached:
+            # mutually recursive bodies would otherwise persist each other's
+            # partial answer for the rest of the build, and a raising
+            # `_witness` would leave the placeholder standing as the answer.
+            placeholders = set(_PLACEHOLDER_STACK)
             history.rowset_witnesses[name] = RowsetWitness(name=name, regions=())
-            witness = _witness(lineages[name], environment, history)
-            history.rowset_witnesses[name] = witness
+            _PLACEHOLDER_STACK.append(name)
+            try:
+                witness = _witness(lineages[name], environment, history)
+            except Exception:
+                history.rowset_witnesses.pop(name, None)
+                raise
+            finally:
+                _PLACEHOLDER_STACK.pop()
+            if placeholders:
+                history.rowset_witnesses.pop(name, None)
+            else:
+                history.rowset_witnesses[name] = witness
         out.append(witness)
     return tuple(out)
 

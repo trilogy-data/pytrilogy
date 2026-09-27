@@ -81,4 +81,11 @@ class singledispatchmethod(_stdlib_singledispatchmethod):
     method is kept alive for the life of the process (gh-127750)."""
 
     def __get__(self, obj, cls=None):
-        return partial(_dispatch_bound, self.dispatcher.dispatch, obj, cls)
+        method = partial(_dispatch_bound, self.dispatcher.dispatch, obj, cls)
+        # what the stdlib's own __get__ puts on the bound method; a bare
+        # partial has no __name__, so update_wrapper cannot do it for us
+        method.register = self.register  # type: ignore[attr-defined]
+        method.__name__ = self.func.__name__  # type: ignore[attr-defined]
+        method.__doc__ = self.func.__doc__
+        method.__isabstractmethod__ = self.__isabstractmethod__  # type: ignore[attr-defined]
+        return method
