@@ -13,6 +13,7 @@ from trilogy.constants import (
 )
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import (
+    ZERO_ON_EMPTY_AGGREGATES,
     ComparisonOperator,
     Derivation,
     FunctionClass,
@@ -567,23 +568,24 @@ class CTE:
         rolled up through this GROUP BY (`rolled_up`) is the same guess over
         its sum. A multiselect-align merge is the exception: a NULL count there
         means the entity is absent from that arm, not 0 facts, and a cross-arm
-        comparison must exclude it. The optimizer reads this too: a predicate
-        over such a count accepts the padded rows, so it proves nothing about
-        the side that padded them."""
+        comparison must exclude it -- it vetoes a stamped ``zero_filled`` too,
+        which is stamped from the merge's regions alone. The optimizer reads
+        this too: a predicate over such a count accepts the padded rows, so it
+        proves nothing about the side that padded them."""
         if not (
             isinstance(c.lineage, BuildAggregateWrapper)
-            and c.lineage.function.operator == FunctionType.COUNT
+            and c.lineage.function.operator in ZERO_ON_EMPTY_AGGREGATES
+        ):
+            return False
+        if any(
+            isinstance(o.lineage, BuildMultiSelectLineage) for o in self.output_columns
         ):
             return False
         if c.address in self.zero_filled:
             return True
         if self.group_to_grain and not rolled_up:
             return False
-        if not any(n.address == c.address for n in self.nullable_concepts):
-            return False
-        return not any(
-            isinstance(o.lineage, BuildMultiSelectLineage) for o in self.output_columns
-        )
+        return any(n.address == c.address for n in self.nullable_concepts)
 
     def zero_filled_counts(self, concepts: Iterable[BuildConcept]) -> set[str]:
         rolled = (

@@ -371,6 +371,23 @@ def test_present_derivation_beside_an_absent_one(query: str):
             "select customer_id, name where count(order_id) by customer_id = 0",
             [(3, "cat")],
         ),
+        # count_distinct's value over an empty group is 0 too, so it zero-fills
+        # exactly as count does; matching only FunctionType.COUNT pushed this
+        # into the orders HAVING and narrowed the padding join to INNER
+        (
+            "select customer_id, name where count_distinct(order_id) by customer_id = 0",
+            [(3, "cat")],
+        ),
+        (
+            "select status, count(customer_id) as n where count_distinct(order_id) by customer_id = 0",
+            [(None, 1)],
+        ),
+        # every other aggregate is NULL over an empty group, which is what the
+        # padding join already leaves: nothing to coalesce
+        (
+            "select customer_id, name where sum(amount) by customer_id is null",
+            [(3, "cat")],
+        ),
     ],
 )
 def test_per_key_atom_under_an_aggregate_by_another_key(

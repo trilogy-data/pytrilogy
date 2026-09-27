@@ -427,6 +427,14 @@ class FunctionClass(Enum):
     RECURSIVE = [FunctionType.RECURSE_EDGE]  # noqa: RUF012
 
 
+# Aggregates whose value over an empty group is a non-NULL constant, so a join
+# that pads a row rather than aggregating no rows must coalesce them. Every
+# other aggregate is NULL both ways and needs no repair.
+ZERO_ON_EMPTY_AGGREGATES: frozenset[FunctionType] = frozenset(
+    {FunctionType.COUNT, FunctionType.COUNT_DISTINCT}
+)
+
+
 class Boolean(Enum):
     TRUE = "true"
     FALSE = "false"
