@@ -42,8 +42,6 @@ from .staged_where import (
     stage_lineage_addresses,
 )
 
-ROOT_D1_DEPTH = DepthLabel.ROOT_D1
-
 _EMITS_GROUP_BY: set[Derivation] = {
     Derivation.AGGREGATE,
     Derivation.GROUP_TO,
@@ -335,7 +333,7 @@ def _producer_groups(
         main_producers = [
             gid
             for gid in producers
-            if buckets[gid].depth_label not in (DepthLabel.D1, ROOT_D1_DEPTH)
+            if buckets[gid].depth_label not in (DepthLabel.D1, DepthLabel.ROOT_D1)
         ]
         producer_groups.update(main_producers or producers)
     return producer_groups
@@ -514,7 +512,7 @@ def _uncovered_exposing_output_contributor(
     for gid, b in buckets.items():
         if gid in covered:
             continue
-        if b.depth_label in (DepthLabel.D1, ROOT_D1_DEPTH):
+        if b.depth_label in (DepthLabel.D1, DepthLabel.ROOT_D1):
             continue
         members = set(b.primary_members) | set(b.secondary_members)
         if not (members & mandatory_addrs):
@@ -687,7 +685,7 @@ def _hosts_carrying_condition_grain(
         set(b.grain_components)
         for b in buckets.values()
         if b.derivation in _EMITS_GROUP_BY
-        and b.depth_label in (DepthLabel.D1, ROOT_D1_DEPTH)
+        and b.depth_label in (DepthLabel.D1, DepthLabel.ROOT_D1)
         and b.grain_components
         and row_inputs & set(b.primary_members)
     ]
@@ -766,7 +764,7 @@ def _conjunction_recompute_placements(
             if (
                 bucket is not None
                 and bucket.derivation in _EMITS_GROUP_BY
-                and bucket.depth_label not in (DepthLabel.D1, ROOT_D1_DEPTH)
+                and bucket.depth_label not in (DepthLabel.D1, DepthLabel.ROOT_D1)
             ):
                 hosts.add(gid)
     if not hosts:
@@ -849,7 +847,7 @@ def _uncovered_grouping_placements(
                 gid in placement.group_ids
                 or gid not in main_lineage
                 or bucket.derivation not in _EMITS_GROUP_BY
-                or bucket.depth_label in (DepthLabel.D1, ROOT_D1_DEPTH)
+                or bucket.depth_label in (DepthLabel.D1, DepthLabel.ROOT_D1)
                 or row_inputs & set(bucket.primary_members)
             ):
                 continue
@@ -904,7 +902,9 @@ def _staged_precondition_placements(
     not mean what it says at the host's input: probe/scoped-axis atoms read an
     axis that only exists post-merge, and an atom over the host's OWN output
     is a gate, which becoming a pre-filter would change."""
-    d1_root_ids = {gid for gid, b in buckets.items() if b.depth_label == ROOT_D1_DEPTH}
+    d1_root_ids = {
+        gid for gid, b in buckets.items() if b.depth_label == DepthLabel.ROOT_D1
+    }
     extra: list[ConditionPlacement] = []
     earlier_atoms: list[BoolExpr] = []
     for clause in staged_conditions:
@@ -917,7 +917,7 @@ def _staged_precondition_placements(
                 gid
                 for gid, b in buckets.items()
                 if b.derivation in CROSS_ROW_DERIVATIONS
-                and b.depth_label in (DepthLabel.D1, ROOT_D1_DEPTH)
+                and b.depth_label in (DepthLabel.D1, DepthLabel.ROOT_D1)
                 and stage_addrs & set(b.primary_members)
             )
             for host in hosts:
@@ -1000,11 +1000,13 @@ def plan_condition_placements(
         for addr in (canonical, *members)
     )
     d0_group_ids = {gid for gid, b in buckets.items() if b.depth_label == DepthLabel.D0}
-    d1_root_ids = {gid for gid, b in buckets.items() if b.depth_label == ROOT_D1_DEPTH}
+    d1_root_ids = {
+        gid for gid, b in buckets.items() if b.depth_label == DepthLabel.ROOT_D1
+    }
     nested_ids = {
         gid
         for gid, b in buckets.items()
-        if b.depth_label in (DepthLabel.D1, ROOT_D1_DEPTH)
+        if b.depth_label in (DepthLabel.D1, DepthLabel.ROOT_D1)
     }
     main_lineage = (
         main_lineage_groups(group_graph, group_edges, buckets, mandatory_list)
