@@ -120,6 +120,11 @@ class SpanScope:
     # dimension over them. Join typing only; the facts' bindings on them stay
     # `~` for source planning, unlike `extent_free`
     unextended: frozenset[str] = frozenset()
+    # plan: each live region's spans (`Keyspace.live_regions`). A node holding
+    # two regions unions their spans, so only this partition says how many
+    # families a merge has -- counting spans reads one composite-key region
+    # (`grain (name, variant)`) as two.
+    regions: tuple[frozenset[str], ...] = ()
     # group: the spans this group may NOT extend, because another group owns
     # those extension members (v4_helper/extent_ownership.py), or the plan
     # above does (`owned`)

@@ -565,6 +565,7 @@ def _build_from_graph(
         witnessed=keyspace.witnessed,
         owned=history.owned_spans,
         unextended=undemanded_spans(keyspace, concept_attrs, environment),
+        regions=tuple(r.spans for r in keyspace.live_regions if r.spans),
     )
     try:
         strategy_node = build_strategy_node(
