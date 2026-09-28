@@ -276,7 +276,7 @@ No wrong-rows item is owed (the `OWED` list and the `array_agg` xfail are cleare
 - **Trace, don't reason.**
   - `[v4] built grp:...` INFO lines give buckets and parents.
   - Monkeypatch `edges.add_edge`/`remove_edge` for group-graph edges (patch it in `region_domains` and `group_graph` too, since they import it).
-  - Wrap `get_join_type(left, right, keys, facts)` for plan-time typings; the merge-wide facts are one `JoinFacts` object, and each rule is its own function (`_region_contract_join`, `_extent_free_join`, `_partial_domain_join`, `_nullable_join`).
+  - Wrap `get_join_type(left, right, keys, facts)` for plan-time typings; the merge-wide facts are one `JoinFacts` object (`facts.side(node)` is that side's whole `SideFacts`, which is what the tracers print), and each rule is its own function (`_region_contract_join`, `_extent_free_join`, `_partial_domain_join`, `_nullable_join`).
   - Dump `_model_facts` per keyspace build to see what heal changed.
   - Patch a helper where it is IMPORTED, not where it is defined. Print with `PYTHONIOENCODING=utf-8` (ids contain `∅`).
 - **The A/B** (method and plugins in the tooling README) is `KS_SQLDUMP` (+ `KS_ROWDUMP`) over the planner suites, then `sqlcmp.py` / `rowcmp.py` / `sqlshow.py`. Traps not in the README:

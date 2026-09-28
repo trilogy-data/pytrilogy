@@ -34,9 +34,8 @@ def _trace_joins() -> None:
     orig = jr.get_join_type
     sig = inspect.signature(orig)
 
-    def side_of(bound, name, side):
-        d = bound.arguments.get(name) or {}
-        return sorted(_short(k) for k in d.get(side, []) or [])
+    def keys_of(values):
+        return sorted(_short(k) for k in values)
 
     def traced(*args, **kwargs):
         bound = sig.bind(*args, **kwargs)
@@ -47,12 +46,12 @@ def _trace_joins() -> None:
             f"  JOIN {result.name}: keys={sorted(_short(k) for k in a['all_connecting_keys'])}"
         )
         for side, label in ((a["left"], "L"), (a["right"], "R")):
-            holders = (a.get("region_holders") or {}).get(side, set())
+            f = a["facts"].side(side)
             print(
                 f"    {label} {_short(side)}\n"
-                f"       partial={side_of(bound, 'partials', side)} nullable={side_of(bound, 'nullables', side)}"
-                f" value={side_of(bound, 'value_nullables', side)} extent={side_of(bound, 'extent_nullables', side)}"
-                f" holds={sorted(_short(h) for h in holders)} host={side in (a.get('host_nodes') or set())}"
+                f"       partial={keys_of(f.partials)} nullable={keys_of(f.nullables)}"
+                f" value={keys_of(f.value_nullables)} extent={keys_of(f.extent_nullables)}"
+                f" holds={keys_of(f.held_spans)} host={f.hosts}"
             )
         return result
 
