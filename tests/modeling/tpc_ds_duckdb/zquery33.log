@@ -1,5 +1,5 @@
 query_id = "33"
-gen_length = 3498
+gen_length = 3493
 preql_size = 508
 comp_size = 1670
 generated_sql = """
@@ -15,7 +15,7 @@ WHERE
 
 GROUP BY
     1),
-questionable as (
+cooperative as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
     \"sales_item_items\".\"I_MANUFACT_ID\" as \"sales_item_manufacturer_id\"
@@ -52,13 +52,13 @@ WHERE
     exists (select 1 from quizzical where quizzical.\"electronics_manuf_ids\" is not distinct from \"sales_item_items\".\"I_MANUFACT_ID\") and \"sales_pos_bill_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"sales_sale_date_date\".\"D_YEAR\" = 1998 and \"sales_sale_date_date\".\"D_MOY\" = 5
 )
 SELECT
-    \"questionable\".\"sales_item_manufacturer_id\" as \"sales_item_manufacturer_id\",
-    sum(\"questionable\".\"sales_ext_sales_price\") as \"total_sales\"
+    \"cooperative\".\"sales_item_manufacturer_id\" as \"sales_item_manufacturer_id\",
+    sum(\"cooperative\".\"sales_ext_sales_price\") as \"total_sales\"
 FROM
-    \"questionable\"
+    \"cooperative\"
 GROUP BY
     1
 ORDER BY 
     \"total_sales\" asc nulls first,
-    \"questionable\".\"sales_item_manufacturer_id\" asc nulls first
+    \"cooperative\".\"sales_item_manufacturer_id\" asc nulls first
 LIMIT (100)"""
