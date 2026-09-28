@@ -127,6 +127,13 @@ pre { background: var(--panel); border: 1px solid var(--line); border-radius: 6p
 @media (max-width: 900px) { .two { grid-template-columns: 1fr; } }
 .small { font-size: 11.5px; color: var(--muted); }
 .sel-row { background: var(--accent-soft); }
+.src { font-family: var(--mono); font-size: 12.5px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 0; overflow: auto; }
+.src-line { white-space: pre; padding: 0 12px 0 0; }
+.src-line .ln { display: inline-block; width: 3.2em; margin-right: 12px; text-align: right; color: var(--muted); user-select: none; }
+.src-line.hl { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+pre.query { font-size: 13.5px; white-space: pre-wrap; }
+/* show code as typed: no `<-` -> arrow ligatures */
+pre, .mono, .chip, .src { font-variant-ligatures: none; }
 kbd { font-family: var(--mono); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; font-size: 11px; }
 </style>
 </head>
@@ -140,7 +147,7 @@ kbd { font-family: var(--mono); border: 1px solid var(--line); border-radius: 3p
   <button id="prev" title="previous step (←)">◀</button>
   <span id="pos" class="mono"></span>
   <button id="next" title="next step (→)">▶</button>
-  <button id="stmtBtn" title="show the traced statement">statement</button>
+  <button id="stmtBtn" title="the query text (first page)">query</button>
 </header>
 <aside id="steps"></aside>
 <main id="view"><div class="drop">Load a trace: pick a <code>*.trace.json</code> above, drop one anywhere, or open a <code>*.trace.html</code> written by <code>trace_query.py</code>.</div></main>
@@ -151,7 +158,7 @@ kbd { font-family: var(--mono); border: 1px solid var(--line); border-radius: 3p
 // ------------------------------------------------------------------ helpers
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $ = sel => document.querySelector(sel);
-const PHASE_COLORS = { request: '#718096', concept_graph: '#3182ce', keyspace: '#805ad5', grouping: '#d69e2e', group_graph: '#dd6b20',
+const PHASE_COLORS = { query: '#a0aec0', request: '#718096', concept_graph: '#3182ce', keyspace: '#805ad5', grouping: '#d69e2e', group_graph: '#dd6b20',
   source: '#38a169', node: '#319795', final: '#2c7a7b', strategy: '#2b6cb0', resolve: '#4a5568', ctes: '#975a16', sql: '#1a202c' };
 const DEPTH_FILL = { 'd0': 'var(--d0)', 'd1': 'var(--d1)', 'd*': 'var(--dstar)', 'root': 'var(--droot)', 'root_d1': 'var(--drootd1)', 'final': 'var(--dfinal)' };
 // planner-minted concepts (`_virt_*`) read as their lineage
@@ -182,6 +189,7 @@ function renderValue(v, depth = 0) {
 const inspect = (title, obj) => { $('#insp').innerHTML = `<h3 style="margin-top:4px">${esc(title)}</h3>${renderValue(obj)}`; };
 
 // ------------------------------------------------------------------ state
+const QUERY_PAGE = { seq: 0, plan: null, phase: 'query', title: 'query text', data: {}, context: null, origin: [] };
 const S = { trace: null, steps: [], idx: 0, plan: 'all', phases: new Set(), planLabel: {}, planDepth: {},
   virt: {}, built: {}, inFinal: {}, changedOnly: true };
 
@@ -221,7 +229,7 @@ function load(trace) {
   if (m) goSeq(+m[1]);
 }
 function applyFilter() {
-  S.steps = S.trace.steps.filter(s => S.phases.has(s.phase) && (S.plan === 'all' || String(s.plan) === S.plan));
+  S.steps = [QUERY_PAGE, ...S.trace.steps.filter(s => S.phases.has(s.phase) && (S.plan === 'all' || String(s.plan) === S.plan))];
   S.idx = Math.min(S.idx, Math.max(0, S.steps.length - 1));
   renderSteps(); show();
 }
@@ -501,12 +509,20 @@ function renderCtes(step) {
       ${(c.joins || []).length ? `<table><tr><th>left</th><th>right</th><th>type</th><th>on</th></tr>${c.joins.map(j => j.unnest ? `<tr><td colspan="4">unnest ${esc(j.unnest)}</td></tr>` : `<tr><td class="mono small">${esc(j.left || c.base || '(base)')}</td><td class="mono small">${esc(j.right)}</td><td>${chip(j.type, j.type.includes('full') ? 'bad' : j.type.includes('left') || j.type.includes('right') ? 'warn' : 'ok')}</td><td>${chips(j.pairs)}${j.condition ? chip(j.condition, 'warn') : ''}${j.modifiers.length ? chips(j.modifiers, 'warn') : ''}</td></tr>`).join('')}</table>` : ''}
       ${sqls[c.name] && step.title.includes('after') ? `<details><summary class="small">rendered SQL</summary><pre>${esc(sqls[c.name])}</pre></details>` : ''}</div>`).join('')}`;
 }
+function renderQuery() {
+  const t = S.trace; const lines = (t.statement || '').split(/\r?\n/); const [a, b] = t.statement_lines || [];
+  const sqlStep = t.steps.find(s => s.phase === 'sql'); const plans = t.plans.length;
+  const facts = `<div class="meta">${t.steps.length} steps · ${plans} plan${plans === 1 ? '' : 's'}${sqlStep ? ` · ${chip(sqlStep.data.dialect)} ${stepLink(sqlStep.seq)} SQL${sqlStep.data.rows ? ` · ${sqlStep.data.rows.length} rows` : ''}` : ''}</div>`;
+  const traced = a ? `<h3>traced statement · lines ${a}–${b}</h3><pre class="query">${esc(lines.slice(a - 1, b).join('\n'))}</pre>` : '';
+  const src = lines.map((l, i) => `<div class="src-line ${a && i + 1 >= a && i + 1 <= b ? 'hl' : ''}"><span class="ln">${i + 1}</span>${esc(l)}</div>`).join('');
+  return `${facts}${traced}<h3>${a ? 'full source' : 'statement'}</h3><div class="src">${src}</div>`;
+}
 function renderSql(step) {
   const d = step.data;
   const rows = d.rows ? `<h3>rows (${d.rows.length})</h3><table><tr>${d.columns.map(c => `<th>${esc(c)}</th>`).join('')}</tr>${d.rows.map(r => `<tr>${r.map(v => `<td class="mono">${v === null ? '<span class="small">NULL</span>' : esc(v)}</td>`).join('')}</tr>`).join('')}</table>` : '<div class="small">run with <code>--rows</code> to execute and keep the result</div>';
   return `<div class="meta">${chip(d.dialect)} outputs ${chips(d.outputs, 'accent')}</div><pre>${esc(d.sql)}</pre>${rows}`;
 }
-const RENDER = { request: renderRequest, concept_graph: renderGraphStep, keyspace: renderKeyspace, grouping: renderGrouping, group_graph: renderGraphStep,
+const RENDER = { query: renderQuery, request: renderRequest, concept_graph: renderGraphStep, keyspace: renderKeyspace, grouping: renderGrouping, group_graph: renderGraphStep,
   source: renderSource, node: renderNode, final: renderFinal, strategy: renderStrategy, resolve: renderResolve, ctes: renderCtes, sql: renderSql };
 
 function groupInfo(gid) {
@@ -552,7 +568,7 @@ function wire() {
 $('#prev').onclick = () => { if (S.idx > 0) { S.idx--; show(); } };
 $('#next').onclick = () => { if (S.idx < S.steps.length - 1) { S.idx++; show(); } };
 $('#planSel').onchange = ev => { S.plan = ev.target.value; S.idx = 0; applyFilter(); };
-$('#stmtBtn').onclick = () => { if (S.trace) inspect('traced statement', { statement: S.trace.statement }); $('#insp').querySelector('.kv') && ($('#insp').innerHTML = `<h3 style="margin-top:4px">traced statement</h3><pre style="white-space:pre-wrap">${esc(S.trace.statement)}</pre>`); };
+$('#stmtBtn').onclick = () => { if (S.trace) { S.idx = 0; show(); } };
 document.addEventListener('keydown', ev => { if (['INPUT', 'SELECT', 'TEXTAREA'].includes(ev.target.tagName)) return; if (ev.key === 'ArrowRight' || ev.key === 'j') $('#next').click(); if (ev.key === 'ArrowLeft' || ev.key === 'k') $('#prev').click(); });
 $('#file').onchange = ev => { const f = ev.target.files[0]; if (f) f.text().then(t => load(JSON.parse(t))); };
 document.addEventListener('dragover', ev => ev.preventDefault());
