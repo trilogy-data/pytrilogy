@@ -29,6 +29,7 @@ from trilogy.core.optimizations.collapse_single_parent import (
     grouped_unbound_passthrough_should_wait,
 )
 from trilogy.core.optimizations.full_join_lowering import lower_full_joins
+from trilogy.core.processing import plan_trace
 from trilogy.core.processing.utility import sort_select_output_processed
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 from trilogy.utility import unique
@@ -718,6 +719,8 @@ def optimize_ctes(
             phase_actions[phase.name] = False
             continue
         rule = phase.make_rule()
+        before = {c.name for c in input} | {root_cte.name}
+        phase_merged: dict[str, str] = {}
         loops = 0
         complete = False
         phase_changed = False
@@ -730,6 +733,7 @@ def optimize_ctes(
                 opt, merged = rule.optimize(cte, inverse_map)
                 actions_taken = actions_taken or opt
                 if merged:
+                    phase_merged.update(merged)
                     cte_lookup.update({c.name: c for c in input})
                     cte_lookup[root_cte.name] = root_cte
                     if root_cte.name in merged:
@@ -758,6 +762,9 @@ def optimize_ctes(
                 )
             )
         input = reorder_ctes(filter_irrelevant_ctes(input, root_cte))
+        _trace_removed(
+            phase.name, type(rule).__name__, before, input, root_cte, phase_merged
+        )
         phase_actions[phase.name] = phase_changed
         logger.info(
             optimization_log(
@@ -767,9 +774,25 @@ def optimize_ctes(
             )
         )
 
+    before = {c.name for c in input} | {root_cte.name}
     if not supports_full_join:
         # The rewrite adds CTEs and repoints FROM bases, so every join-type
         # and placement decision must already be final.
         input = lower_full_joins(input, root_cte)
 
-    return reorder_ctes(filter_irrelevant_ctes(input, root_cte))
+    final = reorder_ctes(filter_irrelevant_ctes(input, root_cte))
+    _trace_removed("final sweep", "filter_irrelevant_ctes", before, final, root_cte, {})
+    return final
+
+
+def _trace_removed(
+    phase: str,
+    rule: str,
+    before: set[str],
+    after: list[CTE | UnionCTE],
+    root_cte: CTE | UnionCTE,
+    merged: dict[str, str],
+) -> None:
+    if plan_trace.active():
+        kept = {c.name for c in after} | {root_cte.name}
+        plan_trace.note_removed_ctes(phase, rule, before - kept, merged)
