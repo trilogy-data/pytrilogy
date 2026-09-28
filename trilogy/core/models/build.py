@@ -283,69 +283,6 @@ def nonstandard_grouping_lineage(concept: Any) -> BuildAggregateWrapper | None:
     return None
 
 
-def _trace_grouping_passes(
-    concept: BuildConcept,
-) -> tuple[set[GroupingSpec], bool, bool, set[str]]:
-    """Walk ``concept``'s lineage down to grouping-pass boundaries.
-
-    Returns (specs, pointwise, windowed, root_addresses):
-    - specs: grouping passes whose outputs the lineage reads (descent stops at a
-      pass aggregate — what's below it are the pass's inputs, not outputs)
-    - pointwise: False when any path crosses a non-scalar wrapper (window,
-      filter, standard aggregate, rowset, ...) that computes OVER a pass output
-    - windowed: True when any path crosses a window item
-    - root_addresses: lineage-less leaves reached without crossing a pass"""
-    specs: set[GroupingSpec] = set()
-    pointwise = True
-    windowed = False
-    roots: set[str] = set()
-    seen: set[str] = set()
-    stack: list[BuildConcept] = [concept]
-    while stack:
-        current = stack.pop()
-        if current.address in seen:
-            continue
-        seen.add(current.address)
-        lineage = current.lineage
-        if lineage is None:
-            roots.add(current.address)
-            continue
-        spec = nonstandard_grouping_spec(lineage)
-        if spec is not None:
-            specs.add(spec)
-            continue
-        if isinstance(lineage, (BuildNumberingWindowItem, BuildNavigationWindowItem)):
-            windowed = True
-            pointwise = False
-        elif not isinstance(lineage, (BuildFunction, BuildParenthetical)):
-            pointwise = False
-        if isinstance(lineage, BuildConceptArgs):
-            stack.extend(lineage.concept_arguments)
-    return specs, pointwise, windowed, roots
-
-
-def colocatable_in_grouping_pass(concept: BuildConcept, spec: GroupingSpec) -> bool:
-    """True when ``concept`` is an output of grouping pass ``spec``: the pass's
-    aggregate itself (incl. grouping()/grouping_id() identity) or a pointwise
-    scalar over such outputs, grouping keys, and constants. Such a concept can
-    be emitted by the pass's grouped CTE directly instead of being recovered
-    with a join back on its nullable dims."""
-    specs, pointwise, _, roots = _trace_grouping_passes(concept)
-    if not pointwise or specs != {spec}:
-        return False
-    grouping_keys = set(spec[1]).union(*spec[2]) if spec[2] else set(spec[1])
-    return roots.issubset(grouping_keys)
-
-
-def windowed_over_grouping_pass(concept: BuildConcept, spec: GroupingSpec) -> bool:
-    """True when ``concept`` computes a window (anywhere in its lineage) over an
-    output of grouping pass ``spec``. Recovering such a sibling by joining the
-    pass output back on its visible dims collides grouping-set rows; the caller
-    must decline so the window-first path co-sources the pass instead."""
-    specs, _, windowed, _ = _trace_grouping_passes(concept)
-    return windowed and spec in specs
-
-
 def concept_is_relevant(
     concept: BuildConcept,
     others: list[BuildConcept],
@@ -439,19 +376,6 @@ def _concept_by_equivalent_address(
         (concept for concept in concepts if address in concept.equivalent_addresses),
         None,
     )
-
-
-def resolve_concepts_with_equivalents(
-    addresses: Iterable[str],
-    environment: BuildEnvironment,
-    equivalents: Iterable[BuildConcept] | None = None,
-) -> list[BuildConcept]:
-    candidates = list(equivalents or [])
-    return [
-        _concept_by_equivalent_address(address, candidates)
-        or environment.concepts[address]
-        for address in addresses
-    ]
 
 
 def _addr_keys(
@@ -1827,17 +1751,6 @@ class BuildFunction(DataTyped, BuildConceptArgs):
         for arg in self.arguments:
             base += get_rendered_concept_arguments(arg)
         return base
-
-    @property
-    def output_grain(self):
-        # aggregates have an abstract grain
-        if self.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
-            return BuildGrain(components=[])
-        # scalars have implicit grain of all arguments
-        args = set()
-        for input in self.concept_arguments:
-            args += input.grain.components
-        return BuildGrain(components=args)
 
 
 @dataclass(slots=True)

@@ -161,7 +161,7 @@ class BuildEnvironment:
     # group's canonical address: exactly the authored relation endpoints (union
     # of the scoped merge map's source->canonical entries), NOT the transitive
     # pseudonym closure — a rowset key's body/parent pseudonyms are not join
-    # operands. Consumed via `distinct_scoped_join_group_members`.
+    # operands. Consumed via `_distinct_scoped_join_groups`.
     scoped_join_key_groups: dict[str, set[str]] = field(default_factory=dict)
     # The full concept domain graph for this build: declared edges (global
     # merges + this build's scoped-join overlay) plus structural, binding and
@@ -217,28 +217,13 @@ class BuildEnvironment:
         The authored keys ARE the join axis for these, so passes that
         volunteer extra equalities (rowset-grain resolution, lineage grain
         pinning) must skip them or they silently narrow the authored fan-out
-        (q59 shape). Contrast `distinct_scoped_join_group_members`, which asks
+        (q59 shape). Contrast `distinct_scoped_join_group_mates`, which asks
         the narrower question of who must MATERIALIZE a column."""
         return frozenset(
             addr
             for canonical, members in self.scoped_join_key_groups.items()
             for addr in (canonical, *members)
         )
-
-    def distinct_scoped_join_group_members(self) -> set[str]:
-        """Addresses of scoped-join key-group members that keep their own
-        physical identity, for groups with two or more such members.
-
-        Only these carry an exposure obligation: a root-keyed merge member is
-        substituted onto the group canonical (one physical column — nothing to
-        expose separately), while rowset and derived-expression keys stay
-        distinct columns that each joined side must materialize. A member of
-        such a group is never satisfied through a group-mate pseudonym: the
-        join between the sides needs each side's own column (TPC-DS q59)."""
-        out: set[str] = set()
-        for _, distinct in self._distinct_scoped_join_groups():
-            out.update(distinct)
-        return out
 
     def distinct_scoped_join_group_mates(self) -> dict[str, set[str]]:
         """Map each distinct-identity group member to its distinct group-mates,
