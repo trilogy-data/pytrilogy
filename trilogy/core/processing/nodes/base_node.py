@@ -200,6 +200,9 @@ class StrategyNode:
     region_spans: frozenset[str] = frozenset()
     # `region_reads` stops here: a rowset boundary's regions are its own stamp
     region_boundary: bool = False
+    # The group-graph group whose build produced this node; copies keep it.
+    # Read by the plan trace only.
+    origin_group: str | None = None
 
     def __init__(
         self,
@@ -567,6 +570,7 @@ class StrategyNode:
         )
         node.limit = self.limit
         node.region_spans = self.region_spans
+        node.origin_group = self.origin_group
         return node
 
 

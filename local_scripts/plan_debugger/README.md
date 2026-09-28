@@ -13,6 +13,9 @@ lets you step through it.
 # an ad-hoc statement over a model file
 .venv/Scripts/python.exe local_scripts/plan_debugger/trace_query.py --model m.preql --text "select name, count(order_id) as n;"
 
+# a model whose tables come from a fixture: seed them before --rows executes
+.venv/Scripts/python.exe local_scripts/plan_debugger/trace_query.py tests/modeling/thelook_duckdb/adhoc04.preql --rows --setup tests.modeling.thelook_duckdb.db_build:seed
+
 # a specific SELECT (0-based) and another dialect
 .venv/Scripts/python.exe local_scripts/plan_debugger/trace_query.py q.preql --index 2 --dialect bigquery
 

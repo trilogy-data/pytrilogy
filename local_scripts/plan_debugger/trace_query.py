@@ -2,6 +2,7 @@
 
     python local_scripts/plan_debugger/trace_query.py examples/customers_orders.preql
     python local_scripts/plan_debugger/trace_query.py q.preql --index 0 --rows --open
+    python local_scripts/plan_debugger/trace_query.py tests/modeling/thelook_duckdb/adhoc04.preql --rows --setup tests.modeling.thelook_duckdb.db_build:seed
     python local_scripts/plan_debugger/trace_query.py --text "select name, count(order_id) as n;" --model m.preql
 
 Writes `<stem>.trace.json` beside the source (or `--out`) and, unless
@@ -20,6 +21,7 @@ DuckDB and stores the result too.
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import sys
 import webbrowser
@@ -54,7 +56,17 @@ def run(
     index: int | None,
     dialect: Dialects,
     rows: bool,
+    setup: str | None = None,
 ) -> dict:
+    # seed before recording, so the setup's own statements stay out of the trace
+    executor = (
+        dialect.default_executor(environment=Environment(working_path=working_path))
+        if rows
+        else None
+    )
+    if executor is not None and setup:
+        module, _, func = setup.partition(":")
+        getattr(importlib.import_module(module), func)(executor)
     env = Environment(working_path=working_path)
     env, statements = env.parse(text)
     selects = _selects(statements)
@@ -62,7 +74,7 @@ def run(
         raise SystemExit("no SELECT statement to trace")
     statement = selects[index if index is not None else -1]
     renderer = dialect.default_renderer()
-    trace = plan_trace.start(text)
+    trace = plan_trace.start(text, renderer)
     try:
         processed = process_query(
             env,
@@ -73,21 +85,21 @@ def run(
         sql = renderer.compile_statement(processed)
         result_rows: list | None = None
         columns: list[str] | None = None
-        if rows:
-            executor = dialect.default_executor(environment=env)
+        if executor is not None:
             cursor = executor.execute_raw_sql(sql)
             columns = list(cursor.keys())
             result_rows = [list(r) for r in cursor.fetchall()]
         plan_trace.record(
-            "sql",
             f"{dialect.value} SQL",
-            dialect=dialect.value,
-            statement_index=selects.index(statement),
-            outputs=[c.address for c in statement.output_components],
-            ctes={c.name: renderer.render_cte(c).statement for c in processed.ctes},
-            sql=sql,
-            columns=columns,
-            rows=result_rows,
+            plan_trace.SqlStep(
+                dialect=dialect.value,
+                statement_index=selects.index(statement),
+                outputs=[c.address for c in statement.output_components],
+                ctes={c.name: renderer.render_cte(c).statement for c in processed.ctes},
+                sql=sql,
+                columns=columns,
+                rows=result_rows,
+            ),
         )
     finally:
         plan_trace.stop()
@@ -122,6 +134,11 @@ def main() -> None:
         "--rows", action="store_true", help="execute on the dialect and keep the rows"
     )
     parser.add_argument(
+        "--setup",
+        help="module:function called with the executor before --rows runs, to seed"
+        " tables (e.g. tests.modeling.thelook_duckdb.db_build:seed)",
+    )
+    parser.add_argument(
         "--no-html", action="store_true", help="skip the self-contained viewer"
     )
     parser.add_argument(
@@ -142,7 +159,14 @@ def main() -> None:
     else:
         parser.error("give a source file or --text")
 
-    trace = run(text, working_path, args.index, Dialects(args.dialect), args.rows)
+    trace = run(
+        text,
+        working_path,
+        args.index,
+        Dialects(args.dialect),
+        args.rows,
+        args.setup,
+    )
     out = Path(args.out) if args.out else stem.with_suffix(".trace.json")
     out.write_text(json.dumps(trace, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"trace: {out} ({len(trace['steps'])} steps, {len(trace['plans'])} plans)")

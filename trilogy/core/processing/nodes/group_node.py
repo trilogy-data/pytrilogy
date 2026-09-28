@@ -226,4 +226,5 @@ class GroupNode(StrategyNode):
             ordering=self.ordering,
         )
         node.region_spans = self.region_spans
+        node.origin_group = self.origin_group
         return node

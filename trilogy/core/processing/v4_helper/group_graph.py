@@ -1357,16 +1357,17 @@ def _inject_conditions(
     )
     if plan_trace.active():
         plan_trace.record(
-            "grouping",
             "condition placements",
-            placements=[
-                {
-                    "atom": str(p.atom),
-                    "groups": list(p.group_ids),
-                    "reason": p.reason.value,
-                }
-                for p in placements
-            ],
+            plan_trace.PlacementStep(
+                placements=[
+                    plan_trace.PlacementTrace(
+                        atom=plan_trace.expression(p.atom),
+                        groups=list(p.group_ids),
+                        reason=p.reason.value,
+                    )
+                    for p in placements
+                ]
+            ),
         )
     for placement in placements:
         for gid in placement.group_ids:
@@ -3422,10 +3423,11 @@ def _trace_buckets(
 ) -> None:
     if plan_trace.active():
         plan_trace.record(
-            "grouping",
             title,
-            buckets={gid: plan_trace.jsonable(b) for gid, b in buckets.items()},
-            primary_group=dict(primary_group),
+            plan_trace.BucketsStep(
+                buckets={gid: plan_trace.jsonable(b) for gid, b in buckets.items()},
+                primary_group=dict(primary_group),
+            ),
         )
 
 
@@ -3437,9 +3439,10 @@ def _trace_group_graph(
 ) -> None:
     if plan_trace.active():
         plan_trace.record(
-            "group_graph",
             title,
-            graph=plan_trace.graph(group_graph, group_edges, attrs),
+            plan_trace.GroupGraphStep(
+                graph=plan_trace.graph(group_graph, group_edges, attrs)
+            ),
         )
 
 

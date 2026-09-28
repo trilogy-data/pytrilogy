@@ -1723,23 +1723,21 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
     if not plan_trace.active():
         return _plan_source(request)
     node = _plan_source(request)
+    plan_trace.note_sourced(node)
     plan_trace.record(
-        "source",
         f"source: {', '.join(c.address for c in request.outputs)}",
-        request={
-            "outputs": plan_trace.addresses(request.outputs),
-            "conditions": str(request.conditions) if request.conditions else None,
-            "deferred_conditions": (
-                str(request.deferred_conditions)
-                if request.deferred_conditions
-                else None
+        plan_trace.SourceStep(
+            request=plan_trace.SourceRequestTrace(
+                outputs=plan_trace.addresses(request.outputs),
+                conditions=plan_trace.expression(request.conditions),
+                deferred_conditions=plan_trace.expression(request.deferred_conditions),
+                require_full=request.require_full,
+                complete_partials=request.complete_partials,
+                depth=request.depth,
             ),
-            "require_full": request.require_full,
-            "complete_partials": request.complete_partials,
-            "depth": request.depth,
-        },
-        span_scope=plan_trace.span_scope(request.environment.span_scope),
-        node=plan_trace.strategy_node(node),
+            span_scope=plan_trace.span_scope(request.environment.span_scope),
+            node=plan_trace.strategy_node(node),
+        ),
     )
     return node
 
@@ -1747,51 +1745,52 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
 def _trace_search(network: SourceNetwork, result: SearchResult) -> None:
     solution = result.solution
     plan_trace.record(
-        "source",
         f"network search: {', '.join(network.terminals)}",
-        terminals=list(network.terminals),
-        candidates={
-            name: {
-                "datasource": (
-                    c.datasource.identifier
-                    if isinstance(c.datasource, BuildDatasource)
-                    else None
-                ),
-                "condition": c.condition.value,
-                "is_union": c.is_union,
-                "grain": sorted(c.grain),
-                "bindings": {
-                    address: {
-                        "strength": b.strength.value,
-                        "stored": b.stored,
-                        "injected": b.injected,
-                    }
-                    for address, b in sorted(c.bindings.items())
-                },
-            }
-            for name, c in sorted(network.candidates.items())
-        },
-        solution=(
-            {
-                "sources": list(solution.sources),
-                "assignments": {
-                    k: sorted(v) for k, v in sorted(solution.assignments.items())
-                },
-                "join_keys": {
-                    f"{left} ~ {right}": sorted(keys)
-                    for (left, right), keys in sorted(solution.join_keys.items())
-                },
-                "partial_terminals": sorted(solution.partial_terminals),
-                "completions": sorted(solution.completions),
-                "connectors": sorted(solution.connectors),
-                "cost": plan_trace.jsonable(solution.cost),
-            }
-            if solution is not None
-            else None
+        plan_trace.SearchStep(
+            terminals=list(network.terminals),
+            candidates={
+                name: plan_trace.CandidateTrace(
+                    datasource=(
+                        c.datasource.identifier
+                        if isinstance(c.datasource, BuildDatasource)
+                        else None
+                    ),
+                    condition=c.condition.value,
+                    is_union=c.is_union,
+                    grain=sorted(c.grain),
+                    bindings={
+                        address: plan_trace.BindingTrace(
+                            strength=b.strength.value,
+                            stored=b.stored,
+                            injected=b.injected,
+                        )
+                        for address, b in sorted(c.bindings.items())
+                    },
+                )
+                for name, c in sorted(network.candidates.items())
+            },
+            solution=(
+                plan_trace.SolutionTrace(
+                    sources=list(solution.sources),
+                    assignments={
+                        k: sorted(v) for k, v in sorted(solution.assignments.items())
+                    },
+                    join_keys={
+                        f"{left} ~ {right}": sorted(keys)
+                        for (left, right), keys in sorted(solution.join_keys.items())
+                    },
+                    partial_terminals=sorted(solution.partial_terminals),
+                    completions=sorted(solution.completions),
+                    connectors=sorted(solution.connectors),
+                    cost=plan_trace.jsonable(solution.cost),
+                )
+                if solution is not None
+                else None
+            ),
+            unreachable=sorted(result.unreachable),
+            split=sorted(result.split),
+            limit=result.limit.value if result.limit else None,
         ),
-        unreachable=sorted(result.unreachable),
-        split=sorted(result.split),
-        limit=result.limit.value if result.limit else None,
     )
 
 

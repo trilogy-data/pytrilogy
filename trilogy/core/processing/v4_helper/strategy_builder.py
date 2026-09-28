@@ -4537,6 +4537,7 @@ def build_strategy_node(
     for gid in _topological_order(group_graph, group_edges):
         if gid == FINAL_NODE_ID:
             continue
+        plan_trace.set_context(gid)
         # Scope the group's extent routing over its whole build, including the
         # consumer-side re-sources `_parent_nodes_for` plans below.
         environment.span_scope = dc_replace(
@@ -4923,6 +4924,9 @@ def build_strategy_node(
             staged_conditions=staged_conditions,
             depth=depth,
         )
+        # a generator may hand back a parent's node; that one keeps its group
+        if node is not None and node.origin_group is None:
+            node.origin_group = gid
         logger.info(
             f"[v4] built {gid} derivation={derivation} "
             f"outputs={[o.address for o in outputs]} "
@@ -4931,19 +4935,20 @@ def build_strategy_node(
         )
         if plan_trace.active():
             plan_trace.record(
-                "node",
                 f"built {gid}",
-                group=gid,
-                derivation=derivation.value,
-                attrs=plan_trace.jsonable(a),
-                outputs=plan_trace.addresses(outputs),
-                needed=sorted(needed),
-                atoms=[str(atom) for atom in atoms],
-                preexisting=str(preexisting) if preexisting else None,
-                parent_groups=sorted(parent_group_ids),
-                join_keys=sorted(join_key_addresses),
-                span_scope=plan_trace.span_scope(environment.span_scope),
-                node=plan_trace.strategy_node(node),
+                plan_trace.NodeBuiltStep(
+                    group=gid,
+                    derivation=derivation.value,
+                    attrs=plan_trace.jsonable(a),
+                    outputs=plan_trace.addresses(outputs),
+                    needed=sorted(needed),
+                    atoms=[plan_trace.expression(atom) for atom in atoms],
+                    preexisting=plan_trace.expression(preexisting),
+                    parent_groups=sorted(parent_group_ids),
+                    join_keys=sorted(join_key_addresses),
+                    span_scope=plan_trace.span_scope(environment.span_scope),
+                    node=plan_trace.strategy_node(node),
+                ),
             )
         if node is None:
             continue
@@ -4998,6 +5003,7 @@ def build_strategy_node(
     if not built:
         return None
     feeder_cache = _CleanFeederCache(environment, g, history)
+    plan_trace.set_context("FINAL")
     _attach_existence_sources(attrs, built, condition_hosts, environment, feeder_cache)
     final = _assemble_final_node(
         group_graph,
@@ -5011,13 +5017,15 @@ def build_strategy_node(
     )
     if plan_trace.active():
         plan_trace.record(
-            "final",
             "FINAL assembled",
-            contract=plan_trace.jsonable(attrs[FINAL_NODE_ID].final_contract),
-            extent_ownership=plan_trace.jsonable(ownership),
-            built={gid: repr(node) for gid, node in built.items()},
-            node=plan_trace.strategy_node(final),
+            plan_trace.FinalStep(
+                contract=plan_trace.jsonable(attrs[FINAL_NODE_ID].final_contract),
+                extent_ownership=plan_trace.jsonable(ownership),
+                built={gid: repr(node) for gid, node in built.items()},
+                node=plan_trace.strategy_node(final),
+            ),
         )
+    plan_trace.set_context(None)
     if final is not None:
         final = _elide_passthrough_tree(final)
         if _has_unsourced_leaf(final):

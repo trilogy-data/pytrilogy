@@ -38,8 +38,8 @@ def _trace(query: str) -> dict:
 
 def test_inactive_recorder_is_a_no_op():
     assert not plan_trace.active()
-    plan_trace.record("node", "ignored", value=1)
-    with plan_trace.plan_scope("ignored", 0) as plan_id:
+    plan_trace.record("ignored", plan_trace.StrategyStep(None))
+    with plan_trace.plan_scope("ignored", 0, [], []) as plan_id:
         assert plan_id is None
     assert plan_trace.current() is None
 

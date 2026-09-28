@@ -932,4 +932,5 @@ class MergeNode(StrategyNode):
             span_scope=self.span_scope,
         )
         node.region_spans = self.region_spans
+        node.origin_group = self.origin_group
         return node

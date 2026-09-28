@@ -1160,10 +1160,11 @@ def get_query_datasources(
     final_qds = ds.resolve()
     if plan_trace.active():
         plan_trace.record(
-            "resolve",
             "root strategy node resolved",
-            node=plan_trace.strategy_node(ds),
-            datasource=plan_trace.query_datasource(final_qds),
+            plan_trace.ResolveStep(
+                node=plan_trace.strategy_node(ds),
+                datasource=plan_trace.query_datasource(final_qds, ds),
+            ),
         )
 
     if hooks:
@@ -1569,10 +1570,10 @@ def _process_query(
     deduped_ctes: list[CTE | UnionCTE] = list(seen.values())
     if plan_trace.active():
         plan_trace.record(
-            "ctes",
             "CTEs before optimization",
-            root=root_cte.name,
-            ctes=[plan_trace.cte(c) for c in deduped_ctes],
+            plan_trace.CtesStep(
+                root=root_cte.name, ctes=[plan_trace.cte(c) for c in deduped_ctes]
+            ),
         )
 
     root_cte.limit = statement.limit
@@ -1626,10 +1627,10 @@ def _process_query(
     )
     if plan_trace.active():
         plan_trace.record(
-            "ctes",
             "CTEs after optimization",
-            root=root_cte.name,
-            ctes=[plan_trace.cte(c) for c in final_ctes],
+            plan_trace.CtesStep(
+                root=root_cte.name, ctes=[plan_trace.cte(c) for c in final_ctes]
+            ),
         )
     # Observational only: a diagnostics failure must never block the query.
     derived_value_scopes: list[DerivedValueScope] = []

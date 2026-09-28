@@ -322,6 +322,7 @@ class SelectNode(StrategyNode):
         )
         node.limit = self.limit
         node.region_spans = self.region_spans
+        node.origin_group = self.origin_group
         return node
 
 

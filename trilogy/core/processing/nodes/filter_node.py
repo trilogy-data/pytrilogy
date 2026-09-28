@@ -65,4 +65,5 @@ class FilterNode(StrategyNode):
             existence_concepts=list(self.existence_concepts),
         )
         node.region_spans = self.region_spans
+        node.origin_group = self.origin_group
         return node
