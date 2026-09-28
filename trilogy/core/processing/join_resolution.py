@@ -380,10 +380,9 @@ class SideFacts:
     extent_nullables: frozenset[str] = frozenset()
     guest_padded: frozenset[str] = frozenset()
     rollup_padded: frozenset[str] = frozenset()
+    # the side's axes in this merge's spelling; the join ordering breaks ties
+    # on how many there are
     grain: frozenset[str] = frozenset()
-    # the RAW grain-component count the join ordering breaks ties on; not
-    # `len(grain)`, which canonicalization can collapse
-    grain_size: int = 0
     # covers every `~`-licensed key the node emits, so extension rows ride it
     hosts: bool = False
     # spans the side holds a region's rows on
@@ -878,7 +877,7 @@ def _score_join_candidate(
         base -= 1
     if root in side.nullables:
         base += 1
-    return (base, side.grain_size, x)
+    return (base, len(side.grain), x)
 
 
 def resolve_join_order_v2(g: nx.Graph, facts: JoinFacts) -> list[JoinOrderOutput]:
@@ -886,7 +885,7 @@ def resolve_join_order_v2(g: nx.Graph, facts: JoinFacts) -> list[JoinOrderOutput
 
     Pick a pivot (shared concept), then absorb datasources that connect to the
     growing left set, scoring candidates by eligibility / partial / nullable
-    status and breaking ties on estimated grain size (``_score_join_candidate``).
+    status and breaking ties on grain width (``_score_join_candidate``).
     Every choice point sorts its inputs, so the plan is deterministic across runs.
 
     Ordering is a heuristic for plan shape only; ``ensure_content_preservation``
@@ -1897,7 +1896,6 @@ def get_node_joins(
             guest_padded=frozenset(nullable_keys & guest_addrs),
             rollup_padded=frozenset(rollup_keys),
             grain=frozenset(canon_node(a) for a in datasource.grain.components),
-            grain_size=len(datasource.grain.components),
             hosts=hosts,
             held_spans=frozenset(held_spans),
             complete_spans=frozenset(
