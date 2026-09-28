@@ -19,10 +19,10 @@ from tests.engine.test_duckdb_rowset_null_group_rejoin import (
     UNSOLD_MODEL,
 )
 from trilogy import Dialects
+from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing import partial_bridging
 from trilogy.core.processing.v4_helper.constants import FINAL_NODE_ID
 from trilogy.core.processing.v4_helper.keyspace import build_keyspace
-from trilogy.core.processing.v4_helper.models import Keyspace
 from trilogy.core.processing.v4_node_generators import rowset_witness
 
 CUSTOMER = "local.customer_id"
@@ -81,7 +81,8 @@ def test_demanded_partial_key_adds_its_extension_region():
     assert _cells(keyspace) == {frozenset({CUSTOMER, ORDER}), frozenset({CUSTOMER})}
     (extension,) = keyspace.extensions
     assert extension.spans == frozenset({CUSTOMER})
-    assert extension.sources == frozenset({"customers"})
+    assert extension.has_own_rows
+    assert extension.witnesses == frozenset({"customers"})
 
 
 def test_concept_is_defined_only_where_its_keys_are_present():

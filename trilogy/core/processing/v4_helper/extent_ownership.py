@@ -30,11 +30,12 @@ from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, FunctionType
 from trilogy.core.models.build import BuildConcept, BuildFilterItem, BuildFunction
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.keyspace import Keyspace, Region
 from trilogy.core.processing.condition_utility import concepts_implied_non_null
 
 from .constants import FINAL_NODE_ID, ROW_STREAM_DERIVATIONS
 from .functional_dependency import build_fd_determines
-from .models import ExtentOwnership, GroupAttrs, Keyspace, Region
+from .models import ExtentOwnership, GroupAttrs
 
 
 def span_members(
@@ -135,10 +136,7 @@ def elect_extent_owners(
         address: gid for gid in domains for address in attrs[gid].primary_members
     }
     return ExtentOwnership(
-        spans=ownable,
-        owner_by_span=owner_by_span,
-        permitted=permitted,
-        carried=carried,
+        owner_by_span=owner_by_span, permitted=permitted, carried=carried
     )
 
 

@@ -330,7 +330,7 @@ class MergeNode(StrategyNode):
                     licensed_outputs = {
                         c.address
                         for c in self.output_concepts
-                        if c.address in self.span_scope.in_play
+                        if c.address in self.span_scope.keyspace.in_play_spans
                         and c.address not in self.span_scope.extent_free
                     }
                     host_grain = licensed_outputs or set(grain.components)
@@ -363,9 +363,7 @@ class MergeNode(StrategyNode):
                     host_grain=host_grain,
                     demanded_domains=demanded_domains,
                     extent_free_spans=self.span_scope.extent_free,
-                    in_play_spans=self.span_scope.in_play,
-                    witnessed=self.span_scope.witnessed,
-                    regions=self.span_scope.regions,
+                    keyspace=self.span_scope.keyspace,
                 )
         elif final_joins:
             logger.info(
@@ -467,7 +465,10 @@ class MergeNode(StrategyNode):
         coalesced = (
             complete_addresses
             & partial_addresses
-            & (self.span_scope.demanded - self.span_scope.extent_free)
+            & (
+                self.span_scope.keyspace.output_demanded_spans
+                - self.span_scope.extent_free
+            )
         )
         proofs -= coalesced
         side_proofs -= coalesced

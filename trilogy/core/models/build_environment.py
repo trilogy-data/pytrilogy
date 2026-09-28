@@ -17,6 +17,7 @@ from trilogy.core.models.build import (
     BuildRowsetItem,
 )
 from trilogy.core.models.core import DataType
+from trilogy.core.models.keyspace import Keyspace
 
 
 class BuildEnvironmentConceptDict(dict):
@@ -102,15 +103,10 @@ class SpanScope:
     the decision is fixed before the node resolves (a rowset body's merge can
     resolve after the outer plan's scope is restored)."""
 
-    # plan: the spans the plan has a region for (`Keyspace.in_play_spans`), the
-    # only ones a join of it can pad for
-    in_play: frozenset[str] = frozenset()
-    # plan: the spans whose unmatched members carry an output
-    # (`Keyspace.output_demanded_spans`), the only extension rows it returns
-    demanded: frozenset[str] = frozenset()
-    # plan: a rowset body's spelling of a span in play -> the plan's own
-    # (`Keyspace.witnessed`): padding made below a boundary is named up here
-    witnessed: dict[str, str] = field(default_factory=dict)
+    # plan: its row universe. The spans it can pad for (`in_play_spans`), the
+    # ones whose extension rows it returns (`output_demanded_spans`), its
+    # families and the spellings a rowset body pads under (`witnessed`)
+    keyspace: Keyspace = field(default_factory=Keyspace)
     # plan: the spans whose extension rows the plan READING this one holds (a
     # rowset body built for a consumer that pads the region itself): no group
     # of this plan extends them, FINAL included
@@ -120,11 +116,6 @@ class SpanScope:
     # dimension over them. Join typing only; the facts' bindings on them stay
     # `~` for source planning, unlike `extent_free`
     unextended: frozenset[str] = frozenset()
-    # plan: each live region's spans (`Keyspace.live_regions`). A node holding
-    # two regions unions their spans, so only this partition says how many
-    # families a merge has -- counting spans reads one composite-key region
-    # (`grain (name, variant)`) as two.
-    regions: tuple[frozenset[str], ...] = ()
     # group: the spans this group may NOT extend, because another group owns
     # those extension members (v4_helper/extent_ownership.py), or the plan
     # above does (`owned`)

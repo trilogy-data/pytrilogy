@@ -16,6 +16,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing.v4_helper.concept_graph import build_concept_graph
 from trilogy.core.processing.v4_helper.history import V4History
 from trilogy.core.processing.v4_helper.keyspace import (
@@ -24,7 +25,7 @@ from trilogy.core.processing.v4_helper.keyspace import (
     rowset_witness,
 )
 from trilogy.core.processing.v4_helper.keyspace_audit import audit_heal_keyspace
-from trilogy.core.processing.v4_helper.models import ConceptAttrs, Keyspace
+from trilogy.core.processing.v4_helper.models import ConceptAttrs
 from trilogy.core.processing.v4_helper.projection import statement_filter_population
 
 from .nested_select import build_nested_select

@@ -23,6 +23,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing.condition_utility import (
     decompose_condition,
 )
@@ -33,7 +34,7 @@ from .concept_graph import computed_origin_relation_members
 from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS, DepthLabel, EdgeKind
 from .edges import EdgeMap, edge_kind, lineage_subgraph, subgraph_of_kinds
 from .functional_dependency import build_fd_determines
-from .models import ConceptAttrs, GroupBucket, Keyspace
+from .models import ConceptAttrs, GroupBucket
 from .projection import decided_at_output_grain, output_rowset_base_keys
 from .staged_where import (
     CROSS_ROW_DERIVATIONS,
