@@ -2,7 +2,7 @@
 
 > **Status (2026-09-27).** Phases 0-7 are built on branch `extension-row-null-semantics`, PR #702, except for the deletions that stay as the fallback for regions the keyspace does not model yet ([What stays](#what-stays-and-why)). No wrong-rows item is owed and no ruling is pending; what remains is two optimization candidates (a redundant FINAL dedup, and a fact-sized re-join to carry dimension attributes) and the shapes the keyspace does not model ([Open items](#open-items)). A fresh session should read [The problem](#the-problem) and [The idea](#the-idea) for the vocabulary, then the open items. Before touching a seam, read its section under [Rules as built](#rules-as-built). Git history holds the per-session narratives and A/B tallies this doc used to carry.
 
-Background: `docs/handoff_extension_row_semantics.md` (the rule this serves, and a prototype that was backed out), `docs/extent_ownership.md`, `docs/domain_graph_design.md`. Tooling: `local_scripts/keyspace_ab/README.md`.
+Background: `docs/handoff_extension_row_semantics.md` (the rule this serves, and a prototype that was backed out), `docs/extent_ownership.md`, `docs/domain_graph_design.md`. Tooling: `local_scripts/keyspace_ab/README.md` (the A/B), `local_scripts/plan_debugger/README.md` (the step-through [visual debugger](#visual-debugger-mvp-2026-09-27)).
 
 ## The problem
 
@@ -268,6 +268,16 @@ No wrong-rows item is owed (the `OWED` list and the `array_agg` xfail are cleare
 - `tests/engine/test_duckdb_partial_key_assembly.py`, `test_duckdb_partial_fk_field_report.py`, `test_duckdb_nullability_matrix.py`, `test_multi_fact_nullable_fk_extent.py`, `tests/optimization/test_join_upgrade.py`, `test_duckdb_fuzzer_regressions.py::test_rollup_label_over_union_joined_rowsets`.
 - `tests/dialect/test_bigquery_full_join_keys.py`: renders planner output, anchored on a three-fact `union join`. It breaks silently when a fixture's FULL join tightens away.
 - `tests/modeling` SQL-size budgets and `zquery<N>.log` hashes.
+
+## Visual debugger (MVP, 2026-09-27)
+
+A step-through viewer for one statement's discovery, so the keyspace can be read as a story instead of reasoned about from `[v4] built` lines: `local_scripts/plan_debugger/` (README there), recorder `trilogy/core/processing/plan_trace.py`, guards `tests/core/processing/test_plan_trace.py`.
+
+**How it works.** The planner records each phase at its seam through `plan_trace.record` (one `active()` check when off): `_build_from_graph` (a plan scope per plan, so rowset bodies, arms and condition feeders nest; the request, the concept graph, the keyspace, the returned node), `build_group_graph` (the buckets after each grouping pass, the group graph after each topology pass, the condition placements), `plan_source` / `_network_source` (every source request with its span scope and the network search's candidates × terminals table, cover and cost), `build_strategy_node` (every built group with its atoms, parents, span scope and node tree; the FINAL contract, extent ownership and assembled tree), `get_query_datasources` (the resolved tree, where joins are typed) and `process_query` (the CTEs before and after the optimizer). `trace_query.py` runs a `.preql` (or `--text` over `--model`), adds the rendered SQL per CTE and, with `--rows`, the DuckDB result, and writes `<stem>.trace.json` plus a self-contained `<stem>.trace.html`. `TRILOGY_PLAN_TRACE=<file>` does the same from any `process_query` (a pytest case included), without the SQL step.
+
+**What to read, per phase, for a `~` plan** (the README's "Reading a `~` plan"): the region exists with own rows and its span is output-demanded, the outputs that must be NULL on it read "absent" in the outputs × regions matrix; the `extent:<span>` bucket appears in "region domain buckets added" (the bucket diff outlines it); the domain feeds the aggregate and FINAL in the group graph; the domain's `node` step is a scan on the dimension and every other group's span scope lists the span `extent_free`; the resolved merge carries `region <span>` and its join preserves the holder; the LEFT survives the optimizer and a padded COUNT is `0-fill`. Each step's cards, graph nodes and tree nodes open in the inspector with every field the recorder kept, including the raw `GroupAttrs`, `SpanScope` and `Keyspace` values.
+
+**Scope of the MVP, and what is not there yet.** The trace is a record, not a replay: join typing (`get_join_type` per pair, `JoinFacts`), the FINAL cover passes and the optimizer's rule-by-rule changes are visible only through their results (the resolved tree, the CTEs after optimization), where the probe tracers under `local_scripts/keyspace_ab/probes/` still print them per decision. Next candidates, in the order they would have paid off this project: a `join` phase recording each plan-time `get_join_type` call with both `SideFacts` and the rule that answered; an `optimizer` phase recording each rule application as a CTE diff; a trace diff (two traces side by side, step-aligned by plan and title) for the A/B method below; and the heal audit's two keyspaces (authored vs healed) as one step.
 
 ## Process and verification
 

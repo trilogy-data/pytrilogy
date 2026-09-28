@@ -73,6 +73,7 @@ from trilogy.core.models.execute import (
     UnnestJoin,
 )
 from trilogy.core.optimization import optimize_ctes
+from trilogy.core.processing import plan_trace
 from trilogy.core.processing.concept_strategies_v4 import (
     V4History,
     append_existence_check,
@@ -1157,6 +1158,13 @@ def get_query_datasources(
     )
 
     final_qds = ds.resolve()
+    if plan_trace.active():
+        plan_trace.record(
+            "resolve",
+            "root strategy node resolved",
+            node=plan_trace.strategy_node(ds),
+            datasource=plan_trace.query_datasource(final_qds),
+        )
 
     if hooks:
         for hook in hooks:
@@ -1503,6 +1511,32 @@ def process_query(
     having_alias: bool = False,
     supports_full_join: bool = True,
 ) -> ProcessedQuery:
+    # `TRILOGY_PLAN_TRACE=<file>`: every top-level statement writes its own
+    # plan trace there (a recorder already running, the debugger script's,
+    # owns the file instead).
+    trace_path = plan_trace.env_output_path()
+    if trace_path is None or plan_trace.active():
+        return _process_query(
+            environment, statement, hooks, having_alias, supports_full_join
+        )
+    plan_trace.start(str(statement))
+    try:
+        return _process_query(
+            environment, statement, hooks, having_alias, supports_full_join
+        )
+    finally:
+        trace = plan_trace.stop()
+        if trace is not None:
+            trace.write(trace_path)
+
+
+def _process_query(
+    environment: Environment,
+    statement: SelectStatement | MultiSelectStatement,
+    hooks: list[BaseHook] | None,
+    having_alias: bool,
+    supports_full_join: bool,
+) -> ProcessedQuery:
     hooks = hooks or []
 
     build_lineage_sink: list[BuildSelectLineage | BuildMultiSelectLineage] = []
@@ -1533,6 +1567,13 @@ def process_query(
     for cte in raw_ctes:
         cte.parent_ctes = [seen[x.name] for x in cte.parent_ctes]
     deduped_ctes: list[CTE | UnionCTE] = list(seen.values())
+    if plan_trace.active():
+        plan_trace.record(
+            "ctes",
+            "CTEs before optimization",
+            root=root_cte.name,
+            ctes=[plan_trace.cte(c) for c in deduped_ctes],
+        )
 
     root_cte.limit = statement.limit
 
@@ -1583,6 +1624,13 @@ def process_query(
         domain_graph=domain_graph,
         supports_full_join=supports_full_join,
     )
+    if plan_trace.active():
+        plan_trace.record(
+            "ctes",
+            "CTEs after optimization",
+            root=root_cte.name,
+            ctes=[plan_trace.cte(c) for c in final_ctes],
+        )
     # Observational only: a diagnostics failure must never block the query.
     derived_value_scopes: list[DerivedValueScope] = []
     if build_lineage_sink:

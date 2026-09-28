@@ -22,6 +22,8 @@ TVF) live in `v4_node_generators/`. This file is just the public API, the
 materialized-root pre-pass, and the History cache wiring.
 """
 
+from collections.abc import Callable
+
 from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation
@@ -36,6 +38,8 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment, SpanScope
+from trilogy.core.models.keyspace import Keyspace
+from trilogy.core.processing import plan_trace
 from trilogy.core.processing.aggregate_rollup import (
     _conditions_supported,
     _datasource_has_matching_additive_aggregate,
@@ -524,6 +528,50 @@ def _build_from_graph(
         statement_keyspace,
     )
 
+    with plan_trace.plan_scope(
+        f"plan: {', '.join(c.address for c in mandatory_list)}",
+        depth,
+        outputs=plan_trace.addresses(mandatory_list),
+        conditions=[str(c) for c in conditions],
+    ):
+        return _build_from_graph_traced(
+            mandatory_list,
+            environment,
+            g,
+            history,
+            conditions,
+            materialized_roots,
+            complete_partials,
+            statement_keyspace,
+            staged_conditions,
+            depth,
+        )
+
+
+def _build_from_graph_traced(
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
+    g: ReferenceGraph,
+    history: V4History,
+    conditions: list[BuildWhereClause],
+    materialized_roots: frozenset[str],
+    complete_partials: bool,
+    statement_keyspace: Callable[..., Keyspace],
+    staged_conditions: list[BuildWhereClause] | None,
+    depth: int,
+) -> BuildInfo:
+    if plan_trace.active():
+        plan_trace.record(
+            "request",
+            "requested concepts",
+            concepts=[plan_trace.concept(c) for c in mandatory_list],
+            conditions=[str(c) for c in conditions],
+            staged_conditions=[str(c) for c in staged_conditions or []],
+            materialized_roots=sorted(materialized_roots),
+            complete_partials=complete_partials,
+            span_scope=plan_trace.span_scope(environment.span_scope),
+            environment=plan_trace.environment(environment),
+        )
     concept_graph, concept_attrs, concept_edges = build_concept_graph(
         mandatory_list,
         environment,
@@ -531,12 +579,22 @@ def _build_from_graph(
         materialized_roots,
         staged_conditions=staged_conditions,
     )
+    if plan_trace.active():
+        plan_trace.record(
+            "concept_graph",
+            "concept graph",
+            graph=plan_trace.graph(concept_graph, concept_edges, concept_attrs),
+        )
     keyspace = statement_keyspace(
         concept_attrs, mandatory_list, environment, conditions, history
     )
     if len(keyspace.regions) > 1:
         logger.info(
             f"{depth_to_prefix(depth)}{LOGGER_PREFIX} keyspace: {keyspace.describe()}"
+        )
+    if plan_trace.active():
+        plan_trace.record(
+            "keyspace", "keyspace", keyspace=plan_trace.keyspace(keyspace)
         )
     datasource_columns = [
         frozenset(c.address for c in ds.output_concepts)
@@ -579,6 +637,12 @@ def _build_from_graph(
         )
     finally:
         environment.span_scope = outer_scope
+    if plan_trace.active():
+        plan_trace.record(
+            "strategy",
+            "strategy node",
+            node=plan_trace.strategy_node(strategy_node),
+        )
     return BuildInfo(
         concept_graph=concept_graph,
         group_graph=group_graph,
@@ -731,6 +795,14 @@ def search_concepts(
             f"{[c.address for c in mandatory_list]}"
         )
         assert isinstance(hist, BuildInfo)
+        if plan_trace.active():
+            plan_trace.record(
+                "request",
+                "returned from history",
+                concepts=plan_trace.addresses(mandatory_list),
+                conditions=[str(c) for c in conditions],
+                exists=hist.strategy_node is not None,
+            )
         return hist
 
     result = _search_concepts(
