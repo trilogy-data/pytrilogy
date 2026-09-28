@@ -23,6 +23,22 @@ Two rules, guarded by `tests/core/processing/test_v4_dim_peel_not_built.py`:
   such a peel onto the domain made FINAL take `name`/`tier` from the solid
   contributor and customer 3 lost them (3 wrong-rows failures).
 
+- **Follow-up, `_keep_extension_families_together`**: hypothesis 1's bound
+  stranded a region. With `item_id` and `{item_id, order_id}` rejected as the
+  field report's row key, `product_id` no longer peeled at all while `user_id`
+  still peeled onto `order_id`, so only ONE cluster carried a demanded span and
+  the merge had nothing to merge. A cluster carrying the span alone mixes no
+  region, `add_region_domain_buckets` found no solid source, and `{user_id}`
+  got no domain: the election handed its extent to the peel, which padded
+  `user_id` off the `orders` table it hung from and stopped reading the items'
+  own `~user_id` binding (an extra CTE, 57 -> 66 lines). The merge now also
+  checks its result: a carrying cluster must hold something ABSENT on the
+  region too, or its members stay in the bucket they were peeled from, which
+  does mix. Guarded by
+  `test_extent_ownership::test_every_span_is_owned_by_its_region_domain`,
+  which failed from `a36122952` until this. The field report's FINAL merge also
+  loses its re-scan of `items` (four scans -> three).
+
 Verified: adhoc03/adhoc04/q06/q07/q19 rows and sorted-row md5 unchanged
 against a baseline worktree; `source_repeats.py` over the three corpora
 369 -> 363 `plan_source` calls (one per dead peel); the dead-group census
