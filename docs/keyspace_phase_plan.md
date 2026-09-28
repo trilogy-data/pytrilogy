@@ -1,6 +1,6 @@
 # Project plan: a keyspace phase in discovery
 
-> **Status (2026-09-27).** Phases 0-7 are built on branch `extension-row-null-semantics`, PR #702, except for the deletions that stay as the fallback for regions the keyspace does not model yet ([What stays](#what-stays-and-why)). No wrong-rows item is owed and no ruling is pending; what remains is plan shape without a rows test, or a shape nothing forces ([Open items](#open-items)). A fresh session should read [The problem](#the-problem) and [The idea](#the-idea) for the vocabulary, then the open items. Before touching a seam, read its section under [Rules as built](#rules-as-built). Git history holds the per-session narratives and A/B tallies this doc used to carry.
+> **Status (2026-09-27).** Phases 0-7 are built on branch `extension-row-null-semantics`, PR #702, except for the deletions that stay as the fallback for regions the keyspace does not model yet ([What stays](#what-stays-and-why)). No wrong-rows item is owed and no ruling is pending; what remains is two optimization candidates (a redundant FINAL dedup, and a fact-sized re-join to carry dimension attributes) and the shapes the keyspace does not model ([Open items](#open-items)). A fresh session should read [The problem](#the-problem) and [The idea](#the-idea) for the vocabulary, then the open items. Before touching a seam, read its section under [Rules as built](#rules-as-built). Git history holds the per-session narratives and A/B tallies this doc used to carry.
 
 Background: `docs/handoff_extension_row_semantics.md` (the rule this serves, and a prototype that was backed out), `docs/extent_ownership.md`, `docs/domain_graph_design.md`. Tooling: `local_scripts/keyspace_ab/README.md`.
 
@@ -237,7 +237,7 @@ The step-2 retirement list was tried by deletion. These are the fallback for reg
 
 ## Open items
 
-No wrong-rows item is owed (the `OWED` list and the `array_agg` xfail are cleared) and no ruling is pending (cross-dialect `array_agg` was ruled: Owner decisions). Everything left is a shape the keyspace does not model that is rows-right with a fallback standing in, or plan shape on a rows-verified test. An item is "cosmetic" only until a rows test exists -- that held every session of this project -- so a new item starts with one.
+No wrong-rows item is owed (the `OWED` list and the `array_agg` xfail are cleared) and no ruling is pending (cross-dialect `array_agg` was ruled: Owner decisions). Everything left is a shape the keyspace does not model that is rows-right with a fallback standing in, or an optimization candidate: a rows-right plan doing measurably more work than a better shape that exists. An item is "cosmetic" only until a rows test exists -- that held every session of this project -- so a new item starts with one; a shape with no better shape is dropped, not listed.
 
 **Shapes the keyspace does not model** (a failing rows test would promote one to a phase):
 
@@ -245,12 +245,16 @@ No wrong-rows item is owed (the `OWED` list and the `array_agg` xfail are cleare
 2. **Merged-`~` pin-heal** (pin-heal above): a lost optimization, never a wrong answer.
 3. **A materialized rollup beside a region** gets no domain of its own (region domains above). Rows-right and guarded by the rollup-summary twin; listed so nobody reads "no domain" as "unhandled".
 
-**Plan shape on rows-verified tests** (no rows test to force any of them; each was probed for one):
+**Optimization candidates** (rows-right plans that do more work than a better plan would; no rows test can drive them, so each is stated as the work it wastes, with the better shape that exists):
 
-- **5(c), the rowset witness leftover**: an unsplit boundary is not stamped as the region holder (see tried: stamping every boundary grew `test_rollup_label_over_union_joined_rowsets` 2546 -> 2948). Probed with a boundary read at two grains, beside `count by *`, a window and a row-stream derivation, then (2026-09-27) through the oracle twin and a two-family model (`probe_rowset_twin.py`): the unread region and the dim-peel anchor were the wrong-rows bugs in that neighbourhood, not 5(c). Probe `[13]` (`case when s.n_items > 1 ...` over `rowset s <- select order_number as o, count(item_sk) as n_items`) differs from its direct spelling by design (a rowset is a row source; see the witness rules).
-- **The forked full column set** (`test_forked_full_column_set`, +80 chars from that re-source scoping) reads `brand` through the `pair_cost` BASIC and folds `state` through it: one four-scan CTE where a peel keyed on the product alone would do. **The FINAL dedup over a domain merge** on `test_keys_only`/`test_join_grain` (+36/+29) is the other cost of the domain keeping the FINAL's scope.
-- **Flattening the solid MergeNode into the domain merge** (parked; see tried and reverted for the three passes that would have to learn a padded accumulated stream first).
-- **`extent_nullables` matches raw addresses against canonical nodes** (join typing above), so an aliased key never counts as extent-null there. Fixing it restated q64's pushed atoms at the FINAL (+870 chars, rows unchanged) and moved nothing else.
+- **A FINAL dedup over a domain merge** (`test_keys_only`, `test_join_grain`): `users LEFT JOIN items FULL JOIN products` followed by a `GROUP BY` on every key. Each side is unique on its key, so the join output is already unique and the GROUP BY is a full hash aggregate over the whole result, comparable to the join itself, and it blocks streaming; DuckDB cannot elide it through a FULL join. Optimizer pass: drop a GROUP BY with no aggregate expressions whose keys include a unique key of every joined relation. Cost grows with output rows. It is a cost of the domain keeping the FINAL's scope (region domains above).
+- **The forked full column set** (`test_forked_full_column_set`): to carry `brand` and `state`, a second fact-sized chain (`products LEFT items FULL users FULL orders`) is INNER-joined back to the main fact chain at FINAL on four keys with `IS NOT DISTINCT FROM`, then FULL-joined to the status stream. The fact table is joined through twice and two fact-sized streams are null-safe-joined on four keys: roughly double the join work of reading the two attributes off dimension peels. This is thelook's `order_items` shape. The better shape is the peels; the attempt that took it (every root's FINAL re-source under its own scope) lost `brand` on the product extension row, see tried and reverted. A planner fix, or an optimizer pass replacing a stream joined only to carry dimension attributes keyed on a key the other side holds with that dimension's peel.
+
+**Dropped** (no better shape exists, or the shape costs nothing):
+
+- **Flattening the solid MergeNode into the domain merge**: DuckDB and BigQuery inline CTEs, so the extra layer costs nothing at execution. Cosmetic only; the three passes that would have to learn a padded accumulated stream are listed under tried and reverted should it ever matter.
+- **5(c), the rowset witness leftover** (an unsplit boundary not stamped as the region holder): stamping every boundary grew `test_rollup_label_over_union_joined_rowsets` 2546 -> 2948 with rows unchanged. Probed for rows through the oracle twin and a two-family model (`probe_rowset_twin.py`); the wrong-rows bugs in that neighbourhood were the unread region and the dim-peel anchor, both fixed. Probe `[13]` (`case when s.n_items > 1 ...` over an aggregate rowset) differs from its direct spelling by design (a rowset is a row source).
+- **`extent_nullables` matches raw addresses against canonical nodes** (join typing above): fixing it restated q64's pushed atoms at the FINAL (+870 chars, rows unchanged) and moved nothing else. Left as a latent mismatch.
 
 ## Guards
 
