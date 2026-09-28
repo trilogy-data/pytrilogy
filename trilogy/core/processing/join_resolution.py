@@ -790,7 +790,9 @@ def reduce_join_types(join_types: set[JoinType]) -> JoinType:
 
 
 def ensure_content_preservation(
-    joins: list[JoinOrderOutput], authored_axis_keys: frozenset[str] = frozenset()
+    joins: list[JoinOrderOutput],
+    authored_axis_keys: frozenset[str] = frozenset(),
+    demanded_domains: frozenset[str] = frozenset(),
 ) -> None:
     for idx, review_join in enumerate(joins):
         predecessors = joins[:idx]
@@ -809,20 +811,27 @@ def ensure_content_preservation(
             # row intent for both sides' content, facts hanging off either
             # side included, so both ways are preserved.
             # A partial-driven FULL preserves its right relation only when
-            # this join is keyed ON the FULL's own spine: that key is
+            # this join is keyed ON the FULL's own spine (that key is
             # coalesced across both families, so the relation spans the
-            # whole stream. A join keyed OFF a partial FULL's spine (one
-            # side's non-key column, padded NULL for the other family) hangs
-            # off a single family, and row-preservation there is a domain
-            # license only get_join_type (a `~` partial / union declaration /
-            # nullable key) can grant; upgrading to FULL would hand such
-            # unlicensed dimensions extension rows.
+            # whole stream) AND the spine is a domain this merge demands: two
+            # facts partial on `order_id` pivot through the complete `orders`
+            # scan, and the order with neither line nor return is a row only
+            # where something reads from the order (TPC-DS q83's item is;
+            # `select return_id, reason, qty` demands nothing of it). A join
+            # keyed OFF a partial FULL's spine (one side's non-key column,
+            # padded NULL for the other family) hangs off a single family,
+            # and row-preservation there is a domain license only
+            # get_join_type (a `~` partial / union declaration / nullable
+            # key) can grant; upgrading to FULL would hand such unlicensed
+            # dimensions extension rows.
             if pred.type == JoinType.FULL and (on_pred_right or on_pred_left):
                 has_prior_left = True
                 pred_keys: set[str] = set().union(set(), *pred.keys.values())
-                if (review_keys and review_keys <= pred_keys) or (
-                    pred_keys & authored_axis_keys
-                ):
+                if (
+                    review_keys
+                    and review_keys <= pred_keys
+                    and review_keys <= demanded_domains
+                ) or (pred_keys & authored_axis_keys):
                     has_prior_right = True
                 continue
             # Either way the padded relation is in the ACCUMULATED stream,
@@ -1093,7 +1102,7 @@ def resolve_join_order_v2(g: nx.Graph, facts: JoinFacts) -> list[JoinOrderOutput
                 )
             eligible_left.add(ds)
 
-    ensure_content_preservation(output, facts.axis_keys)
+    ensure_content_preservation(output, facts.axis_keys, facts.demanded_domains)
 
     return output
 

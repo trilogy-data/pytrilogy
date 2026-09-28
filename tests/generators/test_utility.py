@@ -157,8 +157,9 @@ def test_prior_right_outer_keyed_on_its_preserved_side_unchanged():
 def test_prior_full_join_promotes_to_full():
     """A prior FULL join null-extends BOTH its sides and is symmetric
     (``A FULL B`` == ``B FULL A``), so a join building on either side is upgraded
-    to FULL. Anything weaker would depend on which side the ordering recorded as
-    the FULL's left/right, making the plan order-dependent."""
+    to FULL when it is keyed on the FULL's spine and that key is a demanded
+    domain. Anything weaker would depend on which side the ordering recorded
+    as the FULL's left/right, making the plan order-dependent."""
     join1 = JoinOrderOutput(
         right="table_b", type=JoinType.FULL, keys={"table_a": {"id"}}
     )
@@ -166,9 +167,22 @@ def test_prior_full_join_promotes_to_full():
         right="table_c", type=JoinType.INNER, keys={"table_b": {"id"}}
     )
     joins = [join1, join2]
-    ensure_content_preservation(joins)
+    ensure_content_preservation(joins, demanded_domains=frozenset({"id"}))
     assert join1.type == JoinType.FULL
     assert join2.type == JoinType.FULL
+
+
+def test_prior_full_join_undemanded_spine_preserves_the_stream_only():
+    """Two facts partial on a key pivot through its complete dimension: with
+    the key undemanded, the dimension's unmatched rows are nobody's."""
+    join1 = JoinOrderOutput(
+        right="table_b", type=JoinType.FULL, keys={"table_a": {"id"}}
+    )
+    join2 = JoinOrderOutput(
+        right="table_c", type=JoinType.INNER, keys={"table_b": {"id"}}
+    )
+    ensure_content_preservation([join1, join2])
+    assert join2.type == JoinType.LEFT_OUTER
 
 
 def test_prior_full_join_order_invariant():
@@ -180,7 +194,7 @@ def test_prior_full_join_order_invariant():
             right="table_c", type=JoinType.INNER, keys={"table_b": {"id"}}
         )
         joins = [j1, j2]
-        ensure_content_preservation(joins)
+        ensure_content_preservation(joins, demanded_domains=frozenset({"id"}))
         assert j2.type == JoinType.FULL, (left, right)
 
 
