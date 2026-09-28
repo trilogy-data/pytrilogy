@@ -260,17 +260,27 @@ datasource nations (nation_id: nation_id, nation_name: nation_name)
 address nations;
 
 datasource customers (customer_id: customer_id, nation_id: nation_id)
-address customers;
+{grain} address customers;
 
 datasource orders (order_id: order_id, customer_id: ~customer_id)
 grain (order_id) address orders;
 """
 
 
-def test_source_without_a_grain_is_identified_by_its_own_key():
-    """`customers` declares no grain; `nation_id` identifies `nations`, so
-    `customers` is one row per customer and an order reaches its nation."""
-    keyspace = _keyspace(_GRAINLESS_DIMENSION, "select order_id, nation_name;")
+def test_source_without_a_grain_is_identified_by_every_key():
+    """`customers` declares no grain: it is one row per (customer, nation),
+    since nothing says a customer has ONE nation, and no lookup from an order
+    enters it. `nation_id` identifying `nations` on its own does not make it a
+    foreign key here (it is half the grain of an ungrained `lines (order_id,
+    line_no, product_id)`). Declaring the grain is what makes it one."""
+    keyspace = _keyspace(
+        _GRAINLESS_DIMENSION.format(grain=""), "select order_id, nation_name;"
+    )
+    assert keyspace.extensions == ()
+    keyspace = _keyspace(
+        _GRAINLESS_DIMENSION.format(grain="grain (customer_id)"),
+        "select order_id, nation_name;",
+    )
     (extension,) = keyspace.extensions
     assert extension.present == frozenset({"local.nation_id"})
     assert extension.spans == frozenset({CUSTOMER})

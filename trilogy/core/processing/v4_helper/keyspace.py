@@ -55,6 +55,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.keyspace import Completion, Keyspace, Region
 from trilogy.core.processing.condition_utility import gather_non_null_proofs
 
+from .functional_dependency import minimize_build_grain
 from .models import ConceptAttrs
 
 _Declared = tuple[Purpose, Derivation, frozenset[str]]
@@ -279,40 +280,30 @@ def _better(new: frozenset[str], old: frozenset[str] | None) -> bool:
     return old is None or len(new) < len(old)
 
 
-def _fewest_keys_first(item: tuple[str, frozenset[str]]) -> tuple[int, str]:
-    return len(item[1]), item[0]
-
-
-def _row_identities(datasources: list[BuildDatasource]) -> dict[str, frozenset[str]]:
-    """What identifies a row of each source: its declared grain, else its KEY
-    columns less the ones that identify ANOTHER source on their own, which it
-    holds as foreign keys (`customers` binding `id, nation.id` with no grain is
-    one row per `id` once `nation` is known to be one row per `nation.id`)."""
-    out = {
-        ds.identifier: frozenset(ds.grain.components)
-        for ds in datasources
-        if not ds.grain.abstract
-    }
-    pending = {
-        ds.identifier: frozenset(
-            c.concept.address for c in ds.columns if c.concept.purpose == Purpose.KEY
+def _row_identities(
+    environment: BuildEnvironment, datasources: list[BuildDatasource]
+) -> dict[str, frozenset[str]]:
+    """What identifies a row of each source: its declared grain, else every
+    KEY column it binds, less those the others determine by FD. A key that
+    identifies another source on its own is NOT dropped for that alone: it is
+    a foreign key on `customers (id, nation.id)` but half the grain of
+    `lines (order_id, line_no, product_id)`, and reading the latter as one row
+    per `line_no` let a return reach every order's first line."""
+    return {
+        ds.identifier: (
+            frozenset(ds.grain.components)
+            if not ds.grain.abstract
+            else minimize_build_grain(
+                environment,
+                [
+                    c.concept.address
+                    for c in ds.columns
+                    if c.concept.purpose == Purpose.KEY
+                ],
+            )
         )
         for ds in datasources
-        if ds.grain.abstract
     }
-    sole = {next(iter(grain)) for grain in out.values() if len(grain) == 1}
-    settled = True
-    while settled:
-        settled = False
-        for identifier, keys in sorted(pending.items(), key=_fewest_keys_first):
-            own = keys - sole if len(keys) > 1 else keys
-            if len(own) == 1:
-                out[identifier] = own
-                sole |= own
-                del pending[identifier]
-                settled = True
-                break
-    return {**out, **pending}
 
 
 def _source_facts(
@@ -408,7 +399,7 @@ def _compute_facts(
     rowsets: tuple[_SourceFacts, ...] = (),
 ) -> _ModelFacts:
     canonical = _canonical_addresses(environment)
-    identities = _row_identities(datasources)
+    identities = _row_identities(environment, datasources)
     bound = tuple(
         _source_facts(ds, canonical, identities[ds.identifier]) for ds in datasources
     )
