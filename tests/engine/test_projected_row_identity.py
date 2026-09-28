@@ -61,9 +61,7 @@ def _run(executor: Executor, query: str) -> tuple[str, list[tuple]]:
 def test_projected_identity_is_not_grouped(executor: Executor):
     sql, rows = _run(executor, "select user_id, item_id, product_id;")
     assert "GROUP BY" not in sql, sql
-    assert rows == sorted(
-        IDENTITY_ROWS, key=lambda r: tuple((v is None, v) for v in r)
-    )
+    assert rows == sorted(IDENTITY_ROWS, key=lambda r: tuple((v is None, v) for v in r))
 
 
 def test_projected_identity_beside_an_aggregate_is_not_regrouped(
