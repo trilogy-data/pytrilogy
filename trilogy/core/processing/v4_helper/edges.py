@@ -96,10 +96,3 @@ def subgraph_of_kinds(
     graph: nx.DiGraph, edges: EdgeMap, *kinds: EdgeKind
 ) -> nx.DiGraph:
     return _subgraph(graph, edges_of_kind(edges, *kinds))
-
-
-def copy_edges(edges: EdgeMap) -> EdgeMap:
-    return {
-        edge: EdgeAttrs(kind=a.kind, phase=a.phase, alt_group=a.alt_group)
-        for edge, a in edges.items()
-    }
