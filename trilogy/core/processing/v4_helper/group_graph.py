@@ -916,6 +916,54 @@ def _keep_extension_families_together(
             assignment[address] = merged
 
 
+def _drop_unread_peels_the_domain_took(
+    buckets: dict[str, GroupBucket],
+    primary_group: dict[str, str],
+    concept_graph: nx.DiGraph,
+) -> None:
+    """A dim peel keyed by a region's span whose members the region domain
+    took whole (`add_region_domain_buckets`) is the domain's rows again, and
+    when nothing but FINAL reads it, FINAL reads the domain instead: left
+    standing it is sourced once more and dropped at FINAL as covered. A peel
+    with a reader stays: it is that reader's SOLID-side provider (`tier` under
+    `tier_amount`, INNER on the fact), which the padded domain is not."""
+    domains = [b for b in buckets.values() if b.extent_spans]
+    for gid in list(buckets):
+        peel = buckets[gid]
+        if not peel.dim_keys or peel.derivation != Derivation.ROOT:
+            continue
+        taker = next(
+            (
+                domain
+                for domain in domains
+                if peel.dim_keys <= domain.extent_spans
+                and set(peel.primary_members) <= set(domain.primary_members)
+            ),
+            None,
+        )
+        read = any(
+            primary_group.get(succ) not in (None, gid)
+            for node_id in peel.primary_node_ids
+            for succ in concept_graph.successors(node_id)
+        )
+        if taker is None or read:
+            continue
+        for node_id in peel.primary_node_ids:
+            primary_group[node_id] = taker.group_id
+        del buckets[gid]
+
+
+def _peels_a_cluster(
+    key: frozenset[str], members: set[str], environment: BuildEnvironment
+) -> bool:
+    """`key` determines some other member of the bucket, but not all of them."""
+    determined = sum(
+        build_fd_determines(environment, set(key), other, include_empty_grain=False)
+        for other in members - key
+    )
+    return 0 < determined < len(members - key)
+
+
 def _split_root_dimension_clusters(
     buckets: dict[str, GroupBucket],
     primary_group: dict[str, str],
@@ -969,20 +1017,17 @@ def _split_root_dimension_clusters(
             continue
         member_addrs = set(bucket.primary_members)
         # Candidate entity keys: a member that is a downstream grouping key (so a
-        # FINAL join column exists) and functionally determines another member.
+        # FINAL join column exists) and functionally determines another member,
+        # but not every other member: that key is the bucket's own row key (the
+        # fact's `id` determining its FK columns), and a peel keyed by it reads
+        # the same table again beside nothing at a coarser grain.
         # Exclude a key a finer-grain filter needs at fact grain: peeling it to
         # a single-key dim scan strands that filter (unplaceable condition).
         potential_candidates = [
             addr
             for addr in member_addrs
             if addr in grouping_keys
-            and any(
-                other != addr
-                and build_fd_determines(
-                    environment, {addr}, other, include_empty_grain=False
-                )
-                for other in member_addrs
-            )
+            and _peels_a_cluster(frozenset({addr}), member_addrs, environment)
         ]
         candidates = [
             addr
@@ -997,11 +1042,14 @@ def _split_root_dimension_clusters(
         ]
         # Composite dim keys: a downstream d0 grouping grain whose components all
         # live in this bucket. Members FD by the whole grain but by no single
-        # entity peel onto it.
+        # entity peel onto it. The same bound as above: a grain that determines
+        # every other member is the bucket's own row key.
         composite_grains = [
             grain
             for grain in d0_grouping_grains
-            if len(grain) > 1 and grain <= member_addrs
+            if len(grain) > 1
+            and grain <= member_addrs
+            and _peels_a_cluster(grain, member_addrs, environment)
         ]
         if not candidates and not composite_grains:
             continue
@@ -3264,6 +3312,7 @@ def build_group_graph(
         condition_arg_addresses,
         mandatory_list,
     )
+    _drop_unread_peels_the_domain_took(buckets, primary_group, concept_graph)
     _trace_buckets("region domain buckets added", buckets, primary_group)
     split_carried_only_row_streams(buckets, primary_group, keyspace, environment)
     d1_calc_roots_by_stage, d1_subgraph = _d1_calc_subgraph(

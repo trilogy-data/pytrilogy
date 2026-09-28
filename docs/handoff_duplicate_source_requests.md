@@ -146,7 +146,8 @@ graph and build steps only; the trace reads as if the group did nothing.
 whose result is discarded:
 - `root final-only` 10: a dim peel `root:∅:dim:<key>` built beside the
   extent peel `root:∅:extent:<key>` for the same key, FINAL reads the extent
-  peel (thelook q06/q07/adhoc03/adhoc04/q19, tpc_h adhoc04); the main
+  peel (thelook q06/q07/adhoc03/adhoc04/q19, tpc_h adhoc04) — FIXED, see
+  `docs/handoff_dim_peel_beside_region_domains.md`; the main
   `root:∅` when every member is consumed from `root_d1` only (tpc_ds q04/q74:
   a UNION of three fact tables joined to date, sourced for nothing); the
   `root:∅:existence:<key>` peel (q82, q82.1).
