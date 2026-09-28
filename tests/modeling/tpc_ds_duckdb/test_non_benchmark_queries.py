@@ -788,7 +788,7 @@ def test_two_merge_aggregate_compacts_inline_window_query():
     finally:
         CONFIG.optimizations.merge_aggregate = original
 
-    assert len(off_processed.ctes) == 9, off_generated
+    assert len(off_processed.ctes) == 8, off_generated
     assert len(on_processed.ctes) == 5
 
 

@@ -3,12 +3,18 @@
 Used wherever v4 applies a clause over an already-materialized producer: a
 rowset boundary, a multiselect's post-join WHERE, a nested select's HAVING.
 
-ROOT forks only the ROW branch (`root._resolve_root_condition_sources`), because
-it re-sources from datasources rather than consuming parents and so must widen
-the search to grain keys, seed a correlation identity, and carry ancestor atoms.
-Existence args are shared outright via `resolve_existence_sources`. Nothing
-outside the row branch should diverge between the two: a fix that belongs to
-one path usually belongs to both.
+Who sources an `x IN <set>` arg depends on who holds the set's lineage. A
+group-graph build (ROOT, the rowset boundary) sources only its ROW args: the
+graph materialized the set as groups, built them before the host, and the
+strategy builder wires that provider onto the host (`_wire_existence`). A clause
+applied outside any group graph (a multiselect's WHERE, a nested select's
+HAVING) has no such provider and sources the set itself
+(`resolve_existence_sources`).
+
+ROOT forks the ROW branch (`root._resolve_root_condition_sources`), because it
+re-sources from datasources rather than consuming parents and so must widen the
+search to grain keys, seed a correlation identity, and carry ancestor atoms.
+A fix that belongs to one row path usually belongs to both.
 """
 
 from trilogy.core.exceptions import UnresolvableQueryException
@@ -35,6 +41,22 @@ def resolve_condition_sources(
     depth: int,
 ) -> ConditionSources:
     """Resolve condition row inputs and existence inputs without mixing them."""
+    sources = resolve_row_sources(node, condition, environment, graph, history, depth)
+    resolve_existence_sources(
+        sources, condition, environment, graph, history, depth=depth + 1
+    )
+    return sources
+
+
+def resolve_row_sources(
+    node: StrategyNode,
+    condition: BuildWhereClause,
+    environment: BuildEnvironment,
+    graph: ReferenceGraph,
+    history: V4History,
+    depth: int,
+) -> ConditionSources:
+    """Source the row args `node` does not produce onto one feeder."""
     sources = ConditionSources()
     produced_addrs = {o.address for o in node.usable_outputs}
     row_args = unique(
@@ -62,10 +84,6 @@ def resolve_condition_sources(
             feeder.rebuild_cache()
         sources.row_concepts = row_args
         sources.row_parents.append(feeder)
-
-    resolve_existence_sources(
-        sources, condition, environment, graph, history, depth=depth + 1
-    )
     return sources
 
 
@@ -79,9 +97,8 @@ def resolve_existence_sources(
 ) -> None:
     """Source each existence (`x IN <subselect>`) arg group onto `sources`.
 
-    Shared verbatim by the generic and ROOT paths: an existence feeder is a
-    side-channel subselect, so nothing about how the consumer sourced its own
-    rows changes how the feeder is built. Only the search `depth` differs.
+    For a clause applied outside any group graph only: a group-graph build
+    reads the set from its graph (`strategy_builder._wire_existence`).
     """
     seen_existence_addrs: set[str] = set()
     seen_parent_ids: set[int] = set()

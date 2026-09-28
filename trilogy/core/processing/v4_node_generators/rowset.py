@@ -22,7 +22,7 @@ from trilogy.core.processing.node_generators.presence_probe import (
 from trilogy.core.processing.nodes import History, RowsetNode, StrategyNode
 from trilogy.core.processing.v4_helper.history import V4History
 
-from .condition_sources import resolve_and_inject_condition
+from .condition_sources import inject_condition_at_node, resolve_row_sources
 from .nested_select import plan_nested_select
 
 
@@ -550,7 +550,7 @@ def resolve_rowset(
     # predicate over the rowset's rows (a multiselect arm's per-arm filter over
     # the row-projection rowset it reads). The inner plan didn't apply it (it's
     # not part of the rowset's own select), so apply it here over the
-    # materialized rows.
+    # materialized rows. Its memberships are the group graph's to wire.
     if conditions is not None:
         condition_outputs = [
             h
@@ -560,14 +560,15 @@ def resolve_rowset(
             or h.address in hidden
             or h.pseudonyms
         ]
-        node = resolve_and_inject_condition(
+        sources = resolve_row_sources(
+            node, conditions, plan.environment, plan.graph, history, depth
+        )
+        node = inject_condition_at_node(
             node,
             conditions,
             condition_outputs,
-            environment=plan.environment,
-            graph=plan.graph,
-            history=history,
-            depth=depth,
+            plan.environment,
+            sources,
             grain=node.grain,
             hidden_concepts=hidden,
         )

@@ -222,34 +222,15 @@ def _flatten_arg_groups(
     return out
 
 
-def _group_existence_arg_groups(
-    attrs: dict[str, GroupAttrs],
-    environment: BuildEnvironment,
-    gid: str,
-) -> list[tuple[BuildConcept, ...]]:
-    """The SubselectComparison RHS arg groups this group filters against, from
-    both the WHERE atoms injected here and the intrinsic where of any FILTER
-    concept the group computes.
-
-    Each comparison's RHS stays one tuple: a composite membership renders
-    against a single subselect source, so the tuple, not the address, is the
-    unit of sourcing. Flattening would let a pair be fed from two independent
-    dimension groups (a cross product, not co-occurrence)."""
-    out: list[tuple[BuildConcept, ...]] = []
-    for atom in _atoms_at(attrs, gid):
-        out.extend(atom.existence_arguments)
-    out.extend(
-        _lineage_existence_arg_groups(
-            [environment.concepts.get(a) for a in attrs[gid].primary_members]
-        )
-    )
-    return _dedupe_arg_groups(out)
-
-
 def _lineage_existence_arg_groups(
     concepts: Sequence[BuildConcept | None],
 ) -> list[tuple[BuildConcept, ...]]:
     """Existence arg groups reachable through the lineage of `concepts`.
+
+    Each comparison's RHS stays one tuple: a composite membership renders
+    against a single subselect source, so the tuple, not the address, is the
+    unit of sourcing. Flattening would let a pair be fed from two independent
+    dimension groups (a cross product, not co-occurrence).
 
     A FILTER with a semijoin where is often inlined into the BASIC concept
     that wraps it rather than built as its own node, so the existence arg can
@@ -284,12 +265,15 @@ def _deep_copy_node(node: StrategyNode) -> StrategyNode:
 
 class _CleanFeederCache:
     """Builds a standalone source for an existence (`IN <subselect>`) arg group,
-    independent of the already-built strategy tree.
+    independent of the already-built strategy tree: the one nested planner for
+    a set the group graph holds no built provider for.
 
-    When the only built group producing an existence concept is a lineage
-    descendant of its own consumer (a self-referential membership whose filter
-    group reads the membership-conditioned ROOT), wiring that built node as the
-    subselect feeder forms a cycle. The set Y in `X in Y` is by definition the
+    The group graph materializes a set's lineage as groups and orders them
+    before the host, so the provider is normally built. It is not when the
+    only group producing the set is a lineage descendant of its own consumer
+    (a self-referential membership whose filter group reads the
+    membership-conditioned ROOT: wiring it would form a cycle), or when the
+    host is a FINAL-time re-source. The set Y in `X in Y` is by definition the
     unfiltered set, so it is re-sourced from its own lineage (no outer
     conditions) once and shared. Cached per arg group; returns independent
     copies so each consumer owns its parent pointer.
@@ -360,11 +344,16 @@ def _covering_built_node(
     addresses: set[str],
     built: dict[str, StrategyNode],
     skip: StrategyNode | None,
+    preferred: Sequence[str] = (),
 ) -> StrategyNode | None:
-    """The first built group able to supply EVERY address of an arg group. A
-    composite membership renders as one subselect, so a node covering only part
-    of the tuple is not a candidate."""
-    for source_node in built.values():
+    """The first built group able to supply EVERY address of an arg group,
+    the host's existence-edge predecessors first. A composite membership
+    renders as one subselect, so a node covering only part of the tuple is
+    not a candidate."""
+    ordered = [gid for gid in preferred if gid in built]
+    ordered += [gid for gid in built if gid not in preferred]
+    for gid in ordered:
+        source_node = built[gid]
         if skip is not None and source_node is skip:
             continue
         if addresses <= {o.address for o in source_node.output_concepts}:
@@ -377,19 +366,20 @@ def _existence_parents_for(
     built: dict[str, StrategyNode],
     skip: StrategyNode | None = None,
     feeder_cache: "_CleanFeederCache | None" = None,
+    preferred: Sequence[str] = (),
 ) -> list[StrategyNode]:
     existence_parents: list[StrategyNode] = []
     seen_parents: set[int] = set()
     for group in arg_groups:
         addresses = {concept.address for concept in group}
-        source_node = _covering_built_node(addresses, built, skip)
+        source_node = _covering_built_node(addresses, built, skip, preferred)
         if source_node is None:
-            # A tuple whose components only exist on separate built groups (each
-            # dimension enriched independently) has no single subselect source.
-            # Build the co-occurrence island from the whole tuple instead of
-            # wiring the per-component groups, which would test a dimension
-            # cross product rather than pairs present on the fact.
-            if len(group) > 1 and feeder_cache is not None:
+            # No built provider: a tuple whose components only exist on
+            # separate built groups (each dimension enriched independently;
+            # wiring them would test a dimension cross product rather than
+            # pairs present on the fact), or a set the graph never built for
+            # this host. The standalone feeder is the source.
+            if feeder_cache is not None:
                 feeder = feeder_cache.get(group)
                 if feeder is not None:
                     existence_parents.append(feeder)
@@ -411,10 +401,13 @@ def _existence_parents_for(
                 continue
         if id(source_node) not in seen_parents:
             seen_parents.add(id(source_node))
-            if is_cyclic:
-                existence_parents.append(_deep_copy_node(source_node))
-            else:
-                existence_parents.append(source_node.copy())
+            feeder = _deep_copy_node(source_node) if is_cyclic else source_node.copy()
+            # Side-channel-only: slice to the subselect's columns so a shared
+            # extra output can't promote the feeder to a row-join candidate.
+            sliced = [o for o in feeder.output_concepts if o.address in addresses]
+            if len(sliced) < len(feeder.output_concepts):
+                feeder.set_output_concepts(sliced)
+            existence_parents.append(feeder)
     return existence_parents
 
 
@@ -491,6 +484,7 @@ def _attach_existence_to_node(
     arg_groups: list[tuple[BuildConcept, ...]],
     built: dict[str, StrategyNode],
     feeder_cache: "_CleanFeederCache | None" = None,
+    preferred: Sequence[str] = (),
 ) -> None:
     """Wire the SubselectComparison right sides as `existence_concepts` plus
     extra parents; the SQL renderer emits them as a subselect lookup against
@@ -508,7 +502,7 @@ def _attach_existence_to_node(
     node.parents = list(node.parents) + [
         parent
         for parent in _existence_parents_for(
-            arg_groups, built, skip=node, feeder_cache=feeder_cache
+            arg_groups, built, skip=node, feeder_cache=feeder_cache, preferred=preferred
         )
         if any(
             output.address not in existing_parent_outputs
@@ -518,25 +512,26 @@ def _attach_existence_to_node(
     node.rebuild_cache()
 
 
-def _attach_existence_sources(
-    attrs: dict[str, GroupAttrs],
+def _wire_existence(
+    node: StrategyNode,
     built: dict[str, StrategyNode],
-    condition_hosts: dict[str, StrategyNode],
-    environment: BuildEnvironment,
-    feeder_cache: "_CleanFeederCache | None" = None,
+    feeder_cache: "_CleanFeederCache | None",
+    preferred: Sequence[str] = (),
 ) -> None:
-    for gid, host in condition_hosts.items():
+    """Wire the subselect feeder of every membership hosted in `node`'s
+    subtree. Generators host an `IN <set>` atom but never plan the set: the
+    group graph holds its lineage and builds it before the host, so this runs
+    as soon as a node exists and before any consumer copies it. Idempotent: a
+    node already wired (a shared parent, a nested plan's own tree) is left
+    alone."""
+    for current in _strategy_nodes(node):
         _attach_existence_to_node(
-            host,
-            _group_existence_arg_groups(attrs, environment, gid),
+            current,
+            _node_existence_arg_groups(current),
             built,
             feeder_cache,
+            preferred,
         )
-    for root in built.values():
-        for node in _strategy_nodes(root):
-            _attach_existence_to_node(
-                node, _node_existence_arg_groups(node), built, feeder_cache
-            )
 
 
 def _accumulated_atoms_above(
@@ -653,6 +648,7 @@ def _parent_nodes_for(
     *,
     needed: set[str],
     root_requests: dict[str, RootRequest],
+    feeder_cache: "_CleanFeederCache | None" = None,
 ) -> list[ParentBuild]:
     """Look up the already-built StrategyNodes for `gid`'s lineage
     predecessors. Topological order guarantees they exist (or that the
@@ -691,9 +687,9 @@ def _parent_nodes_for(
         ):
             continue
         # Existence-kind edges feed a subselect, not the row stream;
-        # `_attach_existence_sources` wires them as side-channel parents post-
-        # build. Including them here would put them in JOIN dedup and
-        # mistakenly merge their row stream into this group's FROM.
+        # `_wire_existence` wires them as side-channel parents post-build.
+        # Including them here would put them in JOIN dedup and mistakenly
+        # merge their row stream into this group's FROM.
         if edge_kind(group_edges, pgid, gid) == EdgeKind.EXISTENCE:
             continue
         node = built.get(pgid)
@@ -875,6 +871,7 @@ def _parent_nodes_for(
             or _leaf_datasource_ids(sliced) < _leaf_datasource_ids(node)
         ):
             return node.copy()
+        _wire_existence(sliced, built, feeder_cache)
         return sliced
 
     parents: list[ParentBuild] = []
@@ -3904,10 +3901,8 @@ def _assemble_final_node(
             for concept in node.output_concepts
             if concept.address in row_arg_addrs
         ]
-        # A membership (`x in <set>`) deferred onto FINAL needs its subselect
-        # feeder wired here: `_attach_existence_sources` runs before assembly
-        # and only sees the built groups, never this FINAL node, so the IN-RHS
-        # concept would otherwise render against a dangling CTE.
+        # A membership (`x in <set>`) deferred onto FINAL is hosted on a merge
+        # built here, so its subselect feeder is wired here too.
         ex_groups = _condition_existence_arg_groups(final_conditions.conditional)
         ex_concepts = _flatten_arg_groups(ex_groups)
         ex_parents = (
@@ -4575,8 +4570,8 @@ def build_strategy_node(
     from trilogy.core.processing.v4_node_generators import build_node  # cycle
 
     built: dict[str, StrategyNode] = {}
-    condition_hosts: dict[str, StrategyNode] = {}
     root_requests: dict[str, RootRequest] = {}
+    feeder_cache = _CleanFeederCache(environment, g, history)
     ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
 
     for gid in _topological_order(group_graph, group_edges):
@@ -4728,6 +4723,7 @@ def build_strategy_node(
             history,
             needed=needed,
             root_requests=root_requests,
+            feeder_cache=feeder_cache,
         )
         parent_group_ids = {parent.group_id for parent in parent_builds}
         join_key_addresses = _input_contract_join_keys(a, parent_group_ids)
@@ -4830,16 +4826,10 @@ def build_strategy_node(
         # in a SelectNode does the WHERE first; the GroupNode then aggregates
         # the filtered rows with a clean GROUP BY at the intended grain.
         condition_for_generator = injected
-        # Track whichever node ultimately owns the injected conditions. The
-        # SubselectComparison (IN <subselect>) renderer reads existence
-        # sources off the CTE that emits the WHERE; attaching the existence
-        # parent to a different node leaves the IN's right-hand side with no
-        # source CTE.
         # WINDOW gets the same peel: WindowNode has no `conditions` slot (its
         # generator folds them into `preexisting_conditions`, silently dropping
         # the filter), and WHERE-before-window is exactly the required
         # semantics: the window computes over the filtered rows.
-        condition_host_node: StrategyNode | None = None
         if (
             injected is not None
             and derivation in (*_AGGREGATING_DERIVATIONS, Derivation.WINDOW)
@@ -4860,7 +4850,6 @@ def build_strategy_node(
             )
             parents = [wrapper]
             condition_for_generator = None
-            condition_host_node = wrapper
         if derivation == Derivation.AGGREGATE and parents:
             parents = _project_basic_aggregate_inputs(
                 outputs,
@@ -5058,19 +5047,18 @@ def build_strategy_node(
         # above them has no key to pair on (union-TVF arm outputs split into a
         # cross join).
         node = _elide_single_parent_passthrough(node)
-        # Attach existence parents+concepts for any SubselectComparison
-        # atoms at this group. Done post-build so the generators stay
-        # ignorant of existence handling; the host node just learns it
-        # has extra side-channel parents whose concepts render as
-        # subselects rather than joins.
-        #
-        # The existence wiring must land on the node that actually emits
-        # the WHERE referencing the IN-RHS concept. For aggregating
-        # derivations we peeled the conditions off onto a SelectNode
-        # wrapper (above); that wrapper is the condition host, not the
-        # outer GroupNode whose `conditions=None`.
-        condition_hosts[gid] = (
-            condition_host_node if condition_host_node is not None else node
+        # The subtree walk lands the wiring on whichever node emits the WHERE
+        # referencing the IN-RHS concept (the peeled SelectNode wrapper for an
+        # aggregating derivation, not the GroupNode above it).
+        _wire_existence(
+            node,
+            built,
+            feeder_cache,
+            preferred=[
+                pgid
+                for pgid in group_graph.predecessors(gid)
+                if edge_kind(group_edges, pgid, gid) == EdgeKind.EXISTENCE
+            ],
         )
         built[gid] = node
 
@@ -5084,9 +5072,7 @@ def build_strategy_node(
     )
     if not built:
         return None
-    feeder_cache = _CleanFeederCache(environment, g, history)
     plan_trace.set_context("FINAL")
-    _attach_existence_sources(attrs, built, condition_hosts, environment, feeder_cache)
     final = _assemble_final_node(
         group_graph,
         attrs,
@@ -5120,10 +5106,8 @@ def build_strategy_node(
             # Unnest-of-literal / constant leaves output only derived concepts
             # and are left alone.
             return None
-        for node in _strategy_nodes(final):
-            _attach_existence_to_node(
-                node, _node_existence_arg_groups(node), built, feeder_cache
-            )
+        # FINAL's own re-sources host their memberships unwired until here.
+        _wire_existence(final, built, feeder_cache)
     return final
 
 

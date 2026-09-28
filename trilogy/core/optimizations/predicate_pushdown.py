@@ -1,5 +1,6 @@
 from trilogy.core.enums import (
     BooleanOperator,
+    Derivation,
     JoinType,
     SetOperator,
     SourceType,
@@ -37,6 +38,15 @@ from trilogy.core.processing.condition_utility import (
 )
 from trilogy.core.processing.join_resolution import OUTER_JOIN_TYPES
 from trilogy.utility import unique
+
+_ROW_RESHAPING_SOURCE_TYPES = (
+    SourceType.GROUP,
+    SourceType.WINDOW,
+    SourceType.UNNEST,
+    SourceType.RECURSIVE,
+    SourceType.SUBSELECT,
+    SourceType.UNION,
+)
 
 
 def _transitively_depends_on(node: CTE | UnionCTE, target_name: str) -> bool:
@@ -518,6 +528,22 @@ class PredicatePushdown(OptimizationRule):
 
         if not row_conditions or not materialized:
             return False
+        # A row scalar the parent computes itself (a BASIC over its own row,
+        # `is_returned <- return_id is not null`) is a column of the row the
+        # WHERE tests; the renderer inlines its expression there as the SELECT
+        # does. Only in a plain projection: a recursive member, group, window,
+        # unnest, subselect or union computes it over rows the WHERE would
+        # change. Aggregates and windows are not row scalars and stay above.
+        if parent_cte.source.source_type not in _ROW_RESHAPING_SOURCE_TYPES and (
+            is_scalar_condition(candidate, materialized=materialized)
+        ):
+            materialized |= {
+                column.address
+                for column in parent_cte.output_columns
+                if column.derivation == Derivation.BASIC
+                and column.address not in materialized
+                and not gather_windows(column.lineage, materialized)
+            }
         output_addresses = {x.address for x in parent_cte.output_columns}
         # An existence concept the parent itself produces cannot be its own
         # external IN target.

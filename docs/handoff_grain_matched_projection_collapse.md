@@ -2,6 +2,10 @@
 
 ## Status: INVESTIGATED 2026-09-28, no change made. Pick up AFTER the current round.
 
+A sibling case LANDED the same day (see "Filter renames", at the end): a
+CTE whose only novel output is a filter concept `x ? cond` rendered bare.
+The grain-matched aggregate case below is still open.
+
 Another session is changing the FINAL merge's GROUP BY
 (`rows_unique_at_outputs` in `grain_utility.py`, `merge_node.py`,
 `tests/engine/test_projected_row_identity.py`); it was uncommitted when this
@@ -176,6 +180,31 @@ Recommend 1, with the log line.
 4. `local_scripts/plan_debugger/trace_query.py` on adhoc04: the CTE step should
    show `questionable` as a tombstone ("collapse_single_parent ·
    CollapseSingleParent · merged into cooperative").
+
+## Filter renames (LANDED 2026-09-28)
+
+The existence-lineage change (`docs/handoff_existence_lineage_built_twice.md`)
+made the group graph's built chain the semijoin feeder: a FilterNode
+`x ? cond` over a conditioned scan. Predicate pushdown moves `cond` onto the
+scan and `PredicatePushdownRemove` strips it from the FilterNode's CTE,
+leaving `SELECT "scan"."x" as "x_filtered" FROM scan`: a rename-only CTE
+(the renderer emits a filter's content bare once its parents guarantee the
+predicate, `_filter_guaranteed_by_parents`). `collapse_single_parent.after_pushdown`
+classified it PASSTHROUGH and then declined with "renders a column absent
+from parent": `rename_reference` knew rowset and alias renames but not a
+filter item. It now returns the filter's content when that is a concept;
+`consumed_parent_column` remains the proof that the child rendered it bare.
+`rebind_rename_to_consumed` deliberately does NOT pin a filter item's
+content: the consumed column can be the parent's own MAX-collapsed twin of
+the same filter, and pinning renders `CASE WHEN cond THEN max(CASE ...)`
+(nested aggregates on tpc_h q21, tpc_ds q97, the q16 shape tests).
+
+The companion gap was in `PredicatePushdown._check_parent`: a row scalar the
+parent computes itself (`is_returned <- return_id is not null`, a BASIC over
+its own row) was not "materialized" and so a `WHERE is_returned = True`
+could not move onto it, which left tpc_ds q16's returns join LEFT instead of
+INNER. Locally computed BASIC outputs with no window in their lineage now
+count when the candidate is scalar against the parent.
 
 ## Related
 
