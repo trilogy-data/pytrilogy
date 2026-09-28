@@ -689,9 +689,14 @@ def _nullable_join(
         if host is not None:
             return JoinType.LEFT_OUTER if host == left else JoinType.RIGHT_OUTER
         # A value NULL on one side (a guest order's address, grouped) names a
-        # real row; the other side's padding names nothing. Keep the row.
+        # real row; the other side's padding names nothing. Keep the row. An
+        # authored axis declines this like every other direction inference: the
+        # relation declares the pairing, so a NULL a side happens to carry on
+        # the declared key is not this rule's to read.
         left_values = bool(keys & left_facts.extent_nullables)
-        if left_values != bool(keys & right_facts.extent_nullables):
+        if left_values != bool(
+            keys & right_facts.extent_nullables
+        ) and not facts.authored(keys):
             return JoinType.LEFT_OUTER if left_values else JoinType.RIGHT_OUTER
         # Padding for different spans never pairs (`get_node_joins` drops the
         # null-safe equality), so INNER would shed both extension families.
@@ -1861,10 +1866,9 @@ def get_node_joins(
                     value_keys.add(node)
             if node in padded_nodes:
                 rollup_keys.add(node)
-        # Raw addresses against canonical nodes: an aliased key (`d` for
-        # `item_desc`) never counts as extent-null here. Matching through
-        # canon_node restates TPC-DS q64's pushed atoms at its FINAL; left as is.
-        extent_addrs = extent_null_addresses(datasource, extent_memo)
+        extent_addrs = {
+            canon_node(a) for a in extent_null_addresses(datasource, extent_memo)
+        }
         guest_addrs = {
             canon_node(a) for a in guest_padded_addresses(datasource, guest_memo)
         }
@@ -1888,11 +1892,7 @@ def get_node_joins(
             partials=frozenset(partial_keys),
             nullables=frozenset(nullable_keys),
             value_nullables=frozenset(value_keys),
-            extent_nullables=frozenset(
-                node
-                for node in nullable_keys
-                if node.removeprefix("c~") in extent_addrs
-            ),
+            extent_nullables=frozenset(nullable_keys & extent_addrs),
             guest_padded=frozenset(nullable_keys & guest_addrs),
             rollup_padded=frozenset(rollup_keys),
             grain=frozenset(canon_node(a) for a in datasource.grain.components),

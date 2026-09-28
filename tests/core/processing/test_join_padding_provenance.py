@@ -2,6 +2,8 @@
 join-analysis padding; the optimizer's value-set upgrade reads it to tell
 shared padding (one source's rows arriving twice) from unrelated NULLs."""
 
+from dataclasses import fields
+
 from trilogy.core.enums import JoinType, Modifier, Purpose, SourceType
 from trilogy.core.models.build import (
     BuildColumnAssignment,
@@ -107,9 +109,14 @@ def _typed(padding: dict[str, dict[str, frozenset[str]]]) -> JoinType:
     return _join({_AXIS}, nullables=_BOTH_NULLABLE, span_padding=padding)
 
 
-def _join(keys: set[str], extent_free_keys=frozenset(), **maps) -> JoinType:
-    facts = JoinFacts(sides=_sides(**maps), extent_free_keys=extent_free_keys)
-    return get_join_type(_LEFT, _RIGHT, keys, facts)
+_MERGE_FIELDS = {f.name for f in fields(JoinFacts)} - {"sides"}
+
+
+def _join(keys: set[str], **facts) -> JoinType:
+    """Merge-wide `JoinFacts` fields by name, everything else a per-side map."""
+    merge = {k: v for k, v in facts.items() if k in _MERGE_FIELDS}
+    sides = _sides(**{k: v for k, v in facts.items() if k not in _MERGE_FIELDS})
+    return get_join_type(_LEFT, _RIGHT, keys, JoinFacts(sides=sides, **merge))
 
 
 def test_padding_for_different_spans_never_pairs():
@@ -137,6 +144,26 @@ def test_unattributed_padding_keeps_its_typing():
     sides = _sides(span_padding=padding)
     assert not _pads_for_different_members(sides[_LEFT], sides[_RIGHT], {_AXIS})
     assert _typed(padding) == JoinType.INNER
+
+
+def test_an_authored_axis_keeps_its_typing_over_an_extent_null():
+    """An extent NULL one side carries on the merge axis normally preserves
+    that side (its NULL names a row, the other side's padding names nothing).
+    On an AUTHORED axis (a `subset join`'s declared key) the relation owns the
+    pairing, so the rule stands down like every other direction inference --
+    q64's `subset join catalog_item_agg.item_id = ss.item.id`, where the fact
+    stream's own padding once flipped the declared join to LEFT_OUTER and made
+    the FINAL restate every pushed atom over five extra projected columns."""
+    asymmetric = {
+        "nullables": {_LEFT: {_AXIS}, _RIGHT: {_AXIS}},
+        "extent_nullables": {_LEFT: {_AXIS}},
+    }
+    assert _join({_AXIS}, **asymmetric) == JoinType.LEFT_OUTER
+    for owner in ("scoped_keys", "anchor_keys", "authored_join_keys"):
+        assert (
+            _join({_AXIS}, **{owner: frozenset({_AXIS})}, **asymmetric)
+            == JoinType.INNER
+        ), owner
 
 
 USER, ORDER, CANON = "local.user_id", "local.order_id", "other.user_id"
