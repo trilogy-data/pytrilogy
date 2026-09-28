@@ -35,6 +35,7 @@ from trilogy.core.processing.grain_utility import (
     narrow_directional_join_types,
     narrow_join_types,
     non_null_proofs,
+    rows_unique_at_outputs,
 )
 from trilogy.core.processing.join_resolution import (
     compute_outer_null_status,
@@ -679,11 +680,11 @@ class MergeNode(StrategyNode):
         for join in joins:
             if isinstance(join, BaseJoin) and join.join_type == JoinType.FULL:
                 full_join_concepts += join.input_concepts
+        joined = calculate_joined_pregrain(
+            join_candidates, joins, grain, self.environment
+        )
         pregrain = BuildGrain.from_concepts(
-            calculate_joined_pregrain(
-                join_candidates, joins, grain, self.environment
-            ).components,
-            environment=self.environment,
+            joined.components, environment=self.environment
         )
         pregrain += condition_key_grain(self.conditions, self.environment)
         anti_grain = anti_join_preserved_grain(final_datasets, joins, self.conditions)
@@ -696,6 +697,7 @@ class MergeNode(StrategyNode):
         condition_key_requires_group = has_condition_key_outside_grain(
             self.conditions, grain, self.environment
         )
+        grain_forced = False
 
         if self.force_group is True:
             # A node producing rowset outputs at a grain its parents satisfy
@@ -723,6 +725,7 @@ class MergeNode(StrategyNode):
                 f"{self.logging_prefix}{LOGGER_PREFIX} no parents include full grain {grain} and pregrain {pregrain} does not match, assume must group to grain. Have {[str(d.grain) for d in final_datasets]}"
             )
             force_group = True
+            grain_forced = True
         else:
             force_group = None
         # A regroup is an identity when the joined rows are already unique at
@@ -815,6 +818,33 @@ class MergeNode(StrategyNode):
         nullable_concepts = find_nullable_concepts(
             source_map=source_map, joins=joins, datasources=final_datasets
         )
+        # A grain the contributors pinned is the domains' spans alone on a
+        # plain row merge (the fact's `id` is nobody's projection grain), and
+        # the pregrain folds `user.id` under the `id` a FULL pads; the rows
+        # themselves decide whether a group would collapse anything.
+        if (
+            grain_forced
+            and force_group
+            and rows_unique_at_outputs(
+                joined,
+                self.output_concepts,
+                {
+                    equivalent
+                    for address in nullable_concepts
+                    for equivalent in self.environment.concepts[
+                        address
+                    ].equivalent_addresses
+                },
+                self.environment,
+            )
+        ):
+            logger.info(
+                f"{self.logging_prefix}{LOGGER_PREFIX} joined rows {joined} are unique at the outputs, no group required"
+            )
+            force_group = None
+            grain = BuildGrain.from_concepts(
+                self.output_concepts, environment=self.environment
+            )
         rollup_concepts = unique(
             self.rollup_concepts
             + [
