@@ -24,6 +24,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing import plan_trace
 from trilogy.core.processing.aggregate_rollup import (
     _is_additive_aggregate,
     filter_finer_row_args,
@@ -461,6 +462,8 @@ def _network_source(
         request.deferred_conditions,
     )
     result = _memoized_search(network, request.history)
+    if plan_trace.active():
+        _trace_search(network, result)
     if result.truncated:
         _report_truncation(network, result)
     if result.split:
@@ -1717,6 +1720,82 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
     are split but the graph can prove connector concepts, source each expanded
     component directly and merge them under a v4 node.
     """
+    if not plan_trace.active():
+        return _plan_source(request)
+    node = _plan_source(request)
+    plan_trace.record(
+        "source",
+        f"source: {', '.join(c.address for c in request.outputs)}",
+        request={
+            "outputs": plan_trace.addresses(request.outputs),
+            "conditions": str(request.conditions) if request.conditions else None,
+            "deferred_conditions": (
+                str(request.deferred_conditions)
+                if request.deferred_conditions
+                else None
+            ),
+            "require_full": request.require_full,
+            "complete_partials": request.complete_partials,
+            "depth": request.depth,
+        },
+        span_scope=plan_trace.span_scope(request.environment.span_scope),
+        node=plan_trace.strategy_node(node),
+    )
+    return node
+
+
+def _trace_search(network: SourceNetwork, result: SearchResult) -> None:
+    solution = result.solution
+    plan_trace.record(
+        "source",
+        f"network search: {', '.join(network.terminals)}",
+        terminals=list(network.terminals),
+        candidates={
+            name: {
+                "datasource": (
+                    c.datasource.identifier
+                    if isinstance(c.datasource, BuildDatasource)
+                    else None
+                ),
+                "condition": c.condition.value,
+                "is_union": c.is_union,
+                "grain": sorted(c.grain),
+                "bindings": {
+                    address: {
+                        "strength": b.strength.value,
+                        "stored": b.stored,
+                        "injected": b.injected,
+                    }
+                    for address, b in sorted(c.bindings.items())
+                },
+            }
+            for name, c in sorted(network.candidates.items())
+        },
+        solution=(
+            {
+                "sources": list(solution.sources),
+                "assignments": {
+                    k: sorted(v) for k, v in sorted(solution.assignments.items())
+                },
+                "join_keys": {
+                    f"{left} ~ {right}": sorted(keys)
+                    for (left, right), keys in sorted(solution.join_keys.items())
+                },
+                "partial_terminals": sorted(solution.partial_terminals),
+                "completions": sorted(solution.completions),
+                "connectors": sorted(solution.connectors),
+                "cost": plan_trace.jsonable(solution.cost),
+            }
+            if solution is not None
+            else None
+        ),
+        unreachable=sorted(result.unreachable),
+        split=sorted(result.split),
+        limit=result.limit.value if result.limit else None,
+    )
+
+
+def _plan_source(request: SourceRequest) -> StrategyNode | None:
     axis = _plan_coalescing_axis(request)
     if axis is not None:
         return axis

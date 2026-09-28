@@ -47,6 +47,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import BaseJoin
+from trilogy.core.processing import plan_trace
 from trilogy.core.processing.aggregate_rollup import _is_additive_aggregate
 from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
@@ -4928,6 +4929,22 @@ def build_strategy_node(
             f"parents={[type(p).__name__ for p in parents]} "
             f"-> {type(node).__name__ if node else None}"
         )
+        if plan_trace.active():
+            plan_trace.record(
+                "node",
+                f"built {gid}",
+                group=gid,
+                derivation=derivation.value,
+                attrs=plan_trace.jsonable(a),
+                outputs=plan_trace.addresses(outputs),
+                needed=sorted(needed),
+                atoms=[str(atom) for atom in atoms],
+                preexisting=str(preexisting) if preexisting else None,
+                parent_groups=sorted(parent_group_ids),
+                join_keys=sorted(join_key_addresses),
+                span_scope=plan_trace.span_scope(environment.span_scope),
+                node=plan_trace.strategy_node(node),
+            )
         if node is None:
             continue
         if a.extent_spans:
@@ -4992,6 +5009,15 @@ def build_strategy_node(
         history,
         feeder_cache=feeder_cache,
     )
+    if plan_trace.active():
+        plan_trace.record(
+            "final",
+            "FINAL assembled",
+            contract=plan_trace.jsonable(attrs[FINAL_NODE_ID].final_contract),
+            extent_ownership=plan_trace.jsonable(ownership),
+            built={gid: repr(node) for gid, node in built.items()},
+            node=plan_trace.strategy_node(final),
+        )
     if final is not None:
         final = _elide_passthrough_tree(final)
         if _has_unsourced_leaf(final):

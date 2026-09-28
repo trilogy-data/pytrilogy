@@ -1,0 +1,12 @@
+# The same model read through a rowset: the body is planned as its own plan
+# (a nested plan in the trace) and the reader sees the rowset as a keyspace
+# witness (a rowset the plan reads is a source of its keyspace).
+
+import customers_orders as m;
+
+rowset by_customer <- select m.customer_id, m.name, count(m.order_id) as n;
+
+select
+    by_customer.name,
+    by_customer.n
+order by by_customer.name asc;

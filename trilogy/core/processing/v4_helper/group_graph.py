@@ -34,6 +34,7 @@ from trilogy.core.models.build_environment import (
     BuildEnvironment,
     resolve_rowset_content_address,
 )
+from trilogy.core.processing import plan_trace
 from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
 
 from .concept_graph import (
@@ -1354,6 +1355,19 @@ def _inject_conditions(
         staged_conditions,
         keyspace,
     )
+    if plan_trace.active():
+        plan_trace.record(
+            "grouping",
+            "condition placements",
+            placements=[
+                {
+                    "atom": str(p.atom),
+                    "groups": list(p.group_ids),
+                    "reason": p.reason.value,
+                }
+                for p in placements
+            ],
+        )
     for placement in placements:
         for gid in placement.group_ids:
             if placement.atom not in attrs[gid].condition_atoms:
@@ -3222,6 +3236,7 @@ def build_group_graph(
     _fold_rollup_key_dims(
         concept_graph, concept_edges, concept_attrs, primary_group, buckets
     )
+    _trace_buckets("buckets assigned", buckets, primary_group)
     projected_scalar_root_args = _projected_scalar_root_args(
         mandatory_list, _grouping_keys(buckets)
     )
@@ -3239,6 +3254,7 @@ def build_group_graph(
         _finer_filter_grains(conditions),
         demanded_spans,
     )
+    _trace_buckets("root dimension clusters split", buckets, primary_group)
     add_region_domain_buckets(
         buckets,
         concept_attrs,
@@ -3247,6 +3263,7 @@ def build_group_graph(
         condition_arg_addresses,
         mandatory_list,
     )
+    _trace_buckets("region domain buckets added", buckets, primary_group)
     split_carried_only_row_streams(buckets, primary_group, keyspace, environment)
     d1_calc_roots_by_stage, d1_subgraph = _d1_calc_subgraph(
         concept_graph, concept_edges, concept_attrs, environment
@@ -3264,6 +3281,7 @@ def build_group_graph(
         protected_addresses=output_addresses | condition_arg_addresses,
     )
     _attach_secondary_members(concept_graph, concept_attrs, buckets)
+    _trace_buckets("d1 roots and secondary members attached", buckets, primary_group)
     group_graph, attrs, group_edges = _materialize_group_graph(
         concept_graph,
         concept_edges,
@@ -3277,6 +3295,7 @@ def build_group_graph(
     feed_region_domains_to_present_scalars(
         group_graph, group_edges, attrs, keyspace, environment
     )
+    _trace_group_graph("group graph materialized", group_graph, group_edges, attrs)
     # FINAL must exist before injection so a cross-arm post-merge filter can
     # land on it (no pre-final group can host one); `_color_phases` then colors
     # its merge edges along with the rest.
@@ -3316,6 +3335,12 @@ def build_group_graph(
     )
     _regraft_group_sources(
         group_graph, group_edges, attrs, buckets, concept_attrs, environment
+    )
+    _trace_group_graph(
+        "FINAL added, concept sets computed, sources regrafted",
+        group_graph,
+        group_edges,
+        attrs,
     )
     condition_group_ids = _inject_conditions(
         group_graph,
@@ -3383,7 +3408,39 @@ def build_group_graph(
     attrs[FINAL_NODE_ID].extent_ownership = elect_extent_owners(
         group_graph, attrs, environment, keyspace
     )
+    _trace_group_graph(
+        "conditions injected, phases colored, contracts and extent owners set",
+        group_graph,
+        group_edges,
+        attrs,
+    )
     return group_graph, group_edges, attrs
+
+
+def _trace_buckets(
+    title: str, buckets: dict[str, GroupBucket], primary_group: dict[str, str]
+) -> None:
+    if plan_trace.active():
+        plan_trace.record(
+            "grouping",
+            title,
+            buckets={gid: plan_trace.jsonable(b) for gid, b in buckets.items()},
+            primary_group=dict(primary_group),
+        )
+
+
+def _trace_group_graph(
+    title: str,
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+) -> None:
+    if plan_trace.active():
+        plan_trace.record(
+            "group_graph",
+            title,
+            graph=plan_trace.graph(group_graph, group_edges, attrs),
+        )
 
 
 def _lineage_predecessors(
