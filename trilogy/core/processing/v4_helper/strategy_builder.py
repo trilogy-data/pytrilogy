@@ -45,7 +45,7 @@ from trilogy.core.models.build import (
     LooseBuildConceptList,
     nonstandard_grouping_lineage,
 )
-from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.build_environment import BuildEnvironment, SpanScope
 from trilogy.core.models.execute import BaseJoin
 from trilogy.core.processing import plan_trace
 from trilogy.core.processing.aggregate_rollup import _is_additive_aggregate
@@ -118,6 +118,31 @@ _AGGREGATING_DERIVATIONS = {
 class ParentBuild:
     group_id: str
     node: StrategyNode
+
+
+@dataclass(frozen=True)
+class RootRequest:
+    """The question a ROOT group's node answers: what the build asked for, the
+    WHERE it asked under, the scope and the parents it was built over. Two
+    equal requests have one answer, so a group, a consumer slice or the FINAL
+    asking it again reads the built node instead of planning it again."""
+
+    outputs: frozenset[str]
+    conditions: BuildWhereClause | None
+    scope: SpanScope
+    parents: frozenset[str] = frozenset()
+
+    def answered_by(self, node: StrategyNode, asked: "RootRequest") -> bool:
+        """Whether `node`, built for `asked`, already answers this request.
+        A column the node binds partially is not an answer: asked for outright,
+        the request completes it from another source."""
+        partial = {c.address for c in node.partial_concepts}
+        return (
+            self.conditions == asked.conditions
+            and self.scope == asked.scope
+            and self.parents == asked.parents
+            and self.outputs <= {c.address for c in node.output_concepts} - partial
+        )
 
 
 def _concept_at(environment: BuildEnvironment, address: str) -> BuildConcept | None:
@@ -627,6 +652,7 @@ def _parent_nodes_for(
     history: History,
     *,
     needed: set[str],
+    root_requests: dict[str, RootRequest],
 ) -> list[ParentBuild]:
     """Look up the already-built StrategyNodes for `gid`'s lineage
     predecessors. Topological order guarantees they exist (or that the
@@ -808,6 +834,16 @@ def _parent_nodes_for(
         }
         if not (carries_wrong_side or _strict_leaf_subset_binds(node, slice_demand)):
             return node.copy()
+        # A conditioned scan outputs its WHERE's arguments beyond what it was
+        # asked for, so a slice of just the asked-for columns is the parent's
+        # own request: it prunes nothing (`_strict_leaf_subset_binds` counts
+        # binders, not join paths).
+        conditions = _wrap_atoms(attrs[pgid].condition_atoms)
+        request = RootRequest(
+            frozenset(slice_addresses), conditions, environment.span_scope
+        )
+        if root_requests.get(pgid) == request:
+            return node.copy()
         outputs = [
             c
             for address in sorted(slice_addresses)
@@ -818,7 +854,7 @@ def _parent_nodes_for(
             outputs=outputs,
             parents=[],
             environment=environment,
-            conditions=_wrap_atoms(attrs[pgid].condition_atoms),
+            conditions=conditions,
             history=history,
             g=graph,
         )
@@ -829,7 +865,7 @@ def _parent_nodes_for(
                     environment=environment,
                     graph=graph,
                     history=history,
-                    conditions=_wrap_atoms(attrs[pgid].condition_atoms),
+                    conditions=conditions,
                 )
             )
         if sliced is None:
@@ -3095,15 +3131,12 @@ def _projection_root_concepts(
 
 
 def _fresh_final_root_projection(
-    concepts: list[BuildConcept],
+    projected: list[BuildConcept],
     environment: BuildEnvironment,
     graph: ReferenceGraph,
     history: History,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
-    projected = _projection_root_concepts(concepts, environment)
-    if not projected:
-        return None
     node = plan_source(
         SourceRequest(
             outputs=projected,
@@ -3822,6 +3855,7 @@ def _assemble_final_node(
     environment: BuildEnvironment,
     graph: ReferenceGraph,
     history: History,
+    root_requests: dict[str, RootRequest],
     feeder_cache: "_CleanFeederCache | None" = None,
 ) -> StrategyNode | None:
     """Build the FINAL output node: merge the minimum set of built groups
@@ -4259,15 +4293,22 @@ def _assemble_final_node(
                     extent_free_carried=ownership.suppressed_carried_for(gid),
                 )
             try:
+                projected = _projection_root_concepts(group_concepts, environment)
+                request = RootRequest(
+                    frozenset(c.address for c in projected),
+                    _wrap_atoms(satisfiable),
+                    environment.span_scope,
+                )
+                # Only a request the built node does not answer is planned:
+                # the preserved keys and filter-only args widened it beyond
+                # what the scan carries, or the scope moved.
                 fresh = (
                     _fresh_final_root_projection(
-                        group_concepts,
-                        environment,
-                        graph,
-                        history,
-                        conditions=_wrap_atoms(satisfiable),
+                        projected, environment, graph, history, request.conditions
                     )
-                    if len(satisfiable) == len(root_atoms)
+                    if projected
+                    and len(satisfiable) == len(root_atoms)
+                    and not request.answered_by(node, root_requests[gid])
                     else None
                 )
             finally:
@@ -4532,6 +4573,7 @@ def build_strategy_node(
 
     built: dict[str, StrategyNode] = {}
     condition_hosts: dict[str, StrategyNode] = {}
+    root_requests: dict[str, RootRequest] = {}
     ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
 
     for gid in _topological_order(group_graph, group_edges):
@@ -4671,6 +4713,7 @@ def build_strategy_node(
             g,
             history,
             needed=needed,
+            root_requests=root_requests,
         )
         parent_group_ids = {parent.group_id for parent in parent_builds}
         join_key_addresses = _input_contract_join_keys(a, parent_group_ids)
@@ -4894,39 +4937,63 @@ def build_strategy_node(
                         parents=parents,
                     )
                 ]
-        node = build_node(
-            derivation=derivation,
-            outputs=outputs,
-            parents=parents,
-            environment=environment,
-            conditions=condition_for_generator,
-            preexisting_conditions=preexisting,
-            intrinsic_filter_pushdown=_filter_intrinsic_pushdown_safe(
-                group_graph,
-                gid,
-                outputs,
-                mandatory_list,
-                environment.statement_hidden_addresses,
-                attrs,
-                environment,
-            ),
-            existence_source=any(
-                edge_kind(group_edges, gid, succ) == EdgeKind.EXISTENCE
-                for succ in group_graph.successors(gid)
-            ),
-            collapse_to_grain=all(
-                attrs[succ].derivation != Derivation.AGGREGATE
-                for succ in group_graph.successors(gid)
-            ),
-            complete_partials=complete_partials,
-            history=history,
-            g=g,
-            staged_conditions=staged_conditions,
-            depth=depth,
+        # The same root in two phases (the d1 twin feeding the condition-phase
+        # aggregates) asks the same question when the WHERE placed on each is
+        # the same; the second reads the first's answer.
+        request = (
+            RootRequest(
+                frozenset(c.address for c in outputs),
+                condition_for_generator,
+                environment.span_scope,
+                frozenset(parent_group_ids),
+            )
+            if derivation == Derivation.ROOT
+            else None
         )
+        twin = next(
+            (other for other, asked in root_requests.items() if asked == request),
+            None,
+        )
+        node: StrategyNode | None
+        if twin is not None:
+            node = built[twin].copy()
+            logger.info(f"[v4] built {gid} reads {twin}: the same ROOT request")
+        else:
+            node = build_node(
+                derivation=derivation,
+                outputs=outputs,
+                parents=parents,
+                environment=environment,
+                conditions=condition_for_generator,
+                preexisting_conditions=preexisting,
+                intrinsic_filter_pushdown=_filter_intrinsic_pushdown_safe(
+                    group_graph,
+                    gid,
+                    outputs,
+                    mandatory_list,
+                    environment.statement_hidden_addresses,
+                    attrs,
+                    environment,
+                ),
+                existence_source=any(
+                    edge_kind(group_edges, gid, succ) == EdgeKind.EXISTENCE
+                    for succ in group_graph.successors(gid)
+                ),
+                collapse_to_grain=all(
+                    attrs[succ].derivation != Derivation.AGGREGATE
+                    for succ in group_graph.successors(gid)
+                ),
+                complete_partials=complete_partials,
+                history=history,
+                g=g,
+                staged_conditions=staged_conditions,
+                depth=depth,
+            )
         # a generator may hand back a parent's node; that one keeps its group
         if node is not None and node.origin_group is None:
             node.origin_group = gid
+        if node is not None and request is not None:
+            root_requests[gid] = request
         logger.info(
             f"[v4] built {gid} derivation={derivation} "
             f"outputs={[o.address for o in outputs]} "
@@ -5013,6 +5080,7 @@ def build_strategy_node(
         environment,
         g,
         history,
+        root_requests,
         feeder_cache=feeder_cache,
     )
     if plan_trace.active():

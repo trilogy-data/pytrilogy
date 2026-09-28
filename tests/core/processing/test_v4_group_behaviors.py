@@ -1674,6 +1674,7 @@ def test_conditioned_filter_does_not_cover_unfiltered_parent_outputs():
         ReferenceGraph(),
         History(base_environment=Environment()),
         needed={supplier_id.address, order_id.address, filtered_supplier.address},
+        root_requests={},
     )
 
     assert {parent.group_id for parent in parents} == {"root", "filter"}
