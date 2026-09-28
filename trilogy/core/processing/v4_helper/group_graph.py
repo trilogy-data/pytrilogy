@@ -885,10 +885,11 @@ def _preaggregate_filter_allows_dimension_member(
 
 def _keep_extension_families_together(
     assignment: dict[str, frozenset[str]],
-    demanded_spans: frozenset[str],
+    keyspace: Keyspace,
     environment: BuildEnvironment,
 ) -> None:
-    """Merge the peel clusters that carry a demanded ``~`` extension span.
+    """Merge the peel clusters that carry a demanded ``~`` extension span, and
+    leave the members in the bucket when the merged cluster still mixes nothing.
 
     Each peeled cluster sources apart and pads its own span, so two families
     hanging off different grain keys (`~product` off the fact grain, `~user` off
@@ -898,22 +899,37 @@ def _keep_extension_families_together(
     span, the shape the same select has without the aggregate.
 
     A cluster keyed by the span itself reads the dimension's own table and pads
-    nothing, so it stays apart. Not dead under the region contract: the merged
-    cluster is the bucket `add_region_domain_buckets` finds a region's solid
-    source in; split apart, the user family's cluster mixes nothing and the
-    region gets no domain (`test_field_report_select`)."""
+    nothing, so it stays apart. Any other cluster is where
+    `add_region_domain_buckets` finds the region's solid source, which it can
+    only be if it holds something absent on the region too: carrying the span
+    alone it mixes nothing, the region gets no domain, and the span's extent is
+    elected to the peel, which pads it off the wrong table
+    (`test_field_report_select` read `user_id` through the orders it was peeled
+    onto and stopped reading the items' own binding). Un-peeled, the bucket
+    they came from mixes the region and owns the extent."""
+    demanded_spans = keyspace.output_demanded_spans
     carrying = {
         assignment[address]
         for span in demanded_spans
         for address in span_members(span, assignment, environment)
         if span not in assignment[address]
     }
-    if len(carrying) < 2:
+    if not carrying:
         return
-    merged = frozenset().union(*carrying)
-    for address, key in assignment.items():
-        if key in carrying:
-            assignment[address] = merged
+    # after the merge there is one carrying cluster, keyed by every peel key
+    # the families hung off
+    key = frozenset().union(*carrying)
+    for address, cluster in assignment.items():
+        if cluster in carrying:
+            assignment[address] = key
+    members = [a for a, k in assignment.items() if k == key]
+    if any(
+        all(keyspace.carried_on(member, region) for member in members)
+        for region in keyspace.live_regions
+        if region.spans & demanded_spans and not region.spans & key
+    ):
+        for address in members:
+            del assignment[address]
 
 
 def _drop_unread_peels_the_domain_took(
@@ -973,7 +989,7 @@ def _split_root_dimension_clusters(
     pre_aggregate_filter_args: frozenset[str],
     post_aggregate_args: frozenset[str],
     finer_filter_grains: frozenset[frozenset[str]],
-    demanded_spans: frozenset[str],
+    keyspace: Keyspace,
 ) -> None:
     """Peel single-entity FD dimension clusters out of a keyed ROOT bucket into
     their own ``grp:root:root:dim:<entity_key>`` ROOT buckets.
@@ -1122,7 +1138,9 @@ def _split_root_dimension_clusters(
                 assignment[addr] = composite
         if not assignment:
             continue
-        _keep_extension_families_together(assignment, demanded_spans, environment)
+        _keep_extension_families_together(assignment, keyspace, environment)
+        if not assignment:
+            continue
         clusters: dict[frozenset[str], list[int]] = defaultdict(list)
         for idx, addr in enumerate(bucket.primary_members):
             if addr in assignment:
@@ -3290,7 +3308,6 @@ def build_group_graph(
         mandatory_list, _grouping_keys(buckets)
     )
     keyspace = keyspace or Keyspace()
-    demanded_spans = keyspace.output_demanded_spans
     _split_root_dimension_clusters(
         buckets,
         primary_group,
@@ -3301,7 +3318,7 @@ def build_group_graph(
         _post_aggregate_filter_args(conditions)
         | _post_aggregate_basic_args(mandatory_list),
         _finer_filter_grains(conditions),
-        demanded_spans,
+        keyspace,
     )
     _trace_buckets("root dimension clusters split", buckets, primary_group)
     add_region_domain_buckets(
