@@ -812,6 +812,34 @@ def grain_satisfied_by_pregrain(
     )
 
 
+def rows_unique_at_outputs(
+    joined: BuildGrain,
+    outputs: list[BuildConcept],
+    nullable: set[str],
+    environment: BuildEnvironment,
+) -> bool:
+    """The joined rows are already one per output row: every row identity the
+    stream carries is projected, or determined by projected columns non-null
+    on every row. `joined` is the UNFOLDED union of the sources' grains: the
+    key-hierarchy fold (`user.id` under `id`) holds only where the key is
+    present, and after `users LEFT items FULL products` it is padded."""
+    from trilogy.core.processing.v4_helper.functional_dependency import (
+        build_fd_determines,
+    )
+
+    projected = {
+        equivalent for concept in outputs for equivalent in concept.equivalent_addresses
+    }
+    determinants = projected - nullable
+    return all(
+        component in projected
+        or build_fd_determines(
+            environment, determinants, component, include_empty_grain=False
+        )
+        for component in joined.components
+    )
+
+
 def condition_key_grain(
     condition: BoolExpr | None,
     environment: BuildEnvironment,

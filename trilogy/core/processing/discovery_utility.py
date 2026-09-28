@@ -5,6 +5,7 @@ from trilogy.core.enums import (
     Derivation,
     FunctionType,
     Granularity,
+    JoinType,
     Purpose,
 )
 from trilogy.core.exceptions import DisconnectedConceptsException
@@ -86,7 +87,12 @@ def calculate_effective_parent_grain(
                 seen.add(left.name)
             keys = [key.right for key in pairs]
             join_grain = BuildGrain.from_concepts(keys)
-            if join_grain == join.right_datasource.grain:
+            # a FULL/RIGHT keeps the right side's unmatched rows, so its grain
+            # is part of the stream's even when the join is keyed on it
+            if join_grain == join.right_datasource.grain and join.join_type not in (
+                JoinType.FULL,
+                JoinType.RIGHT_OUTER,
+            ):
                 logger.debug(f"irrelevant right join {join}, does not change grain")
             else:
                 logger.debug(
@@ -160,6 +166,15 @@ def check_if_group_required(
         target_grain,
         environment,
         include_aggregate_by_keys=not target_has_only_aggregates,
+    )
+    # A projected column is constant within its own output row, so it covers
+    # itself and determines what it determines, whatever the target grain's
+    # key-hierarchy fold dropped it for: `user.id` beside `id` after `users
+    # LEFT items FULL products` folds under `id`, which the FULL pads.
+    target_coverage.update(
+        equivalent
+        for concept in downstream_concepts
+        for equivalent in concept.equivalent_addresses
     )
     if comp_grain.components.issubset(target_coverage):
         logger.info(
