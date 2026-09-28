@@ -1138,6 +1138,9 @@ def _elide_single_parent_passthrough(node: StrategyNode) -> StrategyNode:
     # the region contract rides the projection (a rowset boundary that is a
     # region's domain), not only what it projects from
     collapsed.region_spans = parent.region_spans | node.region_spans
+    # so does the group tag: the collapsed node is published as the group's
+    if collapsed.origin_group is None:
+        collapsed.origin_group = node.origin_group
     collapsed.resolution_cache = None
     return collapsed
 
@@ -4968,6 +4971,7 @@ def build_strategy_node(
         node: StrategyNode | None
         if twin is not None:
             node = built[twin].copy()
+            node.origin_group = gid
             logger.info(f"[v4] built {gid} reads {twin}: the same ROOT request")
         else:
             node = build_node(

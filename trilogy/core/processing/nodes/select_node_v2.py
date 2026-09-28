@@ -341,7 +341,7 @@ class ConstantNode(SelectNode):
     """Represents a constant value."""
 
     def copy(self) -> "ConstantNode":
-        return ConstantNode(
+        node = ConstantNode(
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
@@ -353,6 +353,8 @@ class ConstantNode(SelectNode):
             hidden_concepts=self.hidden_concepts,
             ordering=self.ordering,
         )
+        node.origin_group = self.origin_group
+        return node
 
     def _resolve(self) -> QueryDatasource:
         return self.resolve_from_constant_datasources()

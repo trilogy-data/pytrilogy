@@ -106,3 +106,28 @@ def test_env_var_writes_a_trace_per_statement(tmp_path, monkeypatch):
     assert any(s["phase"] == "sql" for s in written["steps"]) is False
     assert any(s["phase"] == "ctes" for s in written["steps"])
     assert not plan_trace.active()
+
+
+def _tree_groups(node: dict | None, out: set[str] | None = None) -> set[str]:
+    out = set() if out is None else out
+    if not node or "ref" in node:
+        return out
+    if node.get("group"):
+        out.add(node["group"])
+    for parent in node["parents"]:
+        _tree_groups(parent, out)
+    return out
+
+
+def test_final_tree_keeps_the_tag_of_a_root_published_through_its_scan():
+    # the root's generator hands back a passthrough over its conditioned scan;
+    # publishing collapses the passthrough, and the scan keeps the group's tag
+    trace = _trace("select customer_id, count(order_id) as n where amount > 5;")
+    built = {
+        s["data"]["group"]
+        for s in trace["steps"]
+        if s["phase"] == "node" and s["data"]["node"] is not None
+    }
+    final = next(s for s in trace["steps"] if s["phase"] == "final")["data"]["node"]
+    root = next(gid for gid in built if gid.startswith("grp:root:root:"))
+    assert root in _tree_groups(final)

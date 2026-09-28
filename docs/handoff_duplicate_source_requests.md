@@ -54,7 +54,7 @@ completes it from another source, which is a different plan.
   the outer root group's exact question. No caller sees both; a per-statement
   memo on the history is the only dedupe, and in q37 the outer root's node is
   dead anyway (the SQL reads only the feeder CTE `wakeful`): that is a
-  built-but-unused group, a different waste.
+  built-but-unused group, measured and classified in "Dead groups" below.
 - **`_plan_source`'s unfiltered fallback** (thelook q16): a conditioned
   request that declines re-asks without the WHERE, and the re-ask equals the
   plain ROOT group's request. Internal to source planning.
@@ -64,6 +64,104 @@ completes it from another source, which is a different plan.
 binders per column, not join paths (`supplier.id` is bound by both `partsupp`
 and `supplier`, so `supplier` looks prunable, but it is the path to `nation`).
 The request-equality guard sits in front of it; the check itself is untouched.
+
+## Dead groups (followup, 2026-09-28)
+
+A dead group is one the build loop built whose node never reaches its plan's
+FINAL tree: the viewer strikes it through (`notInFinal` in `viewer.html`).
+`dead_groups.py` applies the same rule to whole corpora and classifies each
+one by derivation and by why it is dead (see its docstring for the labels):
+
+```bash
+.venv/Scripts/python.exe local_scripts/plan_debugger/dead_groups.py \
+  "tests/modeling/thelook_duckdb/*.preql" "tests/modeling/tpc_h/*.preql" \
+  "tests/modeling/tpc_ds_duckdb/query*.preql"
+.venv/Scripts/python.exe local_scripts/plan_debugger/dead_groups.py --detail tests/modeling/tpc_ds_duckdb/query37.preql
+```
+
+    168 dead of 923 built groups in 163 statements
+    by derivation: filter 50, basic 47, root 36, rowset 14, constant 12, aggregate 8, unnest 1
+    worst files: tpc_ds q08 (10), q64 (10), q76 (6), q16/q94/q95 (5)
+
+### First, 17 were not dead: the viewer lost the tag
+
+`origin_group` (the tag the strike-through keys on) was dropped on three
+paths, so the viewer struck through groups FINAL reads. Fixed in this
+followup, with `test_final_tree_keeps_the_tag_of_a_root_published_through_its_scan`:
+
+- `_elide_single_parent_passthrough` copies the PARENT (`parent.copy()`) and
+  carried `region_spans` from the projection but not its tag. A ROOT whose
+  generator hands back a passthrough over its own conditioned scan (tpc_h
+  q01/q06/q15, thelook q19...) was published untagged, and its trace step
+  showed the pre-elision node (`conditions=None`) while `built` held the scan.
+- `WindowNode`, `UnnestNode`, `UnionNode`, `SubselectNode`, `RecursiveNode`
+  and `ConstantNode` `copy()` dropped it (10 window + 2 unnest groups).
+- A twin-request ROOT (`built[twin].copy()`, commit `45ecbb025`) kept the
+  twin's tag, so `root_d1` in tpc_h q11 never appeared on any node.
+
+### The 168 that are dead, in four classes
+
+**A. The existence lineage is built twice (67).** q37's shape, and the
+answer to "why does the graph have a root group only an existence feeder's
+separate plan ends up using": the group graph materializes an `IN <rowset>`
+argument's d1 lineage as groups (`root_d1 -> ... ->
+[@condition]filter:d1:...:existence:<arg>` -> host root, by an `existence`
+edge) and the loop builds every one of them, `root_d1` with a `plan_source`.
+But `_parent_nodes_for` skips existence-edge predecessors (deferring them to
+`_attach_existence_sources` at FINAL), and the host ROOT's generator resolves
+the argument itself first: `_resolve_root_condition_sources` ->
+`resolve_existence_sources` -> `search_concepts` plans the subselect body as
+its own nested plan (`root.py`: "Existence args are NOT forked; they go
+through the shared `resolve_existence_sources`"). At FINAL,
+`_attach_existence_to_node` adds a built existence node only when it brings
+an output the host's parents lack (`strategy_builder.py` ~line 513), and the
+generator's feeder already carries it, so the built chain is skipped whole.
+Labels: `filter/rowset/basic existence` 29 (the group on the existence edge)
+plus `root/basic/filter/aggregate/unnest subtree` 38 (everything upstream of
+it). The 18 remaining `build_strategy_node` repeats above are these
+`root_d1` groups asking the nested plan's question. Files: tpc_h q02/q20,
+tpc_ds q02/q08/q10/q11/q14/q16/q23/q33/q35/q37/q45/q54/q56/q58/q60/q69/q83/
+q84/q94/q95.
+
+Two ways out, for the owner: stop building lineage whose only route to FINAL
+is an existence edge into a host that resolves existence itself (today every
+ROOT host does), or make the built chain the ONLY mechanism (the host reads
+it through `_attach_existence_sources`, and `_resolve_root_condition_sources`
+stops calling `resolve_existence_sources` for arguments the graph hosts).
+The second also retires the nested plan and the 18 repeats; it is the larger
+change and the one that needs the SQL A/B.
+
+**B. Inlined into a consumer (81, cheap).** No `plan_source`: these
+generators wrap their parents. `filter consumed` 27: a filtered aggregate's
+argument (`sum(x ? cond)`) is rendered as a CASE inside the aggregate over the
+root (tpc_ds q43 has seven `_virt_filter_sales_price_*` in one group).
+`basic consumed` 20: a scalar the aggregate computes on its parent instead
+(thelook q03's `item_margin` appears as an output of the root MergeNode).
+`basic final-only` 18: sibling scalars folded into one projection (tpc_ds
+q99's `warehouse_short_name` rides the `cc_name_lower` group's SelectNode).
+`constant final-only` 12 and `aggregate consumed` 4 likewise. Cost is group
+graph and build steps only; the trace reads as if the group did nothing.
+
+**C. Roots nobody reads (16, real sourcing waste).** Each is a `plan_source`
+whose result is discarded:
+- `root final-only` 10: a dim peel `root:∅:dim:<key>` built beside the
+  extent peel `root:∅:extent:<key>` for the same key, FINAL reads the extent
+  peel (thelook q06/q07/adhoc03/adhoc04/q19, tpc_h adhoc04); the main
+  `root:∅` when every member is consumed from `root_d1` only (tpc_ds q04/q74:
+  a UNION of three fact tables joined to date, sourced for nothing); the
+  `root:∅:existence:<key>` peel (q82, q82.1).
+- `root resourced` 4: dim peels FINAL re-sources under its own request
+  (tpc_ds q01/q65/q79; section 3's preserve-key widening).
+- `root consumed` 2: thelook adhoc03/q19's `root:∅` scan of `order_items`,
+  subsumed by the `root:root:dim:local.id` merge's own rescan of it.
+
+Whether a ROOT will be read is not decidable when the loop reaches it (FINAL
+picks its contributors later), so the fix shape is lazy ROOT sourcing: source
+a ROOT group on first read (`_parent_nodes_for` and FINAL both go through
+`built`), and an unread one costs nothing.
+
+**D. `rowset unbuilt` 4** (tpc_ds q64, nested plans p2/p5): the build
+produced no node. Not investigated.
 
 ## Original investigation
 
