@@ -1,5 +1,5 @@
 query_id = "64"
-gen_length = 16543
+gen_length = 16726
 preql_size = 4382
 comp_size = 3783
 generated_sql = """
@@ -16,7 +16,7 @@ SELECT
 FROM
     \"memory\".\"customer\" as \"ss_customer_customers\"
 WHERE
-    \"ss_customer_customers\".\"C_FIRST_SALES_DATE_SK\" is not null and \"ss_customer_customers\".\"C_FIRST_SHIPTO_DATE_SK\" is not null
+    coalesce(\"ss_customer_customers\".\"C_CURRENT_ADDR_SK\") is not null and \"ss_customer_customers\".\"C_FIRST_SALES_DATE_SK\" is not null and \"ss_customer_customers\".\"C_FIRST_SHIPTO_DATE_SK\" is not null
 ),
 wakeful as (
 SELECT
@@ -46,7 +46,7 @@ SELECT
 FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
 WHERE
-    exists (select 1 from wakeful where wakeful.\"cs_ui_cs_ui_item_id\" is not distinct from \"ss_store_sales\".\"SS_ITEM_SK\") and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null
+    exists (select 1 from wakeful where wakeful.\"cs_ui_cs_ui_item_id\" is not distinct from \"ss_store_sales\".\"SS_ITEM_SK\") and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null and coalesce(\"ss_store_sales\".\"SS_STORE_SK\") is not null and coalesce(\"ss_store_sales\".\"SS_ADDR_SK\") is not null
 ),
 late as (
 SELECT

@@ -1,5 +1,5 @@
 query_id = "44"
-gen_length = 3126
+gen_length = 3133
 preql_size = 1021
 comp_size = 1462
 generated_sql = """
@@ -24,7 +24,7 @@ FROM
 WHERE
     \"ss_store_sales\".\"SS_STORE_SK\" = 1 and \"ss_store_sales\".\"SS_ADDR_SK\" is null
 ),
-cheerful as (
+wakeful as (
 SELECT
     \"ss_store_sales\".\"SS_ITEM_SK\" as \"ss_item_sk\",
     \"ss_store_sales\".\"SS_NET_PROFIT\" as \"_virt_filter_net_profit_2835528987416348\",
@@ -36,14 +36,14 @@ WHERE
 ),
 yummy as (
 SELECT
-    \"cheerful\".\"ss_item_sk\" as \"ss_item_sk\",
-    avg(\"cheerful\".\"_virt_filter_net_profit_2835528987416348\") as \"item_avg_profit\"
+    \"wakeful\".\"ss_item_sk\" as \"ss_item_sk\",
+    avg(\"wakeful\".\"_virt_filter_net_profit_2835528987416348\") as \"item_avg_profit\"
 FROM
-    \"cheerful\"
-    INNER JOIN \"abundant\" on \"cheerful\".\"ss_item_sk\" = \"abundant\".\"ss_item_sk\"
+    \"wakeful\"
+    INNER JOIN \"abundant\" on \"wakeful\".\"ss_item_sk\" = \"abundant\".\"ss_item_sk\"
     INNER JOIN \"thoughtful\" on 1=1
 WHERE
-    \"abundant\".\"_virt_agg_avg_7707029941687820_wscope\" > 0.9 * \"thoughtful\".\"addr_null_threshold_threshold\" and \"cheerful\".\"ss_store_sk\" = 1
+    \"abundant\".\"_virt_agg_avg_7707029941687820_wscope\" > 0.9 * \"thoughtful\".\"addr_null_threshold_threshold\" and \"wakeful\".\"ss_store_sk\" = 1
 
 GROUP BY
     1),
@@ -91,7 +91,10 @@ SELECT
     \"sparkling\".\"ascending_best_performing\" as \"ascending_best_performing\",
     \"sparkling\".\"ascending_rnk_a\" as \"rnk\"
 FROM
-    \"sparkling\")
+    \"sparkling\"
+WHERE
+    \"sparkling\".\"ascending_rnk_a\" < 11
+)
 SELECT
     \"abhorrent\".\"rnk\" as \"rnk\",
     \"abhorrent\".\"ascending_best_performing\" as \"ascending_best_performing\",
@@ -99,9 +102,6 @@ SELECT
 FROM
     \"abhorrent\"
     INNER JOIN \"late\" on \"abhorrent\".\"rnk\" = \"late\".\"descending_rnk_d\"
-WHERE
-    \"abhorrent\".\"rnk\" < 11
-
 ORDER BY 
     \"abhorrent\".\"rnk\" asc nulls first,
     \"abhorrent\".\"ascending_best_performing\" desc nulls first,
