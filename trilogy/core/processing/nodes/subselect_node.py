@@ -31,7 +31,7 @@ class SubselectNode(StrategyNode):
         )
 
     def copy(self) -> "SubselectNode":
-        return SubselectNode(
+        node = SubselectNode(
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
@@ -40,3 +40,5 @@ class SubselectNode(StrategyNode):
             ordering=self.ordering,
             preexisting_conditions=self.preexisting_conditions,
         )
+        node.origin_group = self.origin_group
+        return node
