@@ -1,7 +1,17 @@
 from trilogy.core.enums import JoinType
 from trilogy.core.models.build_environment import SpanScope
 from trilogy.core.models.environment import Environment
+from trilogy.core.models.keyspace import Keyspace, Region
 from trilogy.core.processing.nodes import ConstantNode, MergeNode, NodeJoin
+
+
+def _scope(span: str, **witnessed: str) -> SpanScope:
+    return SpanScope(
+        keyspace=Keyspace(
+            regions=(Region(present=frozenset(), spans=frozenset({span})),),
+            witnessed=witnessed,
+        )
+    )
 
 
 def test_same_join_fails(test_environment: Environment, test_environment_graph):
@@ -37,17 +47,16 @@ def test_merge_captures_the_scope_it_is_built_under(test_environment: Environmen
     """A rowset body's merge can resolve after the outer plan's scope is back
     on the environment, so each merge keeps the scope of its own plan."""
     environment = test_environment.materialize_for_select()
-    environment.span_scope = SpanScope(in_play=frozenset({"local.inner_span"}))
+    environment.span_scope = _scope("local.inner_span")
     inner = MergeNode(
         input_concepts=[], output_concepts=[], environment=environment, parents=[]
     )
-    environment.span_scope = SpanScope(
-        in_play=frozenset({"local.outer_span"}),
-        witnessed={"local.inner_span": "local.outer_span"},
+    environment.span_scope = _scope(
+        "local.outer_span", **{"local.inner_span": "local.outer_span"}
     )
     outer = MergeNode(
         input_concepts=[], output_concepts=[], environment=environment, parents=[inner]
     )
-    assert inner.span_scope.in_play == frozenset({"local.inner_span"})
-    assert outer.span_scope.in_play == frozenset({"local.outer_span"})
+    assert inner.span_scope.keyspace.in_play_spans == frozenset({"local.inner_span"})
+    assert outer.span_scope.keyspace.in_play_spans == frozenset({"local.outer_span"})
     assert outer.copy().span_scope == outer.span_scope

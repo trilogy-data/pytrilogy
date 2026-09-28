@@ -560,12 +560,9 @@ def _build_from_graph(
     # this plan extends its spans
     outer_scope = environment.span_scope
     environment.span_scope = SpanScope(
-        in_play=keyspace.in_play_spans,
-        demanded=keyspace.output_demanded_spans,
-        witnessed=keyspace.witnessed,
+        keyspace=keyspace,
         owned=history.owned_spans,
         unextended=undemanded_spans(keyspace, concept_attrs, environment),
-        regions=tuple(r.spans for r in keyspace.live_regions if r.spans),
     )
     try:
         strategy_node = build_strategy_node(

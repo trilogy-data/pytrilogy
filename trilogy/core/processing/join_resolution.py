@@ -37,6 +37,7 @@ from trilogy.core.models.execute import (
     QueryDatasource,
     UnnestJoin,
 )
+from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing.condition_utility import is_scalar_condition
 from trilogy.core.processing.utility import NodeType
 
@@ -1806,10 +1807,11 @@ def get_node_joins(
     host_grain: set[str] | None = None,
     demanded_domains: set[str] | None = None,
     extent_free_spans: frozenset[str] = frozenset(),
-    in_play_spans: frozenset[str] = frozenset(),
-    witnessed: Mapping[str, str] | None = None,
-    regions: tuple[frozenset[str], ...] = (),
+    keyspace: Keyspace | None = None,
 ) -> list[BaseJoin]:
+    """`keyspace` is the plan's, for the spans it can pad for, the spellings a
+    rowset body pads them under and its region partition."""
+    keyspace = keyspace or Keyspace()
     from trilogy.core import graph as nx
 
     canonical = build_canonical_address_map(datasources, environment)
@@ -1942,7 +1944,7 @@ def get_node_joins(
         span_padding = _span_padding_matrix(
             ds_node_map,
             nullables,
-            _span_spellings(in_play_spans, environment, witnessed),
+            _span_spellings(keyspace.in_play_spans, environment, keyspace.witnessed),
             canon_node,
         )
     host_nodes: set[str] | None = None
@@ -1984,9 +1986,7 @@ def get_node_joins(
     # spans of every region it reads, so only this says how many families the
     # merge has.
     region_partition = tuple(
-        nodes
-        for spans in regions
-        if (nodes := frozenset(canon_node(span) for span in spans))
+        frozenset(canon_node(span) for span in spans) for spans in keyspace.families
     )
     # Keys whose join typing is owned by an authored relation (query-scoped
     # subset/coalescing joins, declared anchors): host/dim direction inference

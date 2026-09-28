@@ -53,6 +53,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import EnumType
 from trilogy.core.models.environment import Environment
+from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing.condition_utility import (
     conditions_mutually_exclusive,
     gate_allowed_values,
@@ -63,7 +64,6 @@ from trilogy.core.processing.v4_helper.keyspace import (
     build_keyspace,
     null_rejected,
 )
-from trilogy.core.processing.v4_helper.models import Keyspace
 from trilogy.core.processing.v4_helper.projection import statement_filter_population
 from trilogy.core.processing.v4_helper.staged_where import universal_row_bound
 

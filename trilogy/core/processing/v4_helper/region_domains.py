@@ -13,6 +13,7 @@ from trilogy.core.models.build import (
     BuildConceptArgs,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.keyspace import Keyspace, Region
 
 from .concept_graph import _scope_and_phase
 from .condition_placement import ConditionPlacement, PlacementReason
@@ -23,7 +24,7 @@ from .extent_ownership import (
     solid_groups,
     takes_a_value_on_padding,
 )
-from .models import ConceptAttrs, GroupAttrs, GroupBucket, Keyspace, Region
+from .models import ConceptAttrs, GroupAttrs, GroupBucket
 from .projection import decided_at_output_grain, reads_rows_only
 
 
