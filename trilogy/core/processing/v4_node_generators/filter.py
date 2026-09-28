@@ -11,6 +11,7 @@ from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
     is_scalar_condition,
 )
+from trilogy.core.processing.grain_utility import rows_unique_at_outputs
 from trilogy.core.processing.nodes import FilterNode, StrategyNode
 from trilogy.core.processing.v4_helper.functional_dependency import (
     build_fd_determines,
@@ -19,6 +20,32 @@ from trilogy.core.processing.v4_helper.keyspace import entity_keys
 from trilogy.core.processing.v4_helper.projection import shared_filter_predicate
 
 from .common import parent_outputs_needed
+
+
+def _rows_unique_at_set(
+    outputs: list[BuildConcept],
+    parents: list[StrategyNode],
+    environment: BuildEnvironment,
+) -> bool:
+    """Whether the parents' rows are already one per set value. A filter
+    emits its content column, so uniqueness is judged on that."""
+    grains = [parent.grain for parent in parents]
+    if any(grain is None for grain in grains):
+        return False
+    joined = BuildGrain(
+        components=set().union(*(set(grain.components) for grain in grains if grain))
+    )
+    nullable = {c.address for parent in parents for c in parent.nullable_concepts}
+    emitted = [
+        (
+            o.lineage.content
+            if isinstance(o.lineage, BuildFilterItem)
+            and isinstance(o.lineage.content, BuildConcept)
+            else o
+        )
+        for o in outputs
+    ]
+    return rows_unique_at_outputs(joined, emitted, nullable, environment)
 
 
 def gen_filter(
@@ -99,6 +126,14 @@ def gen_filter(
                 for o in pass_through
                 if o.grain is not None and set(o.grain.components) <= entity_grain
             ]
+    if (
+        existence_source
+        and grain is None
+        and not _rows_unique_at_set(outputs, parents, environment)
+    ):
+        # a semijoin RHS is a set: emit it at the set's own grain, not the
+        # scan's (`week_seq ? date in (...)` reads a date-grain scan)
+        grain = BuildGrain(components={o.address for o in outputs})
 
     combined = combine_condition_atoms(
         [c for c in (conditions.conditional if conditions else None, intrinsic) if c]

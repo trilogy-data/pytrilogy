@@ -30,7 +30,6 @@ from trilogy.core.processing.v4_helper.staged_where import hosting_stage_index
 
 from .aggregate import outputs_with_scoped_join_mates
 from .common import search_parent
-from .condition_sources import resolve_existence_sources
 
 
 def _outputs_with_grain_keys(
@@ -127,8 +126,8 @@ def _staged_precondition_clauses(
     the host's feeder scan, but a re-sourced copy (this ROW branch) plans in a
     sub-search where the host is the search output itself (outside the
     delivery pass's D1 reach), so the bound must ride the sub-search's own
-    WHERE. Existence atoms among the bounds resolve through the shared
-    `resolve_existence_sources` like any other side-channel subselect, and a
+    WHERE. Existence atoms among the bounds are hosted like any other
+    membership (the strategy builder wires their set), and a
     cross-row atom (an earlier stage's own gate) becomes an ordinary
     condition-phase gate of the sub-search, re-sourced there with ITS stage
     bounds through this same function, one recursion level down."""
@@ -193,18 +192,18 @@ def _resolve_root_condition_sources(
     preexisting_conditions: BuildWhereClause | None = None,
     staged_conditions: list[BuildWhereClause] | None = None,
 ) -> ConditionSources:
-    """ROOT's fork of `condition_sources.resolve_condition_sources`.
+    """ROOT's fork of `condition_sources.resolve_row_sources`.
 
-    Only the ROW branch forks, and only where re-sourcing from datasources
-    demands it: the search is widened to the args' grain keys, seeded with the
-    node's own row identity as a correlation, and re-applies the ancestor atoms
-    the rows it re-plans never saw (`_inheritable_atoms`). The generic path's
-    un-hide step has no analogue because demanding those keys as mandatory
-    outputs stops them being hidden in the first place.
+    It forks where re-sourcing from datasources demands it: the search is
+    widened to the args' grain keys, seeded with the node's own row identity as
+    a correlation, and re-applies the ancestor atoms the rows it re-plans never
+    saw (`_inheritable_atoms`). The generic path's un-hide step has no analogue
+    because demanding those keys as mandatory outputs stops them being hidden
+    in the first place.
 
-    Existence args are NOT forked; they go through the shared
-    `resolve_existence_sources`, since a side-channel subselect is built the
-    same way regardless of how the consumer sourced its own rows.
+    Existence args are not sourced here at all: a ROOT is a group-graph
+    build, and the graph holds the set's lineage. The strategy builder wires
+    the built provider onto the node that hosts the atom.
     """
     sources = ConditionSources()
     v4_history = cast(V4History, history)
@@ -228,8 +227,6 @@ def _resolve_root_condition_sources(
                     staged_conditions,
                 )
             )
-
-    resolve_existence_sources(sources, conditions, environment, g, v4_history, depth=1)
     return sources
 
 
@@ -475,17 +472,17 @@ def gen_root(
     if node is None or existence_conditions is None:
         return node
 
-    # Resolve every existence arg's source up front (single- and multi-arg
-    # alike), so no scan renders the subselect with no wired source.
+    # The set's feeder is the group graph's, wired onto the host after the
+    # build (`strategy_builder._wire_existence`); the host is decided here.
     sources = _resolve_root_condition_sources(
         node, existence_conditions, environment, g, history
     )
     if not sources.row_parents:
         node_addresses = {c.address for c in node.output_concepts}
         feeder_addresses = {
-            o.address
-            for parent in sources.existence_parents
-            for o in parent.output_concepts
+            c.address
+            for group in existence_conditions.existence_arguments
+            for c in group
         }
         extra = {c.address for c in inner_outputs} - {c.address for c in outputs}
         if (
@@ -497,19 +494,16 @@ def gen_root(
             # pass-through wrapper: the wrapper is what predicate pushdown
             # would otherwise collapse, and the join-upgrade pass can only
             # prove a preserved dim join INNER when the rejecting WHERE and
-            # the join render in the same select. Gated to feeders whose
-            # outputs are fully disjoint from the row stream (a shared address
-            # makes node resolution treat the feeder as a row parent and fan
-            # the scan) and to memberships whose row args are all demanded
-            # outputs (a hidden extra breaks downstream input validation).
-            # The copy keeps a history-cached result intact for its other
-            # consumers.
+            # the join render in the same select. Gated to sets fully disjoint
+            # from the row stream (a shared address makes node resolution
+            # treat the feeder as a row parent and fan the scan) and to
+            # memberships whose row args are all demanded outputs (a hidden
+            # extra breaks downstream input validation). The copy keeps a
+            # history-cached result intact for its other consumers.
             gated = node.copy()
             gated.conditions = and_optional(
                 gated.conditions, existence_conditions.conditional
             )
-            gated.parents = list(gated.parents) + list(sources.existence_parents)
-            gated.add_existence_concepts(sources.existence_concepts, rebuild=False)
             gated.rebuild_cache()
             return gated
         # The wrapper is a merge side: a coalescing scoped-join member the
@@ -522,10 +516,9 @@ def gen_root(
                 list(outputs), [node], environment
             ),
             environment=environment,
-            parents=[node, *sources.existence_parents],
+            parents=[node],
             partial_concepts=list(node.partial_concepts),
             conditions=existence_conditions.conditional,
-            existence_concepts=sources.existence_concepts,
         )
     return inject_condition_at_node(
         node,

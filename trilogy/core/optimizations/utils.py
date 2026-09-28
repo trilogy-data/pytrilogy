@@ -13,6 +13,7 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildConditional,
     BuildDatasource,
+    BuildFilterItem,
     BuildFunction,
     BuildRowsetItem,
 )
@@ -207,13 +208,20 @@ def add_datasource_sorted(
 def rename_reference(column: BuildConcept) -> BuildConcept | None:
     """The single column a pure rename re-labels, else None.
 
-    Two rename shapes exist: a rowset boundary output (`with rs as select x ...`
-    exposing `rs.x` over `x`) and a concept alias (`select x as y`). Both render
-    as `<content's sql> as <new name>`, so a CTE whose novel outputs are all
-    renames of parent columns folds into the parent, which renders the rename
-    from lineage (no source_map entry) against its own columns."""
+    Three rename shapes exist: a rowset boundary output (`with rs as select x
+    ...` exposing `rs.x` over `x`), a concept alias (`select x as y`), and a
+    filter (`x ? cond`) whose predicate the CTE's rows already satisfy (the
+    renderer emits the content bare then; `consumed_parent_column` is what
+    confirms the bare render). All render as `<content's sql> as <new name>`,
+    so a CTE whose novel outputs are all renames of parent columns folds into
+    the parent, which renders the rename from lineage (no source_map entry)
+    against its own columns."""
     lineage = column.lineage
     if isinstance(lineage, BuildRowsetItem):
+        return lineage.content
+    if isinstance(lineage, BuildFilterItem) and isinstance(
+        lineage.content, BuildConcept
+    ):
         return lineage.content
     if isinstance(lineage, BuildFunction) and lineage.operator == FunctionType.ALIAS:
         args = lineage.concept_arguments
@@ -265,6 +273,9 @@ def rebind_rename_to_consumed(
     which NULLs one-sided keys on a FULL union-join axis). Pinning the consumed
     object makes the rename and the parent's own output the same object."""
     lineage = column.lineage
+    # A filter item is left alone: its consumed column may be the parent's own
+    # MAX-collapsed twin of the same filter, and `CASE WHEN cond THEN max(...)`
+    # nests aggregates. The merged parent renders it from its content.
     if isinstance(lineage, BuildRowsetItem) and lineage.content is not consumed:
         return dataclasses.replace(
             column, lineage=dataclasses.replace(lineage, content=consumed)
