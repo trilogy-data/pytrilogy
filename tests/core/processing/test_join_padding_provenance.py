@@ -14,6 +14,7 @@ from trilogy.core.models.core import DataType
 from trilogy.core.models.execute import BaseJoin, ConceptPair, QueryDatasource
 from trilogy.core.processing.join_resolution import (
     JoinFacts,
+    SideFacts,
     _padding_sources,
     _pads_for_different_members,
     _span_padding_matrix,
@@ -83,15 +84,32 @@ def test_padding_sources_scoped_to_the_requested_key():
 
 
 _LEFT, _RIGHT, _AXIS = "ds~left", "ds~right", "c~local.order_id"
-_BOTH_NULLABLE = {_LEFT: [_AXIS], _RIGHT: [_AXIS]}
+_BOTH_NULLABLE = {_LEFT: {_AXIS}, _RIGHT: {_AXIS}}
+
+
+def _sides(**maps) -> dict[str, SideFacts]:
+    """`{SideFacts field: {side: value}}`, the shape the merge collects its
+    facts in, folded into one ``SideFacts`` per side."""
+    nodes = {node for per_side in maps.values() for node in per_side}
+    return {
+        node: SideFacts(
+            **{
+                field: value
+                for field, per_side in maps.items()
+                if (value := per_side.get(node)) is not None
+            }
+        )
+        for node in nodes
+    }
 
 
 def _typed(padding: dict[str, dict[str, frozenset[str]]]) -> JoinType:
     return _join({_AXIS}, nullables=_BOTH_NULLABLE, span_padding=padding)
 
 
-def _join(keys: set[str], **facts) -> JoinType:
-    return get_join_type(_LEFT, _RIGHT, keys, JoinFacts(**facts))
+def _join(keys: set[str], extent_free_keys=frozenset(), **maps) -> JoinType:
+    facts = JoinFacts(sides=_sides(**maps), extent_free_keys=extent_free_keys)
+    return get_join_type(_LEFT, _RIGHT, keys, facts)
 
 
 def test_padding_for_different_spans_never_pairs():
@@ -99,7 +117,8 @@ def test_padding_for_different_spans_never_pairs():
         _LEFT: {_AXIS: frozenset({"local.product_id"})},
         _RIGHT: {_AXIS: frozenset({"local.user_id"})},
     }
-    assert _pads_for_different_members(_LEFT, _RIGHT, {_AXIS}, padding)
+    sides = _sides(span_padding=padding)
+    assert _pads_for_different_members(sides[_LEFT], sides[_RIGHT], {_AXIS})
     assert _typed(padding) == JoinType.FULL
 
 
@@ -108,13 +127,15 @@ def test_padding_for_a_shared_span_still_pairs():
         _LEFT: {_AXIS: frozenset({"local.user_id"})},
         _RIGHT: {_AXIS: frozenset({"local.user_id", "local.product_id"})},
     }
-    assert not _pads_for_different_members(_LEFT, _RIGHT, {_AXIS}, padding)
+    sides = _sides(span_padding=padding)
+    assert not _pads_for_different_members(sides[_LEFT], sides[_RIGHT], {_AXIS})
     assert _typed(padding) == JoinType.INNER
 
 
 def test_unattributed_padding_keeps_its_typing():
     padding = {_LEFT: {_AXIS: frozenset({"local.user_id"})}, _RIGHT: {}}
-    assert not _pads_for_different_members(_LEFT, _RIGHT, {_AXIS}, padding)
+    sides = _sides(span_padding=padding)
+    assert not _pads_for_different_members(sides[_LEFT], sides[_RIGHT], {_AXIS})
     assert _typed(padding) == JoinType.INNER
 
 
@@ -144,7 +165,10 @@ def _extended_for(span: str) -> QueryDatasource:
 
 def _matrix(span: str, spellings: dict[str, str]) -> dict[str, frozenset[str]]:
     return _span_padding_matrix(
-        {"ds~merged": _extended_for(span)}, {"ds~merged": [ORDER]}, spellings, _identity
+        {"ds~merged": _extended_for(span)},
+        {"ds~merged": frozenset({ORDER})},
+        spellings,
+        _identity,
     )["ds~merged"]
 
 
@@ -202,17 +226,14 @@ def test_extent_free_span_pairs_inner_with_its_complete_domain():
     """A `~` binding joined to the span's whole domain has a partner for every
     row, so it is INNER at plan time; a domain that is not the whole one, or a
     binder carrying a NULL on the span, keeps the binder anchored."""
-    typed = {"partials": {_RIGHT: [_SPAN]}, "extent_free_keys": {_SPAN}}
+    typed = {"partials": {_RIGHT: {_SPAN}}, "extent_free_keys": frozenset({_SPAN})}
     complete = {_LEFT: {_SPAN}}
+    assert _join({_SPAN}, complete_spans=complete, **typed) == JoinType.INNER
     assert (
-        _join({_SPAN}, nullables={}, complete_spans=complete, **typed) == JoinType.INNER
+        _join({_SPAN}, complete_spans={_LEFT: set()}, **typed) == JoinType.RIGHT_OUTER
     )
     assert (
-        _join({_SPAN}, nullables={}, complete_spans={_LEFT: set()}, **typed)
-        == JoinType.RIGHT_OUTER
-    )
-    assert (
-        _join({_SPAN}, nullables={_RIGHT: [_SPAN]}, complete_spans=complete, **typed)
+        _join({_SPAN}, nullables={_RIGHT: {_SPAN}}, complete_spans=complete, **typed)
         == JoinType.RIGHT_OUTER
     )
 
@@ -226,22 +247,22 @@ def test_region_holder_preserves_over_a_feeder_whose_value_null_pairs():
     no member, and keeps FULL whatever the holder carries."""
     keys = {_SPAN, _ATTR}
     typed = {
-        "nullables": {_LEFT: [_ATTR], _RIGHT: [_ATTR]},
-        "region_holders": {_LEFT: {_SPAN}},
+        "nullables": {_LEFT: {_ATTR}, _RIGHT: {_ATTR}},
+        "held_spans": {_LEFT: {_SPAN}},
     }
-    both = {_LEFT: [_ATTR], _RIGHT: [_ATTR]}
+    both = {_LEFT: {_ATTR}, _RIGHT: {_ATTR}}
     assert _join(keys, value_nullables=both, **typed) == JoinType.LEFT_OUTER
-    assert _join(keys, value_nullables={_RIGHT: [_ATTR]}, **typed) == JoinType.FULL
-    on_key = {_LEFT: [_ATTR, _SPAN], _RIGHT: [_ATTR, _SPAN]}
+    assert _join(keys, value_nullables={_RIGHT: {_ATTR}}, **typed) == JoinType.FULL
+    on_key = {_LEFT: {_ATTR, _SPAN}, _RIGHT: {_ATTR, _SPAN}}
     assert _join(keys, value_nullables=on_key, **typed) == JoinType.LEFT_OUTER
     assert (
-        _join(keys, value_nullables={_RIGHT: [_ATTR, _SPAN]}, **typed) == JoinType.FULL
+        _join(keys, value_nullables={_RIGHT: {_ATTR, _SPAN}}, **typed) == JoinType.FULL
     )
     assert (
         _join(
             keys,
             value_nullables=on_key,
-            extent_nullables={_RIGHT: [_SPAN]},
+            extent_nullables={_RIGHT: {_SPAN}},
             **typed,
         )
         == JoinType.FULL
@@ -296,13 +317,13 @@ def test_complete_key_domain_is_an_unfiltered_scan_kept_whole():
 
 def test_host_preserves_over_a_partial_feeder_whose_value_null_pairs():
     typed = {
-        "partials": {_RIGHT: [_ATTR]},
-        "nullables": {_LEFT: [_ATTR], _RIGHT: [_ATTR]},
-        "host_nodes": {_LEFT},
+        "partials": {_RIGHT: {_ATTR}},
+        "nullables": {_LEFT: {_ATTR}, _RIGHT: {_ATTR}},
+        "hosts": {_LEFT: True},
     }
-    both = {_LEFT: [_ATTR], _RIGHT: [_ATTR]}
+    both = {_LEFT: {_ATTR}, _RIGHT: {_ATTR}}
     assert _join({_ATTR}, value_nullables=both, **typed) == JoinType.LEFT_OUTER
-    assert _join({_ATTR}, value_nullables={_RIGHT: [_ATTR]}, **typed) == JoinType.FULL
+    assert _join({_ATTR}, value_nullables={_RIGHT: {_ATTR}}, **typed) == JoinType.FULL
 
 
 def test_guest_padding_on_the_feeder_is_unpaired_by_the_host_value_null():
@@ -311,18 +332,18 @@ def test_guest_padding_on_the_feeder_is_unpaired_by_the_host_value_null():
     value NULLs do not pair and the feeder keeps FULL. A host padded for the
     same guests pairs it again."""
     typed = {
-        "partials": {_RIGHT: [_ATTR]},
-        "nullables": {_LEFT: [_ATTR], _RIGHT: [_ATTR]},
-        "host_nodes": {_LEFT},
-        "value_nullables": {_LEFT: [_ATTR], _RIGHT: [_ATTR]},
+        "partials": {_RIGHT: {_ATTR}},
+        "nullables": {_LEFT: {_ATTR}, _RIGHT: {_ATTR}},
+        "hosts": {_LEFT: True},
+        "value_nullables": {_LEFT: {_ATTR}, _RIGHT: {_ATTR}},
     }
-    assert _join({_ATTR}, guest_padded={_RIGHT: [_ATTR]}, **typed) == JoinType.FULL
+    assert _join({_ATTR}, guest_padded={_RIGHT: {_ATTR}}, **typed) == JoinType.FULL
     assert (
-        _join({_ATTR}, guest_padded={_LEFT: [_ATTR], _RIGHT: [_ATTR]}, **typed)
+        _join({_ATTR}, guest_padded={_LEFT: {_ATTR}, _RIGHT: {_ATTR}}, **typed)
         == JoinType.LEFT_OUTER
     )
-    held = {**typed, "region_holders": {_LEFT: {_SPAN}}}
-    assert _join({_ATTR}, guest_padded={_RIGHT: [_ATTR]}, **held) == JoinType.FULL
+    held = {**typed, "held_spans": {_LEFT: {_SPAN}}}
+    assert _join({_ATTR}, guest_padded={_RIGHT: {_ATTR}}, **held) == JoinType.FULL
 
 
 def test_guest_padded_addresses_walks_a_value_null_join_without_leaves():

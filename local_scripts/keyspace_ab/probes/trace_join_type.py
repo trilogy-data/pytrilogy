@@ -39,9 +39,8 @@ def _short(s: str) -> str:
     return s if len(s) < 70 else s[:34] + "…" + s[-34:]
 
 
-def _side(bound, name, side):
-    d = bound.arguments.get(name) or {}
-    return sorted(_short(k) for k in d.get(side, []) or [])
+def _keys(values) -> list[str]:
+    return sorted(_short(k) for k in values)
 
 
 def _traced(*args, **kwargs):
@@ -49,18 +48,18 @@ def _traced(*args, **kwargs):
     bound.apply_defaults()
     a = bound.arguments
     result = _orig(*args, **kwargs)
-    left, right = a["left"], a["right"]
+    facts = a["facts"]
     print(
         f"  {result.name}: keys={sorted(_short(k) for k in a['all_connecting_keys'])}"
     )
-    for side, label in ((left, "L"), (right, "R")):
-        holders = (a.get("region_holders") or {}).get(side, set())
+    for side, label in ((a["left"], "L"), (a["right"], "R")):
+        f = facts.side(side)
         print(
             f"    {label} {_short(side)}\n"
-            f"       partial={_side(bound, 'partials', side)} nullable={_side(bound, 'nullables', side)}"
-            f" value={_side(bound, 'value_nullables', side)} extent={_side(bound, 'extent_nullables', side)}"
-            f" holds={sorted(_short(h) for h in holders)} host={side in (a.get('host_nodes') or set())}"
-            f" grain={sorted(_short(g) for g in (a.get('node_grains') or {}).get(side, set()))}"
+            f"       partial={_keys(f.partials)} nullable={_keys(f.nullables)}"
+            f" value={_keys(f.value_nullables)} extent={_keys(f.extent_nullables)}"
+            f" holds={_keys(f.held_spans)} host={f.hosts}"
+            f" grain={_keys(f.grain)}"
         )
     return result
 

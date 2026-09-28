@@ -15,6 +15,7 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.processing.join_resolution import (
     JoinFacts,
+    SideFacts,
     compute_outer_null_status,
     get_join_type,
     prune_outer_join_pairs,
@@ -410,6 +411,20 @@ def test_reduce_concept_pairs_fd_mutual_keeps_one():
     assert len(reduced) == 1, reduced
 
 
+def _facts(
+    partials: dict[str, list[str]], nullables: dict[str, list[str]]
+) -> JoinFacts:
+    return JoinFacts(
+        sides={
+            node: SideFacts(
+                partials=frozenset(partials.get(node, ())),
+                nullables=frozenset(nullables.get(node, ())),
+            )
+            for node in {*partials, *nullables}
+        }
+    )
+
+
 @pytest.mark.parametrize(
     "left_partial,left_nullable,right_partial,right_nullable,expected",
     [
@@ -456,7 +471,7 @@ def test_get_join_type_all_combinations(
         nullables[right] = ["key1"]
 
     result = get_join_type(
-        left, right, all_connecting_keys, JoinFacts(partials, nullables)
+        left, right, all_connecting_keys, _facts(partials, nullables)
     )
     assert result == expected
 
@@ -470,7 +485,7 @@ def test_get_join_type_no_matching_keys():
     all_connecting_keys = {"key1", "key2"}
 
     result = get_join_type(
-        left, right, all_connecting_keys, JoinFacts(partials, nullables)
+        left, right, all_connecting_keys, _facts(partials, nullables)
     )
     assert result == JoinType.INNER
 
@@ -484,7 +499,7 @@ def test_get_join_type_empty_connecting_keys():
     all_connecting_keys = set()
 
     result = get_join_type(
-        left, right, all_connecting_keys, JoinFacts(partials, nullables)
+        left, right, all_connecting_keys, _facts(partials, nullables)
     )
     assert result == JoinType.INNER
 
@@ -499,7 +514,7 @@ def test_get_join_type_multiple_connecting_keys():
     all_connecting_keys = {"key1", "key2", "key3"}
 
     result = get_join_type(
-        left, right, all_connecting_keys, JoinFacts(partials, nullables)
+        left, right, all_connecting_keys, _facts(partials, nullables)
     )
     assert result == JoinType.FULL
 
