@@ -531,6 +531,9 @@ class PlanTrace:
     # id(node) -> (node, context) for every `plan_source` result; the node is
     # held so its id is not reused
     _sourced: dict[int, tuple[Any, str | None]] = field(default_factory=dict)
+    # the traced statement's first and last line within `statement`, when
+    # `statement` is a whole source file
+    statement_lines: tuple[int, int] | None = None
 
     def __post_init__(self, dialect: BaseDialect | None) -> None:
         self.renderer = _display_renderer(dialect)
@@ -571,6 +574,7 @@ class PlanTrace:
         return {
             "version": TRACE_VERSION,
             "statement": self.statement,
+            "statement_lines": self.statement_lines,
             "phases": list(PHASES),
             "plans": jsonable(self.plans),
             "steps": jsonable(self.steps),
@@ -596,10 +600,12 @@ def current() -> PlanTrace | None:
 
 
 def start(
-    statement: str | None = None, renderer: BaseDialect | None = None
+    statement: str | None = None,
+    renderer: BaseDialect | None = None,
+    statement_lines: tuple[int, int] | None = None,
 ) -> PlanTrace:
     global _active
-    _active = PlanTrace(statement, renderer)
+    _active = PlanTrace(statement, renderer, statement_lines=statement_lines)
     return _active
 
 

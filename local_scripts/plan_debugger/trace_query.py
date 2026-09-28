@@ -74,7 +74,13 @@ def run(
         raise SystemExit("no SELECT statement to trace")
     statement = selects[index if index is not None else -1]
     renderer = dialect.default_renderer()
-    trace = plan_trace.start(text, renderer)
+    meta = statement.meta
+    lines = (
+        (meta.line_number, meta.end_line)
+        if meta and meta.line_number and meta.end_line
+        else None
+    )
+    trace = plan_trace.start(text, renderer, lines)
     try:
         processed = process_query(
             env,
