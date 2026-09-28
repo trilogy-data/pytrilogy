@@ -74,3 +74,6 @@ The story a keyspace plan should tell, phase by phase:
   `rowset_region.preql` (the same model through a rowset: a nested plan and a
   rowset witness). Generated `*.trace.*` files are git-ignored.
 - Guards: `tests/core/processing/test_plan_trace.py`.
+- `check_viewer.js`: renders every step of a trace through the viewer's code
+  under a stub DOM (`node check_viewer.js viewer.html <trace.json>`); run it
+  after editing `viewer.html`.
