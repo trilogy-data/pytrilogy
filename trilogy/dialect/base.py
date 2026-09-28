@@ -649,7 +649,11 @@ FUNCTION_MAP = {
     FunctionType.GROUPING: lambda x, types: f"grouping({','.join(x)})",
     FunctionType.GROUPING_ID: lambda x, types: f"grouping_id({','.join(x)})",
     FunctionType.SUM: lambda x, types: f"sum({x[0]})",
-    FunctionType.ARRAY_AGG: lambda x, types: f"array_agg({x[0]})",
+    # `array_agg` collects present values: a NULL element is dropped on every
+    # dialect, and a group of only NULLs is NULL like an empty group.
+    FunctionType.ARRAY_AGG: lambda x, types: (
+        f"array_agg({x[0]}) FILTER (WHERE {x[0]} IS NOT NULL)"
+    ),
     FunctionType.LENGTH: lambda x, types: f"length({x[0]})",
     FunctionType.AVG: lambda x, types: f"avg({x[0]})",
     FunctionType.STDDEV: lambda x, types: f"stddev_samp({x[0]})",
@@ -720,7 +724,8 @@ FUNCTION_MAP = {
 # through to its real FUNCTION_MAP rendering and emits an invalid ungrouped
 # aggregate. `sum/avg/max/min/any/bool_*` reduce to the value itself; `count`
 # to a 0/1 presence flag; sample `stddev/variance` of one value are NULL;
-# `array_agg` is a singleton array; `grouping`/`grouping_id` off a rollup are 0.
+# `array_agg` is a singleton array, NULL for a NULL value (it collects present
+# values only); `grouping`/`grouping_id` off a rollup are 0.
 # The formulas are portable SQL, so dialects share this map (layered after their
 # own FUNCTION_MAP so it is never shadowed by a dialect aggregate override).
 AGGREGATE_GRAIN_MATCH_MAP = {
@@ -733,7 +738,9 @@ AGGREGATE_GRAIN_MATCH_MAP = {
     FunctionType.ANY: lambda args, types: f"{args[0]}",
     FunctionType.STDDEV: lambda args, types: "NULL",
     FunctionType.VARIANCE: lambda args, types: "NULL",
-    FunctionType.ARRAY_AGG: lambda args, types: f"[{args[0]}]",
+    FunctionType.ARRAY_AGG: lambda args, types: (
+        f"CASE WHEN {args[0]} IS NOT NULL THEN [{args[0]}] ELSE NULL END"
+    ),
     FunctionType.BOOL_OR: lambda args, types: f"{args[0]}",
     FunctionType.BOOL_AND: lambda args, types: f"{args[0]}",
     FunctionType.GROUPING: lambda args, types: "0",

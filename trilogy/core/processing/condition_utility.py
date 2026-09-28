@@ -97,7 +97,8 @@ NULL_OPAQUE_FUNCTIONS: tuple[FunctionType, ...] = (
     FunctionType.CASE,
     FunctionType.COUNT,  # COUNT(NULL) = 0, not NULL
     FunctionType.COUNT_DISTINCT,
-    FunctionType.ARRAY_AGG,  # ARRAY_AGG(NULL) = [NULL], not NULL
+    # a non-null array proves SOME element was non-null, not the row's own value
+    FunctionType.ARRAY_AGG,
 )
 
 _T = TypeVar("_T", int, float, date, datetime)
