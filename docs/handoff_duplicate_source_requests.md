@@ -1,10 +1,71 @@
 # Duplicate source requests in v4 discovery
 
-## Status: INVESTIGATED 2026-09-28, no planner change yet.
+## Status: FIXED 2026-09-28 at the callers (no request cache).
 
-Tooling landed with the investigation (`local_scripts/plan_debugger/`):
-`source_repeats.py` measures the repeats below, and the plan debugger's traces
-show them step by step. Nothing in the planner has been changed.
+Two commits on `extension-row-null-semantics`:
+
+- `45ecbb025` *A ROOT request asked once is answered once*: the build loop
+  records each ROOT group's `RootRequest` (outputs, WHERE, scope, parents).
+  FINAL plans a fresh scan only when the built node does not answer its
+  projected request (`RootRequest.answered_by`); a consumer slice equal to
+  the parent's request reads the parent; a ROOT group whose request equals a
+  built one reads a copy of it.
+- `e8f8840a0` *A region domain is built under the FINAL's scope*: section 4's
+  open question, answered "yes": the loop builds a domain under FINAL's scope,
+  so FINAL's re-source is answered by the built node and the domain's other
+  readers see the node FINAL emits.
+
+Measured over the same corpora (`source_repeats.py`):
+
+    before  427 plan_source calls, 65 verbatim repeats
+    after   369 plan_source calls, 19 verbatim repeats
+
+Per caller: `_fresh_final_root_projection` 9 -> 0, `parent_for_consumer`
+37 -> 1, `build_strategy_node` 19 -> 18. The 18 are not two groups asking
+the same question (see "What remains"). The SQL A/B: after
+both commits the TPC-DS, TPC-H and thelook modeling suites (212 + thelook
+battery) left every committed `zquery<N>.log` unchanged, so the generated SQL
+is byte-identical; `tests/core/processing` (685) and `tests/engine` (1474,
+minus the local ClickHouse server) pass.
+
+### Why FINAL was the suspicious one
+
+An audit of every FINAL ROOT re-source across the corpora (26 of them):
+
+| outcome | n | how the request differed from the build's |
+|---|---|---|
+| verbatim | 9 | not at all |
+| same plan | 6 | scope only: region domains (section 4) |
+| same plan | 5 | asked for columns the built scan already outputs (WHERE args) |
+| different plan | 6 | preserve-key widening (`customer.sk`, `store.sk`, `item.sk`); q46/q68 |
+
+20 of 26 reproduced the built node, and the reason to re-source was decidable
+before planning: an output the node does not fully carry, a different WHERE,
+or a different scope. That is what `answered_by` checks. A partially bound
+column is deliberately NOT an answer: asked for outright, `plan_source`
+completes it from another source, which is a different plan.
+
+### What remains (19 repeats, all cross-plan or internal)
+
+- **Existence feeders** (TPC-DS q02/q08/q10/q16/q33/q35/q37/q45/q56/q58/q60/
+  q82/q94/q95): `gen_root > _resolve_root_condition_sources >
+  resolve_existence_sources > search_parent > search_concepts` plans the
+  `IN <subselect>` body as its own statement, and that plan's ROOT group asks
+  the outer root group's exact question. No caller sees both; a per-statement
+  memo on the history is the only dedupe, and in q37 the outer root's node is
+  dead anyway (the SQL reads only the feeder CTE `wakeful`): that is a
+  built-but-unused group, a different waste.
+- **`_plan_source`'s unfiltered fallback** (thelook q16): a conditioned
+  request that declines re-asks without the WHERE, and the re-ask equals the
+  plain ROOT group's request. Internal to source planning.
+- One `parent_for_consumer` slice (q95) whose request is not the parent's.
+
+`_strict_leaf_subset_binds` is why q11's no-op slice got through: it counts
+binders per column, not join paths (`supplier.id` is bound by both `partsupp`
+and `supplier`, so `supplier` looks prunable, but it is the path to `nation`).
+The request-equality guard sits in front of it; the check itself is untouched.
+
+## Original investigation
 
 ## Summary
 
