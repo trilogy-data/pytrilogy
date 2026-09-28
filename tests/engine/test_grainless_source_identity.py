@@ -4,8 +4,8 @@ Twin: `lines (order_id, line_no, product_id)` with its grain declared and
 without. Declaring the grain a source actually has must never change a
 query's rows. The old rule dropped a key that identified another source on
 its own (`order_id`, `product_id`), leaving `lines` one row per `line_no`, so
-a return joined every order's first line (`OWED` below are the shapes the
-twin exposed on the DECLARED side too; strict xfails until fixed)."""
+a return joined every order's first line. The twin exposed two more shapes on
+the DECLARED side (`FINAL_DEDUP`, `UNDEMANDED_PIVOT`), pinned here too."""
 
 import pytest
 
@@ -87,11 +87,10 @@ HAND_ROWS = [
     ),
 ]
 
-# the FINAL over `lines FULL returns FULL products` projects (return, product)
-# with no dedup: `return_id` FD-determines the line through `returns`' grain,
-# but only where a return is PRESENT, and product `a`'s two unreturned lines
-# come out as two rows
-OWED_FINAL_DEDUP = [
+# the FINAL over `lines FULL returns FULL products` projects (return, product):
+# `return_id` FD-determines the line through `returns`' grain, but only where
+# a return is PRESENT, and product `a`'s two unreturned lines were two rows
+FINAL_DEDUP = [
     (
         "select return_id, reason, pname",
         [
@@ -103,10 +102,17 @@ OWED_FINAL_DEDUP = [
     ),
 ]
 
+# the same fold, with `lines` complete on the order: the unreturned lines and
+# the unsold product are one NULL group, not one row each
+COMPLETE_ORDER = _MODEL.replace(
+    "root datasource lines (order_id: ~order_id",
+    "root datasource lines (order_id: order_id",
+).format(grain="grain (order_id, line_no)")
+
 # two facts partial on `order_id` are related through the complete `orders`
-# scan, and that FULL admits the order with neither line nor return although
+# scan, and that FULL admitted the order with neither line nor return although
 # nothing in the statement reaches from the order
-OWED_UNDEMANDED_PIVOT = [
+UNDEMANDED_PIVOT = [
     (
         "select return_id, reason, qty",
         [(900, "damaged", 7), (901, "late", 1), (None, None, 2), (None, None, 5)],
@@ -152,18 +158,24 @@ def test_a_return_reaches_its_own_line(
     assert _rows(ungrained, query) == expected
 
 
-@pytest.mark.xfail(
-    strict=True, reason="FINAL dedup reads an FD through an absent entity"
-)
-@pytest.mark.parametrize("query,expected", OWED_FINAL_DEDUP)
+@pytest.mark.parametrize("query,expected", FINAL_DEDUP)
+@pytest.mark.parametrize("twin", ["grained", "ungrained"])
 def test_final_dedups_to_the_output_grain(
-    grained: Executor, query: str, expected: list[tuple]
+    request: pytest.FixtureRequest, twin: str, query: str, expected: list[tuple]
 ):
-    assert _rows(grained, query) == expected
+    assert _rows(request.getfixturevalue(twin), query) == expected
 
 
-@pytest.mark.xfail(strict=True, reason="two-fact pivot through an undemanded dimension")
-@pytest.mark.parametrize("query,expected", OWED_UNDEMANDED_PIVOT)
+def test_null_padded_key_groups_the_lines_it_does_not_name():
+    executor = _executor(COMPLETE_ORDER)
+    assert _rows(executor, "select return_id, count(product_id) as n") == [
+        (900, 1),
+        (901, 1),
+        (None, 3),
+    ]
+
+
+@pytest.mark.parametrize("query,expected", UNDEMANDED_PIVOT)
 @pytest.mark.parametrize("twin", ["grained", "ungrained"])
 def test_undemanded_pivot_dimension_is_not_a_row(
     request: pytest.FixtureRequest, twin: str, query: str, expected: list[tuple]

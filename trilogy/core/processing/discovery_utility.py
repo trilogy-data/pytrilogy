@@ -175,9 +175,22 @@ def check_if_group_required(
     # equality (`subset join fut.period + 53 = agg.period`) merges its ends
     # into one ≡-class there, but it holds only on matched rows, and treating
     # it as an FD elides the re-aggregation and flips the join preserving.
+    # A key the parent holds NULL on some row determines nothing there: after
+    # `lines FULL JOIN returns`, `return_id` names the line on the returned
+    # rows alone, and the unreturned lines under one NULL are not one row
+    # (`select return_id, reason, pname` gave the product's two lines twice).
+    nullable = {
+        equivalent
+        for parent in parents
+        for concept in parent.nullable_concepts
+        for equivalent in concept.equivalent_addresses
+    }
     if all(
         build_fd_determines(
-            environment, target_coverage, component, include_empty_grain=False
+            environment,
+            target_coverage - nullable,
+            component,
+            include_empty_grain=False,
         )
         for component in comp_grain.components - target_coverage
     ):
@@ -197,11 +210,12 @@ def check_if_group_required(
         )
 
     # a difference of only properties whose keys sit in the source grain does
-    # not need a group
+    # not need a group; a key the parent NULL-pads is not such a key
     if difference and all(
         x.keys
         and all(
-            environment.concepts[z].address in comp_grain.components for z in x.keys
+            environment.concepts[z].address in comp_grain.components - nullable
+            for z in x.keys
         )
         for x in difference
     ):
