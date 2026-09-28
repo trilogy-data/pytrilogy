@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field, replace
 from functools import cached_property, partial
 from typing import TYPE_CHECKING
@@ -424,9 +424,9 @@ class JoinFacts:
     # the plan's regions in this merge's spelling: a holder unions the spans of
     # every region it reads, so only this says how many families the merge has
     region_partition: tuple[frozenset[str], ...] = ()
-    # domains the node emits, or None where the caller declared no demand (the
-    # fact/dimension anchoring then stands down)
-    demanded_domains: frozenset[str] | None = None
+    # domains the node emits: a `~` key outside this set licenses no extension
+    # rows here, so empty means none of them do
+    demanded_domains: frozenset[str] = frozenset()
 
     def side(self, node: str) -> SideFacts:
         return self.sides.get(node) or _NO_FACTS
@@ -653,13 +653,13 @@ def _partial_domain_join(
     # keyed by it) licenses no extension rows here. When the pair is
     # recognizably fact-to-dimension (one side's grain is the connecting keys
     # themselves) the dimension is a pure lookup whose unmatched rows are
-    # grainless, so anchor the fact side. A demanded key, ambiguous topology,
-    # or a value-null fact key stays row-preserving.
+    # grainless, so anchor the fact side. A demanded key, ambiguous topology
+    # (which a side with no known grain is), or a value-null fact key stays
+    # row-preserving.
     if (
-        facts.demanded_domains is not None
-        and not facts.authored(keys)
-        and partial_keys
+        partial_keys
         and not partial_keys & facts.demanded_domains
+        and not facts.authored(keys)
     ):
         left_is_dim = bool(left_facts.grain) and left_facts.grain <= keys
         right_is_dim = bool(right_facts.grain) and right_facts.grain <= keys
@@ -1787,7 +1787,7 @@ def get_node_joins(
     datasources: list[DataSource],
     environment: BuildEnvironment,
     host_grain: set[str] | None = None,
-    demanded_domains: set[str] | None = None,
+    demanded_domains: Collection[str] = frozenset(),
     extent_free_spans: frozenset[str] = frozenset(),
     keyspace: Keyspace | None = None,
 ) -> list[BaseJoin]:
@@ -1959,11 +1959,7 @@ def get_node_joins(
         region_partition=tuple(
             frozenset(canon_node(span) for span in spans) for spans in keyspace.families
         ),
-        demanded_domains=(
-            None
-            if demanded_domains is None
-            else frozenset(canon_node(a) for a in demanded_domains)
-        ),
+        demanded_domains=frozenset(canon_node(a) for a in demanded_domains),
     )
     joins = resolve_join_order_v2(graph, facts)
     _raise_if_keyless_row_bearing_join(
