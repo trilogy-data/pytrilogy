@@ -1629,7 +1629,9 @@ def _process_query(
         plan_trace.record(
             "CTEs after optimization",
             plan_trace.CtesStep(
-                root=root_cte.name, ctes=[plan_trace.cte(c) for c in final_ctes]
+                root=root_cte.name,
+                ctes=[plan_trace.cte(c) for c in final_ctes],
+                removed=plan_trace.removed_ctes(),
             ),
         )
     # Observational only: a diagnostics failure must never block the query.

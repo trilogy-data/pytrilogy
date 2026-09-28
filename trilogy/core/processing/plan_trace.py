@@ -473,6 +473,18 @@ class CtesStep(StepData):
     PHASE: ClassVar[str] = "ctes"
     root: str
     ctes: list[CteTrace]
+    # CTEs the optimizer removed, in removal order (after optimization only)
+    removed: list[CteTombstone] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class CteTombstone:
+    name: str
+    # the optimization phase and its rule; the phase removed it by merging it
+    # into `merged_into`, or it went unreferenced (e.g. inlined) and was swept
+    phase: str
+    rule: str
+    merged_into: str | None
 
 
 @dataclass(frozen=True)
@@ -534,6 +546,7 @@ class PlanTrace:
     # the traced statement's first and last line within `statement`, when
     # `statement` is a whole source file
     statement_lines: tuple[int, int] | None = None
+    _removed_ctes: list[CteTombstone] = field(default_factory=list)
 
     def __post_init__(self, dialect: BaseDialect | None) -> None:
         self.renderer = _display_renderer(dialect)
@@ -632,6 +645,19 @@ def note_sourced(node: StrategyNode | None) -> None:
 def _sourced_in(node: StrategyNode) -> str | None:
     hit = _active._sourced.get(id(node)) if _active is not None else None
     return hit[1] if hit else None
+
+
+def note_removed_ctes(
+    phase: str, rule: str, names: set[str], merged: dict[str, str]
+) -> None:
+    if _active is not None:
+        _active._removed_ctes.extend(
+            CteTombstone(name, phase, rule, merged.get(name)) for name in sorted(names)
+        )
+
+
+def removed_ctes() -> list[CteTombstone]:
+    return list(_active._removed_ctes) if _active is not None else []
 
 
 def set_context(label: str | None) -> None:

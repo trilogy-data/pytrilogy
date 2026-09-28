@@ -132,6 +132,9 @@ pre { background: var(--panel); border: 1px solid var(--line); border-radius: 6p
 .src-line .ln { display: inline-block; width: 3.2em; margin-right: 12px; text-align: right; color: var(--muted); user-select: none; }
 .src-line.hl { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
 pre.query { font-size: 13.5px; white-space: pre-wrap; }
+.tombs { display: flex; flex-wrap: wrap; gap: 6px; }
+.tomb { border: 1px dashed var(--line); border-radius: 6px; padding: 3px 8px; opacity: .8; cursor: pointer; font-size: 12px; }
+.tomb:hover { opacity: 1; border-color: var(--muted); }
 /* show code as typed: no `<-` -> arrow ligatures */
 pre, .mono, .chip, .src { font-variant-ligatures: none; }
 kbd { font-family: var(--mono); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; font-size: 11px; }
@@ -507,7 +510,17 @@ function renderCtes(step) {
       ${c.condition ? `<div class="k">where</div><div class="mono">${esc(c.condition)}</div>` : ''}
       ${(c.partial || []).length ? `<div class="k">partial</div><div>${chips(c.partial, 'warn')}</div>` : ''}${(c.nullable || []).length ? `<div class="k">nullable</div><div>${chips(c.nullable)}</div>` : ''}</div>
       ${(c.joins || []).length ? `<table><tr><th>left</th><th>right</th><th>type</th><th>on</th></tr>${c.joins.map(j => j.unnest ? `<tr><td colspan="4">unnest ${esc(j.unnest)}</td></tr>` : `<tr><td class="mono small">${esc(j.left || c.base || '(base)')}</td><td class="mono small">${esc(j.right)}</td><td>${chip(j.type, j.type.includes('full') ? 'bad' : j.type.includes('left') || j.type.includes('right') ? 'warn' : 'ok')}</td><td>${chips(j.pairs)}${j.condition ? chip(j.condition, 'warn') : ''}${j.modifiers.length ? chips(j.modifiers, 'warn') : ''}</td></tr>`).join('')}</table>` : ''}
-      ${sqls[c.name] && step.title.includes('after') ? `<details><summary class="small">rendered SQL</summary><pre>${esc(sqls[c.name])}</pre></details>` : ''}</div>`).join('')}`;
+      ${sqls[c.name] && step.title.includes('after') ? `<details><summary class="small">rendered SQL</summary><pre>${esc(sqls[c.name])}</pre></details>` : ''}</div>`).join('')}${tombstones(d)}`;
+}
+function tombstones(d) {
+  if (!(d.removed || []).length) return '';
+  const fate = t => {
+    if (t.merged_into) return `merged into ${chip(t.merged_into)}`;
+    const hosts = d.ctes.filter(c => (c.inlined || []).includes(t.name)).map(c => c.name);
+    return hosts.length ? `inlined into ${chips(hosts)}` : 'no longer referenced';
+  };
+  return `<h3>removed by optimization (${d.removed.length})</h3><div class="tombs">${d.removed.map(t => `<div class="tomb" data-tomb="${esc(t.name)}">
+    <span class="mono">✝ ${esc(t.name)}</span> <span class="small">${esc(t.phase)} · ${esc(t.rule)} · ${fate(t)}</span></div>`).join('')}</div>`;
 }
 function renderQuery() {
   const t = S.trace; const lines = (t.statement || '').split(/\r?\n/); const [a, b] = t.statement_lines || [];
@@ -561,7 +574,11 @@ function wire() {
   }
   document.querySelectorAll('summary[data-node]').forEach(s => s.addEventListener('click', ev => { if (ev.target.closest('summary') !== s) return; document.querySelectorAll('summary.sel').forEach(x => x.classList.remove('sel')); s.classList.add('sel'); const x = NODE_REG[s.dataset.node]; const { parents, datasources, ...rest } = x; inspect(x.type || x.identifier || 'node', rest); }));
   document.querySelectorAll('[data-bucket]').forEach(c => c.onclick = () => inspect(stripGrp(c.dataset.bucket), step.data.buckets[c.dataset.bucket] || { removed: true }));
-  document.querySelectorAll('[data-cte]').forEach(c => c.onclick = ev => { if (ev.target.closest('details')) return; inspect(c.dataset.cte, step.data.ctes.find(x => x.name === c.dataset.cte)); });
+  document.querySelectorAll('[data-tomb]').forEach(el => el.onclick = () => {
+    const prev = prevStep(); const c = prev && prev.data.ctes.find(x => x.name === el.dataset.tomb);
+    inspect(`${el.dataset.tomb} (before optimization)`, c || { note: 'created and removed during optimization' });
+  });
+  document.querySelectorAll('[data-cte]').forEach(c => c.onclick =ev => { if (ev.target.closest('details')) return; inspect(c.dataset.cte, step.data.ctes.find(x => x.name === c.dataset.cte)); });
 }
 
 // ------------------------------------------------------------------ input
