@@ -9,6 +9,7 @@
   --bg: #f6f7f9; --panel: #ffffff; --ink: #1c2330; --muted: #66707f; --line: #dde2ea;
   --accent: #2b6cb0; --accent-soft: #e6f0fb; --ok: #2f855a; --ok-soft: #e6f4ec;
   --warn: #b7791f; --warn-soft: #fbf1dc; --bad: #c53030; --bad-soft: #fde8e8;
+  --grp: #7b5412; --grp-line: #d69e2e; --grp-soft: #fff8e1;
   --domain: #6b46c1; --domain-soft: #efe7fb; --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
   --d0: #ffe082; --d1: #f48fb1; --dstar: #cfd8dc; --droot: #90caf9; --dfinal: #81c784; --drootd1: #b39ddb;
 }
@@ -18,6 +19,7 @@
     --accent: #7ab4f5; --accent-soft: #1e2b3d; --ok: #7bd39a; --ok-soft: #1c2f24;
     --warn: #f0c36a; --warn-soft: #3a2f16; --bad: #f28b82; --bad-soft: #3b1f1f;
     --domain: #b794f4; --domain-soft: #2c2340;
+    --grp: #f0c36a; --grp-line: #b7791f; --grp-soft: #33290f;
   }
 }
 * { box-sizing: border-box; }
@@ -43,7 +45,11 @@ button { cursor: pointer; }
 button:hover { border-color: var(--accent); }
 button.on { background: var(--accent-soft); border-color: var(--accent); }
 .chip { display: inline-block; padding: 1px 7px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel);
-  font-family: var(--mono); font-size: 11.5px; margin: 1px 3px 1px 0; white-space: nowrap; }
+  font-family: var(--mono); font-size: 11.5px; margin: 1px 3px 1px 0; white-space: nowrap;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+.chip.grp { background: var(--grp-soft); border-color: var(--grp-line); color: var(--grp); cursor: pointer; }
+.chip.virt { font-style: italic; }
+.chip.dropped { text-decoration: line-through; opacity: .75; }
 .chip.ok { background: var(--ok-soft); border-color: var(--ok); }
 .chip.warn { background: var(--warn-soft); border-color: var(--warn); }
 .chip.bad { background: var(--bad-soft); border-color: var(--bad); }
@@ -56,6 +62,12 @@ button.on { background: var(--accent-soft); border-color: var(--accent); }
 .step .seq { color: var(--muted); font-family: var(--mono); font-size: 11px; min-width: 24px; }
 .step .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .step .plan { color: var(--muted); font-size: 11px; }
+.step.dropped .title { text-decoration: line-through; color: var(--muted); }
+.ctx { padding: 5px 10px 3px; font-size: 11px; color: var(--grp); background: var(--grp-soft); border-bottom: 1px solid var(--line);
+  font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.origin { font-family: var(--mono); font-size: 11px; color: var(--muted); margin: -4px 0 10px; overflow-wrap: anywhere; }
+.origin b { color: var(--ink); font-weight: 600; }
+a.step-link { color: var(--accent); cursor: pointer; text-decoration: underline; }
 .pipe { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
 .pipe button { padding: 2px 7px; font-size: 11.5px; }
 h2 { font-size: 16px; margin: 0 0 10px; }
@@ -93,7 +105,7 @@ pre { background: var(--panel); border: 1px solid var(--line); border-radius: 6p
 .legend .ln { display: inline-block; width: 22px; border-top: 2px solid var(--muted); vertical-align: middle; margin-right: 4px; }
 .legend .ln.dash { border-top-style: dashed; } .legend .ln.dot { border-top-style: dotted; }
 .gnode rect { stroke: #0006; stroke-width: 1; rx: 6; }
-.gnode text { font-size: 11px; font-family: var(--mono); fill: #111; pointer-events: none; }
+.gnode text { font-size: 12.5px; font-family: var(--mono); fill: #111; pointer-events: none; }
 .gnode.sel rect { stroke: var(--accent); stroke-width: 3; }
 .gnode.added rect { stroke: var(--ok); stroke-width: 3; }
 .gnode.removed rect { stroke: var(--bad); stroke-dasharray: 4 3; fill-opacity: .35; }
@@ -110,7 +122,8 @@ pre { background: var(--panel); border: 1px solid var(--line); border-radius: 6p
 .gedge.removed { stroke: var(--bad); stroke-dasharray: 3 3; opacity: .7; }
 .matrix td.defined { background: var(--ok-soft); } .matrix td.carried { background: var(--warn-soft); } .matrix td.absent { background: var(--bad-soft); color: var(--muted); }
 .drop { border: 2px dashed var(--line); border-radius: 10px; padding: 40px; text-align: center; color: var(--muted); margin: 40px auto; max-width: 560px; }
-.two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+.kv > div { min-width: 0; overflow-wrap: anywhere; }
 @media (max-width: 900px) { .two { grid-template-columns: 1fr; } }
 .small { font-size: 11.5px; color: var(--muted); }
 .sel-row { background: var(--accent-soft); }
@@ -141,16 +154,22 @@ const $ = sel => document.querySelector(sel);
 const PHASE_COLORS = { request: '#718096', concept_graph: '#3182ce', keyspace: '#805ad5', grouping: '#d69e2e', group_graph: '#dd6b20',
   source: '#38a169', node: '#319795', final: '#2c7a7b', strategy: '#2b6cb0', resolve: '#4a5568', ctes: '#975a16', sql: '#1a202c' };
 const DEPTH_FILL = { 'd0': 'var(--d0)', 'd1': 'var(--d1)', 'd*': 'var(--dstar)', 'root': 'var(--droot)', 'root_d1': 'var(--drootd1)', 'final': 'var(--dfinal)' };
-const chip = (t, cls = '') => `<span class="chip ${cls}">${esc(t)}</span>`;
+// planner-minted concepts (`_virt_*`) read as their lineage
+const VIRT = /(?:[A-Za-z_]\w*\.)?_virt_\w+/g;
+const nice = t => String(t ?? '').replace(VIRT, m => { const l = S.virt[m.replace(/^.*\./, '')]; return l ? `⟨${l}⟩` : m; });
+const chip = (t, cls = '') => { const n = nice(t); return `<span class="chip ${cls}${n !== String(t ?? '') ? ' virt' : ''}" title="${esc(t)}">${esc(n)}</span>`; };
+const grpChip = gid => `<span class="chip grp" data-group="${esc(gid)}" title="${esc(gid)}">⚑ ${esc(short(stripGrp(gid), 44))}</span>`;
+const ctxChip = ctx => ctx === 'FINAL' ? chip('FINAL assembly', 'accent') : grpChip(ctx);
+const stepLink = seq => seq ? `<a class="step-link" data-seq="${seq}">step ${seq}</a>` : '<span class="small">—</span>';
 const chips = (arr, cls = '') => (arr || []).length ? arr.map(a => chip(a, cls)).join('') : '<span class="small">—</span>';
 const short = (s, n = 40) => { s = String(s); if (s.length <= n) return s; const k = n - 1, h = Math.ceil(k / 2); return s.slice(0, h) + '…' + s.slice(s.length - (k - h)); };
-const stripGrp = id => id.replace(/^grp:/, '');
+const stripGrp = id => String(id).replace(/^grp:/, '');
 const isPrim = v => v === null || ['string', 'number', 'boolean'].includes(typeof v);
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 function renderValue(v, depth = 0) {
   if (v === null || v === undefined) return '<span class="small">null</span>';
-  if (isPrim(v)) return `<span class="mono">${esc(v)}</span>`;
+  if (isPrim(v)) return `<span class="mono">${esc(nice(v))}</span>`;
   if (Array.isArray(v)) {
     if (!v.length) return '<span class="small">[]</span>';
     if (v.every(isPrim)) return chips(v);
@@ -158,18 +177,35 @@ function renderValue(v, depth = 0) {
   }
   const rows = Object.entries(v).filter(([, x]) => !(Array.isArray(x) && !x.length) && x !== null && x !== '' && x !== false);
   if (!rows.length) return '<span class="small">{}</span>';
-  return `<div class="kv">${rows.map(([k, x]) => `<div class="k">${esc(k)}</div><div>${renderValue(x, depth + 1)}</div>`).join('')}</div>`;
+  return `<div class="kv">${rows.map(([k, x]) => `<div class="k" title="${esc(k)}">${esc(nice(k))}</div><div>${renderValue(x, depth + 1)}</div>`).join('')}</div>`;
 }
 const inspect = (title, obj) => { $('#insp').innerHTML = `<h3 style="margin-top:4px">${esc(title)}</h3>${renderValue(obj)}`; };
 
 // ------------------------------------------------------------------ state
-const S = { trace: null, steps: [], idx: 0, plan: 'all', phases: new Set(), planLabel: {}, planDepth: {} };
+const S = { trace: null, steps: [], idx: 0, plan: 'all', phases: new Set(), planLabel: {}, planDepth: {},
+  virt: {}, built: {}, inFinal: {}, changedOnly: true };
+
+// every group tag in a node tree
+function treeGroups(node, out = new Set()) {
+  if (!node || node.ref) return out;
+  if (node.group) out.add(node.group);
+  for (const p of node.parents) treeGroups(p, out);
+  return out;
+}
+// a built group whose node never reaches its plan's FINAL tree (absorbed or discarded)
+const notInFinal = s => s.phase === 'node' && S.inFinal[s.plan] && !S.inFinal[s.plan].has(s.data.group);
 
 function load(trace) {
   S.trace = trace;
   S.planLabel = { null: 'statement' }; S.planDepth = { null: 0 };
   for (const p of trace.plans) { S.planLabel[p.id] = p.label; S.planDepth[p.id] = p.depth; }
   S.phases = new Set(trace.phases);
+  S.virt = {}; S.built = {}; S.inFinal = {};
+  for (const s of trace.steps) {
+    if (s.phase === 'concept_graph') for (const c of s.data.concepts || []) if (c.address.includes('_virt_') && c.lineage) S.virt[c.address.replace(/^.*\./, '')] = c.lineage;
+    if (s.phase === 'node') (S.built[s.plan] ??= {})[s.data.group] = s.seq;
+    if (s.phase === 'final') S.inFinal[s.plan] = treeGroups(s.data.node);
+  }
   const sel = $('#planSel');
   sel.innerHTML = `<option value="all">all plans</option>` + trace.plans.map(p =>
     `<option value="${p.id}">${'  '.repeat(p.depth)}${esc(short(p.label, 60))}</option>`).join('') + `<option value="null">statement (resolve, CTEs, SQL)</option>`;
@@ -179,8 +215,10 @@ function load(trace) {
     const ph = b.dataset.ph; if (S.phases.has(ph)) S.phases.delete(ph); else S.phases.add(ph);
     b.classList.toggle('on'); applyFilter();
   });
+  // read the deep link before the first render rewrites the hash
+  const m = location.hash.match(/step=(\d+)/);
   applyFilter();
-  const m = location.hash.match(/step=(\d+)/); if (m) goSeq(+m[1]);
+  if (m) goSeq(+m[1]);
 }
 function applyFilter() {
   S.steps = S.trace.steps.filter(s => S.phases.has(s.phase) && (S.plan === 'all' || String(s.plan) === S.plan));
@@ -191,9 +229,18 @@ function goSeq(seq) { const i = S.steps.findIndex(s => s.seq === seq); if (i >= 
 function renderSteps() {
   const counts = {}; for (const s of S.trace.steps) counts[s.phase] = (counts[s.phase] || 0) + 1;
   const pipe = `<div class="pipe">${S.trace.phases.map(ph => `<button data-ph="${ph}" style="border-left:4px solid ${PHASE_COLORS[ph]}">${ph} <span class="small">${counts[ph] || 0}</span></button>`).join('')}</div>`;
-  const list = S.steps.map((s, i) => `<div class="step ${i === S.idx ? 'cur' : ''}" data-i="${i}" style="padding-left:${10 + 10 * (S.planDepth[s.plan] || 0)}px">
+  let lastCtx = null;
+  const list = S.steps.map((s, i) => {
+    const pad = 10 + 10 * (S.planDepth[s.plan] || 0); const key = `${s.plan}|${s.context}`; let hdr = '';
+    if (key !== lastCtx) {
+      lastCtx = key;
+      if (s.context) hdr = `<div class="ctx" data-group="${esc(s.context)}" style="padding-left:${pad}px" title="${esc(s.context)}">${s.context === 'FINAL' ? '▾ FINAL assembly' : '▾ building ' + esc(stripGrp(s.context))}</div>`;
+    }
+    const miss = notInFinal(s); const title = s.title.replace(/grp:/g, '');
+    return hdr + `<div class="step ${i === S.idx ? 'cur' : ''} ${miss ? 'dropped' : ''}" data-i="${i}" style="padding-left:${pad + (s.context ? 12 : 0)}px">
     <span class="phase" style="background:${PHASE_COLORS[s.phase]}"></span><span class="seq">${s.seq}</span>
-    <span class="title" title="${esc(s.title)}">${esc(s.title)}</span></div>`).join('');
+    <span class="title" title="${esc(s.title)}${miss ? ' (node not in the FINAL tree)' : ''}">${esc(title)}</span></div>`;
+  }).join('');
   $('#steps').innerHTML = pipe + list;
   document.querySelectorAll('#steps .step').forEach(el => el.onclick = () => { S.idx = +el.dataset.i; show(); });
   document.querySelectorAll('#steps .pipe button').forEach(b => b.onclick = () => { const i = S.steps.findIndex(s => s.phase === b.dataset.ph); if (i >= 0) { S.idx = i; show(); } });
@@ -205,7 +252,8 @@ function show() {
   $('#pos').textContent = S.steps.length ? `${S.idx + 1} / ${S.steps.length}` : '0 / 0';
   if (!step) { $('#view').innerHTML = '<div class="drop">No step matches the filter.</div>'; return; }
   history.replaceState(null, '', `#step=${step.seq}`);
-  const head = `<div class="meta"><span class="phase" style="background:${PHASE_COLORS[step.phase]}"></span>${esc(step.phase)} · step ${step.seq} · ${esc(S.planLabel[step.plan] || 'statement')}</div><h2>${esc(step.title)}</h2>`;
+  const origin = (step.origin || []).length ? `<div class="origin">${step.origin.map((f, i) => i === step.origin.length - 1 ? `<b>${esc(f)}</b>` : esc(f)).join(' › ')}</div>` : '';
+  const head = `<div class="meta"><span class="phase" style="background:${PHASE_COLORS[step.phase]}"></span>${esc(step.phase)} · step ${step.seq} · ${esc(S.planLabel[step.plan] || 'statement')}${step.context ? ' · ' + ctxChip(step.context) : ''}</div><h2>${esc(step.title.replace(/grp:/g, ''))}</h2>${origin}`;
   const r = RENDER[step.phase] || renderGeneric;
   $('#view').innerHTML = head + r(step);
   wire();
@@ -225,7 +273,7 @@ function renderRequest(step) {
   if (!d.environment) return renderValue(d);
   const env = d.environment;
   return `<h3>requested concepts</h3><table><tr><th>address</th><th>purpose</th><th>derivation</th><th>keys</th><th>grain</th><th>lineage</th></tr>
-    ${d.concepts.map(c => `<tr><td class="mono">${esc(c.address)}</td><td>${esc(c.purpose)}</td><td>${esc(c.derivation)}</td><td>${chips(c.keys)}</td><td>${chips(c.grain)}</td><td class="mono small">${esc(c.lineage || '')}</td></tr>`).join('')}</table>
+    ${d.concepts.map(c => `<tr><td class="mono">${esc(c.address)}</td><td>${esc(c.purpose)}</td><td>${esc(c.derivation)}</td><td>${chips(c.keys)}</td><td>${chips(c.grain)}</td><td class="mono small" style="white-space:pre-wrap">${esc(nice(c.lineage || ''))}</td></tr>`).join('')}</table>
     <h3>conditions</h3>${d.conditions.length ? d.conditions.map(c => `<pre>${esc(c)}</pre>`).join('') : '<div class="small">none</div>'}
     ${d.staged_conditions.length ? `<h3>staged (then where)</h3>${d.staged_conditions.map(c => `<pre>${esc(c)}</pre>`).join('')}` : ''}
     <div class="two"><div><h3>statement outputs</h3>${chips(env.statement_outputs)}<h3>hidden</h3>${chips(env.statement_hidden)}</div>
@@ -258,9 +306,11 @@ function renderGrouping(step) {
   if (d.placements) return `<table><tr><th>atom</th><th>hosted at</th><th>reason</th></tr>${d.placements.map(p => `<tr><td class="mono">${esc(p.atom)}</td><td>${chips(p.groups.map(stripGrp))}</td><td>${chip(p.reason)}</td></tr>`).join('')}</table>${d.placements.length ? '' : '<div class="small">no conditions</div>'}`;
   const prev = prevStep(); const before = prev && prev.data.buckets ? prev.data.buckets : {};
   const ids = [...new Set([...Object.keys(before), ...Object.keys(d.buckets)])];
+  let hidden = 0;
   const cards = ids.map(gid => {
     const b = d.buckets[gid], p = before[gid];
     const cls = !p && prev ? 'added' : !b ? 'removed' : (prev && !same(b, p)) ? 'changed' : '';
+    if (prev && S.changedOnly && !cls) { hidden++; return ''; }
     const x = b || p;
     const memberChips = (list, plist) => list.map(m => chip(m, plist && !plist.includes(m) ? 'ok' : '')).join('') + (plist ? plist.filter(m => !list.includes(m)).map(m => `<span class="chip bad"><s>${esc(m)}</s></span>`).join('') : '');
     return `<div class="card ${cls} ${x.extent_spans.length ? 'domain' : ''}" data-bucket="${esc(gid)}"><h4>${esc(stripGrp(gid))}</h4>
@@ -274,7 +324,8 @@ function renderGrouping(step) {
       ${x.grouping_mode !== 'standard' ? `<div class="k">grouping</div><div>${chip(x.grouping_mode, 'warn')}</div>` : ''}</div></div>`;
   }).join('');
   const legend = prev ? `<div class="legend"><span class="sw" style="border-color:var(--ok);border-width:2px"></span>added since "${esc(prev.title)}" <span class="sw" style="border-color:var(--warn);border-width:2px"></span>changed <span class="sw" style="border-color:var(--bad);border-width:2px"></span>removed <span class="sw" style="border-color:var(--domain);border-width:2px"></span>region domain</div>` : '';
-  return `${legend}<div class="cards">${cards}</div><h3>concept → primary bucket</h3>${renderValue(d.primary_group)}`;
+  const toggle = prev ? `<div class="meta"><button id="chgOnly" class="${S.changedOnly ? 'on' : ''}">changed only</button> ${S.changedOnly && hidden ? `<span class="small">${hidden} unchanged bucket${hidden > 1 ? 's' : ''} hidden</span>` : ''}</div>` : '';
+  return `${legend}${toggle}<div class="cards">${cards}</div><h3>concept → primary bucket</h3>${renderValue(d.primary_group)}`;
 }
 
 function renderGraphStep(step) {
@@ -327,10 +378,11 @@ function layout(nodeIds, edges) {
   return { layers, layer };
 }
 function nodeLabel(id, a, isGroup) {
-  if (!isGroup) { const m = id.match(/^\[(.*?)\](.*)$/); return m ? [short(m[2], 30), '[' + short(m[1], 24) + ']'] : [short(id, 32)]; }
+  if (!isGroup) { const m = id.match(/^\[(.*?)\](.*)$/); return m ? [short(nice(m[2]), 30), '[' + short(m[1], 24) + ']'] : [short(nice(id), 32)]; }
   if (id === '__final__') return ['FINAL'];
-  const lines = [`${a.derivation} ${a.depth_label}${a.label ? ' [' + a.label + ']' : ''}${a.extent_spans && a.extent_spans.length ? ' · domain' : ''}`];
-  const members = (a.primary_members && a.primary_members.length ? a.primary_members : a.members || []).map(m => m.replace(/^local\./, ''));
+  const kind = a.derivation === a.depth_label ? a.derivation : `${a.derivation} ${a.depth_label}`;
+  const lines = [`${kind}${a.label ? ' [' + a.label + ']' : ''}${a.extent_spans && a.extent_spans.length ? ' · domain' : ''}`];
+  const members = (a.primary_members && a.primary_members.length ? a.primary_members : a.members || []).map(m => nice(m).replace(/^local\./, ''));
   if (members.length) lines.push(short(members.join(', '), 40));
   if (a.grain_components && a.grain_components.length) lines.push('@ ' + short(a.grain_components.map(m => m.replace(/^local\./, '')).join(', '), 40));
   return lines;
@@ -340,7 +392,7 @@ function drawGraph(el, g, diff, isGroup, onSelect) {
   const allEdges = [...g.edges]; const cur = new Set(g.edges.map(e => `${e.u}→${e.v}`));
   const prev = prevStep(); if (prev) for (const e of prev.data.graph.edges) if (!cur.has(`${e.u}→${e.v}`)) allEdges.push({ ...e, removed: true });
   const { layers, layer } = layout(Object.keys(allNodes), allEdges);
-  const CH = 7, PADX = 12, LH = 15, ROW = 110, GAP = 26;
+  const CH = 7.8, PADX = 12, LH = 16, ROW = 110, GAP = 26;
   const box = {}; const labels = {};
   for (const n of Object.keys(allNodes)) { const ls = nodeLabel(n, allNodes[n] || (prev && prev.data.graph.nodes[n]) || {}, isGroup); labels[n] = ls; box[n] = { w: Math.max(70, Math.min(320, Math.max(...ls.map(s => s.length)) * CH + PADX * 2)), h: LH * ls.length + 12 }; }
   const xy = {}; let maxW = 0;
@@ -358,12 +410,14 @@ function drawGraph(el, g, diff, isGroup, onSelect) {
     return `<g class="${cls}" data-id="${esc(n)}" transform="translate(${p.x - b.w / 2},${p.y - b.h / 2})"><title>${esc(n)}</title><rect width="${b.w}" height="${b.h}" fill="${fill}"></rect>
       ${labels[n].map((s, i) => `<text x="${b.w / 2}" y="${14 + i * LH}" text-anchor="middle" ${i ? 'opacity=".75"' : 'font-weight="600"'}>${esc(s)}</text>`).join('')}</g>`;
   }).join('');
-  el.innerHTML = `<svg viewBox="${-W / 2} ${-60} ${W} ${H + 60}"><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7b8794"></path></marker></defs><g id="pz">${edgeSvg}${nodeSvg}</g></svg><span class="hint">drag to pan · wheel to zoom · click a node</span>`;
+  // fit, but never shrink text below ~80%: a wide graph opens centered on its top and pans
+  const MIN = 0.8; const vw = Math.min(W, (el.clientWidth || W) / MIN), vh = Math.min(H + 60, (el.clientHeight || H) / MIN);
+  el.innerHTML = `<svg viewBox="${-vw / 2} ${-60} ${vw} ${vh}"><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7b8794"></path></marker></defs><g id="pz">${edgeSvg}${nodeSvg}</g></svg><span class="hint">drag to pan · wheel to zoom · click a node</span>`;
   const svg = el.querySelector('svg'), pz = el.querySelector('#pz'); let t = { x: 0, y: 0, k: 1 }, drag = null;
   const apply = () => pz.setAttribute('transform', `translate(${t.x},${t.y}) scale(${t.k})`);
   svg.addEventListener('wheel', ev => { ev.preventDefault(); const f = ev.deltaY < 0 ? 1.12 : 1 / 1.12; t.k *= f; apply(); }, { passive: false });
   svg.addEventListener('mousedown', ev => { drag = { x: ev.clientX, y: ev.clientY, tx: t.x, ty: t.y }; });
-  window.addEventListener('mousemove', ev => { if (!drag) return; const r = svg.getBoundingClientRect(); const sc = W / r.width; t.x = drag.tx + (ev.clientX - drag.x) * sc; t.y = drag.ty + (ev.clientY - drag.y) * sc; apply(); });
+  window.addEventListener('mousemove', ev => { if (!drag) return; const r = svg.getBoundingClientRect(); const sc = vw / r.width; t.x = drag.tx + (ev.clientX - drag.x) * sc; t.y = drag.ty + (ev.clientY - drag.y) * sc; apply(); });
   window.addEventListener('mouseup', () => { drag = null; });
   el.querySelectorAll('.gnode').forEach(gn => gn.addEventListener('click', () => { el.querySelectorAll('.gnode').forEach(x => x.classList.remove('sel')); gn.classList.add('sel'); onSelect(gn.dataset.id); }));
 }
@@ -375,12 +429,14 @@ function nodeTree(node, title) {
     if (x.ref) return `<div class="tree-ref small" style="margin-left:14px">↳ shared parent ${esc(x.ref)} (${esc(x.type)})</div>`;
     const key = `${title}:${n++}`;
     NODE_REG[key] = x;
-    const badges = [x.datasource ? chip('⌂ ' + x.datasource, 'ok') : '', x.region_spans.length ? chip('region ' + x.region_spans.join(','), 'domain') : '',
+    const badges = [x.group ? grpChip(x.group) : x.sourced_in ? chip('sourced @ ' + (x.sourced_in === 'FINAL' ? 'FINAL' : stripGrp(x.sourced_in)), 'warn') : '',
+      x.datasource ? chip('⌂ ' + x.datasource, 'ok') : '', x.region_spans.length ? chip('region ' + x.region_spans.join(','), 'domain') : '',
       x.region_boundary ? chip('boundary', 'domain') : '', x.grain ? chip('@ ' + x.grain.map(s => s.replace(/^local\./, '')).join(','), '') : '',
       x.force_group ? chip('force_group', 'warn') : '', x.host_stitch ? chip('host_stitch', 'accent') : '', x.conditions ? chip('where ' + short(x.conditions, 50), 'warn') : '',
       x.partial.length ? chip('~' + x.partial.length, 'warn') : '', x.nullable.length ? chip('?' + x.nullable.length, '') : '', x.limit ? chip('limit ' + x.limit) : ''].join('');
     const outs = x.outputs.map(o => chip(o.replace(/^local\./, ''), x.hidden.includes(o) ? '' : 'accent')).join('');
-    const joins = (x.joins || []).length ? `<table><tr><th>left</th><th>right</th><th>type</th><th>on</th></tr>${x.joins.map(j => `<tr><td class="mono small">${esc(j.left)}</td><td class="mono small">${esc(j.right)}</td><td>${chip(j.type, j.type.includes('full') ? 'bad' : j.type.includes('left') || j.type.includes('right') ? 'warn' : 'ok')}</td><td>${chips(j.pairs.length ? j.pairs : j.concepts)}${j.modifiers.length ? chips(j.modifiers, 'warn') : ''}</td></tr>`).join('')}</table>` : '';
+    const side = t => esc(t.replace(/<grp:/, '<'));
+    const joins = (x.joins || []).length ? `<table><tr><th>left</th><th>right</th><th>type</th><th>on</th></tr>${x.joins.map(j => `<tr><td class="mono small">${side(j.left)}</td><td class="mono small">${side(j.right)}</td><td>${chip(j.type, j.type.includes('full') ? 'bad' : j.type.includes('left') || j.type.includes('right') ? 'warn' : 'ok')}</td><td>${chips(j.pairs.length ? j.pairs : j.concepts)}${j.modifiers.length ? chips(j.modifiers, 'warn') : ''}</td></tr>`).join('')}</table>` : '';
     return `<details ${open ? 'open' : ''}><summary data-node="${esc(key)}"><span class="ntype ${esc(x.type)}">${esc(x.type)}</span>${badges}<div style="margin:2px 0 0 4px">${outs}</div></summary>${joins}${x.parents.map(p => walk(p, true)).join('')}</details>`;
   };
   return `<div class="tree">${walk(node, true)}</div>`;
@@ -404,14 +460,17 @@ function renderSource(step) {
 }
 function renderNode(step) {
   const d = step.data; const a = d.attrs;
-  return `<div class="meta">${chip(d.derivation)}${chip(a.depth_label)}${a.extent_spans.length ? chip('region domain ' + a.extent_spans.join(','), 'domain') : ''}${a.grain_components.length ? chip('@ ' + a.grain_components.join(','), '') : ''}</div>
+  const status = S.inFinal[step.plan] ? (notInFinal(step) ? chip('node not in the FINAL tree', 'bad') : chip('in the FINAL tree', 'ok')) : '';
+  return `<div class="meta">${grpChip(d.group)}${status}${chip(d.derivation)}${chip(a.depth_label)}${a.extent_spans.length ? chip('region domain ' + a.extent_spans.join(','), 'domain') : ''}${a.grain_components.length ? chip('@ ' + a.grain_components.join(','), '') : ''}</div>
     <div class="two"><div><h3>outputs</h3>${chips(d.outputs, 'accent')}<h3>needed</h3>${chips(d.needed)}<h3>parents (groups)</h3>${chips(d.parent_groups.map(stripGrp))}<h3>join keys</h3>${chips(d.join_keys)}</div>
     <div><h3>atoms injected here</h3>${d.atoms.length ? d.atoms.map(x => `<pre>${esc(x)}</pre>`).join('') : '<span class="small">none</span>'}${d.preexisting ? `<h3>preexisting (applied above)</h3><pre>${esc(d.preexisting)}</pre>` : ''}<h3>span scope during build</h3>${renderValue(d.span_scope)}</div></div>
     <h3>built node</h3>${nodeTree(d.node, 'node' + step.seq)}<h3>group attrs</h3><details><summary class="small">show</summary>${renderValue(a)}</details>`;
 }
 function renderFinal(step) {
   const d = step.data;
-  return `<div class="two"><div><h3>final contract</h3>${renderValue(d.contract)}</div><div><h3>extent ownership</h3>${renderValue(d.extent_ownership)}<h3>built groups</h3>${renderValue(Object.fromEntries(Object.entries(d.built).map(([k, v]) => [stripGrp(k), v])))}</div></div><h3>assembled node</h3>${nodeTree(d.node, 'final' + step.seq)}`;
+  const inF = S.inFinal[step.plan] || new Set(); const builtAt = S.built[step.plan] || {};
+  const built = `<table><tr><th>group</th><th>in this tree</th><th>built</th></tr>${Object.keys(d.built).map(gid => `<tr><td>${grpChip(gid)}</td><td>${inF.has(gid) ? chip('yes', 'ok') : chip('no — absorbed or discarded', 'bad')}</td><td>${stepLink(builtAt[gid])}</td></tr>`).join('')}</table>`;
+  return `<h3>built groups</h3>${built}<div class="two"><div><h3>final contract</h3>${renderValue(d.contract)}</div><div><h3>extent ownership</h3>${renderValue(d.extent_ownership)}</div></div><h3>assembled node</h3>${nodeTree(d.node, 'final' + step.seq)}`;
 }
 const renderStrategy = step => nodeTree(step.data.node, 'strategy' + step.seq);
 function qdsTree(q, title) {
@@ -420,7 +479,7 @@ function qdsTree(q, title) {
     if (x.kind === 'table') return `<details open><summary><span class="ntype SelectNode">table</span>${chip(x.name, 'ok')}</summary></details>`;
     if (x.ref) return `<div class="small" style="margin-left:14px">↳ shared ${esc(x.ref)} ${esc(x.identifier)}</div>`;
     const key = `${title}:${n++}`; NODE_REG[key] = x;
-    const badges = [chip(x.source_type, 'accent'), x.grain.length ? chip('@ ' + x.grain.map(s => s.replace(/^local\./, '')).join(',')) : '', x.region_spans.length ? chip('region ' + x.region_spans.join(','), 'domain') : '',
+    const badges = [x.group ? grpChip(x.group) : '', chip(x.source_type, 'accent'), x.grain.length ? chip('@ ' + x.grain.map(s => s.replace(/^local\./, '')).join(',')) : '', x.region_spans.length ? chip('region ' + x.region_spans.join(','), 'domain') : '',
       x.zero_filled.length ? chip('0-fill ' + x.zero_filled.join(','), 'domain') : '', x.extent_free_spans.length ? chip('extent-free ' + x.extent_free_spans.join(','), 'warn') : '', x.group_required ? chip('GROUP', 'warn') : '',
       x.condition ? chip('where ' + short(x.condition, 50), 'warn') : '', x.partial.length ? chip('~' + x.partial.length, 'warn') : '', x.nullable.length ? chip('?' + x.nullable.length) : ''].join('');
     const joins = x.joins.length ? `<table><tr><th>left</th><th>right</th><th>type</th><th>on</th></tr>${x.joins.map(j => j.unnest ? `<tr><td colspan="4">unnest ${chips(j.unnest)}</td></tr>` : `<tr><td class="mono small">${esc(j.left || '(base)')}</td><td class="mono small">${esc(j.right)}</td><td>${chip(j.type, j.type.includes('full') ? 'bad' : j.type.includes('left') || j.type.includes('right') ? 'warn' : 'ok')}</td><td>${chips(j.pairs.length ? j.pairs : j.concepts)}${j.modifiers.length ? chips(j.modifiers, 'warn') : ''}</td></tr>`).join('')}</table>` : '';
@@ -433,12 +492,13 @@ function renderCtes(step) {
   const d = step.data; const sqlStep = S.trace.steps.find(s => s.phase === 'sql'); const sqls = sqlStep ? sqlStep.data.ctes : {};
   const prev = prevStep(); const before = prev ? new Set(prev.data.ctes.map(c => c.name)) : null;
   return `<div class="meta">root: ${chip(d.root, 'accent')} · ${d.ctes.length} CTEs${before ? ` · ${d.ctes.filter(c => !before.has(c.name)).length} new, ${[...before].filter(n => !d.ctes.some(c => c.name === n)).length} gone since "${esc(prev.title)}"` : ''}</div>
-    ${d.ctes.map(c => `<div class="card ${before && !before.has(c.name) ? 'added' : ''}" data-cte="${esc(c.name)}" style="margin-bottom:10px"><h4>${esc(c.name)} ${chip(c.kind)}${c.name === d.root ? chip('root', 'accent') : ''}${c.group_to_grain ? chip('GROUP BY', 'warn') : ''}${(c.zero_filled || []).length ? chip('0-fill ' + c.zero_filled.join(','), 'domain') : ''}${c.condition ? chip('where', 'warn') : ''}</h4>
+    ${d.ctes.map(c => `<div class="card ${before && !before.has(c.name) ? 'added' : ''}" data-cte="${esc(c.name)}" style="margin-bottom:10px"><h4>${esc(c.name)} ${chip(c.kind)}${c.group ? grpChip(c.group) : ''}${c.name === d.root ? chip('root', 'accent') : ''}${c.group_to_grain ? chip('GROUP BY', 'warn') : ''}${(c.zero_filled || []).length ? chip('0-fill ' + c.zero_filled.join(','), 'domain') : ''}${c.condition ? chip('where', 'warn') : ''}</h4>
       <div class="kv"><div class="k">outputs</div><div>${c.outputs.map(o => chip(o.replace(/^local\./, ''), c.hidden.includes(o) ? '' : 'accent')).join('')}</div>
+      ${c.base ? `<div class="k">from</div><div>${chip(c.base)}</div>` : ''}
       <div class="k">parents</div><div>${chips(c.parents)}${(c.inlined || []).length ? ' inlined: ' + chips(c.inlined) : ''}</div>
       ${c.condition ? `<div class="k">where</div><div class="mono">${esc(c.condition)}</div>` : ''}
       ${(c.partial || []).length ? `<div class="k">partial</div><div>${chips(c.partial, 'warn')}</div>` : ''}${(c.nullable || []).length ? `<div class="k">nullable</div><div>${chips(c.nullable)}</div>` : ''}</div>
-      ${(c.joins || []).length ? `<table><tr><th>left</th><th>right</th><th>type</th><th>on</th></tr>${c.joins.map(j => j.unnest ? `<tr><td colspan="4">unnest ${esc(j.unnest)}</td></tr>` : `<tr><td class="mono small">${esc(j.left || '(base)')}</td><td class="mono small">${esc(j.right)}</td><td>${chip(j.type, j.type.includes('full') ? 'bad' : j.type.includes('left') || j.type.includes('right') ? 'warn' : 'ok')}</td><td>${chips(j.pairs)}${j.condition ? chip(j.condition, 'warn') : ''}${j.modifiers.length ? chips(j.modifiers, 'warn') : ''}</td></tr>`).join('')}</table>` : ''}
+      ${(c.joins || []).length ? `<table><tr><th>left</th><th>right</th><th>type</th><th>on</th></tr>${c.joins.map(j => j.unnest ? `<tr><td colspan="4">unnest ${esc(j.unnest)}</td></tr>` : `<tr><td class="mono small">${esc(j.left || c.base || '(base)')}</td><td class="mono small">${esc(j.right)}</td><td>${chip(j.type, j.type.includes('full') ? 'bad' : j.type.includes('left') || j.type.includes('right') ? 'warn' : 'ok')}</td><td>${chips(j.pairs)}${j.condition ? chip(j.condition, 'warn') : ''}${j.modifiers.length ? chips(j.modifiers, 'warn') : ''}</td></tr>`).join('')}</table>` : ''}
       ${sqls[c.name] && step.title.includes('after') ? `<details><summary class="small">rendered SQL</summary><pre>${esc(sqls[c.name])}</pre></details>` : ''}</div>`).join('')}`;
 }
 function renderSql(step) {
@@ -449,7 +509,30 @@ function renderSql(step) {
 const RENDER = { request: renderRequest, concept_graph: renderGraphStep, keyspace: renderKeyspace, grouping: renderGrouping, group_graph: renderGraphStep,
   source: renderSource, node: renderNode, final: renderFinal, strategy: renderStrategy, resolve: renderResolve, ctes: renderCtes, sql: renderSql };
 
+function groupInfo(gid) {
+  const plans = Object.keys(S.built).filter(p => gid in S.built[p]);
+  const steps = S.trace.steps.filter(s => s.context === gid);
+  const cteStep = [...S.trace.steps].reverse().find(s => s.phase === 'ctes');
+  const ctes = cteStep ? cteStep.data.ctes.filter(c => c.group === gid).map(c => c.name) : [];
+  const built = plans.map(p => S.built[p][gid]);
+  const inFinal = plans.some(p => S.inFinal[p] && S.inFinal[p].has(gid));
+  $('#insp').innerHTML = gid === 'FINAL'
+    ? `<h3 style="margin-top:4px">FINAL assembly</h3><div class="small">steps recorded while assembling FINAL</div><div>${steps.map(s => `<div>${stepLink(s.seq)} ${esc(s.title)}</div>`).join('')}</div>`
+    : `<h3 style="margin-top:4px">group</h3><div class="mono" style="overflow-wrap:anywhere">${esc(gid)}</div>
+    <div class="kv" style="margin-top:8px"><div class="k">built</div><div>${built.length ? built.map(stepLink).join(' ') : '<span class="small">never</span>'}</div>
+    <div class="k">in FINAL tree</div><div>${built.length ? (inFinal ? chip('yes', 'ok') : chip('no — absorbed or discarded', 'bad')) : '—'}</div>
+    <div class="k">final CTEs</div><div>${ctes.length ? chips(ctes) : '<span class="small">none tagged</span>'}</div></div>
+    <h3>steps while building</h3>${steps.length ? steps.map(s => `<div>${stepLink(s.seq)} <span class="small">${esc(s.phase)}</span> ${esc(s.title.replace(/grp:/g, ''))}</div>`).join('') : '<span class="small">none</span>'}`;
+}
+document.addEventListener('click', ev => {
+  const g = ev.target.closest('[data-group]');
+  if (g) { ev.preventDefault(); ev.stopPropagation(); groupInfo(g.dataset.group); return; }
+  const a = ev.target.closest('a.step-link');
+  if (a) { ev.preventDefault(); if (!S.steps.some(s => s.seq === +a.dataset.seq)) { S.plan = 'all'; $('#planSel').value = 'all'; S.phases = new Set(S.trace.phases); document.querySelectorAll('#phaseChips button').forEach(b => b.classList.add('on')); applyFilter(); } goSeq(+a.dataset.seq); }
+}, true);
+
 function wire() {
+  const chg = $('#chgOnly'); if (chg) chg.onclick = () => { S.changedOnly = !S.changedOnly; show(); };
   const step = S.steps[S.idx]; const gEl = $('#graph');
   if (gEl) {
     const g = step.data.graph; const isGroup = step.phase === 'group_graph';
