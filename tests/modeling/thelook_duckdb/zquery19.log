@@ -1,5 +1,5 @@
 query_id = "19"
-gen_length = 1777
+gen_length = 1834
 preql_size = 280
 comp_size = 758
 generated_sql = """
@@ -47,6 +47,14 @@ FROM
     LEFT OUTER JOIN \"cheerful\" on \"user_users\".\"id\" = \"cheerful\".\"user_id\"
     FULL JOIN \"products\" as \"product_products\" on \"cheerful\".\"product_id\" = \"product_products\".\"id\"
     LEFT OUTER JOIN \"thoughtful\" on \"cheerful\".\"order_id\" = \"thoughtful\".\"order_id\"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
 ORDER BY 
     \"cheerful\".\"order_id\" asc nulls first,
     \"cheerful\".\"id\" asc nulls first,
