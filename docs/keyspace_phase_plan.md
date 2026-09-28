@@ -1,6 +1,6 @@
 # Project plan: a keyspace phase in discovery
 
-> **Status (2026-09-27).** Phases 0-7 are built on branch `extension-row-null-semantics`, PR #702, except for the deletions that stay as the fallback for regions the keyspace does not model yet ([What stays](#what-stays-and-why)). No wrong-rows item is owed; what remains is one owner ruling (cross-dialect `array_agg`), plan shape without a rows test, or a shape nothing forces ([Open items](#open-items)). A fresh session should read [The problem](#the-problem) and [The idea](#the-idea) for the vocabulary, then the open items. Before touching a seam, read its section under [Rules as built](#rules-as-built). Git history holds the per-session narratives and A/B tallies this doc used to carry.
+> **Status (2026-09-27).** Phases 0-7 are built on branch `extension-row-null-semantics`, PR #702, except for the deletions that stay as the fallback for regions the keyspace does not model yet ([What stays](#what-stays-and-why)). No wrong-rows item is owed and no ruling is pending; what remains is plan shape without a rows test, or a shape nothing forces ([Open items](#open-items)). A fresh session should read [The problem](#the-problem) and [The idea](#the-idea) for the vocabulary, then the open items. Before touching a seam, read its section under [Rules as built](#rules-as-built). Git history holds the per-session narratives and A/B tallies this doc used to carry.
 
 Background: `docs/handoff_extension_row_semantics.md` (the rule this serves, and a prototype that was backed out), `docs/extent_ownership.md`, `docs/domain_graph_design.md`. Tooling: `local_scripts/keyspace_ab/README.md`.
 
@@ -58,6 +58,7 @@ Shapes it has to get right (pinned in `tests/core/processing/test_keyspace.py`):
 - **A filter concept is a value** (answer 5, "a bug, not a choice"): `filter X where COND` narrows only the concept it defines, never the other columns' rows. The materialized twin restricting the stream is the same bug, so the oracle cannot judge it; it has its own expected-rows tests, and it reaches outside `~` models.
 - **Two `~` bindings on a key have no defined relationship.** The full set is always a complete source (or a `complete where` slice the union machinery stacks), and that is what a heal completes against. With no complete source the key is not in play and nothing heals: `UnresolvableQueryException: no complete sources`.
 - **thelook q22 was rebaselined at 872.** The solid stream as its own CTE beside the user domain is the design's shape.
+- **`array_agg` collects present values** (ruled 2026-09-27). A NULL value on a real row is not an element, and a group of only NULLs is NULL like an empty group, as `count(x)` already ignores NULL values. Backends disagree natively (DuckDB and Postgres keep the NULL, ClickHouse's `groupArray` drops it, BigQuery raises), so each dialect lowers to its own NULL-ignoring form: `FILTER (WHERE x IS NOT NULL)` in the base map (DuckDB, Postgres, Presto, Trino), `IGNORE NULLS` on BigQuery, plain `array_agg` on Snowflake (native), `groupArray` unchanged on ClickHouse. The grain-match singleton is `CASE WHEN x IS NOT NULL THEN [x] ELSE NULL END`. `tests/dialect/test_array_agg_null_semantics.py`. Together with the region rule (aggregates over a region below), `array_agg` never yields a phantom `[NULL]`.
 
 ## Where it sits
 
@@ -236,11 +237,7 @@ The step-2 retirement list was tried by deletion. These are the fallback for reg
 
 ## Open items
 
-No wrong-rows item is owed (the `OWED` list and the `array_agg` xfail are cleared). Everything left is an owner ruling, a shape the keyspace does not model that is rows-right with a fallback standing in, or plan shape on a rows-verified test. An item is "cosmetic" only until a rows test exists -- that held every session of this project -- so a new item starts with one.
-
-**Owner ruling wanted** (no test):
-
-- **Cross-dialect `array_agg` semantics are undefined.** The padding half is fixed (aggregates over a region above): the domain pads the aggregate NULL instead of it collecting `[NULL]`. Over real rows containing a value NULL, `array_agg` still returns three different things: `[..., NULL]` on DuckDB and Postgres, NULLs dropped by ClickHouse's `groupArray`, and a runtime error on BigQuery (`ARRAY_AGG` rejects a NULL element without `IGNORE NULLS`; `bigquery.py` already has a note about `ARRAY_AGG(DISTINCT ...)` dropping a NULL slice). Trilogy's semantics are the model's, not the backend's, so this wants a defined answer and per-dialect lowering -- or an explicit unsupported-feature error where a dialect cannot express it.
+No wrong-rows item is owed (the `OWED` list and the `array_agg` xfail are cleared) and no ruling is pending (cross-dialect `array_agg` was ruled: Owner decisions). Everything left is a shape the keyspace does not model that is rows-right with a fallback standing in, or plan shape on a rows-verified test. An item is "cosmetic" only until a rows test exists -- that held every session of this project -- so a new item starts with one.
 
 **Shapes the keyspace does not model** (a failing rows test would promote one to a phase):
 
