@@ -1,6 +1,37 @@
 # A dim peel built beside the region domains that cover it (adhoc04)
 
-## Status: OBSERVED 2026-09-28, not investigated in code. Hypotheses below are untested.
+## Status: FIXED 2026-09-28 (hypotheses 1 and 2 below, in code; 3 not needed).
+
+Two rules, guarded by `tests/core/processing/test_v4_dim_peel_not_built.py`:
+
+- **Hypothesis 1, in `_split_root_dimension_clusters`** (`_peels_a_cluster`):
+  a candidate entity key (single or composite grain) must determine some
+  other member of the bucket but NOT every other member. A key that
+  determines the whole bucket is the bucket's own row key (`local.id`
+  determining its FK columns), and a peel keyed by it rescans the same table
+  beside nothing at a coarser grain. Composite grains needed the same bound:
+  without it adhoc04's peel just moved to `dim:local.id|order.id`.
+- **Hypothesis 2, `_drop_unread_peels_the_domain_took`** (right after the
+  domain pass): a peel keyed by the region's span whose every primary member
+  the domain took, and which NO other group reads (no concept-graph successor
+  of a member outside the peel), is deleted and its concept nodes remapped
+  to the domain. Left standing (thelook q06/q07, tpc_h adhoc04) it was
+  sourced once more and dropped at FINAL as covered. The reader exception is
+  load-bearing: in `tests/engine/test_region_dimension_attributes.py` the
+  peel is the BASIC's solid-side provider of `tier` for `tier_amount` (INNER
+  on the fact), while the domain is the padded side FINAL reads; remapping
+  such a peel onto the domain made FINAL take `name`/`tier` from the solid
+  contributor and customer 3 lost them (3 wrong-rows failures).
+
+Verified: adhoc03/adhoc04/q06/q07/q19 rows and sorted-row md5 unchanged
+against a baseline worktree; `source_repeats.py` over the three corpora
+369 -> 363 `plan_source` calls (one per dead peel); the dead-group census
+(`dead_groups.py`) shows no dead ROOT on any of the six files. The remaining
+struck-through groups there are the inlined `item_margin` BASIC and, in
+adhoc03/q19, the plain root read through the regraft's untagged rebuild (the
+second question below, untouched).
+
+### Original observation
 
 Follows `docs/handoff_duplicate_source_requests.md` (fixed at `45ecbb025` /
 `e8f8840a0`). After those fixes adhoc04 still builds one group whose node
