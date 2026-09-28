@@ -4580,14 +4580,25 @@ def build_strategy_node(
         if gid == FINAL_NODE_ID:
             continue
         plan_trace.set_context(gid)
-        # Scope the group's extent routing over its whole build, including the
-        # consumer-side re-sources `_parent_nodes_for` plans below.
-        environment.span_scope = dc_replace(
-            environment.span_scope,
-            extent_free=ownership.suppressed_for(gid) | environment.span_scope.owned,
-            extent_free_carried=ownership.suppressed_carried_for(gid),
-        )
         a = attrs[gid]
+        # Scope the group's extent routing over its whole build, including the
+        # consumer-side re-sources `_parent_nodes_for` plans below. A region
+        # domain is the FINAL's own rows and is built under the FINAL's scope,
+        # as its every reader sees it there (`_assemble_final_node`).
+        environment.span_scope = (
+            dc_replace(
+                environment.span_scope,
+                extent_free=environment.span_scope.owned,
+                extent_free_carried={},
+            )
+            if a.extent_spans
+            else dc_replace(
+                environment.span_scope,
+                extent_free=ownership.suppressed_for(gid)
+                | environment.span_scope.owned,
+                extent_free_carried=ownership.suppressed_carried_for(gid),
+            )
+        )
         # Only the FINAL sink carries a None derivation, and it is skipped above.
         assert a.derivation is not None
         derivation = a.derivation
