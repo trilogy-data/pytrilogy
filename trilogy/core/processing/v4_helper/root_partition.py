@@ -10,8 +10,7 @@ Each decision reads the ones before it and none undoes another:
     region      a live extension region the statement asks rows of gets a
                 domain, holding every member the region carries
     entity      attributes FD on a grouping key source from a scan keyed by
-                it, unless a domain holds them whole or the row stream reads
-                their table anyway
+                it, unless a domain holds them whole
     condition   a condition stage that reads a population gets a private scan
                 of its roots, beside the row stream that keeps them
 
@@ -763,42 +762,6 @@ def _domain_holding(
     )
 
 
-def _keep_on_the_row_stream(
-    assignment: dict[str, frozenset[str]],
-    node_of: dict[str, str],
-    concept_attrs: dict[str, ConceptAttrs],
-    pre_aggregate_filter_args: frozenset[str],
-) -> None:
-    """A cluster whose table the row stream reads whatever is peeled stays on
-    it: a member the bucket keeps is bound by that table alone (`category`
-    under a pre-aggregate filter, beside the item's `desc` and `price`), so
-    the cluster's columns are already there and a peel reads the table twice,
-    once more at FINAL.
-
-    Only when the row stream's scan is where every filter lands, which a
-    filter over a derived value is not (`log_length_bin = ...` is hosted at
-    the aggregate): the cluster then reaches FINAL off the unfiltered scan,
-    deduplicated in a CTE of its own beside the aggregate."""
-    if not pre_aggregate_filter_args <= set(node_of):
-        return
-    read_anyway = {
-        next(iter(bindings))
-        for address, node in node_of.items()
-        if address not in assignment
-        and len(bindings := concept_attrs[node].datasource_bindings) == 1
-    }
-    for key in set(assignment.values()):
-        members = [a for a, k in assignment.items() if k == key]
-        if any(
-            all(
-                source in concept_attrs[node_of[m]].datasource_bindings for m in members
-            )
-            for source in read_anyway
-        ):
-            for member in members:
-                del assignment[member]
-
-
 def _peels_a_cluster(
     key: frozenset[str], members: set[str], environment: BuildEnvironment
 ) -> bool:
@@ -822,7 +785,6 @@ def _split_root_dimension_clusters(
     keyspace: Keyspace,
     domains: list[RegionDomain],
     concept_graph: nx.DiGraph,
-    concept_attrs: dict[str, ConceptAttrs],
 ) -> None:
     """Peel single-entity FD dimension clusters out of a keyed ROOT bucket into
     their own ``grp:root:root:dim:<entity_key>`` ROOT buckets.
@@ -843,10 +805,7 @@ def _split_root_dimension_clusters(
     such cluster becomes its own ROOT bucket, per entity. A member FD by two
     incomparable entities only co-occurs through the fact and stays put.
 
-    A cluster is a sourcing choice made on FD alone, so two rules read what
-    the sources say: a region domain that holds the cluster whole takes it
-    (`_domain_holding`), and a cluster whose table the row stream reads
-    anyway stays on it (`_keep_on_the_row_stream`).
+    A region domain that holds a cluster whole takes it (`_domain_holding`).
 
     FD is resolved against the full build environment (not the concept-graph
     side-table), so the chain through an intermediate FK the query never
@@ -976,12 +935,6 @@ def _split_root_dimension_clusters(
         if not assignment:
             continue
         _keep_extension_families_together(assignment, keyspace, environment)
-        _keep_on_the_row_stream(
-            assignment,
-            dict(zip(bucket.primary_members, bucket.primary_node_ids)),
-            concept_attrs,
-            pre_aggregate_filter_args,
-        )
         if not assignment:
             continue
         clusters: dict[frozenset[str], list[int]] = defaultdict(list)
@@ -1125,7 +1078,6 @@ def partition_root_demand(
         keyspace,
         domains,
         concept_graph,
-        concept_attrs,
     )
     trace_buckets("entity clusters peeled", buckets, primary_group)
     scans = _condition_scans(concept_attrs, roots_by_stage)
