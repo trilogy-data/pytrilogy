@@ -905,6 +905,73 @@ def _raise_if_inlined_input_is_unreadable(
         )
 
 
+def _condition_twins(attrs: dict[str, GroupAttrs], gid: str) -> list[str]:
+    """The condition-phase groups the graph shows carrying `gid`'s members."""
+    members = set(attrs[gid].primary_members)
+    return [
+        other
+        for other, o in attrs.items()
+        if other not in (gid, FINAL_NODE_ID)
+        and o.depth_label == DepthLabel.D1
+        and members & {*o.output_concepts, *o.primary_members, *o.secondary_members}
+    ]
+
+
+def _readers(group_graph: nx.DiGraph, gid: str) -> list[str]:
+    return [s for s in group_graph.successors(gid) if s != FINAL_NODE_ID]
+
+
+def _reader_inlines(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    built: dict[str, StrategyNode],
+    reader: str,
+    gid: str,
+    environment: BuildEnvironment,
+    mandatory_list: list[BuildConcept],
+) -> bool:
+    """Whether `reader` computes `gid` inline: an aggregate that does, or an
+    input its own aggregates inline, and `gid` with it."""
+    if edge_kind(group_edges, gid, reader) == EdgeKind.EXISTENCE:
+        return False
+    above = (
+        [reader]
+        if attrs[reader].derivation == Derivation.AGGREGATE
+        else _readers(group_graph, reader)
+    )
+    if not above or not all(
+        attrs[aggregate].derivation == Derivation.AGGREGATE
+        and _aggregate_inlines(
+            group_graph,
+            group_edges,
+            attrs,
+            built,
+            aggregate,
+            gid,
+            environment,
+            mandatory_list,
+        )
+        for aggregate in above
+    ):
+        return False
+    if above == [reader]:
+        return True
+    # the reader's fold is decided off its parents' nodes, `gid`'s in its place
+    if any(
+        pgid != gid and pgid not in built
+        for pgid in _row_parents(group_graph, group_edges, reader)
+    ):
+        return False
+    return _inlined_by_every_reader(
+        *_folded(group_graph, group_edges, attrs, gid),
+        built,
+        reader,
+        environment,
+        mandatory_list,
+    )
+
+
 def _inlined_by_every_reader(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -915,17 +982,12 @@ def _inlined_by_every_reader(
     mandatory_list: list[BuildConcept],
 ) -> bool:
     """Whether no node of `gid`'s own would ever be read: every group reading
-    it is an aggregate computing it inline, and the FINAL takes what it
-    exposes from those readers."""
+    it computes it inline (`_reader_inlines`), and the FINAL takes what it
+    exposes from those readers or from its parents."""
     a = attrs[gid]
-    # a condition-phase group's node is what vetoes its twin's fold
-    if a.depth_label == DepthLabel.D1:
-        return False
-    readers = [s for s in group_graph.successors(gid) if s != FINAL_NODE_ID]
+    readers = _readers(group_graph, gid)
     if not readers or not all(
-        attrs[reader].derivation == Derivation.AGGREGATE
-        and edge_kind(group_edges, gid, reader) != EdgeKind.EXISTENCE
-        and _aggregate_inlines(
+        _reader_inlines(
             group_graph,
             group_edges,
             attrs,
@@ -939,13 +1001,16 @@ def _inlined_by_every_reader(
     ):
         return False
     # a condition-phase twin built between here and a reader would veto the
-    # reader's fold; one the graph shows carrying these members may yet be
-    members = set(a.primary_members)
+    # reader's fold, unless it is folded too: a reader folded with `gid`, or a
+    # twin its own readers inline
+    folded = {r for r in readers if attrs[r].derivation != Derivation.AGGREGATE}
     if any(
-        other not in (gid, FINAL_NODE_ID)
-        and o.depth_label == DepthLabel.D1
-        and members & {*o.output_concepts, *o.primary_members, *o.secondary_members}
-        for other, o in attrs.items()
+        a.depth_label == DepthLabel.D1
+        or not _inlined_by_every_reader(
+            group_graph, group_edges, attrs, built, twin, environment, mandatory_list
+        )
+        for twin in _condition_twins(attrs, gid)
+        if twin not in folded
     ):
         return False
     ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
@@ -956,20 +1021,27 @@ def _inlined_by_every_reader(
         for atom in attrs[FINAL_NODE_ID].condition_atoms
         for arg in atom.row_arguments
     }
-    carried: set[str] = set().union(*(attrs[r].output_concepts for r in readers))
+    # its rows are its parents' rows, so what it passes through they carry
+    carried: set[str] = set().union(
+        *(attrs[r].output_concepts for r in readers),
+        *(
+            attrs[p].output_concepts
+            for p in _row_parents(group_graph, group_edges, gid)
+        ),
+    )
     return set(a.output_concepts) & final_reads <= carried
 
 
-def _fold_into_readers(
+def _read_parents_in_place(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     gid: str,
 ) -> None:
-    """Take `gid` out of the plan: each reader reads `gid`'s parents where it
-    read `gid`, and computes `gid`'s members itself."""
+    """Each reader reads `gid`'s parents where it read `gid`, and computes
+    `gid`'s members itself, with whatever was folded into `gid`."""
     parents = _row_parents(group_graph, group_edges, gid)
-    for reader in [s for s in group_graph.successors(gid) if s != FINAL_NODE_ID]:
+    for reader in _readers(group_graph, gid):
         # in-edges are re-added in order, so the parents take `gid`'s place
         feeds = {
             pgid: group_edges[(pgid, reader)]
@@ -985,7 +1057,11 @@ def _fold_into_readers(
                         source, dc_replace(feeds[gid])
                     )
         a = attrs[reader]
-        a.inlined_members = (*a.inlined_members, *attrs[gid].primary_members)
+        a.inlined_members = (
+            *a.inlined_members,
+            *attrs[gid].inlined_members,
+            *attrs[gid].primary_members,
+        )
         a.input_contracts = tuple(
             c for c in a.input_contracts if c.parent_group_id != gid
         )
@@ -993,6 +1069,31 @@ def _fold_into_readers(
         del group_edges[edge]
     group_graph.remove_node(gid)
     del attrs[gid]
+
+
+def _folded(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+) -> tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs]]:
+    """The group graph as it would stand with `gid` folded; the plan's own is
+    left as it is."""
+    graph, edges = group_graph.copy(), dict(group_edges)
+    folded = {other: dc_replace(a) for other, a in attrs.items()}
+    _read_parents_in_place(graph, edges, folded, gid)
+    return graph, edges, folded
+
+
+def _fold_into_readers(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+) -> None:
+    """Take `gid` out of the plan: its readers read its parents, and nothing
+    else names it."""
+    _read_parents_in_place(group_graph, group_edges, attrs, gid)
     final = attrs[FINAL_NODE_ID]
     if final.final_contract is not None:
         final.final_contract = dc_replace(
@@ -1080,6 +1181,12 @@ def _parent_nodes_for(
             gid,
             environment,
             mandatory_list,
+        )
+    elif attrs[gid].inlined_members:
+        raise ValueError(
+            f"[v4] {gid} was planned to be computed inline along with "
+            f"{list(attrs[gid].inlined_members)}, but is built. This is a "
+            "planner bug."
         )
 
     def provides(pgid: str, node: StrategyNode) -> set[str]:
