@@ -231,6 +231,36 @@ property a.y string;
     assert rendered == "key a int;\nproperty a.x string;\nproperty a.y string;"
 
 
+@pytest.mark.parametrize(
+    "tail,expected_end",
+    [
+        ("", "having\n    sx > 1\n;"),
+        ("order by x asc", "having\n    sx > 1\norder by\n    x asc\n;"),
+        ("limit 5", "having\n    sx > 1\nlimit 5\n;"),
+    ],
+)
+def test_having_clause_no_trailing_blank_line(tail, expected_end):
+    env = Environment()
+    _, queries = env.parse(f"key x int;\nselect x, sum(x) -> sx having sx > 1 {tail};")
+    rendered = Renderer().to_string(queries[-1])
+    assert rendered.endswith(expected_end), rendered
+
+    env2 = Environment()
+    _, queries2 = env2.parse("key x int;\n" + rendered)
+    assert Renderer().to_string(queries2[-1]) == rendered
+
+
+def test_select_grouping_no_trailing_blank_line():
+    env = Environment()
+    _, queries = env.parse("""
+key x int;
+property x.g int;
+select g, sum(x) -> sx by rollup (g);
+""")
+    rendered = Renderer().to_string(queries[-1])
+    assert rendered.endswith("by rollup (g)\n;"), rendered
+
+
 def test_align_clause_uses_and_separator():
     """Multiple ALIGN items are separated by `and` and parse cleanly."""
     env = Environment()
