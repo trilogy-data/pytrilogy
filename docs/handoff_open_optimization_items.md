@@ -5,6 +5,43 @@ Two independent items, both found by tracing
 rendered SQL. Each removes work the planner or optimizer does that it
 shouldn't need to. They can be implemented separately.
 
+## Status: both done (2026-09-29)
+
+**Item 1.** `_region_contract_join` escalates to FULL only when the stream
+joined against the holder holds another family (`_holds_another_family`): the
+side being added when the holder is already joined, everything joined when
+the holder is the one being added. `get_join_type` takes the joined set from
+`resolve_join_order_v2`. adhoc04 plans `left outer` / `full` and the upgrade
+pass no longer fires on it. SQL moved in two places, thelook query19 and
+query21: a join typed LEFT at plan time renders its key off the preserved
+side, so `coalesce(users.id, fact.user_id)` became `users.id`. Rows match the
+reference SQL. Guards: `tests/core/processing/test_v4_region_join_plan_time_typing.py`,
+`test_region_join_escalates_only_over_another_familys_rows`.
+
+**Item 2.** The fold is decided without the folded group's node, but not
+before Stage 3: whether a ROOT parent groups is source planning's call
+(`datasource_nodes.py`), and a graph-only prediction got 30 of ~350 fold
+decisions wrong over the planner suites. `_aggregate_inlines` reads the graph
+and the group's *parents'* nodes, which are built by the group's turn. The
+consumer uses it to re-root (`_inline_aggregate_inputs`); the build loop uses
+it to take a group every reader inlines out of the graph, the contracts and
+the extent routing before building it (`_inlined_by_every_reader`,
+`_fold_into_readers`). Measured against the old node-reading test over the
+planner suites: 343 folds, 0 disagreements. No SQL moved.
+
+Census over tpc_h, tpc_ds_duckdb and thelook_duckdb: 107 dead of 851 built
+before, 75 of 819 after. Of the 44 dead groups the fold explained, 32 are no
+longer built. The 12 that remain:
+
+| count | why it is still built |
+|---|---|
+| 7 | condition-phase (`d1`) group: its node is what vetoes its `d*` twin's fold (`co_materialized`). Left unbuilt, the twin folds too and q44/q64 re-plan (q44 came out 250 chars shorter, rows right): a follow-up, not a planning-only change. |
+| 4 | a BASIC read by a FILTER that is itself folded (tpc_h q14, tpc_ds q50/q62/q99): at the BASIC's turn its reader is not an aggregate, and the FILTER's own fold needs the BASIC's node. |
+| 1 | tpc_ds q72: the FINAL reads outputs the group exposes and its readers do not carry. |
+
+A reader that finds a folded input unreadable raises
+(`_raise_if_inlined_input_is_unreadable`).
+
 ---
 
 # Item 1: plan-time FULL on a region join the planner already knows is LEFT
