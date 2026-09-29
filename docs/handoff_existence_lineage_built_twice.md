@@ -1,6 +1,6 @@
 # The existence lineage is built twice (class A of the dead-group census)
 
-## Status: FIXED 2026-09-28 with shape B (one mechanism). The analysis below is kept as written; "What landed" at the end says what changed and what the A/B showed.
+## Status: FIXED 2026-09-28 with shape B (one mechanism), and the two logs its A/B left grown closed the same day. The analysis below is kept as written; "What landed" onward says what changed.
 
 Follows `docs/handoff_duplicate_source_requests.md` ("Dead groups", class A)
 and `docs/handoff_dim_peel_beside_region_domains.md` (class C, fixed at
@@ -213,40 +213,72 @@ set gets no redundant GROUP BY). q37/q45/q56/q60 are then byte-identical to
 the committed baseline; q05 -629, q24 -671, q08 -105, q23 -79 lose a
 passthrough or a second scan, rows verified by the suites.
 
-## Open: three logs still grew (rows correct)
+## q54 and q64 FIXED 2026-09-28: the feeder is a SET, wired once
 
-Per `feedback_plan_shift_cost_is_often_a_second_bug`, these are the next
-items, not accepted costs. Reproduce any of them with
-`TRILOGY_BENCHMARK_REBASELINE=1` off (the size check fails and names the
-query) and the plan-tree dump described in
+Two rules, both at the wiring seam, guarded by
+`tests/core/processing/test_v4_existence_feeder_set_grain.py` (which fails at
+`07a348b1d`):
+
+- **`_feeder_at_set_grain`**: the slice to the subselect's columns now comes
+  with a `GroupNode` over them. A provider built for the row stream sits at
+  the grain its own consumers need, and slicing it there leaves duplicates.
+  q54's provider is the `my_customers` boundary, whose body reads the
+  multi-channel union, so the node it projects the handle off holds the body's
+  own grain keys hidden and groups by them: `GROUP BY 1, sales_channel,
+  sales_item_sk` over union arms projecting both, where the old nested plan
+  gave `GROUP BY 1`. The boundary's `grain` claim (the handle alone) was the
+  lie; the fan-out is real and unread, which is still a fan-out. `GroupNode`
+  judges whether the group is needed (`check_if_group_required`), so a
+  provider already at the set's grain resolves to a plain SELECT and elides —
+  no size cost where the rule was already met.
+- **`_attach_existence_to_node` is now idempotent**: an arg group a PARENT
+  already supplies is left alone (judging it on `existence_concepts` instead
+  would be wrong — the attach sets those even when it found no provider, and a
+  later pass with more of `built` must still get its chance).
+  `_wire_existence` runs per node right after each build, and only a parent
+  bringing a NEW output is appended, so the first wiring wins. When the outer
+  loop walks the subtree of a node that
+  wraps a NESTED plan, `built` is the outer plan's groups and holds no
+  provider for the inner plan's set, so the fallback was planned for a set the
+  inner plan had already wired correctly. Standalone `_CleanFeederCache._build`
+  calls over the three corpora: 7 -> 2 (q14 1, q54 1, q64 3 gone; q82/q82.1's
+  self-referential `store_sales.item.sk` remains, which is what the cache is
+  for). `_CleanFeederCache`'s single-column no-slice is NOT the cause and is
+  left alone.
+
+Against the pre-round baseline (`5f16370f1`), after both: q02, q10, q2.1, q2.2,
+q33, q54, q58, q69, q83 byte-identical (q10 differs only by two symmetric
+feeders swapping CTE names); q14 -46, q23 -14; q16/q94/q95 +15 and q64 +39
+(the pushdown fix's extra `is not null` predicates plus name churn); q08 +147
+and q35 +189, both below.
+
+**q08 (2853 -> 3105, rebaselined)** is the one growth, and it is the rule
+working: the inner `exists` RHS was the address-grain `abundant` and is now
+deduped to the 5-char zip prefix the set actually is (~50k rows -> a few
+thousand at sf=1), and the outer feeder's dedup that pre-round had is restored.
+The dedup costs a CTE because `CollapseSingleParent` will not fold it into
+`abundant`: `lineage_contains_aggregate` counts `zip_p_count` as an aggregate
+`abundant` renders INLINE, when `abundant` reads it out of `questionable`'s
+source_map. Filed in `docs/handoff_grain_matched_projection_collapse.md`
+("A parent that SOURCES an aggregate"); fixing it should absorb most of the
+growth.
+
+## Open: q35 (+189 over pre-round, rows correct)
+
+Per `feedback_plan_shift_cost_is_often_a_second_bug` this is the next item, not
+an accepted cost. Reproduce with `TRILOGY_BENCHMARK_REBASELINE=1` off (the size
+check fails and names the query) and the plan-tree dump described in
 `project_existence_one_owner_group_graph_wires_feeders` (memory).
 
-- **q54 (+230) and q64 (+183)** are the only grown files that reach the
-  `_CleanFeederCache` fallback (monkeypatch `_CleanFeederCache._build` to
-  count hits: q54 `my_customers.my_cust_id`, q64 `cs_ui.cs_ui_item_id` x3;
-  every other file has 0 hits). The set is a ROWSET handle. The cache's
-  key-widening is NOT the cause (dropping it changes neither size). In q54 the
-  feeder now renders `GROUP BY 1, sales_channel, sales_item_sk` over union
-  arms that project those two hidden columns, where the old nested plan gave
-  `GROUP BY 1`: the fallback's plan keeps the rowset body's hidden columns
-  through its FINAL GroupNode, and `_CleanFeederCache._build` slices outputs
-  only for multi-column groups (`len(group) > 1`). Two questions, in order:
-  why no built group covered a rowset handle the same plan builds (the
-  wiring runs before the FINAL sweep; a host in a NESTED plan may be asking
-  for a rowset the OUTER plan owns), and whether the single-column slice
-  should mirror `resolve_existence_sources` (always slice).
-- **q35 (+196)** never reaches the fallback. The customer scan (three joins,
-  three `exists` atoms) renders TWICE: the count aggregate collapsed its scan
-  into its own CTE (`premium`) and the avg/min/max branch kept a second scan
-  (`cheerful`). Before, one scan `protective` fed both (the avg branch read
-  it through a passthrough `puzzled`). `source_repeats.py --detail` is
-  identical before/after (6 calls: root #3, a narrower `parent_for_consumer`
-  slice #4, a repeat #5), so the difference is downstream of sourcing: the
-  slice's existence parents are now `built[...]` copies wired by
-  `_wire_existence(sliced, ...)` in `parent_for_consumer`, where the old
-  generator path wired history-cached nested-plan nodes. Compare the two
-  scans' resolved QueryDatasource identities (the CTE dedup key) in the
-  `final` step of `trace_query.py`; the wrong-identity side is the bug.
-- q16 +40, q94/q95 +26, q58 +34, q83 +38, q44 +7, q69 +9, q2.1/q2.2 +76:
-  CTE-name churn (longer random names) plus the feeder's `GROUP BY` now
-  rendered on the joined scan; no plan-shape change.
+q35 never reaches the fallback. The customer scan (three joins, three `exists`
+atoms) renders TWICE: the count aggregate collapsed its scan into its own CTE
+(`premium`) and the avg/min/max branch kept a second scan (`cheerful`). Before,
+one scan `protective` fed both (the avg branch read it through a passthrough
+`puzzled`). `source_repeats.py --detail` is identical before/after (6 calls:
+root #3, a narrower `parent_for_consumer` slice #4, a repeat #5), so the
+difference is downstream of sourcing: the slice's existence parents are now
+`built[...]` copies wired by `_wire_existence(sliced, ...)` in
+`parent_for_consumer`, where the old generator path wired history-cached
+nested-plan nodes. Compare the two scans' resolved QueryDatasource identities
+(the CTE dedup key) in the `final` step of `trace_query.py`; the
+wrong-identity side is the bug.
