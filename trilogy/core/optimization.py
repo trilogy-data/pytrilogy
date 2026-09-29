@@ -700,6 +700,7 @@ def optimize_ctes(
     cte_lookup[root_cte.name] = root_cte
 
     phase_actions: dict[str, bool] = {}
+    normalized = False
     rule_plan = build_optimization_rule_plan(
         having_alias=having_alias,
         domain_graph=domain_graph,
@@ -761,7 +762,10 @@ def optimize_ctes(
                     "without converging",
                 )
             )
-        input = reorder_ctes(filter_irrelevant_ctes(input, root_cte))
+        # an unchanged phase leaves an already-normalized list as it was
+        if phase_changed or not normalized:
+            input = reorder_ctes(filter_irrelevant_ctes(input, root_cte))
+            normalized = True
         _trace_removed(
             phase.name, type(rule).__name__, before, input, root_cte, phase_merged
         )
