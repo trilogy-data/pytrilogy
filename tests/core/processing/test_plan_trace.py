@@ -1,4 +1,5 @@
 import json
+import time
 
 from trilogy import Environment
 from trilogy.core.processing import plan_trace
@@ -131,3 +132,32 @@ def test_final_tree_keeps_the_tag_of_a_root_published_through_its_scan():
     final = next(s for s in trace["steps"] if s["phase"] == "final")["data"]["node"]
     root = next(gid for gid in built if gid.startswith("grp:root:root:"))
     assert root in _tree_groups(final)
+
+
+def test_steps_carry_planner_time_except_snapshot_only_steps():
+    trace = _trace("select name, count(order_id) as order_count;")
+    steps = trace["steps"]
+    untimed = {s["phase"] for s in steps if s["ms"] is None}
+    assert untimed == {"request", "strategy"}
+    assert all(s["ms"] >= 0 for s in steps if s["ms"] is not None)
+    at = [s["at_ms"] for s in steps]
+    assert at == sorted(at)
+    assert trace["total_ms"] >= at[-1]
+
+
+@plan_trace.off_clock
+def _slow_snapshot() -> None:
+    time.sleep(0.05)
+
+
+def test_off_clock_time_is_not_planner_time():
+    plan_trace.start()
+    try:
+        plan_trace.record("before", plan_trace.ResolveStep(None, None))
+        _slow_snapshot()
+        plan_trace.record("after", plan_trace.ResolveStep(None, None))
+    finally:
+        trace = plan_trace.stop()
+    assert trace is not None
+    assert trace.steps[-1].ms is not None and trace.steps[-1].ms < 25
+    assert trace.total_ms is not None and trace.total_ms < 25

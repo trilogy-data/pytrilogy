@@ -12,6 +12,7 @@
   --grp: #7b5412; --grp-line: #d69e2e; --grp-soft: #fff8e1;
   --domain: #6b46c1; --domain-soft: #efe7fb; --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
   --d0: #ffe082; --d1: #f48fb1; --dstar: #cfd8dc; --droot: #90caf9; --dfinal: #81c784; --drootd1: #b39ddb;
+  --heat: #ed8936;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -20,6 +21,7 @@
     --warn: #f0c36a; --warn-soft: #3a2f16; --bad: #f28b82; --bad-soft: #3b1f1f;
     --domain: #b794f4; --domain-soft: #2c2340;
     --grp: #f0c36a; --grp-line: #b7791f; --grp-soft: #33290f;
+    --heat: #dd6b20;
   }
 }
 * { box-sizing: border-box; }
@@ -57,11 +59,14 @@ button.on { background: var(--accent-soft); border-color: var(--accent); }
 .chip.accent { background: var(--accent-soft); border-color: var(--accent); }
 .phase { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
 .step { display: flex; gap: 6px; align-items: baseline; padding: 6px 10px; cursor: pointer; border-bottom: 1px solid var(--line); }
+.step.heat { background: color-mix(in srgb, var(--heat) calc(var(--h) * 24%), transparent); }
 .step:hover { background: var(--accent-soft); }
 .step.cur { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
 .step .seq { color: var(--muted); font-family: var(--mono); font-size: 11px; min-width: 24px; }
 .step .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .step .plan { color: var(--muted); font-size: 11px; }
+.dur { color: var(--muted); font-family: var(--mono); font-size: 11px; white-space: nowrap; margin-left: auto; padding-left: 6px; }
+.ctx { display: flex; } .ctx .label { overflow: hidden; text-overflow: ellipsis; }
 .step.dropped .title { text-decoration: line-through; color: var(--muted); }
 .ctx { padding: 5px 10px 3px; font-size: 11px; color: var(--grp); background: var(--grp-soft); border-bottom: 1px solid var(--line);
   font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
@@ -176,6 +181,9 @@ const short = (s, n = 40) => { s = String(s); if (s.length <= n) return s; const
 const stripGrp = id => String(id).replace(/^grp:/, '');
 const isPrim = v => v === null || ['string', 'number', 'boolean'].includes(typeof v);
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+// planner time: a step's `ms` is the time since the previous step; untimed steps carry none
+const fmtMs = ms => ms == null ? '' : ms < 1 ? ms.toFixed(2) + 'ms' : ms < 100 ? ms.toFixed(1) + 'ms' : ms < 1000 ? Math.round(ms) + 'ms' : (ms / 1000).toFixed(2) + 's';
+const durSpan = (ms, title) => ms == null ? '' : `<span class="dur" title="${esc(title)}">${fmtMs(ms)}</span>`;
 
 function renderValue(v, depth = 0) {
   if (v === null || v === undefined) return '<span class="small">null</span>';
@@ -238,23 +246,37 @@ function applyFilter() {
 }
 function goSeq(seq) { const i = S.steps.findIndex(s => s.seq === seq); if (i >= 0) { S.idx = i; show(); } }
 function renderSteps() {
-  const counts = {}; for (const s of S.trace.steps) counts[s.phase] = (counts[s.phase] || 0) + 1;
-  const pipe = `<div class="pipe">${S.trace.phases.map(ph => `<button data-ph="${ph}" style="border-left:4px solid ${PHASE_COLORS[ph]}">${ph} <span class="small">${counts[ph] || 0}</span></button>`).join('')}</div>`;
+  const counts = {}, phaseMs = {};
+  for (const s of S.trace.steps) { counts[s.phase] = (counts[s.phase] || 0) + 1; if (s.ms != null) phaseMs[s.phase] = (phaseMs[s.phase] || 0) + s.ms; }
+  const total = S.trace.total_ms != null ? `<span class="small" style="width:100%">planner ${fmtMs(S.trace.total_ms)}, recorder time excluded</span>` : '';
+  const pipe = `<div class="pipe">${total}${S.trace.phases.map(ph => `<button data-ph="${ph}" style="border-left:4px solid ${PHASE_COLORS[ph]}">${ph} <span class="small">${counts[ph] || 0}${phaseMs[ph] != null ? ' · ' + fmtMs(phaseMs[ph]) : ''}</span></button>`).join('')}</div>`;
+  const maxMs = Math.max(0, ...S.steps.map(s => s.ms ?? 0));
   let lastCtx = null;
   const list = S.steps.map((s, i) => {
     const pad = 10 + 10 * (S.planDepth[s.plan] || 0); const key = `${s.plan}|${s.context}`; let hdr = '';
     if (key !== lastCtx) {
       lastCtx = key;
-      if (s.context) hdr = `<div class="ctx" data-group="${esc(s.context)}" style="padding-left:${pad}px" title="${esc(s.context)}">${s.context === 'FINAL' ? '▾ FINAL assembly' : '▾ building ' + esc(stripGrp(s.context))}</div>`;
+      if (s.context) hdr = `<div class="ctx" data-group="${esc(s.context)}" style="padding-left:${pad}px" title="${esc(s.context)}"><span class="label">${s.context === 'FINAL' ? '▾ FINAL assembly' : '▾ building ' + esc(stripGrp(s.context))}</span>${durSpan(blockMs(i), 'this block, nested plans included')}</div>`;
     }
     const miss = notInFinal(s); const title = s.title.replace(/grp:/g, '');
-    return hdr + `<div class="step ${i === S.idx ? 'cur' : ''} ${miss ? 'dropped' : ''}" data-i="${i}" style="padding-left:${pad + (s.context ? 12 : 0)}px">
+    const heat = s.ms != null && maxMs > 0 ? ` heat" style="--h:${(s.ms / maxMs).toFixed(3)};` : '" style="';
+    return hdr + `<div class="step ${i === S.idx ? 'cur' : ''} ${miss ? 'dropped' : ''}${heat}padding-left:${pad + (s.context ? 12 : 0)}px" data-i="${i}">
     <span class="phase" style="background:${PHASE_COLORS[s.phase]}"></span><span class="seq">${s.seq}</span>
-    <span class="title" title="${esc(s.title)}${miss ? ' (node not in the FINAL tree)' : ''}">${esc(title)}</span></div>`;
+    <span class="title" title="${esc(s.title)}${miss ? ' (node not in the FINAL tree)' : ''}">${esc(title)}</span>${durSpan(s.ms, 'planner time since the previous step')}</div>`;
   }).join('');
   $('#steps').innerHTML = pipe + list;
   document.querySelectorAll('#steps .step').forEach(el => el.onclick = () => { S.idx = +el.dataset.i; show(); });
   document.querySelectorAll('#steps .pipe button').forEach(b => b.onclick = () => { const i = S.steps.findIndex(s => s.phase === b.dataset.ph); if (i >= 0) { S.idx = i; show(); } });
+}
+// a context header's time: its run of steps, with any deeper (nested) plan's steps inside it
+function blockMs(i) {
+  const head = S.steps[i], depth = S.planDepth[head.plan] || 0; let ms = 0, any = false;
+  for (let j = i; j < S.steps.length; j++) {
+    const s = S.steps[j];
+    if ((S.planDepth[s.plan] || 0) <= depth && (s.plan !== head.plan || s.context !== head.context)) break;
+    if (s.ms != null) { ms += s.ms; any = true; }
+  }
+  return any ? ms : null;
 }
 function show() {
   const step = S.steps[S.idx];
@@ -264,7 +286,7 @@ function show() {
   if (!step) { $('#view').innerHTML = '<div class="drop">No step matches the filter.</div>'; return; }
   history.replaceState(null, '', `#step=${step.seq}`);
   const origin = (step.origin || []).length ? `<div class="origin">${step.origin.map((f, i) => i === step.origin.length - 1 ? `<b>${esc(f)}</b>` : esc(f)).join(' › ')}</div>` : '';
-  const head = `<div class="meta"><span class="phase" style="background:${PHASE_COLORS[step.phase]}"></span>${esc(step.phase)} · step ${step.seq} · ${esc(S.planLabel[step.plan] || 'statement')}${step.context ? ' · ' + ctxChip(step.context) : ''}</div><h2>${esc(step.title.replace(/grp:/g, ''))}</h2>${origin}`;
+  const head = `<div class="meta"><span class="phase" style="background:${PHASE_COLORS[step.phase]}"></span>${esc(step.phase)} · step ${step.seq} · ${esc(S.planLabel[step.plan] || 'statement')}${step.context ? ' · ' + ctxChip(step.context) : ''}${step.ms != null ? ' · ' + fmtMs(step.ms) + ' since the previous step' : ''}</div><h2>${esc(step.title.replace(/grp:/g, ''))}</h2>${origin}`;
   const r = RENDER[step.phase] || renderGeneric;
   $('#view').innerHTML = head + r(step);
   wire();

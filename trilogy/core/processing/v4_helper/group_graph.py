@@ -3484,6 +3484,7 @@ def build_group_graph(
     return group_graph, group_edges, attrs
 
 
+@plan_trace.off_clock
 def _trace_buckets(
     title: str, buckets: dict[str, GroupBucket], primary_group: dict[str, str]
 ) -> None:
@@ -3497,6 +3498,7 @@ def _trace_buckets(
         )
 
 
+@plan_trace.off_clock
 def _trace_group_graph(
     title: str,
     group_graph: nx.DiGraph,
