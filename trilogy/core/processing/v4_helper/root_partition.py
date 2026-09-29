@@ -767,12 +767,20 @@ def _keep_on_the_row_stream(
     assignment: dict[str, frozenset[str]],
     node_of: dict[str, str],
     concept_attrs: dict[str, ConceptAttrs],
+    pre_aggregate_filter_args: frozenset[str],
 ) -> None:
     """A cluster whose table the row stream reads whatever is peeled stays on
     it: a member the bucket keeps is bound by that table alone (`category`
     under a pre-aggregate filter, beside the item's `desc` and `price`), so
     the cluster's columns are already there and a peel reads the table twice,
-    once more at FINAL."""
+    once more at FINAL.
+
+    Only when the row stream's scan is where every filter lands, which a
+    filter over a derived value is not (`log_length_bin = ...` is hosted at
+    the aggregate): the cluster then reaches FINAL off the unfiltered scan,
+    deduplicated in a CTE of its own beside the aggregate."""
+    if not pre_aggregate_filter_args <= set(node_of):
+        return
     read_anyway = {
         next(iter(bindings))
         for address, node in node_of.items()
@@ -972,6 +980,7 @@ def _split_root_dimension_clusters(
             assignment,
             dict(zip(bucket.primary_members, bucket.primary_node_ids)),
             concept_attrs,
+            pre_aggregate_filter_args,
         )
         if not assignment:
             continue
