@@ -1,15 +1,35 @@
 # A rename-only CTE survives optimization: grain-matched aggregates block the collapse
 
-## Status: OPEN. Investigated 2026-09-28, re-verified the same day at `07a348b1d`.
+## Status: FIXED 2026-09-28. Both halves landed; the analysis below is kept as written.
 
-Two sibling cases LANDED (see "Filter renames" and "A parent that SOURCES an
-aggregate", both at the end). The grain-matched aggregate case below is still
-open, and the reproduction still holds verbatim: the FINAL merge's GROUP BY work
-(`rows_unique_at_outputs`, `merge_node.py`,
+One rule, two guards: **an aggregate is only an aggregation when its CTE
+groups.** `BaseDialect.render_expr` reaches for `FUNCTION_MAP` only under
+`group_to_grain`; otherwise it uses the single-row forms. Both guards below read
+the lineage instead of the render, so both saw aggregation where the SQL has
+none. Guarded by `tests/optimization/test_collapse_grain_matched_aggregate.py`.
+
+- **`renders_grain_matched_aggregate`** (the main item, "Where to fix" option 1):
+  a non-grouping CTE whose locally rendered columns include an aggregate is
+  BASIC, the scalar-projection mode the rule already folds. ROLLUP / GROUPING
+  SETS are excluded (`has_nonstandard_aggregate_grouping`): those render off the
+  CTE's own grouping mode, which a fold relocates. `get_merge_mode`'s
+  `None` exit now logs, so the next rejection is visible.
+- **`lineage_contains_aggregate` takes the parent's materialized addresses**
+  (the sibling case below): the walk stops at an address the parent pulls from
+  upstream, because it renders as a column reference and nests nothing.
+
+Measured over thelook + TPC-H + TPC-DS, six logs move and nothing else: thelook
+adhoc04 (`zquery19`) -298 and tpc_ds q08 -210 lose the rename-only CTE; q28
+-2043 (its `max(...)` aggregate folds down two layers, and its
+`coalesce(count,0)` goes bare — the surviving CTE groups, where
+`zero_fills_count` returns False by its own rule, and the join is INNER so the
+count is never padded); q29/q97 +8..+14 and tpc_h q13 +14 are alias churn
+(q13 also moves a `coalesce(count,0)` out of the grouped CTE into the
+projection above it). Rows verified by the modeling suites throughout.
+
+The FINAL merge's GROUP BY work (`rows_unique_at_outputs`, `merge_node.py`,
 `tests/engine/test_projected_row_identity.py`) landed at `57c3efea8` and did not
-disturb it. Re-measured at `07a348b1d`: `questionable` still survives, and the
-experiment below still folds it — 940 rows and the same md5 with and without the
-patch, generated SQL 2062 -> 1675 chars.
+disturb the reproduction; it still held verbatim at `07a348b1d`.
 
 ## Symptom
 
@@ -139,16 +159,20 @@ the statement's environment before `generate_sql`):
   parents.
 
 Worth checking explicitly, since the guards were written for BASIC columns,
-not grain-matched aggregates:
-- **grouping-sets/rollup aggregates**: `child_has_merge_blockers` covers
-  nonstandard grouping only in AGGREGATE mode, so check
-  `has_nonstandard_aggregate_grouping` for BASIC too, or exclude those columns
-  from the new branch;
-- aggregates with `by` or a filter (`sum(x ? cond)`): confirm the
-  single-row render is what the child emitted;
-- `passthrough_only` mode (`merge_aggregate` off; `optimization.py` ~line 427)
-  returns early for BASIC, so the new branch is inert there. Probably fine, but
-  a pure-rename CTE is arguably PASSTHROUGH-worthy even then.
+not grain-matched aggregates — how each resolved:
+- **grouping-sets/rollup aggregates**: excluded from the new branch, so such a
+  CTE falls through to today's `None` and nothing changes.
+  `child_has_merge_blockers` is left alone: adding a BASIC arm there would also
+  fire on a nonstandard aggregate merely PASSED THROUGH from the parent, which
+  folds safely today.
+- aggregates with `by` or a filter (`sum(x ? cond)`): unchanged. The child is
+  non-grouping either way, and a GROUP parent is refused by
+  `basic_fold_into_group_is_safe`, which rejects any AGGREGATE-derivation output
+  the parent does not already expose — so a grain-matched aggregate never rides
+  into a real GROUP BY's select list.
+- `passthrough_only` mode: returns early for BASIC, so the new branch is inert
+  there, as predicted. A pure-rename CTE is arguably PASSTHROUGH-worthy even
+  then; not pursued.
 
 ## Where to fix
 
@@ -164,7 +188,12 @@ Two options:
    instead. Larger; touches how aggregate groups resolve (`GroupNode` and its
    `group_required` decision) and every consumer of that node shape.
 
-Recommend 1, with the log line.
+TAKEN: 1, in `get_merge_mode` rather than `is_projection_shape`. Relaxing
+`is_projection_shape` would classify the CTE PASSTHROUGH, which folds the CTE
+away entirely and has consumers read the parent — but the parent holds no
+`revenue`/`margin` column and `rename_reference` does not know an aggregate, so
+`passthrough_renders_from_parent` declines and the fold is lost. BASIC is the
+mode that carries the columns across.
 
 ## Verification plan
 
@@ -204,7 +233,7 @@ could not move onto it, which left tpc_ds q16's returns join LEFT instead of
 INNER. Locally computed BASIC outputs with no window in their lineage now
 count when the candidate is scalar against the parent.
 
-## A parent that SOURCES an aggregate (OPEN, found 2026-09-28)
+## A parent that SOURCES an aggregate (LANDED 2026-09-28)
 
 The same over-broad "is this local computation?" reasoning, one guard over.
 `AGGREGATE` mode refuses a parent that "renders inline aggregate x" when
@@ -222,20 +251,20 @@ is the semijoin feeder's dedup group added by
 is most of that file's 2853 -> 3105. The same line fires again as "Parent
 concerned renders inline aggregate local.final_zips".
 
-The fix shape: make `lineage_contains_aggregate` stop descending at an address
-the parent sources (pass the parent's `source_map`, treat a sourced address as a
-leaf), so the guard asks what it means to ask — does the parent render an
-aggregate INLINE. Reproduce the refusals with:
+`lineage_contains_aggregate` now takes the parent's materialized addresses and
+stops descending at one, so the guard asks what it means to ask: does the parent
+render an aggregate INLINE. `computes_sensitive_derivation` already bounded its
+walk the same way. See the refusals by grepping the optimizer log for "renders
+inline aggregate", or:
 
 ```bash
 .venv/Scripts/python.exe local_scripts/plan_debugger/trace_query.py \
   tests/modeling/tpc_ds_duckdb/query08.preql --open
 ```
 
-or by grepping the optimizer log for "renders inline aggregate". Verify the same
-way as the main item (`tests/optimization`, full suite, the corpora zquery A/B):
-this one touches every query with an aggregate read through a projection, so the
-A/B is the whole point.
+This is the half with reach — it touches every query with an aggregate read
+through a projection. On the corpora it moves five logs: q08 -210, q28 -2043,
+and q29 +14 / q97 +8 / tpc_h q13 +14, all three alias churn.
 
 ## Related
 
