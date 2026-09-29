@@ -2,11 +2,15 @@
 group graph before it is built (docs/handoff_open_optimization_items.md,
 item 2)."""
 
+from pytest import raises
+
 from tests.core.processing.test_v4_dim_peel_not_built import _MODEL
 from trilogy import Dialects, Environment
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation
+from trilogy.core.env_processor import generate_graph
 from trilogy.core.processing import plan_trace
+from trilogy.core.processing.nodes import History
 from trilogy.core.processing.v4_helper.constants import (
     FINAL_NODE_ID,
     DepthLabel,
@@ -19,7 +23,10 @@ from trilogy.core.processing.v4_helper.models import (
     GroupAttrs,
     GroupInputContract,
 )
-from trilogy.core.processing.v4_helper.strategy_builder import _fold_into_readers
+from trilogy.core.processing.v4_helper.strategy_builder import (
+    _fold_into_readers,
+    _parent_nodes_for,
+)
 
 
 def _executor():
@@ -70,6 +77,56 @@ order by line_id asc;"""
     assert rows == [(1, 4.0, 9.0), (2, 5.0, 9.0), (3, 2.0, 2.0)]
 
 
+def test_input_behind_an_inlined_filter_is_not_built():
+    executor = _executor()
+    query = """select order_id, sum(item_margin ? item_margin > 3) as big_margin
+order by order_id asc;"""
+    trace = _trace(executor, query)
+    assert not _built(trace, "basic") and not _built(trace, "filter")
+    rows = [tuple(r) for r in executor.execute_text(query)[-1].fetchall()]
+    assert rows == [(10, 9.0), (11, None)]
+
+
+def test_condition_phase_twins_are_not_built():
+    executor = _executor()
+    query = """auto ca_avg <- avg(sale_price ? user_id = 1) by order_id;
+where order_id in (10, 11) and ca_avg > 1
+select line_id, rank(order_id) over (order by ca_avg asc) as rnk
+order by line_id asc;"""
+    trace = _trace(executor, query)
+    assert not _built(trace, "filter")
+    rows = [tuple(r) for r in executor.execute_text(query)[-1].fetchall()]
+    assert rows == [(1, 1), (2, 1)]
+
+
+def test_reader_holding_folded_members_is_never_built():
+    env, _ = Environment().parse(_MODEL)
+    build_env = env.materialize_for_select()
+    graph = nx.DiGraph()
+    graph.add_node("filter")
+    attrs = {
+        "filter": GroupAttrs(
+            depth_label=DepthLabel.D0,
+            derivation=Derivation.FILTER,
+            inlined_members=("local.item_margin",),
+        )
+    }
+    with raises(ValueError, match="planned to be computed inline"):
+        _parent_nodes_for(
+            graph,
+            {},
+            attrs,
+            {},
+            "filter",
+            build_env,
+            generate_graph(build_env),
+            History(base_environment=env),
+            needed=set(),
+            root_requests={},
+            mandatory_list=[],
+        )
+
+
 def test_fold_puts_the_parents_in_the_folded_groups_place():
     graph = nx.DiGraph()
     edges: EdgeMap = {}
@@ -95,6 +152,7 @@ def test_fold_puts_the_parents_in_the_folded_groups_place():
         ]
     }
     attrs["basic"].primary_members = ("local.item_margin",)
+    attrs["basic"].inlined_members = ("local.cost_basis",)
     attrs["agg"].input_contracts = tuple(
         GroupInputContract(parent_group_id=parent, consumer_group_id="agg")
         for parent in ("root", "basic", "other")
@@ -112,7 +170,7 @@ def test_fold_puts_the_parents_in_the_folded_groups_place():
     assert edges[("other", "agg")].kind == EdgeKind.CONSTRAINT
     assert "basic" not in graph and "basic" not in attrs
     assert not [edge for edge in edges if "basic" in edge]
-    assert attrs["agg"].inlined_members == ("local.item_margin",)
+    assert attrs["agg"].inlined_members == ("local.cost_basis", "local.item_margin")
     assert [c.parent_group_id for c in attrs["agg"].input_contracts] == [
         "root",
         "other",
