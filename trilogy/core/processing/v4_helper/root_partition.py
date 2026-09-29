@@ -283,17 +283,15 @@ def _split_strands_condition_scan(
     )
 
 
-def _add_d1_root_buckets(
+def _condition_scans(
     concept_attrs: dict[str, ConceptAttrs],
-    buckets: dict[str, GroupBucket],
     d1_calc_roots_by_stage: dict[int | None, set[str]],
-) -> dict[int | None, str]:
-    """Add an extra ROOT bucket per stage qualifier containing just that
-    stage's d1-feeding roots. Returns group ids keyed like the input; only
-    stage-qualified buckets carry a discriminator. Buckets are added
-    plain-first then by stage so insertion order does not depend on set
-    iteration order."""
-    gids: dict[int | None, str] = {}
+) -> dict[int | None, GroupBucket]:
+    """A ROOT bucket per stage qualifier holding that stage's d1-feeding
+    roots, beside the row stream that keeps them. Only stage-qualified buckets
+    carry a discriminator. Plain-first then by stage, so bucket order does not
+    depend on set iteration order."""
+    scans: dict[int | None, GroupBucket] = {}
     for stage, d1_calc_roots in sorted(
         d1_calc_roots_by_stage.items(), key=lambda kv: (-1 if kv[0] is None else kv[0])
     ):
@@ -312,10 +310,8 @@ def _add_d1_root_buckets(
             bucket.primary_members.append(address)
             bucket.primary_node_ids.append(node)
             bucket.member_depths[address] = concept_attrs[node].depth_label
-        gid = bucket.group_id
-        buckets[gid] = bucket
-        gids[stage] = gid
-    return gids
+        scans[stage] = bucket
+    return scans
 
 
 def _prune_existence_exclusive_roots(
@@ -1026,6 +1022,19 @@ def partition_root_demand(
     projected_scalar_root_args = _projected_scalar_root_args(
         mandatory_list, _grouping_keys(buckets)
     )
+    roots_by_stage, condition_nodes = _d1_calc_subgraph(
+        concept_graph, concept_edges, concept_attrs, environment
+    )
+    scans = _condition_scans(concept_attrs, roots_by_stage)
+    _prune_existence_exclusive_roots(
+        concept_graph,
+        concept_edges,
+        concept_attrs,
+        buckets,
+        set().union(*roots_by_stage.values()),
+        condition_nodes,
+        protected_addresses=output_addresses | condition_arg_addresses,
+    )
     domains = decide_region_domains(
         buckets,
         concept_attrs,
@@ -1051,18 +1060,10 @@ def partition_root_demand(
     trace_buckets("root dimension clusters split", buckets, primary_group)
     add_region_domain_buckets(buckets, domains, keyspace, environment)
     trace_buckets("region domain buckets added", buckets, primary_group)
-    roots_by_stage, condition_nodes = _d1_calc_subgraph(
-        concept_graph, concept_edges, concept_attrs, environment
-    )
-    scans = _add_d1_root_buckets(concept_attrs, buckets, roots_by_stage)
+    buckets.update({scan.group_id: scan for scan in scans.values()})
     carry_spans_to_condition_scans(buckets, keyspace)
-    _prune_existence_exclusive_roots(
-        concept_graph,
-        concept_edges,
-        concept_attrs,
-        buckets,
-        set().union(*roots_by_stage.values()),
+    return RootPartition(
+        {stage: scan.group_id for stage, scan in scans.items()},
+        roots_by_stage,
         condition_nodes,
-        protected_addresses=output_addresses | condition_arg_addresses,
     )
-    return RootPartition(scans, roots_by_stage, condition_nodes)
