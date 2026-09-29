@@ -4,6 +4,8 @@ group of their own so a derivation absent there never reads padded rows
 evaluate on the region, and restated at FINAL for the WHERE atoms over it.
 """
 
+from dataclasses import dataclass
+
 from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.core.enums import NULL_COLLECTING_AGGREGATES, Derivation
@@ -221,10 +223,6 @@ def _mixes_region(bucket: GroupBucket, region: Region, keyspace: Keyspace) -> bo
     return any(held) and not all(held)
 
 
-def _keyed_by_region(bucket: GroupBucket, region: Region) -> bool:
-    return bool(bucket.dim_keys) and bucket.dim_keys <= region.spans
-
-
 def _holds_a_materialized_aggregate(
     bucket: GroupBucket, environment: BuildEnvironment
 ) -> bool:
@@ -236,14 +234,118 @@ def _holds_a_materialized_aggregate(
     )
 
 
-def add_region_domain_buckets(
+def _pads_region(
+    bucket: GroupBucket,
+    region: Region,
+    keyspace: Keyspace,
+    environment: BuildEnvironment,
+) -> bool:
+    """Something the region carries sourced beside something absent on it: the
+    bucket's rows are the solid stream beside the region's domain. A bucket
+    reading a MATERIALIZED aggregate is not modelled yet and keeps the padded
+    plan."""
+    return _mixes_region(
+        bucket, region, keyspace
+    ) and not _holds_a_materialized_aggregate(bucket, environment)
+
+
+@dataclass
+class RegionDomain:
+    """A live extension region the statement asks rows of, and the bucket that
+    carries them."""
+
+    region: Region
+    bucket: GroupBucket
+
+    @property
+    def carried(self) -> set[str]:
+        return set(self.bucket.primary_members)
+
+
+def _region_domain(
+    region: Region,
+    label: str,
     buckets: dict[str, GroupBucket],
     concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
     keyspace: Keyspace,
     condition_arg_addresses: frozenset[str],
     mandatory_list: list[BuildConcept],
-) -> None:
+) -> RegionDomain | None:
+    eligible = [
+        b for b in buckets.values() if b.label == label and _splits_for_region(b)
+    ]
+    sources = [b for b in eligible if _pads_region(b, region, keyspace, environment)]
+    rowset = [b for b in sources if b.derivation == Derivation.ROWSET]
+    # beside a rowset the domain is the boundary again; otherwise it takes
+    # every member of the region the scope's row stream holds
+    holders = rowset or [
+        b
+        for b in eligible
+        if b.derivation == Derivation.ROOT
+        and not _holds_a_materialized_aggregate(b, environment)
+    ]
+    members = {
+        address: node_id
+        for b in (*sources, *holders)
+        for address, node_id in zip(b.primary_members, b.primary_node_ids)
+        if keyspace.carried_on(address, region)
+    }
+    if (
+        not sources
+        or not members
+        or not _region_is_demanded(
+            label,
+            region,
+            keyspace,
+            keyspace.output_demanded_spans,
+            concept_attrs,
+            environment,
+        )
+    ):
+        return None
+    if rowset and not _needs_solid_rows(buckets, label, region, keyspace, environment):
+        return None
+    undelivered = sorted(
+        address
+        for address in condition_arg_addresses
+        if not _filters_region_domain(
+            address, region, keyspace, set(members), environment, mandatory_list
+        )
+    )
+    if undelivered:
+        # no host filters the domain's rows by these, so the region
+        # keeps its padded plan
+        logger.info(
+            f"region {region.describe()} keeps its padded plan: no host"
+            f" filters its rows by {undelivered}"
+        )
+        return None
+    extent = f"extent:{'|'.join(sorted(region.spans))}"
+    domain = GroupBucket(
+        depth_label=rowset[0].depth_label if rowset else DepthLabel.ROOT,
+        derivation=Derivation.ROWSET if rowset else Derivation.ROOT,
+        grain_components=frozenset(),
+        label=label,
+        discriminator=f"{rowset[0].discriminator}:{extent}" if rowset else extent,
+        extent_spans=region.spans,
+    )
+    depths = {a: d for b in eligible for a, d in b.member_depths.items()}
+    for address, node_id in members.items():
+        domain.primary_members.append(address)
+        domain.primary_node_ids.append(node_id)
+        domain.member_depths[address] = depths.get(address, DepthLabel.ROOT)
+    return RegionDomain(region, domain)
+
+
+def decide_region_domains(
+    buckets: dict[str, GroupBucket],
+    concept_attrs: dict[str, ConceptAttrs],
+    environment: BuildEnvironment,
+    keyspace: Keyspace,
+    condition_arg_addresses: frozenset[str],
+    mandatory_list: list[BuildConcept],
+) -> list[RegionDomain]:
     """Give a live extension region its own ROOT bucket when the statement
     derives something absent on it.
 
@@ -265,10 +367,16 @@ def add_region_domain_buckets(
     A ROWSET boundary already holds the region's rows (its body padded them),
     so it is split only when something must be evaluated on the solid rows
     (`_needs_solid_rows`): the domain is the boundary again, and the solid
-    side is the body planned without the region (`SpanScope.owned`)."""
+    side is the body planned without the region (`SpanScope.owned`).
+
+    Decided on the scope's whole root demand, before any of it is peeled onto
+    an entity key: the domain takes every member the region carries, so the
+    entity split knows which clusters are a domain's rows already."""
     # an authored coalescing relation (`union join ocust = cid`) IS its key's
     # domain, and the union machinery builds it; no region domain beside it
     coalescing = environment.domain_graph.coalescing_relation_members()
+    labels = sorted({b.label for b in buckets.values()})
+    domains: list[RegionDomain] = []
     for region in keyspace.live_regions:
         if not region.has_own_rows or not all(
             span in environment.concepts for span in region.spans
@@ -276,108 +384,46 @@ def add_region_domain_buckets(
             continue
         if region.spans & coalescing:
             continue
-        for label in sorted({b.label for b in buckets.values()}):
-            eligible = [
-                b
-                for b in buckets.values()
-                if b.label == label and _splits_for_region(b)
-            ]
-            # the buckets that pad: something the region carries sourced
-            # beside something absent on it. Their rows become the solid stream.
-            # A bucket reading a MATERIALIZED aggregate (a summary table rolled
-            # up to the statement's grain) is a rollup over the region's rows
-            # that the group graph holds as a ROOT: not modelled yet, it keeps
-            # the padded plan.
-            sources = [
-                b
-                for b in eligible
-                if _mixes_region(b, region, keyspace)
-                and not _holds_a_materialized_aggregate(b, environment)
-            ]
-            rowset = [b for b in sources if b.derivation == Derivation.ROWSET]
-            # a dim peel keyed by the span is the region's own rows already;
-            # the domain takes its members too. So it takes a member of the
-            # region any other ROOT peel holds (`brand` under `dim:item_id`):
-            # left there alone, only an unpromoted completion of that peel at
-            # FINAL put the member's value on the extension row
-            holders = [
-                b
-                for b in eligible
-                if b in sources
-                or _keyed_by_region(b, region)
-                or (
-                    not rowset
-                    and b.derivation == Derivation.ROOT
-                    and not _holds_a_materialized_aggregate(b, environment)
-                )
-            ]
-            carried = {
-                m
-                for b in holders
-                for m in b.primary_members
-                if keyspace.carried_on(m, region)
-            }
-            if (
-                not sources
-                or not carried
-                or not _region_is_demanded(
-                    label,
-                    region,
-                    keyspace,
-                    keyspace.output_demanded_spans,
-                    concept_attrs,
-                    environment,
-                )
-            ):
-                continue
-            if rowset and not _needs_solid_rows(
-                buckets, label, region, keyspace, environment
-            ):
-                continue
-            undelivered = sorted(
-                address
-                for address in condition_arg_addresses
-                if not _filters_region_domain(
-                    address, region, keyspace, carried, environment, mandatory_list
-                )
+        for label in labels:
+            domain = _region_domain(
+                region,
+                label,
+                buckets,
+                concept_attrs,
+                environment,
+                keyspace,
+                condition_arg_addresses,
+                mandatory_list,
             )
-            if undelivered:
-                # no host filters the domain's rows by these, so the region
-                # keeps its padded plan
-                logger.info(
-                    f"region {region.describe()} keeps its padded plan: no host"
-                    f" filters its rows by {undelivered}"
-                )
-                continue
-            extent = f"extent:{'|'.join(sorted(region.spans))}"
-            domain = GroupBucket(
-                depth_label=rowset[0].depth_label if rowset else DepthLabel.ROOT,
-                derivation=Derivation.ROWSET if rowset else Derivation.ROOT,
-                grain_components=frozenset(),
-                label=label,
-                discriminator=(
-                    f"{rowset[0].discriminator}:{extent}" if rowset else extent
-                ),
-                extent_spans=region.spans,
-            )
-            for bucket in holders:
-                for addr, node_id in zip(
-                    bucket.primary_members, bucket.primary_node_ids
-                ):
-                    if addr in carried and addr not in domain.primary_members:
-                        domain.primary_members.append(addr)
-                        domain.primary_node_ids.append(node_id)
-                        domain.member_depths[addr] = bucket.member_depths.get(
-                            addr, DepthLabel.ROOT
-                        )
-            # the region's rows join back on its spans: a span the statement
-            # never names rides both sides as a hidden column
-            for span in sorted(region.spans - carried):
-                for side in (domain, *sources):
-                    if span not in side.secondary_members:
-                        side.secondary_members.append(span)
-                        side.member_depths[span] = DepthLabel.ROOT
-            buckets[domain.group_id] = domain
+            if domain is not None:
+                domains.append(domain)
+    return domains
+
+
+def add_region_domain_buckets(
+    buckets: dict[str, GroupBucket],
+    domains: list[RegionDomain],
+    keyspace: Keyspace,
+    environment: BuildEnvironment,
+) -> None:
+    """The region's rows join back on its spans: a span the statement never
+    names rides the domain and every solid stream beside it as a hidden
+    column."""
+    for domain in domains:
+        region, bucket = domain.region, domain.bucket
+        sources = [
+            b
+            for b in buckets.values()
+            if b.label == bucket.label
+            and _splits_for_region(b)
+            and _pads_region(b, region, keyspace, environment)
+        ]
+        for span in sorted(region.spans - domain.carried):
+            for side in (bucket, *sources):
+                if span not in side.secondary_members:
+                    side.secondary_members.append(span)
+                    side.member_depths[span] = DepthLabel.ROOT
+        buckets[bucket.group_id] = bucket
 
 
 def carry_spans_to_condition_scans(

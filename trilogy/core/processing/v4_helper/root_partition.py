@@ -22,7 +22,12 @@ from .edges import EdgeMap, edge_kind
 from .extent_ownership import span_members
 from .functional_dependency import build_fd_determines
 from .models import ConceptAttrs, GroupBucket, Keyspace
-from .region_domains import add_region_domain_buckets, carry_spans_to_condition_scans
+from .region_domains import (
+    RegionDomain,
+    add_region_domain_buckets,
+    carry_spans_to_condition_scans,
+    decide_region_domains,
+)
 
 
 def _d1_calc_subgraph(
@@ -714,41 +719,38 @@ def _keep_extension_families_together(
             del assignment[address]
 
 
-def _drop_unread_peels_the_domain_took(
-    buckets: dict[str, GroupBucket],
-    primary_group: dict[str, str],
+def _domain_holding(
+    key: frozenset[str],
+    node_ids: list[str],
+    members: list[str],
+    label: str,
+    domains: list[RegionDomain],
     concept_graph: nx.DiGraph,
-) -> None:
-    """A dim peel keyed by a region's span whose members the region domain
-    took whole (`add_region_domain_buckets`) is the domain's rows again, and
-    when nothing but FINAL reads it, FINAL reads the domain instead: left
-    standing it is sourced once more and dropped at FINAL as covered. A peel
-    with a reader stays: it is that reader's SOLID-side provider (`tier` under
-    `tier_amount`, INNER on the fact), which the padded domain is not."""
-    domains = [b for b in buckets.values() if b.extent_spans]
-    for gid in list(buckets):
-        peel = buckets[gid]
-        if not peel.dim_keys or peel.derivation != Derivation.ROOT:
-            continue
-        taker = next(
-            (
-                domain
-                for domain in domains
-                if peel.dim_keys <= domain.extent_spans
-                and set(peel.primary_members) <= set(domain.primary_members)
-            ),
-            None,
-        )
-        read = any(
-            primary_group.get(succ) not in (None, gid)
-            for node_id in peel.primary_node_ids
-            for succ in concept_graph.successors(node_id)
-        )
-        if taker is None or read:
-            continue
-        for node_id in peel.primary_node_ids:
-            primary_group[node_id] = taker.group_id
-        del buckets[gid]
+    primary_group: dict[str, str],
+) -> RegionDomain | None:
+    """The region domain a cluster is the rows of again: keyed by the region's
+    span, every member carried there, and read by nothing but FINAL, which
+    reads the domain. A cluster with a reader is peeled all the same: it is
+    that reader's SOLID-side provider (`tier` under `tier_amount`, INNER on
+    the fact), which the padded domain is not."""
+    read = any(
+        succ not in node_ids and primary_group.get(succ) is not None
+        for node_id in node_ids
+        for succ in concept_graph.successors(node_id)
+    )
+    if read:
+        return None
+    return next(
+        (
+            domain
+            for domain in domains
+            if domain.bucket.label == label
+            and domain.bucket.derivation == Derivation.ROOT
+            and key <= domain.region.spans
+            and set(members) <= domain.carried
+        ),
+        None,
+    )
 
 
 def _peels_a_cluster(
@@ -772,6 +774,8 @@ def _split_root_dimension_clusters(
     post_aggregate_args: frozenset[str],
     finer_filter_grains: frozenset[frozenset[str]],
     keyspace: Keyspace,
+    domains: list[RegionDomain],
+    concept_graph: nx.DiGraph,
 ) -> None:
     """Peel single-entity FD dimension clusters out of a keyed ROOT bucket into
     their own ``grp:root:root:dim:<entity_key>`` ROOT buckets.
@@ -929,6 +933,21 @@ def _split_root_dimension_clusters(
                 clusters[assignment[addr]].append(idx)
         moved: set[int] = set()
         for key, indices in clusters.items():
+            node_ids = [bucket.primary_node_ids[idx] for idx in indices]
+            domain = _domain_holding(
+                key,
+                node_ids,
+                [bucket.primary_members[idx] for idx in indices],
+                bucket.label,
+                domains,
+                concept_graph,
+                primary_group,
+            )
+            if domain is not None:
+                for node_id in node_ids:
+                    primary_group[node_id] = domain.bucket.group_id
+                moved.update(indices)
+                continue
             dim_bucket = GroupBucket(
                 depth_label=DepthLabel.ROOT,
                 derivation=Derivation.ROOT,
@@ -1009,6 +1028,14 @@ def partition_root_demand(
     projected_scalar_root_args = _projected_scalar_root_args(
         mandatory_list, _grouping_keys(buckets)
     )
+    domains = decide_region_domains(
+        buckets,
+        concept_attrs,
+        environment,
+        keyspace,
+        condition_arg_addresses,
+        mandatory_list,
+    )
     _split_root_dimension_clusters(
         buckets,
         primary_group,
@@ -1020,17 +1047,11 @@ def partition_root_demand(
         | _post_aggregate_basic_args(mandatory_list),
         _finer_filter_grains(conditions),
         keyspace,
+        domains,
+        concept_graph,
     )
     trace_buckets("root dimension clusters split", buckets, primary_group)
-    add_region_domain_buckets(
-        buckets,
-        concept_attrs,
-        environment,
-        keyspace,
-        condition_arg_addresses,
-        mandatory_list,
-    )
-    _drop_unread_peels_the_domain_took(buckets, primary_group, concept_graph)
+    add_region_domain_buckets(buckets, domains, keyspace, environment)
     trace_buckets("region domain buckets added", buckets, primary_group)
     roots_by_stage, condition_nodes = _d1_calc_subgraph(
         concept_graph, concept_edges, concept_attrs, environment
