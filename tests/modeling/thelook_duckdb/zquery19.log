@@ -1,5 +1,5 @@
 query_id = "19"
-gen_length = 1479
+gen_length = 1419
 preql_size = 280
 comp_size = 758
 generated_sql = """
@@ -27,7 +27,7 @@ GROUP BY
 SELECT
     \"wakeful\".\"order_id\" as \"order_id\",
     \"wakeful\".\"id\" as \"id\",
-    coalesce(\"user_users\".\"id\",\"wakeful\".\"user_id\") as \"user_id\",
+    \"user_users\".\"id\" as \"user_id\",
     coalesce(\"product_products\".\"id\",\"wakeful\".\"product_id\") as \"product_id\",
     \"wakeful\".\"revenue\" as \"revenue\",
     \"wakeful\".\"margin\" as \"margin\",
@@ -40,5 +40,5 @@ FROM
 ORDER BY 
     \"wakeful\".\"order_id\" asc nulls first,
     \"wakeful\".\"id\" asc nulls first,
-    coalesce(\"user_users\".\"id\",\"wakeful\".\"user_id\") asc nulls first,
+    \"user_users\".\"id\" asc nulls first,
     coalesce(\"product_products\".\"id\",\"wakeful\".\"product_id\") asc nulls first"""
