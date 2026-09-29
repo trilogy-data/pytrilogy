@@ -1675,6 +1675,7 @@ def test_conditioned_filter_does_not_cover_unfiltered_parent_outputs():
         History(base_environment=Environment()),
         needed={supplier_id.address, order_id.address, filtered_supplier.address},
         root_requests={},
+        mandatory_list=[],
     )
 
     assert {parent.group_id for parent in parents} == {"root", "filter"}

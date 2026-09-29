@@ -84,7 +84,7 @@ from .constants import (
     DepthLabel,
     EdgeKind,
 )
-from .edges import EdgeMap, dependency_subgraph, edge_kind
+from .edges import EdgeMap, dependency_subgraph, edge_kind, remove_edge
 from .functional_dependency import build_fd_determines
 from .history import V4History
 from .models import (
@@ -97,6 +97,7 @@ from .models import (
 )
 from .projection import (
     concept_satisfiable,
+    filter_row_predicate,
     literal_producible,
     output_rowset_base_keys,
     parent_output_addresses,
@@ -686,6 +687,328 @@ def _provider_feeds_other_grouping(
     )
 
 
+def _row_parents(group_graph: nx.DiGraph, group_edges: EdgeMap, gid: str) -> list[str]:
+    """`gid`'s parents that feed it rows, not a subselect."""
+    return [
+        pgid
+        for pgid in group_graph.predecessors(gid)
+        if pgid != FINAL_NODE_ID
+        and edge_kind(group_edges, pgid, gid) != EdgeKind.EXISTENCE
+    ]
+
+
+def _select_addresses(a: GroupAttrs) -> tuple[str, ...]:
+    """The per-group output set computed by the backward pass in
+    `_compute_concept_sets`; a group the demand pass left without outputs
+    still projects every member."""
+    return a.output_concepts or (*a.primary_members, *a.secondary_members)
+
+
+def _projects_parent_rows(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    parents: list[StrategyNode],
+    environment: BuildEnvironment,
+    mandatory_list: list[BuildConcept],
+) -> bool:
+    """Whether `gid`'s node would project its parents' rows as they stand: no
+    WHERE, no regroup, no subselect. Read off the graph and the parents'
+    nodes, the way its generator would, so the answer needs no node of
+    `gid`'s own."""
+    from trilogy.core.processing.v4_node_generators.basic import (  # cycle
+        _grain_claim_needs_group,
+    )
+    from trilogy.core.processing.v4_node_generators.common import (
+        outputs_with_parent_grain_keys,
+    )
+
+    a = attrs[gid]
+    if a.condition_atoms or any(
+        edge_kind(group_edges, pgid, gid) == EdgeKind.EXISTENCE
+        for pgid in group_graph.predecessors(gid)
+    ):
+        return False
+    outputs = satisfiable_outputs(
+        [
+            c
+            for addr in _select_addresses(a)
+            if (c := _concept_at(environment, addr)) is not None
+        ],
+        parents,
+    )
+    if _lineage_existence_arg_groups(outputs):
+        return False
+    if a.derivation == Derivation.FILTER:
+        # a semijoin RHS is built as the set it feeds
+        if any(
+            edge_kind(group_edges, gid, succ) == EdgeKind.EXISTENCE
+            for succ in group_graph.successors(gid)
+        ):
+            return False
+        narrows = _filter_intrinsic_pushdown_safe(
+            group_graph,
+            gid,
+            outputs,
+            mandatory_list,
+            environment.statement_hidden_addresses,
+            attrs,
+            environment,
+        )
+        return filter_row_predicate(outputs, parents, narrows) is None
+    return len(parents) != 1 or not _grain_claim_needs_group(
+        outputs_with_parent_grain_keys(outputs, parents), parents[0], environment
+    )
+
+
+def _aggregate_inlines(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    built: dict[str, StrategyNode],
+    consumer: str,
+    gid: str,
+    environment: BuildEnvironment,
+    mandatory_list: list[BuildConcept],
+) -> bool:
+    """Whether aggregate `consumer` computes its row-preserving input `gid`
+    inline, reading `gid`'s parents in its place. Decided from the graph and
+    those parents' nodes and never from a node of `gid`'s own, so a group
+    every reader inlines is not built (`_inlined_by_every_reader`)."""
+    a = attrs[gid]
+    members = set(a.primary_members)
+    if (
+        a.derivation not in ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS
+        or a.derivation == Derivation.ROOT
+        # Preserve a provider shared by grouping consumers. Re-rooting only
+        # this aggregate forces the other grouping branch to retain the
+        # projection, then rejoin it. Row-preserving consumers can still
+        # inline independently and fold later.
+        or _provider_feeds_other_grouping(group_graph, attrs, gid, consumer)
+        or _group_filter_has_existence(attrs, environment, gid)
+    ):
+        return False
+    if not members <= _aggregate_row_preserving_input_addresses(
+        [
+            concept
+            for addr in attrs[consumer].primary_members
+            if (concept := _concept_at(environment, addr)) is not None
+        ]
+    ):
+        return False
+    # A derived key of the consumer's ROLLUP/CUBE/GROUPING SETS spec must stay
+    # materialized by its own projection: folding it re-renders the key inline
+    # from its source columns, and grouping(<key>) then names an expression
+    # the GROUP BY clause doesn't.
+    if members & _nonstandard_grouping_key_addresses(environment, attrs, consumer):
+        return False
+    # Don't fold a row-preserving group whose output is also produced by
+    # another already-built node (a condition-phase twin materialized as its
+    # own CTE). Folding re-roots the aggregate on the grandparent, but the
+    # resolver then binds the folded column to that sibling CTE, which isn't
+    # in the aggregate's FROM: a dangling reference.
+    if any(
+        other != gid
+        and attrs[other].depth_label == DepthLabel.D1
+        and members & {concept.address for concept in node.output_concepts}
+        for other, node in built.items()
+    ):
+        return False
+    parents = [
+        built[pgid]
+        for pgid in _row_parents(group_graph, group_edges, gid)
+        if pgid in built
+    ]
+    if not parents or any(_contains_shape_barrier(parent) for parent in parents):
+        return False
+    return _projects_parent_rows(
+        group_graph, group_edges, attrs, gid, parents, environment, mandatory_list
+    ) and _group_renderable_from(
+        attrs,
+        environment,
+        gid,
+        {output.address for parent in parents for output in parent.output_concepts},
+    )
+
+
+def _inline_aggregate_inputs(
+    candidates: list[tuple[str, StrategyNode]],
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    built: dict[str, StrategyNode],
+    gid: str,
+    environment: BuildEnvironment,
+    mandatory_list: list[BuildConcept],
+) -> list[tuple[str, StrategyNode]]:
+    """Read, in place of each input aggregate `gid` computes inline, that
+    input's own parents; to a fixed point, since those may be inlined too."""
+    _raise_if_inlined_input_is_unreadable(candidates, attrs, built, gid, environment)
+    while True:
+        expanded: list[tuple[str, StrategyNode]] = []
+        for pgid, node in candidates:
+            if _aggregate_inlines(
+                group_graph,
+                group_edges,
+                attrs,
+                built,
+                gid,
+                pgid,
+                environment,
+                mandatory_list,
+            ):
+                expanded.extend(
+                    (fgid, built[fgid])
+                    for fgid in _row_parents(group_graph, group_edges, pgid)
+                    if fgid in built
+                )
+            else:
+                expanded.append((pgid, node))
+        deduped = list(dict(expanded).items())
+        if deduped == candidates:
+            return candidates
+        candidates = deduped
+
+
+def _raise_if_inlined_input_is_unreadable(
+    candidates: list[tuple[str, StrategyNode]],
+    attrs: dict[str, GroupAttrs],
+    built: dict[str, StrategyNode],
+    gid: str,
+    environment: BuildEnvironment,
+) -> None:
+    """The groups folded into `gid` were never built, so nothing else can
+    supply their members: `gid`'s parents must render each, and no
+    condition-phase twin may have materialized one since."""
+    available = {o.address for _, node in candidates for o in node.output_concepts}
+    twins = {
+        o.address
+        for other, node in built.items()
+        if attrs[other].depth_label == DepthLabel.D1
+        for o in node.output_concepts
+    }
+    unreadable = [
+        address
+        for address in attrs[gid].inlined_members
+        if address in twins
+        or (concept := _concept_at(environment, address)) is None
+        or not concept_satisfiable(concept, available)
+    ]
+    if unreadable:
+        raise ValueError(
+            f"[v4] {gid} was planned to compute {unreadable} inline, but its "
+            "parents cannot render them. This is a planner bug."
+        )
+
+
+def _inlined_by_every_reader(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    built: dict[str, StrategyNode],
+    gid: str,
+    environment: BuildEnvironment,
+    mandatory_list: list[BuildConcept],
+) -> bool:
+    """Whether no node of `gid`'s own would ever be read: every group reading
+    it is an aggregate computing it inline, and the FINAL takes what it
+    exposes from those readers."""
+    a = attrs[gid]
+    readers = [s for s in group_graph.successors(gid) if s != FINAL_NODE_ID]
+    if not readers or not all(
+        attrs[reader].derivation == Derivation.AGGREGATE
+        and edge_kind(group_edges, gid, reader) != EdgeKind.EXISTENCE
+        and _aggregate_inlines(
+            group_graph,
+            group_edges,
+            attrs,
+            built,
+            reader,
+            gid,
+            environment,
+            mandatory_list,
+        )
+        for reader in readers
+    ):
+        return False
+    # a condition-phase twin built between here and a reader would veto the
+    # reader's fold; one the graph shows carrying these members may yet be
+    members = set(a.primary_members)
+    if any(
+        other not in (gid, FINAL_NODE_ID)
+        and o.depth_label == DepthLabel.D1
+        and members & {*o.output_concepts, *o.primary_members, *o.secondary_members}
+        for other, o in attrs.items()
+    ):
+        return False
+    ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
+    if gid in {*ownership.owner_by_span.values(), *ownership.carried.values()}:
+        return False
+    final_reads = {c.address for c in mandatory_list} | {
+        arg.address
+        for atom in attrs[FINAL_NODE_ID].condition_atoms
+        for arg in atom.row_arguments
+    }
+    carried: set[str] = set().union(*(attrs[r].output_concepts for r in readers))
+    return set(a.output_concepts) & final_reads <= carried
+
+
+def _fold_into_readers(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+) -> None:
+    """Take `gid` out of the plan: each reader reads `gid`'s parents where it
+    read `gid`, and computes `gid`'s members itself."""
+    parents = _row_parents(group_graph, group_edges, gid)
+    for reader in [s for s in group_graph.successors(gid) if s != FINAL_NODE_ID]:
+        # in-edges are re-added in order, so the parents take `gid`'s place
+        feeds = {
+            pgid: group_edges[(pgid, reader)]
+            for pgid in group_graph.predecessors(reader)
+        }
+        for pgid in feeds:
+            remove_edge(group_graph, group_edges, pgid, reader)
+        for pgid in feeds:
+            for source in parents if pgid == gid else [pgid]:
+                if not group_graph.has_edge(source, reader):
+                    group_graph.add_edge(source, reader)
+                    group_edges[(source, reader)] = feeds.get(
+                        source, dc_replace(feeds[gid])
+                    )
+        a = attrs[reader]
+        a.inlined_members = (*a.inlined_members, *attrs[gid].primary_members)
+        a.input_contracts = tuple(
+            c for c in a.input_contracts if c.parent_group_id != gid
+        )
+    for edge in [e for e in group_edges if gid in e]:
+        del group_edges[edge]
+    group_graph.remove_node(gid)
+    del attrs[gid]
+    final = attrs[FINAL_NODE_ID]
+    if final.final_contract is not None:
+        final.final_contract = dc_replace(
+            final.final_contract,
+            contributor_contracts=tuple(
+                c
+                for c in final.final_contract.contributor_contracts
+                if c.group_id != gid
+            ),
+        )
+    if final.extent_ownership is not None:
+        final.extent_ownership.permitted.pop(gid, None)
+    logger.info(f"[v4] {gid} is computed inline by its readers; not built")
+    if plan_trace.active():
+        plan_trace.record(
+            f"inlined {gid}",
+            plan_trace.GroupGraphStep(
+                graph=plan_trace.graph(group_graph, group_edges, attrs)
+            ),
+        )
+
+
 def _parent_nodes_for(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -698,6 +1021,7 @@ def _parent_nodes_for(
     *,
     needed: set[str],
     root_requests: dict[str, RootRequest],
+    mandatory_list: list[BuildConcept],
     feeder_cache: "_CleanFeederCache | None" = None,
 ) -> list[ParentBuild]:
     """Look up the already-built StrategyNodes for `gid`'s lineage
@@ -747,88 +1071,16 @@ def _parent_nodes_for(
             candidates.append((pgid, node))
 
     if attrs[gid].derivation == Derivation.AGGREGATE:
-        inline_input_addresses = _aggregate_row_preserving_input_addresses(
-            [
-                concept
-                for addr in attrs[gid].primary_members
-                if (concept := _concept_at(environment, addr)) is not None
-            ]
+        candidates = _inline_aggregate_inputs(
+            candidates,
+            group_graph,
+            group_edges,
+            attrs,
+            built,
+            gid,
+            environment,
+            mandatory_list,
         )
-        nonstandard_key_addresses = _nonstandard_grouping_key_addresses(
-            environment, attrs, gid
-        )
-        while True:
-            expanded: list[tuple[str, StrategyNode]] = []
-            changed = False
-            for pgid, node in candidates:
-                # Don't fold a row-preserving group whose output is also produced
-                # by another already-built node (a condition-phase twin
-                # materialized as its own CTE). Folding re-roots the aggregate on
-                # the grandparent, but the resolver then binds the folded column
-                # to that sibling CTE, which isn't in the aggregate's FROM: a
-                # dangling reference.
-                pgid_outputs = set(attrs[pgid].primary_members)
-                co_materialized = any(
-                    other != pgid
-                    and attrs[other].depth_label == DepthLabel.D1
-                    and pgid_outputs
-                    & {concept.address for concept in built_other.output_concepts}
-                    for other, built_other in built.items()
-                )
-                row_preserving_input = (
-                    attrs[pgid].derivation in ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS
-                    and attrs[pgid].derivation != Derivation.ROOT
-                    # Preserve a provider shared by grouping consumers.
-                    # Re-rooting only this aggregate forces the other grouping
-                    # branch to retain the projection, then rejoin it.
-                    # Row-preserving consumers can still inline independently
-                    # and fold later.
-                    and not _provider_feeds_other_grouping(
-                        group_graph, attrs, pgid, gid
-                    )
-                    and not co_materialized
-                    and set(attrs[pgid].primary_members).issubset(
-                        inline_input_addresses
-                    )
-                    # A derived key of THIS group's ROLLUP/CUBE/GROUPING SETS
-                    # spec must stay materialized by its own projection:
-                    # folding it re-renders the key inline from its source
-                    # columns, and grouping(<key>) then names an expression the
-                    # GROUP BY clause doesn't.
-                    and not (pgid_outputs & nonstandard_key_addresses)
-                    and node.conditions is None
-                    and not node.force_group
-                    and not node.existence_concepts
-                    and not _contains_shape_barrier(node)
-                    and not _group_filter_has_existence(attrs, environment, pgid)
-                )
-                if not row_preserving_input:
-                    expanded.append((pgid, node))
-                    continue
-                input_parents = [
-                    (fgid, built[fgid])
-                    for fgid in group_graph.predecessors(pgid)
-                    if fgid != FINAL_NODE_ID
-                    and edge_kind(group_edges, fgid, pgid) != EdgeKind.EXISTENCE
-                    and fgid in built
-                ]
-                available = {
-                    output.address
-                    for _, input_parent in input_parents
-                    for output in input_parent.output_concepts
-                }
-                if input_parents and _group_renderable_from(
-                    attrs, environment, pgid, available
-                ):
-                    expanded.extend(input_parents)
-                    changed = True
-                else:
-                    expanded.append((pgid, node))
-            deduped = list(dict(expanded).items())
-            if not changed or deduped == candidates:
-                candidates = deduped
-                break
-            candidates = deduped
 
     def provides(pgid: str, node: StrategyNode) -> set[str]:
         if isinstance(node, FilterNode) and node.conditions is not None:
@@ -4628,6 +4880,11 @@ def build_strategy_node(
         if gid == FINAL_NODE_ID:
             continue
         plan_trace.set_context(gid)
+        if _inlined_by_every_reader(
+            group_graph, group_edges, attrs, built, gid, environment, mandatory_list
+        ):
+            _fold_into_readers(group_graph, group_edges, attrs, gid)
+            continue
         a = attrs[gid]
         # Scope the group's extent routing over its whole build, including the
         # consumer-side re-sources `_parent_nodes_for` plans below. A region
@@ -4650,13 +4907,7 @@ def build_strategy_node(
         # Only the FINAL sink carries a None derivation, and it is skipped above.
         assert a.derivation is not None
         derivation = a.derivation
-        # The per-group output set computed by the backward pass in
-        # `_compute_concept_sets`; a group the demand pass left without outputs
-        # still projects every member.
-        select_addrs: tuple[str, ...] = a.output_concepts or (
-            *a.primary_members,
-            *a.secondary_members,
-        )
+        select_addrs = _select_addresses(a)
         if derivation == Derivation.ROWSET:
             # A boundary group's outputs can carry ANOTHER rowset's handles
             # (a deferred WHERE's args exposed through a scoped relation).
@@ -4773,6 +5024,7 @@ def build_strategy_node(
             history,
             needed=needed,
             root_requests=root_requests,
+            mandatory_list=mandatory_list,
             feeder_cache=feeder_cache,
         )
         parent_group_ids = {parent.group_id for parent in parent_builds}

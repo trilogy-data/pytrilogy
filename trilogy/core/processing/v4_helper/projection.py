@@ -4,6 +4,7 @@ from collections.abc import Iterable
 
 from trilogy.core.enums import Derivation
 from trilogy.core.models.build import (
+    BoolExpr,
     BuildConcept,
     BuildConceptArgs,
     BuildFilterItem,
@@ -14,6 +15,7 @@ from trilogy.core.models.build_environment import (
     BuildEnvironment,
     resolve_rowset_content_address,
 )
+from trilogy.core.processing.condition_utility import is_scalar_condition
 from trilogy.core.processing.nodes import SelectNode, StrategyNode, UnionNode
 
 from .constants import ROW_STREAM_DERIVATIONS
@@ -295,6 +297,25 @@ def shared_filter_predicate(concepts: list[BuildConcept]) -> BuildWhereClause | 
         return None
     where = next(iter(distinct.values()))
     return None if _has_concept_existence(where) else where
+
+
+def filter_row_predicate(
+    outputs: list[BuildConcept],
+    parents: list[StrategyNode],
+    may_narrow: bool,
+) -> BoolExpr | None:
+    """The predicate a filter group's node takes into its WHERE, when its rows
+    may narrow: scalar, or over aggregates its parents already emit."""
+    where = shared_filter_predicate(outputs) if may_narrow else None
+    if where is None:
+        return None
+    parent_outputs = {c.address for p in parents for c in p.output_concepts}
+    agg_args = [r for r in where.row_arguments if r.derivation == Derivation.AGGREGATE]
+    if is_scalar_condition(where.conditional) or (
+        agg_args and all(r.address in parent_outputs for r in where.row_arguments)
+    ):
+        return where.conditional
+    return None
 
 
 def statement_filter_population(
