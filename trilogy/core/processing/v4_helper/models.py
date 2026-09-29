@@ -174,6 +174,9 @@ class GroupAttrs:
     dim_keys: frozenset[str] = frozenset()
     # Populated for non-FINAL groups after `_compute_concept_sets`.
     input_contracts: tuple[GroupInputContract, ...] = ()
+    # Members of the row-preserving input groups this aggregate computes
+    # inline: every reader did, so those groups were never built.
+    inlined_members: tuple[str, ...] = ()
 
     @property
     def nulls_grouping_keys(self) -> bool:

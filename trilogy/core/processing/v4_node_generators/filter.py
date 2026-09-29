@@ -1,6 +1,4 @@
-from trilogy.core.enums import Derivation
 from trilogy.core.models.build import (
-    BoolExpr,
     BuildConcept,
     BuildFilterItem,
     BuildGrain,
@@ -9,7 +7,6 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
-    is_scalar_condition,
 )
 from trilogy.core.processing.grain_utility import rows_unique_at_outputs
 from trilogy.core.processing.nodes import FilterNode, StrategyNode
@@ -17,7 +14,7 @@ from trilogy.core.processing.v4_helper.functional_dependency import (
     build_fd_determines,
 )
 from trilogy.core.processing.v4_helper.keyspace import entity_keys
-from trilogy.core.processing.v4_helper.projection import shared_filter_predicate
+from trilogy.core.processing.v4_helper.projection import filter_row_predicate
 
 from .common import parent_outputs_needed
 
@@ -86,21 +83,9 @@ def gen_filter(
     filter_lineages = [
         o.lineage for o in outputs if isinstance(o.lineage, BuildFilterItem)
     ]
-    intrinsic: BoolExpr | None = None
-    where = (
-        shared_filter_predicate(outputs)
-        if intrinsic_filter_pushdown or existence_source
-        else None
+    intrinsic = filter_row_predicate(
+        outputs, parents, intrinsic_filter_pushdown or existence_source
     )
-    if where is not None:
-        parent_outputs = {c.address for p in parents for c in p.output_concepts}
-        agg_args = [
-            r for r in where.row_arguments if r.derivation == Derivation.AGGREGATE
-        ]
-        if is_scalar_condition(where.conditional) or (
-            agg_args and all(r.address in parent_outputs for r in where.row_arguments)
-        ):
-            intrinsic = where.conditional
 
     grain: BuildGrain | None = None
     if filter_lineages and intrinsic is None and collapse_to_grain:
