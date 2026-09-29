@@ -193,7 +193,7 @@ class GroupAttrs:
     final_contract: FinalAssemblyContract | None = None
     extent_ownership: ExtentOwnership | None = None
     # Set on a ROOT group that exists only to carry one extension region's own
-    # rows (`group_graph._add_region_domain_buckets`): the region's spans.
+    # rows (`region_domains.decide_region_domains`): the region's spans.
     extent_spans: frozenset[str] = frozenset()
     # Set on a single-entity dimension ROOT group: the entity's key(s).
     dim_keys: frozenset[str] = frozenset()
