@@ -1,17 +1,15 @@
 # A rename-only CTE survives optimization: grain-matched aggregates block the collapse
 
-## Status: INVESTIGATED 2026-09-28, no change made. Pick up AFTER the current round.
+## Status: OPEN. Investigated 2026-09-28, re-verified the same day at `07a348b1d`.
 
-A sibling case LANDED the same day (see "Filter renames", at the end): a
-CTE whose only novel output is a filter concept `x ? cond` rendered bare.
-The grain-matched aggregate case below is still open.
-
-Another session is changing the FINAL merge's GROUP BY
-(`rows_unique_at_outputs` in `grain_utility.py`, `merge_node.py`,
-`tests/engine/test_projected_row_identity.py`); it was uncommitted when this
-was written. That work changes adhoc04's final CTE, so re-run the reproduction
-below on top of it before changing anything; the CTE names and the final
-`GROUP BY` will differ from what this doc quotes.
+Two sibling cases LANDED (see "Filter renames" and "A parent that SOURCES an
+aggregate", both at the end). The grain-matched aggregate case below is still
+open, and the reproduction still holds verbatim: the FINAL merge's GROUP BY work
+(`rows_unique_at_outputs`, `merge_node.py`,
+`tests/engine/test_projected_row_identity.py`) landed at `57c3efea8` and did not
+disturb it. Re-measured at `07a348b1d`: `questionable` still survives, and the
+experiment below still folds it — 940 rows and the same md5 with and without the
+patch, generated SQL 2062 -> 1675 chars.
 
 ## Symptom
 
@@ -206,8 +204,43 @@ could not move onto it, which left tpc_ds q16's returns join LEFT instead of
 INNER. Locally computed BASIC outputs with no window in their lineage now
 count when the candidate is scalar against the parent.
 
+## A parent that SOURCES an aggregate (OPEN, found 2026-09-28)
+
+The same over-broad "is this local computation?" reasoning, one guard over.
+`AGGREGATE` mode refuses a parent that "renders inline aggregate x" when
+`not parent.source_map.get(x.address) and lineage_contains_aggregate(x)`
+(`collapse_single_parent.py` ~line 603). The first half is right — `x` has no
+source_map entry, so the parent renders it from lineage — but
+`lineage_contains_aggregate` walks the whole lineage tree and stops at nothing,
+so an aggregate the parent READS from its own parent counts as rendered inline.
+
+tpc_ds q08: `abundant` computes `p_cust_zip <- zip_p_count > 10 ? zip`, and
+`zip_p_count` IS in `abundant.source_map` (read out of `questionable`), so it
+renders as a column reference and nothing would nest. The child that cannot fold
+is the semijoin feeder's dedup group added by
+`docs/handoff_existence_lineage_built_twice.md`'s set-grain rule, and the refusal
+is most of that file's 2853 -> 3105. The same line fires again as "Parent
+concerned renders inline aggregate local.final_zips".
+
+The fix shape: make `lineage_contains_aggregate` stop descending at an address
+the parent sources (pass the parent's `source_map`, treat a sourced address as a
+leaf), so the guard asks what it means to ask — does the parent render an
+aggregate INLINE. Reproduce the refusals with:
+
+```bash
+.venv/Scripts/python.exe local_scripts/plan_debugger/trace_query.py \
+  tests/modeling/tpc_ds_duckdb/query08.preql --open
+```
+
+or by grepping the optimizer log for "renders inline aggregate". Verify the same
+way as the main item (`tests/optimization`, full suite, the corpora zquery A/B):
+this one touches every query with an aggregate read through a projection, so the
+A/B is the whole point.
+
 ## Related
 
+- `docs/handoff_existence_lineage_built_twice.md`: q08's dedup group, the child
+  the guard above refuses to fold.
 - `docs/handoff_duplicate_source_requests.md`: the same adhoc04 plan, from
   the discovery side.
 - The group node that becomes this CTE is the line-level aggregate

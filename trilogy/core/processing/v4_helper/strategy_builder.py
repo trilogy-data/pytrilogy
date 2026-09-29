@@ -361,6 +361,38 @@ def _covering_built_node(
     return None
 
 
+def _feeder_at_set_grain(
+    feeder: StrategyNode, group: tuple[BuildConcept, ...]
+) -> StrategyNode:
+    """Project a provider down to a semijoin RHS: the subselect's columns
+    only, one row per set value.
+
+    Side-channel-only, so the slice is what keeps a shared extra output from
+    promoting the feeder to a row-join candidate. The group is what keeps the
+    slice honest: a provider built for the row stream sits at the grain its own
+    consumers need, usually finer than the set (a rowset boundary projecting
+    one handle off a union body keyed by channel + item), and the sliced rows
+    are then duplicates. Unread by `exists`, but a fan-out all the same, and it
+    drags the finer keys into the feeder's GROUP BY and its scans' projections.
+    `GroupNode` judges for itself whether the group is real
+    (`check_if_group_required`), so a provider already at the set's grain
+    resolves to a plain SELECT and elides."""
+    addresses = {concept.address for concept in group}
+    members = [o for o in feeder.output_concepts if o.address in addresses]
+    if not members:
+        return feeder
+    return GroupNode(
+        output_concepts=members,
+        input_concepts=members,
+        environment=feeder.environment,
+        parents=[feeder],
+        partial_concepts=[c for c in feeder.partial_concepts if c.address in addresses],
+        nullable_concepts=[
+            c for c in feeder.nullable_concepts if c.address in addresses
+        ],
+    )
+
+
 def _existence_parents_for(
     arg_groups: list[tuple[BuildConcept, ...]],
     built: dict[str, StrategyNode],
@@ -402,12 +434,7 @@ def _existence_parents_for(
         if id(source_node) not in seen_parents:
             seen_parents.add(id(source_node))
             feeder = _deep_copy_node(source_node) if is_cyclic else source_node.copy()
-            # Side-channel-only: slice to the subselect's columns so a shared
-            # extra output can't promote the feeder to a row-join candidate.
-            sliced = [o for o in feeder.output_concepts if o.address in addresses]
-            if len(sliced) < len(feeder.output_concepts):
-                feeder.set_output_concepts(sliced)
-            existence_parents.append(feeder)
+            existence_parents.append(_feeder_at_set_grain(feeder, group))
     return existence_parents
 
 
@@ -488,17 +515,33 @@ def _attach_existence_to_node(
 ) -> None:
     """Wire the SubselectComparison right sides as `existence_concepts` plus
     extra parents; the SQL renderer emits them as a subselect lookup against
-    the parent CTE rather than joining them into the row stream."""
-    if not arg_groups:
-        return
-    concepts = _flatten_arg_groups(arg_groups)
-    existing_concepts = {concept.address for concept in node.existence_concepts}
-    node.existence_concepts = list(node.existence_concepts) + [
-        concept for concept in concepts if concept.address not in existing_concepts
-    ]
+    the parent CTE rather than joining them into the row stream.
+
+    An arg group a parent already supplies is left alone: it was wired by
+    whoever built this node. A nested plan's tree arrives here again when the
+    outer loop walks the subtree of the node that wraps it, and `built` is then
+    the OUTER plan's groups, which hold no provider for the inner plan's set,
+    so without this the fallback feeder is planned for a set already wired
+    (and, since only a parent bringing a new output is appended, the first
+    wiring wins and the fallback cannot be displaced later). A group listed in
+    `existence_concepts` with no parent behind it is NOT wired: an earlier pass
+    found no provider, and a later one, with more of `built`, may."""
     existing_parent_outputs = {
         output.address for parent in node.parents for output in parent.output_concepts
     }
+    arg_groups = [
+        group
+        for group in arg_groups
+        if not {concept.address for concept in group} <= existing_parent_outputs
+    ]
+    if not arg_groups:
+        return
+    existing_concepts = {concept.address for concept in node.existence_concepts}
+    node.existence_concepts = list(node.existence_concepts) + [
+        concept
+        for concept in _flatten_arg_groups(arg_groups)
+        if concept.address not in existing_concepts
+    ]
     node.parents = list(node.parents) + [
         parent
         for parent in _existence_parents_for(
