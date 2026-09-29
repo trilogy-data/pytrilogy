@@ -211,14 +211,16 @@ def test_merged_full_join_key_compiles_for_bigquery():
 
 
 def test_complete_merged_key_keeps_the_bare_equality():
-    """The `~`-bound merged keys are still emitted as a COALESCE over the
-    row-preserving sources; since the solid stream beside a region domain pairs
-    on solid keys, none of them is a FULL join's ON key here (the rule for one
-    that is: `test_null_wrapper_encodes_only_illegal_full_join_keys`). The
-    completely-bound grain key `item_id` is NOT coalesced: the contributors that
-    carry it pair on it with a plain INNER join, so there is nothing to merge."""
+    """A `~`-bound key merged across a FULL join is still emitted as a COALESCE
+    over the row-preserving sources; since the solid stream beside a region
+    domain pairs on solid keys, it is not a FULL join's ON key here (the rule
+    for one that is: `test_null_wrapper_encodes_only_illegal_full_join_keys`).
+    The first region joined is LEFT at plan time, so `user_id` reads off its
+    domain alone. The completely-bound grain key `item_id` is NOT coalesced:
+    the contributors that carry it pair on it with a plain INNER join, so
+    there is nothing to merge."""
     sql = render(BigqueryDialect(), MERGED_KEY_MODEL)
-    assert re.search(r"coalesce\(.*user_id", sql), sql
+    assert "`users`.`id` as `user_id`" in sql, sql
     assert re.search(r"coalesce\(.*product_id", sql), sql
     assert not re.search(r"coalesce\(.*item_id", sql), sql
     assert "FULL JOIN" in sql, sql
