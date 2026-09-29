@@ -30,17 +30,34 @@ the extent routing before building it (`_inlined_by_every_reader`,
 planner suites: 343 folds, 0 disagreements. No SQL moved.
 
 Census over tpc_h, tpc_ds_duckdb and thelook_duckdb: 107 dead of 851 built
-before, 75 of 819 after. Of the 44 dead groups the fold explained, 32 are no
-longer built. The 12 that remain:
+before, 75 of 819 after. Of the 44 dead groups the fold explained, 32 were no
+longer built, and 12 remained.
 
-| count | why it is still built |
-|---|---|
-| 7 | condition-phase (`d1`) group: its node is what vetoes its `d*` twin's fold (`co_materialized`). Left unbuilt, the twin folds too and q44/q64 re-plan (q44 came out 250 chars shorter, rows right): a follow-up, not a planning-only change. |
-| 4 | a BASIC read by a FILTER that is itself folded (tpc_h q14, tpc_ds q50/q62/q99): at the BASIC's turn its reader is not an aggregate, and the FILTER's own fold needs the BASIC's node. |
-| 1 | tpc_ds q72: the FINAL reads outputs the group exposes and its readers do not carry. |
+**Follow-up (2026-09-29).** "SQL must not move" below is the owner's rule that
+a plan may not gain CTEs or work; SQL that gets shorter is wanted. Under it
+the 12 are folded too, census 63 dead of 804 built:
+
+| count | what it was | how it folds |
+|---|---|---|
+| 7 | condition-phase (`d1`) group, built because its node vetoes its `d*` twin's fold | folds like any input; a twin vetoes only when it will itself be built (`_condition_twins`) |
+| 4 (+1) | a BASIC read by a FILTER that is itself folded (tpc_h q14, tpc_ds q50/q62/q99, and q64 once its `d1` FILTER folds) | folds with its reader when the aggregates above inline both: the reader's fold is decided on the graph as it would stand with the BASIC folded (`_reader_inlines`, `_folded`) |
+| 1 | tpc_ds q72: the FINAL reads pass-through outputs of the group | its rows are its parents' rows, so the parents carry them |
+
+Three groups that were read before (q44's two `d*` twins, q64's `d1` BASIC)
+are inlined as well. SQL moved in two logs: q44 loses a CTE (10 to 9, 3133 to
+2883 chars); q64 is the same plan under other CTE names (12 CTEs and 17 joins
+both sides, 16,566 chars with the names normalized, `gen_length` 16582 to
+16726). Rows match the reference SQL.
 
 A reader that finds a folded input unreadable raises
-(`_raise_if_inlined_input_is_unreadable`).
+(`_raise_if_inlined_input_is_unreadable`), and so does a folded reader that
+gets built (`_parent_nodes_for`).
+
+What is still dead is outside the aggregate-input fold: BASICs and constants
+only the FINAL names (30), roots nobody reads or that are re-sourced (17),
+condition-phase aggregates and BASICs their reader does not read (6), ROLLUP
+key projections (3), unbuilt rowsets (4), and three others (q99's grouping-key
+BASIC, q23's FILTER, q11's `d1` FILTER).
 
 ---
 
