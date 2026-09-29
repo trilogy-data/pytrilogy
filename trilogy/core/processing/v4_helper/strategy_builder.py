@@ -4687,7 +4687,7 @@ def _assemble_final_node(
             # twin's `lines FULL JOIN (lines LEFT JOIN returns)`), and a peel
             # holding a member of the region (`brand` under `dim:item_id`) was
             # the only thing putting that member on the extension row; the
-            # domain carries such a member now (`add_region_domain_buckets`).
+            # domain carries such a member now (`decide_region_domains`).
             # A domain is the FINAL's own rows and keeps the FINAL's scope: the
             # customer domain completes its transitive `~` address there, and
             # the orphan address's state is read off it

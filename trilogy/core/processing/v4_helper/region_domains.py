@@ -397,18 +397,27 @@ def decide_region_domains(
     return domains
 
 
-def add_region_domain_buckets(
+def carry_region_spans(
     buckets: dict[str, GroupBucket],
     domains: list[RegionDomain],
     keyspace: Keyspace,
     environment: BuildEnvironment,
 ) -> None:
-    """The region's rows join back on its spans: a span the statement never
-    names rides the domain and every solid stream beside it as a hidden
-    column."""
+    """The region's rows join back on its spans, so every scan they pair with
+    carries them.
+
+    A span the statement never names rides the domain and every solid stream
+    beside it as a hidden column.
+
+    The condition phase's fact scan (`root_d1`) rides the span too when it
+    reads something absent on the region: a WHERE over such a value beside
+    dimension-only outputs (`select customer_id, name where status is null`)
+    reaches FINAL as a producer of its own, and pairs with the domain only on
+    the span. Without it the merge is keyless."""
     for domain in domains:
         region, bucket = domain.region, domain.bucket
-        sources = [
+        scope = _scope_and_phase(bucket.label)[0]
+        solid = [
             b
             for b in buckets.values()
             if b.label == bucket.label
@@ -416,44 +425,24 @@ def add_region_domain_buckets(
             and _pads_region(b, region, keyspace, environment)
         ]
         for span in sorted(region.spans - domain.carried):
-            for side in (bucket, *sources):
-                if span not in side.carried_keys:
-                    side.carried_keys.append(span)
-                    side.member_depths[span] = DepthLabel.ROOT
-        buckets[bucket.group_id] = bucket
-
-
-def carry_spans_to_condition_scans(
-    buckets: dict[str, GroupBucket], keyspace: Keyspace
-) -> None:
-    """The condition phase's fact scan (`root_d1`, built after the domains)
-    rides the span too when it reads something absent on the region: a WHERE
-    over such a value beside dimension-only outputs (`select customer_id, name
-    where status is null`) reaches FINAL as a producer of its own, and pairs
-    with the domain only on the span. Without it the merge is keyless."""
-    domains = [
-        (b, region)
-        for b in buckets.values()
-        if b.extent_spans and (region := keyspace.region_of(b.extent_spans))
-    ]
-    if not domains:
-        return
-    for bucket in buckets.values():
-        if bucket.reason is not RootReason.CONDITION:
-            continue
-        scope = _scope_and_phase(bucket.label)[0]
-        for domain, region in domains:
-            if _scope_and_phase(domain.label)[0] != scope or all(
-                keyspace.carried_on(m, region) for m in bucket.primary_members
+            for side in (bucket, *solid):
+                _carry(side, span)
+        for scan in buckets.values():
+            if (
+                scan.reason is not RootReason.CONDITION
+                or _scope_and_phase(scan.label)[0] != scope
+                or all(keyspace.carried_on(m, region) for m in scan.primary_members)
             ):
                 continue
             for span in sorted(region.spans):
-                if (
-                    span not in bucket.primary_members
-                    and span not in bucket.carried_keys
-                ):
-                    bucket.carried_keys.append(span)
-                    bucket.member_depths[span] = DepthLabel.ROOT
+                if span not in scan.primary_members:
+                    _carry(scan, span)
+
+
+def _carry(bucket: GroupBucket, key: str) -> None:
+    if key not in bucket.carried_keys:
+        bucket.carried_keys.append(key)
+        bucket.member_depths[key] = DepthLabel.ROOT
 
 
 def split_carried_only_row_streams(

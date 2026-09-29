@@ -1,5 +1,24 @@
 """Stage 2, root partition: which root columns are sourced together, and for
 which reader.
+
+`_assign_groups` leaves a scope's keyed roots in one bucket, the row stream.
+`partition_root_demand` splits that demand by reader, one decision at a time.
+Each decision reads the ones before it and none undoes another:
+
+    existence   a root that only defines a semijoin set is read through the
+                side channel, off the condition stage's scan
+    region      a live extension region the statement asks rows of gets a
+                domain, holding every member the region carries
+    entity      attributes FD on a grouping key source from a scan keyed by
+                it, unless a domain holds them whole or the row stream reads
+                their table anyway
+    condition   a condition stage that reads a population gets a private scan
+                of its roots, beside the row stream that keeps them
+
+Every bucket made here carries the `RootReason` that made it. The regraft's
+BASIC_INPUT root is the one reason decided later, on the group graph
+(`group_graph._synthetic_dimension_regraft_parent`): it reads the demand
+pass's inputs.
 """
 
 from collections import defaultdict
@@ -22,12 +41,7 @@ from .edges import EdgeMap, edge_kind
 from .extent_ownership import span_members
 from .functional_dependency import build_fd_determines
 from .models import ConceptAttrs, GroupBucket, Keyspace, RootReason
-from .region_domains import (
-    RegionDomain,
-    add_region_domain_buckets,
-    carry_spans_to_condition_scans,
-    decide_region_domains,
-)
+from .region_domains import RegionDomain, carry_region_spans, decide_region_domains
 
 
 def _d1_calc_subgraph(
@@ -683,14 +697,13 @@ def _keep_extension_families_together(
     span, the shape the same select has without the aggregate.
 
     A cluster keyed by the span itself reads the dimension's own table and pads
-    nothing, so it stays apart. Any other cluster is where
-    `add_region_domain_buckets` finds the region's solid source, which it can
-    only be if it holds something absent on the region too: carrying the span
-    alone it mixes nothing, the region gets no domain, and the span's extent is
-    elected to the peel, which pads it off the wrong table
-    (`test_field_report_select` read `user_id` through the orders it was peeled
-    onto and stopped reading the items' own binding). Un-peeled, the bucket
-    they came from mixes the region and owns the extent."""
+    nothing, so it stays apart. Any other cluster is a solid stream beside the
+    region's domain, which it can only be if it holds something absent on the
+    region too: carrying the span alone it reads the span off the table it
+    was peeled onto (`test_field_report_select` read `user_id` through the
+    orders and stopped reading the items' own binding; tpc-h adhoc07 joined
+    `orders` a second time at FINAL). Un-peeled, the span rides the row
+    stream the region's rows join back to."""
     demanded_spans = keyspace.output_demanded_spans
     carrying = {
         assignment[address]
@@ -1049,17 +1062,14 @@ def partition_root_demand(
     environment: BuildEnvironment,
     keyspace: Keyspace,
 ) -> RootPartition:
+    """Split each scope's root demand by reader; see the module docstring."""
     condition_arg_addresses = frozenset(
         arg.address for clause in conditions for arg in clause.row_arguments
     )
     output_addresses = frozenset(c.address for c in mandatory_list)
-    projected_scalar_root_args = _projected_scalar_root_args(
-        mandatory_list, _grouping_keys(buckets)
-    )
     roots_by_stage, condition_nodes = _d1_calc_subgraph(
         concept_graph, concept_edges, concept_attrs, environment
     )
-    scans = _condition_scans(concept_attrs, roots_by_stage)
     _prune_existence_exclusive_roots(
         concept_graph,
         concept_edges,
@@ -1069,6 +1079,9 @@ def partition_root_demand(
         condition_nodes,
         protected_addresses=output_addresses | condition_arg_addresses,
     )
+    trace_buckets(
+        "existence-only roots taken off the row stream", buckets, primary_group
+    )
     domains = decide_region_domains(
         buckets,
         concept_attrs,
@@ -1076,6 +1089,11 @@ def partition_root_demand(
         keyspace,
         condition_arg_addresses,
         mandatory_list,
+    )
+    buckets.update({d.bucket.group_id: d.bucket for d in domains})
+    trace_buckets("region domains added", buckets, primary_group)
+    projected_scalar_root_args = _projected_scalar_root_args(
+        mandatory_list, _grouping_keys(buckets)
     )
     _split_root_dimension_clusters(
         buckets,
@@ -1092,11 +1110,11 @@ def partition_root_demand(
         concept_graph,
         concept_attrs,
     )
-    trace_buckets("root dimension clusters split", buckets, primary_group)
-    add_region_domain_buckets(buckets, domains, keyspace, environment)
-    trace_buckets("region domain buckets added", buckets, primary_group)
+    trace_buckets("entity clusters peeled", buckets, primary_group)
+    scans = _condition_scans(concept_attrs, roots_by_stage)
     buckets.update({scan.group_id: scan for scan in scans.values()})
-    carry_spans_to_condition_scans(buckets, keyspace)
+    carry_region_spans(buckets, domains, keyspace, environment)
+    trace_buckets("condition scans added, spans carried", buckets, primary_group)
     return RootPartition(
         {stage: scan.group_id for stage, scan in scans.items()},
         roots_by_stage,
