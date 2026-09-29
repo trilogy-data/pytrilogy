@@ -17,7 +17,7 @@ THELOOK = Path(__file__).parent.parent / "modeling" / "thelook_duckdb"
 TPCDS = Path(__file__).parent.parent / "modeling" / "tpc_ds_duckdb"
 
 _CTE = re.compile(
-    r"^(\w+) as \(\nSELECT\n(.*?)\nFROM\n(.*?)\)(?=,\n|\nSELECT)", re.S | re.M
+    r"^(\w+) as \(\nSELECT\n(.*?)\nFROM\n(.*?)\)(?=,\n|\nSELECT)", re.DOTALL | re.MULTILINE
 )
 _RENAME = re.compile(r'^\s*"\w+"\."\w+" as "\w+",?$')
 
@@ -28,7 +28,7 @@ def _sql(working_path: Path, query: str) -> str:
 
 
 def _cte_names(sql: str) -> list[str]:
-    return re.findall(r"^(\w+) as \(", sql, re.M)
+    return re.findall(r"^(\w+) as \(", sql, re.MULTILINE)
 
 
 def _rename_only_ctes(sql: str) -> list[str]:

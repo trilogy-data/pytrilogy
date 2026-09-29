@@ -135,14 +135,21 @@ class RootRequest:
     def answered_by(self, node: StrategyNode, asked: "RootRequest") -> bool:
         """Whether `node`, built for `asked`, already answers this request.
         A column the node binds partially is not an answer: asked for outright,
-        the request completes it from another source."""
+        the request completes it from another source. Neither is a node whose
+        scans exceed what this request needs: it was built for a wider question
+        (a dim peel keyed by a grouping key the FINAL does not project, which
+        only the fact binds), and planning this request afresh prunes the joins
+        that key dragged in. `parent_for_consumer` weighs a slice the same
+        way."""
         partial = {c.address for c in node.partial_concepts}
-        return (
+        if not (
             self.conditions == asked.conditions
             and self.scope == asked.scope
             and self.parents == asked.parents
             and self.outputs <= {c.address for c in node.output_concepts} - partial
-        )
+        ):
+            return False
+        return not _strict_leaf_subset_binds(node, set(self.outputs))
 
 
 def _concept_at(environment: BuildEnvironment, address: str) -> BuildConcept | None:
