@@ -1,5 +1,5 @@
 query_id = "54"
-gen_length = 3904
+gen_length = 3674
 preql_size = 1047
 comp_size = 1699
 generated_sql = """
@@ -7,9 +7,7 @@ generated_sql = """
 WITH 
 wakeful as (
 SELECT
-    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
-     'CATALOG'  as \"sales_channel\",
-    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_sk\"
+    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_sk\"
 FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
@@ -19,9 +17,7 @@ WHERE
 
 UNION ALL
 SELECT
-    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
-     'WEB'  as \"sales_channel\",
-    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_sk\"
+    \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_sk\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"sales_web_sales_unified\".\"WS_ITEM_SK\" = \"sales_item_items\".\"I_ITEM_SK\"
@@ -35,10 +31,8 @@ SELECT
 FROM
     \"wakeful\"
 GROUP BY
-    1,
-    \"wakeful\".\"sales_channel\",
-    \"wakeful\".\"sales_item_sk\"),
-young as (
+    1),
+sparkling as (
 SELECT
     \"ss_store_sales\".\"SS_CUSTOMER_SK\" as \"ss_customer_sk\",
     \"ss_store_sales\".\"SS_EXT_SALES_PRICE\" as \"ss_ext_sales_price\"
@@ -51,36 +45,36 @@ FROM
 WHERE
     \"ss_sale_date_date\".\"D_MONTH_SEQ\" >= 1188 and \"ss_sale_date_date\".\"D_MONTH_SEQ\" <= 1190 and \"ss_store_store\".\"S_COUNTY\" = \"ss_customer_current_address_customer_address\".\"CA_COUNTY\" and \"ss_store_store\".\"S_STATE\" = \"ss_customer_current_address_customer_address\".\"CA_STATE\" and \"ss_store_sales\".\"SS_CUSTOMER_SK\" is not null and exists (select 1 from cooperative where cooperative.\"my_customers_my_cust_id\" is not distinct from \"ss_store_sales\".\"SS_CUSTOMER_SK\")
 ),
-sparkling as (
+abhorrent as (
 SELECT
-    \"young\".\"ss_customer_sk\" as \"my_revenue_rev_cust_id\",
-    cast(round(sum(\"young\".\"ss_ext_sales_price\") / 50,0) as int) * 50 as \"segment_base\",
-    cast(round(sum(\"young\".\"ss_ext_sales_price\") / 50,0) as int) as \"segment\"
-FROM
-    \"young\"
-GROUP BY
-    1),
-macho as (
-SELECT
-    \"sparkling\".\"segment\" as \"segment\",
-    count(\"sparkling\".\"my_revenue_rev_cust_id\") as \"num_customers\"
+    \"sparkling\".\"ss_customer_sk\" as \"my_revenue_rev_cust_id\",
+    cast(round(sum(\"sparkling\".\"ss_ext_sales_price\") / 50,0) as int) * 50 as \"segment_base\",
+    cast(round(sum(\"sparkling\".\"ss_ext_sales_price\") / 50,0) as int) as \"segment\"
 FROM
     \"sparkling\"
 GROUP BY
+    1),
+scrawny as (
+SELECT
+    \"abhorrent\".\"segment\" as \"segment\",
+    count(\"abhorrent\".\"my_revenue_rev_cust_id\") as \"num_customers\"
+FROM
+    \"abhorrent\"
+GROUP BY
     1)
 SELECT
-    \"sparkling\".\"segment\" as \"segment\",
-    \"macho\".\"num_customers\" as \"num_customers\",
-    \"sparkling\".\"segment_base\" as \"segment_base\"
+    \"abhorrent\".\"segment\" as \"segment\",
+    \"scrawny\".\"num_customers\" as \"num_customers\",
+    \"abhorrent\".\"segment_base\" as \"segment_base\"
 FROM
-    \"macho\"
-    INNER JOIN \"sparkling\" on \"macho\".\"segment\" = \"sparkling\".\"segment\"
+    \"scrawny\"
+    INNER JOIN \"abhorrent\" on \"scrawny\".\"segment\" = \"abhorrent\".\"segment\"
 GROUP BY
     1,
     2,
     3
 ORDER BY 
-    \"sparkling\".\"segment\" asc nulls first,
-    \"macho\".\"num_customers\" asc nulls first,
-    \"sparkling\".\"segment_base\" asc nulls first
+    \"abhorrent\".\"segment\" asc nulls first,
+    \"scrawny\".\"num_customers\" asc nulls first,
+    \"abhorrent\".\"segment_base\" asc nulls first
 LIMIT (100)"""
