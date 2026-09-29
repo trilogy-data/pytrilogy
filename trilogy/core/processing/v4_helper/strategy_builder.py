@@ -915,6 +915,9 @@ def _inlined_by_every_reader(
     it is an aggregate computing it inline, and the FINAL takes what it
     exposes from those readers."""
     a = attrs[gid]
+    # a condition-phase group's node is what vetoes its twin's fold
+    if a.depth_label == DepthLabel.D1:
+        return False
     readers = [s for s in group_graph.successors(gid) if s != FINAL_NODE_ID]
     if not readers or not all(
         attrs[reader].derivation == Derivation.AGGREGATE
