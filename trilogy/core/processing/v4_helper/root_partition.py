@@ -826,11 +826,19 @@ def _split_root_dimension_clusters(
     id avoids those joins.
 
     When a subset of a root bucket's members is functionally determined by a
-    single entity key that is ALSO a downstream grouping key (so the FINAL
-    merge already produces that key as a join column), that subset can source
-    independently from its own dim tables and join on the key. Each such
-    cluster becomes its own ROOT bucket, per entity. A member FD by two
+    single entity key that is ALSO a grouping key, that subset can source
+    independently from its own dim tables and join on the key: a grouped
+    stream keyed by it is what the cluster joins back to. Any depth counts. A
+    condition-phase aggregate's grain is the axis its population twin merges
+    into FINAL on (tpc-ds q11: customer attributes beside four HAVING sums by
+    `customer.sk`), so its key is a join column like a d0 aggregate's. Each
+    such cluster becomes its own ROOT bucket, per entity. A member FD by two
     incomparable entities only co-occurs through the fact and stays put.
+
+    A cluster is a sourcing choice made on FD alone, so two rules read what
+    the sources say: a region domain that holds the cluster whole takes it
+    (`_domain_holding`), and a cluster whose table the row stream reads
+    anyway stays on it (`_keep_on_the_row_stream`).
 
     FD is resolved against the full build environment (not the concept-graph
     side-table), so the chain through an intermediate FK the query never

@@ -3,7 +3,8 @@ append a single FINAL sink.
 
 Pipeline:
     assign groups via per-derivation grouping rules ->
-    attach secondary members -> wire group-level lineage edges ->
+    partition the root demand by reader (`root_partition`) ->
+    carry grain keys -> wire group-level lineage edges ->
     inject condition clauses -> color edges by pre/post-condition phase ->
     attach FINAL sink
 
