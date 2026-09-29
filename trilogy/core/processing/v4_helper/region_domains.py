@@ -220,12 +220,19 @@ def _mixes_region(bucket: GroupBucket, region: Region, keyspace: Keyspace) -> bo
 
 
 def _holds_a_materialized_aggregate(
-    bucket: GroupBucket, environment: BuildEnvironment
+    bucket: GroupBucket,
+    region: Region,
+    keyspace: Keyspace,
+    environment: BuildEnvironment,
 ) -> bool:
     """A summary table rolled up to the statement's grain, held as a ROOT: a
-    rollup over the region's rows the keyspace does not model."""
+    rollup over the region's rows the keyspace does not model. One keyed by
+    the region's span (`total_amount` by customer) is an attribute of the
+    region's entity like any other, and the domain carries it."""
     return any(
-        (c := environment.concepts.get(m)) is not None and c.is_aggregate
+        (c := environment.concepts.get(m)) is not None
+        and c.is_aggregate
+        and not keyspace.carried_on(m, region)
         for m in bucket.primary_members
     )
 
@@ -242,7 +249,7 @@ def _pads_region(
     plan."""
     return _mixes_region(
         bucket, region, keyspace
-    ) and not _holds_a_materialized_aggregate(bucket, environment)
+    ) and not _holds_a_materialized_aggregate(bucket, region, keyspace, environment)
 
 
 @dataclass
@@ -279,7 +286,7 @@ def _region_domain(
         b
         for b in eligible
         if b.derivation == Derivation.ROOT
-        and not _holds_a_materialized_aggregate(b, environment)
+        and not _holds_a_materialized_aggregate(b, region, keyspace, environment)
     ]
     members = {
         address: node_id
