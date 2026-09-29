@@ -6,6 +6,10 @@ that is one boolean check. Activate with ``start()``/``stop()`` around a
 ``process_query`` call, or set ``TRILOGY_PLAN_TRACE=<file>`` and every
 top-level ``process_query`` writes its own trace there.
 
+Each step carries the planner time since the previous step (``ms``), on a
+clock that stops while the recorder itself works (``off_clock``). A step that
+only records its inputs or result for the viewer (``TIMED = False``) has none.
+
 A step's payload is a ``StepData`` dataclass naming its phase; the snapshots
 inside it (``ConceptTrace``, ``NodeTrace``, ``CteTrace``...) are copies taken
 at record time, since the planner mutates its objects afterwards. Planner
@@ -18,13 +22,15 @@ from __future__ import annotations
 import json
 import os
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from copy import copy
 from dataclasses import InitVar, dataclass, field, fields, is_dataclass, replace
 from enum import Enum
+from functools import wraps
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar
+from time import perf_counter
+from typing import TYPE_CHECKING, Any, ClassVar, ParamSpec, TypeVar
 
 if TYPE_CHECKING:
     from trilogy.core import graph as nx
@@ -42,6 +48,9 @@ _PACKAGE = str(Path(__file__).resolve().parents[2])
 # a step's origin is the planner call path below the plan's own entry point
 _ORIGIN_ROOTS = frozenset({"_build_from_graph_traced", "_process_query"})
 TRACE_VERSION = 1
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 # Phase names, in pipeline order. The viewer orders its legend by this list.
 PHASES: tuple[str, ...] = (
@@ -311,11 +320,15 @@ class CteTrace:
 @dataclass(frozen=True)
 class StepData:
     PHASE: ClassVar[str]
+    # False for a step that only snapshots inputs or a result: the time before
+    # it is not its work
+    TIMED: ClassVar[bool] = True
 
 
 @dataclass(frozen=True)
 class RequestStep(StepData):
     PHASE: ClassVar[str] = "request"
+    TIMED: ClassVar[bool] = False
     concepts: list[ConceptTrace]
     conditions: list[str | None]
     staged_conditions: list[str | None]
@@ -458,6 +471,7 @@ class FinalStep(StepData):
 @dataclass(frozen=True)
 class StrategyStep(StepData):
     PHASE: ClassVar[str] = "strategy"
+    TIMED: ClassVar[bool] = False
     node: NodeTrace | None
 
 
@@ -510,6 +524,9 @@ class TraceStep:
     context: str | None
     # planner call path from the plan's entry point to the recording seam
     origin: list[str]
+    # planner milliseconds at the step, and since the previous step when timed
+    at_ms: float
+    ms: float | None
 
 
 @dataclass(frozen=True)
@@ -547,9 +564,19 @@ class PlanTrace:
     # `statement` is a whole source file
     statement_lines: tuple[int, int] | None = None
     _removed_ctes: list[CteTombstone] = field(default_factory=list)
+    _t0: float = field(default_factory=perf_counter)
+    # seconds spent in the recorder, and when the current off-clock span began
+    _overhead: float = 0.0
+    _off_since: float | None = None
+    _last_ms: float = 0.0
+    total_ms: float | None = None
 
     def __post_init__(self, dialect: BaseDialect | None) -> None:
         self.renderer = _display_renderer(dialect)
+
+    def clock(self) -> float:
+        now = perf_counter() if self._off_since is None else self._off_since
+        return (now - self._t0 - self._overhead) * 1000
 
     @property
     def current_plan(self) -> str | None:
@@ -571,6 +598,9 @@ class PlanTrace:
         self._contexts.pop()
 
     def record(self, title: str, data: StepData) -> None:
+        at = self.clock()
+        ms = at - self._last_ms if data.TIMED else None
+        self._last_ms = at
         self.steps.append(
             TraceStep(
                 len(self.steps) + 1,
@@ -580,6 +610,8 @@ class PlanTrace:
                 data,
                 self._contexts[-1],
                 _origin(),
+                round(at, 3),
+                None if ms is None else round(ms, 3),
             )
         )
 
@@ -588,6 +620,7 @@ class PlanTrace:
             "version": TRACE_VERSION,
             "statement": self.statement,
             "statement_lines": self.statement_lines,
+            "total_ms": self.total_ms,
             "phases": list(PHASES),
             "plans": jsonable(self.plans),
             "steps": jsonable(self.steps),
@@ -625,13 +658,35 @@ def start(
 def stop() -> PlanTrace | None:
     global _active
     trace, _active = _active, None
+    if trace is not None:
+        trace.total_ms = round(trace.clock(), 3)
     return trace
+
+
+def off_clock(fn: Callable[P, R]) -> Callable[P, R]:
+    """Keep ``fn``'s time off the planner clock: snapshotting for the trace,
+    or anything else the recording run does that planning does not."""
+
+    @wraps(fn)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        trace = _active
+        if trace is None or trace._off_since is not None:
+            return fn(*args, **kwargs)
+        trace._off_since = perf_counter()
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            trace._overhead += perf_counter() - trace._off_since
+            trace._off_since = None
+
+    return wrapper
 
 
 def env_output_path() -> str | None:
     return os.environ.get(TRACE_ENV) or None
 
 
+@off_clock
 def record(title: str, data: StepData) -> None:
     if _active is not None:
         _active.record(title, data)
@@ -714,6 +769,7 @@ def _display_renderer(renderer: BaseDialect | None) -> BaseDialect:
     return display
 
 
+@off_clock
 def expression(e: Any) -> str | None:
     """An expression (or where clause) as the dialect renders it, with
     unqualified columns. None when no trace is recording, so eager call sites
@@ -731,6 +787,7 @@ def expression(e: Any) -> str | None:
         return str(e)
 
 
+@off_clock
 def jsonable(value: Any) -> Any:
     """A JSON value for any planner object: dataclasses by field, enums by
     value, sets sorted, and anything else by ``str``."""
@@ -763,11 +820,13 @@ def _lineage(c: BuildConcept) -> str | None:
     return rendered
 
 
+@off_clock
 def graph_concepts(env: BuildEnvironment, attrs: dict[str, Any]) -> list[ConceptTrace]:
     found = (env.concepts.get(a.address) for a in attrs.values())
     return [concept(c) for c in {c.address: c for c in found if c}.values()]
 
 
+@off_clock
 def concept(c: BuildConcept) -> ConceptTrace:
     return ConceptTrace(
         address=c.address,
@@ -783,6 +842,7 @@ def concept(c: BuildConcept) -> ConceptTrace:
     )
 
 
+@off_clock
 def datasource(ds: BuildDatasource) -> DatasourceTrace:
     from trilogy.core.enums import Modifier
 
@@ -807,6 +867,7 @@ def datasource(ds: BuildDatasource) -> DatasourceTrace:
     )
 
 
+@off_clock
 def environment(env: BuildEnvironment) -> EnvironmentTrace:
     outputs, hidden = env.statement_output_addresses, env.statement_hidden_addresses
     return EnvironmentTrace(
@@ -816,6 +877,7 @@ def environment(env: BuildEnvironment) -> EnvironmentTrace:
     )
 
 
+@off_clock
 def span_scope(scope: SpanScope) -> SpanScopeTrace:
     return SpanScopeTrace(
         owned=sorted(scope.owned),
@@ -827,6 +889,7 @@ def span_scope(scope: SpanScope) -> SpanScopeTrace:
     )
 
 
+@off_clock
 def keyspace(ks: Keyspace) -> KeyspaceTrace:
     regions = [
         RegionTrace(
@@ -869,6 +932,7 @@ def keyspace(ks: Keyspace) -> KeyspaceTrace:
     )
 
 
+@off_clock
 def graph(g: nx.DiGraph, edges: EdgeMap, attrs: dict[str, Any]) -> GraphTrace:
     """A topology graph with its side maps: nodes carry their attrs, edges
     their kind and phase."""
@@ -892,6 +956,7 @@ def graph(g: nx.DiGraph, edges: EdgeMap, attrs: dict[str, Any]) -> GraphTrace:
     )
 
 
+@off_clock
 def strategy_node(node: StrategyNode | None) -> NodeTrace | None:
     """The node tree. A parent shared by two consumers is expanded once and
     referenced by id afterwards, so a diamond stays a diamond."""
@@ -973,6 +1038,7 @@ def _node(node: StrategyNode, seen: dict[int, str]) -> NodeTrace | NodeRef:
     return out
 
 
+@off_clock
 def query_datasource(qds: QueryDatasource, root: StrategyNode) -> QdsTrace:
     """The resolved tree. Each strategy node caches the datasource it
     resolved to, so walking `root` ties every datasource (and the CTE later
@@ -1060,6 +1126,7 @@ def _cte_join_left(consumer: CTE, join: Join) -> str | None:
     return ", ".join(sides) or None
 
 
+@off_clock
 def cte(c: CTE | UnionCTE) -> CteTrace:
     from trilogy.core.models.execute import CTE, Join
 

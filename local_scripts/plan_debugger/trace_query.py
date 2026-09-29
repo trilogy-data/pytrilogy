@@ -31,7 +31,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from trilogy import Environment
+from trilogy import Environment, Executor
 from trilogy.core.processing import plan_trace
 from trilogy.core.query_processor import process_query
 from trilogy.core.statements.author import (
@@ -89,12 +89,9 @@ def run(
             supports_full_join=renderer.SUPPORTS_FULL_JOIN,
         )
         sql = renderer.compile_statement(processed)
-        result_rows: list | None = None
-        columns: list[str] | None = None
-        if executor is not None:
-            cursor = executor.execute_raw_sql(sql)
-            columns = list(cursor.keys())
-            result_rows = [list(r) for r in cursor.fetchall()]
+        columns, result_rows = (
+            _execute(executor, sql) if executor is not None else (None, None)
+        )
         plan_trace.record(
             f"{dialect.value} SQL",
             plan_trace.SqlStep(
@@ -110,6 +107,12 @@ def run(
     finally:
         plan_trace.stop()
     return trace.to_dict()
+
+
+@plan_trace.off_clock
+def _execute(executor: Executor, sql: str) -> tuple[list[str], list[list]]:
+    cursor = executor.execute_raw_sql(sql)
+    return list(cursor.keys()), [list(r) for r in cursor.fetchall()]
 
 
 def embed(trace: dict, out: Path) -> Path:

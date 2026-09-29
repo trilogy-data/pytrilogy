@@ -1742,6 +1742,7 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
     return node
 
 
+@plan_trace.off_clock
 def _trace_search(network: SourceNetwork, result: SearchResult) -> None:
     solution = result.solution
     plan_trace.record(

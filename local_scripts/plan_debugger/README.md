@@ -49,6 +49,25 @@ plan: the plan selector in the header filters to one, and the step list indents
 by nesting depth. Steps after discovery (`resolve`, `ctes`, `sql`) are
 statement-level.
 
+## Timing
+
+Each step carries the planner time since the previous step (`ms`) and the
+planner clock at the step (`at_ms`); the trace carries `total_ms`. The clock
+stops while the recorder snapshots (anything decorated `plan_trace.off_clock`,
+including `--rows` execution), so the numbers are planning cost, not tracing
+cost. A step that only records inputs or a result (`requested concepts`,
+`strategy node`) has no duration; the time before the first step is statement
+setup and is in `total_ms` only.
+
+The step list shows each duration with a light tint scaled to the slowest
+visible step; a `building …` header shows its block's total, nested plans
+included, and each phase button its phase's total.
+
+These steps are the planner's phase/span events. The intent is for the
+recorder to become one subscriber on the hooks framework (`trilogy/hooks`),
+beside others such as stats collection for export, rather than its own
+module-global seam.
+
 Click any graph node, tree node, bucket card or CTE card to see all of its
 fields in the inspector. `←`/`→` (or `k`/`j`) step; the URL hash holds the
 current step, so a link to a step can be pasted into a note.
