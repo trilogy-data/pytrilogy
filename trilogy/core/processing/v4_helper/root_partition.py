@@ -750,6 +750,34 @@ def _domain_holding(
     )
 
 
+def _keep_on_the_row_stream(
+    assignment: dict[str, frozenset[str]],
+    node_of: dict[str, str],
+    concept_attrs: dict[str, ConceptAttrs],
+) -> None:
+    """A cluster whose table the row stream reads whatever is peeled stays on
+    it: a member the bucket keeps is bound by that table alone (`category`
+    under a pre-aggregate filter, beside the item's `desc` and `price`), so
+    the cluster's columns are already there and a peel reads the table twice,
+    once more at FINAL."""
+    read_anyway = {
+        next(iter(bindings))
+        for address, node in node_of.items()
+        if address not in assignment
+        and len(bindings := concept_attrs[node].datasource_bindings) == 1
+    }
+    for key in set(assignment.values()):
+        members = [a for a, k in assignment.items() if k == key]
+        if any(
+            all(
+                source in concept_attrs[node_of[m]].datasource_bindings for m in members
+            )
+            for source in read_anyway
+        ):
+            for member in members:
+                del assignment[member]
+
+
 def _peels_a_cluster(
     key: frozenset[str], members: set[str], environment: BuildEnvironment
 ) -> bool:
@@ -773,6 +801,7 @@ def _split_root_dimension_clusters(
     keyspace: Keyspace,
     domains: list[RegionDomain],
     concept_graph: nx.DiGraph,
+    concept_attrs: dict[str, ConceptAttrs],
 ) -> None:
     """Peel single-entity FD dimension clusters out of a keyed ROOT bucket into
     their own ``grp:root:root:dim:<entity_key>`` ROOT buckets.
@@ -918,6 +947,11 @@ def _split_root_dimension_clusters(
         if not assignment:
             continue
         _keep_extension_families_together(assignment, keyspace, environment)
+        _keep_on_the_row_stream(
+            assignment,
+            dict(zip(bucket.primary_members, bucket.primary_node_ids)),
+            concept_attrs,
+        )
         if not assignment:
             continue
         clusters: dict[frozenset[str], list[int]] = defaultdict(list)
@@ -1056,6 +1090,7 @@ def partition_root_demand(
         keyspace,
         domains,
         concept_graph,
+        concept_attrs,
     )
     trace_buckets("root dimension clusters split", buckets, primary_group)
     add_region_domain_buckets(buckets, domains, keyspace, environment)
