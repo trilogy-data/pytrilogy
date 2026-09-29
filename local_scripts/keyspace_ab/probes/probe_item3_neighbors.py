@@ -160,7 +160,7 @@ def _trace_placements() -> None:
             print(
                 f"    {short(gid)}: grain={sorted(b.grain_components)}"
                 f" primary={[short(m) for m in b.primary_members]}"
-                f" secondary={[short(m) for m in b.secondary_members]}"
+                f" secondary={[short(m) for m in b.carried_keys]}"
                 f" extent={sorted(b.extent_spans) if b.extent_spans else None}"
             )
         print("  edges:")

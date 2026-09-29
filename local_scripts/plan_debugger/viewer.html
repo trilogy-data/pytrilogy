@@ -350,7 +350,7 @@ function renderGrouping(step) {
       <div class="kv"><div class="k">kind</div><div>${chip(x.derivation)}${chip(x.depth_label)}${x.label ? chip('[' + x.label + ']') : ''}${x.reason ? chip(x.reason, 'ok') : ''}</div>
       <div class="k">grain</div><div>${chips(x.grain_components)}</div>
       <div class="k">primary</div><div>${b ? memberChips(b.primary_members, p && p.primary_members) : chips(x.primary_members)}</div>
-      ${(x.secondary_members.length || (p && p.secondary_members.length)) ? `<div class="k">secondary</div><div>${b ? memberChips(b.secondary_members, p && p.secondary_members) : chips(x.secondary_members)}</div>` : ''}
+      ${(x.carried_keys.length || (p && p.carried_keys.length)) ? `<div class="k">carried keys</div><div>${b ? memberChips(b.carried_keys, p && p.carried_keys) : chips(x.carried_keys)}</div>` : ''}
       ${x.extent_spans.length ? `<div class="k">region domain</div><div>${chips(x.extent_spans, 'domain')}</div>` : ''}
       ${x.dim_keys.length ? `<div class="k">dim keys</div><div>${chips(x.dim_keys)}</div>` : ''}
       ${x.aggregate_input_grain.length ? `<div class="k">agg input grain</div><div>${chips(x.aggregate_input_grain)}</div>` : ''}

@@ -159,7 +159,8 @@ class GroupAttrs:
     label: str = ""
     members: tuple[str, ...] = ()
     primary_members: tuple[str, ...] = ()
-    secondary_members: tuple[str, ...] = ()
+    # See `GroupBucket.carried_keys`.
+    carried_keys: tuple[str, ...] = ()
     member_depths: dict[str, DepthLabel] = field(default_factory=dict)
     # For an aggregate group, the row grain its inputs must be normalized to
     # before aggregation. This is the grouping grain plus the natural grain of
@@ -330,7 +331,12 @@ class GroupBucket:
     # phase/label), keyed parallel to primary_members.
     primary_members: list[str] = field(default_factory=list)
     primary_node_ids: list[str] = field(default_factory=list)
-    secondary_members: list[str] = field(default_factory=list)
+    # Keys the group carries without computing them, known before the demand
+    # pass: a grouping bucket's grain (`_carry_grain_keys`), the entity key a
+    # dimension peel joins back on, a region's span riding its domain and the
+    # scans beside it (`region_domains`). What the group emits in full is
+    # `output_concepts`, which readers after the demand pass ask (`carried`).
+    carried_keys: list[str] = field(default_factory=list)
     member_depths: dict[str, DepthLabel] = field(default_factory=dict)
     label: str = ""
     # Optional disambiguator for rules that produce multiple buckets sharing
@@ -365,7 +371,7 @@ class GroupBucket:
         grouping."""
         if self.output_concepts:
             return set(self.output_concepts) - set(self.primary_members)
-        return set(self.secondary_members)
+        return set(self.carried_keys)
 
     @property
     def group_id(self) -> str:

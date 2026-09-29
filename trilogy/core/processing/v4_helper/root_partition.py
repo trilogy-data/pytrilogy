@@ -1002,7 +1002,7 @@ def _split_root_dimension_clusters(
                         key_address in environment.concepts
                         and key_address not in dim_bucket.primary_members
                     ):
-                        dim_bucket.secondary_members.append(key_address)
+                        dim_bucket.carried_keys.append(key_address)
                         dim_bucket.member_depths[key_address] = DepthLabel.ROOT
             dim_gid = dim_bucket.group_id
             buckets[dim_gid] = dim_bucket

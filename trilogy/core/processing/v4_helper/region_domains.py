@@ -417,8 +417,8 @@ def add_region_domain_buckets(
         ]
         for span in sorted(region.spans - domain.carried):
             for side in (bucket, *sources):
-                if span not in side.secondary_members:
-                    side.secondary_members.append(span)
+                if span not in side.carried_keys:
+                    side.carried_keys.append(span)
                     side.member_depths[span] = DepthLabel.ROOT
         buckets[bucket.group_id] = bucket
 
@@ -450,9 +450,9 @@ def carry_spans_to_condition_scans(
             for span in sorted(region.spans):
                 if (
                     span not in bucket.primary_members
-                    and span not in bucket.secondary_members
+                    and span not in bucket.carried_keys
                 ):
-                    bucket.secondary_members.append(span)
+                    bucket.carried_keys.append(span)
                     bucket.member_depths[span] = DepthLabel.ROOT
 
 

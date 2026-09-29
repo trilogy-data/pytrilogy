@@ -57,7 +57,7 @@ def _gg_node(
         derivation=derivation,
         grain_components=frozenset(grain or ()),
         primary_members=tuple(primary),
-        secondary_members=tuple(secondary or ()),
+        carried_keys=tuple(secondary or ()),
         condition_atoms=condition_atoms or [],
     )
 

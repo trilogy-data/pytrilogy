@@ -187,26 +187,21 @@ def _assign_groups(
     return primary_group, buckets
 
 
-def _attach_secondary_members(
+def _carry_grain_keys(
     concept_graph: nx.DiGraph,
     concept_attrs: dict[str, ConceptAttrs],
     buckets: dict[str, GroupBucket],
 ) -> None:
-    """Attach the concepts each grouping bucket implicitly carries beyond its
-    primary set: the grain components of a GROUP-BY / PARTITION-BY bucket,
-    which appear in the SELECT alongside the aggregates and are recorded as
-    members for visualization and the condition-placement pass.
-
-    BASIC groups get nothing here: their passthrough capability is derived
-    from topology in `_compute_concept_sets` (parent capability intersected
-    with grain compatibility), not pre-declared."""
+    """A GROUP-BY / PARTITION-BY bucket carries its grain: the keys appear in
+    its SELECT beside what it computes. One of the writers of `carried_keys`;
+    see `GroupBucket.carried_keys`."""
 
     def add(bucket: GroupBucket, address: str) -> None:
-        if address in bucket.primary_members or address in bucket.secondary_members:
+        if address in bucket.primary_members or address in bucket.carried_keys:
             return
         if address not in concept_attrs:
             return
-        bucket.secondary_members.append(address)
+        bucket.carried_keys.append(address)
         bucket.member_depths[address] = concept_attrs[address].depth_label
 
     for bucket in buckets.values():
@@ -310,9 +305,7 @@ def _fold_rollup_key_dims(
             tgt.member_depths[address] = concept_attrs[node].depth_label
         primary_group[node] = target_gid
     for gid in [
-        g
-        for g, b in buckets.items()
-        if not b.primary_node_ids and not b.secondary_members
+        g for g, b in buckets.items() if not b.primary_node_ids and not b.carried_keys
     ]:
         del buckets[gid]
 
@@ -336,7 +329,7 @@ def _materialize_group_graph(
     group_edges: EdgeMap = {}
     attrs: dict[str, GroupAttrs] = {}
     for gid, bucket in buckets.items():
-        members = tuple(bucket.primary_members) + tuple(bucket.secondary_members)
+        members = tuple(bucket.primary_members) + tuple(bucket.carried_keys)
         attrs[gid] = GroupAttrs(
             depth_label=bucket.depth_label,
             derivation=bucket.derivation,
@@ -344,7 +337,7 @@ def _materialize_group_graph(
             label=bucket.label,
             members=members,
             primary_members=tuple(bucket.primary_members),
-            secondary_members=tuple(bucket.secondary_members),
+            carried_keys=tuple(bucket.carried_keys),
             member_depths=dict(bucket.member_depths),
             aggregate_input_grain=bucket.aggregate_input_grain,
             aggregate_distinct_addrs=frozenset(bucket.aggregate_distinct_addrs),
@@ -1588,7 +1581,7 @@ def _anchor_scalars_to_dim_peel_key(
             if edge_kind(group_edges, pred, gid) == EdgeKind.LINEAGE
         ]
         keys = {
-            frozenset(attrs[pred].secondary_members) - region_join_keys
+            frozenset(attrs[pred].carried_keys) - region_join_keys
             for pred in parents
             if facts[pred].derivation == Derivation.ROOT
         }
@@ -1931,7 +1924,7 @@ def _compute_concept_sets(
             # their grain keys through their own fact parents.
             # a dim peel's keys identify its rows: the axis it joins back on
             cap |= attrs[gid].dim_keys
-            for addr in attrs[gid].secondary_members:
+            for addr in attrs[gid].carried_keys:
                 if addr in cap:
                     continue
                 if addr in region_join_keys:
@@ -1980,7 +1973,7 @@ def _compute_concept_sets(
         # a boundary split for a region carries the span its domain joins
         # back on, a handle of its own the statement never named
         if fact.derivation == Derivation.ROWSET:
-            cap |= region_join_keys & set(attrs[gid].secondary_members)
+            cap |= region_join_keys & set(attrs[gid].carried_keys)
         # a region's span riding HIDDEN on a solid fact scan (a secondary
         # member of a ROOT, `region_join_keys`) has no concept attributes of
         # its own, so the FD rule below cannot see that the fact binds it at
@@ -1991,7 +1984,7 @@ def _compute_concept_sets(
             if pgid == FINAL_NODE_ID:
                 continue
             hidden_spans = (
-                region_join_keys & set(attrs[pgid].secondary_members)
+                region_join_keys & set(attrs[pgid].carried_keys)
                 if pointwise and facts[pgid].derivation == Derivation.ROOT
                 else frozenset()
             )
@@ -2378,8 +2371,8 @@ def build_group_graph(
         keyspace,
     )
     split_carried_only_row_streams(buckets, primary_group, keyspace, environment)
-    _attach_secondary_members(concept_graph, concept_attrs, buckets)
-    trace_buckets("d1 roots and secondary members attached", buckets, primary_group)
+    _carry_grain_keys(concept_graph, concept_attrs, buckets)
+    trace_buckets("grain keys carried", buckets, primary_group)
     group_graph, attrs, group_edges = _materialize_group_graph(
         concept_graph,
         concept_edges,
@@ -2840,7 +2833,7 @@ def _absorb_group(
 
     pa.primary_members = _extend(pa.primary_members, a.primary_members)
     pa.members = _extend(pa.members, a.members)
-    pa.secondary_members = _extend(pa.secondary_members, a.secondary_members)
+    pa.carried_keys = _extend(pa.carried_keys, a.carried_keys)
     pa.member_depths = {**a.member_depths, **pa.member_depths}
 
     pb = buckets.get(parent_gid)
@@ -2850,9 +2843,9 @@ def _absorb_group(
             if addr not in pb.primary_members:
                 pb.primary_members.append(addr)
                 pb.primary_node_ids.append(node_id)
-        for addr in b.secondary_members:
-            if addr not in pb.secondary_members:
-                pb.secondary_members.append(addr)
+        for addr in b.carried_keys:
+            if addr not in pb.carried_keys:
+                pb.carried_keys.append(addr)
         pb.member_depths = {**b.member_depths, **pb.member_depths}
 
     for succ in list(group_graph.successors(gid)):

@@ -197,7 +197,7 @@ def _root_atoms_satisfiable_from(
 
 def _members_of(attrs: dict[str, GroupAttrs], gid: str) -> set[str]:
     a = attrs[gid]
-    return set(a.primary_members) | set(a.secondary_members)
+    return set(a.primary_members) | set(a.carried_keys)
 
 
 def _atoms_at(attrs: dict[str, GroupAttrs], gid: str) -> list[BoolExpr]:
@@ -702,7 +702,7 @@ def _select_addresses(a: GroupAttrs) -> tuple[str, ...]:
     """The per-group output set computed by the backward pass in
     `_compute_concept_sets`; a group the demand pass left without outputs
     still projects every member."""
-    return a.output_concepts or (*a.primary_members, *a.secondary_members)
+    return a.output_concepts or (*a.primary_members, *a.carried_keys)
 
 
 def _projects_parent_rows(
@@ -913,7 +913,7 @@ def _condition_twins(attrs: dict[str, GroupAttrs], gid: str) -> list[str]:
         for other, o in attrs.items()
         if other not in (gid, FINAL_NODE_ID)
         and o.depth_label == DepthLabel.D1
-        and members & {*o.output_concepts, *o.primary_members, *o.secondary_members}
+        and members & {*o.output_concepts, *o.primary_members, *o.carried_keys}
     ]
 
 
@@ -2675,7 +2675,7 @@ def _filter_intrinsic_pushdown_safe(
 def _consumer_reads(consumer: GroupAttrs, environment: BuildEnvironment) -> set[str]:
     """The addresses a group reads off its parents: what it derives reads its
     arguments; its grain and what rides through it are read as themselves."""
-    read: set[str] = set(consumer.grain_components) | set(consumer.secondary_members)
+    read: set[str] = set(consumer.grain_components) | set(consumer.carried_keys)
     for member in consumer.primary_members:
         concept = environment.concepts.get(member)
         if concept is not None and concept.lineage is not None:
@@ -3128,7 +3128,7 @@ def _cover_groups_for_mandatory(
             key=lambda gid: (
                 sum(1 for a in nx.ancestors(group_graph, gid) if a in built),
                 addr in set(attrs[gid].primary_members)
-                or addr in set(attrs[gid].secondary_members),
+                or addr in set(attrs[gid].carried_keys),
             ),
             reverse=True,
         )

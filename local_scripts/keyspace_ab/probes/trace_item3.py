@@ -31,7 +31,7 @@ def _traced(group_graph, group_edges, buckets, conditions, mandatory_list, *rest
     for gid, b in buckets.items():
         print(
             f"    {_short(gid)}: {b.derivation.name} depth={b.depth_label} grain={sorted(b.grain_components)}"
-            f" primary={[_short(m) for m in b.primary_members]} secondary={[_short(m) for m in b.secondary_members]}"
+            f" primary={[_short(m) for m in b.primary_members]} secondary={[_short(m) for m in b.carried_keys]}"
             f" extent={sorted(b.extent_spans) if b.extent_spans else None} disc={b.discriminator!r}"
         )
     print("  edges:")
