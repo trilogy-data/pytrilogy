@@ -41,9 +41,15 @@ marked `LARGER` when any of the three grew. `OUTCOME` is a test that passed on
 one side and failed on the other.
 
 Some tests move between two runs of the same code. Known ones:
-`tests/modeling/gcat/test_gcat.py::test_environment` (column order of a
-validation query), `tests/scripts/test_validate_agent.py`, and
-`tests/test_mocking.py::test_mock_composite_grain_fills_combination_space`.
+
+- `tests/modeling/gcat/test_gcat.py::test_environment` and
+  `tests/scripts/test_config.py::test_config_bootstrap*`: column order of a
+  validation query.
+- `tests/scripts`: `test_cli_consistency`, `test_execution_report`,
+  `test_ingest`, `test_validate_agent`, and `test_trilogy`'s parallel and
+  dry-run tests, which compile a varying number of statements.
+- `tests/test_mocking.py::test_mock_composite_grain_fills_combination_space`.
+
 Run a moved test twice on one tree before reading it as a plan change.
 
 A moved plan still needs its rows checked. The modeling suites compare rows
