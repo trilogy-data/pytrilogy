@@ -86,6 +86,7 @@ from .constants import (
 )
 from .edges import EdgeMap, dependency_subgraph, edge_kind, remove_edge
 from .functional_dependency import build_fd_determines
+from .group_graph import trace_group_graph
 from .history import V4History
 from .models import (
     ExtentOwnership,
@@ -881,6 +882,8 @@ def _raise_if_inlined_input_is_unreadable(
     """The groups folded into `gid` were never built, so nothing else can
     supply their members: `gid`'s parents must render each, and no
     condition-phase twin may have materialized one since."""
+    if not attrs[gid].inlined_members:
+        return
     available = {o.address for _, node in candidates for o in node.output_concepts}
     twins = {
         o.address
@@ -1003,13 +1006,7 @@ def _fold_into_readers(
     if final.extent_ownership is not None:
         final.extent_ownership.permitted.pop(gid, None)
     logger.info(f"[v4] {gid} is computed inline by its readers; not built")
-    if plan_trace.active():
-        plan_trace.record(
-            f"inlined {gid}",
-            plan_trace.GroupGraphStep(
-                graph=plan_trace.graph(group_graph, group_edges, attrs)
-            ),
-        )
+    trace_group_graph(f"inlined {gid}", group_graph, group_edges, attrs)
 
 
 def _parent_nodes_for(
