@@ -3362,7 +3362,7 @@ def build_group_graph(
     feed_region_domains_to_present_scalars(
         group_graph, group_edges, attrs, keyspace, environment
     )
-    _trace_group_graph("group graph materialized", group_graph, group_edges, attrs)
+    trace_group_graph("group graph materialized", group_graph, group_edges, attrs)
     # FINAL must exist before injection so a cross-arm post-merge filter can
     # land on it (no pre-final group can host one); `_color_phases` then colors
     # its merge edges along with the rest.
@@ -3403,7 +3403,7 @@ def build_group_graph(
     _regraft_group_sources(
         group_graph, group_edges, attrs, buckets, concept_attrs, environment
     )
-    _trace_group_graph(
+    trace_group_graph(
         "FINAL added, concept sets computed, sources regrafted",
         group_graph,
         group_edges,
@@ -3475,7 +3475,7 @@ def build_group_graph(
     attrs[FINAL_NODE_ID].extent_ownership = elect_extent_owners(
         group_graph, attrs, environment, keyspace
     )
-    _trace_group_graph(
+    trace_group_graph(
         "conditions injected, phases colored, contracts and extent owners set",
         group_graph,
         group_edges,
@@ -3499,7 +3499,7 @@ def _trace_buckets(
 
 
 @plan_trace.off_clock
-def _trace_group_graph(
+def trace_group_graph(
     title: str,
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
