@@ -6,6 +6,46 @@ item is a question to settle, and possibly a targeted change, before any
 restructuring. All line numbers are `trilogy/core/processing/v4_helper/`
 unless noted.
 
+## Status: restructured (2026-09-29)
+
+The passes are one pass, `root_partition.partition_root_demand`, in the order
+existence, region, entity, condition. What is left is in
+`docs/handoff_root_partition_open_items.md`. Everything after this section is
+the original handoff and describes the code as it was.
+
+| item | outcome |
+|---|---|
+| one pass with explicit reasons | done. Every ROOT group carries a `RootReason`; the passes ask it instead of a discriminator or `dim_keys` |
+| B, domains before the split | done. `_drop_unread_peels_the_domain_took` is gone: a cluster the domain holds whole and nothing but FINAL reads joins the domain (`_domain_holding`). `_keep_extension_families_together` stays, see the open items |
+| existence prune | runs first, on the row stream, instead of last on whatever the other passes made |
+| A, the key criterion | audited. The split is a real optimization: off, 18 corpus plans get worse and one better (tpc-ds q98). Keys of every depth are right (tpc-ds q11). A rule for q98's shape was tried and taken back out, see the open items |
+| A, materialized concepts | not reproduced as a split problem |
+| C, `secondary_members` | renamed `carried_keys`, with the writers named on the field. Condition placement reads the demand pass's outputs instead |
+| D, the regraft root | `grp:root:root:∅:basic_input:<key>`, reason `BASIC_INPUT`, built as a bucket like any other. Still created: the aggregate reads it once the BASIC folds |
+
+One claim in the original text did not hold: "An aggregate at `k` that feeds
+only a condition never puts `k` on the FINAL join." It does. The condition
+group merges into FINAL on its grain; q11 is exactly this and needs the peel.
+
+One dependency between the passes was not in the text. The domain pass's
+materialized-aggregate veto relied on the split having run: the summary's own
+columns keyed by the span had been peeled out of the bucket it tested.
+Decided on the whole demand, the veto skips an aggregate the region carries
+(`test_materialized_rollup_matches_its_base` caught it).
+
+SQL moved in three tests, all from condition placement reading the output
+set: two plans lose a WHERE an inner join already implies, one pushes a
+filter to a second scan. No plan gained a CTE or a join. Everything else is
+identical once CTE names are normalized, over 202 corpus statements and the
+statements the test suite compiles.
+
+The dead-group census is unchanged, 63 of 804 built: the peels the old
+cleanup deleted were never built either.
+
+Guards: `tests/core/processing/test_v4_root_partition.py`.
+
+---
+
 ## Background: the passes today
 
 `build_group_graph` (`group_graph.py`, around line 3290) runs, in order:
