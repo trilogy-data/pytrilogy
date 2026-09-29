@@ -21,7 +21,7 @@ from .constants import (
 from .edges import EdgeMap, edge_kind
 from .extent_ownership import span_members
 from .functional_dependency import build_fd_determines
-from .models import ConceptAttrs, GroupBucket, Keyspace
+from .models import ConceptAttrs, GroupBucket, Keyspace, RootReason
 from .region_domains import (
     RegionDomain,
     add_region_domain_buckets,
@@ -303,6 +303,7 @@ def _add_d1_root_buckets(
             depth_label=DepthLabel.ROOT_D1,
             derivation=Derivation.ROOT,
             grain_components=frozenset(),
+            reason=RootReason.CONDITION,
         )
         if stage is not None:
             bucket.discriminator = f"stage:s{stage}"
@@ -811,11 +812,7 @@ def _split_root_dimension_clusters(
     d0_grouping_grains = [bucket.grain_components for bucket in d0_grouping_buckets]
     for gid in list(buckets):
         bucket = buckets[gid]
-        if (
-            bucket.derivation != Derivation.ROOT
-            or bucket.depth_label != DepthLabel.ROOT
-            or bucket.discriminator  # skip single_row / existence / split variants
-        ):
+        if bucket.reason is not RootReason.ROW_STREAM:
             continue
         member_addrs = set(bucket.primary_members)
         # Candidate entity keys: a member that is a downstream grouping key (so a
@@ -955,6 +952,7 @@ def _split_root_dimension_clusters(
                 label=bucket.label,
                 discriminator=f"dim:{'|'.join(sorted(key))}",
                 dim_keys=frozenset(key),
+                reason=RootReason.ENTITY,
             )
             for idx in indices:
                 addr = bucket.primary_members[idx]

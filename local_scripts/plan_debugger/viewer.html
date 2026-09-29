@@ -347,7 +347,7 @@ function renderGrouping(step) {
     const x = b || p;
     const memberChips = (list, plist) => list.map(m => chip(m, plist && !plist.includes(m) ? 'ok' : '')).join('') + (plist ? plist.filter(m => !list.includes(m)).map(m => `<span class="chip bad"><s>${esc(m)}</s></span>`).join('') : '');
     return `<div class="card ${cls} ${x.extent_spans.length ? 'domain' : ''}" data-bucket="${esc(gid)}"><h4>${esc(stripGrp(gid))}</h4>
-      <div class="kv"><div class="k">kind</div><div>${chip(x.derivation)}${chip(x.depth_label)}${x.label ? chip('[' + x.label + ']') : ''}</div>
+      <div class="kv"><div class="k">kind</div><div>${chip(x.derivation)}${chip(x.depth_label)}${x.label ? chip('[' + x.label + ']') : ''}${x.reason ? chip(x.reason, 'ok') : ''}</div>
       <div class="k">grain</div><div>${chips(x.grain_components)}</div>
       <div class="k">primary</div><div>${b ? memberChips(b.primary_members, p && p.primary_members) : chips(x.primary_members)}</div>
       ${(x.secondary_members.length || (p && p.secondary_members.length)) ? `<div class="k">secondary</div><div>${b ? memberChips(b.secondary_members, p && p.secondary_members) : chips(x.secondary_members)}</div>` : ''}

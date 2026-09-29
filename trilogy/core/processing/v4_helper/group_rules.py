@@ -25,7 +25,7 @@ from trilogy.core.enums import (
 from .concept_graph import _scope_and_phase
 from .constants import DepthLabel, EdgeKind
 from .edges import EdgeMap, edge_kind
-from .models import ConceptAttrs, GroupBucket, nulls_grouping_keys
+from .models import ConceptAttrs, GroupBucket, RootReason, nulls_grouping_keys
 
 
 def _sig_digest(sig_repr: str) -> str:
@@ -772,9 +772,11 @@ def partition_roots(
                 grain=frozenset(),
                 label=label_value,
             )
+            bucket.reason = RootReason.ROW_STREAM
             if multi:
                 sig_repr = "|".join(sorted(addr_of[node] for node, _ in members))
                 bucket.discriminator = f"split:{_sig_digest(sig_repr)}"
+                bucket.reason = RootReason.COMPONENT
             for node, data in members:
                 _add_member(bucket, node, data)
             buckets.append(bucket)
@@ -789,6 +791,7 @@ def partition_roots(
             # Distinct id from the keyed `grp:root:root:∅` bucket so they stay
             # separate scans the FINAL node cross-joins.
             single_row_bucket.discriminator = "single_row"
+            single_row_bucket.reason = RootReason.SINGLE_ROW
             for node, data in single_row_items:
                 _add_member(single_row_bucket, node, data)
             buckets.append(single_row_bucket)
@@ -801,6 +804,7 @@ def partition_roots(
                 label=label_value,
             )
             solo.discriminator = f"existence:{addr_of[node]}"
+            solo.reason = RootReason.EXISTENCE
             _add_member(solo, node, data)
             buckets.append(solo)
     return buckets

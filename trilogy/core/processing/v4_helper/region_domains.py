@@ -26,7 +26,7 @@ from .extent_ownership import (
     solid_groups,
     takes_a_value_on_padding,
 )
-from .models import ConceptAttrs, GroupAttrs, GroupBucket
+from .models import ConceptAttrs, GroupAttrs, GroupBucket, RootReason
 from .projection import decided_at_output_grain, reads_rows_only
 
 
@@ -130,11 +130,7 @@ def _splits_for_region(bucket: GroupBucket) -> bool:
     or a rowset boundary (a row source whose body padded the region)."""
     if bucket.derivation == Derivation.ROWSET:
         return not bucket.extent_spans
-    return (
-        bucket.derivation == Derivation.ROOT
-        and bucket.depth_label == DepthLabel.ROOT
-        and (not bucket.discriminator or bool(bucket.dim_keys))
-    )
+    return bucket.reason in (RootReason.ROW_STREAM, RootReason.ENTITY)
 
 
 def _needs_solid_rows(
@@ -329,6 +325,7 @@ def _region_domain(
         label=label,
         discriminator=f"{rowset[0].discriminator}:{extent}" if rowset else extent,
         extent_spans=region.spans,
+        reason=RootReason.REGION,
     )
     depths = {a: d for b in eligible for a, d in b.member_depths.items()}
     for address, node_id in members.items():
@@ -442,10 +439,7 @@ def carry_spans_to_condition_scans(
     if not domains:
         return
     for bucket in buckets.values():
-        if (
-            bucket.derivation != Derivation.ROOT
-            or bucket.depth_label != DepthLabel.ROOT_D1
-        ):
+        if bucket.reason is not RootReason.CONDITION:
             continue
         scope = _scope_and_phase(bucket.label)[0]
         for domain, region in domains:
