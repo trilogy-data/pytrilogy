@@ -1,5 +1,5 @@
 query_id = "08"
-gen_length = 3105
+gen_length = 2895
 preql_size = 7495
 comp_size = 19155
 generated_sql = """
@@ -35,12 +35,7 @@ SELECT
     SUBSTRING(CASE WHEN \"questionable\".\"zip_p_count\" > 10 THEN \"cooperative\".\"customer_current_address_zip\" ELSE NULL END,1,5) as \"_virt_func_substring_4293448550966409\"
 FROM
     \"questionable\"
-    INNER JOIN \"cooperative\" on \"questionable\".\"customer_current_address_zip\" is not distinct from \"cooperative\".\"customer_current_address_zip\"),
-juicy as (
-SELECT
-    \"abundant\".\"_virt_func_substring_4293448550966409\" as \"_virt_func_substring_4293448550966409\"
-FROM
-    \"abundant\"
+    INNER JOIN \"cooperative\" on \"questionable\".\"customer_current_address_zip\" is not distinct from \"cooperative\".\"customer_current_address_zip\"
 GROUP BY
     1),
 quizzical as (
@@ -54,19 +49,14 @@ FROM
     \"quizzical\"),
 vacuous as (
 SELECT
-    CASE WHEN exists (select 1 from juicy where juicy.\"_virt_func_substring_4293448550966409\" is not distinct from \"highfalutin\".\"zips\") THEN \"highfalutin\".\"zips\" ELSE NULL END as \"_virt_filter_zips_2159288073185462\"
+    CASE WHEN exists (select 1 from abundant where abundant.\"_virt_func_substring_4293448550966409\" is not distinct from \"highfalutin\".\"zips\") THEN \"highfalutin\".\"zips\" ELSE NULL END as \"_virt_filter_zips_2159288073185462\"
 FROM
     \"highfalutin\"),
 concerned as (
 SELECT
     SUBSTRING(\"vacuous\".\"_virt_filter_zips_2159288073185462\",1,2) as \"final_zips\"
 FROM
-    \"vacuous\"),
-young as (
-SELECT
-    \"concerned\".\"final_zips\" as \"final_zips\"
-FROM
-    \"concerned\"
+    \"vacuous\"
 GROUP BY
     1)
 SELECT
@@ -77,7 +67,7 @@ FROM
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_sale_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"store_sales_sale_date_date\".\"D_QOY\" = 2 and \"store_sales_sale_date_date\".\"D_YEAR\" = 1998 and exists (select 1 from young where young.\"final_zips\" is not distinct from SUBSTRING(\"store_sales_store_store\".\"S_ZIP\",1,2))
+    \"store_sales_sale_date_date\".\"D_QOY\" = 2 and \"store_sales_sale_date_date\".\"D_YEAR\" = 1998 and exists (select 1 from concerned where concerned.\"final_zips\" is not distinct from SUBSTRING(\"store_sales_store_store\".\"S_ZIP\",1,2))
 
 GROUP BY
     1
