@@ -84,6 +84,7 @@ from .models import (
     GroupInputContract,
     InputChannel,
     Keyspace,
+    RootReason,
 )
 from .projection import (
     output_rowset_base_keys,
@@ -350,6 +351,7 @@ def _materialize_group_graph(
             grouping_mode=bucket.grouping_mode,
             extent_spans=bucket.extent_spans,
             dim_keys=bucket.dim_keys,
+            reason=bucket.reason,
         )
         group_graph.add_node(gid)
 
@@ -2768,24 +2770,29 @@ def _synthetic_dimension_regraft_parent(
                 remove_edge(group_graph, group_edges, other, gid)
         return dimension_root
 
-    root_gid = f"grp:root:root:dim:{'|'.join(sorted(key))}"
+    bucket = GroupBucket(
+        depth_label=DepthLabel.ROOT,
+        derivation=Derivation.ROOT,
+        grain_components=frozenset(),
+        label=current.label,
+        discriminator=f"basic_input:{'|'.join(sorted(key))}",
+        dim_keys=frozenset(key),
+        reason=RootReason.BASIC_INPUT,
+        primary_members=list(inputs),
+    )
+    root_gid = bucket.group_id
     if root_gid not in group_graph:
         group_graph.add_node(root_gid)
         attrs[root_gid] = GroupAttrs(
-            depth_label=DepthLabel.ROOT,
-            derivation=Derivation.ROOT,
-            grain_components=frozenset(),
+            depth_label=bucket.depth_label,
+            derivation=bucket.derivation,
+            grain_components=bucket.grain_components,
+            label=bucket.label,
             primary_members=tuple(inputs),
             members=tuple(inputs),
-            dim_keys=frozenset(key),
+            dim_keys=bucket.dim_keys,
+            reason=bucket.reason,
         )
-        bucket = GroupBucket(
-            depth_label=DepthLabel.ROOT,
-            derivation=Derivation.ROOT,
-            grain_components=frozenset(),
-            dim_keys=frozenset(key),
-        )
-        bucket.primary_members = list(inputs)
         buckets[root_gid] = bucket
     for pred in root_preds:
         if group_graph.has_edge(pred, gid):
@@ -2804,7 +2811,7 @@ def _covering_dimension_root(
         bucket = buckets.get(root_id)
         if (
             bucket is not None
-            and bucket.dim_keys
+            and bucket.reason in (RootReason.ENTITY, RootReason.BASIC_INPUT)
             and required <= set(attrs[root_id].members)
         ):
             return root_id

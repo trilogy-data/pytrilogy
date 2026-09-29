@@ -28,6 +28,30 @@ def nulls_grouping_keys(mode: AggregateGroupingMode | None) -> bool:
     return mode is not None and mode.nulls_grouping_keys
 
 
+class RootReason(Enum):
+    """Why a set of root columns is sourced as one scan: the reader it is for.
+
+    `root_partition.partition_root_demand` splits a scope's root demand by
+    these, and every ROOT group carries the one that made it."""
+
+    # the scope's row stream: what its derivations read together
+    ROW_STREAM = "row_stream"
+    # a row stream of its own: nothing it feeds meets the others below FINAL
+    COMPONENT = "component"
+    # single-row values, cross joined onto the keyed plan
+    SINGLE_ROW = "single_row"
+    # the definition of a semijoin set, read through the side channel only
+    EXISTENCE = "existence"
+    # attributes of one entity, joined back on its key
+    ENTITY = "entity"
+    # an extension region's own rows, joined back on its spans
+    REGION = "region"
+    # a condition stage's population, free of the SELECT side's filters
+    CONDITION = "condition"
+    # what one BASIC reads, all of it a function of the BASIC's grain
+    BASIC_INPUT = "basic_input"
+
+
 @dataclass
 class FinalContributorContract:
     """Logical contract for one group feeding the FINAL sink."""
@@ -172,6 +196,8 @@ class GroupAttrs:
     extent_spans: frozenset[str] = frozenset()
     # Set on a single-entity dimension ROOT group: the entity's key(s).
     dim_keys: frozenset[str] = frozenset()
+    # Set on a ROOT group, and on a rowset boundary's region domain.
+    reason: RootReason | None = None
     # Populated for non-FINAL groups after `_compute_concept_sets`.
     input_contracts: tuple[GroupInputContract, ...] = ()
     # Members of the row-preserving input groups this aggregate computes
@@ -323,6 +349,7 @@ class GroupBucket:
     grouping_mode: AggregateGroupingMode = AggregateGroupingMode.STANDARD
     extent_spans: frozenset[str] = frozenset()
     dim_keys: frozenset[str] = frozenset()
+    reason: RootReason | None = None
 
     @property
     def nulls_grouping_keys(self) -> bool:
