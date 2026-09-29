@@ -1,5 +1,5 @@
 query_id = "29"
-gen_length = 7616
+gen_length = 7630
 preql_size = 1692
 comp_size = 1350
 generated_sql = """
@@ -90,13 +90,13 @@ GROUP BY
     4),
 friendly as (
 SELECT
-    \"macho\".\"_per_pair_item_desc\" as \"per_pair_item_desc\",
-    \"macho\".\"_per_pair_item_id\" as \"per_pair_item_id\",
-    \"macho\".\"_per_pair_store_name\" as \"per_pair_store_name\",
-    \"macho\".\"_per_pair_store_text_id\" as \"per_pair_store_text_id\",
-    \"sparkling\".\"_per_pair_cq\" as \"per_pair_cq\",
-    \"sparkling\".\"_per_pair_sq\" as \"per_pair_sq\",
-    \"sparkling\".\"_per_pair_srq\" as \"per_pair_srq\"
+    \"macho\".\"_per_pair_item_desc\" as \"_per_pair_item_desc\",
+    \"macho\".\"_per_pair_item_id\" as \"_per_pair_item_id\",
+    \"macho\".\"_per_pair_store_name\" as \"_per_pair_store_name\",
+    \"macho\".\"_per_pair_store_text_id\" as \"_per_pair_store_text_id\",
+    \"sparkling\".\"_per_pair_cq\" as \"_per_pair_cq\",
+    \"sparkling\".\"_per_pair_sq\" as \"_per_pair_sq\",
+    \"sparkling\".\"_per_pair_srq\" as \"_per_pair_srq\"
 FROM
     \"sparkling\"
     INNER JOIN \"macho\" on \"sparkling\".\"store_sales_customer_sk\" = \"macho\".\"_per_pair_customer_sk\" AND \"sparkling\".\"store_sales_item_sk\" = \"macho\".\"_per_pair_item_sk\" AND \"sparkling\".\"store_sales_store_id\" is not distinct from \"macho\".\"_per_pair_store_text_id\" AND \"sparkling\".\"store_sales_store_name\" is not distinct from \"macho\".\"_per_pair_store_name\"
@@ -111,13 +111,13 @@ GROUP BY
     \"macho\".\"_per_pair_customer_sk\",
     \"macho\".\"_per_pair_item_sk\")
 SELECT
-    \"friendly\".\"per_pair_item_id\" as \"store_sales_item_name\",
-    \"friendly\".\"per_pair_item_desc\" as \"store_sales_item_desc\",
-    \"friendly\".\"per_pair_store_text_id\" as \"store_sales_store_text_id\",
-    \"friendly\".\"per_pair_store_name\" as \"store_name\",
-    sum(\"friendly\".\"per_pair_sq\") as \"store_sales_quantity\",
-    sum(\"friendly\".\"per_pair_srq\") as \"store_returns_quantity\",
-    sum(\"friendly\".\"per_pair_cq\") as \"catalog_sales_quantity\"
+    \"friendly\".\"_per_pair_item_id\" as \"store_sales_item_name\",
+    \"friendly\".\"_per_pair_item_desc\" as \"store_sales_item_desc\",
+    \"friendly\".\"_per_pair_store_text_id\" as \"store_sales_store_text_id\",
+    \"friendly\".\"_per_pair_store_name\" as \"store_name\",
+    sum(\"friendly\".\"_per_pair_sq\") as \"store_sales_quantity\",
+    sum(\"friendly\".\"_per_pair_srq\") as \"store_returns_quantity\",
+    sum(\"friendly\".\"_per_pair_cq\") as \"catalog_sales_quantity\"
 FROM
     \"friendly\"
 GROUP BY
