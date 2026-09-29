@@ -1,0 +1,77 @@
+"""`PushFilteredCountIntoJoin` moves a filtered COUNT's predicate onto its LEFT
+JOIN's ON clause. The count is the same either way; every other column read from
+the right side is not, because a row that fails the predicate stops matching and
+the left row is NULL-extended instead. The rule is sound only when the aggregate
+is the sole reader of that side — the TPC-H q13 shape.
+"""
+
+from trilogy import Dialects, Environment
+
+_MODEL = """
+key line_id int;
+key order_id int;
+key user_id int;
+property line_id.sale_price float;
+property user_id.state string;
+
+datasource order_items (lid: line_id, oid: order_id, uid: ~user_id, price: sale_price)
+grain (line_id)
+query '''
+select 1 lid, 10 oid, 1 uid, 5.0 price union all
+select 2 lid, 10 oid, 1 uid, 7.0 price union all
+select 3 lid, 11 oid, 2 uid, 3.0 price
+''';
+
+datasource users (uid: user_id, st: state)
+grain (user_id)
+query '''
+select 1 uid, 'ca' st union all select 2 uid, 'ny' st union all select 3 uid, 'wa' st
+''';
+"""
+
+
+def _executor():
+    env, _ = Environment().parse(_MODEL)
+    return Dialects.DUCK_DB.default_executor(environment=env)
+
+
+def _fired(sql: str) -> bool:
+    """The predicate moved onto the ON clause rather than staying in the count."""
+    on_clause = sql.split("LEFT OUTER JOIN")[-1].split("\n")[0]
+    return "sale_price" in on_clause and "CASE WHEN" not in sql
+
+
+def _rows(executor, query: str) -> list[tuple]:
+    return [tuple(r) for r in executor.execute_text(query)[-1].fetchall()]
+
+
+_BY_ORDER = """select order_id, state, count(line_id ? sale_price > 4) as big_lines
+order by order_id asc;"""
+
+_BY_ORDER_NAMED = """auto big_line <- line_id ? sale_price > 4;
+select order_id, state, count(big_line) as big_lines order by order_id asc;"""
+
+_BY_USER = """select user_id, state, count(line_id ? sale_price > 4) as big_lines
+order by user_id asc;"""
+
+
+def test_grouping_key_off_the_right_keeps_its_value():
+    executor = _executor()
+    assert _rows(executor, _BY_ORDER) == [(10, "ca", 2), (11, "ny", 0), (None, "wa", 0)]
+    assert not _fired(executor.generate_sql(_BY_ORDER)[-1])
+
+
+def test_named_filter_grouping_key_off_the_right_keeps_its_value():
+    executor = _executor()
+    assert _rows(executor, _BY_ORDER_NAMED) == [
+        (10, "ca", 2),
+        (11, "ny", 0),
+        (None, "wa", 0),
+    ]
+    assert not _fired(executor.generate_sql(_BY_ORDER_NAMED)[-1])
+
+
+def test_fires_when_the_count_is_the_sole_reader_of_the_right():
+    executor = _executor()
+    assert _rows(executor, _BY_USER) == [(1, "ca", 2), (2, "ny", 0), (3, "wa", 0)]
+    assert _fired(executor.generate_sql(_BY_USER)[-1])

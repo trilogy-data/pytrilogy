@@ -25,6 +25,56 @@ def _filtered_count(
     return _filtered_aggregate(concept)
 
 
+def _reads_source(
+    cte: CTE, concept: BuildConcept, source: str, seen: frozenset[str] = frozenset()
+) -> bool:
+    """True when rendering ``concept`` in ``cte`` reaches a column of ``source``.
+
+    Follows ``CTE.render_binding``: an outer-join key renders coalesced over its
+    whole class, a bound column reads its own sources, and an unbound one reads
+    through its lineage or through a pseudonym sibling this CTE does bind."""
+    if concept.address in seen:
+        return False
+    seen = seen | {concept.address}
+    for member in cte.outer_join_key_class(concept.address):
+        if _reads_source(cte, member, source, seen):
+            return True
+    sources = cte.source_map.get(concept.address) or []
+    if sources:
+        return source in sources
+    lineage = concept.lineage
+    if lineage is not None:
+        return any(
+            _reads_source(cte, argument, source, seen)
+            for argument in lineage.concept_arguments
+        )
+    return any(
+        _reads_source(cte, other, source, seen)
+        for other in cte.output_columns
+        if other.canonical_address == concept.canonical_address
+        or other.address in concept.pseudonyms
+        or concept.address in other.pseudonyms
+    )
+
+
+def _other_right_readers(cte: CTE, aggregate: BuildConcept, source: str) -> bool:
+    """True when anything but ``aggregate`` reads ``source``.
+
+    Moving the filter onto the ON predicate leaves the count alone but stops a
+    rejected right row from matching, so every other column read from that side
+    renders NULL where it used to render the row's value."""
+    readers = [
+        concept
+        for concept in cte.output_columns
+        if concept.address != aggregate.address
+    ]
+    if cte.condition is not None:
+        readers.extend(cte.condition.concept_arguments)
+    for item in cte.order_by.items if cte.order_by else []:
+        readers.extend(item.concept_arguments)
+    return any(_reads_source(cte, concept, source) for concept in readers)
+
+
 class PushFilteredCountIntoJoin(OptimizationRule):
     """Move a sole filtered COUNT onto its LEFT JOIN's ON predicate."""
 
@@ -55,6 +105,8 @@ class PushFilteredCountIntoJoin(OptimizationRule):
         if not required or any(
             right_source not in cte.source_map.get(address, ()) for address in required
         ):
+            return False, None
+        if _other_right_readers(cte, aggregates[0], right_source):
             return False, None
         replacement = aggregates[0]
         _remove_filter(replacement, filtered, item)
