@@ -1,5 +1,5 @@
 query_id = "58"
-gen_length = 4823
+gen_length = 4789
 preql_size = 1377
 comp_size = 2250
 generated_sql = """
@@ -15,7 +15,7 @@ WHERE
 
 GROUP BY
     1),
-cooperative as (
+questionable as (
 SELECT
      'CATALOG'  as \"sales_channel\",
     \"sales_catalog_sales_unified\".\"CS_EXT_SALES_PRICE\" as \"sales_ext_sales_price\",
@@ -48,25 +48,25 @@ FROM
 WHERE
     exists (select 1 from quizzical where quizzical.\"target_week_seq\" is not distinct from \"sales_sale_date_date\".\"D_WEEK_SEQ\")
 ),
-uneven as (
+yummy as (
 SELECT
-    \"cooperative\".\"sales_channel\" as \"sales_channel\",
-    \"cooperative\".\"sales_ext_sales_price\" as \"sales_ext_sales_price\",
+    \"questionable\".\"sales_channel\" as \"sales_channel\",
+    \"questionable\".\"sales_ext_sales_price\" as \"sales_ext_sales_price\",
     \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_id\"
 FROM
-    \"cooperative\"
-    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"cooperative\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\")
+    \"questionable\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"questionable\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\")
 SELECT
-    \"uneven\".\"sales_item_id\" as \"item_id\",
-    sum(CASE WHEN \"uneven\".\"sales_channel\" = 'STORE' THEN \"uneven\".\"sales_ext_sales_price\" ELSE NULL END) as \"ss_item_rev\",
-    ( sum(CASE WHEN \"uneven\".\"sales_channel\" = 'STORE' THEN \"uneven\".\"sales_ext_sales_price\" ELSE NULL END) / ( (( sum(CASE WHEN \"uneven\".\"sales_channel\" = 'STORE' THEN \"uneven\".\"sales_ext_sales_price\" ELSE NULL END) + sum(CASE WHEN \"uneven\".\"sales_channel\" = 'CATALOG' THEN \"uneven\".\"sales_ext_sales_price\" ELSE NULL END) ) + sum(CASE WHEN \"uneven\".\"sales_channel\" = 'WEB' THEN \"uneven\".\"sales_ext_sales_price\" ELSE NULL END)) / 3 ) ) * 100 as \"ss_dev\",
-    sum(CASE WHEN \"uneven\".\"sales_channel\" = 'CATALOG' THEN \"uneven\".\"sales_ext_sales_price\" ELSE NULL END) as \"cs_item_rev\",
-    ( sum(CASE WHEN \"uneven\".\"sales_channel\" = 'CATALOG' THEN \"uneven\".\"sales_ext_sales_price\" ELSE NULL END) / ( (( sum(CASE WHEN \"uneven\".\"sales_channel\" = 'STORE' THEN \"uneven\".\"sales_ext_sales_price\" ELSE NULL END) + sum(CASE WHEN \"uneven\".\"sales_channel\" = 'CATALOG' THEN \"uneven\".\"sales_ext_sales_price\" ELSE NULL END) ) + sum(CASE WHEN \"uneven\".\"sales_channel\" = 'WEB' THEN \"uneven\".\"sales_ext_sales_price\" ELSE NULL END)) / 3 ) ) * 100 as \"cs_dev\",
-    sum(CASE WHEN \"uneven\".\"sales_channel\" = 'WEB' THEN \"uneven\".\"sales_ext_sales_price\" ELSE NULL END) as \"ws_item_rev\",
-    ( sum(CASE WHEN \"uneven\".\"sales_channel\" = 'WEB' THEN \"uneven\".\"sales_ext_sales_price\" ELSE NULL END) / ( (( sum(CASE WHEN \"uneven\".\"sales_channel\" = 'STORE' THEN \"uneven\".\"sales_ext_sales_price\" ELSE NULL END) + sum(CASE WHEN \"uneven\".\"sales_channel\" = 'CATALOG' THEN \"uneven\".\"sales_ext_sales_price\" ELSE NULL END) ) + sum(CASE WHEN \"uneven\".\"sales_channel\" = 'WEB' THEN \"uneven\".\"sales_ext_sales_price\" ELSE NULL END)) / 3 ) ) * 100 as \"ws_dev\",
-    (( sum(CASE WHEN \"uneven\".\"sales_channel\" = 'STORE' THEN \"uneven\".\"sales_ext_sales_price\" ELSE NULL END) + sum(CASE WHEN \"uneven\".\"sales_channel\" = 'CATALOG' THEN \"uneven\".\"sales_ext_sales_price\" ELSE NULL END) ) + sum(CASE WHEN \"uneven\".\"sales_channel\" = 'WEB' THEN \"uneven\".\"sales_ext_sales_price\" ELSE NULL END)) / 3 as \"avg_rev\"
+    \"yummy\".\"sales_item_id\" as \"item_id\",
+    sum(CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) as \"ss_item_rev\",
+    ( sum(CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) / ( (( sum(CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) + sum(CASE WHEN \"yummy\".\"sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) ) + sum(CASE WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END)) / 3 ) ) * 100 as \"ss_dev\",
+    sum(CASE WHEN \"yummy\".\"sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) as \"cs_item_rev\",
+    ( sum(CASE WHEN \"yummy\".\"sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) / ( (( sum(CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) + sum(CASE WHEN \"yummy\".\"sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) ) + sum(CASE WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END)) / 3 ) ) * 100 as \"cs_dev\",
+    sum(CASE WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) as \"ws_item_rev\",
+    ( sum(CASE WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) / ( (( sum(CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) + sum(CASE WHEN \"yummy\".\"sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) ) + sum(CASE WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END)) / 3 ) ) * 100 as \"ws_dev\",
+    (( sum(CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) + sum(CASE WHEN \"yummy\".\"sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END) ) + sum(CASE WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN \"yummy\".\"sales_ext_sales_price\" ELSE NULL END)) / 3 as \"avg_rev\"
 FROM
-    \"uneven\"
+    \"yummy\"
 GROUP BY
     1
 HAVING

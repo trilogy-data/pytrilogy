@@ -1,11 +1,11 @@
 query_id = "83"
-gen_length = 4938
+gen_length = 4900
 preql_size = 1541
 comp_size = 2195
 generated_sql = """
 
 WITH 
-cooperative as (
+questionable as (
 SELECT
      'CATALOG'  as \"sales_channel\",
     \"sales_catalog_returns_unified\".\"CR_ITEM_SK\" as \"sales_item_sk\",
@@ -42,34 +42,34 @@ WHERE
 
 GROUP BY
     1),
-uneven as (
+yummy as (
 SELECT
-    \"cooperative\".\"sales_channel\" as \"sales_channel\",
-    \"cooperative\".\"sales_order_id\" as \"sales_order_id\",
-    \"cooperative\".\"sales_return_quantity\" as \"sales_return_quantity\",
+    \"questionable\".\"sales_channel\" as \"sales_channel\",
+    \"questionable\".\"sales_order_id\" as \"sales_order_id\",
+    \"questionable\".\"sales_return_quantity\" as \"sales_return_quantity\",
     \"sales_item_items\".\"I_ITEM_ID\" as \"sales_item_id\"
 FROM
-    \"cooperative\"
-    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"cooperative\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"cooperative\".\"sales_return_date_sk\" = \"sales_return_date_date\".\"D_DATE_SK\"
+    \"questionable\"
+    INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"questionable\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"questionable\".\"sales_return_date_sk\" = \"sales_return_date_date\".\"D_DATE_SK\"
 WHERE
     exists (select 1 from quizzical where quizzical.\"target_week_seqs\" is not distinct from \"sales_return_date_date\".\"D_WEEK_SEQ\")
 )
 SELECT
-    \"uneven\".\"sales_item_id\" as \"item_id\",
-    sum(CASE WHEN \"uneven\".\"sales_channel\" = 'STORE' THEN \"uneven\".\"sales_return_quantity\" ELSE NULL END) as \"sr_item_qty\",
-    ( ( (sum(CASE WHEN \"uneven\".\"sales_channel\" = 'STORE' THEN \"uneven\".\"sales_return_quantity\" ELSE NULL END) * 1.0) / ( ( sum(CASE WHEN \"uneven\".\"sales_channel\" = 'STORE' THEN \"uneven\".\"sales_return_quantity\" ELSE NULL END) + sum(CASE WHEN \"uneven\".\"sales_channel\" = 'CATALOG' THEN \"uneven\".\"sales_return_quantity\" ELSE NULL END) ) + sum(CASE WHEN \"uneven\".\"sales_channel\" = 'WEB' THEN \"uneven\".\"sales_return_quantity\" ELSE NULL END) ) ) / 3.0 ) * 100 as \"sr_dev\",
-    sum(CASE WHEN \"uneven\".\"sales_channel\" = 'CATALOG' THEN \"uneven\".\"sales_return_quantity\" ELSE NULL END) as \"cr_item_qty\",
-    ( ( (sum(CASE WHEN \"uneven\".\"sales_channel\" = 'CATALOG' THEN \"uneven\".\"sales_return_quantity\" ELSE NULL END) * 1.0) / ( ( sum(CASE WHEN \"uneven\".\"sales_channel\" = 'STORE' THEN \"uneven\".\"sales_return_quantity\" ELSE NULL END) + sum(CASE WHEN \"uneven\".\"sales_channel\" = 'CATALOG' THEN \"uneven\".\"sales_return_quantity\" ELSE NULL END) ) + sum(CASE WHEN \"uneven\".\"sales_channel\" = 'WEB' THEN \"uneven\".\"sales_return_quantity\" ELSE NULL END) ) ) / 3.0 ) * 100 as \"cr_dev\",
-    sum(CASE WHEN \"uneven\".\"sales_channel\" = 'WEB' THEN \"uneven\".\"sales_return_quantity\" ELSE NULL END) as \"wr_item_qty\",
-    ( ( (sum(CASE WHEN \"uneven\".\"sales_channel\" = 'WEB' THEN \"uneven\".\"sales_return_quantity\" ELSE NULL END) * 1.0) / ( ( sum(CASE WHEN \"uneven\".\"sales_channel\" = 'STORE' THEN \"uneven\".\"sales_return_quantity\" ELSE NULL END) + sum(CASE WHEN \"uneven\".\"sales_channel\" = 'CATALOG' THEN \"uneven\".\"sales_return_quantity\" ELSE NULL END) ) + sum(CASE WHEN \"uneven\".\"sales_channel\" = 'WEB' THEN \"uneven\".\"sales_return_quantity\" ELSE NULL END) ) ) / 3.0 ) * 100 as \"wr_dev\",
-    ( ( sum(CASE WHEN \"uneven\".\"sales_channel\" = 'STORE' THEN \"uneven\".\"sales_return_quantity\" ELSE NULL END) + sum(CASE WHEN \"uneven\".\"sales_channel\" = 'CATALOG' THEN \"uneven\".\"sales_return_quantity\" ELSE NULL END) ) + sum(CASE WHEN \"uneven\".\"sales_channel\" = 'WEB' THEN \"uneven\".\"sales_return_quantity\" ELSE NULL END) ) / 3.0 as \"average\"
+    \"yummy\".\"sales_item_id\" as \"item_id\",
+    sum(CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) as \"sr_item_qty\",
+    ( ( (sum(CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) * 1.0) / ( ( sum(CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) + sum(CASE WHEN \"yummy\".\"sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) ) + sum(CASE WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) ) ) / 3.0 ) * 100 as \"sr_dev\",
+    sum(CASE WHEN \"yummy\".\"sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) as \"cr_item_qty\",
+    ( ( (sum(CASE WHEN \"yummy\".\"sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) * 1.0) / ( ( sum(CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) + sum(CASE WHEN \"yummy\".\"sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) ) + sum(CASE WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) ) ) / 3.0 ) * 100 as \"cr_dev\",
+    sum(CASE WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) as \"wr_item_qty\",
+    ( ( (sum(CASE WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) * 1.0) / ( ( sum(CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) + sum(CASE WHEN \"yummy\".\"sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) ) + sum(CASE WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) ) ) / 3.0 ) * 100 as \"wr_dev\",
+    ( ( sum(CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) + sum(CASE WHEN \"yummy\".\"sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) ) + sum(CASE WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN \"yummy\".\"sales_return_quantity\" ELSE NULL END) ) / 3.0 as \"average\"
 FROM
-    \"uneven\"
+    \"yummy\"
 GROUP BY
     1
 HAVING
-    count(CASE WHEN \"uneven\".\"sales_channel\" = 'STORE' THEN \"uneven\".\"sales_order_id\" ELSE NULL END) > 0 and count(CASE WHEN \"uneven\".\"sales_channel\" = 'CATALOG' THEN \"uneven\".\"sales_order_id\" ELSE NULL END) > 0 and count(CASE WHEN \"uneven\".\"sales_channel\" = 'WEB' THEN \"uneven\".\"sales_order_id\" ELSE NULL END) > 0
+    count(CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_order_id\" ELSE NULL END) > 0 and count(CASE WHEN \"yummy\".\"sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_order_id\" ELSE NULL END) > 0 and count(CASE WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN \"yummy\".\"sales_order_id\" ELSE NULL END) > 0
 
 ORDER BY 
     \"item_id\" asc nulls first,
