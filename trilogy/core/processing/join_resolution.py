@@ -538,8 +538,22 @@ def _sole_host(left: str, right: str, keys: set[str], facts: JoinFacts) -> str |
     return left if left_hosts else right
 
 
+def _holds_another_family(
+    held: frozenset[str], sides: Collection[str], facts: JoinFacts
+) -> bool:
+    """Some side holds a region other than the one ``held`` spans. Counted
+    over the plan's regions, not the spans held: one composite-key region
+    contributes every span of its grain."""
+    theirs: frozenset[str] = frozenset().union(
+        *(facts.side(side).held_spans for side in sides)
+    )
+    return any(
+        region & theirs and not region & held for region in facts.region_partition
+    )
+
+
 def _region_contract_join(
-    left: str, right: str, keys: set[str], facts: JoinFacts
+    left: str, right: str, keys: set[str], facts: JoinFacts, joined: Collection[str]
 ) -> tuple[JoinType | None, bool]:
     """The region contract: a side holding a region's rows, joined on that
     region's span, is preserved; the other side is too only where its key
@@ -563,17 +577,15 @@ def _region_contract_join(
     holder, feeder = (
         (left_facts, right_facts) if left_holds else (right_facts, left_facts)
     )
-    # with a second family in the merge, the rows already joined carry its
-    # extension rows (NULL on this key): only FULL keeps them. Counted over
-    # the plan's regions, not the spans held: one composite-key region
-    # contributes every span of its grain.
-    families = {
-        region for region in facts.region_partition if region & facts.held_spans
-    }
-    if (
-        _unpaired_value_nulls(keys, holder.held_spans, feeder, holder)
-        or len(families) > 1
-    ):
+    # Another family's extension rows are NULL on this key, so only FULL
+    # keeps them, and only the stream joined against the holder can carry
+    # them: the side being added when the holder is already joined (whatever
+    # else is joined rides the preserved side), everything joined when the
+    # holder is the one being added.
+    against = {right} if left_holds else {left, *joined}
+    if _unpaired_value_nulls(
+        keys, holder.held_spans, feeder, holder
+    ) or _holds_another_family(holder.held_spans & keys, against, facts):
         return JoinType.FULL, False
     return (JoinType.LEFT_OUTER if left_holds else JoinType.RIGHT_OUTER), False
 
@@ -723,9 +735,14 @@ def _nullable_join(
 
 
 def get_join_type(
-    left: str, right: str, all_connecting_keys: set[str], facts: JoinFacts
+    left: str,
+    right: str,
+    all_connecting_keys: set[str],
+    facts: JoinFacts,
+    joined: Collection[str] = frozenset(),
 ) -> JoinType:
     """Type one pair of a merge's sides, by the first rule that decides it.
+    ``joined`` is every side the join tree holds when ``right`` is added.
 
     Rendering is row-preserving by default: a relation declares DOMAIN
     knowledge, never row intent, and no join silently drops a row
@@ -743,7 +760,7 @@ def get_join_type(
         return JoinType.FULL
 
     region_type, region_hosts_equally = _region_contract_join(
-        left, right, all_connecting_keys, facts
+        left, right, all_connecting_keys, facts, joined
     )
     if region_type is not None:
         return region_type
@@ -1040,7 +1057,7 @@ def resolve_join_order_v2(g: nx.Graph, facts: JoinFacts) -> list[JoinOrderOutput
                     continue
 
                 join_type = get_join_type(
-                    left_candidate, right, all_connecting_keys, facts
+                    left_candidate, right, all_connecting_keys, facts, eligible_left
                 )
                 join_types.add(join_type)
                 joinkeys[left_candidate] = all_connecting_keys
