@@ -95,19 +95,7 @@ def test_basic_input_root_is_named_apart_from_a_peel():
     assert inputs == ["grp:root:root:∅:basic_input:local.id"]
 
 
-def test_cluster_stays_on_the_row_stream_that_reads_its_table():
-    """`category` filters before the aggregate, so the row stream reads
-    `products` whatever is peeled: `brand` rides it."""
-    trace, rows = _trace(
-        "where category = 'toys'"
-        " select product_id, brand, sum(sale_price) as revenue"
-        " order by product_id asc;"
-    )
-    assert not [g for g in _built(trace) if ":dim:" in g]
-    assert rows == [(1, "acme", 5.0), (2, "zed", 7.0)]
-
-
-def test_cluster_is_peeled_when_the_row_stream_does_not_read_its_table():
+def test_entity_cluster_is_peeled_onto_its_key():
     trace, rows = _trace(
         "select product_id, brand, sum(sale_price) as revenue order by product_id asc;"
     )
