@@ -17,7 +17,8 @@ THELOOK = Path(__file__).parent.parent / "modeling" / "thelook_duckdb"
 TPCDS = Path(__file__).parent.parent / "modeling" / "tpc_ds_duckdb"
 
 _CTE = re.compile(
-    r"^(\w+) as \(\nSELECT\n(.*?)\nFROM\n(.*?)\)(?=,\n|\nSELECT)", re.DOTALL | re.MULTILINE
+    r"^(\w+) as \(\nSELECT\n(.*?)\nFROM\n(.*?)\)(?=,\n|\nSELECT)",
+    re.DOTALL | re.MULTILINE,
 )
 _RENAME = re.compile(r'^\s*"\w+"\."\w+" as "\w+",?$')
 
