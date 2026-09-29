@@ -2317,6 +2317,8 @@ def _compute_concept_sets(
             continue
         attrs[gid].output_concepts = tuple(sorted(io.outputs[gid]))
         attrs[gid].input_concepts = tuple(sorted(io.inputs[gid]))
+        if gid in buckets:
+            buckets[gid].output_concepts = attrs[gid].output_concepts
 
 
 def build_group_graph(

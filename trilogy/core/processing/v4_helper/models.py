@@ -350,10 +350,22 @@ class GroupBucket:
     extent_spans: frozenset[str] = frozenset()
     dim_keys: frozenset[str] = frozenset()
     reason: RootReason | None = None
+    # What the demand pass has the group emit (`_compute_concept_sets`), hidden
+    # pass-through columns included. Empty until it has run.
+    output_concepts: tuple[str, ...] = ()
 
     @property
     def nulls_grouping_keys(self) -> bool:
         return nulls_grouping_keys(self.grouping_mode)
+
+    @property
+    def carried(self) -> set[str]:
+        """What the group holds that it does not compute: what the demand pass
+        has it emit once that has run, and before it the keys attached at
+        grouping."""
+        if self.output_concepts:
+            return set(self.output_concepts) - set(self.primary_members)
+        return set(self.secondary_members)
 
     @property
     def group_id(self) -> str:

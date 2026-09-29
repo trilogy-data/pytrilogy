@@ -492,7 +492,7 @@ def _uncovered_exposing_output_contributor(
     for gid in group_graph.predecessors(FINAL_NODE_ID):
         b = buckets.get(gid)
         if b is not None:
-            final_exposable |= set(b.primary_members) | set(b.secondary_members)
+            final_exposable |= set(b.primary_members) | b.carried
     collapsing_hosts = [
         buckets[gid]
         for gid in chosen_groups
@@ -507,15 +507,13 @@ def _uncovered_exposing_output_contributor(
             continue
         covered_members |= set(buckets[gid].primary_members)
         if gid in chosen_groups:
-            covered_members |= set(buckets[gid].secondary_members) | set(
-                buckets[gid].grain_components
-            )
+            covered_members |= buckets[gid].carried | set(buckets[gid].grain_components)
     for gid, b in buckets.items():
         if gid in covered:
             continue
         if b.depth_label in (DepthLabel.D1, DepthLabel.ROOT_D1):
             continue
-        members = set(b.primary_members) | set(b.secondary_members)
+        members = set(b.primary_members) | b.carried
         if not (members & mandatory_addrs):
             continue
         if row_inputs <= members:
@@ -602,7 +600,7 @@ def _reads_past_region_domain(
         region = keyspace.region_of(bucket.extent_spans)
         if region is None:
             continue
-        members = set(bucket.primary_members) | set(bucket.secondary_members)
+        members = set(bucket.primary_members) | bucket.carried
         for address in row_inputs:
             if address in members:
                 continue
@@ -1018,8 +1016,7 @@ def plan_condition_placements(
         group_graph, group_edges, EdgeKind.LINEAGE, EdgeKind.CONSTRAINT
     )
     group_members: dict[str, set[str]] = {
-        gid: set(b.primary_members) | set(b.secondary_members)
-        for gid, b in buckets.items()
+        gid: set(b.primary_members) | b.carried for gid, b in buckets.items()
     }
     # Addresses a group can pair a relation on beyond its listed members: the
     # KEYS of its members (a group hosting only `a.aw` still joins on a.aw's
