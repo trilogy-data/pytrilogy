@@ -560,7 +560,7 @@ def test_unnamed_span_rides_the_domain_as_a_hidden_member():
     info, _ = _plan(_DERIVED, "select name, status;")
     ((gid, spans),) = _domains(info).items()
     assert spans == frozenset({CUSTOMER})
-    assert CUSTOMER in info.group_attrs[gid].secondary_members
+    assert CUSTOMER in info.group_attrs[gid].carried_keys
     assert CUSTOMER in info.group_attrs[gid].output_concepts
 
 

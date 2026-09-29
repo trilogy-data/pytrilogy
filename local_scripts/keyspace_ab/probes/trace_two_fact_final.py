@@ -98,7 +98,7 @@ if "--buckets" in sys.argv:
         for gid, b in buckets.items():
             print(
                 f"    {_s(gid)}: {b.derivation.name} grain={sorted(_s(x) for x in b.grain_components)}"
-                f" primary={[_s(m) for m in b.primary_members]} secondary={[_s(m) for m in b.secondary_members]}"
+                f" primary={[_s(m) for m in b.primary_members]} secondary={[_s(m) for m in b.carried_keys]}"
                 f" extent={sorted(b.extent_spans) if b.extent_spans else None}"
             )
         print("  edges:")

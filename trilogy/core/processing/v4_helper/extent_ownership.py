@@ -88,7 +88,7 @@ def elect_extent_owners(
         # membership, the dimension span) over one merely carrying it as a
         # join column, then on id for determinism.
         attr = attrs[gid]
-        primary = set(attr.primary_members) | set(attr.secondary_members)
+        primary = set(attr.primary_members) | set(attr.carried_keys)
         return (
             len(nx.ancestors(group_graph, gid)),
             len(exposes[gid] & primary),

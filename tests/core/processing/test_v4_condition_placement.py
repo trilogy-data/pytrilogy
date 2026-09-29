@@ -69,7 +69,7 @@ def _bucket(
         derivation=derivation,
         grain_components=frozenset(grain or ()),
         primary_members=primary,
-        secondary_members=secondary or [],
+        carried_keys=secondary or [],
     )
 
 

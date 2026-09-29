@@ -96,7 +96,7 @@ class GroupNodeData:
     grain_components: frozenset[str] = frozenset()
     members: tuple[str, ...] = ()
     primary_members: tuple[str, ...] = ()
-    secondary_members: tuple[str, ...] = ()
+    carried_keys: tuple[str, ...] = ()
     member_depths: dict[str, str] = field(default_factory=dict)
     conditions: list[str] = field(default_factory=list)
 
@@ -127,7 +127,7 @@ def _group_data(attrs: dict, node: str) -> GroupNodeData:
         grain_components=a.grain_components,
         members=a.members,
         primary_members=a.primary_members,
-        secondary_members=a.secondary_members,
+        carried_keys=a.carried_keys,
         member_depths={k: v.value for k, v in a.member_depths.items()},
         conditions=list(a.conditions),
     )
@@ -503,8 +503,8 @@ def _group_label(node: str, data: GroupNodeData) -> str:
         parts.append(subtitle)
     if data.primary_members:
         parts.append(_wrap_members(data.primary_members, per_line=2))
-    if data.secondary_members:
-        parts.append("+ " + _wrap_members(data.secondary_members, per_line=2))
+    if data.carried_keys:
+        parts.append("+ " + _wrap_members(data.carried_keys, per_line=2))
     if data.conditions:
         parts.append("WHERE " + _condition_summary(" AND ".join(data.conditions)))
     return "\n".join(parts)
@@ -788,7 +788,7 @@ def _group_record(
         ),
         "members": _sorted_values(data.members),
         "primary_members": _sorted_values(data.primary_members),
-        "secondary_members": _sorted_values(data.secondary_members),
+        "carried_keys": _sorted_values(data.carried_keys),
         "outputs": _sorted_values(raw.output_concepts) if raw is not None else [],
         "inputs": _sorted_values(raw.input_concepts) if raw is not None else [],
         "hidden": _sorted_values(raw.hidden_concepts) if raw is not None else [],
@@ -956,7 +956,7 @@ def _write_groups_markdown(
                 f"- grain: `{_format_values(record['grain'])}`",
                 f"- aggregate input grain: `{_format_values(record['aggregate_input_grain'])}`",
                 f"- primary members: `{_format_values(record['primary_members'])}`",
-                f"- secondary members: `{_format_values(record['secondary_members'])}`",
+                f"- secondary members: `{_format_values(record['carried_keys'])}`",
                 f"- outputs: `{_format_values(record['outputs'])}`",
                 f"- inputs: `{_format_values(record['inputs'])}`",
                 f"- hidden: `{_format_values(record['hidden'])}`",

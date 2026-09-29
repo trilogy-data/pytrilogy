@@ -145,4 +145,4 @@ def test_span_reached_only_through_joins_is_owned_by_its_domain():
     assert ownership.spans == frozenset({"local.user_id", "local.product_id"})
     for span, owner in ownership.owner_by_span.items():
         assert info.group_attrs[owner].extent_spans == frozenset({span})
-        assert span in info.group_attrs[owner].secondary_members
+        assert span in info.group_attrs[owner].carried_keys
