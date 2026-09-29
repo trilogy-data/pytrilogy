@@ -296,6 +296,29 @@ def test_region_holder_preserves_over_a_feeder_whose_value_null_pairs():
     )
 
 
+_OTHER, _OTHER_SPAN = "ds~other", "c~local.user_id"
+
+
+def test_region_join_escalates_only_over_another_familys_rows():
+    """FULL keeps another family's extension rows, NULL on this key, and they
+    exist only in the stream joined against the holder: the side being added
+    when the holder is already joined, everything joined when the holder is
+    the one being added."""
+    partition = (frozenset({_SPAN}), frozenset({_OTHER_SPAN}))
+
+    def typed(held: dict[str, set[str]], joined: set[str]) -> JoinType:
+        facts = JoinFacts(sides=_sides(held_spans=held), region_partition=partition)
+        return get_join_type(_LEFT, _RIGHT, {_SPAN}, facts, joined)
+
+    other = {_OTHER: {_OTHER_SPAN}}
+    assert typed({_LEFT: {_SPAN}, **other}, {_LEFT}) == JoinType.LEFT_OUTER
+    assert typed({_LEFT: {_SPAN}, **other}, {_LEFT, _OTHER}) == JoinType.LEFT_OUTER
+    assert typed({_LEFT: {_SPAN}, _RIGHT: {_OTHER_SPAN}}, {_LEFT}) == JoinType.FULL
+    assert typed({_RIGHT: {_SPAN}, **other}, {_LEFT}) == JoinType.RIGHT_OUTER
+    assert typed({_RIGHT: {_SPAN}, **other}, {_LEFT, _OTHER}) == JoinType.FULL
+    assert typed({_RIGHT: {_SPAN}, _LEFT: {_OTHER_SPAN}}, {_LEFT}) == JoinType.FULL
+
+
 def _scan(name: str, outputs: list[str], partial: list[str] | None = None):
     return BuildDatasource(
         name=name,
