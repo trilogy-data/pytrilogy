@@ -70,6 +70,7 @@ def multi_models(tmp_path: Path) -> Path:
 _SCOPED_RELATION = {
     "LEFT": "subset join customers.customer_id = orders.customer_id",
     "FULL": "union join orders.customer_id = customers.customer_id",
+    "EQUAL": "equal join orders.customer_id = customers.customer_id",
 }
 
 
@@ -213,6 +214,41 @@ def test_full_join_round_trips_through_render(models: Path):
     text = "import orders as orders;\nimport customers as customers;\n" + rendered
     _, reparsed = parse_text(text, root=models)
     assert reparsed[-1].join_clauses[0].join_type is JoinType.FULL
+
+
+def test_equal_join_is_a_scoped_merge(models: Path):
+    # `equal join a = b` is `merge a into b` scoped to the query: one EQUAL
+    # edge, source collapsed onto the target, a narrowable (never vetoed) key.
+    _, parsed = parse_text(_select("EQUAL"), root=models)
+    join = parsed[-1].join_clauses[0]
+    assert join.join_type is JoinType.EQUAL
+    assert join.modifiers == []
+    env = _env_for(models, "import orders as orders;\nimport customers as customers;")
+    be = env.materialize_for_select(
+        scoped_joins=[("orders.customer_id", "customers.customer_id", JoinType.EQUAL)]
+    )
+    assert be.domain_graph.equal_narrowable_keys() == {"customers.customer_id"}
+    assert be.domain_graph.canonical_map() == {
+        "orders.customer_id": "customers.customer_id"
+    }
+
+
+def test_equal_join_renders_inner_join(models: Path):
+    env, parsed = parse_text(_select("EQUAL"), root=models)
+    sql = DuckDBDialect().compile_statement(process_query(env, parsed[-1]))
+    assert "INNER JOIN" in sql.upper(), sql
+    assert "FULL JOIN" not in sql.upper(), sql
+
+
+def test_equal_join_round_trips_through_render(models: Path):
+    from trilogy.parsing.render import render_query
+
+    _, parsed = parse_text(_select("EQUAL"), root=models)
+    rendered = render_query(parsed[-1])
+    assert "equal join orders.customer_id = customers.customer_id" in rendered
+    text = "import orders as orders;\nimport customers as customers;\n" + rendered
+    _, reparsed = parse_text(text, root=models)
+    assert reparsed[-1].join_clauses[0].join_type is JoinType.EQUAL
 
 
 def test_literal_self_join_rejected(models: Path):

@@ -2654,7 +2654,7 @@ class JoinScope:
         full_join_sources = {
             source
             for source, target, join_type in self.scoped_joins
-            if join_type is JoinType.FULL
+            if join_type in (JoinType.FULL, JoinType.EQUAL)
         }
         self.scoped_merge_sources_by_target: dict[str, set[str]] = defaultdict(set)
         for source, target in self.scoped_merge_map.items():
@@ -2712,7 +2712,7 @@ class JoinScope:
                 return _is_rowset_keyed(s) or (
                     _is_rowset_keyed(t) and not _is_derived_keyed(s)
                 )
-            if jt is JoinType.FULL:
+            if jt in (JoinType.FULL, JoinType.EQUAL):
                 return (
                     _is_rowset_keyed(s)
                     or _is_rowset_keyed(t)
@@ -2755,7 +2755,7 @@ class JoinScope:
         # independent source (e.g. `merge derived_metric into unbound_property`,
         # where the canonical is only reachable through the source's derivation).
         for s, t, jt in self.scoped_joins:
-            if jt not in (JoinType.LEFT_OUTER, JoinType.FULL):
+            if jt not in (JoinType.LEFT_OUTER, JoinType.FULL, JoinType.EQUAL):
                 continue
             for addr in (s, t):
                 if addr not in self.scoped_merge_map:
@@ -2851,7 +2851,11 @@ class JoinScope:
         fail clean and point at the working idiom. LEFT/SUBSET relations
         resolve fine one-table: the anchor column IS the unified axis. Endpoints
         with a binding OUTSIDE the shared tables can still resolve and pass."""
-        pairs = [(s, t) for s, t, jt in self.scoped_joins if jt is JoinType.FULL]
+        pairs = [
+            (s, t)
+            for s, t, jt in self.scoped_joins
+            if jt in (JoinType.FULL, JoinType.EQUAL)
+        ]
         if not pairs:
             return
         binding_map: dict[str, set[str]] | None = None

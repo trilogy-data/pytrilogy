@@ -294,6 +294,7 @@ _JOIN_LABELS: dict[JoinType, str] = {
     JoinType.CROSS: "cross",
     JoinType.SUBSET: "subset",
     JoinType.UNION: "union",
+    JoinType.EQUAL: "equal",
 }
 
 

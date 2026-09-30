@@ -18,7 +18,7 @@ parameter NAME TYPE [default <literal>]; — a runtime value supplied via `--par
 | Goal | Use |
 |---|---|
 | Typical query | no merge, no join: access all fields through dot-paths |
-| Blend two models on shared keys inside one query | scoped `subset\|union join` |
+| Blend two models on shared keys inside one query | scoped `subset\|union\|equal join` |
 | Make a connection universal to a whole file | `merge` |
 | Stack subsets/channels as rows | `union(...)` |
 | Rows in A but never in B (set difference) | `except(...)` |
@@ -26,7 +26,7 @@ parameter NAME TYPE [default <literal>]; — a runtime value supplied via `--par
 
 ### Query-scoped join
 
-A typical fact already has its dimensions merged in, so no join is needed. Blending fact models or rowset outputs takes a scoped join, placed right after the select list, which DECLARES how the key domains relate: `subset join a = b` (a's values are contained in b's, a ⊆ b; b authoritative for the key) or `union join a = b` (neither contains the other; the key is the coalesce of both sides and unmatched rows from BOTH sides are kept).
+A typical fact already has its dimensions merged in, so no join is needed. Blending fact models or rowset outputs takes a scoped join, placed right after the select list, which DECLARES how the key domains relate: `subset join a = b` (a's values are contained in b's, a ⊆ b; b authoritative for the key), `union join a = b` (neither contains the other; the key is the coalesce of both sides and unmatched rows from BOTH sides are kept) or `equal join a = b` (ONE domain: a is an alias of b, every value on either side is on the other; the join renders inner).
 
 Two rules decide whether the numbers are right, so apply them before reaching for the example:
 
@@ -35,7 +35,7 @@ Two rules decide whether the numbers are right, so apply them before reaching fo
 
 Chaining, expression keys, union/subset mixing, multi-key and self-pair shapes: trilogy agent-info syntax example scoped-join.
 
-merge <a> into ~<b>; is the persistent (whole-file) equivalent of `subset join a = b`; plain `merge a into b;` declares EXACT domain equivalence. Standalone statements; prefer a scoped join unless the connection is universal.
+merge <a> into ~<b>; is the persistent (whole-file) equivalent of `subset join a = b`; plain `merge a into b;` is the persistent equivalent of `equal join a = b`. Standalone statements; prefer a scoped join unless the connection is universal.
 
 ### union / except / intersect (row set operations)
 
@@ -51,7 +51,7 @@ with <name> as                     # optional: name the select as a reusable row
 where   <row condition>            # 1. filters INPUT rows, BEFORE aggregation
 select  <col>, <agg> as name,      # 2. projection — grouping is AUTOMATIC by the
                                    #    non-aggregated columns; never write GROUP BY
-  subset|union join a = b (= c)?   # 3. blend models; one clause per key, right after the select list
+  subset|union|equal join a = b (= c)?   # 3. blend models; one clause per key, right after the select list
 by rollup|cube|grouping sets (...) # 4. optional multi-level grouping for the whole select
 having  <result condition>         # 5. filters aggregated/joined RESULTS
 order by <col> asc|desc            # 6. sort

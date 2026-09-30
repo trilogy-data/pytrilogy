@@ -1144,6 +1144,7 @@ class Renderer:
             JoinType.FULL: "full",
             JoinType.SUBSET: "subset",
             JoinType.UNION: "union",
+            JoinType.EQUAL: "equal",
         }
         joins = []
         for j in arg.join_clauses:

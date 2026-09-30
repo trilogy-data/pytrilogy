@@ -74,6 +74,25 @@ for the relation mechanisms these declarations ride on.
 - **EQUAL spelling**: `merge a into b` stays the EQUAL declaration (it already
   carries identity semantics); no new keyword.
 
+## Landed (phase 2b — `equal join`, 2026-09-30)
+
+- **`equal join a = b`**: the EQUAL declaration at query scope, `merge a into
+  b` scoped to one select. One domain — `a` is an alias of `b` — so the pair
+  collapses onto one canonical key like a merge and narrows under the same
+  rules (`equal_narrowable_keys`); nothing is trusted that a global merge does
+  not trust. Carried as `JoinType.EQUAL` in the scoped-join tuple (a
+  statement-scoped FULL tuple declares INCOMPARABLE, so the tuple itself has
+  to say EQUAL); every reader of a FULL tuple reads an EQUAL one the same way.
+- **Coverage is tautological on an unfiltered side.** A rowset boundary is
+  complete by construction; under an EQUAL relation the other side, however
+  it is filtered, is a subset of that one domain and fully matches it
+  (`_pair_side_fully_matches`). TPC-DS q44 (two rowsets ranking the same rows
+  two ways) declares `equal join descending.rnk_d = ascending.rnk_a` and
+  renders INNER.
+- **An INNER-joined key renders from one side.** A merged key both sides of
+  an INNER join provide is one value per row; the renderer spells it from the
+  first source instead of `coalesce(a.k, b.k)` (`CTE.inner_join_key_sources`).
+
 ## Deferred / residuals
 
 - `left join` / `full join` (and `inner` / `right` / `cross`) spellings are
@@ -181,7 +200,7 @@ always an explicit author predicate — the established post-INNER idiom
 | today | becomes |
 |---|---|
 | `merge a into ~b` | `subset join a = b` (a ⊆ b) |
-| `merge a into b` | EQUAL (keep `merge`?) |
+| `merge a into b` | `equal join a = b` (query scope); `merge` stays the persistent form |
 | `full join a = b` | `union join a = b` |
 | `left join a = b` | `subset join b = a` + explicit filter if rows must drop |
 | scoped INNER (removed) | already: outer + `where x is not null` |
