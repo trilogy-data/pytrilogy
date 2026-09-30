@@ -84,14 +84,12 @@ def elect_extent_owners(
     def rank(gid: str) -> tuple[int, int, int, str]:
         # Most downstream wins: its rows have already absorbed everything
         # upstream, so routing extent there keeps one copy rather than one per
-        # branch. Ties break toward the group that OWNS the key (primary
-        # membership, the dimension span) over one merely carrying it as a
-        # join column, then on id for determinism.
-        attr = attrs[gid]
-        primary = set(attr.primary_members) | set(attr.carried_keys)
+        # branch. Ties break toward the group that holds the key as a member
+        # or a key of its own over one passing it through, then on id for
+        # determinism.
         return (
             len(nx.ancestors(group_graph, gid)),
-            len(exposes[gid] & primary),
+            len(exposes[gid] & set(attrs[gid].members)),
             len(exposes[gid]),
             gid,
         )
