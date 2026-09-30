@@ -778,7 +778,6 @@ def _split_root_dimension_clusters(
     primary_group: dict[str, str],
     environment: BuildEnvironment,
     output_addresses: frozenset[str],
-    projected_scalar_root_args: frozenset[str],
     pre_aggregate_filter_args: frozenset[str],
     post_aggregate_args: frozenset[str],
     finer_filter_grains: frozenset[frozenset[str]],
@@ -984,14 +983,6 @@ def _split_root_dimension_clusters(
                 label=bucket.label,
                 discriminator=f"dim:{'|'.join(sorted(key))}",
                 dim_keys=frozenset(key),
-                anchor_keys=(
-                    frozenset(k for k in key if k in environment.concepts)
-                    if any(
-                        bucket.primary_members[idx] in projected_scalar_root_args
-                        for idx in indices
-                    )
-                    else frozenset()
-                ),
                 reason=RootReason.ENTITY,
             )
             for idx in indices:
@@ -1102,7 +1093,6 @@ def partition_root_demand(
         primary_group,
         environment,
         output_addresses | projected_scalar_root_args,
-        projected_scalar_root_args,
         _pre_aggregate_filter_args(conditions),
         _post_aggregate_filter_args(conditions)
         | _post_aggregate_basic_args(mandatory_list),
