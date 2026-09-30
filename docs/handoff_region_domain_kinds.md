@@ -7,7 +7,7 @@ that list was pushed as far as the measurements allowed.
 | question | answer |
 |---|---|
 | "a demanded region has no domain"? | It has one. `decide_region_domains` returns a `RegionDomain` for every region the statement asks rows of, and `DomainKind` says where the rows come from |
-| are the spans duplicative of the carried keys? | Yes. `carried_keys` was four writers into one list; it is a property now, read off `grain_components`, `anchor_keys` and `carried_spans` |
+| are the spans duplicative of the carried keys? | Yes. `carried_keys` was four writers into one list; it is a property now, read off `grain_components`, `dim_keys` and `carried_spans` |
 
 ## What changed
 
@@ -15,8 +15,9 @@ that list was pushed as far as the measurements allowed.
 |---|---|
 | `RegionDomain(region, bucket)`, only for a region given a bucket | `RegionDomain(region, kind, label, carried, bucket, note)`, one per demanded region with rows of its own |
 | `_keep_extension_families_together(assignment, keyspace, environment)` | `(assignment, domains)`: it reads the domains of its scope and nothing else |
-| `GroupBucket.carried_keys: list`, `GroupAttrs.carried_keys`, `GroupAttrs.members` stored | properties. `carried_spans` (written by `carry_region_spans`) and `anchor_keys` (written by the entity split) are the stored fields |
+| `GroupBucket.carried_keys: list`, `GroupAttrs.carried_keys`, `GroupAttrs.members` stored | properties over `grain_components` (a grouping bucket's), `dim_keys` (an ENTITY peel's, `anchor_keys`) and `carried_spans` (written by `carry_region_spans`) |
 | `_carry_grain_keys` | gone: a grouping bucket's grain is its `grain_components` |
+| a peel carried its key only when it held an argument of a projected scalar | every ENTITY peel carries it (`anchor_keys`); the split's `projected_scalar_root_args` parameter is gone |
 | trace step "grain keys carried" | "carried-only row streams split" |
 | `split_carried_only_row_streams` finds the domains by `extent_spans` | it is handed `RootPartition.domains` |
 | `_can_merge_nested_signatures` asks `gid.startswith("grp:root")` | asks the derivation of the concept behind the group, so a labelled scope (`grp:[r]root:…`) answers the same way |
@@ -43,8 +44,8 @@ no domain.
 
 | oracle | result |
 |---|---|
-| corpus SQL, 206 statements | SUITE_CORPUS |
-| suite SQL, about 9,680 tests | SUITE_RESULT |
+| corpus SQL, 206 statements | 0 moved, after every commit |
+| suite SQL, about 9,680 tests | at `085cf93e7` and at `013d4f125`: 9 and 7 moved, every one on the README's list of tests that move between two runs of the same code; 9,571 passed, the 2 failures are the GCS persistence tests that need cloud access |
 
 The corpus compile is not enough on its own. Pointing `_members_of` at the
 output set moved nothing in the corpus and broke two tests and grew a third
@@ -55,7 +56,7 @@ plan in the suite (below).
 | item | outcome |
 |---|---|
 | 1. `_keep_extension_families_together` reads the keyspace | It reads domains. The merge branch IS reachable, the suite just never reached it: two families peeled off two keys (`brand` off `item_id`, `region` off `order_id`) are rekeyed to `dim:item_id\|order_id`. The plain reading ("un-peel whatever a domain carries") gives the same rows and up to two more CTEs and three more joins there, so the rule keeps its merge. Guarded by `test_families_peeled_off_two_keys_source_as_one_cluster` |
-| 2. Stage 3 reads `carried_keys` | `_condition_twins`, `_consumer_reads` and the accumulated-atom columns read the output set. `_members_of` does not: see below. The FINAL candidate sort and `elect_extent_owners.rank` read `members`. `_anchor_scalars_to_dim_peel_key` reads `anchor_keys`, and the capability pass reads `dim_keys` and `carried_spans` |
+| 2. Stage 3 reads `carried_keys` | `_condition_twins`, `_consumer_reads` and the accumulated-atom columns read the output set. `_members_of` does not: see below. The FINAL candidate sort and `elect_extent_owners.rank` read `members`. `_anchor_scalars_to_dim_peel_key` reads `anchor_keys` (an ENTITY peel's `dim_keys`), and the capability pass reads `dim_keys` and `carried_spans` |
 | 3. the entity split is a sourcing decision | untouched |
 | 4. composite keys use d0 grains only | Decided: d0 only is right. From every depth, tpc-h q20 with its keys selected (`select part.id, part.supplier.id, part.supplier.name` under q20's WHERE) goes from 2 CTEs and 5 joins to 6 and 8, rows the same. The peel reaches FINAL beside the row stream the WHERE filters and both are built. The split says so where it picks the grains |
 | 5. buckets the partition skips | `COMPONENT` buckets untouched. The carried-only split and the signature check are in the table above |
@@ -133,9 +134,6 @@ Each is on `main` too. Model for the first two: `_MODEL` of
 4. **`COMPONENT` buckets** get no domain and no split. Still nothing in the
    suite says whether that is a rule.
 5. **The regraft root** is still decided on the group graph.
-6. **`anchor_keys` is set on some peels and `dim_keys` on all.** A peel carries
-   its key only when it holds an argument of a projected scalar. Making every
-   peel carry it is a behavior change that was not tried.
 
 ## Tools
 
