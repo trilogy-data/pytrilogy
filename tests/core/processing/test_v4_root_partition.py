@@ -201,8 +201,7 @@ def test_entity_cluster_is_peeled_onto_its_key():
         ),
         (
             _MODEL,
-            "with r as select user_id, state, line_id;"
-            " select r.user_id, r.state, r.line_id;",
+            "with r as select user_id, state, line_id; select r.user_id, r.line_id;",
             {("local.user_id",): DomainKind.OWN, ("r.user_id",): DomainKind.BOUNDARY},
         ),
         (
@@ -212,8 +211,7 @@ def test_entity_cluster_is_peeled_onto_its_key():
         ),
         (
             _SCALAR,
-            "where bal > avg_bal and order_id is null"
-            " select count(customer_id) as n;",
+            "where bal > avg_bal and order_id is null select count(customer_id) as n;",
             {("local.customer_id",): DomainKind.PADDED},
         ),
     ],
