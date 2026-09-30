@@ -143,9 +143,12 @@ def _delete_remote(filesystem, path: str) -> None:
     """Best-effort: a staged key we cannot collect costs storage, and the
     next writer of this target sweeps it. Never worth failing a good publish
     for, but worth saying out loud -- a rising count of these is a
-    credential or permission problem, not noise."""
+    credential or permission problem, not noise. A missing key is neither:
+    the writer failed before it staged anything."""
     try:
         filesystem.delete_file(path)
+    except FileNotFoundError:
+        pass
     except Exception as exc:
         logger.warning("Could not remove staged object %s: %s", path, exc)
 
