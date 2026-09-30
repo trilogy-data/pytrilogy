@@ -9,7 +9,7 @@ as it was.
 | item | outcome |
 |---|---|
 | 1. `_keep_extension_families_together` | reads region domains. Every demanded region has one, with a `DomainKind`. The merge branch is reachable and guarded |
-| 2. `carried_keys` | a property over `grain_components`, `anchor_keys` and `carried_spans`. `_members_of` stays on the members: the output set broke two tests |
+| 2. `carried_keys` | a property over `grain_components`, `dim_keys` and `carried_spans`. `_members_of` stays on the members: the output set broke two tests |
 | 3. the entity split as a sourcing decision | untouched |
 | 4. composite keys, d0 only | d0 only is right, with a statement that says so |
 | 5. buckets the partition skips | the carried-only split is handed the domains, the signature check asks the derivation. `COMPONENT` untouched |
