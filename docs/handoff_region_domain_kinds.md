@@ -97,6 +97,9 @@ Neither moves a corpus plan. Guards: `test_filter_argument_fd_on_the_grouping_ke
 
 ## Found and left
 
+Status in `docs/handoff_implicit_rowset_pairing.md`: 1 fixed, 2 left with its
+declared spelling verified, and a third (branch-only) found and fixed.
+
 Each is on `main` too. Model for the first two: `_MODEL` of
 `tests/core/processing/test_v4_root_partition.py`, with or without the `~`.
 
