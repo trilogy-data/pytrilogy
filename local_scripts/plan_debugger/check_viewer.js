@@ -44,6 +44,16 @@ new Function('document', 'window', 'location', 'history', 'fetch', 'URLSearchPar
     seen[S.steps[S.idx].phase] = (seen[S.steps[S.idx].phase] || 0) + 1;
     rendered++; chars += out.length;
   }
+  // collapsing the outermost block hides its steps; stepping into it opens it again
+  S.idx = 0; applyFilter();
+  const count = () => (document.querySelector('#steps').innerHTML.match(/class="step /g) || []).length;
+  const first = S.chains.findIndex(c => c.length);
+  if (first >= 0) {
+    const all = count(); S.collapsed.add(S.chains[first][0].key); renderSteps();
+    if (count() >= all) throw new Error('collapsing a block hid no steps');
+    S.idx = first; show();
+    if (count() !== all) throw new Error('stepping into a collapsed block did not open it');
+  }
   S.plan = trace.plans[trace.plans.length - 1].id; applyFilter();
   S.plan = 'all'; S.phases.delete('grouping'); applyFilter();
   console.log('rendered', rendered, 'steps,', chars, 'chars of HTML', JSON.stringify(seen));

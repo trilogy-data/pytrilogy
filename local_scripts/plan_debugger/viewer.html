@@ -71,6 +71,8 @@ button.on { background: var(--accent-soft); border-color: var(--accent); }
 .step.dropped .title { text-decoration: line-through; color: var(--muted); }
 .ctx { padding: 5px 10px 3px; font-size: 11px; color: var(--grp); background: var(--grp-soft); border-bottom: 1px solid var(--line);
   font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.ctx .caret { display: inline-block; width: 14px; flex: none; }
+.ctx .caret:hover { color: var(--ink); }
 .ctx.sub { color: var(--accent); background: var(--accent-soft); }
 .origin { font-family: var(--mono); font-size: 11px; color: var(--muted); margin: -4px 0 10px; overflow-wrap: anywhere; }
 .origin b { color: var(--ink); font-weight: 600; }
@@ -208,7 +210,7 @@ const inspect = (title, obj) => { $('#insp').innerHTML = `<h3 style="margin-top:
 // ------------------------------------------------------------------ state
 const QUERY_PAGE = { seq: 0, plan: null, phase: 'query', title: 'query text', data: {}, context: null, origin: [] };
 const S = { trace: null, steps: [], idx: 0, plan: 'all', phases: new Set(), planLabel: {}, planDepth: {},
-  virt: {}, built: {}, inFinal: {}, changedOnly: true };
+  virt: {}, built: {}, inFinal: {}, changedOnly: true, collapsed: new Set(), chains: [] };
 
 // every group tag in a node tree
 function treeGroups(node, out = new Set()) {
@@ -257,12 +259,15 @@ function renderSteps() {
   const total = S.trace.total_ms != null ? `<span class="small" style="width:100%">planner ${fmtMs(S.trace.total_ms)}, recorder time excluded</span>` : '';
   const pipe = `<div class="pipe">${total}${S.trace.phases.map(ph => `<button data-ph="${ph}" style="border-left:4px solid ${PHASE_COLORS[ph]}">${ph} <span class="small">${counts[ph] || 0}${phaseMs[ph] != null ? ' · ' + fmtMs(phaseMs[ph]) : ''}</span></button>`).join('')}</div>`;
   const maxMs = Math.max(0, ...S.steps.map(s => s.ms ?? 0));
-  const chains = S.steps.map(blockChain); let open = [];
+  const chains = S.chains = S.steps.map(blockChain); let open = [];
   const list = S.steps.map((s, i) => {
     const pad = 10 + 10 * (S.planDepth[s.plan] || 0); const chain = chains[i];
     let keep = 0; while (keep < open.length && keep < chain.length && open[keep].key === chain[keep].key) keep++;
-    const hdr = chain.slice(keep).map(b => blockHeader(b, blockMs(chains, i, b.key))).join('');
+    // a header shows unless a block outside it is collapsed; a step shows unless any of its blocks is
+    const hidden = k => chain.slice(0, k).some(b => S.collapsed.has(b.key));
+    const hdr = chain.slice(keep).map((b, k) => hidden(keep + k) ? '' : blockHeader(b, blockMs(chains, i, b.key))).join('');
     open = chain;
+    if (hidden(chain.length)) return hdr;
     const miss = notInFinal(s); const title = s.title.replace(/grp:/g, '');
     const heat = s.ms != null && maxMs > 0 ? ` heat" style="--h:${(s.ms / maxMs).toFixed(3)};` : '" style="';
     return hdr + `<div class="step ${i === S.idx ? 'cur' : ''} ${miss ? 'dropped' : ''}${heat}padding-left:${pad + (s.context ? 12 : 0)}px" data-i="${i}">
@@ -288,13 +293,14 @@ function blockChain(s) {
 const rowsetName = gid => ((gid || '').match(/:rowset:([^:|]+)$/) || [])[1];
 function blockHeader(b, ms) {
   const pad = 10 + 10 * (S.planDepth[b.plan] || 0);
+  const caret = `<span class="caret" data-toggle="${esc(b.key)}" title="collapse / expand">${S.collapsed.has(b.key) ? '▸' : '▾'}</span>`;
   if (b.subplan) {
     const p = S.planById[b.plan], r = rowsetName(p.parent_context);
-    return `<div class="ctx sub" style="padding-left:${pad}px" title="${esc(p.label)}"><span class="label">▾ ${r ? 'rowset ' + esc(r) + ' · ' : ''}sub-plan ${esc(b.plan)} · ${esc(p.label.replace(/^plan: /, ''))}</span>${durSpan(ms, 'this nested plan')}</div>`;
+    return `<div class="ctx sub" style="padding-left:${pad}px" title="${esc(p.label)}">${caret}<span class="label">${r ? 'rowset ' + esc(r) + ' · ' : ''}sub-plan ${esc(b.plan)} · ${esc(p.label.replace(/^plan: /, ''))}</span>${durSpan(ms, 'this nested plan')}</div>`;
   }
   const r = rowsetName(b.context);
-  const label = b.context === 'FINAL' ? '▾ FINAL assembly' : r ? '▾ building rowset ' + esc(r) : '▾ building ' + esc(stripGrp(b.context));
-  return `<div class="ctx" data-group="${esc(b.context)}" style="padding-left:${pad}px" title="${esc(b.context)}"><span class="label">${label}</span>${durSpan(ms, 'this block, nested plans included')}</div>`;
+  const label = b.context === 'FINAL' ? 'FINAL assembly' : r ? 'building rowset ' + esc(r) : 'building ' + esc(stripGrp(b.context));
+  return `<div class="ctx" data-group="${esc(b.context)}" style="padding-left:${pad}px" title="${esc(b.context)}">${caret}<span class="label">${label}</span>${durSpan(ms, 'this block, nested plans included')}</div>`;
 }
 // a block's time: the run of steps from i that sit inside it, nested plans included
 function blockMs(chains, i, key) {
@@ -306,6 +312,9 @@ function blockMs(chains, i, key) {
 }
 function show() {
   const step = S.steps[S.idx];
+  // stepping onto a step inside a collapsed block opens the block
+  const shut = (S.chains[S.idx] || []).filter(b => S.collapsed.has(b.key));
+  if (shut.length) { shut.forEach(b => S.collapsed.delete(b.key)); renderSteps(); }
   document.querySelectorAll('#steps .step').forEach(el => el.classList.toggle('cur', +el.dataset.i === S.idx));
   const cur = document.querySelector('#steps .step.cur'); if (cur) cur.scrollIntoView({ block: 'nearest' });
   $('#pos').textContent = S.steps.length ? `${S.idx + 1} / ${S.steps.length}` : '0 / 0';
@@ -603,6 +612,8 @@ function groupInfo(gid) {
     <h3>steps while building</h3>${steps.length ? steps.map(s => `<div>${stepLink(s.seq)} <span class="small">${esc(s.phase)}</span> ${esc(s.title.replace(/grp:/g, ''))}</div>`).join('') : '<span class="small">none</span>'}`;
 }
 document.addEventListener('click', ev => {
+  const t = ev.target.closest('[data-toggle]');
+  if (t) { ev.preventDefault(); ev.stopPropagation(); const k = t.dataset.toggle; if (!S.collapsed.delete(k)) S.collapsed.add(k); renderSteps(); return; }
   const g = ev.target.closest('[data-group]');
   if (g) { ev.preventDefault(); ev.stopPropagation(); groupInfo(g.dataset.group); return; }
   const a = ev.target.closest('a.step-link');
