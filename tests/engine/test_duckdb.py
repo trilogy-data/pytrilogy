@@ -1552,7 +1552,8 @@ auto w <- rank x order by x asc;
 
 rowset my_rowset <- select x, max(z)->max_rank;
 
-select x, w, my_rowset.max_rank;"""
+select x, w, my_rowset.max_rank
+subset join my_rowset.x = x;"""
     _, _parsed_0 = parse_text(test, duckdb_engine.environment)
     z = duckdb_engine.environment.concepts["z"]
     x = duckdb_engine.environment.concepts["x"]

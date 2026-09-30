@@ -55,6 +55,7 @@ from trilogy.core.processing.condition_utility import (
     decompose_condition,
 )
 from trilogy.core.processing.discovery_utility import raise_if_disconnected_for
+from trilogy.core.processing.grain_utility import non_null_proofs
 from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
 from trilogy.core.processing.nodes import (
     FilterNode,
@@ -2695,6 +2696,7 @@ def _pre_merge_parents(
     group_graph: nx.DiGraph | None = None,
     built: dict[str, StrategyNode] | None = None,
     force_join_type: JoinType | None = None,
+    preexisting_conditions: BoolExpr | None = None,
 ) -> list[StrategyNode]:
     """Collapse a multi-parent set into a single MergeNode that auto-joins
     on shared output concepts. Non-merging generators (GroupNode for
@@ -2707,7 +2709,11 @@ def _pre_merge_parents(
     `force_join_type` overrides join inference; a caller merging in a FILTER
     scan (a WHERE-only root a constraint edge feeds this consumer) passes
     INNER, since a filter may only remove rows and a preserving join would
-    re-admit the rows it rejects."""
+    re-admit the rows it rejects. `preexisting_conditions` are the request
+    atoms the parents' groups already applied: the merge's typing must not
+    null-extend the branch carrying one (as the FINAL merge already knows),
+    or a declared-subset boundary FULL-joined to a filtered scan of its
+    superset resurrects the rows the WHERE rejected."""
     if len(parents) <= 1:
         return parents
     parents = _fold_constant_parents(parents, needed or set())
@@ -2737,6 +2743,7 @@ def _pre_merge_parents(
         environment=environment,
         parents=parents,
         force_join_type=force_join_type,
+        preexisting_conditions=preexisting_conditions,
         # a region domain hosts its spans' extension rows: preserve it, and
         # the feeder only where it holds a value-NULL key
         host_stitch=any(p.region_spans for p in parents),
@@ -5153,6 +5160,21 @@ def build_strategy_node(
                 for parent in parent_builds
             )
             parents = _apply_input_contracts(parent_builds, a, needed, environment)
+            # A ROOT scan hosting a null-rejecting request atom emits exactly
+            # the atom's population, so the merge may claim it. A grouping
+            # parent applies the atom to its INPUT rows and its output claims
+            # nothing (the FINAL still gates); an `is null` atom is satisfied
+            # by the padding a preserving join adds.
+            applied_atoms = _wrap_atoms(
+                [
+                    atom
+                    for parent in parent_builds
+                    if attrs[parent.group_id].derivation == Derivation.ROOT
+                    for atom in attrs[parent.group_id].condition_atoms
+                    if non_null_proofs(atom)
+                ]
+            )
+            applied = applied_atoms.conditional if applied_atoms else None
             # a parent holds a region's rows when it reads its domain, the
             # domain itself or a derivation over what it carries (`upper(name)`)
             domains = [p for p in parents if _region_reads(p)]
@@ -5191,6 +5213,7 @@ def build_strategy_node(
                         needed=needed,
                         group_graph=group_graph,
                         built=built,
+                        preexisting_conditions=applied,
                     )
                 finally:
                     environment.span_scope = group_scope
@@ -5209,6 +5232,7 @@ def build_strategy_node(
                 group_graph=group_graph,
                 built=built,
                 force_join_type=JoinType.INNER if filter_scan else None,
+                preexisting_conditions=applied,
             )
         # ROOT scans source columns from datasources directly, not from their
         # group-graph predecessors. A `constraint`-edge predecessor (e.g. a

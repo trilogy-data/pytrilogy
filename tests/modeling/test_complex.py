@@ -1,5 +1,8 @@
+import pytest
+
 from trilogy import Dialects, Executor, parse
 from trilogy.core.enums import Derivation
+from trilogy.core.exceptions import DisconnectedConceptsException
 from trilogy.core.models.build import Factory
 from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
@@ -24,6 +27,8 @@ def test_rowset(test_environment: Environment, test_executor: Executor):
 
 
 def test_rowset_with_addition(test_environment: Environment, test_executor: Executor):
+    """The declared subset key is one axis read from the superset side, so the
+    odd orders carry their own key beside a NULL store."""
     test_select = """
 
     rowset even_orders <- select order_id, store_id where (order_id % 2) = 0;
@@ -31,16 +36,29 @@ def test_rowset_with_addition(test_environment: Environment, test_executor: Exec
         order_id,
         even_orders.order_id,
         even_orders.store_id
+    subset join even_orders.order_id = order_id
     order by order_id asc
     ;"""
     _, _statements = parse(test_select, test_environment)
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
-    # assert len(results) == 3
-    assert results[0] == (1, None, None)
-    assert results[1] == (2, 2, 1)
-    assert results[2] == (3, None, None)
-    assert results[3] == (4, 4, 2)
+    assert results == [(1, 1, None), (2, 2, 1), (3, 3, None), (4, 4, 2)]
+
+
+def test_rowset_beside_its_base_key_needs_a_join(
+    test_environment: Environment, test_executor: Executor
+):
+    test_select = """
+    rowset even_orders <- select order_id, store_id where (order_id % 2) = 0;
+    SELECT
+        order_id,
+        even_orders.order_id,
+        even_orders.store_id
+    order by order_id asc
+    ;"""
+    with pytest.raises(DisconnectedConceptsException) as exc:
+        test_executor.execute_text(test_select)
+    assert "`subset join even_orders.order_id = order_id`" in str(exc.value)
 
 
 def test_rowset_with_aggregation(

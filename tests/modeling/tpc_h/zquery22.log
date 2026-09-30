@@ -1,5 +1,5 @@
 query_id = "22"
-gen_length = 1848
+gen_length = 1471
 preql_size = 513
 comp_size = 806
 generated_sql = """
@@ -9,8 +9,6 @@ thoughtful as (
 SELECT
     \"orders_customer_customers\".\"c_acctbal\" as \"orders_customer_account_balance\",
     \"orders_customer_customers\".\"c_custkey\" as \"orders_customer_id\",
-    \"orders_customer_customers\".\"c_phone\" as \"orders_customer_phone\",
-    \"orders_orders\".\"o_orderkey\" as \"orders_id\",
     SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) as \"cntrycode\"
 FROM
     \"memory\".\"customer\" as \"orders_customer_customers\"
@@ -34,7 +32,7 @@ FROM
     \"thoughtful\"
     INNER JOIN \"quizzical\" on 1=1
 WHERE
-    \"thoughtful\".\"orders_customer_account_balance\" > \"quizzical\".\"avg_bal_in_target\" and (SUBSTRING(\"thoughtful\".\"orders_customer_phone\",1,2) is not null and SUBSTRING(\"thoughtful\".\"orders_customer_phone\",1,2) in ('13','31','23','29','30','18','17')) and \"thoughtful\".\"orders_customer_account_balance\" > 0 and \"thoughtful\".\"orders_id\" is null
+    \"thoughtful\".\"orders_customer_account_balance\" > \"quizzical\".\"avg_bal_in_target\"
 
 GROUP BY
     1

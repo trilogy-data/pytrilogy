@@ -470,10 +470,9 @@ def disconnected_components(
 
     ``island_rowsets`` (see ``island_rowsets_for_connectivity``): when set, a
     base concept reachable only by navigating into a rowset's derivation is not
-    a real join path. Correct as a post-failure message refiner, but as a
-    pre-check gate it false-positives on legitimate rowset join-backs (a base
-    key that IS a rowset output, or a concept DERIVED from one), so the
-    pre-gate disables it and lets discovery decide.
+    a real join path; a rowset pairs with one only through a declared relation.
+    The top-level gate sets it; an existence subselect's own scope and a nested
+    body's check resolve against the base model and pass False.
 
     See ``_component_map`` for ``excluded_addresses``.
     """
@@ -516,6 +515,157 @@ def _output_is_rootless(outputs: list[BuildConcept]) -> bool:
         )
         for c in outputs
     )
+
+
+def _rowset_handles_read_by_scalars(
+    outputs: list[BuildConcept],
+) -> list[BuildConcept]:
+    """Multi-row rowset handles a single-row output aggregates over.
+
+    ``disconnected_components`` skips a scalar as freely crossjoinable, which
+    holds with no WHERE. With one, `sum(rs.amt) where cat = 'a'` has a row
+    population to define, and it is the handle's rows: the WHERE must reach
+    THEM. Walk the scalar's lineage down to the first multi-row concept; a
+    handle found there is what the output anchors on. A single-row handle (a
+    scalar rowset) is a keyless join and stays skipped."""
+    found: dict[str, BuildConcept] = {}
+    for output in outputs:
+        if not _crossjoinable(output) or output.derivation == Derivation.ROWSET:
+            continue
+        stack = [a for a in output.concept_arguments if isinstance(a, BuildConcept)]
+        seen: set[str] = set()
+        while stack:
+            arg = stack.pop()
+            if arg.address in seen:
+                continue
+            seen.add(arg.address)
+            if arg.derivation == Derivation.ROWSET:
+                if not _crossjoinable(arg):
+                    found.setdefault(arg.address, arg)
+                continue
+            if _crossjoinable(arg):
+                stack.extend(
+                    a for a in arg.concept_arguments if isinstance(a, BuildConcept)
+                )
+    return list(found.values())
+
+
+def _rowsets_read_by(concepts: list[BuildConcept]) -> set[str]:
+    """Names of the rowsets whose handles these concepts are or derive from
+    (`buyers_a.cust_id as a_cust` reads `buyers_a`); the walk stops at a
+    handle, whose body is not the reader's to see."""
+    names: set[str] = set()
+    stack = list(concepts)
+    seen: set[str] = set()
+    while stack:
+        concept = stack.pop()
+        if concept.address in seen:
+            continue
+        seen.add(concept.address)
+        if isinstance(concept.lineage, BuildRowsetItem):
+            names.add(concept.lineage.rowset.name)
+            continue
+        stack.extend(
+            a for a in concept.concept_arguments if isinstance(a, BuildConcept)
+        )
+    return names
+
+
+def _ranked_pairs(
+    pairs: list[tuple[BuildConcept, BuildConcept]],
+    determining: frozenset[str] | set[str] = frozenset(),
+) -> list[tuple[BuildConcept, BuildConcept]]:
+    """Keys before other outputs, and among keys the ones in ``determining``
+    (the other side's addresses and the keys they hang off) first: a key that
+    determines `state` is the join, not a sibling key of its fact."""
+    keyed = [p for p in pairs if p[1].purpose == Purpose.KEY]
+    direct = [p for p in keyed if p[1].address in determining]
+    return sorted(direct or keyed or pairs, key=lambda p: p[1].address)
+
+
+def _spell_subset_join(left: BuildConcept, right: BuildConcept) -> str:
+    return (
+        f"`subset join {_strip_default_namespace(left.address)} = "
+        f"{_strip_default_namespace(right.address)}`"
+    )
+
+
+def rowset_relation_hints(
+    subgraphs: list[list[BuildConcept]],
+    environment: BuildEnvironment,
+    g: "ReferenceGraph | None" = None,
+    excluded_addresses: frozenset[str] = frozenset(),
+) -> list[str]:
+    """The declared relations that would connect a rowset read in one subgraph
+    to another subgraph: `subset join <handle> = <content>` for each output
+    of the rowset whose body content lands in the other subgraph's component,
+    or `subset join <their handle> = <our handle>` where a rowset read there
+    wraps the same body concept. The islanding the split was judged under
+    severs exactly these, so a hit is the join the author left implicit. Keys
+    are listed before other outputs."""
+    comp_of, _ = _component_map(environment, g, True, excluded_addresses)
+
+    def component_of(concept: BuildConcept) -> int | None:
+        for node in _anchor_nodes(concept):
+            if node in comp_of:
+                return comp_of[node]
+        return None
+
+    outputs_by_rowset: dict[str, list[tuple[BuildConcept, BuildConcept]]] = {}
+    for concept in environment.concepts.values():
+        lineage = concept.lineage
+        if (
+            isinstance(lineage, BuildRowsetItem)
+            and isinstance(lineage.content, BuildConcept)
+            and not _crossjoinable(lineage.content)
+        ):
+            outputs_by_rowset.setdefault(lineage.rowset.name, []).append(
+                (concept, lineage.content)
+            )
+
+    hints: list[str] = []
+    sibling_hints: list[str] = []
+    read_by_group = [_rowsets_read_by(group) for group in subgraphs]
+    for index, group in enumerate(subgraphs):
+        if not read_by_group[index]:
+            continue
+        for other_index, other in enumerate(subgraphs):
+            if other is group:
+                continue
+            others = {
+                comp for comp in (component_of(c) for c in other) if comp is not None
+            }
+            determining = {c.address for c in other} | {
+                key for c in other for key in (c.keys or ())
+            }
+            for name in sorted(read_by_group[index]):
+                outputs = outputs_by_rowset.get(name, [])
+                to_base = [
+                    (output, content)
+                    for output, content in outputs
+                    if component_of(content) in others
+                ]
+                for output, content in _ranked_pairs(to_base, determining):
+                    if (hint := _spell_subset_join(output, content)) not in hints:
+                        hints.append(hint)
+                # a sibling rowset there wrapping the same body concept
+                if other_index < index:
+                    continue
+                for sibling in sorted(read_by_group[other_index] - {name}):
+                    by_content = {
+                        content.address: output
+                        for output, content in outputs_by_rowset.get(sibling, [])
+                    }
+                    shared = [
+                        (by_content[content.address], output)
+                        for output, content in outputs
+                        if content.address in by_content
+                    ]
+                    for theirs, ours in _ranked_pairs(shared):
+                        hint = _spell_subset_join(theirs, ours)
+                        if hint not in sibling_hints:
+                            sibling_hints.append(hint)
+    return hints + sibling_hints
 
 
 def _is_global_aggregate_gate(
@@ -626,10 +776,19 @@ def raise_if_disconnected_for(
     identical. See ``disconnected_components`` for ``island_rowsets``."""
     concepts = list(outputs)
     output_addresses = {c.address for c in concepts}
+    outputs_rootless = _output_is_rootless(outputs)
     if conditions:
         concepts += [
             c for c in conditions.row_arguments if c.address not in output_addresses
         ]
+        # a WHERE gives a scalar's rows a population to define: a scalar over
+        # a rowset handle anchors on the handle, and is not an EXISTS gate
+        if island_rowsets and any(not _crossjoinable(c) for c in concepts):
+            handles = _rowset_handles_read_by_scalars(outputs)
+            if handles:
+                outputs_rootless = False
+                output_addresses |= {c.address for c in handles}
+                concepts = unique(concepts + handles, "address")
     subgraphs = disconnected_components(
         environment,
         concepts,
@@ -637,7 +796,6 @@ def raise_if_disconnected_for(
         island_rowsets=island_rowsets,
         excluded_addresses=excluded_addresses,
     )
-    outputs_rootless = _output_is_rootless(outputs)
     subgraphs = [
         grp
         for grp in subgraphs
@@ -655,6 +813,15 @@ def raise_if_disconnected_for(
         )
         if note:
             message = f"{message}\n{note}"
+        if island_rowsets:
+            hints = rowset_relation_hints(subgraphs, environment, g, excluded_addresses)
+            if hints:
+                message = (
+                    f"{message}\nA rowset's outputs relate to other concepts only "
+                    "through a declared join; to pair them on the rowset's key, "
+                    f"declare it (e.g. {', '.join(hints)}), or project the concept "
+                    "inside the rowset and reference it through the handle."
+                )
         raise DisconnectedConceptsException(
             message,
             subgraphs=[[c.address for c in group] for group in subgraphs],
@@ -724,6 +891,9 @@ def connected_equivalent_suggestions(
             if addr == stranded or addr in excluded_addresses:
                 continue
             if VIRTUAL_CONCEPT_PREFIX in addr:
+                continue
+            # a rowset handle names a materialized result, not an import path
+            if candidate.derivation == Derivation.ROWSET:
                 continue
             # The twin is the same path one namespace deeper (same alias
             # both times), or - when the aliases differ (`import policy as

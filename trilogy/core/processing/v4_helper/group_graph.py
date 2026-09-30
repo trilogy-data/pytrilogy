@@ -719,7 +719,7 @@ def _attach_condition_roots_to_rowset_consumers(
             for pred in group_graph.predecessors(consumer_gid):
                 if pred == FINAL_NODE_ID or attrs[pred].derivation != Derivation.ROWSET:
                     continue
-                base_keys = _unwrapped_rowset_grain(
+                base_keys = _rowset_base_grain(
                     attrs[pred].grain_components, environment, rollup_padded
                 )
                 if base_keys and all(
@@ -781,6 +781,18 @@ def _grain_determines(
     return targets <= build_fd_closure(
         environment, determinants, include_empty_grain=False
     )
+
+
+def _rowset_base_grain(
+    grain: Iterable[str],
+    environment: BuildEnvironment | None,
+    rollup_padded: frozenset[str],
+) -> frozenset[str]:
+    """Every base address a boundary's grain pairs on: a key unwrapped through
+    the boundary, or one a declared relation (`subset join rs.oid = oid`) has
+    already spelled at its base. ROLLUP-padded keys are dropped as in
+    `_unwrapped_rowset_grain`."""
+    return _resolved_rowset_grain(grain, environment) - rollup_padded
 
 
 def _unwrapped_rowset_grain(
@@ -1321,7 +1333,7 @@ def _refresh_input_contracts(
         if filter_scan:
             for pred in row_parents:
                 if attrs[pred].derivation == Derivation.ROWSET:
-                    rowset_base_keys |= _unwrapped_rowset_grain(
+                    rowset_base_keys |= _rowset_base_grain(
                         attrs[pred].grain_components, environment, rollup_padded
                     )
         # a region domain among the parents joins the rest on its spans: the

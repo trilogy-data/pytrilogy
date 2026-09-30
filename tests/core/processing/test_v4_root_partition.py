@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from trilogy import Dialects, Environment
+from trilogy.core.exceptions import DisconnectedConceptsException
 from trilogy.core.processing import plan_trace
 from trilogy.core.processing.v4_helper.models import RootReason
 from trilogy.core.processing.v4_helper.region_domains import DomainKind
@@ -385,19 +386,17 @@ def test_rowset_key_beside_a_base_dimension_pairs_on_a_declared_join(
     assert rows == _BY_USER + ([(3, "wa", None)] if partial else [])
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=Exception,
-    reason="a rowset handle beside a base attribute of its entity has no "
-    "declared join: docs/handoff_implicit_rowset_pairing.md",
-)
 def test_rowset_key_beside_a_base_dimension_without_a_join():
-    _rows(
-        "with r as select user_id, line_id, sale_price;"
-        " select r.user_id, state, sum(r.sale_price) as revenue"
-        " order by r.user_id asc;",
-        True,
-    )
+    """A rowset handle beside a base attribute of its entity pairs only
+    through a declared relation; the error names it."""
+    with pytest.raises(DisconnectedConceptsException) as exc:
+        _rows(
+            "with r as select user_id, line_id, sale_price;"
+            " select r.user_id, state, sum(r.sale_price) as revenue"
+            " order by r.user_id asc;",
+            True,
+        )
+    assert "`subset join r.user_id = user_id`" in str(exc.value)
 
 
 @pytest.mark.parametrize("partial", [True, False])
@@ -405,10 +404,13 @@ def test_bare_key_beside_a_filtered_rowset_keeps_every_key(partial: bool):
     """The boundary is partial on the handle's CONTENT (`user_id`), which the
     host election read under the handle's spelling (`even.user_id`) as a
     complete binding: the filtered boundary out-hosted the users scan and the
-    FINAL preserved it, dropping users 1 and 3."""
+    FINAL preserved it, dropping users 1 and 3. Under the declared subset the
+    key is one axis read from the users side, so every user carries its key
+    beside a NULL sale."""
     rows = _rows(
         "rowset even <- select user_id, sale_price where user_id % 2 = 0;"
-        " select user_id, even.user_id, even.sale_price order by user_id asc;",
+        " select user_id, even.user_id, even.sale_price"
+        " subset join even.user_id = user_id order by user_id asc;",
         partial,
     )
-    assert rows == [(1, None, None), (2, 2, 3.0), (3, None, None)]
+    assert rows == [(1, 1, None), (2, 2, 3.0), (3, 3, None)]
