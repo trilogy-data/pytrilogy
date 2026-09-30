@@ -47,7 +47,6 @@ def _gg_node(
     gid: str,
     derivation: Derivation,
     primary: list[str],
-    secondary: list[str] | None = None,
     grain: set[str] | None = None,
     condition_atoms: list | None = None,
 ):
@@ -57,7 +56,6 @@ def _gg_node(
         derivation=derivation,
         grain_components=frozenset(grain or ()),
         primary_members=tuple(primary),
-        carried_keys=tuple(secondary or ()),
         condition_atoms=condition_atoms or [],
     )
 
@@ -146,7 +144,6 @@ def test_q02_shape_basic_exposes_inherited_grain_key(
         "agg",
         Derivation.AGGREGATE,
         primary=["agg_sum"],
-        secondary=["week_seq"],
         grain={"week_seq"},
     )
     _gg_node(
@@ -155,7 +152,6 @@ def test_q02_shape_basic_exposes_inherited_grain_key(
         "win",
         Derivation.WINDOW,
         primary=["win_lead"],
-        secondary=["week_seq"],
         grain={"week_seq"},
     )
     _gg_node(
@@ -224,7 +220,6 @@ def test_q02_shape_root_does_not_leak_finer_columns_to_aggregate(
         "agg",
         Derivation.AGGREGATE,
         primary=["agg_sum"],
-        secondary=["week_seq"],
         grain={"week_seq"},
     )
     _final_node(gg, attrs)
@@ -354,7 +349,6 @@ def test_aggregate_inputs_include_primary_lineage_args(
         "agg",
         Derivation.AGGREGATE,
         primary=["agg_sum"],
-        secondary=["week_seq"],
         grain={"week_seq"},
     )
     _final_node(gg, attrs)

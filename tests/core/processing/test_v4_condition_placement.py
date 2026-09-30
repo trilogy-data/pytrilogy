@@ -60,7 +60,6 @@ def _bucket(
     derivation: Derivation,
     primary: list[str],
     *,
-    secondary: list[str] | None = None,
     depth: DepthLabel = DepthLabel.STAR,
     grain: set[str] | None = None,
 ) -> GroupBucket:
@@ -69,7 +68,6 @@ def _bucket(
         derivation=derivation,
         grain_components=frozenset(grain or ()),
         primary_members=primary,
-        carried_keys=secondary or [],
     )
 
 
@@ -108,7 +106,6 @@ def test_window_output_condition_lands_on_downstream_consumer(
         "window": _bucket(
             Derivation.WINDOW,
             [_addr("ranked")],
-            secondary=[_addr("x")],
             depth=DepthLabel.D0,
             grain={_addr("x")},
         ),
@@ -219,7 +216,6 @@ def _filter_scope_graph(
         "agg": _bucket(
             Derivation.AGGREGATE,
             [_addr("min_cost")],
-            secondary=[_addr("id")],
             depth=DepthLabel.D1,
             grain=aggregate_grain,
         ),

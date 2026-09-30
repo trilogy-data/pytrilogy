@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from trilogy.core import graph as nx
+from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.core.enums import (
     AggregateGroupingMode,
     Derivation,
@@ -12,8 +13,27 @@ from trilogy.core.models.build import BoolExpr
 from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing.nodes import StrategyNode
 
-from .constants import DepthLabel
+from .constants import GROUPING_DERIVATIONS, DepthLabel
 from .edges import EdgeMap
+
+
+def carried_keys(
+    derivation: Derivation | None,
+    grain_components: frozenset[str],
+    anchor_keys: frozenset[str],
+    carried_spans: tuple[str, ...],
+    primary_members: tuple[str, ...] | list[str],
+) -> tuple[str, ...]:
+    """The keys a group holds without computing them, each read off the field
+    that says why: the entity key a peel's scalars are anchored to, the spans
+    of the regions its rows pair with, and its grain when it groups."""
+    grain = (
+        sorted(g for g in grain_components if not g.endswith(f".{ALL_ROWS_CONCEPT}"))
+        if derivation in GROUPING_DERIVATIONS
+        else []
+    )
+    keys = dict.fromkeys([*sorted(anchor_keys), *carried_spans, *grain])
+    return tuple(k for k in keys if k not in primary_members)
 
 
 def nulls_grouping_keys(mode: AggregateGroupingMode | None) -> bool:
@@ -157,10 +177,9 @@ class GroupAttrs:
     derivation: Derivation | None = None
     grain_components: frozenset[str] = frozenset()
     label: str = ""
-    members: tuple[str, ...] = ()
     primary_members: tuple[str, ...] = ()
-    # See `GroupBucket.carried_keys`.
-    carried_keys: tuple[str, ...] = ()
+    # See `GroupBucket.carried_spans`.
+    carried_spans: tuple[str, ...] = ()
     member_depths: dict[str, DepthLabel] = field(default_factory=dict)
     # For an aggregate group, the row grain its inputs must be normalized to
     # before aggregation. This is the grouping grain plus the natural grain of
@@ -197,6 +216,8 @@ class GroupAttrs:
     extent_spans: frozenset[str] = frozenset()
     # Set on a single-entity dimension ROOT group: the entity's key(s).
     dim_keys: frozenset[str] = frozenset()
+    # See `GroupBucket.anchor_keys`.
+    anchor_keys: frozenset[str] = frozenset()
     # Set on a ROOT group, and on a rowset boundary's region domain.
     reason: RootReason | None = None
     # Populated for non-FINAL groups after `_compute_concept_sets`.
@@ -204,6 +225,20 @@ class GroupAttrs:
     # Members of the row-preserving input groups this aggregate computes
     # inline: every reader did, so those groups were never built.
     inlined_members: tuple[str, ...] = ()
+
+    @property
+    def carried_keys(self) -> tuple[str, ...]:
+        return carried_keys(
+            self.derivation,
+            self.grain_components,
+            self.anchor_keys,
+            self.carried_spans,
+            self.primary_members,
+        )
+
+    @property
+    def members(self) -> tuple[str, ...]:
+        return (*self.primary_members, *self.carried_keys)
 
     @property
     def nulls_grouping_keys(self) -> bool:
@@ -331,12 +366,10 @@ class GroupBucket:
     # phase/label), keyed parallel to primary_members.
     primary_members: list[str] = field(default_factory=list)
     primary_node_ids: list[str] = field(default_factory=list)
-    # Keys the group carries without computing them, known before the demand
-    # pass: a grouping bucket's grain (`_carry_grain_keys`), the entity key a
-    # dimension peel joins back on, a region's span riding its domain and the
-    # scans beside it (`region_domains`). What the group emits in full is
-    # `output_concepts`, which readers after the demand pass ask (`carried`).
-    carried_keys: list[str] = field(default_factory=list)
+    # Spans of the extension regions this scan's rows pair with, riding it as
+    # join columns: a region's domain and the scans beside it
+    # (`region_domains.carry_region_spans`).
+    carried_spans: list[str] = field(default_factory=list)
     member_depths: dict[str, DepthLabel] = field(default_factory=dict)
     label: str = ""
     # Optional disambiguator for rules that produce multiple buckets sharing
@@ -355,6 +388,10 @@ class GroupBucket:
     grouping_mode: AggregateGroupingMode = AggregateGroupingMode.STANDARD
     extent_spans: frozenset[str] = frozenset()
     dim_keys: frozenset[str] = frozenset()
+    # The peel's key, as a column of its own, when the peel holds an argument
+    # of a projected scalar: the scalar is evaluated at the key's grain
+    # (`_anchor_scalars_to_dim_peel_key`).
+    anchor_keys: frozenset[str] = frozenset()
     reason: RootReason | None = None
     # What the demand pass has the group emit (`_compute_concept_sets`), hidden
     # pass-through columns included. Empty until it has run.
@@ -365,10 +402,19 @@ class GroupBucket:
         return nulls_grouping_keys(self.grouping_mode)
 
     @property
+    def carried_keys(self) -> tuple[str, ...]:
+        return carried_keys(
+            self.derivation,
+            self.grain_components,
+            self.anchor_keys,
+            tuple(self.carried_spans),
+            self.primary_members,
+        )
+
+    @property
     def carried(self) -> set[str]:
         """What the group holds that it does not compute: what the demand pass
-        has it emit once that has run, and before it the keys attached at
-        grouping."""
+        has it emit once that has run, and before it its keys."""
         if self.output_concepts:
             return set(self.output_concepts) - set(self.primary_members)
         return set(self.carried_keys)

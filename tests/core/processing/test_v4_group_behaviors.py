@@ -214,10 +214,7 @@ def test_final_node_declares_logical_output_grain_contract():
         group_graph,
         group_edges,
         attrs,
-        concept_graph,
-        concept_attrs,
         buckets,
-        conditions=[],
         mandatory_list=[customer_id, customer_name, total_revenue],
     )
 

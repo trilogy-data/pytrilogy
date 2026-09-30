@@ -188,29 +188,6 @@ def _assign_groups(
     return primary_group, buckets
 
 
-def _carry_grain_keys(
-    concept_graph: nx.DiGraph,
-    concept_attrs: dict[str, ConceptAttrs],
-    buckets: dict[str, GroupBucket],
-) -> None:
-    """A GROUP-BY / PARTITION-BY bucket carries its grain: the keys appear in
-    its SELECT beside what it computes. One of the writers of `carried_keys`;
-    see `GroupBucket.carried_keys`."""
-
-    def add(bucket: GroupBucket, address: str) -> None:
-        if address in bucket.primary_members or address in bucket.carried_keys:
-            return
-        if address not in concept_attrs:
-            return
-        bucket.carried_keys.append(address)
-        bucket.member_depths[address] = concept_attrs[address].depth_label
-
-    for bucket in buckets.values():
-        if bucket.derivation in GROUPING_DERIVATIONS:
-            for grain_addr in bucket.grain_components:
-                add(bucket, grain_addr)
-
-
 def _lineage_leaf_addresses(
     concept_graph: nx.DiGraph,
     concept_edges: EdgeMap,
@@ -305,9 +282,7 @@ def _fold_rollup_key_dims(
             tgt.primary_members.append(address)
             tgt.member_depths[address] = concept_attrs[node].depth_label
         primary_group[node] = target_gid
-    for gid in [
-        g for g, b in buckets.items() if not b.primary_node_ids and not b.carried_keys
-    ]:
+    for gid in [g for g, b in buckets.items() if not b.primary_node_ids]:
         del buckets[gid]
 
 
@@ -330,21 +305,20 @@ def _materialize_group_graph(
     group_edges: EdgeMap = {}
     attrs: dict[str, GroupAttrs] = {}
     for gid, bucket in buckets.items():
-        members = tuple(bucket.primary_members) + tuple(bucket.carried_keys)
         attrs[gid] = GroupAttrs(
             depth_label=bucket.depth_label,
             derivation=bucket.derivation,
             grain_components=bucket.grain_components,
             label=bucket.label,
-            members=members,
             primary_members=tuple(bucket.primary_members),
-            carried_keys=tuple(bucket.carried_keys),
+            carried_spans=tuple(bucket.carried_spans),
             member_depths=dict(bucket.member_depths),
             aggregate_input_grain=bucket.aggregate_input_grain,
             aggregate_distinct_addrs=frozenset(bucket.aggregate_distinct_addrs),
             grouping_mode=bucket.grouping_mode,
             extent_spans=bucket.extent_spans,
             dim_keys=bucket.dim_keys,
+            anchor_keys=bucket.anchor_keys,
             reason=bucket.reason,
         )
         group_graph.add_node(gid)
@@ -672,23 +646,15 @@ def _add_final_node(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
-    concept_graph: nx.DiGraph,
-    concept_attrs: dict[str, ConceptAttrs],
     buckets: dict[str, GroupBucket],
-    conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept],
 ) -> None:
-    """Attach a single FINAL sink that collects every non-d1 concept, with a
-    merge edge from every group. Added before `_inject_conditions` so a
+    """Attach a single FINAL sink with a merge edge from every group. Added before `_inject_conditions` so a
     cross-arm post-merge filter (which no pre-final group can host) can land on
     it; `_color_phases` colors the merge edges afterward like the rest."""
-    non_condition_members = tuple(
-        n for n in concept_graph.nodes if concept_attrs[n].depth_label != DepthLabel.D1
-    )
     group_graph.add_node(FINAL_NODE_ID)
     attrs[FINAL_NODE_ID] = GroupAttrs(
         depth_label=DepthLabel.FINAL,
-        members=non_condition_members,
         final_contract=FinalAssemblyContract(
             output_addresses=frozenset(c.address for c in mandatory_list),
             required_grain=frozenset(
@@ -2372,8 +2338,7 @@ def build_group_graph(
         keyspace,
     )
     split_carried_only_row_streams(buckets, primary_group, keyspace, environment)
-    _carry_grain_keys(concept_graph, concept_attrs, buckets)
-    trace_buckets("grain keys carried", buckets, primary_group)
+    trace_buckets("carried-only row streams split", buckets, primary_group)
     group_graph, attrs, group_edges = _materialize_group_graph(
         concept_graph,
         concept_edges,
@@ -2391,16 +2356,7 @@ def build_group_graph(
     # FINAL must exist before injection so a cross-arm post-merge filter can
     # land on it (no pre-final group can host one); `_color_phases` then colors
     # its merge edges along with the rest.
-    _add_final_node(
-        group_graph,
-        group_edges,
-        attrs,
-        concept_graph,
-        concept_attrs,
-        buckets,
-        conditions,
-        mandatory_list,
-    )
+    _add_final_node(group_graph, group_edges, attrs, buckets, mandatory_list)
     _attach_condition_roots_to_rowset_consumers(
         group_graph,
         group_edges,
@@ -2785,7 +2741,6 @@ def _synthetic_dimension_regraft_parent(
             grain_components=bucket.grain_components,
             label=bucket.label,
             primary_members=tuple(inputs),
-            members=tuple(inputs),
             dim_keys=bucket.dim_keys,
             reason=bucket.reason,
         )
@@ -2829,12 +2784,7 @@ def _absorb_group(
     a = attrs[gid]
     pa = attrs[parent_gid]
 
-    def _extend(dst: tuple[str, ...], src: tuple[str, ...]) -> tuple[str, ...]:
-        return tuple(dict.fromkeys([*dst, *src]))
-
-    pa.primary_members = _extend(pa.primary_members, a.primary_members)
-    pa.members = _extend(pa.members, a.members)
-    pa.carried_keys = _extend(pa.carried_keys, a.carried_keys)
+    pa.primary_members = tuple(dict.fromkeys([*pa.primary_members, *a.primary_members]))
     pa.member_depths = {**a.member_depths, **pa.member_depths}
 
     pb = buckets.get(parent_gid)
@@ -2844,9 +2794,6 @@ def _absorb_group(
             if addr not in pb.primary_members:
                 pb.primary_members.append(addr)
                 pb.primary_node_ids.append(node_id)
-        for addr in b.carried_keys:
-            if addr not in pb.carried_keys:
-                pb.carried_keys.append(addr)
         pb.member_depths = {**b.member_depths, **pb.member_depths}
 
     for succ in list(group_graph.successors(gid)):
