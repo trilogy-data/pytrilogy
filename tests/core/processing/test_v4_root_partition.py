@@ -109,6 +109,26 @@ union all select 1001, 1, 10, 7 union all select 1002, 1, 20, 2
 union all select 1003, 2, 10, 9''';
 """
 
+_CUSTOMERS = """
+key customer_id int;
+property customer_id.bal float;
+property customer_id.name string;
+key order_id int;
+property order_id.amount int;
+
+datasource customers (customer_id: customer_id, bal: bal, name: name)
+grain (customer_id)
+query '''select 1 as customer_id, 100.0 as bal, 'ann' as name
+union all select 2, 300.0, 'bob' union all select 3, 500.0, 'cat' ''';
+
+datasource orders (order_id: order_id, customer_id: customer_id, amount: amount)
+grain (order_id)
+query '''select 100 as order_id, 1 as customer_id, 10 as amount
+union all select 101, 2, 20 union all select 102, 2, 30 union all select 103, 3, 40''';
+
+auto avg_bal <- avg(bal) by *;
+"""
+
 _UNION = """
 key cid int;
 property cid.cname string;
@@ -276,10 +296,53 @@ def test_cluster_a_domain_carries_whole_rides_the_row_stream():
     ]
 
 
-def test_condition_aggregate_at_a_composite_grain_keys_a_peel():
-    _, rows = _trace(
+def test_condition_aggregate_at_a_composite_grain_keys_no_peel():
+    trace, rows = _trace(
         "where sum(qty) by part_id, supplier_id > 5"
         " select part_id, supplier_id, supply_cost order by part_id asc;",
         _PARTSUPP,
     )
+    assert not [g for g in _built(trace) if ":dim:" in g]
     assert rows == [(1, 10, 1.5), (2, 10, 3.5)]
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        # a filter's argument alone anchors no scan of its own
+        (
+            (
+                "where count(order_id) by customer_id > 1 and bal > 150"
+                " select customer_id, count(order_id) as n;"
+            ),
+            [(2, 2)],
+        ),
+        (
+            (
+                "where sum(amount) by customer_id > 15 and bal > 150"
+                " select customer_id, sum(amount) as total order by customer_id asc;"
+            ),
+            [(2, 50), (3, 40)],
+        ),
+        # beside an output it rides that output's peel
+        (
+            (
+                "where count(order_id) by customer_id > 1 and bal > 150"
+                " select customer_id, name, count(order_id) as n;"
+            ),
+            [(2, "bob", 2)],
+        ),
+        # what a condition stage reads stays on the row stream its host reads
+        (
+            "where bal > avg_bal select customer_id, count(order_id) as n;",
+            [(3, 1)],
+        ),
+        (
+            "where bal > avg_bal select customer_id, name, bal, count(order_id) as n;",
+            [(3, "cat", 500.0, 1)],
+        ),
+    ],
+)
+def test_filter_argument_fd_on_the_grouping_key(query: str, expected: list[tuple]):
+    _, rows = _trace(query, _CUSTOMERS)
+    assert rows == expected

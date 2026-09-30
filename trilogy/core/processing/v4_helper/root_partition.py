@@ -785,6 +785,7 @@ def _split_root_dimension_clusters(
     keyspace: Keyspace,
     domains: list[RegionDomain],
     concept_graph: nx.DiGraph,
+    condition_roots: set[str],
 ) -> None:
     """Peel single-entity FD dimension clusters out of a keyed ROOT bucket into
     their own ``grp:root:root:dim:<entity_key>`` ROOT buckets.
@@ -801,9 +802,9 @@ def _split_root_dimension_clusters(
     stream keyed by it is what the cluster joins back to. Any depth counts. A
     condition-phase aggregate's grain is the axis its population twin merges
     into FINAL on (tpc-ds q11: customer attributes beside four HAVING sums by
-    `customer.sk`), so its key is a join column like a d0 aggregate's, and a
-    composite grain's keys are too. Each such cluster becomes its own ROOT
-    bucket, per entity. A member FD by two
+    `customer.sk`), so its key is a join column like a d0 aggregate's. A
+    composite key comes from a d0 grain only. Each such cluster becomes its
+    own ROOT bucket, per entity. A member FD by two
     incomparable entities only co-occurs through the fact and stays put.
 
     A region domain that holds a cluster whole takes it (`_domain_holding`).
@@ -824,14 +825,6 @@ def _split_root_dimension_clusters(
         and bucket.depth_label == DepthLabel.D0
     ]
     d0_grouping_grains = [bucket.grain_components for bucket in d0_grouping_buckets]
-    grouping_grains = sorted(
-        {
-            bucket.grain_components
-            for bucket in buckets.values()
-            if bucket.derivation in GROUPING_DERIVATIONS
-        },
-        key=sorted,
-    )
     for gid in list(buckets):
         bucket = buckets[gid]
         if bucket.reason is not RootReason.ROW_STREAM:
@@ -861,22 +854,32 @@ def _split_root_dimension_clusters(
                 for grain in finer_filter_grains
             )
         ]
-        # Composite dim keys: a downstream grouping grain whose components all
+        # Composite dim keys: a downstream d0 grouping grain whose components all
         # live in this bucket. Members FD by the whole grain but by no single
         # entity peel onto it. The same bound as above: a grain that determines
-        # every other member is the bucket's own row key.
+        # every other member is the bucket's own row key. d0 only: keyed by a
+        # condition-phase aggregate's composite grain, the peel reaches FINAL
+        # beside the row stream the WHERE filters and both are built (tpc-h
+        # q20 with its keys selected: 2 CTEs to 6).
         composite_grains = [
             grain
-            for grain in grouping_grains
+            for grain in d0_grouping_grains
             if len(grain) > 1
             and grain <= member_addrs
             and _peels_a_cluster(grain, member_addrs, environment)
         ]
         if not candidates and not composite_grains:
             continue
+        # a condition stage's scan is sourced beside the row stream that
+        # keeps its roots: a host reading one reads it off the row stream
+        condition_held = {
+            addr
+            for addr, node in zip(bucket.primary_members, bucket.primary_node_ids)
+            if node in condition_roots
+        }
         assignment: dict[str, frozenset[str]] = {}
         for addr in member_addrs:
-            if addr in candidates:
+            if addr in candidates or addr in condition_held:
                 continue
             # Peel a SELECTED dimension column, OR a post-aggregate-only arg: a
             # filter-only HAVING arg (a post-aggregate WHERE arg the query never
@@ -955,10 +958,15 @@ def _split_root_dimension_clusters(
         moved: set[int] = set()
         for key, indices in clusters.items():
             node_ids = [bucket.primary_node_ids[idx] for idx in indices]
+            members = [bucket.primary_members[idx] for idx in indices]
+            # a filter's arguments alone: no output reads the scan, so
+            # nothing joins it back to the rows it filters
+            if not output_addresses & set(members):
+                continue
             domain = _domain_holding(
                 key,
                 node_ids,
-                [bucket.primary_members[idx] for idx in indices],
+                members,
                 bucket.label,
                 domains,
                 concept_graph,
@@ -1102,6 +1110,7 @@ def partition_root_demand(
         keyspace,
         domains,
         concept_graph,
+        set().union(*roots_by_stage.values()),
     )
     trace_buckets("entity clusters peeled", buckets, primary_group)
     scans = _condition_scans(concept_attrs, roots_by_stage)
