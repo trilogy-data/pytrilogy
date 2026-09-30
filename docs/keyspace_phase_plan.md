@@ -100,7 +100,7 @@ The keyspace is a model-level value so `SpanScope` can carry it whole (span scop
 
 ### Region domains (phase 4; `v4_helper/region_domains.py`, `group_graph`)
 
-A live, demanded region with own rows gets a ROOT bucket of its own, the region's **domain** (id `grp:root:root:∅:extent:<spans>`, `GroupAttrs.extent_spans`). The exception is a region whose spans an authored coalescing relation already unions (`union join ocust = cid` IS that key's domain).
+A live, demanded region with own rows gets a ROOT bucket of its own, the region's **domain** (id `grp:root:root:∅:extent:<spans>`, `GroupAttrs.extent_spans`). Every demanded region with rows of its own has a domain, and `region_domains.DomainKind` says where its rows come from: a bucket of its own (`OWN`, the case described here), the scope's row stream when it sources nothing absent on the region (`ROW_STREAM`), an unsplit rowset boundary (`BOUNDARY`), an authored coalescing relation that already unions its spans (`RELATION`: `union join ocust = cid` IS that key's domain), or the padded plan standing in (`PADDED`: a materialized rollup, a WHERE atom no host can apply to the domain).
 
 ```
 grp:root:root:∅                          (customer_id, delivery_date)  solid: orders rows only
