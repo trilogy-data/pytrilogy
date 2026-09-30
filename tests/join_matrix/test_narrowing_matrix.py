@@ -9,6 +9,8 @@ cells rule intersection semantics — lying declaration = author error).
 Pinned contracts:
 - EQUAL (non-partial `merge`) narrows by default: FULL renders INNER, rows
   unchanged vs the un-narrowed plan.
+- `equal join a = b` is the same declaration scoped to one query and narrows
+  the same way.
 - UNION (`union join`) never narrows, flag or not — the declaration says the
   domains may diverge even when today's data happens to match.
 - flag off (opt-out): EQUAL keeps the preserving FULL.
@@ -79,6 +81,7 @@ def _oracle() -> list[tuple]:
 
 
 EQUAL_QUERY = HEAD + "merge b.r_key into a.l_key;\n" + SELECT
+EQUAL_JOIN_QUERY = HEAD + UNION_SELECT + " equal join a.l_key = b.r_key;"
 UNION_QUERY = HEAD + UNION_SELECT + " union join a.l_key = b.r_key;"
 
 
@@ -91,6 +94,19 @@ def test_equal_declaration_narrows_to_inner(tmp_path: Path):
 
 def test_equal_declaration_flag_off_keeps_full(tmp_path: Path):
     sql, rows = _run(_write_models(tmp_path), EQUAL_QUERY, narrow=False)
+    assert "FULL JOIN" in sql, sql
+    assert rows == _oracle(), rows
+
+
+def test_scoped_equal_join_narrows_to_inner(tmp_path: Path):
+    sql, rows = _run(_write_models(tmp_path), EQUAL_JOIN_QUERY, narrow=True)
+    assert "FULL JOIN" not in sql, sql
+    assert "INNER JOIN" in sql, sql
+    assert rows == _oracle(), rows
+
+
+def test_scoped_equal_join_flag_off_keeps_full(tmp_path: Path):
+    sql, rows = _run(_write_models(tmp_path), EQUAL_JOIN_QUERY, narrow=False)
     assert "FULL JOIN" in sql, sql
     assert rows == _oracle(), rows
 

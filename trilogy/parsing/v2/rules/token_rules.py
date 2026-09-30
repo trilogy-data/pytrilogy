@@ -145,6 +145,7 @@ def PARSE_JOIN_TYPE(token: SyntaxToken, context: RuleContext) -> JoinType:
         "cross": JoinType.CROSS,
         "subset": JoinType.SUBSET,
         "union": JoinType.UNION,
+        "equal": JoinType.EQUAL,
     }[token.value.strip().lower()]
 
 

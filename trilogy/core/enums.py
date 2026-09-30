@@ -164,12 +164,15 @@ class JoinType(Enum):
     RIGHT_OUTER = "right outer"
     CROSS = "cross"
     # Relation DECLARATIONS (docs/subset_union_join_design.md): domain knowledge,
-    # not row intent. Parse-level only — the join-clause hydrator normalizes
-    # SUBSET(a ⊆ b) to the superset-anchored LEFT_OUTER relation (`merge a into
-    # ~b`) and UNION (disjoint-capable domains) to FULL; neither may reach SQL
-    # rendering.
+    # not row intent. SUBSET and UNION are parse-level only — the join-clause
+    # hydrator normalizes SUBSET(a ⊆ b) to the superset-anchored LEFT_OUTER
+    # relation (`merge a into ~b`) and UNION (disjoint-capable domains) to
+    # FULL. EQUAL (`equal join a = b`, one domain: `merge a into b` scoped to
+    # the query) is carried as itself, since a statement-scoped FULL tuple
+    # declares INCOMPARABLE. None of the three may reach SQL rendering.
     SUBSET = "subset"
     UNION = "union"
+    EQUAL = "equal"
 
     @property
     def merge_modifiers(self) -> list[Modifier]:

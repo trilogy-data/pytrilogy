@@ -622,16 +622,20 @@ def _pair_side_fully_matches(
     # subset side fully matches it. An external filter on the rowset output
     # fails the boundary test and falls through below.
     #
-    # Gated on a strict directional subset between the two own addresses: a
-    # scoped-join merge collapses every anchor-joined key onto one canonical,
-    # so two independent rowsets joined to a common anchor land in each
-    # other's pseudonym closure and `_proven_subset_of` would falsely read one
-    # sibling as the superset of the other. The own-address relation is
-    # UNKNOWN for such siblings and SUBSET only toward the genuine anchor.
-    if (
-        _rowset_definition_boundary(sup_concept, sup_cte)
-        and domain_graph.relation(sub_concept.address, sup_concept.address)
+    # Gated on a strict directional subset between the two own addresses, or
+    # an authored identity (`equal join`: one domain, so the other side is a
+    # subset of it however it is filtered): a scoped-join merge collapses
+    # every anchor-joined key onto one canonical, so two independent rowsets
+    # joined to a common anchor land in each other's pseudonym closure and
+    # `_proven_subset_of` would falsely read one sibling as the superset of
+    # the other. The own-address relation is UNKNOWN for such siblings and
+    # SUBSET only toward the genuine anchor. A resolved EQUAL that nobody
+    # declared (a `subset join a = rs.k` opposed by the filtered body's own
+    # `rs.k ⊑ a`) is a lying declaration, and stays preserving.
+    if _rowset_definition_boundary(sup_concept, sup_cte) and (
+        domain_graph.relation(sub_concept.address, sup_concept.address)
         is ResolvedRelation.SUBSET
+        or domain_graph.declared_equal(sub_concept.address, sup_concept.address)
     ):
         return True
     if not _complete_values(sup_concept, sup_cte, domain_graph):

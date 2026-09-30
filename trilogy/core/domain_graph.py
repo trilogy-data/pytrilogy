@@ -131,9 +131,14 @@ def declared_edge_from_join(
     anchors on `s` with `t` the subset side, so it declares t ⊑ s. FULL
     declares EQUAL when authored globally (`merge a into b` asserts one
     identity) but INCOMPARABLE at query scope (`union join` / `full join`
-    assert neither domain contains the other). Other join types declare
+    assert neither domain contains the other); EQUAL (`equal join a = b`) is
+    that same identity declared at query scope. Other join types declare
     nothing about domains.
     """
+    if join_type is JoinType.EQUAL:
+        return DomainEdge(
+            source=source, target=target, relation=DomainRelation.EQUAL, scope=scope
+        )
     if join_type is JoinType.LEFT_OUTER:
         return DomainEdge(
             source=target, target=source, relation=DomainRelation.SUBSET, scope=scope
@@ -357,6 +362,23 @@ class DomainGraph:
             and e.scope is EdgeScope.STATEMENT
             for addr in (e.source, e.target)
         }
+
+    def declared_equal(self, left: str, right: str) -> bool:
+        """`left` and `right` are one domain by an AUTHORED identity (`merge a
+        into b`, `equal join a = b`), reached through aliases: same ≡-class,
+        and a declared EQUAL edge in it. A class two opposed subset paths
+        close (a declared `a ⊆ rs.k` against a filtered body's `rs.k ⊑ a`)
+        resolves EQUAL too, but nobody declared it."""
+        rep = self._equivalence_classes()
+        cls = rep.get(left, left)
+        if cls != rep.get(right, right):
+            return False
+        return any(
+            e.relation is DomainRelation.EQUAL
+            and e.provenance is EdgeProvenance.DECLARED
+            and rep.get(e.source, e.source) == cls
+            for e in self.edges
+        )
 
     def equal_narrowable_keys(self) -> set[str]:
         """Canonicalized endpoints of EQUAL declarations, minus keys also
