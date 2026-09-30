@@ -91,6 +91,11 @@ def test_rowset_body_is_a_nested_plan_with_its_own_search():
     plans = trace["plans"]
     assert [p["depth"] for p in plans] == [0, 1]
     assert plans[1]["parent"] == plans[0]["id"]
+    assert plans[1]["parent_context"].startswith("grp:rowset:")
+    rowset_built = [
+        s for s in trace["steps"] if s["title"] == "built " + plans[1]["parent_context"]
+    ]
+    assert rowset_built and rowset_built[0]["plan"] == plans[0]["id"]
     inner = [s for s in trace["steps"] if s["plan"] == plans[1]["id"]]
     assert {"keyspace", "source", "final"} <= {s["phase"] for s in inner}
     searches = [s for s in inner if s["title"].startswith("network search")]

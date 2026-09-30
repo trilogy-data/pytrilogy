@@ -57,6 +57,7 @@ button.on { background: var(--accent-soft); border-color: var(--accent); }
 .chip.bad { background: var(--bad-soft); border-color: var(--bad); }
 .chip.domain { background: var(--domain-soft); border-color: var(--domain); color: var(--domain); }
 .chip.accent { background: var(--accent-soft); border-color: var(--accent); }
+.chip.hosted { border-style: dashed; opacity: .75; }
 .phase { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
 .step { display: flex; gap: 6px; align-items: baseline; padding: 6px 10px; cursor: pointer; border-bottom: 1px solid var(--line); }
 .step.heat { background: color-mix(in srgb, var(--heat) calc(var(--h) * 24%), transparent); }
@@ -70,6 +71,7 @@ button.on { background: var(--accent-soft); border-color: var(--accent); }
 .step.dropped .title { text-decoration: line-through; color: var(--muted); }
 .ctx { padding: 5px 10px 3px; font-size: 11px; color: var(--grp); background: var(--grp-soft); border-bottom: 1px solid var(--line);
   font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.ctx.sub { color: var(--accent); background: var(--accent-soft); }
 .origin { font-family: var(--mono); font-size: 11px; color: var(--muted); margin: -4px 0 10px; overflow-wrap: anywhere; }
 .origin b { color: var(--ink); font-weight: 600; }
 a.step-link { color: var(--accent); cursor: pointer; text-decoration: underline; }
@@ -177,6 +179,10 @@ const grpChip = gid => `<span class="chip grp" data-group="${esc(gid)}" title="$
 const ctxChip = ctx => ctx === 'FINAL' ? chip('FINAL assembly', 'accent') : grpChip(ctx);
 const stepLink = seq => seq ? `<a class="step-link" data-seq="${seq}">step ${seq}</a>` : '<span class="small">—</span>';
 const chips = (arr, cls = '') => (arr || []).length ? arr.map(a => chip(a, cls)).join('') : '<span class="small">—</span>';
+// A grouping grain splits into row identity and outputs hosted through the GROUP BY.
+const splitGrain = x => { const h = new Set(x.hosted_grain || []); const g = x.grain_components || []; return [g.filter(c => !h.has(c)), g.filter(c => h.has(c))]; };
+const grainChips = x => { const [id, hosted] = splitGrain(x); return chips(id) + (hosted.length ? ` <span class="small">+ hosted</span> ${chips(hosted, 'hosted')}` : ''); };
+const grainText = x => { const [id, hosted] = splitGrain(x); const s = l => l.map(c => c.replace(/^local\./, '')).join(', '); return s(id) + (hosted.length ? ` (+${s(hosted)})` : ''); };
 const short = (s, n = 40) => { s = String(s); if (s.length <= n) return s; const k = n - 1, h = Math.ceil(k / 2); return s.slice(0, h) + '…' + s.slice(s.length - (k - h)); };
 const stripGrp = id => String(id).replace(/^grp:/, '');
 const isPrim = v => v === null || ['string', 'number', 'boolean'].includes(typeof v);
@@ -216,8 +222,8 @@ const notInFinal = s => s.phase === 'node' && S.inFinal[s.plan] && !S.inFinal[s.
 
 function load(trace) {
   S.trace = trace;
-  S.planLabel = { null: 'statement' }; S.planDepth = { null: 0 };
-  for (const p of trace.plans) { S.planLabel[p.id] = p.label; S.planDepth[p.id] = p.depth; }
+  S.planLabel = { null: 'statement' }; S.planDepth = { null: 0 }; S.planById = {};
+  for (const p of trace.plans) { const r = rowsetName(p.parent_context); S.planLabel[p.id] = r ? `rowset ${r} · ${p.label}` : p.label; S.planDepth[p.id] = p.depth; S.planById[p.id] = p; }
   S.phases = new Set(trace.phases);
   S.virt = {}; S.built = {}; S.inFinal = {};
   for (const s of trace.steps) {
@@ -227,7 +233,7 @@ function load(trace) {
   }
   const sel = $('#planSel');
   sel.innerHTML = `<option value="all">all plans</option>` + trace.plans.map(p =>
-    `<option value="${p.id}">${'  '.repeat(p.depth)}${esc(short(p.label, 60))}</option>`).join('') + `<option value="null">statement (resolve, CTEs, SQL)</option>`;
+    `<option value="${p.id}">${'  '.repeat(p.depth)}${esc(short(S.planLabel[p.id], 60))}</option>`).join('') + `<option value="null">statement (resolve, CTEs, SQL)</option>`;
   $('#phaseChips').innerHTML = trace.phases.map(ph =>
     `<button class="on" data-ph="${ph}" style="border-left:4px solid ${PHASE_COLORS[ph] || '#999'}">${ph}</button>`).join(' ');
   document.querySelectorAll('#phaseChips button').forEach(b => b.onclick = () => {
@@ -251,13 +257,12 @@ function renderSteps() {
   const total = S.trace.total_ms != null ? `<span class="small" style="width:100%">planner ${fmtMs(S.trace.total_ms)}, recorder time excluded</span>` : '';
   const pipe = `<div class="pipe">${total}${S.trace.phases.map(ph => `<button data-ph="${ph}" style="border-left:4px solid ${PHASE_COLORS[ph]}">${ph} <span class="small">${counts[ph] || 0}${phaseMs[ph] != null ? ' · ' + fmtMs(phaseMs[ph]) : ''}</span></button>`).join('')}</div>`;
   const maxMs = Math.max(0, ...S.steps.map(s => s.ms ?? 0));
-  let lastCtx = null;
+  const chains = S.steps.map(blockChain); let open = [];
   const list = S.steps.map((s, i) => {
-    const pad = 10 + 10 * (S.planDepth[s.plan] || 0); const key = `${s.plan}|${s.context}`; let hdr = '';
-    if (key !== lastCtx) {
-      lastCtx = key;
-      if (s.context) hdr = `<div class="ctx" data-group="${esc(s.context)}" style="padding-left:${pad}px" title="${esc(s.context)}"><span class="label">${s.context === 'FINAL' ? '▾ FINAL assembly' : '▾ building ' + esc(stripGrp(s.context))}</span>${durSpan(blockMs(i), 'this block, nested plans included')}</div>`;
-    }
+    const pad = 10 + 10 * (S.planDepth[s.plan] || 0); const chain = chains[i];
+    let keep = 0; while (keep < open.length && keep < chain.length && open[keep].key === chain[keep].key) keep++;
+    const hdr = chain.slice(keep).map(b => blockHeader(b, blockMs(chains, i, b.key))).join('');
+    open = chain;
     const miss = notInFinal(s); const title = s.title.replace(/grp:/g, '');
     const heat = s.ms != null && maxMs > 0 ? ` heat" style="--h:${(s.ms / maxMs).toFixed(3)};` : '" style="';
     return hdr + `<div class="step ${i === S.idx ? 'cur' : ''} ${miss ? 'dropped' : ''}${heat}padding-left:${pad + (s.context ? 12 : 0)}px" data-i="${i}">
@@ -268,13 +273,34 @@ function renderSteps() {
   document.querySelectorAll('#steps .step').forEach(el => el.onclick = () => { S.idx = +el.dataset.i; show(); });
   document.querySelectorAll('#steps .pipe button').forEach(b => b.onclick = () => { const i = S.steps.findIndex(s => s.phase === b.dataset.ph); if (i >= 0) { S.idx = i; show(); } });
 }
-// a context header's time: its run of steps, with any deeper (nested) plan's steps inside it
-function blockMs(i) {
-  const head = S.steps[i], depth = S.planDepth[head.plan] || 0; let ms = 0, any = false;
-  for (let j = i; j < S.steps.length; j++) {
-    const s = S.steps[j];
-    if ((S.planDepth[s.plan] || 0) <= depth && (s.plan !== head.plan || s.context !== head.context)) break;
-    if (s.ms != null) { ms += s.ms; any = true; }
+// The blocks a step sits in, outermost first: each enclosing plan's build context
+// when the nested plan opened, the nested plan itself, then the step's own context.
+function blockChain(s) {
+  const chain = [];
+  for (let p = S.planById[s.plan]; p && p.parent; p = S.planById[p.parent]) {
+    chain.unshift({ key: `${p.id}|plan`, plan: p.id, subplan: true });
+    if (p.parent_context) chain.unshift({ key: `${p.parent}|${p.parent_context}`, plan: p.parent, context: p.parent_context });
+  }
+  if (s.context) chain.push({ key: `${s.plan}|${s.context}`, plan: s.plan, context: s.context });
+  return chain;
+}
+// a rowset boundary group's id ends in `:rowset:<name>`
+const rowsetName = gid => ((gid || '').match(/:rowset:([^:|]+)$/) || [])[1];
+function blockHeader(b, ms) {
+  const pad = 10 + 10 * (S.planDepth[b.plan] || 0);
+  if (b.subplan) {
+    const p = S.planById[b.plan], r = rowsetName(p.parent_context);
+    return `<div class="ctx sub" style="padding-left:${pad}px" title="${esc(p.label)}"><span class="label">▾ ${r ? 'rowset ' + esc(r) + ' · ' : ''}sub-plan ${esc(b.plan)} · ${esc(p.label.replace(/^plan: /, ''))}</span>${durSpan(ms, 'this nested plan')}</div>`;
+  }
+  const r = rowsetName(b.context);
+  const label = b.context === 'FINAL' ? '▾ FINAL assembly' : r ? '▾ building rowset ' + esc(r) : '▾ building ' + esc(stripGrp(b.context));
+  return `<div class="ctx" data-group="${esc(b.context)}" style="padding-left:${pad}px" title="${esc(b.context)}"><span class="label">${label}</span>${durSpan(ms, 'this block, nested plans included')}</div>`;
+}
+// a block's time: the run of steps from i that sit inside it, nested plans included
+function blockMs(chains, i, key) {
+  let ms = 0, any = false;
+  for (let j = i; j < S.steps.length && chains[j].some(b => b.key === key); j++) {
+    const t = S.steps[j].ms; if (t != null) { ms += t; any = true; }
   }
   return any ? ms : null;
 }
@@ -348,7 +374,7 @@ function renderGrouping(step) {
     const memberChips = (list, plist) => list.map(m => chip(m, plist && !plist.includes(m) ? 'ok' : '')).join('') + (plist ? plist.filter(m => !list.includes(m)).map(m => `<span class="chip bad"><s>${esc(m)}</s></span>`).join('') : '');
     return `<div class="card ${cls} ${x.extent_spans.length ? 'domain' : ''}" data-bucket="${esc(gid)}"><h4>${esc(stripGrp(gid))}</h4>
       <div class="kv"><div class="k">kind</div><div>${chip(x.derivation)}${chip(x.depth_label)}${x.label ? chip('[' + x.label + ']') : ''}${x.reason ? chip(x.reason, 'ok') : ''}</div>
-      <div class="k">grain</div><div>${chips(x.grain_components)}</div>
+      <div class="k">grain</div><div>${grainChips(x)}</div>
       <div class="k">primary</div><div>${b ? memberChips(b.primary_members, p && p.primary_members) : chips(x.primary_members)}</div>
       ${(x.carried_spans.length || (p && p.carried_spans.length)) ? `<div class="k">carried spans</div><div>${b ? memberChips(b.carried_spans, p && p.carried_spans) : chips(x.carried_spans)}</div>` : ''}
       ${x.extent_spans.length ? `<div class="k">region domain</div><div>${chips(x.extent_spans, 'domain')}</div>` : ''}
@@ -376,7 +402,7 @@ function renderGraphStep(step) {
 }
 function renderGroupTable(g, diff) {
   const rows = Object.entries(g.nodes).map(([id, a]) => `<tr data-gnode="${esc(id)}" class="${diff.addedNodes.has(id) ? 'sel-row' : ''}"><td class="mono">${esc(stripGrp(id))}${a && a.extent_spans && a.extent_spans.length ? chip('domain', 'domain') : ''}</td>
-    <td>${a ? esc(a.derivation || 'final') + ' ' + esc(a.depth_label) : ''}</td><td>${a ? chips(a.grain_components) : ''}</td><td>${a ? chips(a.output_concepts) : ''}</td><td>${a ? chips(a.condition_atoms) : ''}</td></tr>`).join('');
+    <td>${a ? esc(a.derivation || 'final') + ' ' + esc(a.depth_label) : ''}</td><td>${a ? grainChips(a) : ''}</td><td>${a ? chips(a.output_concepts) : ''}</td><td>${a ? chips(a.condition_atoms) : ''}</td></tr>`).join('');
   return `<h3>groups</h3><table><tr><th>group</th><th>kind</th><th>grain</th><th>outputs</th><th>atoms</th></tr>${rows}</table>`;
 }
 function diffGraph(prev, cur) {
@@ -418,7 +444,7 @@ function nodeLabel(id, a, isGroup) {
   const lines = [`${kind}${a.label ? ' [' + a.label + ']' : ''}${a.extent_spans && a.extent_spans.length ? ' · domain' : ''}`];
   const members = (a.primary_members && a.primary_members.length ? a.primary_members : a.members || []).map(m => nice(m).replace(/^local\./, ''));
   if (members.length) lines.push(short(members.join(', '), 40));
-  if (a.grain_components && a.grain_components.length) lines.push('@ ' + short(a.grain_components.map(m => m.replace(/^local\./, '')).join(', '), 40));
+  if (a.grain_components && a.grain_components.length) lines.push('@ ' + short(grainText(a), 40));
   return lines;
 }
 function drawGraph(el, g, diff, isGroup, onSelect) {
@@ -495,7 +521,7 @@ function renderSource(step) {
 function renderNode(step) {
   const d = step.data; const a = d.attrs;
   const status = S.inFinal[step.plan] ? (notInFinal(step) ? chip('node not in the FINAL tree', 'bad') : chip('in the FINAL tree', 'ok')) : '';
-  return `<div class="meta">${grpChip(d.group)}${status}${chip(d.derivation)}${chip(a.depth_label)}${a.extent_spans.length ? chip('region domain ' + a.extent_spans.join(','), 'domain') : ''}${a.grain_components.length ? chip('@ ' + a.grain_components.join(','), '') : ''}</div>
+  return `<div class="meta">${grpChip(d.group)}${status}${chip(d.derivation)}${chip(a.depth_label)}${a.extent_spans.length ? chip('region domain ' + a.extent_spans.join(','), 'domain') : ''}${a.grain_components.length ? chip('@ ' + grainText(a), '') : ''}</div>
     <div class="two"><div><h3>outputs</h3>${chips(d.outputs, 'accent')}<h3>needed</h3>${chips(d.needed)}<h3>parents (groups)</h3>${chips(d.parent_groups.map(stripGrp))}<h3>join keys</h3>${chips(d.join_keys)}</div>
     <div><h3>atoms injected here</h3>${d.atoms.length ? d.atoms.map(x => `<pre>${esc(x)}</pre>`).join('') : '<span class="small">none</span>'}${d.preexisting ? `<h3>preexisting (applied above)</h3><pre>${esc(d.preexisting)}</pre>` : ''}<h3>span scope during build</h3>${renderValue(d.span_scope)}</div></div>
     <h3>built node</h3>${nodeTree(d.node, 'node' + step.seq)}<h3>group attrs</h3><details><summary class="small">show</summary>${renderValue(a)}</details>`;
