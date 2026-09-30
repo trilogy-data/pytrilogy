@@ -801,8 +801,9 @@ def _split_root_dimension_clusters(
     stream keyed by it is what the cluster joins back to. Any depth counts. A
     condition-phase aggregate's grain is the axis its population twin merges
     into FINAL on (tpc-ds q11: customer attributes beside four HAVING sums by
-    `customer.sk`), so its key is a join column like a d0 aggregate's. Each
-    such cluster becomes its own ROOT bucket, per entity. A member FD by two
+    `customer.sk`), so its key is a join column like a d0 aggregate's, and a
+    composite grain's keys are too. Each such cluster becomes its own ROOT
+    bucket, per entity. A member FD by two
     incomparable entities only co-occurs through the fact and stays put.
 
     A region domain that holds a cluster whole takes it (`_domain_holding`).
@@ -823,6 +824,14 @@ def _split_root_dimension_clusters(
         and bucket.depth_label == DepthLabel.D0
     ]
     d0_grouping_grains = [bucket.grain_components for bucket in d0_grouping_buckets]
+    grouping_grains = sorted(
+        {
+            bucket.grain_components
+            for bucket in buckets.values()
+            if bucket.derivation in GROUPING_DERIVATIONS
+        },
+        key=sorted,
+    )
     for gid in list(buckets):
         bucket = buckets[gid]
         if bucket.reason is not RootReason.ROW_STREAM:
@@ -852,13 +861,13 @@ def _split_root_dimension_clusters(
                 for grain in finer_filter_grains
             )
         ]
-        # Composite dim keys: a downstream d0 grouping grain whose components all
+        # Composite dim keys: a downstream grouping grain whose components all
         # live in this bucket. Members FD by the whole grain but by no single
         # entity peel onto it. The same bound as above: a grain that determines
         # every other member is the bucket's own row key.
         composite_grains = [
             grain
-            for grain in d0_grouping_grains
+            for grain in grouping_grains
             if len(grain) > 1
             and grain <= member_addrs
             and _peels_a_cluster(grain, member_addrs, environment)
@@ -998,12 +1007,13 @@ def _split_root_dimension_clusters(
 @dataclass
 class RootPartition:
     """What the partition decided that the group graph's wiring reads: each
-    condition stage's private scan, the roots it holds, and the
-    condition-phase nodes that read them."""
+    condition stage's private scan, the roots it holds, the condition-phase
+    nodes that read them, and where each demanded region's rows come from."""
 
     condition_scans: dict[int | None, str] = field(default_factory=dict)
     condition_roots: dict[int | None, set[str]] = field(default_factory=dict)
     condition_nodes: set[str] = field(default_factory=set)
+    domains: list[RegionDomain] = field(default_factory=list)
 
 
 @plan_trace.off_clock
@@ -1102,4 +1112,5 @@ def partition_root_demand(
         {stage: scan.group_id for stage, scan in scans.items()},
         roots_by_stage,
         condition_nodes,
+        domains,
     )

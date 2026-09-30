@@ -886,7 +886,9 @@ def _feeds_extra_signature_group(
     return False
 
 
-def _can_merge_nested_signatures(left: frozenset[str], right: frozenset[str]) -> bool:
+def _can_merge_nested_signatures(
+    left: frozenset[str], right: frozenset[str], root_gids: set[str]
+) -> bool:
     if not left or not right:
         return False
     if left <= right:
@@ -895,7 +897,7 @@ def _can_merge_nested_signatures(left: frozenset[str], right: frozenset[str]) ->
         smaller = right
     else:
         return False
-    return not any(gid.startswith("grp:root") for gid in smaller)
+    return not smaller & root_gids
 
 
 def _partition_by_signature_and_grain(
@@ -945,6 +947,12 @@ def _partition_by_signature_and_grain(
             if extra_signature is not None:
                 sig |= set(extra_signature(node))
             sigs.append(frozenset(sig))
+        # after the signatures: reading a stop is what assigns its group
+        root_gids = {
+            gid
+            for node, gid in primary_group.items()
+            if concept_attrs[node].derivation == Derivation.ROOT
+        }
         grains = [sub_items[i][1].grain_components for i in range(n)]
         merged: list[tuple[int, int]] = []
         for i in range(n):
@@ -955,7 +963,7 @@ def _partition_by_signature_and_grain(
                 )
                 signatures_nest = (
                     allow_signature_subset
-                    and _can_merge_nested_signatures(sigs[i], sigs[j])
+                    and _can_merge_nested_signatures(sigs[i], sigs[j], root_gids)
                 )
                 if not signatures_match and not signatures_nest:
                     continue

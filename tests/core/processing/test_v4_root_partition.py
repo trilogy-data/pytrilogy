@@ -90,6 +90,25 @@ grain (warehouse_id)
 query '''select 1 as warehouse_id, 'w1' as wname union all select 2, 'w2' ''';
 """
 
+_PARTSUPP = """
+key part_id int;
+key supplier_id int;
+property <part_id, supplier_id>.supply_cost float;
+key line_id int;
+property line_id.qty int;
+
+datasource partsupp (part_id: part_id, supplier_id: supplier_id, supply_cost: supply_cost)
+grain (part_id, supplier_id)
+query '''select 1 as part_id, 10 as supplier_id, 1.5 as supply_cost
+union all select 1, 20, 2.5 union all select 2, 10, 3.5''';
+
+datasource lines (line_id: line_id, part_id: part_id, supplier_id: supplier_id, qty: qty)
+grain (line_id)
+query '''select 1000 as line_id, 1 as part_id, 10 as supplier_id, 5 as qty
+union all select 1001, 1, 10, 7 union all select 1002, 1, 20, 2
+union all select 1003, 2, 10, 9''';
+"""
+
 _UNION = """
 key cid int;
 property cid.cname string;
@@ -255,3 +274,12 @@ def test_cluster_a_domain_carries_whole_rides_the_row_stream():
         (None, None, "C", None, None),
         (None, None, None, "south", None),
     ]
+
+
+def test_condition_aggregate_at_a_composite_grain_keys_a_peel():
+    _, rows = _trace(
+        "where sum(qty) by part_id, supplier_id > 5"
+        " select part_id, supplier_id, supply_cost order by part_id asc;",
+        _PARTSUPP,
+    )
+    assert rows == [(1, 10, 1.5), (2, 10, 3.5)]

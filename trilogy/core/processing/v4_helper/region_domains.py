@@ -510,6 +510,7 @@ def _carry(bucket: GroupBucket, span: str) -> None:
 def split_carried_only_row_streams(
     buckets: dict[str, GroupBucket],
     primary_group: dict[str, str],
+    domains: list[RegionDomain],
     keyspace: Keyspace,
     environment: BuildEnvironment,
 ) -> None:
@@ -521,13 +522,7 @@ def split_carried_only_row_streams(
     the solid rows and the rename is NULL for the region's unmatched member
     (`gamma` came back as `(None, 0, 0)`), while its source `item_desc` rode
     the domain beside it."""
-    domains = [
-        (bucket, region)
-        for bucket in list(buckets.values())
-        if bucket.extent_spans
-        and (region := keyspace.region_of(bucket.extent_spans)) is not None
-    ]
-    for domain, region in domains:
+    for domain, region in [(d.bucket, d.region) for d in domains if d.bucket]:
         for gid in list(buckets):
             bucket = buckets[gid]
             if (
