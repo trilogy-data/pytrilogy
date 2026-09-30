@@ -186,6 +186,22 @@ def test_cleanup_failure_is_logged_and_never_fails_a_good_publish(fake_remote, c
     assert "Could not remove staged object" in caplog.text
 
 
+def test_writer_that_never_staged_anything_fails_quietly(fake_remote, caplog):
+    class StrictRemote(FakeRemote):
+        def delete_file(self, path: str) -> None:
+            if path not in self.objects:
+                raise FileNotFoundError(f"Path does not exist '{path}'")
+            super().delete_file(path)
+
+    remote = fake_remote(StrictRemote(("bucket/trees/out.parquet",)))
+    with caplog.at_level("WARNING"), pytest.raises(
+        RuntimeError, match="Binder"
+    ), staged_write("gcs://bucket/trees/out.parquet"):
+        raise RuntimeError("Binder Error")
+    assert remote.objects["bucket/trees/out.parquet"] == b"old"
+    assert "Could not remove staged object" not in caplog.text
+
+
 def test_sweep_tolerates_a_listing_failure(fake_remote):
     """A store that will not list is no reason to refuse the write."""
 

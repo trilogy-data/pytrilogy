@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from trilogy.executor import Executor
     from trilogy.parser import parse
 
-__version__ = "0.3.372"
+__version__ = "0.3.373"
 
 __all__ = [
     "CONFIG",
