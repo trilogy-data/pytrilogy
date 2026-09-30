@@ -196,8 +196,7 @@ def _root_atoms_satisfiable_from(
 
 
 def _members_of(attrs: dict[str, GroupAttrs], gid: str) -> set[str]:
-    a = attrs[gid]
-    return set(a.primary_members) | set(a.carried_keys)
+    return set(_select_addresses(attrs[gid]))
 
 
 def _atoms_at(attrs: dict[str, GroupAttrs], gid: str) -> list[BoolExpr]:
@@ -609,7 +608,7 @@ def _accumulated_atoms_above(
         collapsing = anc_attrs.derivation in GROUPING_DERIVATIONS and not (
             nulls_grouping_keys(anc_attrs.grouping_mode)
         )
-        columns = set(anc_attrs.members) | set(anc_attrs.grain_components)
+        columns = _members_of(attrs, anc) | set(anc_attrs.grain_components)
         for atom in anc_attrs.condition_atoms:
             if collapsing and not ({c.address for c in atom.row_arguments} <= columns):
                 continue
@@ -913,7 +912,7 @@ def _condition_twins(attrs: dict[str, GroupAttrs], gid: str) -> list[str]:
         for other, o in attrs.items()
         if other not in (gid, FINAL_NODE_ID)
         and o.depth_label == DepthLabel.D1
-        and members & {*o.output_concepts, *o.primary_members, *o.carried_keys}
+        and members & {*_select_addresses(o), *o.primary_members}
     ]
 
 
@@ -2666,7 +2665,7 @@ def _filter_intrinsic_pushdown_safe(
             continue
         if attrs is None or environment is None:
             return False
-        supplied = frozenset().union(*(attrs[a].members for a in unfiltered))
+        supplied = frozenset().union(*(_members_of(attrs, a) for a in unfiltered))
         if not _consumer_reads(attrs[succ], environment) & supplied <= emitted:
             return False
     return True
@@ -2675,7 +2674,9 @@ def _filter_intrinsic_pushdown_safe(
 def _consumer_reads(consumer: GroupAttrs, environment: BuildEnvironment) -> set[str]:
     """The addresses a group reads off its parents: what it derives reads its
     arguments; its grain and what rides through it are read as themselves."""
-    read: set[str] = set(consumer.grain_components) | set(consumer.carried_keys)
+    read = set(consumer.grain_components) | (
+        set(_select_addresses(consumer)) - set(consumer.primary_members)
+    )
     for member in consumer.primary_members:
         concept = environment.concepts.get(member)
         if concept is not None and concept.lineage is not None:
@@ -3127,8 +3128,7 @@ def _cover_groups_for_mandatory(
         candidates.sort(
             key=lambda gid: (
                 sum(1 for a in nx.ancestors(group_graph, gid) if a in built),
-                addr in set(attrs[gid].primary_members)
-                or addr in set(attrs[gid].carried_keys),
+                addr in attrs[gid].members,
             ),
             reverse=True,
         )

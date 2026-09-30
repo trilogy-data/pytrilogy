@@ -1548,7 +1548,7 @@ def _anchor_scalars_to_dim_peel_key(
             if edge_kind(group_edges, pred, gid) == EdgeKind.LINEAGE
         ]
         keys = {
-            frozenset(attrs[pred].carried_keys) - region_join_keys
+            attrs[pred].anchor_keys - region_join_keys
             for pred in parents
             if facts[pred].derivation == Derivation.ROOT
         }
@@ -1882,28 +1882,10 @@ def _compute_concept_sets(
                     environment, cap, member, include_empty_grain=False
                 ):
                     cap.add(member)
-            # A dim-peel ROOT binds its entity key even though only the peeled
-            # members are its primaries (the key rides as a secondary member,
-            # outside the primary+source-grain capability). When a non-grouping
-            # consumer's row grain names that key (the spine-widened mixed
-            # scalar), the scan must be able to supply it or the consumer's
-            # merge goes keyless. Grouping consumers are excluded; they source
-            # their grain keys through their own fact parents.
-            # a dim peel's keys identify its rows: the axis it joins back on
+            # a dim peel's keys identify its rows, the axis it joins back on;
+            # a region's span rides the scan as the axis the region's rows do
             cap |= attrs[gid].dim_keys
-            for addr in attrs[gid].carried_keys:
-                if addr in cap:
-                    continue
-                if addr in region_join_keys:
-                    cap.add(addr)
-                    continue
-                if any(
-                    succ != FINAL_NODE_ID
-                    and addr in facts[succ].grain
-                    and facts[succ].derivation not in GROUPING_DERIVATIONS
-                    for succ in group_graph.successors(gid)
-                ):
-                    cap.add(addr)
+            cap |= region_join_keys & set(attrs[gid].carried_spans)
             io.capability[gid] = cap
             continue
         # A grouping group's grain component that is a STATEMENT-scoped join axis
@@ -1940,7 +1922,7 @@ def _compute_concept_sets(
         # a boundary split for a region carries the span its domain joins
         # back on, a handle of its own the statement never named
         if fact.derivation == Derivation.ROWSET:
-            cap |= region_join_keys & set(attrs[gid].carried_keys)
+            cap |= region_join_keys & set(attrs[gid].carried_spans)
         # a region's span riding HIDDEN on a solid fact scan (a secondary
         # member of a ROOT, `region_join_keys`) has no concept attributes of
         # its own, so the FD rule below cannot see that the fact binds it at
@@ -1951,7 +1933,7 @@ def _compute_concept_sets(
             if pgid == FINAL_NODE_ID:
                 continue
             hidden_spans = (
-                region_join_keys & set(attrs[pgid].carried_keys)
+                region_join_keys & set(attrs[pgid].carried_spans)
                 if pointwise and facts[pgid].derivation == Derivation.ROOT
                 else frozenset()
             )
