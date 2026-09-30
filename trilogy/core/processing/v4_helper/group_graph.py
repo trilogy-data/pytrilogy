@@ -735,9 +735,14 @@ def _attach_condition_roots_to_rowset_consumers(
 def _rowset_join_key_addresses(
     concept: BuildConcept, mandatory_by_address: dict[str, BuildConcept]
 ) -> set[str]:
-    key_addresses = set(concept.keys or set())
-    if not key_addresses and concept.grain:
-        key_addresses = set(concept.grain.components)
+    # The output's own grain is its axis, taken as any other concept's would
+    # be. Its `keys` are not: a KEY's are the FK path that determines it
+    # (`order_items` binding `~user_id` stamps `user_id.keys == {line_id}`,
+    # snapshotted onto the rowset output), and reading that put `r.line_id`
+    # in the merge grain and waved the FINAL dedup through at line grain.
+    key_addresses = set(concept.grain.components) if concept.grain else set()
+    if not key_addresses:
+        key_addresses = set(concept.keys or set())
     if not key_addresses:
         # A keyless, grainless rowset handle (a global-aggregate scalar body:
         # `(select max(val)/2 -> half)`) has no join axis. Expanding through its

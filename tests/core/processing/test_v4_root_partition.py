@@ -1,6 +1,7 @@
 """The root partition (`root_partition.partition_root_demand`): which root
 columns are sourced together, and for which reader."""
 
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -346,3 +347,68 @@ def test_condition_aggregate_at_a_composite_grain_keys_no_peel():
 def test_filter_argument_fd_on_the_grouping_key(query: str, expected: list[tuple]):
     _, rows = _trace(query, _CUSTOMERS)
     assert rows == expected
+
+
+def _rows(query: str, partial: bool) -> list[tuple]:
+    model = _MODEL if partial else _MODEL.replace("~user_id", "user_id")
+    _, rows = _trace(query, model)
+    return [tuple(float(v) if isinstance(v, Decimal) else v for v in r) for r in rows]
+
+
+_BY_USER = [(1, "ca", 12.0), (2, "ny", 3.0)]
+
+
+@pytest.mark.parametrize("partial", [True, False])
+def test_rowset_key_beside_its_own_dimension_dedups_to_the_key(partial: bool):
+    """The rowset's key snapshots the FK path (`user_id.keys == {line_id}`);
+    read as the merge axis it put `r.line_id` in the merge grain and the
+    FINAL dedup passed the line-grain merge through (user 1 twice)."""
+    rows = _rows(
+        "with r as select user_id, state, line_id, sale_price;"
+        " select r.user_id, r.state, sum(r.sale_price) as revenue"
+        " order by r.user_id asc;",
+        partial,
+    )
+    assert rows == _BY_USER + ([(3, "wa", None)] if partial else [])
+
+
+@pytest.mark.parametrize("partial", [True, False])
+def test_rowset_key_beside_a_base_dimension_pairs_on_a_declared_join(
+    partial: bool,
+):
+    rows = _rows(
+        "with r as select user_id, line_id, sale_price;"
+        " select r.user_id, state, sum(r.sale_price) as revenue"
+        " subset join r.user_id = user_id order by r.user_id asc;",
+        partial,
+    )
+    assert rows == _BY_USER + ([(3, "wa", None)] if partial else [])
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=Exception,
+    reason="a rowset handle beside a base attribute of its entity has no "
+    "declared join: docs/handoff_implicit_rowset_pairing.md",
+)
+def test_rowset_key_beside_a_base_dimension_without_a_join():
+    _rows(
+        "with r as select user_id, line_id, sale_price;"
+        " select r.user_id, state, sum(r.sale_price) as revenue"
+        " order by r.user_id asc;",
+        True,
+    )
+
+
+@pytest.mark.parametrize("partial", [True, False])
+def test_bare_key_beside_a_filtered_rowset_keeps_every_key(partial: bool):
+    """The boundary is partial on the handle's CONTENT (`user_id`), which the
+    host election read under the handle's spelling (`even.user_id`) as a
+    complete binding: the filtered boundary out-hosted the users scan and the
+    FINAL preserved it, dropping users 1 and 3."""
+    rows = _rows(
+        "rowset even <- select user_id, sale_price where user_id % 2 = 0;"
+        " select user_id, even.user_id, even.sale_price order by user_id asc;",
+        partial,
+    )
+    assert rows == [(1, None, None), (2, 2, 3.0), (3, None, None)]

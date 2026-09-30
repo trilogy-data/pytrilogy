@@ -355,9 +355,13 @@ def test_final_contributor_contract_uses_rowset_lineage_join_key(
     root_contract = next(
         item for item in contract.contributor_contracts if item.group_id == "root"
     )
-    assert contract.merge_grain == {order_id.address}
-    assert root_contract.preserve_keys == {order_id.address}
-    assert rowset_contract.projection_grain == {order_id.address}
+    # each handle's own grain, unwrapped to the base concept: `store_id`
+    # rides beside `order_id` here and folds under it (its key) when the
+    # assembly builds the merge grain, so nothing is preserved off it
+    axis = {order_id.address, store_id.address}
+    assert contract.merge_grain == axis
+    assert root_contract.preserve_keys == axis
+    assert rowset_contract.projection_grain == axis
 
 
 def test_final_merge_grain_takes_a_non_grouping_contributor_grain(
