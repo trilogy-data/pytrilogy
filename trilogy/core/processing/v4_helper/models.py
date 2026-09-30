@@ -216,8 +216,6 @@ class GroupAttrs:
     extent_spans: frozenset[str] = frozenset()
     # Set on a single-entity dimension ROOT group: the entity's key(s).
     dim_keys: frozenset[str] = frozenset()
-    # See `GroupBucket.anchor_keys`.
-    anchor_keys: frozenset[str] = frozenset()
     # Set on a ROOT group, and on a rowset boundary's region domain.
     reason: RootReason | None = None
     # Populated for non-FINAL groups after `_compute_concept_sets`.
@@ -225,6 +223,13 @@ class GroupAttrs:
     # Members of the row-preserving input groups this aggregate computes
     # inline: every reader did, so those groups were never built.
     inlined_members: tuple[str, ...] = ()
+
+    @property
+    def anchor_keys(self) -> frozenset[str]:
+        """An entity peel's key, a column of its own: the axis the peel joins
+        back on, and the grain a scalar reading the peel alone is evaluated
+        at (`_anchor_scalars_to_dim_peel_key`)."""
+        return self.dim_keys if self.reason is RootReason.ENTITY else frozenset()
 
     @property
     def carried_keys(self) -> tuple[str, ...]:
@@ -388,10 +393,6 @@ class GroupBucket:
     grouping_mode: AggregateGroupingMode = AggregateGroupingMode.STANDARD
     extent_spans: frozenset[str] = frozenset()
     dim_keys: frozenset[str] = frozenset()
-    # The peel's key, as a column of its own, when the peel holds an argument
-    # of a projected scalar: the scalar is evaluated at the key's grain
-    # (`_anchor_scalars_to_dim_peel_key`).
-    anchor_keys: frozenset[str] = frozenset()
     reason: RootReason | None = None
     # What the demand pass has the group emit (`_compute_concept_sets`), hidden
     # pass-through columns included. Empty until it has run.
@@ -400,6 +401,13 @@ class GroupBucket:
     @property
     def nulls_grouping_keys(self) -> bool:
         return nulls_grouping_keys(self.grouping_mode)
+
+    @property
+    def anchor_keys(self) -> frozenset[str]:
+        """An entity peel's key, a column of its own: the axis the peel joins
+        back on, and the grain a scalar reading the peel alone is evaluated
+        at (`_anchor_scalars_to_dim_peel_key`)."""
+        return self.dim_keys if self.reason is RootReason.ENTITY else frozenset()
 
     @property
     def carried_keys(self) -> tuple[str, ...]:

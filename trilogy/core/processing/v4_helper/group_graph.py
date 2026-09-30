@@ -318,7 +318,6 @@ def _materialize_group_graph(
             grouping_mode=bucket.grouping_mode,
             extent_spans=bucket.extent_spans,
             dim_keys=bucket.dim_keys,
-            anchor_keys=bucket.anchor_keys,
             reason=bucket.reason,
         )
         group_graph.add_node(gid)
