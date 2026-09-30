@@ -478,6 +478,26 @@ class CTE:
             pending.extend(adjacent[current] - seen)
         return concepts
 
+    def inner_join_key_sources(self, address: str) -> set[str]:
+        """Sources this CTE's INNER joins equate on ``address`` (or a
+        pseudonym of it, a merged key spelled at its own side): on every
+        surviving row the sides agree, so any one of them renders the key."""
+        concept = self.get_concept(address)
+        spellings = {address} | (set(concept.pseudonyms) if concept else set())
+
+        def spells(side: BuildConcept) -> bool:
+            return bool(({side.address} | set(side.pseudonyms)) & spellings)
+
+        out: set[str] = set()
+        for join in self.joins:
+            if not isinstance(join, Join) or join.jointype is not JoinType.INNER:
+                continue
+            for pair in join.joinkey_pairs or []:
+                if spells(pair.left) and spells(pair.right):
+                    out.add(pair.cte.name)
+                    out.add(join.right_cte.name)
+        return out
+
     def from_scope_aliases(self) -> set[str]:
         """Alias tokens referenceable in this CTE's rendered FROM clause: the
         base plus every join participant. A parent wired in only through an

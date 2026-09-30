@@ -1260,6 +1260,10 @@ class BaseDialect:
             # source_map; prefer FROM-scope providers whenever any exist.
             if in_scope:
                 sources = in_scope
+            # Sources an INNER join equates on this very key carry one value
+            # per row; no side is padded, so the first spells the coalesce.
+            if len(sources) > 1 and cte.inner_join_key_sources(address) >= set(sources):
+                sources = sorted(sources)[:1]
         for x in sources:
             self.used_map[x].add(c.address)
         if len(sources) == 1:

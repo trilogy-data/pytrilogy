@@ -391,6 +391,39 @@ def resolve_cte_base_name_and_alias_v2(
     return None, None
 
 
+def _referenced_parents(
+    parents: list[CTE | UnionCTE],
+    base: BuildDatasource | QueryDatasource | None,
+    source_map: dict[str, list[str]],
+    existence_map: dict[str, list[str]],
+    joins: list[Join | InstantiatedUnnestJoin],
+) -> list[CTE | UnionCTE]:
+    """A raw base datasource renders inline in FROM, so the sub-CTE minted
+    for it is read only through a join or a source-map entry; one nothing
+    names (an existence-only filter over a query-backed table, which
+    inlining leaves alone) would be emitted dead."""
+    if not isinstance(base, BuildDatasource):
+        return parents
+    named = {name for names in source_map.values() for name in names}
+    named.update(name for names in existence_map.values() for name in names)
+    for join in joins:
+        if not isinstance(join, Join):
+            continue
+        named.add(join.right_cte.name)
+        if join.left_cte is not None:
+            named.add(join.left_cte.name)
+        named.update(pair.cte.name for pair in join.joinkey_pairs or [])
+    return [
+        parent
+        for parent in parents
+        if parent.name in named
+        or not (
+            isinstance(parent, DatasourceCTE)
+            and parent.datasource.identifier == base.identifier
+        )
+    ]
+
+
 def datasource_to_cte(
     query_datasource: QueryDatasource, name_map: dict[str, str]
 ) -> CTE | UnionCTE:
@@ -467,6 +500,13 @@ def datasource_to_cte(
 
     base_name, base_alias = resolve_cte_base_name_and_alias_v2(
         human_id, query_datasource, source_map, final_joins
+    )
+    parents = _referenced_parents(
+        parents,
+        query_datasource.base_datasource,
+        source_map,
+        existence_map,
+        final_joins,
     )
     cte_class: type[CTE] = CTE
     extra_kwargs: dict = {}
