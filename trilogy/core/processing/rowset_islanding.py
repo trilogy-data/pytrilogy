@@ -21,7 +21,6 @@ used by ``disconnected_components``. It severs EVERY boundary-crossing edge,
 then re-welds the legitimate external links: downstream consumers of a
 declared output (minus aggregate grain-only ``by`` consumers, which would
 bridge unrelated models) and cross-rowset scoped-join pseudonym edges.
-``link_rowset_outputs_for_connectivity`` applies rule 2 alone.
 """
 
 from typing import TYPE_CHECKING
@@ -38,29 +37,6 @@ ROWSET_ISLAND_HUB_PREFIX = "rowset_island~"
 def _add_hub(graph, hub: str, members: list[str]) -> None:
     for member in members:
         graph.add_edge(hub, member)
-
-
-def link_rowset_outputs_for_connectivity(g: "ReferenceGraph", cg) -> None:
-    """Rule 2 alone, with no severing: weld each rowset's co-produced outputs
-    through its per-rowset hub on the undirected connectivity copy ``cg``.
-
-    Raw edges are not enough: a rowset whose outputs wrap unrelated base models,
-    related only by a scoped join declared inside the rowset body, has no
-    cross-model edge at the outer level, so its own outputs would split into
-    two components even though one sub-query produces them together."""
-    members_by_rowset: dict[str, list[str]] = {}
-    for node, concept in g.concepts.items():
-        if concept.derivation != Derivation.ROWSET:
-            continue
-        if isinstance(concept.lineage, BuildRowsetItem):
-            members_by_rowset.setdefault(concept.lineage.rowset.name, []).append(node)
-    for name, members in members_by_rowset.items():
-        present = [m for m in members if m in cg]
-        if len(present) < 2:
-            continue
-        hub = f"{ROWSET_ISLAND_HUB_PREFIX}{name}"
-        cg.add_node(hub)
-        _add_hub(cg, hub, present)
 
 
 def island_rowsets_for_connectivity(

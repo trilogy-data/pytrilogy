@@ -13,7 +13,6 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import (
     BuildEnvironment,
-    resolve_rowset_content_address,
 )
 from trilogy.core.processing.condition_utility import is_scalar_condition
 from trilogy.core.processing.nodes import SelectNode, StrategyNode, UnionNode
@@ -237,23 +236,14 @@ def widen_projection(
     return changed
 
 
-def output_rowset_base_keys(
-    mandatory_list: list[BuildConcept], environment: BuildEnvironment
-) -> set[str]:
-    """Base addresses the grain keys of the output rowset boundaries unwrap to.
-
-    A boundary over `select oid, amt` is grained on `rs.oid`, which unwraps to
-    `local.oid`. The boundary can expose that base column beneath its handle, so
-    a scan keyed by it pairs with the boundary on a real key instead of
-    cross-joining. A declared relation (`subset join rs.oid = oid`) has already
-    canonicalized the handle's grain onto the base address; that key is the
-    authored axis and counts the same."""
+def output_rowset_grain_keys(mandatory_list: list[BuildConcept]) -> set[str]:
+    """Grain keys of the output rowset boundaries. A declared relation (`subset
+    join rs.oid = oid`) spells the handle's grain at the base address, so a
+    scan keyed by it pairs with the boundary on that key."""
     keys: set[str] = set()
     for concept in mandatory_list:
-        if not isinstance(concept.lineage, BuildRowsetItem) or concept.grain is None:
-            continue
-        for component in concept.grain.components:
-            keys.add(resolve_rowset_content_address(component, environment))
+        if isinstance(concept.lineage, BuildRowsetItem) and concept.grain is not None:
+            keys |= set(concept.grain.components)
     return keys
 
 

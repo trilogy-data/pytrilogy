@@ -10,7 +10,6 @@ from trilogy.core.models.build import (
     BuildGrain,
     BuildMultiSelectLineage,
     BuildRowsetItem,
-    BuildSelectLineage,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -286,54 +285,9 @@ def resolve_rowset(
             continue
         boundary.add(handle, produced[hlineage.content.address])
 
-    # A plain rowset's GRAIN keys (e.g. `id`) are the shared join keys back to the
-    # outer query and sibling rowsets, but they're plain roots, not
-    # `BuildRowsetItem` handles, so the loop above skips them. Expose any the
-    # inner producer supplies so they enter the boundary grain below and the
-    # FINAL merge joins on them; otherwise a shared-key rowset with no `merge
-    # into` pseudonym degrades to a `1=1` cross product. Multiselect grains are
-    # align concepts handled separately below, so scope to plain selects.
-    #
-    # Only for an UNFILTERED rowset: a WHERE/HAVING makes its key-set a proper
-    # subset of the base domain, so advertising the key would let the cover step
-    # satisfy the outer bare key FROM the filtered rowset and drop the unfiltered
-    # source (rows outside the filter must survive NULL-extended via a LEFT
-    # add, not be inner-joined away). A filtered rowset stays a separate
-    # outer-added contributor.
-    #
-    # An AGGREGATE rowset whose grain key is RENAMED into a handle (grouping by
-    # `dept as department`) renders only the handle, so the raw key is not in
-    # `produced` and the gate below skips it; exposing it anyway makes assembly
-    # demand a column no CTE projects. A grain key the inner producer DOES
-    # render (a bare `grp_key` beside `count(x) -> total`, or a plain
-    # projection's passthrough `id`) is safe and necessary: without it two
-    # sibling rowsets at the same base grain have no exposable join key and the
-    # FINAL merge cross-joins ON 1=1.
-    #
-    # A key an EXPOSED handle already covers is not re-exposed under its raw
-    # address. The handle is the rowset's own column for that key; adding the
-    # base address beside it publishes a second name for the same value, and two
-    # sibling rowsets over one base then appear to share a join axis they do not
-    # own, which silently outranks an authored scoped join on a derived key
-    # (`agg.period + 53 = fut.period`) and re-types the relation from a subset
-    # LEFT to a FULL join.
-    if (
-        isinstance(built, BuildSelectLineage)
-        and built.where_clause is None
-        and built.having_clause is None
-    ):
-        handle_contents = {
-            h.lineage.content.address
-            for h in boundary.handles
-            if isinstance(h.lineage, BuildRowsetItem)
-        }
-        for key_addr in sorted(built.grain.components):
-            if (
-                key_addr in produced
-                and key_addr not in boundary
-                and key_addr not in handle_contents
-            ):
-                boundary.add(produced[key_addr], produced[key_addr])
+    # A plain rowset's grain keys are NOT exposed under their raw base address:
+    # the boundary publishes handles only, and a base concept pairs with one
+    # through a declared relation.
 
     # A rowset wrapping a multiselect: an aligned handle's content is the
     # multiselect concept, which the renderer resolves via `find_source`; it

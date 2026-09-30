@@ -226,8 +226,6 @@ def plan_nested_select(
         where,
         env,
         graph,
-        # v4 pre-gate: see query_processor._raise_if_disconnected.
-        island_rowsets=False,
         excluded_addresses=hidden,
     )
 

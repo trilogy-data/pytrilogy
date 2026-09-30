@@ -102,6 +102,7 @@ def scalar_subquery(
         name=name,
         select=select,
         namespace=context.environment.namespace or DEFAULT_NAMESPACE,
+        scalar=not context.semantic_state.in_membership_subquery,
     )
     result = rowset_to_concepts_v2(output, context)
     for new_concept in result.concepts:

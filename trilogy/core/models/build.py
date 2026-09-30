@@ -1836,6 +1836,7 @@ class BuildRowsetLineage(BuildConceptArgs):
     name: str
     derived_concepts: list[str]
     select: SelectLineage | MultiSelectLineage
+    scalar: bool = False
 
 
 @dataclass(slots=True)
@@ -4196,6 +4197,7 @@ class Factory:
             name=base.name,
             derived_concepts=[x.address for x in base.derived_concepts],
             select=base.select,
+            scalar=base.scalar,
         )
         return out
 

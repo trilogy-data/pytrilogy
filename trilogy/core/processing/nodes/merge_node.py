@@ -703,14 +703,24 @@ class MergeNode(StrategyNode):
             # A node producing rowset outputs at a grain its parents satisfy
             # must not regroup. TVF_UNION counts too: a UNION ALL stack defines
             # its own no-dedup row semantics, so a wrapper at the stack grain
-            # must never collapse duplicate rows.
+            # must never collapse duplicate rows. The grain tested is the one
+            # the OUTPUTS carry: a FINAL dedup narrows the outputs to the
+            # requested columns while `self.grain` still claims the merge's
+            # row grain (`{s.d, s.o}` over `select s.d, band`), which the
+            # parents satisfy trivially.
             rowset_output = any(
                 concept.derivation in (Derivation.ROWSET, Derivation.TVF_UNION)
                 for concept in self.output_concepts
             )
             force_group = condition_key_requires_group or not (
                 rowset_output
-                and grain_satisfied_by_pregrain(pregrain, grain, self.environment)
+                and grain_satisfied_by_pregrain(
+                    pregrain,
+                    BuildGrain.from_concepts(
+                        self.output_concepts, environment=self.environment
+                    ),
+                    self.environment,
+                )
             )
         elif self.whole_grain:
             force_group = False
