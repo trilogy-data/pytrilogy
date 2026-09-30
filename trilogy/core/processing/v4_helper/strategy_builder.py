@@ -196,7 +196,10 @@ def _root_atoms_satisfiable_from(
 
 
 def _members_of(attrs: dict[str, GroupAttrs], gid: str) -> set[str]:
-    return set(_select_addresses(attrs[gid]))
+    """What the group computes and the keys it holds. Not what it emits: a
+    ROOT's re-source at FINAL asks which merge keys are its own, and a hidden
+    pass-through is not one (`test_duckdb_subset_join_pivot_axis`)."""
+    return set(attrs[gid].members)
 
 
 def _atoms_at(attrs: dict[str, GroupAttrs], gid: str) -> list[BoolExpr]:
