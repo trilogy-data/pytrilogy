@@ -1,5 +1,26 @@
 # Handoff: the root partition, open items
 
+## Status: picked up (2026-09-29)
+
+What was done with this list is in `docs/handoff_region_domain_kinds.md`.
+Everything after this section is the original handoff and describes the code
+as it was.
+
+| item | outcome |
+|---|---|
+| 1. `_keep_extension_families_together` | reads region domains. Every demanded region has one, with a `DomainKind`. The merge branch is reachable and guarded |
+| 2. `carried_keys` | a property over `grain_components`, `anchor_keys` and `carried_spans`. `_members_of` stays on the members: the output set broke two tests |
+| 3. the entity split as a sourcing decision | untouched |
+| 4. composite keys, d0 only | d0 only is right, with a statement that says so |
+| 5. buckets the partition skips | the carried-only split is handed the domains, the signature check asks the derivation. `COMPONENT` untouched |
+| 6. the regraft root | untouched |
+
+Two claims below did not hold. "The merge branch ... never fired" is true of
+the suite and not of the rule: two families peeled off two keys reach it.
+`_members_of` is not one of the readers that want the output set.
+
+---
+
 Follows `docs/handoff_grouping_pass_structure.md` (status section at its top).
 The four root passes and their cleanup are now one pass,
 `root_partition.partition_root_demand`
