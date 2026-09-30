@@ -217,6 +217,7 @@ def resolve_rowset(
         f"rowset {lineage.rowset.name} inner select",
         exclude_derived=derived,
         owned_spans=owned,
+        rowset=lineage.rowset,
     )
     if plan is None:
         return None

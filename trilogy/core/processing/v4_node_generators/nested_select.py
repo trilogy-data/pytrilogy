@@ -17,6 +17,7 @@ from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.author import MultiSelectLineage, SelectLineage
 from trilogy.core.models.build import (
     BuildMultiSelectLineage,
+    BuildRowsetLineage,
     BuildSelectLineage,
     BuildWhereClause,
     Factory,
@@ -203,6 +204,7 @@ def plan_nested_select(
     exclude_derived: list[str] | None = None,
     hide_from_connectivity: list[str] | None = None,
     owned_spans: frozenset[str] = frozenset(),
+    rowset: BuildRowsetLineage | None = None,
 ) -> NestedPlan | None:
     """Plan one nested select to a producer node. See the module docstring.
 
@@ -227,6 +229,7 @@ def plan_nested_select(
         env,
         graph,
         excluded_addresses=hidden,
+        scope=rowset,
     )
 
     # A nested select's own `then where` stages ride its built lineage; thread

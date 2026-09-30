@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, logger
+from trilogy.core.constants import SUBQUERY_NAMESPACE_PREFIX
 from trilogy.core.enums import (
     Derivation,
     FunctionType,
@@ -19,6 +20,7 @@ from trilogy.core.models.build import (
     BuildGrain,
     BuildParenthetical,
     BuildRowsetItem,
+    BuildRowsetLineage,
     BuildSubselectComparison,
     BuildWhereClause,
     get_concept_arguments,
@@ -572,6 +574,10 @@ def _ranked_pairs(
     return sorted(direct or keyed or pairs, key=lambda p: p[1].address)
 
 
+def _body_minted(concept: BuildConcept, rowset_name: str) -> bool:
+    return concept.name.startswith(f"_{rowset_name}_")
+
+
 def _spell_subset_join(left: BuildConcept, right: BuildConcept) -> str:
     # a renamed body column (`oid as k`) is spelled at its source, not the
     # mangled alias the body minted for it
@@ -609,6 +615,9 @@ def rowset_relation_hints(
             isinstance(lineage, BuildRowsetItem)
             and isinstance(lineage.content, BuildConcept)
             and not _crossjoinable(lineage.content)
+            # a body-minted derivation (`avg(price) as avg_price`) has no
+            # name outside the body to join on
+            and not _body_minted(_alias_source(lineage.content), lineage.rowset.name)
         ):
             outputs_by_rowset.setdefault(lineage.rowset.name, []).append(
                 (concept, lineage.content)
@@ -747,6 +756,49 @@ def membership_span_note(
     )
 
 
+def _rowset_join_advice(
+    hints: list[str],
+    scope: "BuildRowsetLineage | None",
+    conditions: "BuildWhereClause | None",
+    subgraphs: list[list[BuildConcept]],
+) -> str:
+    """Where the declared join goes: on this select when it is the statement,
+    inside the body when the select is a rowset's or a membership subquery's.
+    An inline `(select ...)` is one row by construct, so a base concept its
+    WHERE reads is a correlation, which no join inside it expresses."""
+    joins = ", ".join(hints)
+    if scope is not None and scope.scalar and conditions is not None:
+        read = {c.address for c in conditions.row_arguments}
+        correlated = sorted(
+            _strip_default_namespace(c.address)
+            for group in subgraphs
+            if not _rowsets_read_by(group)
+            for c in group
+            if c.address in read
+        )
+        if correlated:
+            named = ", ".join(f"`{a}`" for a in correlated)
+            return (
+                f"\nAn inline `(select ...)` is a single row and cannot read {named} "
+                "from the enclosing query (a correlated subquery is not supported). "
+                "Read the rowset's outputs in the enclosing select instead and "
+                f"relate them there with a declared join (e.g. {joins})."
+            )
+    if scope is None:
+        where = "declare it on this select"
+    elif scope.name.startswith(SUBQUERY_NAMESPACE_PREFIX):
+        where = "declare it inside the subquery, right after its select list"
+    else:
+        where = (
+            f"declare it inside the body of `{scope.name}`, right after its select list"
+        )
+    return (
+        "\nA rowset's outputs relate to other concepts only through a declared "
+        f"join; to pair them on the rowset's key, {where} (e.g. {joins}), or "
+        "project the concept inside the rowset and reference it through the handle."
+    )
+
+
 def raise_if_disconnected_for(
     outputs: list[BuildConcept],
     conditions: "BuildWhereClause | None",
@@ -754,6 +806,7 @@ def raise_if_disconnected_for(
     g: "ReferenceGraph | None" = None,
     line_number: int | None = None,
     excluded_addresses: frozenset[str] = frozenset(),
+    scope: "BuildRowsetLineage | None" = None,
 ) -> None:
     """Connectivity gate for a select's required concepts (outputs plus WHERE
     row args): raise the typed subgraph error when they span unconnected
@@ -762,7 +815,7 @@ def raise_if_disconnected_for(
     aggregate WHERE row-args is a global filter gate, not a missing join, and
     is dropped before counting (``_is_global_aggregate_gate``). Shared by the
     top-level select and nested rowset inner selects so the diagnostic is
-    identical."""
+    identical; ``scope`` is the rowset whose body this select is, if any."""
     concepts = list(outputs)
     output_addresses = {c.address for c in concepts}
     outputs_rootless = _output_is_rootless(outputs)
@@ -801,12 +854,7 @@ def raise_if_disconnected_for(
             message = f"{message}\n{note}"
         hints = rowset_relation_hints(subgraphs, environment, g, excluded_addresses)
         if hints:
-            message = (
-                f"{message}\nA rowset's outputs relate to other concepts only "
-                "through a declared join; to pair them on the rowset's key, "
-                f"declare it (e.g. {', '.join(hints)}), or project the concept "
-                "inside the rowset and reference it through the handle."
-            )
+            message += _rowset_join_advice(hints, scope, conditions, subgraphs)
         raise DisconnectedConceptsException(
             message,
             subgraphs=[[c.address for c in group] for group in subgraphs],
