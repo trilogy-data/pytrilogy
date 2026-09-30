@@ -166,6 +166,10 @@ class DomainGraph:
         self._subset_sources: set[str] | None = None
         self._declared_subset_pairs: list[tuple[str, str]] | None = None
         self._fd_minimal: dict[frozenset[str], frozenset[str]] = {}
+        self._canonical_fds: (
+            list[tuple[frozenset[str], str, str | None, bool]] | None
+        ) = None
+        self._fd_closures: dict[tuple[frozenset[str], str | None], frozenset[str]] = {}
         for e in edges or []:
             self.add_edge(e)
         for b in binding_edges or []:
@@ -197,7 +201,7 @@ class DomainGraph:
         self._eq_classes = None
         self._subset_sources = None
         self._declared_subset_pairs = None
-        self._fd_minimal.clear()
+        self._invalidate_fds()
         return True
 
     def add_binding(self, edge: BindingEdge) -> bool:
@@ -206,7 +210,7 @@ class DomainGraph:
             return False
         self._binding_keys.add(key)
         self.binding_edges.append(edge)
-        self._fd_minimal.clear()
+        self._invalidate_fds()
         return True
 
     def add_fd(self, edge: FDEdge) -> bool:
@@ -215,8 +219,13 @@ class DomainGraph:
             return False
         self._fd_keys.add(key)
         self.fd_edges.append(edge)
-        self._fd_minimal.clear()
+        self._invalidate_fds()
         return True
+
+    def _invalidate_fds(self) -> None:
+        self._fd_minimal.clear()
+        self._canonical_fds = None
+        self._fd_closures.clear()
 
     def with_overlay(self, edges: Iterable[DomainEdge] | None = None) -> "DomainGraph":
         """Copy-on-write view: a new graph with this graph's edges plus the
@@ -591,37 +600,56 @@ class DomainGraph:
         population. Closure is transitive over ≡-classes.
         """
         rep = self._equivalence_classes()
+        closure = self._fd_closure(
+            frozenset(rep.get(a, a) for a in determinants), population
+        )
+        return rep.get(dependent, dependent) in closure
 
-        def canon(x: str) -> str:
-            return rep.get(x, x)
-
+    def _canonical_fd_edges(self) -> list[tuple[frozenset[str], str, str | None, bool]]:
+        """Each FD as (canonical determinants, canonical dependent, scope,
+        applies-globally), the last by the complete-binding rule."""
+        if self._canonical_fds is not None:
+            return self._canonical_fds
+        rep = self._equivalence_classes()
         complete_bindings: dict[str, set[str]] = {}
         for b in self.binding_edges:
             if b.complete and b.condition is None:
-                complete_bindings.setdefault(b.datasource, set()).add(canon(b.concept))
+                complete_bindings.setdefault(b.datasource, set()).add(
+                    rep.get(b.concept, b.concept)
+                )
+        canonical: list[tuple[frozenset[str], str, str | None, bool]] = []
+        for fd in self.fd_edges:
+            determinants = frozenset(rep.get(a, a) for a in fd.determinants)
+            dependent = rep.get(fd.dependent, fd.dependent)
+            is_global = fd.scope is None or (determinants | {dependent}) <= (
+                complete_bindings.get(fd.scope, set())
+            )
+            canonical.append((determinants, dependent, fd.scope, is_global))
+        self._canonical_fds = canonical
+        return canonical
 
-        def applies(fd: FDEdge) -> bool:
-            if fd.scope is None or fd.scope == population:
-                return True
-            involved = {canon(a) for a in fd.determinants} | {canon(fd.dependent)}
-            return involved <= complete_bindings.get(fd.scope, set())
-
-        closure = {canon(a) for a in determinants}
-        goal = canon(dependent)
+    def _fd_closure(
+        self, determinants: frozenset[str], population: str | None
+    ) -> frozenset[str]:
+        key = (determinants, population)
+        cached = self._fd_closures.get(key)
+        if cached is not None:
+            return cached
+        fds = [
+            (dets, dep)
+            for dets, dep, scope, is_global in self._canonical_fd_edges()
+            if is_global or scope == population
+        ]
+        closure = set(determinants)
         changed = True
         while changed:
-            if goal in closure:
-                return True
             changed = False
-            for fd in self.fd_edges:
-                if not applies(fd):
-                    continue
-                if {canon(a) for a in fd.determinants} <= closure:
-                    dep = canon(fd.dependent)
-                    if dep not in closure:
-                        closure.add(dep)
-                        changed = True
-        return goal in closure
+            for dets, dep in fds:
+                if dep not in closure and dets <= closure:
+                    closure.add(dep)
+                    changed = True
+        cached = self._fd_closures[key] = frozenset(closure)
+        return cached
 
     def covers(self, determinants: Iterable[str], dependent: str) -> bool:
         """`determines`, through bindings that carry each value's whole domain:

@@ -552,6 +552,8 @@ class PlanScope:
     parent: str | None
     outputs: list[str]
     conditions: list[str | None]
+    # what the parent plan was building when this one opened (a rowset group)
+    parent_context: str | None = None
 
 
 # ------------------------------------------------------------------- recorder
@@ -599,7 +601,15 @@ class PlanTrace:
     ) -> str:
         plan_id = f"p{len(self.plans)}"
         self.plans.append(
-            PlanScope(plan_id, label, depth, self.current_plan, outputs, conditions)
+            PlanScope(
+                plan_id,
+                label,
+                depth,
+                self.current_plan,
+                outputs,
+                conditions,
+                self._contexts[-1],
+            )
         )
         self._stack.append(plan_id)
         self._contexts.append(None)

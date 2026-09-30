@@ -309,6 +309,7 @@ def _materialize_group_graph(
             depth_label=bucket.depth_label,
             derivation=bucket.derivation,
             grain_components=bucket.grain_components,
+            hosted_grain=bucket.hosted_grain,
             label=bucket.label,
             primary_members=tuple(bucket.primary_members),
             carried_spans=tuple(bucket.carried_spans),
@@ -2886,8 +2887,10 @@ def _regraft_group_sources(
         parent_gid = None
         if provider_gid is not None:
             attrs[gid].grain_components = attrs[provider_gid].grain_components
+            attrs[gid].hosted_grain = attrs[provider_gid].hosted_grain
             if gid in buckets:
                 buckets[gid].grain_components = attrs[provider_gid].grain_components
+                buckets[gid].hosted_grain = attrs[provider_gid].hosted_grain
             if not _grain_needed_by_independent_sibling(
                 group_graph, attrs, gid, provider_gid
             ):
