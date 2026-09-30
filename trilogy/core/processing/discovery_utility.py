@@ -573,9 +573,11 @@ def _ranked_pairs(
 
 
 def _spell_subset_join(left: BuildConcept, right: BuildConcept) -> str:
+    # a renamed body column (`oid as k`) is spelled at its source, not the
+    # mangled alias the body minted for it
     return (
-        f"`subset join {_strip_default_namespace(left.address)} = "
-        f"{_strip_default_namespace(right.address)}`"
+        f"`subset join {_strip_default_namespace(_alias_source(left).address)} = "
+        f"{_strip_default_namespace(_alias_source(right).address)}`"
     )
 
 
