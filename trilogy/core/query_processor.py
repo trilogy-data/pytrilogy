@@ -810,12 +810,6 @@ def _raise_if_disconnected(
         conditions,
         build_environment,
         graph,
-        # A rowset is a materialized result: from outside it, its outputs pair
-        # with another concept only through a declared relation (`subset join
-        # rs.key = key`), never by navigating into its body. Discovery still
-        # knows the boundary's base keys, so an implicit pairing that slips
-        # past here would silently plan; this gate is what makes it an error.
-        island_rowsets=True,
         line_number=line_number,
     )
     if conditions is None:
@@ -828,9 +822,7 @@ def _raise_if_disconnected(
     for arg_group in conditions.existence_arguments or ():
         if not arg_group:
             continue
-        raise_if_filter_disconnected(
-            list(arg_group), build_environment, graph, island_rowsets=False
-        )
+        raise_if_filter_disconnected(list(arg_group), build_environment, graph)
 
 
 def _having_presence_probes(

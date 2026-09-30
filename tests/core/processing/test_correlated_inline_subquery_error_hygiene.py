@@ -2,17 +2,18 @@
 it back to the enclosing scope (`where cat_avg.category = category`) is not a shape
 the planner supports.
 
-It must still refuse at the planner's own guard rather than leaking the node-input
-invariant. `_filter_arg_parents` picks a built group to supply a FINAL-deferred
-filter's row arg, and the rowset supplying the correlation key hides it, so the
-merge read the parent's usable outputs, found nothing, and raised the internal
+The nested body gate islands `cat_avg`, so the correlation pairs a rowset
+handle with a base concept through no declared join and refuses as a
+disconnected select. It once reached the planner, where `_filter_arg_parents`
+picked a built group to supply a FINAL-deferred filter's row arg, the rowset
+supplying the correlation key hid it, and the merge leaked the internal
 "Invalid input concepts to node!" assertion at the agent.
 """
 
 import pytest
 
 from trilogy import Dialects
-from trilogy.core.exceptions import UnresolvableQueryException
+from trilogy.core.exceptions import DisconnectedConceptsException
 from trilogy.core.models.environment import Environment
 
 _MODEL = """
@@ -49,9 +50,9 @@ def _engine():
 
 
 def test_correlated_inline_subquery_refuses_without_leaking_node_invariant():
-    with pytest.raises(UnresolvableQueryException) as exc:
+    with pytest.raises(DisconnectedConceptsException) as exc:
         _engine().generate_sql(_MODEL + _CORRELATED)
-    assert "Invalid input concepts to node" not in str(exc.value)
+    assert "cat_avg.category" in str(exc.value)
 
 
 def test_uncorrelated_inline_subquery_still_plans():

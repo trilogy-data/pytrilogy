@@ -9,8 +9,6 @@ concept-graph node id, mirroring production; the graph itself carries only
 topology + lineage edges. ``_cg`` builds both from a compact spec.
 """
 
-from typing import cast
-
 import pytest
 
 from trilogy.core import graph as nx
@@ -21,12 +19,9 @@ from trilogy.core.enums import (
     Purpose,
 )
 from trilogy.core.graph_models import ReferenceGraph
-from trilogy.core.models.author import SelectLineage
 from trilogy.core.models.build import (
     BuildConcept,
     BuildGrain,
-    BuildRowsetItem,
-    BuildRowsetLineage,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import DataType
@@ -227,141 +222,6 @@ def test_final_node_declares_logical_output_grain_contract():
     }
     assert contract.required_grain == {customer_id.address}
     assert contract.deduplicate_to_grain is True
-
-
-def test_final_contributor_contract_preserves_rowset_merge_grain_for_root(
-    empty_environment: BuildEnvironment,
-):
-    customer_id = _build_concept("customer.id", Purpose.KEY)
-    customer_name = _build_concept(
-        "customer.name",
-        Purpose.PROPERTY,
-        datatype=DataType.STRING,
-        grain={customer_id.address},
-        keys={customer_id.address},
-    )
-    bought_city = _build_concept(
-        "bought_city",
-        Purpose.PROPERTY,
-        derivation=Derivation.ROWSET,
-        datatype=DataType.STRING,
-        grain={customer_id.address},
-    )
-    group_graph = nx.DiGraph()
-    group_edges: EdgeMap = {}
-    attrs = {
-        "root": GroupAttrs(
-            depth_label=DepthLabel.ROOT,
-            derivation=Derivation.ROOT,
-            output_concepts=(customer_id.address, customer_name.address),
-        ),
-        "rowset": GroupAttrs(
-            depth_label=DepthLabel.D0,
-            derivation=Derivation.ROWSET,
-            grain_components=frozenset({customer_id.address}),
-            output_concepts=(bought_city.address,),
-        ),
-        FINAL_NODE_ID: GroupAttrs(depth_label=DepthLabel.FINAL),
-    }
-    group_graph.add_nodes_from(attrs)
-    add_edge(group_graph, group_edges, "root", FINAL_NODE_ID, EdgeKind.MERGE)
-    add_edge(group_graph, group_edges, "rowset", FINAL_NODE_ID, EdgeKind.MERGE)
-
-    _refresh_final_contract(
-        group_graph, attrs, [customer_name, bought_city], empty_environment
-    )
-
-    contract = attrs[FINAL_NODE_ID].final_contract
-    assert contract is not None
-    root_contract = next(
-        item for item in contract.contributor_contracts if item.group_id == "root"
-    )
-    assert contract.merge_grain == {customer_id.address}
-    assert root_contract.preserve_keys == {customer_id.address}
-    assert root_contract.projection_grain == set()
-
-
-def test_final_contributor_contract_uses_rowset_lineage_join_key(
-    empty_environment: BuildEnvironment,
-):
-    order_id = _build_concept("order_id", Purpose.KEY)
-    store_id_address = "local.store_id"
-    store_id = _build_concept(
-        "store_id",
-        Purpose.KEY,
-        grain={store_id_address},
-        keys={order_id.address},
-    )
-    rowset_order_id = _build_concept(
-        "even_orders.order_id",
-        Purpose.KEY,
-        derivation=Derivation.ROWSET,
-        grain={"local.even_orders.order_id"},
-    )
-    rowset_store_id = _build_concept(
-        "even_orders.store_id",
-        Purpose.KEY,
-        derivation=Derivation.ROWSET,
-        grain={"local.even_orders.store_id"},
-        keys={rowset_order_id.address},
-    )
-    rowset_lineage = BuildRowsetLineage(
-        name="even_orders",
-        derived_concepts=[rowset_order_id.address, rowset_store_id.address],
-        select=cast(SelectLineage, None),
-    )
-    rowset_order_id.lineage = BuildRowsetItem(
-        content=order_id,
-        rowset=rowset_lineage,
-    )
-    rowset_store_id.lineage = BuildRowsetItem(
-        content=store_id,
-        rowset=rowset_lineage,
-    )
-    group_graph = nx.DiGraph()
-    group_edges: EdgeMap = {}
-    attrs = {
-        "root": GroupAttrs(
-            depth_label=DepthLabel.ROOT,
-            derivation=Derivation.ROOT,
-            output_concepts=(order_id.address,),
-        ),
-        "rowset": GroupAttrs(
-            depth_label=DepthLabel.D0,
-            derivation=Derivation.ROWSET,
-            grain_components=frozenset(
-                {rowset_order_id.address, rowset_store_id.address}
-            ),
-            output_concepts=(rowset_order_id.address, rowset_store_id.address),
-        ),
-        FINAL_NODE_ID: GroupAttrs(depth_label=DepthLabel.FINAL),
-    }
-    group_graph.add_nodes_from(attrs)
-    add_edge(group_graph, group_edges, "root", FINAL_NODE_ID, EdgeKind.MERGE)
-    add_edge(group_graph, group_edges, "rowset", FINAL_NODE_ID, EdgeKind.MERGE)
-
-    _refresh_final_contract(
-        group_graph,
-        attrs,
-        [order_id, rowset_order_id, rowset_store_id],
-        empty_environment,
-    )
-
-    contract = attrs[FINAL_NODE_ID].final_contract
-    assert contract is not None
-    rowset_contract = next(
-        item for item in contract.contributor_contracts if item.group_id == "rowset"
-    )
-    root_contract = next(
-        item for item in contract.contributor_contracts if item.group_id == "root"
-    )
-    # each handle's own grain, unwrapped to the base concept: `store_id`
-    # rides beside `order_id` here and folds under it (its key) when the
-    # assembly builds the merge grain, so nothing is preserved off it
-    axis = {order_id.address, store_id.address}
-    assert contract.merge_grain == axis
-    assert root_contract.preserve_keys == axis
-    assert rowset_contract.projection_grain == axis
 
 
 def test_final_merge_grain_takes_a_non_grouping_contributor_grain(

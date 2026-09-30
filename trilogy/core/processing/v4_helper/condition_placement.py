@@ -35,7 +35,7 @@ from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS, DepthLabel, EdgeKind
 from .edges import EdgeMap, edge_kind, lineage_subgraph, subgraph_of_kinds
 from .functional_dependency import build_fd_determines
 from .models import ConceptAttrs, GroupBucket
-from .projection import decided_at_output_grain, output_rowset_base_keys
+from .projection import decided_at_output_grain, output_rowset_grain_keys
 from .staged_where import (
     CROSS_ROW_DERIVATIONS,
     concept_is_cross_row,
@@ -86,7 +86,7 @@ def _keyed_by_output_rowset_base(
     """Whether every row input is, or is a property of, a base grain key an
     output rowset boundary exposes. Such a gate is relatable: it pairs with the
     boundary on that key exactly as it would if it were selected."""
-    base_keys = output_rowset_base_keys(mandatory_list, environment)
+    base_keys = output_rowset_grain_keys(mandatory_list)
     if not base_keys:
         return False
     for address in row_inputs:

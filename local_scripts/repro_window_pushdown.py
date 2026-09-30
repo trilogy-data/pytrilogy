@@ -22,10 +22,10 @@ for mod in (m, rowset, multiselect, union_select):
     mod.plan_nested_select = traced_plan
 
 
-def traced_cm(environment, g=None, island_rowsets=True, excluded_addresses=frozenset()):
+def traced_cm(environment, g=None, excluded_addresses=frozenset()):
     if excluded_addresses:
         calls["excluded"] += 1
-    return _oc(environment, g, island_rowsets, excluded_addresses)
+    return _oc(environment, g, excluded_addresses)
 
 
 du._component_map = traced_cm

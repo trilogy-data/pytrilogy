@@ -186,8 +186,15 @@ def rowset_to_concepts_v2(
                 name=rowset.name,
                 derived_concepts=[y.reference for y in pre_output],
                 select=select_lineage,
+                scalar=rowset.scalar,
             ),
         )
+    if rowset.scalar:
+        for x in pre_output:
+            x.grain = Grain()
+            x.keys = set()
+            x.granularity = Granularity.SINGLE_ROW
+        return RowsetConceptResult(concepts=pre_output, alias_updates=alias_updates)
     default_grain = Grain.from_concepts([*pre_output])
     # The rowset's grain in its own (namespaced) output space — the select
     # grain remapped through `orig`, exactly as the dimension columns below

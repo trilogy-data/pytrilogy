@@ -101,7 +101,7 @@ from .projection import (
     concept_satisfiable,
     filter_row_predicate,
     literal_producible,
-    output_rowset_base_keys,
+    output_rowset_grain_keys,
     parent_output_addresses,
     renderable_addresses,
     row_lineage_arguments,
@@ -2201,7 +2201,7 @@ def _rowset_base_join_keys(
     `condition_placement.PlacementReason.FINAL_ROWSET_BASE_KEY`) pairs to the
     boundary on it; without the widening the merge has no shared column and
     cross-joins, which the keyless-join guard rejects."""
-    base_keys = output_rowset_base_keys(mandatory_list, environment)
+    base_keys = output_rowset_grain_keys(mandatory_list)
     if not base_keys:
         return frozenset()
     available = renderable_addresses(node)
@@ -2569,9 +2569,7 @@ def _raise_if_rowset_islanded(
                 target = min(merged)
                 component = [target if c in merged else c for c in component]
     if len(set(component)) > 1:
-        raise_if_disconnected_for(
-            mandatory_list, None, environment, graph, island_rowsets=True
-        )
+        raise_if_disconnected_for(mandatory_list, None, environment, graph)
 
         # The connectivity check can pass while the components still share no
         # axis: authored relations can route the components through a THIRD

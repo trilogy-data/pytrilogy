@@ -1645,9 +1645,19 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
 
     @classmethod
     def calculate_granularity(cls, derivation: Derivation, grain: Grain, lineage):
-        from trilogy.core.models.build import BuildFilterItem, BuildFunction
+        from trilogy.core.models.build import (
+            BuildFilterItem,
+            BuildFunction,
+            BuildRowsetItem,
+        )
 
         if derivation == Derivation.CONSTANT:
+            return Granularity.SINGLE_ROW
+        elif (
+            isinstance(lineage, (RowsetItem, BuildRowsetItem)) and lineage.rowset.scalar
+        ):
+            # an inline `(select ...)` scalar subquery is one row by construct,
+            # whatever its body's grain: it cross-joins beside anything
             return Granularity.SINGLE_ROW
         elif derivation == Derivation.AGGREGATE:
             if all(x.endswith(ALL_ROWS_CONCEPT) for x in grain.components):
@@ -2917,6 +2927,7 @@ class RowsetLineage(Namespaced, ReferenceReplaceable):
     name: str
     derived_concepts: list[ConceptRef]
     select: SelectLineage | MultiSelectLineage
+    scalar: bool = False
 
     def with_namespace(self, namespace: str):
         return RowsetLineage(
@@ -2925,6 +2936,7 @@ class RowsetLineage(Namespaced, ReferenceReplaceable):
                 x.with_namespace(namespace) for x in self.derived_concepts
             ],
             select=self.select.with_namespace(namespace),
+            scalar=self.scalar,
         )
 
 

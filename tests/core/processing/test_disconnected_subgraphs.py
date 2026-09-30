@@ -179,7 +179,7 @@ def test_filter_over_scoped_join_rowset_measure_not_islanded():
     assert filters, "expected _virt_filter concepts over the rowset measures"
     # Each filter must be co-located with a rowset measure, never its own island.
     measures = [be.concepts["cur.total"], be.concepts["nxt.total2"]]
-    groups = disconnected_components(be, filters + measures, island_rowsets=True)
+    groups = disconnected_components(be, filters + measures)
     singletons = [g for g in groups if len(g) == 1]
     assert not singletons, [sorted(c.address for c in g) for g in groups]
 

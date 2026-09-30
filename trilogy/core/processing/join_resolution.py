@@ -29,7 +29,6 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import (
     BuildEnvironment,
-    resolve_rowset_content_address,
 )
 from trilogy.core.models.execute import (
     BaseJoin,
@@ -1558,7 +1557,7 @@ def _raise_if_keyless_row_bearing_join(
     projections of ONE relation (``_sole_projected_relation``) and so hold the
     same rows however their axes look. The axis test is FD-aware: one side's
     outputs (hidden included, since hiding is how an axis gets lost) closed
-    over concept ``keys``, pseudonyms and rowset content, intersected with the
+    over concept ``keys`` and pseudonyms, intersected with the
     other side's direct addresses, after canonicalization. Axis-DISJOINT
     row-bearing sides off DIFFERENT relations cross-join legitimately
     (selecting an aggregate without its grouping key is an authored fan-out),
@@ -1578,8 +1577,7 @@ def _raise_if_keyless_row_bearing_join(
     independent_cache: dict[str, bool] = {}
 
     def _canon(addr: str) -> str:
-        content = resolve_rowset_content_address(addr, environment)
-        return canonical.get(content, content)
+        return canonical.get(addr, addr)
 
     def row_independent(node: str) -> bool:
         if node not in independent_cache:
@@ -1606,8 +1604,8 @@ def _raise_if_keyless_row_bearing_join(
         return result
 
     def key_closure(node: str) -> frozenset[str]:
-        """Direct axis plus everything reachable through concept ``keys``,
-        pseudonyms, and rowset content, to fixpoint: the addresses whose rows
+        """Direct axis plus everything reachable through concept ``keys`` and
+        pseudonyms, to fixpoint: the addresses whose rows
         FD-determine this source's PROJECTED values. A rename chain can hide
         its key several environment hops deep. Seeded from outputs only, for
         the same reason as `direct_axis`."""
@@ -1634,8 +1632,6 @@ def _raise_if_keyless_row_bearing_join(
                 continue
             frontier.update(concept_ref.keys or set())
             frontier.update(concept_ref.pseudonyms)
-            if isinstance(concept_ref.lineage, BuildRowsetItem):
-                frontier.add(concept_ref.lineage.content.address)
         result = frozenset({_canon(a) for a in closure}) - rollup_padded_addresses
         closure_cache[node] = result
         return result
