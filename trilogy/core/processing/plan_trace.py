@@ -374,10 +374,22 @@ class PlacementStep(StepData):
 
 
 @dataclass(frozen=True)
+class RegionDomainTrace:
+    spans: list[str]
+    kind: str
+    label: str
+    carried: list[str]
+    bucket: str | None
+    note: str
+
+
+@dataclass(frozen=True)
 class BucketsStep(StepData):
     PHASE: ClassVar[str] = "grouping"
     buckets: dict[str, Json]
     primary_group: dict[str, str]
+    # where each demanded region's rows come from, on the step that decides it
+    domains: list[RegionDomainTrace] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

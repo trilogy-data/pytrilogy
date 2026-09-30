@@ -359,7 +359,8 @@ function renderGrouping(step) {
   }).join('');
   const legend = prev ? `<div class="legend"><span class="sw" style="border-color:var(--ok);border-width:2px"></span>added since "${esc(prev.title)}" <span class="sw" style="border-color:var(--warn);border-width:2px"></span>changed <span class="sw" style="border-color:var(--bad);border-width:2px"></span>removed <span class="sw" style="border-color:var(--domain);border-width:2px"></span>region domain</div>` : '';
   const toggle = prev ? `<div class="meta"><button id="chgOnly" class="${S.changedOnly ? 'on' : ''}">changed only</button> ${S.changedOnly && hidden ? `<span class="small">${hidden} unchanged bucket${hidden > 1 ? 's' : ''} hidden</span>` : ''}</div>` : '';
-  return `${legend}${toggle}<div class="cards">${cards}</div><h3>concept → primary bucket</h3>${renderValue(d.primary_group)}`;
+  const domains = (d.domains || []).length ? `<h3>region domains</h3><table><tr><th>region</th><th>rows come from</th><th>carries</th><th>bucket</th></tr>${d.domains.map(r => `<tr><td>${chips(r.spans, 'domain')}${r.label ? chip('[' + r.label + ']') : ''}</td><td>${chip(r.kind, r.kind === 'padded' ? 'warn' : 'ok')}${r.note ? ` <span class="small">${esc(r.note)}</span>` : ''}</td><td>${chips(r.carried)}</td><td class="mono">${r.bucket ? esc(stripGrp(r.bucket)) : ''}</td></tr>`).join('')}</table>` : '';
+  return `${legend}${toggle}${domains}<div class="cards">${cards}</div><h3>concept → primary bucket</h3>${renderValue(d.primary_group)}`;
 }
 
 function renderGraphStep(step) {
