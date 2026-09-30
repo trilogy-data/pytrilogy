@@ -116,8 +116,8 @@ select
 def test_rowset_alias_name_collision() -> None:
     # Two rowsets aliasing different source concepts to the SAME output name
     # ("cust_id") must produce independent results: buyers_a.cust_id should
-    # project bill, buyers_b.cust_id should project ship. The shared `id`
-    # key in both rowsets gives discovery a join target so the outer SELECT
+    # project bill, buyers_b.cust_id should project ship. The declared joins
+    # on the shared `id` key give discovery its join axis so the outer SELECT
     # is resolvable; the alias collision is the part this test exercises.
     declarations = """
 key id int;
@@ -148,6 +148,7 @@ SELECT
     id,
     buyers_a.cust_id as a_cust,
     buyers_b.cust_id as b_cust,
+subset join buyers_a.id = id and buyers_b.id = id
 ;
 """
     from trilogy import Dialects
@@ -270,6 +271,7 @@ SELECT
     grp_key,
     rs_a.total as a,
     rs_b.total as b,
+subset join rs_a.grp_key = grp_key and rs_b.grp_key = grp_key
 ;
 """
     from trilogy import Dialects
@@ -286,11 +288,11 @@ SELECT
 def test_rowset_alias_collision_rows() -> None:
     """Executing check for the alias-collision shape: two rowsets renaming
     DIFFERENT source columns to the same name, joined back through their
-    shared `id` key. Regression: the renamed handles carried no key
-    association, the FINAL merge grain collapsed to empty, and the merge
-    cross-joined `FULL JOIN ... on 1=1` (3 rows -> 9-row cartesian). The
-    planning-status parity case cannot catch this — the cartesian still
-    executes — so the rows are pinned here."""
+    declared relations on the shared `id` key. Regression: the renamed
+    handles carried no key association, the FINAL merge grain collapsed to
+    empty, and the merge cross-joined `FULL JOIN ... on 1=1` (3 rows -> 9-row
+    cartesian). The planning-status parity case cannot catch this — the
+    cartesian still executes — so the rows are pinned here."""
     declarations = """
 key id int;
 key bill_id int;
@@ -324,6 +326,7 @@ SELECT
     id,
     buyers_a.cust_id as a_cust,
     buyers_b.cust_id as b_cust,
+subset join buyers_a.id = id and buyers_b.id = id
 order by
     id asc
 ;
@@ -380,6 +383,7 @@ SELECT
     grp_key,
     rs_a.total as a,
     rs_b.total as b,
+subset join rs_a.grp_key = grp_key and rs_b.grp_key = grp_key
 order by grp_key asc
 ;
 """

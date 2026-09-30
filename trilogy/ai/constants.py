@@ -58,7 +58,7 @@ order by <col> asc|desc            # 6. sort
 limit   <n>;                       # 7. cap rows
 ```
 
-A rowset (`with <name> as where ... select ...;`) is a standalone statement, evaluated in isolation — it does NOT respond to the consuming query's context. All its outputs are namespaced: output `abc.def` of rowset `foo` is referenced as `foo.abc.def`, and joined back like any concept (`subset join foo.key = other.key`). Alias every reused expression with `as`.
+A rowset (`with <name> as where ... select ...;`) is a standalone statement, evaluated in isolation — it does NOT respond to the consuming query's context. All its outputs are namespaced: output `abc.def` of rowset `foo` is referenced as `foo.abc.def`. Pairing an output with a concept outside the rowset REQUIRES a declared join on the rowset's key (`subset join foo.key = key`); without one the query is disconnected. Alternatively project the concept inside the rowset and filter or select it through the handle (`where foo.cat = 'a'`). Alias every reused expression with `as`.
 
 Full annotated example: trilogy agent-info syntax example query-structure.
 

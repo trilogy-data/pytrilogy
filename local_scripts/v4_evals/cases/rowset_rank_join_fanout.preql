@@ -7,8 +7,9 @@ query '''
 select unnest([1,2,2,3]) as x
 ''';
 
-# a rowset projecting a per-x max(rank) joined back to the base rows must not
-# fan out: 3 distinct x values → 3 rows. v4 produces 9 (cross/duplicate join).
+# a rowset projecting a per-x max(rank) joined back to the base rows on its
+# declared key must not fan out: 3 distinct x values → 3 rows. v4 produced 9
+# (cross/duplicate join).
 const y <- 5;
 auto z <- rank x order by x desc;
 auto w <- rank x order by x asc;
@@ -19,6 +20,7 @@ select
     x,
     w,
     my_rowset.max_rank
+subset join my_rowset.x = x
 order by
     x asc
 ;

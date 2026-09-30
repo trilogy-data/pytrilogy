@@ -28,8 +28,6 @@ select
     ss.item.product_name as worst_performing,
 ;
 
-where
-    ss.store.sk = 1
 subset join descending.rnk_d = ascending.rnk_a
 select
     ascending.rnk_a as rnk,

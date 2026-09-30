@@ -245,15 +245,15 @@ def output_rowset_base_keys(
     A boundary over `select oid, amt` is grained on `rs.oid`, which unwraps to
     `local.oid`. The boundary can expose that base column beneath its handle, so
     a scan keyed by it pairs with the boundary on a real key instead of
-    cross-joining."""
+    cross-joining. A declared relation (`subset join rs.oid = oid`) has already
+    canonicalized the handle's grain onto the base address; that key is the
+    authored axis and counts the same."""
     keys: set[str] = set()
     for concept in mandatory_list:
         if not isinstance(concept.lineage, BuildRowsetItem) or concept.grain is None:
             continue
         for component in concept.grain.components:
-            resolved = resolve_rowset_content_address(component, environment)
-            if resolved != component:
-                keys.add(resolved)
+            keys.add(resolve_rowset_content_address(component, environment))
     return keys
 
 

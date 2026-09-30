@@ -1,5 +1,83 @@
 # Handoff: implicit rowset pairing — the census, and what changed
 
+## Closed out 2026-09-30: the pairing is declared
+
+Owner's ruling on the census below: the "genuinely implicit" corpus is small,
+so make it explicit — a rowset's outputs pair with a concept outside the
+rowset only through a declared relation (`subset join rs.key = key`), or by
+projecting the concept inside the rowset and reading it through the handle.
+Keyless joins (a scalar rowset beside rows) stay fine. Shape C's premise was
+never "the filter applies unaliased"; it is "the filter applies", and it does
+under the declaration.
+
+| item | outcome |
+|---|---|
+| The gate | `query_processor._raise_if_disconnected` runs with `island_rowsets=True`. Shapes A, B, C and bug 2 are `DisconnectedConceptsException` |
+| Scalar over a handle under a WHERE (`sum(rs.amt) where cat = 'a'`) | the single-row output is no longer skipped as crossjoinable: it anchors on the multi-row handle it reads (`_rowset_handles_read_by_scalars`) and is not an EXISTS gate |
+| The helpful error | `rowset_relation_hints`: for a rowset read in one subgraph, every output whose body content lands in another subgraph's component becomes `subset join <handle> = <content>`; keys that determine the other side rank first; a sibling rowset wrapping the same body concept gets `subset join theirs = ours`, listed last |
+| Shape C declared, keyless join (planner bug) | FIXED. `output_rowset_base_keys` and the new `_rowset_base_grain` count a boundary grain key a relation has already spelled at its base; the substitution had made `resolve_rowset_content_address` a no-op there, so the condition root never rendered the key |
+| Shape C declared, scalar: `sum(rs.amt) subset join rs.oid = oid where cat = 'a'` returned 6.00 (filter dropped) | FIXED. The group-internal pre-merge now carries `preexisting_conditions` from its parents' hosted atoms, as the FINAL merge already did, so `tighten_join_for_filtered_branch` sees the filtered scan as the population instead of FULL-joining it to the subset-declared boundary. Two limits, each found by a wrong-rows test: only ROOT parents (a grouping parent applies the atom to its INPUT rows; claiming it on its output let the FINAL skip its gate, `test_where_select_dual_scope`), and only NULL-REJECTING atoms (an `is null` atom is satisfied by padding; threading it dropped a `~?` guest row, `test_duckdb_rowset_null_group_rejoin`) |
+| TVF-union ORDER BY carry | the union column `_carry_order_by_concepts` hides for a rowset handle is left out of the gate's set (`_carried_union_columns`): it renders at the union node the handle wraps and is not an authored request |
+| `connected_equivalent_suggestions` | a rowset handle is no longer a "separately-imported copy" twin (`user_id` vs `even.user_id`) |
+
+### The declared contract, as the tests now pin it
+
+Under `subset join rs.key = key` the key is ONE axis read from the superset
+side (docs/subset_union_join_design.md): `select user_id, even.user_id,
+even.sale_price` shows `(1, 1, None)` for a user `even` filtered out, not
+`(1, None, None)`, and `count(rs.oid)` counts the padded rows. The
+intersection is a non-key value: `count(rs.amt)`, or `rs.amt is not null`.
+
+Tests rewritten to the declared form: `test_duckdb_rowset_aggregate_filter_leak.py`
+(plus `test_undeclared_pairing_names_the_join`, which pins the hint),
+`tests/complex/test_rowset.py` (the four alias-collision tests, `subset join
+buyers_a.id = id and buyers_b.id = id`), `tests/modeling/test_complex.py::
+test_rowset_with_addition` (plus an error guard), `test_v4_root_partition.py`
+(the xfail is now a real error assertion;
+`test_bare_key_beside_a_filtered_rowset_keeps_every_key` declares the join),
+`tests/engine/test_duckdb.py::test_rowset_join`, and three
+`local_scripts/v4_evals/cases` (`rowset_alias_collision`,
+`rowset_outer_addition`, `rowset_rank_join_fanout`). Two rowsets over one base
+with no bare key (`select rs_a.grp_key, rs_a.total, rs_b.total`) are held to
+the same rule: `subset join rs_b.grp_key = rs_a.grp_key`.
+`trilogy/ai/constants.py` tells the agent the join is required.
+
+TPC-DS q44's outer `where ss.store.sk = 1` paired a base concept with the two
+rank rowsets only through their bodies, which already carry it; the
+restatement is dropped. Rows are identical; the rowset pair now renders the
+declared `subset join descending.rnk_d = ascending.rnk_a` as LEFT from
+`ascending` with a coalesced key where the outer gate's proof used to make it
+INNER (same CTEs, +306 chars, rebaselined).
+
+### Found and left
+
+- `_final_merge_grain` still answers two questions with one set (below,
+  unchanged). The implicit machinery — the boundary exposing base keys,
+  `resolve_rowset_content_address` in three passes — is still there and now
+  runs only under a declaration or for scalar shapes; a follow-up could fold
+  it into the authored-relation path.
+- The nested body gate (`nested_select.py`) and the existence-argument gate
+  still pass `island_rowsets=False`: a rowset body reading another rowset
+  beside base concepts is not yet held to the rule.
+- `auto join <cte_name>` (bind a rowset's outputs as a subset of their
+  licensed parents) is the owner's suggested follow-up.
+
+OWNER NOTEs (as received):
+
+
+Given the smaller corpus of "genuinely implicit" let's clean up the test assertions and make it all explicit. This will require fixing buggy discovery in the C. case.
+
+Keyless joins are obviously fine - a scalar aggregate can be joined (rowset or not) with no licensed relation.
+
+"| **C. a base property filtering rowset rows**: `select rs.oid, rs.amt where cat = 'a'` (`test_duckdb_rowset_aggregate_filter_leak.py`, whose premise is that this MUST hold), `select cur_period.wk ... where year = ...` | 6 | base property ↔ projected handle |" is misinterpreted - the premise is that the filter applies, not that the filter should be applied unaliased. 
+
+A bonus would be a helpful error on disconnected joins when there _is_ a potential implicit join suggesting the join syntax.
+
+We could further consider an 'auto join <cte_name>' which would implicitly bind the concepts as a subset of licensed parents, but perhaps leave that as a followup.
+
+
+ORIGINAL DOC:
+
 Follows `docs/handoff_region_domain_kinds.md` ("Found and left"). The owner's
 question was whether a rowset handle should pair with a base concept at all
 without a declared join, and how much of the suite relies on it. This records

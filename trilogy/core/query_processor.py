@@ -598,6 +598,27 @@ def _carry_order_by_concepts(
     )
 
 
+def _carried_union_columns(
+    build_statement: BuildSelectLineage | BuildMultiSelectLineage,
+) -> set[str]:
+    """Addresses `_carry_order_by_concepts` hid for a rowset handle in the
+    ORDER BY: the inner union column the handle wraps."""
+    if not isinstance(build_statement, BuildSelectLineage):
+        return set()
+    if not build_statement.order_by:
+        return set()
+    hidden = build_statement.hidden_components
+    return {
+        target.address
+        for item in build_statement.order_by.items
+        for c in item.concept_arguments
+        if c.derivation == Derivation.ROWSET
+        and (target := _find_source_target(c)) is not None
+        and target is not c
+        and target.address in hidden
+    }
+
+
 def _find_source_target(concept: BuildConcept) -> BuildConcept | None:
     """The union column an order-by concept ultimately renders from, or None.
 
@@ -780,15 +801,21 @@ def _raise_if_disconnected(
         if isinstance(build_statement, BuildSelectLineage)
         else None
     )
+    # A union column `_carry_order_by_concepts` hid for an ORDER BY over a
+    # rowset handle renders at the union node the handle wraps: for
+    # connectivity it IS the handle, which the visible outputs already reach.
+    carried = _carried_union_columns(build_statement)
     raise_if_disconnected_for(
-        list(build_statement.output_components),
+        [c for c in build_statement.output_components if c.address not in carried],
         conditions,
         build_environment,
         graph,
-        # This runs as a pre-discovery gate; rowset islanding false-positives on
-        # legitimate join-backs (base key that IS a rowset output, or a concept
-        # derived from one), so disable it and let discovery decide.
-        island_rowsets=False,
+        # A rowset is a materialized result: from outside it, its outputs pair
+        # with another concept only through a declared relation (`subset join
+        # rs.key = key`), never by navigating into its body. Discovery still
+        # knows the boundary's base keys, so an implicit pairing that slips
+        # past here would silently plan; this gate is what makes it an error.
+        island_rowsets=True,
         line_number=line_number,
     )
     if conditions is None:

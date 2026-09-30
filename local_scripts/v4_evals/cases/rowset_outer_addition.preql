@@ -23,15 +23,17 @@ union all select 2
 ''';
 
 # a rowset filtered to even orders, projected back alongside the unfiltered
-# order_id. Odd orders must survive with NULL-extended rowset columns
-# (LEFT/OUTER), not be dropped or mis-joined. Expected rows:
-#   (1, None, None), (2, 2, 1), (3, None, None), (4, 4, 2)
+# order_id through a declared subset join. Odd orders must survive with a
+# NULL-extended store (the declared key is one axis read from the superset
+# side), not be dropped or mis-joined. Expected rows:
+#   (1, 1, None), (2, 2, 1), (3, 3, None), (4, 4, 2)
 rowset even_orders <- select order_id, store_id where (order_id % 2) = 0;
 
 SELECT
     order_id,
     even_orders.order_id,
     even_orders.store_id
+subset join even_orders.order_id = order_id
 order by
     order_id asc
 ;
