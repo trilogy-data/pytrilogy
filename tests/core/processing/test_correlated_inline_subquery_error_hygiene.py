@@ -4,10 +4,12 @@ the planner supports.
 
 The nested body gate islands `cat_avg`, so the correlation pairs a rowset
 handle with a base concept through no declared join and refuses as a
-disconnected select. It once reached the planner, where `_filter_arg_parents`
-picked a built group to supply a FINAL-deferred filter's row arg, the rowset
-supplying the correlation key hid it, and the merge leaked the internal
-"Invalid input concepts to node!" assertion at the agent.
+disconnected select that says so, pointing at the supported spelling: read the
+handle in the enclosing select and relate it there with a declared join. It
+once reached the planner, where `_filter_arg_parents` picked a built group to
+supply a FINAL-deferred filter's row arg, the rowset supplying the correlation
+key hid it, and the merge leaked the internal "Invalid input concepts to
+node!" assertion at the agent.
 """
 
 import pytest
@@ -37,6 +39,14 @@ with qualifying as
 select count(qualifying.sk) as q;
 """
 
+_DECLARED = """
+with qualifying as
+    where category is not null and price > 1.2 * cat_avg.avg_price
+    select sk
+    subset join cat_avg.category = category;
+select count(qualifying.sk) as q;
+"""
+
 _UNCORRELATED = """
 with qualifying as
     where price > 1.2 * (select cat_avg.avg_price where cat_avg.category = 'a')
@@ -52,7 +62,16 @@ def _engine():
 def test_correlated_inline_subquery_refuses_without_leaking_node_invariant():
     with pytest.raises(DisconnectedConceptsException) as exc:
         _engine().generate_sql(_MODEL + _CORRELATED)
-    assert "cat_avg.category" in str(exc.value)
+    message = str(exc.value)
+    assert "correlated subquery is not supported" in message, message
+    assert "`subset join cat_avg.category = category`" in message, message
+    # the aggregate output has no name outside the body to join on
+    assert "_cat_avg_avg_price" not in message, message
+
+
+def test_the_declared_join_spelling_the_refusal_points_at_plans():
+    rows = _engine().execute_text(_MODEL + _DECLARED)[0].fetchall()
+    assert [tuple(row) for row in rows] == [(1,)]
 
 
 def test_uncorrelated_inline_subquery_still_plans():
