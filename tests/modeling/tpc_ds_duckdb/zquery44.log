@@ -1,6 +1,6 @@
 query_id = "44"
-gen_length = 3189
-preql_size = 995
+gen_length = 2916
+preql_size = 994
 comp_size = 1462
 generated_sql = """
 
@@ -79,7 +79,6 @@ FROM
 sparkling as (
 SELECT
     \"young\".\"ascending_best_performing\" as \"ascending_best_performing\",
-    \"young\".\"ascending_rnk_a\" as \"ascending_rnk_a\",
     \"young\".\"ascending_rnk_a\" as \"rnk\"
 FROM
     \"young\"
@@ -87,17 +86,17 @@ WHERE
     \"young\".\"ascending_rnk_a\" < 11
 )
 SELECT
-    coalesce(\"sparkling\".\"ascending_rnk_a\",\"sparkling\".\"rnk\",\"sweltering\".\"descending_rnk_d\") as \"rnk\",
+    \"sparkling\".\"rnk\" as \"rnk\",
     \"sparkling\".\"ascending_best_performing\" as \"ascending_best_performing\",
     \"sweltering\".\"descending_worst_performing\" as \"descending_worst_performing\"
 FROM
-    \"sparkling\"
-    LEFT OUTER JOIN \"sweltering\" on \"sparkling\".\"rnk\" = \"sweltering\".\"descending_rnk_d\"
+    \"sweltering\"
+    INNER JOIN \"sparkling\" on \"sweltering\".\"descending_rnk_d\" = \"sparkling\".\"rnk\"
 WHERE
-    coalesce(\"sparkling\".\"ascending_rnk_a\",\"sparkling\".\"rnk\",\"sweltering\".\"descending_rnk_d\") < 11
+    \"sparkling\".\"rnk\" < 11
 
 ORDER BY 
-    coalesce(\"sparkling\".\"ascending_rnk_a\",\"sparkling\".\"rnk\",\"sweltering\".\"descending_rnk_d\") asc nulls first,
+    \"sparkling\".\"rnk\" asc nulls first,
     \"sparkling\".\"ascending_best_performing\" desc nulls first,
     \"sweltering\".\"descending_worst_performing\" desc nulls first
 LIMIT (100)"""
