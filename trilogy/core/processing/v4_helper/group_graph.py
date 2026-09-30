@@ -2319,7 +2319,9 @@ def build_group_graph(
         environment,
         keyspace,
     )
-    split_carried_only_row_streams(buckets, primary_group, keyspace, environment)
+    split_carried_only_row_streams(
+        buckets, primary_group, partition.domains, keyspace, environment
+    )
     trace_buckets("carried-only row streams split", buckets, primary_group)
     group_graph, attrs, group_edges = _materialize_group_graph(
         concept_graph,
