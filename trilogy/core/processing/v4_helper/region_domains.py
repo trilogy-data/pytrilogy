@@ -5,6 +5,7 @@ evaluate on the region, and restated at FINAL for the WHERE atoms over it.
 """
 
 from dataclasses import dataclass
+from enum import Enum
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
@@ -252,78 +253,45 @@ def _pads_region(
     ) and not _holds_a_materialized_aggregate(bucket, region, keyspace, environment)
 
 
+class DomainKind(Enum):
+    """Where a demanded region's own rows come from."""
+
+    # a ROOT bucket of its own, joined back to the solid row stream
+    OWN = "own"
+    # the scope sources nothing absent on the region: its row stream is the
+    # region's rows
+    ROW_STREAM = "row_stream"
+    # the rowset boundary whose body padded the region, and nothing the scope
+    # derives has to be evaluated on the solid rows
+    BOUNDARY = "boundary"
+    # an authored coalescing relation (`union join ocust = cid`) unions the
+    # region's key, and the union machinery builds it
+    RELATION = "relation"
+    # not modelled: the padded plan stands in for the domain
+    PADDED = "padded"
+
+
 @dataclass
 class RegionDomain:
-    """A live extension region the statement asks rows of, and the bucket that
-    carries them."""
+    """A live extension region the statement asks rows of, what the scope's
+    root demand holds that the region carries, and where those rows come
+    from. Only an OWN domain has a bucket."""
 
     region: Region
-    bucket: GroupBucket
+    kind: DomainKind
+    label: str
+    carried: frozenset[str]
+    bucket: GroupBucket | None = None
+    note: str = ""
 
-    @property
-    def carried(self) -> set[str]:
-        return set(self.bucket.primary_members)
 
-
-def _region_domain(
+def _own_bucket(
     region: Region,
     label: str,
-    buckets: dict[str, GroupBucket],
-    concept_attrs: dict[str, ConceptAttrs],
-    environment: BuildEnvironment,
-    keyspace: Keyspace,
-    condition_arg_addresses: frozenset[str],
-    mandatory_list: list[BuildConcept],
-) -> RegionDomain | None:
-    eligible = [
-        b for b in buckets.values() if b.label == label and _splits_for_region(b)
-    ]
-    sources = [b for b in eligible if _pads_region(b, region, keyspace, environment)]
-    rowset = [b for b in sources if b.derivation == Derivation.ROWSET]
-    # beside a rowset the domain is the boundary again; otherwise it takes
-    # every member of the region the scope's row stream holds
-    holders = rowset or [
-        b
-        for b in eligible
-        if b.derivation == Derivation.ROOT
-        and not _holds_a_materialized_aggregate(b, region, keyspace, environment)
-    ]
-    members = {
-        address: node_id
-        for b in (*sources, *holders)
-        for address, node_id in zip(b.primary_members, b.primary_node_ids)
-        if keyspace.carried_on(address, region)
-    }
-    if (
-        not sources
-        or not members
-        or not _region_is_demanded(
-            label,
-            region,
-            keyspace,
-            keyspace.output_demanded_spans,
-            concept_attrs,
-            environment,
-        )
-    ):
-        return None
-    if rowset and not _needs_solid_rows(buckets, label, region, keyspace, environment):
-        return None
-    undelivered = sorted(
-        address
-        for address in condition_arg_addresses
-        if not _filters_region_domain(
-            address, region, keyspace, set(members), environment, mandatory_list
-        )
-    )
-    if undelivered:
-        # no host filters the domain's rows by these, so the region
-        # keeps its padded plan
-        logger.info(
-            f"region {region.describe()} keeps its padded plan: no host"
-            f" filters its rows by {undelivered}"
-        )
-        return None
+    eligible: list[GroupBucket],
+    rowset: list[GroupBucket],
+    members: dict[str, str],
+) -> GroupBucket:
     extent = f"extent:{'|'.join(sorted(region.spans))}"
     domain = GroupBucket(
         depth_label=rowset[0].depth_label if rowset else DepthLabel.ROOT,
@@ -339,7 +307,93 @@ def _region_domain(
         domain.primary_members.append(address)
         domain.primary_node_ids.append(node_id)
         domain.member_depths[address] = depths.get(address, DepthLabel.ROOT)
-    return RegionDomain(region, domain)
+    return domain
+
+
+def _region_domain(
+    region: Region,
+    label: str,
+    buckets: dict[str, GroupBucket],
+    concept_attrs: dict[str, ConceptAttrs],
+    environment: BuildEnvironment,
+    keyspace: Keyspace,
+    condition_arg_addresses: frozenset[str],
+    mandatory_list: list[BuildConcept],
+    relation_spans: set[str],
+) -> RegionDomain | None:
+    eligible = [
+        b for b in buckets.values() if b.label == label and _splits_for_region(b)
+    ]
+    carried = frozenset(
+        m for b in eligible for m in b.primary_members if keyspace.carried_on(m, region)
+    )
+    if not carried or not _region_is_demanded(
+        label,
+        region,
+        keyspace,
+        keyspace.output_demanded_spans,
+        concept_attrs,
+        environment,
+    ):
+        return None
+    if region.spans & relation_spans:
+        return RegionDomain(region, DomainKind.RELATION, label, carried)
+    mixing = [b for b in eligible if _mixes_region(b, region, keyspace)]
+    if not mixing:
+        return RegionDomain(region, DomainKind.ROW_STREAM, label, carried)
+    sources = [
+        b
+        for b in mixing
+        if not _holds_a_materialized_aggregate(b, region, keyspace, environment)
+    ]
+    if not sources:
+        # a rollup over the region's rows the keyspace does not model
+        return RegionDomain(
+            region, DomainKind.PADDED, label, carried, note="materialized aggregate"
+        )
+    rowset = [b for b in sources if b.derivation == Derivation.ROWSET]
+    if rowset and not _needs_solid_rows(buckets, label, region, keyspace, environment):
+        return RegionDomain(region, DomainKind.BOUNDARY, label, carried)
+    # beside a rowset the domain is the boundary again; otherwise it takes
+    # every member of the region the scope's row stream holds
+    holders = rowset or [
+        b
+        for b in eligible
+        if b.derivation == Derivation.ROOT
+        and not _holds_a_materialized_aggregate(b, region, keyspace, environment)
+    ]
+    members = {
+        address: node_id
+        for b in (*sources, *holders)
+        for address, node_id in zip(b.primary_members, b.primary_node_ids)
+        if keyspace.carried_on(address, region)
+    }
+    undelivered = sorted(
+        address
+        for address in condition_arg_addresses
+        if not _filters_region_domain(
+            address, region, keyspace, set(members), environment, mandatory_list
+        )
+    )
+    if undelivered:
+        logger.info(
+            f"region {region.describe()} keeps its padded plan: no host"
+            f" filters its rows by {undelivered}"
+        )
+        return RegionDomain(
+            region,
+            DomainKind.PADDED,
+            label,
+            carried,
+            note=f"no host filters its rows by {undelivered}",
+        )
+    return RegionDomain(
+        region,
+        DomainKind.OWN,
+        label,
+        frozenset(members),
+        _own_bucket(region, label, eligible, rowset, members),
+    )
 
 
 def decide_region_domains(
@@ -350,8 +404,9 @@ def decide_region_domains(
     condition_arg_addresses: frozenset[str],
     mandatory_list: list[BuildConcept],
 ) -> list[RegionDomain]:
-    """Give a live extension region its own ROOT bucket when the statement
-    derives something absent on it.
+    """Say where the rows of each live extension region the statement asks
+    rows of come from (`DomainKind`), and give the region a ROOT bucket of its
+    own when the statement derives something absent on it.
 
     A derived concept is a function of its keys and NULL where a key's entity
     is absent. Sourced with the region's rows, the derivation's inputs are
@@ -366,7 +421,9 @@ def decide_region_domains(
     Only a region the statement asks rows of: an output is a function of what
     its span reaches (`output_demanded_spans`, the election's question), or an
     aggregate counts them. `select order_id, status where name = 'ann'` asks
-    for orders; the customer with none is not a row of it.
+    for orders; the customer with none is not a row of it. And only one with
+    rows of its own: a region kept by a completion alone is rows of the larger
+    source, where nothing is absent.
 
     A ROWSET boundary already holds the region's rows (its body padded them),
     so it is split only when something must be evaluated on the solid rows
@@ -376,17 +433,13 @@ def decide_region_domains(
     Decided on the scope's whole root demand, before any of it is peeled onto
     an entity key: the domain takes every member the region carries, so the
     entity split knows which clusters are a domain's rows already."""
-    # an authored coalescing relation (`union join ocust = cid`) IS its key's
-    # domain, and the union machinery builds it; no region domain beside it
-    coalescing = environment.domain_graph.coalescing_relation_members()
+    relation_spans = environment.domain_graph.coalescing_relation_members()
     labels = sorted({b.label for b in buckets.values()})
     domains: list[RegionDomain] = []
     for region in keyspace.live_regions:
         if not region.has_own_rows or not all(
             span in environment.concepts for span in region.spans
         ):
-            continue
-        if region.spans & coalescing:
             continue
         for label in labels:
             domain = _region_domain(
@@ -398,6 +451,7 @@ def decide_region_domains(
                 keyspace,
                 condition_arg_addresses,
                 mandatory_list,
+                relation_spans,
             )
             if domain is not None:
                 domains.append(domain)
@@ -406,7 +460,7 @@ def decide_region_domains(
 
 def carry_region_spans(
     buckets: dict[str, GroupBucket],
-    domains: list[RegionDomain],
+    domains: list[GroupBucket],
     keyspace: Keyspace,
     environment: BuildEnvironment,
 ) -> None:
@@ -421,8 +475,10 @@ def carry_region_spans(
     dimension-only outputs (`select customer_id, name where status is null`)
     reaches FINAL as a producer of its own, and pairs with the domain only on
     the span. Without it the merge is keyless."""
-    for domain in domains:
-        region, bucket = domain.region, domain.bucket
+    for bucket in domains:
+        region = keyspace.region_of(bucket.extent_spans)
+        if region is None:
+            continue
         scope = _scope_and_phase(bucket.label)[0]
         solid = [
             b
@@ -431,7 +487,7 @@ def carry_region_spans(
             and _splits_for_region(b)
             and _pads_region(b, region, keyspace, environment)
         ]
-        for span in sorted(region.spans - domain.carried):
+        for span in sorted(region.spans - set(bucket.primary_members)):
             for side in (bucket, *solid):
                 _carry(side, span)
         for scan in buckets.values():

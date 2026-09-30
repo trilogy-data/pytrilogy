@@ -37,10 +37,13 @@ from .constants import (
     EdgeKind,
 )
 from .edges import EdgeMap, edge_kind
-from .extent_ownership import span_members
 from .functional_dependency import build_fd_determines
 from .models import ConceptAttrs, GroupBucket, Keyspace, RootReason
-from .region_domains import RegionDomain, carry_region_spans, decide_region_domains
+from .region_domains import (
+    RegionDomain,
+    carry_region_spans,
+    decide_region_domains,
+)
 
 
 def _d1_calc_subgraph(
@@ -681,12 +684,11 @@ def _preaggregate_filter_allows_dimension_member(
 
 
 def _keep_extension_families_together(
-    assignment: dict[str, frozenset[str]],
-    keyspace: Keyspace,
-    environment: BuildEnvironment,
+    assignment: dict[str, frozenset[str]], domains: list[RegionDomain]
 ) -> None:
-    """Merge the peel clusters that carry a demanded ``~`` extension span, and
-    leave the members in the bucket when the merged cluster still mixes nothing.
+    """Merge the peel clusters that hold what a region domain carries, and
+    leave the members in the bucket when one domain carries the whole merged
+    cluster.
 
     Each peeled cluster sources apart and pads its own span, so two families
     hanging off different grain keys (`~product` off the fact grain, `~user` off
@@ -695,20 +697,19 @@ def _keep_extension_families_together(
     (product, user) row. One cluster keyed by both peel keys sources them as one
     span, the shape the same select has without the aggregate.
 
-    A cluster keyed by the span itself reads the dimension's own table and pads
-    nothing, so it stays apart. Any other cluster is a solid stream beside the
-    region's domain, which it can only be if it holds something absent on the
-    region too: carrying the span alone it reads the span off the table it
-    was peeled onto (`test_field_report_select` read `user_id` through the
-    orders and stopped reading the items' own binding; tpc-h adhoc07 joined
-    `orders` a second time at FINAL). Un-peeled, the span rides the row
-    stream the region's rows join back to."""
-    demanded_spans = keyspace.output_demanded_spans
+    A cluster keyed by the region's span reads the dimension's own table and
+    pads nothing, so it stays apart. Any other cluster is a solid stream beside
+    the region's domain, which it can only be if it holds something absent on
+    the region too: holding only what the domain carries it reads the span off
+    the table it was peeled onto (`test_field_report_select` read `user_id`
+    through the orders and stopped reading the items' own binding; tpc-h
+    adhoc07 joined `orders` a second time at FINAL). Un-peeled, the members
+    ride the row stream the region's rows join back to."""
     carrying = {
         assignment[address]
-        for span in demanded_spans
-        for address in span_members(span, assignment, environment)
-        if span not in assignment[address]
+        for domain in domains
+        for address in assignment
+        if address in domain.carried and not assignment[address] <= domain.region.spans
     }
     if not carrying:
         return
@@ -718,11 +719,9 @@ def _keep_extension_families_together(
     for address, cluster in assignment.items():
         if cluster in carrying:
             assignment[address] = key
-    members = [a for a, k in assignment.items() if k == key]
+    members = {a for a, k in assignment.items() if k == key}
     if any(
-        all(keyspace.carried_on(member, region) for member in members)
-        for region in keyspace.live_regions
-        if region.spans & demanded_spans and not region.spans & key
+        members <= domain.carried for domain in domains if not domain.region.spans & key
     ):
         for address in members:
             del assignment[address]
@@ -736,7 +735,7 @@ def _domain_holding(
     domains: list[RegionDomain],
     concept_graph: nx.DiGraph,
     primary_group: dict[str, str],
-) -> RegionDomain | None:
+) -> GroupBucket | None:
     """The region domain a cluster is the rows of again: keyed by the region's
     span, every member carried there, and read by nothing but FINAL, which
     reads the domain. A cluster with a reader is peeled all the same: it is
@@ -751,9 +750,10 @@ def _domain_holding(
         return None
     return next(
         (
-            domain
+            domain.bucket
             for domain in domains
-            if domain.bucket.label == label
+            if domain.bucket is not None
+            and domain.label == label
             and domain.bucket.derivation == Derivation.ROOT
             and key <= domain.region.spans
             and set(members) <= domain.carried
@@ -934,7 +934,9 @@ def _split_root_dimension_clusters(
                 assignment[addr] = composite
         if not assignment:
             continue
-        _keep_extension_families_together(assignment, keyspace, environment)
+        _keep_extension_families_together(
+            assignment, [d for d in domains if d.label == bucket.label]
+        )
         if not assignment:
             continue
         clusters: dict[frozenset[str], list[int]] = defaultdict(list)
@@ -955,7 +957,7 @@ def _split_root_dimension_clusters(
             )
             if domain is not None:
                 for node_id in node_ids:
-                    primary_group[node_id] = domain.bucket.group_id
+                    primary_group[node_id] = domain.group_id
                 moved.update(indices)
                 continue
             dim_bucket = GroupBucket(
@@ -1006,7 +1008,10 @@ class RootPartition:
 
 @plan_trace.off_clock
 def trace_buckets(
-    title: str, buckets: dict[str, GroupBucket], primary_group: dict[str, str]
+    title: str,
+    buckets: dict[str, GroupBucket],
+    primary_group: dict[str, str],
+    domains: list[RegionDomain] | None = None,
 ) -> None:
     if plan_trace.active():
         plan_trace.record(
@@ -1014,6 +1019,17 @@ def trace_buckets(
             plan_trace.BucketsStep(
                 buckets={gid: plan_trace.jsonable(b) for gid, b in buckets.items()},
                 primary_group=dict(primary_group),
+                domains=[
+                    plan_trace.RegionDomainTrace(
+                        spans=sorted(d.region.spans),
+                        kind=d.kind.value,
+                        label=d.label,
+                        carried=sorted(d.carried),
+                        bucket=d.bucket.group_id if d.bucket else None,
+                        note=d.note,
+                    )
+                    for d in domains or []
+                ],
             ),
         )
 
@@ -1057,8 +1073,9 @@ def partition_root_demand(
         condition_arg_addresses,
         mandatory_list,
     )
-    buckets.update({d.bucket.group_id: d.bucket for d in domains})
-    trace_buckets("region domains added", buckets, primary_group)
+    own = [d.bucket for d in domains if d.bucket is not None]
+    buckets.update({bucket.group_id: bucket for bucket in own})
+    trace_buckets("region domains added", buckets, primary_group, domains)
     projected_scalar_root_args = _projected_scalar_root_args(
         mandatory_list, _grouping_keys(buckets)
     )
@@ -1079,7 +1096,7 @@ def partition_root_demand(
     trace_buckets("entity clusters peeled", buckets, primary_group)
     scans = _condition_scans(concept_attrs, roots_by_stage)
     buckets.update({scan.group_id: scan for scan in scans.values()})
-    carry_region_spans(buckets, domains, keyspace, environment)
+    carry_region_spans(buckets, own, keyspace, environment)
     trace_buckets("condition scans added, spans carried", buckets, primary_group)
     return RootPartition(
         {stage: scan.group_id for stage, scan in scans.items()},
