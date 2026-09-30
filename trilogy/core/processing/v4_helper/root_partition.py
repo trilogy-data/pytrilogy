@@ -965,6 +965,14 @@ def _split_root_dimension_clusters(
                 label=bucket.label,
                 discriminator=f"dim:{'|'.join(sorted(key))}",
                 dim_keys=frozenset(key),
+                anchor_keys=(
+                    frozenset(k for k in key if k in environment.concepts)
+                    if any(
+                        bucket.primary_members[idx] in projected_scalar_root_args
+                        for idx in indices
+                    )
+                    else frozenset()
+                ),
                 reason=RootReason.ENTITY,
             )
             for idx in indices:
@@ -976,17 +984,6 @@ def _split_root_dimension_clusters(
                     addr, DepthLabel.ROOT
                 )
                 moved.add(idx)
-            if any(
-                bucket.primary_members[idx] in projected_scalar_root_args
-                for idx in indices
-            ):
-                for key_address in key:
-                    if (
-                        key_address in environment.concepts
-                        and key_address not in dim_bucket.primary_members
-                    ):
-                        dim_bucket.carried_keys.append(key_address)
-                        dim_bucket.member_depths[key_address] = DepthLabel.ROOT
             dim_gid = dim_bucket.group_id
             buckets[dim_gid] = dim_bucket
             for idx in indices:

@@ -446,10 +446,9 @@ def carry_region_spans(
                     _carry(scan, span)
 
 
-def _carry(bucket: GroupBucket, key: str) -> None:
-    if key not in bucket.carried_keys:
-        bucket.carried_keys.append(key)
-        bucket.member_depths[key] = DepthLabel.ROOT
+def _carry(bucket: GroupBucket, span: str) -> None:
+    if span not in bucket.carried_spans:
+        bucket.carried_spans.append(span)
 
 
 def split_carried_only_row_streams(
