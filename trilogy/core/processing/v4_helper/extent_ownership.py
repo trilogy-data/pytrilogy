@@ -25,8 +25,6 @@ leaves a contributor dangling at render time.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
-
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, FunctionType
 from trilogy.core.models.build import BuildConcept, BuildFilterItem, BuildFunction
@@ -35,21 +33,7 @@ from trilogy.core.models.keyspace import Keyspace, Region
 from trilogy.core.processing.condition_utility import concepts_implied_non_null
 
 from .constants import FINAL_NODE_ID, ROW_STREAM_DERIVATIONS
-from .functional_dependency import build_fd_determines
 from .models import ExtentOwnership, GroupAttrs
-
-
-def span_members(
-    span: str, addresses: Iterable[str], environment: BuildEnvironment
-) -> list[str]:
-    """The addresses an extension row of `span` carries: the key itself and
-    whatever it functionally determines."""
-    return [
-        address
-        for address in addresses
-        if address == span
-        or build_fd_determines(environment, {span}, address, include_empty_grain=False)
-    ]
 
 
 def elect_extent_owners(

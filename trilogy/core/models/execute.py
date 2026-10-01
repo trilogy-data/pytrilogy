@@ -124,6 +124,10 @@ class ConditionPlacement:
     qualify: BoolExpr | None = None
 
 
+def _spells(side: BuildConcept, spellings: set[str]) -> bool:
+    return bool(({side.address} | set(side.pseudonyms)) & spellings)
+
+
 @dataclass
 class CTE:
     name: str
@@ -484,18 +488,20 @@ class CTE:
         surviving row the sides agree, so any one of them renders the key."""
         concept = self.get_concept(address)
         spellings = {address} | (set(concept.pseudonyms) if concept else set())
-
-        def spells(side: BuildConcept) -> bool:
-            return bool(({side.address} | set(side.pseudonyms)) & spellings)
-
         out: set[str] = set()
         for join in self.joins:
             if not isinstance(join, Join) or join.jointype is not JoinType.INNER:
                 continue
+            lefts: dict[tuple[str, str], set[str]] = defaultdict(set)
             for pair in join.joinkey_pairs or []:
-                if spells(pair.left) and spells(pair.right):
-                    out.add(pair.cte.name)
-                    out.add(join.right_cte.name)
+                if _spells(pair.left, spellings) and _spells(pair.right, spellings):
+                    lefts[(pair.right.address, pair.left.address)].add(pair.cte.name)
+            for names in lefts.values():
+                out.add(join.right_cte.name)
+                # several left sides render `coalesce(a.k, b.k) = c.k`, where
+                # any one of them may be the padded NULL
+                if len(names) == 1:
+                    out |= names
         return out
 
     def from_scope_aliases(self) -> set[str]:

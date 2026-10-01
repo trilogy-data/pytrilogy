@@ -21,6 +21,7 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import (
+    ROW_RESHAPING_SOURCE_TYPES,
     SENSITIVE_DERIVATIONS,
     append_condition,
     carry_child_state,
@@ -50,20 +51,10 @@ class MergeMode(Enum):
     PASSTHROUGH = "passthrough"
 
 
-_NON_PROJECTION_SOURCE_TYPES = (
-    SourceType.GROUP,
-    SourceType.WINDOW,
-    SourceType.UNNEST,
-    SourceType.RECURSIVE,
-    SourceType.SUBSELECT,
-    SourceType.UNION,
-)
-
-
 def is_projection_shape(cte: CTE) -> bool:
     if cte.group_to_grain or cte.joins:
         return False
-    if cte.source.source_type in _NON_PROJECTION_SOURCE_TYPES:
+    if cte.source.source_type in ROW_RESHAPING_SOURCE_TYPES:
         return False
     # A column with a non-empty source_map entry is pulled from upstream as a
     # plain column, safe to pass through whatever its derivation. Only a

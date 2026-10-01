@@ -240,25 +240,23 @@ def plan_nested_select(
     # Constructs nested inside this select inherit the hidden set. The owned
     # spans are this select's own: a construct nested inside it starts over.
     history.nested_exclusions = hidden
-    outer_owned = history.owned_spans
-    history.owned_spans = owned_spans
-    # The two scopes end at different points: the hidden set covers the body
-    # search alone, while the owned spans cover the HAVING sub-plan too. Left
-    # hidden across the HAVING, this select's own outputs are invisible to the
-    # connectivity check a predicate reaching through one of them must pass.
+    outer_owned, history.owned_spans = history.owned_spans, owned_spans
+    # The hidden set covers the body search alone; the owned spans cover the
+    # HAVING sub-plan too, whose connectivity check must see this select's
+    # own outputs.
     try:
-        node = search_parent(
-            list(built.output_components),
-            env,
-            history,
-            graph,
-            depth=depth + 1,
-            conditions=[where] if where else [],
-            staged_conditions=staged,
-        )
-    finally:
-        history.nested_exclusions = inherited
-    try:
+        try:
+            node = search_parent(
+                list(built.output_components),
+                env,
+                history,
+                graph,
+                depth=depth + 1,
+                conditions=[where] if where else [],
+                staged_conditions=staged,
+            )
+        finally:
+            history.nested_exclusions = inherited
         if node is None:
             logger.info(
                 f"{depth_to_prefix(depth)}{LOGGER_PREFIX} {label} "

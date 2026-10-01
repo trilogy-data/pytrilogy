@@ -54,6 +54,8 @@ class V4History(History):
     # Each rowset the statement reads, as a source of the plans reading it
     # (`keyspace.rowset_witness`): a fact of the rowset, computed once.
     rowset_witnesses: dict[str, RowsetWitness] = field(default_factory=dict)
+    # How many witnesses are mid-computation (`rowset_witnesses()`).
+    witness_depth: int = 0
     # Spans of the body regions the plan reading a rowset holds the rows of:
     # the body, and every plan under it, is built without them. Managed by
     # `plan_nested_select`; part of the build key.

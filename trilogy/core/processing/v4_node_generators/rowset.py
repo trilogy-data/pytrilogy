@@ -286,10 +286,6 @@ def resolve_rowset(
             continue
         boundary.add(handle, produced[hlineage.content.address])
 
-    # A plain rowset's grain keys are NOT exposed under their raw base address:
-    # the boundary publishes handles only, and a base concept pairs with one
-    # through a declared relation.
-
     # A rowset wrapping a multiselect: an aligned handle's content is the
     # multiselect concept, which the renderer resolves via `find_source`; it
     # needs the per-arm concepts in the SAME CTE's outputs. They're not handles,

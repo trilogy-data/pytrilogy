@@ -66,11 +66,6 @@ def statement_keyspace(
     return keyspace
 
 
-# The rowsets whose witness is mid-computation, so a nested one knows its own
-# answer was built against a placeholder and must not be cached.
-_PLACEHOLDER_STACK: list[str] = []
-
-
 def rowset_witnesses(
     concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
@@ -95,19 +90,15 @@ def rowset_witnesses(
             # mutually recursive bodies would otherwise persist each other's
             # partial answer for the rest of the build, and a raising
             # `_witness` would leave the placeholder standing as the answer.
-            placeholders = set(_PLACEHOLDER_STACK)
+            nested = history.witness_depth > 0
             history.rowset_witnesses[name] = RowsetWitness(name=name, regions=())
-            _PLACEHOLDER_STACK.append(name)
+            history.witness_depth += 1
             try:
                 witness = _witness(lineages[name], environment, history)
-            except Exception:
-                history.rowset_witnesses.pop(name, None)
-                raise
             finally:
-                _PLACEHOLDER_STACK.pop()
-            if placeholders:
+                history.witness_depth -= 1
                 history.rowset_witnesses.pop(name, None)
-            else:
+            if not nested:
                 history.rowset_witnesses[name] = witness
         out.append(witness)
     return tuple(out)

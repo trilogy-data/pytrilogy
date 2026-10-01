@@ -96,7 +96,7 @@ def _structural_partial(ds: BuildDatasource, column: BuildColumnAssignment) -> b
 
 def _proven_bound(
     proven: set[str],
-    datasources: list[BuildDatasource],
+    bound: set[str],
     environment: BuildEnvironment,
     keyspace: Keyspace,
 ) -> set[str]:
@@ -108,7 +108,6 @@ def _proven_bound(
     over the keys' own bindings would; the keyspace names those keys
     (``keys_by_address``, what the derivation READS).
     """
-    bound = _bound_spellings(datasources)
     out = proven & bound
     for address in proven - bound:
         for key in keyspace.keys_by_address.get(address, ()):
@@ -244,16 +243,6 @@ def _component_reach(
     return reach
 
 
-def _reach(
-    ds: BuildDatasource, datasources: list[BuildDatasource], cache: dict[str, set[str]]
-) -> set[str]:
-    reach = cache.get(ds.identifier)
-    if reach is None:
-        reach = _component_reach(ds, datasources)
-        cache[ds.identifier] = reach
-    return reach
-
-
 def _statement_keyspace(
     environment: BuildEnvironment,
     outputs: list[BuildConcept],
@@ -286,19 +275,17 @@ def heal_pinned_partials(
     if not proven:
         return
     keyspace = _statement_keyspace(environment, outputs, conditions)
-    proven_bound = _proven_bound(proven, datasources, environment, keyspace)
+    bound = _bound_spellings(datasources)
+    proven_bound = _proven_bound(proven, bound, environment, keyspace)
     if not proven_bound:
         return
-    referenced_bound = (environment.statement_authored_addresses or set()) & (
-        _bound_spellings(datasources)
-    )
-    reach_cache: dict[str, set[str]] = {}
+    referenced_bound = (environment.statement_authored_addresses or set()) & bound
     replacements: dict[str, BuildDatasource] = {}
     for ds in partial_hosts:
         # A killer must be related to the key's own model component: a concept
         # from a disconnected subgraph attaches via a cross-join gate and is
         # non-null on extension rows too, so it proves nothing.
-        reach = _reach(ds, datasources, reach_cache)
+        reach = _component_reach(ds, datasources)
         killers = proven_bound & reach
         if not killers:
             continue
