@@ -744,6 +744,7 @@ def run(spec: BenchmarkSpec) -> int:
         qid = entry["id"]
         worker = acquire_worker()
         try:
+            agent_runner.reset_worker_workspace(workspace, worker, spec.db_filename)
             log_path = run_dir / f"agent_log.q{qid:02d}.jsonl"
             task = category.build_task(spec, entry, include_docs=bool(leg_docs))
             (run_dir / f"task.q{qid:02d}.txt").write_text(task, encoding="utf-8")
