@@ -147,6 +147,14 @@ def _walk_aggregate_grain_inputs(
         siblings = _union_key_siblings(concept, environment)
         if siblings:
             return siblings
+    if (
+        isinstance(concept.lineage, BuildFilterItem)
+        and isinstance(concept.lineage.content, BuildConcept)
+        and not concept.lineage.content.grain.components
+    ):
+        # A filter's keys name its KEY content as an entity; a grainless one
+        # (a union output) is a row value, so its rows are the identity.
+        return _walk_aggregate_grain_inputs(concept.lineage.content, environment, seen)
     if concept.purpose == Purpose.PROPERTY and concept.keys:
         return [
             environment.concepts[c] for c in concept.keys if c in environment.concepts
