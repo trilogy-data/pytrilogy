@@ -218,19 +218,28 @@ def _padded_addresses(
     accumulated = {i for i in child_padded if i not in right_ids}
     for join in base_joins:
         right_id = join.right_datasource.identifier
-        # a lookup keyed on a column already padded here pads for the same
-        # rows (a guest order's customer, then that customer's address)
-        keyed_on_padding = chain and any(
+        pairs = join.concept_pairs or []
+        extends = join_extends(join)
+        # a lookup keyed on a column already padded on its preserved side pads
+        # for the same rows (a guest order's customer, then that customer's
+        # address)
+        left_padded = chain and any(
             pair.existing_datasource.identifier in extended
             or pair.left.address
             in child_padded.get(pair.existing_datasource.identifier, set())
-            for pair in join.concept_pairs or []
+            for pair in pairs
         )
-        if join_extends(join) or keyed_on_padding:
-            if join.join_type in (JoinType.LEFT_OUTER, JoinType.FULL):
-                extended.add(right_id)
-            if join.join_type in (JoinType.RIGHT_OUTER, JoinType.FULL):
-                extended |= accumulated
+        right_padded = chain and any(
+            pair.right.address in child_padded.get(right_id, set()) for pair in pairs
+        )
+        if join.join_type in (JoinType.LEFT_OUTER, JoinType.FULL) and (
+            extends or left_padded
+        ):
+            extended.add(right_id)
+        if join.join_type in (JoinType.RIGHT_OUTER, JoinType.FULL) and (
+            extends or right_padded
+        ):
+            extended |= accumulated
         accumulated.add(right_id)
     for address, providers in datasource.source_map.items():
         idents = {
@@ -319,59 +328,13 @@ def _span_padded_addresses(
     Wider than ``extension_padded_addresses`` by one step: a lookup chained off
     an already padded key (`users LEFT orders` on the span, then `LEFT lines`
     on `order_id`) pads for the same member, though the span does not key it."""
-    cached = memo.get(id(datasource))
-    if cached is not None:
-        return cached
-    out: set[str] = set()
-    memo[id(datasource)] = out
-    if isinstance(datasource, BuildDatasource):
-        return out
-    child_padded = {
-        child.identifier: _span_padded_addresses(child, span, memo)
-        for child in datasource.datasources
-    }
-    base_joins = [j for j in datasource.joins if isinstance(j, BaseJoin)]
-    right_ids = {j.right_datasource.identifier for j in base_joins}
-    extended: set[str] = set()
-    accumulated = {i for i in child_padded if i not in right_ids}
-    spans = frozenset({span})
-    for join in base_joins:
-        right_id = join.right_datasource.identifier
-        pairs = join.concept_pairs or []
-        keyed = _span_keyed(join, spans)
-        left_padded = any(
-            pair.existing_datasource.identifier in extended
-            or pair.left.address
-            in child_padded.get(pair.existing_datasource.identifier, set())
-            for pair in pairs
-        )
-        right_padded = any(
-            pair.right.address in child_padded.get(right_id, set()) for pair in pairs
-        )
-        if join.join_type in (JoinType.LEFT_OUTER, JoinType.FULL) and (
-            keyed or left_padded
-        ):
-            extended.add(right_id)
-        if join.join_type in (JoinType.RIGHT_OUTER, JoinType.FULL) and (
-            keyed or right_padded
-        ):
-            extended |= accumulated
-        accumulated.add(right_id)
-    for address, providers in datasource.source_map.items():
-        idents = {
-            p.identifier
-            for p in providers
-            if isinstance(p, (BuildDatasource, QueryDatasource))
-        }
-        if idents and all(
-            ident in extended or address in child_padded.get(ident, set())
-            for ident in idents
-        ):
-            out.add(address)
-    for concept in datasource.output_concepts:
-        if concept.address in out:
-            out.update(concept.pseudonyms)
-    return out
+    return _padded_addresses(
+        datasource,
+        _no_leaf_addresses,
+        partial(_span_keyed, spans=frozenset({span})),
+        memo,
+        chain=True,
+    )
 
 
 @dataclass(frozen=True)
