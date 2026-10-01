@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import signal
 import sys
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -507,13 +511,37 @@ def _run_written_file(
     run_command = root_cli.get_command(ctx, "run")
     assert run_command is not None
     try:
-        ctx.invoke(run_command, input=path, param=param, timeout=timeout)
+        with _exit_on_termination(delete_after):
+            ctx.invoke(run_command, input=path, param=param, timeout=timeout)
     finally:
         if delete_after:
             try:
                 backend.delete(path)
             except Exception as exc:
                 print_warning(f"Failed to delete {path} after run: {exc}")
+
+
+def _raise_exit(signum: int, frame: object) -> None:
+    raise SystemExit(128 + signum)
+
+
+@contextmanager
+def _exit_on_termination(active: bool) -> Iterator[None]:
+    """Turn SIGTERM (SIGBREAK on Windows) into SystemExit for the run, so a caller
+    that terminates a hung probe still gets the ``--run-and-delete`` cleanup. A
+    hard kill can't be caught; the caller has to sweep for that."""
+    if not active or threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    signums = [signal.SIGTERM]
+    if hasattr(signal, "SIGBREAK"):
+        signums.append(signal.SIGBREAK)
+    previous = {s: signal.signal(s, _raise_exit) for s in signums}
+    try:
+        yield
+    finally:
+        for s, handler in previous.items():
+            signal.signal(s, handler)
 
 
 def _emit_write_success(path: str, byte_count: int, last_sql: str | None) -> None:

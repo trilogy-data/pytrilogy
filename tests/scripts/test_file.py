@@ -1,7 +1,9 @@
 """Tests for the `trilogy file` command group."""
 
+import signal
 from pathlib import Path
 
+import click
 import pytest
 from click.testing import CliRunner
 
@@ -668,6 +670,51 @@ def test_write_run_and_delete_removes_file_after_failed_run(runner, tmp_path: Pa
     )
     assert result.exit_code != 0, result.output
     assert not target.exists()
+
+
+def _interrupting_run(monkeypatch, interrupt) -> None:
+    original = type(cli).get_command
+
+    def get_command(self, ctx, name):
+        if name != "run":
+            return original(self, ctx, name)
+        return click.Command("run", callback=lambda **_: interrupt())
+
+    monkeypatch.setattr(type(cli), "get_command", get_command)
+
+
+def _terminate() -> None:
+    handler = signal.getsignal(signal.SIGTERM)
+    assert callable(handler)
+    handler(signal.SIGTERM, None)
+
+
+def _ctrl_c() -> None:
+    raise KeyboardInterrupt
+
+
+@pytest.mark.parametrize("interrupt", [_terminate, _ctrl_c])
+def test_write_run_and_delete_removes_file_when_run_is_interrupted(
+    runner, tmp_path: Path, monkeypatch, interrupt
+):
+    _interrupting_run(monkeypatch, interrupt)
+    target = _duckdb_dir(tmp_path) / "probe.preql"
+    result = runner.invoke(
+        cli,
+        [
+            "file",
+            "write",
+            str(target),
+            "--content",
+            "select 1 -> x;",
+            "--run-and-delete",
+        ],
+    )
+    assert result.exit_code != 0, result.output
+    assert not target.exists()
+    from trilogy.scripts import file as file_module
+
+    assert signal.getsignal(signal.SIGTERM) is not file_module._raise_exit
 
 
 def test_write_run_forwards_params(runner, tmp_path: Path):
