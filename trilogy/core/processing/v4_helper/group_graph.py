@@ -30,6 +30,7 @@ from trilogy.core.models.build import (
     BuildRowsetItem,
     BuildWhereClause,
     get_grouped_aggregate_wrapper,
+    is_grouping_identity,
 )
 from trilogy.core.models.build_environment import (
     BuildEnvironment,
@@ -1440,6 +1441,7 @@ def _widen_window_grain_to_grouping_parent(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     facts: dict[str, GroupFacts],
+    environment: BuildEnvironment,
 ) -> None:
     """A WINDOW runs pointwise over its parent's rows; it never reduces grain.
     Its bucket grain is the partition-by key, which can be coarser than the
@@ -1448,12 +1450,20 @@ def _widen_window_grain_to_grouping_parent(
     g1. Left at the partition grain, the window node exposes only g1, so the
     FINAL merge joins it back to the dims on that single non-unique key and
     fans out the ROLLUP subtotal rows. Widen to the grouping parent's grain so
-    the window carries the full join key."""
+    the window carries the full join key; a ROLLUP parent's grouping() flags
+    are part of that key, the only thing telling a subtotal row from a NULL
+    key's detail row."""
     for gid, fact in facts.items():
         if gid == FINAL_NODE_ID or fact.derivation != Derivation.WINDOW:
             continue
         grouping_grains = {
             facts[pred].grain
+            | {
+                m
+                for m in facts[pred].primary
+                if (c := environment.concepts.get(m)) is not None
+                and is_grouping_identity(c)
+            }
             for pred in group_graph.predecessors(gid)
             if edge_kind(group_edges, pred, gid) == EdgeKind.LINEAGE
             and facts[pred].derivation in GROUPING_DERIVATIONS
@@ -1677,7 +1687,7 @@ def _compute_concept_sets(
     _apply_grouping_parent_grain_overrides(
         group_graph, group_edges, facts, lineage_parents
     )
-    _widen_window_grain_to_grouping_parent(group_graph, group_edges, facts)
+    _widen_window_grain_to_grouping_parent(group_graph, group_edges, facts, environment)
     _anchor_scalars_to_dim_peel_key(group_graph, group_edges, facts, attrs)
     _widen_mixed_scalar_basic_to_final_spine(
         group_graph,
