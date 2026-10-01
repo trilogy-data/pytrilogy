@@ -887,6 +887,15 @@ def _feeds_extra_signature_group(
     return False
 
 
+def _has_lineage_consumer(
+    node: str, concept_graph: nx.DiGraph, concept_edges: EdgeMap
+) -> bool:
+    return any(
+        edge_kind(concept_edges, node, succ) == EdgeKind.LINEAGE
+        for _, succ in concept_graph.out_edges(node)
+    )
+
+
 def _can_merge_nested_signatures(
     left: frozenset[str], right: frozenset[str], root_gids: set[str]
 ) -> bool:
@@ -912,6 +921,8 @@ def _partition_by_signature_and_grain(
     extra_signature: Callable[[str], frozenset[str]] | None = None,
     allow_signature_subset: bool = False,
     signature_exempt: frozenset[str] = frozenset(),
+    merge_terminal_siblings: bool = False,
+    output_addresses: frozenset[str] = frozenset(),
 ) -> list[GroupBucket]:
     """Generic signature+grain bucketing. Used for derivations whose
     upstream identity should split buckets even when row-shape (depth /
@@ -924,7 +935,13 @@ def _partition_by_signature_and_grain(
     still co-sources when they share an upstream.
 
     ``signature_exempt`` nodes waive only the signature test (the grain
-    test still applies): see `partition_filters_by_signature`."""
+    test still applies): see `partition_filters_by_signature`.
+
+    ``merge_terminal_siblings`` waives the grain test for an equal-signature
+    pair nothing downstream reads and whose grain keys are all statement
+    outputs: FINAL already relates those keys, so one projection at the union
+    grain renders both without asking the upstream for a new key relation
+    (a day key beside a warehouse key would force the fact that links them)."""
     if not items:
         return []
     buckets: list[GroupBucket] = []
@@ -955,6 +972,12 @@ def _partition_by_signature_and_grain(
             if concept_attrs[node].derivation == Derivation.ROOT
         }
         grains = [sub_items[i][1].grain_components for i in range(n)]
+        terminal = [
+            merge_terminal_siblings
+            and data.grain_components <= output_addresses
+            and not _has_lineage_consumer(node, concept_graph, concept_edges)
+            for node, data in sub_items
+        ]
         merged: list[tuple[int, int]] = []
         for i in range(n):
             for j in range(i + 1, n):
@@ -980,7 +1003,11 @@ def _partition_by_signature_and_grain(
                         primary_group,
                     ):
                         continue
-                if grains[i] <= grains[j] or grains[j] <= grains[i]:
+                if (
+                    grains[i] <= grains[j]
+                    or grains[j] <= grains[i]
+                    or (sigs[i] == sigs[j] and terminal[i] and terminal[j])
+                ):
                     merged.append((i, j))
 
         for member_indices in _components(n, merged):
@@ -1080,6 +1107,8 @@ def partition_basics_by_signature(
         primary_group,
         ensure_assigned,
         allow_signature_subset=True,
+        merge_terminal_siblings=True,
+        output_addresses=output_addresses,
     )
 
 
