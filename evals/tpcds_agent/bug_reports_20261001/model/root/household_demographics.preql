@@ -1,0 +1,23 @@
+# Datasource ingested from household_demographics
+# Grain: demo_sk. Properties: buy_potential, dep_count, vehicle_count.
+# Imports: income_band via hd_income_band_sk (fields as income_band.*).
+# Referenced by: catalog_returns, catalog_sales, customer, store_returns, store_sales, web_returns, web_sales.
+import income_band as income_band;
+
+key demo_sk bigint;
+
+properties demo_sk (
+    buy_potential enum<string>['0-500', '1001-5000', '5001-10000', '501-1000', '>10000', 'Unknown'],
+    dep_count enum<bigint>[0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+    vehicle_count enum<int>[-1, 0, 1, 2, 3, 4],
+);
+
+root datasource household_demographics (
+    hd_demo_sk: demo_sk,
+    hd_income_band_sk: income_band.income_band_sk,
+    hd_buy_potential: buy_potential,
+    hd_dep_count: dep_count,
+    hd_vehicle_count: vehicle_count,
+)
+grain (demo_sk)
+address household_demographics;

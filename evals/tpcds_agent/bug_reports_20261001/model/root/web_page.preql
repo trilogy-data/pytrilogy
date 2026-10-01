@@ -1,0 +1,42 @@
+# Datasource ingested from web_page
+# Grain: web_page_sk. Properties: rec_start_date, rec_end_date, autogen_flag, url, type, char_count, link_count, image_count, max_ad_count.
+# Imports: access_date via wp_access_date_sk (fields as access_date.*), catalog_page via wp_web_page_id (fields as catalog_page.*), creation_date via wp_creation_date_sk (fields as creation_date.*), customer via wp_customer_sk (fields as customer.*).
+# Referenced by: web_returns, web_sales.
+import std.net;
+import catalog_page as catalog_page;
+import customer as customer;
+import date_dim as access_date;
+import date_dim as creation_date;
+
+key web_page_sk bigint;
+
+properties web_page_sk (
+    rec_start_date date,
+    rec_end_date date?,
+    autogen_flag enum<string>['N', 'Y'],
+    url enum<string>['http://www.foo.com']::url,
+    type enum<string>['ad', 'dynamic', 'feedback', 'general', 'order', 'protected', 'welcome']?,
+    char_count bigint[701..7046]?,
+    link_count bigint[2..25]?,
+    image_count enum<bigint>[1, 2, 3, 4, 5, 6, 7]?,
+    max_ad_count enum<int>[0, 1, 2, 3, 4]?,
+);
+
+root datasource web_page (
+    wp_web_page_sk: web_page_sk,
+    wp_web_page_id: ~catalog_page.catalog_page_id,
+    wp_rec_start_date: rec_start_date,
+    wp_rec_end_date: ?rec_end_date,
+    wp_creation_date_sk: ~?creation_date.date_sk,
+    wp_access_date_sk: ~access_date.date_sk,
+    wp_autogen_flag: autogen_flag,
+    wp_customer_sk: ~?customer.customer_sk,
+    wp_url: url,
+    wp_type: ?type,
+    wp_char_count: ?char_count,
+    wp_link_count: ?link_count,
+    wp_image_count: ?image_count,
+    wp_max_ad_count: ?max_ad_count,
+)
+grain (web_page_sk)
+address web_page;

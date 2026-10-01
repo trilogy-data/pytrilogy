@@ -1,0 +1,52 @@
+# Datasource ingested from store_returns
+# Grain: item_sk, ticket_number. Properties: return_quantity, return_amt, return_tax, return_amt_inc_tax, fee, return_ship_cost, refunded_cash, reversed_charge, store_credit, net_loss.
+# Imports: customer via sr_customer_sk (fields as customer.*), customer_address via sr_addr_sk (fields as customer_address.*), customer_demographics via sr_cdemo_sk (fields as customer_demographics.*), date_dim via sr_returned_date_sk (fields as date_dim.*), household_demographics via sr_hdemo_sk (fields as household_demographics.*), item via sr_item_sk (fields as item.*), reason via sr_reason_sk (fields as reason.*), store via sr_store_sk (fields as store.*), time_dim via sr_return_time_sk (fields as time_dim.*).
+import customer as customer;
+import customer_address as customer_address;
+import customer_demographics as customer_demographics;
+import date_dim as date_dim;
+import household_demographics as household_demographics;
+import item as item;
+import reason as reason;
+import store as store;
+import time_dim as time_dim;
+
+key ticket_number bigint;
+
+properties <ticket_number, item.item_sk> (
+    return_quantity bigint[1..100]?,
+    return_amt numeric[0..]?,
+    return_tax numeric[0..]?,
+    return_amt_inc_tax numeric[0..]?,
+    fee numeric[0..]?,
+    return_ship_cost numeric[0..]?,
+    refunded_cash numeric[0..]?,
+    reversed_charge numeric[0..]?,
+    store_credit numeric[0..]?,
+    net_loss numeric[0..]?,
+);
+
+root datasource store_returns (
+    sr_returned_date_sk: ~?date_dim.date_sk,
+    sr_return_time_sk: ~?time_dim.time_sk,
+    sr_item_sk: item.item_sk,
+    sr_customer_sk: ~?customer.customer_sk,
+    sr_cdemo_sk: ~?customer_demographics.demo_sk,
+    sr_hdemo_sk: ?household_demographics.demo_sk,
+    sr_addr_sk: ~?customer_address.address_sk,
+    sr_store_sk: ~?store.store_sk,
+    sr_reason_sk: ?reason.sk,
+    sr_ticket_number: ticket_number,
+    sr_return_quantity: ?return_quantity,
+    sr_return_amt: ?return_amt,
+    sr_return_tax: ?return_tax,
+    sr_return_amt_inc_tax: ?return_amt_inc_tax,
+    sr_fee: ?fee,
+    sr_return_ship_cost: ?return_ship_cost,
+    sr_refunded_cash: ?refunded_cash,
+    sr_reversed_charge: ?reversed_charge,
+    sr_store_credit: ?store_credit,
+    sr_net_loss: ?net_loss,
+)
+grain (item.item_sk, ticket_number)
+address store_returns;

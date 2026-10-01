@@ -1,0 +1,6 @@
+[engine]
+dialect = "duck_db"
+
+[engine.config]
+db_location = "../../.cache/tpcds_sf1.duckdb"
+enable_python_datasources = false

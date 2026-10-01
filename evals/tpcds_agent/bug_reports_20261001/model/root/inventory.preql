@@ -1,0 +1,17 @@
+# Datasource ingested from inventory
+# Grain: date_sk, item_sk, warehouse_sk. Properties: quantity_on_hand.
+# Imports: date_dim via inv_date_sk (fields as date_dim.*), item via inv_item_sk (fields as item.*), warehouse via inv_warehouse_sk (fields as warehouse.*).
+import date_dim as date_dim;
+import item as item;
+import warehouse as warehouse;
+
+property <date_dim.date_sk, item.item_sk, warehouse.warehouse_sk>.quantity_on_hand int[0..1000]?;
+
+root datasource inventory (
+    inv_date_sk: ~date_dim.date_sk,
+    inv_item_sk: item.item_sk,
+    inv_warehouse_sk: warehouse.warehouse_sk,
+    inv_quantity_on_hand: ?quantity_on_hand,
+)
+grain (date_dim.date_sk, item.item_sk, warehouse.warehouse_sk)
+address inventory;

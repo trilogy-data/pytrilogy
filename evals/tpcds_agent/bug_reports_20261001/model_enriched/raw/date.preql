@@ -1,0 +1,39 @@
+# Calendar date dimension, with monotonically increasing week and month
+# sequence numbers across the calendar.
+
+import std.date;
+
+key sk int; # surrogate key
+
+properties sk (
+    id string, # business identifier
+    _date_string string, # Intermediate raw string backing `date`.
+    date date,
+    year int::year,
+    day_of_week enum<int>[0, 1, 2, 3, 4, 5, 6], # 0 = Sunday … 6 = Saturday.
+    day_of_month int::day?,
+    day_name enum<string>['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']?,
+    week_seq int, # Monotonic week-of-time sequence, ~53 per year (same week one year later is week_seq + 53). One week_seq can appear in two years.
+    month_of_year enum<int>[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    quarter enum<int>[1, 2, 3, 4], # Use this, NOT a quarter derived from `date` — the dim's quarters don't match calendar quarters.
+    quarter_name string?, # e.g. '1998Q3'.
+    month_seq int, # Monotonic month-of-time sequence.
+);
+
+datasource date (
+    D_DATE_SK: sk,
+    D_DATE_ID: id,
+    D_DATE: _date_string,
+    _date_string::date: date,
+    D_DOW: day_of_week,
+    D_DOM: day_of_month,
+    D_DAY_NAME: day_name,
+    D_WEEK_SEQ: week_seq,
+    D_MOY: month_of_year,
+    D_MONTH_SEQ: month_seq,
+    D_QOY: quarter,
+    D_QUARTER_NAME: quarter_name,
+    D_YEAR: year,
+)
+grain (sk)
+address date_dim;

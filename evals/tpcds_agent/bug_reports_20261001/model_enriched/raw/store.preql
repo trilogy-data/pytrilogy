@@ -1,0 +1,59 @@
+# Store dimension. The store closure date is intentionally unexposed.
+
+import std.geography;
+#import std.date;
+#import date as closed_date;
+
+key sk int; # Surrogate key. Report the "store code" with id unless the question explicitly asks for the surrogate sk.
+
+properties sk (
+    id string, # Business "store code" (s_store_id). Report/group by this for "store code".
+    name string,
+    employees int,
+    --floor_space int, # Square feet.
+    --hours string, # Free-form, e.g. '8AM-12AM'.
+    --store_manager string,
+    --geography_class string,
+    --market_manager string, # Manager responsible for the store's market.
+    --tax_percentage float, # Decimal fraction, e.g. 0.06 = 6%.
+    county string,
+    state string::us_state_short,
+    city string,
+    zip string,
+    market int, # Numeric market identifier.
+    gmt_offset float?, # Hours, e.g. -5.0.
+    company_name string?,
+    company_id int?,
+    street_number string?,
+    street_name string?,
+    street_type string?, # e.g. 'Ave', 'Ln'.
+    suite_number string?,
+);
+
+datasource store (
+    S_STORE_SK: sk,
+    S_STORE_ID: id,
+    #S_CLOSED_DATE: closed_date.sk, # FK to the date the store was closed (null if still open).
+    S_STORE_NAME: name,
+    S_NUMBER_EMPLOYEES: employees,
+    S_FLOOR_SPACE: floor_space,
+    S_HOURS: hours,
+    S_MANAGER: store_manager,
+    S_GEOGRAPHY_CLASS: geography_class,
+    S_MARKET_MANAGER: market_manager,
+    S_TAX_PERCENTAGE: tax_percentage,
+    S_CITY: city,
+    S_STATE: state,
+    S_COUNTY: county,
+    S_ZIP: zip,
+    S_MARKET_ID: market,
+    S_GMT_OFFSET: gmt_offset,
+    S_COMPANY_NAME: company_name,
+    S_COMPANY_ID: company_id,
+    S_STREET_NUMBER: street_number,
+    S_STREET_NAME: street_name,
+    S_STREET_TYPE: street_type,
+    S_SUITE_NUMBER: suite_number,
+)
+grain (sk)
+address store;

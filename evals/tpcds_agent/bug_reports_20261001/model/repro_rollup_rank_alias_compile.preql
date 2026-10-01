@@ -1,0 +1,7 @@
+import root.store_sales as ss;
+auto total <- sum(ss.quantity);
+auto rnk <- rank(ss.item.category) over (partition by ss.item.category order by total desc);
+select ss.item.category as cat, ss.item.class as cls, total as total_q, rnk
+by rollup (ss.item.category, ss.item.class)
+
+order by cat asc nulls first, cls asc nulls first;

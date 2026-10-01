@@ -1,0 +1,8 @@
+import root.store_sales as ss;
+rowset sale_lines <- select
+    ss.ticket_number as ticket_number,
+    ss.item.item_sk as item_sk,
+    ss.customer.customer_sk as customer_sk,
+    ss.date_dim.date as sold_date,
+    ss.store.store_name as store_name;
+select count(sale_lines.ticket_number) as n, count(sale_lines.sold_date) as d;
