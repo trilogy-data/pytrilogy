@@ -670,7 +670,7 @@ class MergeNode(StrategyNode):
         # first pass, and prunes NULL-able-side pairs from JOIN ON when a
         # preserved alternative exists. Both reduce redundant ``coalesce``.
         null_status = compute_outer_null_status(joins)
-        prune_outer_join_pairs(joins, null_status)
+        prune_outer_join_pairs(joins)
         narrow_directional_join_types(joins, join_proofs, final_datasets)
         narrow_keyless_joins(joins)
         # FULL JOINs only: both sides may be NULL, so source_map needs every
