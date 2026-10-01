@@ -10,6 +10,9 @@ Safety constraints:
   - Every consumer must post-join the same dim with the same FK key pairs.
   - WHERE atoms touching only dim columns must match across consumers.
   - The dim's grain must be a subset of the join keys (no fan-out).
+  - The consumer reads the FK from the container alone. Stripping the dim
+    narrows any outer join padding the container, which the INNER dim join
+    on the container's FK already made inert.
   - All ``internal_ctes`` must be plain CTEs (nested UnionCTE not handled).
 
 Two entry points (``optimize`` dispatches on CTE kind):
@@ -56,6 +59,7 @@ from trilogy.core.optimizations.base_optimization import (
     MergedCTEMap,
     OptimizationRule,
 )
+from trilogy.core.optimizations.join_upgrade import _accumulated_left_ctes
 from trilogy.core.optimizations.utils import (
     add_datasource_sorted,
     append_condition,
@@ -67,6 +71,7 @@ from trilogy.core.processing.condition_utility import (
     decompose_condition,
     is_scalar_condition,
 )
+from trilogy.core.processing.join_resolution import OUTER_JOIN_TYPES
 from trilogy.utility import unique
 
 
@@ -201,6 +206,54 @@ def _derives_from(node: CTE | UnionCTE, container_name: str) -> bool:
     return False
 
 
+def _narrow_null_extending_joins(consumer: CTE, container_name: str) -> None:
+    """Narrow every outer join that pads the container's side with NULLs.
+
+    The consumer's INNER dim join reads its FK from the container alone, so it
+    already drops every row where the container is padded; once that join is
+    stripped, the narrowed joins have to drop them instead."""
+    for idx, j in enumerate(consumer.joins):
+        if not isinstance(j, Join) or j.jointype not in OUTER_JOIN_TYPES:
+            continue
+        left = any(
+            c.name == container_name for c in _accumulated_left_ctes(consumer, idx)
+        )
+        right = j.right_cte.name == container_name
+        if j.jointype == JoinType.FULL and (left or right):
+            j.jointype = JoinType.LEFT_OUTER if left else JoinType.RIGHT_OUTER
+        elif (j.jointype == JoinType.LEFT_OUTER and right) or (
+            j.jointype == JoinType.RIGHT_OUTER and left
+        ):
+            j.jointype = JoinType.INNER
+
+
+def _joins_dim_through_container(
+    consumer: CTE,
+    join: BaseJoin,
+    dim_aliases: set[str],
+    container_names: set[str],
+) -> bool:
+    """The consumer's dim join reads its FK from the container alone. A FK
+    merged from another source (a coalesce over a FULL join) bounds rows the
+    container does not own: pushing the dim into the container's branches
+    would filter one side of the consumer while the others pass. A FK the
+    consumer reads off the dim itself is read off the join's left side."""
+    for pair in join.concept_pairs or []:
+        addr = pair.left.address
+        sources = set(consumer.source_map.get(addr, [])) - dim_aliases
+        if not sources:
+            sources = {
+                p.cte.name
+                for j in consumer.joins
+                if isinstance(j, Join) and j.right_cte.name in dim_aliases
+                for p in j.joinkey_pairs or []
+                if p.left.address == addr
+            }
+        if not sources or not sources.issubset(container_names):
+            return False
+    return True
+
+
 def _dim_local_atoms(
     cte: CTE,
     dim_qds: BuildDatasource | QueryDatasource,
@@ -282,14 +335,16 @@ class UnionDimPushdown(OptimizationRule):
         self,
         consumers: list[CTE],
         inverse_map: dict[str, list[CTE | UnionCTE]],
-    ) -> list[CTE] | None:
+    ) -> tuple[list[CTE], set[str]] | None:
         """Expand pass-through CTE consumers transitively into their
         downstream consumers so the dim-shape check sees the effective
-        end-consumers. Pass-throughs stay in the original ``consumers`` set
-        but are never stripped (they carry no dim join). Returns None if any
-        non-CTE turns up or a pass-through has no downstream.
+        end-consumers, alongside the pass-through names crossed. Pass-throughs
+        stay in the original ``consumers`` set but are never stripped (they
+        carry no dim join). Returns None if any non-CTE turns up or a
+        pass-through has no downstream.
         """
         result: list[CTE] = []
+        pass_throughs: set[str] = set()
         seen: set[str] = set()
         stack: list[CTE | UnionCTE] = list(consumers)
         while stack:
@@ -303,10 +358,11 @@ class UnionDimPushdown(OptimizationRule):
                 downstream = inverse_map.get(c.name, [])
                 if not downstream:
                     return None
+                pass_throughs.add(c.name)
                 stack.extend(downstream)
             else:
                 result.append(c)
-        return result
+        return result, pass_throughs
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
@@ -375,11 +431,12 @@ class UnionDimPushdown(OptimizationRule):
             return False, None
 
         # Shape-matching uses the effective consumers behind any pass-throughs.
-        effective = self._expand_pass_through_consumers(consumers, inverse_map)
-        if not effective:
+        expanded = self._expand_pass_through_consumers(consumers, inverse_map)
+        if expanded is None or not expanded[0]:
             self.complete[cte.name] = True
             return False, None
-        descriptors = self._find_shared_dims(cte, effective)
+        effective, pass_throughs = expanded
+        descriptors = self._find_shared_dims(cte, effective, pass_throughs)
         if not descriptors:
             self.complete[cte.name] = True
             return False, None
@@ -404,7 +461,7 @@ class UnionDimPushdown(OptimizationRule):
     # ---- detection ----
 
     def _consumer_dim_map(
-        self, consumer: CTE, union_outputs: set[str]
+        self, consumer: CTE, union_outputs: set[str], container_names: set[str]
     ) -> dict[_DimKey, _DimDescriptor]:
         """Map each pushable INNER dim join on this consumer to its descriptor
         bits. Key: (dim_id, frozenset of (left_addr, right_addr) pairs).
@@ -449,6 +506,14 @@ class UnionDimPushdown(OptimizationRule):
                     dim_ds = join_qds
             left_addrs = {p.left.address for p in j.concept_pairs}
             if not left_addrs.issubset(union_outputs):
+                continue
+            dim_aliases = {join_qds.safe_identifier, dim_ds.safe_identifier}
+            dim_cte = _find_dim_cte_for_qds(consumer, join_qds.identifier)
+            if dim_cte is not None:
+                dim_aliases.add(dim_cte.name)
+            if not _joins_dim_through_container(
+                consumer, j, dim_aliases, container_names
+            ):
                 continue
             dim_grain_addrs = set(dim_ds.grain.components) if dim_ds.grain else set()
             right_addrs = {p.right.address for p in j.concept_pairs}
@@ -505,10 +570,16 @@ class UnionDimPushdown(OptimizationRule):
         return result
 
     def _find_shared_dims(
-        self, container: CTE | UnionCTE, consumers: list[CTE]
+        self,
+        container: CTE | UnionCTE,
+        consumers: list[CTE],
+        pass_through_names: set[str] | None = None,
     ) -> list[_DimDescriptor]:
         union_outputs = {x.address for x in container.output_columns}
-        per_consumer = [self._consumer_dim_map(c, union_outputs) for c in consumers]
+        container_names = {container.name} | (pass_through_names or set())
+        per_consumer = [
+            self._consumer_dim_map(c, union_outputs, container_names) for c in consumers
+        ]
         if not per_consumer or any(not m for m in per_consumer):
             return []
         common_keys = set(per_consumer[0].keys())
@@ -619,6 +690,7 @@ class UnionDimPushdown(OptimizationRule):
                     existing.add(concept.address)
 
             for consumer in consumers:
+                _narrow_null_extending_joins(consumer, union.name)
                 self._strip_from_consumer(consumer, context.dim_cte, d, union)
         else:
             # Filter-only mode: the consumer keeps its dim join, but the WHERE
@@ -672,6 +744,7 @@ class UnionDimPushdown(OptimizationRule):
                 target.output_columns.append(concept)
                 existing.add(concept.address)
         for consumer in consumers:
+            _narrow_null_extending_joins(consumer, target.name)
             self._strip_from_consumer(consumer, context.dim_cte, d, target)
         self._coarsen_dead_fk_grain(target, d, consumers)
         return True

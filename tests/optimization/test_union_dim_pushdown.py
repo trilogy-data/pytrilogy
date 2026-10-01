@@ -1,3 +1,4 @@
+from trilogy import Dialects
 from trilogy.core.enums import ComparisonOperator, FunctionType, JoinType, SourceType
 from trilogy.core.models.build import (
     BuildColumnAssignment,
@@ -743,3 +744,64 @@ def test_union_dim_pushdown_plain_refuses_dim_derived_from_the_target(
     assert UnionDimPushdown()._apply_plain(target, [consumer], descriptor) is False
     assert target.source.joins == []
     assert target.parent_ctes == []
+
+
+MERGED_FACT_MODEL = """
+key item_id int;
+property item_id.price float;
+key channel enum<string>['A', 'B'];
+key order_id int;
+key outlet_id int;
+properties <order_id, channel, item_id> (
+    sales float?,
+    refund float?,
+);
+
+datasource items (id: item_id, price: price)
+grain (item_id)
+query '''select 1 as id, 10.0 as price union all select 2, 100.0''';
+
+partial datasource sales_a (raw(''' 'A' '''): channel, o: order_id, i: item_id, d: ?outlet_id, s: sales)
+grain (order_id, item_id, channel)
+complete where channel = 'A'
+query '''select 1 as o, 1 as i, 7 as d, 5.0 as s union all select 2, 2, 7, 6.0''';
+
+partial datasource sales_b (raw(''' 'B' '''): channel, o: order_id, i: item_id, d: ?outlet_id, s: sales)
+grain (order_id, item_id, channel)
+complete where channel = 'B'
+query '''select 1 as o, 1 as i, 8 as d, 50.0 as s union all select 2, 2, 8, 60.0''';
+
+partial datasource returns_a (raw(''' 'A' '''): channel, o: ~order_id, i: ~item_id, r: refund)
+grain (order_id, item_id, channel)
+complete where channel = 'A'
+query '''select 2 as o, 2 as i, 1.0 as r union all select 3, 1, 100.0''';
+
+partial datasource returns_b (raw(''' 'B' '''): channel, o: ~order_id, i: ~item_id, r: refund)
+grain (order_id, item_id, channel)
+complete where channel = 'B'
+query '''select 2 as o, 2 as i, 10.0 as r''';
+
+property outlet_id.region string;
+datasource outlets (id: outlet_id, region: region)
+grain (outlet_id)
+query '''select 7 as id, 'east' as region union all select 8, 'west' ''';
+"""
+
+
+def _merged_fact_rows(query: str) -> list[tuple]:
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(MERGED_FACT_MODEL)
+    rows = executor.execute_text(query)[-1].fetchall()
+    return [(r[0], *(None if v is None else float(v) for v in r[1:])) for r in rows]
+
+
+def test_union_dim_pushdown_keeps_filter_on_every_side_of_a_merged_fact():
+    assert _merged_fact_rows("""where price > 50 and outlet_id is not null
+select channel, sum(sales) as total_sales, sum(refund) as total_refund
+order by channel;""") == [("A", 6.0, 1.0), ("B", 60.0, 10.0)]
+
+
+def test_union_dim_pushdown_strip_drops_rows_the_union_side_padded():
+    assert _merged_fact_rows("""where region = 'east'
+select channel, sum(sales) as total_sales, sum(refund) as total_refund
+order by channel;""") == [("A", 11.0, 1.0)]
