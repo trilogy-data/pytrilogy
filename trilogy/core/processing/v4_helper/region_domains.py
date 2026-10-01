@@ -28,7 +28,7 @@ from .extent_ownership import (
     takes_a_value_on_padding,
 )
 from .models import ConceptAttrs, GroupAttrs, GroupBucket, RootReason
-from .projection import decided_at_output_grain, reads_rows_only
+from .projection import decided_at_output_grain, reads_rows_only, rollup_padded_keys
 
 
 def _argument_takes_a_value_on_padding(
@@ -308,6 +308,7 @@ def _region_domain(
     condition_arg_addresses: frozenset[str],
     mandatory_list: list[BuildConcept],
     relation_spans: set[str],
+    rollup_padded: frozenset[str],
 ) -> RegionDomain | None:
     eligible = [
         b for b in buckets.values() if b.label == label and _splits_for_region(b)
@@ -319,6 +320,12 @@ def _region_domain(
         region, keyspace, concept_attrs, environment, label
     ):
         return None
+    if carried & rollup_padded:
+        # a rollup's subtotal rows NULL the key a domain would join back on;
+        # the padded rows must enter below the rollup
+        return RegionDomain(
+            region, DomainKind.PADDED, label, carried, note="rollup key"
+        )
     if region.spans & relation_spans:
         return RegionDomain(region, DomainKind.RELATION, label, carried)
     mixing = [b for b in eligible if _mixes_region(b, region, keyspace)]
@@ -417,6 +424,7 @@ def decide_region_domains(
     an entity key: the domain takes every member the region carries, so the
     entity split knows which clusters are a domain's rows already."""
     relation_spans = environment.domain_graph.coalescing_relation_members()
+    rollup_padded = rollup_padded_keys(environment)
     labels = sorted({b.label for b in buckets.values()})
     domains: list[RegionDomain] = []
     for region in keyspace.live_regions:
@@ -435,6 +443,7 @@ def decide_region_domains(
                 condition_arg_addresses,
                 mandatory_list,
                 relation_spans,
+                rollup_padded,
             )
             if domain is not None:
                 domains.append(domain)

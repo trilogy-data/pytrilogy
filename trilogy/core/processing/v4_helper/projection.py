@@ -3,6 +3,7 @@
 from collections.abc import Iterable
 
 from trilogy.core.enums import Derivation
+from trilogy.core.models.author import SelectLineage
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
@@ -10,6 +11,7 @@ from trilogy.core.models.build import (
     BuildFilterItem,
     BuildRowsetItem,
     BuildWhereClause,
+    get_grouped_aggregate_wrapper,
 )
 from trilogy.core.models.build_environment import (
     BuildEnvironment,
@@ -323,3 +325,30 @@ def statement_filter_population(
     if not all(isinstance(c.lineage, BuildFilterItem) for c in shown):
         return None
     return shared_filter_predicate(shown)
+
+
+def rollup_padded_keys(environment: BuildEnvironment) -> frozenset[str]:
+    """Grouping keys of every ROLLUP/CUBE/GROUPING SETS aggregate in scope.
+    The subtotal rows NULL these, so they are not a row identity and must never
+    be volunteered as a join axis: pairing on one drops every subtotal row (a
+    rolled-up NULL matches nothing). The join resolver applies the same rule
+    per-datasource via `rollup_padded_addresses`; this is the environment-wide
+    view the demand pass needs before any datasource exists."""
+    padded: set[str] = set()
+    for concept in (
+        *environment.concepts.values(),
+        *environment.alias_origin_lookup.values(),
+    ):
+        wrapper = get_grouped_aggregate_wrapper(concept)
+        if wrapper is not None and wrapper.grouping.nulls_grouping_keys:
+            padded |= {c.address for c in wrapper.by}
+        # A rowset carries the spec on the SELECT it wraps, not on the
+        # aggregate: at demand time the members are still plain STANDARD
+        # aggregates and only `select.grouping` says the pass NULL-pads.
+        if isinstance(concept.lineage, BuildRowsetItem):
+            select = concept.lineage.rowset.select
+            if isinstance(select, SelectLineage):
+                grouping = select.grouping
+                if grouping is not None and grouping.mode.nulls_grouping_keys:
+                    padded |= {ref.address for ref in grouping.by}
+    return frozenset(padded)
