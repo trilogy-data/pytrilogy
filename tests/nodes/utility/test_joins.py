@@ -834,7 +834,7 @@ datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_tabl
     joins = [upstream_join, multi_left_join]
     null_status = compute_outer_null_status(joins)
     assert null_status[ds_f2.identifier] == 1
-    prune_outer_join_pairs(joins, null_status)
+    prune_outer_join_pairs(joins)
     # Only the preserved (f1) pair survives.
     assert len(multi_left_join.concept_pairs) == 1
     assert (
@@ -853,7 +853,7 @@ datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_tabl
             ConceptPair(left=shared, right=shared, existing_datasource=ds_f2),
         ],
     )
-    prune_outer_join_pairs([full_join], null_status)
+    prune_outer_join_pairs([full_join])
     assert len(full_join.concept_pairs) == 2
 
     # Distinct (right, left_addr) groups are independent: pruning one doesn't
@@ -877,7 +877,7 @@ datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_tabl
             ),
         ],
     )
-    prune_outer_join_pairs([upstream_join, multi_left_with_distinct], null_status)
+    prune_outer_join_pairs([upstream_join, multi_left_with_distinct])
     # shared/shared group → 1 pair (preserved). Distinct-left groups → unchanged.
     addresses = sorted(
         (p.left.address, p.existing_datasource.identifier)
@@ -887,3 +887,42 @@ datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_tabl
     assert (shared.address, ds_f2.identifier) not in addresses
     assert (other_concept.address, ds_f1.identifier) in addresses
     assert (other_concept_f2_alias.address, ds_f2.identifier) in addresses
+
+
+def test_prune_outer_join_pairs_keeps_every_padded_side():
+    env, _ = parse("""
+key shared_id int;
+key fact1_id int;
+key fact2_id int;
+
+datasource dim (id:shared_id) grain(shared_id) address dim_table;
+datasource fact1 (id:fact1_id, sid:shared_id) grain(fact1_id) address fact1_table;
+datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_table;
+    """)
+    env = env.materialize_for_select()
+    shared = env.concepts["shared_id"]
+    ds_dim = env.datasources["dim"]
+    ds_f1 = env.datasources["fact1"]
+    ds_f2 = env.datasources["fact2"]
+    upstream_full = BaseJoin(
+        left_datasource=None,
+        right_datasource=ds_f2,
+        join_type=JoinType.FULL,
+        concept_pairs=[
+            ConceptPair(left=shared, right=shared, existing_datasource=ds_f1)
+        ],
+    )
+    right_join = BaseJoin(
+        left_datasource=None,
+        right_datasource=ds_dim,
+        join_type=JoinType.RIGHT_OUTER,
+        concept_pairs=[
+            ConceptPair(left=shared, right=shared, existing_datasource=ds_f1),
+            ConceptPair(left=shared, right=shared, existing_datasource=ds_f2),
+        ],
+    )
+    joins = [upstream_full, right_join]
+    status = compute_outer_null_status(joins)
+    assert status[ds_f1.identifier] == 2
+    prune_outer_join_pairs(joins)
+    assert len(right_join.concept_pairs) == 2

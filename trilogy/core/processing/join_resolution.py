@@ -59,6 +59,12 @@ OUTER_JOIN_TYPES = (JoinType.FULL, JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER)
 DIRECTIONAL_OUTER_JOIN_TYPES = (JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER)
 
 
+def _left_source_ids(join: BaseJoin) -> set[str]:
+    if join.left_datasource is not None:
+        return {join.left_datasource.identifier}
+    return {pair.existing_datasource.identifier for pair in join.concept_pairs or []}
+
+
 def compute_outer_null_status(
     joins: list,
 ) -> dict[str, int]:
@@ -67,48 +73,58 @@ def compute_outer_null_status(
     for join in joins:
         if not isinstance(join, BaseJoin):
             continue
-        left_id = join.left_datasource.identifier if join.left_datasource else None
         right_id = join.right_datasource.identifier
-        if join.join_type == JoinType.LEFT_OUTER:
-            score[right_id] = score.get(right_id, 0) + 1
-        elif join.join_type == JoinType.RIGHT_OUTER:
-            if left_id is not None:
-                score[left_id] = score.get(left_id, 0) + 1
-        elif join.join_type == JoinType.FULL:
-            if left_id is not None:
-                score[left_id] = score.get(left_id, 0) + 1
-            score[right_id] = score.get(right_id, 0) + 1
+        padded: set[str] = set()
+        if join.join_type in (JoinType.RIGHT_OUTER, JoinType.FULL):
+            padded |= _left_source_ids(join)
+        if join.join_type in (JoinType.LEFT_OUTER, JoinType.FULL):
+            padded.add(right_id)
+        for identifier in padded:
+            score[identifier] = score.get(identifier, 0) + 1
     return score
 
 
-def prune_outer_join_pairs(
-    joins: list,
-    null_status: dict[str, int],
-) -> None:
-    """Drop redundant duplicate-key pairs from directional outer joins."""
+def prune_outer_join_pairs(joins: list) -> None:
+    """Drop redundant duplicate-key pairs from directional outer joins: a
+    left side no earlier join pads equals the key on every row, so the
+    others' pairs only bloat the coalesce. With every left side padded the
+    coalesce IS the key, and all pairs stay."""
+    joined: set[str] = set()
+    padded: set[str] = set()
     for join in joins:
-        if not isinstance(join, BaseJoin) or not join.concept_pairs:
+        if not isinstance(join, BaseJoin):
             continue
-        if join.join_type not in DIRECTIONAL_OUTER_JOIN_TYPES:
+        if join.concept_pairs and join.join_type in DIRECTIONAL_OUTER_JOIN_TYPES:
+            join.concept_pairs = _prune_padded_pairs(join.concept_pairs, padded)
+        right_id = join.right_datasource.identifier
+        joined |= _left_source_ids(join)
+        if join.join_type in (JoinType.RIGHT_OUTER, JoinType.FULL):
+            padded |= joined
+        if join.join_type in (JoinType.LEFT_OUTER, JoinType.FULL):
+            padded.add(right_id)
+        joined.add(right_id)
+
+
+def _prune_padded_pairs(
+    pairs: list[ConceptPair], padded: set[str]
+) -> list[ConceptPair]:
+    groups: dict[tuple[str, str], list[ConceptPair]] = {}
+    for pair in pairs:
+        groups.setdefault((pair.right.address, pair.left.address), []).append(pair)
+    out: list[ConceptPair] = []
+    for group in groups.values():
+        preserved = [
+            pair
+            for pair in group
+            if pair.existing_datasource.identifier not in padded
+            and pair.left.address
+            not in {c.address for c in pair.existing_datasource.nullable_concepts}
+        ]
+        if len(group) == 1 or not preserved:
+            out.extend(group)
             continue
-        groups: dict[tuple[str, str], list[ConceptPair]] = {}
-        for pair in join.concept_pairs:
-            key = (pair.right.address, pair.left.address)
-            groups.setdefault(key, []).append(pair)
-        new_pairs: list[ConceptPair] = []
-        for pairs in groups.values():
-            if len(pairs) == 1:
-                new_pairs.extend(pairs)
-                continue
-            best = min(
-                pairs,
-                key=lambda p: (
-                    null_status.get(p.existing_datasource.identifier, 0),
-                    p.existing_datasource.identifier,
-                ),
-            )
-            new_pairs.append(best)
-        join.concept_pairs = new_pairs
+        out.append(min(preserved, key=lambda p: p.existing_datasource.identifier))
+    return out
 
 
 def find_all_connecting_concepts(g: nx.Graph, ds1: str, ds2: str) -> set[str]:
