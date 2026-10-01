@@ -22,7 +22,6 @@ from dataclasses import dataclass, field
 from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, Purpose
-from trilogy.core.models.author import SelectLineage
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
@@ -89,6 +88,7 @@ from .models import (
 )
 from .projection import (
     output_rowset_grain_keys,
+    rollup_padded_keys,
 )
 from .region_domains import (
     detach_final_span_domain_producers,
@@ -685,33 +685,6 @@ def _rowset_base_grain(
     return frozenset(grain) - rollup_padded
 
 
-def _rollup_padded_addresses(environment: BuildEnvironment) -> frozenset[str]:
-    """Grouping keys of every ROLLUP/CUBE/GROUPING SETS aggregate in scope.
-    The subtotal rows NULL these, so they are not a row identity and must never
-    be volunteered as a join axis: pairing on one drops every subtotal row (a
-    rolled-up NULL matches nothing). The join resolver applies the same rule
-    per-datasource via `rollup_padded_addresses`; this is the environment-wide
-    view the demand pass needs before any datasource exists."""
-    padded: set[str] = set()
-    for concept in (
-        *environment.concepts.values(),
-        *environment.alias_origin_lookup.values(),
-    ):
-        wrapper = get_grouped_aggregate_wrapper(concept)
-        if wrapper is not None and wrapper.grouping.nulls_grouping_keys:
-            padded |= {c.address for c in wrapper.by}
-        # A rowset carries the spec on the SELECT it wraps, not on the
-        # aggregate: at demand time the members are still plain STANDARD
-        # aggregates and only `select.grouping` says the pass NULL-pads.
-        if isinstance(concept.lineage, BuildRowsetItem):
-            select = concept.lineage.rowset.select
-            if isinstance(select, SelectLineage):
-                grouping = select.grouping
-                if grouping is not None and grouping.mode.nulls_grouping_keys:
-                    padded |= {ref.address for ref in grouping.by}
-    return frozenset(padded)
-
-
 def _lineage_pinned_grain(
     addresses: frozenset[str] | set[str], environment: BuildEnvironment
 ) -> frozenset[str]:
@@ -1152,9 +1125,7 @@ def _refresh_input_contracts(
     )
     lineage_parents = _lineage_parents_by_address(concept_edges, concept_attrs)
     rollup_padded = (
-        _rollup_padded_addresses(environment)
-        if environment is not None
-        else frozenset()
+        rollup_padded_keys(environment) if environment is not None else frozenset()
     )
     for gid in group_graph.nodes:
         if gid == FINAL_NODE_ID or gid not in attrs:
@@ -1437,6 +1408,29 @@ def _anchor_scalars_to_dim_peel_key(
             fact.native_grain = key
 
 
+def _grouping_lineage_ancestors(
+    gid: str,
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    facts: dict[str, GroupFacts],
+) -> set[str]:
+    """The grouping groups `gid` reads directly or through BASIC groups."""
+    out: set[str] = set()
+    seen: set[str] = set()
+    stack = [gid]
+    while stack:
+        node = stack.pop()
+        for pred in group_graph.predecessors(node):
+            if pred in seen or edge_kind(group_edges, pred, node) != EdgeKind.LINEAGE:
+                continue
+            seen.add(pred)
+            if facts[pred].derivation in GROUPING_DERIVATIONS:
+                out.add(pred)
+            elif facts[pred].derivation == Derivation.BASIC:
+                stack.append(pred)
+    return out
+
+
 def _widen_window_grain_to_grouping_parent(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -1452,7 +1446,8 @@ def _widen_window_grain_to_grouping_parent(
     fans out the ROLLUP subtotal rows. Widen to the grouping parent's grain so
     the window carries the full join key; a ROLLUP parent's grouping() flags
     are part of that key, the only thing telling a subtotal row from a NULL
-    key's detail row."""
+    key's detail row. A window ordering by a scalar over the aggregate
+    (`coalesce(sum(x), 0)`) reads the grouping group through that BASIC."""
     for gid, fact in facts.items():
         if gid == FINAL_NODE_ID or fact.derivation != Derivation.WINDOW:
             continue
@@ -1464,9 +1459,9 @@ def _widen_window_grain_to_grouping_parent(
                 if (c := environment.concepts.get(m)) is not None
                 and is_grouping_identity(c)
             }
-            for pred in group_graph.predecessors(gid)
-            if edge_kind(group_edges, pred, gid) == EdgeKind.LINEAGE
-            and facts[pred].derivation in GROUPING_DERIVATIONS
+            for pred in _grouping_lineage_ancestors(
+                gid, group_graph, group_edges, facts
+            )
         }
         if len(grouping_grains) != 1:
             continue
@@ -1661,7 +1656,7 @@ def _compute_concept_sets(
     - reverse demand: which outputs/inputs each group must expose
     """
     mandatory_addresses = {c.address for c in mandatory_list}
-    rollup_padded = _rollup_padded_addresses(environment)
+    rollup_padded = rollup_padded_keys(environment)
     # A struct field demanded as the canonical key (`local.a`) is produced under
     # its derivable pseudonym (`unnest_array.a`); the FINAL demand intersect must
     # match those aliases so the producing group keeps the field as an output.
