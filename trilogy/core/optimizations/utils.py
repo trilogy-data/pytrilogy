@@ -26,6 +26,16 @@ SENSITIVE_DERIVATIONS = frozenset(
     {Derivation.WINDOW, Derivation.UNNEST, Derivation.RECURSIVE}
 )
 
+# a CTE of these sources reshapes its rows; it is not a plain projection
+ROW_RESHAPING_SOURCE_TYPES = (
+    SourceType.GROUP,
+    SourceType.WINDOW,
+    SourceType.UNNEST,
+    SourceType.RECURSIVE,
+    SourceType.SUBSELECT,
+    SourceType.UNION,
+)
+
 
 def propagate_existence_sources(
     branch: CTE, consumer: CTE | UnionCTE, addresses: set[str]

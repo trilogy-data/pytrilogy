@@ -343,6 +343,10 @@ def _literal_derived(concept: BuildConcept, _seen: set[str] | None = None) -> bo
     )
 
 
+def _first_component(concept: BuildConcept, comp_of: dict[str, int]) -> int | None:
+    return next((comp_of[n] for n in _anchor_nodes(concept) if n in comp_of), None)
+
+
 def _anchor_nodes(concept: BuildConcept) -> list[str]:
     """Reference-graph nodes that tie a concept into the model graph: its own
     node, its default-grain node, and its direct source args' default-grain
@@ -476,11 +480,7 @@ def disconnected_components(
     for concept in concepts:
         if _crossjoinable(concept):
             continue
-        cid: object | None = None
-        for node in _anchor_nodes(concept):
-            if node in comp_of:
-                cid = comp_of[node]
-                break
+        cid: object | None = _first_component(concept, comp_of)
         if cid is None:
             cid = f"orphan::{concept.address}"
         buckets.setdefault(cid, []).append(concept)
@@ -602,12 +602,6 @@ def rowset_relation_hints(
     are listed before other outputs."""
     comp_of, _ = _component_map(environment, g, excluded_addresses)
 
-    def component_of(concept: BuildConcept) -> int | None:
-        for node in _anchor_nodes(concept):
-            if node in comp_of:
-                return comp_of[node]
-        return None
-
     outputs_by_rowset: dict[str, list[tuple[BuildConcept, BuildConcept]]] = {}
     for concept in environment.concepts.values():
         lineage = concept.lineage
@@ -633,7 +627,9 @@ def rowset_relation_hints(
             if other is group:
                 continue
             others = {
-                comp for comp in (component_of(c) for c in other) if comp is not None
+                comp
+                for comp in (_first_component(c, comp_of) for c in other)
+                if comp is not None
             }
             determining = {c.address for c in other} | {
                 key for c in other for key in (c.keys or ())
@@ -643,7 +639,7 @@ def rowset_relation_hints(
                 to_base = [
                     (output, content)
                     for output, content in outputs
-                    if component_of(content) in others
+                    if _first_component(content, comp_of) in others
                 ]
                 for output, content in _ranked_pairs(to_base, determining):
                     if (hint := _spell_subset_join(output, content)) not in hints:
@@ -718,10 +714,9 @@ def membership_span_note(
     subgraph_of_component: dict[int, int] = {}
     for idx, group in enumerate(subgraphs):
         for concept in group:
-            for node in _anchor_nodes(concept):
-                if node in comp_of:
-                    subgraph_of_component.setdefault(comp_of[node], idx)
-                    break
+            comp = _first_component(concept, comp_of)
+            if comp is not None:
+                subgraph_of_component.setdefault(comp, idx)
 
     def subgraph_ids(concepts: list[BuildConcept]) -> set[int]:
         # operands consider ALL anchors: an islanded rowset concept's own node
@@ -898,12 +893,6 @@ def connected_equivalent_suggestions(
         return []
     comp_of, _ = _component_map(environment, g, excluded_addresses)
 
-    def component_of(concept: BuildConcept) -> int | None:
-        for node in _anchor_nodes(concept):
-            if node in comp_of:
-                return comp_of[node]
-        return None
-
     tables = _physical_tables_by_concept(environment)
 
     def twin_of(concept: BuildConcept, target_comps: set[int]) -> str | None:
@@ -939,7 +928,7 @@ def connected_equivalent_suggestions(
                 and stranded_tables & tables.get(addr, frozenset())
             ):
                 continue
-            if component_of(candidate) not in target_comps:
+            if _first_component(candidate, comp_of) not in target_comps:
                 continue
             if best is None or len(addr) < len(best):
                 best = addr
@@ -949,7 +938,9 @@ def connected_equivalent_suggestions(
     # which side is the connected one: try each until a twin turns up.
     for target in sorted(subgraphs, key=len, reverse=True):
         target_comps = {
-            comp for comp in (component_of(c) for c in target) if comp is not None
+            comp
+            for comp in (_first_component(c, comp_of) for c in target)
+            if comp is not None
         }
         if not target_comps:
             continue

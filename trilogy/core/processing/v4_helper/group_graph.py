@@ -96,9 +96,6 @@ from .region_domains import (
 )
 from .root_partition import partition_root_demand, trace_buckets
 
-# depth_label for the secondary root bucket that feeds d1 (in-WHERE) aggregate
-# calculations. Distinct from ``root`` so the bucket gets its own group id.
-
 _REGRAFTABLE_DERIVATIONS: set[Derivation] = {
     Derivation.BASIC,
     Derivation.WINDOW,
@@ -429,8 +426,8 @@ def _inject_conditions(
     concept_attrs: dict[str, ConceptAttrs],
     statement_relation_addresses: frozenset[str],
     environment: BuildEnvironment,
-    staged_conditions: list[BuildWhereClause] | None = None,
-    keyspace: Keyspace | None = None,
+    staged_conditions: list[BuildWhereClause] | None,
+    keyspace: Keyspace,
 ) -> set[str]:
     """Apply the typed condition-placement plan to the mutable group attrs."""
     condition_group_ids: set[str] = set()
@@ -663,72 +660,6 @@ def _add_final_node(
     )
     for gid in buckets:
         add_edge(group_graph, group_edges, gid, FINAL_NODE_ID, EdgeKind.MERGE)
-
-
-def _attach_condition_roots_to_rowset_consumers(
-    group_graph: nx.DiGraph,
-    group_edges: EdgeMap,
-    attrs: dict[str, GroupAttrs],
-    buckets: dict[str, GroupBucket],
-    concept_attrs: dict[str, ConceptAttrs],
-    conditions: list[BuildWhereClause],
-    mandatory_list: list[BuildConcept],
-    environment: BuildEnvironment,
-) -> None:
-    """Feed a WHERE-only ROOT scan into the grouping consumers of a rowset
-    boundary whose base key its members hang off.
-
-    Over a plain fact, `select sum(amt) where cat = 'a'` co-sources `cat` into
-    the aggregate's own scan and the WHERE filters the aggregated rows. A
-    rowset boundary defeats that: `sum(rs.amt)` reads the boundary, `cat`
-    stays a scan of its own with nothing but a FINAL merge edge, and the atom
-    can only land at FINAL as a cross-joined gate that filters nothing. The
-    scan belongs in the consumer's input row stream, paired with the boundary
-    on the boundary's base grain key that keys `cat`: a CONSTRAINT edge puts
-    it there, and the consumer's merge joins on that key (see
-    `_refresh_input_contracts`). Only a scan every member of which is a
-    property of (or is) the base key qualifies, so the pairing needs no bridge
-    the scan cannot render."""
-    condition_args = {
-        arg.address for clause in conditions for arg in clause.row_arguments
-    }
-    outputs = {c.address for c in mandatory_list}
-    rollup_padded = _rollup_padded_addresses(environment)
-    for gid, bucket in buckets.items():
-        if (
-            bucket.derivation != Derivation.ROOT
-            or bucket.depth_label != DepthLabel.ROOT
-            or not bucket.primary_members
-            or not set(bucket.primary_members) <= condition_args
-            or set(bucket.primary_members) & outputs
-            or any(succ != FINAL_NODE_ID for succ in group_graph.successors(gid))
-        ):
-            continue
-        member_keys = [
-            (concept_attrs[node].address, concept_attrs[node].keys)
-            for node in bucket.primary_node_ids
-        ]
-        for consumer_gid, consumer in attrs.items():
-            if (
-                consumer_gid == gid
-                or consumer.derivation not in GROUPING_DERIVATIONS
-                or consumer.label != bucket.label
-            ):
-                continue
-            for pred in group_graph.predecessors(consumer_gid):
-                if pred == FINAL_NODE_ID or attrs[pred].derivation != Derivation.ROWSET:
-                    continue
-                base_keys = _rowset_base_grain(
-                    attrs[pred].grain_components, rollup_padded
-                )
-                if base_keys and all(
-                    address in base_keys or (keys and keys <= base_keys)
-                    for address, keys in member_keys
-                ):
-                    add_edge(
-                        group_graph, group_edges, gid, consumer_gid, EdgeKind.CONSTRAINT
-                    )
-                    break
 
 
 def _grain_determines(
@@ -1245,7 +1176,7 @@ def _refresh_input_contracts(
                 if attrs[pred].derivation in GROUPING_DERIVATIONS:
                     grouping_parent_grain |= set(attrs[pred].grain_components)
         # A ROWSET boundary beside a FILTER SCAN (a WHERE-only root fed in by
-        # a CONSTRAINT edge, see `_attach_condition_roots_to_rowset_consumers`)
+        # a CONSTRAINT edge)
         # pairs on its BASE grain key: the boundary can expose `oid` beneath
         # its `rs.oid` handle, and a plain scan renders only that base
         # address, so the handle alone would leave the merge keyless. Sibling
@@ -1778,6 +1709,11 @@ def _compute_concept_sets(
     # to a consumer that reads the domain (FINAL, an aggregate over the
     # region), or the scan joins the dimension for a column it never uses
     domain_gids = {gid for gid, a in attrs.items() if a.extent_spans}
+    # a group that reads no domain holds the solid rows only
+    domain_readers = domain_gids.union(
+        *(nx.descendants(group_graph, d) for d in domain_gids)
+    )
+    solid = {g for g in attrs if domain_gids and g not in domain_readers}
     domain_carried: dict[str, set[str]] = {}
     for gid in domain_gids:
         domain_carried.setdefault(attrs[gid].label, set()).update(
@@ -1924,10 +1860,7 @@ def _compute_concept_sets(
         outs |= _hosted_condition_outputs(
             attrs[gid].condition_atoms, fact.derivation, cap_gid
         )
-        # a group that reads no domain holds the solid rows only
-        solid_root = bool(domain_gids) and not domain_gids & (
-            {gid} | nx.ancestors(group_graph, gid)
-        )
+        solid_root = gid in solid
         for succ in group_graph.successors(gid):
             if succ == FINAL_NODE_ID:
                 mand = cap_gid & mandatory_alias_addresses
@@ -2007,11 +1940,8 @@ def _compute_concept_sets(
                         # q23's customer rename beside its line values);
                         # nested grains are the subset rule below; a grouping
                         # sibling pairs on its own grain, which it emits.
-                        sibling_solid = bool(domain_gids) and not domain_gids & (
-                            {sibling} | nx.ancestors(group_graph, sibling)
-                        )
                         if (
-                            solid_root != sibling_solid
+                            solid_root != (sibling in solid)
                             and fact.derivation not in GROUPING_DERIVATIONS
                             and sibling_fact.derivation not in GROUPING_DERIVATIONS
                             and not fact.grain <= sibling_fact.grain
@@ -2155,7 +2085,7 @@ def build_group_graph(
     *,
     environment: BuildEnvironment,
     staged_conditions: list[BuildWhereClause] | None = None,
-    keyspace: Keyspace | None = None,
+    keyspace: Keyspace,
 ) -> tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs]]:
     """Collapse compatible concepts into groups and append a single FINAL sink.
 
@@ -2189,7 +2119,6 @@ def build_group_graph(
         concept_graph, concept_edges, concept_attrs, primary_group, buckets
     )
     trace_buckets("buckets assigned", buckets, primary_group)
-    keyspace = keyspace or Keyspace()
     partition = partition_root_demand(
         buckets,
         primary_group,
@@ -2223,16 +2152,6 @@ def build_group_graph(
     # land on it (no pre-final group can host one); `_color_phases` then colors
     # its merge edges along with the rest.
     _add_final_node(group_graph, group_edges, attrs, buckets, mandatory_list)
-    _attach_condition_roots_to_rowset_consumers(
-        group_graph,
-        group_edges,
-        attrs,
-        buckets,
-        concept_attrs,
-        conditions,
-        mandatory_list,
-        environment,
-    )
     _compute_concept_sets(
         group_graph,
         group_edges,

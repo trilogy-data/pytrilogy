@@ -816,7 +816,7 @@ def ensure_content_preservation(
             continue
         has_prior_left = False
         has_prior_right = False
-        review_keys: set[str] = set().union(set(), *review_join.keys.values())
+        review_keys: set[str] = set().union(*review_join.keys.values())
         for pred in predecessors:
             on_pred_right = pred.right in review_join.lefts
             on_pred_left = any(x in review_join.lefts for x in pred.lefts)
@@ -842,7 +842,7 @@ def ensure_content_preservation(
             # dimensions extension rows.
             if pred.type == JoinType.FULL and (on_pred_right or on_pred_left):
                 has_prior_left = True
-                pred_keys: set[str] = set().union(set(), *pred.keys.values())
+                pred_keys: set[str] = set().union(*pred.keys.values())
                 if (
                     review_keys
                     and review_keys <= pred_keys
@@ -857,28 +857,17 @@ def ensure_content_preservation(
             # padded into a solid fact stream (`orders RIGHT JOIN items`, then
             # users keyed off orders), and a CASE over its columns took its
             # ELSE on the padding.
-            if pred.type == JoinType.LEFT_OUTER and on_pred_right:
+            if (pred.type == JoinType.LEFT_OUTER and on_pred_right) or (
+                pred.type == JoinType.RIGHT_OUTER and on_pred_left
+            ):
                 has_prior_left = True
-            if pred.type == JoinType.RIGHT_OUTER and on_pred_left:
-                has_prior_left = True
-        if has_prior_left and has_prior_right:
-            target = JoinType.FULL
-        elif has_prior_left:
-            target = (
-                JoinType.LEFT_OUTER
-                if review_join.type != JoinType.RIGHT_OUTER
-                else JoinType.FULL
+        # a prior right preservation only comes with a prior left one
+        if has_prior_left:
+            review_join.type = (
+                JoinType.FULL
+                if has_prior_right or review_join.type == JoinType.RIGHT_OUTER
+                else JoinType.LEFT_OUTER
             )
-        elif has_prior_right:
-            target = (
-                JoinType.RIGHT_OUTER
-                if review_join.type != JoinType.LEFT_OUTER
-                else JoinType.FULL
-            )
-        else:
-            target = review_join.type
-        if review_join.type != target:
-            review_join.type = target
 
 
 def _score_join_candidate(

@@ -374,7 +374,7 @@ class GroupBucket:
     # Grain members hosted as outputs rather than row identity: the grouping
     # grain minus these is the identity (`ConceptAttrs.hosted_grain`).
     hosted_grain: frozenset[str] = frozenset()
-    # primary/secondary members are concept ADDRESSES, which is what downstream
+    # primary members and carried spans are concept ADDRESSES, which is what downstream
     # strategy assembly cares about. primary_node_ids holds the matching
     # concept-graph node ids (which differ from addresses for any non-blank
     # phase/label), keyed parallel to primary_members.

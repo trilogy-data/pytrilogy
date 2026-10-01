@@ -22,6 +22,7 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import (
+    ROW_RESHAPING_SOURCE_TYPES,
     append_condition,
     condition_contains_atom,
     null_padded_nodes,
@@ -38,15 +39,6 @@ from trilogy.core.processing.condition_utility import (
 )
 from trilogy.core.processing.join_resolution import OUTER_JOIN_TYPES
 from trilogy.utility import unique
-
-_ROW_RESHAPING_SOURCE_TYPES = (
-    SourceType.GROUP,
-    SourceType.WINDOW,
-    SourceType.UNNEST,
-    SourceType.RECURSIVE,
-    SourceType.SUBSELECT,
-    SourceType.UNION,
-)
 
 
 def _transitively_depends_on(node: CTE | UnionCTE, target_name: str) -> bool:
@@ -534,7 +526,7 @@ class PredicatePushdown(OptimizationRule):
         # does. Only in a plain projection: a recursive member, group, window,
         # unnest, subselect or union computes it over rows the WHERE would
         # change. Aggregates and windows are not row scalars and stay above.
-        if parent_cte.source.source_type not in _ROW_RESHAPING_SOURCE_TYPES and (
+        if parent_cte.source.source_type not in ROW_RESHAPING_SOURCE_TYPES and (
             is_scalar_condition(candidate, materialized=materialized)
         ):
             materialized |= {

@@ -5140,8 +5140,7 @@ def build_strategy_node(
             )
         else:
             # A WHERE-only root scan a constraint edge feeds into this consumer
-            # (see `_attach_condition_roots_to_rowset_consumers`) is a filter on
-            # the input rows: it may only remove them, so the merge is INNER.
+            # is a filter on the input rows: it may only remove them, so the merge is INNER.
             filter_scan = any(
                 attrs[parent.group_id].derivation == Derivation.ROOT
                 and edge_kind(group_edges, parent.group_id, gid) == EdgeKind.CONSTRAINT
