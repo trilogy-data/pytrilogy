@@ -606,6 +606,22 @@ def _reads_only_carried(
     return bool(carried) and all(carried)
 
 
+def _is_rows_of_another_region(
+    members: tuple[str, ...] | list[str],
+    region: Region,
+    domain_regions: list[Region],
+    keyspace: Keyspace,
+    environment: BuildEnvironment,
+) -> bool:
+    """A row stream reading only what another region carries is that region's
+    rows; regions are disjoint, so it never reads this one's."""
+    return any(
+        other != region
+        and all(_reads_only_carried(m, other, keyspace, environment) for m in members)
+        for other in domain_regions
+    )
+
+
 def feed_region_domains_to_present_scalars(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -695,6 +711,13 @@ def feed_region_domains_to_present_scalars(
                     all(keyspace.carried_on(m, region) for m in a.primary_members)
                     or (
                         gid not in solid
+                        and not _is_rows_of_another_region(
+                            a.primary_members,
+                            region,
+                            domain_regions,
+                            keyspace,
+                            environment,
+                        )
                         and any(
                             _reads_carried(m, r, keyspace, environment)
                             for m in a.primary_members
