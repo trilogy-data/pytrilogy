@@ -24,6 +24,7 @@ import os
 import sys
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from contextvars import ContextVar
 from copy import copy
 from dataclasses import InitVar, dataclass, field, fields, is_dataclass, replace
 from enum import Enum
@@ -570,7 +571,8 @@ class PlanTrace:
     # one build context per open plan scope (the statement's is the first)
     _contexts: list[str | None] = field(default_factory=lambda: [None])
     # id(QueryDatasource) -> group, noted when the statement's tree resolves
-    _qds_groups: dict[int, str] = field(default_factory=dict)
+    # holds the datasource so its id is not reused, as `_sourced` does
+    _qds_groups: dict[int, tuple[Any, str]] = field(default_factory=dict)
     # id(node) -> (node, context) for every `plan_source` result; the node is
     # held so its id is not reused
     _sourced: dict[int, tuple[Any, str | None]] = field(default_factory=dict)
@@ -656,15 +658,16 @@ class PlanTrace:
         return out
 
 
-_active: PlanTrace | None = None
+# per context, so a planning thread never records into another's trace
+_ACTIVE: ContextVar[PlanTrace | None] = ContextVar("plan_trace", default=None)
 
 
 def active() -> bool:
-    return _active is not None
+    return _ACTIVE.get() is not None
 
 
 def current() -> PlanTrace | None:
-    return _active
+    return _ACTIVE.get()
 
 
 def start(
@@ -672,17 +675,30 @@ def start(
     renderer: BaseDialect | None = None,
     statement_lines: tuple[int, int] | None = None,
 ) -> PlanTrace:
-    global _active
-    _active = PlanTrace(statement, renderer, statement_lines=statement_lines)
-    return _active
+    trace = PlanTrace(statement, renderer, statement_lines=statement_lines)
+    _ACTIVE.set(trace)
+    return trace
 
 
 def stop() -> PlanTrace | None:
-    global _active
-    trace, _active = _active, None
+    trace = _ACTIVE.get()
+    _ACTIVE.set(None)
     if trace is not None:
         trace.total_ms = round(trace.clock(), 3)
     return trace
+
+
+@contextmanager
+def recording(
+    statement: str | None = None,
+    renderer: BaseDialect | None = None,
+    statement_lines: tuple[int, int] | None = None,
+) -> Iterator[PlanTrace]:
+    trace = start(statement, renderer, statement_lines)
+    try:
+        yield trace
+    finally:
+        stop()
 
 
 def off_clock(fn: Callable[P, R]) -> Callable[P, R]:
@@ -691,7 +707,7 @@ def off_clock(fn: Callable[P, R]) -> Callable[P, R]:
 
     @wraps(fn)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-        trace = _active
+        trace = _ACTIVE.get()
         if trace is None or trace._off_since is not None:
             return fn(*args, **kwargs)
         trace._off_since = perf_counter()
@@ -710,38 +726,44 @@ def env_output_path() -> str | None:
 
 @off_clock
 def record(title: str, data: StepData) -> None:
-    if _active is not None:
-        _active.record(title, data)
+    trace = _ACTIVE.get()
+    if trace is not None:
+        trace.record(title, data)
 
 
 def note_sourced(node: StrategyNode | None) -> None:
-    if _active is not None and node is not None:
-        _active._sourced[id(node)] = (node, _active._contexts[-1])
+    trace = _ACTIVE.get()
+    if trace is not None and node is not None:
+        trace._sourced[id(node)] = (node, trace._contexts[-1])
 
 
 def _sourced_in(node: StrategyNode) -> str | None:
-    hit = _active._sourced.get(id(node)) if _active is not None else None
+    trace = _ACTIVE.get()
+    hit = trace._sourced.get(id(node)) if trace is not None else None
     return hit[1] if hit else None
 
 
 def note_removed_ctes(
     phase: str, rule: str, names: set[str], merged: dict[str, str]
 ) -> None:
-    if _active is not None:
-        _active._removed_ctes.extend(
+    trace = _ACTIVE.get()
+    if trace is not None:
+        trace._removed_ctes.extend(
             CteTombstone(name, phase, rule, merged.get(name)) for name in sorted(names)
         )
 
 
 def removed_ctes() -> list[CteTombstone]:
-    return list(_active._removed_ctes) if _active is not None else []
+    trace = _ACTIVE.get()
+    return list(trace._removed_ctes) if trace is not None else []
 
 
 def set_context(label: str | None) -> None:
     """Name what the current plan is building (a group id, "FINAL") for the
     steps recorded until the next call."""
-    if _active is not None:
-        _active._contexts[-1] = label
+    trace = _ACTIVE.get()
+    if trace is not None:
+        trace._contexts[-1] = label
 
 
 def _origin() -> list[str]:
@@ -754,7 +776,7 @@ def _origin() -> list[str]:
         if (
             code.co_filename.startswith(_PACKAGE)
             and code.co_filename != __file__
-            and not code.co_name.startswith("_trace")
+            and not code.co_name.startswith(("_trace", "trace_"))
         ):
             path.append(code.co_name)
         frame = frame.f_back  # type: ignore[assignment]
@@ -765,14 +787,15 @@ def _origin() -> list[str]:
 def plan_scope(
     label: str, depth: int, outputs: list[str], conditions: list[str | None]
 ) -> Iterator[str | None]:
-    if _active is None:
+    trace = _ACTIVE.get()
+    if trace is None:
         yield None
         return
-    plan_id = _active.push_plan(label, depth, outputs, conditions)
+    plan_id = trace.push_plan(label, depth, outputs, conditions)
     try:
         yield plan_id
     finally:
-        _active.pop_plan()
+        trace.pop_plan()
 
 
 # ---------------------------------------------------------------- serializers
@@ -799,12 +822,13 @@ def expression(e: Any) -> str | None:
     CTE; those keep their own spelling."""
     from trilogy.core.models.build import BuildWhereClause
 
-    if e is None or _active is None:
+    trace = _ACTIVE.get()
+    if e is None or trace is None:
         return None
     if isinstance(e, BuildWhereClause):
         e = e.conditional
     try:
-        return _active.renderer.render_expr(e)
+        return trace.renderer.render_expr(e)
     except (TypeError, KeyError, AssertionError):
         return str(e)
 
@@ -1067,12 +1091,15 @@ def query_datasource(qds: QueryDatasource, root: StrategyNode) -> QdsTrace:
     built from it) back to the group that built its node."""
     from trilogy.core.processing.nodes import StrategyNode as Node
 
-    assert _active is not None
+    trace = _ACTIVE.get()
+    assert trace is not None
     pending: list[Node] = [root]
     while pending:
         node = pending.pop()
         if node.resolution_cache is not None and node.origin_group:
-            _active._qds_groups.setdefault(id(node.resolution_cache), node.origin_group)
+            trace._qds_groups.setdefault(
+                id(node.resolution_cache), (node.resolution_cache, node.origin_group)
+            )
         pending.extend(node.parents)
     out = _qds(qds, {})
     assert isinstance(out, QdsTrace)
@@ -1129,7 +1156,9 @@ def _qds(source: Any, seen: dict[int, str]) -> QdsTrace | QdsRef | TableRef:
 
 
 def _group_of(source: Any) -> str | None:
-    return _active._qds_groups.get(id(source)) if _active is not None else None
+    trace = _ACTIVE.get()
+    hit = trace._qds_groups.get(id(source)) if trace is not None else None
+    return hit[1] if hit else None
 
 
 def _cte_ref(consumer: CTE, join: Join, node: CTE | UnionCTE) -> str:

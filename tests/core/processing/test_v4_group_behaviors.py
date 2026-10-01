@@ -1543,10 +1543,11 @@ def test_conditioned_filter_does_not_cover_unfiltered_parent_outputs():
     assert {type(parent.node) for parent in parents} == {StrategyNode, FilterNode}
 
 
-def _sole_filter_output() -> list[BuildConcept]:
+def _sole_filter_output() -> tuple[list[BuildConcept], BuildEnvironment]:
     env = Environment()
     env.parse("key id int; property id.v int; auto f <- filter v where id > 1;")
-    return [env.materialize_for_select().concepts["local.f"]]
+    build_env = env.materialize_for_select()
+    return [build_env.concepts["local.f"]], build_env
 
 
 def test_filter_intrinsic_pushdown_blocks_shared_unfiltered_ancestor():
@@ -1556,9 +1557,24 @@ def test_filter_intrinsic_pushdown_blocks_shared_unfiltered_ancestor():
     graph.add_edge("filter", "aggregate")
     graph.add_edge("root", FINAL_NODE_ID)
     graph.add_edge("filter", FINAL_NODE_ID)
-    outputs = _sole_filter_output()
+    outputs, env = _sole_filter_output()
+    attrs = {
+        "root": GroupAttrs(
+            depth_label=DepthLabel.ROOT,
+            derivation=Derivation.ROOT,
+            primary_members=["local.id", "local.v"],
+        ),
+        "aggregate": GroupAttrs(
+            depth_label=DepthLabel.STAR,
+            derivation=Derivation.AGGREGATE,
+            grain_components=frozenset({"local.id"}),
+        ),
+    }
 
-    assert _filter_intrinsic_pushdown_safe(graph, "filter", outputs, outputs) is False
+    assert (
+        _filter_intrinsic_pushdown_safe(graph, attrs, "filter", outputs, outputs, env)
+        is False
+    )
 
 
 def test_filter_intrinsic_pushdown_ignores_final_sink():
@@ -1566,10 +1582,15 @@ def test_filter_intrinsic_pushdown_ignores_final_sink():
     graph.add_edge("root", "filter")
     graph.add_edge("root", FINAL_NODE_ID)
     graph.add_edge("filter", FINAL_NODE_ID)
-    outputs = _sole_filter_output()
+    outputs, env = _sole_filter_output()
 
-    assert _filter_intrinsic_pushdown_safe(graph, "filter", outputs, outputs) is True
-    assert _filter_intrinsic_pushdown_safe(graph, "filter", outputs, []) is False
+    assert (
+        _filter_intrinsic_pushdown_safe(graph, {}, "filter", outputs, outputs, env)
+        is True
+    )
+    assert (
+        _filter_intrinsic_pushdown_safe(graph, {}, "filter", outputs, [], env) is False
+    )
 
 
 def test_partition_roots_buckets_per_label():

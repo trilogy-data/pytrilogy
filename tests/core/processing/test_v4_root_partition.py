@@ -163,12 +163,8 @@ auto avg_bal <- avg(bal) by *;
 def _trace(query: str, model: str = _MODEL) -> tuple[plan_trace.PlanTrace, list[tuple]]:
     env, _ = Environment().parse(model)
     executor = Dialects.DUCK_DB.default_executor(environment=env)
-    plan_trace.start(query)
-    try:
+    with plan_trace.recording(query) as trace:
         executor.generate_sql(query)
-    finally:
-        trace = plan_trace.stop()
-    assert trace is not None
     rows = [tuple(r) for r in executor.execute_text(query)[-1].fetchall()]
     return trace, rows
 
@@ -213,12 +209,8 @@ def test_basic_input_root_is_named_apart_from_a_peel():
     path = Path(__file__).parents[2] / "modeling" / "thelook_duckdb" / "adhoc04.preql"
     env, statements = Environment(working_path=path.parent).parse(path.read_text())
     executor = Dialects.DUCK_DB.default_executor(environment=env)
-    plan_trace.start("adhoc04")
-    try:
+    with plan_trace.recording("adhoc04") as trace:
         executor.generate_sql(statements[-1])
-    finally:
-        trace = plan_trace.stop()
-    assert trace is not None
     reasons = _root_reasons(trace)
     inputs = [g for g, r in reasons.items() if r == RootReason.BASIC_INPUT.value]
     assert inputs == ["grp:root:root:∅:basic_input:local.id"]
