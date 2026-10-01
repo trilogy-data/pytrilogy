@@ -1432,8 +1432,16 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
                     _, _, parent_keys = x.get_select_grain_and_keys(grain, environment)
                     if parent_keys:
                         pkeys.update(parent_keys)
-                # deduplicate
-                final_grain = Grain.from_concepts(pkeys, environment)
+                # already reduced: re-reducing would drop a grouping spec's
+                # select-local flags, the only row identity rollup subtotals have
+                final_grain = (
+                    Grain(
+                        components=grain.components,
+                        component_order=grain.component_order,
+                    )
+                    if pkeys == grain.components
+                    else Grain.from_concepts(pkeys, environment)
+                )
                 keys = final_grain.components
         return new_lineage, final_grain, keys
 
