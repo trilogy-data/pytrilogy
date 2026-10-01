@@ -162,17 +162,16 @@ def _needs_solid_rows(
 
 
 def _region_is_demanded(
-    label: str,
     region: Region,
     keyspace: Keyspace,
-    demanded_spans: frozenset[str],
     concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
+    label: str | None = None,
 ) -> bool:
-    if region.spans & demanded_spans:
+    if region.spans & keyspace.output_demanded_spans:
         return True
     return any(
-        a.label == label
+        label in (None, a.label)
         and a.derivation == Derivation.AGGREGATE
         and not a.existence_only
         and _aggregates_over_region((a.address,), region, keyspace, environment)
@@ -193,24 +192,13 @@ def undemanded_spans(
     padding of her). A region under an authored coalescing relation is that
     relation's, and the union machinery decides."""
     coalescing = environment.domain_graph.coalescing_relation_members()
-    labels = sorted({a.label for a in concept_attrs.values()})
     # a rowset body's region this plan reads nothing of is padded below the
     # boundary; the boundary plans its body without it (`rowset.owned_spans`)
     out: set[str] = set(keyspace.unread_spans)
     for region in keyspace.live_regions:
         if not region.has_own_rows or region.spans & coalescing:
             continue
-        if not any(
-            _region_is_demanded(
-                label,
-                region,
-                keyspace,
-                keyspace.output_demanded_spans,
-                concept_attrs,
-                environment,
-            )
-            for label in labels
-        ):
+        if not _region_is_demanded(region, keyspace, concept_attrs, environment):
             out |= region.spans
     return frozenset(out)
 
@@ -328,12 +316,7 @@ def _region_domain(
         m for b in eligible for m in b.primary_members if keyspace.carried_on(m, region)
     )
     if not carried or not _region_is_demanded(
-        label,
-        region,
-        keyspace,
-        keyspace.output_demanded_spans,
-        concept_attrs,
-        environment,
+        region, keyspace, concept_attrs, environment, label
     ):
         return None
     if region.spans & relation_spans:
@@ -598,28 +581,29 @@ def _aggregates_over_region(
     return bool(members)
 
 
+def _carried_arguments(
+    address: str, region: Region, keyspace: Keyspace, environment: BuildEnvironment
+) -> list[bool]:
+    concept = environment.concepts.get(address)
+    if concept is None or concept.lineage is None:
+        return []
+    return [
+        keyspace.carried_on(arg.address, region)
+        for arg in concept.lineage.concept_arguments
+    ]
+
+
 def _reads_carried(
     address: str, region: Region, keyspace: Keyspace, environment: BuildEnvironment
 ) -> bool:
-    concept = environment.concepts.get(address)
-    if concept is None or concept.lineage is None:
-        return False
-    return any(
-        keyspace.carried_on(arg.address, region)
-        for arg in concept.lineage.concept_arguments
-    )
+    return any(_carried_arguments(address, region, keyspace, environment))
 
 
 def _reads_only_carried(
     address: str, region: Region, keyspace: Keyspace, environment: BuildEnvironment
 ) -> bool:
-    concept = environment.concepts.get(address)
-    if concept is None or concept.lineage is None:
-        return False
-    arguments = concept.lineage.concept_arguments
-    return bool(arguments) and all(
-        keyspace.carried_on(arg.address, region) for arg in arguments
-    )
+    carried = _carried_arguments(address, region, keyspace, environment)
+    return bool(carried) and all(carried)
 
 
 def feed_region_domains_to_present_scalars(

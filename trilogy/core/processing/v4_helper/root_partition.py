@@ -21,7 +21,7 @@ pass's inputs.
 """
 
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, Purpose
@@ -38,6 +38,7 @@ from .constants import (
 )
 from .edges import EdgeMap, edge_kind
 from .functional_dependency import build_fd_determines
+from .group_rules import _add_member
 from .models import ConceptAttrs, GroupBucket, Keyspace, RootReason
 from .region_domains import (
     RegionDomain,
@@ -322,10 +323,7 @@ def _condition_scans(
         if stage is not None:
             bucket.discriminator = f"stage:s{stage}"
         for node in sorted(d1_calc_roots):
-            address = concept_attrs[node].address
-            bucket.primary_members.append(address)
-            bucket.primary_node_ids.append(node)
-            bucket.member_depths[address] = concept_attrs[node].depth_label
+            _add_member(bucket, node, concept_attrs[node])
         scans[stage] = bucket
     return scans
 
@@ -337,7 +335,7 @@ def _prune_existence_exclusive_roots(
     buckets: dict[str, GroupBucket],
     d1_calc_roots: set[str],
     d1_subgraph: set[str],
-    protected_addresses: frozenset[str] = frozenset(),
+    protected_addresses: frozenset[str],
 ) -> None:
     """Drop from the shared ROOT bucket the roots that exist ONLY to define a
     semijoin-RHS set, once they have been duplicated into the private root_d1
@@ -507,10 +505,8 @@ def _post_aggregate_filter_args(
 
     A HAVING dim arg filters the OUTPUT after aggregation, so peeling it to a
     standalone dim scan and semijoining on the entity key is faithful: one CTE
-    sources the customer dims AND applies ``state = 'GA'``. Unlike a selected
-    dim column, a filter-only HAVING arg has no output to anchor it, but the
-    placed condition still sources the column at the dim scan, so the WHERE
-    is preserved."""
+    sources the customer dims AND applies ``state = 'GA'``. A filter-only HAVING
+    arg peels only beside an output of the same cluster, which anchors it."""
     args: set[str] = set()
     for clause in conditions:
         if any(
@@ -781,7 +777,6 @@ def _split_root_dimension_clusters(
     pre_aggregate_filter_args: frozenset[str],
     post_aggregate_args: frozenset[str],
     finer_filter_grains: frozenset[frozenset[str]],
-    keyspace: Keyspace,
     domains: list[RegionDomain],
     concept_graph: nx.DiGraph,
     condition_roots: set[str],
@@ -881,12 +876,11 @@ def _split_root_dimension_clusters(
             if addr in candidates or addr in condition_held:
                 continue
             # Peel a SELECTED dimension column, OR a post-aggregate-only arg: a
-            # filter-only HAVING arg (a post-aggregate WHERE arg the query never
-            # projects) or a dim attribute an output BASIC reads beside
+            # filter-only HAVING arg (peeled only beside an output of its
+            # cluster) or a dim attribute an output BASIC reads beside
             # aggregate outputs. Both are consumed at post-aggregate grain, so
             # sourcing them at the dim scan joined on the entity key is
-            # faithful: a HAVING's condition placed on the dim bucket still
-            # applies its WHERE there. A filter-only PRE-aggregate arg is NOT
+            # faithful. A filter-only PRE-aggregate arg is NOT
             # peeled (`pre_aggregate_filter_args` gate below): its WHERE must
             # narrow the fact rows feeding the aggregate, not a post-join dim.
             if addr not in output_addresses and addr not in post_aggregate_args:
@@ -948,8 +942,6 @@ def _split_root_dimension_clusters(
         _keep_extension_families_together(
             assignment, [d for d in domains if d.label == bucket.label]
         )
-        if not assignment:
-            continue
         clusters: dict[frozenset[str], list[int]] = defaultdict(list)
         for idx, addr in enumerate(bucket.primary_members):
             if addr in assignment:
@@ -1009,10 +1001,10 @@ class RootPartition:
     condition stage's private scan, the roots it holds, the condition-phase
     nodes that read them, and where each demanded region's rows come from."""
 
-    condition_scans: dict[int | None, str] = field(default_factory=dict)
-    condition_roots: dict[int | None, set[str]] = field(default_factory=dict)
-    condition_nodes: set[str] = field(default_factory=set)
-    domains: list[RegionDomain] = field(default_factory=list)
+    condition_scans: dict[int | None, str]
+    condition_roots: dict[int | None, set[str]]
+    condition_nodes: set[str]
+    domains: list[RegionDomain]
 
 
 @plan_trace.off_clock
@@ -1062,12 +1054,13 @@ def partition_root_demand(
     roots_by_stage, condition_nodes = _d1_calc_subgraph(
         concept_graph, concept_edges, concept_attrs, environment
     )
+    condition_roots: set[str] = set().union(*roots_by_stage.values())
     _prune_existence_exclusive_roots(
         concept_graph,
         concept_edges,
         concept_attrs,
         buckets,
-        set().union(*roots_by_stage.values()),
+        condition_roots,
         condition_nodes,
         protected_addresses=output_addresses | condition_arg_addresses,
     )
@@ -1097,10 +1090,9 @@ def partition_root_demand(
         _post_aggregate_filter_args(conditions)
         | _post_aggregate_basic_args(mandatory_list),
         _finer_filter_grains(conditions),
-        keyspace,
         domains,
         concept_graph,
-        set().union(*roots_by_stage.values()),
+        condition_roots,
     )
     trace_buckets("entity clusters peeled", buckets, primary_group)
     scans = _condition_scans(concept_attrs, roots_by_stage)

@@ -81,11 +81,8 @@ def statements_of(path: Path):
 
 
 def trace_of(env, select) -> dict:
-    trace = plan_trace.start()
-    try:
+    with plan_trace.recording() as trace:
         process_query(env, select)
-    finally:
-        plan_trace.stop()
     return trace.to_dict()
 
 

@@ -13,12 +13,8 @@ order by user_id asc nulls first, product_id asc;"""
 def _join_types(title: str) -> list[str]:
     env, _ = Environment().parse(_MODEL)
     executor = Dialects.DUCK_DB.default_executor(environment=env)
-    plan_trace.start(_QUERY)
-    try:
+    with plan_trace.recording(_QUERY) as trace:
         executor.generate_sql(_QUERY)
-    finally:
-        trace = plan_trace.stop()
-    assert trace is not None
     step = next(s for s in trace.steps if s.title == title)
     return [j.type for c in step.data.ctes for j in c.joins or []]
 

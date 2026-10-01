@@ -413,7 +413,6 @@ def _existence_parents_for(
     preferred: Sequence[str] = (),
 ) -> list[StrategyNode]:
     existence_parents: list[StrategyNode] = []
-    seen_parents: set[int] = set()
     for group in arg_groups:
         addresses = {concept.address for concept in group}
         source_node = _covering_built_node(addresses, built, skip, preferred)
@@ -443,10 +442,9 @@ def _existence_parents_for(
             if feeder is not None:
                 existence_parents.append(feeder)
                 continue
-        if id(source_node) not in seen_parents:
-            seen_parents.add(id(source_node))
-            feeder = _deep_copy_node(source_node) if is_cyclic else source_node.copy()
-            existence_parents.append(_feeder_at_set_grain(feeder, group))
+        # one slice per membership: each projects only its own set's columns
+        feeder = _deep_copy_node(source_node) if is_cyclic else source_node.copy()
+        existence_parents.append(_feeder_at_set_grain(feeder, group))
     return existence_parents
 
 
@@ -702,10 +700,8 @@ def _row_parents(group_graph: nx.DiGraph, group_edges: EdgeMap, gid: str) -> lis
 
 
 def _select_addresses(a: GroupAttrs) -> tuple[str, ...]:
-    """The per-group output set computed by the backward pass in
-    `_compute_concept_sets`; a group the demand pass left without outputs
-    still projects every member."""
-    return a.output_concepts or (*a.primary_members, *a.carried_keys)
+    """A group the demand pass left without outputs projects every member."""
+    return a.output_concepts or a.members
 
 
 def _projects_parent_rows(
@@ -752,13 +748,7 @@ def _projects_parent_rows(
         ):
             return False
         narrows = _filter_intrinsic_pushdown_safe(
-            group_graph,
-            gid,
-            outputs,
-            mandatory_list,
-            environment.statement_hidden_addresses,
-            attrs,
-            environment,
+            group_graph, attrs, gid, outputs, mandatory_list, environment
         )
         return filter_row_predicate(outputs, parents, narrows) is None
     return len(parents) != 1 or not _grain_claim_needs_group(
@@ -1380,9 +1370,6 @@ def _derives_from(node: StrategyNode, other: StrategyNode) -> bool:
     return False
 
 
-_region_reads = region_reads
-
-
 def _drop_ancestor_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
     """Drop a parent that IS the relation another parent derives from.
 
@@ -1411,7 +1398,7 @@ def _drop_ancestor_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
                 continue
             if not ancestor_outputs <= {c.address for c in descendant.output_concepts}:
                 continue
-            if not _region_reads(ancestor) <= _region_reads(descendant):
+            if not region_reads(ancestor) <= region_reads(descendant):
                 continue
             if not _derives_from(descendant, ancestor):
                 continue
@@ -1473,11 +1460,11 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
         if id(b) in dropped or not isinstance(b, SelectNode) or b.force_group:
             continue
         available = parent_output_addresses(b)
-        b_regions = _region_reads(b)
+        b_regions = region_reads(b)
         for a in parents:
             if a is b or id(a) in dropped or not a.output_concepts:
                 continue
-            if _region_reads(a) != b_regions:
+            if region_reads(a) != b_regions:
                 continue
             # Never dissolve a row-shape barrier into a row sibling. Foldable:
             # SelectNode, non-grouping MergeNode, or a row-preserving FilterNode
@@ -2478,8 +2465,8 @@ def _fold_covered_contributors(
         live = [j for j in range(len(parents)) if j not in dropped]
         others = [j for j in live if j != idx]
         # its rows are a region's: only a survivor holding them can stand in
-        if _region_reads(parent) and not any(
-            _region_reads(parent) <= _region_reads(parents[j]) for j in others
+        if region_reads(parent) and not any(
+            region_reads(parent) <= region_reads(parents[j]) for j in others
         ):
             continue
         contribution = visible[idx] & needed
@@ -2632,14 +2619,27 @@ def _drop_unadvertised_rowset_handles(node: StrategyNode, advertised: set[str]) 
     node.set_output_concepts(keep)
 
 
+def _final_span_scope(scope: SpanScope) -> SpanScope:
+    return dc_replace(scope, extent_free=scope.owned, extent_free_carried={})
+
+
+def _group_span_scope(
+    scope: SpanScope, ownership: ExtentOwnership, gid: str
+) -> SpanScope:
+    return dc_replace(
+        scope,
+        extent_free=ownership.suppressed_for(gid) | scope.owned,
+        extent_free_carried=ownership.suppressed_carried_for(gid),
+    )
+
+
 def _filter_intrinsic_pushdown_safe(
     group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
     gid: str,
     outputs: list[BuildConcept],
     mandatory_list: list[BuildConcept],
-    hidden: set[str] | None = None,
-    attrs: dict[str, GroupAttrs] | None = None,
-    environment: BuildEnvironment | None = None,
+    environment: BuildEnvironment,
 ) -> bool:
     """May this filter group's predicate narrow its ROWS? Only when the plan
     shows nothing but filter values over that one predicate (a NULL row is one
@@ -2650,7 +2650,12 @@ def _filter_intrinsic_pushdown_safe(
     pair against; a HAVING's responsive aggregate (`count(order_id) by
     even_name`) reads the ancestor only for what rides this group's row
     stream, and the plan reads it through this group alone."""
-    if statement_filter_population(mandatory_list, hidden) is None:
+    if (
+        statement_filter_population(
+            mandatory_list, environment.statement_hidden_addresses
+        )
+        is None
+    ):
         return False
     mandatory = {c.address for c in mandatory_list}
     if not any(o.address in mandatory for o in outputs):
@@ -2665,8 +2670,6 @@ def _filter_intrinsic_pushdown_safe(
         unfiltered = ancestors & set(group_graph.predecessors(succ))
         if not unfiltered:
             continue
-        if attrs is None or environment is None:
-            return False
         supplied = frozenset().union(*(_members_of(attrs, a) for a in unfiltered))
         if not _consumer_reads(attrs[succ], environment) & supplied <= emitted:
             return False
@@ -4702,11 +4705,7 @@ def _assemble_final_node(
             # (`test_licensed_transitive_attr_span`).
             group_scope = environment.span_scope
             if not attrs[gid].extent_spans:
-                environment.span_scope = dc_replace(
-                    group_scope,
-                    extent_free=ownership.suppressed_for(gid) | group_scope.owned,
-                    extent_free_carried=ownership.suppressed_carried_for(gid),
-                )
+                environment.span_scope = _group_span_scope(group_scope, ownership, gid)
             try:
                 projected = _projection_root_concepts(group_concepts, environment)
                 request = RootRequest(
@@ -4861,7 +4860,7 @@ def _assemble_final_node(
     # merge: the host side is the one carrying the licensed keys the merge EMITS.
     region_keys = [
         c
-        for span in sorted(frozenset().union(*(_region_reads(p) for p in parents)))
+        for span in sorted(frozenset().union(*(region_reads(p) for p in parents)))
         if span in available
         and span not in mandatory_addresses
         and (c := _concept_at(environment, span)) is not None
@@ -5006,18 +5005,9 @@ def build_strategy_node(
         # domain is the FINAL's own rows and is built under the FINAL's scope,
         # as its every reader sees it there (`_assemble_final_node`).
         environment.span_scope = (
-            dc_replace(
-                environment.span_scope,
-                extent_free=environment.span_scope.owned,
-                extent_free_carried={},
-            )
+            _final_span_scope(environment.span_scope)
             if a.extent_spans
-            else dc_replace(
-                environment.span_scope,
-                extent_free=ownership.suppressed_for(gid)
-                | environment.span_scope.owned,
-                extent_free_carried=ownership.suppressed_carried_for(gid),
-            )
+            else _group_span_scope(environment.span_scope, ownership, gid)
         )
         # Only the FINAL sink carries a None derivation, and it is skipped above.
         assert a.derivation is not None
@@ -5175,7 +5165,7 @@ def build_strategy_node(
             applied = applied_atoms.conditional if applied_atoms else None
             # a parent holds a region's rows when it reads its domain, the
             # domain itself or a derivation over what it carries (`upper(name)`)
-            domains = [p for p in parents if _region_reads(p)]
+            domains = [p for p in parents if region_reads(p)]
             if derivation == Derivation.AGGREGATE and domains:
                 # an aggregate evaluated OVER a region: its row-stream
                 # arguments are computed on the solid rows first, then the
@@ -5183,7 +5173,7 @@ def build_strategy_node(
                 # keys: this group may extend the spans (it reads the
                 # domain), the merge below the domain may not.
                 domain_spans: frozenset[str] = frozenset().union(
-                    *(_region_reads(d) for d in domains)
+                    *(region_reads(d) for d in domains)
                 )
                 # a condition feeder keyed by the span (`count(return_id) by
                 # item_sk = 0`) is a value per member of the region: it joins
@@ -5289,7 +5279,7 @@ def build_strategy_node(
                 outputs,
                 primary_addrs,
                 parents,
-                region_spans=frozenset().union(*(_region_reads(p) for p in parents)),
+                region_spans=frozenset().union(*(region_reads(p) for p in parents)),
             )
         # Normalize aggregate inputs to the row grain implied by their
         # arguments before the aggregate runs. This is generic across aggregate
@@ -5405,13 +5395,7 @@ def build_strategy_node(
                 conditions=condition_for_generator,
                 preexisting_conditions=preexisting,
                 intrinsic_filter_pushdown=_filter_intrinsic_pushdown_safe(
-                    group_graph,
-                    gid,
-                    outputs,
-                    mandatory_list,
-                    environment.statement_hidden_addresses,
-                    attrs,
-                    environment,
+                    group_graph, attrs, gid, outputs, mandatory_list, environment
                 ),
                 existence_source=any(
                     edge_kind(group_edges, gid, succ) == EdgeKind.EXISTENCE
@@ -5499,11 +5483,7 @@ def build_strategy_node(
     # The FINAL assembly is where the owner and the extent-free branches meet;
     # it must see every span again to host the owner's rows, except the ones
     # the plan above holds.
-    environment.span_scope = dc_replace(
-        environment.span_scope,
-        extent_free=environment.span_scope.owned,
-        extent_free_carried={},
-    )
+    environment.span_scope = _final_span_scope(environment.span_scope)
     if not built:
         return None
     plan_trace.set_context("FINAL")

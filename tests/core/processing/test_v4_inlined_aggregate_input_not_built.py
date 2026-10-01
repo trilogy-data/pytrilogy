@@ -35,12 +35,8 @@ def _executor():
 
 
 def _trace(executor, query: str) -> plan_trace.PlanTrace:
-    plan_trace.start(query)
-    try:
+    with plan_trace.recording(query) as trace:
         executor.generate_sql(query)
-    finally:
-        trace = plan_trace.stop()
-    assert trace is not None
     return trace
 
 

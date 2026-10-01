@@ -49,12 +49,8 @@ select 1 pid, 1.0 c union all select 2 pid, 2.0 c union all select 3 pid, 3.0 c
 def _built_peels(executor, query: str) -> list[str]:
     """The dimension peels built; the regraft's solid source is
     `grp:root:root:∅:basic_input:<key>` and is not one."""
-    plan_trace.start(query)
-    try:
+    with plan_trace.recording(query) as trace:
         executor.generate_sql(query)
-    finally:
-        trace = plan_trace.stop()
-    assert trace is not None
     return [
         s.data.group
         for s in trace.steps

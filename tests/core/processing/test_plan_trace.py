@@ -27,12 +27,8 @@ rowset by_customer <- select customer_id, name, count(order_id) as n;
 def _trace(query: str) -> dict:
     env, statements = Environment().parse(MODEL + query)
     select = [s for s in statements if isinstance(s, SelectStatement)][-1]
-    plan_trace.start(query)
-    try:
+    with plan_trace.recording(query) as trace:
         process_query(env, select)
-    finally:
-        trace = plan_trace.stop()
-    assert trace is not None
     assert not plan_trace.active()
     return json.loads(json.dumps(trace.to_dict()))
 
@@ -156,13 +152,9 @@ def _slow_snapshot() -> None:
 
 
 def test_off_clock_time_is_not_planner_time():
-    plan_trace.start()
-    try:
+    with plan_trace.recording() as trace:
         plan_trace.record("before", plan_trace.ResolveStep(None, None))
         _slow_snapshot()
         plan_trace.record("after", plan_trace.ResolveStep(None, None))
-    finally:
-        trace = plan_trace.stop()
-    assert trace is not None
     assert trace.steps[-1].ms is not None and trace.steps[-1].ms < 25
     assert trace.total_ms is not None and trace.total_ms < 25
