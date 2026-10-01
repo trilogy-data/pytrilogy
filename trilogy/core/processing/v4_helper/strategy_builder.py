@@ -1119,8 +1119,8 @@ def _parent_nodes_for(
     needed: set[str],
     root_requests: dict[str, RootRequest],
     mandatory_list: list[BuildConcept],
-    complete_partials: bool,
-    staged_conditions: list[BuildWhereClause] | None,
+    complete_partials: bool = True,
+    staged_conditions: list[BuildWhereClause] | None = None,
     feeder_cache: "_CleanFeederCache | None" = None,
 ) -> list[ParentBuild]:
     """Look up the already-built StrategyNodes for `gid`'s lineage

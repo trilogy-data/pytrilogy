@@ -425,3 +425,41 @@ def test_guest_padded_addresses_walks_a_value_null_join_without_leaves():
     grouped.source_map = {attr: {merged}}
     assert guest_padded_addresses(grouped) == {attr}
     assert guest_padded_addresses(items) == set()
+
+
+def test_a_right_join_keyed_on_guest_padding_pads_no_left_input():
+    """`lookup` RIGHT-joined on the item column a guest sale NULLs: the guest
+    row finds no lookup row and is dropped, and a lookup row with no sale pads
+    the sale's columns for its own reason, not the guest's."""
+    attr = _ATTR.removeprefix("c~")
+    sales = _scan("sales", [USER, ORDER], partial=[USER])
+    sales.columns[0].modifiers.append(Modifier.NULLABLE)
+    items = _scan("items", [USER, attr])
+    lookup = _scan("lookup", [attr])
+    merged = _qds(
+        [USER, ORDER, attr], [USER, ORDER, attr], parents=[sales, items, lookup]
+    )
+    merged.source_map = {USER: {sales}, ORDER: {sales}, attr: {items, lookup}}
+    merged.joins = [
+        BaseJoin(
+            left_datasource=sales,
+            right_datasource=items,
+            join_type=JoinType.LEFT_OUTER,
+            concept_pairs=[
+                ConceptPair(
+                    left=_concept(USER), right=_concept(USER), existing_datasource=sales
+                )
+            ],
+        ),
+        BaseJoin(
+            left_datasource=items,
+            right_datasource=lookup,
+            join_type=JoinType.RIGHT_OUTER,
+            concept_pairs=[
+                ConceptPair(
+                    left=_concept(attr), right=_concept(attr), existing_datasource=items
+                )
+            ],
+        ),
+    ]
+    assert guest_padded_addresses(merged) == set()

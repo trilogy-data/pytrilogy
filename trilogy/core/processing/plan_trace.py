@@ -172,14 +172,17 @@ class GraphTrace:
 
 
 @dataclass(frozen=True)
-class NodeJoinTrace:
-    # "Type<group>" of each side
-    left: str
+class JoinTrace:
+    """One join at any stage: a node's sides are "Type<group>", a query
+    datasource's identifiers, a CTE's names (`left` None: the FROM base)."""
+
+    left: str | None
     right: str
     type: str
-    concepts: list[str]
     pairs: list[str]
     modifiers: list[str]
+    concepts: list[str] = field(default_factory=list)
+    condition: str | None = None
 
 
 @dataclass(frozen=True)
@@ -221,17 +224,7 @@ class NodeTrace:
     whole_grain: bool | None = None
     force_join_type: str | None = None
     span_scope: SpanScopeTrace | None = None
-    joins: list[NodeJoinTrace] | None = None
-
-
-@dataclass(frozen=True)
-class QdsJoinTrace:
-    left: str | None
-    right: str
-    type: str
-    concepts: list[str]
-    pairs: list[str]
-    modifiers: list[str]
+    joins: list[JoinTrace] | None = None
 
 
 @dataclass(frozen=True)
@@ -272,20 +265,10 @@ class QdsTrace:
     zero_filled: list[str]
     extent_free_spans: list[str]
     extent_free_carried: list[str]
-    joins: list[QdsJoinTrace | UnnestTrace]
+    joins: list[JoinTrace | UnnestTrace]
     datasources: list[QdsTrace | QdsRef | TableRef]
     group: str | None = None
     kind: str = "query"
-
-
-@dataclass(frozen=True)
-class CteJoinTrace:
-    left: str | None
-    right: str
-    type: str
-    pairs: list[str]
-    condition: str | None
-    modifiers: list[str]
 
 
 @dataclass(frozen=True)
@@ -310,7 +293,7 @@ class CteTrace:
     zero_filled: list[str] | None = None
     inlined: list[str] | None = None
     base_alias: str | None = None
-    joins: list[CteJoinTrace | UnnestTrace] | None = None
+    joins: list[JoinTrace | UnnestTrace] | None = None
     # UnionCTE
     operator: str | None = None
 
@@ -1067,7 +1050,7 @@ def _node(node: StrategyNode, seen: dict[int, str]) -> NodeTrace | NodeRef:
             ),
             span_scope=span_scope(node.span_scope),
             joins=[
-                NodeJoinTrace(
+                JoinTrace(
                     left=_node_label(j.left_node),
                     right=_node_label(j.right_node),
                     type=j.join_type.value,
@@ -1117,9 +1100,9 @@ def _qds(source: Any, seen: dict[int, str]) -> QdsTrace | QdsRef | TableRef:
         return QdsRef(seen[key], source.identifier)
     ident = f"q{len(seen)}"
     seen[key] = ident
-    joins: list[QdsJoinTrace | UnnestTrace] = [
+    joins: list[JoinTrace | UnnestTrace] = [
         (
-            QdsJoinTrace(
+            JoinTrace(
                 left=j.left_datasource.identifier if j.left_datasource else None,
                 right=j.right_datasource.identifier,
                 type=j.join_type.value,
@@ -1207,7 +1190,7 @@ def cte(c: CTE | UnionCTE) -> CteTrace:
         base=c.base_alias,
         joins=[
             (
-                CteJoinTrace(
+                JoinTrace(
                     left=_cte_join_left(c, j),
                     right=_cte_ref(c, j, j.right_cte),
                     type=j.jointype.value,
