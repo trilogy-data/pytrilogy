@@ -1,0 +1,72 @@
+# Datasource ingested from store
+# Grain: store_sk. Properties: store_id, rec_start_date, rec_end_date, store_name, number_employees, floor_space, hours, manager, market_id, geography_class, market_desc, market_manager, +15 more.
+# Imports: date_dim via s_closed_date_sk (fields as date_dim.*).
+# Referenced by: store_returns, store_sales.
+import std.geography;
+import date_dim as date_dim;
+
+key store_sk bigint;
+
+properties store_sk (
+    store_id enum<string>['AAAAAAAABAAAAAAA', 'AAAAAAAACAAAAAAA', 'AAAAAAAAEAAAAAAA', 'AAAAAAAAHAAAAAAA', 'AAAAAAAAIAAAAAAA', 'AAAAAAAAKAAAAAAA'],
+    rec_start_date date,
+    rec_end_date date?,
+    store_name enum<string>['able', 'anti', 'ation', 'bar', 'cally', 'eing', 'ese', 'ought'],
+    number_employees enum<bigint>[218, 229, 236, 245, 271, 278, 288, 294, 297],
+    floor_space enum<bigint>[5219562, 5250760, 5285950, 6995995, 7557959, 8954883, 9026222, 9078805, 9294113, 9341467],
+    hours enum<string>['8AM-12AM', '8AM-4PM'],
+    manager enum<string>['Brett Yates', 'David Thomas', 'Edwin Adams', 'Raymond Jacobs', 'Robert Thompson', 'Scott Smith', 'William Ward'],
+    market_id enum<bigint>[2, 4, 6, 7, 8, 9, 10],
+    geography_class enum<string>['Unknown'],
+    market_desc string,
+    market_manager enum<string>['Charles Bartley', 'David Lamontagne', 'Dean Morrison', 'Dustin Kelly', 'Michael Wilson', 'Thomas Benton', 'Thomas Pollack'],
+    division_id enum<bigint>[1],
+    division_name enum<string>['Unknown'],
+    company_id enum<bigint>[1],
+    company_name enum<string>['Unknown'],
+    street_number enum<string>['175', '220', '226', '255', '27', '337', '767', '811', '877'],
+    street_name string,
+    street_type enum<string>['Boulevard', 'Circle', 'Court', 'Dr.', 'Lane', 'Ln', 'Road', 'Wy'],
+    suite_number string,
+    city enum<string>['Fairview', 'Midway']::city,
+    county enum<string>['Williamson County'],
+    state enum<string>['TN']::us_state,
+    zip enum<string>['31904', '35709']::us_zip_code,
+    country enum<string>['United States']::country,
+    gmt_offset numeric,
+    tax_percentage numeric[0..],
+);
+
+root datasource store (
+    s_store_sk: store_sk,
+    s_store_id: store_id,
+    s_rec_start_date: rec_start_date,
+    s_rec_end_date: ?rec_end_date,
+    s_closed_date_sk: ~?date_dim.date_sk,
+    s_store_name: store_name,
+    s_number_employees: number_employees,
+    s_floor_space: floor_space,
+    s_hours: hours,
+    s_manager: manager,
+    s_market_id: market_id,
+    s_geography_class: geography_class,
+    s_market_desc: market_desc,
+    s_market_manager: market_manager,
+    s_division_id: division_id,
+    s_division_name: division_name,
+    s_company_id: company_id,
+    s_company_name: company_name,
+    s_street_number: street_number,
+    s_street_name: street_name,
+    s_street_type: street_type,
+    s_suite_number: suite_number,
+    s_city: city,
+    s_county: county,
+    s_state: state,
+    s_zip: zip,
+    s_country: country,
+    s_gmt_offset: gmt_offset,
+    s_tax_percentage: tax_percentage,
+)
+grain (store_sk)
+address store;

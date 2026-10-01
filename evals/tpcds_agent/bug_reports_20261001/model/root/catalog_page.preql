@@ -1,0 +1,31 @@
+# Datasource ingested from catalog_page
+# Grain: catalog_page_sk. Properties: catalog_page_id, department, catalog_number, catalog_page_number, description, type.
+# Imports: end_date via cp_end_date_sk (fields as end_date.*), start_date via cp_start_date_sk (fields as start_date.*).
+# Referenced by: catalog_returns, catalog_sales, web_page.
+import date_dim as end_date;
+import date_dim as start_date;
+
+key catalog_page_sk bigint;
+
+properties catalog_page_sk (
+    catalog_page_id string,
+    department enum<string>['DEPARTMENT']?,
+    catalog_number bigint[1..109]?,
+    catalog_page_number bigint[1..108]?,
+    description string?,
+    type enum<string>['bi-annual', 'monthly', 'quarterly']?,
+);
+
+root datasource catalog_page (
+    cp_catalog_page_sk: catalog_page_sk,
+    cp_catalog_page_id: catalog_page_id,
+    cp_start_date_sk: ~?start_date.date_sk,
+    cp_end_date_sk: ~?end_date.date_sk,
+    cp_department: ?department,
+    cp_catalog_number: ?catalog_number,
+    cp_catalog_page_number: ?catalog_page_number,
+    cp_description: ?description,
+    cp_type: ?type,
+)
+grain (catalog_page_sk)
+address catalog_page;

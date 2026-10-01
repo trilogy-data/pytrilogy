@@ -1,0 +1,38 @@
+# Mailing addresses for customers, stores, warehouses, and web sites.
+
+import std.geography;
+
+key sk int; # surrogate key
+
+properties sk (
+    id string, # business identifier
+    street_number string?,
+    street_name string?,
+    street_type string?, # e.g. 'Ave', 'St', 'Rd'.
+    suite_number string?,
+    city string?,
+    state string::us_state_short?,
+    zip string?,
+    county string?,
+    country string::country?, # Free-form, typically 'United States'.
+    gmt_offset float?, # Hours, e.g. -5.0.
+    location_type string?, # 'apartment', 'condo', or 'single family'.
+);
+
+datasource customer_address (
+    CA_ADDRESS_SK: sk,
+    CA_ADDRESS_ID: id,
+    CA_STREET_NUMBER: street_number,
+    CA_STREET_NAME: street_name,
+    CA_STREET_TYPE: street_type,
+    CA_SUITE_NUMBER: suite_number,
+    CA_CITY: city,
+    CA_STATE: state,
+    CA_ZIP: zip,
+    CA_COUNTY: county,
+    CA_COUNTRY: country,
+    CA_GMT_OFFSET: gmt_offset,
+    CA_LOCATION_TYPE: location_type,
+)
+grain (sk)
+address customer_address;

@@ -1,0 +1,3 @@
+import raw.all_sales as s;
+where s.item.current_price > 50 and s.channel_dim_id is not null
+select s.channel, sum(s.ext_sales_price) as sales, sum(s.return_amount) as returns;

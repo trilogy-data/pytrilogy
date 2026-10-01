@@ -1,0 +1,6 @@
+import root.store_sales as ss;
+auto total <- coalesce(sum(ss.quantity), 0);
+auto rnk <- rank(ss.item.category) over (partition by ss.item.category order by total desc);
+select ss.item.category as cat, ss.date_dim.year as yr, total, rnk
+where ss.date_dim.year = 2000
+by rollup (ss.item.category, ss.date_dim.year);

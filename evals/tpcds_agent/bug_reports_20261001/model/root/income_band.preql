@@ -1,0 +1,17 @@
+# Datasource ingested from income_band
+# Grain: income_band_sk. Properties: lower_bound, upper_bound.
+# Referenced by: household_demographics.
+key income_band_sk bigint;
+
+properties income_band_sk (
+    lower_bound bigint[0..190001],
+    upper_bound int[10000..200000],
+);
+
+root datasource income_band (
+    ib_income_band_sk: income_band_sk,
+    ib_lower_bound: lower_bound,
+    ib_upper_bound: upper_bound,
+)
+grain (income_band_sk)
+address income_band;

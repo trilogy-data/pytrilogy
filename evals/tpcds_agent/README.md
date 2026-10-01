@@ -137,6 +137,12 @@ engine work and one question/harness item.
   answer. Correctness is gated; this is deferred optimization with the measured
   alternatives and two incorrect-but-smaller spellings recorded.
 
+## Filed 2026-10-01
+
+- `handoff_sf01_meaningful_results.md` - adjust question predicates so all 99 return
+  meaningful results at sf=0.1, then default the eval to 0.1. Cuts the risk of a bad agent
+  join OOMing the test machine at sf=1.
+
 ## Known-open elsewhere
 
 `evals/tpch_agent/bug_inline_aggregate_alias_before_by_cryptic_error.md` - ranks between

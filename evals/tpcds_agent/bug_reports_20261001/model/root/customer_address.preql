@@ -1,0 +1,39 @@
+# Datasource ingested from customer_address
+# Grain: address_sk. Properties: address_id, street_number, street_name, street_type, suite_number, city, county, state, zip, country, gmt_offset, location_type.
+# Referenced by: catalog_returns, catalog_sales, customer, store_returns, store_sales, web_returns, web_sales.
+import std.geography;
+
+key address_sk bigint;
+
+properties address_sk (
+    address_id string,
+    street_number string?,
+    street_name string?,
+    street_type string?,
+    suite_number string?,
+    city string::city?,
+    county string?,
+    state string::us_state?,
+    zip string::us_zip_code?,
+    country enum<string>['United States']::country?,
+    gmt_offset numeric?,
+    location_type enum<string>['apartment', 'condo', 'single family']?,
+);
+
+root datasource customer_address (
+    ca_address_sk: address_sk,
+    ca_address_id: address_id,
+    ca_street_number: ?street_number,
+    ca_street_name: ?street_name,
+    ca_street_type: ?street_type,
+    ca_suite_number: ?suite_number,
+    ca_city: ?city,
+    ca_county: ?county,
+    ca_state: ?state,
+    ca_zip: ?zip,
+    ca_country: ?country,
+    ca_gmt_offset: ?gmt_offset,
+    ca_location_type: ?location_type,
+)
+grain (address_sk)
+address customer_address;

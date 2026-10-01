@@ -1,0 +1,55 @@
+# Datasource ingested from item
+# Grain: item_sk. Properties: item_id, rec_start_date, rec_end_date, item_desc, current_price, wholesale_cost, brand_id, brand, class_id, class, category_id, category, +9 more.
+# Referenced by: catalog_returns, catalog_sales, inventory, promotion, store_returns, store_sales, web_returns, web_sales.
+key item_sk bigint;
+
+properties item_sk (
+    item_id string,
+    rec_start_date date?,
+    rec_end_date date?,
+    item_desc string?,
+    current_price numeric[0..]?,
+    wholesale_cost numeric[0..]?,
+    brand_id bigint[1001001..10016017]?,
+    brand string?,
+    class_id bigint[1..16]?,
+    class string?,
+    category_id enum<bigint>[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]?,
+    category enum<string>['Books', 'Children', 'Electronics', 'Home', 'Jewelry', 'Men', 'Music', 'Shoes', 'Sports', 'Women']?,
+    manufact_id bigint[1..1000]?,
+    manufact string?,
+    size enum<string>['N/A', 'economy', 'extra large', 'large', 'medium', 'petite', 'small']?,
+    formulation string?,
+    color string?,
+    units string?,
+    container enum<string>['Unknown']?,
+    manager_id bigint[1..100]?,
+    product_name string?,
+);
+
+root datasource item (
+    i_item_sk: item_sk,
+    i_item_id: item_id,
+    i_rec_start_date: ?rec_start_date,
+    i_rec_end_date: ?rec_end_date,
+    i_item_desc: ?item_desc,
+    i_current_price: ?current_price,
+    i_wholesale_cost: ?wholesale_cost,
+    i_brand_id: ?brand_id,
+    i_brand: ?brand,
+    i_class_id: ?class_id,
+    i_class: ?class,
+    i_category_id: ?category_id,
+    i_category: ?category,
+    i_manufact_id: ?manufact_id,
+    i_manufact: ?manufact,
+    i_size: ?size,
+    i_formulation: ?formulation,
+    i_color: ?color,
+    i_units: ?units,
+    i_container: ?container,
+    i_manager_id: ?manager_id,
+    i_product_name: ?product_name,
+)
+grain (item_sk)
+address item;

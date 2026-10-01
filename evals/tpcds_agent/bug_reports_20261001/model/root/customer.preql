@@ -1,0 +1,52 @@
+# Datasource ingested from customer
+# Grain: customer_sk. Properties: customer_id, salutation, first_name, last_name, preferred_cust_flag, birth_day, birth_month, birth_year, birth_country, login, email_address.
+# Imports: customer_address via c_current_addr_sk (fields as customer_address.*), customer_demographics via c_current_cdemo_sk (fields as customer_demographics.*), first_sales_date via c_first_sales_date_sk (fields as first_sales_date.*), first_shipto_date via c_first_shipto_date_sk (fields as first_shipto_date.*), household_demographics via c_current_hdemo_sk (fields as household_demographics.*), last_review_date via c_last_review_date_sk (fields as last_review_date.*).
+# Referenced by: catalog_returns, catalog_sales, store_returns, store_sales, web_page, web_returns, web_sales.
+import std.date;
+import std.geography;
+import std.net;
+import customer_address as customer_address;
+import customer_demographics as customer_demographics;
+import date_dim as first_sales_date;
+import date_dim as first_shipto_date;
+import date_dim as last_review_date;
+import household_demographics as household_demographics;
+
+key customer_sk bigint;
+
+properties customer_sk (
+    customer_id string,
+    salutation enum<string>['Dr.', 'Miss', 'Mr.', 'Mrs.', 'Ms.', 'Sir']?,
+    first_name string?,
+    last_name string?,
+    preferred_cust_flag enum<string>['N', 'Y']?,
+    birth_day bigint::day?,
+    birth_month bigint::month?,
+    birth_year bigint::year?,
+    birth_country string::country?,
+    login enum<string>['']?,
+    email_address string::email_address?,
+);
+
+root datasource customer (
+    c_customer_sk: customer_sk,
+    c_customer_id: customer_id,
+    c_current_cdemo_sk: ~?customer_demographics.demo_sk,
+    c_current_hdemo_sk: ?household_demographics.demo_sk,
+    c_current_addr_sk: ~customer_address.address_sk,
+    c_first_shipto_date_sk: ~?first_shipto_date.date_sk,
+    c_first_sales_date_sk: ~?first_sales_date.date_sk,
+    c_salutation: ?salutation,
+    c_first_name: ?first_name,
+    c_last_name: ?last_name,
+    c_preferred_cust_flag: ?preferred_cust_flag,
+    c_birth_day: ?birth_day,
+    c_birth_month: ?birth_month,
+    c_birth_year: ?birth_year,
+    c_birth_country: ?birth_country,
+    c_login: ?login,
+    c_email_address: ?email_address,
+    c_last_review_date_sk: ~?last_review_date.date_sk,
+)
+grain (customer_sk)
+address customer;
