@@ -352,6 +352,21 @@ class DomainGraph:
             for addr in (e.source, e.target)
         }
 
+    def authored_join_members(self) -> set[str]:
+        """Raw endpoints of every query-authored join declaration (`subset` /
+        `equal` / `union`, statement or rowset scope). Each is an equality
+        condition the author wrote between two sides' own columns, so no
+        grain or FD implication may infer it away: within one side a grain
+        determines its columns, but nothing makes two sides' rows agree. A
+        global `merge` is excluded — it makes the two one concept."""
+        return {
+            addr
+            for e in self.edges
+            if e.provenance is EdgeProvenance.DECLARED
+            and e.scope is not EdgeScope.GLOBAL
+            for addr in (e.source, e.target)
+        } | self.coalescing_relation_members()
+
     def statement_incomparable_keys(self) -> set[str]:
         """Canonicalized endpoints of statement-scoped ∦ declarations
         (historical statement_full_keys)."""
