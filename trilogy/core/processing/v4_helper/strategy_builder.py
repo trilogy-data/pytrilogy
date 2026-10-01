@@ -134,6 +134,8 @@ class RootRequest:
     conditions: BuildWhereClause | None
     scope: SpanScope
     parents: frozenset[str] = frozenset()
+    # the ancestors' atoms a ROOT re-applies to the rows it re-sources
+    preexisting: BuildWhereClause | None = None
 
     def answered_by(self, node: StrategyNode, asked: "RootRequest") -> bool:
         """Whether `node`, built for `asked`, already answers this request.
@@ -147,6 +149,7 @@ class RootRequest:
         partial = {c.address for c in node.partial_concepts}
         if not (
             self.conditions == asked.conditions
+            and self.preexisting == asked.preexisting
             and self.scope == asked.scope
             and self.parents == asked.parents
             and self.outputs <= {c.address for c in node.output_concepts} - partial
@@ -1116,6 +1119,8 @@ def _parent_nodes_for(
     needed: set[str],
     root_requests: dict[str, RootRequest],
     mandatory_list: list[BuildConcept],
+    complete_partials: bool,
+    staged_conditions: list[BuildWhereClause] | None,
     feeder_cache: "_CleanFeederCache | None" = None,
 ) -> list[ParentBuild]:
     """Look up the already-built StrategyNodes for `gid`'s lineage
@@ -1237,10 +1242,15 @@ def _parent_nodes_for(
         # own request: it prunes nothing (`_strict_leaf_subset_binds` counts
         # binders, not join paths).
         conditions = _wrap_atoms(attrs[pgid].condition_atoms)
+        asked = root_requests.get(pgid)
+        preexisting = asked.preexisting if asked else None
         request = RootRequest(
-            frozenset(slice_addresses), conditions, environment.span_scope
+            frozenset(slice_addresses),
+            conditions,
+            environment.span_scope,
+            preexisting=preexisting,
         )
-        if root_requests.get(pgid) == request:
+        if asked == request:
             return node.copy()
         outputs = [
             c
@@ -1253,8 +1263,11 @@ def _parent_nodes_for(
             parents=[],
             environment=environment,
             conditions=conditions,
+            preexisting_conditions=preexisting,
+            complete_partials=complete_partials,
             history=history,
             g=graph,
+            staged_conditions=staged_conditions,
         )
         if sliced is None:
             sliced = plan_source(
@@ -1264,6 +1277,7 @@ def _parent_nodes_for(
                     graph=graph,
                     history=history,
                     conditions=conditions,
+                    complete_partials=complete_partials,
                 )
             )
         if sliced is None:
@@ -4712,6 +4726,7 @@ def _assemble_final_node(
                     frozenset(c.address for c in projected),
                     _wrap_atoms(satisfiable),
                     environment.span_scope,
+                    preexisting=root_requests[gid].preexisting,
                 )
                 # Only a request the built node does not answer is planned:
                 # the preserved keys and filter-only args widened it beyond
@@ -5130,6 +5145,8 @@ def build_strategy_node(
             needed=needed,
             root_requests=root_requests,
             mandatory_list=mandatory_list,
+            complete_partials=complete_partials,
+            staged_conditions=staged_conditions,
             feeder_cache=feeder_cache,
         )
         parent_group_ids = {parent.group_id for parent in parent_builds}
@@ -5372,12 +5389,19 @@ def build_strategy_node(
                 condition_for_generator,
                 environment.span_scope,
                 frozenset(parent_group_ids),
+                preexisting,
             )
             if derivation == Derivation.ROOT
             else None
         )
+        # the region contract is the group's, not the request's: a twin's
+        # copy would carry the twin's region marker
         twin = next(
-            (other for other, asked in root_requests.items() if asked == request),
+            (
+                other
+                for other, asked in root_requests.items()
+                if asked == request and attrs[other].extent_spans == a.extent_spans
+            ),
             None,
         )
         node: StrategyNode | None

@@ -29,6 +29,7 @@ from trilogy.core.optimizations.collapse_single_parent import (
     grouped_unbound_passthrough_should_wait,
 )
 from trilogy.core.optimizations.full_join_lowering import lower_full_joins
+from trilogy.core.optimizations.preserved_join_keys import PrunePreservedJoinKeys
 from trilogy.core.processing import plan_trace
 from trilogy.core.processing.utility import sort_select_output_processed
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
@@ -614,6 +615,25 @@ def build_optimization_rule_plan(
                     "reads the feeder's visible outputs, so it runs after join "
                     "types and output pruning are final. Adds no CTE and rewrites "
                     "no condition, so nothing downstream needs to re-fire"
+                ),
+            )
+        )
+    if opts.upgrade_condition_joins or opts.upgrade_outer_key_set_equivalence:
+        plan.append(
+            OptimizationRulePlan(
+                name="prune_preserved_join_keys",
+                rule_factory=PrunePreservedJoinKeys,
+                depends_on=_enabled_dependencies(
+                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
+                    (
+                        "upgrade_outer_key_set_equivalence",
+                        opts.upgrade_outer_key_set_equivalence,
+                    ),
+                ),
+                reason=(
+                    "a narrowed outer join preserves a side the planner had to "
+                    "coalesce, so it runs once join types are final, and before the "
+                    "INNER reorder the dropped pairs would pin"
                 ),
             )
         )

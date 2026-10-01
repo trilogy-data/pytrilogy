@@ -120,6 +120,7 @@ def test_pipeline_marks_predicate_refire_dependency_on_union_dim_pushdown():
         "upgrade_join_on_guards.final",
         "predicate_pushdown.after_final_upgrade",
         "predicate_pushdown.remove.after_join_upgrades",
+        "prune_preserved_join_keys",
     ]
     assert by_name["union_dim_pushdown"].depends_on == (
         "predicate_pushdown.initial",
@@ -170,7 +171,7 @@ def test_pipeline_orders_inner_joins_last_after_join_type_upgrades():
         plan = build_optimization_rule_plan()
 
     names = [phase.name for phase in plan]
-    assert names[-1] == "order_inner_joins_first"
+    assert names[-2:] == ["prune_preserved_join_keys", "order_inner_joins_first"]
     by_name = {phase.name: phase for phase in plan}
     assert by_name["order_inner_joins_first"].depends_on == (
         "upgrade_join_on_guards.final",

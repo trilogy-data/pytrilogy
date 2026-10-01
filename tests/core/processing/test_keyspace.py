@@ -638,7 +638,7 @@ def test_where_over_an_absent_null_rejecting_value_empties_the_region(monkeypatc
     assert info.keyspace.extensions == ()
 
 
-# What the heal audit (`keyspace_audit.py`) established: the keyspace over the
+# What the heal audit (`local_scripts/keyspace_ab/ks_heal_audit.py`) established: the keyspace over the
 # bindings as authored and the one over the rewritten bindings answer the same
 # reader-visible questions, with heal a STATEMENT fact every plan inherits.
 

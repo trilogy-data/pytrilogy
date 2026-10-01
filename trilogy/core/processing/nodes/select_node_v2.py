@@ -321,9 +321,7 @@ class SelectNode(StrategyNode):
             non_null_proofs=set(self.non_null_proofs),
         )
         node.limit = self.limit
-        node.region_spans = self.region_spans
-        node.origin_group = self.origin_group
-        return node
+        return self.with_marks(node)
 
 
 class RowsetNode(SelectNode):
@@ -353,8 +351,7 @@ class ConstantNode(SelectNode):
             hidden_concepts=self.hidden_concepts,
             ordering=self.ordering,
         )
-        node.origin_group = self.origin_group
-        return node
+        return self.with_marks(node)
 
     def _resolve(self) -> QueryDatasource:
         return self.resolve_from_constant_datasources()
