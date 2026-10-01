@@ -200,22 +200,33 @@ def prepare_worker_workspace(src: Path, worker_idx: int, db_filename: str) -> Pa
     worker_dir = src / f"_worker_{worker_idx}"
     worker_dir.mkdir(exist_ok=True)
     shutil.copy2(src / db_filename, worker_dir / db_filename)
-    shutil.copy2(src / "trilogy.toml", worker_dir / "trilogy.toml")
+    reset_worker_workspace(src, worker_dir, db_filename)
+    return worker_dir
+
+
+def reset_worker_workspace(src: Path, worker_dir: Path, db_filename: str) -> None:
+    """Return a worker to its seeded state before the next query. Anything a
+    previous agent left behind goes - a probe whose ``--run-and-delete`` was
+    killed by a timeout would otherwise be found, and run, by the next agent.
+    The database copy is kept: re-copying it per query is the expensive part."""
     from trilogy.scripts.project_config import MODEL_ROOT_DIR
 
+    for entry in worker_dir.iterdir():
+        if entry.name.startswith(db_filename):
+            continue
+        if entry.is_dir():
+            shutil.rmtree(entry)
+        else:
+            entry.unlink()
+    shutil.copy2(src / "trilogy.toml", worker_dir / "trilogy.toml")
     # Enriched models currently live in raw/; discovery-engine ingest uses the
     # shared project model-root constant. SQL baselines have neither.
     for model_dir_name in ("raw", MODEL_ROOT_DIR):
         source_model = src / model_dir_name
-        if not source_model.exists():
-            continue
-        worker_model = worker_dir / model_dir_name
-        if worker_model.exists():
-            shutil.rmtree(worker_model)
-        shutil.copytree(source_model, worker_model)
+        if source_model.exists():
+            shutil.copytree(source_model, worker_dir / model_dir_name)
     for md in src.glob("*.md"):
         shutil.copy2(md, worker_dir / md.name)
-    return worker_dir
 
 
 _ADDRESS_DB_PREFIX = re.compile(r"^(address\s+)([A-Za-z_]\w*)\.", re.MULTILINE)
