@@ -114,11 +114,7 @@ def _prune_padded_pairs(
     out: list[ConceptPair] = []
     for group in groups.values():
         preserved = [
-            pair
-            for pair in group
-            if pair.existing_datasource.identifier not in padded
-            and pair.left.address
-            not in {c.address for c in pair.existing_datasource.nullable_concepts}
+            pair for pair in group if pair.existing_datasource.identifier not in padded
         ]
         if len(group) == 1 or not preserved:
             out.extend(group)

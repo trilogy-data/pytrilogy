@@ -43,5 +43,4 @@ class WindowNode(StrategyNode):
             preexisting_conditions=self.preexisting_conditions,
             nullable_concepts=list(self.nullable_concepts),
         )
-        node.origin_group = self.origin_group
-        return node
+        return self.with_marks(node)

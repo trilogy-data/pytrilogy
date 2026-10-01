@@ -40,5 +40,4 @@ class SubselectNode(StrategyNode):
             ordering=self.ordering,
             preexisting_conditions=self.preexisting_conditions,
         )
-        node.origin_group = self.origin_group
-        return node
+        return self.with_marks(node)

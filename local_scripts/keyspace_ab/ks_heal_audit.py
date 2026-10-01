@@ -5,10 +5,11 @@ Pin-heal proves per binding that the rows a `~` source lacks are dead under the
 plan's WHERE, then strips the `~`. The rewrite tells `_model_facts` something
 stronger: the source is a complete table, so keyed lookups from other sources
 may enter it. The two coincide only if the anchor guard is exactly that claim.
-This audit (`TRILOGY_KEYSPACE_HEAL_AUDIT=<file>`) builds the keyspace both ways
-at every plan and appends one JSON line per plan whose reader-visible facts
-differ (`KeyspaceFacts`). `in_play` differs by design (the authored side keeps
-the emptied regions' spans) and is reported apart.
+This pytest plugin (`KS_HEAL_AUDIT=<file>`, `-p ks_heal_audit` with
+`PYTHONPATH=local_scripts/keyspace_ab`) builds the keyspace both ways at every
+plan and appends one JSON line per plan whose reader-visible facts differ
+(`KeyspaceFacts`). `in_play` differs by design (the authored side keeps the
+emptied regions' spans) and is reported apart.
 """
 
 from __future__ import annotations
@@ -17,14 +18,17 @@ import json
 import os
 from dataclasses import asdict, dataclass, fields
 
-from trilogy.core.models.build import BuildConcept, BuildWhereClause
+from trilogy.core.models.build import BuildConcept, BuildDatasource, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.keyspace import Keyspace
+from trilogy.core.processing import partial_bridging
+from trilogy.core.processing.v4_helper.keyspace import RowsetWitness, build_keyspace
+from trilogy.core.processing.v4_helper.models import ConceptAttrs
+from trilogy.core.processing.v4_node_generators import rowset_witness
 
-from .keyspace import RowsetWitness, build_keyspace
-from .models import ConceptAttrs
-
-AUDIT_ENV = "TRILOGY_KEYSPACE_HEAL_AUDIT"
+_PATH = os.environ.get("KS_HEAL_AUDIT")
+# the datasources as authored, per environment pin-heal rewrote
+_authored: dict[int, tuple[BuildEnvironment, list[BuildDatasource]]] = {}
 
 
 @dataclass(frozen=True)
@@ -74,15 +78,15 @@ def audit_heal_keyspace(
     conditions: list[BuildWhereClause],
     witnesses: tuple[RowsetWitness, ...] = (),
 ) -> None:
-    path = os.environ.get(AUDIT_ENV)
-    if not path or environment.authored_datasources is None:
+    held = _authored.get(id(environment))
+    if not _PATH or held is None or held[0] is not environment:
         return
     authored = build_keyspace(
         concept_attrs,
         mandatory_list,
         environment,
         conditions,
-        datasources=environment.authored_datasources,
+        datasources=held[1],
         rowset_witnesses=witnesses,
     )
     common = authored.in_play_spans & planned.in_play_spans
@@ -106,5 +110,38 @@ def audit_heal_keyspace(
         },
         "diff": diff,
     }
-    with open(path, "a", encoding="utf-8", newline="\n") as f:
+    with open(_PATH, "a", encoding="utf-8", newline="\n") as f:
         f.write(json.dumps(record) + "\n")
+
+
+_heal = partial_bridging.heal_pinned_partials
+_build_keyspace = rowset_witness.build_keyspace
+
+
+def _audited_heal(environment, outputs, conditions):
+    authored = partial_bridging.build_datasources(environment)
+    before = dict(environment.datasources)
+    _heal(environment, outputs, conditions)
+    if environment.datasources != before:
+        _authored[id(environment)] = (environment, authored)
+
+
+def _audited_build_keyspace(
+    concept_attrs, outputs, environment, conditions, rowset_witnesses=()
+):
+    keyspace = _build_keyspace(
+        concept_attrs,
+        outputs,
+        environment,
+        conditions,
+        rowset_witnesses=rowset_witnesses,
+    )
+    audit_heal_keyspace(
+        keyspace, concept_attrs, outputs, environment, conditions, rowset_witnesses
+    )
+    return keyspace
+
+
+if _PATH:
+    partial_bridging.heal_pinned_partials = _audited_heal
+    rowset_witness.build_keyspace = _audited_build_keyspace

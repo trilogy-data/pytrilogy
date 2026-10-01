@@ -64,5 +64,4 @@ class UnnestNode(StrategyNode):
             parents=self.parents,
             depth=self.depth,
         )
-        node.origin_group = self.origin_group
-        return node
+        return self.with_marks(node)

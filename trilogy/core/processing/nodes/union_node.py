@@ -89,5 +89,4 @@ class UnionNode(StrategyNode):
             set_operator=self.set_operator,
             hidden_concepts=set(self.hidden_concepts),
         )
-        node.origin_group = self.origin_group
-        return node
+        return self.with_marks(node)

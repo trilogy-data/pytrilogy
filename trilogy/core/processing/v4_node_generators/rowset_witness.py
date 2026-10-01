@@ -24,7 +24,6 @@ from trilogy.core.processing.v4_helper.keyspace import (
     build_keyspace,
     rowset_witness,
 )
-from trilogy.core.processing.v4_helper.keyspace_audit import audit_heal_keyspace
 from trilogy.core.processing.v4_helper.models import ConceptAttrs
 from trilogy.core.processing.v4_helper.projection import statement_filter_population
 
@@ -57,13 +56,9 @@ def statement_keyspace(
         if statement_outputs is None or {c.address, *c.pseudonyms} & statement_outputs
     ]
     witnesses = rowset_witnesses(concept_attrs, environment, history)
-    keyspace = build_keyspace(
+    return build_keyspace(
         concept_attrs, outputs, environment, conditions, rowset_witnesses=witnesses
     )
-    audit_heal_keyspace(
-        keyspace, concept_attrs, outputs, environment, conditions, witnesses
-    )
-    return keyspace
 
 
 def rowset_witnesses(

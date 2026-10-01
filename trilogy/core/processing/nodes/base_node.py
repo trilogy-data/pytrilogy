@@ -1,6 +1,7 @@
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import TypeVar
 
 from trilogy.core.enums import (
     JoinType,
@@ -184,6 +185,9 @@ def region_reads(node: "StrategyNode") -> frozenset[str]:
     return out
 
 
+StrategyNodeT = TypeVar("StrategyNodeT", bound="StrategyNode")
+
+
 class StrategyNode:
     source_type = SourceType.ABSTRACT
     # A node that only projects or filters emits its parents' rows. Subclasses
@@ -196,7 +200,7 @@ class StrategyNode:
     set_operator: SetOperator = SetOperator.UNION_ALL
     # Set on the node a region domain group builds: the region's spans. It
     # contributes ROWS (the region's own members), so no sibling that renders
-    # its columns can stand in for it. A copy is an ordinary node again.
+    # its columns can stand in for it. Copies keep it (`with_marks`).
     region_spans: frozenset[str] = frozenset()
     # `region_reads` stops here: a rowset boundary's regions are its own stamp
     region_boundary: bool = False
@@ -569,6 +573,10 @@ class StrategyNode:
             ordering=self.ordering,
         )
         node.limit = self.limit
+        return self.with_marks(node)
+
+    def with_marks(self, node: StrategyNodeT) -> StrategyNodeT:
+        """Carry the marks a copy keeps that no constructor takes."""
         node.region_spans = self.region_spans
         node.origin_group = self.origin_group
         return node

@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -21,8 +22,8 @@ def carried_keys(
     derivation: Derivation | None,
     grain_components: frozenset[str],
     anchor_keys: frozenset[str],
-    carried_spans: tuple[str, ...],
-    primary_members: tuple[str, ...] | list[str],
+    carried_spans: Sequence[str],
+    primary_members: Sequence[str],
 ) -> tuple[str, ...]:
     """The keys a group holds without computing them, each read off the field
     that says why: the entity key a peel's scalars are anchored to, the spans
@@ -162,8 +163,41 @@ class FinalAssemblyContract:
     deduplicate_to_grain: bool = True
 
 
+class _HeldKeys:
+    """The keys a group holds, read the same way off a bucket and its attrs."""
+
+    derivation: Derivation | None
+    grain_components: frozenset[str]
+    primary_members: Sequence[str]
+    carried_spans: Sequence[str]
+    grouping_mode: AggregateGroupingMode
+    dim_keys: frozenset[str]
+    reason: "RootReason | None"
+
+    @property
+    def anchor_keys(self) -> frozenset[str]:
+        """An entity peel's key, a column of its own: the axis the peel joins
+        back on, and the grain a scalar reading the peel alone is evaluated
+        at (`_anchor_scalars_to_dim_peel_key`)."""
+        return self.dim_keys if self.reason is RootReason.ENTITY else frozenset()
+
+    @property
+    def carried_keys(self) -> tuple[str, ...]:
+        return carried_keys(
+            self.derivation,
+            self.grain_components,
+            self.anchor_keys,
+            self.carried_spans,
+            self.primary_members,
+        )
+
+    @property
+    def nulls_grouping_keys(self) -> bool:
+        return nulls_grouping_keys(self.grouping_mode)
+
+
 @dataclass
-class GroupAttrs:
+class GroupAttrs(_HeldKeys):
     """Strongly-typed per-group state. Lives in a side dict
     (``dict[str, GroupAttrs]``) keyed by group id rather than on the
     nx.DiGraph node attributes: the graph stays as topology + edge metadata
@@ -227,29 +261,8 @@ class GroupAttrs:
     inlined_members: tuple[str, ...] = ()
 
     @property
-    def anchor_keys(self) -> frozenset[str]:
-        """An entity peel's key, a column of its own: the axis the peel joins
-        back on, and the grain a scalar reading the peel alone is evaluated
-        at (`_anchor_scalars_to_dim_peel_key`)."""
-        return self.dim_keys if self.reason is RootReason.ENTITY else frozenset()
-
-    @property
-    def carried_keys(self) -> tuple[str, ...]:
-        return carried_keys(
-            self.derivation,
-            self.grain_components,
-            self.anchor_keys,
-            self.carried_spans,
-            self.primary_members,
-        )
-
-    @property
     def members(self) -> tuple[str, ...]:
         return (*self.primary_members, *self.carried_keys)
-
-    @property
-    def nulls_grouping_keys(self) -> bool:
-        return nulls_grouping_keys(self.grouping_mode)
 
 
 @dataclass
@@ -357,7 +370,7 @@ class BuildInfo:
 
 
 @dataclass
-class GroupBucket:
+class GroupBucket(_HeldKeys):
     """In-flight working state for one group while we're assembling
     `group_graph`. Once all groups are populated, fields are unpacked onto the
     final nx node as attributes.
@@ -406,27 +419,6 @@ class GroupBucket:
     # What the demand pass has the group emit (`_compute_concept_sets`), hidden
     # pass-through columns included. Empty until it has run.
     output_concepts: tuple[str, ...] = ()
-
-    @property
-    def nulls_grouping_keys(self) -> bool:
-        return nulls_grouping_keys(self.grouping_mode)
-
-    @property
-    def anchor_keys(self) -> frozenset[str]:
-        """An entity peel's key, a column of its own: the axis the peel joins
-        back on, and the grain a scalar reading the peel alone is evaluated
-        at (`_anchor_scalars_to_dim_peel_key`)."""
-        return self.dim_keys if self.reason is RootReason.ENTITY else frozenset()
-
-    @property
-    def carried_keys(self) -> tuple[str, ...]:
-        return carried_keys(
-            self.derivation,
-            self.grain_components,
-            self.anchor_keys,
-            tuple(self.carried_spans),
-            self.primary_members,
-        )
 
     @property
     def carried(self) -> set[str]:

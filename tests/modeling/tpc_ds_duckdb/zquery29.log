@@ -1,5 +1,5 @@
 query_id = "29"
-gen_length = 7510
+gen_length = 7542
 preql_size = 1692
 comp_size = 1350
 generated_sql = """
@@ -72,7 +72,7 @@ SELECT
     \"vacuous\".\"store_sales_customer_sk\" as \"store_sales_customer_sk\",
     \"vacuous\".\"store_sales_store_id\" as \"store_sales_store_id\",
     \"vacuous\".\"store_sales_store_name\" as \"store_sales_store_name\",
-    coalesce(\"concerned\".\"catalog_customer_item_cat_item_sk\",\"concerned\".\"store_sales_item_sk\",\"wakeful\".\"catalog_customer_item_cat_item_sk\") as \"store_sales_item_sk\",
+    coalesce(\"concerned\".\"catalog_customer_item_cat_item_sk\",\"concerned\".\"store_sales_item_sk\",\"vacuous\".\"catalog_customer_item_cat_item_sk\",\"vacuous\".\"store_sales_item_sk\") as \"store_sales_item_sk\",
     max(\"wakeful\".\"catalog_customer_item_cat_quantity\") as \"_per_pair_cq\",
     sum(\"vacuous\".\"store_sales_quantity\") as \"_per_pair_sq\",
     sum(\"vacuous\".\"store_sales_return_quantity\") as \"_per_pair_srq\"

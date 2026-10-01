@@ -23,8 +23,8 @@ The phase 3 method: compute the old and the new answer side by side under
 difference, flip with the audit still comparing, then strip it. That audit was
 deleted once phase 5 landed; git history has it.
 
-The heal audit (`v4_helper/keyspace_audit.py`, in the tree):
-`TRILOGY_KEYSPACE_HEAL_AUDIT=<file>` builds every plan's keyspace a second
+The heal audit (`ks_heal_audit.py`, a plugin like the others):
+`KS_HEAL_AUDIT=<file>` builds every plan's keyspace a second
 time over the datasources AS AUTHORED (pin-heal rewrites them) and appends a
 JSON line per plan whose reader-visible facts differ. Over the planner suites
 the only record is a sub-plan without the statement's WHERE (a window feeder),

@@ -225,6 +225,4 @@ class GroupNode(StrategyNode):
             hidden_concepts=set(self.hidden_concepts),
             ordering=self.ordering,
         )
-        node.region_spans = self.region_spans
-        node.origin_group = self.origin_group
-        return node
+        return self.with_marks(node)
