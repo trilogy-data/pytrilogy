@@ -26,7 +26,10 @@ from trilogy.core.processing.v4_helper.condition_injection import (
 from trilogy.core.processing.v4_helper.history import V4History
 from trilogy.core.processing.v4_helper.projection import lineage_existence_only
 from trilogy.core.processing.v4_helper.source_planning import SourceRequest, plan_source
-from trilogy.core.processing.v4_helper.staged_where import hosting_stage_index
+from trilogy.core.processing.v4_helper.staged_where import (
+    concept_is_cross_row,
+    hosting_stage_index,
+)
 
 from .aggregate import outputs_with_scoped_join_mates
 from .common import search_parent
@@ -382,14 +385,13 @@ def gen_root(
     """
     row_conditions, existence_conditions = split_existence_atoms(conditions)
 
-    inner_outputs: list[BuildConcept] = list(outputs)
-    if existence_conditions is not None:
-        seen = {c.address for c in inner_outputs}
-        for atom in decompose_condition(existence_conditions.conditional):
-            for arg in atom.row_arguments:
-                if arg.address not in seen:
-                    inner_outputs.append(arg)
-                    seen.add(arg.address)
+    output_addresses = {c.address for c in outputs}
+    membership_args = [
+        arg
+        for arg in condition_row_args(existence_conditions)
+        if arg.address not in output_addresses
+    ]
+    inner_outputs = list(outputs) + membership_args
 
     node = plan_source(
         SourceRequest(
@@ -402,7 +404,13 @@ def gen_root(
         )
     )
     if node is None and conditions is not None:
-        grain_outputs = _outputs_with_grain_keys(inner_outputs, environment)
+        # A cross-row membership arg (`sum(x) by g in v`) is no scan column:
+        # demanded here, the scan plans to nothing and the group (with its
+        # WHERE) drops; it is re-sourced as a feeder like any other gate arg.
+        grain_outputs = _outputs_with_grain_keys(
+            outputs + [c for c in membership_args if not concept_is_cross_row(c)],
+            environment,
+        )
         fallback_outputs = grain_outputs
         # A cross-row gate (`sum(x) by k > 0`) is what sent the conditioned
         # request to this fallback; the plain row atoms beside it still belong
