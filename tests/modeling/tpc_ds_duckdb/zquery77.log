@@ -1,5 +1,5 @@
 query_id = "77"
-gen_length = 8535
+gen_length = 8478
 preql_size = 3178
 comp_size = 3255
 generated_sql = """
@@ -41,7 +41,7 @@ SELECT
     coalesce(\"resonant\".\"wr_grouped_wr_wp_id\",\"wary\".\"ws_grouped_ws_wp_id\") as \"ws_grouped_ws_wp_id\"
 FROM
     \"wary\"
-    LEFT OUTER JOIN \"resonant\" on \"wary\".\"ws_grouped_ws_wp_id\" is not distinct from \"resonant\".\"wr_grouped_wr_wp_id\"
+    LEFT OUTER JOIN \"resonant\" on \"wary\".\"ws_grouped_ws_wp_id\" = \"resonant\".\"wr_grouped_wr_wp_id\"
 WHERE
     \"wary\".\"ws_grouped_ws_sales\" is not null
 ),
@@ -90,7 +90,7 @@ SELECT
     coalesce(\"charming\".\"ss_grouped_ss_store_id\",\"macho\".\"sr_grouped_sr_store_id\") as \"ss_grouped_ss_store_id\"
 FROM
     \"charming\"
-    LEFT OUTER JOIN \"macho\" on \"charming\".\"ss_grouped_ss_store_id\" is not distinct from \"macho\".\"sr_grouped_sr_store_id\"
+    LEFT OUTER JOIN \"macho\" on \"charming\".\"ss_grouped_ss_store_id\" = \"macho\".\"sr_grouped_sr_store_id\"
 WHERE
     \"charming\".\"ss_grouped_ss_sales\" is not null
 ),
@@ -139,7 +139,7 @@ SELECT
     coalesce(\"uneven\".\"cs_grouped_cs_cc_id\",\"wakeful\".\"cr_grouped_cr_cc_id\") as \"cs_grouped_cs_cc_id\"
 FROM
     \"uneven\"
-    LEFT OUTER JOIN \"wakeful\" on \"uneven\".\"cs_grouped_cs_cc_id\" is not distinct from \"wakeful\".\"cr_grouped_cr_cc_id\"
+    LEFT OUTER JOIN \"wakeful\" on \"uneven\".\"cs_grouped_cs_cc_id\" = \"wakeful\".\"cr_grouped_cr_cc_id\"
 WHERE
     \"uneven\".\"cs_grouped_cs_sales\" is not null
 ),

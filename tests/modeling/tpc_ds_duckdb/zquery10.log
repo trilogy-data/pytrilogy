@@ -1,5 +1,5 @@
 query_id = "10"
-gen_length = 7070
+gen_length = 6971
 preql_size = 2161
 comp_size = 1858
 generated_sql = """
@@ -89,7 +89,7 @@ FROM
     INNER JOIN \"memory\".\"customer_address\" as \"sales_purchasing_customer_current_address_customer_address\" on \"sales_purchasing_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"sales_purchasing_customer_current_address_customer_address\".\"CA_ADDRESS_SK\"
     INNER JOIN \"memory\".\"customer_demographics\" as \"sales_purchasing_customer_current_demographics_customer_demographics\" on \"sales_purchasing_customer_customers\".\"C_CURRENT_CDEMO_SK\" = \"sales_purchasing_customer_current_demographics_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
-    (\"sales_purchasing_customer_current_address_customer_address\".\"CA_COUNTY\" is not null and \"sales_purchasing_customer_current_address_customer_address\".\"CA_COUNTY\" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County')) and \"sales_purchasing_customer_current_demographics_customer_demographics\".\"CD_GENDER\" is not null and exists (select 1 from questionable where questionable.\"store_buyers\" is not distinct from \"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\") and exists (select 1 from uneven where uneven.\"webcat_buyers\" is not distinct from \"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\")
+    (\"sales_purchasing_customer_current_address_customer_address\".\"CA_COUNTY\" is not null and \"sales_purchasing_customer_current_address_customer_address\".\"CA_COUNTY\" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County')) and exists (select 1 from questionable where questionable.\"store_buyers\" is not distinct from \"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\") and exists (select 1 from uneven where uneven.\"webcat_buyers\" is not distinct from \"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\")
 
 GROUP BY
     1,
