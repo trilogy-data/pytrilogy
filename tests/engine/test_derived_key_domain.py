@@ -763,6 +763,37 @@ def test_membership_set_sourced_beside_its_probe(query: str, expected: list[tupl
     assert _rows(_executor(_FILTERED_SET), query) == expected
 
 
+_NULL_NAMED = _FILTERED_SET.replace(
+    "select 3, 'cat'", "select 3, 'cat' union all select 5, null"
+)
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        ("select customer_id where up_name in ab_up", [(1,), (3,)]),
+        (
+            "select customer_id, status where up_name in ab_up",
+            [(1, "delivered"), (1, "in-transit"), (3, None)],
+        ),
+        (
+            "select customer_id, name where up_name not in ab_up",
+            [(2, "bob"), (5, None)],
+        ),
+        (
+            "select customer_id, status where up_name not in ab_up",
+            [(2, "delivered"), (5, None)],
+        ),
+    ],
+)
+def test_null_probe_is_not_a_member_of_a_filtered_set(
+    query: str, expected: list[tuple]
+):
+    """The set holds the filter's rows only, never the NULL its CASE leaves on
+    a rejected row, so a NULL probe is not a member."""
+    assert _rows(_executor(_NULL_NAMED), query) == expected
+
+
 # A domain-fed aggregate beside one it cannot feed: the atom is applied on each
 # aggregate's input. The domain fell back to the padded plan, where `status`
 # was evaluated on the orderless customer's padded row ('in-transit').
