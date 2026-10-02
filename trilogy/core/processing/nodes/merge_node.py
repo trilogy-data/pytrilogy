@@ -17,6 +17,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment, SpanScope
 from trilogy.core.models.execute import BaseJoin, QueryDatasource, UnnestJoin
 from trilogy.core.processing.condition_utility import (
+    condition_proves_non_null,
     decompose_condition,
     gather_non_null_proofs,
     gather_or_groups,
@@ -821,6 +822,11 @@ class MergeNode(StrategyNode):
         nullable_concepts = find_nullable_concepts(
             source_map=source_map, joins=joins, datasources=final_datasets
         )
+        # this merge's own WHERE filters its output rows, rendered through the
+        # same source map as the outputs, as `StrategyNode._resolve` refines
+        if self.conditions:
+            proven = condition_proves_non_null(self.conditions)
+            nullable_concepts = [a for a in nullable_concepts if a not in proven]
         # A grain the contributors pinned is the domains' spans alone on a
         # plain row merge (the fact's `id` is nobody's projection grain), and
         # the pregrain folds `user.id` under the `id` a FULL pads; the rows

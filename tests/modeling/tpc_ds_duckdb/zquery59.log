@@ -1,5 +1,5 @@
 query_id = "59"
-gen_length = 6964
+gen_length = 6473
 preql_size = 2263
 comp_size = 2234
 generated_sql = """
@@ -17,7 +17,7 @@ FROM
     \"memory\".\"store_sales\" as \"ss_store_sales\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_sale_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"ss_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1212 AND 1235 and \"ss_store_sales\".\"SS_STORE_SK\" is not null and \"ss_sale_date_date\".\"D_WEEK_SEQ\" is not null
+    \"ss_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1212 AND 1235 and \"ss_store_sales\".\"SS_STORE_SK\" is not null
 ),
 questionable as (
 SELECT
@@ -78,19 +78,19 @@ SELECT
     \"questionable\".\"thu_sales\" as \"thu_sales\",
     \"questionable\".\"tue_sales\" as \"tue_sales\",
     \"questionable\".\"wed_sales\" as \"wed_sales\",
+    \"thoughtful\".\"ss_sale_date_week_seq\" as \"ss_sale_date_week_seq\",
+    \"thoughtful\".\"ss_store_sk\" as \"ss_store_sk\",
     \"thoughtful\".\"year_flag\" as \"year_flag\",
-    coalesce(\"questionable\".\"ss_sale_date_week_seq\",\"thoughtful\".\"ss_sale_date_week_seq\") as \"ss_sale_date_week_seq\",
-    coalesce(\"questionable\".\"ss_store_sk\",\"thoughtful\".\"ss_store_sk\") as \"ss_store_sk\",
-    lead(\"questionable\".\"fri_sales\", 1) over (partition by coalesce(\"questionable\".\"ss_store_sk\",\"thoughtful\".\"ss_store_sk\"),\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_1809457397450112\",
-    lead(\"questionable\".\"mon_sales\", 1) over (partition by coalesce(\"questionable\".\"ss_store_sk\",\"thoughtful\".\"ss_store_sk\"),\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_8658219107244510\",
-    lead(\"questionable\".\"sat_sales\", 1) over (partition by coalesce(\"questionable\".\"ss_store_sk\",\"thoughtful\".\"ss_store_sk\"),\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_6629245994596889\",
-    lead(\"questionable\".\"sun_sales\", 1) over (partition by coalesce(\"questionable\".\"ss_store_sk\",\"thoughtful\".\"ss_store_sk\"),\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_6256435185087398\",
-    lead(\"questionable\".\"thu_sales\", 1) over (partition by coalesce(\"questionable\".\"ss_store_sk\",\"thoughtful\".\"ss_store_sk\"),\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_5418231592854511\",
-    lead(\"questionable\".\"tue_sales\", 1) over (partition by coalesce(\"questionable\".\"ss_store_sk\",\"thoughtful\".\"ss_store_sk\"),\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_8482854723108958\",
-    lead(\"questionable\".\"wed_sales\", 1) over (partition by coalesce(\"questionable\".\"ss_store_sk\",\"thoughtful\".\"ss_store_sk\"),\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_5213256031737291\"
+    lead(\"questionable\".\"fri_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_1809457397450112\",
+    lead(\"questionable\".\"mon_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_8658219107244510\",
+    lead(\"questionable\".\"sat_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_6629245994596889\",
+    lead(\"questionable\".\"sun_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_6256435185087398\",
+    lead(\"questionable\".\"thu_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_5418231592854511\",
+    lead(\"questionable\".\"tue_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_8482854723108958\",
+    lead(\"questionable\".\"wed_sales\", 1) over (partition by \"thoughtful\".\"ss_store_sk\",\"thoughtful\".\"normalized_week\" order by \"thoughtful\".\"year_flag\" asc ) as \"_virt_window_lead_5213256031737291\"
 FROM
-    \"thoughtful\"
-    LEFT OUTER JOIN \"questionable\" on \"thoughtful\".\"ss_sale_date_week_seq\" = \"questionable\".\"ss_sale_date_week_seq\" AND \"thoughtful\".\"ss_store_sk\" = \"questionable\".\"ss_store_sk\"),
+    \"questionable\"
+    INNER JOIN \"thoughtful\" on \"questionable\".\"ss_sale_date_week_seq\" = \"thoughtful\".\"ss_sale_date_week_seq\" AND \"questionable\".\"ss_store_sk\" = \"thoughtful\".\"ss_store_sk\"),
 yummy as (
 SELECT
     \"abundant\".\"fri_sales\" / \"abundant\".\"_virt_window_lead_1809457397450112\" as \"fri_sales_ratio\",
@@ -101,8 +101,7 @@ SELECT
     \"abundant\".\"sun_sales\" / \"abundant\".\"_virt_window_lead_6256435185087398\" as \"sun_sales_ratio\",
     \"abundant\".\"thu_sales\" / \"abundant\".\"_virt_window_lead_5418231592854511\" as \"thu_sales_ratio\",
     \"abundant\".\"tue_sales\" / \"abundant\".\"_virt_window_lead_8482854723108958\" as \"tue_sales_ratio\",
-    \"abundant\".\"wed_sales\" / \"abundant\".\"_virt_window_lead_5213256031737291\" as \"wed_sales_ratio\",
-    \"abundant\".\"year_flag\" as \"year_flag\"
+    \"abundant\".\"wed_sales\" / \"abundant\".\"_virt_window_lead_5213256031737291\" as \"wed_sales_ratio\"
 FROM
     \"abundant\"
 WHERE
@@ -121,9 +120,9 @@ SELECT
     \"yummy\".\"sat_sales_ratio\" as \"sat_sales_ratio\"
 FROM
     \"yummy\"
-    LEFT OUTER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"yummy\".\"ss_store_sk\" = \"ss_store_store\".\"S_STORE_SK\"
+    INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"yummy\".\"ss_store_sk\" = \"ss_store_store\".\"S_STORE_SK\"
 WHERE
-    \"yummy\".\"year_flag\" = 1 and \"yummy\".\"sun_sales_ratio\" is not null
+    \"yummy\".\"sun_sales_ratio\" is not null
 
 ORDER BY 
     \"s_store_name1\" asc nulls first,
