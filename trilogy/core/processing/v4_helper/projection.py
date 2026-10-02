@@ -12,6 +12,7 @@ from trilogy.core.models.build import (
     BuildRowsetItem,
     BuildWhereClause,
     get_grouped_aggregate_wrapper,
+    nonstandard_grouping_lineage,
 )
 from trilogy.core.models.build_environment import (
     BuildEnvironment,
@@ -363,3 +364,25 @@ def rollup_padded_keys(environment: BuildEnvironment) -> frozenset[str]:
                 if grouping is not None and grouping.mode.nulls_grouping_keys:
                     padded |= {ref.address for ref in grouping.by}
     return frozenset(padded)
+
+
+def reads_a_rollup(address: str, environment: BuildEnvironment) -> bool:
+    """Whether the concept at `address` is computed on the rows of a
+    ROLLUP/CUBE/GROUPING SETS pass: it reads one of the pass's aggregates,
+    directly or through scalars. Those rows are subtotals of whatever entered
+    below the pass, so no region is absent on them."""
+    seen: set[str] = set()
+    stack = [address]
+    while stack:
+        current = stack.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        concept = environment.concepts.get(current)
+        if concept is None or concept.lineage is None:
+            continue
+        for arg in concept.lineage.concept_arguments:
+            if nonstandard_grouping_lineage(arg) is not None:
+                return True
+            stack.append(arg.address)
+    return False

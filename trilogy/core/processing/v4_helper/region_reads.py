@@ -4,7 +4,7 @@ decision (`region_domains`) and condition placement, which must agree."""
 
 from collections.abc import Iterable
 
-from trilogy.core.enums import NULL_COLLECTING_AGGREGATES
+from trilogy.core.enums import NULL_COLLECTING_AGGREGATES, FunctionType
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
@@ -15,6 +15,8 @@ from trilogy.core.models.keyspace import Keyspace, Region
 
 from .extent_ownership import null_on_padding
 from .projection import decided_at_output_grain
+
+GROUPING_FLAGS = (FunctionType.GROUPING, FunctionType.GROUPING_ID)
 
 
 def argument_takes_a_value_on_padding(
@@ -59,16 +61,21 @@ def aggregates_over_region(
     argument: `count(customer_id) by status` counts the customer with no order,
     under the NULL status of a row that has none."""
     members = tuple(members)
+    counted = False
     for member in members:
         concept = environment.concepts.get(member)
         if concept is None or not isinstance(concept.lineage, BuildAggregateWrapper):
             return False
+        if concept.lineage.function.operator in GROUPING_FLAGS:
+            # a ROLLUP pass's own flag, whatever rows enter the pass
+            continue
+        counted = True
         arguments = concept.lineage.function.concept_arguments
         if not arguments or not all(
             keyspace.carried_on(arg.address, region) for arg in arguments
         ):
             return False
-    return bool(members)
+    return counted
 
 
 def evaluated_over_region(
@@ -77,16 +84,27 @@ def evaluated_over_region(
     region: Region,
     keyspace: Keyspace,
     environment: BuildEnvironment,
+    one_pass: bool = False,
 ) -> bool:
     """Aggregates the region's rows survive: they count what the region holds,
     or group by something it carries (each extension row its own group) with
-    no inline argument taking a value on the padding."""
+    no inline argument taking a value on the padding.
+
+    `one_pass`: a ROLLUP/CUBE/GROUPING SETS pass, whose subtotal rows nothing
+    joins back to. One member counting the region brings its rows under the
+    whole pass; the members absent there aggregate their NULLs."""
     members = tuple(members)
     if aggregates_over_region(members, region, keyspace, environment):
         return True
-    return any(keyspace.carried_on(g, region) for g in grain) and not any(
+    if any(
         argument_takes_a_value_on_padding(m, region, keyspace, environment)
         for m in members
+    ):
+        return False
+    if any(keyspace.carried_on(g, region) for g in grain):
+        return True
+    return one_pass and any(
+        aggregates_over_region((m,), region, keyspace, environment) for m in members
     )
 
 
@@ -106,14 +124,18 @@ def fed_by_region_domain(
     )
 
 
-def keyless(
+def keyless(address: str, keyspace: Keyspace) -> bool:
+    """One value for every row of the statement (`count(order_id) by *`): it
+    filters the region's rows exactly as it filters the solid ones."""
+    return not keyspace.keys_by_address.get(address)
+
+
+def fed_gate(
     address: str, region: Region, keyspace: Keyspace, environment: BuildEnvironment
 ) -> bool:
-    """One value for every row of the statement, computed off the region's
-    rows (`count(order_id) by *`): it filters the region's rows exactly as it
-    filters the solid ones. One the region's rows feed (`avg(bal) by *`) is
-    not modelled and keeps the padded plan."""
-    return not keyspace.keys_by_address.get(address) and not aggregates_over_region(
+    """A keyless value the region's rows feed (`avg(bal) by *` over the
+    customers, the ones with no order included)."""
+    return keyless(address, keyspace) and aggregates_over_region(
         (address,), region, keyspace, environment
     )
 
@@ -143,9 +165,7 @@ def restated_over_region(
     the atom on its own input too (`_uncovered_grouping_placements`)."""
     if address in held:
         return False
-    if not keyspace.defined_on(address, region) or keyless(
-        address, region, keyspace, environment
-    ):
+    if not keyspace.defined_on(address, region) or keyless(address, keyspace):
         return True
     if not keyspace.carried_on(address, region):
         return False

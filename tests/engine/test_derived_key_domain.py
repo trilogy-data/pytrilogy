@@ -254,6 +254,46 @@ HOLDS = [
     "select label where status is null",
     "select order_id where status is null",
     "select label where undelivered is null",
+    # a ROLLUP over a key the region carries: the derivation is computed on the
+    # solid rows and the region's rows enter below the pass, never joined back
+    # to its subtotal rows
+    "select customer_id, count(status) as n by rollup (customer_id)",
+    "select name, count(status) as n by rollup (name)",
+    "select customer_id, name, count(status) as n by rollup (customer_id, name)",
+    "select customer_id, count(label) as n, sum(flag) as f by rollup (customer_id)",
+    "select customer_id, status, count(order_id) as n by rollup (customer_id, status)",
+    "select name, status, count(customer_id) as n by rollup (name, status)",
+    "select customer_id, sum(amount_or_zero) as t by rollup (customer_id)",
+    "select customer_id as cid, coalesce(count(status), 0) as n by rollup (customer_id)",
+    "select customer_id, count(order_id) as n where status is null by rollup (customer_id)",
+    "select customer_id, count(order_id) as n where status is null or status = 'delivered' by rollup (customer_id)",
+    "select customer_id, count(status) as n where name != 'ann' by rollup (customer_id)",
+    "select name, count(order_id) as n where order_seq = 1 or order_seq is null by rollup (name)",
+    # a ROLLUP over a key absent on the region whose aggregate counts it
+    "select status, count(customer_id) as c, count(order_id) as o by rollup (status)",
+    "select status, count(customer_id) as c, sum(amount) as s by rollup (status)",
+    "select status, count(customer_id) as n where activity = 'dormant' by rollup (status)",
+    # a statement-wide gate the region's rows feed
+    "select customer_id, status where count(customer_id) by * > 2",
+    "select customer_id, label where count(customer_id) by * > 2",
+    "select customer_id, flag where count(customer_id) by * > 2",
+    "select customer_id, status where customer_id >= avg(customer_id) by *",
+    "select customer_id, status where customer_id >= avg(customer_id) by * and status is null",
+    "select customer_id, count(status) as n where count(customer_id) by * > 2",
+    "select status, count(customer_id) as n where count(customer_id) by * > 2",
+    "select customer_id, count(status) as n where count(customer_id) by * > 2 by rollup (customer_id)",
+    "where customer_id >= avg(customer_id) by * and status is null select name, count(customer_id) as n",
+    "where customer_id >= avg(customer_id) by * and order_id is null select name, count(customer_id) as n",
+    # the gate counts the domain, not the condition scan it shares with an
+    # atom over the orders (which holds only the customers an order references)
+    "select customer_id, status where count(order_id) by * > 2 and count(customer_id) by * > 2",
+    "select customer_id, status where count(customer_id) by * > 2 and activity = 'dormant'",
+    "select customer_id, status where count(customer_id) by * > 2 and (amount > 15 or amount is null)",
+    # a per-member atom under a ROLLUP keyed by the span is applied on the
+    # pass's input: FINAL would test the subtotal rows
+    "select customer_id, count(status) as n where count(order_id) by customer_id < 2 by rollup (customer_id)",
+    "select customer_id, count(status) as n where count(order_id) by customer_id < 2 or name = 'ann' by rollup (customer_id)",
+    "select name, count(status) as n where sum(amount) by customer_id > 25 by rollup (name)",
 ]
 
 # none owed today; a strict xfail here is the target for the next planner fix
@@ -610,6 +650,84 @@ def test_rollup_subtotal_row_keeps_its_value(derived: Executor):
         "select customer_id, coalesce(sum(amount), 0) as total by rollup (customer_id)"
     )
     assert _rows(derived, query) == [(1, 30), (2, 30), (3, 0), (None, 60)]
+
+
+# The twin is blind where both models pad alike, so the region's rows below an
+# aggregate not grouped by its key are pinned by hand: `status` is NULL for the
+# customer with no order under a ROLLUP, and beside a `by *` gate her row feeds.
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select customer_id, count(status) as n by rollup (customer_id)",
+            [(1, 2), (2, 1), (3, 0), (None, 3)],
+        ),
+        (
+            "select customer_id, name, count(status) as n by rollup (customer_id, name)",
+            [
+                (1, "ann", 2),
+                (1, None, 2),
+                (2, "bob", 1),
+                (2, None, 1),
+                (3, "cat", 0),
+                (3, None, 0),
+                (None, None, 3),
+            ],
+        ),
+        (
+            "select customer_id, count(order_id) as n where status is null by rollup (customer_id)",
+            [(3, 0), (None, 0)],
+        ),
+        (
+            "select customer_id, count(status) as n where count(order_id) by customer_id < 2 by rollup (customer_id)",
+            [(2, 1), (3, 0), (None, 1)],
+        ),
+        (
+            "select customer_id, status where count(customer_id) by * > 2",
+            [(1, "delivered"), (1, "in-transit"), (2, "delivered"), (3, None)],
+        ),
+        (
+            "select customer_id, status where count(order_id) by * > 2 and count(customer_id) by * > 2",
+            [(1, "delivered"), (1, "in-transit"), (2, "delivered"), (3, None)],
+        ),
+        (
+            "select customer_id, label where count(customer_id) by * > 2",
+            [
+                (1, "ann-delivered"),
+                (1, "ann-in-transit"),
+                (2, "bob-delivered"),
+                (3, None),
+            ],
+        ),
+        (
+            "select customer_id, status where customer_id >= avg(customer_id) by * and status is null",
+            [(3, None)],
+        ),
+        (
+            "where customer_id >= avg(customer_id) by * and order_id is null select name, count(customer_id) as n",
+            [("cat", 1)],
+        ),
+    ],
+)
+def test_region_rows_below_an_aggregate_not_grouped_by_its_key(
+    derived: Executor, materialized: Executor, query: str, expected: list[tuple]
+):
+    assert _rows(derived, query) == expected
+    assert _rows(materialized, query) == expected
+
+
+def test_rollup_by_an_absent_key_counts_the_region(
+    derived: Executor, materialized: Executor
+):
+    query = (
+        "select status, count(customer_id) as c, sum(amount) as s by rollup (status)"
+    )
+    for executor in (derived, materialized):
+        assert _rows(executor, query)[:3] == [
+            ("delivered", 2, 40),
+            ("in-transit", 1, 20),
+            (None, 1, None),
+        ]
 
 
 # An OPTIONAL entity: `returns` is looked up through its `~` bound (order, item)

@@ -16,7 +16,13 @@ from trilogy.core.models.keyspace import Keyspace, Region
 
 from .concept_graph import _scope_and_phase
 from .condition_placement import ConditionPlacement, PlacementReason
-from .constants import FINAL_NODE_ID, ROW_STREAM_DERIVATIONS, DepthLabel, EdgeKind
+from .constants import (
+    ALL_ROWS_ADDRESS,
+    FINAL_NODE_ID,
+    ROW_STREAM_DERIVATIONS,
+    DepthLabel,
+    EdgeKind,
+)
 from .edges import EdgeMap, add_edge, edge_kind, remove_edge
 from .extent_ownership import (
     null_on_padding,
@@ -24,11 +30,12 @@ from .extent_ownership import (
     takes_a_value_on_padding,
 )
 from .models import ConceptAttrs, GroupAttrs, GroupBucket, RootReason
-from .projection import reads_rows_only, rollup_padded_keys
+from .projection import reads_a_rollup, reads_rows_only, rollup_padded_keys
 from .region_reads import (
     aggregates_over_region,
     argument_takes_a_value_on_padding,
     evaluated_over_region,
+    fed_gate,
     keyless,
     restated_over_region,
 )
@@ -60,9 +67,7 @@ def _filters_region_domain(
         address, region, carried, keyspace, outputs, environment
     ):
         return False
-    if keyspace.carried_on(address, region) or keyless(
-        address, region, keyspace, environment
-    ):
+    if keyspace.carried_on(address, region) or keyless(address, keyspace):
         return True
     concept = environment.concepts.get(address)
     if concept is None:
@@ -105,6 +110,45 @@ def _needs_solid_rows(
         ):
             return True
     return False
+
+
+def _named_value_on_padding(
+    buckets: dict[str, GroupBucket],
+    label: str,
+    region: Region,
+    keyspace: Keyspace,
+    environment: BuildEnvironment,
+) -> bool:
+    """A named row-stream derivation of the scope, its WHERE included, takes a
+    value on a padded row of `region`. One reading a ROLLUP pass is computed
+    on the pass's subtotal rows, where no region is absent."""
+    scope = _scope_and_phase(label)[0]
+    return any(
+        takes_a_value_on_padding(m, region, keyspace, environment)
+        and not reads_a_rollup(m, environment)
+        for bucket in buckets.values()
+        if bucket.derivation in ROW_STREAM_DERIVATIONS
+        and _scope_and_phase(bucket.label)[0] == scope
+        for m in bucket.primary_members
+    )
+
+
+def _inline_value_on_padding(
+    buckets: dict[str, GroupBucket],
+    label: str,
+    region: Region,
+    keyspace: Keyspace,
+    environment: BuildEnvironment,
+) -> bool:
+    """An aggregate of the scope has an inline argument doing the same."""
+    scope = _scope_and_phase(label)[0]
+    return any(
+        argument_takes_a_value_on_padding(m, region, keyspace, environment)
+        for bucket in buckets.values()
+        if bucket.derivation == Derivation.AGGREGATE
+        and _scope_and_phase(bucket.label)[0] == scope
+        for m in bucket.primary_members
+    )
 
 
 def _region_is_demanded(
@@ -266,9 +310,16 @@ def _region_domain(
         region, keyspace, concept_attrs, environment, label
     ):
         return None
-    if carried & rollup_padded:
-        # a rollup's subtotal rows NULL the key a domain would join back on;
-        # the padded rows must enter below the rollup
+    scope = (buckets, label, region, keyspace, environment)
+    named, inline = _named_value_on_padding(*scope), _inline_value_on_padding(*scope)
+    if carried & rollup_padded and (inline or not named):
+        # a rollup's subtotal rows NULL the key a domain would join back on,
+        # so the region's rows enter below the pass or not at all. The padded
+        # plan does that, and is right while nothing below the pass takes a
+        # value on a padded row. A named derivation that does is computed on
+        # the solid rows and the domain pads it under the pass
+        # (`evaluated_over_region`); an inline argument has no node to compute
+        # on first, and keeps the padded plan.
         return RegionDomain(
             region, DomainKind.PADDED, label, carried, note="rollup key"
         )
@@ -305,6 +356,10 @@ def _region_domain(
         if not _filters_region_domain(
             address, region, keyspace, set(members), environment, mandatory_list
         )
+        # a statement-wide gate the region's rows feed (`avg(bal) by *`) is
+        # restated over the domain too, but the padded plan is the smaller
+        # one and is right while nothing takes a value on a padded row
+        or (not (named or inline) and fed_gate(address, region, keyspace, environment))
     )
     if undelivered:
         logger.info(
@@ -580,6 +635,12 @@ def feed_region_domains_to_present_scalars(
     a row stream that must not see an extension row reads it
     (`solid_groups`).
 
+    A ROLLUP pass has no FINAL to be padded at: its subtotal rows NULL every
+    key a domain would join back on. One member counting the region brings
+    its rows under the whole pass, and what reads the pass is never solid.
+    A WHERE's statement-wide aggregate over the region reads the domain alone
+    (`_counts_the_domain`).
+
     A row-stream derivation that READS something a region domain carries
     (`sale_price - cost` reads the product's `cost`) reads the domain of
     every region it is NULL on the padding of however it is planned
@@ -621,16 +682,54 @@ def feed_region_domains_to_present_scalars(
                     _detach_solid_roots(
                         group_graph, group_edges, attrs, gid, domain, environment
                     )
+            elif _counts_the_domain(a, domain, region, keyspace, environment):
+                _detach_solid_roots(
+                    group_graph, group_edges, attrs, gid, domain, environment
+                )
             elif not (
                 a.derivation == Derivation.AGGREGATE
                 and a.label == domain.label
                 and not solid & nx.descendants(group_graph, gid)
                 and evaluated_over_region(
-                    a.primary_members, a.grain_components, region, keyspace, environment
+                    a.primary_members,
+                    a.grain_components,
+                    region,
+                    keyspace,
+                    environment,
+                    one_pass=a.nulls_grouping_keys,
                 )
             ):
                 continue
             add_edge(group_graph, group_edges, domain_gid, gid, EdgeKind.LINEAGE)
+
+
+def _counts_the_domain(
+    a: GroupAttrs,
+    domain: GroupAttrs,
+    region: Region,
+    keyspace: Keyspace,
+    environment: BuildEnvironment,
+) -> bool:
+    """A WHERE's own statement-wide aggregate over nothing but what the domain
+    holds (`count(customer_id) by *`): the region's rows are its input, read
+    off the domain. Its condition scan is shared with the atoms beside it, and
+    joined to a fact one of them reads it holds only the members that fact
+    references."""
+    if (
+        a.derivation != Derivation.AGGREGATE
+        or a.label == domain.label
+        or _scope_and_phase(a.label)[0] != _scope_and_phase(domain.label)[0]
+        or not a.grain_components <= {ALL_ROWS_ADDRESS}
+        or not aggregates_over_region(a.primary_members, region, keyspace, environment)
+    ):
+        return False
+    reads = {
+        arg.address
+        for m in a.primary_members
+        if (c := environment.concepts.get(m)) is not None and c.lineage is not None
+        for arg in c.lineage.concept_arguments
+    }
+    return reads - {ALL_ROWS_ADDRESS} <= set(domain.primary_members)
 
 
 def _reads_region_domain(
