@@ -365,7 +365,7 @@ class DomainGraph:
             if e.provenance is EdgeProvenance.DECLARED
             and e.scope is not EdgeScope.GLOBAL
             for addr in (e.source, e.target)
-        } | self.coalescing_relation_members()
+        }
 
     def statement_incomparable_keys(self) -> set[str]:
         """Canonicalized endpoints of statement-scoped ∦ declarations

@@ -7,7 +7,6 @@ import signal
 import socket
 import sys
 import threading
-import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from functools import partial

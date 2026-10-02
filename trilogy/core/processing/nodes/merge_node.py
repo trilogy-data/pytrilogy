@@ -890,11 +890,7 @@ class MergeNode(StrategyNode):
             hidden_concepts=self.hidden_concepts,
             ordering=self.ordering,
             extent_free_spans=self.span_scope.extent_free,
-            extent_free_carried=frozenset(
-                address
-                for address, spans in self.span_scope.extent_free_carried.items()
-                if spans & self.span_scope.extent_free
-            ),
+            extent_free_carried=frozenset(self.span_scope.extent_free_carried),
             zero_filled=zero_filled,
         )
         return qds

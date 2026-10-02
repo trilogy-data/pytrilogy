@@ -916,7 +916,6 @@ def test_termination_restores_a_handler_installed_from_c(monkeypatch):
 
     def fake_signal(signum, handler):
         installed.append(handler)
-        return None
 
     monkeypatch.setattr(file_module.signal, "signal", fake_signal)
     with file_module._exit_on_termination(lambda: None):
