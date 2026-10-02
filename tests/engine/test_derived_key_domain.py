@@ -865,3 +865,36 @@ def test_root_group_key_keyed_off_the_span(
     model: str, query: str, expected: list[tuple]
 ):
     assert _rows(_executor(model + _CITIES), query) == expected
+
+
+# A statement-wide gate (`count(order_id) by *`) has one value for every row,
+# the region's included: it does not push the region onto the padded plan,
+# where the per-customer count became a HAVING on the orders scan (cat lost)
+# and `status` was evaluated on the padded row.
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select name where count(order_id) by customer_id = 0 and count(order_id) by * > 0",
+            [("cat",)],
+        ),
+        (
+            "select name where count(order_id) by customer_id = 0 and count(order_id) by * > 5",
+            [],
+        ),
+        (
+            "select status, count(customer_id) as n where count(order_id) by * > 0",
+            [("delivered", 2), ("in-transit", 1), (None, 1)],
+        ),
+        (
+            "select customer_id, count(order_id) as n where count(order_id) by * > 0 and count(order_id) by customer_id < 2",
+            [(2, 1), (3, 0)],
+        ),
+    ],
+)
+@pytest.mark.parametrize("model", ["derived", "materialized"])
+def test_statement_wide_gate_beside_a_region(
+    request: pytest.FixtureRequest, model: str, query: str, expected: list[tuple]
+):
+    executor: Executor = request.getfixturevalue(model)
+    assert _rows(executor, query) == expected
