@@ -37,6 +37,8 @@ class RetryOptions:
     )
     on_retry: Callable[[int, int, Exception], None] | None = None
     retry_after_padding_ms: int = 500
+    # A server asking for a longer wait (e.g. an exhausted daily quota) fails fast
+    max_suggested_delay_ms: int = 120_000
     # Optional: parse a suggested retry delay (ms) from the error body
     extract_retry_delay_fn: Callable[[Exception], int | None] | None = None
 
@@ -99,6 +101,11 @@ def fetch_with_retry(fetch_fn: Callable[[], T], options: RetryOptions) -> T:
                 should_retry = True
 
             if not should_retry or attempt >= options.max_retries:
+                raise
+            if (
+                suggested_ms is not None
+                and suggested_ms > options.max_suggested_delay_ms
+            ):
                 raise
 
             if suggested_ms is not None:
