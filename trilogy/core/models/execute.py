@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field, replace
+from typing import TypeVar
 
 from trilogy.constants import (
     CONFIG,
@@ -13,7 +14,6 @@ from trilogy.constants import (
 )
 from trilogy.core.constants import CONSTANT_DATASET
 from trilogy.core.enums import (
-    ZERO_ON_EMPTY_AGGREGATES,
     ComparisonOperator,
     Derivation,
     FunctionClass,
@@ -492,14 +492,13 @@ class CTE:
         for join in self.joins:
             if not isinstance(join, Join) or join.jointype is not JoinType.INNER:
                 continue
-            lefts: dict[tuple[str, str], set[str]] = defaultdict(set)
-            for pair in join.joinkey_pairs or []:
-                if _spells(pair.left, spellings) and _spells(pair.right, spellings):
-                    lefts[(pair.right.address, pair.left.address)].add(pair.cte.name)
-            for names in lefts.values():
+            for group in coalesced_key_groups(
+                pair
+                for pair in join.joinkey_pairs or []
+                if _spells(pair.left, spellings) and _spells(pair.right, spellings)
+            ):
                 out.add(join.right_cte.name)
-                # several left sides render `coalesce(a.k, b.k) = c.k`, where
-                # any one of them may be the padded NULL
+                names = {pair.cte.name for pair in group}
                 if len(names) == 1:
                     out |= names
         return out
@@ -513,11 +512,7 @@ class CTE:
         for join in self.joins:
             if not isinstance(join, Join):
                 continue
-            scope.add(join.name_for(self, join.right_cte))
-            if join.left_cte is not None:
-                scope.add(join.name_for(self, join.left_cte))
-            for pair in join.joinkey_pairs or []:
-                scope.add(join.name_for(self, pair.cte))
+            scope.update(join.name_for(self, c) for c in join.participants())
         return scope
 
     def get_alias(
@@ -598,10 +593,7 @@ class CTE:
         which is stamped from the merge's regions alone. The optimizer reads
         this too: a predicate over such a count accepts the padded rows, so it
         proves nothing about the side that padded them."""
-        if not (
-            isinstance(c.lineage, BuildAggregateWrapper)
-            and c.lineage.function.operator in ZERO_ON_EMPTY_AGGREGATES
-        ):
+        if not c.zero_on_empty:
             return False
         if any(
             isinstance(o.lineage, BuildMultiSelectLineage) for o in self.output_columns
@@ -1057,6 +1049,33 @@ class CTEConceptPair(BaseConceptPair):
     @property
     def is_nullable(self):
         return Modifier.NULLABLE in self.modifiers
+
+
+PairT = TypeVar("PairT", bound=BaseConceptPair)
+
+
+def coalesced_key_groups(pairs: Iterable[PairT]) -> list[list[PairT]]:
+    """Pairs by the key they equate: several left sides of one key render
+    `coalesce(a.k, b.k) = c.k`, any one of which may be the padded NULL."""
+    groups: dict[tuple[str, str], list[PairT]] = {}
+    for pair in pairs:
+        groups.setdefault((pair.right.address, pair.left.address), []).append(pair)
+    return list(groups.values())
+
+
+def preserved_key_pairs(
+    pairs: Iterable[PairT], padded: set[str], source: Callable[[PairT], str]
+) -> list[PairT]:
+    """Each coalesced key read off one side no earlier join pads, which equals
+    the key on every row; with every side padded the coalesce IS the key."""
+    out: list[PairT] = []
+    for group in coalesced_key_groups(pairs):
+        preserved = [pair for pair in group if source(pair) not in padded]
+        if len(group) == 1 or not preserved:
+            out.extend(group)
+            continue
+        out.append(min(preserved, key=source))
+    return out
 
 
 @dataclass
@@ -2118,6 +2137,14 @@ class Join:
     # Set by union_dim_pushdown when LHS join keys are local to the rendering
     # CTE rather than read from a parent alias.
     left_is_local: bool = False
+
+    def participants(self) -> list[CTE | UnionCTE]:
+        """Every CTE this join names: its right, its left, its key sources."""
+        out = [self.right_cte]
+        if self.left_cte is not None:
+            out.append(self.left_cte)
+        out.extend(pair.cte for pair in self.joinkey_pairs or [])
+        return out
 
     @staticmethod
     def authoritative(consumer: CTE | UnionCTE, node: CTE | UnionCTE) -> CTE | UnionCTE:

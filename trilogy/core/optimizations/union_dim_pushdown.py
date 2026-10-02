@@ -59,8 +59,8 @@ from trilogy.core.optimizations.base_optimization import (
     MergedCTEMap,
     OptimizationRule,
 )
-from trilogy.core.optimizations.join_upgrade import _accumulated_left_ctes
 from trilogy.core.optimizations.utils import (
+    accumulated_left_ctes,
     add_datasource_sorted,
     append_condition,
     base_datasource,
@@ -234,7 +234,7 @@ def _narrow_null_extending_joins(
         if not isinstance(j, Join) or j.jointype not in OUTER_JOIN_TYPES:
             continue
         left = any(
-            c.name == container_name for c in _accumulated_left_ctes(consumer, idx)
+            c.name == container_name for c in accumulated_left_ctes(consumer, idx)
         )
         right = j.right_cte.name == container_name
         if j.jointype == JoinType.FULL and (left or right):

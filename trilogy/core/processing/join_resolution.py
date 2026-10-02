@@ -4,6 +4,7 @@ from collections import defaultdict
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field, replace
 from functools import cached_property, partial
+from operator import attrgetter
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -35,6 +36,7 @@ from trilogy.core.models.execute import (
     ConceptPair,
     QueryDatasource,
     UnnestJoin,
+    preserved_key_pairs,
 )
 from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing.condition_utility import is_scalar_condition
@@ -65,62 +67,61 @@ def _left_source_ids(join: BaseJoin) -> set[str]:
     return {pair.existing_datasource.identifier for pair in join.concept_pairs or []}
 
 
-def compute_outer_null_status(
-    joins: list,
-) -> dict[str, int]:
-    """Score how often each datasource is null-extended by outer joins."""
-    score: dict[str, int] = {}
+PADS_RIGHT_JOIN_TYPES = (JoinType.LEFT_OUTER, JoinType.FULL)
+PADS_LEFT_JOIN_TYPES = (JoinType.RIGHT_OUTER, JoinType.FULL)
+
+
+def left_deep_joins(
+    joins: list[BaseJoin | UnnestJoin], base_ids: Collection[str] = ()
+) -> list[tuple[BaseJoin, frozenset[str]]]:
+    """Each base join with everything joined before it: joins are left-deep,
+    so a RIGHT/FULL pads that whole accumulated input, not just its operand."""
+    joined = set(base_ids)
+    out: list[tuple[BaseJoin, frozenset[str]]] = []
     for join in joins:
         if not isinstance(join, BaseJoin):
             continue
-        right_id = join.right_datasource.identifier
-        padded: set[str] = set()
-        if join.join_type in (JoinType.RIGHT_OUTER, JoinType.FULL):
-            padded |= _left_source_ids(join)
-        if join.join_type in (JoinType.LEFT_OUTER, JoinType.FULL):
-            padded.add(right_id)
-        for identifier in padded:
-            score[identifier] = score.get(identifier, 0) + 1
+        joined |= _left_source_ids(join)
+        out.append((join, frozenset(joined)))
+        joined.add(join.right_datasource.identifier)
+    return out
+
+
+def padded_by(join: BaseJoin, left: frozenset[str]) -> set[str]:
+    """The sources `join` NULL-pads, `left` as from `left_deep_joins`."""
+    padded = set(left) if join.join_type in PADS_LEFT_JOIN_TYPES else set()
+    if join.join_type in PADS_RIGHT_JOIN_TYPES:
+        padded.add(join.right_datasource.identifier)
+    return padded
+
+
+def compute_outer_null_status(
+    joins: list[BaseJoin | UnnestJoin],
+) -> dict[str, int]:
+    """Score how often each datasource is null-extended by outer joins."""
+    score: dict[str, int] = defaultdict(int)
+    for join, left in left_deep_joins(joins):
+        for identifier in padded_by(join, left):
+            score[identifier] += 1
     return score
 
 
-def prune_outer_join_pairs(joins: list) -> None:
+def prune_outer_join_pairs(joins: list[BaseJoin | UnnestJoin]) -> None:
     """Drop redundant duplicate-key pairs from directional outer joins: a
     left side no earlier join pads equals the key on every row, so the
     others' pairs only bloat the coalesce. With every left side padded the
     coalesce IS the key, and all pairs stay."""
-    joined: set[str] = set()
     padded: set[str] = set()
-    for join in joins:
-        if not isinstance(join, BaseJoin):
-            continue
+    for join, left in left_deep_joins(joins):
         if join.concept_pairs and join.join_type in DIRECTIONAL_OUTER_JOIN_TYPES:
-            join.concept_pairs = _prune_padded_pairs(join.concept_pairs, padded)
-        right_id = join.right_datasource.identifier
-        joined |= _left_source_ids(join)
-        if join.join_type in (JoinType.RIGHT_OUTER, JoinType.FULL):
-            padded |= joined
-        if join.join_type in (JoinType.LEFT_OUTER, JoinType.FULL):
-            padded.add(right_id)
-        joined.add(right_id)
+            join.concept_pairs = preserved_key_pairs(
+                join.concept_pairs, padded, _pair_source
+            )
+        padded |= padded_by(join, left)
 
 
-def _prune_padded_pairs(
-    pairs: list[ConceptPair], padded: set[str]
-) -> list[ConceptPair]:
-    groups: dict[tuple[str, str], list[ConceptPair]] = {}
-    for pair in pairs:
-        groups.setdefault((pair.right.address, pair.left.address), []).append(pair)
-    out: list[ConceptPair] = []
-    for group in groups.values():
-        preserved = [
-            pair for pair in group if pair.existing_datasource.identifier not in padded
-        ]
-        if len(group) == 1 or not preserved:
-            out.extend(group)
-            continue
-        out.append(min(preserved, key=lambda p: p.existing_datasource.identifier))
-    return out
+def _pair_source(pair: ConceptPair) -> str:
+    return pair.existing_datasource.identifier
 
 
 def find_all_connecting_concepts(g: nx.Graph, ds1: str, ds2: str) -> set[str]:
@@ -212,11 +213,14 @@ def _padded_addresses(
         )
         for child in datasource.datasources
     }
-    base_joins = [j for j in datasource.joins if isinstance(j, BaseJoin)]
-    right_ids = {j.right_datasource.identifier for j in base_joins}
+    right_ids = {
+        j.right_datasource.identifier
+        for j in datasource.joins
+        if isinstance(j, BaseJoin)
+    }
     extended: set[str] = set()
-    accumulated = {i for i in child_padded if i not in right_ids}
-    for join in base_joins:
+    base_ids = [i for i in child_padded if i not in right_ids]
+    for join, accumulated in left_deep_joins(datasource.joins, base_ids):
         right_id = join.right_datasource.identifier
         pairs = join.concept_pairs or []
         extends = join_extends(join)
@@ -232,15 +236,10 @@ def _padded_addresses(
         right_padded = chain and any(
             pair.right.address in child_padded.get(right_id, set()) for pair in pairs
         )
-        if join.join_type in (JoinType.LEFT_OUTER, JoinType.FULL) and (
-            extends or left_padded
-        ):
+        if join.join_type in PADS_RIGHT_JOIN_TYPES and (extends or left_padded):
             extended.add(right_id)
-        if join.join_type in (JoinType.RIGHT_OUTER, JoinType.FULL) and (
-            extends or right_padded
-        ):
+        if join.join_type in PADS_LEFT_JOIN_TYPES and (extends or right_padded):
             extended |= accumulated
-        accumulated.add(right_id)
     for address, providers in datasource.source_map.items():
         idents = {
             p.identifier
@@ -1198,9 +1197,9 @@ def preserved_sources(
         if not isinstance(join, BaseJoin):
             alive = set()
             continue
-        if join.join_type not in (JoinType.LEFT_OUTER, JoinType.FULL):
+        if join.join_type not in PADS_RIGHT_JOIN_TYPES:
             alive = set()
-        if join.join_type in (JoinType.RIGHT_OUTER, JoinType.FULL):
+        if join.join_type in PADS_LEFT_JOIN_TYPES:
             alive.add(join.right_datasource.identifier)
     return alive
 
@@ -1294,29 +1293,30 @@ def complete_key_domain(ds: DataSource, address: str) -> bool:
     )
 
 
+def _tree_union(
+    ds: DataSource, field: Callable[[QueryDatasource], frozenset[str]]
+) -> frozenset[str]:
+    if not isinstance(ds, QueryDatasource):
+        return frozenset()
+    out = field(ds)
+    for sub in ds.datasources:
+        out |= _tree_union(sub, field)
+    return out
+
+
 def deep_extent_free_spans(ds: DataSource) -> frozenset[str]:
     """Spans anything in this source's tree was built not to extend.
 
     Kept off the identifier (unlike a scan's own ``extent_free_spans``, which
     is identity): a wrapper does not change what it wraps, and folding the
     inherited set into wrapper names splits CTEs that should stay shared."""
-    if not isinstance(ds, QueryDatasource):
-        return frozenset()
-    out = ds.extent_free_spans
-    for sub in ds.datasources:
-        out |= deep_extent_free_spans(sub)
-    return out
+    return _tree_union(ds, attrgetter("extent_free_spans"))
 
 
 def deep_extent_free_carried(ds: DataSource) -> frozenset[str]:
     """What the region domains of `deep_extent_free_spans` carry: held in this
     source's tree for the members its facts bound only."""
-    if not isinstance(ds, QueryDatasource):
-        return frozenset()
-    out = ds.extent_free_carried
-    for sub in ds.datasources:
-        out |= deep_extent_free_carried(sub)
-    return out
+    return _tree_union(ds, attrgetter("extent_free_carried"))
 
 
 def _is_authored_pair(pair: ConceptPair, members: set[str]) -> bool:

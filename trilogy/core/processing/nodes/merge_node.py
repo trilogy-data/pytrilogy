@@ -1,6 +1,5 @@
 from trilogy.constants import logger
 from trilogy.core.enums import (
-    ZERO_ON_EMPTY_AGGREGATES,
     Derivation,
     JoinType,
     Modifier,
@@ -8,7 +7,6 @@ from trilogy.core.enums import (
 )
 from trilogy.core.models.build import (
     BoolExpr,
-    BuildAggregateWrapper,
     BuildConcept,
     BuildConceptArgs,
     BuildDatasource,
@@ -397,11 +395,7 @@ class MergeNode(StrategyNode):
         if isinstance(self.conditions, BuildConceptArgs):
             read.extend(self.conditions.row_arguments)
         return frozenset(
-            c.address
-            for c in read
-            if c.address in solid_outputs
-            and isinstance(c.lineage, BuildAggregateWrapper)
-            and c.lineage.function.operator in ZERO_ON_EMPTY_AGGREGATES
+            c.address for c in read if c.address in solid_outputs and c.zero_on_empty
         )
 
     def _join_proofs(

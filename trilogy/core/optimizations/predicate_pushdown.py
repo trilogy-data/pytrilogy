@@ -28,6 +28,7 @@ from trilogy.core.optimizations.utils import (
     null_padded_nodes,
     propagate_existence_sources,
     strip_condition_atom,
+    zero_filled_reads,
 )
 from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
@@ -74,9 +75,7 @@ def _predicate_safe_past_null_extension(
         return True
     # a COUNT this CTE coalesces to 0 (`zero_fills_count`) is accepted by
     # `count = 0` on the very rows the join padded
-    proven = condition_proves_non_null(candidate) - cte.zero_filled_counts(
-        candidate.row_arguments
-    )
+    proven = condition_proves_non_null(candidate) - zero_filled_reads(cte, candidate)
     return {x.address for x in candidate.row_arguments} <= proven
 
 

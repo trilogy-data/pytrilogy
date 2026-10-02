@@ -3,6 +3,7 @@
 typing and pin-heal. Model-level so ``BuildEnvironment.span_scope`` can carry
 it into every merge built under a plan."""
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from functools import cached_property
 
@@ -49,10 +50,6 @@ class Region:
     reach: frozenset[str] = frozenset()
 
     @property
-    def is_extension(self) -> bool:
-        return bool(self.spans)
-
-    @property
     def is_empty(self) -> bool:
         return bool(self.emptied_by)
 
@@ -79,6 +76,11 @@ class Region:
         return body
 
 
+def spans_in_play(regions: Iterable[Region]) -> frozenset[str]:
+    """Every span a join over `regions` can pad for."""
+    return frozenset().union(*(r.spans | r.completes for r in regions))
+
+
 @dataclass(frozen=True)
 class Keyspace:
     """A plan's row universe: disjoint regions over the requested entity keys,
@@ -100,10 +102,6 @@ class Keyspace:
     unread_spans: frozenset[str] = frozenset()
 
     @property
-    def extensions(self) -> tuple[Region, ...]:
-        return tuple(r for r in self.regions if r.is_extension)
-
-    @property
     def live_regions(self) -> tuple[Region, ...]:
         return tuple(r for r in self.regions if not r.is_empty)
 
@@ -123,7 +121,7 @@ class Keyspace:
         """Every span a join of this plan can pad for. An emptied region still
         counts: its rows are gone once the WHERE has run, and a merge below
         that point still sees their padding."""
-        return frozenset().union(*(r.spans | r.completes for r in self.regions))
+        return spans_in_play(self.regions)
 
     @cached_property
     def output_demanded_spans(self) -> frozenset[str]:

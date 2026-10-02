@@ -982,7 +982,29 @@ def _inlined_by_every_reader(
     exposes from those readers or from its parents."""
     a = attrs[gid]
     readers = _readers(group_graph, gid)
-    if not readers or not all(
+    if not readers:
+        return False
+    # the cheap set tests first: the reader checks below recurse, and copy the
+    # group graph to judge a fold
+    ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
+    if gid in {*ownership.owner_by_span.values(), *ownership.carried.values()}:
+        return False
+    final_reads = {c.address for c in mandatory_list} | {
+        arg.address
+        for atom in attrs[FINAL_NODE_ID].condition_atoms
+        for arg in atom.row_arguments
+    }
+    # its rows are its parents' rows, so what it passes through they carry
+    carried: set[str] = set().union(
+        *(attrs[r].output_concepts for r in readers),
+        *(
+            attrs[p].output_concepts
+            for p in _row_parents(group_graph, group_edges, gid)
+        ),
+    )
+    if not set(a.output_concepts) & final_reads <= carried:
+        return False
+    if not all(
         _reader_inlines(
             group_graph,
             group_edges,
@@ -1000,32 +1022,14 @@ def _inlined_by_every_reader(
     # reader's fold, unless it is folded too: a reader folded with `gid`, or a
     # twin its own readers inline
     folded = {r for r in readers if attrs[r].derivation != Derivation.AGGREGATE}
-    if any(
+    return not any(
         a.depth_label == DepthLabel.D1
         or not _inlined_by_every_reader(
             group_graph, group_edges, attrs, built, twin, environment, mandatory_list
         )
         for twin in _condition_twins(attrs, gid)
         if twin not in folded
-    ):
-        return False
-    ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
-    if gid in {*ownership.owner_by_span.values(), *ownership.carried.values()}:
-        return False
-    final_reads = {c.address for c in mandatory_list} | {
-        arg.address
-        for atom in attrs[FINAL_NODE_ID].condition_atoms
-        for arg in atom.row_arguments
-    }
-    # its rows are its parents' rows, so what it passes through they carry
-    carried: set[str] = set().union(
-        *(attrs[r].output_concepts for r in readers),
-        *(
-            attrs[p].output_concepts
-            for p in _row_parents(group_graph, group_edges, gid)
-        ),
     )
-    return set(a.output_concepts) & final_reads <= carried
 
 
 def _read_parents_in_place(
@@ -2203,7 +2207,6 @@ def _unprojected_expression_mates(
 
 def _rowset_base_join_keys(
     mandatory_list: list[BuildConcept],
-    environment: BuildEnvironment,
     node: StrategyNode,
     feeders: list[StrategyNode],
 ) -> frozenset[str]:
@@ -4382,9 +4385,7 @@ def _assemble_final_node(
         # to the boundary on that key; widen both sides so the merge joins on
         # it instead of cross-joining.
         if arg_nodes:
-            base_keys = _rowset_base_join_keys(
-                mandatory_list, environment, node, arg_nodes
-            )
+            base_keys = _rowset_base_join_keys(mandatory_list, node, arg_nodes)
             if base_keys:
                 _widen_merge_join_keys([node, *arg_nodes], environment, base_keys)
             # A row-level atom over the facts (`undelivered`) beside a node

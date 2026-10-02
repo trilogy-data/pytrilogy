@@ -25,6 +25,8 @@ from trilogy.core.domain_graph import DomainGraph, EdgeScope, assemble_full_grap
 from trilogy.core.enums import (
     NAVIGATION_WINDOW_TYPES,
     NUMBERING_WINDOW_TYPES,
+    SYMMETRIC_JOIN_TYPES,
+    ZERO_ON_EMPTY_AGGREGATES,
     AggregateGroupingMode,
     BooleanOperator,
     ComparisonOperator,
@@ -1294,6 +1296,14 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
     @property
     def is_aggregate(self) -> bool:
         return self.build_is_aggregate
+
+    @property
+    def zero_on_empty(self) -> bool:
+        """An aggregate whose value over no rows is 0, not NULL."""
+        return (
+            isinstance(self.lineage, BuildAggregateWrapper)
+            and self.lineage.function.operator in ZERO_ON_EMPTY_AGGREGATES
+        )
 
     @property
     def is_nullable(self) -> bool:
@@ -2669,7 +2679,7 @@ class JoinScope:
         full_join_sources = {
             source
             for source, target, join_type in self.scoped_joins
-            if join_type in (JoinType.FULL, JoinType.EQUAL)
+            if join_type in SYMMETRIC_JOIN_TYPES
         }
         self.scoped_merge_sources_by_target: dict[str, set[str]] = defaultdict(set)
         for source, target in self.scoped_merge_map.items():
@@ -2727,7 +2737,7 @@ class JoinScope:
                 return _is_rowset_keyed(s) or (
                     _is_rowset_keyed(t) and not _is_derived_keyed(s)
                 )
-            if jt in (JoinType.FULL, JoinType.EQUAL):
+            if jt in SYMMETRIC_JOIN_TYPES:
                 return (
                     _is_rowset_keyed(s)
                     or _is_rowset_keyed(t)
@@ -2770,7 +2780,7 @@ class JoinScope:
         # independent source (e.g. `merge derived_metric into unbound_property`,
         # where the canonical is only reachable through the source's derivation).
         for s, t, jt in self.scoped_joins:
-            if jt not in (JoinType.LEFT_OUTER, JoinType.FULL, JoinType.EQUAL):
+            if jt != JoinType.LEFT_OUTER and jt not in SYMMETRIC_JOIN_TYPES:
                 continue
             for addr in (s, t):
                 if addr not in self.scoped_merge_map:
@@ -2866,11 +2876,7 @@ class JoinScope:
         fail clean and point at the working idiom. LEFT/SUBSET relations
         resolve fine one-table: the anchor column IS the unified axis. Endpoints
         with a binding OUTSIDE the shared tables can still resolve and pass."""
-        pairs = [
-            (s, t)
-            for s, t, jt in self.scoped_joins
-            if jt in (JoinType.FULL, JoinType.EQUAL)
-        ]
+        pairs = [(s, t) for s, t, jt in self.scoped_joins if jt in SYMMETRIC_JOIN_TYPES]
         if not pairs:
             return
         binding_map: dict[str, set[str]] | None = None
