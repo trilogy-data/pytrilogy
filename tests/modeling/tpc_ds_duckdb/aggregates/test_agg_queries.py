@@ -98,7 +98,7 @@ def run_query(engine: Executor, idx: int, sql_override: bool = False):
             row, comp_results[qidx]
         ), f"Row mismatch in row {qidx} (expected v actual): {row} != {comp_results[qidx]}"
 
-    check_query_size(working_path / "aggregates", f"{idx:02d}", len(query))
+    check_query_size(working_path / "aggregates", f"{idx:02d}", query, len(query))
     with open(
         working_path / "aggregates" / f"zquery{idx:02d}.log",
         "w",
