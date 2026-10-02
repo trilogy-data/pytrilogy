@@ -32,7 +32,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.keyspace import Keyspace, Region
 from trilogy.core.processing.condition_utility import concepts_implied_non_null
 
-from .constants import FINAL_NODE_ID, ROW_STREAM_DERIVATIONS
+from .constants import FINAL_NODE_ID, ROW_STREAM_DERIVATIONS, DepthLabel
 from .models import ExtentOwnership, GroupAttrs
 
 
@@ -60,7 +60,9 @@ def elect_extent_owners(
     for gid, attr in attrs.items():
         if gid == FINAL_NODE_ID:
             continue
-        owned = spans & set(attr.output_concepts)
+        # a member counts as well as an output: a stream joining on a span
+        # the statement never names (`select name, status`) still pads for it
+        owned = spans & (set(attr.output_concepts) | set(attr.members))
         if owned:
             exposes[gid] = frozenset(owned)
     if not exposes:
@@ -68,11 +70,14 @@ def elect_extent_owners(
 
     # Most downstream wins: its rows have already absorbed everything
     # upstream, so routing extent there keeps one copy rather than one per
-    # branch. Ties break toward the group that holds the key as a member or a
-    # key of its own over one passing it through, then on id for determinism.
+    # branch. Ties break toward the statement's own row stream over a scan
+    # the WHERE reads for itself (its rows reach the output only as a test),
+    # then the group that holds the key as a member or a key of its own over
+    # one passing it through, then on id for determinism.
     rank = {
         gid: (
             len(nx.ancestors(group_graph, gid)),
+            attrs[gid].depth_label not in (DepthLabel.D1, DepthLabel.ROOT_D1),
             len(owned & set(attrs[gid].members)),
             len(owned),
             gid,
@@ -178,6 +183,20 @@ def takes_a_value_on_padding(
     )
 
 
+def rows_above_a_rollup(
+    group_graph: nx.DiGraph, attrs: dict[str, GroupAttrs]
+) -> set[str]:
+    """Groups reading a ROLLUP/CUBE/GROUPING SETS pass. Its rows are subtotals
+    of whatever entered below it, so no region is absent on them: a region's
+    rows enter under the pass or not at all."""
+    return {
+        below
+        for gid, a in attrs.items()
+        if a.derivation == Derivation.AGGREGATE and a.nulls_grouping_keys
+        for below in nx.descendants(group_graph, gid)
+    }
+
+
 def solid_groups(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
@@ -193,10 +212,12 @@ def solid_groups(
     may read the region's rows. An aggregate above one is not part of its row
     stream, and may extend."""
     solid: set[str] = set()
+    above_rollup = rows_above_a_rollup(group_graph, attrs)
     stack = [
         gid
         for gid, a in attrs.items()
         if a.derivation in ROW_STREAM_DERIVATIONS
+        and gid not in above_rollup
         and any(
             takes_a_value_on_padding(m, region, keyspace, environment)
             for m in a.primary_members

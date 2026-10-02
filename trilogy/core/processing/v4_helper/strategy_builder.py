@@ -78,6 +78,7 @@ from .condition_injection import (
     inject_condition_at_node,
 )
 from .constants import (
+    ALL_ROWS_ADDRESS,
     FINAL_NODE_ID,
     GROUPING_DERIVATIONS,
     ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS,
@@ -1776,7 +1777,7 @@ def _project_basic_aggregate_inputs(
     for concept in outputs:
         if concept.address not in primary_addrs:
             continue
-        if nonstandard_grouping_lineage(concept) is not None:
+        if nonstandard_grouping_lineage(concept) is not None and not region_spans:
             return parents
         scalar_inputs.extend(
             aggregate_input
@@ -5300,7 +5301,9 @@ def build_strategy_node(
                 # item_sk = 0`) is a value per member of the region: it joins
                 # the united rows, not the solid stream, or a member the solid
                 # stream lacks (an item with returns and no sale) is padded
-                # past it and reads its count as 0
+                # past it and reads its count as 0. So does one value for the
+                # whole statement (`avg(bal) by *`), NULL on a padded row when
+                # it rides the solid stream
                 feeders = [
                     p
                     for p, build in zip(parents, parent_builds)
@@ -5308,7 +5311,8 @@ def build_strategy_node(
                     and edge_kind(group_edges, build.group_id, gid)
                     == EdgeKind.CONSTRAINT
                     and attrs[build.group_id].grain_components
-                    and attrs[build.group_id].grain_components <= domain_spans
+                    and attrs[build.group_id].grain_components
+                    <= domain_spans | {ALL_ROWS_ADDRESS}
                 ]
                 group_scope = environment.span_scope
                 environment.span_scope = dc_replace(

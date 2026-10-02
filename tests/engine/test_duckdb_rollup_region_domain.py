@@ -31,6 +31,8 @@ union all select 6, 4, 1, 3''';
 
 auto total <- coalesce(sum(qty), 0);
 auto rnk <- rank(category) over (partition by category order by total desc);
+auto big <- case when qty > 4 then 'big' else 'small' end;
+auto qty_or_zero <- coalesce(qty, 0);
 """
 
 JOINED = """
@@ -87,6 +89,73 @@ def _norm(rows):
 
 @pytest.mark.parametrize("query,oracle", CASES)
 def test_rollup_over_partial_dimension_keeps_subtotals(query, oracle):
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(FIXTURE)
+    sql = executor.generate_sql(query)[-1]
+    got = _norm(executor.execute_raw_sql(sql).fetchall())
+    assert got == _norm(executor.execute_raw_sql(oracle).fetchall()), sql
+
+
+# every row of the statement: the sales, and the dates no sale references
+UNITED = """
+from (select s.*, i.category, case when s.qty > 4 then 'big' else 'small' end big,
+        coalesce(s.qty, 0) qty_or_zero
+    from (select 1 sale_id, 1 item_id, 1 date_id, 5 qty union all select 2, 2, 2, 7
+    union all select 3, 3, 3, 11 union all select 4, 1, 3, 2 union all select 5, 2, null, 4
+    union all select 6, 4, 1, 3) s
+    join (select 1 item_id, 'a' category union all select 2, 'b'
+    union all select 3, 'b' union all select 4, null) i on s.item_id = i.item_id) s
+full join (select 1 date_id, 2000 "year" union all select 2, 2000 union all select 3, 2001
+    union all select 4, 2002) d on s.date_id = d.date_id
+"""
+
+# A derivation that takes a value on a padded row (`big`, `qty_or_zero`) is
+# computed on the sales before the unsold dates enter below the pass.
+DERIVED_BELOW_CASES = [
+    pytest.param(
+        "select year, count(big) as n by rollup (year);",
+        f"""select "year", count(big) {UNITED} group by rollup ("year")""",
+        id="count_of_derived",
+    ),
+    pytest.param(
+        "select year, sum(qty_or_zero) as t by rollup (year);",
+        f"""select "year", sum(qty_or_zero) {UNITED} group by rollup ("year")""",
+        id="sum_of_derived",
+    ),
+    pytest.param(
+        "select category, year, count(big) as n by rollup (category, year);",
+        f"""select category, "year", count(big) {UNITED}
+        group by rollup (category, "year")""",
+        id="two_keys",
+    ),
+    pytest.param(
+        "select year, count(big) as n, sum(qty) as q by cube (year);",
+        f"""select "year", count(big), sum(qty) {UNITED} group by cube ("year")""",
+        id="cube",
+    ),
+    pytest.param(
+        "select year as yr, coalesce(count(big), 0) as n by rollup (year);",
+        f"""select "year", coalesce(count(big), 0) {UNITED} group by rollup ("year")""",
+        id="scalar_over_the_pass",
+    ),
+    pytest.param(
+        "select year, count(big) as n where year > 2000 by rollup (year);",
+        f"""select "year", count(big) {UNITED} where "year" > 2000
+        group by rollup ("year")""",
+        id="filtered",
+    ),
+    pytest.param(
+        "select year, count(sale_id) as n where big = 'big' or big is null"
+        " by rollup (year);",
+        f"""select "year", count(sale_id) {UNITED} where big = 'big' or big is null
+        group by rollup ("year")""",
+        id="where_over_derived",
+    ),
+]
+
+
+@pytest.mark.parametrize("query,oracle", DERIVED_BELOW_CASES)
+def test_rollup_over_a_derivation_absent_on_the_region(query, oracle):
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_text(FIXTURE)
     sql = executor.generate_sql(query)[-1]
