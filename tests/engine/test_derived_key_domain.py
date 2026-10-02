@@ -739,3 +739,25 @@ def test_completion_keeps_its_padding_beside_a_domain_on_its_span(
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_text(_COMPLETION_BESIDE_DOMAIN)
     assert _rows(executor, query) == expected
+
+
+_FILTERED_SET = _DERIVED + """auto up_name <- upper(name);
+auto ab_up <- filter up_name where name in ('ann', 'cat');
+"""
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select customer_id, status where up_name in ab_up",
+            [(1, "delivered"), (1, "in-transit"), (3, None)],
+        ),
+        ("select customer_id where up_name in ab_up", [(1,), (3,)]),
+        ("select customer_id, name where up_name not in ab_up", [(2, "bob")]),
+    ],
+)
+def test_membership_set_sourced_beside_its_probe(query: str, expected: list[tuple]):
+    """The set and the probe come from one CTE: the subselect reads it under its
+    own alias, or the probe binds to the subselect's rows and is always true."""
+    assert _rows(_executor(_FILTERED_SET), query) == expected
