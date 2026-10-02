@@ -85,7 +85,7 @@ from .constants import (
     DepthLabel,
     EdgeKind,
 )
-from .edges import EdgeMap, dependency_subgraph, edge_kind, remove_edge
+from .edges import EdgeAttrs, EdgeMap, dependency_subgraph, edge_kind, remove_edge
 from .functional_dependency import build_fd_determines
 from .group_graph import trace_group_graph
 from .history import V4History
@@ -1049,8 +1049,8 @@ def _read_parents_in_place(
             for source in parents if pgid == gid else [pgid]:
                 if not group_graph.has_edge(source, reader):
                     group_graph.add_edge(source, reader)
-                    group_edges[(source, reader)] = feeds.get(
-                        source, dc_replace(feeds[gid])
+                    group_edges[(source, reader)] = _rewired_feed(
+                        feeds, parents, gid, source
                     )
         a = attrs[reader]
         a.inlined_members = (
@@ -1065,6 +1065,18 @@ def _read_parents_in_place(
         del group_edges[edge]
     group_graph.remove_node(gid)
     del attrs[gid]
+
+
+def _rewired_feed(
+    feeds: dict[str, EdgeAttrs], parents: list[str], gid: str, source: str
+) -> EdgeAttrs:
+    """The reader's edge from `source` once `gid` is folded into it: a row
+    parent of `gid` feeds the reader rows now, whatever side channel it fed
+    the reader before (the reader computes `gid`'s members off its rows)."""
+    own = feeds.get(source)
+    if own is None or (source in parents and own.kind == EdgeKind.EXISTENCE):
+        return dc_replace(feeds[gid])
+    return own
 
 
 def _folded(
