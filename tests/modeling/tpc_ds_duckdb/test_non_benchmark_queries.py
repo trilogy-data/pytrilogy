@@ -1187,8 +1187,7 @@ auto cs_ui_sale <- sum(cs.ext_list_price ? cs.is_returned) by cs.item.sk;
 rowset cs_ui <- where cs_ui_sale > 10000 select cs.item.sk as cs_ui_item_id;
 """
     members = {
-        r[0]
-        for r in engine.execute_text(head + "select cs_ui.cs_ui_item_id;")[-1]
+        r[0] for r in engine.execute_text(head + "select cs_ui.cs_ui_item_id;")[-1]
     }
     rows = engine.execute_text(head + """where ss.item.sk in cs_ui.cs_ui_item_id
     and ss.is_returned
