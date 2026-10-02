@@ -4372,6 +4372,13 @@ def _assemble_final_node(
             )
             if base_keys:
                 _widen_merge_join_keys([node, *arg_nodes], environment, base_keys)
+            # A row-level atom over the facts (`undelivered`) beside a node
+            # holding a region joins it on the span: cross-joined, any fact
+            # row's value would pass for every member of the region.
+            if region_reads(node):
+                _widen_merge_join_keys(
+                    [node, *arg_nodes], environment, region_reads(node)
+                )
         if arg_nodes and environment.scoped_join_key_groups:
             relation_keys: set[str] = set()
             for feeder in arg_nodes:

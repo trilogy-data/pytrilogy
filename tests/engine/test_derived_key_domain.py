@@ -509,6 +509,38 @@ def test_existence_set_over_carried_values_keeps_its_source(
     assert _rows(_executor(model + _EXISTENCE_SETS), query) == expected
 
 
+# An aggregate by the span beside a row-level atom over the facts: both are
+# FINAL feeders of the domain, and the atom's feeder joins it on the span. It
+# was cross-joined (`FULL JOIN ... on 1=1`), so ann's in-transit order passed
+# for bob and cat, and the orderless customer's NULL status was lost.
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select customer_id, name where count(order_id) by customer_id < 2 and undelivered",
+            [],
+        ),
+        (
+            "select customer_id, name where sum(amount) by customer_id is null and status is null",
+            [(3, "cat")],
+        ),
+        (
+            "select customer_id, name where count(order_id) by customer_id < 2 and (status = 'in-transit' or status is null)",
+            [(3, "cat")],
+        ),
+        (
+            "select customer_id, name where sum(amount) by customer_id > 25 and (status = 'in-transit' or status is null)",
+            [(1, "ann")],
+        ),
+    ],
+)
+def test_row_atom_beside_a_span_aggregate_joins_on_the_span(
+    derived: Executor, materialized: Executor, query: str, expected: list[tuple]
+):
+    assert _rows(derived, query) == expected
+    assert _rows(materialized, query) == expected
+
+
 def test_else_fires_when_the_key_is_present(derived: Executor):
     assert _rows(derived, "select customer_id, activity") == [
         (1, "active"),
