@@ -1,8 +1,7 @@
 """A semijoin feeder is a SET: the group graph's provider, sliced to the
 subselect's columns and emitted one row per value, wired once.
 
-Distilled from tpc-ds q54 and q64 (docs/handoff_existence_lineage_built_twice.md,
-"Open: three logs still grew"). Both need only the planner, so no database.
+Distilled from tpc-ds q54 and q64. Both need only the planner, so no database.
 """
 
 from pathlib import Path

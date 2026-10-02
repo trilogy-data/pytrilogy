@@ -3,8 +3,7 @@
 `BaseDialect.render_expr` reaches for `FUNCTION_MAP` only under
 `group_to_grain`; otherwise the single-row forms apply (`sum(x) -> x`). Two
 guards read the lineage instead of the render and treated a grain-matched or a
-precomputed aggregate as local aggregation, blocking sound folds
-(docs/handoff_grain_matched_projection_collapse.md).
+precomputed aggregate as local aggregation, blocking sound folds.
 """
 
 import re

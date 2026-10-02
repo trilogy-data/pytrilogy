@@ -1,6 +1,5 @@
 """A row-preserving input every reader computes inline is folded out of the
-group graph before it is built (docs/handoff_open_optimization_items.md,
-item 2)."""
+group graph before it is built."""
 
 from pytest import raises
 
