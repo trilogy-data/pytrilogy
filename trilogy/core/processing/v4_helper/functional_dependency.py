@@ -83,9 +83,6 @@ class _FDFacts:
     are read off the BuildConcepts once rather than per iteration
     (`equivalent_addresses` and the keys set both allocate per read)."""
 
-    # (environment key, concept address, equivalent addresses). The key can
-    # differ from the concept's own address, and the closure carries both.
-    entries: tuple[tuple[str, str, frozenset[str]], ...]
     # (address, grain components, keys) for concepts AND datasource columns.
     # Deduplicated on the whole triple, never on address alone: a datasource
     # column can carry a different grain than the environment's concept of the
@@ -99,6 +96,11 @@ class _FDFacts:
     # beyond the one `_FACTS_CACHE` already makes, and eviction rides on the
     # facts entry.
     closures: dict[tuple[frozenset[str], bool], frozenset[str]]
+    # address -> the environment keys it adds (as the key's concept address
+    # or an equivalent: a key can differ from its concept's own address, and
+    # the closure carries both) and the rows whose grain or keys read it
+    entry_triggers: dict[str, list[str]]
+    row_triggers: dict[str, list[int]]
 
     def equivalents_for(
         self, environment: BuildEnvironment, address: str
@@ -154,11 +156,20 @@ def _fd_facts(environment: BuildEnvironment) -> _FDFacts:
             continue
         seen.add(row)
         rows.append(row)
+    entry_triggers: dict[str, list[str]] = {}
+    for key, own, equivalent in entries:
+        for address in {own, *equivalent}:
+            entry_triggers.setdefault(address, []).append(key)
+    row_triggers: dict[str, list[int]] = {}
+    for i, (_, grain, keys) in enumerate(rows):
+        for address in grain | keys:
+            row_triggers.setdefault(address, []).append(i)
     facts = _FDFacts(
-        entries=tuple(entries),
         rows=tuple(rows),
         equivalents=equivalents,
         closures={},
+        entry_triggers=entry_triggers,
+        row_triggers=row_triggers,
     )
     _FACTS_CACHE[cache_key] = (
         ref(environment, partial(_evict_facts, cache_key)),
@@ -179,33 +190,27 @@ def build_fd_closure(
     memoized = facts.closures.get(memo_key)
     if memoized is not None:
         return memoized
-    closure = set(seed)
-    changed = True
-    while changed:
-        changed = False
-        for address in list(closure):
-            for equivalent in facts.equivalents_for(environment, address):
-                if equivalent not in closure:
-                    closure.add(equivalent)
-                    changed = True
-        for key, own, equivalents in facts.entries:
-            if key in closure:
-                continue
-            if own in closure or bool(equivalents & closure):
-                closure.add(key)
-                changed = True
-        for address, grain, keys in facts.rows:
-            if address in closure:
-                continue
-            if not grain and include_empty_grain:
-                closure.add(address)
-                changed = True
+    # A worklist over the rules each new address can fire: the closure is a
+    # least fixpoint, so the order rules fire in cannot change it.
+    closure: set[str] = set()
+    pending = list(seed)
+    if include_empty_grain:
+        pending.extend(address for address, grain, _ in facts.rows if not grain)
+    while pending:
+        address = pending.pop()
+        if address in closure:
+            continue
+        closure.add(address)
+        pending.extend(facts.equivalents_for(environment, address))
+        pending.extend(facts.entry_triggers.get(address, ()))
+        for i in facts.row_triggers.get(address, ()):
+            target, grain, keys = facts.rows[i]
+            if target in closure:
                 continue
             # Declared keys are an FD even when the concept carries no grain
             # (a filter virtual with keys and an empty grain).
-            if (bool(grain) and grain <= closure) or (bool(keys) and keys <= closure):
-                closure.add(address)
-                changed = True
+            if (grain and grain <= closure) or (keys and keys <= closure):
+                pending.append(target)
     result = frozenset(closure)
     facts.closures[memo_key] = result
     return result
