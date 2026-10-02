@@ -294,6 +294,21 @@ HOLDS = [
     "select customer_id, count(status) as n where count(order_id) by customer_id < 2 by rollup (customer_id)",
     "select customer_id, count(status) as n where count(order_id) by customer_id < 2 or name = 'ann' by rollup (customer_id)",
     "select name, count(status) as n where sum(amount) by customer_id > 25 by rollup (name)",
+    # a `by *` aggregate as an OUTPUT is one value beside every row: its input
+    # being a row of the statement too does not source the customer apart from
+    # the order columns, and its grain is no join key
+    "select customer_id, status, count(customer_id) by * as total",
+    "select customer_id as c2, status, count(customer_id) by * as total",
+    "select upper(name) as u, status, count(name) by * as t",
+    "select name as n2, status, sum(amount) by * as amt",
+    "select customer_id, status, count(customer_id) by * as total, sum(amount) by * as amt",
+    # a WHERE the domain applies itself: beside an aggregate the region does
+    # not feed, the filtered solid stream is not the statement's population
+    "select status, count(customer_id) as c, sum(amount) as s where name = 'cat'",
+    "select status, count(customer_id) as c, sum(amount) as s where name != 'ann'",
+    "select status, count(customer_id) as c, sum(amount) as s where customer_id = 3",
+    "select status, count(customer_id) as c, count(order_id) as o where name = 'cat'",
+    "select label, count(name) as c, max(amount) as s where name in ('cat', 'bob')",
 ]
 
 # none owed today; a strict xfail here is the target for the next planner fix
@@ -706,6 +721,32 @@ def test_rollup_subtotal_row_keeps_its_value(derived: Executor):
         (
             "where customer_id >= avg(customer_id) by * and order_id is null select name, count(customer_id) as n",
             [("cat", 1)],
+        ),
+        (
+            "select customer_id, status, count(customer_id) by * as total",
+            [
+                (1, "delivered", 3),
+                (1, "in-transit", 3),
+                (2, "delivered", 3),
+                (3, None, 3),
+            ],
+        ),
+        (
+            "select customer_id as c2, status, count(customer_id) by * as total",
+            [
+                (1, "delivered", 3),
+                (1, "in-transit", 3),
+                (2, "delivered", 3),
+                (3, None, 3),
+            ],
+        ),
+        (
+            "select status, count(customer_id) as c, sum(amount) as s where name = 'cat'",
+            [(None, 1, None)],
+        ),
+        (
+            "select status, count(customer_id) as c, sum(amount) as s where name != 'ann'",
+            [("delivered", 1, 30), (None, 1, None)],
         ),
     ],
 )

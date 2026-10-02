@@ -424,6 +424,7 @@ def _is_filter_population(
     join_addresses: set[str],
     partner_partial: set[str],
     partner_regions: frozenset[str] = frozenset(),
+    partner_filtered_regions: frozenset[str] = frozenset(),
 ) -> bool:
     """Whether this side's row set IS the request WHERE's population.
 
@@ -435,7 +436,10 @@ def _is_filter_population(
     (docs/extent_ownership.md) and what the span's region domain carries (the
     names of customers WITH an order), which only matters when the other side
     binds the axis complete; a partner partial on it carries no extension
-    member to preserve."""
+    member to preserve. A partner that applied the WHERE itself and holds a
+    region's rows this side lacks keeps them on any key: they passed the
+    WHERE there, and are NULL on a key absent on the region (`count(customer_id)
+    by status where name = 'cat'` beside `sum(amount) by status`)."""
     if identifier not in filtered_ids:
         return False
     source = by_id.get(identifier)
@@ -443,6 +447,8 @@ def _is_filter_population(
         return True
     held = source.region_spans if isinstance(source, QueryDatasource) else frozenset()
     if join_addresses & partner_regions and not join_addresses & held:
+        return False
+    if partner_filtered_regions - held:
         return False
     suppressed = {c.address for c in source.partial_concepts} & (
         deep_extent_free_spans(source) | deep_extent_free_carried(source)
@@ -578,12 +584,15 @@ def tighten_join_for_filtered_branch(
         left_ids.add(pair.existing_datasource.identifier)
     left_partial: set[str] = set()
     left_regions: frozenset[str] = frozenset()
+    left_filtered_regions: frozenset[str] = frozenset()
     for identifier in left_ids:
         source = by_id.get(identifier)
         if source is not None:
             left_partial |= {c.address for c in source.partial_concepts}
             if isinstance(source, QueryDatasource):
                 left_regions |= source.region_spans
+                if identifier in filtered_ids:
+                    left_filtered_regions |= source.region_spans
     right = join.right_datasource
     right_partial = {c.address for c in right.partial_concepts}
     right_regions = (
@@ -596,6 +605,7 @@ def tighten_join_for_filtered_branch(
         join_addresses,
         left_partial,
         left_regions,
+        left_filtered_regions,
     )
     left_filtered = any(
         _is_filter_population(
@@ -605,6 +615,7 @@ def tighten_join_for_filtered_branch(
             join_addresses,
             right_partial,
             right_regions,
+            right_regions if right.identifier in filtered_ids else frozenset(),
         )
         for identifier in left_ids
     )

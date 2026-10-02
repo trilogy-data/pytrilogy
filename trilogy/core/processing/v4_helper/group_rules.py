@@ -547,6 +547,34 @@ def _relation_side_partitions(
     return partitions
 
 
+def _is_row_stream_output(
+    node: str,
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    output_addresses: frozenset[str],
+) -> bool:
+    """`node` is an output, or a row-level derivation of it is: its rows are
+    rows of the statement, whatever aggregate reads it besides."""
+    visited = {node}
+    stack = [node]
+    while stack:
+        cur = stack.pop()
+        if concept_attrs[cur].address in output_addresses:
+            return True
+        for nxt in concept_graph.successors(cur):
+            if (
+                nxt in visited
+                or edge_kind(concept_edges, cur, nxt) != EdgeKind.LINEAGE
+                or concept_attrs[nxt].derivation
+                in (Derivation.AGGREGATE, Derivation.GROUP_TO, Derivation.UNION)
+            ):
+                continue
+            visited.add(nxt)
+            stack.append(nxt)
+    return False
+
+
 def _cosource_component_groups(
     main_items: list[NodeItem],
     concept_graph: nx.DiGraph,
@@ -668,19 +696,30 @@ def _cosource_component_groups(
     # sourced apart, the merge has nothing to join on (`ON 1=1`). Co-source
     # them whatever their component, as the direct spelling `name, quantity`
     # is (a leaf output has no reach, so it never splits). An aggregate
-    # defines its own input domain and keeps its independent source.
+    # defines its own input domain and keeps its independent source, unless
+    # its input is a row of the statement besides (`customer_id` beside
+    # `count(customer_id) by *`).
+    row_stream = [
+        i in output_component
+        and (
+            not aggregate_reach[i]
+            or _is_row_stream_output(
+                main_items[i][0],
+                concept_graph,
+                concept_edges,
+                concept_attrs,
+                output_addresses,
+            )
+        )
+        for i in range(n)
+    ]
     related = [
         (i, j)
         for i in range(n)
         for j in range(i + 1, n)
         if reaches[i] & reaches[j]
         or (i in output_component and output_component[i] == output_component.get(j))
-        or (
-            i in output_component
-            and j in output_component
-            and not aggregate_reach[i]
-            and not aggregate_reach[j]
-        )
+        or (row_stream[i] and row_stream[j])
         or (feeds_union[i] and feeds_union[j])
     ]
     return [
