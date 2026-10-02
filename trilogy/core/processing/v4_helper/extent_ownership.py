@@ -116,15 +116,15 @@ def elect_extent_owners(
     permitted: dict[str, frozenset[str]] = {}
     for span, owner in owner_by_span.items():
         _permit(permitted, span, {owner} | nx.ancestors(group_graph, owner))
+    # The domain holds the members; whatever reads it extends, except the row
+    # streams that must never see an extension row.
+    readers = {
+        owner: ({owner} | nx.descendants(group_graph, owner))
+        - solid_groups(group_graph, attrs, domains[owner], keyspace, environment)
+        for owner in set(domain_of_span.values())
+    }
     for span, owner in domain_of_span.items():
-        # The domain holds the members; whatever reads it extends, except
-        # the row streams that must never see an extension row.
-        _permit(
-            permitted,
-            span,
-            ({owner} | nx.descendants(group_graph, owner))
-            - solid_groups(group_graph, attrs, domains[owner], keyspace, environment),
-        )
+        _permit(permitted, span, readers[owner])
     owner_by_span.update(domain_of_span)
     carried = {
         address: gid for gid in domains for address in attrs[gid].primary_members

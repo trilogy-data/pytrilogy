@@ -394,8 +394,6 @@ def _feeder_at_set_grain(
     resolves to a plain SELECT and elides."""
     addresses = {concept.address for concept in group}
     members = [o for o in feeder.output_concepts if o.address in addresses]
-    if not members:
-        return feeder
     return GroupNode(
         output_concepts=members,
         input_concepts=members,

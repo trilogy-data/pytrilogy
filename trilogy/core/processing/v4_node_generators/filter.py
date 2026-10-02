@@ -95,7 +95,7 @@ def gen_filter(
             *(entity_keys(o.address, environment) or {o.address} for o in outputs)
         )
         collapsible = all(
-            bool(o.keys) and set(o.keys) <= entity_grain
+            bool(o.keys) and set(o.keys or ()) <= entity_grain
             for o in outputs
             if isinstance(o.lineage, BuildFilterItem)
         )

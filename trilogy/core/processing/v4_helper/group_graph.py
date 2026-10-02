@@ -16,7 +16,6 @@ single bucket). No derivation is privileged in the orchestrator.
 """
 
 from collections import defaultdict
-from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from trilogy.constants import logger
@@ -674,15 +673,6 @@ def _grain_determines(
     )
 
 
-def _rowset_base_grain(
-    grain: Iterable[str], rollup_padded: frozenset[str]
-) -> frozenset[str]:
-    """A boundary's grain keys, less the ROLLUP-padded ones: their subtotal
-    rows are NULL, so they are not a row identity and must never be
-    volunteered as a join axis."""
-    return frozenset(grain) - rollup_padded
-
-
 def _lineage_pinned_grain(
     addresses: frozenset[str] | set[str], environment: BuildEnvironment
 ) -> frozenset[str]:
@@ -1116,15 +1106,11 @@ def _refresh_input_contracts(
     attrs: dict[str, GroupAttrs],
     concept_attrs: dict[str, ConceptAttrs],
     concept_edges: EdgeMap,
-    environment: BuildEnvironment | None = None,
 ) -> None:
     key_addresses = frozenset(
         a.address for a in concept_attrs.values() if a.purpose == Purpose.KEY
     )
     lineage_parents = _lineage_parents_by_address(concept_edges, concept_attrs)
-    rollup_padded = (
-        rollup_padded_keys(environment) if environment is not None else frozenset()
-    )
     for gid in group_graph.nodes:
         if gid == FINAL_NODE_ID or gid not in attrs:
             continue
@@ -1145,24 +1131,6 @@ def _refresh_input_contracts(
             for pred in row_parents:
                 if attrs[pred].derivation in GROUPING_DERIVATIONS:
                     grouping_parent_grain |= set(attrs[pred].grain_components)
-        # A ROWSET boundary beside a FILTER SCAN (a WHERE-only root fed in by
-        # a CONSTRAINT edge)
-        # pairs on its BASE grain key: the boundary can expose `oid` beneath
-        # its `rs.oid` handle, and a plain scan renders only that base
-        # address, so the handle alone would leave the merge keyless. Sibling
-        # boundaries pair on their handles and are left alone.
-        rowset_base_keys: set[str] = set()
-        filter_scan = any(
-            attrs[pred].derivation == Derivation.ROOT
-            and edge_kind(group_edges, pred, gid) == EdgeKind.CONSTRAINT
-            for pred in row_parents
-        )
-        if filter_scan:
-            for pred in row_parents:
-                if attrs[pred].derivation == Derivation.ROWSET:
-                    rowset_base_keys |= _rowset_base_grain(
-                        attrs[pred].grain_components, rollup_padded
-                    )
         # a region domain among the parents joins the rest on its spans: the
         # axis every side keeps, whatever the consumer's grain
         domain_spans: frozenset[str] = frozenset().union(
@@ -1185,7 +1153,6 @@ def _refresh_input_contracts(
                         else required_grain
                         | bridge_keys
                         | grouping_parent_grain
-                        | rowset_base_keys
                         | domain_spans
                     ),
                     channel=(
@@ -2230,7 +2197,7 @@ def build_group_graph(
         relation_edge_members=relation_edge_members,
     )
     _refresh_input_contracts(
-        group_graph, group_edges, attrs, concept_attrs, concept_edges, environment
+        group_graph, group_edges, attrs, concept_attrs, concept_edges
     )
     _refresh_final_contract(
         group_graph,
