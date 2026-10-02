@@ -534,7 +534,12 @@ class MergeNode(StrategyNode):
             merged.values(), key=lambda source: source.identifier
         )
 
-        merge_output_addresses = {c.address for c in self.output_concepts}
+        # a condition's row argument is read by the row stream like an output
+        merge_output_addresses = {c.address for c in self.output_concepts} | (
+            {c.address for c in self.conditions.row_arguments}
+            if self.conditions
+            else set()
+        )
         existence_addr_set = {c.address for c in self.existence_concepts}
         # Coalescing (union/full) key members. A semijoin feeder keyed on one of
         # these because its probe filters the coalesced key carries that key

@@ -2280,7 +2280,17 @@ def build_concept_graph(
     # so partition_roots can place them in their own scan buckets; they're
     # side-channel subselect sources, not part of the main row stream
     # (`b.order_number` from `a.order_number not in b.order_number`).
-    existence_only_addresses = existence_arg_addresses - row_arg_addresses
+    # An output, or a lineage input of another concept (`dx in x` with `dx <-
+    # x ? ...`), is read by the row stream too, so it is not existence-only.
+    row_read = {c.address for c in mandatory_list} | {
+        attrs[n].address
+        for n in graph.nodes
+        if any(
+            edge_kind(edges, n, succ) != EdgeKind.EXISTENCE
+            for succ in graph.successors(n)
+        )
+    }
+    existence_only_addresses = existence_arg_addresses - row_arg_addresses - row_read
     for n in graph.nodes:
         if attrs[n].address in existence_only_addresses:
             attrs[n].existence_only = True

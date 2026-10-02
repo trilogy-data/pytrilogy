@@ -1347,19 +1347,18 @@ def plan_condition_placements(
             # producer is self-referential. Route to FINAL, where each set is a
             # subselect feeder. Memberships with a real consumer candidate (`x
             # in <set>` over a separate output aggregate) are untouched.
-            if (
-                atom.existence_arguments
-                and restricted
-                and all(gid in existence_set_producers for gid in restricted)
-            ):
-                placements.append(
-                    ConditionPlacement(
-                        atom=atom,
-                        group_ids=(FINAL_NODE_ID,),
-                        reason=PlacementReason.FINAL_RECONVERGENCE,
+            if atom.existence_arguments and restricted:
+                neutral = [g for g in restricted if g not in existence_set_producers]
+                if not neutral:
+                    placements.append(
+                        ConditionPlacement(
+                            atom=atom,
+                            group_ids=(FINAL_NODE_ID,),
+                            reason=PlacementReason.FINAL_RECONVERGENCE,
+                        )
                     )
-                )
-                continue
+                    continue
+                restricted = neutral
             if not atom.existence_arguments and _reads_past_region_domain(
                 row_inputs, buckets, keyspace, mandatory_list, environment
             ):
