@@ -1023,6 +1023,17 @@ class UnionDimPushdown(OptimizationRule):
                 and j.right_cte.name == dim_cte.name
             )
         ]
+        # A later join keyed on the dim reads the same key off the container:
+        # the stripped INNER join equated them, and the container now carries
+        # every dim concept the consumer uses.
+        for join in consumer.joins:
+            if not isinstance(join, Join):
+                continue
+            if join.left_cte is not None and join.left_cte.name == dim_cte.name:
+                join.left_cte = union
+            for pair in join.joinkey_pairs or []:
+                if pair.cte.name == dim_cte.name:
+                    pair.cte = union
         still_used = any(_is_dim_basejoin(j) for j in consumer.source.joins)
         if not still_used:
             consumer.source.datasources = [

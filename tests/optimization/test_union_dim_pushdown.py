@@ -822,6 +822,23 @@ order by channel;""")[-1].fetchall()
     assert [(r[0], float(r[1]), float(r[2])) for r in rows] == [("A", 6.0, 1.0)]
 
 
+def test_union_dim_pushdown_strip_rewires_a_later_join_keyed_on_the_dim():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        MERGED_FACT_MODEL.replace("d: ?outlet_id", "d: outlet_id") + """
+property outlet_id.budget float?;
+datasource budgets (id: ~outlet_id, b: budget) grain (outlet_id)
+query '''select 7 as id, 3.0 as b union all select 11, 4.0''';
+"""
+    )
+    rows = executor.execute_text("""where region = 'east'
+select channel, outlet_id, sum(sales) as total_sales, max(budget) as b
+order by channel;""")[-1].fetchall()
+    assert [(r[0], r[1], float(r[2]), float(r[3])) for r in rows] == [
+        ("A", 7, 11.0, 3.0)
+    ]
+
+
 def _consumer_with_trailing_full(env, atom: BuildComparison) -> CTE:
     category_id = env.concepts["category_id"]
     branch = _branch_cte("branch", env.datasources["products"], [category_id])
