@@ -127,17 +127,17 @@ def restated_over_region(
     the region is grouped at a grain determining it. An aggregate the domain
     feeds unites the region's rows on its input, and the atom is applied
     there, before it, whatever its grain (`count(customer_id) by status where
-    activity = 'dormant'`)."""
+    activity = 'dormant'`); beside one, an aggregate it does not feed takes
+    the atom on its own input too (`_uncovered_grouping_placements`)."""
     if address in held:
         return False
     if not keyspace.defined_on(address, region):
         return True
-    return keyspace.carried_on(address, region) and decided_at_output_grain(
-        address,
-        [
-            c
-            for c in outputs
-            if not fed_by_region_domain(c, region, keyspace, environment)
-        ],
-        environment,
-    )
+    if not keyspace.carried_on(address, region):
+        return False
+    unfed = [
+        c for c in outputs if not fed_by_region_domain(c, region, keyspace, environment)
+    ]
+    if len(unfed) < len(outputs):
+        unfed = [c for c in unfed if not isinstance(c.lineage, BuildAggregateWrapper)]
+    return decided_at_output_grain(address, unfed, environment)

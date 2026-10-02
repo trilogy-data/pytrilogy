@@ -725,13 +725,16 @@ def detach_final_span_domain_producers(
         if placement.reason is not PlacementReason.FINAL_SPAN_DOMAIN:
             continue
         inputs = {a.address for a in placement.atom.row_arguments}
+        hosts = {
+            gid for p in placements if p.atom is placement.atom for gid in p.group_ids
+        }
         for gid, bucket in buckets.items():
             if not inputs & set(bucket.primary_members):
                 continue
             for succ in list(group_graph.successors(gid)):
                 if (
                     succ != FINAL_NODE_ID
-                    and succ not in placement.group_ids
+                    and succ not in hosts
                     and edge_kind(group_edges, gid, succ) == EdgeKind.CONSTRAINT
                 ):
                     remove_edge(group_graph, group_edges, gid, succ)

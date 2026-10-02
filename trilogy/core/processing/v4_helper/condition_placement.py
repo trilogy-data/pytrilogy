@@ -799,6 +799,12 @@ def _conjunction_recompute_placements(
     return extra
 
 
+_COPIED_TO_UNCOVERED_GROUPINGS = (
+    PlacementReason.UPSTREAM_MOST,
+    PlacementReason.FINAL_SPAN_DOMAIN,
+)
+
+
 def _uncovered_grouping_placements(
     clause_placements: list[ConditionPlacement],
     buckets: dict[str, GroupBucket],
@@ -819,7 +825,9 @@ def _uncovered_grouping_placements(
     """
     extra: list[ConditionPlacement] = []
     for placement in clause_placements:
-        if placement.reason is not PlacementReason.UPSTREAM_MOST:
+        if placement.reason not in _COPIED_TO_UNCOVERED_GROUPINGS or (
+            FINAL_NODE_ID in placement.group_ids
+        ):
             continue
         atom = placement.atom
         if any(atom.existence_arguments):
