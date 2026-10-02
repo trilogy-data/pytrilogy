@@ -173,3 +173,33 @@ def test_fold_puts_the_parents_in_the_folded_groups_place():
     contract = attrs[FINAL_NODE_ID].final_contract
     assert contract is not None
     assert [c.group_id for c in contract.contributor_contracts] == ["agg"]
+
+
+def test_fold_turns_a_side_channel_from_a_row_parent_into_a_row_edge():
+    """`select g, m where m in fx` with `dy <- fx + 0` folded into `m`: the
+    aggregate read `fx`'s group as a set, and now computes `dy` off its rows."""
+    graph = nx.DiGraph()
+    edges: EdgeMap = {}
+    for parent, child, kind in [
+        ("fx", "dy", EdgeKind.LINEAGE),
+        ("fx", "agg", EdgeKind.EXISTENCE),
+        ("dy", "agg", EdgeKind.LINEAGE),
+        ("agg", FINAL_NODE_ID, EdgeKind.MERGE),
+    ]:
+        add_edge(graph, edges, parent, child, kind)
+    attrs = {
+        gid: GroupAttrs(depth_label=DepthLabel.D0, derivation=derivation)
+        for gid, derivation in [
+            ("fx", Derivation.FILTER),
+            ("dy", Derivation.BASIC),
+            ("agg", Derivation.AGGREGATE),
+            (FINAL_NODE_ID, None),
+        ]
+    }
+    attrs[FINAL_NODE_ID].final_contract = FinalAssemblyContract(
+        contributor_contracts=(FinalContributorContract(group_id="agg"),)
+    )
+
+    _fold_into_readers(graph, edges, attrs, "dy")
+
+    assert edges[("fx", "agg")].kind == EdgeKind.LINEAGE
