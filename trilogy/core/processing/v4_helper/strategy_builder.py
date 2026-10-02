@@ -540,26 +540,34 @@ def _attach_existence_to_node(
     existing_parent_outputs = {
         output.address for parent in node.parents for output in parent.output_concepts
     }
+    existing_concepts = {concept.address for concept in node.existence_concepts}
+    # a row parent supplying the set's address (`dx ? x in dx` reads dx on
+    # the row) does not wire it: only a set listed here or on that parent
+    listed = existing_concepts | {
+        concept.address
+        for parent in node.parents
+        for concept in parent.existence_concepts
+    }
+    wired = existing_parent_outputs & listed
     arg_groups = [
-        group
-        for group in arg_groups
-        if not {concept.address for concept in group} <= existing_parent_outputs
+        group for group in arg_groups if not {c.address for c in group} <= wired
     ]
     if not arg_groups:
         return
-    existing_concepts = {concept.address for concept in node.existence_concepts}
     node.existence_concepts = list(node.existence_concepts) + [
         concept
         for concept in _flatten_arg_groups(arg_groups)
         if concept.address not in existing_concepts
     ]
+    pending = {concept.address for group in arg_groups for concept in group}
     node.parents = list(node.parents) + [
         parent
         for parent in _existence_parents_for(
             arg_groups, built, skip=node, feeder_cache=feeder_cache, preferred=preferred
         )
-        if any(
-            output.address not in existing_parent_outputs
+        if all(parent is not existing for existing in node.parents)
+        and any(
+            output.address not in existing_parent_outputs or output.address in pending
             for output in parent.output_concepts
         )
     ]

@@ -53,7 +53,11 @@ from .constants import (
 from .edges import EdgeMap, add_edge, edge_kind
 from .functional_dependency import build_fd_determines, minimize_build_grain
 from .models import ConceptAttrs
-from .projection import concept_satisfiable, lineage_existence_only
+from .projection import (
+    concept_satisfiable,
+    lineage_existence_only,
+    lineage_existence_parts,
+)
 from .staged_where import cross_row_stage_args
 from .union_arms import (
     arm_scope,
@@ -2216,16 +2220,21 @@ def build_concept_graph(
         fconcept = environment.concepts.get(attrs[nid].address)
         if fconcept is None:
             continue
-        existence_only = lineage_existence_only(fconcept)
-        if not existence_only:
-            continue
+        existence, row_read = lineage_existence_parts(fconcept)
         flabel = attrs[nid].label
-        for addr in existence_only:
+        for addr in existence:
             source = environment.concepts.get(addr)
             if source is None:
                 continue
-            _add_concept(source, environment, graph, edges, attrs, label=flabel)
-            src_nid = node_id(_effective_label(source, flabel), source.address)
+            # A set the row also reads (`dx ? x in dx`) is planned twice: the
+            # row's value, and the set under the condition phase.
+            slabel = (
+                _condition_label(flabel)
+                if addr in row_read and _split_condition_label(flabel) is None
+                else flabel
+            )
+            _add_concept(source, environment, graph, edges, attrs, label=slabel)
+            src_nid = node_id(_effective_label(source, slabel), source.address)
             if src_nid in graph and src_nid != nid and not graph.has_edge(src_nid, nid):
                 add_edge(graph, edges, src_nid, nid, EdgeKind.EXISTENCE)
 
