@@ -3973,12 +3973,17 @@ def _filter_arg_parents(
     group_graph: nx.DiGraph,
     built: dict[str, StrategyNode],
     missing_addrs: set[str],
+    spans: frozenset[str] = frozenset(),
 ) -> tuple[list[StrategyNode], list[BuildConcept]]:
     """Built groups (most-downstream) producing each `missing_addr`: a
     FINAL-deferred filter's row-arg that isn't a user output (a global
     aggregate compared against a per-key aggregate). Returned as cross-join
     parents plus the concepts they supply, so the FINAL filter node can pull
-    them in as hidden inputs."""
+    them in as hidden inputs.
+
+    Beside a region's rows (`spans`), a producer carrying every span comes
+    first: a row value (`status`) pairs on the span, where an aggregate by it
+    (`sum(amount) by status`) holds only its groups and cross-joins."""
     nodes: list[StrategyNode] = []
     concepts: list[BuildConcept] = []
     seen: set[str] = set()
@@ -3991,8 +3996,9 @@ def _filter_arg_parents(
         if not candidates:
             continue
         candidates.sort(
-            key=lambda gid: sum(
-                1 for a in nx.ancestors(group_graph, gid) if a in built
+            key=lambda gid: (
+                spans <= {o.address for o in built[gid].output_concepts},
+                sum(1 for a in nx.ancestors(group_graph, gid) if a in built),
             ),
             reverse=True,
         )
@@ -4011,6 +4017,29 @@ def _filter_arg_parents(
             seen.add(gid)
             nodes.append(built[gid])
     return nodes, concepts
+
+
+def _region_paired_args(
+    filter_only: set[str],
+    available: set[str],
+    spans: frozenset[str],
+    environment: BuildEnvironment,
+) -> set[str]:
+    """The FINAL atom's hidden inputs no contributor supplies. Beside a
+    region's rows an aggregate pairs on its grain, read off the row stream
+    (`coalesce(sum(amount) by status, 0)` needs each row's `status`)."""
+    missing = filter_only - available
+    if not spans:
+        return missing
+    grain = {
+        component
+        for address in missing
+        if (concept := environment.concepts.get(address)) is not None
+        and concept.derivation == Derivation.AGGREGATE
+        and concept.grain is not None
+        for component in concept.grain.components
+    }
+    return missing | (grain - available)
 
 
 def _required_final_contract(attrs: dict[str, GroupAttrs]) -> FinalAssemblyContract:
@@ -4385,8 +4414,12 @@ def _assemble_final_node(
         # aren't mandatory and don't render at this layer.
         keep = [o for o in node.output_concepts if o.address in mandatory_addresses]
         avail = {o.address for o in node.output_concepts}
+        spans = region_reads(node)
         arg_nodes, arg_concepts = _filter_arg_parents(
-            group_graph, built, filter_only_addrs - avail
+            group_graph,
+            built,
+            _region_paired_args(filter_only_addrs, avail, spans, environment),
+            spans,
         )
         row_arg_addrs = {c.address for c in condition_row_args(final_conditions)}
         row_concepts = [
@@ -4904,8 +4937,12 @@ def _assemble_final_node(
         )
     # Pull in any filter-only condition arg (e.g. the global aggregate) not
     # already supplied by a contributor, as a hidden cross-join input.
+    spans = frozenset().union(*(region_reads(p) for p in parents))
     arg_nodes, arg_concepts = _filter_arg_parents(
-        group_graph, built, filter_only_addrs - available
+        group_graph,
+        built,
+        _region_paired_args(filter_only_addrs, available, spans, environment),
+        spans,
     )
     # A filter-only arg a contributor ALREADY supplies (`rs.sa is not null`
     # beside a boundary outputting rs.sa) must ride the merge as a hidden
