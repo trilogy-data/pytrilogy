@@ -161,11 +161,10 @@ def test_feeder_is_declared_before_the_cte_that_probes_it():
     assert sql.index(f"{feeder} as (") < sql.rindex("as (", 0, probe)
 
 
-def _tpcds_ctes(query: str) -> list:
-    executor = Dialects.DUCK_DB.default_executor(
+def _tpcds_executor():
+    return Dialects.DUCK_DB.default_executor(
         environment=Environment(working_path=TPCDS)
     )
-    return executor.parse_text((TPCDS / f"{query}.preql").read_text())[-1].ctes
 
 
 def _cte_body(sql: str, name: str) -> str:
@@ -176,16 +175,20 @@ def _cte_body(sql: str, name: str) -> str:
 
 
 def test_probe_reaches_the_scan_below_a_projected_join_target():
-    """TPC-DS q64's consumer joins a projection over a full-join enrichment, so
-    the aggregate scanning store_sales sits two nodes below the join target and
-    every key it exposes is nullable. Both used to skip the mirror, leaving the
-    enrichment to group the whole fact table for a two row answer."""
+    """A TPC-DS q64 variant's consumer joins a projection over a full-join
+    enrichment, so the aggregate scanning store_sales sits two nodes below the
+    join target and every key it exposes is nullable. Both used to skip the
+    mirror, leaving the enrichment to group the whole fact table for a two row
+    answer. Pairing `c_addr` with the other year keeps the enrichment: q64
+    itself pairs every key with `agg_99`, so it never builds one."""
+    text = (TPCDS / "query64.preql").read_text()
+    text = text.replace("agg_99.c_addr_99 = ss.", "agg_00.c_addr_00 = ss.")
     hosts = [
         cte
-        for cte in _tpcds_ctes("query64")
+        for cte in _tpcds_executor().parse_text(text)[-1].ctes
         if isinstance(cte, CTE) and cte.semi_join_filters
     ]
     assert len(hosts) == 1, [cte.name for cte in hosts]
-    body = _cte_body(_model_sql(TPCDS, "query64"), hosts[0].name)
+    body = _cte_body(_tpcds_executor().generate_sql(text)[-1], hosts[0].name)
     assert '"memory"."store_sales"' in body, body
     assert "in (select" in body, body

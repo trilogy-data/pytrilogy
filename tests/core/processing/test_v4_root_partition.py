@@ -406,3 +406,60 @@ def test_bare_key_beside_a_filtered_rowset_keeps_every_key(partial: bool):
         partial,
     )
     assert rows == [(1, 1, None), (2, 2, 3.0), (3, 3, None)]
+
+
+def _outer_row_streams(trace: plan_trace.PlanTrace) -> list[str]:
+    step = next(
+        s
+        for s in trace.steps
+        if s.plan == "p0" and s.title == "padded row streams split by entity"
+    )
+    return [
+        gid
+        for gid, bucket in step.data.buckets.items()
+        if bucket.get("reason") == RootReason.ROW_STREAM.value
+    ]
+
+
+_REV = "rowset r <- select user_id, product_id, sum(sale_price) as rev;"
+_REV_KEYS = (
+    " union join r.user_id = user_id union join r.product_id = product_id"
+    " select user_id, product_id, state, brand, r.rev"
+    " order by user_id asc, product_id asc;"
+)
+
+
+@pytest.mark.parametrize("relation", ["union", "subset"])
+def test_padded_key_stream_is_never_built(relation: str):
+    """Every key the outer row stream holds pairs with one rowset whose
+    padding the WHERE rejects: its rows add only rejected ones, so each key
+    sources from its entity's scan (TPC-DS q64)."""
+    trace, rows = _trace(
+        _REV + " where r.rev > 4" + _REV_KEYS.replace("union", relation)
+    )
+    assert _outer_row_streams(trace) == []
+    assert [g for g in _built(trace) if g.endswith(":dim:local.product_id")]
+    assert [tuple(r) for r in rows] == [
+        (1, 1, "ca", "acme", Decimal("5.0")),
+        (1, 2, "ca", "zed", Decimal("7.0")),
+    ]
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        _REV + _REV_KEYS,
+        _REV + " where r.rev > 4 and state = 'ca'" + _REV_KEYS,
+        (
+            "rowset a <- select user_id, sum(sale_price) as ra;"
+            " rowset b <- select product_id, sum(sale_price) as rb;"
+            " where a.ra > 4 and b.rb > 4"
+            " union join a.user_id = user_id union join b.product_id = product_id"
+            " select user_id, product_id, state, brand, a.ra, b.rb;"
+        ),
+    ],
+    ids=["padding_kept", "attribute_filter", "two_rowsets"],
+)
+def test_padded_key_stream_kept(query: str):
+    trace, _ = _trace(query)
+    assert _outer_row_streams(trace)
