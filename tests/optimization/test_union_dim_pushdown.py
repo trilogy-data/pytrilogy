@@ -1,4 +1,5 @@
 from trilogy import Dialects
+from trilogy.constants import MagicConstants
 from trilogy.core.enums import ComparisonOperator, FunctionType, JoinType, SourceType
 from trilogy.core.models.build import (
     BuildColumnAssignment,
@@ -25,6 +26,7 @@ from trilogy.core.optimizations.union_dim_pushdown import (
     _datasource_matches_raw_id,
     _DimDescriptor,
     _find_dim_cte_for_qds,
+    _narrow_null_extending_joins,
     base_datasource,
 )
 
@@ -805,3 +807,77 @@ def test_union_dim_pushdown_strip_drops_rows_the_union_side_padded():
     assert _merged_fact_rows("""where region = 'east'
 select channel, sum(sales) as total_sales, sum(refund) as total_refund
 order by channel;""") == [("A", 11.0, 1.0)]
+
+
+def test_union_dim_pushdown_strip_drops_rows_a_later_join_padded():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        MERGED_FACT_MODEL.replace(
+            "select 2, 100.0'''", "select 2, 100.0 union all select 3, 200.0'''"
+        )
+    )
+    rows = executor.execute_text("""where region = 'east' and price > 50
+select channel, sum(sales) as total_sales, sum(refund) as total_refund
+order by channel;""")[-1].fetchall()
+    assert [(r[0], float(r[1]), float(r[2])) for r in rows] == [("A", 6.0, 1.0)]
+
+
+def _consumer_with_trailing_full(env, atom: BuildComparison) -> CTE:
+    category_id = env.concepts["category_id"]
+    branch = _branch_cte("branch", env.datasources["products"], [category_id])
+    union = _union_cte("unioned", [branch], [category_id])
+    dim = CTE.from_datasource(env.datasources["category"])
+    dim.name = "category_dim"
+    other = CTE.from_datasource(env.datasources["category"])
+    other.name = "other"
+    consumer = _dim_consumer(
+        union, dim, category_id, category_id, env.concepts["category_name"], atom
+    )
+    pair = CTEConceptPair(
+        left=category_id,
+        right=category_id,
+        existing_datasource=union.source,
+        cte=union,
+    )
+    consumer.joins.append(
+        Join(
+            right_cte=other,
+            jointype=JoinType.FULL,
+            left_cte=union,
+            joinkey_pairs=[pair],
+        )
+    )
+    return consumer
+
+
+def test_union_dim_pushdown_narrows_later_join_when_atoms_reject_null(
+    test_environment,
+):
+    env = test_environment.materialize_for_select()
+    atom = BuildComparison(
+        left=env.concepts["category_name"],
+        right="special",
+        operator=ComparisonOperator.EQ,
+    )
+    consumer = _consumer_with_trailing_full(env, atom)
+    _narrow_null_extending_joins(consumer, "unioned", "category_dim", [atom])
+    assert consumer.joins[1].jointype == JoinType.LEFT_OUTER
+
+
+def test_union_dim_pushdown_keeps_later_join_when_atoms_accept_null(
+    test_environment,
+):
+    env = test_environment.materialize_for_select()
+    atom = BuildComparison(
+        left=env.concepts["category_name"],
+        right=MagicConstants.NULL,
+        operator=ComparisonOperator.IS,
+    )
+    consumer = _consumer_with_trailing_full(env, atom)
+    _narrow_null_extending_joins(consumer, "unioned", "category_dim", [atom])
+    assert consumer.joins[1].jointype == JoinType.FULL
+    _narrow_null_extending_joins(consumer, "unioned", "category_dim", [])
+    assert consumer.joins[1].jointype == JoinType.FULL
+    consumer.joins.reverse()
+    _narrow_null_extending_joins(consumer, "unioned", "category_dim", [atom])
+    assert consumer.joins[0].jointype == JoinType.LEFT_OUTER

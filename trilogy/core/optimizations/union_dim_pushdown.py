@@ -69,6 +69,8 @@ from trilogy.core.optimizations.utils import (
 )
 from trilogy.core.processing.condition_utility import (
     decompose_condition,
+    gather_non_null_proofs,
+    gather_or_groups,
     is_scalar_condition,
 )
 from trilogy.core.processing.join_resolution import OUTER_JOIN_TYPES
@@ -206,13 +208,29 @@ def _derives_from(node: CTE | UnionCTE, container_name: str) -> bool:
     return False
 
 
-def _narrow_null_extending_joins(consumer: CTE, container_name: str) -> None:
-    """Narrow every outer join that pads the container's side with NULLs.
+def _rejects_null(atoms: list[BoolExpr]) -> bool:
+    return any(gather_non_null_proofs(a) or gather_or_groups(a) for a in atoms)
+
+
+def _narrow_null_extending_joins(
+    consumer: CTE, container_name: str, dim_name: str, atoms: list[BoolExpr]
+) -> None:
+    """Narrow the outer joins that pad the container's side with NULLs.
 
     The consumer's INNER dim join reads its FK from the container alone, so it
-    already drops every row where the container is padded; once that join is
-    stripped, the narrowed joins have to drop them instead."""
-    for idx, j in enumerate(consumer.joins):
+    drops every row a join before it padded. A join after it pads rows with
+    every dim column NULL, which only the stripped atoms could reject. Once
+    the dim join and its atoms are stripped, the narrowed joins drop them."""
+    dim_idx = next(
+        (
+            idx
+            for idx, j in enumerate(consumer.joins)
+            if isinstance(j, Join) and j.right_cte.name == dim_name
+        ),
+        len(consumer.joins),
+    )
+    end = len(consumer.joins) if _rejects_null(atoms) else dim_idx
+    for idx, j in enumerate(consumer.joins[:end]):
         if not isinstance(j, Join) or j.jointype not in OUTER_JOIN_TYPES:
             continue
         left = any(
@@ -690,7 +708,9 @@ class UnionDimPushdown(OptimizationRule):
                     existing.add(concept.address)
 
             for consumer in consumers:
-                _narrow_null_extending_joins(consumer, union.name)
+                _narrow_null_extending_joins(
+                    consumer, union.name, context.dim_cte.name, d.where_atoms
+                )
                 self._strip_from_consumer(consumer, context.dim_cte, d, union)
         else:
             # Filter-only mode: the consumer keeps its dim join, but the WHERE
@@ -744,7 +764,9 @@ class UnionDimPushdown(OptimizationRule):
                 target.output_columns.append(concept)
                 existing.add(concept.address)
         for consumer in consumers:
-            _narrow_null_extending_joins(consumer, target.name)
+            _narrow_null_extending_joins(
+                consumer, target.name, context.dim_cte.name, d.where_atoms
+            )
             self._strip_from_consumer(consumer, context.dim_cte, d, target)
         self._coarsen_dead_fk_grain(target, d, consumers)
         return True
