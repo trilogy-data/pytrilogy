@@ -9,6 +9,8 @@ Each decision reads the ones before it and none undoes another:
                 side channel, off the condition stage's scan
     region      a live extension region the statement asks rows of gets a
                 domain, holding every member the region carries
+    padded      a row stream whose keys all pair with one rowset the WHERE
+                rejects padding of is not built; its entities source alone
     entity      attributes FD on a grouping key source from a scan keyed by
                 it, unless a domain holds them whole
     condition   a condition stage that reads a population gets a private scan
@@ -39,6 +41,7 @@ from .constants import (
 from .edges import EdgeMap, edge_kind
 from .functional_dependency import build_fd_determines
 from .group_rules import _add_member
+from .keyspace import null_rejected
 from .models import ConceptAttrs, GroupBucket, Keyspace, RootReason
 from .region_domains import (
     RegionDomain,
@@ -578,6 +581,123 @@ def _grouping_keys(buckets: dict[str, GroupBucket]) -> set[str]:
     return keys
 
 
+def _padded_key_sets(
+    buckets: dict[str, GroupBucket],
+    conditions: list[BuildWhereClause],
+    environment: BuildEnvironment,
+) -> list[frozenset[str]]:
+    """Per rowset the WHERE keeps only matched rows of, the base keys a
+    declared join pairs with it. A row the rowset pads is NULL in every
+    rowset column, so a null-rejected one drops it: under the WHERE each of
+    these keys is the rowset's own value on every surviving row."""
+    rejected = null_rejected(conditions)
+    groups = [
+        {canonical, *members}
+        for canonical, members in environment.scoped_join_key_groups.items()
+    ]
+    out: list[frozenset[str]] = []
+    for bucket in buckets.values():
+        if (
+            bucket.derivation != Derivation.ROWSET
+            or bucket.label
+            or not rejected & set(bucket.primary_members)
+        ):
+            continue
+        columns = bucket.grain_components | set(bucket.primary_members)
+        keys = frozenset(
+            member
+            for group in groups
+            if group & columns
+            for member in group
+            if (concept := environment.concepts.get(member)) is not None
+            and concept.derivation != Derivation.ROWSET
+        )
+        if keys:
+            out.append(keys)
+    return out
+
+
+def _entity_key(
+    addr: str, keys: frozenset[str], environment: BuildEnvironment
+) -> str | None:
+    if addr in keys:
+        return addr
+    determiners = [
+        k
+        for k in keys
+        if build_fd_determines(environment, {k}, addr, include_empty_grain=False)
+    ]
+    return _finest_determining_key(determiners, environment) if determiners else None
+
+
+def _split_padded_row_streams(
+    buckets: dict[str, GroupBucket],
+    primary_group: dict[str, str],
+    padded_key_sets: list[frozenset[str]],
+    domains: list[RegionDomain],
+    concept_graph: nx.DiGraph,
+    condition_arg_addresses: frozenset[str],
+    environment: BuildEnvironment,
+) -> None:
+    """A row stream holding only keys joined to ONE rowset whose padding the
+    WHERE rejects, and attributes of those keys, is never built: every row
+    it adds is a padded one, and every row it matches takes its keys from
+    the rowset. Each key and its attributes source from the entity's own
+    scan instead (TPC-DS q64: no store_sales tuple stream beside the per-year
+    aggregates).
+
+    One rowset, since keys paired with two would lose the co-occurrence the
+    stream's rows pair them by. Each key a member, since a scan without its
+    key node joins back through the rowset, once per entity. No grouping
+    reader, since one would count the stream's rows; no WHERE argument, since
+    a filter on a peel joined back outer would NULL the attribute instead of
+    dropping the row; no region domain, which decides those rows itself."""
+    if not padded_key_sets or any(not d.label for d in domains):
+        return
+    for gid in list(buckets):
+        bucket = buckets[gid]
+        if (
+            bucket.reason is not RootReason.ROW_STREAM
+            or bucket.label
+            or not bucket.primary_members
+            or condition_arg_addresses & set(bucket.primary_members)
+            or any(
+                buckets[primary_group[succ]].derivation in GROUPING_DERIVATIONS
+                for node_id in bucket.primary_node_ids
+                for succ in concept_graph.successors(node_id)
+                if succ in primary_group
+            )
+        ):
+            continue
+        for keys in padded_key_sets:
+            assignment = {
+                addr: _entity_key(addr, keys, environment)
+                for addr in bucket.primary_members
+            }
+            if set(assignment.values()) <= set(bucket.primary_members):
+                break
+        else:
+            continue
+        for addr, node_id in zip(bucket.primary_members, bucket.primary_node_ids):
+            key = assignment[addr]
+            assert key is not None
+            entity = GroupBucket(
+                depth_label=DepthLabel.ROOT,
+                derivation=Derivation.ROOT,
+                grain_components=frozenset(),
+                label=bucket.label,
+                discriminator=f"dim:{key}",
+                dim_keys=frozenset({key}),
+                reason=RootReason.ENTITY,
+            )
+            entity = buckets.setdefault(entity.group_id, entity)
+            entity.primary_members.append(addr)
+            entity.primary_node_ids.append(node_id)
+            entity.member_depths[addr] = bucket.member_depths.get(addr, DepthLabel.ROOT)
+            primary_group[node_id] = entity.group_id
+        del buckets[gid]
+
+
 def _projected_scalar_root_args(
     mandatory_list: list[BuildConcept],
     grouping_keys: set[str],
@@ -1078,6 +1198,16 @@ def partition_root_demand(
     own = [d.bucket for d in domains if d.bucket is not None]
     buckets.update({bucket.group_id: bucket for bucket in own})
     trace_buckets("region domains added", buckets, primary_group, domains)
+    _split_padded_row_streams(
+        buckets,
+        primary_group,
+        _padded_key_sets(buckets, conditions, environment),
+        domains,
+        concept_graph,
+        condition_arg_addresses,
+        environment,
+    )
+    trace_buckets("padded row streams split by entity", buckets, primary_group)
     projected_scalar_root_args = _projected_scalar_root_args(
         mandatory_list, _grouping_keys(buckets)
     )
