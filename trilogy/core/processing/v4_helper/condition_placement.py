@@ -1336,12 +1336,23 @@ def plan_condition_placements(
                     allowed = reach if allowed is None else (allowed & reach)
                 candidates = [gid for gid in candidates if gid in (allowed or set())]
                 if not candidates:
-                    # The producers' branches only reconverge at FINAL.
+                    # The producers' branches only reconverge at FINAL. Over a
+                    # region domain, the producer joins nothing below it.
                     placements.append(
                         ConditionPlacement(
                             atom=atom,
                             group_ids=(FINAL_NODE_ID,),
-                            reason=PlacementReason.FINAL_RECONVERGENCE,
+                            reason=(
+                                PlacementReason.FINAL_SPAN_DOMAIN
+                                if _reads_past_region_domain(
+                                    row_inputs,
+                                    buckets,
+                                    keyspace,
+                                    mandatory_list,
+                                    environment,
+                                )
+                                else PlacementReason.FINAL_RECONVERGENCE
+                            ),
                         )
                     )
                     continue

@@ -29,6 +29,7 @@ from .region_reads import (
     aggregates_over_region,
     argument_takes_a_value_on_padding,
     evaluated_over_region,
+    keyless,
     restated_over_region,
 )
 
@@ -57,7 +58,7 @@ def _filters_region_domain(
         address, region, carried, keyspace, outputs, environment
     ):
         return False
-    if keyspace.carried_on(address, region):
+    if keyspace.carried_on(address, region) or keyless(address, keyspace):
         return True
     concept = environment.concepts.get(address)
     return concept is not None and (

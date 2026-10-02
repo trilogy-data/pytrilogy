@@ -106,6 +106,12 @@ def fed_by_region_domain(
     )
 
 
+def keyless(address: str, keyspace: Keyspace) -> bool:
+    """One value for every row of the statement (`count(order_id) by *`): it
+    filters the region's rows exactly as it filters the solid ones."""
+    return not keyspace.keys_by_address.get(address)
+
+
 def restated_over_region(
     address: str,
     region: Region,
@@ -131,7 +137,7 @@ def restated_over_region(
     the atom on its own input too (`_uncovered_grouping_placements`)."""
     if address in held:
         return False
-    if not keyspace.defined_on(address, region):
+    if not keyspace.defined_on(address, region) or keyless(address, keyspace):
         return True
     if not keyspace.carried_on(address, region):
         return False
