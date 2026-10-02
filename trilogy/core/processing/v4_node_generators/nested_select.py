@@ -139,6 +139,12 @@ def build_nested_select(
     nested_scoped = select.scoped_joins if isinstance(select, SelectLineage) else []
     outer_scoped = _scoped_joins_for_rowset(caches.scoped_joins, exclude_derived or [])
     scoped_joins = outer_scoped + [j for j in nested_scoped if j not in outer_scoped]
+    # A rowset body is built for its witness and again for its plan; both
+    # read the same scope, and planning restores the span scope it sets.
+    key = (id(select), tuple(exclude_derived or ()), tuple(scoped_joins))
+    cached = history.nested_builds.get(key)
+    if cached is not None and cached[0] is select:
+        return cached[1]
     caches.sync_pseudonym_map(author_env)
     # The shared build caches are keyed on address/grain identity alone, which
     # is only correct while every build in the resolution applies the SAME
@@ -193,7 +199,9 @@ def build_nested_select(
     # This select is its own plan: its WHERE completes `~` bindings and rules
     # out partitions over ITS references, not the enclosing statement's.
     scope_statement(build_env, select, author_env, built)
-    return built, build_env, built.where_clause
+    result = (built, build_env, built.where_clause)
+    history.nested_builds[key] = (select, result)
+    return result
 
 
 def plan_nested_select(

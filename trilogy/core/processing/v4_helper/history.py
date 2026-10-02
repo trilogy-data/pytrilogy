@@ -7,12 +7,25 @@ lazy-importing the planner module they are imported *by*.
 
 from dataclasses import dataclass, field
 
-from trilogy.core.models.build import BuildConcept, BuildWhereClause
+from trilogy.core.models.author import MultiSelectLineage, SelectLineage
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildMultiSelectLineage,
+    BuildSelectLineage,
+    BuildWhereClause,
+)
+from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import History
 
 from .keyspace import RowsetWitness
 from .models import BuildInfo
 from .network_model import SearchResult
+
+NestedBuild = tuple[
+    BuildSelectLineage | BuildMultiSelectLineage,
+    BuildEnvironment,
+    BuildWhereClause | None,
+]
 
 
 @dataclass
@@ -60,6 +73,11 @@ class V4History(History):
     # The shallowest live placeholder read since the innermost computation
     # began: a result that read one above its own frame understates it.
     witness_floor: int = 1 << 30
+    # `build_nested_select` results by (select id, excluded handles, scoped
+    # joins); the select itself is held so its id is never recycled.
+    nested_builds: dict[
+        tuple, tuple[SelectLineage | MultiSelectLineage, NestedBuild]
+    ] = field(default_factory=dict)
     # Spans of the body regions the plan reading a rowset holds the rows of:
     # the body, and every plan under it, is built without them. Managed by
     # `plan_nested_select`; part of the build key.
