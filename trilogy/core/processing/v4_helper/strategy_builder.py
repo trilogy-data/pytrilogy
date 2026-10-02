@@ -3171,9 +3171,12 @@ def _cover_groups_for_mandatory(
             ]
         if not candidates:
             continue
+        # A dim peeled off a row stream decorates the stream's keys; its own
+        # key carries every entity, not the rows the stream's WHERE kept.
         candidates.sort(
             key=lambda gid: (
                 sum(1 for a in nx.ancestors(group_graph, gid) if a in built),
+                addr not in attrs[gid].dim_keys,
                 addr in attrs[gid].members,
             ),
             reverse=True,

@@ -50,7 +50,9 @@ def _outputs_with_grain_keys(
         existence = lineage_existence_only(concept)
         if concept.grain is not None:
             addresses.update(set(concept.grain.components) - existence)
-        addresses.update((concept.keys or set()) - existence)
+        # a key's `keys` are the facts binding it, not its identity
+        if concept.purpose != Purpose.KEY:
+            addresses.update((concept.keys or set()) - existence)
     return [
         environment.concepts[address]
         for address in sorted(addresses)

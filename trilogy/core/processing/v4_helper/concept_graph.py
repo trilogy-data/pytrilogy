@@ -2340,7 +2340,7 @@ def build_concept_graph(
     for n in graph.nodes:
         scope, phase = _scope_and_phase(attrs[n].label)
         nodes_by_scope_phase.setdefault((scope, phase), []).append(n)
-    scopes_present = {scope for scope, _ in nodes_by_scope_phase}
+    scopes_present = dict.fromkeys(scope for scope, _ in nodes_by_scope_phase)
     for scope in scopes_present:
         condition_nodes = nodes_by_scope_phase.get((scope, "condition"), [])
         d0_blank_nodes = [
@@ -2399,7 +2399,7 @@ def build_concept_graph(
     #   - require the node's address to appear as a row argument (existence
     #     args don't need row-stream consumers);
     #   - skip nodes that already have any outgoing edge.
-    mandatory_blank_ids = {node_id("", c.address) for c in mandatory_list}
+    mandatory_blank_ids = dict.fromkeys(node_id("", c.address) for c in mandatory_list)
     outer_condition_nodes = nodes_by_scope_phase.get(("", "condition"), [])
     for src in outer_condition_nodes:
         if attrs[src].derivation == Derivation.ROOT:
