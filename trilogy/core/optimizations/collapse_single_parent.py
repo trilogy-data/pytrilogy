@@ -363,6 +363,12 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
             if consumed is not None:
                 column = rebind_rename_to_consumed(column, consumed)
             parent.output_columns.append(column)
+            # The child derives this column over the parent's rows. A column
+            # of the same address the parent's own inputs expose is the value
+            # BELOW the parent (a rename of a ROLLUP key computed before the
+            # pass), so the folded column keeps rendering from its lineage.
+            if merge_mode == MergeMode.BASIC and not cte.source_map.get(column.address):
+                parent.source_map[column.address] = []
 
     carry_child_state(parent, cte)
 

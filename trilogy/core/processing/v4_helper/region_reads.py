@@ -4,11 +4,12 @@ decision (`region_domains`) and condition placement, which must agree."""
 
 from collections.abc import Iterable
 
-from trilogy.core.enums import NULL_COLLECTING_AGGREGATES, FunctionType
+from trilogy.core.enums import FunctionType
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
     BuildConceptArgs,
+    BuildFunction,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.keyspace import Keyspace, Region
@@ -19,36 +20,47 @@ from .projection import decided_at_output_grain
 GROUPING_FLAGS = (FunctionType.GROUPING, FunctionType.GROUPING_ID)
 
 
-def argument_takes_a_value_on_padding(
-    address: str, region: Region, keyspace: Keyspace, environment: BuildEnvironment
-) -> bool:
-    """Whether the aggregate at `address` answers a padded row of `region`
-    differently from no row at all, so it must be computed on the solid rows.
-
-    An argument written inline (`sum(coalesce(amount, 0))`) is a derivation no
-    concept node stands for; it takes a value on the region's rows when it
-    reads something absent there and is not NULL for it. A NULL-collecting
-    operator (`array_agg(amount)`) takes the padding's NULL itself, `[NULL]`
-    where an empty group is NULL, so any argument absent there keeps it
-    solid."""
-    concept = environment.concepts.get(address)
+def inline_arguments_taking_a_value(
+    concept: BuildConcept | None,
+    region: Region,
+    keyspace: Keyspace,
+    environment: BuildEnvironment,
+) -> list[BuildConceptArgs]:
+    """The arguments of the aggregate `concept` written inline (`sum(coalesce(
+    amount, 0))`) that take a value on a padded row of `region`: they read
+    something absent there and are not NULL for it. No concept node stands for
+    one, so nothing computes it on the solid rows before they are padded."""
     if concept is None or not isinstance(concept.lineage, BuildAggregateWrapper):
-        return False
-    function = concept.lineage.function
-    if function.operator in NULL_COLLECTING_AGGREGATES:
-        return any(
-            not keyspace.defined_on(read.address, region)
-            for read in function.concept_arguments
-        )
-    return any(
-        not null_on_padding(arg, region, keyspace, environment)
+        return []
+    return [
+        arg
+        for arg in concept.lineage.function.arguments
+        if isinstance(arg, BuildConceptArgs)
+        and not isinstance(arg, BuildConcept)
+        and not null_on_padding(arg, region, keyspace, environment)
         and any(
             not keyspace.defined_on(read.address, region)
             for read in arg.concept_arguments
         )
-        for arg in function.arguments
-        if isinstance(arg, BuildConceptArgs) and not isinstance(arg, BuildConcept)
+    ]
+
+
+def argument_takes_a_value_on_padding(
+    address: str, region: Region, keyspace: Keyspace, environment: BuildEnvironment
+) -> bool:
+    """Whether the aggregate at `address` answers a padded row of `region`
+    differently from no row at all, so it must be computed on the solid rows."""
+    return bool(
+        inline_arguments_taking_a_value(
+            environment.concepts.get(address), region, keyspace, environment
+        )
     )
+
+
+def nameable(argument: BuildConceptArgs) -> bool:
+    """An inline argument the strategy builder can stand a concept in for and
+    project on the solid rows (`_name_inline_arguments`)."""
+    return isinstance(argument, BuildFunction)
 
 
 def aggregates_over_region(
@@ -92,13 +104,18 @@ def evaluated_over_region(
 
     `one_pass`: a ROLLUP/CUBE/GROUPING SETS pass, whose subtotal rows nothing
     joins back to. One member counting the region brings its rows under the
-    whole pass; the members absent there aggregate their NULLs."""
+    whole pass; the members absent there aggregate their NULLs, and an inline
+    argument taking a value there is named and projected on the solid rows
+    below the pass."""
     members = tuple(members)
     if aggregates_over_region(members, region, keyspace, environment):
         return True
     if any(
-        argument_takes_a_value_on_padding(m, region, keyspace, environment)
+        not (one_pass and nameable(argument))
         for m in members
+        for argument in inline_arguments_taking_a_value(
+            environment.concepts.get(m), region, keyspace, environment
+        )
     ):
         return False
     if any(keyspace.carried_on(g, region) for g in grain):
@@ -121,6 +138,7 @@ def fed_by_region_domain(
         region,
         keyspace,
         environment,
+        one_pass=concept.lineage.grouping.nulls_grouping_keys,
     )
 
 

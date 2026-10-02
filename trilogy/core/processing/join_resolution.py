@@ -1773,6 +1773,35 @@ def _span_padding_matrix(
     return out
 
 
+def _region_padded_sides(
+    joins: list[JoinOrderOutput], facts: JoinFacts
+) -> dict[str, frozenset[str]]:
+    """Each side an earlier join of the merge null-extends, with the region
+    spans the side preserved over it holds: the side's columns are NULL on
+    those regions' rows in the joined stream, whatever the side says of
+    itself."""
+    padded: dict[str, frozenset[str]] = {}
+    for join in joins:
+        if join.type not in PADS_RIGHT_JOIN_TYPES:
+            continue
+        held: frozenset[str] = frozenset().union(
+            *(facts.side(left).held_spans for left in join.keys)
+        )
+        if held:
+            padded[join.right] = held
+    return padded
+
+
+def _pairs_region_padding(
+    padded_for: frozenset[str], right: SideFacts, key: str
+) -> bool:
+    """The left key is NULL on rows padded for a region `right` holds too: an
+    aggregate over the region's rows grouped by a key absent there
+    (`count(customer_id) by status`) puts them in its NULL group. The two
+    NULLs are the same rows and pair."""
+    return bool(padded_for & right.held_spans) and key in right.nullables
+
+
 def get_node_joins(
     datasources: list[DataSource],
     environment: BuildEnvironment,
@@ -1957,6 +1986,7 @@ def get_node_joins(
         demanded_domains=frozenset(canon_node(a) for a in demanded_domains),
     )
     joins = resolve_join_order_v2(graph, facts)
+    region_padded = _region_padded_sides(joins, facts)
     _raise_if_keyless_row_bearing_join(
         joins,
         ds_node_map,
@@ -1985,11 +2015,19 @@ def get_node_joins(
                             if _pads_for_different_members(
                                 facts.side(k), facts.side(j.right), v
                             )
-                            else get_modifiers(
-                                ds_concept_map[(k, concept)],
-                                ds_concept_map[(j.right, concept)],
-                                ds_node_map[k],
-                                ds_node_map[j.right],
+                            else (
+                                [Modifier.NULLABLE]
+                                if _pairs_region_padding(
+                                    region_padded.get(k, frozenset()),
+                                    facts.side(j.right),
+                                    concept,
+                                )
+                                else get_modifiers(
+                                    ds_concept_map[(k, concept)],
+                                    ds_concept_map[(j.right, concept)],
+                                    ds_node_map[k],
+                                    ds_node_map[j.right],
+                                )
                             )
                         )
                         + (

@@ -28,7 +28,6 @@ from trilogy.core.enums import (
     Purpose,
 )
 from trilogy.core.exceptions import UnbuiltGroupException, UnresolvableQueryException
-from trilogy.core.functions import propagates_argument_nulls
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
     BoolExpr,
@@ -43,6 +42,7 @@ from trilogy.core.models.build import (
     BuildRowsetItem,
     BuildWhereClause,
     LooseBuildConceptList,
+    generate_concept_name,
     nonstandard_grouping_lineage,
 )
 from trilogy.core.models.build_environment import BuildEnvironment, SpanScope
@@ -87,6 +87,7 @@ from .constants import (
     EdgeKind,
 )
 from .edges import EdgeAttrs, EdgeMap, dependency_subgraph, edge_kind, remove_edge
+from .extent_ownership import takes_a_value_on_padding
 from .functional_dependency import build_fd_determines
 from .group_graph import trace_group_graph
 from .history import V4History
@@ -110,6 +111,7 @@ from .projection import (
     statement_filter_population,
     widen_projection,
 )
+from .region_reads import inline_arguments_taking_a_value
 from .source_planning import SourceRequest, plan_source
 
 _AGGREGATING_DERIVATIONS = {
@@ -1751,11 +1753,99 @@ def _aggregate_inputs_are_row_preserving(
     return all(concept_satisfiable(arg, available) for arg in row_preserving_inputs)
 
 
+def _takes_a_value_beside(
+    concept: BuildConcept, region_spans: frozenset[str], environment: BuildEnvironment
+) -> bool:
+    """`concept` takes a value on a padded row of a region joined on
+    `region_spans`: null-opaque at any depth of its lineage (`1 +
+    coalesce(amount, 0)`) over something absent there."""
+    keyspace = environment.span_scope.keyspace
+    return any(
+        takes_a_value_on_padding(concept.address, region, keyspace, environment)
+        for region in keyspace.live_regions
+        if region.spans and region.spans <= region_spans
+    )
+
+
+def _named_argument(argument: BuildFunction) -> BuildConcept:
+    """A concept standing in for an inline aggregate argument, so the solid
+    rows can carry its value through the join that pads them."""
+    name = generate_concept_name(argument)
+    return BuildConcept(
+        name=name,
+        canonical_name=name,
+        datatype=argument.output_datatype,
+        purpose=Purpose.PROPERTY,
+        build_is_aggregate=False,
+        derivation=Derivation.BASIC,
+        lineage=argument,
+        grain=BuildGrain(
+            components={
+                component
+                for read in argument.concept_arguments
+                if read.grain is not None
+                for component in read.grain.components
+            }
+        ),
+    )
+
+
+def _name_inline_arguments(
+    outputs: list[BuildConcept],
+    primary_addrs: set[str],
+    region_spans: frozenset[str],
+    environment: BuildEnvironment,
+) -> tuple[list[BuildConcept], frozenset[str]]:
+    """Stand a concept in for each inline aggregate argument that takes a
+    value on a padded row of a region joined on `region_spans` (`sum(coalesce(
+    amount, 0))` under a ROLLUP the region's rows enter below), and return the
+    rewritten outputs with the addresses named. `_project_basic_aggregate_inputs`
+    then computes them on the solid rows, as it does a named argument."""
+    keyspace = environment.span_scope.keyspace
+    regions = [
+        region
+        for region in keyspace.live_regions
+        if region.spans and region.spans <= region_spans
+    ]
+    named: dict[int, BuildConcept] = {}
+    rewritten: list[BuildConcept] = []
+    for concept in outputs:
+        taking = (
+            [
+                argument
+                for region in regions
+                for argument in inline_arguments_taking_a_value(
+                    concept, region, keyspace, environment
+                )
+                if isinstance(argument, BuildFunction)
+            ]
+            if concept.address in primary_addrs
+            else []
+        )
+        if taking and isinstance(concept.lineage, BuildAggregateWrapper):
+            for argument in taking:
+                named.setdefault(id(argument), _named_argument(argument))
+            function = dc_replace(
+                concept.lineage.function,
+                arguments=[
+                    named.get(id(argument), argument)
+                    for argument in concept.lineage.function.arguments
+                ],
+            )
+            concept = dc_replace(
+                concept, lineage=dc_replace(concept.lineage, function=function)
+            )
+        rewritten.append(concept)
+    return rewritten, frozenset(c.address for c in named.values())
+
+
 def _project_basic_aggregate_inputs(
     outputs: list[BuildConcept],
     primary_addrs: set[str],
     parents: list[StrategyNode],
+    environment: BuildEnvironment,
     region_spans: frozenset[str] = frozenset(),
+    named: frozenset[str] = frozenset(),
 ) -> list[StrategyNode]:
     """Project scalar aggregate inputs without exposing the merge's join inputs.
 
@@ -1783,10 +1873,16 @@ def _project_basic_aggregate_inputs(
             aggregate_input
             for aggregate_input in _aggregate_row_preserving_inputs(concept)
             if aggregate_input.derivation == Derivation.BASIC
-            # beside a region domain only a null-opaque argument (CASE,
-            # COALESCE) has to be computed before the padding; arithmetic is
-            # NULL on a padded row either way and inlines
-            and not (region_spans and propagates_argument_nulls(aggregate_input))
+            # beside a region domain only an argument that takes a value on
+            # a padded row (CASE, COALESCE) has to be computed before the
+            # padding; arithmetic is NULL there either way and inlines
+            and not (
+                region_spans
+                and aggregate_input.address not in named
+                and not _takes_a_value_beside(
+                    aggregate_input, region_spans, environment
+                )
+            )
         )
     if not scalar_inputs:
         return parents
@@ -1798,12 +1894,30 @@ def _project_basic_aggregate_inputs(
     if not all(concept_satisfiable(concept, available) for concept in scalar_inputs):
         return parents
     # one the parent already computes is not an input to hand it
+    parent_outputs = {o.address for o in parent.output_concepts}
     to_widen = [
-        concept
-        for concept in scalar_inputs
-        if concept.address not in {o.address for o in parent.output_concepts}
+        concept for concept in scalar_inputs if concept.address not in parent_outputs
     ]
+    # a BASIC between a named argument and the parent's columns (`amount_or_zero`
+    # under `amount_or_zero + 1`) is no node of the plan either: it renders in
+    # the same projection
+    between = unique(
+        [
+            lineage
+            for concept in to_widen
+            if concept.address in named
+            for lineage in _row_lineage_closure(concept)
+            if lineage.derivation == Derivation.BASIC
+            and lineage.address not in available
+            and lineage.address != concept.address
+        ],
+        "address",
+    )
+    to_widen = between + to_widen
     if to_widen:
+        # what the parent computes itself is read off its own projection,
+        # never handed to it as an input
+        computed = parent_outputs - {c.address for c in parent.input_concepts}
         widen_projection(
             parent,
             to_widen,
@@ -1812,7 +1926,7 @@ def _project_basic_aggregate_inputs(
                 for concept in to_widen
                 for lineage in _row_lineage_closure(concept)
             ),
-            available_addresses=available,
+            available_addresses=available - computed,
         )
 
     # Keep every direct argument this group reads, not just the BASIC ones
@@ -1824,12 +1938,21 @@ def _project_basic_aggregate_inputs(
     # are also direct arguments, and their key grain is not part of the row
     # stream this group aggregates over. A FILTER argument renders inline as
     # a CASE over its content and WHERE row inputs, so those count as direct.
+    # So does a BASIC argument left to render inline (`sum(amount * 2)`
+    # beside a projected `count(status)`): its row inputs are what it reads.
     keep = {concept.address for concept in outputs} | set(region_spans)
+    keep.update(concept.address for concept in between)
+    projected_addrs = {concept.address for concept in scalar_inputs}
     for concept in outputs:
         if concept.address not in primary_addrs or concept.lineage is None:
             continue
         for arg in concept.lineage.concept_arguments:
             keep.add(arg.address)
+            if (
+                arg.derivation == Derivation.BASIC
+                and arg.address not in projected_addrs
+            ):
+                keep.update(c.address for c in _row_lineage_closure(arg))
             if isinstance(arg.lineage, BuildFilterItem):
                 keep.update(a.address for a in arg.lineage.where.row_arguments)
                 keep.update(a.address for a in arg.lineage.content_concept_arguments)
@@ -5153,6 +5276,7 @@ def build_strategy_node(
             if (c := _concept_at(environment, addr)) is not None
         ]
         if not outputs:
+            unbuilt[gid] = outputs
             continue
         if derivation == Derivation.AGGREGATE and a.aggregate_distinct_addrs:
             outputs = _apply_count_distinct_rewrites(
@@ -5330,9 +5454,17 @@ def build_strategy_node(
                     )
                 finally:
                     environment.span_scope = group_scope
+                outputs, named_arguments = _name_inline_arguments(
+                    outputs, primary_addrs, domain_spans, environment
+                )
                 parents = (
                     _project_basic_aggregate_inputs(
-                        outputs, primary_addrs, solid, region_spans=domain_spans
+                        outputs,
+                        primary_addrs,
+                        solid,
+                        environment,
+                        region_spans=domain_spans,
+                        named=named_arguments,
                     )
                     + domains
                     + feeders
@@ -5363,8 +5495,10 @@ def build_strategy_node(
             Derivation.UNNEST,
             Derivation.ROWSET,
         ):
+            wanted = outputs
             outputs = satisfiable_outputs(outputs, parents)
             if not outputs:
+                unbuilt[gid] = wanted
                 continue
         # For aggregating derivations, peel `injected` off into a pre-filter
         # wrapper so the GroupNode itself sees no `conditions`. GroupNode's
@@ -5404,6 +5538,7 @@ def build_strategy_node(
                 outputs,
                 primary_addrs,
                 parents,
+                environment,
                 region_spans=frozenset().union(*(region_reads(p) for p in parents)),
             )
         # Normalize aggregate inputs to the row grain implied by their
@@ -5646,6 +5781,7 @@ def build_strategy_node(
         )
     plan_trace.set_context(None)
     if final is not None:
+        _raise_if_output_unrendered(final, mandatory_list)
         final = _elide_passthrough_tree(final)
         if _has_unsourced_leaf(final):
             # A parent-less, datasource-less node that outputs a ROOT concept (a
@@ -5659,6 +5795,24 @@ def build_strategy_node(
         # FINAL's own re-sources host their memberships unwired until here.
         _wire_existence(final, built, feeder_cache)
     return final
+
+
+def _raise_if_output_unrendered(
+    final: StrategyNode, mandatory_list: list[BuildConcept]
+) -> None:
+    """A requested column the plan does not render is a wrong answer, not a
+    narrower one: a group pruned of an output it could not source would
+    otherwise return the statement without it."""
+    missing = [
+        concept.address
+        for concept in mandatory_list
+        if not any(_output_covers(o, concept) for o in final.output_concepts)
+    ]
+    if missing:
+        raise UnresolvableQueryException(
+            f"The plan renders no column for {missing}; the group producing it"
+            " could not source its inputs. This is a planner bug."
+        )
 
 
 def _raise_if_unbuilt_group_owed(

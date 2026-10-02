@@ -10,7 +10,7 @@ from enum import Enum
 from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation
-from trilogy.core.models.build import BuildConcept
+from trilogy.core.models.build import BuildConcept, BuildConceptArgs
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.keyspace import Keyspace, Region
 
@@ -36,7 +36,9 @@ from .region_reads import (
     argument_takes_a_value_on_padding,
     evaluated_over_region,
     fed_gate,
+    inline_arguments_taking_a_value,
     keyless,
+    nameable,
     restated_over_region,
 )
 
@@ -133,22 +135,25 @@ def _named_value_on_padding(
     )
 
 
-def _inline_value_on_padding(
+def _inline_values_on_padding(
     buckets: dict[str, GroupBucket],
     label: str,
     region: Region,
     keyspace: Keyspace,
     environment: BuildEnvironment,
-) -> bool:
-    """An aggregate of the scope has an inline argument doing the same."""
+) -> list[BuildConceptArgs]:
+    """The inline arguments of the scope's aggregates doing the same."""
     scope = _scope_and_phase(label)[0]
-    return any(
-        argument_takes_a_value_on_padding(m, region, keyspace, environment)
+    return [
+        argument
         for bucket in buckets.values()
         if bucket.derivation == Derivation.AGGREGATE
         and _scope_and_phase(bucket.label)[0] == scope
         for m in bucket.primary_members
-    )
+        for argument in inline_arguments_taking_a_value(
+            environment.concepts.get(m), region, keyspace, environment
+        )
+    ]
 
 
 def _region_is_demanded(
@@ -160,10 +165,14 @@ def _region_is_demanded(
 ) -> bool:
     if region.spans & keyspace.output_demanded_spans:
         return True
+    # a WHERE filters the statement's rows and never adds one: an aggregate
+    # of its own counting the region (`where count(customer_id) by
+    # customer_id > 0`) asks for no row of it
     return any(
         label in (None, a.label)
         and a.derivation == Derivation.AGGREGATE
         and not a.existence_only
+        and _scope_and_phase(a.label)[1] != "condition"
         and aggregates_over_region((a.address,), region, keyspace, environment)
         for a in concept_attrs.values()
     )
@@ -311,15 +320,19 @@ def _region_domain(
     ):
         return None
     scope = (buckets, label, region, keyspace, environment)
-    named, inline = _named_value_on_padding(*scope), _inline_value_on_padding(*scope)
-    if carried & rollup_padded and (inline or not named):
+    named, inline = _named_value_on_padding(*scope), _inline_values_on_padding(*scope)
+    if carried & rollup_padded and (
+        not (named or inline) or not all(nameable(argument) for argument in inline)
+    ):
         # a rollup's subtotal rows NULL the key a domain would join back on,
         # so the region's rows enter below the pass or not at all. The padded
         # plan does that, and is right while nothing below the pass takes a
-        # value on a padded row. A named derivation that does is computed on
-        # the solid rows and the domain pads it under the pass
-        # (`evaluated_over_region`); an inline argument has no node to compute
-        # on first, and keeps the padded plan.
+        # value on a padded row. A derivation that does is computed on the
+        # solid rows and the domain pads it under the pass
+        # (`evaluated_over_region`): a named one as its own node, an inline
+        # function argument once the strategy builder stands a concept in
+        # for it. Any other inline argument has no node to compute on first,
+        # and keeps the padded plan.
         return RegionDomain(
             region, DomainKind.PADDED, label, carried, note="rollup key"
         )

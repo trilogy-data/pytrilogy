@@ -1208,6 +1208,27 @@ def _aggregate_input_grain(
     return minimize_build_grain(environment, input_grain)
 
 
+def _counted_key(concept: BuildConcept) -> BuildConcept | None:
+    """The key a COUNT counts: `count(order_id)`, or the content of
+    `count(order_id ? cond)`. Counting a key is counting at the key's grain."""
+    if not isinstance(concept.lineage, BuildAggregateWrapper):
+        return None
+    function = concept.lineage.function
+    if function.operator != FunctionType.COUNT or len(function.arguments) != 1:
+        return None
+    content = function.arguments[0]
+    if not isinstance(content, BuildConcept):
+        return None
+    if content.derivation == Derivation.FILTER and isinstance(
+        content.lineage, BuildFilterItem
+    ):
+        inner = content.lineage.content
+        if not isinstance(inner, BuildConcept):
+            return None
+        content = inner
+    return content if content.purpose == Purpose.KEY else None
+
+
 def _aggregate_distinct_rewritable(
     concept: BuildConcept,
     environment: BuildEnvironment,
@@ -1226,23 +1247,8 @@ def _aggregate_distinct_rewritable(
     a sibling fact stream only carries the key values present in the fact
     (`count(user_id)` beside post-fact sums must still count post-less
     users)."""
-    if not isinstance(concept.lineage, BuildAggregateWrapper):
-        return False
-    function = concept.lineage.function
-    if function.operator != FunctionType.COUNT:
-        return False
-    if len(function.arguments) != 1:
-        return False
-    arg = function.arguments[0]
-    if not isinstance(arg, BuildConcept):
-        return False
-    content = arg
-    if arg.derivation == Derivation.FILTER and isinstance(arg.lineage, BuildFilterItem):
-        inner = arg.lineage.content
-        if not isinstance(inner, BuildConcept):
-            return False
-        content = inner
-    if content.purpose != Purpose.KEY:
+    content = _counted_key(concept)
+    if content is None:
         return False
     if input_grain - out_grain != frozenset({content.address}):
         return False
@@ -1491,6 +1497,7 @@ def _add_concept(
                 concept, environment, aggregate_input_grain, out_grain
             )
         ),
+        counted_key=counted.address if (counted := _counted_key(concept)) else None,
         keys=frozenset(concept.keys or set()),
         pseudonyms=frozenset(concept.pseudonyms),
         is_rename=is_rename,

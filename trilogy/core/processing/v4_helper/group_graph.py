@@ -46,7 +46,6 @@ from .condition_placement import (
     plan_condition_placements,
 )
 from .constants import (
-    ALL_ROWS_ADDRESS,
     DEPENDENCY_EDGE_KINDS,
     FINAL_NODE_ID,
     GROUPING_DERIVATIONS,
@@ -865,6 +864,7 @@ def _final_merge_grain(
 
 
 def _group_final_grain_contribution(
+    group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     gid: str,
     merge_grain: frozenset[str],
@@ -873,9 +873,7 @@ def _group_final_grain_contribution(
     if gid not in attrs:
         return frozenset()
     if attrs[gid].derivation in GROUPING_DERIVATIONS:
-        # a statement-wide aggregate is one row beside every row of the
-        # statement: it has no key for a sibling to be projected to or join on
-        return attrs[gid].grain_components - {ALL_ROWS_ADDRESS}
+        return attrs[gid].grain_components
     if attrs[gid].extent_spans:
         return attrs[gid].extent_spans
     if attrs[gid].derivation == Derivation.ROWSET:
@@ -900,7 +898,19 @@ def _group_final_grain_contribution(
     # parents ON 1=1.
     pinned = frozenset(attrs[gid].output_concepts) or frozenset(attrs[gid].members)
     rowset_keys |= _lineage_pinned_grain(pinned, environment)
-    return frozenset(rowset_keys)
+    # A row stream reading a region domain is the region's rows (`customer_id
+    # as c2`), and pairs on the spans as the domain would. Folded into this
+    # contributor, the domain no longer advertises them itself, and a sibling
+    # with a grain of its own (`count(customer_id) by *`) would leave the
+    # solid stream projected off the span.
+    held: frozenset[str] = frozenset().union(
+        *(
+            attrs[parent].extent_spans
+            for parent in group_graph.predecessors(gid)
+            if parent in attrs
+        )
+    )
+    return frozenset(rowset_keys) | (held & available)
 
 
 def _refresh_final_contract(
@@ -934,7 +944,7 @@ def _refresh_final_contract(
                 output_addresses=frozenset(attrs[gid].output_concepts),
                 preserve_keys=preserve_keys,
                 projection_grain=_group_final_grain_contribution(
-                    attrs, gid, merge_grain, environment
+                    group_graph, attrs, gid, merge_grain, environment
                 ),
             )
         )
