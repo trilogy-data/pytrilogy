@@ -761,3 +761,31 @@ def test_membership_set_sourced_beside_its_probe(query: str, expected: list[tupl
     """The set and the probe come from one CTE: the subselect reads it under its
     own alias, or the probe binds to the subselect's rows and is always true."""
     assert _rows(_executor(_FILTERED_SET), query) == expected
+
+
+# A domain-fed aggregate beside one it cannot feed: the atom is applied on each
+# aggregate's input. The domain fell back to the padded plan, where `status`
+# was evaluated on the orderless customer's padded row ('in-transit').
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select status, count(customer_id) as n, sum(amount) as s where activity = 'dormant'",
+            [(None, 1, None)],
+        ),
+        (
+            "select status, count(customer_id) as n, count(order_id) as o, sum(amount) as s where activity = 'dormant'",
+            [(None, 1, 0, None)],
+        ),
+        (
+            "select status, count(customer_id) as n, sum(amount) as s where activity = 'active'",
+            [("delivered", 2, 40), ("in-transit", 1, 20)],
+        ),
+    ],
+)
+@pytest.mark.parametrize("model", ["derived", "materialized"])
+def test_unfed_aggregate_beside_a_fed_one_takes_the_atom(
+    request: pytest.FixtureRequest, model: str, query: str, expected: list[tuple]
+):
+    executor: Executor = request.getfixturevalue(model)
+    assert _rows(executor, query) == expected
