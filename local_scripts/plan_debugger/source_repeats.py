@@ -9,7 +9,7 @@ the span scope, and the environment/history identity. The summary mode reports
 per file how many calls repeat an earlier signature, whether any repeat
 returned a structurally DIFFERENT plan (the safety question for a cache), and
 the time the repeats cost. `--detail` lists one file's calls with their
-planner call path. See docs/handoff_duplicate_source_requests.md.
+planner call path.
 """
 
 from __future__ import annotations

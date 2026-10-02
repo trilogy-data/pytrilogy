@@ -1,6 +1,5 @@
 """A region join is typed by what the stream joined against its holder
-carries, so the planner hands the narrowing pass nothing it already knew
-(docs/handoff_open_optimization_items.md, item 1)."""
+carries, so the planner hands the narrowing pass nothing it already knew."""
 
 from tests.core.processing.test_v4_dim_peel_not_built import _MODEL
 from trilogy import Dialects, Environment

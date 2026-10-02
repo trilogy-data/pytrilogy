@@ -17,8 +17,7 @@ derivation and by why it is dead:
 
 and whether a nested plan (an existence feeder or rowset body) builds a group
 of the same id, which is the q37 shape: the outer root is dead and the
-feeder's own plan answers the question. See
-docs/handoff_duplicate_source_requests.md, "What remains".
+feeder's own plan answers the question.
 """
 
 from __future__ import annotations

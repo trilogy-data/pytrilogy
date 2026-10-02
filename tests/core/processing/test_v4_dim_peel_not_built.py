@@ -1,7 +1,7 @@
 """A dimension peel (`_split_root_dimension_clusters`) is not built when it
 cannot be read: keyed by the bucket's own row key, it rescans the fact; keyed
 by an extension region's span, the region domain takes its members and the
-domain is what FINAL reads (docs/handoff_dim_peel_beside_region_domains.md)."""
+domain is what FINAL reads."""
 
 from trilogy import Dialects, Environment
 from trilogy.core.processing import plan_trace

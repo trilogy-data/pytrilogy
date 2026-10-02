@@ -2,7 +2,7 @@
 
 > **Status (2026-09-28).** Phases 0-7 are built on branch `extension-row-null-semantics`, PR #702, except for the deletions that stay as the fallback for regions the keyspace does not model yet ([What stays](#what-stays-and-why)). No wrong-rows item is owed and no ruling is pending; what remains is the optimization candidates (a redundant FINAL dedup, a fact-sized re-join to carry dimension attributes, a merge's own grain claim folding through a padded key, a no-op pivot lookup) and the shapes the keyspace does not model ([Open items](#open-items)). A fresh session should read [The problem](#the-problem) and [The idea](#the-idea) for the vocabulary, then the open items. Before touching a seam, read its section under [Rules as built](#rules-as-built). Git history holds the per-session narratives and A/B tallies this doc used to carry.
 
-Background: `docs/handoff_extension_row_semantics.md` (the rule this serves, and a prototype that was backed out), `docs/extent_ownership.md`, `docs/domain_graph_design.md`. Tooling: `local_scripts/keyspace_ab/README.md` (the A/B), `local_scripts/plan_debugger/README.md` (the step-through [visual debugger](#visual-debugger-mvp-2026-09-27)).
+Background: `docs/extent_ownership.md`, `docs/domain_graph_design.md`. Tooling: `local_scripts/keyspace_ab/README.md` (the A/B), `local_scripts/plan_debugger/README.md` (the step-through [visual debugger](#visual-debugger-mvp-2026-09-27)).
 
 ## The problem
 
