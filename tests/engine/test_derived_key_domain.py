@@ -679,3 +679,63 @@ def test_optional_entity_solid_stream_reads_returns_alone():
     )[-1]
     assert sql.count('as "lines"') == 1
     assert "FULL JOIN" not in sql
+
+
+_COMPLETION_BESIDE_DOMAIN = """
+key customer_id int;
+property customer_id.name string;
+key order_id int;
+key item_id int;
+properties <order_id, item_id> (qty int, ret_order int?);
+auto is_returned <- ret_order is not null;
+
+root datasource customers (customer_id: customer_id, name: name)
+grain (customer_id)
+query '''select 1 as customer_id, 'ann' as name union all select 2, 'bob' union all select 3, 'cat' ''';
+
+root datasource orders (order_id: order_id, customer_id: ~customer_id)
+grain (order_id)
+query '''select 1 as order_id, 1 as customer_id union all select 2, 2''';
+
+root datasource lines (o: order_id, i: item_id, q: qty)
+grain (order_id, item_id)
+query '''select 1 as o, 10 as i, 5 as q union all select 2, 10, 7 union all select 2, 11, 1''';
+
+root datasource returns (o: ~order_id, i: ~item_id, ro: ret_order)
+grain (order_id, item_id)
+query '''select 1 as o, 10 as i, 1 as ro''';
+"""
+
+
+@pytest.mark.parametrize(
+    "query, expected",
+    [
+        (
+            "select customer_id, name, order_id, item_id, is_returned",
+            [
+                (1, "ann", 1, 10, True),
+                (2, "bob", 2, 10, False),
+                (2, "bob", 2, 11, False),
+                (3, "cat", None, None, None),
+            ],
+        ),
+        (
+            "select name, order_id, item_id, ret_order",
+            [
+                ("ann", 1, 10, 1),
+                ("bob", 2, 10, None),
+                ("bob", 2, 11, None),
+                ("cat", None, None, None),
+            ],
+        ),
+    ],
+)
+def test_completion_keeps_its_padding_beside_a_domain_on_its_span(
+    query: str, expected: list[tuple]
+):
+    """`order_id` keeps the unordered customer out of the base region AND is a
+    span `returns` completes `lines` on: the customer domain owning it must not
+    turn `lines LEFT JOIN returns` into an INNER join."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_COMPLETION_BESIDE_DOMAIN)
+    assert _rows(executor, query) == expected

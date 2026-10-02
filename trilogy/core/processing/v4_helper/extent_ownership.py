@@ -84,43 +84,58 @@ def elect_extent_owners(
     # stays unmanaged and keeps per-branch padding, because suppressing what
     # has no owner deletes the extension rows outright.
     ownable: frozenset[str] = frozenset().union(*exposes.values())
-    owner_by_span: dict[str, str] = {}
-    # A group exposing every ownable span keeps the families together: split
-    # ownership manufactures the same extension member in two branches, which
-    # the FINAL merge can only reunite by pairing padding null-safely.
-    joint = [gid for gid, owned in exposes.items() if owned == ownable]
-    if joint:
-        winner = max(joint, key=rank)
-        owner_by_span = {span: winner for span in ownable}
-    else:
-        for span in sorted(ownable):
-            candidates = [gid for gid, owned in exposes.items() if span in owned]
-            owner_by_span[span] = max(candidates, key=rank)
-
     # A region with a domain group of its own is sourced there and nowhere else.
     domain_of_span = {
         span: gid for gid, region in domains.items() for span in region.spans & ownable
     }
-    owner_by_span.update(domain_of_span)
+    # A domain's span also pads elsewhere when a region without a domain
+    # needs it (`returns` completing `lines` on the key a dimension's
+    # extension is kept out by): that padding is elected like any other.
+    padded_elsewhere: frozenset[str] = frozenset().union(
+        *(
+            r.spans | r.live_completes
+            for r in keyspace.live_regions
+            if r not in domains.values()
+        )
+    )
+    elected = ownable - (domain_of_span.keys() - padded_elsewhere)
+    owner_by_span: dict[str, str] = {}
+    # A group exposing every elected span keeps the families together: split
+    # ownership manufactures the same extension member in two branches, which
+    # the FINAL merge can only reunite by pairing padding null-safely.
+    joint = [gid for gid, owned in exposes.items() if elected <= owned]
+    if joint:
+        winner = max(joint, key=rank)
+        owner_by_span = {span: winner for span in elected}
+    else:
+        for span in sorted(elected):
+            candidates = [gid for gid, owned in exposes.items() if span in owned]
+            owner_by_span[span] = max(candidates, key=rank)
 
     permitted: dict[str, frozenset[str]] = {}
     for span, owner in owner_by_span.items():
-        if span in domain_of_span:
-            # The domain holds the members; whatever reads it extends, except
-            # the row streams that must never see an extension row.
-            allowed = ({owner} | nx.descendants(group_graph, owner)) - solid_groups(
-                group_graph, attrs, domains[owner], keyspace, environment
-            )
-        else:
-            allowed = {owner} | nx.ancestors(group_graph, owner)
-        for gid in allowed - {FINAL_NODE_ID}:
-            permitted[gid] = permitted.get(gid, frozenset()) | {span}
+        _permit(permitted, span, {owner} | nx.ancestors(group_graph, owner))
+    for span, owner in domain_of_span.items():
+        # The domain holds the members; whatever reads it extends, except
+        # the row streams that must never see an extension row.
+        _permit(
+            permitted,
+            span,
+            ({owner} | nx.descendants(group_graph, owner))
+            - solid_groups(group_graph, attrs, domains[owner], keyspace, environment),
+        )
+    owner_by_span.update(domain_of_span)
     carried = {
         address: gid for gid in domains for address in attrs[gid].primary_members
     }
     return ExtentOwnership(
         owner_by_span=owner_by_span, permitted=permitted, carried=carried
     )
+
+
+def _permit(permitted: dict[str, frozenset[str]], span: str, groups: set[str]) -> None:
+    for gid in groups - {FINAL_NODE_ID}:
+        permitted[gid] = permitted.get(gid, frozenset()) | {span}
 
 
 def null_on_padding(
