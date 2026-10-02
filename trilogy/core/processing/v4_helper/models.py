@@ -288,6 +288,8 @@ class ConceptAttrs:
     # key). Such a count may share a finer-grain sibling input stream by
     # rendering COUNT(DISTINCT ...) instead of dedup-then-COUNT.
     aggregate_distinct_rewritable: bool = False
+    # the key a COUNT counts (`count(order_id)`), whatever its input grain
+    counted_key: str | None = None
     keys: frozenset[str] = frozenset()
     # For a ROOT whose declared keys the query never names: the KEY roots that
     # jointly determine it through the environment's FD closure (a dimension

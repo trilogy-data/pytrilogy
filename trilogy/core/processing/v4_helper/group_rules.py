@@ -481,6 +481,22 @@ def _partition_grouped_aggregates(
                         | set(data.aggregate_input_grain)
                     )
                 _add_member(bucket, node, data)
+            # One pass reads one row stream. A count of a key counts at the
+            # key's grain, and the stream repeats the key wherever it is
+            # finer: a grouping key the counted key does not determine (its
+            # rows repeat on a subtotal), or a sibling's finer or foreign
+            # input (two facts joined below the pass). DISTINCT on the counted
+            # value is the dedup a pass of its own would have had.
+            residual = bucket.aggregate_input_grain - grain
+            bucket.aggregate_distinct_addrs = {
+                members[i][1].address
+                for i in member_indices
+                if (counted := members[i][1].counted_key) is not None
+                and (
+                    members[i][1].aggregate_input_grain != frozenset({counted})
+                    or residual - {counted}
+                )
+            }
             buckets.append(bucket)
     return buckets
 

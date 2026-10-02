@@ -87,6 +87,7 @@ auto activity <- case when count(order_id) by customer_id > 0 then 'active' else
 auto late_name <- filter name where status = 'in-transit';
 auto undelivered_customer <- filter name where undelivered;
 auto big_name <- filter name where count(order_id) by customer_id > 1;
+auto double_amount <- amount * 2;
 """
 
 # already evaluated on the key's own rows (or NULL-propagating) today
@@ -309,6 +310,46 @@ HOLDS = [
     "select status, count(customer_id) as c, sum(amount) as s where customer_id = 3",
     "select status, count(customer_id) as c, count(order_id) as o where name = 'cat'",
     "select label, count(name) as c, max(amount) as s where name in ('cat', 'bob')",
+    # a WHERE filters the statement's rows and never adds one: an aggregate of
+    # its own counting the region does not make the orderless customer a row
+    "select status, count(order_id) as o where count(customer_id) by customer_id > 0",
+    "select status where count(customer_id) by customer_id > 0",
+    "select order_id, status where count(customer_id) by customer_id > 0",
+    "select status, sum(amount) as t where count(name) by customer_id > 0",
+    "select status, count(customer_id) as c where count(customer_id) by customer_id > 0",
+    # an inline aggregate argument under a ROLLUP is a concept of its own, so
+    # one taking a value on a padded row is computed on the solid rows before
+    # the region's rows enter below the pass, at any depth of its lineage
+    "select customer_id, sum(coalesce(amount, 0)) as t by rollup (customer_id)",
+    "select customer_id, sum(1 + coalesce(amount, 0)) as t by rollup (customer_id)",
+    "select customer_id, sum(amount_or_zero + 1) as t by rollup (customer_id)",
+    "select customer_id, sum(case when undelivered then 1 else 0 end) as n by rollup (customer_id)",
+    "select name, count(coalesce(amount, 0)) as n by rollup (name)",
+    "select name, count(coalesce(name, 'x')) as n, sum(coalesce(amount, 0)) as t by rollup (name)",
+    "select customer_id, sum(coalesce(amount, 0)) as t, count(status) as n by cube (customer_id)",
+    "select customer_id as cid, sum(coalesce(amount, 0)) as t where name != 'ann' by rollup (customer_id)",
+    # an argument left to render inline beside one projected below the padding
+    # keeps its own row inputs
+    "select customer_id, sum(double_amount) as t, count(status) as n",
+    "select customer_id, sum(double_amount) as t, count(status) as n by rollup (customer_id)",
+    "select customer_id, sum(amount * 2) as t, count(label) as n by rollup (customer_id)",
+    # a renamed ROLLUP key renders from the pass's key, not from the column of
+    # the same name computed below the pass
+    "select status as s2, sum(amount) as a, sum(amount_or_zero) as t by rollup (status)",
+    "select status as s2, label as l2, sum(amount_or_zero) as t, sum(flag) as f by rollup (status, label)",
+    # an aggregate over the region grouped by a key absent on it, as an OUTPUT
+    # beside the rows: the region's rows are its NULL group, and the padded
+    # row pairs with it
+    "select customer_id, status, count(customer_id) by status as per_status",
+    "select name, label, count(name) by label as per_label, sum(amount) by label as amt",
+    "select customer_id, status, count(customer_id) by status as per_status where name != 'ann'",
+    "select customer_id, status, count(customer_id) by status as c, count(customer_id) by * as total",
+    "select name, status, count(customer_id) by status as c, count(order_id) by customer_id as o",
+    # a count of a key under a ROLLUP counts at the key's grain on every row
+    # of the pass
+    "select name, status, count(customer_id) as n by rollup (name, status)",
+    "select status, count(customer_id) as c, count(order_id) as o by rollup (status)",
+    "select undelivered, count(customer_id) as n by rollup (undelivered)",
 ]
 
 # none owed today; a strict xfail here is the target for the next planner fix
@@ -462,8 +503,8 @@ def test_orderless_customer_has_no_status(derived: Executor):
 # Aggregates are evaluated OVER a region's extended rows, which is right for
 # every operator whose padded-row answer equals its empty-group answer (`count`
 # is 0 both ways, `sum`/`min`/`max`/`avg` are NULL both ways). `array_agg`
-# collects the padding's NULL into `[NULL]` where no rows at all is NULL, so it
-# is computed on the solid rows and the domain pads it (NULL_COLLECTING_AGGREGATES).
+# collects present values on every dialect, so the padding's NULL is no
+# element and a group of nothing else is NULL like an empty one.
 # The oracle cannot judge it: the materialized twin pads the same way.
 ARRAY_AGG_CASES = [
     (
@@ -483,6 +524,11 @@ ARRAY_AGG_CASES = [
     (
         "select status, array_agg(customer_id) as cs",
         [("delivered", [1, 2]), ("in-transit", [1]), (None, [3])],
+    ),
+    # under a ROLLUP it shares the pass with a derivation absent on the region
+    (
+        "select customer_id, array_agg(amount) as a, count(status) as n by rollup (customer_id)",
+        [(1, [10, 20], 2), (2, [30], 1), (3, None, 0), (None, [10, 20, 30], 3)],
     ),
 ]
 
@@ -748,6 +794,48 @@ def test_rollup_subtotal_row_keeps_its_value(derived: Executor):
             "select status, count(customer_id) as c, sum(amount) as s where name != 'ann'",
             [("delivered", 1, 30), (None, 1, None)],
         ),
+        (
+            "select customer_id, sum(coalesce(amount, 0)) as t by rollup (customer_id)",
+            [(1, 30), (2, 30), (3, None), (None, 60)],
+        ),
+        (
+            "select customer_id, sum(1 + coalesce(amount, 0)) as t by rollup (customer_id)",
+            [(1, 32), (2, 31), (3, None), (None, 63)],
+        ),
+        (
+            "select customer_id, sum(double_amount) as t, count(status) as n",
+            [(1, 60, 2), (2, 60, 1), (3, None, 0)],
+        ),
+        (
+            "select status as s2, sum(amount) as a, sum(amount_or_zero) as t by rollup (status)",
+            [("delivered", 40, 40), ("in-transit", 20, 20), (None, 60, 60)],
+        ),
+        (
+            "select customer_id, status, count(customer_id) by status as per_status",
+            [
+                (1, "delivered", 2),
+                (1, "in-transit", 1),
+                (2, "delivered", 2),
+                (3, None, 1),
+            ],
+        ),
+        (
+            "select name, status, count(customer_id) as n by rollup (name, status)",
+            [
+                ("ann", "delivered", 1),
+                ("ann", "in-transit", 1),
+                ("ann", None, 1),
+                ("bob", "delivered", 1),
+                ("bob", None, 1),
+                ("cat", None, 1),
+                ("cat", None, 1),
+                (None, None, 3),
+            ],
+        ),
+        (
+            "select undelivered, count(customer_id) as n by rollup (undelivered)",
+            [(False, 2), (True, 1), (None, 1), (None, 3)],
+        ),
     ],
 )
 def test_region_rows_below_an_aggregate_not_grouped_by_its_key(
@@ -755,6 +843,34 @@ def test_region_rows_below_an_aggregate_not_grouped_by_its_key(
 ):
     assert _rows(derived, query) == expected
     assert _rows(materialized, query) == expected
+
+
+def test_where_aggregate_over_a_region_adds_no_row(
+    derived: Executor, materialized: Executor
+):
+    query = "select order_id, status where count(customer_id) by customer_id > 0"
+    expected = [(100, "delivered"), (101, "in-transit"), (102, "delivered")]
+    assert _rows(derived, query) == expected
+    assert _rows(materialized, query) == expected
+
+
+_RETURNS = """
+key return_id int;
+root datasource returns (return_id: return_id, customer_id: ~customer_id)
+grain (return_id)
+query '''
+select 900 as return_id, 1 as customer_id
+''';
+"""
+
+
+# One ROLLUP pass reads one row stream, so two facts are joined below it and
+# each key repeats per row of the other: a count of a key is DISTINCT there.
+@pytest.mark.parametrize("model", [_DERIVED, _MATERIALIZED])
+def test_counts_of_two_facts_under_one_rollup(model: str):
+    executor = _executor(model + _RETURNS)
+    query = "select customer_id, count(order_id) as n, count(return_id) as r by rollup (customer_id)"
+    assert _rows(executor, query) == [(1, 2, 1), (2, 1, 0), (3, 0, 0), (None, 3, 1)]
 
 
 def test_rollup_by_an_absent_key_counts_the_region(
