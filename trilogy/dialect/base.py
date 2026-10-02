@@ -272,6 +272,15 @@ def _aggregate_over_collapsed_filter(
     return any(cte.filter_collapses_to_grain(x) for x in agg.function.concept_arguments)
 
 
+def _existence_alias(target: str, cte: "CTE | UnionCTE | None") -> str:
+    """The name a membership subselect reads its set under. Reusing an alias
+    the outer FROM already binds would shadow it, so the probe would read the
+    subselect's own rows instead of the outer row."""
+    if isinstance(cte, CTE) and target in cte.from_scope_aliases():
+        return f"{target}_set"
+    return target
+
+
 def _is_build_row_tuple(x: Any) -> bool:
     """True for a ROW_TUPLE operand of composite (row-wise) membership."""
     return isinstance(x, BuildFunction) and x.operator == FunctionType.ROW_TUPLE
@@ -1832,20 +1841,21 @@ class BaseDialect:
             assert isinstance(cte, CTE)
             target = cte.source_key_for(target)
             self.used_map[target].add(rc.address)
-            new_base = inlined_parent.datasource.safe_location
+            alias = _existence_alias(target, cte)
             phys = inlined_parent.consumer_column(rc)
             if isinstance(phys, str):
-                col_ref = f"{target}.{self.QUOTE_CHARACTER}{phys}{self.QUOTE_CHARACTER}"
+                col_ref = f"{alias}.{self.QUOTE_CHARACTER}{phys}{self.QUOTE_CHARACTER}"
             elif isinstance(phys, RawColumnExpr):
                 col_ref = phys.text
             else:
                 col_ref = self.render_expr(phys, cte=cte, raise_invalid=raise_invalid)
-            return f"{new_base} as {target}", col_ref
+            return f"{inlined_parent.datasource.safe_location} as {alias}", col_ref
         self.used_map[target].add(rc.address)
+        alias = _existence_alias(target, cte)
         col_ref = (
-            f"{target}.{self.QUOTE_CHARACTER}{rc.safe_address}{self.QUOTE_CHARACTER}"
+            f"{alias}.{self.QUOTE_CHARACTER}{rc.safe_address}{self.QUOTE_CHARACTER}"
         )
-        return target, col_ref
+        return (target if alias == target else f"{target} as {alias}"), col_ref
 
     def render_composite_membership(
         self,
