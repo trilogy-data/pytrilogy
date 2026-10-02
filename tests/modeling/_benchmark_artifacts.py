@@ -6,15 +6,16 @@ three size measures) and folds its timings into
 pins `newline="\n"` — platform-native newlines would rewrite every line of
 both on Windows.
 
-The committed `gen_length` is also the size baseline every run is checked
-against, so a plan that grows fails here rather than landing as an artifact
-diff nobody reads.
+The committed `gen_length` and the CTE count of the committed SQL are also
+the size baselines every run is checked against, so a plan that grows fails
+here rather than landing as an artifact diff nobody reads.
 """
 
 from __future__ import annotations
 
 import os
 import platform
+import re
 from pathlib import Path
 
 import tomli_w
@@ -57,8 +58,17 @@ def size_budget(baseline: int) -> int:
     return baseline + max(SIZE_REGRESSION_FLOOR, int(baseline * SIZE_REGRESSION_RATIO))
 
 
-def check_query_size(root: Path, label: str, gen_length: int) -> None:
-    """Fail when a query's generated SQL outgrows its committed baseline.
+_CTE_HEADER = re.compile(r"^\w+ as \(", re.MULTILINE)
+
+
+def cte_count(sql: str) -> int:
+    return len(_CTE_HEADER.findall(sql))
+
+
+def check_query_size(root: Path, label: str, query: str, gen_length: int) -> None:
+    """Fail when a query's generated SQL outgrows its committed baseline: in
+    length past `size_budget`, or by any CTE. A CTE is work, and one can hide
+    inside the length budget beside text that shrinks elsewhere.
 
     The log is NOT rewritten when it does: a run that overwrote it would leave
     the next run passing against the inflated size, which is how a 7% growth on
@@ -66,17 +76,27 @@ def check_query_size(root: Path, label: str, gen_length: int) -> None:
     """
     if os.environ.get(REBASELINE_ENV):
         return
-    baseline = load_toml_mapping(root / f"zquery{label}.log").get("gen_length")
-    if not isinstance(baseline, int):
-        return
-    budget = size_budget(baseline)
-    if gen_length <= budget:
-        return
+    logged = load_toml_mapping(root / f"zquery{label}.log")
+    baseline = logged.get("gen_length")
+    if isinstance(baseline, int) and gen_length > size_budget(baseline):
+        _fail(
+            label,
+            f"generated SQL grew {baseline} -> {gen_length} chars, over its "
+            f"budget of {size_budget(baseline)}",
+        )
+    committed = logged.get("generated_sql")
+    if isinstance(committed, str) and cte_count(query) > cte_count(committed):
+        _fail(
+            label,
+            f"generated SQL grew {cte_count(committed)} -> {cte_count(query)} CTEs",
+        )
+
+
+def _fail(label: str, growth: str) -> None:
     raise AssertionError(
-        f"query {label} generated SQL grew {baseline} -> {gen_length} chars, "
-        f"over its budget of {budget}; its log is left at the committed "
-        f"baseline. If the growth is intended, re-run with "
-        f"{REBASELINE_ENV}=1 to accept it and commit the new log."
+        f"query {label} {growth}; its log is left at the committed baseline. "
+        f"If the growth is intended, re-run with {REBASELINE_ENV}=1 to accept "
+        f"it and commit the new log."
     )
 
 
@@ -88,7 +108,7 @@ def write_query_log(
     preql_size: int,
     comp_size: int,
 ) -> None:
-    check_query_size(root, label, gen_length)
+    check_query_size(root, label, query, gen_length)
     with open(root / f"zquery{label}.log", "w", encoding="utf-8", newline="\n") as f:
         f.write(
             tomli_w.dumps(
