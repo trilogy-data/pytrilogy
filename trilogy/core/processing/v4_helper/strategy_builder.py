@@ -4516,7 +4516,9 @@ def _assemble_final_node(
             final_already_applied = True
         # Same again for a feeder joining a region holder on its span (`select
         # name where status is null`: the condition scan carries `customer_id`,
-        # the domain hides it), which the dedup to `name` would strip.
+        # the domain hides it), or on a column the holder carries beside its
+        # outputs (`count(order_id) by city`), which the dedup to `name` would
+        # strip.
         relation_paired_feeders = False
         region_paired_feeders = False
         if final_conditions is not None and not final_already_applied:
@@ -4532,8 +4534,9 @@ def _assemble_final_node(
             }
             relation_paired_feeders = any(outs & scoped_addrs for outs in feeder_outs)
             spans = region_reads(sole_node)
-            region_paired_feeders = any(
-                outs & spans - mandatory_addresses for outs in feeder_outs
+            region_paired_feeders = bool(spans) and any(
+                outs & (spans | sole_avail) - mandatory_addresses
+                for outs in feeder_outs
             )
         if final_probe_args or relation_paired_feeders or region_paired_feeders:
             conditioned = _apply_final_conditions(sole_node)

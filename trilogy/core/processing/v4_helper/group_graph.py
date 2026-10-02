@@ -1799,6 +1799,16 @@ def _compute_concept_sets(
     final_condition_args -= mandatory_addresses
     io.outputs[FINAL_NODE_ID] = set(mandatory_addresses)
     io.inputs[FINAL_NODE_ID] = set(mandatory_addresses) | final_condition_args
+    # the grains of the aggregates a FINAL atom reads: a region domain pairs
+    # with them there on what it carries (`count(order_id) by city`)
+    final_gate_grains: frozenset[str] = frozenset().union(
+        *(
+            facts[p].grain
+            for p in group_graph.predecessors(FINAL_NODE_ID)
+            if facts[p].derivation in GROUPING_DERIVATIONS
+            and facts[p].primary & final_condition_args
+        )
+    )
 
     primary_to_gid: dict[str, str] = {}
     for gid, fact in facts.items():
@@ -1845,6 +1855,8 @@ def _compute_concept_sets(
                 final_args_here = cap_gid & final_condition_args
                 outs |= final_args_here
                 outs |= cap_gid & region_join_keys
+                if gid in domain_gids:
+                    outs |= cap_gid & final_gate_grains
                 # a dim peel beside a region domain joins the region's rows
                 # back on its keys (the fact's FK cluster is the bridge)
                 if attrs[gid].dim_keys and region_join_keys:
