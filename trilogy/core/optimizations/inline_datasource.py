@@ -238,7 +238,6 @@ def _fold_plan(
     cte: CTE,
     parent: DatasourceCTE,
     base: BuildDatasource,
-    inverse_map: dict[str, list[CTE | UnionCTE]],
 ) -> tuple[set[str], list[tuple[int, BuildConcept]] | None]:
     """The join keys the raw scan cannot supply, and the rename-fold plan
     covering whatever else the consumer reads through this parent. An empty
@@ -247,13 +246,10 @@ def _fold_plan(
     A merged key present as one datasource column also satisfies its pseudonym
     addresses (a fact FK covers the canonical dim key it was merged with); the
     base datasource only declares the native address, and the join resolver is
-    pseudonym-aware. Gated to a single-consumer scan: inlining a scan shared by
-    more than one consumer duplicates it into each, and a shared scan is
-    cheaper kept as one CTE."""
+    pseudonym-aware."""
     root_outputs = {x.address for x in base.output_concepts}
-    if len(inverse_map.get(parent.name, [])) <= 1:
-        for x in base.output_concepts:
-            root_outputs |= x.pseudonyms
+    for x in base.output_concepts:
+        root_outputs |= x.pseudonyms
     join_demand = _join_key_demand(cte, parent.name) - root_outputs
     if join_demand:
         return join_demand, []
@@ -342,7 +338,7 @@ class InlineDatasource(OptimizationRule):
                     "the consumer's joins would misattribute"
                 )
                 continue
-            join_demand, plan = _fold_plan(cte, parent_cte, root, inverse_map)
+            join_demand, plan = _fold_plan(cte, parent_cte, root)
             if join_demand:
                 self.log(
                     f"Cannot inline: join keys {join_demand} read from "
@@ -386,9 +382,7 @@ class InlineDatasource(OptimizationRule):
             assert isinstance(replaceable_base, BuildDatasource)
             # Recompute at apply time: candidacy was established on a prior
             # visit and other merges may have shifted this CTE's source_map.
-            join_demand, plan = _fold_plan(
-                cte, replaceable, replaceable_base, inverse_map
-            )
+            join_demand, plan = _fold_plan(cte, replaceable, replaceable_base)
             if join_demand:
                 self.log(
                     f"Failed to inline {replaceable.name}: join keys {join_demand} "
