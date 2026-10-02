@@ -95,14 +95,14 @@ def create_pruned_concept_graph(
     all_concepts: list[BuildConcept],
     datasources: list[BuildDatasource],
     criteria: SearchCriteria,
-    environment: BuildEnvironment | None = None,
+    environment: BuildEnvironment,
     conditions: BuildWhereClause | None = None,
     depth: int = 0,
     allow_intersection: bool = False,
 ) -> ReferenceGraph | None:
     orig_g = g
     g = g.copy()
-    excluded = environment.excluded_enum_values if environment is not None else None
+    excluded = environment.excluded_enum_values
     union_options = get_union_sources(datasources, all_concepts, excluded)
     concepts_by_address = {c.address: c for c in orig_g.concepts.values()}
     target_grain = BuildGrain.from_concepts(all_concepts)
@@ -174,9 +174,7 @@ def create_pruned_concept_graph(
     relevant_concepts: list[str] = list(relevant_concepts_pre.keys())
     # a span this group is built not to extend is completed by its region
     # domain above: the fact's own `~` column is as full as this scan needs
-    promoted = (
-        environment.span_scope.extent_free if environment is not None else frozenset()
-    )
+    promoted = environment.span_scope.extent_free
     partial = get_graph_partial_nodes(g, conditions, excluding=promoted)
     if criteria == SearchCriteria.FULL_ONLY:
         datasource_map = orig_g.datasources

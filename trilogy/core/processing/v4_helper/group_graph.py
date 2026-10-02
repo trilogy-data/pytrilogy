@@ -95,7 +95,7 @@ from .region_domains import (
     feed_region_domains_to_present_scalars,
     split_carried_only_row_streams,
 )
-from .root_partition import partition_root_demand, trace_buckets
+from .root_partition import RootPartition, partition_root_demand, trace_buckets
 
 _REGRAFTABLE_DERIVATIONS: set[Derivation] = {
     Derivation.BASIC,
@@ -289,9 +289,7 @@ def _materialize_group_graph(
     concept_attrs: dict[str, ConceptAttrs],
     primary_group: dict[str, str],
     buckets: dict[str, GroupBucket],
-    d1_root_gids: dict[int | None, str] | None = None,
-    d1_calc_roots_by_stage: dict[int | None, set[str]] | None = None,
-    d1_subgraph: set[str] | None = None,
+    partition: RootPartition,
 ) -> tuple[nx.DiGraph, dict[str, GroupAttrs], EdgeMap]:
     """Realize the in-flight `GroupBucket` map as an nx.DiGraph plus a
     side-table of typed `GroupAttrs` keyed by group id and the typed
@@ -336,9 +334,9 @@ def _materialize_group_graph(
     # through the default bucket and inherits its pushed-down WHEREs. With
     # `then where` stage-qualified condition labels, each stage has its own
     # R_d1; the consuming node's label picks the feeder.
-    d1_root_gids = d1_root_gids or {}
-    d1_calc_roots_by_stage = d1_calc_roots_by_stage or {}
-    d1_subgraph = d1_subgraph or set()
+    d1_root_gids = partition.condition_scans
+    d1_calc_roots_by_stage = partition.condition_roots
+    d1_subgraph = partition.condition_nodes
     # The group-edge `kind` records the strongest concept-level edge that maps
     # to it: lineage > constraint > existence. Lineage means the row stream
     # flows along this edge (JOIN partners, demand propagation, sibling-grain
@@ -2145,9 +2143,7 @@ def build_group_graph(
         concept_attrs,
         primary_group,
         buckets,
-        d1_root_gids=partition.condition_scans,
-        d1_calc_roots_by_stage=partition.condition_roots,
-        d1_subgraph=partition.condition_nodes,
+        partition,
     )
     feed_region_domains_to_present_scalars(
         group_graph, group_edges, attrs, keyspace, environment

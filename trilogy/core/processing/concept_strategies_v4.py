@@ -22,7 +22,6 @@ TVF) live in `v4_node_generators/`. This file is just the public API, the
 materialized-root pre-pass, and the History cache wiring.
 """
 
-from collections.abc import Callable
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
@@ -38,7 +37,6 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment, SpanScope
-from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing import plan_trace
 from trilogy.core.processing.aggregate_rollup import (
     _conditions_supported,
@@ -524,10 +522,6 @@ def _build_from_graph(
     staged_conditions: list[BuildWhereClause] | None = None,
     depth: int = 0,
 ) -> BuildInfo:
-    from trilogy.core.processing.v4_node_generators.rowset_witness import (  # cycle
-        statement_keyspace,
-    )
-
     with plan_trace.plan_scope(
         f"plan: {', '.join(c.address for c in mandatory_list)}",
         depth,
@@ -542,7 +536,6 @@ def _build_from_graph(
             conditions,
             materialized_roots,
             complete_partials,
-            statement_keyspace,
             staged_conditions,
             depth,
         )
@@ -556,10 +549,13 @@ def _build_from_graph_traced(
     conditions: list[BuildWhereClause],
     materialized_roots: frozenset[str],
     complete_partials: bool,
-    statement_keyspace: Callable[..., Keyspace],
     staged_conditions: list[BuildWhereClause] | None,
     depth: int,
 ) -> BuildInfo:
+    from trilogy.core.processing.v4_node_generators.rowset_witness import (  # cycle
+        statement_keyspace,
+    )
+
     if plan_trace.active():
         plan_trace.record(
             "requested concepts",

@@ -389,16 +389,10 @@ class MergeNode(StrategyNode):
         by customer_id = 0`) accepts the padded row and proves nothing about
         the side that padded it. The WHERE's own inputs count: such a count
         need not be an output."""
-        if not any(region_reads(p) for p in self.parents) or all(
-            region_reads(p) for p in self.parents
-        ):
+        solid = [p for p in self.parents if not region_reads(p)]
+        if not solid or len(solid) == len(self.parents):
             return frozenset()
-        solid_outputs = {
-            o.address
-            for p in self.parents
-            if not region_reads(p)
-            for o in p.output_concepts
-        }
+        solid_outputs = {o.address for p in solid for o in p.output_concepts}
         read = list(self.output_concepts)
         if isinstance(self.conditions, BuildConceptArgs):
             read.extend(self.conditions.row_arguments)
