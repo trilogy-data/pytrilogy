@@ -1150,6 +1150,7 @@ class Environment:
             EdgeScope,
             declared_edge_from_join,
             structural_domain_edge,
+            tag_scoped_joins,
         )
 
         edge = declared_edge_from_join(*pair, scope=EdgeScope.GLOBAL)
@@ -1157,9 +1158,7 @@ class Environment:
             return
         cached = self._merge_lint_graph
         if cached is None or cached[0] != len(self.merges):
-            graph = DomainGraph.from_scoped_joins(
-                [(merge, EdgeScope.GLOBAL) for merge in self.merges]
-            )
+            graph = DomainGraph.from_scoped_joins(tag_scoped_joins(merges=self.merges))
         else:
             graph = cached[1]
         probe = graph.with_overlay(

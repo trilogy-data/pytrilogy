@@ -32,7 +32,13 @@ from trilogy.core.processing.node_generators.presence_probe import is_presence_p
 
 from .concept_graph import computed_origin_relation_members
 from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS, DepthLabel, EdgeKind
-from .edges import EdgeMap, edge_kind, lineage_subgraph, subgraph_of_kinds
+from .edges import (
+    EdgeMap,
+    edge_kind,
+    edges_of_kind,
+    lineage_subgraph,
+    subgraph_of_kinds,
+)
 from .functional_dependency import build_fd_determines
 from .models import ConceptAttrs, GroupBucket
 from .projection import output_rowset_grain_keys
@@ -423,6 +429,24 @@ def _routes_to_final_for_cross_grain_aggregates(
         if b.derivation in _EMITS_GROUP_BY and set(b.primary_members) & agg_outputs
     }
     return len(agg_grains) > 1
+
+
+def _host_election_graph(
+    lineage_ancestors_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    buckets: dict[str, GroupBucket],
+) -> nx.DiGraph:
+    """The ancestry an atom's host is elected over. A ROOT re-plans its rows
+    from the datasources and never reads a constraint feeder's node, so the
+    feeder is not upstream of it: an atom elected onto the feeder in its place
+    is never applied."""
+    host_graph = lineage_ancestors_graph.copy()
+    host_graph.remove_edges_from(
+        (u, v)
+        for u, v in edges_of_kind(group_edges, EdgeKind.CONSTRAINT)
+        if v in buckets and buckets[v].derivation == Derivation.ROOT
+    )
+    return host_graph
 
 
 def _upstream_most(
@@ -1015,6 +1039,7 @@ def plan_condition_placements(
     lineage_ancestors_graph = subgraph_of_kinds(
         group_graph, group_edges, EdgeKind.LINEAGE, EdgeKind.CONSTRAINT
     )
+    host_graph = _host_election_graph(lineage_ancestors_graph, group_edges, buckets)
     group_members: dict[str, set[str]] = {
         gid: set(b.primary_members) | b.carried for gid, b in buckets.items()
     }
@@ -1519,9 +1544,7 @@ def plan_condition_placements(
                     )
                 )
                 continue
-            chosen_groups = _choose_groups(
-                restricted, lineage_ancestors_graph, main_lineage
-            )
+            chosen_groups = _choose_groups(restricted, host_graph, main_lineage)
             # A d1 scope that cannot discharge the atom cannot hand it to
             # anything else on its chain either, so the WHOLE nested pool steps
             # aside and `_upstream_most` sees the outer host it was shadowing.
@@ -1540,7 +1563,7 @@ def plan_condition_placements(
                 outer_hosts = [gid for gid in restricted if gid not in nested_ids]
                 if outer_hosts:
                     chosen_groups = _choose_groups(
-                        outer_hosts, lineage_ancestors_graph, main_lineage
+                        outer_hosts, host_graph, main_lineage
                     )
             placements.append(
                 ConditionPlacement(

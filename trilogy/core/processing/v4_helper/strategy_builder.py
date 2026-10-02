@@ -1354,6 +1354,20 @@ def _parent_nodes_for(
     return parents
 
 
+def _raise_on_discarded_parent_filters(gid: str, parents: list[StrategyNode]) -> None:
+    """A ROOT re-plans its rows from the datasources and reads no parent, so a
+    filter a parent applies would silently vanish from the plan."""
+    for parent in parents:
+        if parent.conditions is not None or parent.existence_concepts:
+            raise ValueError(
+                f"[v4] ROOT {gid} would discard the filter its parent "
+                f"{parent.origin_group} applies "
+                f"({parent.conditions or parent.existence_concepts}). This is a "
+                "planner bug: the condition was placed on a group the ROOT does "
+                "not read."
+            )
+
+
 def _fold_constant_parents(
     parents: list[StrategyNode], needed: set[str]
 ) -> list[StrategyNode]:
@@ -5457,6 +5471,8 @@ def build_strategy_node(
             node.origin_group = gid
             logger.info(f"[v4] built {gid} reads {twin}: the same ROOT request")
         else:
+            if derivation == Derivation.ROOT:
+                _raise_on_discarded_parent_filters(gid, parents)
             node = build_node(
                 derivation=derivation,
                 outputs=outputs,

@@ -11,6 +11,7 @@ stack it. Keeping the sequence here is what stops the three from drifting apart.
 from dataclasses import dataclass
 
 from trilogy.constants import logger
+from trilogy.core.domain_graph import EdgeScope
 from trilogy.core.enums import JoinType
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph
@@ -21,8 +22,10 @@ from trilogy.core.models.build import (
     BuildSelectLineage,
     BuildWhereClause,
     Factory,
+    scope_tagged_joins,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.environment import Environment
 from trilogy.core.processing.discovery_utility import (
     LOGGER_PREFIX,
     depth_to_prefix,
@@ -36,22 +39,23 @@ from .common import search_parent
 from .condition_sources import resolve_and_inject_condition
 
 
-def _scoped_joins_for_rowset(
+def _inherited_joins(
     scoped_joins: list[tuple[str, str, JoinType]],
+    environment: Environment,
     derived_concepts: list[str],
 ) -> list[tuple[str, str, JoinType]]:
-    """A query-scoped `join`/`merge` relates the rowset's *output* to an outer
-    concept; it must not be applied inside the rowset's own (independent-scope)
-    build. Such a join collapses the outer concept onto the rowset output via
-    the merge map/pseudonym, so if the rowset's WHERE references that outer
-    concept (e.g. a membership existence feeder), sourcing the feeder redirects
-    back to the rowset's own output and the rowset depends on itself (infinite
-    recursion). Drop any join referencing a concept this rowset derives."""
+    """The enclosing resolution's joins a nested select builds under: only the
+    environment's global merges. A statement's own joins relate ITS concepts
+    and never reach into a nested scope (q64's outer `union join agg_99.x =
+    agg_00.x = ss.item.sk` made the `ss_rows_*` bodies read their own consumers).
+    A global merge naming one of a rowset's own derived concepts is dropped
+    too: the body would canonicalize its output onto the merge group and source
+    it back through itself."""
     derived = set(derived_concepts)
     return [
         (s, t, jt)
-        for (s, t, jt) in scoped_joins
-        if s not in derived and t not in derived
+        for (s, t, jt), scope in scope_tagged_joins(scoped_joins, environment)
+        if scope is EdgeScope.GLOBAL and s not in derived and t not in derived
     ]
 
 
@@ -128,16 +132,15 @@ def build_nested_select(
     read-back raises a misleading DisconnectedConceptsException for a join that is
     in fact present inside the rowset.
 
-    ``exclude_derived`` carries a rowset body's own derived concepts: an OUTER
-    query-scoped join referencing them (``subset join a.store = b.store``)
-    relates this rowset's output to its sibling and must not be applied inside
-    the body's independent scope (see `_scoped_joins_for_rowset`); the body
-    would canonicalize its own output onto the cross-rowset group and source it
-    back through itself."""
+    Of the enclosing resolution's joins only global merges apply here (see
+    `_inherited_joins`); ``exclude_derived`` carries a rowset body's own derived
+    concepts, which no inherited merge may name."""
     author_env = history.base_environment
     caches = history.build_caches
     nested_scoped = select.scoped_joins if isinstance(select, SelectLineage) else []
-    outer_scoped = _scoped_joins_for_rowset(caches.scoped_joins, exclude_derived or [])
+    outer_scoped = _inherited_joins(
+        caches.scoped_joins, author_env, exclude_derived or []
+    )
     scoped_joins = outer_scoped + [j for j in nested_scoped if j not in outer_scoped]
     # A rowset body is built for its witness and again for its plan; both
     # read the same scope, and planning restores the span scope it sets.
@@ -154,9 +157,8 @@ def build_nested_select(
     # here (an outer-built join key comes back with no pseudonym link to its
     # body mate, so the inner aggregate detaches from its grouping key and
     # FINAL cross-joins ON 1=1); build this scope with fresh caches. The
-    # converse (outer joins EXCLUDED here via `exclude_derived`) keeps the
-    # shared caches: boundary pairing reads the outer join's pseudonym stamps
-    # off them.
+    # converse (the statement's joins not inherited) keeps the shared caches:
+    # boundary pairing reads the outer join's pseudonym stamps off them.
     if any(j not in caches.scoped_joins for j in scoped_joins):
         caches = BuildCaches(
             pseudonym_map=caches.pseudonym_map,
