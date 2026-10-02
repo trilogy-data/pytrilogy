@@ -52,7 +52,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.models.keyspace import Completion, Keyspace, Region
+from trilogy.core.models.keyspace import Completion, Keyspace, Region, spans_in_play
 from trilogy.core.processing.condition_utility import gather_non_null_proofs
 
 from .functional_dependency import minimize_build_grain
@@ -233,11 +233,11 @@ def _rowset_sources(witnesses: tuple[RowsetWitness, ...]) -> tuple[_SourceFacts,
     out: list[_SourceFacts] = []
     for witness in witnesses:
         for region in witness.regions:
-            partial = frozenset().union(
+            smaller_spans = frozenset().union(
                 *(r.spans for r in witness.regions if r.present < region.present)
             )
             bound: Carried = {
-                handle: witness.entity_handles.get(handle, frozenset()) & partial
+                handle: witness.entity_handles.get(handle, frozenset()) & smaller_spans
                 for handle in region.bound
             }
             out.append(
@@ -658,6 +658,15 @@ def _has_extension_license(datasources: list[BuildDatasource]) -> bool:
     return any(ds.column_level_partial_addresses for ds in datasources)
 
 
+def _entity_reach(
+    facts: _ModelFacts,
+    canonical: dict[str, str],
+    entities: frozenset[str],
+    spans: frozenset[str],
+) -> frozenset[str]:
+    return facts.reach_of(frozenset(canonical.get(s, s) for s in spans)) & entities
+
+
 def build_keyspace(
     concept_attrs: dict[str, ConceptAttrs],
     mandatory_list: list[BuildConcept],
@@ -738,9 +747,6 @@ def build_keyspace(
     rejected = null_rejected(conditions)
     rejected_roots = frozenset(canonical.get(a, a) for a in rejected)
 
-    def reach_of(spans: frozenset[str]) -> frozenset[str]:
-        return facts.reach_of(frozenset(canonical.get(s, s) for s in spans)) & entities
-
     base_sources = witnesses.get(entities, [])
     regions = [
         Region(
@@ -782,17 +788,17 @@ def build_keyspace(
                     for a in rejected
                     if not keys_by_address.get(a, frozenset()) <= full
                 ),
-                reach=reach_of(spans),
+                reach=_entity_reach(facts, canonical, entities, spans),
             )
         )
-    in_play: frozenset[str] = frozenset().union(
-        *(r.spans | r.completes for r in regions)
-    )
     return Keyspace(
         regions=tuple(regions),
         keys_by_address=keys_by_address,
         outputs=tuple(c.address for c in mandatory_list),
-        span_reach={span: reach_of(frozenset({span})) for span in in_play},
+        span_reach={
+            span: _entity_reach(facts, canonical, entities, frozenset({span}))
+            for span in spans_in_play(regions)
+        },
         witnessed=witnessed,
         unread_spans=unread,
     )

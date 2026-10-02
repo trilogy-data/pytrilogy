@@ -407,12 +407,8 @@ def _referenced_parents(
     named = {name for names in source_map.values() for name in names}
     named.update(name for names in existence_map.values() for name in names)
     for join in joins:
-        if not isinstance(join, Join):
-            continue
-        named.add(join.right_cte.name)
-        if join.left_cte is not None:
-            named.add(join.left_cte.name)
-        named.update(pair.cte.name for pair in join.joinkey_pairs or [])
+        if isinstance(join, Join):
+            named.update(c.name for c in join.participants())
     return [
         parent
         for parent in parents

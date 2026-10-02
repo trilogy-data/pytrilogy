@@ -11,14 +11,22 @@ from trilogy.core.enums import (
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
+    BuildConceptArgs,
     BuildConditional,
     BuildDatasource,
     BuildFilterItem,
     BuildFunction,
     BuildRowsetItem,
 )
-from trilogy.core.models.execute import CTE, Join, QueryDatasource, UnionCTE
+from trilogy.core.models.execute import (
+    CTE,
+    CTEConceptPair,
+    Join,
+    QueryDatasource,
+    UnionCTE,
+)
 from trilogy.core.processing.condition_utility import merge_conditions_and_dedup
+from trilogy.utility import unique
 
 # Derivations whose rows cannot be re-scoped: a window, unnest or recursive
 # output changes meaning when its CTE is folded into, or filtered by, another.
@@ -102,27 +110,105 @@ def carry_child_state(parent: CTE, cte: CTE) -> None:
         parent.order_by = cte.order_by
 
 
-def null_padded_nodes(cte: CTE) -> list[CTE | UnionCTE]:
-    """The sides ``cte``'s own outer joins NULL-pad: the right of a LEFT/FULL,
-    and the accumulated left (the FROM base and every side joined before it,
-    plus every joinkey source) of a RIGHT/FULL."""
-    padded: list[CTE | UnionCTE] = []
-    base_name = cte.base_name
-    accumulated: list[CTE | UnionCTE] = [
-        parent for parent in cte.parent_ctes if parent.name == base_name
-    ]
-    for join in cte.joins or []:
+def cte_source_keys(cte: CTE | UnionCTE) -> set[str]:
+    return {cte.name, cte.safe_identifier}
+
+
+def seed_ctes(cte: CTE | UnionCTE) -> list[CTE | UnionCTE]:
+    """The CTE supplying the FROM clause: the LEFT side of the chain's first
+    join, resolved in priority order:
+      - ``joins[0].left_cte`` (explicit).
+      - The ``joinkey_pair.cte``\\s of the first join, which by construction
+        supply its left values and so name the FROM directly. This must beat
+        the parent scan: a parent consumed only through an existence subselect
+        never reaches the join chain, and seeding from it makes the real FROM
+        table's columns look right-only, so a WHERE proof on a shared join key
+        would falsely promote the join.
+      - A ``parent_cte`` that is not consumed as any join's right side,
+        skipping existence-only parents.
+      - A ``joinkey_pair.cte`` on any later join, covering a chain whose left
+        is an inlined CTE with no ``parent_cte`` and no explicit ``left_cte``."""
+    if not isinstance(cte, CTE) or not cte.joins:
+        return []
+    first = cte.joins[0]
+    if not isinstance(first, Join):
+        return []
+    if first.left_cte is not None:
+        return [first.left_cte]
+    right_names = {j.right_cte.name for j in cte.joins if isinstance(j, Join)}
+    first_pair_seeds: list[CTE | UnionCTE] = []
+    seen_pair_names: set[str] = set()
+    for pair in first.joinkey_pairs or []:
+        if (
+            isinstance(pair, CTEConceptPair)
+            and pair.cte.name not in right_names
+            and pair.cte.name not in seen_pair_names
+        ):
+            seen_pair_names.add(pair.cte.name)
+            first_pair_seeds.append(pair.cte)
+    if first_pair_seeds:
+        return first_pair_seeds
+    existence = {s for vals in cte.existence_source_map.values() for s in vals}
+    for parent in cte.dependency_nodes(include_inlined=True):
+        if (
+            isinstance(parent, (CTE, UnionCTE))
+            and parent.name not in right_names
+            and not (cte_source_keys(parent) & existence)
+        ):
+            return [parent]
+    for j in cte.joins:
+        if not isinstance(j, Join):
+            continue
+        for pair in j.joinkey_pairs or []:
+            if isinstance(pair, CTEConceptPair) and pair.cte.name not in right_names:
+                return [pair.cte]
+    return []
+
+
+def accumulated_left_ctes(cte: CTE | UnionCTE, idx: int) -> list[CTE | UnionCTE]:
+    """What join ``idx`` reads on its left (left-deep): its explicit left, the
+    FROM (``seed_ctes``) and every prior join's right side."""
+    if not isinstance(cte, CTE):
+        return []
+    join = cte.joins[idx] if idx < len(cte.joins) else None
+    left: list[CTE | UnionCTE] = []
+    if isinstance(join, Join) and join.left_cte is not None:
+        left.append(join.left_cte)
+    left.extend(seed_ctes(cte))
+    left.extend(prior.right_cte for prior in cte.joins[:idx] if isinstance(prior, Join))
+    return unique(left, "name")
+
+
+def zero_filled_reads(cte: CTE, condition: BoolExpr | None) -> set[str]:
+    """COUNTs ``condition`` reads that ``cte`` renders coalesced to 0
+    (``CTE.zero_fills_count``): a null-rejecting atom over one is satisfied by
+    a padded row, so it is not a non-null proof."""
+    if not isinstance(condition, BuildConceptArgs):
+        return set()
+    return cte.zero_filled_counts(condition.row_arguments)
+
+
+def join_padded_ctes(cte: CTE) -> list[tuple[Join, list[CTE | UnionCTE]]]:
+    """Each of ``cte``'s joins with the sides it NULL-pads: the right of a
+    LEFT/FULL, and everything on its left (plus its joinkey sources) of a
+    RIGHT/FULL."""
+    out: list[tuple[Join, list[CTE | UnionCTE]]] = []
+    for idx, join in enumerate(cte.joins or []):
         if not isinstance(join, Join):
             continue
+        padded: list[CTE | UnionCTE] = []
         if join.jointype in (JoinType.LEFT_OUTER, JoinType.FULL):
             padded.append(join.right_cte)
         if join.jointype in (JoinType.RIGHT_OUTER, JoinType.FULL):
-            padded.extend(accumulated)
-            if join.left_cte is not None:
-                padded.append(join.left_cte)
+            padded.extend(accumulated_left_ctes(cte, idx))
             padded.extend(pair.cte for pair in join.joinkey_pairs or [])
-        accumulated.append(join.right_cte)
-    return padded
+        out.append((join, padded))
+    return out
+
+
+def null_padded_nodes(cte: CTE) -> list[CTE | UnionCTE]:
+    """The sides ``cte``'s own outer joins NULL-pad (``join_padded_ctes``)."""
+    return [node for _, padded in join_padded_ctes(cte) for node in padded]
 
 
 def is_grouped_cte(cte: CTE) -> bool:

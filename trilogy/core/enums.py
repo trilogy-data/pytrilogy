@@ -184,6 +184,11 @@ class JoinType(Enum):
         return [Modifier.PARTIAL] if self is JoinType.LEFT_OUTER else []
 
 
+# Scoped relations with no anchor side: the key is complete, coalesced over
+# both ends (FULL), or the ends are one domain (EQUAL).
+SYMMETRIC_JOIN_TYPES = frozenset({JoinType.FULL, JoinType.EQUAL})
+
+
 class Ordering(Enum):
     ASCENDING = "asc"
     DESCENDING = "desc"

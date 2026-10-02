@@ -66,18 +66,19 @@ def elect_extent_owners(
     if not exposes:
         return ExtentOwnership()
 
-    def rank(gid: str) -> tuple[int, int, int, str]:
-        # Most downstream wins: its rows have already absorbed everything
-        # upstream, so routing extent there keeps one copy rather than one per
-        # branch. Ties break toward the group that holds the key as a member
-        # or a key of its own over one passing it through, then on id for
-        # determinism.
-        return (
+    # Most downstream wins: its rows have already absorbed everything
+    # upstream, so routing extent there keeps one copy rather than one per
+    # branch. Ties break toward the group that holds the key as a member or a
+    # key of its own over one passing it through, then on id for determinism.
+    rank = {
+        gid: (
             len(nx.ancestors(group_graph, gid)),
-            len(exposes[gid] & set(attrs[gid].members)),
-            len(exposes[gid]),
+            len(owned & set(attrs[gid].members)),
+            len(owned),
             gid,
         )
+        for gid, owned in exposes.items()
+    }
 
     # Only a span some group actually delivers can be routed. One nobody
     # exposes (a transitive dimension's key reached purely through a join)
@@ -105,12 +106,12 @@ def elect_extent_owners(
     # the FINAL merge can only reunite by pairing padding null-safely.
     joint = [gid for gid, owned in exposes.items() if elected <= owned]
     if joint:
-        winner = max(joint, key=rank)
+        winner = max(joint, key=rank.__getitem__)
         owner_by_span = {span: winner for span in elected}
     else:
         for span in sorted(elected):
             candidates = [gid for gid, owned in exposes.items() if span in owned]
-            owner_by_span[span] = max(candidates, key=rank)
+            owner_by_span[span] = max(candidates, key=rank.__getitem__)
 
     permitted: dict[str, frozenset[str]] = {}
     for span, owner in owner_by_span.items():
