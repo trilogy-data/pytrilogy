@@ -18,25 +18,6 @@ from .constants import GROUPING_DERIVATIONS, DepthLabel
 from .edges import EdgeMap
 
 
-def carried_keys(
-    derivation: Derivation | None,
-    grain_components: frozenset[str],
-    anchor_keys: frozenset[str],
-    carried_spans: Sequence[str],
-    primary_members: Sequence[str],
-) -> tuple[str, ...]:
-    """The keys a group holds without computing them, each read off the field
-    that says why: the entity key a peel's scalars are anchored to, the spans
-    of the regions its rows pair with, and its grain when it groups."""
-    grain = (
-        sorted(g for g in grain_components if not g.endswith(f".{ALL_ROWS_CONCEPT}"))
-        if derivation in GROUPING_DERIVATIONS
-        else []
-    )
-    keys = dict.fromkeys([*sorted(anchor_keys), *carried_spans, *grain])
-    return tuple(k for k in keys if k not in primary_members)
-
-
 def nulls_grouping_keys(mode: AggregateGroupingMode | None) -> bool:
     """Whether a group written with this GROUP BY mode NULLs its own grouping
     keys on some of the rows it emits.
@@ -183,13 +164,21 @@ class _HeldKeys:
 
     @property
     def carried_keys(self) -> tuple[str, ...]:
-        return carried_keys(
-            self.derivation,
-            self.grain_components,
-            self.anchor_keys,
-            self.carried_spans,
-            self.primary_members,
+        """The keys a group holds without computing them, each read off the
+        field that says why: the entity key a peel's scalars are anchored to,
+        the spans of the regions its rows pair with, and its grain when it
+        groups."""
+        grain = (
+            sorted(
+                g
+                for g in self.grain_components
+                if not g.endswith(f".{ALL_ROWS_CONCEPT}")
+            )
+            if self.derivation in GROUPING_DERIVATIONS
+            else []
         )
+        keys = dict.fromkeys([*sorted(self.anchor_keys), *self.carried_spans, *grain])
+        return tuple(k for k in keys if k not in self.primary_members)
 
     @property
     def nulls_grouping_keys(self) -> bool:

@@ -181,7 +181,9 @@ def region_reads(node: "StrategyNode") -> frozenset[str]:
     if node.region_boundary:
         return out
     for parent in node.parents:
-        out |= region_reads(parent)
+        # a resolved parent carries its own reads (`resolve`)
+        resolved = parent.resolution_cache
+        out |= resolved.region_spans if resolved else region_reads(parent)
     return out
 
 

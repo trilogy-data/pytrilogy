@@ -50,6 +50,68 @@ from .region_domains import (
 )
 
 
+def _needs_pristine_scan(
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    n: str,
+) -> bool:
+    """The calc reads a row POPULATION, so its scan must not see the
+    SELECT-side WHERE atoms."""
+    if concept_attrs[n].derivation in ROW_SHAPE_BARRIER_DERIVATIONS:
+        return True
+    # An existence source (a semijoin RHS, `x in <set>`) is a separate
+    # discovery: its defining lineage must source from a private root, not
+    # the SELECT's common root. Otherwise the fact columns that exist only
+    # to define the set sit in the shared root and drag the SELECT's
+    # dimension projection onto the fact instead of its own dim tables.
+    return any(
+        edge_kind(concept_edges, n, succ) == EdgeKind.EXISTENCE
+        for succ in concept_graph.successors(n)
+    )
+
+
+def _constrains_scanned_output(
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    n: str,
+) -> bool:
+    """The calc filters a d0 output the SELECT scans directly: the
+    cycle-avoidance reason for a split (see `_d1_calc_subgraph`)."""
+    return any(
+        edge_kind(concept_edges, n, succ) == EdgeKind.CONSTRAINT
+        and concept_attrs[succ].derivation not in GROUPING_DERIVATIONS
+        for succ in concept_graph.successors(n)
+    )
+
+
+def _lineage_roots(
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    seeds: list[str],
+) -> set[str]:
+    """Blank-phase ROOT ancestors of `seeds`, walking lineage edges."""
+    roots: set[str] = set()
+    visited: set[str] = set()
+    stack = list(seeds)
+    while stack:
+        cur = stack.pop()
+        for pred, _ in concept_graph.in_edges(cur):
+            if edge_kind(concept_edges, pred, cur) != EdgeKind.LINEAGE:
+                continue
+            if pred in visited:
+                continue
+            visited.add(pred)
+            pa = concept_attrs[pred]
+            if pa.derivation == Derivation.ROOT and pa.depth_label != DepthLabel.D1:
+                roots.add(pred)
+            else:
+                stack.append(pred)
+    return roots
+
+
 def _d1_calc_subgraph(
     concept_graph: nx.DiGraph,
     concept_edges: EdgeMap,
@@ -101,67 +163,42 @@ def _d1_calc_subgraph(
     if not d1_subgraph:
         return {}, set()
 
-    def _needs_pristine_scan(n: str) -> bool:
-        """The calc reads a row POPULATION, so its scan must not see the
-        SELECT-side WHERE atoms."""
-        if concept_attrs[n].derivation in ROW_SHAPE_BARRIER_DERIVATIONS:
-            return True
-        # An existence source (a semijoin RHS, `x in <set>`) is a separate
-        # discovery: its defining lineage must source from a private root, not
-        # the SELECT's common root. Otherwise the fact columns that exist only
-        # to define the set sit in the shared root and drag the SELECT's
-        # dimension projection onto the fact instead of its own dim tables.
-        return any(
-            edge_kind(concept_edges, n, succ) == EdgeKind.EXISTENCE
-            for succ in concept_graph.successors(n)
-        )
-
-    def _constrains_scanned_output(n: str) -> bool:
-        """The calc filters a d0 output the SELECT scans directly: the
-        cycle-avoidance reason for a split (see the docstring)."""
-        for succ in concept_graph.successors(n):
-            if edge_kind(concept_edges, n, succ) != EdgeKind.CONSTRAINT:
-                continue
-            if concept_attrs[succ].derivation not in GROUPING_DERIVATIONS:
-                return True
-        return False
-
-    def _lineage_roots(seeds: list[str]) -> set[str]:
-        """Blank-phase ROOT ancestors of `seeds`, walking lineage edges."""
-        roots: set[str] = set()
-        visited: set[str] = set()
-        stack = list(seeds)
-        while stack:
-            cur = stack.pop()
-            for pred, _ in concept_graph.in_edges(cur):
-                if edge_kind(concept_edges, pred, cur) != EdgeKind.LINEAGE:
-                    continue
-                if pred in visited:
-                    continue
-                visited.add(pred)
-                pa = concept_attrs[pred]
-                if pa.derivation == Derivation.ROOT and pa.depth_label != DepthLabel.D1:
-                    roots.add(pred)
-                else:
-                    stack.append(pred)
-        return roots
-
     # Walk lineage upward from each d1 node that needs an independent scan; the
     # blank-phase ROOT ancestors are the roots whose condition scan must stay
     # separate from the SELECT-side scan. One walk per stage qualifier: a root
     # feeding two stages' computations belongs to both feeders (the scan is
     # duplicated per population, which is the point of the split).
-    pristine = [n for n in d1_subgraph if _needs_pristine_scan(n)]
+    pristine = [
+        n
+        for n in d1_subgraph
+        if _needs_pristine_scan(concept_graph, concept_edges, concept_attrs, n)
+    ]
     cycle_only = [
-        n for n in d1_subgraph if n not in pristine and _constrains_scanned_output(n)
+        n
+        for n in d1_subgraph
+        if n not in pristine
+        and _constrains_scanned_output(concept_graph, concept_edges, concept_attrs, n)
     ]
     stage_of = {
         n: condition_stage_of_label(concept_attrs[n].label) for n in d1_subgraph
     }
     roots_by_stage: dict[int | None, set[str]] = {}
     for stage in {stage_of[n] for n in (*pristine, *cycle_only)}:
-        hard = _lineage_roots([n for n in pristine if stage_of[n] == stage])
-        soft = _lineage_roots([n for n in cycle_only if stage_of[n] == stage]) - hard
+        hard = _lineage_roots(
+            concept_graph,
+            concept_edges,
+            concept_attrs,
+            [n for n in pristine if stage_of[n] == stage],
+        )
+        soft = (
+            _lineage_roots(
+                concept_graph,
+                concept_edges,
+                concept_attrs,
+                [n for n in cycle_only if stage_of[n] == stage],
+            )
+            - hard
+        )
         if soft and _split_strands_condition_scan(
             concept_graph, concept_edges, concept_attrs, soft, d1_subgraph, environment
         ):
@@ -568,7 +605,7 @@ def _post_aggregate_basic_args(
 # re-sourced from a dim table and joined back on an entity key without changing
 # what the consumer reads. FILTER is included: it is not a row-shape barrier
 # (see ROW_SHAPE_BARRIER_DERIVATIONS) and subsets rows without changing any
-# surviving row's value, the same call `_ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS`
+# surviving row's value, the same call `ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS`
 # makes for aggregate inputs.
 _SCALAR_PROJECTION_DERIVATIONS = {Derivation.BASIC, Derivation.FILTER}
 
@@ -681,21 +718,35 @@ def _split_padded_row_streams(
         for addr, node_id in zip(bucket.primary_members, bucket.primary_node_ids):
             key = assignment[addr]
             assert key is not None
-            entity = GroupBucket(
-                depth_label=DepthLabel.ROOT,
-                derivation=Derivation.ROOT,
-                grain_components=frozenset(),
-                label=bucket.label,
-                discriminator=f"dim:{key}",
-                dim_keys=frozenset({key}),
-                reason=RootReason.ENTITY,
+            _peel_into_entity_bucket(
+                buckets, primary_group, bucket, frozenset({key}), addr, node_id
             )
-            entity = buckets.setdefault(entity.group_id, entity)
-            entity.primary_members.append(addr)
-            entity.primary_node_ids.append(node_id)
-            entity.member_depths[addr] = bucket.member_depths.get(addr, DepthLabel.ROOT)
-            primary_group[node_id] = entity.group_id
         del buckets[gid]
+
+
+def _peel_into_entity_bucket(
+    buckets: dict[str, GroupBucket],
+    primary_group: dict[str, str],
+    source: GroupBucket,
+    key: frozenset[str],
+    addr: str,
+    node_id: str,
+) -> None:
+    """Move one member of `source` onto the entity scan keyed by `key`."""
+    entity = GroupBucket(
+        depth_label=DepthLabel.ROOT,
+        derivation=Derivation.ROOT,
+        grain_components=frozenset(),
+        label=source.label,
+        discriminator=f"dim:{'|'.join(sorted(key))}",
+        dim_keys=key,
+        reason=RootReason.ENTITY,
+    )
+    entity = buckets.setdefault(entity.group_id, entity)
+    entity.primary_members.append(addr)
+    entity.primary_node_ids.append(node_id)
+    entity.member_depths[addr] = source.member_depths.get(addr, DepthLabel.ROOT)
+    primary_group[node_id] = entity.group_id
 
 
 def _projected_scalar_root_args(
@@ -1030,18 +1081,7 @@ def _split_root_dimension_clusters(
             # Never peel a pre-aggregate filter column: its WHERE must stay on the
             # fact rows feeding the aggregate, but a peeled column carries its
             # filter to a post-aggregate dim join.
-            determiners = [
-                k
-                for k in candidates
-                if build_fd_determines(
-                    environment, {k}, addr, include_empty_grain=False
-                )
-            ]
-            finest = (
-                _finest_determining_key(determiners, environment)
-                if determiners
-                else None
-            )
+            finest = _entity_key(addr, frozenset(candidates), environment)
             if (
                 addr in pre_aggregate_filter_args
                 and not _preaggregate_filter_allows_dimension_member(
@@ -1088,28 +1128,16 @@ def _split_root_dimension_clusters(
                     primary_group[node_id] = domain.group_id
                 moved.update(indices)
                 continue
-            dim_bucket = GroupBucket(
-                depth_label=DepthLabel.ROOT,
-                derivation=Derivation.ROOT,
-                grain_components=frozenset(),
-                label=bucket.label,
-                discriminator=f"dim:{'|'.join(sorted(key))}",
-                dim_keys=frozenset(key),
-                reason=RootReason.ENTITY,
-            )
             for idx in indices:
-                addr = bucket.primary_members[idx]
-                node_id = bucket.primary_node_ids[idx]
-                dim_bucket.primary_members.append(addr)
-                dim_bucket.primary_node_ids.append(node_id)
-                dim_bucket.member_depths[addr] = bucket.member_depths.get(
-                    addr, DepthLabel.ROOT
+                _peel_into_entity_bucket(
+                    buckets,
+                    primary_group,
+                    bucket,
+                    key,
+                    bucket.primary_members[idx],
+                    bucket.primary_node_ids[idx],
                 )
                 moved.add(idx)
-            dim_gid = dim_bucket.group_id
-            buckets[dim_gid] = dim_bucket
-            for idx in indices:
-                primary_group[bucket.primary_node_ids[idx]] = dim_gid
         kept = [i for i in range(len(bucket.primary_members)) if i not in moved]
         bucket.primary_members = [bucket.primary_members[i] for i in kept]
         bucket.primary_node_ids = [bucket.primary_node_ids[i] for i in kept]
