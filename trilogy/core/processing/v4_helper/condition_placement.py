@@ -35,7 +35,8 @@ from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS, DepthLabel, EdgeKind
 from .edges import EdgeMap, edge_kind, lineage_subgraph, subgraph_of_kinds
 from .functional_dependency import build_fd_determines
 from .models import ConceptAttrs, GroupBucket
-from .projection import decided_at_output_grain, output_rowset_grain_keys
+from .projection import output_rowset_grain_keys
+from .region_reads import restated_over_region
 from .staged_where import (
     CROSS_ROW_DERIVATIONS,
     concept_is_cross_row,
@@ -582,34 +583,25 @@ def _reads_past_region_domain(
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
 ) -> bool:
-    """Whether the atom reads something a region domain's rows hold that the
-    domain itself does not carry as a column.
-
-    Any host below FINAL pairs on solid keys and never sees the rows the domain
-    adds back there: a customer whose every order the atom rejected would
-    return as an extension row, and `status is null` would never test the
-    customer with no order. So the atom is hosted at FINAL only, over the
-    extended rows. The same for a value the region's rows carry but the domain
-    does not hold (`activity`, a scalar over an aggregate by the span): its
-    producer reads the domain, and only FINAL joins the two. A null-rejecting
-    atom over an absent value never gets here: it empties the region, and an
-    empty region gets no domain."""
+    """Whether the atom is tested where a region domain's rows join back
+    (`restated_over_region`, the rule that gave the region its domain): at
+    FINAL, or at an aggregate the domain feeds. A null-rejecting atom over an
+    absent value never gets here: it empties the region, and an empty region
+    gets no domain."""
     for bucket in buckets.values():
         if not bucket.extent_spans:
             continue
         region = keyspace.region_of(bucket.extent_spans)
         if region is None:
             continue
-        members = set(bucket.primary_members) | bucket.carried
-        for address in row_inputs:
-            if address in members:
-                continue
-            if not keyspace.defined_on(address, region):
-                return True
-            if keyspace.carried_on(address, region) and decided_at_output_grain(
-                address, mandatory_list, environment
-            ):
-                return True
+        held = set(bucket.primary_members) | bucket.carried
+        if any(
+            restated_over_region(
+                address, region, held, keyspace, mandatory_list, environment
+            )
+            for address in row_inputs
+        ):
+            return True
     return False
 
 
