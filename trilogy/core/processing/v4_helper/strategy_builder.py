@@ -27,7 +27,7 @@ from trilogy.core.enums import (
     JoinType,
     Purpose,
 )
-from trilogy.core.exceptions import UnresolvableQueryException
+from trilogy.core.exceptions import UnbuiltGroupException, UnresolvableQueryException
 from trilogy.core.functions import propagates_argument_nulls
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
@@ -5071,6 +5071,7 @@ def build_strategy_node(
     root_requests: dict[str, RootRequest] = {}
     feeder_cache = _CleanFeederCache(environment, g, history)
     ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
+    unbuilt: dict[str, list[BuildConcept]] = {}
 
     for gid in _topological_order(group_graph, group_edges):
         if gid == FINAL_NODE_ID:
@@ -5532,6 +5533,7 @@ def build_strategy_node(
                 ),
             )
         if node is None:
+            unbuilt[gid] = outputs
             continue
         if a.extent_spans:
             if derivation == Derivation.ROWSET:
@@ -5572,6 +5574,7 @@ def build_strategy_node(
         )
         built[gid] = node
 
+    _raise_if_unbuilt_group_owed(group_graph, attrs, built, unbuilt)
     # The FINAL assembly is where the owner and the extent-free branches meet;
     # it must see every span again to host the owner's rows, except the ones
     # the plan above holds.
@@ -5615,6 +5618,35 @@ def build_strategy_node(
         # FINAL's own re-sources host their memberships unwired until here.
         _wire_existence(final, built, feeder_cache)
     return final
+
+
+def _raise_if_unbuilt_group_owed(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    built: dict[str, StrategyNode],
+    unbuilt: dict[str, list[BuildConcept]],
+) -> None:
+    """A group that built nothing may drop out only when it owes nothing: no
+    WHERE atom, no reader but the FINAL, and every output another built group
+    emits (a rowset boundary over a plain key a ROOT scan already carries).
+    Skipping any other would silently lose its filter or its rows."""
+    delivered = {
+        address
+        for node in built.values()
+        for output in node.output_concepts
+        for address in (output.address, *output.pseudonyms)
+    }
+    for gid, outputs in unbuilt.items():
+        atoms = _atoms_at(attrs, gid)
+        readers = sorted(set(group_graph.successors(gid)) - {FINAL_NODE_ID})
+        missing = sorted({o.address for o in outputs} - delivered)
+        if atoms or readers or missing:
+            raise UnbuiltGroupException(
+                f"Group {gid} ({attrs[gid].derivation}) could not be built, and "
+                f"nothing else delivers what it owes: WHERE atoms "
+                f"{[str(atom) for atom in atoms]}, readers {readers}, "
+                f"outputs {missing}."
+            )
 
 
 def _has_unsourced_leaf(final: StrategyNode) -> bool:
