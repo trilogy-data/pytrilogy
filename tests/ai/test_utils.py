@@ -349,6 +349,28 @@ class TestFetchWithRetry:
         fetch_with_retry(fetch_fn, options)
         on_retry_mock.assert_called_once_with(1, 20, error)
 
+    def test_suggested_delay_over_cap_raises_without_sleeping(self):
+        response = Response(
+            status_code=429,
+            headers={"Retry-After": "3600"},
+            request=Request("GET", "http://test.com"),
+        )
+        error = HTTPStatusError(
+            "Rate limited", request=response.request, response=response
+        )
+
+        fetch_fn = Mock(side_effect=[error, "success"])
+        on_retry_mock = Mock()
+        options = RetryOptions(max_retries=2, on_retry=on_retry_mock)
+
+        start = time.time()
+        with pytest.raises(HTTPStatusError):
+            fetch_with_retry(fetch_fn, options)
+
+        assert time.time() - start < 1.0
+        assert fetch_fn.call_count == 1
+        on_retry_mock.assert_not_called()
+
     def test_type_preservation(self):
         """Test that return type is preserved correctly."""
         # Test with dict
