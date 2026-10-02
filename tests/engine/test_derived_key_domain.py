@@ -898,3 +898,33 @@ def test_statement_wide_gate_beside_a_region(
 ):
     executor: Executor = request.getfixturevalue(model)
     assert _rows(executor, query) == expected
+
+
+# An aggregate by a column the domain carries (`city`) read by a WHERE pairs
+# with the domain on that column at FINAL: the domain exposes it, and the
+# sole contributor is filtered before its dedup strips it. Beside a span count
+# it was a keyless-join error; alone, a cross join that returned no rows.
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select name where count(order_id) by city = 0 and count(order_id) by customer_id = 0",
+            [("cat",)],
+        ),
+        (
+            "select name where count(customer_id) by city = 1 and count(order_id) by customer_id = 0",
+            [("cat",)],
+        ),
+        ("select name where count(order_id) by city = 0", [("cat",)]),
+        ("select name where count(customer_id) by city = 2", [("ann",), ("bob",)]),
+        (
+            "select city, name where count(order_id) by city = 0",
+            [("y", "cat")],
+        ),
+    ],
+)
+@pytest.mark.parametrize("model", [_DERIVED, _MATERIALIZED], ids=["derived", "mat"])
+def test_aggregate_by_a_carried_column_pairs_on_it(
+    model: str, query: str, expected: list[tuple]
+):
+    assert _rows(_executor(model + _CITIES), query) == expected
