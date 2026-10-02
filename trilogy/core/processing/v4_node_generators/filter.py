@@ -32,7 +32,7 @@ def _rows_unique_at_set(
     joined = BuildGrain(
         components=set().union(*(set(grain.components) for grain in grains if grain))
     )
-    nullable = {c.address for parent in parents for c in parent.nullable_concepts}
+    nullable = [c for parent in parents for c in parent.nullable_concepts]
     emitted = [
         (
             o.lineage.content

@@ -78,14 +78,11 @@ class singledispatchmethod(_stdlib_singledispatchmethod):
 
     On CPython 3.12.8 and 3.13.0-3.13.1 that cache is a WeakKeyDictionary whose
     values close over their own key, so every instance that ever called the
-    method is kept alive for the life of the process (gh-127750)."""
+    method is kept alive for the life of the process (gh-127750).
+
+    The bound method is a bare partial, without the `register`/`__name__`/
+    `__doc__` the stdlib's sets: nothing reads them, and setting them on every
+    access slows each dispatch by half (it is on the renderer's hot path)."""
 
     def __get__(self, obj, cls=None):
-        method = partial(_dispatch_bound, self.dispatcher.dispatch, obj, cls)
-        # what the stdlib's own __get__ puts on the bound method; a bare
-        # partial has no __name__, so update_wrapper cannot do it for us
-        method.register = self.register  # type: ignore[attr-defined]
-        method.__name__ = self.func.__name__  # type: ignore[attr-defined]
-        method.__doc__ = self.func.__doc__
-        method.__isabstractmethod__ = self.__isabstractmethod__  # type: ignore[attr-defined]
-        return method
+        return partial(_dispatch_bound, self.dispatcher.dispatch, obj, cls)

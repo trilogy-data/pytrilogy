@@ -108,6 +108,16 @@ def test_env_var_writes_a_trace_per_statement(tmp_path, monkeypatch):
     assert any(s["phase"] == "sql" for s in written["steps"]) is False
     assert any(s["phase"] == "ctes" for s in written["steps"])
     assert not plan_trace.active()
+    process_query(env, [s for s in statements if isinstance(s, SelectStatement)][-1])
+    assert (tmp_path / "plan.2.json").exists()
+
+
+def test_nested_recording_restores_the_outer_trace():
+    with plan_trace.recording("outer") as outer:
+        with plan_trace.recording("inner"):
+            pass
+        assert plan_trace.current() is outer
+    assert not plan_trace.active()
 
 
 def _tree_groups(node: dict | None, out: set[str] | None = None) -> set[str]:

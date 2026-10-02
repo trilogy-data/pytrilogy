@@ -188,7 +188,7 @@ def resolve_rowset(
     # of that statement, and a body extending them would hand them up as a
     # row source): the body is planned for it without those regions' rows,
     # in its spelling.
-    witness = history.rowset_witnesses.get(lineage.rowset.name)
+    witness = history.rowset_witness(lineage.rowset.name)
     owned = (
         witness.body_spans_of(
             environment.span_scope.extent_free | environment.span_scope.unextended

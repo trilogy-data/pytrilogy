@@ -84,7 +84,7 @@ class _SourceFacts:
 class _ModelFacts:
     """Binding facts of one environment, canonicalized over pseudonyms."""
 
-    stamp: tuple[int, ...]
+    stamp: tuple[BuildDatasource, ...]
     canonical: dict[str, str]
     sources: tuple[_SourceFacts, ...]
     # every spelling of an address that is part of some source's row identity
@@ -425,8 +425,9 @@ def _compute_facts(
     )
     grains: frozenset[str] = frozenset().union(*(s.grain for s in sources))
     return _ModelFacts(
-        # pin-heal and partition exclusion swap datasources before planning
-        stamp=tuple(id(ds) for ds in datasources),
+        # pin-heal and partition exclusion swap datasources before planning;
+        # held, not by id, so a swapped-out one's id is never reused
+        stamp=tuple(datasources),
         canonical=canonical,
         sources=sources,
         identifying=frozenset(
@@ -442,7 +443,8 @@ def _model_facts(environment: BuildEnvironment) -> _ModelFacts:
     if (
         cached is not None
         and cached[0]() is environment
-        and cached[1].stamp == tuple(id(ds) for ds in datasources)
+        and len(cached[1].stamp) == len(datasources)
+        and all(a is b for a, b in zip(cached[1].stamp, datasources))
     ):
         return cached[1]
     facts = _compute_facts(environment, datasources)

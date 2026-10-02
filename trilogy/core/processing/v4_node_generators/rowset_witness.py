@@ -76,27 +76,42 @@ def rowset_witnesses(
             lineages[attrs.rowset_name] = concept.lineage.rowset
     out: list[RowsetWitness] = []
     for name in sorted(lineages):
-        witness = history.rowset_witnesses.get(name)
+        witness = history.rowset_witness(name)
         if witness is None:
-            # A body reading its own rowset (TPC-DS q64: a membership over
-            # `cs_ui` inside `cs_ui`) cannot witness itself, so it reads an
-            # empty placeholder. Anything witnessed while a placeholder was
-            # live understates it, so only this frame's own result is cached:
-            # mutually recursive bodies would otherwise persist each other's
-            # partial answer for the rest of the build, and a raising
-            # `_witness` would leave the placeholder standing as the answer.
-            nested = history.witness_depth > 0
-            history.rowset_witnesses[name] = RowsetWitness(name=name, regions=())
-            history.witness_depth += 1
-            try:
-                witness = _witness(lineages[name], environment, history)
-            finally:
-                history.witness_depth -= 1
-                history.rowset_witnesses.pop(name, None)
-            if not nested:
-                history.rowset_witnesses[name] = witness
+            witness = _computed_witness(name, lineages[name], environment, history)
         out.append(witness)
     return tuple(out)
+
+
+def _computed_witness(
+    name: str,
+    lineage: BuildRowsetLineage,
+    environment: BuildEnvironment,
+    history: V4History,
+) -> RowsetWitness:
+    # A body reading its own rowset (TPC-DS q64: a membership over `cs_ui`
+    # inside `cs_ui`) cannot witness itself, so it reads an empty placeholder.
+    # A result that read the placeholder of an enclosing computation
+    # understates it and is not cached: mutually recursive bodies would
+    # otherwise persist each other's partial answer for the rest of the build.
+    # Every other result is, or a chain of rowsets each reading an earlier one
+    # twice recomputes it once per path. A raising `_witness` must not leave
+    # the placeholder standing as the answer.
+    depth = len(history.live_witnesses)
+    outer_floor = history.witness_floor
+    history.witness_floor = 1 << 30
+    history.live_witnesses[name] = depth
+    history.rowset_witnesses[name] = RowsetWitness(name=name, regions=())
+    try:
+        witness = _witness(lineage, environment, history)
+    finally:
+        floor = history.witness_floor
+        history.witness_floor = min(outer_floor, floor)
+        del history.live_witnesses[name]
+        history.rowset_witnesses.pop(name, None)
+    if floor >= depth:
+        history.rowset_witnesses[name] = witness
+    return witness
 
 
 def _witness(

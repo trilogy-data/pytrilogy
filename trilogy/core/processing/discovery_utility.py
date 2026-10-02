@@ -33,6 +33,8 @@ from trilogy.core.processing.constants import ROOT_DERIVATIONS
 from trilogy.core.processing.grain_utility import (
     _grain_coverage_addresses,
     concept_source_address,
+    determined_past_nulls,
+    nullable_spellings,
 )
 from trilogy.core.processing.rowset_islanding import (
     island_rowsets_for_connectivity,
@@ -126,11 +128,6 @@ def check_if_group_required(
     environment: BuildEnvironment,
     depth: int = 0,
 ) -> GroupRequiredResponse:
-    # Local: v4_helper imports the node package, which imports this module.
-    from trilogy.core.processing.v4_helper.functional_dependency import (
-        build_fd_determines,
-    )
-
     padding = "\t" * depth
     target_grain = BuildGrain.from_concepts(
         downstream_concepts,
@@ -195,20 +192,11 @@ def check_if_group_required(
     # `lines FULL JOIN returns`, `return_id` names the line on the returned
     # rows alone, and the unreturned lines under one NULL are not one row
     # (`select return_id, reason, pname` gave the product's two lines twice).
-    nullable = {
-        equivalent
-        for parent in parents
-        for concept in parent.nullable_concepts
-        for equivalent in concept.equivalent_addresses
-    }
-    if all(
-        build_fd_determines(
-            environment,
-            target_coverage - nullable,
-            component,
-            include_empty_grain=False,
-        )
-        for component in comp_grain.components - target_coverage
+    nullable = nullable_spellings(
+        c for parent in parents for c in parent.nullable_concepts
+    )
+    if determined_past_nulls(
+        environment, target_coverage, nullable, comp_grain.components
     ):
         logger.info(
             f"{padding}{LOGGER_PREFIX} Group requirement check: {comp_grain} functionally determined by target {target_grain}, no group node required"

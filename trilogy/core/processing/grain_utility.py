@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from trilogy.constants import MagicConstants
@@ -820,10 +821,41 @@ def grain_satisfied_by_pregrain(
     )
 
 
+def nullable_spellings(nullable: Iterable[BuildConcept]) -> set[str]:
+    """A key NULL on some row is NULL there under every one of its spellings."""
+    return {
+        equivalent
+        for concept in nullable
+        for equivalent in concept.equivalent_addresses
+    }
+
+
+def determined_past_nulls(
+    environment: BuildEnvironment,
+    coverage: set[str],
+    nullable: set[str],
+    components: Iterable[str],
+) -> bool:
+    """Every component is covered, or determined by covered columns non-null
+    on every row (`nullable` as `nullable_spellings`)."""
+    from trilogy.core.processing.v4_helper.functional_dependency import (
+        build_fd_determines,
+    )
+
+    determinants = coverage - nullable
+    return all(
+        component in coverage
+        or build_fd_determines(
+            environment, determinants, component, include_empty_grain=False
+        )
+        for component in components
+    )
+
+
 def rows_unique_at_outputs(
     joined: BuildGrain,
     outputs: list[BuildConcept],
-    nullable: set[str],
+    nullable: Iterable[BuildConcept],
     environment: BuildEnvironment,
 ) -> bool:
     """The joined rows are already one per output row: every row identity the
@@ -831,20 +863,11 @@ def rows_unique_at_outputs(
     on every row. `joined` is the UNFOLDED union of the sources' grains: the
     key-hierarchy fold (`user.id` under `id`) holds only where the key is
     present, and after `users LEFT items FULL products` it is padded."""
-    from trilogy.core.processing.v4_helper.functional_dependency import (
-        build_fd_determines,
-    )
-
     projected = {
         equivalent for concept in outputs for equivalent in concept.equivalent_addresses
     }
-    determinants = projected - nullable
-    return all(
-        component in projected
-        or build_fd_determines(
-            environment, determinants, component, include_empty_grain=False
-        )
-        for component in joined.components
+    return determined_past_nulls(
+        environment, projected, nullable_spellings(nullable), joined.components
     )
 
 

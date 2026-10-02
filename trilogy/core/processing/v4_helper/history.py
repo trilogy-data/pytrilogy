@@ -54,8 +54,12 @@ class V4History(History):
     # Each rowset the statement reads, as a source of the plans reading it
     # (`keyspace.rowset_witness`): a fact of the rowset, computed once.
     rowset_witnesses: dict[str, RowsetWitness] = field(default_factory=dict)
-    # How many witnesses are mid-computation (`rowset_witnesses()`).
-    witness_depth: int = 0
+    # Witnesses mid-computation (`rowset_witnesses()`), each by its depth,
+    # standing in the cache as an empty placeholder.
+    live_witnesses: dict[str, int] = field(default_factory=dict)
+    # The shallowest live placeholder read since the innermost computation
+    # began: a result that read one above its own frame understates it.
+    witness_floor: int = 1 << 30
     # Spans of the body regions the plan reading a rowset holds the rows of:
     # the body, and every plan under it, is built without them. Managed by
     # `plan_nested_select`; part of the build key.
@@ -100,3 +104,9 @@ class V4History(History):
         self.build_history[
             self._v4_key(search, conditions, complete_partials, staged_conditions)
         ] = output
+
+    def rowset_witness(self, name: str) -> RowsetWitness | None:
+        depth = self.live_witnesses.get(name)
+        if depth is not None:
+            self.witness_floor = min(self.witness_floor, depth)
+        return self.rowset_witnesses.get(name)

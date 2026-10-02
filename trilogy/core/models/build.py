@@ -2543,6 +2543,21 @@ def requires_concept_nesting(
 FOLDED_SCALARS = (str, int, float, Decimal, date, datetime, MagicConstants)
 
 
+def _bare_constant(expr: Any) -> Any:
+    """A folded CASE branch as its bare value: a typed literal (`'..'::date`)
+    builds to a CONSTANT, which would bind as a parameter the author concept
+    (still a CASE) cannot hydrate."""
+    if (
+        isinstance(expr, BuildFunction)
+        and expr.operator == FunctionType.CONSTANT
+        and len(expr.arguments) == 1
+        and isinstance(expr.arguments[0], FOLDED_SCALARS)
+        and not isinstance(expr.arguments[0], bool)
+    ):
+        return expr.arguments[0]
+    return expr
+
+
 def is_constant(x):
     return isinstance(
         x, (str, int, float, bool, MagicConstants, BuildParamaterizedConceptReference)
@@ -3205,12 +3220,12 @@ class Factory:
             for arg in farguments:
                 if isinstance(arg, BuildCaseWhen):
                     if arg.comparison is True:
-                        return arg.expr
+                        return _bare_constant(arg.expr)
                     if arg.comparison is False:
                         continue
                 case_args.append(arg)
             if len(case_args) == 1 and isinstance(case_args[0], BuildCaseElse):
-                return case_args[0].expr
+                return _bare_constant(case_args[0].expr)
             farguments = case_args
 
         new = BuildFunction(
