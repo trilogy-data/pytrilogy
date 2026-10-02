@@ -2,6 +2,8 @@
 properties. The property peels into a dimension bucket of its own, and the
 atom's value comes from a condition branch no bucket holds as a column."""
 
+import pytest
+
 from trilogy import Dialects
 from trilogy.executor import Executor
 
@@ -87,3 +89,53 @@ def test_aggregate_by_a_derived_grain_in_where():
     assert _rows(
         executor, "select customer_id, name where count(order_id) by status > 1;"
     ) == [(1, "ann"), (2, "bob")]
+
+
+MEMBERSHIP_MODEL = """
+key id int;
+property id.x int;
+property id.g string;
+key v int;
+
+root datasource t (id: id, x: x, g: g)
+grain (id)
+query '''
+select 1 as id, 10 as x, 'a' as g union all
+select 2, 20, 'a' union all
+select 3, 30, 'b' union all
+select 4, 40, 'b'
+''';
+
+root datasource vs (v: v)
+grain (v)
+query '''select 20 as v union all select 60 union all select 30''';
+
+auto m <- sum(x) by g;
+auto fx <- x ? x > 15;
+"""
+
+
+@pytest.mark.parametrize(
+    "query, expected",
+    [
+        ("select g where m in v;", [("a",)]),
+        ("select g where m not in v;", [("b",)]),
+        ("select g where m in v and g = 'b';", []),
+        ("select g where m in v or g = 'b';", [("a",), ("b",)]),
+        ("select g, m where m in v;", [("a", 30)]),
+        ("select id where m in v;", [(1,), (2,)]),
+        ("select id where m + 0 in v;", [(1,), (2,)]),
+        ("select id where m in v and x > 15;", [(2,)]),
+        ("select id where x in v or m in v;", [(1,), (2,), (3,)]),
+        ("select g where m in fx;", [("a",)]),
+        ("auto m2 <- m + 0; select id where m2 in v;", [(1,), (2,)]),
+        (
+            "auto dy <- fx + 0; auto lo <- min(dy) by g; select id, g where lo in fx;",
+            [(1, "a"), (2, "a"), (3, "b"), (4, "b")],
+        ),
+    ],
+)
+def test_unselected_aggregate_membership_filters(query: str, expected: list[tuple]):
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(MEMBERSHIP_MODEL)
+    assert _rows(executor, query) == expected
