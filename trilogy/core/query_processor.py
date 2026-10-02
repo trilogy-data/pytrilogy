@@ -955,9 +955,10 @@ def _plan_query_node(
             f"{c.address}<{c.purpose}>{c.derivation}>"
             for c in build_statement.output_components
         ]
+        reason = f" {info.unbuilt_reason}" if info.unbuilt_reason else ""
         raise UnresolvableQueryException(
             f"Could not resolve connections for query with output {error_strings} "
-            "from current model."
+            f"from current model.{reason}"
         )
     if build_statement.having_clause:
         final = build_statement.having_clause.conditional

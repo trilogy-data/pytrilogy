@@ -25,6 +25,7 @@ materialized-root pre-pass, and the History cache wiring.
 from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation
+from trilogy.core.exceptions import UnbuiltGroupException
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
     BuildConcept,
@@ -622,6 +623,8 @@ def _build_from_graph_traced(
         owned=history.owned_spans,
         unextended=undemanded_spans(keyspace, concept_attrs, environment),
     )
+    strategy_node: StrategyNode | None = None
+    unbuilt_reason: str | None = None
     try:
         strategy_node = build_strategy_node(
             group_graph,
@@ -635,6 +638,8 @@ def _build_from_graph_traced(
             staged_conditions=staged_conditions,
             depth=depth,
         )
+    except UnbuiltGroupException as exc:
+        unbuilt_reason = str(exc)
     finally:
         environment.span_scope = outer_scope
     if plan_trace.active():
@@ -651,6 +656,7 @@ def _build_from_graph_traced(
         group_edges=group_edges,
         strategy_node=strategy_node,
         keyspace=keyspace,
+        unbuilt_reason=unbuilt_reason,
     )
 
 

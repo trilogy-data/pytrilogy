@@ -342,6 +342,8 @@ class BuildInfo:
     group_edges: EdgeMap = field(default_factory=dict)
     strategy_node: StrategyNode | None = None
     keyspace: Keyspace = field(default_factory=Keyspace)
+    # Why the plan failed, when a group built nothing that something needed.
+    unbuilt_reason: str | None = None
 
     def copy(self) -> "BuildInfo":
         """Only the strategy node is mutated downstream; the graphs and
@@ -355,6 +357,7 @@ class BuildInfo:
             group_edges=self.group_edges,
             strategy_node=self.strategy_node.copy() if self.strategy_node else None,
             keyspace=self.keyspace,
+            unbuilt_reason=self.unbuilt_reason,
         )
 
 
