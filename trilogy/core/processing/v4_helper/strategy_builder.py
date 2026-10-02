@@ -321,10 +321,12 @@ class _CleanFeederCache:
 
         v4_history = cast(V4History, self._history)
         addresses = {concept.address for concept in group}
-        if len(group) == 1:
+        if len(group) == 1 and not isinstance(group[0].lineage, BuildFilterItem):
             # A single-column set can be widened to its keys: the extra columns
             # only shape the feeder's grain. A tuple must not be widened; an
-            # extra column would change which rows the subselect projects.
+            # extra column would change which rows the subselect projects. Nor
+            # a filter: shown alone its predicate narrows the rows, where
+            # beside a key it is a CASE whose NULL would be a member.
             addresses |= set(group[0].keys or set())
         search = [
             self._environment.concepts[address]

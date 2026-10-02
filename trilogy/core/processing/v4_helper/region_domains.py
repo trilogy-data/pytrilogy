@@ -614,7 +614,9 @@ def feed_region_domains_to_present_scalars(
                 ):
                     continue
                 if _is_region_rows(gid, a, region, solid, keyspace, environment):
-                    _detach_solid_roots(group_graph, group_edges, attrs, gid, scope)
+                    _detach_solid_roots(
+                        group_graph, group_edges, attrs, gid, domain, environment
+                    )
             elif not (
                 a.derivation == Derivation.AGGREGATE
                 and a.label == domain.label
@@ -689,14 +691,26 @@ def _detach_solid_roots(
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     gid: str,
-    scope: str,
+    domain: GroupAttrs,
+    environment: BuildEnvironment,
 ) -> None:
+    """Replace the solid roots `gid` reads with the domain, keeping one that
+    supplies a read the domain does not hold: a condition phase's private scan
+    holds columns the domain, taken from the row stream, never saw."""
+    scope = _scope_and_phase(domain.label)[0]
+    reads = {
+        arg.address
+        for m in attrs[gid].primary_members
+        if (c := environment.concepts.get(m)) is not None and c.lineage is not None
+        for arg in c.lineage.concept_arguments
+    }
     for pred in list(group_graph.predecessors(gid)):
         if (
             attrs[pred].derivation == Derivation.ROOT
             and not attrs[pred].extent_spans
             and _scope_and_phase(attrs[pred].label)[0] == scope
             and edge_kind(group_edges, pred, gid) == EdgeKind.LINEAGE
+            and reads & set(attrs[pred].members) <= set(domain.primary_members)
         ):
             remove_edge(group_graph, group_edges, pred, gid)
 
