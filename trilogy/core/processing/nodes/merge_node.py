@@ -838,13 +838,7 @@ class MergeNode(StrategyNode):
             and rows_unique_at_outputs(
                 joined,
                 self.output_concepts,
-                {
-                    equivalent
-                    for address in nullable_concepts
-                    for equivalent in self.environment.concepts[
-                        address
-                    ].equivalent_addresses
-                },
+                [self.environment.concepts[address] for address in nullable_concepts],
                 self.environment,
             )
         ):

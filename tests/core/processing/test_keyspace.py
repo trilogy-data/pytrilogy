@@ -691,3 +691,33 @@ def test_sub_plan_without_the_where_inherits_the_statement_heal(monkeypatch):
     feeders = [k for k in capture.seen if "local.order_seq" in k.keys_by_address]
     assert feeders
     assert all(k.demanded_spans == frozenset() for k in capture.seen)
+
+
+_CHAIN_MODEL = """
+key id int;
+property id.v int;
+datasource t (id: id, v: v) grain (id) query '''select 1 id, 2 v''';
+rowset r0 <- select id, v where v > 0;
+rowset r1 <- select r0.id, r0.v where r0.v > 0;
+""" + "".join(
+    f"rowset r{i} <- select r{i - 1}.id, r{i - 1}.v where r{i - 1}.id in r{i - 2}.id;\n"
+    for i in range(2, 7)
+)
+
+
+def test_nested_rowset_witness_is_computed_once(monkeypatch):
+    """Each rowset reads the two before it; a nested witness that read no
+    placeholder is cached, so every rowset is witnessed once, not once per
+    path."""
+    calls: list[str] = []
+    original = rowset_witness._witness
+
+    def counted(rowset, *args, **kwargs):
+        calls.append(rowset.name)
+        return original(rowset, *args, **kwargs)
+
+    monkeypatch.setattr(rowset_witness, "_witness", counted)
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(_CHAIN_MODEL)
+    executor.generate_sql("select r6.id, r6.v;")
+    assert sorted(calls) == sorted(set(calls))

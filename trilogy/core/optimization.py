@@ -740,7 +740,7 @@ def optimize_ctes(
             phase_actions[phase.name] = False
             continue
         rule = phase.make_rule()
-        before = {c.name for c in input} | {root_cte.name}
+        before = _traced_names(input, root_cte)
         phase_merged: dict[str, str] = {}
         loops = 0
         complete = False
@@ -798,7 +798,7 @@ def optimize_ctes(
             )
         )
 
-    before = {c.name for c in input} | {root_cte.name}
+    before = _traced_names(input, root_cte)
     if not supports_full_join:
         # The rewrite adds CTEs and repoints FROM bases, so every join-type
         # and placement decision must already be final.
@@ -807,6 +807,13 @@ def optimize_ctes(
     final = reorder_ctes(filter_irrelevant_ctes(input, root_cte))
     _trace_removed("final sweep", "filter_irrelevant_ctes", before, final, root_cte, {})
     return final
+
+
+def _traced_names(ctes: list[CTE | UnionCTE], root_cte: CTE | UnionCTE) -> set[str]:
+    """The CTE names a phase starts with, for `_trace_removed`; none untraced."""
+    if not plan_trace.active():
+        return set()
+    return {c.name for c in ctes} | {root_cte.name}
 
 
 def _trace_removed(

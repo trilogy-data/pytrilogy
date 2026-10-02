@@ -39,8 +39,10 @@ def _filtered_aggregate(
 
 
 def _remove_filter(
-    concept: BuildConcept, filtered: BuildConcept, item: BuildFilterItem
+    cte: CTE, concept: BuildConcept, filtered: BuildConcept, item: BuildFilterItem
 ) -> None:
+    """Swap ``concept`` in ``cte`` for a copy aggregating the unfiltered content;
+    the concept itself is shared with every other holder of it."""
     assert isinstance(concept.lineage, BuildAggregateWrapper)
     assert isinstance(item.content, BuildConcept)
     function = replace(
@@ -50,7 +52,14 @@ def _remove_filter(
             for argument in concept.lineage.function.arguments
         ],
     )
-    concept.lineage = replace(concept.lineage, function=function)
+    unfiltered = replace(concept, lineage=replace(concept.lineage, function=function))
+    cte.output_columns = [
+        unfiltered if c.address == concept.address else c for c in cte.output_columns
+    ]
+    cte.source.output_concepts = [
+        unfiltered if c.address == concept.address else c
+        for c in cte.source.output_concepts
+    ]
 
 
 def _global_rollup_ignores_null_groups(
@@ -143,6 +152,6 @@ class PushFilteredAggregateInput(OptimizationRule):
         if not required or any(not cte.source_map.get(address) for address in required):
             return False, None
         for concept, (argument, item) in zip(aggregates, filtered):
-            _remove_filter(concept, argument, item)
+            _remove_filter(cte, concept, argument, item)
         cte.condition = append_condition(cte.condition, predicate)
         return True, None

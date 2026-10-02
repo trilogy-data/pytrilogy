@@ -4,7 +4,8 @@ debugger (``local_scripts/plan_debugger``, docs/keyspace_phase_plan.md).
 The planner calls ``record`` at its phase seams; when no recorder is active
 that is one boolean check. Activate with ``start()``/``stop()`` around a
 ``process_query`` call, or set ``TRILOGY_PLAN_TRACE=<file>`` and every
-top-level ``process_query`` writes its own trace there.
+top-level ``process_query`` writes its own trace: the first to ``<file>``, the
+n-th after it to ``<stem>.<n><suffix>``.
 
 Each step carries the planner time since the previous step (``ms``), on a
 clock that stops while the recorder itself works (``off_clock``). A step that
@@ -24,7 +25,7 @@ import os
 import sys
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 from copy import copy
 from dataclasses import InitVar, dataclass, field, fields, is_dataclass, replace
 from enum import Enum
@@ -569,6 +570,8 @@ class PlanTrace:
     _off_since: float | None = None
     _last_ms: float = 0.0
     total_ms: float | None = None
+    # restores the trace this one was started inside, if any
+    _token: Token[PlanTrace | None] | None = None
 
     def __post_init__(self, dialect: BaseDialect | None) -> None:
         self.renderer = _display_renderer(dialect)
@@ -659,15 +662,20 @@ def start(
     statement_lines: tuple[int, int] | None = None,
 ) -> PlanTrace:
     trace = PlanTrace(statement, renderer, statement_lines=statement_lines)
-    _ACTIVE.set(trace)
+    trace._token = _ACTIVE.set(trace)
     return trace
 
 
 def stop() -> PlanTrace | None:
     trace = _ACTIVE.get()
-    _ACTIVE.set(None)
-    if trace is not None:
-        trace.total_ms = round(trace.clock(), 3)
+    if trace is None:
+        return None
+    if trace._token is None:
+        _ACTIVE.set(None)
+    else:
+        _ACTIVE.reset(trace._token)
+        trace._token = None
+    trace.total_ms = round(trace.clock(), 3)
     return trace
 
 
@@ -703,8 +711,22 @@ def off_clock(fn: Callable[P, R]) -> Callable[P, R]:
     return wrapper
 
 
+# per env path, how many statements have written a trace to it
+_ENV_TRACES_WRITTEN: dict[str, int] = {}
+
+
 def env_output_path() -> str | None:
     return os.environ.get(TRACE_ENV) or None
+
+
+def next_env_output_path(path: str) -> Path:
+    """`path` for the process's first traced statement, `<stem>.<n><suffix>`
+    for the n-th after it, so no statement overwrites another's trace."""
+    written = _ENV_TRACES_WRITTEN[path] = _ENV_TRACES_WRITTEN.get(path, 0) + 1
+    out = Path(path)
+    if written == 1:
+        return out
+    return out.with_name(f"{out.stem}.{written}{out.suffix}")
 
 
 @off_clock

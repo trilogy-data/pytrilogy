@@ -1587,7 +1587,7 @@ def process_query(
     finally:
         trace = plan_trace.stop()
         if trace is not None:
-            trace.write(trace_path)
+            trace.write(plan_trace.next_env_output_path(trace_path))
 
 
 def _process_query(

@@ -81,7 +81,9 @@ class PushFilteredCountIntoJoin(OptimizationRule):
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
     ) -> tuple[bool, MergedCTEMap | None]:
-        if not isinstance(cte, CTE):
+        # ungrouped, the COUNT renders per row, and a predicate moved onto the
+        # ON changes which rows there are, not just the count
+        if not isinstance(cte, CTE) or not cte.group_to_grain:
             return False, None
         joins = [join for join in cte.joins if isinstance(join, Join)]
         aggregates = [concept for concept in cte.output_columns if concept.is_aggregate]
@@ -108,15 +110,6 @@ class PushFilteredCountIntoJoin(OptimizationRule):
             return False, None
         if _other_right_readers(cte, aggregates[0], right_source):
             return False, None
-        replacement = aggregates[0]
-        _remove_filter(replacement, filtered, item)
-        cte.output_columns = [
-            replacement if concept is aggregates[0] else concept
-            for concept in cte.output_columns
-        ]
-        cte.source.output_concepts = [
-            replacement if concept.address == replacement.address else concept
-            for concept in cte.source.output_concepts
-        ]
+        _remove_filter(cte, aggregates[0], filtered, item)
         join.condition = append_condition(join.condition, item.where.conditional)
         return True, None

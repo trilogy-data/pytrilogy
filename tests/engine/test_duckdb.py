@@ -3593,8 +3593,9 @@ datasource t (id: id) grain (id) query '''select 1 as id''';
 auto folded_str <- case when 1 = 2 then 'x' else 'y' end;
 auto folded_null <- case when 1 = 1 then null else 'y' end;
 auto folded_num <- case when 1 = 1 then 7 else 8 end;
+auto folded_date <- case when 1 = 1 then '2020-01-01'::date else '2021-01-01'::date end;
 """)
     rows = executor.execute_text(
-        "select id, folded_str, folded_null, folded_num where folded_str = 'y';"
+        "select id, folded_str, folded_null, folded_num, folded_date where folded_str = 'y';"
     )[0].fetchall()
-    assert [tuple(r) for r in rows] == [(1, "y", None, 7)]
+    assert [tuple(r) for r in rows] == [(1, "y", None, 7, date(2020, 1, 1))]
