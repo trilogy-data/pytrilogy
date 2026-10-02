@@ -57,6 +57,31 @@ class EdgeScope(Enum):
     ROWSET = "rowset"  # join clause inside a rowset body
 
 
+ScopedJoin = tuple[str, str, JoinType]
+
+
+def tag_scoped_joins(
+    statement: Iterable[ScopedJoin] = (),
+    merges: Iterable[ScopedJoin] = (),
+    rowset: Iterable[ScopedJoin] = (),
+) -> list[tuple[ScopedJoin, EdgeScope]]:
+    """Scope-tag join tuples in declaration-priority order (statement, global
+    merges, rowset bodies); a tuple declared at several scopes keeps its first.
+    Order matters: `DomainGraph.from_scoped_joins` canonical roots follow it."""
+    out: list[tuple[ScopedJoin, EdgeScope]] = []
+    seen: set[ScopedJoin] = set()
+    for joins, scope in (
+        (statement, EdgeScope.STATEMENT),
+        (merges, EdgeScope.GLOBAL),
+        (rowset, EdgeScope.ROWSET),
+    ):
+        for join in joins:
+            if join not in seen:
+                seen.add(join)
+                out.append((join, scope))
+    return out
+
+
 class ResolvedRelation(Enum):
     SUBSET = "subset"
     SUPERSET = "superset"

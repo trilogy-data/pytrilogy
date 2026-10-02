@@ -33,15 +33,13 @@ Which builds a relation is injected into:
   sub-build boundary (`get_query_node` appends `environment.merges`; the
   multiselect align/derive/where factories filter `scoped_joins` down to the
   global subset in `build.py to_environment`).
-- A query-scoped join lives on its statement's lineage and flows into that
-  query's own sub-builds via `BuildCaches.scoped_joins` (a rowset body needs the
-  outer query's joins to source a combined cross-fact input — TPC-DS q29), but
-  dies with the statement.
-- At a rowset-body boundary, `_scoped_joins_for_rowset` strips relations that
-  reference the rowset's own outputs (self-reference recursion guard). Note
-  `get_query_node` re-injects environment merges after that filter, so a merge
-  survives the guard; this asymmetry is only observable for a relation whose
-  endpoint is the enclosing rowset's own output.
+- A query-scoped join lives on its statement's lineage and dies with the
+  statement. It never reaches a nested select (rowset body, union/merge arm):
+  `nested_select._inherited_joins` passes down only the environment's global
+  merges, and a nested select applies its OWN joins on top (a rowset body
+  declaring `subset join` to source a combined cross-fact input — TPC-DS q29).
+- An inherited global merge naming the rowset's own outputs is stripped at the
+  body boundary (self-reference recursion guard).
 
 ## Shared mechanism (build.py `Factory.__init__`)
 

@@ -6,7 +6,7 @@ from typing import Any
 
 from trilogy.constants import CONFIG, DEFAULT_NAMESPACE, logger
 from trilogy.core.constants import CONSTANT_DATASET
-from trilogy.core.domain_graph import DomainGraph, EdgeScope, assemble_full_graph
+from trilogy.core.domain_graph import DomainGraph, assemble_full_graph, tag_scoped_joins
 from trilogy.core.enums import (
     BooleanOperator,
     DatasourceState,
@@ -1645,24 +1645,13 @@ def _process_query(
     # EQUAL/INCOMPARABLE endpoints veto the outer-join upgrade (an EQUAL key
     # may still narrow to INNER once completeness tests pass; a query-scoped
     # FULL/UNION key never does).
-    scoped_pairs: list[tuple[tuple[str, str, JoinType], EdgeScope]] = []
-    seen_joins: set[tuple[str, str, JoinType]] = set()
-    tagged: list[tuple[tuple[str, str, JoinType], EdgeScope]] = [
-        (
-            (j.source_address, j.target_address, j.join_type),
-            EdgeScope.STATEMENT,
-        )
-        for j in join_clauses
-    ]
-    tagged.extend((merge, EdgeScope.GLOBAL) for merge in environment.merges)
-    tagged.extend(
-        (t, EdgeScope.ROWSET)
-        for t in _collect_rowset_scoped_joins(environment, statement)
+    scoped_pairs = tag_scoped_joins(
+        statement=[
+            (j.source_address, j.target_address, j.join_type) for j in join_clauses
+        ],
+        merges=environment.merges,
+        rowset=_collect_rowset_scoped_joins(environment, statement),
     )
-    for join, scope in tagged:
-        if join not in seen_joins:
-            seen_joins.add(join)
-            scoped_pairs.append((join, scope))
     # The optimizer needs the full graph: structural subset edges (rowset/filter
     # lineage) and binding facts drive proof-based narrowing, not just the
     # declared overlay. Registry shims filter on declared provenance, so the
