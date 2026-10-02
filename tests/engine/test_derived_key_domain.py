@@ -959,3 +959,61 @@ def test_aggregate_by_a_carried_column_pairs_on_it(
     model: str, query: str, expected: list[tuple]
 ):
     assert _rows(_executor(model + _CITIES), query) == expected
+
+
+# The padded plan still evaluates the derived `status` on the orderless
+# customer's padded row ('in-transit'), so `status is null` never sees it.
+_PADDED_DERIVATION_OWED = {
+    "select customer_id, status where sum(amount) by status > 15 or status is null",
+    "select customer_id, status where coalesce(sum(amount) by status, 0) = 0",
+    "select customer_id, status where count(order_id) by status > 1 or status is null",
+    "select customer_id, label where sum(amount) by status > 25 or status is null",
+}
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select customer_id, status where sum(amount) by status > 15 or status is null",
+            [(1, "delivered"), (1, "in-transit"), (2, "delivered"), (3, None)],
+        ),
+        (
+            "select customer_id, status where coalesce(sum(amount) by status, 0) = 0",
+            [(3, None)],
+        ),
+        (
+            "select customer_id, status where count(order_id) by status > 1 or status is null",
+            [(1, "delivered"), (2, "delivered"), (3, None)],
+        ),
+        (
+            "select customer_id, name where sum(amount) by status > 25 or status is null",
+            [(1, "ann"), (2, "bob"), (3, "cat")],
+        ),
+        (
+            "select customer_id, name where coalesce(sum(amount) by status, 0) < 25",
+            [(1, "ann"), (3, "cat")],
+        ),
+        (
+            "select customer_id, label where sum(amount) by status > 25 or status is null",
+            [(1, "ann-delivered"), (2, "bob-delivered"), (3, None)],
+        ),
+        (
+            "select customer_id, status where sum(amount) by status > 15",
+            [(1, "delivered"), (1, "in-transit"), (2, "delivered")],
+        ),
+    ],
+)
+@pytest.mark.parametrize("model", ["derived", "materialized"])
+def test_null_accepting_atom_keeps_the_padded_row(
+    request: pytest.FixtureRequest, model: str, query: str, expected: list[tuple]
+):
+    if model == "derived" and query in _PADDED_DERIVATION_OWED:
+        request.applymarker(
+            pytest.mark.xfail(
+                strict=True,
+                reason="padded plan evaluates derived `status` on the padded row",
+            )
+        )
+    executor: Executor = request.getfixturevalue(model)
+    assert _rows(executor, query) == expected

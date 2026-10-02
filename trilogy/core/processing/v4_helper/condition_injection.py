@@ -14,6 +14,8 @@ from trilogy.core.processing.condition_utility import (
     and_optional,
     combine_condition_atoms,
     decompose_condition,
+    gather_non_null_proofs,
+    gather_or_groups,
 )
 from trilogy.core.processing.nodes import MergeNode, SelectNode, StrategyNode
 from trilogy.core.processing.nodes.base_node import region_reads
@@ -62,6 +64,28 @@ def condition_row_args(conditions: BuildWhereClause | None) -> list[BuildConcept
     return unique(list(conditions.row_arguments), "address")
 
 
+def rejects_absent_feeders(
+    condition: BoolExpr, node: StrategyNode, feeders: list[StrategyNode]
+) -> bool:
+    """Whether `condition` is false on a row any feeder has no match for: it
+    null-rejects something only that feeder supplies. A COUNT counts 0 there,
+    not NULL, so it rejects nothing."""
+    held = {o.address for o in node.output_concepts}
+    proofs = gather_non_null_proofs(condition)
+    or_groups = gather_or_groups(condition)
+    for feeder in feeders:
+        own = {
+            o.address
+            for o in feeder.output_concepts
+            if o.address not in held and not o.zero_on_empty
+        }
+        if not own & proofs and not any(
+            all(disjunct & own for disjunct in group) for group in or_groups
+        ):
+            return False
+    return True
+
+
 def inject_condition_at_node(
     node: StrategyNode,
     condition: BuildWhereClause,
@@ -107,8 +131,18 @@ def inject_condition_at_node(
             # feeder with nullable keys (two gates on different keys are
             # cross-joined by a keyless FULL) as an enrichment to LEFT-join.
             # Genuinely nullable keys are unaffected: both sides nullable
-            # already infers INNER, paired null-safely by `get_modifiers`.
-            force_join_type=None if holds_region else JoinType.INNER,
+            # already infers INNER, paired null-safely by `get_modifiers`. A
+            # WHERE true where a feeder has no match (`sum(amount) by status >
+            # 15 or status is null` on a padded row) keeps the row: join
+            # typing decides.
+            force_join_type=(
+                JoinType.INNER
+                if not holds_region
+                and rejects_absent_feeders(
+                    condition.conditional, node, sources.row_parents
+                )
+                else None
+            ),
             partial_concepts=(
                 partial_concepts
                 if partial_concepts is not None
