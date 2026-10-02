@@ -1788,10 +1788,13 @@ def _compute_concept_sets(
                     # a key with no concept node (a source grain the ROOT
                     # advertises, `order_id` under `amount`) is invisible to
                     # the concept-graph FD; the model's FD carries it through
-                    # a row stream keyed finer (item -> order)
+                    # a row stream keyed finer (item -> order). So is a
+                    # region's span every fact binding it names among its
+                    # keys (orders and returns both `~customer_id`): the
+                    # stream's own fact determines it
                     or (
                         pointwise
-                        and addr not in concept_attrs
+                        and (addr not in concept_attrs or addr in region_join_keys)
                         and bool(fact.native_grain)
                         and build_fd_determines(
                             environment,
