@@ -818,3 +818,50 @@ def test_present_derivation_reads_a_filtered_domain(
     model: str, query: str, expected: list[tuple]
 ):
     assert _rows(_executor(model), query) == expected
+
+
+# A dimension keyed on its own entity (`city` by `city_id`) and a second `~`
+# fact on the customer.
+_CITIES = """
+key city_id int;
+property city_id.city string;
+property customer_id.city_id int;
+key return_id int;
+property return_id.reason string?;
+
+root datasource customer_cities (customer_id: customer_id, city_id: city_id)
+grain (customer_id)
+query '''select 1 as customer_id, 10 as city_id union all select 2, 10 union all select 3, 20''';
+
+root datasource cities (city_id: city_id, city: city)
+grain (city_id)
+query '''select 10 as city_id, 'x' as city union all select 20, 'y' ''';
+
+root datasource returns (return_id: return_id, customer_id: ~customer_id, reason: reason)
+grain (return_id)
+query '''select 500 as return_id, 1 as customer_id, 'broken' as reason''';
+"""
+
+
+# `city` is a ROOT group key: it crosses no aggregate, so the per-customer
+# count restates where the domain's rows join back. Read as an aggregate
+# output not determining the count, the region fell back to the padded plan,
+# which pushed `reason is null` into an INNER-joined returns scan.
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select city, count(customer_id) as n where count(order_id) by customer_id = 0 and reason is null",
+            [("y", 1)],
+        ),
+        (
+            "select city, name where count(order_id) by customer_id = 0 and reason is null",
+            [("y", "cat")],
+        ),
+    ],
+)
+@pytest.mark.parametrize("model", [_DERIVED, _MATERIALIZED], ids=["derived", "mat"])
+def test_root_group_key_keyed_off_the_span(
+    model: str, query: str, expected: list[tuple]
+):
+    assert _rows(_executor(model + _CITIES), query) == expected

@@ -266,9 +266,10 @@ def decided_at_output_grain(
     final rows: every output that crosses an aggregate is grouped at a grain
     determining it, so the rows it rejects above the aggregate are the rows
     the aggregate's input would have lost. A launch-day filter under a
-    per-month count is not: the count must see the filter."""
+    per-month count is not: the count must see the filter. A ROOT column
+    crosses no aggregate, whatever entity it is keyed on (`city`)."""
     for concept in outputs:
-        if reads_rows_only(concept):
+        if concept.derivation == Derivation.ROOT or reads_rows_only(concept):
             continue
         grain = frozenset(concept.grain.components) if concept.grain else frozenset()
         if not grain or not build_fd_determines(environment, grain, address):
