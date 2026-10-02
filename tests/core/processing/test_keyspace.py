@@ -4,6 +4,8 @@ Asserts the REGIONS, never a rendered shape. The row-level consequences are
 pinned by tests/engine/test_derived_key_domain.py.
 """
 
+import pytest
+
 from tests.core.processing.test_extent_ownership import _SIMPLE, _plan
 from tests.engine.test_derived_key_domain import (
     _ACTIVITY,
@@ -161,6 +163,28 @@ def test_where_null_rejecting_an_absent_concept_empties_the_region(monkeypatch):
     assert keyspace.demanded_spans == frozenset()
     # a merge below the WHERE still sees the dead region's padding
     assert keyspace.in_play_spans == frozenset({CUSTOMER})
+
+
+_MERGED_ORDER = """
+key oid int;
+property oid.order_amount int;
+merge oid into order_id;
+merge order_amount into amount;
+"""
+
+
+@pytest.mark.parametrize(
+    "where",
+    ["amount > 15", "order_amount > 15", "order_id is not null", "oid is not null"],
+)
+def test_where_naming_a_pseudonym_empties_the_region(monkeypatch, where: str):
+    keyspace = _heal_keyspace(
+        monkeypatch,
+        _DERIVED + _MERGED_ORDER,
+        f"select customer_id, status where {where};",
+    )
+    (extension,) = keyspace.extensions
+    assert extension.is_empty
 
 
 def test_where_between_on_an_absent_concept_empties_the_region(monkeypatch):
