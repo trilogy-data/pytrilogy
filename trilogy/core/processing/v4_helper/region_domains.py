@@ -58,7 +58,9 @@ def _filters_region_domain(
         address, region, carried, keyspace, outputs, environment
     ):
         return False
-    if keyspace.carried_on(address, region) or keyless(address, keyspace):
+    if keyspace.carried_on(address, region) or keyless(
+        address, region, keyspace, environment
+    ):
         return True
     concept = environment.concepts.get(address)
     return concept is not None and (
