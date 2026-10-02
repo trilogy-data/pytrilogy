@@ -961,16 +961,6 @@ def test_aggregate_by_a_carried_column_pairs_on_it(
     assert _rows(_executor(model + _CITIES), query) == expected
 
 
-# The padded plan still evaluates the derived `status` on the orderless
-# customer's padded row ('in-transit'), so `status is null` never sees it.
-_PADDED_DERIVATION_OWED = {
-    "select customer_id, status where sum(amount) by status > 15 or status is null",
-    "select customer_id, status where coalesce(sum(amount) by status, 0) = 0",
-    "select customer_id, status where count(order_id) by status > 1 or status is null",
-    "select customer_id, label where sum(amount) by status > 25 or status is null",
-}
-
-
 @pytest.mark.parametrize(
     "query,expected",
     [
@@ -1002,18 +992,98 @@ _PADDED_DERIVATION_OWED = {
             "select customer_id, status where sum(amount) by status > 15",
             [(1, "delivered"), (1, "in-transit"), (2, "delivered")],
         ),
+        (
+            "select customer_id, name where sum(amount) by status < 25 or status is null",
+            [(1, "ann"), (3, "cat")],
+        ),
+        (
+            "select customer_id where sum(amount) by status < 25 or status is null",
+            [(1,), (3,)],
+        ),
+        (
+            "select customer_id, amount where sum(amount) by status > 25 or status is null",
+            [(1, 10), (2, 30), (3, None)],
+        ),
+        (
+            "select customer_id, flag where sum(amount) by status > 15 or status is null",
+            [(1, 0), (1, 1), (2, 0), (3, None)],
+        ),
+        (
+            "select customer_id, label, status where sum(amount) by status > 25 or status is null",
+            [
+                (1, "ann-delivered", "delivered"),
+                (2, "bob-delivered", "delivered"),
+                (3, None, None),
+            ],
+        ),
     ],
 )
 @pytest.mark.parametrize("model", ["derived", "materialized"])
 def test_null_accepting_atom_keeps_the_padded_row(
     request: pytest.FixtureRequest, model: str, query: str, expected: list[tuple]
 ):
-    if model == "derived" and query in _PADDED_DERIVATION_OWED:
-        request.applymarker(
-            pytest.mark.xfail(
-                strict=True,
-                reason="padded plan evaluates derived `status` on the padded row",
-            )
-        )
     executor: Executor = request.getfixturevalue(model)
+    assert _rows(executor, query) == expected
+
+
+# A `?` store beside the `~` customer region: an order with no store is a REAL
+# row (`unknown`), the orderless customer has no store entity at all (NULL).
+_NULLABLE_STORE = """
+key customer_id int;
+property customer_id.name string;
+key store_id int;
+property store_id.store_name string;
+key order_id int;
+property order_id.delivery_date date?;
+property order_id.amount int;
+
+root datasource customers (customer_id: customer_id, name: name)
+grain (customer_id)
+query '''select 1 as customer_id, 'ann' as name union all select 2, 'bob' union all select 3, 'cat' ''';
+
+root datasource stores (store_id: store_id, store_name: store_name)
+grain (store_id)
+query '''select 7 as store_id, 'main' as store_name''';
+
+root datasource orders (
+    order_id: order_id, customer_id: ~customer_id, store_id: ?store_id,
+    delivery_date: delivery_date, amount: amount,
+)
+grain (order_id)
+query '''
+select 100 as order_id, 1 as customer_id, 7 as store_id, date '2026-01-01' as delivery_date, 10 as amount union all
+select 101, 1, null, null, 20 union all
+select 102, 2, 7, date '2026-01-02', 30
+''';
+
+auto status <- case when delivery_date is not null then 'delivered' else 'in-transit' end;
+auto store_label <- coalesce(store_name, 'unknown');
+"""
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select customer_id, store_label where sum(amount) by status > 15 or status is null",
+            [(1, "main"), (1, "unknown"), (2, "main"), (3, None)],
+        ),
+        (
+            "select customer_id, store_label, status where sum(amount) by status > 15 or status is null",
+            [
+                (1, "main", "delivered"),
+                (1, "unknown", "in-transit"),
+                (2, "main", "delivered"),
+                (3, None, None),
+            ],
+        ),
+        (
+            "select customer_id, status, store_label where coalesce(sum(amount) by status, 0) < 25",
+            [(1, "in-transit", "unknown"), (3, None, None)],
+        ),
+    ],
+)
+def test_nullable_key_beside_a_region_domain(query: str, expected: list[tuple]):
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_NULLABLE_STORE)
     assert _rows(executor, query) == expected

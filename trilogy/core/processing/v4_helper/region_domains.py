@@ -51,7 +51,9 @@ def _filters_region_domain(
     rule condition placement applies), riding there as a hidden column when
     the statement does not project it: a value carried on the region (a
     scalar over an aggregate by the span, read off the domain), or an absent
-    value read from rows alone, NULL on the extension row."""
+    value read from rows alone, NULL on the extension row. So is an aggregate
+    the region's rows do not feed (`sum(amount) by status`): it pairs on
+    solid keys and is absent on the extension row."""
     if address in carried:
         return True
     if not restated_over_region(
@@ -63,9 +65,11 @@ def _filters_region_domain(
     ):
         return True
     concept = environment.concepts.get(address)
-    return concept is not None and (
-        concept.derivation == Derivation.ROOT or reads_rows_only(concept)
-    )
+    if concept is None:
+        return False
+    if concept.derivation == Derivation.AGGREGATE:
+        return not aggregates_over_region((address,), region, keyspace, environment)
+    return concept.derivation == Derivation.ROOT or reads_rows_only(concept)
 
 
 def _splits_for_region(bucket: GroupBucket) -> bool:
