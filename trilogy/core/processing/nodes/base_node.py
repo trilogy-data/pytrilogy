@@ -103,8 +103,15 @@ def resolve_existence_map(
     existence_addresses = {c.address for c in existence_concepts}
     if not existence_addresses:
         return {}
+    # A set a row parent also carries (`dx in x` beside a projected `x`) reads
+    # from its own feeder: the row parent's column is the probing row's value,
+    # not the set. First-wins resolution takes the feeders first.
     raw = resolve_concept_map(
-        inputs,
+        sorted(
+            inputs,
+            key=lambda s: not {c.address for c in s.output_concepts}
+            <= existence_addresses,
+        ),
         targets=[],
         inherited_inputs=existence_concepts,
     )

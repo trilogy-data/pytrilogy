@@ -1,3 +1,5 @@
+import pytest
+
 from trilogy import Dialects
 
 _FIXTURE = """
@@ -89,3 +91,48 @@ select brand, sum(qty) as q
 order by brand asc;
 """)[0].fetchall()
     assert [tuple(r) for r in results] == [(100, 55), (200, 7)]
+
+
+_SELF_SET = """
+key id string;
+property id.x int;
+property id.g string;
+auto dx <- x ? x != 20;
+"""
+
+_SELF_SET_SOURCES = [
+    "datasource t (id: id, x: x, g: g) grain (id) address t;",
+    "datasource t (id: id, x: x, g: g) grain (id) query '''select * from tt''';",
+]
+
+
+def _self_set_rows(source: str, query: str) -> list[tuple]:
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_raw_sql(
+        "create table t as select * from (values ('a', 10, 'B'), ('b', 20, 'g1'),"
+        " ('c', 30, 'C')) v(id, x, g)"
+    )
+    executor.execute_raw_sql("create table tt as select * from t")
+    executor.execute_text(_SELF_SET + source)
+    rows = executor.execute_text(query)[-1].fetchall()
+    return sorted((tuple(r) for r in rows), key=str)
+
+
+@pytest.mark.parametrize("source", _SELF_SET_SOURCES)
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        ("select id, x where dx in x;", [("a", 10), ("c", 30)]),
+        ("select id where dx in x;", [("a",), ("c",)]),
+        ("select x where dx in x;", [(10,), (30,)]),
+        ("select id, dx where dx in x;", [("a", 10), ("c", 30)]),
+        ("select g, x where dx in x;", [("B", 10), ("C", 30)]),
+        ("select g, count(id) as n where dx in x;", [("B", 1), ("C", 1)]),
+        ("select id, x where lower(g) in id;", [("a", 10), ("c", 30)]),
+    ],
+)
+def test_membership_over_a_set_the_row_also_reads(
+    source: str, query: str, expected: list[tuple]
+):
+    assert _self_set_rows(source, query) == expected
+
