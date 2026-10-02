@@ -1354,17 +1354,21 @@ def _parent_nodes_for(
     return parents
 
 
-def _raise_on_discarded_parent_filters(gid: str, parents: list[StrategyNode]) -> None:
-    """A ROOT re-plans its rows from the datasources and reads no parent, so a
-    filter a parent applies would silently vanish from the plan."""
-    for parent in parents:
-        if parent.conditions is not None or parent.existence_concepts:
+def _raise_on_discarded_parent_atoms(
+    gid: str, parent_group_ids: set[str], attrs: dict[str, GroupAttrs]
+) -> None:
+    """A ROOT re-plans its rows from the datasources and reads no parent's
+    node, so a WHERE atom placed on a parent and not on the ROOT itself would
+    silently vanish. A parent's intrinsic filters (a recursive terminal, the
+    set behind a derived membership) are re-sourced with its concept."""
+    own = attrs[gid].condition_atoms
+    for pgid in sorted(parent_group_ids):
+        missing = [a for a in attrs[pgid].condition_atoms if a not in own]
+        if missing:
             raise ValueError(
-                f"[v4] ROOT {gid} would discard the filter its parent "
-                f"{parent.origin_group} applies "
-                f"({parent.conditions or parent.existence_concepts}). This is a "
-                "planner bug: the condition was placed on a group the ROOT does "
-                "not read."
+                f"[v4] ROOT {gid} would discard the WHERE atom(s) {missing} "
+                f"placed on its parent {pgid}. This is a planner bug: the "
+                "condition was placed on a group the ROOT does not read."
             )
 
 
@@ -5472,7 +5476,7 @@ def build_strategy_node(
             logger.info(f"[v4] built {gid} reads {twin}: the same ROOT request")
         else:
             if derivation == Derivation.ROOT:
-                _raise_on_discarded_parent_filters(gid, parents)
+                _raise_on_discarded_parent_atoms(gid, parent_group_ids, attrs)
             node = build_node(
                 derivation=derivation,
                 outputs=outputs,

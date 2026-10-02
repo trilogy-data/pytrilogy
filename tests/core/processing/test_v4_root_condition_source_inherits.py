@@ -87,10 +87,12 @@ def test_only_atoms_expressible_on_the_request_are_inherited():
     # StripRedundantNotNull deliberately lacks: the column IS nullable at the
     # base tables, and its ground-truth-nullability gate is what keeps an
     # authored NOT NULL on a nullable FK from vanishing (q78). Assert what the
-    # planner emits; the arm count is the part this test is about.
-    assert sql.count("is not null") == 4, sql
-    # Pushing the year into the arms would give each its own date_dim join.
-    assert sql.count("date_dim") == 1, sql
+    # planner emits; the arm count is the part this test is about. The fifth is
+    # the outer WHERE's `channel in (...)` guard.
+    assert sql.count("is not null") == 5, sql
+    # One date_dim join for the aggregates' year CASEs, one for the outer
+    # WHERE's year; pushing the year into the arms would give each its own.
+    assert sql.count("date_dim") == 2, sql
 
 
 def test_gen_root_accepts_preexisting_conditions():
