@@ -9,12 +9,8 @@ from enum import Enum
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
-from trilogy.core.enums import NULL_COLLECTING_AGGREGATES, Derivation
-from trilogy.core.models.build import (
-    BuildAggregateWrapper,
-    BuildConcept,
-    BuildConceptArgs,
-)
+from trilogy.core.enums import Derivation
+from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.keyspace import Keyspace, Region
 
@@ -28,61 +24,13 @@ from .extent_ownership import (
     takes_a_value_on_padding,
 )
 from .models import ConceptAttrs, GroupAttrs, GroupBucket, RootReason
-from .projection import decided_at_output_grain, reads_rows_only, rollup_padded_keys
-
-
-def _argument_takes_a_value_on_padding(
-    address: str, region: Region, keyspace: Keyspace, environment: BuildEnvironment
-) -> bool:
-    """Whether the aggregate at `address` answers a padded row of `region`
-    differently from no row at all, so it must be computed on the solid rows.
-
-    An argument written inline (`sum(coalesce(amount, 0))`) is a derivation no
-    concept node stands for; it takes a value on the region's rows when it
-    reads something absent there and is not NULL for it. A NULL-collecting
-    operator (`array_agg(amount)`) takes the padding's NULL itself, `[NULL]`
-    where an empty group is NULL, so any argument absent there keeps it
-    solid."""
-    concept = environment.concepts.get(address)
-    if concept is None or not isinstance(concept.lineage, BuildAggregateWrapper):
-        return False
-    function = concept.lineage.function
-    if function.operator in NULL_COLLECTING_AGGREGATES:
-        return any(
-            not keyspace.defined_on(read.address, region)
-            for read in function.concept_arguments
-        )
-    return any(
-        not null_on_padding(arg, region, keyspace, environment)
-        and any(
-            not keyspace.defined_on(read.address, region)
-            for read in arg.concept_arguments
-        )
-        for arg in function.arguments
-        if isinstance(arg, BuildConceptArgs) and not isinstance(arg, BuildConcept)
-    )
-
-
-def _fed_by_region_domain(
-    concept: BuildConcept,
-    region: Region,
-    keyspace: Keyspace,
-    environment: BuildEnvironment,
-) -> bool:
-    """An aggregate output evaluated OVER the region's rows, the bucket-level
-    reading of `feed_region_domains_to_present_scalars`' aggregate branch:
-    it counts what the region holds, or groups by something the region
-    carries with no inline argument taking a value on the padding."""
-    if not isinstance(concept.lineage, BuildAggregateWrapper):
-        return False
-    if _aggregates_over_region((concept.address,), region, keyspace, environment):
-        return True
-    grain = concept.grain.components if concept.grain else ()
-    return any(
-        keyspace.carried_on(g, region) for g in grain
-    ) and not _argument_takes_a_value_on_padding(
-        concept.address, region, keyspace, environment
-    )
+from .projection import reads_rows_only, rollup_padded_keys
+from .region_reads import (
+    aggregates_over_region,
+    argument_takes_a_value_on_padding,
+    evaluated_over_region,
+    restated_over_region,
+)
 
 
 def _filters_region_domain(
@@ -98,31 +46,22 @@ def _filters_region_domain(
     The domain reaches FINAL beside the filtered row stream, not through it, so
     an atom hosted anywhere else is lost on the rows the domain adds back. A
     column the domain carries is filtered on the domain itself. Anything else
-    the region's rows hold a value for is restated at FINAL over the extended
-    rows (`condition_placement._reads_past_region_domain`), riding there as a
-    hidden column when the statement does not project it: a value carried on
-    the region (a scalar over an aggregate by the span, read off the domain),
-    or an absent value read from rows alone, NULL on the extension row."""
+    is restated where the domain's rows join back (`restated_over_region`, the
+    rule condition placement applies), riding there as a hidden column when
+    the statement does not project it: a value carried on the region (a
+    scalar over an aggregate by the span, read off the domain), or an absent
+    value read from rows alone, NULL on the extension row."""
     if address in carried:
         return True
+    if not restated_over_region(
+        address, region, carried, keyspace, outputs, environment
+    ):
+        return False
     if keyspace.carried_on(address, region):
-        # an aggregate the domain feeds unites the region's rows on its
-        # input, and the atom is applied there, before it, whatever its grain
-        # (`count(customer_id) by status where activity = 'dormant'`)
-        return decided_at_output_grain(
-            address,
-            [
-                c
-                for c in outputs
-                if not _fed_by_region_domain(c, region, keyspace, environment)
-            ],
-            environment,
-        )
+        return True
     concept = environment.concepts.get(address)
-    return (
-        concept is not None
-        and not keyspace.defined_on(address, region)
-        and (concept.derivation == Derivation.ROOT or reads_rows_only(concept))
+    return concept is not None and (
+        concept.derivation == Derivation.ROOT or reads_rows_only(concept)
     )
 
 
@@ -154,7 +93,7 @@ def _needs_solid_rows(
         ):
             return True
         if bucket.derivation == Derivation.AGGREGATE and any(
-            _argument_takes_a_value_on_padding(m, region, keyspace, environment)
+            argument_takes_a_value_on_padding(m, region, keyspace, environment)
             for m in bucket.primary_members
         ):
             return True
@@ -174,7 +113,7 @@ def _region_is_demanded(
         label in (None, a.label)
         and a.derivation == Derivation.AGGREGATE
         and not a.existence_only
-        and _aggregates_over_region((a.address,), region, keyspace, environment)
+        and aggregates_over_region((a.address,), region, keyspace, environment)
         for a in concept_attrs.values()
     )
 
@@ -328,14 +267,9 @@ def _region_domain(
         )
     if region.spans & relation_spans:
         return RegionDomain(region, DomainKind.RELATION, label, carried)
-    mixing = [b for b in eligible if _mixes_region(b, region, keyspace)]
-    if not mixing:
+    if not any(_mixes_region(b, region, keyspace) for b in eligible):
         return RegionDomain(region, DomainKind.ROW_STREAM, label, carried)
-    sources = [
-        b
-        for b in mixing
-        if not _holds_a_materialized_aggregate(b, region, keyspace, environment)
-    ]
+    sources = [b for b in eligible if _pads_region(b, region, keyspace, environment)]
     if not sources:
         # a rollup over the region's rows the keyspace does not model
         return RegionDomain(
@@ -569,27 +503,6 @@ def split_carried_only_row_streams(
             bucket.primary_node_ids = [bucket.primary_node_ids[i] for i in kept]
 
 
-def _aggregates_over_region(
-    members: tuple[str, ...],
-    region: Region,
-    keyspace: Keyspace,
-    environment: BuildEnvironment,
-) -> bool:
-    """An aggregate is evaluated OVER a region's rows when they hold its
-    argument: `count(customer_id) by status` counts the customer with no order,
-    under the NULL status of a row that has none."""
-    for member in members:
-        concept = environment.concepts.get(member)
-        if concept is None or not isinstance(concept.lineage, BuildAggregateWrapper):
-            return False
-        arguments = concept.lineage.function.concept_arguments
-        if not arguments or not all(
-            keyspace.carried_on(arg.address, region) for arg in arguments
-        ):
-            return False
-    return bool(members)
-
-
 def _carried_arguments(
     address: str, region: Region, keyspace: Keyspace, environment: BuildEnvironment
 ) -> list[bool]:
@@ -688,80 +601,101 @@ def feed_region_domains_to_present_scalars(
         # keeps every aggregate it reads solid too
         solid = solid_groups(group_graph, attrs, region, keyspace, environment)
         for gid, a in attrs.items():
-            # a row stream reading nothing but what the region carries
-            # (`upper(name)`) is the region's rows: the domain replaces the
-            # solid stream it was split from as its source, or it is evaluated
-            # over both, one row per fact row, and a consumer joining it back
-            # fans out. Every read, not the member's keys: a filter is keyed on
-            # its content and reads its predicate off the solid rows too.
             if (
                 a.derivation in ROW_STREAM_DERIVATIONS
                 and _scope_and_phase(a.label)[0] == scope
                 and a.primary_members
-                and gid not in solid
-                and all(
-                    _reads_only_carried(m, region, keyspace, environment)
-                    for m in a.primary_members
-                )
             ):
-                for pred in list(group_graph.predecessors(gid)):
-                    if (
-                        attrs[pred].derivation == Derivation.ROOT
-                        and not attrs[pred].extent_spans
-                        and _scope_and_phase(attrs[pred].label)[0] == scope
-                        and edge_kind(group_edges, pred, gid) == EdgeKind.LINEAGE
-                    ):
-                        remove_edge(group_graph, group_edges, pred, gid)
-            if (
-                a.derivation in ROW_STREAM_DERIVATIONS
-                and _scope_and_phase(a.label)[0] == scope
-                and a.primary_members
-                and (
-                    all(keyspace.carried_on(m, region) for m in a.primary_members)
-                    or (
-                        gid not in solid
-                        and not _is_rows_of_another_region(
-                            a.primary_members,
-                            region,
-                            domain_regions,
-                            keyspace,
-                            environment,
-                        )
-                        and any(
-                            _reads_carried(m, r, keyspace, environment)
-                            for m in a.primary_members
-                            for r in domain_regions
-                        )
-                        and all(
-                            keyspace.carried_on(m, region)
-                            or (
-                                (c := environment.concepts.get(m)) is not None
-                                and null_on_padding(c, region, keyspace, environment)
-                            )
-                            for m in a.primary_members
-                        )
-                    )
-                )
-            ) or (
+                if not _reads_region_domain(
+                    gid, a, region, solid, domain_regions, keyspace, environment
+                ):
+                    continue
+                if _is_region_rows(gid, a, region, solid, keyspace, environment):
+                    _detach_solid_roots(group_graph, group_edges, attrs, gid, scope)
+            elif not (
                 a.derivation == Derivation.AGGREGATE
                 and a.label == domain.label
                 and not solid & nx.descendants(group_graph, gid)
-                and (
-                    _aggregates_over_region(
-                        a.primary_members, region, keyspace, environment
-                    )
-                    or (
-                        any(keyspace.carried_on(g, region) for g in a.grain_components)
-                        and not any(
-                            _argument_takes_a_value_on_padding(
-                                m, region, keyspace, environment
-                            )
-                            for m in a.primary_members
-                        )
-                    )
+                and evaluated_over_region(
+                    a.primary_members, a.grain_components, region, keyspace, environment
                 )
             ):
-                add_edge(group_graph, group_edges, domain_gid, gid, EdgeKind.LINEAGE)
+                continue
+            add_edge(group_graph, group_edges, domain_gid, gid, EdgeKind.LINEAGE)
+
+
+def _reads_region_domain(
+    gid: str,
+    a: GroupAttrs,
+    region: Region,
+    solid: set[str],
+    domain_regions: list[Region],
+    keyspace: Keyspace,
+    environment: BuildEnvironment,
+) -> bool:
+    """A row stream keyed on what the region carries, or one reading something
+    a domain carries that is NULL on this region's padding however it is
+    planned."""
+    members = a.primary_members
+    if all(keyspace.carried_on(m, region) for m in members):
+        return True
+    return (
+        gid not in solid
+        and not _is_rows_of_another_region(
+            members, region, domain_regions, keyspace, environment
+        )
+        and any(
+            _reads_carried(m, r, keyspace, environment)
+            for m in members
+            for r in domain_regions
+        )
+        and all(
+            keyspace.carried_on(m, region)
+            or (
+                (c := environment.concepts.get(m)) is not None
+                and null_on_padding(c, region, keyspace, environment)
+            )
+            for m in members
+        )
+    )
+
+
+def _is_region_rows(
+    gid: str,
+    a: GroupAttrs,
+    region: Region,
+    solid: set[str],
+    keyspace: Keyspace,
+    environment: BuildEnvironment,
+) -> bool:
+    """A row stream reading nothing but what the region carries (`upper(name)`)
+    is the region's rows: the domain replaces the solid stream it was split
+    from as its source, or it is evaluated over both, one row per fact row,
+    and a consumer joining it back fans out. Every read, not the member's
+    keys: a filter is keyed on its content and reads its predicate off the
+    solid rows too. Asked only of a stream that reads the domain, so the
+    stream it loses is always replaced (an existence set the keyspace does
+    not key reads only carried values, but is not the region's rows)."""
+    return gid not in solid and all(
+        _reads_only_carried(m, region, keyspace, environment) for m in a.primary_members
+    )
+
+
+def _detach_solid_roots(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    scope: str,
+) -> None:
+    for pred in list(group_graph.predecessors(gid)):
+        if (
+            attrs[pred].derivation == Derivation.ROOT
+            and not attrs[pred].extent_spans
+            and _scope_and_phase(attrs[pred].label)[0] == scope
+            and edge_kind(group_edges, pred, gid) == EdgeKind.LINEAGE
+        ):
+            remove_edge(group_graph, group_edges, pred, gid)
 
 
 def detach_final_span_domain_producers(

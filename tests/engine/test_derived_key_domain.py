@@ -474,6 +474,41 @@ def test_atom_under_an_aggregate_the_domain_feeds(
     assert _rows(materialized, query) == expected
 
 
+# An existence set reading only what the region carries is not keyed by the
+# keyspace: it was cut from its solid source as the region's rows, but never
+# wired to the domain, and planned with no source at all.
+_EXISTENCE_SETS = """
+auto ab_id <- filter customer_id where name in ('ann', 'cat');
+auto ab_name <- filter name where name in ('ann', 'cat');
+auto n_orders <- count(order_id) by customer_id;
+"""
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        ("select customer_id, n_orders where customer_id in ab_id", [(1, 2), (3, 0)]),
+        (
+            "select customer_id, status where customer_id in ab_id",
+            [(1, "delivered"), (1, "in-transit"), (3, None)],
+        ),
+        (
+            "select name, status where customer_id in ab_id",
+            [("ann", "delivered"), ("ann", "in-transit"), ("cat", None)],
+        ),
+        (
+            "select customer_id, status where name in ab_name",
+            [(1, "delivered"), (1, "in-transit"), (3, None)],
+        ),
+    ],
+)
+@pytest.mark.parametrize("model", [_DERIVED, _MATERIALIZED], ids=["derived", "mat"])
+def test_existence_set_over_carried_values_keeps_its_source(
+    model: str, query: str, expected: list[tuple]
+):
+    assert _rows(_executor(model + _EXISTENCE_SETS), query) == expected
+
+
 def test_else_fires_when_the_key_is_present(derived: Executor):
     assert _rows(derived, "select customer_id, activity") == [
         (1, "active"),
