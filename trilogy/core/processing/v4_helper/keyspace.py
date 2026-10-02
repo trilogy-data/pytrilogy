@@ -358,20 +358,32 @@ def _carried(anchor: _SourceFacts, sources: tuple[_SourceFacts, ...]) -> Carried
     """Every address a row of `anchor` has a value for, by keyed lookup.
 
     A lookup enters a source only through its whole grain, and never one whose
-    grain is bound `~`: that source may hold no row for the anchor's key."""
+    grain is bound `~`: that source may hold no row for the anchor's key.
+    A source is re-entered only once a grain address it reads has improved:
+    re-entering on the same paths improves nothing."""
     carried = dict(anchor.bound)
+    # tick of each address's last improvement; a source's last entry tick
+    changed_at = dict.fromkeys(carried, 0)
+    entered_at: dict[int, int] = {}
+    tick = 0
     changed = True
     while changed:
         changed = False
-        for other in sources:
+        for i, other in enumerate(sources):
             if other is anchor or not other.grain or other.grain_is_partial:
                 continue
             if not other.grain <= carried.keys():
                 continue
+            last = entered_at.get(i)
+            if last is not None and all(changed_at[g] < last for g in other.grain):
+                continue
+            tick += 1
+            entered_at[i] = tick
             path: frozenset[str] = frozenset().union(*(carried[g] for g in other.grain))
             for address, cause in other.bound.items():
                 if _better(path | cause, carried.get(address)):
                     carried[address] = path | cause
+                    changed_at[address] = tick
                     changed = True
     return carried
 
@@ -411,15 +423,14 @@ def _compute_facts(
     sources = tuple(
         dataclasses.replace(s, carried=_carried(s, sources)) for s in sources
     )
+    grains: frozenset[str] = frozenset().union(*(s.grain for s in sources))
     return _ModelFacts(
         # pin-heal and partition exclusion swap datasources before planning
         stamp=tuple(id(ds) for ds in datasources),
         canonical=canonical,
         sources=sources,
         identifying=frozenset(
-            address
-            for address, key in canonical.items()
-            if any(key in s.grain for s in sources)
+            address for address, key in canonical.items() if key in grains
         ),
     )
 
