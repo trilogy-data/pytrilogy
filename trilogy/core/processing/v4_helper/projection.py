@@ -50,22 +50,32 @@ def renderable_addresses(node: StrategyNode) -> set[str]:
     return available
 
 
-def lineage_existence_only(concept: BuildConcept) -> set[str]:
-    """Addresses that appear ONLY as existence args in the concept's lineage (a
-    semijoin RHS like `zips in substring(p_cust_zip,1,5)`). These feed a
-    side-channel subselect, not the concept's row stream. Two shapes: a FILTER's
-    where, and a membership comparison authored as a derived/projected boolean
-    (`auto flag <- a in b`, `(20, 1) in (pairs.val, pairs.cat) as present`)
-    whose lineage IS (or propagates from) the SubselectComparison."""
+def lineage_existence_parts(concept: BuildConcept) -> tuple[set[str], set[str]]:
+    """The existence args of the concept's lineage, and the addresses its row
+    reads. Two shapes: a FILTER (its where, plus the filtered content), and a
+    membership comparison authored as a derived/projected boolean (`auto flag
+    <- a in b`, `(20, 1) in (pairs.val, pairs.cat) as present`) whose lineage
+    IS (or propagates from) the SubselectComparison."""
     args: BuildConceptArgs
+    row_read: set[str] = set()
     if isinstance(concept.lineage, BuildFilterItem):
         args = concept.lineage.where
+        row_read = {c.address for c in concept.lineage.content_concept_arguments}
     elif isinstance(concept.lineage, BuildConceptArgs):
         args = concept.lineage
     else:
-        return set()
+        return set(), set()
     existence = {ec.address for grp in (args.existence_arguments or []) for ec in grp}
-    return existence - {r.address for r in args.row_arguments}
+    return existence, row_read | {r.address for r in args.row_arguments}
+
+
+def lineage_existence_only(concept: BuildConcept) -> set[str]:
+    """Addresses that appear ONLY as existence args in the concept's lineage (a
+    semijoin RHS like `zips in substring(p_cust_zip,1,5)`). These feed a
+    side-channel subselect, not the concept's row stream; one the row also
+    reads (`dx ? x in dx`) is both."""
+    existence, row_read = lineage_existence_parts(concept)
+    return existence - row_read
 
 
 def row_lineage_arguments(concept: BuildConcept) -> list[BuildConcept]:

@@ -136,3 +136,11 @@ def test_membership_over_a_set_the_row_also_reads(
 ):
     assert _self_set_rows(source, query) == expected
 
+
+@pytest.mark.parametrize("source", _SELF_SET_SOURCES)
+def test_filter_value_tested_against_its_own_set(source: str):
+    assert _self_set_rows(source, "select g, max(dx ? x in dx) as m;") == [
+        ("B", 10),
+        ("C", 30),
+        ("g1", None),
+    ]
