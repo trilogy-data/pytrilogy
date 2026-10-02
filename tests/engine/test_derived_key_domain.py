@@ -789,3 +789,32 @@ def test_unfed_aggregate_beside_a_fed_one_takes_the_atom(
 ):
     executor: Executor = request.getfixturevalue(model)
     assert _rows(executor, query) == expected
+
+
+# `upper(name)` reads only what the domain carries: its input is the domain,
+# not a fresh customer scan INNER-joined to the solid stream (it was NULL for
+# the orderless customer once a WHERE kept the domain apart).
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select upper_name, status, count(customer_id) as n where activity = 'dormant'",
+            [("CAT", None, 1)],
+        ),
+        (
+            "select upper_name, status, count(order_id) as n where activity = 'dormant'",
+            [("CAT", None, 0)],
+        ),
+        (
+            "select upper_name, count(customer_id) as n, sum(amount) as s where activity = 'dormant'",
+            [("CAT", 1, None)],
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "model", [_UPPER_DERIVED, _UPPER_MATERIALIZED], ids=["derived", "mat"]
+)
+def test_present_derivation_reads_a_filtered_domain(
+    model: str, query: str, expected: list[tuple]
+):
+    assert _rows(_executor(model), query) == expected

@@ -2515,7 +2515,8 @@ def _covering_dimension_root(
         bucket = buckets.get(root_id)
         if (
             bucket is not None
-            and bucket.reason in (RootReason.ENTITY, RootReason.BASIC_INPUT)
+            and bucket.reason
+            in (RootReason.ENTITY, RootReason.BASIC_INPUT, RootReason.REGION)
             and required <= set(attrs[root_id].members)
         ):
             return root_id
