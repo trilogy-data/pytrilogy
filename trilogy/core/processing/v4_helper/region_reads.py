@@ -106,10 +106,16 @@ def fed_by_region_domain(
     )
 
 
-def keyless(address: str, keyspace: Keyspace) -> bool:
-    """One value for every row of the statement (`count(order_id) by *`): it
-    filters the region's rows exactly as it filters the solid ones."""
-    return not keyspace.keys_by_address.get(address)
+def keyless(
+    address: str, region: Region, keyspace: Keyspace, environment: BuildEnvironment
+) -> bool:
+    """One value for every row of the statement, computed off the region's
+    rows (`count(order_id) by *`): it filters the region's rows exactly as it
+    filters the solid ones. One the region's rows feed (`avg(bal) by *`) is
+    not modelled and keeps the padded plan."""
+    return not keyspace.keys_by_address.get(address) and not aggregates_over_region(
+        (address,), region, keyspace, environment
+    )
 
 
 def restated_over_region(
@@ -137,7 +143,9 @@ def restated_over_region(
     the atom on its own input too (`_uncovered_grouping_placements`)."""
     if address in held:
         return False
-    if not keyspace.defined_on(address, region) or keyless(address, keyspace):
+    if not keyspace.defined_on(address, region) or keyless(
+        address, region, keyspace, environment
+    ):
         return True
     if not keyspace.carried_on(address, region):
         return False
