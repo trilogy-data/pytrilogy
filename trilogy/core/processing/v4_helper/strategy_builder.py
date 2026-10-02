@@ -3261,19 +3261,16 @@ def _add_region_domain_contributors(
         if gid not in per_group and any(other in readers for other in per_group):
             continue
         per_group.setdefault(gid, [])
-        carried = set(attrs[gid].primary_members)
+        base = built[gid]
         renames = [
             concept
             for other, concepts in per_group.items()
             if other != gid
             for concept in concepts
-            if isinstance(concept.lineage, BuildFunction)
-            and concept.lineage.operator == FunctionType.ALIAS
-            and {a.address for a in concept.lineage.concept_arguments} <= carried
+            if _renders_rename_of_member(concept, attrs[gid], base)
         ]
         if not renames:
             continue
-        base = built[gid]
         projected = SelectNode(
             output_concepts=list(base.output_concepts),
             input_concepts=list(base.output_concepts),
@@ -3288,14 +3285,32 @@ def _add_region_domain_contributors(
             per_group[other] = [c for c in per_group[other] if c.address not in moved]
             # still an output there, and a rename canonicalizes to its source:
             # left visible it reads as a COMPLETE copy of what the domain
-            # carries, and the merge drops the domain as redundant
+            # carries, and the merge drops the domain as redundant. A copy:
+            # the node may be a parent elsewhere that reads the rename.
             exposed = moved & {o.address for o in built[other].output_concepts}
             if exposed:
-                built[other].hidden_concepts = (
-                    set(built[other].hidden_concepts) | exposed
-                )
-                built[other].rebuild_cache()
+                hidden = built[other].copy()
+                hidden.hidden_concepts |= exposed
+                hidden.rebuild_cache()
+                built[other] = hidden
         per_group[gid].extend(renames)
+
+
+def _renders_rename_of_member(
+    concept: BuildConcept, domain: GroupAttrs, node: StrategyNode
+) -> bool:
+    """`concept` renames a member of `domain` its built node can render: it
+    outputs the rename itself or every argument of it."""
+    if not (
+        isinstance(concept.lineage, BuildFunction)
+        and concept.lineage.operator == FunctionType.ALIAS
+    ):
+        return False
+    args = {a.address for a in concept.lineage.concept_arguments}
+    outputs = {c.address for c in node.output_concepts}
+    return args <= set(domain.primary_members) and (
+        concept.address in outputs or args <= outputs
+    )
 
 
 def _add_partial_completion_contributors(
