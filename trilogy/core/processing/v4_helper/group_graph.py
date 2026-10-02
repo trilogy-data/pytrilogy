@@ -46,6 +46,7 @@ from .condition_placement import (
     plan_condition_placements,
 )
 from .constants import (
+    ALL_ROWS_ADDRESS,
     DEPENDENCY_EDGE_KINDS,
     FINAL_NODE_ID,
     GROUPING_DERIVATIONS,
@@ -872,7 +873,9 @@ def _group_final_grain_contribution(
     if gid not in attrs:
         return frozenset()
     if attrs[gid].derivation in GROUPING_DERIVATIONS:
-        return attrs[gid].grain_components
+        # a statement-wide aggregate is one row beside every row of the
+        # statement: it has no key for a sibling to be projected to or join on
+        return attrs[gid].grain_components - {ALL_ROWS_ADDRESS}
     if attrs[gid].extent_spans:
         return attrs[gid].extent_spans
     if attrs[gid].derivation == Derivation.ROWSET:
