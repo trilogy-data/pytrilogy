@@ -873,6 +873,48 @@ def test_counts_of_two_facts_under_one_rollup(model: str):
     assert _rows(executor, query) == [(1, 2, 1), (2, 1, 0), (3, 0, 0), (None, 3, 1)]
 
 
+# A second fact binding the span names another key path to it, so the concept
+# graph's FD no longer says the order determines its customer; the model's
+# does, and the row stream keeps carrying the span its region joins back on.
+@pytest.mark.parametrize("model", [_DERIVED, _MATERIALIZED])
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select customer_id, status, sum(amount) by status as s",
+            [
+                (1, "delivered", 40),
+                (1, "in-transit", 20),
+                (2, "delivered", 40),
+                (3, None, None),
+            ],
+        ),
+        (
+            "select customer_id, status, count(customer_id) by status as per_status",
+            [
+                (1, "delivered", 2),
+                (1, "in-transit", 1),
+                (2, "delivered", 2),
+                (3, None, 1),
+            ],
+        ),
+        (
+            "select name, status, count(order_id) as n",
+            [
+                ("ann", "delivered", 1),
+                ("ann", "in-transit", 1),
+                ("bob", "delivered", 1),
+                ("cat", None, 0),
+            ],
+        ),
+    ],
+)
+def test_second_fact_binding_the_span_keeps_the_rows_paired(
+    model: str, query: str, expected: list[tuple]
+):
+    assert _rows(_executor(model + _RETURNS), query) == expected
+
+
 def test_rollup_by_an_absent_key_counts_the_region(
     derived: Executor, materialized: Executor
 ):
