@@ -391,7 +391,7 @@ def _region_domain(
         return RegionDomain(
             region, DomainKind.PADDED, label, carried, note="rollup key"
         )
-    if region.spans & relation_spans:
+    if region.spans & relation_spans and not named:
         return RegionDomain(region, DomainKind.RELATION, label, carried)
     if not any(_mixes_region(b, region, keyspace) for b in eligible):
         return RegionDomain(region, DomainKind.ROW_STREAM, label, carried)

@@ -52,6 +52,15 @@ def twins() -> tuple[Executor, Executor]:
             "where status is null;",
             [(3, None)],
         ),
+        (
+            "select customer_id, status, r.status union join r.customer_id = customer_id;",
+            PAIRED,
+        ),
+        (
+            "select customer_id, status, r.status union join r.customer_id = customer_id "
+            "where status is null;",
+            CAT,
+        ),
     ],
 )
 def test_rowset_pairs_on_the_declared_join_only(
