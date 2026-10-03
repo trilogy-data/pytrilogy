@@ -476,11 +476,14 @@ def describe_incomplete_partitions(
     requested = {c.address for c in concepts}
     reasons: list[str] = []
     for merge_key_addr, dses in _partition_families(datasources).items():
-        # only the families that bind what the query could not source
+        # only the arms leaving partial what the query could not source
         dses = [
             ds
             for ds in dses
-            if any(col.concept.address in requested for col in ds.columns)
+            if any(
+                Modifier.PARTIAL in col.modifiers and col.concept.address in requested
+                for col in ds.columns
+            )
         ]
         if len(dses) < 2:
             continue
