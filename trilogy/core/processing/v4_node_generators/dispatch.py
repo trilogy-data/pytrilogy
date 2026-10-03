@@ -67,8 +67,8 @@ def build_node(
 ) -> StrategyNode | None:
     """Dispatch on `derivation`. Only the generators that re-enter the planner
     take `history` (ROOT for datasource selection, ROWSET and SUBSELECT for
-    their nested selects) and `g` (ROOT and SUBSELECT; a rowset body builds
-    its own graph); the rest ignore them. `depth` only indents the trace of a
+    their nested selects) and `g` (ROOT, SUBSELECT and FILTER; a rowset body
+    builds its own graph); the rest ignore them. `depth` only indents the trace of a
     nested plan.
 
     `preexisting_conditions` means "an ancestor already applied this, don't
@@ -136,6 +136,7 @@ def build_node(
             intrinsic_filter_pushdown=intrinsic_filter_pushdown,
             existence_source=existence_source,
             collapse_to_grain=collapse_to_grain,
+            g=g,
         )
     return fn(
         outputs,

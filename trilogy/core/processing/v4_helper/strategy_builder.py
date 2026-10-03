@@ -5799,7 +5799,7 @@ def build_strategy_node(
                 )
             if a.null_member_spans:
                 node = _with_null_members(
-                    node, a.null_member_spans, environment, g.scope_datasources
+                    node, a.null_member_spans, environment, g.scope.datasources
                 )
             # the region contract: this node's rows are the region's own
             node.region_spans = a.extent_spans

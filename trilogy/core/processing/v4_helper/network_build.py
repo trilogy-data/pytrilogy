@@ -174,7 +174,7 @@ def rollup_concepts_by_node(
     the scan / merge nodes apply the GROUP BY."""
     if not any(concept.is_aggregate for concept in terminals):
         return {}
-    datasources = graph.scope_datasources
+    datasources = graph.scope.datasources
     target_grain = BuildGrain.from_concepts(terminals)
     # A filter FINER than the target grain splits the groups the roll would sum,
     # so the summary has to be filtered before it is aggregated. A binding says
@@ -659,7 +659,7 @@ def _relevant_nodes(
             continue
         carrier_ids.update(
             c.identifier
-            for c in member_binding_datasources(member, graph.scope_datasources)
+            for c in member_binding_datasources(member, graph.scope.datasources)
         )
     stack: list[str] = [
         node
@@ -721,7 +721,7 @@ def build_source_network(
     )
     owners = probe_owners(
         environment,
-        graph.scope_datasources,
+        graph.scope.datasources,
         all_addresses,
         _probe_offers(graph, emitted_by_node),
         {
@@ -734,7 +734,7 @@ def build_source_network(
     union_candidates = {
         node: union_candidate
         for node, union_candidate in _union_candidates(
-            terminals, environment, graph.scope_datasources, conditions, equivalence
+            terminals, environment, graph.scope.datasources, conditions, equivalence
         ).items()
         if not union_candidate.condition.disqualifying
     }
@@ -776,7 +776,7 @@ def build_source_network(
     requested = [equivalence.get(a, a) for a in addresses]
     candidates = _drop_dominated_arms(candidates, requested)
     candidates = pin_unoffered_probes(
-        addresses, candidates, environment, graph.scope_datasources, equivalence
+        addresses, candidates, environment, graph.scope.datasources, equivalence
     )
     bound = {address for c in candidates.values() for address in c.bindings}
     sourced = {address for address in requested if address in bound}
@@ -791,7 +791,7 @@ def build_source_network(
         searched,
         candidates,
         environment,
-        graph.scope_datasources,
+        graph.scope.datasources,
         equivalence,
         address_grain,
         conditions,

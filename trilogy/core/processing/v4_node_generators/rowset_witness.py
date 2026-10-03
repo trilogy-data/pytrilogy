@@ -7,6 +7,7 @@ its WHERE and filter population applied), then respelled in the handles the
 outer plan reads. It is a fact of the rowset, cached on the history.
 """
 
+from trilogy.core.graph_models import ScopeDatasources
 from trilogy.core.models.author import SelectLineage
 from trilogy.core.models.build import (
     BuildConcept,
@@ -28,7 +29,7 @@ from trilogy.core.processing.v4_helper.keyspace import (
 from trilogy.core.processing.v4_helper.models import ConceptAttrs
 from trilogy.core.processing.v4_helper.projection import statement_filter_population
 
-from .nested_select import _nested_graph, build_nested_select
+from .nested_select import build_nested_select
 
 
 def statement_keyspace(
@@ -37,6 +38,7 @@ def statement_keyspace(
     environment: BuildEnvironment,
     conditions: list[BuildWhereClause],
     history: V4History,
+    scope: ScopeDatasources,
 ) -> Keyspace:
     """One plan's row universe. A statement showing only filter values over
     one predicate is filtered by it, so the keyspace empties the regions it
@@ -58,7 +60,12 @@ def statement_keyspace(
     ]
     witnesses = rowset_witnesses(concept_attrs, environment, history)
     return build_keyspace(
-        concept_attrs, outputs, environment, conditions, rowset_witnesses=witnesses
+        concept_attrs,
+        outputs,
+        environment,
+        conditions,
+        scope,
+        rowset_witnesses=witnesses,
     )
 
 
@@ -130,13 +137,13 @@ def _witness(
     # a multiselect body is planned arm by arm, with no keyspace of its own
     if not isinstance(rowset.select, SelectLineage):
         return RowsetWitness(name=rowset.name, regions=())
-    built, env, where = build_nested_select(
+    built, env, where, graph = build_nested_select(
         rowset.select, history, exclude_derived=rowset.derived_concepts
     )
     assert isinstance(built, BuildSelectLineage)
     outputs = list(built.output_components)
     conditions = [where] if where else []
-    datasources = _nested_graph(env, history).scope_datasources
+    datasources = graph.scope.datasources
     _, attrs, _ = build_concept_graph(
         outputs,
         env,
@@ -145,10 +152,10 @@ def _witness(
         staged_conditions=built.where_clauses or None,
         datasources=datasources,
     )
-    body = statement_keyspace(attrs, outputs, env, conditions, history)
+    body = statement_keyspace(attrs, outputs, env, conditions, history, graph.scope)
     handles = [
         concept
         for address in rowset.derived_concepts
         if (concept := environment.concepts.get(address)) is not None
     ]
-    return rowset_witness(rowset.name, handles, body, env)
+    return rowset_witness(rowset.name, handles, body, env, graph.scope)

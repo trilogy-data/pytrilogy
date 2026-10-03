@@ -25,8 +25,8 @@ from trilogy.core.processing.concept_strategies_v4 import (
     materialized_root_addresses,
 )
 from trilogy.core.processing.condition_utility import combine_where_clauses
+from trilogy.core.processing.statement_scope import authored_datasources
 from trilogy.core.processing.v4_helper.concept_graph import build_concept_graph
-from trilogy.core.processing.v4_helper.keyspace import build_datasources
 from trilogy.parser import parse
 
 # Base orders fact + a per-customer summary (exact customer grain) + a
@@ -254,7 +254,7 @@ def _build(
 def _roots(select: str, model: str = MODEL) -> set[str]:
     be, mandatory, conditions = _build(select, model)
     return set(
-        materialized_root_addresses(mandatory, be, conditions, build_datasources(be))
+        materialized_root_addresses(mandatory, be, conditions, authored_datasources(be))
     )
 
 
@@ -531,7 +531,7 @@ def test_concept_graph_materialized_root_is_leaf():
     roots = frozenset({"local.order_count"})
 
     _, attrs, _edges = build_concept_graph(
-        mandatory, be, [], roots, datasources=build_datasources(be)
+        mandatory, be, [], roots, datasources=authored_datasources(be)
     )
     assert attrs["local.order_count"].derivation == Derivation.ROOT
     # A materialized root stops the lineage walk: order_id (count's argument) is
@@ -541,7 +541,7 @@ def test_concept_graph_materialized_root_is_leaf():
     # Without the materialized hint the same concept is a derived AGGREGATE whose
     # argument is walked in.
     _, plain_attrs, _ = build_concept_graph(
-        mandatory, be, [], datasources=build_datasources(be)
+        mandatory, be, [], datasources=authored_datasources(be)
     )
     assert plain_attrs["local.order_count"].derivation == Derivation.AGGREGATE
     assert "local.order_id" in plain_attrs

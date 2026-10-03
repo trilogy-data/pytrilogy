@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.graph_models import (
     ReferenceGraph,
+    ScopeDatasources,
     concept_to_node,
     datasource_to_node,
 )
@@ -238,7 +239,7 @@ def get_default_grain_concept(
 
 def additive_rollup_edges(
     concepts: list[BuildConcept],
-    datasources: list[BuildDatasource],
+    datasources: Sequence[BuildDatasource],
     node_stash: dict[str, str],
 ) -> list[tuple[str, str]]:
     """Edges from a summary table to each aggregate it can SUM-roll up to.
@@ -288,11 +289,12 @@ def additive_rollup_edges(
 
 def generate_adhoc_graph(
     concepts: list[BuildConcept],
-    datasources: list[BuildDatasource],
+    scope: ScopeDatasources,
     default_concept_graph: dict[str, BuildConcept],
 ) -> ReferenceGraph:
     g = ReferenceGraph()
-    g.scope_datasources = tuple(datasources)
+    g.scope = scope
+    datasources = scope.datasources
     concept_mapping = {x.address: x for x in concepts}
     node_stash: dict[str, str] = {}
     seen: set[str] = set()
@@ -383,11 +385,15 @@ def generate_adhoc_graph(
 
 def generate_graph(
     environment: BuildEnvironment,
+    scope: ScopeDatasources | None = None,
 ) -> ReferenceGraph:
+    """The environment's reference graph over ``scope``: a statement's
+    bindings as decided by ``generate_scope_graph``, or, left out, the
+    environment's as authored."""
     default_concept_graph: dict[str, BuildConcept] = {}
     return generate_adhoc_graph(
         list(environment.concepts.values())
         + list(environment.alias_origin_lookup.values()),
-        list(environment.datasources.values()),
+        scope or ScopeDatasources(environment.datasources.values()),
         default_concept_graph=default_concept_graph,
     )

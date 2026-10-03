@@ -304,7 +304,7 @@ def _search_concepts_for_bridge(request: SourceRequest) -> list[BuildConcept]:
             request.environment,
         ),
         request.environment,
-        request.graph.scope_datasources,
+        request.graph.scope.datasources,
     )
     # Static model-path validation, BEFORE any source search: an ambiguous
     # relation is a model/request defect the search must never arbitrate.
@@ -317,7 +317,7 @@ def _inject_union_datasources(
     concepts: list[BuildConcept],
     environment: BuildEnvironment,
 ) -> None:
-    datasources = graph.scope_datasources
+    datasources = graph.scope.datasources
     union_edges: list[tuple[str, str]] = []
     excluded = environment.excluded_enum_values
     for datasource_group in get_union_sources(list(datasources), concepts, excluded):
@@ -1057,7 +1057,7 @@ def _original_datasource_concept_nodes(
         if address not in bridge_addresses or address not in environment.concepts:
             continue
         if not _datasource_renders_probe(
-            ds_obj, address, environment, source_graph.scope_datasources
+            ds_obj, address, environment, source_graph.scope.datasources
         ):
             continue
         if neighbor not in bridge_graph:
@@ -1163,7 +1163,7 @@ def _local_concept_nodes_for_datasource(
                     # ...or it binds a finer additive aggregate that rolls up to
                     # it, which is how an anonymous alias reaches a summary table.
                     or _datasource_rolls_up_to(
-                        datasource, canonical, environment, graph.scope_datasources
+                        datasource, canonical, environment, graph.scope.datasources
                     )
                 )
             )
@@ -1175,7 +1175,7 @@ def _local_concept_nodes_for_datasource(
                     or renders_materialized_canonical
                 )
                 and _datasource_renders_probe(
-                    datasource, address, environment, graph.scope_datasources
+                    datasource, address, environment, graph.scope.datasources
                 )
             ):
                 concepts.setdefault(address, neighbor)
@@ -1340,7 +1340,7 @@ def _finer_filter_rollup_source(request: SourceRequest) -> BuildDatasource | Non
         return None
     finer_canonicals = {c.canonical_address for c in finer}
     matches: list[BuildDatasource] = []
-    for ds in request.graph.scope_datasources:
+    for ds in request.graph.scope.datasources:
         ds_canonicals = {c.canonical_address for c in ds.output_concepts}
         ds_addresses = {c.address for c in ds.output_concepts}
         if not finer_canonicals.issubset(ds_canonicals):
@@ -1351,7 +1351,7 @@ def _finer_filter_rollup_source(request: SourceRequest) -> BuildDatasource | Non
             datasource=ds,
             requested_concepts=list(outputs),
             concepts_by_address=environment.concepts,
-            datasources=request.graph.scope_datasources,
+            datasources=request.graph.scope.datasources,
             target_grain=target_grain,
             conditions=conditions,
         )
@@ -1401,7 +1401,7 @@ def _plan_complete_where_source(request: SourceRequest) -> StrategyNode | None:
         if c.granularity != Granularity.SINGLE_ROW
     }
     matches: list[BuildDatasource] = []
-    for ds in request.graph.scope_datasources:
+    for ds in request.graph.scope.datasources:
         if ds.non_partial_for is None:
             continue
         # Only datasources exposed as a standalone scan in this graph are
