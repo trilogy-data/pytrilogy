@@ -8,7 +8,6 @@ from trilogy.core.functions import LITERAL_CONSTANT_TYPES
 from trilogy.core.models.author import (
     Between,
     Comparison,
-    ConceptRef,
     Function,
     Parenthetical,
     SubselectComparison,
