@@ -258,7 +258,7 @@ def _source_concepts_via_graph(
     """
     orig_concepts = list(concepts)
     sourceable_condition_atoms = (
-        _sourceable_condition_atoms(conditions, g.scope_datasources)
+        _sourceable_condition_atoms(conditions, g.scope.datasources)
         if conditions
         else []
     )
@@ -285,7 +285,7 @@ def _source_concepts_via_graph(
             filter_conditions is None
             and conditions is not None
             and _conditions_can_be_sourced_by_components(
-                conditions, g.scope_datasources
+                conditions, g.scope.datasources
             )
         )
         select_conditions = (
@@ -300,7 +300,7 @@ def _source_concepts_via_graph(
                 criteria=attempt,
                 environment=environment,
                 conditions=conditions,
-                datasources=list(g.scope_datasources),
+                datasources=list(g.scope.datasources),
                 depth=depth,
                 allow_intersection=allow_intersection,
             )
@@ -780,7 +780,7 @@ def gen_select_merge_node(
             not parents
             and conditions
             and _conditions_can_be_sourced_by_components(
-                conditions, g.scope_datasources
+                conditions, g.scope.datasources
             )
         ):
             augmented = unique(
@@ -808,7 +808,7 @@ def gen_select_merge_node(
             # guaranteed to apply them, so foreign datasources survive via the
             # intersection check. The full conditions still go through as
             # filter_conditions so per-datasource WHERE clauses are preserved.
-            covered = covered_conditions(conditions, g.scope_datasources)
+            covered = covered_conditions(conditions, g.scope.datasources)
             if covered:
                 parents = _source_concepts_via_graph(
                     normals,

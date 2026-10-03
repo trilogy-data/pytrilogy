@@ -16,7 +16,6 @@ from trilogy.core.enums import (
     JoinType,
     SourceType,
 )
-from trilogy.core.env_processor import generate_graph
 from trilogy.core.ergonomics import generate_cte_names
 from trilogy.core.exceptions import (
     InvalidSyntaxException,
@@ -96,7 +95,7 @@ from trilogy.core.processing.nodes import (
     SelectNode,
     StrategyNode,
 )
-from trilogy.core.processing.statement_scope import scope_statement
+from trilogy.core.processing.statement_scope import generate_scope_graph
 from trilogy.core.processing.utility import unrenderable_outputs
 from trilogy.core.processing.v4_helper.staged_where import CROSS_ROW_DERIVATIONS
 from trilogy.core.scope_diagnostics import (
@@ -1003,7 +1002,7 @@ def _plan_query_node(
     partial_requested = requested & {c.address for c in ds.partial_concepts}
     if partial_requested:
         detail = describe_incomplete_partitions(
-            list(graph.scope_datasources),
+            list(graph.scope.datasources),
             [c for c in ds.partial_concepts if c.address in partial_requested],
             build_environment.excluded_enum_values,
         )
@@ -1154,11 +1153,9 @@ def get_query_node(
         scoped_joins=caches.scoped_joins,
     )
     carried = _carry_order_by_concepts(build_statement)
-    # Effective partiality is a per-plan fact (`partial_bridging`): one
-    # rewrite here keeps every downstream consumer consistent.
-    scope_statement(build_environment, statement, environment, build_statement)
-
-    graph = generate_graph(build_environment)
+    graph = generate_scope_graph(
+        build_environment, statement, environment, build_statement
+    )
 
     staged_conditions = (
         build_statement.where_clauses or None

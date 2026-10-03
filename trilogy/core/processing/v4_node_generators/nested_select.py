@@ -13,14 +13,12 @@ from dataclasses import dataclass, replace
 from trilogy.constants import logger
 from trilogy.core.domain_graph import EdgeScope
 from trilogy.core.enums import JoinType
-from trilogy.core.env_processor import generate_graph
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.author import MultiSelectLineage, SelectLineage
 from trilogy.core.models.build import (
     BuildMultiSelectLineage,
     BuildRowsetLineage,
     BuildSelectLineage,
-    BuildWhereClause,
     Factory,
     scope_tagged_joins,
 )
@@ -32,8 +30,12 @@ from trilogy.core.processing.discovery_utility import (
     raise_if_disconnected_for,
 )
 from trilogy.core.processing.nodes import BuildCaches, SelectNode, StrategyNode
-from trilogy.core.processing.statement_scope import scope_statement
-from trilogy.core.processing.v4_helper.history import NestedBuildKey, V4History
+from trilogy.core.processing.statement_scope import generate_scope_graph
+from trilogy.core.processing.v4_helper.history import (
+    NestedBuild,
+    NestedBuildKey,
+    V4History,
+)
 
 from .common import search_parent
 from .condition_sources import resolve_and_inject_condition
@@ -116,12 +118,9 @@ def build_nested_select(
     select: SelectLineage | MultiSelectLineage,
     history: V4History,
     exclude_derived: list[str] | None = None,
-) -> tuple[
-    BuildSelectLineage | BuildMultiSelectLineage,
-    BuildEnvironment,
-    BuildWhereClause | None,
-]:
-    """Build and materialize one nested select in its own build environment.
+) -> NestedBuild:
+    """Build and materialize one nested select in its own build environment,
+    with the reference graph it plans in.
 
     A nested select can carry its OWN query-scoped joins (a rowset body
     ``with rs as inner join a.aid = b.bid select ...``) that the outer resolution
@@ -210,19 +209,10 @@ def build_nested_select(
     )
     # This select is its own plan: its WHERE completes `~` bindings and rules
     # out partitions over ITS references, not the enclosing statement's.
-    scope_statement(build_env, select, author_env, built)
-    result = (built, build_env, built.where_clause)
+    graph = generate_scope_graph(build_env, select, author_env, built)
+    result: NestedBuild = (built, build_env, built.where_clause, graph)
     history.nested_builds[key] = (select, result)
     return result
-
-
-def _nested_graph(env: BuildEnvironment, history: V4History) -> ReferenceGraph:
-    """The env's graph, generated once: a body built for its witness and its
-    plan shares one build env."""
-    cached = history.nested_graphs.get(id(env))
-    if cached is None:
-        cached = history.nested_graphs[id(env)] = (env, generate_graph(env))
-    return cached[1]
 
 
 def plan_nested_select(
@@ -245,8 +235,7 @@ def plan_nested_select(
     # inherited set would drop joins a body legitimately carries.
     inherited = history.nested_exclusions
     hidden = inherited | frozenset(hide_from_connectivity or exclude_derived or ())
-    built, env, where = build_nested_select(select, history, exclude_derived)
-    graph = _nested_graph(env, history)
+    built, env, where, graph = build_nested_select(select, history, exclude_derived)
 
     # The nested select resolves on its own; if its required concepts span
     # unconnected models (a grain-only `by` edge does NOT bridge them), surface

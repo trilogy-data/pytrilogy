@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from enum import Enum
 from logging import Logger
 from typing import cast
@@ -532,17 +533,29 @@ def datasource_to_node(input: BuildDatasource) -> str:
     return f"ds~{input.identifier}"
 
 
+class ScopeDatasources:
+    """The bindings a scope's graph was generated over: pin-healed and
+    partition-excluded for its statement (`statement_scope`), or the
+    environment's as authored. One object per scope, shared by every copy and
+    subgraph of its graph, where `ReferenceGraph.datasources` (node -> source)
+    follows the nodes kept and gains the unions injected while planning. The
+    binding facts a plan's keyspace reads are cached per object
+    (`keyspace.scope_facts`), so a heal that changes nothing hands its
+    authored bindings, facts and all, to the plan."""
+
+    __slots__ = ("__weakref__", "datasources")
+
+    def __init__(self, datasources: Iterable[BuildDatasource]) -> None:
+        self.datasources: tuple[BuildDatasource, ...] = tuple(datasources)
+
+
 class ReferenceGraph(DiGraph):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.concepts: dict[str, BuildConcept] = {}
         self.datasources: dict[str, BuildDatasource | BuildUnionDatasource] = {}
         self.pseudonyms: set[tuple[str, str]] = set()
-        # The scope's bindings as generated for its statement: pin-healed and
-        # partition-excluded. A fact of the scope, not of a node: every copy
-        # and subgraph carries it whole, where `datasources` (node -> source)
-        # follows the nodes kept and gains the unions injected while planning.
-        self.scope_datasources: tuple[BuildDatasource, ...] = ()
+        self.scope = ScopeDatasources(())
 
     def copy(self) -> "ReferenceGraph":
         g = ReferenceGraph()
@@ -550,7 +563,7 @@ class ReferenceGraph(DiGraph):
         g.concepts = self.concepts.copy()
         g.datasources = self.datasources.copy()
         g.pseudonyms = self.pseudonyms.copy()
-        g.scope_datasources = self.scope_datasources
+        g.scope = self.scope
         return g
 
     def subgraph(self, nodes) -> "ReferenceGraph":
@@ -567,7 +580,7 @@ class ReferenceGraph(DiGraph):
         g.pseudonyms = {
             edge for edge in self.pseudonyms if edge[0] in keep and edge[1] in keep
         }
-        g.scope_datasources = self.scope_datasources
+        g.scope = self.scope
         return g
 
     def remove_node(self, n) -> None:

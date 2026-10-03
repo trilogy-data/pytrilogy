@@ -52,9 +52,12 @@ empties it (`emptied_by`).
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Sequence
 from dataclasses import dataclass, field
+from weakref import WeakKeyDictionary
 
 from trilogy.core.enums import Derivation, Purpose
+from trilogy.core.graph_models import ScopeDatasources
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
@@ -66,7 +69,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.keyspace import Completion, Keyspace, Region, spans_in_play
 from trilogy.core.processing.condition_utility import gather_non_null_proofs
 
-from .functional_dependency import EnvCache, minimize_build_grain
+from .functional_dependency import minimize_build_grain
 from .group_rules import overlap_components
 from .models import ConceptAttrs
 
@@ -94,9 +97,8 @@ class _SourceFacts:
 
 @dataclass
 class _ModelFacts:
-    """Binding facts of one environment, canonicalized over pseudonyms."""
+    """Binding facts of one scope, canonicalized over pseudonyms."""
 
-    stamp: tuple[BuildDatasource, ...]
     canonical: dict[str, str]
     sources: tuple[_SourceFacts, ...]
     # every spelling of an address that is part of some source's row identity
@@ -156,6 +158,7 @@ def rowset_witness(
     handles: list[BuildConcept],
     body: Keyspace,
     body_environment: BuildEnvironment,
+    body_scope: ScopeDatasources,
 ) -> RowsetWitness:
     """The body's live regions respelled in the rowset's handles. A body key
     no handle spells is spelled by a handle keyed on it alone (`item_desc`
@@ -164,7 +167,7 @@ def rowset_witness(
     (`_row_identities`). A region whose span nothing spells is one the reader
     cannot name, so it is not a region of the reader's plan (its rows are
     read as the base region's)."""
-    canonical = _model_facts(body_environment).canonical
+    canonical = scope_facts(body_scope, body_environment).canonical
     contents = {
         h.address: canonical.get(h.lineage.content.address, h.lineage.content.address)
         for h in handles
@@ -173,7 +176,8 @@ def rowset_witness(
     keys = {
         handle: body.keys_by_address.get(content)
         or frozenset(
-            canonical.get(k, k) for k in entity_keys(content, body_environment)
+            canonical.get(k, k)
+            for k in entity_keys(content, body_environment, body_scope)
         )
         for handle, content in contents.items()
     }
@@ -265,13 +269,16 @@ def _rowset_sources(witnesses: tuple[RowsetWitness, ...]) -> tuple[_SourceFacts,
     return tuple(out)
 
 
-_FACTS_CACHE: EnvCache[_ModelFacts] = EnvCache()
+# per scope, for the life of its graph; see `ScopeDatasources`
+_FACTS_CACHE: WeakKeyDictionary[ScopeDatasources, _ModelFacts] = WeakKeyDictionary()
 
 
-def build_datasources(environment: BuildEnvironment) -> list[BuildDatasource]:
-    return [
-        ds for ds in environment.datasources.values() if isinstance(ds, BuildDatasource)
-    ]
+def scope_facts(scope: ScopeDatasources, environment: BuildEnvironment) -> _ModelFacts:
+    """The binding facts of one scope, computed on first read."""
+    facts = _FACTS_CACHE.get(scope)
+    if facts is None:
+        facts = _FACTS_CACHE[scope] = _compute_facts(environment, scope.datasources)
+    return facts
 
 
 def _canonical_addresses(environment: BuildEnvironment) -> dict[str, str]:
@@ -291,7 +298,7 @@ def _better(new: frozenset[str], old: frozenset[str] | None) -> bool:
 
 
 def _row_identities(
-    environment: BuildEnvironment, datasources: list[BuildDatasource]
+    environment: BuildEnvironment, datasources: Sequence[BuildDatasource]
 ) -> dict[str, frozenset[str]]:
     """What identifies a row of each source: its declared grain, else every
     KEY column it binds, less those the others determine by FD. A key that
@@ -427,7 +434,7 @@ def _identifying(
 
 
 def _compute_facts(
-    environment: BuildEnvironment, datasources: list[BuildDatasource]
+    environment: BuildEnvironment, datasources: Sequence[BuildDatasource]
 ) -> _ModelFacts:
     canonical = _canonical_addresses(environment)
     identities = _row_identities(environment, datasources)
@@ -436,9 +443,6 @@ def _compute_facts(
     )
     sources = _stamped(bound + _generated_domains(environment, canonical, bound))
     return _ModelFacts(
-        # pin-heal and partition exclusion swap datasources before planning;
-        # held, not by id, so a swapped-out one's id is never reused
-        stamp=tuple(datasources),
         canonical=canonical,
         sources=sources,
         identifying=_identifying(canonical, sources),
@@ -450,23 +454,10 @@ def _with_rowsets(facts: _ModelFacts, rowsets: tuple[_SourceFacts, ...]) -> _Mod
     model's own sources."""
     respelled = tuple(_respelled(r, facts.canonical) for r in rowsets)
     return _ModelFacts(
-        stamp=facts.stamp,
         canonical=facts.canonical,
         sources=_stamped(facts.sources + respelled),
         identifying=facts.identifying | _identifying(facts.canonical, respelled),
     )
-
-
-def _model_facts(environment: BuildEnvironment) -> _ModelFacts:
-    datasources = build_datasources(environment)
-    cached = _FACTS_CACHE.lookup(environment)
-    if (
-        cached is not None
-        and len(cached.stamp) == len(datasources)
-        and all(a is b for a, b in zip(cached.stamp, datasources))
-    ):
-        return cached
-    return _FACTS_CACHE.store(environment, _compute_facts(environment, datasources))
 
 
 def _entity_keys(
@@ -513,9 +504,11 @@ def _entity_keys(
     )
 
 
-def entity_keys(address: str, environment: BuildEnvironment) -> frozenset[str]:
+def entity_keys(
+    address: str, environment: BuildEnvironment, scope: ScopeDatasources
+) -> frozenset[str]:
     """The entity keys `address` is a function of (`_entity_keys`)."""
-    identifying = _model_facts(environment).identifying
+    identifying = scope_facts(scope, environment).identifying
     return _entity_keys(address, {}, identifying, environment)
 
 
@@ -662,7 +655,7 @@ def null_rejected(conditions: list[BuildWhereClause]) -> set[str]:
     return out
 
 
-def _has_extension_license(datasources: list[BuildDatasource]) -> bool:
+def _has_extension_license(datasources: Sequence[BuildDatasource]) -> bool:
     return any(ds.column_level_partial_addresses for ds in datasources)
 
 
@@ -680,25 +673,21 @@ def build_keyspace(
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     conditions: list[BuildWhereClause],
-    datasources: list[BuildDatasource] | None = None,
+    scope: ScopeDatasources,
     rowset_witnesses: tuple[RowsetWitness, ...] = (),
 ) -> Keyspace:
-    """`datasources` overrides the environment's (uncached): the heal audit
-    builds over the bindings as authored after pin-heal has rewritten them.
-    `rowset_witnesses` are the rowsets the plan reads, sources beside them.
+    """`scope` is the bindings the plan is built over (its graph's), or the
+    bindings as authored for the heal that decides them. `rowset_witnesses`
+    are the rowsets the plan reads, sources beside them.
 
     The facts are read whether or not any `~` survives (pin-heal may have
     dropped the last one): an entity is spelled by the same canonical
     address either way, and a plan's keys are compared across plans."""
-    if datasources is None:
-        datasources = build_datasources(environment)
-        facts = _model_facts(environment)
-    else:
-        facts = _compute_facts(environment, datasources)
+    facts = scope_facts(scope, environment)
     rowsets = _rowset_sources(rowset_witnesses)
     if rowsets:
         facts = _with_rowsets(facts, rowsets)
-    licensed = _has_extension_license(datasources) or any(
+    licensed = _has_extension_license(scope.datasources) or any(
         w.licensed for w in rowset_witnesses
     )
     witnessed = {s: h for w in rowset_witnesses for s, h in w.spellings.items()}
@@ -808,13 +797,13 @@ def build_keyspace(
         },
         witnessed=witnessed,
         unread_spans=unread,
-        value_null_spans=_value_null_spans(datasources, canonical)
+        value_null_spans=_value_null_spans(scope.datasources, canonical)
         & spans_in_play(regions),
     )
 
 
 def _value_null_spans(
-    datasources: list[BuildDatasource], canonical: dict[str, str]
+    datasources: Sequence[BuildDatasource], canonical: dict[str, str]
 ) -> frozenset[str]:
     return frozenset(
         canonical.get(c.address, c.address)

@@ -172,7 +172,7 @@ def gen_coalescing_axis_node(
         sides: list[StrategyNode] = []
         for member in sorted(group):
             side = _pinned_member_node(
-                member, key, environment, g.scope_datasources, depth
+                member, key, environment, g.scope.datasources, depth
             )
             if side is None and source_concepts is not None:
                 # No datasource carries the member (rowset/derived): source the

@@ -24,10 +24,12 @@ from .keyspace import RowsetWitness
 from .models import BuildInfo
 from .network_model import SearchResult
 
+# (built lineage, its build env, its WHERE, the reference graph it plans in)
 NestedBuild = tuple[
     BuildSelectLineage | BuildMultiSelectLineage,
     BuildEnvironment,
     BuildWhereClause | None,
+    ReferenceGraph,
 ]
 # (select id, excluded handles, scoped joins)
 NestedBuildKey = tuple[int, tuple[str, ...], tuple[tuple[str, str, JoinType], ...]]
@@ -83,11 +85,6 @@ class V4History(History):
     nested_builds: dict[
         NestedBuildKey, tuple[SelectLineage | MultiSelectLineage, NestedBuild]
     ] = field(default_factory=dict)
-    # `generate_graph` of a nested build env, by its id; the env is held so its
-    # id is never recycled.
-    nested_graphs: dict[int, tuple[BuildEnvironment, ReferenceGraph]] = field(
-        default_factory=dict
-    )
     # Spans of the body regions the plan reading a rowset holds the rows of:
     # the body, and every plan under it, is built without them. Managed by
     # `plan_nested_select`; part of the build key.

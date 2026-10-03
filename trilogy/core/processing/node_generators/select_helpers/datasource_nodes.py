@@ -205,7 +205,7 @@ def create_select_node_candidate(
             datasource,
             all_concepts,
             environment,
-            g.scope_datasources,
+            g.scope.datasources,
             depth,
             conditions=conditions,
         )
@@ -226,7 +226,7 @@ def create_select_node_candidate(
             datasource,
             all_concepts,
             environment,
-            g.scope_datasources,
+            g.scope.datasources,
             depth,
             conditions=conditions,
         )

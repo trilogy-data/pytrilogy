@@ -575,7 +575,7 @@ def _build_from_graph_traced(
                 materialized_roots=sorted(materialized_roots),
                 complete_partials=complete_partials,
                 span_scope=plan_trace.span_scope(environment.span_scope),
-                environment=plan_trace.environment(environment, g.scope_datasources),
+                environment=plan_trace.environment(environment, g.scope.datasources),
             ),
         )
     concept_graph, concept_attrs, concept_edges = build_concept_graph(
@@ -584,7 +584,7 @@ def _build_from_graph_traced(
         conditions,
         materialized_roots,
         staged_conditions=staged_conditions,
-        datasources=g.scope_datasources,
+        datasources=g.scope.datasources,
     )
     if plan_trace.active():
         plan_trace.record(
@@ -595,7 +595,7 @@ def _build_from_graph_traced(
             ),
         )
     keyspace = statement_keyspace(
-        concept_attrs, mandatory_list, environment, conditions, history
+        concept_attrs, mandatory_list, environment, conditions, history, g.scope
     )
     if len(keyspace.regions) > 1 and logger.isEnabledFor(logging.INFO):
         logger.info(
@@ -615,7 +615,7 @@ def _build_from_graph_traced(
         conditions,
         mandatory_list,
         environment=environment,
-        datasources=g.scope_datasources,
+        datasources=g.scope.datasources,
         staged_conditions=staged_conditions,
         keyspace=keyspace,
     )
@@ -742,7 +742,7 @@ def _search_concepts(
     # summary doesn't combine with the rest of the query), fall back to the
     # derive-from-base plan: try the direct source first.
     materialized_roots = materialized_root_addresses(
-        mandatory_list, environment, conditions, g.scope_datasources
+        mandatory_list, environment, conditions, g.scope.datasources
     )
     info = _build_from_graph(
         mandatory_list,

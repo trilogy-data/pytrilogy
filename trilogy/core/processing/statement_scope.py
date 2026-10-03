@@ -1,8 +1,12 @@
-"""What one plan's statement references, recorded on the build environment it
-plans in, plus the ``~`` heal and partition hiding its WHERE licenses."""
+"""One plan's reference graph: what its statement references, recorded on the
+build environment it plans in, and the bindings it plans over, decided here
+(the ``~`` heal and partition hiding its WHERE licenses) and owned by the
+graph. ``environment.datasources`` stays the bindings as authored."""
 
 from __future__ import annotations
 
+from trilogy.core.env_processor import generate_graph
+from trilogy.core.graph_models import ReferenceGraph, ScopeDatasources
 from trilogy.core.models.author import (
     Concept,
     HavingClause,
@@ -11,7 +15,11 @@ from trilogy.core.models.author import (
     SelectLineage,
     WhereClause,
 )
-from trilogy.core.models.build import BuildMultiSelectLineage, BuildSelectLineage
+from trilogy.core.models.build import (
+    BuildDatasource,
+    BuildMultiSelectLineage,
+    BuildSelectLineage,
+)
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.partial_bridging import (
@@ -19,7 +27,6 @@ from trilogy.core.processing.partial_bridging import (
     decide_heal,
     gate_excluded_enum_values,
 )
-from trilogy.core.processing.v4_helper.keyspace import build_datasources
 from trilogy.core.processing.v4_helper.projection import statement_filter_population
 from trilogy.core.processing.v4_helper.staged_where import universal_row_bound
 
@@ -70,42 +77,33 @@ def authored_reference_addresses(
     return closure
 
 
-def scope_statement(
+def authored_datasources(environment: BuildEnvironment) -> list[BuildDatasource]:
+    """The environment's bindings as authored: what a plan's scope is decided
+    from, and the one planning-time read of ``environment.datasources``."""
+    return list(environment.datasources.values())
+
+
+def _scope(
     build_environment: BuildEnvironment,
-    statement: SelectLineage | MultiSelectLineage,
-    environment: Environment,
     build_statement: BuildSelectLineage | BuildMultiSelectLineage,
-) -> None:
-    """Make ``build_environment`` this one plan's: record what the select
-    references, heal the ``~`` bindings its WHERE completes, hide the
-    partitions its row bound contradicts. Runs before the reference graph is
-    generated, at every seam that materializes a build environment for a plan.
+) -> ScopeDatasources:
+    """The bindings this plan is built over: the authored ones, less the
+    ``~`` its WHERE completes and the partitions its row bound contradicts.
+    A plan neither changes keeps the authored scope itself, facts and all.
 
     Staged (``then where``) chains are not healed: intermediate stages see
     populations the combined WHERE has not yet filtered. A statement showing
     nothing but filter values over one predicate is filtered by it
-    (``statement_filter_population``), the same as by a WHERE.
-
-    Copy-on-write: healed datasources replace the authored ones in the
-    environment's per-statement mapping and excluded ones leave it; the shared
-    build-cache objects are never mutated.
-    """
-    build_environment.statement_authored_addresses = authored_reference_addresses(
-        statement, environment
-    )
-    build_environment.statement_output_addresses = authored_reference_addresses(
-        statement, environment, include_where=False
-    )
-    build_environment.statement_hidden_addresses = set(
-        build_statement.hidden_components
-    )
+    (``statement_filter_population``), the same as by a WHERE. Healed bindings
+    are fresh objects; the shared build-cache objects are never mutated."""
+    scope = ScopeDatasources(authored_datasources(build_environment))
     if not isinstance(build_statement, BuildSelectLineage):
-        return
+        return scope
     if not build_statement.where_clauses:
         outputs = list(build_statement.output_components)
         replacements = decide_heal(
             build_environment,
-            build_datasources(build_environment),
+            scope,
             outputs,
             [
                 clause
@@ -118,18 +116,44 @@ def scope_statement(
                 if clause is not None
             ],
         )
-        for name, existing in list(build_environment.datasources.items()):
-            if existing.identifier in replacements:
-                build_environment.datasources[name] = replacements[existing.identifier]
+        if replacements:
+            scope = ScopeDatasources(
+                replacements.get(ds.identifier, ds) for ds in scope.datasources
+            )
     bound = universal_row_bound(
         build_statement.where_clauses, build_statement.where_clause
     )
     if bound is None:
-        return
+        return scope
     build_environment.excluded_enum_values = gate_excluded_enum_values(
         build_environment, bound
     )
-    excluded = decide_exclusion(build_datasources(build_environment), bound)
-    for name, existing in list(build_environment.datasources.items()):
-        if existing.identifier in excluded:
-            del build_environment.datasources[name]
+    excluded = decide_exclusion(scope.datasources, bound)
+    if excluded:
+        scope = ScopeDatasources(
+            ds for ds in scope.datasources if ds.identifier not in excluded
+        )
+    return scope
+
+
+def generate_scope_graph(
+    build_environment: BuildEnvironment,
+    statement: SelectLineage | MultiSelectLineage,
+    environment: Environment,
+    build_statement: BuildSelectLineage | BuildMultiSelectLineage,
+) -> ReferenceGraph:
+    """Make ``build_environment`` this one plan's and generate its reference
+    graph: record what the select references, decide the bindings the plan
+    is built over, and emit a graph owning them (``ReferenceGraph.scope``).
+    Runs at every seam that materializes a build environment for a plan: the
+    statement, and each nested select (a rowset body, a union arm)."""
+    build_environment.statement_authored_addresses = authored_reference_addresses(
+        statement, environment
+    )
+    build_environment.statement_output_addresses = authored_reference_addresses(
+        statement, environment, include_where=False
+    )
+    build_environment.statement_hidden_addresses = set(
+        build_statement.hidden_components
+    )
+    return generate_graph(build_environment, _scope(build_environment, build_statement))

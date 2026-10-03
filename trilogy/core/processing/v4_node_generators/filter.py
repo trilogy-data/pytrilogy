@@ -1,3 +1,4 @@
+from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
     BuildConcept,
     BuildFilterItem,
@@ -54,6 +55,8 @@ def gen_filter(
     intrinsic_filter_pushdown: bool = True,
     existence_source: bool = False,
     collapse_to_grain: bool = True,
+    *,
+    g: ReferenceGraph,
 ) -> StrategyNode | None:
     """Project filter concepts over already-built parents.
 
@@ -92,7 +95,10 @@ def gen_filter(
         # projected or not, a property stands for its keys: `select name,
         # late_name` is at customer grain
         entity_grain: set[str] = set().union(
-            *(entity_keys(o.address, environment) or {o.address} for o in outputs)
+            *(
+                entity_keys(o.address, environment, g.scope) or {o.address}
+                for o in outputs
+            )
         )
         collapsible = all(
             bool(o.keys) and set(o.keys or ()) <= entity_grain

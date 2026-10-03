@@ -12,7 +12,7 @@ whether dropping the ``~`` is also safe for every other merge it would license
 is decided here (the anchor guards). Dropping the modifier up front lets the
 fact anchor the plan with INNER star joins instead of extension scaffolding
 that is then filtered away. It is decided once per PLAN, on the plan's own
-outputs, WHERE and references (``statement_scope.scope_statement``): the
+outputs, WHERE and references (``statement_scope.generate_scope_graph``): the
 statement at ``get_query_node`` and every nested select (a rowset body, a union
 arm), so every downstream consumer of that plan reads one judgment.
 
@@ -32,10 +32,11 @@ caller's.
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from functools import cached_property
 
 from trilogy.core.enums import Modifier
+from trilogy.core.graph_models import ScopeDatasources
 from trilogy.core.models.build import (
     BuildColumnAssignment,
     BuildConcept,
@@ -114,7 +115,7 @@ def _partition_disjoint(a: BuildDatasource, b: BuildDatasource) -> bool:
 
 
 def _pair_anchors(
-    key_spellings: set[str], ds: BuildDatasource, datasources: list[BuildDatasource]
+    key_spellings: set[str], ds: BuildDatasource, datasources: Sequence[BuildDatasource]
 ) -> list[BuildDatasource]:
     """Sibling row-sources carrying this key inside a LARGER grain.
 
@@ -143,7 +144,7 @@ def _pair_anchors(
 
 
 def _lookup_supply(
-    anchor: BuildDatasource, datasources: list[BuildDatasource]
+    anchor: BuildDatasource, datasources: Sequence[BuildDatasource]
 ) -> set[str]:
     """Spellings an ``anchor`` row can carry a value for: its own bindings plus
     every datasource reachable by keyed lookup on what it already carries.
@@ -180,7 +181,7 @@ def _anchors_dispensable(
     anchors: list[BuildDatasource],
     killers: set[str],
     referenced_bound: set[str],
-    datasources: list[BuildDatasource],
+    datasources: Sequence[BuildDatasource],
 ) -> bool:
     """True when the WHERE filters out every anchor-only row and the statement
     can be answered from ``ds``'s own rows without any anchor.
@@ -208,7 +209,7 @@ def _anchors_dispensable(
 
 
 def _component_reach(
-    ds: BuildDatasource, datasources: list[BuildDatasource]
+    ds: BuildDatasource, datasources: Sequence[BuildDatasource]
 ) -> set[str]:
     """All concept spellings connected to ``ds`` through shared bindings."""
     reach = _bound_spellings([ds])
@@ -233,10 +234,11 @@ class _AuthoredKeyspace:
     """The statement's row universe over its bindings as authored. Healing
     runs before the reference graph exists (the graph holds the datasource
     objects, so they have to be final by then); the keyspace needs neither.
-    Built on first read: most heals settle without it."""
+    Built on first read: most heals settle without it. Its binding facts are
+    cached on ``scope``, which a plan the heal leaves unchanged reads too."""
 
     environment: BuildEnvironment
-    datasources: list[BuildDatasource]
+    scope: ScopeDatasources
     outputs: list[BuildConcept]
     conditions: list[BuildWhereClause]
 
@@ -246,30 +248,27 @@ class _AuthoredKeyspace:
             self.outputs,
             self.environment,
             self.conditions,
-            datasources=self.datasources,
+            datasources=self.scope.datasources,
         )
         return build_keyspace(
-            attrs,
-            self.outputs,
-            self.environment,
-            self.conditions,
-            datasources=self.datasources,
+            attrs, self.outputs, self.environment, self.conditions, self.scope
         )
 
 
 def decide_heal(
     environment: BuildEnvironment,
-    datasources: list[BuildDatasource],
+    scope: ScopeDatasources,
     outputs: list[BuildConcept],
     conditions: list[BuildWhereClause],
 ) -> dict[str, BuildDatasource]:
     """Identifier -> its binding with every ``~`` this WHERE kills the
     licensed extensions of dropped, for the bindings it changes.
 
-    Pure over ``datasources`` (the scope's bindings as authored): the
+    Pure over ``scope`` (the statement's bindings as authored): the
     replacements are fresh objects, and neither the environment nor the shared
     build-cache objects are written.
     """
+    datasources = scope.datasources
     partial_hosts = [
         ds for ds in datasources if any(_structural_partial(ds, c) for c in ds.columns)
     ]
@@ -278,7 +277,7 @@ def decide_heal(
     proven = null_rejected(conditions)
     if not proven:
         return {}
-    authored = _AuthoredKeyspace(environment, datasources, outputs, conditions)
+    authored = _AuthoredKeyspace(environment, scope, outputs, conditions)
     bound = _bound_spellings(datasources)
     proven_bound = _proven_bound(proven, bound, environment, authored)
     if not proven_bound:

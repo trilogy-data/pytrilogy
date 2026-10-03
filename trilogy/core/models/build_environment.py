@@ -167,11 +167,11 @@ class BuildEnvironment:
     # and their lineage) — computed on the author statement, BEFORE scoped-join
     # canonical substitution, and deliberately excluding the scoped-join
     # declarations themselves. None means unknown (conservative consumers
-    # treat every member as referenced). Set by `get_query_node`.
+    # treat every member as referenced). Set by `generate_scope_graph`.
     statement_authored_addresses: set[str] | None = None
     # Same closure restricted to the SELECT outputs (WHERE excluded): a rowset
     # referenced only in a condition is population-scope (d1) demand, not a
-    # row-stream contributor. Set by `get_query_node`.
+    # row-stream contributor. Set by `generate_scope_graph`.
     statement_output_addresses: set[str] | None = None
     # Outputs the statement carries but does not show (a HAVING's aggregate
     # promoted to the projection, an ORDER BY carry); what it SHOWS decides

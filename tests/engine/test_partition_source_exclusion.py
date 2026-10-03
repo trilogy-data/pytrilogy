@@ -13,7 +13,7 @@ from trilogy.core.processing.partial_bridging import (
     decide_exclusion,
     gate_excluded_enum_values,
 )
-from trilogy.core.processing.v4_helper.keyspace import build_datasources
+from trilogy.core.processing.statement_scope import authored_datasources
 from trilogy.core.processing.v4_helper.staged_where import universal_row_bound
 
 COMMON = """
@@ -128,7 +128,7 @@ def test_decide_exclusion_names_contradicted_sources():
     executor = _executor(COMMON, MODEL_A_SOURCES, MODEL_B)
     environment = executor.environment.materialize_for_select()
     excluded = decide_exclusion(
-        build_datasources(environment), _city_gate(environment, "A")
+        authored_datasources(environment), _city_gate(environment, "A")
     )
     assert excluded == {"b_one", "b_two"}
 
@@ -225,7 +225,7 @@ def test_reduced_domain_recorded_by_address_and_canonical():
             operator=ComparisonOperator.IN,
         )
     )
-    assert decide_exclusion(build_datasources(environment), gate) == {"store"}
+    assert decide_exclusion(authored_datasources(environment), gate) == {"store"}
     excluded = gate_excluded_enum_values(environment, gate)
     assert excluded["local.channel"] == frozenset({"STORE"})
     assert excluded[environment.concepts["local.channel"].canonical_address] == (

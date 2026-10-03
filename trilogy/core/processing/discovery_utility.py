@@ -962,7 +962,7 @@ def connected_equivalent_suggestions(
         return []
     comp_of, g = _component_map(environment, g, excluded_addresses)
 
-    tables = _physical_tables_by_concept(g.scope_datasources)
+    tables = _physical_tables_by_concept(g.scope.datasources)
 
     def twin_of(concept: BuildConcept, target_comps: set[int]) -> str | None:
         # A select alias (`claim.claim_number as company_claim_number`) is

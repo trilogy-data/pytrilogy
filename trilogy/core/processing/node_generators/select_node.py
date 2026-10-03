@@ -77,7 +77,7 @@ def gen_select_node(
     fail_if_not_found: bool = True,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
-    datasources = g.scope_datasources
+    datasources = g.scope.datasources
     target_grain = BuildGrain.from_concepts(concepts)
     rollup_materialized = {
         concept.canonical_address
