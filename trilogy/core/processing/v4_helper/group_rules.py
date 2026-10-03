@@ -406,7 +406,11 @@ def overlap_components(sets: Sequence[Collection[str]]) -> list[list[int]]:
     first: dict[str, int] = {}
     return _components(
         len(sets),
-        [(first.setdefault(e, i), i) for i, members in enumerate(sets) for e in members],
+        [
+            (first.setdefault(e, i), i)
+            for i, members in enumerate(sets)
+            for e in members
+        ],
     )
 
 

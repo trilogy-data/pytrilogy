@@ -90,7 +90,13 @@ def test_root_condition_lands_on_upstream_root(
     add_edge(graph, edges, "basic", FINAL_NODE_ID, EdgeKind.MERGE)
 
     placements = plan_condition_placements(
-        graph, edges, buckets, [_where("x")], [_concept("y")], empty_environment, Keyspace()
+        graph,
+        edges,
+        buckets,
+        [_where("x")],
+        [_concept("y")],
+        empty_environment,
+        Keyspace(),
     )
 
     assert len(placements) == 1
@@ -119,7 +125,13 @@ def test_window_output_condition_lands_on_downstream_consumer(
         add_edge(graph, edges, gid, FINAL_NODE_ID, EdgeKind.MERGE)
 
     placements = plan_condition_placements(
-        graph, edges, buckets, [_where("ranked")], [_concept("out")], empty_environment, Keyspace()
+        graph,
+        edges,
+        buckets,
+        [_where("ranked")],
+        [_concept("out")],
+        empty_environment,
+        Keyspace(),
     )
 
     assert len(placements) == 1
@@ -163,7 +175,13 @@ def test_cross_grain_aggregate_comparison_defers_to_final(
     )
 
     placements = plan_condition_placements(
-        graph, edges, buckets, [condition], [_concept("out")], empty_environment, Keyspace()
+        graph,
+        edges,
+        buckets,
+        [condition],
+        [_concept("out")],
+        empty_environment,
+        Keyspace(),
     )
 
     assert len(placements) == 1

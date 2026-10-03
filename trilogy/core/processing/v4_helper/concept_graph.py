@@ -2296,7 +2296,7 @@ def build_concept_graph(
     # (`b.order_number` from `a.order_number not in b.order_number`).
     # An output, or a lineage input of another concept (`dx in x` with `dx <-
     # x ? ...`), is read by the row stream too, so it is not existence-only.
-    row_read = {c.address for c in mandatory_list} | {
+    row_stream_reads = {c.address for c in mandatory_list} | {
         attrs[n].address
         for n in graph.nodes
         if any(
@@ -2304,7 +2304,9 @@ def build_concept_graph(
             for succ in graph.successors(n)
         )
     }
-    existence_only_addresses = existence_arg_addresses - row_arg_addresses - row_read
+    existence_only_addresses = (
+        existence_arg_addresses - row_arg_addresses - row_stream_reads
+    )
     for n in graph.nodes:
         if attrs[n].address in existence_only_addresses:
             attrs[n].existence_only = True

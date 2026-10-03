@@ -464,34 +464,21 @@ def decide_region_domains(
     rollup_padded: frozenset[str],
 ) -> list[RegionDomain]:
     """Say where the rows of each live extension region the statement asks
-    rows of come from (`DomainKind`), and give the region a ROOT bucket of its
+    rows of come from (`DomainKind`), giving the region a ROOT bucket of its
     own when the statement derives something absent on it.
 
-    A derived concept is a function of its keys and NULL where a key's entity
-    is absent. Sourced with the region's rows, the derivation's inputs are
-    padded and it evaluates over rows that have no such entity (`case ... else
-    'in-transit'` for a customer with no order). The domain bucket carries the
-    region's own rows instead and owns their extent (`elect_extent_owners`):
-    everything feeding the derivation pairs on solid keys, and the region's
-    rows join back above it, at FINAL or at a scalar over an aggregate by the
-    span (`feed_region_domains_to_present_scalars`). One domain per region:
-    regions are disjoint, so two families' rows never pair.
+    A derived concept is NULL where a key's entity is absent, so it must not
+    evaluate over padded rows. The domain bucket carries the region's own rows
+    and owns their extent (`elect_extent_owners`); everything feeding the
+    derivation pairs on solid keys, and the region's rows join back above it
+    (`feed_region_domains_to_present_scalars`). Regions are disjoint, so one
+    domain per region.
 
-    Only a region the statement asks rows of: an output is a function of what
-    its span reaches (`output_demanded_spans`, the election's question), or an
-    aggregate counts them. `select order_id, status where name = 'ann'` asks
-    for orders; the customer with none is not a row of it. And only one with
-    rows of its own: a region kept by a completion alone is rows of the larger
-    source, where nothing is absent.
-
-    A ROWSET boundary already holds the region's rows (its body padded them),
-    so it is split only when something must be evaluated on the solid rows
-    (`_needs_solid_rows`): the domain is the boundary again, and the solid
-    side is the body planned without the region (`SpanScope.owned`).
-
-    Decided on the scope's whole root demand, before any of it is peeled onto
-    an entity key: the domain takes every member the region carries, so the
-    entity split knows which clusters are a domain's rows already."""
+    Only a region with rows of its own that the statement asks rows of (an
+    output within its spans' reach, or an aggregate counting it). A ROWSET
+    boundary already holds the region's rows and is split only when something
+    must be evaluated on the solid rows (`_needs_solid_rows`). Decided on the
+    scope's whole root demand, before any entity peel."""
     relation_spans = environment.domain_graph.coalescing_relation_members()
     labels = sorted({b.label for b in buckets.values()})
     domains: list[RegionDomain] = []
@@ -579,9 +566,8 @@ def split_carried_only_row_streams(
     (`grain(order_number, item_sk)`) is split: the carried-only members get a
     bucket of their own, which `feed_region_domains_to_present_scalars` then
     sources from the domain. Kept together, the whole bucket is computed on
-    the solid rows and the rename is NULL for the region's unmatched member
-    (`gamma` came back as `(None, 0, 0)`), while its source `item_desc` rode
-    the domain beside it."""
+    the solid rows and the rename is NULL for the region's unmatched member,
+    while its source `item_desc` rides the domain beside it."""
     for domain, region in [(d.bucket, d.region) for d in domains if d.bucket]:
         for gid in list(buckets):
             bucket = buckets[gid]
@@ -677,45 +663,23 @@ def feed_region_domains_to_present_scalars(
     keyspace: Keyspace,
     environment: BuildEnvironment,
 ) -> None:
-    """A scalar over an aggregate by the span is keyed on the span, which IS
-    present on the region, so it evaluates there: `case when count(order_id)
-    by customer_id > 0 ... else 'dormant'` is 'dormant' for a customer with no
-    order. The aggregate below it pairs on solid keys, so the scalar reads the
-    region's domain beside it. A WHERE's own copy of such a scalar (the
-    condition phase of the same scope) reads it the same way, or the atom
-    restated at FINAL never sees the region's rows.
+    """Wire each region domain to what evaluates on the region's rows.
 
-    An aggregate is evaluated OVER the region's rows when they survive it: a
-    grouping key the region carries keeps each extension row its own group
-    (`count(order_id) by customer_id` is 0 for the customer with no order, and
-    `coalesce(sum(amount), 0)` above it is 0), or the argument is what it
-    counts (`count(customer_id) by status`). Its named BASIC arguments are
-    computed on the solid rows first (`_project_basic_aggregate_inputs`), but
-    an INLINE argument has no node to compute on, so one that takes a value on
-    a padded row (`sum(case when undelivered then 1 else 0 end)`) keeps the
-    aggregate solid. Grouped by nothing the region carries (`sum(qty) by
-    order_id`) every extension row would collapse into one NULL group: the
-    aggregate pairs on solid keys and the domain pads it at FINAL. Never when
-    a row stream that must not see an extension row reads it
-    (`solid_groups`).
-
-    A ROLLUP pass has no FINAL to be padded at: its subtotal rows NULL every
-    key a domain would join back on. One member counting the region brings
-    its rows under the whole pass, and what reads the pass is never solid.
-    A WHERE's statement-wide aggregate over the region reads the domain alone
-    (`_counts_the_domain`).
-
-    A row-stream derivation that READS something a region domain carries
-    (`sale_price - cost` reads the product's `cost`) reads the domain of
-    every region it is NULL on the padding of however it is planned
-    (`null_on_padding`), unless it feeds a stream that must stay solid:
-    evaluated over the padded rows it is NULL exactly where the rule says, it
-    holds the same regions as its consumer's other contributors, and the
-    solid stream beside the domain re-sources nothing the domain carries
-    (thelook: `users LEFT JOIN order_items FULL JOIN products` stays one
-    SELECT). One that reads nothing carried (a rename of the fact's own
-    column) has no use for the domain's rows; reading them would only pad
-    its stream."""
+    - A scalar over an aggregate by the span is keyed on the span, present on
+      the region (`case when count(order_id) by customer_id > 0 ... else
+      'dormant'`), so it and the WHERE's copy of it read the domain beside the
+      solid aggregate.
+    - An aggregate is evaluated OVER the region's rows when they survive it
+      (`evaluated_over_region`): a grouping key the region carries, or an
+      argument it counts. An inline argument taking a value on a padded row
+      keeps it solid; so does a reader that must stay solid (`solid_groups`).
+      A ROLLUP pass takes the region's rows below it or not at all.
+    - A WHERE's statement-wide aggregate over the region reads the domain
+      alone (`_counts_the_domain`).
+    - A row-stream derivation reading something the domain carries reads the
+      domain of every region it is NULL on the padding of
+      (`null_on_padding`), unless it feeds a stream that must stay solid. One
+      reading nothing carried has no use for the domain's rows."""
     domain_regions = [
         region
         for domain in attrs.values()

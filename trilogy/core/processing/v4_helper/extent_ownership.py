@@ -13,11 +13,10 @@ discard one through a plain equality.
 A region with a domain group of its own is owned by that domain
 (`DomainKind.OWN`). The ranking (most downstream, then membership, then joint
 coverage of every span) elects an owner for a demanded span whose rows come
-from anywhere else: the row stream itself (gcat's composite-key `~` region,
-`test_case_key`), the padded plan, or a region only a join of two facts
-witnesses (TPC-DS q64's `store_returns` beside `store_sales`), where leaving
-the span unmanaged pads every branch (the aggregate reads the padded root, the
-fact FULL-joins its returns). It is the same judgment ``_cover_groups_for_mandatory``
+from anywhere else: the row stream itself (a composite-key `~` region), the
+padded plan, or a region only a join of two facts witnesses (returns beside
+sales), where leaving the span unmanaged pads every branch (the aggregate
+reads the padded root, the fact FULL-joins its returns). It is the same judgment ``_cover_groups_for_mandatory``
 applies to already-built nodes. The cover consumes this result rather than
 re-deriving it, since a predicted election that diverges from the actual one
 leaves a contributor dangling at render time.
@@ -44,8 +43,7 @@ def elect_extent_owners(
 ) -> ExtentOwnership:
     """Elect an owner for each span the statement asks extension rows of
     (`Keyspace.output_demanded_spans`). A `~` FK that only shows up as a join
-    axis is not among them, and with none the whole mechanism is inert (the
-    common case: TPC-DS and TPC-H rarely demand one)."""
+    axis is not among them, and with none the whole mechanism is inert."""
     # a region with a domain group of its own is demanded by that alone: a
     # derivation absent on it is an output no lookup from the span reaches
     domains = {
