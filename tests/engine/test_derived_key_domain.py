@@ -1724,3 +1724,32 @@ def test_where_aggregate_counting_the_region_by_an_absent_key(
     derived: Executor, materialized: Executor, query: str, expected: list[tuple]
 ):
     assert twin_rows(derived, materialized, query) == expected
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "a WHERE beside an output aggregate the region domain feeds is placed "
+        "only on that aggregate's input (FINAL_SPAN_DOMAIN): FINAL re-reads the "
+        "unfiltered rows and pairs them with the surviving groups"
+    ),
+)
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select customer_id, status, count(customer_id) by status as n where coalesce(sum(amount) by customer_id, 0) != 30 or customer_id = 2",
+            [(2, "delivered", 1), (3, None, 1)],
+        ),
+        (
+            "select customer_id, pstatus, count(customer_id) by pstatus as n where coalesce(sum(amount) by pstatus, 0) = 0",
+            [(3, None, 1)],
+        ),
+    ],
+)
+def test_where_beside_a_region_fed_output_aggregate_filters_the_rows(
+    query: str, expected: list[tuple]
+):
+    derived = executor_for(CUSTOMERS_DERIVED + _PSTATUS)
+    materialized = executor_for(CUSTOMERS_MATERIALIZED + _PSTATUS)
+    assert twin_rows(derived, materialized, query) == expected
