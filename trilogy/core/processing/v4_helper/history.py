@@ -65,6 +65,10 @@ class V4History(History):
     network_verdicts: dict[tuple[str, str, bool, tuple[str, ...], bool], str] = field(
         default_factory=dict
     )
+    # Every request may read a coalescing axis off one arm (`_axis_arm_pinned`):
+    # the cheap plan, right whenever sibling contributors bring the other arms.
+    # Cleared for the re-plan of a statement whose plan dropped an arm.
+    arm_pin_by_default: bool = True
     # Outputs of every nested construct enclosing the scope being planned
     # (rowset handles, merge/union align outputs), hidden from its connectivity
     # check only. Accumulates DOWNWARD: a union arm inside a rowset body must

@@ -72,7 +72,10 @@ from trilogy.core.processing.v4_helper.functional_dependency import (
     build_fd_determines,
 )
 from trilogy.core.processing.v4_helper.region_domains import undemanded_spans
-from trilogy.core.processing.v4_helper.strategy_builder import under_span_scope
+from trilogy.core.processing.v4_helper.strategy_builder import (
+    drops_an_axis_arm,
+    under_span_scope,
+)
 from trilogy.core.processing.v4_node_generators.multiselect import gen_multiselect
 from trilogy.core.processing.v4_node_generators.rowset_witness import (
     statement_keyspace,
@@ -646,6 +649,30 @@ def _build_from_graph_traced(
             )
     except UnbuiltGroupException as exc:
         unbuilt_reason = str(exc)
+    # Arm-local reads are right only when the contributors jointly scan every
+    # arm of a projected coalescing axis; otherwise re-plan with them assembled.
+    if (
+        strategy_node is not None
+        and history.arm_pin_by_default
+        and drops_an_axis_arm(
+            strategy_node, mandatory_list, environment, g.scope.datasources
+        )
+    ):
+        history.arm_pin_by_default = False
+        try:
+            return _build_from_graph_traced(
+                mandatory_list,
+                environment,
+                g,
+                history,
+                conditions,
+                materialized_roots,
+                complete_partials,
+                staged_conditions,
+                depth,
+            )
+        finally:
+            history.arm_pin_by_default = True
     if plan_trace.active():
         plan_trace.record(
             "strategy node",

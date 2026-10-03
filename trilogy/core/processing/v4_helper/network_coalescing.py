@@ -181,6 +181,20 @@ def _axis_arm_pinned(
     return False
 
 
+def requested_axis_groups(
+    terminals: list[str], environment: BuildEnvironment, equivalence: dict[str, str]
+) -> dict[str, set[str]]:
+    """Requested coalescing axis classes, mapped to their member addresses."""
+    groups: dict[str, set[str]] = {}
+    for address in terminals:
+        found = coalescing_axis_group(address, environment)
+        if found is None:
+            continue
+        canonical, members = found
+        groups[equivalence.get(canonical, canonical)] = set(members)
+    return groups
+
+
 def axis_families(
     terminals: list[str],
     candidates: dict[str, SourceCandidate],
@@ -209,13 +223,7 @@ def axis_families(
     reassembles), arm-pinned requests are likewise left out (see
     `_axis_arm_pinned`); a statement's own rows never are, since nothing above
     them coalesces the other arms."""
-    groups: dict[str, set[str]] = {}
-    for address in terminals:
-        found = coalescing_axis_group(address, environment)
-        if found is None:
-            continue
-        canonical, members = found
-        groups[equivalence.get(canonical, canonical)] = set(members)
+    groups = requested_axis_groups(terminals, environment, equivalence)
     if not groups:
         return {}
     axis_classes = {
@@ -309,17 +317,16 @@ def _reads_only_axis(
 
 
 def drop_axis_scalar_bindings(
-    families: dict[str, tuple[tuple[str, ...], ...]],
+    axes: set[str],
     candidates: dict[str, SourceCandidate],
     environment: BuildEnvironment,
     equivalence: dict[str, str],
 ) -> dict[str, SourceCandidate]:
-    """A scalar of a family-assembled axis alone is a function of the COALESCED
-    key: one arm's scan computing it inline leaves it NULL on the other arms'
-    rows. Unbind it, so it is computed above the assembly."""
-    if not families:
+    """A scalar of a requested coalescing axis alone is a function of the
+    COALESCED key: one arm's scan computing it inline leaves it NULL on the
+    other arms' rows. Unbind it, so it is computed above the arms' merge."""
+    if not axes:
         return candidates
-    axes = set(families)
     out = dict(candidates)
     for node, candidate in candidates.items():
         dropped = [

@@ -50,6 +50,7 @@ from trilogy.core.processing.v4_helper.network_coalescing import (
     drop_axis_scalar_bindings,
     pin_unoffered_probes,
     probe_owners,
+    requested_axis_groups,
 )
 from trilogy.core.processing.v4_helper.network_model import (
     CONNECTOR_NODE_PREFIX,
@@ -740,7 +741,12 @@ def build_source_network(
         conditions,
         arm_local,
     )
-    unbound = drop_axis_scalar_bindings(families, candidates, environment, equivalence)
+    unbound = drop_axis_scalar_bindings(
+        set(requested_axis_groups(searched, environment, equivalence)),
+        candidates,
+        environment,
+        equivalence,
+    )
     if unbound != candidates:
         candidates = unbound
         searched = _searched_terminals(requested, candidates, environment, equivalence)
