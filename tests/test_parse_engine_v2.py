@@ -27,6 +27,7 @@ from trilogy.core.models.environment import (
 )
 from trilogy.parsing.common import _numbering_window_to_concept
 from trilogy.parsing.parse_engine_v2 import SyntaxNode, parse_syntax, parse_text
+from trilogy.parsing.render import Renderer
 from trilogy.parsing.v2.syntax import SyntaxElement, SyntaxNodeKind, SyntaxTokenKind
 
 
@@ -796,6 +797,34 @@ def test_array_literal_over_a_column_is_built_row_by_row(
     ]
     assert executor.environment.concepts["local.consts"].derivation.value == "constant"
     assert executor.environment.concepts["local.arr"].derivation.value == "basic"
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.PEST, ParserBackend.LARK])
+@pytest.mark.parametrize(
+    "expr,expected",
+    [
+        ("[amount, 0]", [[5, 0], [7, 0]]),
+        ("[(amount + 1), 0]", [[6, 0], [8, 0]]),
+        ("[sum(amount), 0]", [[5, 0], [7, 0]]),
+        ("[amount ? amount > 5, 0]", [[None, 0], [7, 0]]),
+        ("[row_number() over (order by amount desc), 0]", [[2, 0], [1, 0]]),
+    ],
+)
+def test_array_literal_of_any_row_expression_executes_and_round_trips(
+    backend: ParserBackend, expr: str, expected: list
+) -> None:
+    query = f"select order_id, {expr} -> x order by order_id asc;"
+    with _using_backend(backend):
+        executor = Dialects.DUCK_DB.default_executor()
+        executor.execute_text(ARRAY_MODEL)
+        rows = executor.execute_text(query)[-1].fetchall()
+        _, parsed = executor.environment.parse(query)
+        rendered = Renderer(environment=executor.environment).to_string(parsed[-1])
+        reparsed = Dialects.DUCK_DB.default_executor()
+        reparsed.execute_text(ARRAY_MODEL)
+        round_trip = reparsed.execute_text(rendered)[-1].fetchall()
+    assert [r[1] for r in rows] == expected
+    assert round_trip == rows
 
 
 def test_numbering_window_returns_undefined_for_undefined_anchor() -> None:
