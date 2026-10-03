@@ -96,7 +96,7 @@ from trilogy.core.processing.nodes import (
     SelectNode,
     StrategyNode,
 )
-from trilogy.core.processing.partial_bridging import scope_statement
+from trilogy.core.processing.statement_scope import scope_statement
 from trilogy.core.processing.utility import unrenderable_outputs
 from trilogy.core.processing.v4_helper.staged_where import CROSS_ROW_DERIVATIONS
 from trilogy.core.scope_diagnostics import (

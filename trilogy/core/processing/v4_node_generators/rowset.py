@@ -203,8 +203,7 @@ def resolve_rowset(
         frozenset().union(
             *(
                 r.spans
-                for r in witness.regions
-                if r.spans and r.spans <= environment.span_scope.extent_free
+                for r in witness.regions_within(environment.span_scope.extent_free)
             )
         )
         if witness is not None
