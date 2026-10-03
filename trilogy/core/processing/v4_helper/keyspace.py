@@ -785,7 +785,7 @@ def build_keyspace(
                     for a in rejected
                     if not keys_by_address.get(a, frozenset()) <= full
                     and not _counts_the_rows(
-                        a, reach, declared, identifying, environment
+                        a, reach, declared, identifying, canonical, environment
                     )
                 ),
                 reach=reach,
@@ -811,6 +811,7 @@ def _counts_the_rows(
     reach: frozenset[str],
     declared: dict[str, _Declared],
     identifying: frozenset[str],
+    canonical: dict[str, str],
     environment: BuildEnvironment,
 ) -> bool:
     """An aggregate whose every argument the region's rows carry is evaluated
@@ -823,7 +824,7 @@ def _counts_the_rows(
     arguments = concept.lineage.function.concept_arguments
     return bool(arguments) and all(
         (keys := _entity_keys(arg.address, declared, identifying, environment))
-        and keys <= reach
+        and {canonical.get(k, k) for k in keys} <= reach
         for arg in arguments
     )
 
