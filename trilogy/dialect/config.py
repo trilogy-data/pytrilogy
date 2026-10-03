@@ -181,13 +181,12 @@ class DuckDBConfig(DialectConfig):
         return f"duckdb:///{self.path}"
 
     def create_connect_args(self) -> dict:
-        args: dict = {}
         # read_only lets many processes share one on-disk db (DuckDB allows
         # concurrent readers but only a single writer). Only meaningful for a
         # file-backed db; an in-memory db has nothing to open read-only.
         if self.read_only and self.path:
-            args["read_only"] = True
-        return args
+            return {"read_only": True}
+        return {}
 
 
 class SQLiteConfig(DialectConfig):

@@ -438,10 +438,9 @@ class FunctionClass(Enum):
 # How each aggregate answers a group that is one NULL-padded row rather than no
 # rows at all. Most agree either way (`sum`/`min`/`max`/`avg`/`stddev`/
 # `variance`/`any_value`/`bool_or`/`bool_and` are NULL both times), so a join
-# that pads needs no repair for them. Two kinds do not:
-#
-# Aggregates whose empty-group value is a non-NULL constant, so a padded row
-# left NULL by the join must be coalesced back to it.
+# that pads needs no repair for them. Those whose empty-group value is a
+# non-NULL constant do not: a padded row left NULL by the join must be
+# coalesced back to it.
 ZERO_ON_EMPTY_AGGREGATES: frozenset[FunctionType] = frozenset(
     {FunctionType.COUNT, FunctionType.COUNT_DISTINCT}
 )

@@ -577,7 +577,7 @@ def datasource_to_cte(
 
 def _carry_order_by_concepts(
     build_statement: BuildSelectLineage | BuildMultiSelectLineage,
-) -> None:
+) -> set[str]:
     """Pull `union(...)`/multiselect ORDER BY columns into the query grain so a
     single group node keeps them.
 
@@ -590,13 +590,16 @@ def _carry_order_by_concepts(
     validation keeps order-by within outputs plus alias-sources), so it is 1:1
     with a grain key: adding it to the grain as a hidden output keeps the group a
     single node instead of sourcing it as a finer optional joined back through
-    an enrichment merge."""
+    an enrichment merge.
+
+    Returns the union columns carried for a rowset handle in the ORDER BY."""
     if not isinstance(build_statement, BuildSelectLineage):
-        return
+        return set()
     if not build_statement.order_by:
-        return
+        return set()
     output_addresses = {c.address for c in build_statement.output_components}
     carry: dict[str, BuildConcept] = {}
+    union_columns: set[str] = set()
     for item in build_statement.order_by.items:
         for c in item.concept_arguments:
             # Already projected (directly, or as the rowset handle the order-by
@@ -607,6 +610,8 @@ def _carry_order_by_concepts(
             if target is not None:
                 if target.address not in output_addresses:
                     carry.setdefault(target.address, target)
+                    if target is not c:
+                        union_columns.add(target.address)
                 continue
             # A rowset output referenced in ORDER BY but consumed only inside a
             # projected scalar is sourced into the final node's parent without
@@ -626,33 +631,13 @@ def _carry_order_by_concepts(
                         f"of the rows) and order by that alias instead."
                     )
     if not carry:
-        return
+        return union_columns
     build_statement.selection = build_statement.selection + list(carry.values())
     build_statement.hidden_components = build_statement.hidden_components | set(carry)
     build_statement.grain = build_statement.grain + BuildGrain.from_concepts(
         list(carry.values())
     )
-
-
-def _carried_union_columns(
-    build_statement: BuildSelectLineage | BuildMultiSelectLineage,
-) -> set[str]:
-    """Addresses `_carry_order_by_concepts` hid for a rowset handle in the
-    ORDER BY: the inner union column the handle wraps."""
-    if not isinstance(build_statement, BuildSelectLineage):
-        return set()
-    if not build_statement.order_by:
-        return set()
-    hidden = build_statement.hidden_components
-    return {
-        target.address
-        for item in build_statement.order_by.items
-        for c in item.concept_arguments
-        if c.derivation == Derivation.ROWSET
-        and (target := _find_source_target(c)) is not None
-        and target is not c
-        and target.address in hidden
-    }
+    return union_columns
 
 
 def _find_source_target(concept: BuildConcept) -> BuildConcept | None:
@@ -827,6 +812,7 @@ def _raise_if_disconnected(
     build_environment: BuildEnvironment,
     graph: ReferenceGraph,
     conditions: BuildWhereClause | None,
+    carried: set[str],
 ) -> None:
     """Raise the typed subgraph error when this select's required concepts (outputs
     + WHERE row args) span unconnected reference-graph components. Delegates to the
@@ -840,7 +826,6 @@ def _raise_if_disconnected(
     # A union column `_carry_order_by_concepts` hid for an ORDER BY over a
     # rowset handle renders at the union node the handle wraps: for
     # connectivity it IS the handle, which the visible outputs already reach.
-    carried = _carried_union_columns(build_statement)
     raise_if_disconnected_for(
         [c for c in build_statement.output_components if c.address not in carried],
         conditions,
@@ -888,6 +873,7 @@ def _plan_query_node(
     graph: ReferenceGraph,
     conditions: BuildWhereClause | None,
     history: History,
+    carried: set[str],
     staged_conditions: list[BuildWhereClause] | None = None,
 ) -> StrategyNode:
     """Discovery entrypoint: plan `build_statement`, then wrap the result with
@@ -900,7 +886,9 @@ def _plan_query_node(
     # silently cross-joined (`ON 1=1`) into the output instead of surfacing the
     # typed subgraph error. Crossjoinable concepts are skipped, so valid
     # cross-joins (scalar aggregates, constants) still resolve below.
-    _raise_if_disconnected(build_statement, build_environment, graph, conditions)
+    _raise_if_disconnected(
+        build_statement, build_environment, graph, conditions, carried
+    )
     # Inherit the outer resolution's build caches, chiefly `scoped_joins` (the
     # query-scoped JOIN merges). Sub-selects (rowsets, multiselect arms)
     # materialize their own build env via these caches; a fresh BuildCaches
@@ -1169,7 +1157,7 @@ def get_query_node(
         datasource_build_cache=caches.datasource_build_cache,
         scoped_joins=caches.scoped_joins,
     )
-    _carry_order_by_concepts(build_statement)
+    carried = _carry_order_by_concepts(build_statement)
     # Effective partiality is a per-plan fact (`partial_bridging`): one
     # rewrite here keeps every downstream consumer consistent.
     scope_statement(build_environment, statement, environment, build_statement)
@@ -1188,6 +1176,7 @@ def get_query_node(
         graph=graph,
         conditions=build_statement.where_clause,
         history=history,
+        carried=carried,
         staged_conditions=staged_conditions,
     )
 
