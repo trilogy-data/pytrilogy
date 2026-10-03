@@ -840,8 +840,11 @@ def expression(e: Any) -> str | None:
 
 @off_clock
 def jsonable(value: Any) -> Any:
-    """A JSON value for any planner object: dataclasses by field, enums by
-    value, sets sorted, and anything else by ``str``."""
+    """A JSON value for any planner object: concepts by address, expressions
+    as rendered, dataclasses by field, enums by value, sets sorted, and
+    anything else by ``str``."""
+    from trilogy.core.models.build import BuildConcept, BuildConceptArgs
+
     if value is None or isinstance(value, (bool, int, float, str)):
         return value
     if isinstance(value, Enum):
@@ -852,9 +855,14 @@ def jsonable(value: Any) -> Any:
         return sorted(jsonable(v) for v in value)
     if isinstance(value, (list, tuple)):
         return [jsonable(v) for v in value]
+    if isinstance(value, BuildConcept):
+        return value.address
+    if isinstance(value, BuildConceptArgs):
+        rendered = expression(value)
+        return str(value) if rendered is None else rendered
     if is_dataclass(value) and not isinstance(value, type):
-        own = vars(value)
-        return {f.name: jsonable(own[f.name]) for f in fields(value) if f.name in own}
+        # by attribute, not `vars`: slotted dataclasses have no (or a partial) __dict__
+        return {f.name: jsonable(getattr(value, f.name)) for f in fields(value)}
     return str(value)
 
 
