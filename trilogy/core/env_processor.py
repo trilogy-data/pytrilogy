@@ -292,6 +292,7 @@ def generate_adhoc_graph(
     default_concept_graph: dict[str, BuildConcept],
 ) -> ReferenceGraph:
     g = ReferenceGraph()
+    g.scope_datasources = tuple(datasources)
     concept_mapping = {x.address: x for x in concepts}
     node_stash: dict[str, str] = {}
     seen: set[str] = set()

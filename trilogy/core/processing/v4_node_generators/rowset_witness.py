@@ -28,7 +28,7 @@ from trilogy.core.processing.v4_helper.keyspace import (
 from trilogy.core.processing.v4_helper.models import ConceptAttrs
 from trilogy.core.processing.v4_helper.projection import statement_filter_population
 
-from .nested_select import build_nested_select
+from .nested_select import _nested_graph, build_nested_select
 
 
 def statement_keyspace(
@@ -136,12 +136,14 @@ def _witness(
     assert isinstance(built, BuildSelectLineage)
     outputs = list(built.output_components)
     conditions = [where] if where else []
+    datasources = _nested_graph(env, history).scope_datasources
     _, attrs, _ = build_concept_graph(
         outputs,
         env,
         conditions,
-        materialized_root_addresses(outputs, env, conditions),
+        materialized_root_addresses(outputs, env, conditions, datasources),
         staged_conditions=built.where_clauses or None,
+        datasources=datasources,
     )
     body = statement_keyspace(attrs, outputs, env, conditions, history)
     handles = [

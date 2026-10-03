@@ -664,7 +664,8 @@ def _relevant_nodes(
         if member is None:
             continue
         carrier_ids.update(
-            c.identifier for c in member_binding_datasources(member, environment)
+            c.identifier
+            for c in member_binding_datasources(member, graph.scope_datasources)
         )
     stack: list[str] = [
         node
@@ -726,6 +727,7 @@ def build_source_network(
     )
     owners = probe_owners(
         environment,
+        graph.scope_datasources,
         all_addresses,
         _probe_offers(graph, emitted_by_node),
         {
@@ -779,7 +781,9 @@ def build_source_network(
         candidates.setdefault(node, connector)
     requested = [equivalence.get(a, a) for a in addresses]
     candidates = _drop_dominated_arms(candidates, requested)
-    candidates = pin_unoffered_probes(addresses, candidates, environment, equivalence)
+    candidates = pin_unoffered_probes(
+        addresses, candidates, environment, graph.scope_datasources, equivalence
+    )
     bound = {address for c in candidates.values() for address in c.bindings}
     sourced = {address for address in requested if address in bound}
     searched = [
@@ -790,7 +794,13 @@ def build_source_network(
     ]
     address_grain = _address_grains(environment, all_addresses, equivalence)
     families = axis_families(
-        searched, candidates, environment, equivalence, address_grain, conditions
+        searched,
+        candidates,
+        environment,
+        graph.scope_datasources,
+        equivalence,
+        address_grain,
+        conditions,
     )
     candidates = downgrade_axis_bindings(families, candidates)
     return SourceNetwork(

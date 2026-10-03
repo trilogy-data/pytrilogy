@@ -13,7 +13,7 @@ optional metadata, they're what keeps row identity intact through the SUM.
 """
 
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 
 from trilogy.core import graph as nx
 from trilogy.core.constants import ALL_ROWS_CONCEPT, GRAIN_SEPARATOR
@@ -28,6 +28,7 @@ from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
     BuildConceptArgs,
+    BuildDatasource,
     BuildFilterItem,
     BuildFunction,
     BuildRowsetItem,
@@ -275,7 +276,9 @@ def classify_depth(
     return DepthLabel.STAR
 
 
-def pinned_probe_addresses(environment: BuildEnvironment) -> frozenset[str]:
+def pinned_probe_addresses(
+    environment: BuildEnvironment, datasources: Sequence[BuildDatasource]
+) -> frozenset[str]:
     """Presence probes over datasource-bound (ROOT) key-group members.
 
     Such a probe pins side identity: it must be computed on a scan that
@@ -294,7 +297,7 @@ def pinned_probe_addresses(environment: BuildEnvironment) -> frozenset[str]:
         if not is_presence_probe(concept.address):
             continue
         member = probe_member_address(concept.address, environment)
-        if member is not None and member_binding_datasources(member, environment):
+        if member is not None and member_binding_datasources(member, datasources):
             out.add(concept.address)
     return frozenset(out)
 
@@ -1231,7 +1234,7 @@ def _counted_key(concept: BuildConcept) -> BuildConcept | None:
 
 def _aggregate_distinct_rewritable(
     concept: BuildConcept,
-    environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
     input_grain: frozenset[str],
     out_grain: frozenset[str],
 ) -> bool:
@@ -1256,7 +1259,7 @@ def _aggregate_distinct_rewritable(
     return not any(
         set(datasource.grain.components) <= content_identities
         and datasource.grain.components
-        for datasource in environment.datasources.values()
+        for datasource in datasources
     )
 
 
@@ -1346,6 +1349,7 @@ def _add_concept(
     materialized_roots: frozenset[str] = frozenset(),
     datasource_addresses: frozenset[str] = frozenset(),
     pinned_probes: frozenset[str] = frozenset(),
+    datasources: Sequence[BuildDatasource] = (),
 ) -> None:
     """Walk lineage from a concept toward its roots, under a fixed label.
 
@@ -1494,7 +1498,7 @@ def _add_concept(
         aggregate_distinct_rewritable=(
             bool(aggregate_input_grain)
             and _aggregate_distinct_rewritable(
-                concept, environment, aggregate_input_grain, out_grain
+                concept, datasources, aggregate_input_grain, out_grain
             )
         ),
         counted_key=counted.address if (counted := _counted_key(concept)) else None,
@@ -1534,6 +1538,7 @@ def _add_concept(
                 materialized_roots,
                 datasource_addresses,
                 pinned_probes,
+                datasources,
             )
             origin_nid = node_id(
                 _effective_label(origin, label, root_like), origin.address
@@ -1606,6 +1611,7 @@ def _add_concept(
             materialized_roots,
             datasource_addresses,
             pinned_probes,
+            datasources,
         )
         upstream_label = _effective_label(upstream, upstream_walk_label, root_like)
         add_edge(
@@ -2031,10 +2037,16 @@ def build_concept_graph(
     conditions: list[BuildWhereClause],
     materialized_roots: frozenset[str] = frozenset(),
     staged_conditions: list[BuildWhereClause] | None = None,
+    *,
+    datasources: Sequence[BuildDatasource],
 ) -> tuple[nx.DiGraph, dict[str, ConceptAttrs], EdgeMap]:
     """Build the concept-level DAG. Constraint edges (d1->d0) record the
     invariant that filter inputs must be available above any row-shape barrier
     that consumes their filtered output.
+
+    ``datasources`` are the scope's bindings this graph is built over: the
+    reference graph's for a plan, the bindings as authored for the pin-heal
+    that decides them.
 
     A ROWSET concept is walked as a leaf (no lineage edges) by `_add_concept`:
     its inner select is a self-contained sub-query planned recursively by
@@ -2046,9 +2058,9 @@ def build_concept_graph(
     edges: EdgeMap = {}
     attrs: dict[str, ConceptAttrs] = {}
     datasource_addresses = frozenset(
-        c.address for ds in environment.datasources.values() for c in ds.output_concepts
+        c.address for ds in datasources for c in ds.output_concepts
     )
-    pinned_probes = pinned_probe_addresses(environment)
+    pinned_probes = pinned_probe_addresses(environment, datasources)
     root_like = materialized_roots | pinned_probes
     # Outer SELECT: blank-phase label "".
     for concept in mandatory_list:
@@ -2061,6 +2073,7 @@ def build_concept_graph(
             materialized_roots=materialized_roots,
             datasource_addresses=datasource_addresses,
             pinned_probes=pinned_probes,
+            datasources=datasources,
         )
     _host_outputs_on_row_preserving_aggregates(
         mandatory_list, environment, graph, edges, attrs, root_like
@@ -2099,6 +2112,7 @@ def build_concept_graph(
                     materialized_roots=materialized_roots,
                     datasource_addresses=datasource_addresses,
                     pinned_probes=pinned_probes,
+                    datasources=datasources,
                 )
 
     # Unreferenced rowset-handle key-group mates of demanded members (see
@@ -2114,6 +2128,7 @@ def build_concept_graph(
             materialized_roots=materialized_roots,
             datasource_addresses=datasource_addresses,
             pinned_probes=pinned_probes,
+            datasources=datasources,
         )
 
     # A statement-scoped join key authored as a computed expression (`union
@@ -2182,6 +2197,7 @@ def build_concept_graph(
                 materialized_roots=materialized_roots,
                 datasource_addresses=datasource_addresses,
                 pinned_probes=pinned_probes,
+                datasources=datasources,
             )
             _add_concept(
                 canonical,
@@ -2192,6 +2208,7 @@ def build_concept_graph(
                 materialized_roots=materialized_roots,
                 datasource_addresses=datasource_addresses,
                 pinned_probes=pinned_probes,
+                datasources=datasources,
             )
             origin_nid = node_id(
                 _effective_label(origin, "", root_like), origin.address
@@ -2238,7 +2255,15 @@ def build_concept_graph(
                 if addr in row_read and _split_condition_label(flabel) is None
                 else flabel
             )
-            _add_concept(source, environment, graph, edges, attrs, label=slabel)
+            _add_concept(
+                source,
+                environment,
+                graph,
+                edges,
+                attrs,
+                label=slabel,
+                datasources=datasources,
+            )
             src_nid = node_id(_effective_label(source, slabel), source.address)
             if src_nid in graph and src_nid != nid and not graph.has_edge(src_nid, nid):
                 add_edge(graph, edges, src_nid, nid, EdgeKind.EXISTENCE)
@@ -2429,7 +2454,7 @@ def build_concept_graph(
     # even when the demanded lineage graph never connects them (a fact FK
     # column beside a fact property, each consumed only by its own rename).
     binding_map: dict[str, set[str]] = defaultdict(set)
-    for ds in environment.datasources.values():
+    for ds in datasources:
         for out in ds.output_concepts:
             binding_map[out.address].add(ds.identifier)
     for n in graph.nodes:

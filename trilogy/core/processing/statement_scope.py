@@ -15,9 +15,11 @@ from trilogy.core.models.build import BuildMultiSelectLineage, BuildSelectLineag
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.environment import Environment
 from trilogy.core.processing.partial_bridging import (
-    drop_excluded_partials,
-    heal_pinned_partials,
+    decide_exclusion,
+    decide_heal,
+    gate_excluded_enum_values,
 )
+from trilogy.core.processing.v4_helper.keyspace import build_datasources
 from trilogy.core.processing.v4_helper.projection import statement_filter_population
 from trilogy.core.processing.v4_helper.staged_where import universal_row_bound
 
@@ -83,6 +85,10 @@ def scope_statement(
     populations the combined WHERE has not yet filtered. A statement showing
     nothing but filter values over one predicate is filtered by it
     (``statement_filter_population``), the same as by a WHERE.
+
+    Copy-on-write: healed datasources replace the authored ones in the
+    environment's per-statement mapping and excluded ones leave it; the shared
+    build-cache objects are never mutated.
     """
     build_environment.statement_authored_addresses = authored_reference_addresses(
         statement, environment
@@ -97,8 +103,9 @@ def scope_statement(
         return
     if not build_statement.where_clauses:
         outputs = list(build_statement.output_components)
-        heal_pinned_partials(
+        replacements = decide_heal(
             build_environment,
+            build_datasources(build_environment),
             outputs,
             [
                 clause
@@ -111,9 +118,18 @@ def scope_statement(
                 if clause is not None
             ],
         )
-    drop_excluded_partials(
-        build_environment,
-        universal_row_bound(
-            build_statement.where_clauses, build_statement.where_clause
-        ),
+        for name, existing in list(build_environment.datasources.items()):
+            if existing.identifier in replacements:
+                build_environment.datasources[name] = replacements[existing.identifier]
+    bound = universal_row_bound(
+        build_statement.where_clauses, build_statement.where_clause
     )
+    if bound is None:
+        return
+    build_environment.excluded_enum_values = gate_excluded_enum_values(
+        build_environment, bound
+    )
+    excluded = decide_exclusion(build_datasources(build_environment), bound)
+    for name, existing in list(build_environment.datasources.items()):
+        if existing.identifier in excluded:
+            del build_environment.datasources[name]

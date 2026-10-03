@@ -15,6 +15,7 @@ from trilogy.core.processing.v4_helper.concept_graph import (
     _resolve_pseudonym_origin,
     build_concept_graph,
 )
+from trilogy.core.processing.v4_helper.keyspace import build_datasources
 
 MULTI_ORIGIN_MODEL = """
 key a int;
@@ -138,6 +139,9 @@ def test_no_alternative_edges_survive_resolution():
     env.parse(CORRELATED_MODEL)
     benv = env.materialize_for_select()
     _, _, edges = build_concept_graph(
-        [benv.concepts["local.a"], benv.concepts["local.b"]], benv, []
+        [benv.concepts["local.a"], benv.concepts["local.b"]],
+        benv,
+        [],
+        datasources=build_datasources(benv),
     )
     assert all(a.alt_group is None for a in edges.values())

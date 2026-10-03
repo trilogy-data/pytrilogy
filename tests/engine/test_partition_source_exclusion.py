@@ -9,7 +9,11 @@ from trilogy import Dialects
 from trilogy.core.enums import ComparisonOperator
 from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.build import BuildComparison, BuildWhereClause
-from trilogy.core.processing.partial_bridging import drop_excluded_partials
+from trilogy.core.processing.partial_bridging import (
+    decide_exclusion,
+    gate_excluded_enum_values,
+)
+from trilogy.core.processing.v4_helper.keyspace import build_datasources
 from trilogy.core.processing.v4_helper.staged_where import universal_row_bound
 
 COMMON = """
@@ -120,29 +124,22 @@ def _city_gate(environment, value: str) -> BuildWhereClause:
     )
 
 
-def test_drop_excluded_partials_hides_contradicted_sources():
+def test_decide_exclusion_names_contradicted_sources():
     executor = _executor(COMMON, MODEL_A_SOURCES, MODEL_B)
     environment = executor.environment.materialize_for_select()
-    drop_excluded_partials(environment, _city_gate(environment, "A"))
-    assert set(environment.datasources) == {"a_one", "a_two"}
+    excluded = decide_exclusion(
+        build_datasources(environment), _city_gate(environment, "A")
+    )
+    assert excluded == {"b_one", "b_two"}
 
 
-def test_drop_excluded_partials_keeps_everything_without_gate():
-    executor = _executor(COMMON, MODEL_A_SOURCES, MODEL_B)
-    environment = executor.environment.materialize_for_select()
-    before = set(environment.datasources)
-    drop_excluded_partials(environment, None)
-    assert set(environment.datasources) == before
-
-
-def test_nothing_is_hidden_for_a_cross_row_gate():
+def test_a_cross_row_gate_gives_no_row_bound():
     # the gate's own aggregate sees the unfiltered population, so
     # `universal_row_bound` yields nothing to narrow by and every source stands
     executor = _executor(
         COMMON, MODEL_A_SOURCES, MODEL_B, "auto tree_count <- count(tree_id) by city;"
     )
     environment = executor.environment.materialize_for_select()
-    before = set(environment.datasources)
     gate = BuildWhereClause(
         conditional=_city_gate(environment, "A").conditional
         + BuildComparison(
@@ -152,8 +149,6 @@ def test_nothing_is_hidden_for_a_cross_row_gate():
         )
     )
     assert universal_row_bound([], gate) is None
-    drop_excluded_partials(environment, universal_row_bound([], gate))
-    assert set(environment.datasources) == before
 
 
 def test_staging_is_what_lets_an_aggregate_gate_narrow_the_domain():
@@ -230,9 +225,12 @@ def test_reduced_domain_recorded_by_address_and_canonical():
             operator=ComparisonOperator.IN,
         )
     )
-    drop_excluded_partials(environment, gate)
-    assert set(environment.datasources) == {"web", "catalog"}
-    assert environment.excluded_enum_values["local.channel"] == frozenset({"STORE"})
+    assert decide_exclusion(build_datasources(environment), gate) == {"store"}
+    excluded = gate_excluded_enum_values(environment, gate)
+    assert excluded["local.channel"] == frozenset({"STORE"})
+    assert excluded[environment.concepts["local.channel"].canonical_address] == (
+        frozenset({"STORE"})
+    )
 
 
 CLUSTERED = """

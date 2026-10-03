@@ -5,6 +5,7 @@ pinned by tests/engine/test_derived_key_domain.py.
 """
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 from unittest.mock import Mock
 
@@ -64,10 +65,18 @@ def _planned_keyspace(monkeypatch, model: str, query: str) -> Keyspace:
     return capture.seen[0]
 
 
+@dataclass
+class _EagerAuthoredKeyspace(partial_bridging._AuthoredKeyspace):
+    def __post_init__(self) -> None:
+        self.keyspace
+
+
 def _heal_keyspace(monkeypatch, model: str, query: str) -> Keyspace:
-    """What pin-heal asks: the statement's bindings as authored."""
+    """What pin-heal asks: the statement's bindings as authored, built even
+    when the heal's own guards settle the binding before reading it."""
     capture = _Capture()
     monkeypatch.setattr(partial_bridging, "build_keyspace", capture)
+    monkeypatch.setattr(partial_bridging, "_AuthoredKeyspace", _EagerAuthoredKeyspace)
     executor = Dialects.DUCK_DB.default_executor()
     executor.parse_text(model)
     executor.generate_sql(query)
