@@ -398,6 +398,9 @@ def _network_source(
     """
     concepts = _search_concepts_for_bridge(request)
     v4_history = request.history if isinstance(request.history, V4History) else None
+    arm_local = request.arm_local or (
+        v4_history is not None and v4_history.arm_pin_by_default
+    )
     verdict_key: tuple[str, str, bool, tuple[str, ...], bool] | None = None
     if v4_history is not None:
         verdict_key = (
@@ -406,7 +409,7 @@ def _network_source(
             defer_single_scan,
             # the promoted `~` keys change which scans bind fully
             tuple(sorted(request.environment.span_scope.extent_free)),
-            request.arm_local,
+            arm_local,
         )
         cached_verdict = v4_history.network_verdicts.get(verdict_key)
         if cached_verdict == "none":
@@ -419,7 +422,7 @@ def _network_source(
         request.graph,
         request.conditions,
         request.deferred_conditions,
-        request.arm_local,
+        arm_local,
     )
     result = _memoized_search(network, request.history)
     if plan_trace.active():

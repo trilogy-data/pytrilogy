@@ -66,7 +66,11 @@ from trilogy.core.processing.condition_utility import (
 )
 from trilogy.core.processing.discovery_utility import raise_if_disconnected_for
 from trilogy.core.processing.grain_utility import non_null_proofs
-from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
+from trilogy.core.processing.node_generators.presence_probe import (
+    coalescing_axis_group,
+    is_presence_probe,
+    member_binding_datasources,
+)
 from trilogy.core.processing.nodes import (
     FilterNode,
     GroupNode,
@@ -108,6 +112,7 @@ from .models import (
     InputChannel,
     nulls_grouping_keys,
 )
+from .network_model import datasource_identifiers
 from .projection import (
     concept_satisfiable,
     filter_row_predicate,
@@ -522,6 +527,35 @@ def _leaf_datasources(node: StrategyNode) -> dict[str, BuildDatasource]:
 
 def _leaf_datasource_ids(node: StrategyNode) -> set[str]:
     return set(_leaf_datasources(node))
+
+
+def drops_an_axis_arm(
+    node: StrategyNode,
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
+) -> bool:
+    """A projected coalescing axis has a member some datasource carries, yet
+    the plan scans none of that member's carriers: its keys are missing."""
+    scanned: set[str] | None = None
+    for concept in mandatory_list:
+        found = coalescing_axis_group(concept.address, environment)
+        if found is None:
+            continue
+        if scanned is None:
+            scanned = {
+                identifier
+                for n in _strategy_nodes(node)
+                if isinstance(n, SelectNode) and n.datasource is not None
+                for identifier in datasource_identifiers(n.datasource)
+            }
+        for member in found[1]:
+            carriers = {
+                c.identifier for c in member_binding_datasources(member, datasources)
+            }
+            if carriers and not carriers & scanned:
+                return True
+    return False
 
 
 def _strict_leaf_subset_binds(node: StrategyNode, addresses: set[str]) -> bool:
