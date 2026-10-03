@@ -286,16 +286,12 @@ def _resolve_join_group(
 
 
 def _normalize_select_join(join_type: JoinType, la: str, ra: str) -> SelectJoin:
-    """Normalize relation DECLARATIONS onto the two landed relation mechanisms
-    (docs/subset_union_join_design.md). `subset join a = b` declares a ⊆ b: the
-    superset `b` is the complete anchor and `a` is partial against it — exactly
-    `merge a into ~b` scoped to this query, so it maps to that relation's
-    superset-anchored LEFT_OUTER tuple. `union join a = b` declares neither
-    domain contains the other — the coalescing FULL relation. `equal join a = b`
-    declares ONE domain (`merge a into b` scoped to this query) and stays EQUAL:
-    a's values are b's, a is an alias of b. The authored form is kept for
-    round-trip rendering and optimizer metadata (a UNION key must never narrow
-    to INNER; an EQUAL/merge key may)."""
+    """Normalize relation DECLARATIONS onto join tuples
+    (docs/subset_union_join_design.md): `subset join a = b` (a ⊆ b) is the
+    query-scoped `merge a into ~b`, a LEFT_OUTER anchored on `b`; `union join`
+    (neither contains the other) is the coalescing FULL; `equal join` (one
+    domain) stays EQUAL. The authored form is kept for round-trip rendering
+    and optimizer metadata."""
     if join_type is JoinType.SUBSET:
         return SelectJoin(
             join_type=JoinType.LEFT_OUTER,

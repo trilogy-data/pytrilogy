@@ -102,25 +102,19 @@ class SpanScope:
     the decision is fixed before the node resolves (a rowset body's merge can
     resolve after the outer plan's scope is restored)."""
 
-    # plan: its row universe. The spans it can pad for (`in_play_spans`), the
-    # ones whose extension rows it returns (`output_demanded_spans`), its
-    # families and the spellings a rowset body pads under (`witnessed`)
+    # plan: its row universe (spans it can pad for, families, witnessed
+    # spellings)
     keyspace: Keyspace = field(default_factory=Keyspace)
-    # plan: the spans whose extension rows the plan READING this one holds (a
-    # rowset body built for a consumer that pads the region itself): no group
-    # of this plan extends them, FINAL included
+    # plan: spans whose extension rows the READING plan holds; no group of
+    # this plan extends them
     owned: frozenset[str] = frozenset()
-    # plan: the spans of regions nothing in the statement demands
-    # (`region_domains.undemanded_spans`): no join of this plan preserves the
-    # dimension over them. Join typing only; the facts' bindings on them stay
-    # `~` for source planning, unlike `extent_free`
+    # plan: spans of regions nothing in the statement demands; join typing
+    # only, bindings on them stay `~` for source planning
     unextended: frozenset[str] = frozenset()
-    # group: the spans this group may NOT extend, because another group owns
-    # those extension members (v4_helper/extent_ownership.py), or the plan
-    # above does (`owned`)
+    # group: spans this group may NOT extend (another group or the plan
+    # above owns those extension members)
     extent_free: frozenset[str] = frozenset()
-    # group: address -> the extent-free spans whose region domain carries it;
-    # held here only for the members the group's facts bound
+    # group: address -> the extent-free spans whose region domain carries it
     extent_free_carried: dict[str, frozenset[str]] = field(default_factory=dict)
 
 
