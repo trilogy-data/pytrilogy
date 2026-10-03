@@ -3485,9 +3485,8 @@ class Factory:
                     output_purpose=Purpose.CONSTANT,
                 )
             elif isinstance(build_lineage, FOLDED_SCALARS):
-                # A constant CASE folds to its winning branch's bare value.
-                # TYPED_CONSTANT renders inline: a CONSTANT would bind as a
-                # `:param` the author concept (still a CASE) cannot hydrate.
+                # A constant CASE folds to its winning branch's bare value,
+                # rendered inline (see `_bare_constant`).
                 folded_type = arg_to_datatype(build_lineage)
                 folded_args: list[Any] = [build_lineage, folded_type]
                 build_lineage = BuildFunction(

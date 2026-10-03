@@ -1572,10 +1572,8 @@ class BaseDialect:
         # when a dim row has no matching fact row, while the granular
         # `count(...)` path returns 0 there. Coalesce to keep the two paths
         # result-equivalent. SUM is left alone: SUM over an empty group is NULL
-        # in both paths.
-        # The guess is still live where no region domain says it (gcat
-        # `test_case_key`: a vehicle with no launch counts 0 through the
-        # LEFT JOIN, `coalesce(launch_count, 0)`).
+        # in both paths. The second case applies where no region domain
+        # stamps the padding.
         if isinstance(cte, CTE) and cte.zero_fills_count(c):
             rval = self.FUNCTION_MAP[FunctionType.COALESCE]([rval, "0"], [])
         assert rval is not None
