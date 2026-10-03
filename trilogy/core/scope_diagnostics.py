@@ -1086,6 +1086,7 @@ def scoped_join_unused_side_warnings(
     `prem` scans `pa` alone, and a projected `prem.k` renders from `pa`. The
     rows are right by the never-drop-a-row rule, but nothing tells the reader
     the narrow side was dropped, so name it with the pin and the inversion.
+    Owners are the side's model as authored, whatever this plan's scope hid.
     ``used_datasources`` are the identifiers the finished plan reads from."""
     out: list[dict] = []
     for join in join_clauses:
