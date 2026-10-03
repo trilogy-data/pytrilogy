@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from trilogy.constants import NULL_VALUE
+from trilogy.constants import NULL_VALUE, MagicConstants
 from trilogy.core.enums import ComparisonOperator, FunctionType
+from trilogy.core.functions import LITERAL_CONSTANT_TYPES
 from trilogy.core.models.author import (
     Between,
     Comparison,
@@ -33,6 +34,13 @@ from trilogy.parsing.v2.syntax import (
     SyntaxNodeKind,
     SyntaxToken,
     SyntaxTokenKind,
+)
+
+_ARRAY_VALUE_TYPES = LITERAL_CONSTANT_TYPES + (
+    ListWrapper,
+    TupleWrapper,
+    MapWrapper,
+    MagicConstants,
 )
 
 _LIKE_OPERATORS = {
@@ -91,7 +99,7 @@ def array_lit(
 ) -> ListWrapper | Function:
     args = hydrated_children(node, hydrate)
     # `[amount, 0]` is built row by row; `[1, 2]` is a value
-    if any(isinstance(arg, (ConceptRef, Function)) for arg in args):
+    if not all(isinstance(arg, _ARRAY_VALUE_TYPES) for arg in args):
         return context.function_factory.create_function(
             args, operator=FunctionType.ARRAY, meta=core_meta(node.meta)
         )
