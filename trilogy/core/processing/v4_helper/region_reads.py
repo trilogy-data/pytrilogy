@@ -3,6 +3,7 @@ them and the WHERE inputs tested over them. Shared by the region-domain
 decision (`region_domains`) and condition placement, which must agree."""
 
 from collections.abc import Iterable
+from typing import TypeGuard
 
 from trilogy.core.enums import FunctionType
 from trilogy.core.models.build import (
@@ -45,7 +46,7 @@ def inline_arguments_taking_a_value(
     ]
 
 
-def nameable(argument: BuildConceptArgs) -> bool:
+def nameable(argument: BuildConceptArgs) -> TypeGuard[BuildFunction]:
     """An inline argument the strategy builder can stand a concept in for and
     project on the solid rows (`_name_inline_arguments`)."""
     return isinstance(argument, BuildFunction)

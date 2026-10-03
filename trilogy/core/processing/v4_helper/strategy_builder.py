@@ -1850,7 +1850,7 @@ def _name_inline_arguments(
             rewritten.append(concept)
             continue
         taking = [
-            cast(BuildFunction, argument)
+            argument
             for region in regions
             for argument in inline_arguments_taking_a_value(
                 concept, region, keyspace, environment

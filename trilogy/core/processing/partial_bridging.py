@@ -230,7 +230,7 @@ def _component_reach(
     return reach
 
 
-def _statement_keyspace(
+def _authored_bindings_keyspace(
     environment: BuildEnvironment,
     outputs: list[BuildConcept],
     conditions: list[BuildWhereClause],
@@ -261,7 +261,7 @@ def heal_pinned_partials(
     proven = null_rejected(conditions)
     if not proven:
         return
-    keyspace = _statement_keyspace(environment, outputs, conditions)
+    keyspace = _authored_bindings_keyspace(environment, outputs, conditions)
     bound = _bound_spellings(datasources)
     proven_bound = _proven_bound(proven, bound, environment, keyspace)
     if not proven_bound:
