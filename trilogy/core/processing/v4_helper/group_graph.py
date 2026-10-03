@@ -1613,6 +1613,7 @@ def _compute_concept_sets(
     buckets: dict[str, GroupBucket],
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
+    rollup_padded: frozenset[str],
     scoped_join_member_addresses: frozenset[str] = frozenset(),
     scoped_axis_mates: dict[str, frozenset[str]] | None = None,
     relation_edge_members: frozenset[str] = frozenset(),
@@ -1625,7 +1626,6 @@ def _compute_concept_sets(
     - reverse demand: which outputs/inputs each group must expose
     """
     mandatory_addresses = {c.address for c in mandatory_list}
-    rollup_padded = rollup_padded_keys(environment)
     # A struct field demanded as the canonical key (`local.a`) is produced under
     # its derivable pseudonym (`unnest_array.a`); the FINAL demand intersect must
     # match those aliases so the producing group keeps the field as an output.
@@ -2108,6 +2108,7 @@ def build_group_graph(
         concept_graph, concept_edges, concept_attrs, primary_group, buckets
     )
     trace_buckets("buckets assigned", buckets, primary_group)
+    rollup_padded = rollup_padded_keys(environment)
     partition = partition_root_demand(
         buckets,
         primary_group,
@@ -2118,6 +2119,7 @@ def build_group_graph(
         mandatory_list,
         environment,
         keyspace,
+        rollup_padded,
     )
     split_carried_only_row_streams(
         buckets, primary_group, partition.domains, keyspace, environment
@@ -2149,6 +2151,7 @@ def build_group_graph(
         buckets,
         mandatory_list,
         environment,
+        rollup_padded,
     )
     _merge_basic_into_window_parent(
         group_graph, group_edges, attrs, buckets, concept_attrs
@@ -2207,6 +2210,7 @@ def build_group_graph(
         buckets,
         mandatory_list,
         environment,
+        rollup_padded,
         scoped_join_member_addresses=frozenset(
             addr
             for canonical, members in environment.scoped_join_key_groups.items()
