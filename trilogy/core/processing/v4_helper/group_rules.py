@@ -18,6 +18,7 @@ from trilogy.core import graph as nx
 from trilogy.core.enums import (
     AggregateGroupingMode,
     Derivation,
+    FunctionType,
     Granularity,
     Purpose,
 )
@@ -506,8 +507,55 @@ def _partition_grouped_aggregates(
                     or residual - {counted}
                 )
             }
+            bucket.aggregate_first_row_grains = _first_row_grains(
+                [members[i][1] for i in member_indices], grain
+            )
             buckets.append(bucket)
     return buckets
+
+
+# a repeated input row cannot change these
+_REPEAT_BLIND_AGGREGATES = frozenset(
+    {
+        FunctionType.MIN,
+        FunctionType.MAX,
+        FunctionType.BOOL_OR,
+        FunctionType.BOOL_AND,
+        FunctionType.ANY,
+        FunctionType.COUNT_DISTINCT,
+        FunctionType.GROUPING,
+        FunctionType.GROUPING_ID,
+    }
+)
+
+
+def _first_row_grains(
+    members: list[ConceptAttrs], grain: frozenset[str]
+) -> dict[str, frozenset[str]]:
+    """Members of one pass whose input rows the shared stream repeats: the
+    stream carries a sibling's input grain theirs does not (two facts joined
+    below the pass). Each reads the first row per tuple of its own input grain,
+    whose grouping keys are one row's, so the dedup never crosses a group.
+
+    A member whose input grain is the grouping grain reads opaque values (a
+    `group(..)` it re-aggregates) and is left alone, as is a grouping()
+    identity's grain, which never fans the stream; a counted key is DISTINCT."""
+    stream = frozenset().union(
+        *(
+            m.aggregate_input_grain
+            for m in members
+            if m.aggregate_operator
+            not in (FunctionType.GROUPING, FunctionType.GROUPING_ID)
+        )
+    )
+    return {
+        m.address: m.aggregate_input_grain | grain
+        for m in members
+        if m.aggregate_operator not in _REPEAT_BLIND_AGGREGATES
+        and m.counted_key is None
+        and m.aggregate_input_grain - grain
+        and not stream <= m.aggregate_input_grain | grain
+    }
 
 
 def _relation_side_partitions(

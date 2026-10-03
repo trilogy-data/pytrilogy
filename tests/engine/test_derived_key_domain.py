@@ -1024,6 +1024,51 @@ def test_counts_of_two_facts_under_one_rollup(model: str):
     ]
 
 
+_TWO_RETURNS = """
+key return_id int;
+root datasource returns (return_id: return_id, customer_id: ~customer_id)
+grain (return_id)
+query '''
+select 900 as return_id, 1 as customer_id union all select 901, 1
+''';
+"""
+
+
+# Each fact's rows repeat per row of the other in the one pass's stream: every
+# aggregate a repeated row changes reads one row per tuple of its own grain.
+@pytest.mark.parametrize("model", [CUSTOMERS_DERIVED, CUSTOMERS_MATERIALIZED])
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select customer_id, sum(amount) as a, count(return_id) as r by rollup (customer_id)",
+            [(1, 30, 2), (2, 30, 0), (3, None, 0), (None, 60, 2)],
+        ),
+        (
+            "select customer_id, avg(amount) as a, count(return_id) as r by rollup (customer_id)",
+            [(1, 15.0, 2), (2, 30.0, 0), (3, None, 0), (None, 20.0, 2)],
+        ),
+        (
+            "select name, count(amount) as n, count(return_id) as r by rollup (name)",
+            [("ann", 2, 2), ("bob", 1, 0), ("cat", 0, 0), (None, 3, 2)],
+        ),
+        (
+            "select customer_id, max(amount) as m, sum(amount) as s, count(return_id) as r by rollup (customer_id)",
+            [(1, 20, 30, 2), (2, 30, 30, 0), (3, None, None, 0), (None, 30, 60, 2)],
+        ),
+        (
+            "select customer_id, sum(amount) as a, count(return_id) as r where name != 'bob' by rollup (customer_id)",
+            [(1, 30, 2), (3, None, 0), (None, 30, 2)],
+        ),
+    ],
+)
+def test_two_facts_under_one_rollup_read_each_row_once(
+    model: str, query: str, expected: list[tuple]
+):
+    executor = executor_for(model + _TWO_RETURNS + CUSTOMER_ACTIVITY)
+    assert sorted_rows(executor, query) == expected
+
+
 # A second fact binding the span names another key path to it, so the concept
 # graph's FD no longer says the order determines its customer; the model's
 # does, and the row stream keeps carrying the span its region joins back on.
