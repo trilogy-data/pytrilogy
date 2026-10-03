@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from tests.helpers.join_stubs import stub_join
 from trilogy.core.enums import JoinType
 from trilogy.core.models.execute import Join
-from trilogy.core.optimizations.preserved_join_keys import prune_preserved_join_keys
+from trilogy.core.optimizations.join_upgrade import prune_preserved_join_keys
 
 
 def _prune(base: str, joins: list[Join]) -> list[list[str]]:
