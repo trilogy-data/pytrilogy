@@ -30,37 +30,19 @@ def twins() -> tuple[Executor, Executor]:
     return executor_for(CUSTOMERS_DERIVED), executor_for(CUSTOMERS_MATERIALIZED)
 
 
+SUBSET = "subset join r.customer_id = customer_id"
+UNION = "union join r.customer_id = customer_id"
+
+
 @pytest.mark.parametrize(
     "query, expected",
     [
-        (
-            "select customer_id, status, r.status subset join r.customer_id = customer_id;",
-            PAIRED,
-        ),
-        (
-            "select customer_id, status, r.status subset join r.customer_id = customer_id "
-            "where status is null;",
-            CAT,
-        ),
-        (
-            "select customer_id, status, r.status subset join r.customer_id = customer_id "
-            "where r.status is null;",
-            CAT,
-        ),
-        (
-            "select customer_id, r.status subset join r.customer_id = customer_id "
-            "where status is null;",
-            [(3, None)],
-        ),
-        (
-            "select customer_id, status, r.status union join r.customer_id = customer_id;",
-            PAIRED,
-        ),
-        (
-            "select customer_id, status, r.status union join r.customer_id = customer_id "
-            "where status is null;",
-            CAT,
-        ),
+        (f"select customer_id, status, r.status {SUBSET};", PAIRED),
+        (f"select customer_id, status, r.status {SUBSET} where status is null;", CAT),
+        (f"select customer_id, status, r.status {SUBSET} where r.status is null;", CAT),
+        (f"select customer_id, r.status {SUBSET} where status is null;", [(3, None)]),
+        (f"select customer_id, status, r.status {UNION};", PAIRED),
+        (f"select customer_id, status, r.status {UNION} where status is null;", CAT),
     ],
 )
 def test_rowset_pairs_on_the_declared_join_only(
