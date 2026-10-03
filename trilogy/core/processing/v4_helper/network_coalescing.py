@@ -15,7 +15,11 @@ from collections.abc import Sequence
 from dataclasses import replace
 
 from trilogy.core.enums import Derivation
-from trilogy.core.models.build import BuildDatasource, BuildWhereClause
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildDatasource,
+    BuildWhereClause,
+)
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.presence_probe import (
     coalescing_axis_group,
@@ -193,6 +197,64 @@ def requested_axis_groups(
         canonical, members = found
         groups[equivalence.get(canonical, canonical)] = set(members)
     return groups
+
+
+def _row_lineage(
+    concepts: Sequence[BuildConcept], environment: BuildEnvironment
+) -> set[str]:
+    seen: set[str] = set()
+    stack = list(concepts)
+    while stack:
+        concept = stack.pop()
+        if concept.address in seen:
+            continue
+        seen.add(concept.address)
+        if concept.lineage is not None:
+            stack.extend(concept.lineage.concept_arguments)
+    return seen
+
+
+def _bound_addresses(datasource: BuildDatasource) -> set[str]:
+    return {
+        address
+        for column in datasource.columns
+        for address in (column.concept.address, column.concept.canonical_address)
+    }
+
+
+def axis_arms_delivered(
+    outputs: Sequence[BuildConcept],
+    environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
+) -> bool:
+    """Every arm of each projected coalescing axis is some output's own: the
+    statement reads (directly or under an aggregate) a column only that arm's
+    carriers bind. The contributor reading it brings the arm's keys, so each
+    request may read the axis off its own arm (`_axis_arm_pinned`) and the
+    assembly coalesces them. An arm no output reads is delivered only by
+    assembling the axis where it is requested."""
+    groups = requested_axis_groups([c.address for c in outputs], environment, {})
+    if not groups:
+        return True
+    axis = {a for canonical, members in groups.items() for a in {canonical, *members}}
+    read = _row_lineage(outputs, environment) - axis
+    for members in groups.values():
+        bound = {
+            member: set().union(
+                *(
+                    _bound_addresses(carrier)
+                    for carrier in member_binding_datasources(member, datasources)
+                )
+            )
+            for member in members
+        }
+        for member, addresses in bound.items():
+            if not addresses:
+                continue
+            others = set().union(*(v for k, v in bound.items() if k != member))
+            if not (addresses - others) & read:
+                return False
+    return True
 
 
 def axis_families(

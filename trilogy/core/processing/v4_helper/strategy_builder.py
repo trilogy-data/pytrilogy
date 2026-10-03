@@ -66,11 +66,7 @@ from trilogy.core.processing.condition_utility import (
 )
 from trilogy.core.processing.discovery_utility import raise_if_disconnected_for
 from trilogy.core.processing.grain_utility import non_null_proofs
-from trilogy.core.processing.node_generators.presence_probe import (
-    coalescing_axis_group,
-    is_presence_probe,
-    member_binding_datasources,
-)
+from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
 from trilogy.core.processing.nodes import (
     FilterNode,
     GroupNode,
@@ -112,7 +108,7 @@ from .models import (
     InputChannel,
     nulls_grouping_keys,
 )
-from .network_model import datasource_identifiers
+from .network_coalescing import axis_arms_delivered
 from .projection import (
     concept_satisfiable,
     filter_row_predicate,
@@ -527,35 +523,6 @@ def _leaf_datasources(node: StrategyNode) -> dict[str, BuildDatasource]:
 
 def _leaf_datasource_ids(node: StrategyNode) -> set[str]:
     return set(_leaf_datasources(node))
-
-
-def drops_an_axis_arm(
-    node: StrategyNode,
-    mandatory_list: list[BuildConcept],
-    environment: BuildEnvironment,
-    datasources: Sequence[BuildDatasource],
-) -> bool:
-    """A projected coalescing axis has a member some datasource carries, yet
-    the plan scans none of that member's carriers: its keys are missing."""
-    scanned: set[str] | None = None
-    for concept in mandatory_list:
-        found = coalescing_axis_group(concept.address, environment)
-        if found is None:
-            continue
-        if scanned is None:
-            scanned = {
-                identifier
-                for n in _strategy_nodes(node)
-                if isinstance(n, SelectNode) and n.datasource is not None
-                for identifier in datasource_identifiers(n.datasource)
-            }
-        for member in found[1]:
-            carriers = {
-                c.identifier for c in member_binding_datasources(member, datasources)
-            }
-            if carriers and not carriers & scanned:
-                return True
-    return False
 
 
 def _strict_leaf_subset_binds(node: StrategyNode, addresses: set[str]) -> bool:
@@ -1213,6 +1180,7 @@ def _parent_nodes_for(
     complete_partials: bool = True,
     staged_conditions: list[BuildWhereClause] | None = None,
     feeder_cache: "_CleanFeederCache | None" = None,
+    arms_delivered: bool = False,
 ) -> list[ParentBuild]:
     """Look up the already-built StrategyNodes for `gid`'s lineage
     predecessors. Topological order guarantees they exist (or that the
@@ -1342,7 +1310,7 @@ def _parent_nodes_for(
         # parent's own scope: under the consumer's, a span a region domain owns
         # is completed again, and the slice grows a join instead of losing one
         # an aggregate's input slice may read one coalescing arm's rows
-        arm_local = consumer.derivation == Derivation.AGGREGATE
+        arm_local = arms_delivered or consumer.derivation == Derivation.AGGREGATE
         request = RootRequest(
             frozenset(slice_addresses),
             conditions,
@@ -3891,6 +3859,7 @@ def _fresh_final_root_projection(
     graph: ReferenceGraph,
     history: History,
     conditions: BuildWhereClause | None = None,
+    arm_local: bool = False,
 ) -> StrategyNode | None:
     node = plan_source(
         SourceRequest(
@@ -3899,6 +3868,7 @@ def _fresh_final_root_projection(
             graph=graph,
             history=history,
             conditions=conditions,
+            arm_local=arm_local,
         )
     )
     if node is None or conditions is None:
@@ -4698,6 +4668,7 @@ def _assemble_final_node(
     history: History,
     root_requests: dict[str, RootRequest],
     feeder_cache: "_CleanFeederCache | None" = None,
+    arms_delivered: bool = False,
 ) -> StrategyNode | None:
     """Build the FINAL output node: merge the minimum set of built groups
     that together cover `mandatory_list`. When a single group already covers
@@ -5145,7 +5116,12 @@ def _assemble_final_node(
                 # what the scan carries, or the scope moved.
                 fresh = (
                     _fresh_final_root_projection(
-                        projected, environment, graph, history, request.conditions
+                        projected,
+                        environment,
+                        graph,
+                        history,
+                        request.conditions,
+                        arms_delivered,
                     )
                     if projected
                     and len(satisfiable) == len(root_atoms)
@@ -5498,6 +5474,12 @@ def build_strategy_node(
     bodies, for trace indentation."""
     from trilogy.core.processing.v4_node_generators import build_node  # cycle
 
+    # whether a request may read a coalescing axis off one arm: decided once,
+    # from the statement's shape
+    arms_delivered = axis_arms_delivered(
+        mandatory_list, environment, g.scope.datasources
+    )
+
     built: dict[str, StrategyNode] = {}
     root_requests: dict[str, RootRequest] = {}
     feeder_cache = _CleanFeederCache(environment, g, history)
@@ -5648,6 +5630,7 @@ def build_strategy_node(
             complete_partials=complete_partials,
             staged_conditions=staged_conditions,
             feeder_cache=feeder_cache,
+            arms_delivered=arms_delivered,
         )
         parent_group_ids = {parent.group_id for parent in parent_builds}
         join_key_addresses = _input_contract_join_keys(a, parent_group_ids)
@@ -5900,7 +5883,7 @@ def build_strategy_node(
         # The same root in two phases (the d1 twin feeding the condition-phase
         # aggregates) asks the same question when the WHERE placed on each is
         # the same; the second reads the first's answer.
-        arm_local = _feeds_only_aggregates(group_graph, attrs, gid)
+        arm_local = arms_delivered or _feeds_only_aggregates(group_graph, attrs, gid)
         request = (
             RootRequest(
                 frozenset(c.address for c in outputs),
@@ -6048,6 +6031,7 @@ def build_strategy_node(
         history,
         root_requests,
         feeder_cache=feeder_cache,
+        arms_delivered=arms_delivered,
     )
     if plan_trace.active():
         plan_trace.record(
