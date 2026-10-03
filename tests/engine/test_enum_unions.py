@@ -255,9 +255,7 @@ def test_overlapping_sources_picks_pair():
     executor.execute_text(PREQL_OVERLAPPING)
 
     env = executor.environment.materialize_for_select()
-    unions = get_union_sources(
-        list(env.datasources.values()), [env.concepts["category"]]
-    )
+    unions = get_union_sources(list(env.datasources.values()))
 
     assert len(unions) == 1, f"Expected 1 union group, got {len(unions)}"
     assert len(unions[0]) == 2, f"Expected pair of 2, got {len(unions[0])}"
@@ -389,9 +387,7 @@ def test_no_shared_data_fields_not_combined():
     executor.execute_text(PREQL_NO_OVERLAP)
 
     env = executor.environment.materialize_for_select()
-    unions = get_union_sources(
-        list(env.datasources.values()), [env.concepts["category"]]
-    )
+    unions = get_union_sources(list(env.datasources.values()))
 
     assert (
         len(unions) == 0
@@ -760,10 +756,7 @@ def test_union_sources_mixed_family_stays_partial():
     # binds, so it can never outrank the pure sales union for key requests.
     executor = _partial_key_executor(_NAMES_RETURNS_FIRST)
     env = executor.environment.materialize_for_select()
-    unions = get_union_sources(
-        list(env.datasources.values()),
-        [env.concepts["chan"], env.concepts["order_id"], env.concepts["site_id"]],
-    )
+    unions = get_union_sources(list(env.datasources.values()))
     families = {frozenset(ds.name for ds in group): group for group in unions}
     assert frozenset({"sale_a", "sale_b"}) in families
     assert frozenset({"ret_a", "ret_b"}) in families

@@ -28,7 +28,7 @@ def test_union_node():
 
     datasources = [factory.build(x) for x in env.datasources.values()]
     team_name = factory.build(env.concepts["team_name"])
-    union = get_union_sources(datasources=datasources, concepts=[team_name])
+    union = get_union_sources(datasources)
     assert len(union) == 1, "Union sources should return a single source for team_name"
     datasource = union[0]
     build_env = factory.build(env)

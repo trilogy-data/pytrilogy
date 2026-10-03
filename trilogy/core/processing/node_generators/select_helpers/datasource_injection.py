@@ -8,10 +8,6 @@ from trilogy.core.enums import (
     ComparisonOperator,
     Modifier,
 )
-from trilogy.core.env_processor import (
-    build_basic_concept_graph,
-    get_derivable_concepts,
-)
 from trilogy.core.models.build import (
     BoolExpr,
     BuildComparison,
@@ -26,6 +22,10 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import EnumType
 from trilogy.core.models.datasource import Address
+from trilogy.core.processing.basic_graph import (
+    build_basic_concept_graph,
+    get_derivable_concepts,
+)
 from trilogy.core.processing.condition_utility import (
     ExcludedEnumValues,
     decompose_condition,
@@ -321,24 +321,16 @@ def _best_enum_union(
 
 
 def _partition_families(
-    datasources: list[BuildDatasource], concepts: list[BuildConcept]
+    datasources: Sequence[BuildDatasource],
 ) -> dict[str, list[BuildDatasource]]:
-    """Discriminator address -> the `complete where` arms partitioned on it.
-
-    A candidate needs a non_partial_for clause and at least one partial column
-    whose concept matches the request. A matching partial column is also a
-    matching output column, so we don't need a separate output-overlap check.
-    """
-    concept_addrs = {c.address for c in concepts}
-    _PARTIAL = Modifier.PARTIAL
-    candidates: list[BuildDatasource] = []
-    for x in datasources:
-        if not x.non_partial_for:
-            continue
-        for col in x.columns:
-            if _PARTIAL in col.modifiers and col.concept.address in concept_addrs:
-                candidates.append(x)
-                break
+    """Discriminator address -> the `complete where` arms partitioned on it:
+    every source with a non_partial_for clause and a partial column."""
+    candidates = [
+        x
+        for x in datasources
+        if x.non_partial_for
+        and any(Modifier.PARTIAL in col.modifiers for col in x.columns)
+    ]
 
     assocs: dict[str, list[BuildDatasource]] = defaultdict(list[BuildDatasource])
     for x in candidates:
@@ -362,12 +354,12 @@ def _merge_key(dses: list[BuildDatasource], merge_key_addr: str) -> BuildConcept
 
 
 def get_union_sources(
-    datasources: list[BuildDatasource],
-    concepts: list[BuildConcept],
+    datasources: Sequence[BuildDatasource],
     excluded: ExcludedEnumValues | None = None,
 ) -> list[list[BuildDatasource]]:
+    """The arm groups that union into a complete source, per partition family."""
     final: list[list[BuildDatasource]] = []
-    for merge_key_addr, dses in _partition_families(datasources, concepts).items():
+    for merge_key_addr, dses in _partition_families(datasources).items():
         merge_key = _merge_key(dses, merge_key_addr)
         if merge_key is None:
             continue
@@ -390,20 +382,11 @@ def union_sources(
     """Every covering union over the scope's partition families, with the
     concepts it emits: the outputs every arm binds, plus the derivations the
     arms compute inline that some other source is keyed on. A scope fact,
-    decided once when its reference graph is generated: the families are the
-    ``complete where`` arms as a whole (every arm is admitted, whatever a
-    request later asks of it), covered over the domain the statement's row
-    gate leaves (``excluded_enum_values``)."""
+    decided once when its reference graph is generated, over the domain the
+    statement's row gate leaves (``excluded_enum_values``)."""
     excluded = environment.excluded_enum_values
-    partial_bound = [
-        column.concept
-        for ds in datasources
-        if ds.non_partial_for
-        for column in ds.columns
-        if Modifier.PARTIAL in column.modifiers
-    ]
     out: list[tuple[BuildUnionDatasource, list[BuildConcept]]] = []
-    for group in get_union_sources(list(datasources), partial_bound, excluded):
+    for group in get_union_sources(datasources, excluded):
         merged = merge_conditions(
             [
                 child.non_partial_for.conditional
@@ -490,8 +473,15 @@ def describe_incomplete_partitions(
     domain, so no set of equality predicates over it can be proven complete;
     this names that modeling gap instead of a generic "no complete sources".
     """
+    requested = {c.address for c in concepts}
     reasons: list[str] = []
-    for merge_key_addr, dses in _partition_families(datasources, concepts).items():
+    for merge_key_addr, dses in _partition_families(datasources).items():
+        # only the families that bind what the query could not source
+        dses = [
+            ds
+            for ds in dses
+            if any(col.concept.address in requested for col in ds.columns)
+        ]
         if len(dses) < 2:
             continue
         merge_key = _merge_key(dses, merge_key_addr)

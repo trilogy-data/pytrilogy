@@ -54,7 +54,7 @@ where order_date > '2024-01-01'::date
 
     env = x.environment.materialize_for_select()
 
-    unions = get_union_sources(env.datasources.values(), [env.concepts["order_id"]])
+    unions = get_union_sources(list(env.datasources.values()))
     assert unions, unions
     assert unions[0] == [env.datasources["web_orders"], env.datasources["store_orders"]]
 
