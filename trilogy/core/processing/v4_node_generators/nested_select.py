@@ -152,14 +152,12 @@ def build_nested_select(
     # The shared build caches are keyed on address/grain identity alone, which
     # is only correct while every build in the resolution applies the SAME
     # scoped joins; a join changes what an address builds to (canonical
-    # collapse + pseudonym stamping). When this body carries its OWN joins the
-    # outer resolution never saw, entries the outer scope cached are wrong
-    # here (an outer-built join key comes back with no pseudonym link to its
-    # body mate, so the inner aggregate detaches from its grouping key and
-    # FINAL cross-joins ON 1=1); build this scope with fresh caches. The
-    # converse (the statement's joins not inherited) keeps the shared caches:
-    # boundary pairing reads the outer join's pseudonym stamps off them.
-    if any(j not in caches.scoped_joins for j in scoped_joins):
+    # collapse + pseudonym stamping). Under any other join set, outer entries
+    # are wrong here both ways: a join the body adds leaves an outer-built key
+    # with no pseudonym link to its body mate, and a statement join the body
+    # drops leaves its keys collapsed onto the statement's merge group (the
+    # body then reads its own consumer); build this scope with fresh caches.
+    if set(scoped_joins) != set(caches.scoped_joins):
         caches = BuildCaches(
             pseudonym_map=caches.pseudonym_map,
             pseudonym_concept_count=caches.pseudonym_concept_count,
