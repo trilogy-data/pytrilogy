@@ -327,7 +327,7 @@ def _takes_a_value_on_a_null_member(
     return any(
         b.derivation == Derivation.BASIC
         and keyspace.carried_on(m, region)
-        and _row_level(environment.concepts.get(m))
+        and _null_propagating(environment.concepts.get(m))
         and takes_a_value_on_padding(m, row, keyspace, environment)
         for b in buckets.values()
         if b.label == label
@@ -335,11 +335,17 @@ def _takes_a_value_on_a_null_member(
     )
 
 
-def _row_level(concept: BuildConcept | None) -> bool:
+def _null_propagating(concept: BuildConcept | None) -> bool:
+    """Every lineage step is a per-row scalar of its arguments, so NULL inputs
+    give NULL. Stricter than `reads_rows_only` on purpose: a window or filter
+    over the NULL member's rows can still take a value (`row_number()` is 1
+    there), while for `reads_rows_only` it is enough that no aggregate is
+    crossed, since `where order_seq is null` must keep the orderless customer
+    (`test_derived_key_domain`)."""
     if concept is None or concept.lineage is None:
         return concept is not None
     return concept.derivation == Derivation.BASIC and all(
-        _row_level(arg) for arg in concept.lineage.concept_arguments
+        _null_propagating(arg) for arg in concept.lineage.concept_arguments
     )
 
 
