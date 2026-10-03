@@ -45,18 +45,6 @@ def inline_arguments_taking_a_value(
     ]
 
 
-def argument_takes_a_value_on_padding(
-    address: str, region: Region, keyspace: Keyspace, environment: BuildEnvironment
-) -> bool:
-    """Whether the aggregate at `address` answers a padded row of `region`
-    differently from no row at all, so it must be computed on the solid rows."""
-    return bool(
-        inline_arguments_taking_a_value(
-            environment.concepts.get(address), region, keyspace, environment
-        )
-    )
-
-
 def nameable(argument: BuildConceptArgs) -> bool:
     """An inline argument the strategy builder can stand a concept in for and
     project on the solid rows (`_name_inline_arguments`)."""
@@ -125,23 +113,6 @@ def evaluated_over_region(
     )
 
 
-def fed_by_region_domain(
-    concept: BuildConcept,
-    region: Region,
-    keyspace: Keyspace,
-    environment: BuildEnvironment,
-) -> bool:
-    """An aggregate output a region domain feeds (`evaluated_over_region`)."""
-    return isinstance(concept.lineage, BuildAggregateWrapper) and evaluated_over_region(
-        (concept.address,),
-        concept.grain.components if concept.grain else (),
-        region,
-        keyspace,
-        environment,
-        one_pass=concept.lineage.grouping.nulls_grouping_keys,
-    )
-
-
 def keyless(address: str, keyspace: Keyspace) -> bool:
     """One value for every row of the statement (`count(order_id) by *`): it
     filters the region's rows exactly as it filters the solid ones."""
@@ -187,8 +158,21 @@ def restated_over_region(
         return True
     if not keyspace.carried_on(address, region):
         return False
+    # an aggregate output a region domain feeds unites the region's rows
     unfed = [
-        c for c in outputs if not fed_by_region_domain(c, region, keyspace, environment)
+        c
+        for c in outputs
+        if not (
+            isinstance(c.lineage, BuildAggregateWrapper)
+            and evaluated_over_region(
+                (c.address,),
+                c.grain.components if c.grain else (),
+                region,
+                keyspace,
+                environment,
+                one_pass=c.lineage.grouping.nulls_grouping_keys,
+            )
+        )
     ]
     if len(unfed) < len(outputs):
         unfed = [c for c in unfed if not isinstance(c.lineage, BuildAggregateWrapper)]

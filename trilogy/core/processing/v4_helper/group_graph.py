@@ -123,15 +123,6 @@ def _leaf_inputs(primaries: set[str], lineage_parents: dict[str, set[str]]) -> s
     return leaves
 
 
-def _fd_on_key(
-    concept_attrs: dict[str, ConceptAttrs], address: str, key: set[str]
-) -> bool:
-    """Whether `address` is functionally determined by the dimension key set
-    `key`: it is a key, has no grain (constant), or its declared grain is a
-    subset of the key."""
-    return concept_attr_fd_determines(concept_attrs, key, address)
-
-
 def _assign_groups(
     concept_graph: nx.DiGraph,
     concept_edges: EdgeMap,
@@ -303,7 +294,6 @@ def _materialize_group_graph(
             depth_label=bucket.depth_label,
             derivation=bucket.derivation,
             grain_components=bucket.grain_components,
-            hosted_grain=bucket.hosted_grain,
             label=bucket.label,
             primary_members=tuple(bucket.primary_members),
             carried_spans=tuple(bucket.carried_spans),
@@ -437,11 +427,11 @@ def _inject_conditions(
         conditions,
         mandatory_list,
         environment,
+        keyspace,
         scoped_join_key_groups,
         concept_attrs,
         statement_relation_addresses,
         staged_conditions,
-        keyspace,
     )
     if plan_trace.active():
         plan_trace.record(
@@ -607,7 +597,7 @@ def _propagate_raw_filters_to_d1_roots(
                 # population value is unchanged. A non-atomic peer must never
                 # narrow a population gate's input (dual-scope contract).
                 if not all(
-                    _fd_on_key(concept_attrs, arg, grain)
+                    concept_attr_fd_determines(concept_attrs, grain, arg)
                     for grain in cross_row_grains
                     for arg in row_args
                 ):
@@ -2487,7 +2477,8 @@ def _synthetic_dimension_regraft_parent(
     inputs = list(current.input_concepts)
     if not inputs:
         return None
-    if not all(_fd_on_key(concept_attrs, address, key) for address in inputs):
+    if not all(concept_attr_fd_determines(concept_attrs, key, address)
+        for address in inputs):
         return None
     if not any(
         key <= set(attrs[candidate].grain_components)
@@ -2686,10 +2677,8 @@ def _regraft_group_sources(
         parent_gid = None
         if provider_gid is not None:
             attrs[gid].grain_components = attrs[provider_gid].grain_components
-            attrs[gid].hosted_grain = attrs[provider_gid].hosted_grain
             if gid in buckets:
                 buckets[gid].grain_components = attrs[provider_gid].grain_components
-                buckets[gid].hosted_grain = attrs[provider_gid].hosted_grain
             if not _grain_needed_by_independent_sibling(
                 group_graph, attrs, gid, provider_gid
             ):

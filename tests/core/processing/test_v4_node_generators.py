@@ -40,7 +40,6 @@ from trilogy.core.processing.nodes import (
 from trilogy.core.processing.v4_helper.strategy_builder import _add_needed_concept
 from trilogy.core.processing.v4_node_generators.condition_sources import (
     resolve_and_inject_condition,
-    resolve_condition_sources,
 )
 from trilogy.core.processing.v4_node_generators.dispatch import build_node
 from trilogy.core.processing.v4_node_generators.recursive import gen_recursive
@@ -550,16 +549,17 @@ class TestConditionInjection:
                 operator=ComparisonOperator.GT,
             )
         )
-        sources = resolve_condition_sources(
+        injected = resolve_and_inject_condition(
             inner,
             having,
+            list(inner.output_concepts),
             environment=benv,
             graph=generate_graph(benv),
             history=V4History(base_environment=env),
             depth=0,
         )
-        assert not sources.row_parents
-        assert not sources.existence_parents
+        assert isinstance(injected, SelectNode)
+        assert injected.parents == [inner]
 
     def test_existence_args_use_side_channel_sources(self):
         env, benv = _build(HAVING_EXTERNAL_MODEL)
@@ -571,17 +571,19 @@ class TestConditionInjection:
                 operator=ComparisonOperator.IN,
             )
         )
-        sources = resolve_condition_sources(
+        injected = resolve_and_inject_condition(
             inner,
             condition,
+            list(inner.output_concepts),
             environment=benv,
             graph=generate_graph(benv),
             history=V4History(base_environment=env),
             depth=0,
         )
-        assert not sources.row_parents
-        assert sources.existence_parents
-        assert [c.address for c in sources.existence_concepts] == ["local.avg_value"]
+        assert isinstance(injected, MergeNode)
+        assert injected.parents[0] is inner
+        assert len(injected.parents) > 1
+        assert [c.address for c in injected.existence_concepts] == ["local.avg_value"]
 
     def test_unresolved_row_args_raise(self, monkeypatch):
         env, benv = _build(HAVING_EXTERNAL_MODEL)
@@ -597,9 +599,10 @@ class TestConditionInjection:
             cs, "search_concepts", lambda **_: types.SimpleNamespace(strategy_node=None)
         )
         with pytest.raises(UnresolvableQueryException, match="condition row arguments"):
-            resolve_condition_sources(
+            resolve_and_inject_condition(
                 inner,
                 having,
+                list(inner.output_concepts),
                 environment=benv,
                 graph=generate_graph(benv),
                 history=V4History(base_environment=env),

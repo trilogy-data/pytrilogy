@@ -380,7 +380,6 @@ def _partition_standard_aggregates(
             )
             for node, data in layer:
                 _add_member(bucket, node, data)
-                bucket.hosted_grain |= data.hosted_grain
             buckets.append(bucket)
     return buckets
 

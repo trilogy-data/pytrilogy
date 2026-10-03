@@ -1985,9 +1985,7 @@ def _host_outputs_on_row_preserving_aggregates(
             if attrs[nid].address not in grain
             and _whole_grain_determines(environment, grain, attrs[nid].address)
         ]
-        hosted = frozenset(attrs[nid].address for nid in riders)
-        attrs[host].grain_components = grain | hosted
-        attrs[host].hosted_grain |= hosted
+        attrs[host].grain_components = grain | {attrs[nid].address for nid in riders}
         for nid in riders:
             if not graph.has_edge(nid, host):
                 add_edge(graph, edges, nid, host, EdgeKind.LINEAGE)

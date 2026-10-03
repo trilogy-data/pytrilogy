@@ -32,22 +32,6 @@ from trilogy.utility import unique
 from .common import search_parent
 
 
-def resolve_condition_sources(
-    node: StrategyNode,
-    condition: BuildWhereClause,
-    environment: BuildEnvironment,
-    graph: ReferenceGraph,
-    history: V4History,
-    depth: int,
-) -> ConditionSources:
-    """Resolve condition row inputs and existence inputs without mixing them."""
-    sources = resolve_row_sources(node, condition, environment, graph, history, depth)
-    resolve_existence_sources(
-        sources, condition, environment, graph, history, depth=depth + 1
-    )
-    return sources
-
-
 def resolve_row_sources(
     node: StrategyNode,
     condition: BuildWhereClause,
@@ -151,8 +135,9 @@ def resolve_and_inject_condition(
     grain: BuildGrain | None = None,
     hidden_concepts: set[str] | None = None,
 ) -> StrategyNode:
-    sources = resolve_condition_sources(
-        node, condition, environment, graph, history, depth
+    sources = resolve_row_sources(node, condition, environment, graph, history, depth)
+    resolve_existence_sources(
+        sources, condition, environment, graph, history, depth=depth + 1
     )
     return inject_condition_at_node(
         node,
