@@ -25,6 +25,7 @@ FLAGS = {
     "simplify_null_safe_joins",
     "strip_redundant_not_null",
     "drop_identity_group",
+    "reuse_parent_lookup",
     "union_dim_pushdown",
     "hide_unused_concepts",
     "order_inner_joins_first",

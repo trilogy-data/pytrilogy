@@ -390,21 +390,18 @@ def test_forked_with_status_pinned(forked):
 
 
 def test_forked_full_column_set(forked):
-    assert (
-        _rows(
-            forked,
-            """select item_id, order_id, product_id, user_id, state, brand, order_status, total_qty, total_pair_cost
-        order by item_id asc nulls last, user_id asc nulls last, product_id asc nulls last;""",
-        )
-        == [
-            (1000, 100, 10, 1, "CA", "A", "FIRST", 5, 100),
-            (1001, 100, 20, 1, "CA", "B", "FIRST", 7, 150),
-            (1002, 101, 10, 2, "NY", "A", "FIRST", 11, 120),
-            (1003, 102, 20, 1, "CA", "B", "LATER", 13, 210),
-            (None, None, None, 3, "TX", None, None, None, None),
-            (None, None, 30, None, None, "C", None, None, None),
-        ]
-    )
+    query = """select item_id, order_id, product_id, user_id, state, brand, order_status, total_qty, total_pair_cost
+        order by item_id asc nulls last, user_id asc nulls last, product_id asc nulls last;"""
+    sql = forked.generate_sql(query)[-1]
+    assert sql.count("JOIN") == 6, sql
+    assert _rows(forked, query) == [
+        (1000, 100, 10, 1, "CA", "A", "FIRST", 5, 100),
+        (1001, 100, 20, 1, "CA", "B", "FIRST", 7, 150),
+        (1002, 101, 10, 2, "NY", "A", "FIRST", 11, 120),
+        (1003, 102, 20, 1, "CA", "B", "LATER", 13, 210),
+        (None, None, None, 3, "TX", None, None, None, None),
+        (None, None, 30, None, None, "C", None, None, None),
+    ]
 
 
 # sales anchors returns' `~` grain keys (the store_sales / store_returns

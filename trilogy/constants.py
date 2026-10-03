@@ -71,6 +71,7 @@ class Optimizations:
     simplify_null_safe_joins: bool = True
     strip_redundant_not_null: bool = True
     drop_identity_group: bool = True
+    reuse_parent_lookup: bool = True
     join_hoist: bool = True
     union_dim_pushdown: bool = True
     order_inner_joins_first: bool = True
