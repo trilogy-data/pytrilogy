@@ -1066,7 +1066,7 @@ def keyspace(ks: Keyspace) -> KeyspaceTrace:
         span_reach={k: sorted(v) for k, v in sorted(ks.span_reach.items())},
         witnessed=dict(sorted(ks.witnessed.items())),
         unread_spans=sorted(ks.unread_spans),
-        demanded_spans=sorted(ks.demanded_spans),
+        demanded_spans=sorted(frozenset().union(*ks.families)),
         output_demanded_spans=sorted(ks.output_demanded_spans),
         in_play_spans=sorted(ks.in_play_spans),
         families=[sorted(f) for f in ks.families],

@@ -139,7 +139,7 @@ def test_span_demanded_only_as_an_aggregate_argument():
     keyspace = _keyspace(
         CUSTOMERS_DERIVED, "select status, count(customer_id) as customers;"
     )
-    assert keyspace.demanded_spans == frozenset({CUSTOMER})
+    assert keyspace.families == (frozenset({CUSTOMER}),)
     assert keyspace.output_demanded_spans == frozenset()
 
 
@@ -150,7 +150,7 @@ def test_extension_families_never_cross_pair():
         frozenset({USER}),
         frozenset({PRODUCT}),
     }
-    assert keyspace.demanded_spans == frozenset({USER, PRODUCT})
+    assert set(keyspace.families) == {frozenset({USER}), frozenset({PRODUCT})}
 
 
 def test_completely_bound_key_is_absorbed_by_the_finer_source():
@@ -186,7 +186,7 @@ def test_where_null_rejecting_an_absent_concept_empties_the_region(monkeypatch):
     )
     (extension,) = _extensions(keyspace)
     assert extension.emptied_by == frozenset({"local.status"})
-    assert keyspace.demanded_spans == frozenset()
+    assert keyspace.families == ()
     # a merge below the WHERE still sees the dead region's padding
     assert keyspace.in_play_spans == frozenset({CUSTOMER})
 
@@ -228,7 +228,7 @@ def test_where_over_a_present_concept_leaves_the_region_live(monkeypatch):
     keyspace = _planned_keyspace(
         monkeypatch, CUSTOMERS_DERIVED, "select customer_id, status where name = 'cat';"
     )
-    assert keyspace.demanded_spans == frozenset({CUSTOMER})
+    assert keyspace.families == (frozenset({CUSTOMER}),)
 
 
 def test_field_report_has_one_region_per_family():
@@ -237,7 +237,7 @@ def test_field_report_has_one_region_per_family():
         "select order_id, item_id, user_id, product_id, total_revenue,"
         " total_quantity, total_cost;",
     )
-    assert keyspace.demanded_spans == frozenset({USER, PRODUCT})
+    assert set(keyspace.families) == {frozenset({USER}), frozenset({PRODUCT})}
     assert {r.present for r in _extensions(keyspace)} == {
         frozenset({USER}),
         frozenset({PRODUCT}),
@@ -742,7 +742,7 @@ def test_sub_plan_without_the_where_inherits_the_statement_heal(monkeypatch):
     executor.generate_sql("select customer_id, name where order_seq = 1;")
     feeders = [k for k in capture.seen if "local.order_seq" in k.keys_by_address]
     assert feeders
-    assert all(k.demanded_spans == frozenset() for k in capture.seen)
+    assert all(k.families == () for k in capture.seen)
 
 
 _CHAIN_MODEL = """

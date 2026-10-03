@@ -127,10 +127,6 @@ class Keyspace:
         """The live extension regions `spans` covers."""
         return [r for r in self.live_regions if r.spans and r.spans <= spans]
 
-    @property
-    def demanded_spans(self) -> frozenset[str]:
-        return frozenset().union(*(r.spans for r in self.live_regions))
-
     @cached_property
     def in_play_spans(self) -> frozenset[str]:
         """Every span a join of this plan can pad for. An emptied region still
