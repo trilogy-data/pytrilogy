@@ -800,6 +800,17 @@ def test_array_literal_over_a_column_is_built_row_by_row(
 
 
 @pytest.mark.parametrize("backend", [ParserBackend.PEST, ParserBackend.LARK])
+def test_equal_is_an_identifier_unless_before_join(backend: ParserBackend) -> None:
+    with _using_backend(backend):
+        executor = Dialects.DUCK_DB.default_executor()
+        executor.execute_text(ARRAY_MODEL + "auto equal <- amount * 2;")
+        rows = executor.execute_text(
+            "select order_id, equal order by order_id asc;"
+        )[-1].fetchall()
+    assert [tuple(r) for r in rows] == [(100, 10), (101, 14)]
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.PEST, ParserBackend.LARK])
 @pytest.mark.parametrize(
     "expr,expected",
     [
