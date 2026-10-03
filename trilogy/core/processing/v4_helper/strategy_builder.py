@@ -1723,7 +1723,12 @@ def _elide_passthrough_tree(
             )
             for join in node.node_joins
         ]
-    node.resolution_cache = None
+    # a resolution stays valid while every parent is the same, still-resolved node
+    if any(
+        new is not old or new.resolution_cache is None
+        for old, new in zip(original, node.parents)
+    ):
+        node.resolution_cache = None
     collapsed = _elide_single_parent_passthrough(node)
     seen[node_id] = collapsed
     return collapsed
@@ -6069,7 +6074,28 @@ def build_strategy_node(
             return None
         # FINAL's own re-sources host their memberships unwired until here.
         _wire_existence(final, built, feeder_cache)
+        _drop_stale_resolutions(final, set())
     return final
+
+
+def _drop_stale_resolutions(node: StrategyNode, seen: set[int]) -> None:
+    """Clear, bottom-up, every resolution that no longer reads its parents'
+    current ones: a rebuild (late membership wiring) does not reach the nodes
+    that read the rebuilt node. A parent a merge folded away clears too."""
+    if id(node) in seen:
+        return
+    seen.add(id(node))
+    for parent in node.parents:
+        _drop_stale_resolutions(parent, seen)
+    cached = node.resolution_cache
+    if cached is None:
+        return
+    read = {id(cached), *(id(ds) for ds in cached.datasources)}
+    if any(
+        parent.resolution_cache is None or id(parent.resolution_cache) not in read
+        for parent in node.parents
+    ):
+        node.resolution_cache = None
 
 
 def _raise_if_output_unrendered(
