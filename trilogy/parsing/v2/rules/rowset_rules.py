@@ -9,6 +9,7 @@ from trilogy.core.models.author import (
     ConceptRef,
     Conditional,
     Parenthetical,
+    RowsetItem,
     SubqueryItem,
 )
 from trilogy.core.models.environment import Environment
@@ -137,9 +138,10 @@ def scalar_subquery(
 
 
 def _one_row(select: SelectStatement, environment: Environment) -> bool:
-    """No grain, `limit 1`, or every grain component pinned to a literal or
-    constant by an `=` in the WHERE, itself or through its keys
-    (`where cat_avg.category = 'a'`)."""
+    """No grain, `limit 1`, or every grain component pinned by an `=` in the
+    WHERE, itself or through its keys: to a literal or constant
+    (`where cat_avg.category = 'a'`), or to another scope's column, a
+    correlation the planner refuses with its own message."""
     if select.limit == 1:
         return True
     pinned = (
@@ -174,15 +176,23 @@ def _equated(condition: object, environment: Environment) -> set[str]:
         return {
             side.address
             for side, other in ((left, right), (right, left))
-            if isinstance(side, ConceptRef) and _fixed(other, environment)
+            if isinstance(side, ConceptRef) and _fixed(side, other, environment)
         }
     return set()
 
 
-def _fixed(value: object, environment: Environment) -> bool:
+def _fixed(side: ConceptRef, value: object, environment: Environment) -> bool:
     if isinstance(value, ConceptRef):
-        return environment.concepts[value.address].purpose == Purpose.CONSTANT
+        other = environment.concepts[value.address]
+        return other.purpose == Purpose.CONSTANT or _rowset_of(
+            other.address, environment
+        ) != _rowset_of(side.address, environment)
     return isinstance(value, LITERAL_CONSTANT_TYPES)
+
+
+def _rowset_of(address: str, environment: Environment) -> str | None:
+    lineage = environment.concepts[address].lineage
+    return lineage.rowset.name if isinstance(lineage, RowsetItem) else None
 
 
 ROWSET_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
