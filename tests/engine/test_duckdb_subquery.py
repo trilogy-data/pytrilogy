@@ -91,8 +91,9 @@ def test_scalar_subquery_of_several_rows_rejected(backend, query: str):
 def test_scalar_subquery_column_equality_is_not_one_row(backend):
     engine = Dialects.DUCK_DB.default_executor()
     engine.execute_text(
-        _MODEL.replace("union all select 2, 20, 1", "union all select 2, 20, 2")
-        .replace("union all select 3, 30, 2", "union all select 3, 30, 3")
+        _MODEL.replace(
+            "union all select 2, 20, 1", "union all select 2, 20, 2"
+        ).replace("union all select 3, 30, 2", "union all select 3, 30, 3")
     )
     query = "select id where val >= (select val where id = cat) order by id asc;"
     with pytest.raises(HydrationError, match="must return one row"):

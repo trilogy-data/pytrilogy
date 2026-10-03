@@ -804,9 +804,9 @@ def test_equal_is_an_identifier_unless_before_join(backend: ParserBackend) -> No
     with _using_backend(backend):
         executor = Dialects.DUCK_DB.default_executor()
         executor.execute_text(ARRAY_MODEL + "auto equal <- amount * 2;")
-        rows = executor.execute_text(
-            "select order_id, equal order by order_id asc;"
-        )[-1].fetchall()
+        rows = executor.execute_text("select order_id, equal order by order_id asc;")[
+            -1
+        ].fetchall()
     assert [tuple(r) for r in rows] == [(100, 10), (101, 14)]
 
 
