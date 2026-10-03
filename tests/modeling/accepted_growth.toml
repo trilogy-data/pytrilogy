@@ -1,0 +1,11 @@
+# Benchmark plans allowed to be larger than on main, each with why.
+# Read by .scripts/check_benchmark_growth.py; remove an entry once the plan shrinks back.
+
+["thelook_duckdb/zquery22.log"]
+reason = "the user region's domain LEFT-joins one CTE of order_items INNER orders/products (complete bindings) instead of chaining LEFT joins; rows-checked"
+
+["tpc_ds_duckdb/zquery11.log"]
+reason = "applies the outer row WHERE (channel, year) that main dropped; the extra scan is the cost of a correct plan"
+
+["tpc_ds_duckdb/zquery64.log"]
+reason = "outer joins leak into the rowset bodies (known open item); execution time flat"
