@@ -884,6 +884,26 @@ def _score_join_candidate(
     return (base, len(side.grain), x)
 
 
+_SOLID = "|solid"
+
+
+def _solid_value_null_pivots(
+    pivot_map: dict[str, list[str]], facts: JoinFacts
+) -> dict[str, list[str]]:
+    """A value-nullable key pairs the sides holding no region on it before a
+    region's rows unite: a padded NULL is no member of the NULL group an
+    aggregate the region does not feed computes on it. A side holding the
+    region joins on it after, through the key's own pivot."""
+    if not facts.held_spans:
+        return {}
+    out: dict[str, list[str]] = {}
+    for key, sides in pivot_map.items():
+        solid = [s for s in sides if not facts.side(s).held_spans]
+        if len(solid) > 1 and any(key in facts.side(s).value_nullables for s in solid):
+            out[key + _SOLID] = solid
+    return out
+
+
 def resolve_join_order_v2(g: nx.Graph, facts: JoinFacts) -> list[JoinOrderOutput]:
     """Greedily order the datasources into a join tree.
 
@@ -944,17 +964,19 @@ def resolve_join_order_v2(g: nx.Graph, facts: JoinFacts) -> list[JoinOrderOutput
     # domain alone, where a `~?` guest (a value-NULL key, so no domain row)
     # never reaches its NULL group.
     held = facts.held_spans
+    solo = [x for x in pivot_map if len(pivot_map[x]) == 1]
+    pivot_map.update(_solid_value_null_pivots(pivot_map, facts))
     pivots = sorted(
         [x for x in pivot_map if len(pivot_map[x]) > 1],
         key=lambda x: (
             x not in facts.authored_join_keys,
+            not x.endswith(_SOLID),
             x not in held,
             len(pivot_map[x]),
             len(x),
             x,
         ),
     )
-    solo = [x for x in pivot_map if len(pivot_map[x]) == 1]
     eligible_left: set[str] = set()
 
     while pivots:
@@ -967,14 +989,15 @@ def resolve_join_order_v2(g: nx.Graph, facts: JoinFacts) -> list[JoinOrderOutput
         else:
             root = pivots.pop(0)
 
+        key = root.removesuffix(_SOLID)
         unjoined_for_root = [x for x in pivot_map[root] if x not in eligible_left]
         multi_partial = (
-            sum(1 for x in unjoined_for_root if root in facts.side(x).partials) > 1
+            sum(1 for x in unjoined_for_root if key in facts.side(x).partials) > 1
         )
 
         score_key = partial(
             _score_join_candidate,
-            root=root,
+            root=key,
             eligible_left=eligible_left,
             facts=facts,
             multi_partial=multi_partial,
