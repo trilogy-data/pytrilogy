@@ -538,6 +538,11 @@ class ReferenceGraph(DiGraph):
         self.concepts: dict[str, BuildConcept] = {}
         self.datasources: dict[str, BuildDatasource | BuildUnionDatasource] = {}
         self.pseudonyms: set[tuple[str, str]] = set()
+        # The scope's bindings as generated for its statement: pin-healed and
+        # partition-excluded. A fact of the scope, not of a node: every copy
+        # and subgraph carries it whole, where `datasources` (node -> source)
+        # follows the nodes kept and gains the unions injected while planning.
+        self.scope_datasources: tuple[BuildDatasource, ...] = ()
 
     def copy(self) -> "ReferenceGraph":
         g = ReferenceGraph()
@@ -545,6 +550,7 @@ class ReferenceGraph(DiGraph):
         g.concepts = self.concepts.copy()
         g.datasources = self.datasources.copy()
         g.pseudonyms = self.pseudonyms.copy()
+        g.scope_datasources = self.scope_datasources
         return g
 
     def subgraph(self, nodes) -> "ReferenceGraph":
@@ -561,6 +567,7 @@ class ReferenceGraph(DiGraph):
         g.pseudonyms = {
             edge for edge in self.pseudonyms if edge[0] in keep and edge[1] in keep
         }
+        g.scope_datasources = self.scope_datasources
         return g
 
     def remove_node(self, n) -> None:

@@ -11,9 +11,10 @@ stops branching the moment one arm binds the class.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import replace
 
-from trilogy.core.models.build import BuildWhereClause
+from trilogy.core.models.build import BuildDatasource, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.presence_probe import (
     coalescing_axis_group,
@@ -31,6 +32,7 @@ from trilogy.core.processing.v4_helper.network_model import (
 
 def probe_owners(
     environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
     addresses: set[str],
     offered_by: dict[str, set[str]],
     datasource_ids: set[str],
@@ -53,7 +55,7 @@ def probe_owners(
             continue
         # `member_binding_datasources` orders best-presence-population first and
         # the probe node takes candidates[0]; anything else is a different scan.
-        carriers = member_binding_datasources(member, environment)
+        carriers = member_binding_datasources(member, datasources)
         carrier_ids = {c.identifier for c in carriers[:1]}
         pinned = carrier_ids & offered_by.get(address, set())
         if not pinned:
@@ -76,6 +78,7 @@ def pin_unoffered_probes(
     addresses: list[str],
     candidates: dict[str, SourceCandidate],
     environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
     equivalence: dict[str, str],
 ) -> dict[str, SourceCandidate]:
     """Bind a requested presence probe the graph offers off NO candidate to its
@@ -102,7 +105,7 @@ def pin_unoffered_probes(
         member = probe_member_address(address, environment)
         if member is None:
             continue
-        carriers = member_binding_datasources(member, environment)
+        carriers = member_binding_datasources(member, datasources)
         if not carriers:
             continue
         carrier_ids = {carriers[0].identifier}
@@ -181,6 +184,7 @@ def axis_families(
     terminals: list[str],
     candidates: dict[str, SourceCandidate],
     environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
     equivalence: dict[str, str],
     address_grain: dict[str, frozenset[str]],
     conditions: BuildWhereClause | None,
@@ -225,7 +229,7 @@ def axis_families(
         for member in sorted(members):
             identifiers = {
                 carrier.identifier
-                for carrier in member_binding_datasources(member, environment)
+                for carrier in member_binding_datasources(member, datasources)
             }
             nodes = tuple(
                 node

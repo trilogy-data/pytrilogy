@@ -23,6 +23,7 @@ materialized-root pre-pass, and the History cache wiring.
 """
 
 import logging
+from collections.abc import Sequence
 from contextlib import nullcontext
 
 from trilogy.constants import logger
@@ -313,7 +314,7 @@ def _lineage_derivations(
 def _column_reproduces(
     concept: BuildConcept,
     environment: BuildEnvironment,
-    datasources: list[BuildDatasource],
+    datasources: Sequence[BuildDatasource],
     where: BuildWhereClause | None,
 ) -> bool:
     derivations = _lineage_derivations(concept, environment)
@@ -331,7 +332,7 @@ def _column_reproduces(
 def _binding_only_roots(
     candidates: list[BuildConcept],
     environment: BuildEnvironment,
-    datasources: list[BuildDatasource],
+    datasources: Sequence[BuildDatasource],
     where: BuildWhereClause | None,
 ) -> set[str]:
     """Bound derived concepts, anywhere in the candidates' lineage, that cannot
@@ -373,6 +374,7 @@ def materialized_root_addresses(
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     conditions: list[BuildWhereClause],
+    datasources: Sequence[BuildDatasource],
 ) -> frozenset[str]:
     """Demanded derived concepts that a datasource materializes directly: a
     precomputed / pre-aggregated summary table or a persisted derived column.
@@ -407,9 +409,6 @@ def materialized_root_addresses(
         return frozenset()
     target_grain = BuildGrain.from_concepts(mandatory_list)
     where = combine_where_clauses(conditions)
-    datasources = [
-        ds for ds in environment.datasources.values() if isinstance(ds, BuildDatasource)
-    ]
     mandatory_addresses = {c.address for c in mandatory_list}
     condition_args_by_address: dict[str, BuildConcept] = {}
     for clause in conditions:
@@ -585,6 +584,7 @@ def _build_from_graph_traced(
         conditions,
         materialized_roots,
         staged_conditions=staged_conditions,
+        datasources=g.scope_datasources,
     )
     if plan_trace.active():
         plan_trace.record(
@@ -609,8 +609,7 @@ def _build_from_graph_traced(
             "keyspace", plan_trace.KeyspaceStep(keyspace=plan_trace.keyspace(keyspace))
         )
     datasource_columns = [
-        frozenset(c.address for c in ds.output_concepts)
-        for ds in environment.datasources.values()
+        frozenset(c.address for c in ds.output_concepts) for ds in g.scope_datasources
     ]
     group_graph, group_edges, group_attrs = build_group_graph(
         concept_graph,
@@ -746,7 +745,7 @@ def _search_concepts(
     # summary doesn't combine with the rest of the query), fall back to the
     # derive-from-base plan: try the direct source first.
     materialized_roots = materialized_root_addresses(
-        mandatory_list, environment, conditions
+        mandatory_list, environment, conditions, g.scope_datasources
     )
     info = _build_from_graph(
         mandatory_list,

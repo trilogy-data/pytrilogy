@@ -146,7 +146,7 @@ class BuildEnvironment:
     # join typing consults per-side origin nodes directly.
     scoped_partial_derived: set[str] = field(default_factory=set)
     # Discriminator address -> enum values this statement's row gate rules out
-    # (`partial_bridging.drop_excluded_partials`). Partition-family proofs
+    # (`partial_bridging.gate_excluded_enum_values`). Partition-family proofs
     # (union coverage, `merge_conditions`) run over the remaining domain, so
     # hiding a contradicted arm never breaks the proof the other arms need.
     excluded_enum_values: dict[str, frozenset[str]] = field(default_factory=dict)

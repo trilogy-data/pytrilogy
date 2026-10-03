@@ -101,7 +101,7 @@ def test_full_unchanged_without_guard():
 
 def _block_pin_heal(executor):
     """A sibling source carrying `region` complete inside a larger grain: it
-    anchors the `~region` binding, so `heal_pinned_partials` leaves the FULL
+    anchors the `~region` binding, so `decide_heal` leaves the FULL
     join in place for the optimizer passes under test (otherwise the WHERE
     proof heals the partial pre-discovery and no join is ever emitted). It
     also carries `amount`: an anchor whose rows the WHERE proof (`amount > 5`)

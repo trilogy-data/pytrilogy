@@ -10,6 +10,7 @@ lineage-related cross product, the unconditioned retry), never a re-search.
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import cast
 
@@ -1016,6 +1017,7 @@ def _datasource_renders_probe(
     datasource: BuildDatasource | BuildUnionDatasource | None,
     address: str,
     environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
 ) -> bool:
     """A presence probe pins side identity: post-substitution every key-group
     member's binding shares the canonical address, so lineage-based checks pass
@@ -1038,7 +1040,7 @@ def _datasource_renders_probe(
     if member is None:
         return True
     return datasource.name in {
-        ds.name for ds in member_binding_datasources(member, environment)
+        ds.name for ds in member_binding_datasources(member, datasources)
     }
 
 
@@ -1059,7 +1061,9 @@ def _original_datasource_concept_nodes(
         address = node_address(neighbor)
         if address not in bridge_addresses or address not in environment.concepts:
             continue
-        if not _datasource_renders_probe(ds_obj, address, environment):
+        if not _datasource_renders_probe(
+            ds_obj, address, environment, source_graph.scope_datasources
+        ):
             continue
         if neighbor not in bridge_graph:
             bridge_graph.add_node(neighbor)
@@ -1173,7 +1177,9 @@ def _local_concept_nodes_for_datasource(
                     or renders_derived_key
                     or renders_materialized_canonical
                 )
-                and _datasource_renders_probe(datasource, address, environment)
+                and _datasource_renders_probe(
+                    datasource, address, environment, graph.scope_datasources
+                )
             ):
                 concepts.setdefault(address, neighbor)
             queue.append(neighbor)

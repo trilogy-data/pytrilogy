@@ -4,28 +4,29 @@ A ``~`` binding licenses domain extension: unmatched members of that key's
 dimension enter the result once, carrying their own attributes, with every
 concept outside the key's functional closure NULL.
 
-``heal_pinned_partials``: when the statement WHERE empties every kind of row
-a ``~`` binding's source has no match for, the binding is complete for this
-query. WHICH rows those are is the keyspace's answer
-(``Keyspace.binding_is_complete``, over the statement's bindings as authored
-and the WHERE's non-null proofs); whether dropping the ``~`` is also safe
-for every other merge it would license is decided here (the anchor guards).
-Dropping the modifier up front lets the fact anchor the plan with INNER star
-joins instead of extension scaffolding that is then filtered away. It runs
-once per PLAN, on the plan's own outputs, WHERE and references
-(``statement_scope.scope_statement``): the statement at ``get_query_node`` and every nested
-select (a rowset body, a union arm) in the fresh build environment it plans
-in, before the reference graph captures the datasource objects, so every
-downstream consumer of that plan reads one judgment.
+``decide_heal``: when the statement WHERE empties every kind of row a ``~``
+binding's source has no match for, the binding is complete for this query.
+WHICH rows those are is the keyspace's answer (``Keyspace.binding_is_complete``,
+over the statement's bindings as authored and the WHERE's non-null proofs);
+whether dropping the ``~`` is also safe for every other merge it would license
+is decided here (the anchor guards). Dropping the modifier up front lets the
+fact anchor the plan with INNER star joins instead of extension scaffolding
+that is then filtered away. It is decided once per PLAN, on the plan's own
+outputs, WHERE and references (``statement_scope.scope_statement``): the
+statement at ``get_query_node`` and every nested select (a rowset body, a union
+arm), so every downstream consumer of that plan reads one judgment.
 
-``drop_excluded_partials``: a ``complete where`` source whose partition
-predicate is mutually exclusive with the statement's row gate cannot contribute
-a row, so it is hidden from discovery. Left visible it still counts as a
-binding: a bare key it binds is planned as a scan instead of through its
-``merge`` origin, and a union over the sibling partition is deemed complete and
-then filtered to nothing. The enum values the gate rules out are recorded on
-the environment so the surviving arms are still proven complete over the
-domain that remains.
+``decide_exclusion``: a ``complete where`` source whose partition predicate is
+mutually exclusive with the statement's row gate cannot contribute a row, so
+it is hidden from discovery. Left visible it still counts as a binding: a bare
+key it binds is planned as a scan instead of through its ``merge`` origin, and
+a union over the sibling partition is deemed complete and then filtered to
+nothing. The enum values the gate rules out (``gate_excluded_enum_values``)
+are recorded on the environment so the surviving arms are still proven
+complete over the domain that remains.
+
+Both are pure over the datasource list they are given; applying them is the
+caller's.
 """
 
 from __future__ import annotations
@@ -49,11 +50,7 @@ from trilogy.core.processing.condition_utility import (
     gate_allowed_values,
 )
 from trilogy.core.processing.v4_helper.concept_graph import build_concept_graph
-from trilogy.core.processing.v4_helper.keyspace import (
-    build_datasources,
-    build_keyspace,
-    null_rejected,
-)
+from trilogy.core.processing.v4_helper.keyspace import build_keyspace, null_rejected
 
 
 def _spellings(concept: BuildConcept) -> set[str]:
@@ -239,41 +236,53 @@ class _AuthoredKeyspace:
     Built on first read: most heals settle without it."""
 
     environment: BuildEnvironment
+    datasources: list[BuildDatasource]
     outputs: list[BuildConcept]
     conditions: list[BuildWhereClause]
 
     @cached_property
     def keyspace(self) -> Keyspace:
         _, attrs, _ = build_concept_graph(
-            self.outputs, self.environment, self.conditions
+            self.outputs,
+            self.environment,
+            self.conditions,
+            datasources=self.datasources,
         )
-        return build_keyspace(attrs, self.outputs, self.environment, self.conditions)
+        return build_keyspace(
+            attrs,
+            self.outputs,
+            self.environment,
+            self.conditions,
+            datasources=self.datasources,
+        )
 
 
-def heal_pinned_partials(
+def decide_heal(
     environment: BuildEnvironment,
+    datasources: list[BuildDatasource],
     outputs: list[BuildConcept],
     conditions: list[BuildWhereClause],
-) -> None:
-    """Drop ``~`` from bindings whose licensed extensions this WHERE kills.
+) -> dict[str, BuildDatasource]:
+    """Identifier -> its binding with every ``~`` this WHERE kills the
+    licensed extensions of dropped, for the bindings it changes.
 
-    Copy-on-write: affected datasources are replaced in the environment's (per-
-    statement) mapping; the shared build-cache objects are never mutated.
+    Pure over ``datasources`` (the scope's bindings as authored): the
+    replacements are fresh objects, and neither the environment nor the shared
+    build-cache objects are written.
     """
-    datasources = build_datasources(environment)
     partial_hosts = [
         ds for ds in datasources if any(_structural_partial(ds, c) for c in ds.columns)
     ]
     if not partial_hosts:
-        return
+        return {}
     proven = null_rejected(conditions)
     if not proven:
-        return
-    authored = _AuthoredKeyspace(environment, outputs, conditions)
+        return {}
+    authored = _AuthoredKeyspace(environment, datasources, outputs, conditions)
     bound = _bound_spellings(datasources)
     proven_bound = _proven_bound(proven, bound, environment, authored)
     if not proven_bound:
-        return
+        return {}
     referenced_bound = (environment.statement_authored_addresses or set()) & bound
     replacements: dict[str, BuildDatasource] = {}
     for ds in partial_hosts:
@@ -321,17 +330,10 @@ def heal_pinned_partials(
             column_level_partial_addresses=set(ds.column_level_partial_addresses)
             - healed,
         )
-    if not replacements:
-        return
-    for name, existing in list(environment.datasources.items()):
-        if (
-            isinstance(existing, BuildDatasource)
-            and existing.identifier in replacements
-        ):
-            environment.datasources[name] = replacements[existing.identifier]
+    return replacements
 
 
-def _gate_excluded_enum_values(
+def gate_excluded_enum_values(
     environment: BuildEnvironment, stage: BuildWhereClause
 ) -> dict[str, frozenset[str]]:
     """Enum discriminator values the gate's literal atoms rule out, keyed by
@@ -350,29 +352,22 @@ def _gate_excluded_enum_values(
     return out
 
 
-def drop_excluded_partials(
-    environment: BuildEnvironment, stage: BuildWhereClause | None
-) -> None:
-    """Hide every ``complete where`` source the statement's row bound rules out.
+def decide_exclusion(
+    datasources: Iterable[BuildDatasource], stage: BuildWhereClause
+) -> set[str]:
+    """Identifiers of every ``complete where`` source the statement's row
+    bound rules out.
 
     ``stage`` is ``universal_row_bound``: the predicate every row the statement
     reads satisfies, so a source whose partition predicate contradicts it holds
     no usable row. Deciding which stages that bound may draw on belongs to the
-    staging rules, not here; None means the statement has no such bound and
-    nothing is hidden. Removal is from the per-statement mapping only; shared
-    build-cache objects are untouched.
+    staging rules, not here.
     """
-    if stage is None:
-        return
-    environment.excluded_enum_values = _gate_excluded_enum_values(environment, stage)
-    excluded = [
-        name
-        for name, ds in environment.datasources.items()
-        if isinstance(ds, BuildDatasource)
-        and ds.non_partial_for is not None
+    return {
+        ds.identifier
+        for ds in datasources
+        if ds.non_partial_for is not None
         and conditions_mutually_exclusive(
             stage.conditional, ds.non_partial_for.conditional
         )
-    ]
-    for name in excluded:
-        del environment.datasources[name]
+    }
