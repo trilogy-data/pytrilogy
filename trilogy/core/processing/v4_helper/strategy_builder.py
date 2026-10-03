@@ -1521,6 +1521,28 @@ def _is_row_preserving_filter(node: StrategyNode) -> bool:
     )
 
 
+def _synthesizes_handle(
+    concept: BuildConcept, node: StrategyNode, available: set[str]
+) -> bool:
+    """Rendering rowset handle `concept` on `node` would compute it from the
+    handle's content over `node`'s rows. A handle is its body's rows, so
+    anywhere but that rowset's own boundary this pairs the body with `node`'s
+    rows on no declared join."""
+    lineage = concept.lineage
+    if not isinstance(lineage, BuildRowsetItem):
+        return False
+    if concept.address in available or available.intersection(concept.pseudonyms):
+        return False
+    return not (
+        isinstance(node, RowsetNode)
+        and any(
+            isinstance(o.lineage, BuildRowsetItem)
+            and o.lineage.rowset.name == lineage.rowset.name
+            for o in node.output_concepts
+        )
+    )
+
+
 def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
     """Absorb a parent into a row-preserving sibling that can render it.
 
@@ -1580,6 +1602,8 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
             if any(
                 o.derivation == Derivation.ROWSET for o in b.output_concepts
             ) and any(o.derivation != Derivation.ROWSET for o in a.output_concepts):
+                continue
+            if any(_synthesizes_handle(o, b, available) for o in a.output_concepts):
                 continue
             if any(
                 crosses_unsourced_aggregate(o, available) for o in a.output_concepts
@@ -2543,7 +2567,9 @@ def _carry_join_keys(
                     environment, concept.address
                 ):
                     continue
-            if not concept_satisfiable(concept, available):
+            if not concept_satisfiable(concept, available) or _synthesizes_handle(
+                concept, parent, available
+            ):
                 continue
             # Carrying a key the parent does not already emit means SYNTHESIZING
             # it from that parent's row inputs. A grain-collapsing derivation
