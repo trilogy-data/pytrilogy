@@ -1,8 +1,7 @@
-"""Renames of several `~` regions' columns beside the fact (TPC-DS agent run
-2026-10-01, R1/R2). Each rename is its region's rows; reading the other
-regions' domains too evaluated it over a (customer, store) stream that FINAL
-joined back on one key: the fact fanned out, and through a rowset it was
-INNER-joined and lost rows."""
+"""Renames of several `~` regions' columns beside the fact. Each rename is its
+region's rows, read off that region's domain alone: never off a stream of
+several regions that FINAL joins back on one key, which fans the fact out and,
+through a rowset, drops rows."""
 
 import pytest
 

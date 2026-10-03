@@ -459,10 +459,10 @@ def test_present_derivation_beside_an_absent_one(query: str):
     assert any("CAT" in r for r in rows)
 
 
-# The twin is blind (both models returned every customer under the NULL
-# status): the domain pads the per-customer count onto the status aggregate's
-# input, where `count = 0` renders coalesced and accepts the padded row, so the
-# optimizer must not read it as null-rejecting and push it below that join.
+# The twin is blind (both models pad alike): the domain pads the per-customer
+# count onto the status aggregate's input, where `count = 0` renders coalesced
+# and accepts the padded row, so it is not null-rejecting and never pushed below
+# that join.
 @pytest.mark.parametrize(
     "query,expected",
     [
@@ -479,8 +479,7 @@ def test_present_derivation_beside_an_absent_one(query: str):
             [(3, "cat")],
         ),
         # count_distinct's value over an empty group is 0 too, so it zero-fills
-        # exactly as count does; matching only FunctionType.COUNT pushed this
-        # into the orders HAVING and narrowed the padding join to INNER
+        # exactly as count does
         (
             "select customer_id, name where count_distinct(order_id) by customer_id = 0",
             [(3, "cat")],
@@ -587,10 +586,9 @@ def test_array_agg_over_a_region_is_empty_not_a_null_element(
     assert _sorted_arrays(sorted_rows(executor, query)) == _sorted_arrays(expected)
 
 
-# The twin is blind here: a bound `amount` is a ROOT value on both models, and
-# both restated the atom above the aggregate (order 100 counted, the orderless
-# customer dropped). The atom is applied on the aggregate's input, over the
-# united rows: the padded row has no amount and no flag.
+# The twin is blind here: a bound `amount` is a ROOT value on both models. The
+# atom is applied on the aggregate's input, over the united rows: the padded
+# row has no amount and no flag.
 @pytest.mark.parametrize(
     "query,expected",
     [
@@ -615,9 +613,8 @@ def test_atom_under_an_aggregate_the_domain_feeds(
     assert twin_rows(derived, materialized, query) == expected
 
 
-# An existence set reading only what the region carries is not keyed by the
-# keyspace: it was cut from its solid source as the region's rows, but never
-# wired to the domain, and planned with no source at all.
+# An existence set reading only what the region carries keeps its solid
+# source: it is not the region's rows.
 _EXISTENCE_SETS = """
 auto ab_id <- filter customer_id where name in ('ann', 'cat');
 auto ab_name <- filter name where name in ('ann', 'cat');
@@ -656,9 +653,7 @@ def test_existence_set_over_carried_values_keeps_its_source(
 
 
 # An aggregate by the span beside a row-level atom over the facts: both are
-# FINAL feeders of the domain, and the atom's feeder joins it on the span. It
-# was cross-joined (`FULL JOIN ... on 1=1`), so ann's in-transit order passed
-# for bob and cat, and the orderless customer's NULL status was lost.
+# FINAL feeders of the domain, and the atom's feeder joins it on the span.
 @pytest.mark.parametrize(
     "query,expected",
     [
@@ -1102,9 +1097,8 @@ def test_optional_entity_is_absent_on_rows_without_it(query: str):
 
 def test_optional_entity_solid_stream_reads_returns_alone():
     """The solid stream beside the `{order, item}` domain is `returns` by
-    itself: re-sourced at FINAL under its group's own scope, it no longer
-    completes its `~` keys with `lines`, which the domain already holds
-    (`lines FULL JOIN (lines LEFT JOIN returns)` was the shape)."""
+    itself: re-sourced at FINAL under its group's own scope, it does not
+    complete its `~` keys with `lines`, which the domain already holds."""
     materialized = executor_for(_OPTIONAL_MATERIALIZED)
     sql = materialized.generate_sql(
         "select order_id, item_id, qty, return_id, reason_label;"
@@ -1228,8 +1222,7 @@ def test_null_probe_is_not_a_member_of_a_filtered_set(
 
 
 # A domain-fed aggregate beside one it cannot feed: the atom is applied on each
-# aggregate's input. The domain fell back to the padded plan, where `status`
-# was evaluated on the orderless customer's padded row ('in-transit').
+# aggregate's input, and `status` is never evaluated on a padded row.
 @pytest.mark.parametrize(
     "query,expected",
     [
@@ -1256,8 +1249,7 @@ def test_unfed_aggregate_beside_a_fed_one_takes_the_atom(
 
 
 # `upper(name)` reads only what the domain carries: its input is the domain,
-# not a fresh customer scan INNER-joined to the solid stream (it was NULL for
-# the orderless customer once a WHERE kept the domain apart).
+# not a fresh customer scan INNER-joined to the solid stream.
 @pytest.mark.parametrize(
     "query,expected",
     [
@@ -1308,9 +1300,8 @@ query '''select 500 as return_id, 1 as customer_id, 'broken' as reason''';
 
 
 # `city` is a ROOT group key: it crosses no aggregate, so the per-customer
-# count restates where the domain's rows join back. Read as an aggregate
-# output not determining the count, the region fell back to the padded plan,
-# which pushed `reason is null` into an INNER-joined returns scan.
+# count restates where the domain's rows join back, and `reason is null` is
+# not pushed into the returns scan.
 @pytest.mark.parametrize(
     "query,expected",
     [
@@ -1337,9 +1328,8 @@ def test_root_group_key_keyed_off_the_span(
 
 
 # A statement-wide gate (`count(order_id) by *`) has one value for every row,
-# the region's included: it does not push the region onto the padded plan,
-# where the per-customer count became a HAVING on the orders scan (cat lost)
-# and `status` was evaluated on the padded row.
+# the region's included: the per-customer count is not a HAVING on the orders
+# scan, and `status` is not evaluated on the padded row.
 @pytest.mark.parametrize(
     "query,expected",
     [
@@ -1371,8 +1361,7 @@ def test_statement_wide_gate_beside_a_region(
 
 # An aggregate by a column the domain carries (`city`) read by a WHERE pairs
 # with the domain on that column at FINAL: the domain exposes it, and the
-# sole contributor is filtered before its dedup strips it. Beside a span count
-# it was a keyless-join error; alone, a cross join that returned no rows.
+# sole contributor is filtered before its dedup strips it.
 @pytest.mark.parametrize(
     "query,expected",
     [
