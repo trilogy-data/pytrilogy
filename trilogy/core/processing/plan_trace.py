@@ -47,7 +47,8 @@ if TYPE_CHECKING:
 
 TRACE_ENV = "TRILOGY_PLAN_TRACE"
 _PACKAGE = str(Path(__file__).resolve().parents[2])
-# a step's origin is the planner call path below the plan's own entry point
+# a step's origin is the planner call path below the plan's own entry point;
+# these are function names, so renaming one of those functions must update this
 _ORIGIN_ROOTS = frozenset({"_build_from_graph_traced", "_process_query"})
 TRACE_VERSION = 1
 

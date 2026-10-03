@@ -14,6 +14,7 @@ generator dispatch lives in `v4_node_generators.dispatch.build_node`."""
 import logging
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from dataclasses import replace as dc_replace
 from datetime import date, datetime
@@ -160,6 +161,17 @@ class RootRequest:
         ):
             return False
         return not _strict_leaf_subset_binds(node, set(self.outputs))
+
+
+@contextmanager
+def under_span_scope(environment: BuildEnvironment, scope: SpanScope) -> Iterator[None]:
+    """Plan under `scope`, restoring the environment's own afterwards."""
+    outer = environment.span_scope
+    environment.span_scope = scope
+    try:
+        yield
+    finally:
+        environment.span_scope = outer
 
 
 def _concept_at(environment: BuildEnvironment, address: str) -> BuildConcept | None:
@@ -803,12 +815,7 @@ def _aggregate_inlines(
     # own CTE). Folding re-roots the aggregate on the grandparent, but the
     # resolver then binds the folded column to that sibling CTE, which isn't
     # in the aggregate's FROM: a dangling reference.
-    if any(
-        other != gid
-        and attrs[other].depth_label == DepthLabel.D1
-        and members & {concept.address for concept in node.output_concepts}
-        for other, node in built.items()
-    ):
+    if _built_twin_emits(attrs, built, members, skip=gid):
         return False
     parents = [
         built[pgid]
@@ -879,16 +886,10 @@ def _raise_if_inlined_input_is_unreadable(
     if not attrs[gid].inlined_members:
         return
     available = {o.address for _, node in candidates for o in node.output_concepts}
-    twins = {
-        o.address
-        for other, node in built.items()
-        if attrs[other].depth_label == DepthLabel.D1
-        for o in node.output_concepts
-    }
     unreadable = [
         address
         for address in attrs[gid].inlined_members
-        if address in twins
+        if _built_twin_emits(attrs, built, {address})
         or (concept := _concept_at(environment, address)) is None
         or not concept_satisfiable(concept, available)
     ]
@@ -897,6 +898,22 @@ def _raise_if_inlined_input_is_unreadable(
             f"[v4] {gid} was planned to compute {unreadable} inline, but its "
             "parents cannot render them. This is a planner bug."
         )
+
+
+def _built_twin_emits(
+    attrs: dict[str, GroupAttrs],
+    built: dict[str, StrategyNode],
+    addresses: set[str],
+    skip: str | None = None,
+) -> bool:
+    """Whether a built condition-phase (D1) group other than `skip` emits any
+    of `addresses`."""
+    return any(
+        other != skip
+        and attrs[other].depth_label == DepthLabel.D1
+        and addresses & {o.address for o in node.output_concepts}
+        for other, node in built.items()
+    )
 
 
 def _condition_twins(attrs: dict[str, GroupAttrs], gid: str) -> list[str]:
@@ -1020,13 +1037,14 @@ def _inlined_by_every_reader(
     # reader's fold, unless it is folded too: a reader folded with `gid`, or a
     # twin its own readers inline
     folded = {r for r in readers if attrs[r].derivation != Derivation.AGGREGATE}
-    return not any(
-        a.depth_label == DepthLabel.D1
-        or not _inlined_by_every_reader(
+    twins = [t for t in _condition_twins(attrs, gid) if t not in folded]
+    if twins and a.depth_label == DepthLabel.D1:
+        return False
+    return all(
+        _inlined_by_every_reader(
             group_graph, group_edges, attrs, built, twin, environment, mandatory_list
         )
-        for twin in _condition_twins(attrs, gid)
-        if twin not in folded
+        for twin in twins
     )
 
 
@@ -1287,11 +1305,10 @@ def _parent_nodes_for(
         # a slice is the parent's rows narrowed, so it is sourced under the
         # parent's own scope: under the consumer's, a span a region domain owns
         # is completed again, and the slice grows a join instead of losing one
-        consumer_scope = environment.span_scope
         request = RootRequest(
             frozenset(slice_addresses),
             conditions,
-            asked.scope if asked else consumer_scope,
+            asked.scope if asked else environment.span_scope,
             preexisting=preexisting,
         )
         if asked == request:
@@ -1301,8 +1318,7 @@ def _parent_nodes_for(
             for address in sorted(slice_addresses)
             if (c := _concept_at(environment, address)) is not None
         ]
-        environment.span_scope = request.scope
-        try:
+        with under_span_scope(environment, request.scope):
             sliced = build_node(
                 derivation=Derivation.ROOT,
                 outputs=outputs,
@@ -1326,8 +1342,6 @@ def _parent_nodes_for(
                         complete_partials=complete_partials,
                     )
                 )
-        finally:
-            environment.span_scope = consumer_scope
         if sliced is None:
             return node.copy()
         # weighed with its membership feeders wired, as `node` was: unwired,
@@ -5051,10 +5065,10 @@ def _assemble_final_node(
             # customer domain completes its transitive `~` address there, and
             # the orphan address's state is read off it
             # (`test_licensed_transitive_attr_span`).
-            group_scope = environment.span_scope
+            scope = environment.span_scope
             if not attrs[gid].extent_spans:
-                environment.span_scope = _group_span_scope(group_scope, ownership, gid)
-            try:
+                scope = _group_span_scope(scope, ownership, gid)
+            with under_span_scope(environment, scope):
                 projected = _projection_root_concepts(group_concepts, environment)
                 request = RootRequest(
                     frozenset(c.address for c in projected),
@@ -5074,8 +5088,6 @@ def _assemble_final_node(
                     and not request.answered_by(node, root_requests[gid])
                     else None
                 )
-            finally:
-                environment.span_scope = group_scope
             if fresh is not None:
                 node = fresh
             # The filter-only args above exist so the scan can SOURCE and APPLY
@@ -5541,10 +5553,12 @@ def build_strategy_node(
                     <= domain_spans | {ALL_ROWS_ADDRESS}
                 ]
                 group_scope = environment.span_scope
-                environment.span_scope = dc_replace(
-                    group_scope, extent_free=group_scope.extent_free | domain_spans
-                )
-                try:
+                with under_span_scope(
+                    environment,
+                    dc_replace(
+                        group_scope, extent_free=group_scope.extent_free | domain_spans
+                    ),
+                ):
                     solid = _pre_merge_parents(
                         [p for p in parents if p not in domains and p not in feeders],
                         environment,
@@ -5554,8 +5568,6 @@ def build_strategy_node(
                         built=built,
                         preexisting_conditions=applied,
                     )
-                finally:
-                    environment.span_scope = group_scope
                 outputs, named_arguments = _name_inline_arguments(
                     outputs, primary_addrs, domain_spans, environment
                 )
