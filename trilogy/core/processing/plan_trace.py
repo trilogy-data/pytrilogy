@@ -64,10 +64,12 @@ PHASES: tuple[str, ...] = (
     "group_graph",
     "source",
     "node",
+    "join",
     "final",
     "strategy",
     "resolve",
     "ctes",
+    "optimizer",
     "sql",
 )
 
@@ -458,6 +460,26 @@ class NodeBuiltStep(StepData):
 
 
 @dataclass(frozen=True)
+class JoinTypeStep(StepData):
+    """One `get_join_type` decision: the pair, the rule that decided it, and
+    what the merge knew about each side."""
+
+    PHASE: ClassVar[str] = "join"
+    TIMED: ClassVar[bool] = False
+    left: str
+    right: str
+    keys: list[str]
+    # every side already joined when `right` is added
+    joined: list[str]
+    type: str
+    rule: str
+    left_facts: Json
+    right_facts: Json
+    # the merge-wide `JoinFacts`, sides left out
+    merge_facts: Json
+
+
+@dataclass(frozen=True)
 class FinalStep(StepData):
     PHASE: ClassVar[str] = "final"
     contract: Json
@@ -497,6 +519,20 @@ class CteTombstone:
     phase: str
     rule: str
     merged_into: str | None
+
+
+@dataclass(frozen=True)
+class OptimizerStep(StepData):
+    """One optimization phase's effect on the CTE list."""
+
+    PHASE: ClassVar[str] = "optimizer"
+    phase: str
+    rule: str
+    loops: int
+    added: list[CteTrace]
+    removed: list[CteTombstone]
+    # CTE name -> field -> [before, after], for CTEs on both sides
+    changed: dict[str, dict[str, list[Json]]]
 
 
 @dataclass(frozen=True)
@@ -757,6 +793,50 @@ def note_removed_ctes(
         trace._removed_ctes.extend(
             CteTombstone(name, phase, rule, merged.get(name)) for name in sorted(names)
         )
+
+
+@off_clock
+def cte_snapshot(ctes: Sequence[CTE | UnionCTE]) -> dict[str, CteTrace]:
+    """Every CTE by name, for `optimizer_step`; empty when not recording."""
+    if _ACTIVE.get() is None:
+        return {}
+    return {c.name: cte(c) for c in ctes}
+
+
+@off_clock
+def optimizer_step(
+    phase: str,
+    rule: str,
+    loops: int,
+    before: dict[str, CteTrace],
+    after: dict[str, CteTrace],
+    merged: dict[str, str],
+) -> OptimizerStep:
+    changed = {
+        name: diff
+        for name in before.keys() & after.keys()
+        if (diff := _field_diff(before[name], after[name]))
+    }
+    return OptimizerStep(
+        phase=phase,
+        rule=rule,
+        loops=loops,
+        added=[after[n] for n in sorted(after.keys() - before.keys())],
+        removed=[
+            CteTombstone(n, phase, rule, merged.get(n))
+            for n in sorted(before.keys() - after.keys())
+        ],
+        changed=dict(sorted(changed.items())),
+    )
+
+
+def _field_diff(before: CteTrace, after: CteTrace) -> dict[str, list[Json]]:
+    out = {}
+    for f in fields(before):
+        old, new = jsonable(getattr(before, f.name)), jsonable(getattr(after, f.name))
+        if old != new:
+            out[f.name] = [old, new]
+    return out
 
 
 def removed_ctes() -> list[CteTombstone]:
