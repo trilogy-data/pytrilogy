@@ -299,6 +299,15 @@ def validate_case_output(args: list[Any]) -> CONCRETE_TYPES:
     return _resolve_case_output(args)
 
 
+def create_array_output(args: list[Any]) -> ArrayType:
+    types = {arg_to_datatype(x) for x in args} - {DataType.NULL}
+    if len(types) > 1:
+        raise InvalidSyntaxException(
+            f"Cannot create an array with this set of types: {types}"
+        )
+    return ArrayType(type=next(iter(types), DataType.NULL))
+
+
 def create_struct_output(
     args: list[Any],
 ) -> StructType:
@@ -1134,7 +1143,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     FunctionType.ARRAY: FunctionConfig(
         output_purpose=Purpose.PROPERTY,
         arg_count=InfiniteFunctionArgs,
-        output_type=ArrayType(type=DataType.STRING),
+        output_type_function=create_array_output,
     ),
     FunctionType.LENGTH: FunctionConfig(
         valid_inputs={DataType.STRING, DataType.ARRAY, DataType.MAP},
@@ -1263,7 +1272,6 @@ EXCLUDED_FUNCTIONS = {
     # Temporary
     FunctionType.DATE_LITERAL,
     FunctionType.DATETIME_LITERAL,
-    FunctionType.ARRAY,
     # constructed directly by the parser for composite membership, never via create_function
     FunctionType.ROW_TUPLE,
 }

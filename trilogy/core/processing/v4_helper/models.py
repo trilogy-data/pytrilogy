@@ -239,6 +239,9 @@ class GroupAttrs(_HeldKeys):
     # Set on a ROOT group that exists only to carry one extension region's own
     # rows (`region_domains.decide_region_domains`): the region's spans.
     extent_spans: frozenset[str] = frozenset()
+    # Of `extent_spans`, the ones bound `?` by some source whose NULL member
+    # the domain holds (`region_domains._takes_a_value_on_a_null_member`).
+    null_member_spans: frozenset[str] = frozenset()
     # Set on a single-entity dimension ROOT group: the entity's key(s).
     dim_keys: frozenset[str] = frozenset()
     # Set on a ROOT group, and on a rowset boundary's region domain.
@@ -408,6 +411,7 @@ class GroupBucket(_HeldKeys):
     # `nulls_grouping_keys`, never the id string.
     grouping_mode: AggregateGroupingMode = AggregateGroupingMode.STANDARD
     extent_spans: frozenset[str] = frozenset()
+    null_member_spans: frozenset[str] = frozenset()
     dim_keys: frozenset[str] = frozenset()
     reason: RootReason | None = None
     # What the demand pass has the group emit (`_compute_concept_sets`), hidden

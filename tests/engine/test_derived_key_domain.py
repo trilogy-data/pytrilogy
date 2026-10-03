@@ -743,7 +743,7 @@ auto customer_label <- coalesce(name, 'unknown');
             "select customer_id, big",
             [(1, "small"), (2, "big"), (3, None), (None, "big")],
         ),
-        pytest.param(
+        (
             "select customer_label, big, count(order_id) as n",
             [
                 ("ann", "small", 1),
@@ -751,18 +751,51 @@ auto customer_label <- coalesce(name, 'unknown');
                 ("cat", None, 0),
                 ("unknown", "big", 1),
             ],
-            marks=pytest.mark.xfail(strict=True, reason="padded plan: big on cat"),
         ),
-        pytest.param(
+        (
             "select customer_id, customer_label, count(order_id) as n",
             [(1, "ann", 1), (2, "bob", 1), (3, "cat", 0), (None, "unknown", 1)],
-            marks=pytest.mark.xfail(strict=True, reason="label padded on NULL"),
+        ),
+        (
+            "select customer_label, count(order_id) as n",
+            [("ann", 1), ("bob", 1), ("cat", 0), ("unknown", 1)],
+        ),
+        (
+            "select customer_label, sum(amount) as t",
+            [("ann", 5), ("bob", 9), ("cat", None), ("unknown", 7)],
+        ),
+        (
+            "select customer_id, customer_label, big",
+            [
+                (1, "ann", "small"),
+                (2, "bob", "big"),
+                (3, "cat", None),
+                (None, "unknown", "big"),
+            ],
+        ),
+        (
+            "select customer_label, big, count(order_id) as n where customer_label = 'unknown'",
+            [("unknown", "big", 1)],
+        ),
+        (
+            "select customer_label, count(order_id) as n where customer_label != 'unknown'",
+            [("ann", 1), ("bob", 1), ("cat", 0)],
+        ),
+        (
+            "select customer_id, customer_label, count(order_id) as n where count(order_id) by customer_id < 1",
+            [(3, "cat", 0)],
+        ),
+        (
+            "select customer_label, count(order_id) as n order by n desc, customer_label asc limit 2",
+            [("ann", 1), ("bob", 1)],
         ),
     ],
 )
 def test_partial_nullable_key_null_is_a_value(query: str, expected: list[tuple]):
     """`~?`: the order with no customer holds the NULL member, which no
-    customer row has; the customer with no order is the region."""
+    customer row has; the customer with no order is the region. A domain of
+    the customer's rows holds the NULL member when a derivation of what it
+    carries takes a value there."""
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_text(_PARTIAL_NULLABLE_FK)
     assert _rows(executor, query) == expected

@@ -278,6 +278,7 @@ def _own_bucket(
     eligible: list[GroupBucket],
     rowset: list[GroupBucket],
     members: dict[str, str],
+    null_members: frozenset[str] = frozenset(),
 ) -> GroupBucket:
     extent = f"extent:{'|'.join(sorted(region.spans))}"
     domain = GroupBucket(
@@ -287,6 +288,7 @@ def _own_bucket(
         label=label,
         discriminator=f"{rowset[0].discriminator}:{extent}" if rowset else extent,
         extent_spans=region.spans,
+        null_member_spans=null_members,
         reason=RootReason.REGION,
     )
     depths = {a: d for b in eligible for a, d in b.member_depths.items()}
@@ -352,14 +354,19 @@ def _region_domain(
         region, keyspace, concept_attrs, environment, label
     ):
         return None
-    if _takes_a_value_on_a_null_member(buckets, label, region, keyspace, environment):
-        # a fact binding the span `?` holds a NULL member no dimension row
-        # does: `coalesce(name, 'unknown')` is 'unknown' on its rows, which a
-        # domain computing it on the dimension's rows pads instead. The padded
-        # plan evaluates it over the united rows.
-        return RegionDomain(
-            region, DomainKind.PADDED, label, carried, note="value-NULL span"
+    # a fact binding the span `?` holds a NULL member no dimension row does:
+    # `coalesce(name, 'unknown')` is 'unknown' on its rows, which a domain of
+    # the dimension's rows alone would pad instead. Such a domain holds the
+    # NULL member too (`strategy_builder._with_null_members`), and its rows
+    # join back null-safely; where nothing takes a value on it the fact's
+    # rows pass through the join back unmatched, which is the same answer.
+    null_members = (
+        region.spans & keyspace.value_null_spans
+        if _takes_a_value_on_a_null_member(
+            buckets, label, region, keyspace, environment
         )
+        else frozenset()
+    )
     scope = (buckets, label, region, keyspace, environment)
     named, inline = _named_value_on_padding(*scope), _inline_values_on_padding(*scope)
     if carried & rollup_padded and (
@@ -432,7 +439,7 @@ def _region_domain(
         DomainKind.OWN,
         label,
         frozenset(members),
-        _own_bucket(region, label, eligible, rowset, members),
+        _own_bucket(region, label, eligible, rowset, members, null_members),
     )
 
 

@@ -19,7 +19,7 @@ from dataclasses import replace as dc_replace
 from datetime import date, datetime
 from typing import cast
 
-from trilogy.constants import logger
+from trilogy.constants import MagicConstants, logger
 from trilogy.core import graph as nx
 from trilogy.core.enums import (
     ComparisonOperator,
@@ -70,7 +70,7 @@ from trilogy.core.processing.nodes import (
     UnionNode,
     WindowNode,
 )
-from trilogy.core.processing.nodes.base_node import region_reads
+from trilogy.core.processing.nodes.base_node import NodeJoin, region_reads
 from trilogy.utility import unique
 
 from .concept_graph import _relation_mates, _statement_scoped_relation_members
@@ -3899,6 +3899,51 @@ def _aggregate_reused_from_twin(
     return False
 
 
+def _with_null_members(
+    node: StrategyNode, spans: frozenset[str], environment: BuildEnvironment
+) -> StrategyNode:
+    """The domain's rows beside the NULL member of each `?` span: the rows of
+    every source binding the span `?` where it is NULL, one each, FULL-joined
+    on the span (they match no dimension row). The member rides the domain
+    as a value NULL, so its join back pairs null-safely with the fact's rows
+    keyed on it (`get_modifiers`); `_distinct_projection` above folds the
+    members into one row."""
+    joins: list[NodeJoin] = []
+    parents: list[StrategyNode] = [node]
+    for span in sorted(spans):
+        key = environment.concepts[span]
+        for datasource in environment.datasources.values():
+            if not any(
+                key.equivalent_addresses & nc.equivalent_addresses
+                for nc in datasource.nullable_concepts
+            ):
+                continue
+            member = SelectNode(
+                input_concepts=[key],
+                output_concepts=[key],
+                environment=environment,
+                datasource=datasource,
+                nullable_concepts=[key],
+                force_group=True,
+                conditions=BuildComparison(
+                    left=key, right=MagicConstants.NULL, operator=ComparisonOperator.IS
+                ),
+            )
+            joins.append(NodeJoin(node, member, [key], JoinType.FULL))
+            parents.append(member)
+    if len(parents) == 1:
+        return node
+    return MergeNode(
+        input_concepts=list(node.output_concepts),
+        output_concepts=list(node.output_concepts),
+        environment=environment,
+        parents=parents,
+        node_joins=joins,
+        partial_concepts=list(node.partial_concepts),
+        nullable_concepts=[environment.concepts[span] for span in sorted(spans)],
+    )
+
+
 def _distinct_projection(
     node: StrategyNode, concepts: list[BuildConcept], environment: BuildEnvironment
 ) -> StrategyNode:
@@ -5770,6 +5815,8 @@ def build_strategy_node(
                     partial_concepts=list(node.partial_concepts),
                     force_group=True,
                 )
+            if a.null_member_spans:
+                node = _with_null_members(node, a.null_member_spans, environment)
             # the region contract: this node's rows are the region's own
             node.region_spans = a.extent_spans
         if derivation == Derivation.ROOT:
