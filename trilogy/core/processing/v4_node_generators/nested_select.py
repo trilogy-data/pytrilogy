@@ -32,7 +32,7 @@ from trilogy.core.processing.discovery_utility import (
     raise_if_disconnected_for,
 )
 from trilogy.core.processing.nodes import BuildCaches, SelectNode, StrategyNode
-from trilogy.core.processing.partial_bridging import scope_statement
+from trilogy.core.processing.statement_scope import scope_statement
 from trilogy.core.processing.v4_helper.history import NestedBuildKey, V4History
 
 from .common import search_parent

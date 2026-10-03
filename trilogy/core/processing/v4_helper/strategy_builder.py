@@ -49,7 +49,6 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment, SpanScope
 from trilogy.core.models.execute import BaseJoin
-from trilogy.core.models.keyspace import Keyspace, Region
 from trilogy.core.processing import plan_trace
 from trilogy.core.processing.aggregate_rollup import _is_additive_aggregate
 from trilogy.core.processing.condition_utility import (
@@ -1143,17 +1142,12 @@ def _valued_on_another_fact(
     return any(
         takes_a_value_on_padding(
             m,
-            _row_absent(keyspace, keyspace.keys_by_address.get(m, frozenset())),
+            keyspace.row_absent(keyspace.keys_by_address.get(m, frozenset())),
             keyspace,
             environment,
         )
         for m in members
     )
-
-
-def _row_absent(keyspace: Keyspace, keys: frozenset[str]) -> Region:
-    """A base-region row on which `keys` are absent."""
-    return Region(present=keyspace.regions[0].present - keys)
 
 
 def _parent_nodes_for(
@@ -1807,13 +1801,8 @@ def _takes_a_value_beside(
     keyspace = environment.span_scope.keyspace
     return any(
         takes_a_value_on_padding(concept.address, region, keyspace, environment)
-        for region in _regions_within(keyspace, region_spans)
+        for region in keyspace.live_regions_within(region_spans)
     )
-
-
-def _regions_within(keyspace: Keyspace, spans: frozenset[str]) -> list[Region]:
-    """The live extension regions whose spans all fall inside `spans`."""
-    return [r for r in keyspace.live_regions if r.spans and r.spans <= spans]
 
 
 def _named_argument(argument: BuildFunction) -> BuildConcept:
@@ -1851,7 +1840,7 @@ def _name_inline_arguments(
     rewritten outputs with the addresses named. `_project_basic_aggregate_inputs`
     then computes them on the solid rows, as it does a named argument."""
     keyspace = environment.span_scope.keyspace
-    regions = _regions_within(keyspace, region_spans)
+    regions = keyspace.live_regions_within(region_spans)
     named: dict[int, BuildConcept] = {}
     rewritten: list[BuildConcept] = []
     for concept in outputs:
