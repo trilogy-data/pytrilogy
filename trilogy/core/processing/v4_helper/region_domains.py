@@ -41,7 +41,7 @@ from .extent_ownership import (
     takes_a_value_on_padding,
 )
 from .models import ConceptAttrs, GroupAttrs, GroupBucket, RootReason
-from .projection import reads_a_rollup, reads_rows_only, rollup_padded_keys
+from .projection import reads_a_rollup, reads_rows_only
 from .region_reads import (
     aggregates_over_region,
     evaluated_over_region,
@@ -366,19 +366,6 @@ def _region_domain(
         region, keyspace, concept_attrs, environment, label
     ):
         return None
-    # a fact binding the span `?` holds a NULL member no dimension row does:
-    # `coalesce(name, 'unknown')` is 'unknown' on its rows, which a domain of
-    # the dimension's rows alone would pad instead. Such a domain holds the
-    # NULL member too (`strategy_builder._with_null_members`), and its rows
-    # join back null-safely; where nothing takes a value on it the fact's
-    # rows pass through the join back unmatched, which is the same answer.
-    null_members = (
-        region.spans & keyspace.value_null_spans
-        if _takes_a_value_on_a_null_member(
-            buckets, label, region, keyspace, environment
-        )
-        else frozenset()
-    )
     scope = (buckets, label, region, keyspace, environment)
     named, inline = _named_value_on_padding(*scope), _inline_values_on_padding(*scope)
     if carried & rollup_padded and (
@@ -446,6 +433,19 @@ def _region_domain(
             carried,
             note=f"no host filters its rows by {undelivered}",
         )
+    # a fact binding the span `?` holds a NULL member no dimension row does:
+    # `coalesce(name, 'unknown')` is 'unknown' on its rows, which a domain of
+    # the dimension's rows alone would pad instead. Such a domain holds the
+    # NULL member too (`strategy_builder._with_null_members`), and its rows
+    # join back null-safely; where nothing takes a value on it the fact's
+    # rows pass through the join back unmatched, which is the same answer.
+    null_members = (
+        region.spans & keyspace.value_null_spans
+        if _takes_a_value_on_a_null_member(
+            buckets, label, region, keyspace, environment
+        )
+        else frozenset()
+    )
     return RegionDomain(
         region,
         DomainKind.OWN,
@@ -462,6 +462,7 @@ def decide_region_domains(
     keyspace: Keyspace,
     condition_arg_addresses: frozenset[str],
     mandatory_list: list[BuildConcept],
+    rollup_padded: frozenset[str],
 ) -> list[RegionDomain]:
     """Say where the rows of each live extension region the statement asks
     rows of come from (`DomainKind`), and give the region a ROOT bucket of its
@@ -493,7 +494,6 @@ def decide_region_domains(
     an entity key: the domain takes every member the region carries, so the
     entity split knows which clusters are a domain's rows already."""
     relation_spans = environment.domain_graph.coalescing_relation_members()
-    rollup_padded = rollup_padded_keys(environment)
     labels = sorted({b.label for b in buckets.values()})
     domains: list[RegionDomain] = []
     for region in keyspace.live_regions:
@@ -762,7 +762,6 @@ def feed_region_domains_to_present_scalars(
             elif not (
                 a.derivation == Derivation.AGGREGATE
                 and a.label == domain.label
-                and not solid & nx.descendants(group_graph, gid)
                 and evaluated_over_region(
                     a.primary_members,
                     a.grain_components,
@@ -771,6 +770,7 @@ def feed_region_domains_to_present_scalars(
                     environment,
                     one_pass=a.nulls_grouping_keys,
                 )
+                and not (solid and solid & nx.descendants(group_graph, gid))
             ):
                 continue
             add_edge(group_graph, group_edges, domain_gid, gid, EdgeKind.LINEAGE)

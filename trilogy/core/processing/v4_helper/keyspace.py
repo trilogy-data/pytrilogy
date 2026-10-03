@@ -143,11 +143,13 @@ class RowsetWitness:
     def licensed(self) -> bool:
         return any(r.spans for r in self.regions)
 
+    def regions_within(self, spans: frozenset[str]) -> list[RowsetRegion]:
+        """The extension regions `spans` covers."""
+        return [r for r in self.regions if r.spans and r.spans <= spans]
+
     def body_spans_of(self, spans: frozenset[str]) -> frozenset[str]:
         """The body's spelling of every region `spans` covers."""
-        return frozenset().union(
-            *(r.body_spans for r in self.regions if r.spans and r.spans <= spans)
-        )
+        return frozenset().union(*(r.body_spans for r in self.regions_within(spans)))
 
 
 def rowset_witness(
@@ -418,34 +420,47 @@ def _respelled(source: _SourceFacts, canonical: dict[str, str]) -> _SourceFacts:
     )
 
 
+def _stamped(sources: tuple[_SourceFacts, ...]) -> tuple[_SourceFacts, ...]:
+    return tuple(dataclasses.replace(s, carried=_carried(s, sources)) for s in sources)
+
+
+def _identifying(
+    canonical: dict[str, str], sources: tuple[_SourceFacts, ...]
+) -> frozenset[str]:
+    grains: frozenset[str] = frozenset().union(*(s.grain for s in sources))
+    return frozenset(address for address, key in canonical.items() if key in grains)
+
+
 def _compute_facts(
-    environment: BuildEnvironment,
-    datasources: list[BuildDatasource],
-    rowsets: tuple[_SourceFacts, ...] = (),
+    environment: BuildEnvironment, datasources: list[BuildDatasource]
 ) -> _ModelFacts:
     canonical = _canonical_addresses(environment)
     identities = _row_identities(environment, datasources)
     bound = tuple(
         _source_facts(ds, canonical, identities[ds.identifier]) for ds in datasources
     )
-    sources = (
-        bound
-        + _generated_domains(environment, canonical, bound)
-        + tuple(_respelled(r, canonical) for r in rowsets)
-    )
-    sources = tuple(
-        dataclasses.replace(s, carried=_carried(s, sources)) for s in sources
-    )
-    grains: frozenset[str] = frozenset().union(*(s.grain for s in sources))
+    sources = _stamped(bound + _generated_domains(environment, canonical, bound))
     return _ModelFacts(
         # pin-heal and partition exclusion swap datasources before planning;
         # held, not by id, so a swapped-out one's id is never reused
         stamp=tuple(datasources),
         canonical=canonical,
         sources=sources,
-        identifying=frozenset(
-            address for address, key in canonical.items() if key in grains
-        ),
+        identifying=_identifying(canonical, sources),
+    )
+
+
+def _with_rowsets(
+    facts: _ModelFacts, rowsets: tuple[_SourceFacts, ...]
+) -> _ModelFacts:
+    """`facts` beside the rowsets a plan reads: only `carried` changes for the
+    model's own sources."""
+    respelled = tuple(_respelled(r, facts.canonical) for r in rowsets)
+    return _ModelFacts(
+        stamp=facts.stamp,
+        canonical=facts.canonical,
+        sources=_stamped(facts.sources + respelled),
+        identifying=facts.identifying | _identifying(facts.canonical, respelled),
     )
 
 
@@ -695,15 +710,14 @@ def build_keyspace(
     The facts are read whether or not any `~` survives (pin-heal may have
     dropped the last one): an entity is spelled by the same canonical
     address either way, and a plan's keys are compared across plans."""
-    rowsets = _rowset_sources(rowset_witnesses)
-    if datasources is None and not rowsets:
+    if datasources is None:
         datasources = build_datasources(environment)
         facts = _model_facts(environment)
     else:
-        datasources = (
-            build_datasources(environment) if datasources is None else datasources
-        )
-        facts = _compute_facts(environment, datasources, rowsets)
+        facts = _compute_facts(environment, datasources)
+    rowsets = _rowset_sources(rowset_witnesses)
+    if rowsets:
+        facts = _with_rowsets(facts, rowsets)
     licensed = _has_extension_license(datasources) or any(
         w.licensed for w in rowset_witnesses
     )

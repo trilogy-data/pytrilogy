@@ -1020,11 +1020,15 @@ def _partition_by_signature_and_grain(
                 sig |= set(extra_signature(node))
             sigs.append(frozenset(sig))
         # after the signatures: reading a stop is what assigns its group
-        root_gids = {
-            gid
-            for node, gid in primary_group.items()
-            if concept_attrs[node].derivation == Derivation.ROOT
-        }
+        root_gids = (
+            {
+                gid
+                for node, gid in primary_group.items()
+                if concept_attrs[node].derivation == Derivation.ROOT
+            }
+            if allow_signature_subset
+            else set()
+        )
         grains = [sub_items[i][1].grain_components for i in range(n)]
         terminal = [
             merge_terminal_siblings

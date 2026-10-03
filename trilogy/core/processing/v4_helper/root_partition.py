@@ -1193,6 +1193,7 @@ def partition_root_demand(
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     keyspace: Keyspace,
+    rollup_padded: frozenset[str],
 ) -> RootPartition:
     """Split each scope's root demand by reader; see the module docstring."""
     condition_arg_addresses = frozenset(
@@ -1222,6 +1223,7 @@ def partition_root_demand(
         keyspace,
         condition_arg_addresses,
         mandatory_list,
+        rollup_padded,
     )
     own = [d.bucket for d in domains if d.bucket is not None]
     buckets.update({bucket.group_id: bucket for bucket in own})

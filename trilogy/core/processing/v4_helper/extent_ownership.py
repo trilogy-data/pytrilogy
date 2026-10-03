@@ -152,6 +152,19 @@ def null_on_padding(
     Padding already gives the rule's answer, so only a null-opaque derivation
     (CASE, COALESCE, IS NULL, a window) needs the region kept off its row
     stream. CONCAT skips NULL arguments on some dialects."""
+    if not isinstance(value, BuildConcept):
+        return _null_on_padding(value, region, keyspace, environment)
+    key = (value.address, region, id(environment))
+    known = keyspace.padding_nulls.get(key)
+    if known is None:
+        known = _null_on_padding(value, region, keyspace, environment)
+        keyspace.padding_nulls[key] = known
+    return known
+
+
+def _null_on_padding(
+    value: object, region: Region, keyspace: Keyspace, environment: BuildEnvironment
+) -> bool:
     if isinstance(value, BuildConcept):
         if keyspace.defined_on(value.address, region):
             return False

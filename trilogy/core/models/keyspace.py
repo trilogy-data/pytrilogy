@@ -103,17 +103,25 @@ class Keyspace:
     # spans some source binds `?`: a NULL key is a member of its own there,
     # one no dimension row holds, so a fact row keyed on it pairs with nothing
     value_null_spans: frozenset[str] = frozenset()
+    # (address, region, id(environment)) -> `extent_ownership.null_on_padding`
+    padding_nulls: dict[tuple[str, Region, int], bool] = field(
+        default_factory=dict, compare=False, repr=False
+    )
 
-    @property
+    @cached_property
     def live_regions(self) -> tuple[Region, ...]:
         return tuple(r for r in self.regions if not r.is_empty)
 
-    @property
+    @cached_property
     def families(self) -> tuple[frozenset[str], ...]:
         """Each live extension region's spans. A node holding two regions
         unions their spans, so only this partition says how many families a
         merge has: counting spans reads one composite-key region as two."""
         return tuple(r.spans for r in self.live_regions if r.spans)
+
+    def live_regions_within(self, spans: frozenset[str]) -> list[Region]:
+        """The live extension regions `spans` covers."""
+        return [r for r in self.live_regions if r.spans and r.spans <= spans]
 
     @property
     def demanded_spans(self) -> frozenset[str]:
