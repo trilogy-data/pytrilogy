@@ -5,9 +5,12 @@ Distilled from tpc-ds q54 and q64. Both need only the planner, so no database.
 """
 
 from pathlib import Path
+from unittest.mock import patch
 
 from trilogy import Dialects, Environment
+from trilogy.core.models.execute import CTE
 from trilogy.core.processing.v4_helper import strategy_builder
+from trilogy.executor import Executor
 
 _WORKING = Path(__file__).resolve().parents[3] / "tests" / "modeling" / "tpc_ds_duckdb"
 
@@ -40,30 +43,33 @@ select ss.ticket_number, ss.item.sk;
 select ss_rows.ss.item.sk, count(ss_rows.ss.ticket_number) as tickets;"""
 
 
-def _generate(query: str) -> str:
+def _executor() -> Executor:
     env = Environment(working_path=_WORKING)
-    return Dialects.DUCK_DB.default_executor(environment=env).generate_sql(query)[-1]
+    return Dialects.DUCK_DB.default_executor(environment=env)
 
 
 def test_feeder_drops_the_body_grain_keys_the_set_does_not_need():
-    sql = _generate(_ROWSET_HANDLE_SET)
+    executor = _executor()
+    sql = executor.generate_sql(_ROWSET_HANDLE_SET)[-1]
     assert "sales_channel" not in sql, sql
     assert "sales_item_sk" not in sql, sql
-    # the set column alone, deduped: `GROUP BY 1` and nothing beside it
-    assert sql.count("GROUP BY") == 1, sql
-    assert "GROUP BY\n    1)" in sql, sql
+    query = executor.parse_text(_ROWSET_HANDLE_SET)[-1]
+    grouped = [
+        [c.address for c in cte.output_columns]
+        for cte in query.ctes
+        if isinstance(cte, CTE) and cte.group_to_grain
+    ]
+    assert grouped == [["my_customers.my_cust_id"]]
 
 
-def test_a_membership_inside_a_rowset_body_is_planned_once(monkeypatch):
+def test_a_membership_inside_a_rowset_body_is_planned_once():
     """The inner plan wires the provider; the outer loop must leave it alone
     rather than reach the standalone fallback for a set it holds no group for."""
-    calls = []
-    original = strategy_builder._CleanFeederCache._build
-
-    def counted(self, group):
-        calls.append(tuple(sorted(c.address for c in group)))
-        return original(self, group)
-
-    monkeypatch.setattr(strategy_builder._CleanFeederCache, "_build", counted)
-    _generate(_NESTED_HOST)
-    assert not calls
+    with patch.object(
+        strategy_builder._CleanFeederCache,
+        "_build",
+        autospec=True,
+        side_effect=strategy_builder._CleanFeederCache._build,
+    ) as build:
+        _executor().generate_sql(_NESTED_HOST)
+    build.assert_not_called()
