@@ -117,6 +117,11 @@ def _computed_witness(
 def _witness(
     rowset: BuildRowsetLineage, environment: BuildEnvironment, history: V4History
 ) -> RowsetWitness:
+    """The body's keyspace under its plan's first choice of materialized
+    roots. When that plan builds nothing, the body's plan retries without them
+    (`_search_concepts`); the witness cannot, since it never plans, so a body
+    whose summary source does not combine is witnessed over a concept graph
+    its plan abandons."""
     from trilogy.core.processing.concept_strategies_v4 import (  # cycle
         _materialized_root_addresses,
     )
