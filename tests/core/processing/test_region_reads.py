@@ -31,14 +31,12 @@ def planned():
         ("local.customer_id", False),
     ],
 )
-def test_argument_takes_a_value_on_padding(planned, address: str, expected: bool):
+def test_inline_arguments_taking_a_value(planned, address: str, expected: bool):
     region, keyspace, environment = planned
-    assert (
-        region_reads.argument_takes_a_value_on_padding(
-            address, region, keyspace, environment
-        )
-        is expected
+    taking = region_reads.inline_arguments_taking_a_value(
+        environment.concepts.get(address), region, keyspace, environment
     )
+    assert bool(taking) is expected
 
 
 @pytest.mark.parametrize(

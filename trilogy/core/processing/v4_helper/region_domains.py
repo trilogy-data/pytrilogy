@@ -44,7 +44,6 @@ from .models import ConceptAttrs, GroupAttrs, GroupBucket, RootReason
 from .projection import reads_a_rollup, reads_rows_only, rollup_padded_keys
 from .region_reads import (
     aggregates_over_region,
-    argument_takes_a_value_on_padding,
     evaluated_over_region,
     fed_gate,
     inline_arguments_taking_a_value,
@@ -118,7 +117,9 @@ def _needs_solid_rows(
         ):
             return True
         if bucket.derivation == Derivation.AGGREGATE and any(
-            argument_takes_a_value_on_padding(m, region, keyspace, environment)
+            inline_arguments_taking_a_value(
+                environment.concepts.get(m), region, keyspace, environment
+            )
             for m in bucket.primary_members
         ):
             return True

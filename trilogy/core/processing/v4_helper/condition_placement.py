@@ -995,14 +995,13 @@ def plan_condition_placements(
     conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
+    keyspace: Keyspace,
     scoped_join_key_groups: dict[str, set[str]] | None = None,
     concept_attrs: dict[str, ConceptAttrs] | None = None,
     statement_relation_addresses: frozenset[str] = frozenset(),
     staged_conditions: list[BuildWhereClause] | None = None,
-    keyspace: Keyspace | None = None,
 ) -> list[ConditionPlacement]:
     """Return where each decomposed condition atom should be injected."""
-    keyspace = keyspace or Keyspace()
     scoped_join_key_groups = scoped_join_key_groups or {}
     # A GLOBAL merge whose collapsed member keeps a row-shape computed origin
     # (`merge recursive_parent into root_parent.id`) null-extends exactly like

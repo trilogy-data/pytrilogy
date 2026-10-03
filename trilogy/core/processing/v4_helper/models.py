@@ -199,8 +199,6 @@ class GroupAttrs(_HeldKeys):
     depth_label: DepthLabel
     derivation: Derivation | None = None
     grain_components: frozenset[str] = frozenset()
-    # See `GroupBucket.hosted_grain`.
-    hosted_grain: frozenset[str] = frozenset()
     label: str = ""
     primary_members: tuple[str, ...] = ()
     # See `GroupBucket.carried_spans`.
@@ -276,10 +274,6 @@ class ConceptAttrs:
     granularity: Granularity
     depth_label: DepthLabel
     grain_components: frozenset[str] = frozenset()
-    # The part of `grain_components` a row-preserving aggregate carries through
-    # its GROUP BY as a hosted output, not as row identity
-    # (`_host_outputs_on_row_preserving_aggregates`).
-    hosted_grain: frozenset[str] = frozenset()
     # None for a non-aggregate concept; otherwise the aggregate's GROUP BY
     # mode, which `partition_aggregates` splits buckets on (one CTE cannot
     # carry both a flat GROUP BY and a GROUP BY ROLLUP).
@@ -381,9 +375,6 @@ class GroupBucket(_HeldKeys):
     depth_label: DepthLabel
     derivation: Derivation
     grain_components: frozenset[str]
-    # Grain members hosted as outputs rather than row identity: the grouping
-    # grain minus these is the identity (`ConceptAttrs.hosted_grain`).
-    hosted_grain: frozenset[str] = frozenset()
     # primary members and carried spans are concept ADDRESSES, which is what downstream
     # strategy assembly cares about. primary_node_ids holds the matching
     # concept-graph node ids (which differ from addresses for any non-blank
