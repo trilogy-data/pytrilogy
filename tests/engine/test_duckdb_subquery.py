@@ -75,6 +75,24 @@ def test_multi_output_subquery_rejected(backend):
     assert meta is not None and meta.line is not None
 
 
+@pytest.mark.parametrize(
+    "query",
+    [
+        "select id where val > (select val);",
+        "select id where val > (select min(val) by id -> m);",
+    ],
+)
+def test_scalar_subquery_of_several_rows_rejected(backend, query: str):
+    with pytest.raises(HydrationError, match="must return one row"):
+        _engine().generate_sql(query)
+
+
+def test_scalar_subquery_limited_to_one_row(backend):
+    assert _engine().execute_text(
+        "select id where val >= (select val order by val desc limit 1);"
+    )[-1].fetchall() == [(3,)]
+
+
 def test_scalar_subquery_round_trips(backend):
     query = "select sum(val) -> total having total > (select max(val) -> mx);"
     engine = _engine()

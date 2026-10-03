@@ -145,6 +145,11 @@ jobs:
       - name: Lint with black
         run: |
           python -m black --check .
+      - name: Benchmark plans did not grow against main
+        if: github.event_name == 'pull_request' && matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
+        run: |
+          git fetch --no-tags --depth=1 origin main
+          python .scripts/check_benchmark_growth.py FETCH_HEAD
       - name: Test with pytest
         if: matrix.run_llm_tests == true
         run: |

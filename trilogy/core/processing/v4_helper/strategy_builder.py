@@ -48,6 +48,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment, SpanScope
 from trilogy.core.models.execute import BaseJoin
+from trilogy.core.models.keyspace import Region
 from trilogy.core.processing import plan_trace
 from trilogy.core.processing.aggregate_rollup import _is_additive_aggregate
 from trilogy.core.processing.condition_utility import (
@@ -1134,6 +1135,29 @@ def _fold_into_readers(
     trace_group_graph(f"inlined {gid}", group_graph, group_edges, attrs)
 
 
+def _valued_on_another_fact(
+    members: Sequence[str], environment: BuildEnvironment
+) -> bool:
+    """A row derivation that takes a value where its own keys are absent
+    (`case when amount > 6 ... else 'small'`), under a plan whose rows only a
+    join of facts holds: no single source witnesses them, so the shared scan
+    pads each fact's keys on the other's rows. It is computed on a slice of its
+    own fact, before that padding."""
+    keyspace = environment.span_scope.keyspace
+    if not keyspace.families or keyspace.regions[0].witnesses:
+        return False
+    base = keyspace.regions[0].present
+    return any(
+        takes_a_value_on_padding(
+            m,
+            Region(present=base - keyspace.keys_by_address.get(m, frozenset())),
+            keyspace,
+            environment,
+        )
+        for m in members
+    )
+
+
 def _parent_nodes_for(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -1223,7 +1247,10 @@ def _parent_nodes_for(
     def parent_for_consumer(pgid: str, node: StrategyNode) -> StrategyNode:
         if attrs[pgid].derivation != Derivation.ROOT:
             return node.copy()
-        if attrs[gid].derivation not in GROUPING_DERIVATIONS:
+        consumer = attrs[gid]
+        if consumer.derivation not in GROUPING_DERIVATIONS and not (
+            _valued_on_another_fact(consumer.primary_members, environment)
+        ):
             return node.copy()
         # a region domain is read as built: a re-sourced slice is a fresh scan
         # holding no region, so the aggregate would compute its row-stream
@@ -1318,12 +1345,15 @@ def _parent_nodes_for(
             environment.span_scope = consumer_scope
         if sliced is None:
             return node.copy()
+        # weighed with its membership feeders wired, as `node` was: unwired,
+        # the slice drops the feeders' scans from its leaf set and always
+        # looks narrower, so every grouping consumer re-scans its own copy
+        _wire_existence(sliced, built, feeder_cache)
         if not (
             carries_wrong_side
             or _leaf_datasource_ids(sliced) < _leaf_datasource_ids(node)
         ):
             return node.copy()
-        _wire_existence(sliced, built, feeder_cache)
         return sliced
 
     parents: list[ParentBuild] = []
@@ -1867,7 +1897,7 @@ def _project_basic_aggregate_inputs(
         isinstance(parents[0], MergeNode)
         or (
             region_spans
-            and isinstance(parents[0], SelectNode)
+            and isinstance(parents[0], (SelectNode, UnionNode))
             and not parents[0].force_group
         )
     ):
@@ -1900,6 +1930,11 @@ def _project_basic_aggregate_inputs(
     available = {output.address for output in parent.output_concepts}
     if isinstance(parent, SelectNode):
         available |= renderable_addresses(parent)
+    elif isinstance(parent, UnionNode):
+        # each arm computes the input from its own scan (`widen_projection`)
+        available |= set.intersection(
+            *(renderable_addresses(arm) for arm in parent.parents)
+        )
     if not all(concept_satisfiable(concept, available) for concept in scalar_inputs):
         return parents
     # one the parent already computes is not an input to hand it

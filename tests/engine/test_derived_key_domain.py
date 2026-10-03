@@ -1503,3 +1503,68 @@ def test_nullable_key_beside_a_region_domain(query: str, expected: list[tuple]):
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_text(_NULLABLE_STORE)
     assert _rows(executor, query) == expected
+
+
+def test_having_on_a_passed_through_key_beside_an_aggregate(derived: Executor):
+    assert _rows(
+        derived,
+        "select customer_id, count(order_id) as n having n = 0 or customer_id = 1",
+    ) == [(1, 2), (3, 0)]
+
+
+_UNION_ORDERS = """
+key customer_id int;
+key order_id int;
+property order_id.amount int;
+property order_id.year int;
+root datasource customers (customer_id: customer_id) grain (customer_id)
+query '''select 1 as customer_id union all select 2 union all select 3''';
+datasource orders_old (order_id: order_id, customer_id: ~customer_id, amount: amount, year: year)
+grain (order_id)
+complete where year <= 2020
+query '''select 100 as order_id, 1 as customer_id, 5 as amount, 2019 as year''';
+datasource orders_new (order_id: order_id, customer_id: ~customer_id, amount: amount, year: year)
+grain (order_id)
+complete where year > 2020
+query '''select 101 as order_id, 2 as customer_id, 9 as amount, 2022 as year''';
+auto big <- case when amount > 6 then 'big' else 'small' end;
+"""
+
+
+@pytest.mark.parametrize(
+    "query, expected",
+    [
+        ("select customer_id, max(big) as b", [(1, "small"), (2, "big"), (3, None)]),
+        ("select customer_id, count(big) as b", [(1, 1), (2, 1), (3, 0)]),
+    ],
+)
+def test_named_argument_over_a_union_source_is_solid(query: str, expected: list[tuple]):
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_UNION_ORDERS)
+    assert _rows(executor, query) == expected
+
+
+_TWO_SPANS = """
+key customer_id int;
+key product_id int;
+key order_id int;
+root datasource customers (customer_id: customer_id) grain (customer_id)
+query '''select 1 as customer_id union all select 2 union all select 3''';
+root datasource products (product_id: product_id) grain (product_id)
+query '''select 10 as product_id union all select 11 union all select 12''';
+root datasource orders (order_id: order_id, customer_id: ~customer_id, product_id: ~product_id)
+grain (order_id)
+query '''select 100 as order_id, 1 as customer_id, 10 as product_id
+union all select 101, 1, 11 union all select 102, 2, 10''';
+"""
+
+
+def test_counting_a_second_span_demands_its_region():
+    """`count(product_id)` counts the product no order references, under a
+    customer it has none of."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_TWO_SPANS)
+    assert _rows(
+        executor,
+        "select customer_id, count(order_id) as n, count(product_id) as np",
+    ) == [(1, 2, 2), (2, 1, 1), (3, 0, 0), (None, 0, 1)]

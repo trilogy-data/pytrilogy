@@ -48,7 +48,7 @@ RENDERINGS = [
     (PrestoDialect, "array_agg(x) FILTER (WHERE x IS NOT NULL)"),
     (TrinoDialect, "array_agg(x) FILTER (WHERE x IS NOT NULL)"),
     (BigqueryDialect, "ARRAY_AGG(x IGNORE NULLS)"),
-    (SnowflakeDialect, "array_agg(x)"),
+    (SnowflakeDialect, "NULLIF(array_agg(x), ARRAY_CONSTRUCT())"),
     (ClickhouseDialect, "groupArray(x)"),
 ]
 

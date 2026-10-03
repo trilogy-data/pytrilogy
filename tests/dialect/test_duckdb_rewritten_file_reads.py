@@ -3,54 +3,51 @@ it: refresh reads an asset's own parquet, writes a replacement and reads it
 back. DuckDB's external file cache holds that path's blocks, and a same-size
 rewrite within its mtime resolution is not caught by
 `validate_external_file_cache`, so the second read gets the old bytes against
-the new footer.
+the new footer unless the write drops the cache.
 """
 
-import uuid
-from pathlib import Path
-
 import duckdb
-from sqlalchemy import text
 
-from trilogy.dialect.config import DuckDBConfig
-from trilogy.dialect.enums import default_factory
-
-
-def _write(path: Path, rows: str) -> None:
-    con = duckdb.connect()
-    try:
-        con.execute(f"COPY ({rows}) TO '{path.as_posix()}' (FORMAT PARQUET)")
-    finally:
-        con.close()
+from trilogy import Dialects
 
 
 def test_a_replaced_parquet_reads_fresh_on_the_same_connection(tmp_path):
-    """The refresh shape: probe the asset's watermark, rebuild it from its
-    source into a staged file, move that over the asset, read it back."""
     source = tmp_path / "source.parquet"
-    _write(
-        source,
-        "SELECT 1 AS k, TIMESTAMP '2024-01-10 12:00:00' AS ts"
-        " UNION ALL SELECT 2, TIMESTAMP '2024-01-15 12:00:00'",
-    )
-    asset = tmp_path / "asset.parquet"
-    _write(asset, f"SELECT * FROM read_parquet('{source.as_posix()}') WHERE k = 1")
-
-    engine = default_factory(DuckDBConfig(), DuckDBConfig)
-    with engine.connect() as conn:
-        conn.execute(
-            text(f"SELECT max(ts) FROM read_parquet('{asset.as_posix()}')")
-        ).fetchall()
-
-        staged = tmp_path / f"asset.parquet.{uuid.uuid4().hex[:8]}.tmp"
-        conn.execute(
-            text(
-                f"COPY (SELECT * FROM read_parquet('{source.as_posix()}'))"
-                f" TO '{staged.as_posix()}' (FORMAT PARQUET, USE_TMP_FILE false)"
-            )
+    con = duckdb.connect()
+    try:
+        con.execute(
+            "COPY (SELECT 1 AS k, TIMESTAMP '2024-01-10 12:00:00' AS ts"
+            " UNION ALL SELECT 2, TIMESTAMP '2024-01-15 12:00:00')"
+            f" TO '{source.as_posix()}' (FORMAT PARQUET)"
         )
-        staged.replace(asset)
+    finally:
+        con.close()
+    asset = tmp_path / "asset.parquet"
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        "key k int; property k.ts datetime;"
+        f" datasource src (k: k, ts: ts) grain (k) file `{source.as_posix()}`;"
+    )
+    copy = f"copy into parquet '{asset.as_posix()}' from select k, ts"
+    executor.execute_text(copy + " where k = 1;")
+    assert executor.execute_raw_sql(
+        f"SELECT max(ts) FROM read_parquet('{asset.as_posix()}')"
+    ).fetchall()
 
-        assert conn.execute(
-            text(f"SELECT k FROM read_parquet('{asset.as_posix()}') ORDER BY 1")
-        ).fetchall() == [(1,), (2,)]
+    executor.execute_text(copy + ";")
+
+    assert executor.execute_raw_sql(
+        f"SELECT k FROM read_parquet('{asset.as_posix()}') ORDER BY 1"
+    ).fetchall() == [(1,), (2,)]
+
+
+def test_the_cache_stays_on_for_reads():
+    row = (
+        Dialects.DUCK_DB.default_executor()
+        .execute_raw_sql(
+            "SELECT value FROM duckdb_settings()"
+            " WHERE name = 'enable_external_file_cache'"
+        )
+        .fetchone()
+    )
+    assert row is None or str(row[0]).lower() == "true"

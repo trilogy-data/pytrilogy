@@ -139,27 +139,6 @@ class BigQueryConfig(DialectConfig):
         return {"client": self.resolve_client()}
 
 
-_EXTERNAL_FILE_CACHE: bool | None = None
-
-
-def _has_external_file_cache() -> bool:
-    """Whether this DuckDB knows `enable_external_file_cache` (1.4+). An
-    unknown config key is rejected outright at connect time, so probe once
-    rather than guess from the version string. Lazy: this module is on the
-    CLI's startup path and must not import duckdb to be read."""
-    global _EXTERNAL_FILE_CACHE
-    if _EXTERNAL_FILE_CACHE is None:
-        import duckdb
-
-        with duckdb.connect() as probe:
-            found = probe.execute(
-                "SELECT name FROM duckdb_settings()"
-                " WHERE name = 'enable_external_file_cache'"
-            ).fetchone()
-        _EXTERNAL_FILE_CACHE = found is not None
-    return _EXTERNAL_FILE_CACHE
-
-
 class DuckDBConfig(DialectConfig):
     def __init__(
         self,
@@ -203,16 +182,6 @@ class DuckDBConfig(DialectConfig):
 
     def create_connect_args(self) -> dict:
         args: dict = {}
-        # A file-backed datasource is rewritten under a connection that has
-        # already read it -- refresh reads an asset's own parquet, writes a
-        # replacement and reads it back -- and DuckDB's external file cache
-        # holds that path's blocks. `validate_external_file_cache` does not
-        # catch a same-size rewrite within its mtime resolution, so the second
-        # read is served the old file's bytes against the new footer:
-        # `don't know what type:`, or silently stale rows. The cache only pays
-        # off for files that do not change under us, which is not this model.
-        if _has_external_file_cache():
-            args["config"] = {"enable_external_file_cache": False}
         # read_only lets many processes share one on-disk db (DuckDB allows
         # concurrent readers but only a single writer). Only meaningful for a
         # file-backed db; an in-memory db has nothing to open read-only.

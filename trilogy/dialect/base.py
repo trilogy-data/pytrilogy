@@ -2776,9 +2776,18 @@ class BaseDialect:
             # reference the SELECT alias rather than re-inlining the aggregate.
             # Only valid at the top of the HAVING tree: dialects resolve
             # aliases against the projection only at the outermost comparison
-            # operands, not inside nested functions/aggregates/case/etc.
+            # operands, not inside nested functions/aggregates/case/etc. A
+            # column passed through from a parent keeps its qualified source:
+            # its bare alias is also that parent's column name, and ambiguous
+            # beside a second parent holding it.
             rendered_having: str | None = self.render_expr(
-                having, cte, materialized_addresses=set(select_columns.keys())
+                having,
+                cte,
+                materialized_addresses={
+                    address
+                    for address in select_columns
+                    if not cte.source_map.get(address)
+                },
             )
         else:
             rendered_having = self.render_expr(having, cte) if having else None

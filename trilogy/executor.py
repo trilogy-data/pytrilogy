@@ -890,6 +890,22 @@ class Executor:
         select_clause = ", ".join(alias_clauses)
         return f"SELECT {select_clause} FROM ({base_sql}) as _copy_source"
 
+    def _drop_external_file_cache(self) -> None:
+        """A file this connection read was just replaced, and DuckDB's external
+        file cache (1.4+) still holds its blocks: a same-size rewrite within
+        its mtime resolution passes `validate_external_file_cache`, and the
+        next read gets the old bytes against the new footer (`don't know what
+        type:`, or stale rows). Switching the cache off drops what it holds."""
+        result = self.execute_raw_sql(
+            "SELECT value FROM duckdb_settings()"
+            " WHERE name = 'enable_external_file_cache'"
+        )
+        row = result.fetchone() if result is not None else None
+        if row is None or str(row[0]).lower() != "true":
+            return
+        self.execute_raw_sql("SET enable_external_file_cache = false")
+        self.execute_raw_sql("SET enable_external_file_cache = true")
+
     def _swap_staging_root(self) -> str:
         """Where ``copy into`` stages a local target before swapping it in:
         this executor's scratch subdir under ``[staging] path``, cleaned at
@@ -962,6 +978,7 @@ class Executor:
                     f"COPY ({sql}) TO '{staged}' ({options})",
                     local_concepts=query.local_concepts,
                 )
+            self._drop_external_file_cache()
         else:
             raise NotImplementedError(
                 f"COPY statement not supported for dialect {self.dialect}"

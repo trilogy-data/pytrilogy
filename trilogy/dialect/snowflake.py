@@ -18,8 +18,11 @@ FUNCTION_MAP = {
     FunctionType.DIVIDE: lambda x, types: f"DIV0({x[0]},{x[1]})",
     FunctionType.UNNEST: lambda x, types: f"table(flatten({x[0]}))",
     FunctionType.ARRAY: lambda x, types: f"ARRAY_CONSTRUCT({', '.join(x)})",
-    # no FILTER clause; ARRAY_AGG ignores NULL elements natively
-    FunctionType.ARRAY_AGG: lambda x, types: f"array_agg({x[0]})",
+    # no FILTER clause; ARRAY_AGG ignores NULL elements natively, and returns
+    # an empty array where every other dialect's group of no values is NULL
+    FunctionType.ARRAY_AGG: lambda x, types: (
+        f"NULLIF(array_agg({x[0]}), ARRAY_CONSTRUCT())"
+    ),
     FunctionType.CURRENT_DATETIME: lambda x, types: "CURRENT_TIMESTAMP()",
     FunctionType.CURRENT_DATE: lambda x, types: "CURRENT_DATE()",
     FunctionType.CURRENT_TIMESTAMP: lambda x, types: "CURRENT_TIMESTAMP()",
