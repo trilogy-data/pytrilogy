@@ -1436,8 +1436,8 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
                 # select-local flags, the only row identity rollup subtotals have
                 final_grain = (
                     Grain(
-                        components=grain.components,
-                        component_order=grain.component_order,
+                        components=set(grain.components),
+                        component_order=list(grain.component_order),
                     )
                     if pkeys == grain.components
                     else Grain.from_concepts(pkeys, environment)
