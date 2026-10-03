@@ -531,7 +531,8 @@ class PredicatePushdown(OptimizationRule):
             materialized |= {
                 column.address
                 for column in parent_cte.output_columns
-                if column.derivation == Derivation.BASIC
+                if column.address in row_conditions
+                and column.derivation == Derivation.BASIC
                 and column.address not in materialized
                 and not gather_windows(column.lineage, materialized)
             }
@@ -721,7 +722,7 @@ class PredicatePushdown(OptimizationRule):
                 return False
             # the consumer coalesces a padded COUNT to 0 (`zero_fills_count`):
             # its `count = 0` accepts rows the group has no row for
-            if child.zero_filled_counts(candidate.row_arguments):
+            if zero_filled_reads(child, candidate):
                 return False
             # The relocated predicate applies before any window the consumer
             # computes over the parent's rows, changing lead/lag/rank results
