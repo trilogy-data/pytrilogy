@@ -1666,3 +1666,61 @@ def test_counting_a_second_span_demands_its_region():
         executor,
         "select customer_id, count(order_id) as n, count(product_id) as np",
     ) == [(1, 2, 2), (2, 1, 1), (3, 0, 0), (None, 0, 1)]
+
+
+_PSTATUS = "auto pstatus <- case when amount > 15 then 'big' end;\n"
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select customer_id, pstatus, sum(amount) by pstatus as s",
+            [(1, "big", 50), (1, None, 10), (2, "big", 50), (3, None, None)],
+        ),
+        (
+            "select customer_id, pstatus where coalesce(sum(amount) by pstatus, 0) = 0",
+            [(3, None)],
+        ),
+        (
+            "select customer_id, pstatus, sum(amount) by pstatus as s, count(customer_id) by pstatus as n",
+            [
+                (1, "big", 50, 2),
+                (1, None, 10, 2),
+                (2, "big", 50, 2),
+                (3, None, None, 2),
+            ],
+        ),
+    ],
+)
+def test_padded_null_is_not_the_value_null_group(query: str, expected: list[tuple]):
+    derived = executor_for(CUSTOMERS_DERIVED + _PSTATUS)
+    materialized = executor_for(CUSTOMERS_MATERIALIZED + _PSTATUS)
+    assert twin_rows(derived, materialized, query) == expected
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select customer_id, status where count(customer_id) by status = 1",
+            [(1, "in-transit"), (3, None)],
+        ),
+        (
+            "select customer_id where count(customer_id) by status = 1",
+            [(1,), (3,)],
+        ),
+        (
+            "select name, status where count(customer_id) by status = 1",
+            [("ann", "in-transit"), ("cat", None)],
+        ),
+        (
+            "select customer_id, status, count(customer_id) by status as c where count(customer_id) by status = 1",
+            [(1, "in-transit", 1), (3, None, 1)],
+        ),
+    ],
+)
+def test_where_aggregate_counting_the_region_by_an_absent_key(
+    derived: Executor, materialized: Executor, query: str, expected: list[tuple]
+):
+    assert twin_rows(derived, materialized, query) == expected

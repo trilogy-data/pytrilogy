@@ -772,6 +772,7 @@ def build_keyspace(
         # onto every row, so it is present here too
         related: frozenset[str] = frozenset().union(*(connected[e] for e in present))
         full = present | (entities - related)
+        reach = _entity_reach(facts, canonical, entities, spans)
         regions.append(
             Region(
                 present=full,
@@ -783,8 +784,11 @@ def build_keyspace(
                     a
                     for a in rejected
                     if not keys_by_address.get(a, frozenset()) <= full
+                    and not _counts_the_rows(
+                        a, reach, declared, identifying, environment
+                    )
                 ),
-                reach=_entity_reach(facts, canonical, entities, spans),
+                reach=reach,
             )
         )
     return Keyspace(
@@ -799,6 +803,28 @@ def build_keyspace(
         unread_spans=unread,
         value_null_spans=_value_null_spans(scope.datasources, canonical)
         & spans_in_play(regions),
+    )
+
+
+def _counts_the_rows(
+    address: str,
+    reach: frozenset[str],
+    declared: dict[str, _Declared],
+    identifying: frozenset[str],
+    environment: BuildEnvironment,
+) -> bool:
+    """An aggregate whose every argument the region's rows carry is evaluated
+    over them, and takes a value there whatever its `by` (`count(customer_id)
+    by status` counts the customer with no order under the NULL status): a
+    WHERE rejecting its NULL leaves those rows in."""
+    concept = environment.concepts.get(address)
+    if concept is None or not isinstance(concept.lineage, BuildAggregateWrapper):
+        return False
+    arguments = concept.lineage.function.concept_arguments
+    return bool(arguments) and all(
+        (keys := _entity_keys(arg.address, declared, identifying, environment))
+        and keys <= reach
+        for arg in arguments
     )
 
 

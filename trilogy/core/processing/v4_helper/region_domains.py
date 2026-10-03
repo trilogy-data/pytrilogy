@@ -86,7 +86,7 @@ def _filters_region_domain(
     if concept is None:
         return False
     if concept.derivation == Derivation.AGGREGATE:
-        return not aggregates_over_region((address,), region, keyspace, environment)
+        return True
     return concept.derivation == Derivation.ROOT or reads_rows_only(concept)
 
 
@@ -719,6 +719,10 @@ def feed_region_domains_to_present_scalars(
                 _detach_solid_roots(
                     group_graph, group_edges, attrs, gid, domain, environment
                 )
+            elif _counts_the_region_in_condition(
+                a, domain, region, keyspace, environment
+            ):
+                pass
             elif not (
                 a.derivation == Derivation.AGGREGATE
                 and a.label == domain.label
@@ -760,6 +764,28 @@ def _counts_the_domain(
         *(lineage_reads(m, environment) for m in a.primary_members)
     )
     return reads - {ALL_ROWS_ADDRESS} <= set(domain.primary_members)
+
+
+def _counts_the_region_in_condition(
+    a: GroupAttrs,
+    domain: GroupAttrs,
+    region: Region,
+    keyspace: Keyspace,
+    environment: BuildEnvironment,
+) -> bool:
+    """A WHERE's own aggregate of the domain's scope counting what the region
+    carries by something absent on it (`where count(customer_id) by status =
+    1`): the region's rows are its input beside the solid ones, as they are
+    the output spelling's, under the NULL group. One by what the region
+    carries is read off the domain (`city`)."""
+    return (
+        a.derivation == Derivation.AGGREGATE
+        and a.label != domain.label
+        and _scope_and_phase(a.label)
+        == (_scope_and_phase(domain.label)[0], "condition")
+        and not any(keyspace.carried_on(m, region) for m in a.primary_members)
+        and aggregates_over_region(a.primary_members, region, keyspace, environment)
+    )
 
 
 def _reads_region_domain(
