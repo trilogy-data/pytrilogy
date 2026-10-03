@@ -12,7 +12,7 @@ One registry per shape concern, lookup by derivation, fallback to a default.
 
 import hashlib
 from collections import defaultdict
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Collection, Iterable, Sequence
 
 from trilogy.core import graph as nx
 from trilogy.core.enums import (
@@ -97,10 +97,7 @@ def _split_by_label(items: list[NodeItem]) -> dict[str, list[NodeItem]]:
 
 
 def _add_member(bucket: GroupBucket, node: str, data: ConceptAttrs) -> None:
-    address = data.address
-    bucket.primary_members.append(address)
-    bucket.primary_node_ids.append(node)
-    bucket.member_depths[address] = data.depth_label
+    bucket.add_member(data.address, node, data.depth_label)
 
 
 def partition_by_depth_and_grain(
@@ -402,6 +399,15 @@ def _components(n: int, related: Iterable[tuple[int, int]]) -> list[list[int]]:
     for i in range(n):
         groups[_root(uf, i)].append(i)
     return list(groups.values())
+
+
+def overlap_components(sets: Sequence[Collection[str]]) -> list[list[int]]:
+    """Connected components of `sets` (as indices) under sharing an element."""
+    first: dict[str, int] = {}
+    return _components(
+        len(sets),
+        [(first.setdefault(e, i), i) for i, members in enumerate(sets) for e in members],
+    )
 
 
 def _property_key_pairs(main_items: list[NodeItem]) -> list[tuple[str, str]]:
