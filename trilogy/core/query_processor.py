@@ -1004,7 +1004,7 @@ def _plan_query_node(
         detail = describe_incomplete_partitions(
             list(graph.scope.datasources),
             [c for c in ds.partial_concepts if c.address in partial_requested],
-            build_environment.excluded_enum_values,
+            graph.scope.excluded_enum_values,
         )
         raise UnresolvableQueryException(
             f"Query is unresolvable: no complete sources found for output concepts"

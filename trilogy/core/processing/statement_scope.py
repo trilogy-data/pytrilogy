@@ -125,14 +125,12 @@ def _scope(
     )
     if bound is None:
         return scope
-    build_environment.excluded_enum_values = gate_excluded_enum_values(
-        build_environment, bound
-    )
     excluded = decide_exclusion(scope.datasources, bound)
     if excluded:
         scope = ScopeDatasources(
             ds for ds in scope.datasources if ds.identifier not in excluded
         )
+    scope.excluded_enum_values = gate_excluded_enum_values(build_environment, bound)
     return scope
 
 

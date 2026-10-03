@@ -311,7 +311,7 @@ def generate_graph(
         default_concept_graph=default_concept_graph,
     )
     edges: list[tuple[str, str]] = []
-    for union, emits in union_sources(g.scope.datasources, environment):
+    for union, emits in union_sources(g.scope, environment):
         node = union_to_node(union)
         g.datasources[node] = union
         g.add_datasource_node(node, union)

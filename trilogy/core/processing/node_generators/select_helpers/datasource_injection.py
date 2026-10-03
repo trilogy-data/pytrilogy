@@ -8,6 +8,7 @@ from trilogy.core.enums import (
     ComparisonOperator,
     Modifier,
 )
+from trilogy.core.graph_models import ScopeDatasources
 from trilogy.core.models.build import (
     BoolExpr,
     BuildComparison,
@@ -377,14 +378,15 @@ def get_union_sources(
 
 
 def union_sources(
-    datasources: Sequence[BuildDatasource], environment: BuildEnvironment
+    scope: ScopeDatasources, environment: BuildEnvironment
 ) -> list[tuple[BuildUnionDatasource, list[BuildConcept]]]:
     """Every covering union over the scope's partition families, with the
     concepts it emits: the outputs every arm binds, plus the derivations the
     arms compute inline that some other source is keyed on. A scope fact,
     decided once when its reference graph is generated, over the domain the
     statement's row gate leaves (``excluded_enum_values``)."""
-    excluded = environment.excluded_enum_values
+    datasources = scope.datasources
+    excluded = scope.excluded_enum_values
     out: list[tuple[BuildUnionDatasource, list[BuildConcept]]] = []
     for group in get_union_sources(datasources, excluded):
         merged = merge_conditions(

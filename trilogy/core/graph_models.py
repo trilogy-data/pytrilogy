@@ -13,6 +13,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.processing.condition_utility import (
+    ExcludedEnumValues,
     condition_implies,
     condition_implies_with_extras,
     decompose_condition,
@@ -548,12 +549,17 @@ class ScopeDatasources:
     graph is generated (`union_sources`). The
     binding facts a plan's keyspace reads are cached per object
     (`keyspace.scope_facts`), so a heal that changes nothing hands its
-    authored bindings, facts and all, to the plan."""
+    authored bindings, facts and all, to the plan. ``excluded_enum_values``
+    is the discriminator domain the statement's row gate rules out
+    (`partial_bridging.gate_excluded_enum_values`): partition-family proofs
+    (union coverage, `merge_conditions`) run over what remains, so hiding a
+    contradicted arm never breaks the proof the other arms need."""
 
-    __slots__ = ("__weakref__", "datasources")
+    __slots__ = ("__weakref__", "datasources", "excluded_enum_values")
 
     def __init__(self, datasources: Iterable[BuildDatasource]) -> None:
         self.datasources: tuple[BuildDatasource, ...] = tuple(datasources)
+        self.excluded_enum_values: ExcludedEnumValues = {}
 
 
 class ReferenceGraph(DiGraph):
