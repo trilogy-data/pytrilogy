@@ -20,6 +20,7 @@ from trilogy.core.models.author import (
     SubselectComparison,
     UndefinedConcept,
 )
+from trilogy.core.models.core import ArrayType, DataType
 from trilogy.core.models.environment import (
     DictImportResolver,
     Environment,
@@ -789,7 +790,7 @@ def test_array_literal_over_a_column_is_built_row_by_row(
         rows = executor.execute_text(
             "select order_id, arr, arr[1] as first, consts order by order_id asc;"
         )[-1].fetchall()
-        with pytest.raises(InvalidSyntaxException, match="set of types"):
+        with pytest.raises(InvalidSyntaxException, match="incompatible types"):
             executor.execute_text("auto bad <- [amount, 'a'];")
     assert [tuple(r) for r in rows] == [
         (100, [5, 10, 0], 5, [1, 2, 3]),
@@ -797,6 +798,33 @@ def test_array_literal_over_a_column_is_built_row_by_row(
     ]
     assert executor.environment.concepts["local.consts"].derivation.value == "constant"
     assert executor.environment.concepts["local.arr"].derivation.value == "basic"
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.PEST, ParserBackend.LARK])
+def test_array_value_and_row_literals_share_one_element_type_rule(
+    backend: ParserBackend,
+) -> None:
+    with _using_backend(backend):
+        executor = Dialects.DUCK_DB.default_executor()
+        executor.execute_text(
+            ARRAY_MODEL
+            + "auto nulls <- [null]; auto mixed <- [amount, 1.5, null];"
+            + "auto mixed_const <- [1, 1.5, null];"
+        )
+        for bad in ("auto b1 <- [1, 'a'];", "auto b2 <- [amount, 'a'];"):
+            with pytest.raises(InvalidSyntaxException, match="incompatible types"):
+                executor.execute_text(bad)
+        rows = executor.execute_text(
+            "select order_id, mixed, mixed_const order by order_id asc;"
+        )[-1].fetchall()
+    concepts = executor.environment.concepts
+    assert concepts["local.nulls"].datatype == ArrayType(type=DataType.NULL)
+    assert concepts["local.mixed"].datatype == ArrayType(type=DataType.FLOAT)
+    assert concepts["local.mixed_const"].datatype == ArrayType(type=DataType.FLOAT)
+    assert [tuple(r) for r in rows] == [
+        (100, [5.0, 1.5, None], [1.0, 1.5, None]),
+        (101, [7.0, 1.5, None], [1.0, 1.5, None]),
+    ]
 
 
 @pytest.mark.parametrize("backend", [ParserBackend.PEST, ParserBackend.LARK])
