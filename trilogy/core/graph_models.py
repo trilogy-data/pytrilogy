@@ -534,7 +534,9 @@ def datasource_to_node(input: BuildDatasource) -> str:
 
 
 def union_to_node(input: BuildUnionDatasource) -> str:
-    return "ds~" + "-".join(child.name for child in input.children)
+    # identifiers, not names: one model imported under two aliases has a
+    # partition family per namespace, and the two unions are distinct nodes
+    return "ds~" + "-".join(child.identifier for child in input.children)
 
 
 class ScopeDatasources:
