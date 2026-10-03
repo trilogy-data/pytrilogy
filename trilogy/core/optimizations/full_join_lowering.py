@@ -103,25 +103,22 @@ def _slots(cte: CTE, join: Join) -> list[BuildConcept]:
     positionally. That is a distinct shape, not a key mismatch, so it gets its
     own diagnosis before ``_pairs_by_slot`` sees a duplicated slot list.
     """
-    pairs = join.joinkey_pairs or []
-    slots = [pair.left for pair in pairs]
-    seen = {c.address for c in slots}
-    if len(seen) != len(slots):
-        repeated = sorted(
-            {
-                c.address
-                for c in slots
-                if [x.address for x in slots].count(c.address) > 1
-            }
-        )
+    slots = [pair.left for pair in join.joinkey_pairs or []]
+    _refuse_repeated_keys(slots, cte.name)
+    return slots
+
+
+def _refuse_repeated_keys(lefts: list[BuildConcept], cte_name: str) -> None:
+    addresses = [c.address for c in lefts]
+    repeated = sorted({a for a in addresses if addresses.count(a) > 1})
+    if repeated:
         raise _unsupported(
-            f"Cannot lower the FULL JOIN in {cte.name}: {repeated} each bind more "
+            f"Cannot lower the FULL JOIN in {cte_name}: {repeated} each bind more "
             "than one key on the same join, so a single key spine cannot "
             "represent them as distinct columns.",
             SPLIT_LEVER,
             COMPLETE_BINDING_LEVER,
         )
-    return slots
 
 
 def _pairs_by_slot(
@@ -131,8 +128,9 @@ def _pairs_by_slot(
     concept address. Every FULL join in a CTE must cover exactly the same left
     key addresses for one shared spine to serve them all."""
     pairs = join.joinkey_pairs or []
+    _refuse_repeated_keys([pair.left for pair in pairs], cte_name)
     by_address = {pair.left.address: pair for pair in pairs}
-    if len(by_address) != len(pairs) or set(by_address) != {s.address for s in slots}:
+    if set(by_address) != {s.address for s in slots}:
         raise _unsupported(
             f"Cannot lower the FULL JOINs in {cte_name}: they key off different "
             f"concepts ({sorted(by_address)} vs "

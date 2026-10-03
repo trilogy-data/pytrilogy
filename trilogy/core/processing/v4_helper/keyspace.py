@@ -801,4 +801,16 @@ def build_keyspace(
         },
         witnessed=witnessed,
         unread_spans=unread,
+        value_null_spans=_value_null_spans(datasources, canonical)
+        & spans_in_play(regions),
+    )
+
+
+def _value_null_spans(
+    datasources: list[BuildDatasource], canonical: dict[str, str]
+) -> frozenset[str]:
+    return frozenset(
+        canonical.get(c.address, c.address)
+        for ds in datasources
+        for c in ds.nullable_concepts
     )

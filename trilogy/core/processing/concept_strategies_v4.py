@@ -522,23 +522,26 @@ def _build_from_graph(
     staged_conditions: list[BuildWhereClause] | None = None,
     depth: int = 0,
 ) -> BuildInfo:
+    args = (
+        mandatory_list,
+        environment,
+        g,
+        history,
+        conditions,
+        materialized_roots,
+        complete_partials,
+        staged_conditions,
+        depth,
+    )
+    if not plan_trace.active():
+        return _build_from_graph_traced(*args)
     with plan_trace.plan_scope(
         f"plan: {', '.join(c.address for c in mandatory_list)}",
         depth,
         outputs=plan_trace.addresses(mandatory_list),
         conditions=[plan_trace.expression(c) for c in conditions],
     ):
-        return _build_from_graph_traced(
-            mandatory_list,
-            environment,
-            g,
-            history,
-            conditions,
-            materialized_roots,
-            complete_partials,
-            staged_conditions,
-            depth,
-        )
+        return _build_from_graph_traced(*args)
 
 
 def _build_from_graph_traced(

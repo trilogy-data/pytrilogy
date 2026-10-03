@@ -97,6 +97,9 @@ NULL_OPAQUE_FUNCTIONS: tuple[FunctionType, ...] = (
     FunctionType.CASE,
     FunctionType.COUNT,  # COUNT(NULL) = 0, not NULL
     FunctionType.COUNT_DISTINCT,
+    # skip NULL arguments on DuckDB and Postgres: greatest(NULL, 0) = 0
+    FunctionType.GREATEST,
+    FunctionType.LEAST,
     # a non-null array proves SOME element was non-null, not the row's own value
     FunctionType.ARRAY_AGG,
 )

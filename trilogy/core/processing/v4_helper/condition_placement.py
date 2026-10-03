@@ -616,8 +616,7 @@ def _reads_past_region_domain(
         if not bucket.extent_spans:
             continue
         region = keyspace.region_of(bucket.extent_spans)
-        if region is None:
-            continue
+        assert region is not None, bucket.extent_spans
         held = set(bucket.primary_members) | bucket.carried
         if any(
             restated_over_region(

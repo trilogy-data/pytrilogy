@@ -500,6 +500,34 @@ def test_orderless_customer_has_no_status(derived: Executor):
     ]
 
 
+# `greatest`/`least` skip a NULL argument, so on a padded row they take a value
+@pytest.mark.parametrize(
+    "query, expected",
+    [
+        (
+            "select customer_id, sum(floored) as v",
+            [(1, 30), (2, 30), (3, None)],
+        ),
+        (
+            "select customer_id, max(capped) as v",
+            [(1, 20), (2, 30), (3, None)],
+        ),
+        (
+            "select customer_id, count(floored) as v",
+            [(1, 2), (2, 1), (3, 0)],
+        ),
+    ],
+)
+def test_null_skipping_function_is_absent_on_the_region(
+    query: str, expected: list[tuple]
+):
+    executor = _executor(
+        _DERIVED
+        + "auto floored <- greatest(amount, 0);\nauto capped <- least(amount, 100);"
+    )
+    assert _rows(executor, query) == expected
+
+
 # Aggregates are evaluated OVER a region's extended rows, which is right for
 # every operator whose padded-row answer equals its empty-group answer (`count`
 # is 0 both ways, `sum`/`min`/`max`/`avg` are NULL both ways). `array_agg`
@@ -667,6 +695,77 @@ query '''select 100 as order_id, 1 as customer_id union all select 101, null''';
 
 auto customer_label <- coalesce(name, 'unknown');
 """
+
+
+_PARTIAL_NULLABLE_FK = """
+key customer_id int;
+property customer_id.name string;
+key order_id int;
+property order_id.amount int;
+
+root datasource customers (customer_id: customer_id, name: name)
+grain (customer_id)
+query '''select 1 as customer_id, 'ann' as name union all select 2, 'bob' union all select 3, 'cat' ''';
+
+root datasource orders (order_id: order_id, customer_id: ~?customer_id, amount: amount)
+grain (order_id)
+query '''select 100 as order_id, 1 as customer_id, 5 as amount union all select 101, null, 7 union all select 102, 2, 9''';
+
+auto big <- case when amount > 6 then 'big' else 'small' end;
+auto customer_label <- coalesce(name, 'unknown');
+"""
+
+
+@pytest.mark.parametrize(
+    "query, expected",
+    [
+        (
+            "select order_id, customer_label",
+            [(100, "ann"), (101, "unknown"), (102, "bob"), (None, "cat")],
+        ),
+        (
+            "select order_id, customer_label where order_id = 101",
+            [(101, "unknown")],
+        ),
+        (
+            "select order_id, customer_id where customer_id is null",
+            [(101, None)],
+        ),
+        (
+            "select customer_id, big where customer_id is null or customer_id = 3",
+            [(3, None), (None, "big")],
+        ),
+        (
+            "select order_id, name where name is null",
+            [(101, None)],
+        ),
+        (
+            "select customer_id, big",
+            [(1, "small"), (2, "big"), (3, None), (None, "big")],
+        ),
+        pytest.param(
+            "select customer_label, big, count(order_id) as n",
+            [
+                ("ann", "small", 1),
+                ("bob", "big", 1),
+                ("cat", None, 0),
+                ("unknown", "big", 1),
+            ],
+            marks=pytest.mark.xfail(strict=True, reason="padded plan: big on cat"),
+        ),
+        pytest.param(
+            "select customer_id, customer_label, count(order_id) as n",
+            [(1, "ann", 1), (2, "bob", 1), (3, "cat", 0), (None, "unknown", 1)],
+            marks=pytest.mark.xfail(strict=True, reason="label padded on NULL"),
+        ),
+    ],
+)
+def test_partial_nullable_key_null_is_a_value(query: str, expected: list[tuple]):
+    """`~?`: the order with no customer holds the NULL member, which no
+    customer row has; the customer with no order is the region."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_PARTIAL_NULLABLE_FK)
+    assert _rows(executor, query) == expected
 
 
 def test_nullable_key_is_a_value_not_absence():

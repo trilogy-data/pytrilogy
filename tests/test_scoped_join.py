@@ -1319,20 +1319,24 @@ def test_and_sugar_combines_with_chained_group(tmp_path: Path):
     assert len(sugar_parsed[-1].join_clauses) == 3
 
 
-def test_and_sugar_parity_across_backends(multi_models: Path):
+@pytest.mark.parametrize("join_kind", ["subset", "equal"])
+def test_and_sugar_parity_across_backends(multi_models: Path, join_kind: str):
     from trilogy.constants import ParserBackend
 
-    text = """
+    text = f"""
 import orders as orders;
 import customers as customers;
 import shipments as shipments;
 
-subset join customers.customer_id = orders.customer_id and customers.customer_id = shipments.customer_id
+{join_kind} join customers.customer_id = orders.customer_id and customers.customer_id = shipments.customer_id
 SELECT customers.region, sum(orders.order_amount) -> amt, sum(shipments.ship_count) -> ships;
 """
     _, lark_parsed = _parse_with_backend(text, multi_models, ParserBackend.LARK)
     _, pest_parsed = _parse_with_backend(text, multi_models, ParserBackend.PEST)
     assert _join_tuples(lark_parsed[-1]) == _join_tuples(pest_parsed[-1])
+    assert {t[0] for t in _join_tuples(pest_parsed[-1])} == {
+        JoinType.EQUAL if join_kind == "equal" else JoinType.LEFT_OUTER
+    }
 
 
 def test_and_sugar_renders_as_split_joins(multi_models: Path):

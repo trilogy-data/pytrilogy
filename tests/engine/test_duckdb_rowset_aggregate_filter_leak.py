@@ -80,14 +80,12 @@ def test_rowset_handle_filter_applies():
 def test_filtered_rowset_body_intersects_with_base_filter():
     """The rowset keeps oids 1 and 3; `cat = 'a'` keeps 1 and 2. The declared
     key is one axis read from the superset side, so the padded oid 2 carries a
-    NULL value: counting the value counts the intersection."""
-    assert (
-        _total(
-            "with rs as select oid, amt where amt > 1;\n"
-            f"select count(rs.amt) -> c {JOIN} where cat = 'a';"
-        )
-        == 1
-    )
+    NULL value: counting the value counts the intersection, counting the key
+    counts the superset's filtered rows."""
+    assert _rows(
+        "with rs as select oid, amt where amt > 1;\n"
+        f"select count(rs.amt) -> c, count(rs.oid) -> k {JOIN} where cat = 'a';"
+    ) == [(1, 2)]
 
 
 def test_grouped_rowset_handle_aggregate_filter_applies():

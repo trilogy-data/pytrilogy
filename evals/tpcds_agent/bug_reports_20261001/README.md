@@ -15,9 +15,13 @@ first**. Each was checked on HEAD, `main` (`6da921434`) and `440caabc5` (2026-08
 
 ## Running the repros
 
-`model/` holds the ingest leg's auto-generated model (`root/`) and `model_enriched/` the
-enriched leg's curated model (`raw/`); both `trilogy.toml`s point at the eval's cached sf=1
-DuckDB, `evals/tpcds_agent/.cache/tpcds_sf1.duckdb` (built by any eval run; gitignored).
+The repros import the models they ran against, which are not checked in:
+`model/` needs the ingest leg's auto-generated model in `model/root/` (`trilogy ingest --all`
+from an eval run) and `model_enriched/` the curated model in `model_enriched/raw/` (a copy of
+`tests/modeling/tpc_ds_duckdb/*.preql`). Point a `trilogy.toml` beside each at the eval's
+cached sf=1 DuckDB, `evals/tpcds_agent/.cache/tpcds_sf1.duckdb` (built by any eval run;
+gitignored). The fixed bugs are covered by tests under `tests/engine/` that do not need
+this folder.
 
 ```bash
 cd evals/tpcds_agent/bug_reports_20261001/model

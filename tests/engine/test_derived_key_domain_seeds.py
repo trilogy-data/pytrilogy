@@ -1,12 +1,9 @@
 """Planning must not depend on the interpreter hash seed.
 
 `select customer_id, name` beside an order-grain WHERE builds a row stream for
-the order atoms and a customer dim peeled off it, both exposing `customer_id`.
-The FINAL cover took the key from whichever was built first, a topological
-order that followed set iteration in the concept graph: with the dim first the
-order stream (and its `status` atom) left the plan. A second fact binding
-`~customer_id` stamped its own key onto `customer_id.keys`, which the ROOT
-fallback demanded as a grain key and INNER-joined in.
+the order atoms and a customer dim peeled off it, both exposing `customer_id`;
+the FINAL cover must keep the order stream whichever is built first. A second
+fact binding `~customer_id` must not make the key a demanded grain key.
 """
 
 import json
@@ -14,8 +11,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-
-import pytest
 
 SEEDS = ("0", "2", "3", "5")
 
@@ -46,18 +41,21 @@ def _run() -> dict[str, list]:
     return {query: [list(r) for r in _rows(executor, query)] for query in QUERIES}
 
 
-@pytest.mark.parametrize("seed", SEEDS)
-def test_rows_hold_under_every_hash_seed(seed: str):
-    proc = subprocess.run(
-        [sys.executable, __file__],
-        capture_output=True,
-        text=True,
-        timeout=300,
-        env={**os.environ, "PYTHONHASHSEED": seed, "PYTHONIOENCODING": "utf-8"},
-        check=False,
-    )
-    assert proc.returncode == 0, proc.stderr
-    assert json.loads(proc.stdout.splitlines()[-1]) == QUERIES
+def test_rows_hold_under_every_hash_seed():
+    procs = {
+        seed: subprocess.Popen(
+            [sys.executable, __file__],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env={**os.environ, "PYTHONHASHSEED": seed, "PYTHONIOENCODING": "utf-8"},
+        )
+        for seed in SEEDS
+    }
+    for seed, proc in procs.items():
+        stdout, stderr = proc.communicate(timeout=300)
+        assert proc.returncode == 0, (seed, stderr)
+        assert json.loads(stdout.splitlines()[-1]) == QUERIES, seed
 
 
 if __name__ == "__main__":

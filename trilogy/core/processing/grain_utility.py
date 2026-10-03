@@ -425,6 +425,7 @@ def _is_filter_population(
     partner_partial: set[str],
     partner_regions: frozenset[str] = frozenset(),
     partner_filtered_regions: frozenset[str] = frozenset(),
+    partner_nullable: frozenset[str] = frozenset(),
 ) -> bool:
     """Whether this side's row set IS the request WHERE's population.
 
@@ -439,8 +440,12 @@ def _is_filter_population(
     member to preserve. A partner that applied the WHERE itself and holds a
     region's rows this side lacks keeps them on any key: they passed the
     WHERE there, and are NULL on a key absent on the region (`count(customer_id)
-    by status where name = 'cat'` beside `sum(amount) by status`)."""
-    if identifier not in filtered_ids:
+    by status where name = 'cat'` beside `sum(amount) by status`). A partner
+    whose key is NULL on some row (a `~?` binding) holds a member this side
+    never has, and the WHERE was never tested on it here: `where customer_id
+    is null` keeps the order with no customer. A null-rejecting WHERE still
+    narrows through its proofs (`downgrade_join_for_proofs`)."""
+    if identifier not in filtered_ids or join_addresses & partner_nullable:
         return False
     source = by_id.get(identifier)
     if source is None:
@@ -559,6 +564,10 @@ def downgrade_directional_join_for_proofs(
         join.join_type = JoinType.INNER
 
 
+def _nullable_addresses(source: GrainSource) -> frozenset[str]:
+    return frozenset(c.address for c in source.nullable_concepts)
+
+
 def tighten_join_for_filtered_branch(
     join: BaseJoin | UnnestJoin,
     filtered_ids: set[str],
@@ -583,12 +592,14 @@ def tighten_join_for_filtered_branch(
     for pair in join.concept_pairs or []:
         left_ids.add(pair.existing_datasource.identifier)
     left_partial: set[str] = set()
+    left_nullable: frozenset[str] = frozenset()
     left_regions: frozenset[str] = frozenset()
     left_filtered_regions: frozenset[str] = frozenset()
     for identifier in left_ids:
         source = by_id.get(identifier)
         if source is not None:
             left_partial |= {c.address for c in source.partial_concepts}
+            left_nullable |= _nullable_addresses(source)
             if isinstance(source, QueryDatasource):
                 left_regions |= source.region_spans
                 if identifier in filtered_ids:
@@ -606,6 +617,7 @@ def tighten_join_for_filtered_branch(
         left_partial,
         left_regions,
         left_filtered_regions,
+        left_nullable,
     )
     left_filtered = any(
         _is_filter_population(
@@ -616,6 +628,7 @@ def tighten_join_for_filtered_branch(
             right_partial,
             right_regions,
             right_regions if right.identifier in filtered_ids else frozenset(),
+            _nullable_addresses(right),
         )
         for identifier in left_ids
     )

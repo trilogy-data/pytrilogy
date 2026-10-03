@@ -1,48 +1,46 @@
+# Modeling concepts
 
+A Trilogy model is built from three ideas:
 
-Modeling is based around the following key concepts
+1. **Keys** define a domain, alone or in combination.
+2. **Properties** hang off a domain's keys.
+3. **Domains** are bounded sets of facts: a property has a value only where its
+   keys exist.
 
+Take customers and orders. A customer's address and name are properties of
+`customer.id`. An order's ship date, product and destination are properties of
+`order.id`.
 
-1. Keys. Keys define a domain(s), either alone or in combination.
+A derived concept belongs to the domain of the keys it reads. This one is a
+property of `order.id` too, whether the model declares it there or Trilogy
+infers it:
 
-2. Properties; properties hang off a domain keyset.
+```
+auto is_shipped <- case when ship_date is not null then true else false end;
+```
 
-3. Domains; domains define a bounded set of facts.
+## Domains decide what NULL means
 
+When a query is resolved, the domains of its outputs decide what each row is,
+which matters most for NULLs. Suppose not every customer has an order:
 
-Let's make this concrete; classic customers and orders.
-
-Customer address, name, etc are properties of the key customer.id.
-
-Order ship date, product, destination are properties of the key order.id.
-
-If we define a new concept - "is_it_shipped" - that is CASE WHEN ship_date is not null then True else False End - this is a _property_ of the order.id
-domain as well. This can be defined explicitly in the model, or inferred 
-
-
-When we go to resolve a query, the _domains_ determine what the expected resolution is - which is particularly crucial for nulls (unknown values)
-
-Let's take an example;
-
-if we query 
 ```
 select
-customer.id,
-ship_date,
-is_it_shipped,
-case when ship_date is not null then True else False END is_it_shipped_two
+    customer.id,
+    ship_date,
+    is_shipped,
+    case when ship_date is not null then true else false end as is_shipped_two;
 ```
 
-and not every customer has an order, we will get NULL rows for is_it_shipped and is_it_shipped_two.
-(we'll also get null rows for ship_date, but perhaps that is less surprising?)
+The customer with no order gets NULL for `ship_date`, and NULL for both
+`is_shipped` and `is_shipped_two`, even though each CASE has an ELSE that would
+seem to rule NULL out.
 
-This is confusing, right? Is_it_shipped_two defines a else that would seem to ensure we 
-do not have any nulls?
+That follows from one invariant: **a query returns the same rows whether a
+derived property is computed or stored.** Had `is_shipped` been materialized as
+a column of the orders table, that table would have no row for a customer
+without an order, and the join would give NULL. The computed version must
+agree.
 
-But it's required because of the principled invariant; if we materialized
-that case definition in the order domain to the table, we would not have rows for customers without orders;
-and so the virtual select must return the same results for that property
-as if it were physically materialized. 
-
-If we populated it with the fallback, that would be equivalent to creating a default
-ship_date.
+Filling in the ELSE value instead would be the same as inventing a default ship
+date for an order that does not exist.

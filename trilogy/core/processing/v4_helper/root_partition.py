@@ -869,8 +869,8 @@ def _keep_extension_families_together(
     the region's domain, which it can only be if it holds something absent on
     the region too: holding only what the domain carries it reads the span off
     the table it was peeled onto (`test_field_report_select` read `user_id`
-    through the orders and stopped reading the items' own binding; tpc-h
-    adhoc07 joined `orders` a second time at FINAL). Un-peeled, the members
+    through the orders and stopped reading the items' own binding; a TPC-H
+    select joined `orders` a second time at FINAL). Un-peeled, the members
     ride the row stream the region's rows join back to."""
     carrying = {
         assignment[address]

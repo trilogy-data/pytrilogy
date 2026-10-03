@@ -544,7 +544,9 @@ def _watch_termination(
     """A Python signal handler runs only between bytecodes, so a run hung in C
     (a DuckDB query) never reaches `_raise_exit`. The C-level handler still
     writes the signal number to the wakeup socket: if the run has not unwound
-    by the end of the grace period, clean up from here and exit."""
+    by the end of the grace period, clean up from here and exit. The wakeup fd
+    hears every signal, so a Ctrl-C (SIGINT) on a hung run is cleaned up the
+    same way."""
     with reader:
         try:
             received = reader.recv(1)

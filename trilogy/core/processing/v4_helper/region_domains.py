@@ -297,6 +297,29 @@ def _own_bucket(
     return domain
 
 
+def _takes_a_value_on_a_null_member(
+    buckets: dict[str, GroupBucket],
+    label: str,
+    region: Region,
+    keyspace: Keyspace,
+    environment: BuildEnvironment,
+) -> bool:
+    """A row-level derivation of what the region carries that is not NULL on a
+    fact row keyed on the span's NULL member, where every entity but the
+    span's is present. An aggregate groups that member on the fact's rows."""
+    if not region.spans & keyspace.value_null_spans:
+        return False
+    row = Region(present=keyspace.regions[0].present - region.spans)
+    return any(
+        b.derivation == Derivation.BASIC
+        and keyspace.carried_on(m, region)
+        and takes_a_value_on_padding(m, row, keyspace, environment)
+        for b in buckets.values()
+        if b.label == label
+        for m in b.primary_members
+    )
+
+
 def _region_domain(
     region: Region,
     label: str,
@@ -319,6 +342,14 @@ def _region_domain(
         region, keyspace, concept_attrs, environment, label
     ):
         return None
+    if _takes_a_value_on_a_null_member(buckets, label, region, keyspace, environment):
+        # a fact binding the span `?` holds a NULL member no dimension row
+        # does: `coalesce(name, 'unknown')` is 'unknown' on its rows, which a
+        # domain computing it on the dimension's rows pads instead. The padded
+        # plan evaluates it over the united rows.
+        return RegionDomain(
+            region, DomainKind.PADDED, label, carried, note="value-NULL span"
+        )
     scope = (buckets, label, region, keyspace, environment)
     named, inline = _named_value_on_padding(*scope), _inline_values_on_padding(*scope)
     if carried & rollup_padded and (
@@ -437,10 +468,9 @@ def decide_region_domains(
     labels = sorted({b.label for b in buckets.values()})
     domains: list[RegionDomain] = []
     for region in keyspace.live_regions:
-        if not region.has_own_rows or not all(
-            span in environment.concepts for span in region.spans
-        ):
+        if not region.has_own_rows:
             continue
+        assert all(span in environment.concepts for span in region.spans), region
         for label in labels:
             domain = _region_domain(
                 region,
@@ -478,8 +508,7 @@ def carry_region_spans(
     the span. Without it the merge is keyless."""
     for bucket in domains:
         region = keyspace.region_of(bucket.extent_spans)
-        if region is None:
-            continue
+        assert region is not None, bucket.extent_spans
         scope = _scope_and_phase(bucket.label)[0]
         solid = [
             b
@@ -672,11 +701,10 @@ def feed_region_domains_to_present_scalars(
         and (region := keyspace.region_of(domain.extent_spans)) is not None
     ]
     for domain_gid, domain in list(attrs.items()):
-        region = (
-            keyspace.region_of(domain.extent_spans) if domain.extent_spans else None
-        )
-        if region is None:
+        if not domain.extent_spans:
             continue
+        region = keyspace.region_of(domain.extent_spans)
+        assert region is not None, domain.extent_spans
         scope = _scope_and_phase(domain.label)[0]
         # a row stream that must never see an extension row (`solid_groups`)
         # keeps every aggregate it reads solid too

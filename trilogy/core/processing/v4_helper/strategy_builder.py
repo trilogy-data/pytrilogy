@@ -11,6 +11,7 @@ filters and output-grain deduping.
 Parents are explicit, derived from the group graph's lineage edges;
 generator dispatch lives in `v4_node_generators.dispatch.build_node`."""
 
+import logging
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
@@ -1271,10 +1272,14 @@ def _parent_nodes_for(
         conditions = _wrap_atoms(attrs[pgid].condition_atoms)
         asked = root_requests.get(pgid)
         preexisting = asked.preexisting if asked else None
+        # a slice is the parent's rows narrowed, so it is sourced under the
+        # parent's own scope: under the consumer's, a span a region domain owns
+        # is completed again, and the slice grows a join instead of losing one
+        consumer_scope = environment.span_scope
         request = RootRequest(
             frozenset(slice_addresses),
             conditions,
-            environment.span_scope,
+            asked.scope if asked else consumer_scope,
             preexisting=preexisting,
         )
         if asked == request:
@@ -1284,29 +1289,33 @@ def _parent_nodes_for(
             for address in sorted(slice_addresses)
             if (c := _concept_at(environment, address)) is not None
         ]
-        sliced = build_node(
-            derivation=Derivation.ROOT,
-            outputs=outputs,
-            parents=[],
-            environment=environment,
-            conditions=conditions,
-            preexisting_conditions=preexisting,
-            complete_partials=complete_partials,
-            history=history,
-            g=graph,
-            staged_conditions=staged_conditions,
-        )
-        if sliced is None:
-            sliced = plan_source(
-                SourceRequest(
-                    outputs=outputs,
-                    environment=environment,
-                    graph=graph,
-                    history=history,
-                    conditions=conditions,
-                    complete_partials=complete_partials,
-                )
+        environment.span_scope = request.scope
+        try:
+            sliced = build_node(
+                derivation=Derivation.ROOT,
+                outputs=outputs,
+                parents=[],
+                environment=environment,
+                conditions=conditions,
+                preexisting_conditions=preexisting,
+                complete_partials=complete_partials,
+                history=history,
+                g=graph,
+                staged_conditions=staged_conditions,
             )
+            if sliced is None:
+                sliced = plan_source(
+                    SourceRequest(
+                        outputs=outputs,
+                        environment=environment,
+                        graph=graph,
+                        history=history,
+                        conditions=conditions,
+                        complete_partials=complete_partials,
+                    )
+                )
+        finally:
+            environment.span_scope = consumer_scope
         if sliced is None:
             return node.copy()
         if not (
@@ -3409,7 +3418,7 @@ def _add_region_domain_contributors(
     as c2`) is rendered on the domain: any other host holds it for the matched
     members only. Still reachable: the alias rides its source's ROOT bucket,
     so `feed_region_domains_to_present_scalars` never sees it as a group of
-    its own (`test_unsold_item_counts_no_lines`, the oracle's `c2` case)."""
+    its own (`test_unsold_item_counts_no_lines`)."""
     for gid in sorted(built):
         if not attrs[gid].extent_spans:
             continue
@@ -5685,12 +5694,13 @@ def build_strategy_node(
             node.origin_group = gid
         if node is not None and request is not None:
             root_requests[gid] = request
-        logger.info(
-            f"[v4] built {gid} derivation={derivation} "
-            f"outputs={[o.address for o in outputs]} "
-            f"parents={[type(p).__name__ for p in parents]} "
-            f"-> {type(node).__name__ if node else None}"
-        )
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(
+                f"[v4] built {gid} derivation={derivation} "
+                f"outputs={[o.address for o in outputs]} "
+                f"parents={[type(p).__name__ for p in parents]} "
+                f"-> {type(node).__name__ if node else None}"
+            )
         if plan_trace.active():
             plan_trace.record(
                 f"built {gid}",
