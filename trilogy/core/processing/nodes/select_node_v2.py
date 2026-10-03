@@ -327,9 +327,9 @@ class SelectNode(StrategyNode):
 class RowsetNode(SelectNode):
     """The boundary projection over a rowset body: re-exposes the body's
     columns under the outer rowset handle addresses, 1:1 with the body's
-    rows. A distinct type so the boundary is recognizable by `isinstance`;
-    it adds no behavior of its own (a merge above it keeps the body's rows
-    through the rowset-output check in `MergeNode._resolve`)."""
+    rows. Its only behavior is `region_boundary`: `region_reads` stops here,
+    since what the body read is the body's (a merge above it keeps the body's
+    rows through the rowset-output check in `MergeNode._resolve`)."""
 
     region_boundary = True
 

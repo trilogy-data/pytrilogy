@@ -21,7 +21,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import ConceptPair, QueryDatasource, UnnestJoin
 from trilogy.core.processing.condition_utility import (
-    condition_proves_non_null,
+    drop_proven_non_null,
     merge_conditions_and_dedup,
 )
 from trilogy.utility import unique
@@ -329,14 +329,9 @@ class StrategyNode:
         Anything that reasons about the condition itself (e.g.
         ``StripRedundantNotNull``) must not treat absence as ground truth.
         """
-        if not self.conditions or not self.nullable_concepts:
-            return
-        proven = condition_proves_non_null(self.conditions)
-        if not proven:
-            return
-        self.nullable_concepts = [
-            c for c in self.nullable_concepts if c.address not in proven
-        ]
+        self.nullable_concepts = drop_proven_non_null(
+            self.nullable_concepts, self.conditions
+        )
 
     def derive_partials(
         self, partial_concepts: list[BuildConcept] | None = None
@@ -488,15 +483,14 @@ class StrategyNode:
         # join analysis after its first resolve, so copies built before and
         # after that resolve would otherwise plan differently. The node's own
         # condition refinement still applies on top.
-        nullable = unique(
-            self.nullable_concepts
-            + get_all_parent_nullable(self.output_concepts, parent_sources),
-            "address",
+        nullable = drop_proven_non_null(
+            unique(
+                self.nullable_concepts
+                + get_all_parent_nullable(self.output_concepts, parent_sources),
+                "address",
+            ),
+            self.conditions,
         )
-        if self.conditions:
-            proven = condition_proves_non_null(self.conditions)
-            if proven:
-                nullable = [c for c in nullable if c.address not in proven]
         # Partiality likewise comes from the resolved parents: an output every
         # supplying parent binds partially stays partial through a projection.
         parent_partial = [
