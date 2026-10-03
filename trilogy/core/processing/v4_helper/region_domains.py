@@ -514,6 +514,8 @@ def decide_region_domains(
             )
             if domain is not None:
                 domains.append(domain)
+    owned = [d.region for d in domains if d.bucket is not None]
+    assert len(owned) == len(set(owned)), "two OWN domains for one region"
     return domains
 
 
