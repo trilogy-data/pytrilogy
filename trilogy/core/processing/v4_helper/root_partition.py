@@ -496,50 +496,29 @@ def _row_arg_lineage_closure(arg: BuildConcept) -> set[str]:
     return closure
 
 
-def _pre_aggregate_filter_args(
+def _filter_args(
     conditions: list[BuildWhereClause],
-) -> frozenset[str]:
-    """Row-arg addresses of WHERE clauses that contain NO aggregate term: pure
-    pre-aggregate filters that narrow the rows feeding an aggregate (an
-    ``item.category in (...)`` that also bounds a class-total window).
-    Expanded through each arg's lineage closure: a derived filter arg's ROOT
-    inputs must stay on the fact scan too, or the group hosting the filter
-    cannot render the derived expression.
+) -> tuple[frozenset[str], frozenset[str]]:
+    """Row-arg addresses of the pre-aggregate and the post-aggregate WHERE
+    clauses (those with no aggregate term, and those with one).
 
-    A clause that DOES carry an aggregate is a HAVING-style post-aggregate
-    filter: its dim args filter the OUTPUT after aggregation, so peeling them
-    to a post-aggregate dim join is faithful. A pre-aggregate filter column
-    peeled that way would move the WHERE after the aggregate (wrong sums /
-    wrong window denominator)."""
-    args: set[str] = set()
+    A pre-aggregate filter narrows the rows feeding an aggregate, so its args
+    stay on the fact scan, expanded through their lineage closure so the host
+    can render a derived arg; peeled to a dim join it would apply after the
+    aggregate (wrong sums). A post-aggregate (HAVING-style) arg filters the
+    OUTPUT, so peeling it to a dim scan semijoined on the entity key is
+    faithful; a filter-only one peels only beside an output of its cluster."""
+    pre: set[str] = set()
+    post: set[str] = set()
     for clause in conditions:
         if any(
             arg.derivation == Derivation.AGGREGATE for arg in clause.concept_arguments
         ):
-            continue
-        for arg in clause.row_arguments:
-            args |= _row_arg_lineage_closure(arg)
-    return frozenset(args)
-
-
-def _post_aggregate_filter_args(
-    conditions: list[BuildWhereClause],
-) -> frozenset[str]:
-    """Row-arg addresses of WHERE clauses that DO contain an aggregate term:
-    HAVING-style post-aggregate filters (``total > scaled and
-    customer.address.state = 'GA'``).
-
-    A HAVING dim arg filters the OUTPUT after aggregation, so peeling it to a
-    standalone dim scan and semijoining on the entity key is faithful: one CTE
-    sources the customer dims AND applies ``state = 'GA'``. A filter-only HAVING
-    arg peels only beside an output of the same cluster, which anchors it."""
-    args: set[str] = set()
-    for clause in conditions:
-        if any(
-            arg.derivation == Derivation.AGGREGATE for arg in clause.concept_arguments
-        ):
-            args |= {arg.address for arg in clause.row_arguments}
-    return frozenset(args)
+            post |= {arg.address for arg in clause.row_arguments}
+        else:
+            for arg in clause.row_arguments:
+                pre |= _row_arg_lineage_closure(arg)
+    return frozenset(pre), frozenset(post)
 
 
 def _post_aggregate_basic_args(
@@ -1223,14 +1202,14 @@ def partition_root_demand(
     projected_scalar_root_args = _projected_scalar_root_args(
         mandatory_list, _grouping_keys(buckets)
     )
+    pre_aggregate_args, post_aggregate_args = _filter_args(conditions)
     _split_root_dimension_clusters(
         buckets,
         primary_group,
         environment,
         output_addresses | projected_scalar_root_args,
-        _pre_aggregate_filter_args(conditions),
-        _post_aggregate_filter_args(conditions)
-        | _post_aggregate_basic_args(mandatory_list),
+        pre_aggregate_args,
+        post_aggregate_args | _post_aggregate_basic_args(mandatory_list),
         _finer_filter_grains(conditions),
         domains,
         concept_graph,

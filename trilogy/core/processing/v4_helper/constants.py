@@ -6,6 +6,10 @@ from trilogy.core.enums import Derivation
 # the grain of a `by *` aggregate: one value for every row of the statement
 ALL_ROWS_ADDRESS = f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"
 
+# `V4History.witness_floor` when no live rowset-witness placeholder was read:
+# deeper than any witness depth
+NO_WITNESS_FLOOR = 1 << 30
+
 
 class DepthLabel(Enum):
     """Placement role of a concept (or group) in the v4 plan."""

@@ -1323,6 +1323,7 @@ def _anchor_scalars_to_dim_peel_key(
     group_edges: EdgeMap,
     facts: dict[str, GroupFacts],
     attrs: dict[str, GroupAttrs],
+    region_join_keys: frozenset[str],
 ) -> None:
     """A BASIC reading only a dim-peel scan runs on that scan's rows, one per
     entity key, whatever grain its own lineage pins.
@@ -1336,17 +1337,10 @@ def _anchor_scalars_to_dim_peel_key(
     is not the scan's key: `status` over the orders scan carrying
     `customer_id` for the domain stays at the order grain, or it cannot carry
     `amount` for the WHERE and is joined to its own parent on the span."""
-    region_join_keys: frozenset[str] = frozenset().union(
-        *(a.extent_spans for a in attrs.values())
-    )
     for gid, fact in facts.items():
         if gid == FINAL_NODE_ID or fact.derivation != Derivation.BASIC:
             continue
-        parents = [
-            pred
-            for pred in group_graph.predecessors(gid)
-            if edge_kind(group_edges, pred, gid) == EdgeKind.LINEAGE
-        ]
+        parents = _lineage_predecessors(group_graph, group_edges, gid)
         keys = {
             attrs[pred].anchor_keys - region_join_keys
             for pred in parents
@@ -1451,11 +1445,7 @@ def _widen_mixed_scalar_basic_to_final_spine(
             continue
         if not group_graph.has_edge(gid, FINAL_NODE_ID):
             continue
-        lineage_preds = [
-            pred
-            for pred in group_graph.predecessors(gid)
-            if edge_kind(group_edges, pred, gid) == EdgeKind.LINEAGE
-        ]
+        lineage_preds = _lineage_predecessors(group_graph, group_edges, gid)
         pred_derivations = {facts[pred].derivation for pred in lineage_preds}
         if Derivation.ROOT not in pred_derivations or not (
             pred_derivations & GROUPING_DERIVATIONS
@@ -1637,7 +1627,13 @@ def _compute_concept_sets(
         group_graph, group_edges, facts, lineage_parents
     )
     _widen_window_grain_to_grouping_parent(group_graph, group_edges, facts, environment)
-    _anchor_scalars_to_dim_peel_key(group_graph, group_edges, facts, attrs)
+    # what a region domain's rows join back on, at FINAL
+    region_join_keys: frozenset[str] = frozenset().union(
+        *(a.extent_spans for a in attrs.values())
+    )
+    _anchor_scalars_to_dim_peel_key(
+        group_graph, group_edges, facts, attrs, region_join_keys
+    )
     _widen_mixed_scalar_basic_to_final_spine(
         group_graph,
         group_edges,
@@ -1660,10 +1656,6 @@ def _compute_concept_sets(
     pseudonym_mates = {k: frozenset(v) for k, v in mate_accumulator.items()}
 
     io = GroupIOPlan.for_groups(group_graph)
-    # what a region domain's rows join back on, at FINAL
-    region_join_keys: frozenset[str] = frozenset().union(
-        *(a.extent_spans for a in attrs.values())
-    )
     # what a region domain carries: a solid ROOT beside it does not emit those
     # to a consumer that reads the domain (FINAL, an aggregate over the
     # region), or the scan joins the dimension for a column it never uses
