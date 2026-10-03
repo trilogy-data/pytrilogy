@@ -139,6 +139,15 @@ def _complete_distinct(
     return False
 
 
+def _extent_free(concept: BuildConcept, side_cte: CTE) -> bool:
+    """The side was planned not to extend the concept's span: a region domain
+    elsewhere holds the rows it lacks, so it carries only part of the key."""
+    keys = _key_addresses(concept)
+    if isinstance(concept.lineage, BuildRowsetItem):
+        keys.add(concept.lineage.content.address)
+    return bool(keys & side_cte.source.extent_free_spans)
+
+
 def _own_coverage_partial(
     concept: BuildConcept, side_cte: CTE, graph: DomainGraph
 ) -> bool:
@@ -193,6 +202,11 @@ def _rowset_definition_boundary(
         return False
     addr = concept.address
     if not any(out.address == addr for out in side_cte.output_columns):
+        return False
+    if _extent_free(concept, side_cte) or any(
+        isinstance(parent, CTE) and _extent_free(concept, parent)
+        for parent in side_cte.parent_ctes
+    ):
         return False
     if not side_cte.parent_ctes:
         return not _filters_own_rowset_outputs(concept, side_cte)
@@ -389,7 +403,7 @@ def _complete_values(
     row LIMIT anywhere in the chain vetoes unconditionally."""
     if not isinstance(side_cte, CTE):
         return False
-    if _row_limited(side_cte):
+    if _row_limited(side_cte) or _extent_free(concept, side_cte):
         return False
     keys = _key_addresses(concept)
     if not _own_coverage_partial(concept, side_cte, graph):

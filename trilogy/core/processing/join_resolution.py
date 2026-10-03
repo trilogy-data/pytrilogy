@@ -557,7 +557,7 @@ def _extent_free_join(
     should be re-read over (the span excluded) when both sides bind it.
     """
     free = facts.extent_free_keys
-    if not free or facts.authored(keys):
+    if not free:
         return None, None
     left_facts, right_facts = facts.side(left), facts.side(right)
     span_keys = (keys & free) & (left_facts.partials | right_facts.partials)
