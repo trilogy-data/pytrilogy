@@ -403,8 +403,12 @@ def _key_reduces_to(
 
 
 def concepts_to_build_grain_concepts(
-    concepts: Iterable[BuildConcept | str], environment: BuildEnvironment | None
+    concepts: Iterable[BuildConcept | str],
+    environment: BuildEnvironment | None,
+    padded: frozenset[str] = frozenset(),
 ) -> set[str]:
+    """The minimal components identifying rows over `concepts`. A `padded`
+    (NULL-extended) address determines nothing: its NULL rows are many."""
     pconcepts: list[BuildConcept] = []
     for c in concepts:
         if isinstance(c, BuildConcept):
@@ -429,11 +433,12 @@ def concepts_to_build_grain_concepts(
     # `grain_satisfied_by_pregrain` checks (a stray alias makes pregrain
     # look like a superset of the target and force_group=True flips on).
     # Sorting by `len(equivalent_addresses)` puts canonicals first.
+    determinants = [c for c in pconcepts if c.address not in padded]
     final: set[str] = set()
     for sub in sorted(
         pconcepts, key=lambda c: (len(c.equivalent_addresses), c.address)
     ):
-        if not concept_is_relevant(sub, pconcepts):
+        if not concept_is_relevant(sub, determinants):
             continue
         if final & sub.equivalent_addresses:
             continue
@@ -449,7 +454,9 @@ def concepts_to_build_grain_concepts(
         reduced = set(final)
         for addr in sorted(final):
             keys = _addr_keys(addr, environment, pmap)
-            if keys and _key_reduces_to(keys, reduced - {addr}, environment, pmap):
+            if keys and _key_reduces_to(
+                keys, reduced - {addr} - padded, environment, pmap
+            ):
                 reduced.discard(addr)
         final = reduced
 
@@ -631,11 +638,12 @@ class BuildGrain:
         concepts: Iterable[BuildConcept | str],
         environment: BuildEnvironment | None = None,
         where_clause: BuildWhereClause | None = None,
+        padded: frozenset[str] = frozenset(),
     ) -> BuildGrain:
 
         return BuildGrain(
             components=concepts_to_build_grain_concepts(
-                concepts, environment=environment
+                concepts, environment=environment, padded=padded
             ),
             where_clause=where_clause,
         )

@@ -1,3 +1,5 @@
+from collections.abc import Iterable
+
 from trilogy.constants import logger
 from trilogy.core.enums import (
     Derivation,
@@ -53,7 +55,11 @@ from trilogy.core.processing.nodes.base_node import (
     resolve_concept_map,
     resolve_existence_map,
 )
-from trilogy.core.processing.utility import find_nullable_concepts
+from trilogy.core.processing.utility import (
+    find_nullable_concepts,
+    left_deep_joins,
+    padded_by,
+)
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - MERGE NODE]"
@@ -69,6 +75,34 @@ def _has_applied_condition(source: QueryDatasource | BuildDatasource) -> bool:
 
 def _region_spans(source: QueryDatasource | BuildDatasource) -> frozenset[str]:
     return source.region_spans if isinstance(source, QueryDatasource) else frozenset()
+
+
+def _join_padded_addresses(
+    source_map: dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]],
+    joins: list[BaseJoin | UnnestJoin],
+) -> frozenset[str]:
+    """Addresses an outer join here leaves NULL on some row: every source of
+    the address is padded, and no FULL join coalesces it as its key."""
+    padded_ids: set[str] = set()
+    full_keys: set[str] = set()
+    for join, left in left_deep_joins(joins):
+        padded_ids |= padded_by(join, left)
+        if join.join_type == JoinType.FULL:
+            for pair in join.concept_pairs or []:
+                full_keys |= {pair.left.address, pair.right.address}
+    if not padded_ids:
+        return frozenset()
+    return frozenset(
+        address
+        for address, sources in source_map.items()
+        if sources
+        and address not in full_keys
+        and all(
+            isinstance(source, (BuildDatasource, QueryDatasource))
+            and source.identifier in padded_ids
+            for source in sources
+        )
+    )
 
 
 def _key_equivalence_classes(pairs: list[tuple[str, str]]) -> list[set[str]]:
@@ -649,6 +683,10 @@ class MergeNode(StrategyNode):
         )
 
         grain = self.grain if self.grain else raw_pregrain
+        # what the claim was reduced from, re-reduced below once padding is known
+        grain_basis: Iterable[BuildConcept | str] | None = (
+            None if self.grain else raw_pregrain_components
+        )
         logger.info(
             f"{self.logging_prefix}{LOGGER_PREFIX} has pre grain {raw_pregrain} and final merge node grain {grain}"
         )
@@ -692,6 +730,7 @@ class MergeNode(StrategyNode):
         if anti_grain is not None:
             grain = anti_grain
             pregrain = anti_grain
+            grain_basis = None
         logger.debug(
             f"{self.logging_prefix}{LOGGER_PREFIX} effective joined pregrain is {pregrain}"
         )
@@ -855,6 +894,7 @@ class MergeNode(StrategyNode):
             grain = BuildGrain.from_concepts(
                 self.output_concepts, environment=self.environment
             )
+            grain_basis = self.output_concepts
         rollup_concepts = unique(
             self.rollup_concepts
             + [
@@ -871,8 +911,16 @@ class MergeNode(StrategyNode):
             grain = BuildGrain.from_concepts(
                 self.output_concepts, environment=self.environment
             )
+            grain_basis = self.output_concepts
             logger.info(
                 f"{self.logging_prefix}{LOGGER_PREFIX} forcing group by to achieve grain {grain}"
+            )
+        # a key this merge NULL-pads determines nothing: after `lines FULL
+        # returns`, `return_id` names a line only where a return is present
+        padded = _join_padded_addresses(source_map, joins)
+        if grain_basis is not None and grain.components & padded:
+            grain = BuildGrain.from_concepts(
+                grain_basis, environment=self.environment, padded=padded
             )
         joined_partials = merge_partial_addresses(
             final_datasets, qd_joins, final_output_concepts

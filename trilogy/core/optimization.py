@@ -29,6 +29,7 @@ from trilogy.core.optimizations.collapse_single_parent import (
     grouped_unbound_passthrough_should_wait,
 )
 from trilogy.core.optimizations.full_join_lowering import lower_full_joins
+from trilogy.core.optimizations.identity_group import DropIdentityGroup
 from trilogy.core.optimizations.join_upgrade import PrunePreservedJoinKeys
 from trilogy.core.processing import plan_trace
 from trilogy.core.processing.utility import sort_select_output_processed
@@ -587,6 +588,24 @@ def build_optimization_rule_plan(
                     "NULL on a column that no outer join can pad is tautological; "
                     "runs after null-safe-join simplification, which consumes "
                     "those predicates as non-null proofs"
+                ),
+            )
+        )
+    if opts.drop_identity_group:
+        plan.append(
+            OptimizationRulePlan(
+                name="drop_identity_group",
+                rule_factory=DropIdentityGroup,
+                depends_on=_enabled_dependencies(
+                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
+                    (
+                        "upgrade_outer_key_set_equivalence",
+                        opts.upgrade_outer_key_set_equivalence,
+                    ),
+                ),
+                reason=(
+                    "a GROUP BY a plan-time outer join required is a no-op DISTINCT "
+                    "once the joins are upgraded, so it runs after join types settle"
                 ),
             )
         )
