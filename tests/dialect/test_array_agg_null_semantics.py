@@ -4,6 +4,7 @@ A NULL value on a real row is not an
 element, and a group of only NULLs is NULL like an empty group. Backends
 disagree natively (DuckDB and Postgres keep the NULL, ClickHouse drops it,
 BigQuery raises), so each dialect lowers to its own NULL-ignoring form.
+ClickHouse has no Nullable(Array), so its all-NULL group is `[]`, not NULL.
 """
 
 import pytest
