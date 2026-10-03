@@ -35,7 +35,6 @@ from trilogy.core.processing.aggregate_rollup import (
 from trilogy.core.processing.condition_utility import (
     and_optional,
     condition_implies,
-    merge_conditions,
 )
 from trilogy.core.processing.model_ambiguity import validate_relation_paths
 from trilogy.core.processing.node_generators.common import (
@@ -47,10 +46,6 @@ from trilogy.core.processing.node_generators.presence_probe import (
     is_presence_probe,
     member_binding_datasources,
     probe_member_address,
-)
-from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
-    get_union_sources,
-    union_derived_concepts,
 )
 from trilogy.core.processing.node_generators.select_helpers.datasource_nodes import (
     create_select_node,
@@ -312,49 +307,6 @@ def _search_concepts_for_bridge(request: SourceRequest) -> list[BuildConcept]:
     return concepts
 
 
-def _inject_union_datasources(
-    graph: ReferenceGraph,
-    concepts: list[BuildConcept],
-    environment: BuildEnvironment,
-) -> None:
-    datasources = graph.scope.datasources
-    union_edges: list[tuple[str, str]] = []
-    excluded = environment.excluded_enum_values
-    for datasource_group in get_union_sources(list(datasources), concepts, excluded):
-        union_node = "ds~" + "-".join(
-            [datasource.name for datasource in datasource_group]
-        )
-        if union_node in graph.datasources:
-            continue
-        merged_condition = merge_conditions(
-            [
-                datasource.non_partial_for.conditional
-                for datasource in datasource_group
-                if datasource.non_partial_for is not None
-            ],
-            excluded,
-        )
-        non_partial_for = (
-            BuildWhereClause(conditional=merged_condition)
-            if merged_condition is not None
-            else None
-        )
-        graph.datasources[union_node] = BuildUnionDatasource(
-            children=datasource_group,
-            non_partial_for=non_partial_for,
-        )
-        common_outputs = set(datasource_group[0].output_concepts)
-        for datasource in datasource_group[1:]:
-            common_outputs &= set(datasource.output_concepts)
-        derived = union_derived_concepts(datasource_group, environment, datasources)
-        for concept in [*common_outputs, *derived]:
-            concept_node = concept_to_node(concept)
-            graph.concepts.setdefault(concept_node, concept)
-            union_edges.append((union_node, concept_node))
-            union_edges.append((concept_node, union_node))
-    graph.add_edges_from(union_edges)
-
-
 def _inject_rollup_edges(
     graph: ReferenceGraph,
     concepts: list[BuildConcept],
@@ -502,9 +454,6 @@ def _network_source(
             v4_history.network_verdicts[verdict_key] = "defer"
         return NetworkDecision(bridge=None)
     graph = request.graph.copy()
-    # The network mints union candidates itself and names them with the same
-    # convention, so injecting here makes its chosen node addresses resolvable.
-    _inject_union_datasources(graph, concepts, request.environment)
     chosen = set(result.solution.sources)
     rollup_nodes = _inject_rollup_edges(graph, concepts, request, chosen)
     # A derived-connector choice (`connector~<alias>`) is not a scan: its alias
@@ -686,7 +635,6 @@ def _datasource_nodes_for_bridge(
             if ds_node in plan.graph.datasources:
                 continue
             source_ds = request.graph.datasources.get(ds_node)
-            # Union sources are injected separately (`_inject_union_datasources`).
             if not isinstance(source_ds, BuildDatasource):
                 continue
             # Only fill a genuine gap: register the missing source iff it provides

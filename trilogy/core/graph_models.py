@@ -533,6 +533,10 @@ def datasource_to_node(input: BuildDatasource) -> str:
     return f"ds~{input.identifier}"
 
 
+def union_to_node(input: BuildUnionDatasource) -> str:
+    return "ds~" + "-".join(child.name for child in input.children)
+
+
 class ScopeDatasources:
     """The bindings a scope's graph was generated over: pin-healed and
     partition-excluded for its statement (`statement_scope`), or the

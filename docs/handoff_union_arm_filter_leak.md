@@ -56,8 +56,9 @@ Regression tests pinning it:
 
 ## The contract
 
-A `BuildUnionDatasource` is injected by `network_build._union_candidates` to read a
-partition family as one source. Its arms carry the same column addresses, the
+A `BuildUnionDatasource` is a source node of the reference graph (`union_sources`,
+minted when the scope's graph is generated) that reads a partition family as
+one source. Its arms carry the same column addresses, the
 predicate is pushed into each arm, and WHERE handling is exactly what it would be
 for a single datasource. That works today. Using the `tests/engine/test_duckdb_partition_cover.py`
 four-cell grid:
