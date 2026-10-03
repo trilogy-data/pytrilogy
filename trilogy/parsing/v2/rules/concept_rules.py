@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import Any, NamedTuple
 
 from trilogy.constants import DEFAULT_NAMESPACE
+from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.enums import (
     ConceptSource,
     Derivation,
@@ -17,7 +18,6 @@ from trilogy.core.enums import (
     ShowCategory,
 )
 from trilogy.core.exceptions import MissingParameterException
-from trilogy.core.internal import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.models.author import (
     AggregateWrapper,
     Between,
@@ -239,8 +239,7 @@ def concept_property_declaration(
         parents, name = declaration
         namespace = context.environment.namespace or DEFAULT_NAMESPACE
     grain_components = {x.address for x in parents}
-    all_rows_addr = f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"
-    is_abstract_grain = grain_components == {all_rows_addr}
+    is_abstract_grain = grain_components == {ALL_ROWS_ADDRESS}
     concept_value = Concept(
         name=name,
         datatype=datatype,
@@ -820,9 +819,7 @@ def prop_ident_wildcard(
     hydrate: HydrateFunction,
 ) -> tuple[list[Concept], str]:
     syntax = PropertyWildcardSyntax.from_node(node)
-    return [
-        context.concepts.require(f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}")
-    ], hydrate(syntax.name)
+    return [context.concepts.require(ALL_ROWS_ADDRESS)], hydrate(syntax.name)
 
 
 CONCEPT_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {

@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from trilogy.core import graph as nx
-from trilogy.core.constants import ALL_ROWS_CONCEPT
+from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.enums import (
     AggregateGroupingMode,
     Derivation,
@@ -170,11 +170,7 @@ class _HeldKeys:
         the spans of the regions its rows pair with, and its grain when it
         groups."""
         grain = (
-            sorted(
-                g
-                for g in self.grain_components
-                if not g.endswith(f".{ALL_ROWS_CONCEPT}")
-            )
+            sorted(g for g in self.grain_components if g != ALL_ROWS_ADDRESS)
             if self.derivation in GROUPING_DERIVATIONS
             else []
         )

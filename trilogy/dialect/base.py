@@ -28,7 +28,7 @@ from trilogy.constants import (
     Rendering,
     logger,
 )
-from trilogy.core.constants import ALL_ROWS_CONCEPT, UNNEST_NAME
+from trilogy.core.constants import ALL_ROWS_ADDRESS, UNNEST_NAME
 from trilogy.core.enums import (
     AddressType,
     AggregateGroupingMode,
@@ -253,7 +253,7 @@ def _aggregate_collapse_safe(cte: "CTE | UnionCTE", agg: BuildAggregateWrapper) 
     by-grain listing properties functionally determined by the CTE's keys
     reduces to the CTE grain, and authored scoped-join keys legitimately
     extend a keyed aggregate's partition."""
-    agg_by_abstract = all(p.address.endswith(ALL_ROWS_CONCEPT) for p in agg.by)
+    agg_by_abstract = all(p.address == ALL_ROWS_ADDRESS for p in agg.by)
     return not agg_by_abstract or cte.grain.abstract
 
 

@@ -16,7 +16,7 @@ from typing import (
 )
 
 from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants
-from trilogy.core.constants import ALL_ROWS_CONCEPT
+from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.enums import (
     NAVIGATION_WINDOW_TYPES,
     NUMBERING_WINDOW_TYPES,
@@ -206,11 +206,11 @@ class UndefinedConcept(ConceptRef):
 
 
 def address_with_namespace(address: str, namespace: str) -> str:
+    if address == ALL_ROWS_ADDRESS:
+        return address
     existing_ns, sep, existing_name = address.partition(".")
     if not sep:
         existing_name = address
-    if existing_name == ALL_ROWS_CONCEPT:
-        return address
     if existing_ns == DEFAULT_NAMESPACE:
         return f"{namespace}.{existing_name}"
     return f"{namespace}.{address}"
@@ -585,7 +585,7 @@ class Grain(Namespaced):
 
     def _gen_abstract(self) -> bool:
         return not self.components or all(
-            c.endswith(ALL_ROWS_CONCEPT) for c in self.components
+            c == ALL_ROWS_ADDRESS for c in self.components
         )
 
     @property
@@ -1668,7 +1668,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
             # whatever its body's grain: it cross-joins beside anything
             return Granularity.SINGLE_ROW
         elif derivation == Derivation.AGGREGATE:
-            if all(x.endswith(ALL_ROWS_CONCEPT) for x in grain.components):
+            if all(x == ALL_ROWS_ADDRESS for x in grain.components):
                 return Granularity.SINGLE_ROW
         elif derivation == Derivation.FILTER and isinstance(lineage, BuildFilterItem):
             # Filtering rows never changes single-row-ness; inherit the filtered

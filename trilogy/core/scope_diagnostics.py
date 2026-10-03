@@ -32,7 +32,7 @@ from trilogy.constants import (
     VIRTUAL_CONCEPT_PREFIX,
     MagicConstants,
 )
-from trilogy.core.constants import ALL_ROWS_CONCEPT
+from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.enums import (
     AggregateGroupingMode,
     BooleanOperator,
@@ -914,16 +914,13 @@ class _Extractor:
             render_scope_expr(b)
             for b in by
             if not (
-                isinstance(b, (ConceptRef, Concept))
-                and b.address.endswith(f".{ALL_ROWS_CONCEPT}")
+                isinstance(b, (ConceptRef, Concept)) and b.address == ALL_ROWS_ADDRESS
             )
         ]
         if by:
             return keys or ["*"]
         components = sorted(select.grain.components)
-        grain_keys = [
-            _short(c) for c in components if not c.endswith(f".{ALL_ROWS_CONCEPT}")
-        ]
+        grain_keys = [_short(c) for c in components if c != ALL_ROWS_ADDRESS]
         return grain_keys or ["*"]
 
     def _rowset_filters(self, rowset: BuildRowsetLineage) -> list[str]:
@@ -956,13 +953,11 @@ class _Extractor:
                 hierarchy = ", ".join(_short(c.address) for c in wrapper.by)
                 return [f"{wrapper.grouping.value}({hierarchy})"]
             by_keys = [
-                _short(c.address) for c in wrapper.by if c.name != ALL_ROWS_CONCEPT
+                _short(c.address) for c in wrapper.by if c.address != ALL_ROWS_ADDRESS
             ]
             return by_keys or ["*"]
         components = sorted(concept.grain.components) if concept.grain else []
-        grain_keys = [
-            _short(c) for c in components if not c.endswith(f".{ALL_ROWS_CONCEPT}")
-        ]
+        grain_keys = [_short(c) for c in components if c != ALL_ROWS_ADDRESS]
         return grain_keys or ["*"]
 
     def _finish(self) -> list[DerivedValueScope]:

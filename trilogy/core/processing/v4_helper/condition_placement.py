@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from trilogy.core import graph as nx
-from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
+from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import (
     DisconnectedConceptsException,
@@ -382,11 +382,10 @@ def _post_aggregation_producers(
     host is the row group with the global CTE cross-joined in, so pinning to
     the producer chain strands the row side). Pin only when EVERY row input is
     a global post-aggregation value."""
-    all_rows_address = f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"
     lineage_only = lineage_subgraph(group_graph, group_edges)
 
     def _is_global(gid: str) -> bool:
-        return set(buckets[gid].grain_components) <= {all_rows_address}
+        return set(buckets[gid].grain_components) <= {ALL_ROWS_ADDRESS}
 
     producers: set[str] = set()
     for addr in row_inputs:
