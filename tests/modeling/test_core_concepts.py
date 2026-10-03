@@ -101,6 +101,7 @@ SELECT
 
     results = list(test_executor.execute_text(test_select)[0].fetchall())
     assert len(results) == 5
+    assert "GROUP BY" not in test_executor.generate_sql(test_select)[-1]
 
 
 def test_filter_grain(test_environment: Environment, test_executor: Executor):

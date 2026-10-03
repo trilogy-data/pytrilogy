@@ -213,6 +213,12 @@ def test_keys_only(simple):
     ]
 
 
+def test_keys_only_needs_no_group(simple):
+    query = "select order_id, item_id, product_id, user_id;"
+    assert "GROUP BY" not in simple.generate_sql(query)[-1]
+    assert "GROUP BY" not in simple.generate_sql(_PIN + query)[-1]
+
+
 def test_keys_without_fact_anchor(simple):
     """The pair grain WITHOUT the fact's own row key: fact pairs projected to
     the pair grain, plus one extension row per unmatched member of each `~`
