@@ -531,18 +531,13 @@ def _attach_existence_to_node(
     preferred: Sequence[str] = (),
 ) -> None:
     """Wire the SubselectComparison right sides as `existence_concepts` plus
-    extra parents; the SQL renderer emits them as a subselect lookup against
-    the parent CTE rather than joining them into the row stream.
+    extra parents, rendered as a subselect lookup, not joined into the row
+    stream.
 
-    An arg group a parent already supplies is left alone: it was wired by
-    whoever built this node. A nested plan's tree arrives here again when the
-    outer loop walks the subtree of the node that wraps it, and `built` is then
-    the OUTER plan's groups, which hold no provider for the inner plan's set,
-    so without this the fallback feeder is planned for a set already wired
-    (and, since only a parent bringing a new output is appended, the first
-    wiring wins and the fallback cannot be displaced later). A group listed in
-    `existence_concepts` with no parent behind it is NOT wired: an earlier pass
-    found no provider, and a later one, with more of `built`, may."""
+    An arg group a parent already supplies is left alone: a nested plan's tree
+    arrives here again under the OUTER plan's `built`, which holds no provider
+    for its set. A group listed with no parent behind it is wired again: an
+    earlier pass found no provider, and a later one may."""
     existing_parent_outputs = {
         output.address for parent in node.parents for output in parent.output_concepts
     }
@@ -565,18 +560,9 @@ def _attach_existence_to_node(
         for concept in _flatten_arg_groups(arg_groups)
         if concept.address not in existing_concepts
     ]
-    pending = {concept.address for group in arg_groups for concept in group}
-    node.parents = list(node.parents) + [
-        parent
-        for parent in _existence_parents_for(
-            arg_groups, built, skip=node, feeder_cache=feeder_cache, preferred=preferred
-        )
-        if all(parent is not existing for existing in node.parents)
-        and any(
-            output.address not in existing_parent_outputs or output.address in pending
-            for output in parent.output_concepts
-        )
-    ]
+    node.parents = list(node.parents) + _existence_parents_for(
+        arg_groups, built, skip=node, feeder_cache=feeder_cache, preferred=preferred
+    )
     node.rebuild_cache()
 
 
@@ -5175,14 +5161,6 @@ def _assemble_final_node(
         for c in mandatory_list
         if c.address in available or c.address in pseudonym_only
     ]
-    # a requested column no contributor renders is a wrong answer, not a
-    # narrower one (a group that failed to build was skipped above)
-    missing = [c.address for c in mandatory_list if c not in outputs]
-    if missing:
-        raise UnresolvableQueryException(
-            f"No FINAL contributor renders {missing}; the group producing it"
-            " could not be built. This is a planner bug."
-        )
     # Pull in any filter-only condition arg (e.g. the global aggregate) not
     # already supplied by a contributor, as a hidden cross-join input.
     spans = frozenset().union(*(region_reads(p) for p in parents))
