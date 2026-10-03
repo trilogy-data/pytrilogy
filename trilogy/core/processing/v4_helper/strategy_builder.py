@@ -2905,7 +2905,7 @@ def _consumer_reads(consumer: GroupAttrs, environment: BuildEnvironment) -> set[
         set(_select_addresses(consumer)) - set(consumer.primary_members)
     )
     for member in consumer.primary_members:
-        concept = environment.concepts.get(member)
+        concept = _concept_at(environment, member)
         if concept is not None and concept.lineage is not None:
             read |= {a.address for a in concept.lineage.concept_arguments}
     return read
@@ -4246,7 +4246,7 @@ def _region_paired_args(
     grain = {
         component
         for address in missing
-        if (concept := environment.concepts.get(address)) is not None
+        if (concept := _concept_at(environment, address)) is not None
         and concept.derivation == Derivation.AGGREGATE
         and concept.grain is not None
         for component in concept.grain.components
