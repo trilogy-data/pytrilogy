@@ -323,7 +323,7 @@ def _takes_a_value_on_a_null_member(
     member on the fact's rows."""
     if not region.spans & keyspace.value_null_spans:
         return False
-    row = Region(present=keyspace.regions[0].present - region.spans)
+    row = keyspace.row_absent(region.spans)
     return any(
         b.derivation == Derivation.BASIC
         and keyspace.carried_on(m, region)

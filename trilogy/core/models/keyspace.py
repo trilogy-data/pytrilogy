@@ -119,6 +119,10 @@ class Keyspace:
         merge has: counting spans reads one composite-key region as two."""
         return tuple(r.spans for r in self.live_regions if r.spans)
 
+    def row_absent(self, keys: frozenset[str]) -> Region:
+        """A row of the base region with `keys` absent."""
+        return Region(present=self.regions[0].present - keys)
+
     def live_regions_within(self, spans: frozenset[str]) -> list[Region]:
         """The live extension regions `spans` covers."""
         return [r for r in self.live_regions if r.spans and r.spans <= spans]
