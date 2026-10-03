@@ -22,6 +22,9 @@ TVF) live in `v4_node_generators/`. This file is just the public API, the
 materialized-root pre-pass, and the History cache wiring.
 """
 
+import logging
+from contextlib import nullcontext
+
 from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation
@@ -68,7 +71,11 @@ from trilogy.core.processing.v4_helper.functional_dependency import (
     build_fd_determines,
 )
 from trilogy.core.processing.v4_helper.region_domains import undemanded_spans
+from trilogy.core.processing.v4_helper.strategy_builder import under_span_scope
 from trilogy.core.processing.v4_node_generators.multiselect import gen_multiselect
+from trilogy.core.processing.v4_node_generators.rowset_witness import (
+    statement_keyspace,
+)
 from trilogy.core.processing.v4_node_generators.union_select import gen_union_select
 
 __all__ = [
@@ -522,28 +529,30 @@ def _build_from_graph(
     staged_conditions: list[BuildWhereClause] | None = None,
     depth: int = 0,
 ) -> BuildInfo:
-    args = (
-        mandatory_list,
-        environment,
-        g,
-        history,
-        conditions,
-        materialized_roots,
-        complete_partials,
-        staged_conditions,
-        depth,
-    )
-    if not plan_trace.active():
-        return _build_from_graph_traced(*args)
-    with plan_trace.plan_scope(
-        f"plan: {', '.join(c.address for c in mandatory_list)}",
-        depth,
-        outputs=plan_trace.addresses(mandatory_list),
-        conditions=[plan_trace.expression(c) for c in conditions],
+    with (
+        plan_trace.plan_scope(
+            f"plan: {', '.join(c.address for c in mandatory_list)}",
+            depth,
+            outputs=plan_trace.addresses(mandatory_list),
+            conditions=[plan_trace.expression(c) for c in conditions],
+        )
+        if plan_trace.active()
+        else nullcontext()
     ):
-        return _build_from_graph_traced(*args)
+        return _build_from_graph_traced(
+            mandatory_list,
+            environment,
+            g,
+            history,
+            conditions,
+            materialized_roots,
+            complete_partials,
+            staged_conditions,
+            depth,
+        )
 
 
+# named in `plan_trace._ORIGIN_ROOTS`: rename both together
 def _build_from_graph_traced(
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
@@ -555,10 +564,6 @@ def _build_from_graph_traced(
     staged_conditions: list[BuildWhereClause] | None,
     depth: int,
 ) -> BuildInfo:
-    from trilogy.core.processing.v4_node_generators.rowset_witness import (  # cycle
-        statement_keyspace,
-    )
-
     if plan_trace.active():
         plan_trace.record(
             "requested concepts",
@@ -592,9 +597,12 @@ def _build_from_graph_traced(
     keyspace = statement_keyspace(
         concept_attrs, mandatory_list, environment, conditions, history
     )
-    if len(keyspace.regions) > 1:
+    if len(keyspace.regions) > 1 and logger.isEnabledFor(logging.INFO):
         logger.info(
-            f"{depth_to_prefix(depth)}{LOGGER_PREFIX} keyspace: {keyspace.describe()}"
+            "%s%s keyspace: %s",
+            depth_to_prefix(depth),
+            LOGGER_PREFIX,
+            keyspace.describe(),
         )
     if plan_trace.active():
         plan_trace.record(
@@ -615,36 +623,33 @@ def _build_from_graph_traced(
         staged_conditions=staged_conditions,
         keyspace=keyspace,
     )
-    # `build_strategy_node` scopes each group's extent routing on the shared
-    # environment; a rowset body planned mid-build recurses through here, so
-    # restore whatever the outer plan had rather than leaving it cleared.
     # a region nothing demands is not a row of the statement: no join of
     # this plan extends its spans
-    outer_scope = environment.span_scope
-    environment.span_scope = SpanScope(
+    scope = SpanScope(
         keyspace=keyspace,
         owned=history.owned_spans,
         unextended=undemanded_spans(keyspace, concept_attrs, environment),
     )
     strategy_node: StrategyNode | None = None
     unbuilt_reason: str | None = None
+    # a rowset body planned mid-build recurses through here, so the outer
+    # plan's scope is restored rather than cleared
     try:
-        strategy_node = build_strategy_node(
-            group_graph,
-            group_edges,
-            group_attrs,
-            mandatory_list,
-            environment,
-            g,
-            history,
-            complete_partials=complete_partials,
-            staged_conditions=staged_conditions,
-            depth=depth,
-        )
+        with under_span_scope(environment, scope):
+            strategy_node = build_strategy_node(
+                group_graph,
+                group_edges,
+                group_attrs,
+                mandatory_list,
+                environment,
+                g,
+                history,
+                complete_partials=complete_partials,
+                staged_conditions=staged_conditions,
+                depth=depth,
+            )
     except UnbuiltGroupException as exc:
         unbuilt_reason = str(exc)
-    finally:
-        environment.span_scope = outer_scope
     if plan_trace.active():
         plan_trace.record(
             "strategy node",
