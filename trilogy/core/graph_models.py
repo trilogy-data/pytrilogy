@@ -544,7 +544,8 @@ class ScopeDatasources:
     partition-excluded for its statement (`statement_scope`), or the
     environment's as authored. One object per scope, shared by every copy and
     subgraph of its graph, where `ReferenceGraph.datasources` (node -> source)
-    follows the nodes kept and gains the unions injected while planning. The
+    follows the nodes kept, including the covering unions minted when the
+    graph is generated (`union_sources`). The
     binding facts a plan's keyspace reads are cached per object
     (`keyspace.scope_facts`), so a heal that changes nothing hands its
     authored bindings, facts and all, to the plan."""
@@ -561,7 +562,18 @@ class ReferenceGraph(DiGraph):
         self.concepts: dict[str, BuildConcept] = {}
         self.datasources: dict[str, BuildDatasource | BuildUnionDatasource] = {}
         self.pseudonyms: set[tuple[str, str]] = set()
-        self.scope = ScopeDatasources(())
+        self._scope: ScopeDatasources | None = None
+
+    @property
+    def scope(self) -> ScopeDatasources:
+        # unset reads as "no datasources" to every reader; refuse it instead
+        if self._scope is None:
+            raise ValueError("ReferenceGraph has no scope; generate it with one")
+        return self._scope
+
+    @scope.setter
+    def scope(self, scope: ScopeDatasources) -> None:
+        self._scope = scope
 
     def copy(self) -> "ReferenceGraph":
         g = ReferenceGraph()
@@ -569,7 +581,7 @@ class ReferenceGraph(DiGraph):
         g.concepts = self.concepts.copy()
         g.datasources = self.datasources.copy()
         g.pseudonyms = self.pseudonyms.copy()
-        g.scope = self.scope
+        g._scope = self._scope
         return g
 
     def subgraph(self, nodes) -> "ReferenceGraph":
@@ -586,7 +598,7 @@ class ReferenceGraph(DiGraph):
         g.pseudonyms = {
             edge for edge in self.pseudonyms if edge[0] in keep and edge[1] in keep
         }
-        g.scope = self.scope
+        g._scope = self._scope
         return g
 
     def remove_node(self, n) -> None:
