@@ -95,6 +95,8 @@ def concept_attr_fd_determines(
 
 
 def _build_fd_concepts(environment: BuildEnvironment) -> Iterator[BuildConcept]:
+    # The authored bindings, not a plan's scope: a row is a column's CONCEPT
+    # (grain, keys), which a heal or a hidden partition arm leaves unchanged.
     yield from environment.concepts.values()
     for datasource in environment.datasources.values():
         yield from datasource.output_concepts
