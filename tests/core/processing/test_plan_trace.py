@@ -2,6 +2,8 @@ import json
 import time
 
 from trilogy import Environment
+from trilogy.core.enums import ComparisonOperator
+from trilogy.core.models.build import BuildComparison, BuildGrain
 from trilogy.core.processing import plan_trace
 from trilogy.core.query_processor import process_query
 from trilogy.core.statements.author import SelectStatement
@@ -168,3 +170,29 @@ def test_off_clock_time_is_not_planner_time():
         plan_trace.record("after", plan_trace.ResolveStep(None, None))
     assert trace.steps[-1].ms is not None and trace.steps[-1].ms < 25
     assert trace.total_ms is not None and trace.total_ms < 25
+
+
+def test_jsonable_reads_slotted_dataclasses_by_field():
+    grain = plan_trace.jsonable(BuildGrain(components={"local.b", "local.a"}))
+    assert grain["components"] == ["local.a", "local.b"]
+    assert grain["where_clause"] is None
+    assert grain["abstract"] is False
+
+
+def test_jsonable_renders_condition_atoms():
+    atom = BuildComparison(left=1, right=2, operator=ComparisonOperator.EQ)
+    assert plan_trace.jsonable([atom]) == [str(atom)]
+    with plan_trace.recording("atoms"):
+        assert plan_trace.jsonable([atom]) == ["1 = 2"]
+
+
+def test_condition_atoms_serialize_as_expressions():
+    trace = _trace("where amount > 5 select customer_id, amount;")
+    atoms = [
+        atom
+        for s in trace["steps"]
+        if s["phase"] == "node"
+        for atom in s["data"]["attrs"]["condition_atoms"]
+    ]
+    assert atoms
+    assert all(isinstance(a, str) and "5" in a for a in atoms)
