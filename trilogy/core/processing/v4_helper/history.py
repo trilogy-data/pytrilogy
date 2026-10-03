@@ -62,9 +62,9 @@ class V4History(History):
     # re-learn "not mine". Solution-bearing outcomes are NOT cached here:
     # emission needs the network, whose candidates are build-scoped objects a
     # later request must not reuse.
-    network_verdicts: dict[tuple[str, str, bool, tuple[str, ...], bool], str] = field(
-        default_factory=dict
-    )
+    network_verdicts: dict[
+        tuple[str, str, bool, tuple[str, ...], bool, tuple[str, ...]], str
+    ] = field(default_factory=dict)
     # Every request may read a coalescing axis off one arm (`_axis_arm_pinned`):
     # the cheap plan, right whenever sibling contributors bring the other arms.
     # Cleared for the re-plan of a statement whose plan dropped an arm.
