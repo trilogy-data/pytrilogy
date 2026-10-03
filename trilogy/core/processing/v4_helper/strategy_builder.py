@@ -27,13 +27,16 @@ from trilogy.core.enums import (
     Derivation,
     FunctionType,
     JoinType,
+    Ordering,
     Purpose,
+    WindowType,
 )
 from trilogy.core.exceptions import UnbuiltGroupException, UnresolvableQueryException
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
     BoolExpr,
     BuildAggregateWrapper,
+    BuildCaseWhen,
     BuildComparison,
     BuildConcept,
     BuildConceptArgs,
@@ -41,6 +44,8 @@ from trilogy.core.models.build import (
     BuildFilterItem,
     BuildFunction,
     BuildGrain,
+    BuildNumberingWindowItem,
+    BuildOrderItem,
     BuildRowsetItem,
     BuildWhereClause,
     LooseBuildConceptList,
@@ -48,6 +53,7 @@ from trilogy.core.models.build import (
     nonstandard_grouping_lineage,
 )
 from trilogy.core.models.build_environment import BuildEnvironment, SpanScope
+from trilogy.core.models.core import arg_to_datatype
 from trilogy.core.models.execute import BaseJoin
 from trilogy.core.processing import plan_trace
 from trilogy.core.processing.aggregate_rollup import _is_additive_aggregate
@@ -5283,6 +5289,98 @@ def _apply_count_distinct_rewrites(
     return rewritten
 
 
+def _first_row_marker(partition: list[BuildConcept]) -> BuildConcept:
+    """`row_number() over (partition by <partition>)`: 1 on one row per tuple."""
+    lineage = BuildNumberingWindowItem(
+        type=WindowType.ROW_NUMBER,
+        arguments=[partition[0]],
+        order_by=[BuildOrderItem(expr=partition[0], order=Ordering.ASCENDING)],
+        over=partition,
+    )
+    name = generate_concept_name(lineage)
+    return BuildConcept(
+        name=name,
+        canonical_name=name,
+        datatype=lineage.output_datatype,
+        purpose=Purpose.PROPERTY,
+        build_is_aggregate=False,
+        derivation=Derivation.WINDOW,
+        lineage=lineage,
+        grain=BuildGrain(components={c.address for c in partition}),
+    )
+
+
+def _read_first_rows(
+    outputs: list[BuildConcept],
+    first_row_grains: dict[str, frozenset[str]],
+    parents: list[StrategyNode],
+    environment: BuildEnvironment,
+) -> tuple[list[BuildConcept], list[StrategyNode]]:
+    """Point each member of `first_row_grains` at the first row per tuple of
+    its grain (`sum(case when <marker> = 1 then amount end)`), the marker a
+    window over the shared stream. One pass reads two facts joined below it,
+    so each fact's rows repeat per row of the other; this is the dedup a pass
+    of its own would have had (`group_rules._first_row_grains`)."""
+    available: dict[str, BuildConcept] = {}
+    for parent in parents:
+        for output in parent.output_concepts:
+            for address in (output.address, *output.pseudonyms):
+                available.setdefault(address, output)
+    markers: dict[frozenset[str], BuildConcept] = {}
+    rewritten: list[BuildConcept] = []
+    for concept in outputs:
+        grain = first_row_grains.get(concept.address)
+        if grain is None or not isinstance(concept.lineage, BuildAggregateWrapper):
+            rewritten.append(concept)
+            continue
+        missing = grain - set(available)
+        if missing:
+            raise UnresolvableQueryException(
+                f"{concept.address} reads a stream repeating its rows, and the "
+                f"stream does not carry {sorted(missing)} to read one row of each"
+            )
+        if grain not in markers:
+            markers[grain] = _first_row_marker(
+                [available[address] for address in sorted(grain)]
+            )
+        function = concept.lineage.function
+        value, *rest = function.arguments
+        first_only = BuildFunction(
+            operator=FunctionType.CASE,
+            arguments=[
+                BuildCaseWhen(
+                    comparison=BuildComparison(
+                        left=markers[grain],
+                        right=1,
+                        operator=ComparisonOperator.EQ,
+                    ),
+                    expr=value,
+                )
+            ],
+            output_data_type=arg_to_datatype(value),
+            output_purpose=Purpose.PROPERTY,
+            arg_count=-1,
+        )
+        lineage = dc_replace(
+            concept.lineage,
+            function=dc_replace(function, arguments=[first_only, *rest]),
+        )
+        rewritten.append(dc_replace(concept, lineage=lineage))
+    if not markers:
+        return outputs, parents
+    stream = unique([o for p in parents for o in p.output_concepts], "address")
+    window = WindowNode(
+        input_concepts=stream,
+        output_concepts=[*stream, *markers.values()],
+        environment=environment,
+        parents=parents,
+        nullable_concepts=unique(
+            [c for p in parents for c in p.resolve().nullable_concepts], "address"
+        ),
+    )
+    return rewritten, [window]
+
+
 def build_strategy_node(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -5696,6 +5794,10 @@ def build_strategy_node(
                         parents=parents,
                     )
                 ]
+        if derivation == Derivation.AGGREGATE and a.aggregate_first_row_grains:
+            outputs, parents = _read_first_rows(
+                outputs, a.aggregate_first_row_grains, parents, environment
+            )
         # The same root in two phases (the d1 twin feeding the condition-phase
         # aggregates) asks the same question when the WHERE placed on each is
         # the same; the second reads the first's answer.

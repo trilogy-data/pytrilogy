@@ -1502,6 +1502,11 @@ def _add_concept(
             )
         ),
         counted_key=counted.address if (counted := _counted_key(concept)) else None,
+        aggregate_operator=(
+            concept.lineage.function.operator
+            if isinstance(concept.lineage, BuildAggregateWrapper)
+            else None
+        ),
         keys=frozenset(concept.keys or set()),
         pseudonyms=frozenset(concept.pseudonyms),
         is_rename=is_rename,

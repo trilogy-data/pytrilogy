@@ -7,6 +7,7 @@ from trilogy.core.constants import ALL_ROWS_CONCEPT
 from trilogy.core.enums import (
     AggregateGroupingMode,
     Derivation,
+    FunctionType,
     Granularity,
     Purpose,
 )
@@ -212,6 +213,10 @@ class GroupAttrs(_HeldKeys):
     # (count-of-a-key over a finer row stream): render COUNT(DISTINCT ...)
     # instead of dedup-then-COUNT.
     aggregate_distinct_addrs: frozenset[str] = frozenset()
+    # See `GroupBucket.aggregate_first_row_grains`.
+    aggregate_first_row_grains: dict[str, frozenset[str]] = field(
+        default_factory=dict
+    )
     # Atoms (BoolExpr) applied AT this group. A clause like
     # `state='TN' AND year=2000` is decomposed and each atom finds its own
     # highest-allowed group independently, so a single clause may live at
@@ -262,6 +267,7 @@ class GroupAttrs(_HeldKeys):
             member_depths=dict(bucket.member_depths),
             aggregate_input_grain=bucket.aggregate_input_grain,
             aggregate_distinct_addrs=frozenset(bucket.aggregate_distinct_addrs),
+            aggregate_first_row_grains=dict(bucket.aggregate_first_row_grains),
             grouping_mode=bucket.grouping_mode,
             extent_spans=bucket.extent_spans,
             null_member_spans=bucket.null_member_spans,
@@ -306,6 +312,8 @@ class ConceptAttrs:
     aggregate_distinct_rewritable: bool = False
     # the key a COUNT counts (`count(order_id)`), whatever its input grain
     counted_key: str | None = None
+    # the aggregate's function, None for any other concept
+    aggregate_operator: FunctionType | None = None
     keys: frozenset[str] = frozenset()
     # For a ROOT whose declared keys the query never names: the KEY roots that
     # jointly determine it through the environment's FD closure (a dimension
@@ -416,6 +424,12 @@ class GroupBucket(_HeldKeys):
     # Member addresses to render COUNT(DISTINCT ...), merged in from a
     # coarser-input-grain sibling whose dedup folds into the aggregate.
     aggregate_distinct_addrs: set[str] = field(default_factory=set)
+    # Members of a ROLLUP/CUBE/GROUPING SETS pass whose input stream repeats
+    # their rows (two facts joined below the one pass), mapped to the grain
+    # whose first row each reads.
+    aggregate_first_row_grains: dict[str, frozenset[str]] = field(
+        default_factory=dict
+    )
     # SEMANTICS of this group's GROUP BY, as opposed to `discriminator`, which
     # only exists to keep distinct buckets at distinct group ids. Ask
     # `nulls_grouping_keys`, never the id string.
