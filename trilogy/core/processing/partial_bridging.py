@@ -66,18 +66,26 @@ def _bound_spellings(datasources: Iterable[BuildDatasource]) -> set[str]:
     return out
 
 
-def _structural_partial(ds: BuildDatasource, column: BuildColumnAssignment) -> bool:
-    """True for a column-level ``~``, the only mark that licenses extension.
+def _partial_spelling(ds: BuildDatasource, column: BuildColumnAssignment) -> str | None:
+    """The address a column-level ``~`` was authored on, the only mark that
+    licenses extension. A merge respells the column onto its target while the
+    ``~`` stays recorded under the authored address.
 
     A table-level partial stamp (``partial datasource ... complete where``) is
     a row-subset contract the union machinery completes across siblings, and
     still relates its keys; treating it as an extension license breaks that
     assembly.
     """
-    return (
-        Modifier.PARTIAL in column.modifiers
-        and column.concept.address in ds.column_level_partial_addresses
-    )
+    if Modifier.PARTIAL not in column.modifiers:
+        return None
+    for address in (column.concept.address, column.origin_concept_address):
+        if address in ds.column_level_partial_addresses:
+            return address
+    return None
+
+
+def _structural_partial(ds: BuildDatasource, column: BuildColumnAssignment) -> bool:
+    return _partial_spelling(ds, column) is not None
 
 
 def _proven_bound(
@@ -298,7 +306,8 @@ def decide_heal(
         component_refs = referenced_bound & reach
         healed: set[str] = set()
         for column in ds.columns:
-            if not _structural_partial(ds, column):
+            span = _partial_spelling(ds, column)
+            if span is None:
                 continue
             key = column.concept
             anchors = _pair_anchors(_spellings(key), ds, datasources)
@@ -306,8 +315,8 @@ def decide_heal(
                 ds, anchors, killers, component_refs, datasources
             ):
                 continue
-            if authored.keyspace.binding_is_complete(ds.identifier, key.address):
-                healed.add(key.address)
+            if authored.keyspace.binding_is_complete(ds.identifier, span):
+                healed.add(span)
         if not healed:
             continue
         new_columns = [
@@ -318,7 +327,7 @@ def decide_heal(
                     modifiers=c.modifiers - {Modifier.PARTIAL},
                     origin_address=c.origin_address,
                 )
-                if c.concept.address in healed and Modifier.PARTIAL in c.modifiers
+                if _partial_spelling(ds, c) in healed
                 else c
             )
             for c in ds.columns

@@ -9,6 +9,7 @@ from tests.engine.test_partition_source_exclusion import THREE_WAY
 from tests.helpers.models import CUSTOMERS_DERIVED
 from trilogy import Dialects
 from trilogy.core import query_processor
+from trilogy.core.enums import Modifier
 from trilogy.core.models.build import BuildUnionDatasource
 from trilogy.core.processing import statement_scope
 from trilogy.core.processing.v4_helper import keyspace
@@ -110,3 +111,52 @@ def test_nested_select_graph_holds_the_partition_union(monkeypatch):
         assert any(
             isinstance(ds, BuildUnionDatasource) for ds in graph.datasources.values()
         )
+
+
+MERGED_PARTIAL = """
+key cid int;
+property cid.cname string;
+key oid int;
+property oid.amount float;
+key ocid int;
+
+datasource customers (id: cid, nm: cname) grain (cid)
+query '''select 1 id, 'a' nm union all select 2, 'b' union all select 3, 'c' ''';
+
+datasource orders (oid: oid, cid: ~ocid, amount: amount) grain (oid)
+query '''select 10 oid, 1 cid, 5.0 amount union all select 11, 2, 7.0
+union all select 12, 1, 1.0 ''';
+
+merge ocid into cid;
+"""
+
+
+@pytest.mark.parametrize(
+    "query, healed, rows",
+    [
+        (
+            "select oid, cid, cname where amount > 0 order by oid;",
+            True,
+            [(10, 1, "a"), (11, 2, "b"), (12, 1, "a")],
+        ),
+        (
+            "select oid, cid, cname where cname = 'c';",
+            False,
+            [(None, 3, "c")],
+        ),
+    ],
+)
+def test_a_binding_merged_onto_its_target_heals_like_its_own(
+    monkeypatch, query, healed, rows
+):
+    heals = _Heals(statement_scope.decide_heal)
+    monkeypatch.setattr(statement_scope, "decide_heal", heals)
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(MERGED_PARTIAL)
+    assert executor.execute_text(query)[-1].fetchall() == rows
+    replacements = heals.seen[-1][1]
+    assert ("orders" in replacements) == healed
+    if healed:
+        orders = replacements["orders"]
+        assert not orders.column_level_partial_addresses
+        assert not any(Modifier.PARTIAL in c.modifiers for c in orders.columns)
