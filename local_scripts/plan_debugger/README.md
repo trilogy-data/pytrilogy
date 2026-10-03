@@ -90,11 +90,27 @@ The story a keyspace plan should tell, phase by phase:
 6. `ctes` after optimization: the `LEFT OUTER JOIN` survives the optimizer, a
    padded COUNT is `0-fill`.
 
+## Comparing two traces
+
+`trace_diff.py` compares two traces of one statement, e.g. before and after a
+planner change. Steps align by plan, phase, build context and title (the n-th
+occurrence against the n-th); it lists the steps only one trace has, the
+field-level changes in the steps both have, the SQL diff, and planner time per
+phase. It exits 1 when the plans differ, so it can gate a refactor that must
+not move a plan.
+
+```bash
+.venv/Scripts/python.exe local_scripts/plan_debugger/trace_query.py q.preql --out before.trace.json --no-html
+.venv/Scripts/python.exe local_scripts/plan_debugger/trace_query.py q.preql --out after.trace.json --no-html
+.venv/Scripts/python.exe local_scripts/plan_debugger/trace_diff.py before.trace.json after.trace.json
+```
+
 ## Files
 
 - `trace_query.py`: records a statement and writes the JSON and the embedded viewer.
+- `trace_diff.py`: compares two traces (`trilogy/core/processing/plan_trace_diff.py`).
 - `viewer.html`: the viewer. `trace_query.py` replaces its `<!--TRACE-->` marker.
 - `examples/`: `customers_orders.preql` (the oracle model, one `~` region),
   `rowset_region.preql` (the same model through a rowset: a nested plan and a
   rowset witness). Generated `*.trace.*` files are git-ignored.
-- Guards: `tests/core/processing/test_plan_trace.py`.
+- Guards: `tests/core/processing/test_plan_trace.py`, `test_plan_trace_diff.py`.
