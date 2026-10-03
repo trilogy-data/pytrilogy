@@ -189,7 +189,7 @@ def _cte_addresses(cte: CTE | UnionCTE | None) -> set[str]:
 
 
 def _seed_addresses(cte: CTE | UnionCTE) -> set[str]:
-    """Addresses available from the CTE's FROM clause (see ``_seed_ctes``),
+    """Addresses available from the CTE's FROM clause (see ``seed_ctes``),
     falling back to a direct base datasource (raw table FROM)."""
     seeds = seed_ctes(cte)
     if seeds:
@@ -209,19 +209,11 @@ def _accumulated_left_addresses(cte: CTE | UnionCTE, idx: int) -> set[str]:
     prior join's ``right_cte``. Without the accumulation, ``right_only`` for a
     downstream join over-includes columns the left already carries, and a
     WHERE proof on a shared column would falsely promote the join."""
-    addrs: set[str] = set()
     if not isinstance(cte, CTE):
-        return addrs
-    join = cte.joins[idx] if idx < len(cte.joins) else None
-    if isinstance(join, Join) and join.left_cte is not None:
-        addrs |= _cte_addresses(join.left_cte)
-    addrs |= _seed_addresses(cte)
-    for prior_idx in range(idx):
-        prior = cte.joins[prior_idx]
-        if not isinstance(prior, Join):
-            continue
-        addrs |= _cte_addresses(prior.right_cte)
-    return addrs
+        return set()
+    return _seed_addresses(cte) | {
+        a for left in accumulated_left_ctes(cte, idx) for a in _cte_addresses(left)
+    }
 
 
 def _side_addresses(

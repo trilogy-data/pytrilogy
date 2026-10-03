@@ -585,35 +585,48 @@ class CTE:
     def zero_fills_count(self, c: BuildConcept, rolled_up: bool = False) -> bool:
         """A COUNT this CTE renders coalesced to 0: one a merge padded onto a
         region's rows (``zero_filled``), or a pre-aggregated one a join here
-        left NULL, which the granular `count(...)` path returns 0 for. A COUNT
-        rolled up through this GROUP BY (`rolled_up`) is the same guess over
-        its sum. A multiselect-align merge is the exception: a NULL count there
-        means the entity is absent from that arm, not 0 facts, and a cross-arm
-        comparison must exclude it -- it vetoes a stamped ``zero_filled`` too,
-        which is stamped from the merge's regions alone. The optimizer reads
-        this too: a predicate over such a count accepts the padded rows, so it
-        proves nothing about the side that padded them."""
-        if not c.zero_on_empty:
-            return False
-        if any(
-            isinstance(o.lineage, BuildMultiSelectLineage) for o in self.output_columns
-        ):
-            return False
-        if c.address in self.zero_filled:
-            return True
-        if self.group_to_grain and not rolled_up:
-            return False
-        return any(n.address == c.address for n in self.nullable_concepts)
+        left NULL (`rolled_up`: the same, summed through this GROUP BY). A
+        multiselect-align merge vetoes both: a NULL count there means the
+        entity is absent from that arm, not 0 facts. A predicate over such a
+        count accepts the padded rows, so it proves nothing about the side
+        that padded them."""
+        return (
+            c.zero_on_empty
+            and not self._aligns_multiselect()
+            and self._fills_with_zero(
+                c.address,
+                rolled_up,
+                {n.address for n in self.nullable_concepts},
+            )
+        )
 
     def zero_filled_counts(self, concepts: Iterable[BuildConcept]) -> set[str]:
+        if self._aligns_multiselect():
+            return set()
         rolled = (
             {r.address for r in self.rollup_concepts} if self.group_to_grain else set()
         )
+        nullable = {n.address for n in self.nullable_concepts}
         return {
             c.address
             for c in concepts
-            if self.zero_fills_count(c, rolled_up=c.address in rolled)
+            if c.zero_on_empty
+            and self._fills_with_zero(c.address, c.address in rolled, nullable)
         }
+
+    def _aligns_multiselect(self) -> bool:
+        return any(
+            isinstance(o.lineage, BuildMultiSelectLineage) for o in self.output_columns
+        )
+
+    def _fills_with_zero(
+        self, address: str, rolled_up: bool, nullable: set[str]
+    ) -> bool:
+        if address in self.zero_filled:
+            return True
+        if self.group_to_grain and not rolled_up:
+            return False
+        return address in nullable
 
     def filter_collapses_to_grain(self, c: BuildConcept) -> bool:
         """A locally-computed filter virtual whose keys are covered by this
@@ -1550,12 +1563,9 @@ class QueryDatasource:
             # the LHS is the key the merge folded `other` under, and the joins
             # carried above reference the sides by that identity
             extent_free_spans=self.extent_free_spans,
-            # follows `extent_free_spans`, so it takes the same side: the
-            # identifier's `_extent_free_` component is built from the spans
-            # that reach the outputs, so two same-identifier QDSs can disagree
-            # on the rest, and unioning here would claim an address carried by
-            # a span this merge no longer routes. `other`'s own tree keeps its
-            # marks, which `deep_extent_free_carried` still walks.
+            # follows `extent_free_spans`: same-identifier QDSs can disagree
+            # on spans that do not reach the outputs, and a union would claim
+            # an address carried by a span this merge no longer routes
             extent_free_carried=self.extent_free_carried,
             zero_filled=self.zero_filled | other.zero_filled,
             region_spans=self.region_spans | other.region_spans,

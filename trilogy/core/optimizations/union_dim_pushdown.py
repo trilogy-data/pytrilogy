@@ -33,6 +33,7 @@ Runs after ``PredicatePushdown`` so consumer WHEREs have settled at the
 consumer level, and before any rule that flattens / inlines the UnionCTE.
 """
 
+from collections.abc import Collection
 from dataclasses import dataclass, replace
 from typing import cast
 
@@ -593,10 +594,10 @@ class UnionDimPushdown(OptimizationRule):
         self,
         container: CTE | UnionCTE,
         consumers: list[CTE],
-        pass_through_names: set[str] | None = None,
+        pass_through_names: Collection[str] = frozenset(),
     ) -> list[_DimDescriptor]:
         union_outputs = {x.address for x in container.output_columns}
-        container_names = {container.name} | (pass_through_names or set())
+        container_names = {container.name, *pass_through_names}
         per_consumer = [
             self._consumer_dim_map(c, union_outputs, container_names) for c in consumers
         ]

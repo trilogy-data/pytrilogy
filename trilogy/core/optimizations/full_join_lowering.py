@@ -95,20 +95,14 @@ def _full_joins(cte: CTE) -> list[Join]:
     ]
 
 
-def _slots(cte: CTE, join: Join) -> list[BuildConcept]:
-    """The spine's key columns, taken from the first FULL join's left concepts.
-
-    One left concept bound to two different right concepts needs two spine
-    columns that would carry the same name, and the arms could not be lined up
-    positionally. That is a distinct shape, not a key mismatch, so it gets its
-    own diagnosis before ``_pairs_by_slot`` sees a duplicated slot list.
-    """
-    slots = [pair.left for pair in join.joinkey_pairs or []]
-    _refuse_repeated_keys(slots, cte.name)
-    return slots
+def _slots(join: Join) -> list[BuildConcept]:
+    """The spine's key columns, taken from the first FULL join's left concepts."""
+    return [pair.left for pair in join.joinkey_pairs or []]
 
 
 def _refuse_repeated_keys(lefts: list[BuildConcept], cte_name: str) -> None:
+    """One left concept bound to two right concepts needs two spine columns
+    carrying the same name, which the arms cannot line up positionally."""
     addresses = [c.address for c in lefts]
     repeated = sorted({a for a in addresses if addresses.count(a) > 1})
     if repeated:
@@ -233,7 +227,9 @@ def _spine_participants(
     return providers
 
 
-def _nullable_slots(joins: list[Join], slots: list[BuildConcept]) -> list[bool]:
+def _nullable_slots(
+    joins: list[Join], slots: list[BuildConcept], cte_name: str
+) -> list[bool]:
     """Which slots the original FULL joins compared null-safely.
 
     A null-safe key pairs NULL with NULL, which is what the spine reproduces:
@@ -242,7 +238,7 @@ def _nullable_slots(joins: list[Join], slots: list[BuildConcept]) -> list[bool]:
     """
     flags = [False] * len(slots)
     for join in joins:
-        for index, pair in enumerate(_pairs_by_slot(join, slots, "")):
+        for index, pair in enumerate(_pairs_by_slot(join, slots, cte_name)):
             if Modifier.NULLABLE in pair.modifiers or Modifier.NULLABLE in (
                 join.modifiers or []
             ):
@@ -384,7 +380,7 @@ def _lower_cte(cte: CTE, index: int) -> UnionCTE | None:
     if not joins:
         return None
     _validate(cte, joins)
-    slots = _slots(cte, joins[0])
+    slots = _slots(joins[0])
     providers = _spine_participants(cte, joins, slots)
 
     # The FROM base leads so the union's first arm names the spine's columns.
@@ -394,7 +390,9 @@ def _lower_cte(cte: CTE, index: int) -> UnionCTE | None:
         if render_alias(cte, node) == cte.base_alias
     )
     participants = [providers.pop(base_name), *providers.values()]
-    nullable = _check_null_keys(cte, slots, _nullable_slots(joins, slots), participants)
+    nullable = _check_null_keys(
+        cte, slots, _nullable_slots(joins, slots, cte.name), participants
+    )
 
     inlined = {
         node.name: folded

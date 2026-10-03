@@ -149,15 +149,10 @@ def has_basic_derivation(cte: CTE) -> bool:
 
 
 def renders_grain_matched_aggregate(cte: CTE) -> bool:
-    """An aggregate rendered by a CTE that does not group is not an
-    aggregation. `BaseDialect.render_expr` reaches for `FUNCTION_MAP` only when
-    `group_to_grain`; otherwise it uses the single-row forms
-    (`AGGREGATE_GRAIN_MATCH_MAP`: `sum(x) -> x`, `count(x) -> CASE WHEN x IS
-    NOT NULL THEN 1 ELSE 0 END`). The planner emits a group node for an
-    aggregate whose grain already equals its input's, and that resolves to a
-    non-grouping CTE, so the result is a scalar row projection: BASIC.
-
-    ROLLUP / GROUPING SETS are excluded: those render off the CTE's own
+    """An aggregate rendered by a CTE that does not group is a scalar row
+    projection: the dialect uses the single-row forms
+    (`AGGREGATE_GRAIN_MATCH_MAP`, `sum(x) -> x`) unless `group_to_grain`.
+    ROLLUP / GROUPING SETS are excluded: they render off the CTE's own
     grouping mode, which a fold relocates."""
     if cte.group_to_grain or cte.source.source_type == SourceType.GROUP:
         return False
@@ -644,8 +639,6 @@ class CollapseSingleParent(OptimizationRule):
                 address for address, sources in parent.source_map.items() if sources
             }
             for x in parent.output_columns:
-                if x.address in materialized:
-                    continue
                 if lineage_contains_aggregate(x, set(), materialized):
                     self.log(
                         f"Parent {parent.name} renders inline aggregate {x.address}, skipping"
