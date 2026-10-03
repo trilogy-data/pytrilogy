@@ -29,7 +29,7 @@ from trilogy.core.optimizations.collapse_single_parent import (
     grouped_unbound_passthrough_should_wait,
 )
 from trilogy.core.optimizations.full_join_lowering import lower_full_joins
-from trilogy.core.optimizations.preserved_join_keys import PrunePreservedJoinKeys
+from trilogy.core.optimizations.join_upgrade import PrunePreservedJoinKeys
 from trilogy.core.processing import plan_trace
 from trilogy.core.processing.utility import sort_select_output_processed
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
