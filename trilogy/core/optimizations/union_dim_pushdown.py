@@ -227,8 +227,10 @@ def _narrow_null_extending_joins(
             for idx, j in enumerate(consumer.joins)
             if isinstance(j, Join) and j.right_cte.name == dim_name
         ),
-        len(consumer.joins),
+        None,
     )
+    if dim_idx is None:
+        return
     end = len(consumer.joins) if _rejects_null(atoms) else dim_idx
     for idx, j in enumerate(consumer.joins[:end]):
         if not isinstance(j, Join) or j.jointype not in OUTER_JOIN_TYPES:
