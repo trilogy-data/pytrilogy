@@ -193,6 +193,8 @@ class DomainGraph:
         self._fd_keys: set[tuple] = set()
         self._canonical: dict[str, str] | None = None
         self._eq_classes: dict[str, str] | None = None
+        self._declared_equal_classes: frozenset[str] | None = None
+        self._authored_join_members: frozenset[str] | None = None
         self._subset_sources: set[str] | None = None
         self._declared_subset_pairs: list[tuple[str, str]] | None = None
         self._fd_minimal: dict[frozenset[str], frozenset[str]] = {}
@@ -229,6 +231,8 @@ class DomainGraph:
         self.edges.append(edge)
         self._canonical = None
         self._eq_classes = None
+        self._declared_equal_classes = None
+        self._authored_join_members = None
         self._subset_sources = None
         self._declared_subset_pairs = None
         self._invalidate_fds()
@@ -377,20 +381,22 @@ class DomainGraph:
             for addr in (e.source, e.target)
         }
 
-    def authored_join_members(self) -> set[str]:
+    def authored_join_members(self) -> frozenset[str]:
         """Raw endpoints of every query-authored join declaration (`subset` /
         `equal` / `union`, statement or rowset scope). Each is an equality
         condition the author wrote between two sides' own columns, so no
         grain or FD implication may infer it away: within one side a grain
         determines its columns, but nothing makes two sides' rows agree. A
         global `merge` is excluded — it makes the two one concept."""
-        return {
-            addr
-            for e in self.edges
-            if e.provenance is EdgeProvenance.DECLARED
-            and e.scope is not EdgeScope.GLOBAL
-            for addr in (e.source, e.target)
-        }
+        if self._authored_join_members is None:
+            self._authored_join_members = frozenset(
+                addr
+                for e in self.edges
+                if e.provenance is EdgeProvenance.DECLARED
+                and e.scope is not EdgeScope.GLOBAL
+                for addr in (e.source, e.target)
+            )
+        return self._authored_join_members
 
     def statement_incomparable_keys(self) -> set[str]:
         """Canonicalized endpoints of statement-scoped ∦ declarations
@@ -411,14 +417,19 @@ class DomainGraph:
         resolves EQUAL too, but nobody declared it."""
         rep = self._equivalence_classes()
         cls = rep.get(left, left)
-        if cls != rep.get(right, right):
-            return False
-        return any(
-            e.relation is DomainRelation.EQUAL
-            and e.provenance is EdgeProvenance.DECLARED
-            and rep.get(e.source, e.source) == cls
-            for e in self.edges
-        )
+        return cls == rep.get(right, right) and cls in self._declared_equal_reps()
+
+    def _declared_equal_reps(self) -> frozenset[str]:
+        """The ≡-classes holding a declared EQUAL edge."""
+        if self._declared_equal_classes is None:
+            rep = self._equivalence_classes()
+            self._declared_equal_classes = frozenset(
+                rep.get(e.source, e.source)
+                for e in self.edges
+                if e.relation is DomainRelation.EQUAL
+                and e.provenance is EdgeProvenance.DECLARED
+            )
+        return self._declared_equal_classes
 
     def equal_narrowable_keys(self) -> set[str]:
         """Canonicalized endpoints of EQUAL declarations, minus keys also

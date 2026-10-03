@@ -6,7 +6,6 @@ from trilogy.core.enums import (
     Derivation,
     FunctionType,
     Granularity,
-    JoinType,
     Purpose,
 )
 from trilogy.core.exceptions import DisconnectedConceptsException
@@ -36,7 +35,10 @@ from trilogy.core.processing.grain_utility import (
     determined_past_nulls,
     nullable_spellings,
 )
-from trilogy.core.processing.utility import GroupRequiredResponse
+from trilogy.core.processing.utility import (
+    PADS_LEFT_JOIN_TYPES,
+    GroupRequiredResponse,
+)
 from trilogy.utility import unique
 
 if TYPE_CHECKING:
@@ -91,9 +93,9 @@ def calculate_effective_parent_grain(
             join_grain = BuildGrain.from_concepts(keys)
             # a FULL/RIGHT keeps the right side's unmatched rows, so its grain
             # is part of the stream's even when the join is keyed on it
-            if join_grain == join.right_datasource.grain and join.join_type not in (
-                JoinType.FULL,
-                JoinType.RIGHT_OUTER,
+            if (
+                join_grain == join.right_datasource.grain
+                and join.join_type not in PADS_LEFT_JOIN_TYPES
             ):
                 logger.debug(f"irrelevant right join {join}, does not change grain")
             else:
@@ -657,22 +659,7 @@ def rowset_relation_hints(
     severs exactly these, so a hit is the join the author left implicit. Keys
     are listed before other outputs."""
     comp_of, _ = _component_map(environment, g, excluded_addresses)
-
-    outputs_by_rowset: dict[str, list[tuple[BuildConcept, BuildConcept]]] = {}
-    for concept in environment.concepts.values():
-        lineage = concept.lineage
-        if (
-            isinstance(lineage, BuildRowsetItem)
-            and isinstance(lineage.content, BuildConcept)
-            and not _crossjoinable(lineage.content)
-            # a body-minted derivation (`avg(price) as avg_price`) has no
-            # name outside the body to join on
-            and not _body_minted(_alias_source(lineage.content), lineage.rowset.name)
-        ):
-            outputs_by_rowset.setdefault(lineage.rowset.name, []).append(
-                (concept, lineage.content)
-            )
-
+    outputs_by_rowset = _joinable_rowset_outputs(environment)
     hints: list[str] = []
     sibling_hints: list[str] = []
     read_by_group = [_rowsets_read_by(group) for group in subgraphs]
@@ -700,24 +687,49 @@ def rowset_relation_hints(
                 for output, content in _ranked_pairs(to_base, determining):
                     if (hint := _spell_subset_join(output, content)) not in hints:
                         hints.append(hint)
-                # a sibling rowset there wrapping the same body concept
                 if other_index < index:
                     continue
                 for sibling in sorted(read_by_group[other_index] - {name}):
-                    by_content = {
-                        content.address: output
-                        for output, content in outputs_by_rowset.get(sibling, [])
-                    }
-                    shared = [
-                        (by_content[content.address], output)
-                        for output, content in outputs
-                        if content.address in by_content
-                    ]
-                    for theirs, ours in _ranked_pairs(shared):
-                        hint = _spell_subset_join(theirs, ours)
+                    for hint in _sibling_hints(
+                        outputs, outputs_by_rowset.get(sibling, [])
+                    ):
                         if hint not in sibling_hints:
                             sibling_hints.append(hint)
     return hints + sibling_hints
+
+
+def _joinable_rowset_outputs(
+    environment: BuildEnvironment,
+) -> dict[str, list[tuple[BuildConcept, BuildConcept]]]:
+    """Rowset name -> (handle, body content) for each output a join can name:
+    a body-minted derivation (`avg(price) as avg_price`) has no name outside
+    the body."""
+    out: dict[str, list[tuple[BuildConcept, BuildConcept]]] = {}
+    for concept in environment.concepts.values():
+        lineage = concept.lineage
+        if (
+            isinstance(lineage, BuildRowsetItem)
+            and isinstance(lineage.content, BuildConcept)
+            and not _crossjoinable(lineage.content)
+            and not _body_minted(_alias_source(lineage.content), lineage.rowset.name)
+        ):
+            out.setdefault(lineage.rowset.name, []).append((concept, lineage.content))
+    return out
+
+
+def _sibling_hints(
+    ours: list[tuple[BuildConcept, BuildConcept]],
+    theirs: list[tuple[BuildConcept, BuildConcept]],
+) -> list[str]:
+    """`subset join` spellings pairing a sibling rowset's handles with ours
+    where both wrap the same body concept."""
+    by_content = {content.address: output for output, content in theirs}
+    shared = [
+        (by_content[content.address], output)
+        for output, content in ours
+        if content.address in by_content
+    ]
+    return [_spell_subset_join(their, our) for their, our in _ranked_pairs(shared)]
 
 
 def _is_global_aggregate_gate(
