@@ -4212,6 +4212,15 @@ def _bridge_unpaired_parents(
     return parents + added
 
 
+def _gate_grain_keys(concepts: list[BuildConcept]) -> frozenset[str]:
+    return frozenset(
+        key
+        for concept in concepts
+        if concept.derivation == Derivation.AGGREGATE and concept.grain
+        for key in concept.grain.components
+    )
+
+
 def _filter_arg_parents(
     group_graph: nx.DiGraph,
     built: dict[str, StrategyNode],
@@ -4690,6 +4699,12 @@ def _assemble_final_node(
         # to the boundary on that key; widen both sides so the merge joins on
         # it instead of cross-joining.
         if arg_nodes:
+            # A gate keyed by a column the contributor never projects
+            # (`sum(amount) by status > 35 or ...` over `select oid`) pairs on
+            # that key; carried hidden, or the merge has nothing to join on.
+            gate_keys = _gate_grain_keys(arg_concepts) - avail
+            if gate_keys:
+                _widen_merge_join_keys([node, *arg_nodes], environment, gate_keys)
             base_keys = _rowset_base_join_keys(mandatory_list, node, arg_nodes)
             if base_keys:
                 _widen_merge_join_keys([node, *arg_nodes], environment, base_keys)
