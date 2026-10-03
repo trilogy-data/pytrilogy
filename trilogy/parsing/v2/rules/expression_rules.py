@@ -7,6 +7,8 @@ from trilogy.core.enums import ComparisonOperator, FunctionType
 from trilogy.core.models.author import (
     Between,
     Comparison,
+    ConceptRef,
+    Function,
     Parenthetical,
     SubselectComparison,
 )
@@ -86,8 +88,14 @@ def array_lit(
     node: SyntaxNode,
     context: RuleContext,
     hydrate: HydrateFunction,
-) -> ListWrapper:
-    return list_to_wrapper(hydrated_children(node, hydrate))
+) -> ListWrapper | Function:
+    args = hydrated_children(node, hydrate)
+    # `[amount, 0]` is built row by row; `[1, 2]` is a value
+    if any(isinstance(arg, (ConceptRef, Function)) for arg in args):
+        return context.function_factory.create_function(
+            args, operator=FunctionType.ARRAY, meta=core_meta(node.meta)
+        )
+    return list_to_wrapper(args)
 
 
 def tuple_lit(

@@ -312,6 +312,7 @@ def _materialize_group_graph(
             aggregate_distinct_addrs=frozenset(bucket.aggregate_distinct_addrs),
             grouping_mode=bucket.grouping_mode,
             extent_spans=bucket.extent_spans,
+            null_member_spans=bucket.null_member_spans,
             dim_keys=bucket.dim_keys,
             reason=bucket.reason,
         )

@@ -766,6 +766,38 @@ by rollup ();
         assert "rank() over" in sql
 
 
+ARRAY_MODEL = """
+key order_id int;
+property order_id.amount int;
+root datasource orders (order_id: order_id, amount: amount)
+grain (order_id)
+query '''select 100 as order_id, 5 as amount union all select 101, 7''';
+auto arr <- [amount, amount * 2, 0];
+auto consts <- [1, 2, 3];
+"""
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.PEST, ParserBackend.LARK])
+def test_array_literal_over_a_column_is_built_row_by_row(
+    backend: ParserBackend,
+) -> None:
+    # `[amount]` is an ARRAY function of the row; `[1, 2, 3]` stays a value
+    with _using_backend(backend):
+        executor = Dialects.DUCK_DB.default_executor()
+        executor.execute_text(ARRAY_MODEL)
+        rows = executor.execute_text(
+            "select order_id, arr, arr[1] as first, consts order by order_id asc;"
+        )[-1].fetchall()
+        with pytest.raises(InvalidSyntaxException, match="set of types"):
+            executor.execute_text("auto bad <- [amount, 'a'];")
+    assert [tuple(r) for r in rows] == [
+        (100, [5, 10, 0], 5, [1, 2, 3]),
+        (101, [7, 14, 0], 7, [1, 2, 3]),
+    ]
+    assert executor.environment.concepts["local.consts"].derivation.value == "constant"
+    assert executor.environment.concepts["local.arr"].derivation.value == "basic"
+
+
 def test_numbering_window_returns_undefined_for_undefined_anchor() -> None:
     env = Environment()
     env.concepts["local.missing"] = UndefinedConcept(address="local.missing")

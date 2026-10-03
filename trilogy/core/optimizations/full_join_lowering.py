@@ -255,15 +255,22 @@ def _check_null_keys(
     slots: list[BuildConcept],
     nullable: list[bool],
     participants: list[tuple[CTE | UnionCTE, list[BuildConcept]]],
-) -> None:
-    """Refuse a slot compared with plain ``=`` whose key can actually be NULL.
+) -> list[bool]:
+    """Refuse a slot compared with plain ``=`` whose key can be NULL on more
+    than one participant; say which slots the arms must pair null-safely.
 
     Under ``=`` a NULL key matches nothing, so a native FULL JOIN preserves
     *every* NULL-key row from *both* sides as its own unmatched output row. The
-    spine can't reproduce that count: UNION collapses them to a single NULL key
-    that then re-joins to neither side. Null-safe slots are fine (that is the
-    pairing the spine implements), and so are slots no participant can null.
+    spine folds them into one NULL key and re-expands it null-safely against
+    every participant: with NULL keys on two sides that is their cross product,
+    not their sum. With one side able to null the key (a `~?` fact beside its
+    dimension) the spine's NULL row re-expands against that side alone, one
+    output row per NULL-key row, which is the native count, so the arm joins
+    pair that slot null-safely. Null-safe slots are fine as they are (that is
+    the pairing the spine implements), and so are slots no participant can
+    null.
     """
+    null_safe = list(nullable)
     for index, slot in enumerate(slots):
         if nullable[index]:
             continue
@@ -272,16 +279,19 @@ def _check_null_keys(
             for node, concepts in participants
             if not proven_non_null(concepts[index], node)
         ]
-        if unproven:
+        if len(unproven) == 1:
+            null_safe[index] = True
+        if len(unproven) > 1:
             raise _unsupported(
                 f"Cannot lower the FULL JOIN in {cte.name}: join key "
                 f"{slot.address} is compared with plain equality but may be NULL "
                 f"in {sorted(unproven)}. A native FULL JOIN keeps every NULL-key "
-                "row from both sides as its own unmatched row; a key spine folds "
-                "them into one, so the row counts would differ.",
+                "row from both sides as its own unmatched row; a key spine pairs "
+                "them with each other, so the row counts would differ.",
                 NULL_REJECT_LEVER.format(key=slot.address),
                 COMPLETE_BINDING_LEVER,
             )
+    return null_safe
 
 
 def _branch_cte(
@@ -384,8 +394,7 @@ def _lower_cte(cte: CTE, index: int) -> UnionCTE | None:
         if render_alias(cte, node) == cte.base_alias
     )
     participants = [providers.pop(base_name), *providers.values()]
-    nullable = _nullable_slots(joins, slots)
-    _check_null_keys(cte, slots, nullable, participants)
+    nullable = _check_null_keys(cte, slots, _nullable_slots(joins, slots), participants)
 
     inlined = {
         node.name: folded
