@@ -6,6 +6,9 @@ is the sole reader of that side — the TPC-H q13 shape.
 """
 
 from tests.helpers.rows import executor_for, fetch_rows
+from trilogy.core.enums import JoinType
+from trilogy.core.models.execute import Join
+from trilogy.executor import Executor
 
 _MODEL = """
 key line_id int;
@@ -30,10 +33,15 @@ select 1 uid, 'ca' st union all select 2 uid, 'ny' st union all select 3 uid, 'w
 """
 
 
-def _fired(sql: str) -> bool:
-    """The predicate moved onto the ON clause rather than staying in the count."""
-    on_clause = sql.split("LEFT OUTER JOIN")[-1].split("\n")[0]
-    return "sale_price" in on_clause and "CASE WHEN" not in sql
+def _fired(executor: Executor, query: str) -> bool:
+    """The predicate moved onto a LEFT JOIN's ON clause."""
+    return any(
+        isinstance(join, Join)
+        and join.jointype == JoinType.LEFT_OUTER
+        and join.condition is not None
+        for cte in executor.parse_text(query)[-1].ctes
+        for join in cte.joins
+    )
 
 
 _BY_ORDER = """select order_id, state, count(line_id ? sale_price > 4) as big_lines
@@ -53,7 +61,7 @@ def test_grouping_key_off_the_right_keeps_its_value():
         (11, "ny", 0),
         (None, "wa", 0),
     ]
-    assert not _fired(executor.generate_sql(_BY_ORDER)[-1])
+    assert not _fired(executor, _BY_ORDER)
 
 
 def test_named_filter_grouping_key_off_the_right_keeps_its_value():
@@ -63,10 +71,10 @@ def test_named_filter_grouping_key_off_the_right_keeps_its_value():
         (11, "ny", 0),
         (None, "wa", 0),
     ]
-    assert not _fired(executor.generate_sql(_BY_ORDER_NAMED)[-1])
+    assert not _fired(executor, _BY_ORDER_NAMED)
 
 
 def test_fires_when_the_count_is_the_sole_reader_of_the_right():
     executor = executor_for(_MODEL)
     assert fetch_rows(executor, _BY_USER) == [(1, "ca", 2), (2, "ny", 0), (3, "wa", 0)]
-    assert _fired(executor.generate_sql(_BY_USER)[-1])
+    assert _fired(executor, _BY_USER)
