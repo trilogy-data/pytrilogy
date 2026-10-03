@@ -1,5 +1,5 @@
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 from trilogy.core.enums import (
@@ -21,6 +21,7 @@ from trilogy.core.models.build import (
     BuildFunction,
     BuildParenthetical,
     BuildUnionDatasource,
+    BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import EnumType
@@ -29,6 +30,7 @@ from trilogy.core.processing.condition_utility import (
     ExcludedEnumValues,
     decompose_condition,
     effective_enum_domain,
+    merge_conditions,
     simplify_conditions,
 )
 
@@ -380,6 +382,50 @@ def get_union_sources(
             if simplify_conditions(conditions, excluded):
                 final.append(dses)
     return final
+
+
+def union_sources(
+    datasources: Sequence[BuildDatasource], environment: BuildEnvironment
+) -> list[tuple[BuildUnionDatasource, list[BuildConcept]]]:
+    """Every covering union over the scope's partition families, with the
+    concepts it emits: the outputs every arm binds, plus the derivations the
+    arms compute inline that some other source is keyed on. A scope fact,
+    decided once when its reference graph is generated: the families are the
+    ``complete where`` arms as a whole (every arm is admitted, whatever a
+    request later asks of it), covered over the domain the statement's row
+    gate leaves (``excluded_enum_values``)."""
+    excluded = environment.excluded_enum_values
+    partial_bound = [
+        column.concept
+        for ds in datasources
+        if ds.non_partial_for
+        for column in ds.columns
+        if Modifier.PARTIAL in column.modifiers
+    ]
+    out: list[tuple[BuildUnionDatasource, list[BuildConcept]]] = []
+    for group in get_union_sources(list(datasources), partial_bound, excluded):
+        merged = merge_conditions(
+            [
+                child.non_partial_for.conditional
+                for child in group
+                if child.non_partial_for is not None
+            ],
+            excluded,
+        )
+        union = BuildUnionDatasource(
+            children=group,
+            non_partial_for=(
+                BuildWhereClause(conditional=merged) if merged is not None else None
+            ),
+        )
+        common = set(group[0].output_concepts)
+        for child in group[1:]:
+            common &= set(child.output_concepts)
+        emits = sorted(common, key=lambda c: c.address) + union_derived_concepts(
+            group, environment, datasources
+        )
+        out.append((union, emits))
+    return out
 
 
 def union_derived_concepts(

@@ -16,8 +16,6 @@ search it feeds.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-
 from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.graph_models import (
     ReferenceGraph,
@@ -37,7 +35,6 @@ from trilogy.core.processing.aggregate_rollup import (
 )
 from trilogy.core.processing.condition_utility import (
     condition_implies,
-    merge_conditions,
 )
 from trilogy.core.processing.node_generators.common import (
     relevant_authored_join_pairs,
@@ -46,10 +43,6 @@ from trilogy.core.processing.node_generators.presence_probe import (
     is_presence_probe,
     member_binding_datasources,
     probe_member_address,
-)
-from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
-    get_union_sources,
-    union_derived_concepts,
 )
 from trilogy.core.processing.v4_helper.network_coalescing import (
     axis_families,
@@ -330,54 +323,6 @@ def _bindings_for(
     }
 
 
-def _union_candidates(
-    terminals: list[BuildConcept],
-    environment: BuildEnvironment,
-    datasources: Sequence[BuildDatasource],
-    conditions: BuildWhereClause | None,
-    equivalence: dict[str, str],
-) -> dict[str, SourceCandidate]:
-    """A partition family read as one source. Each arm binds the discriminator
-    only for its own partition, so only the union binds it fully; without this
-    candidate the search would answer a whole-population request from one arm.
-    Like a single scan, it also emits the derivations every arm computes
-    inline, so a lookup keyed on one (`cell <- f(lat, lon)`) can join it."""
-    out: dict[str, SourceCandidate] = {}
-    excluded = environment.excluded_enum_values
-    for group in get_union_sources(list(datasources), terminals, excluded):
-        merged = merge_conditions(
-            [
-                child.non_partial_for.conditional
-                for child in group
-                if child.non_partial_for is not None
-            ],
-            excluded,
-        )
-        union_datasource = BuildUnionDatasource(
-            children=group,
-            non_partial_for=(
-                BuildWhereClause(conditional=merged) if merged is not None else None
-            ),
-        )
-        stored = {column.concept.address for column in union_datasource.columns}
-        if not stored:
-            continue
-        derived = {
-            concept.canonical_address
-            for concept in union_derived_concepts(group, environment, datasources)
-        }
-        node = "ds~" + "-".join(child.name for child in group)
-        out[node] = _candidate(
-            node,
-            union_datasource,
-            stored | derived,
-            stored=stored,
-            conditions=conditions,
-            equivalence=equivalence,
-        )
-    return out
-
-
 def _drop_dominated_arms(
     candidates: dict[str, SourceCandidate], requested: list[str]
 ) -> dict[str, SourceCandidate]:
@@ -638,9 +583,9 @@ def _relevant_nodes(
     Computed before labeling, because a candidate's binding keys are exactly
     its canonicalized emitted addresses (minus probe-ownership removals), so
     address-reachability over this bipartite graph over-approximates every
-    join any cover could make. `extra_sets` carries the union/connector
-    candidates' binding keys, since a derived connector can bridge scans that
-    share no address. Presence-probe carriers are seeded by node: their binding
+    join any cover could make. `extra_sets` carries the connector candidates'
+    binding keys, since a derived connector can bridge scans that share no
+    address. Presence-probe carriers are seeded by node: their binding
     is INJECTED by `pin_unoffered_probes`, never emitted by the graph."""
     canonical: dict[str, set[str]] = {
         node: {equivalence.get(a, a) for a in emitted}
@@ -731,13 +676,6 @@ def build_source_network(
             for identifier in datasource_identifiers(datasource)
         },
     )
-    union_candidates = {
-        node: union_candidate
-        for node, union_candidate in _union_candidates(
-            terminals, environment, graph.scope.datasources, conditions, equivalence
-        ).items()
-        if not union_candidate.condition.disqualifying
-    }
     connector_candidates = _connector_candidates(environment, equivalence)
     relevant = _relevant_nodes(
         graph,
@@ -745,11 +683,7 @@ def build_source_network(
         addresses,
         environment,
         equivalence,
-        [
-            frozenset(candidate.bindings)
-            for table in (union_candidates, connector_candidates)
-            for candidate in table.values()
-        ],
+        [frozenset(candidate.bindings) for candidate in connector_candidates.values()],
     )
     candidates: dict[str, SourceCandidate] = {}
     for node, datasource in sorted(graph.datasources.items()):
@@ -769,8 +703,6 @@ def build_source_network(
         )
         if candidate is not None and not candidate.condition.disqualifying:
             candidates[node] = candidate
-    for node, union_candidate in union_candidates.items():
-        candidates.setdefault(node, union_candidate)
     for node, connector in connector_candidates.items():
         candidates.setdefault(node, connector)
     requested = [equivalence.get(a, a) for a in addresses]

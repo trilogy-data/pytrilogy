@@ -20,7 +20,6 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
     BuildGrain,
-    BuildUnionDatasource,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -34,7 +33,6 @@ from trilogy.core.processing.condition_utility import (
     condition_required_addresses,
     decompose_condition,
     is_scalar_condition,
-    merge_conditions,
 )
 from trilogy.core.processing.discovery_validation import (
     ValidationResult,
@@ -49,9 +47,6 @@ from trilogy.core.processing.node_generators.presence_probe import (
 from trilogy.core.processing.node_generators.select_helpers.condition_routing import (
     absence_atoms,
     covered_conditions,
-)
-from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
-    get_union_sources,
 )
 from trilogy.core.processing.node_generators.select_helpers.datasource_nodes import (
     SourceNodeCandidate,
@@ -104,8 +99,6 @@ def create_pruned_concept_graph(
 ) -> ReferenceGraph | None:
     orig_g = g
     g = g.copy()
-    excluded = environment.excluded_enum_values
-    union_options = get_union_sources(datasources, all_concepts, excluded)
     concepts_by_address = {c.address: c for c in orig_g.concepts.values()}
     target_grain = BuildGrain.from_concepts(all_concepts)
     rollup_edges: list[tuple[str, str]] = []
@@ -125,36 +118,6 @@ def create_pruned_concept_graph(
             rollup_edges.append((node_address, cnode))
             rollup_edges.append((cnode, node_address))
     g.add_edges_from(rollup_edges)
-
-    union_edges: list[tuple[str, str]] = []
-    for ds_list in union_options:
-        node_address = "ds~" + "-".join([x.name for x in ds_list])
-        _merged = merge_conditions(
-            [
-                x.non_partial_for.conditional
-                for x in ds_list
-                if x.non_partial_for is not None
-            ],
-            excluded,
-        )
-        reduced_non_partial_for = (
-            BuildWhereClause(conditional=_merged) if _merged is not None else None
-        )
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} injecting potentially relevant union datasource {node_address} with non_partial_for {reduced_non_partial_for} from children {[x.name for x in ds_list]}"
-        )
-        common: set[BuildConcept] = set.intersection(
-            *[set(x.output_concepts) for x in ds_list]
-        )
-        g.datasources[node_address] = BuildUnionDatasource(
-            children=ds_list, non_partial_for=reduced_non_partial_for
-        )
-        for c in common:
-            cnode = concept_to_node(c)
-            g.concepts.setdefault(cnode, c)
-            union_edges.append((node_address, cnode))
-            union_edges.append((cnode, node_address))
-    g.add_edges_from(union_edges)
 
     prune_sources_for_conditions(
         g,

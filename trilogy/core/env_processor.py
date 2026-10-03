@@ -7,6 +7,7 @@ from trilogy.core.graph_models import (
     ScopeDatasources,
     concept_to_node,
     datasource_to_node,
+    union_to_node,
 )
 from trilogy.core.models.build import (
     BuildConcept,
@@ -389,11 +390,28 @@ def generate_graph(
 ) -> ReferenceGraph:
     """The environment's reference graph over ``scope``: a statement's
     bindings as decided by ``generate_scope_graph``, or, left out, the
-    environment's as authored."""
+    environment's as authored. The covering unions over the scope's partition
+    families are source nodes of the graph like any scan (`union_sources`)."""
+    from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (  # cycle
+        union_sources,
+    )
+
     default_concept_graph: dict[str, BuildConcept] = {}
-    return generate_adhoc_graph(
+    g = generate_adhoc_graph(
         list(environment.concepts.values())
         + list(environment.alias_origin_lookup.values()),
         scope or ScopeDatasources(environment.datasources.values()),
         default_concept_graph=default_concept_graph,
     )
+    edges: list[tuple[str, str]] = []
+    for union, emits in union_sources(g.scope.datasources, environment):
+        node = union_to_node(union)
+        g.datasources[node] = union
+        g.add_datasource_node(node, union)
+        for concept in emits:
+            cnode = concept_to_node(concept)
+            g.concepts.setdefault(cnode, concept)
+            edges.append((node, cnode))
+            edges.append((cnode, node))
+    g.add_edges_from(edges)
+    return g

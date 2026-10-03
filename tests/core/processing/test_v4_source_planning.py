@@ -12,7 +12,6 @@ from trilogy.core.processing.v4_helper.source_planning import (
     SourceRequest,
     _datasource_grain_concept_nodes,
     _datasource_nodes_for_bridge,
-    _inject_union_datasources,
     _network_source,
     _original_datasource_concept_nodes,
     _search_concepts_for_bridge,
@@ -299,11 +298,9 @@ class TestBridgeSourcePlanning:
         assert catalog_customer in bridge_graph
         assert bridge_graph.has_edge("ds~catalog_sales", catalog_customer)
 
-    def test_inject_union_datasources_adds_enum_partition_union(self):
+    def test_generated_graph_carries_the_enum_partition_union(self):
         _, benv = _build_partial_union()
         graph = generate_graph(benv)
-
-        _inject_union_datasources(graph, _source_outputs(benv), benv)
 
         union = graph.datasources["ds~web_sales-catalog_sales"]
         assert isinstance(union, BuildUnionDatasource)
@@ -376,11 +373,6 @@ class TestBridgeSourcePlanning:
     def test_component_source_exposes_selected_graph_node_grain_keys(self):
         _, benv = _build_partitioned_channel_dim()
         graph = generate_graph(benv)
-        _inject_union_datasources(
-            graph,
-            [benv.concepts["local.channel_dim_text_id"]],
-            benv,
-        )
         ds_node = "ds~web_dim-catalog_dim"
         selected = [
             "c~local.channel_dim_text_id@Grain<local.channel_dim_id,local.sales_channel>"
