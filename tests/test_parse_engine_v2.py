@@ -828,11 +828,16 @@ def test_array_value_and_row_literals_share_one_element_type_rule(
 
 
 @pytest.mark.parametrize("backend", [ParserBackend.PEST, ParserBackend.LARK])
-def test_equal_is_an_identifier_unless_before_join(backend: ParserBackend) -> None:
+@pytest.mark.parametrize(
+    "name", ["equal", "left", "inner", "full", "right", "cross", "subset", "union"]
+)
+def test_join_type_is_an_identifier_unless_before_join(
+    backend: ParserBackend, name: str
+) -> None:
     with _using_backend(backend):
         executor = Dialects.DUCK_DB.default_executor()
-        executor.execute_text(ARRAY_MODEL + "auto equal <- amount * 2;")
-        rows = executor.execute_text("select order_id, equal order by order_id asc;")[
+        executor.execute_text(ARRAY_MODEL + f"auto {name} <- amount * 2;")
+        rows = executor.execute_text(f"select order_id, {name} order by order_id asc;")[
             -1
         ].fetchall()
     assert [tuple(r) for r in rows] == [(100, 10), (101, 14)]
