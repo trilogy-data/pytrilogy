@@ -214,9 +214,7 @@ class GroupAttrs(_HeldKeys):
     # instead of dedup-then-COUNT.
     aggregate_distinct_addrs: frozenset[str] = frozenset()
     # See `GroupBucket.aggregate_first_row_grains`.
-    aggregate_first_row_grains: dict[str, frozenset[str]] = field(
-        default_factory=dict
-    )
+    aggregate_first_row_grains: dict[str, frozenset[str]] = field(default_factory=dict)
     # Atoms (BoolExpr) applied AT this group. A clause like
     # `state='TN' AND year=2000` is decomposed and each atom finds its own
     # highest-allowed group independently, so a single clause may live at
@@ -427,9 +425,7 @@ class GroupBucket(_HeldKeys):
     # Members of a ROLLUP/CUBE/GROUPING SETS pass whose input stream repeats
     # their rows (two facts joined below the one pass), mapped to the grain
     # whose first row each reads.
-    aggregate_first_row_grains: dict[str, frozenset[str]] = field(
-        default_factory=dict
-    )
+    aggregate_first_row_grains: dict[str, frozenset[str]] = field(default_factory=dict)
     # SEMANTICS of this group's GROUP BY, as opposed to `discriminator`, which
     # only exists to keep distinct buckets at distinct group ids. Ask
     # `nulls_grouping_keys`, never the id string.
