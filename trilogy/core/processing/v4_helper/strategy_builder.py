@@ -2256,6 +2256,8 @@ def _widen_scan_chain(
         ):
             return False
         available = renderable_addresses(node)
+    if _synthesizes_handle(concept, node, available):
+        return False
     widen_projection(
         node,
         [concept],

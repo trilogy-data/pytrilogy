@@ -67,6 +67,10 @@ def _has_applied_condition(source: QueryDatasource | BuildDatasource) -> bool:
     return bool(source.where)
 
 
+def _region_spans(source: QueryDatasource | BuildDatasource) -> frozenset[str]:
+    return source.region_spans if isinstance(source, QueryDatasource) else frozenset()
+
+
 def _key_equivalence_classes(pairs: list[tuple[str, str]]) -> list[set[str]]:
     """Union-find the join-key address pairs into connected equivalence classes,
     so a chain (`a=b`, `c=b`) yields the single class {a, b, c}."""
@@ -125,6 +129,8 @@ def deduplicate_nodes(
                 and merged[k1].grain.issubset(merged[k2].grain)
                 and not _has_applied_condition(merged[k2])
                 and not _has_applied_condition(merged[k1])
+                # a region domain's rows are the region's, whatever it projects
+                and _region_spans(merged[k1]) <= _region_spans(merged[k2])
                 # a row-limited source is a proper row subset, never
                 # interchangeable with a superset source
                 and getattr(merged[k1], "limit", None) is None
