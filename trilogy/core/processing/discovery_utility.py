@@ -36,9 +36,6 @@ from trilogy.core.processing.grain_utility import (
     determined_past_nulls,
     nullable_spellings,
 )
-from trilogy.core.processing.rowset_islanding import (
-    island_rowsets_for_connectivity,
-)
 from trilogy.core.processing.utility import GroupRequiredResponse
 from trilogy.utility import unique
 
@@ -58,6 +55,8 @@ NO_PUSHDOWN_DERIVATIONS: list[Derivation] = ROOT_DERIVATIONS + [
 
 
 LOGGER_PREFIX = "[DISCOVERY LOOP]"
+
+ROWSET_ISLAND_HUB_PREFIX = "rowset_island~"
 
 
 def calculate_effective_parent_grain(
@@ -387,6 +386,75 @@ def _aggregate_grain_only_parents(
         if grain_only:
             out[c.address] = grain_only
     return out
+
+
+def island_rowsets_for_connectivity(
+    g: "ReferenceGraph", cg, grain_only: dict[str, set[str]] | None = None
+) -> None:
+    """Apply the islanding invariant to the undirected connectivity copy ``cg``.
+
+    A rowset is a materialized result: from outside, only its declared outputs
+    are reachable, never the base concepts behind its select. The raw graph
+    links those internals, so a shared base looks like a phantom bridge to
+    another rowset (masking a genuine scoped-join disconnection).
+
+    Severs every edge crossing a rowset boundary, then re-welds (a) each
+    rowset's own outputs through its OWN hub, (b) external downstream
+    consumers of a declared output, and (c) outputs related across rowsets by
+    a scoped-join pseudonym."""
+    members_by_rowset: dict[str, list[str]] = {}
+    nodes_by_address: dict[str, list[str]] = {}
+    rowset_nodes: set[str] = set()
+    for node, concept in g.concepts.items():
+        if concept.derivation != Derivation.ROWSET:
+            continue
+        rowset_nodes.add(node)
+        nodes_by_address.setdefault(concept.address, []).append(node)
+        if isinstance(concept.lineage, BuildRowsetItem):
+            members_by_rowset.setdefault(concept.lineage.rowset.name, []).append(node)
+
+    if not rowset_nodes:
+        return
+
+    island = rowset_nodes | {
+        n for n in cg.nodes if isinstance(n, str) and n.startswith("rowset~")
+    }
+    cg.remove_edges_from(
+        [(u, v) for u, v in cg.edges if (u in island) != (v in island)]
+    )
+
+    for name, members in members_by_rowset.items():
+        hub = f"{ROWSET_ISLAND_HUB_PREFIX}{name}"
+        cg.add_node(hub)
+        cg.add_edges_from((hub, m) for m in members if m in cg)
+        # Re-weld external downstream consumers (`g`-successors) of each output;
+        # only upstream navigation into the rowset's base concepts stays severed.
+        # A consumer that merely groups `by` the output (grain-only parent) is
+        # skipped: that edge would bridge unrelated models through an aggregate's
+        # grouping key, the same bridge `_aggregate_grain_only_parents` drops.
+        for member in members:
+            member_concept = g.concepts.get(member)
+            member_addr = member_concept.address if member_concept else None
+            for consumer in g.successors(member):
+                if consumer in island or consumer not in cg:
+                    continue
+                consumer_concept = g.concepts.get(consumer)
+                if (
+                    grain_only
+                    and consumer_concept is not None
+                    and member_addr in grain_only.get(consumer_concept.address, set())
+                ):
+                    continue
+                cg.add_edge(hub, consumer)
+
+    for node in rowset_nodes:
+        concept = g.concepts[node]
+        for pseudonym in concept.pseudonyms:
+            if pseudonym == concept.address:
+                continue
+            for other in nodes_by_address.get(pseudonym, []):
+                if node in cg and other in cg:
+                    cg.add_edge(node, other)
 
 
 def _component_map(
