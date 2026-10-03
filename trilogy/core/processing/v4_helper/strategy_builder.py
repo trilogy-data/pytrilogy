@@ -49,7 +49,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment, SpanScope
 from trilogy.core.models.execute import BaseJoin
-from trilogy.core.models.keyspace import Region
+from trilogy.core.models.keyspace import Keyspace, Region
 from trilogy.core.processing import plan_trace
 from trilogy.core.processing.aggregate_rollup import _is_additive_aggregate
 from trilogy.core.processing.condition_utility import (
@@ -114,7 +114,7 @@ from .projection import (
     statement_filter_population,
     widen_projection,
 )
-from .region_reads import inline_arguments_taking_a_value
+from .region_reads import inline_arguments_taking_a_value, nameable
 from .source_planning import SourceRequest, plan_source
 
 _AGGREGATING_DERIVATIONS = {
@@ -144,14 +144,9 @@ class RootRequest:
     preexisting: BuildWhereClause | None = None
 
     def answered_by(self, node: StrategyNode, asked: "RootRequest") -> bool:
-        """Whether `node`, built for `asked`, already answers this request.
-        A column the node binds partially is not an answer: asked for outright,
-        the request completes it from another source. Neither is a node whose
-        scans exceed what this request needs: it was built for a wider question
-        (a dim peel keyed by a grouping key the FINAL does not project, which
-        only the fact binds), and planning this request afresh prunes the joins
-        that key dragged in. `parent_for_consumer` weighs a slice the same
-        way."""
+        """Whether `node`, built for `asked`, already answers this request:
+        it binds every output fully, and no proper subset of its scans would
+        (planning afresh would prune a join the wider question dragged in)."""
         partial = {c.address for c in node.partial_concepts}
         if not (
             self.conditions == asked.conditions
@@ -398,18 +393,10 @@ def _feeder_at_set_grain(
     feeder: StrategyNode, group: tuple[BuildConcept, ...]
 ) -> StrategyNode:
     """Project a provider down to a semijoin RHS: the subselect's columns
-    only, one row per set value.
-
-    Side-channel-only, so the slice is what keeps a shared extra output from
-    promoting the feeder to a row-join candidate. The group is what keeps the
-    slice honest: a provider built for the row stream sits at the grain its own
-    consumers need, usually finer than the set (a rowset boundary projecting
-    one handle off a union body keyed by channel + item), and the sliced rows
-    are then duplicates. Unread by `exists`, but a fan-out all the same, and it
-    drags the finer keys into the feeder's GROUP BY and its scans' projections.
-    `GroupNode` judges for itself whether the group is real
-    (`check_if_group_required`), so a provider already at the set's grain
-    resolves to a plain SELECT and elides."""
+    only, one row per set value. The slice keeps a shared extra output from
+    promoting the feeder to a row-join candidate; the group dedups a provider
+    built at a finer grain than the set. `GroupNode` elides itself when the
+    provider is already at the set's grain."""
     addresses = {concept.address for concept in group}
     members = [o for o in feeder.output_concepts if o.address in addresses]
     return GroupNode(
@@ -550,6 +537,8 @@ def _attach_existence_to_node(
     arrives here again under the OUTER plan's `built`, which holds no provider
     for its set. A group listed with no parent behind it is wired again: an
     earlier pass found no provider, and a later one may."""
+    if not arg_groups:
+        return
     existing_parent_outputs = {
         output.address for parent in node.parents for output in parent.output_concepts
     }
@@ -1106,9 +1095,11 @@ def _folded(
     gid: str,
 ) -> tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs]]:
     """The group graph as it would stand with `gid` folded; the plan's own is
-    left as it is."""
+    left as it is. A fold rewrites only its readers' attrs."""
     graph, edges = group_graph.copy(), dict(group_edges)
-    folded = {other: dc_replace(a) for other, a in attrs.items()}
+    folded = dict(attrs)
+    for reader in _readers(group_graph, gid):
+        folded[reader] = dc_replace(attrs[reader])
     _read_parents_in_place(graph, edges, folded, gid)
     return graph, edges, folded
 
@@ -1149,16 +1140,20 @@ def _valued_on_another_fact(
     keyspace = environment.span_scope.keyspace
     if not keyspace.families or keyspace.regions[0].witnesses:
         return False
-    base = keyspace.regions[0].present
     return any(
         takes_a_value_on_padding(
             m,
-            Region(present=base - keyspace.keys_by_address.get(m, frozenset())),
+            _row_absent(keyspace, keyspace.keys_by_address.get(m, frozenset())),
             keyspace,
             environment,
         )
         for m in members
     )
+
+
+def _row_absent(keyspace: Keyspace, keys: frozenset[str]) -> Region:
+    """A base-region row on which `keys` are absent."""
+    return Region(present=keyspace.regions[0].present - keys)
 
 
 def _parent_nodes_for(
@@ -1247,13 +1242,13 @@ def _parent_nodes_for(
             return set(attrs[pgid].primary_members) & needed
         return {o.address for o in node.output_concepts} & needed
 
+    consumer = attrs[gid]
+    slices_roots = consumer.derivation in GROUPING_DERIVATIONS or (
+        _valued_on_another_fact(consumer.primary_members, environment)
+    )
+
     def parent_for_consumer(pgid: str, node: StrategyNode) -> StrategyNode:
-        if attrs[pgid].derivation != Derivation.ROOT:
-            return node.copy()
-        consumer = attrs[gid]
-        if consumer.derivation not in GROUPING_DERIVATIONS and not (
-            _valued_on_another_fact(consumer.primary_members, environment)
-        ):
+        if attrs[pgid].derivation != Derivation.ROOT or not slices_roots:
             return node.copy()
         # a region domain is read as built: a re-sourced slice is a fresh scan
         # holding no region, so the aggregate would compute its row-stream
@@ -1812,9 +1807,13 @@ def _takes_a_value_beside(
     keyspace = environment.span_scope.keyspace
     return any(
         takes_a_value_on_padding(concept.address, region, keyspace, environment)
-        for region in keyspace.live_regions
-        if region.spans and region.spans <= region_spans
+        for region in _regions_within(keyspace, region_spans)
     )
+
+
+def _regions_within(keyspace: Keyspace, spans: frozenset[str]) -> list[Region]:
+    """The live extension regions whose spans all fall inside `spans`."""
+    return [r for r in keyspace.live_regions if r.spans and r.spans <= spans]
 
 
 def _named_argument(argument: BuildFunction) -> BuildConcept:
@@ -1852,27 +1851,24 @@ def _name_inline_arguments(
     rewritten outputs with the addresses named. `_project_basic_aggregate_inputs`
     then computes them on the solid rows, as it does a named argument."""
     keyspace = environment.span_scope.keyspace
-    regions = [
-        region
-        for region in keyspace.live_regions
-        if region.spans and region.spans <= region_spans
-    ]
+    regions = _regions_within(keyspace, region_spans)
     named: dict[int, BuildConcept] = {}
     rewritten: list[BuildConcept] = []
     for concept in outputs:
-        taking = (
-            [
-                argument
-                for region in regions
-                for argument in inline_arguments_taking_a_value(
-                    concept, region, keyspace, environment
-                )
-                if isinstance(argument, BuildFunction)
-            ]
-            if concept.address in primary_addrs
-            else []
-        )
-        if taking and isinstance(concept.lineage, BuildAggregateWrapper):
+        if concept.address not in primary_addrs or not isinstance(
+            concept.lineage, BuildAggregateWrapper
+        ):
+            rewritten.append(concept)
+            continue
+        taking = [
+            cast(BuildFunction, argument)
+            for region in regions
+            for argument in inline_arguments_taking_a_value(
+                concept, region, keyspace, environment
+            )
+            if nameable(argument)
+        ]
+        if taking:
             for argument in taking:
                 named.setdefault(id(argument), _named_argument(argument))
             function = dc_replace(
@@ -2699,8 +2695,8 @@ def _fold_covered_contributors(
         live = [j for j in range(len(parents)) if j not in dropped]
         others = [j for j in live if j != idx]
         # its rows are a region's: only a survivor holding them can stand in
-        if region_reads(parent) and not any(
-            region_reads(parent) <= region_reads(parents[j]) for j in others
+        if (parent_spans := region_reads(parent)) and not any(
+            parent_spans <= region_reads(parents[j]) for j in others
         ):
             continue
         contribution = visible[idx] & needed
@@ -2876,14 +2872,10 @@ def _filter_intrinsic_pushdown_safe(
     environment: BuildEnvironment,
 ) -> bool:
     """May this filter group's predicate narrow its ROWS? Only when the plan
-    shows nothing but filter values over that one predicate (a NULL row is one
-    nothing would keep) and this group is what produces them; an intermediate
-    filter, read by an aggregate or beside a sibling, stays a per-row CASE.
-    And not when a consumer also reads an unfiltered ancestor of it for
-    something this group does not carry, which the narrowed stream would then
-    pair against; a HAVING's responsive aggregate (`count(order_id) by
-    even_name`) reads the ancestor only for what rides this group's row
-    stream, and the plan reads it through this group alone."""
+    shows nothing but filter values over that one predicate, this group
+    produces a shown one, and no consumer reads an unfiltered ancestor of it
+    for something this group does not carry. Otherwise it stays a per-row
+    CASE."""
     if (
         statement_filter_population(
             mandatory_list, environment.statement_hidden_addresses
@@ -3469,21 +3461,14 @@ def _add_region_domain_contributors(
     per_group: dict[str, list[BuildConcept]],
     environment: BuildEnvironment,
 ) -> None:
-    """A region domain contributes ROWS: the region's own members, NULL on
-    everything absent there. The mandatory cover only sees columns, so a domain
-    whose every column some sibling also renders (`select order_id, max(amount)
-    by user_id`: the user with no order is a row of all NULLs) is added as a
-    contributor of no concepts. Not when a contributor already read it and
-    holds the statement's rows: an aggregate evaluated over the region's rows
-    has them in its groups, but only at its own grain. Two aggregates by
-    `status` and by `name` each read the region and neither pairs a name with
-    a status; the domain's rows do.
-
-    A rename of something the domain carries (`item_desc as d`, `customer_id
-    as c2`) is rendered on the domain: any other host holds it for the matched
-    members only. Still reachable: the alias rides its source's ROOT bucket,
-    so `feed_region_domains_to_present_scalars` never sees it as a group of
-    its own (`test_unsold_item_counts_no_lines`)."""
+    """A region domain contributes ROWS (its members, NULL on everything
+    absent there), so a domain whose every column a sibling also renders is
+    added as a contributor of no concepts, unless a contributor already reads
+    it and holds the statement's rows. An aggregate over the region holds them
+    only at its own grain: aggregates by `status` and by `name` each read the
+    region, but only the domain's rows pair a name with a status. A rename of
+    something the domain carries (`item_desc as d`) is rendered on the domain:
+    any other host holds it for matched members only."""
     required = _required_final_contract(attrs).required_grain
     for gid in sorted(built):
         if not attrs[gid].extent_spans:
@@ -4701,10 +4686,8 @@ def _assemble_final_node(
             # A row-level atom over the facts (`undelivered`) beside a node
             # holding a region joins it on the span: cross-joined, any fact
             # row's value would pass for every member of the region.
-            if region_reads(node):
-                _widen_merge_join_keys(
-                    [node, *arg_nodes], environment, region_reads(node)
-                )
+            if node_spans := region_reads(node):
+                _widen_merge_join_keys([node, *arg_nodes], environment, node_spans)
         if arg_nodes and environment.scoped_join_key_groups:
             relation_keys: set[str] = set()
             for feeder in arg_nodes:
@@ -5048,23 +5031,12 @@ def _assemble_final_node(
             group_concepts.extend(filter_only_concepts)
             root_atoms = _atoms_at(attrs, gid)
             satisfiable = _root_atoms_satisfiable_from(root_atoms, group_concepts)
-            # The fresh re-source must keep the root group's own WHERE;
-            # without it the scan widens and a constant sibling's `1=1`
-            # merge returns the unfiltered rows. An atom the scan cannot
-            # state (its value comes from a constraint parent: `where
-            # n_orders > 1` beside this dim's key) is applied inside `node`
-            # only, so a re-source would silently drop it.
-            # A solid root's re-source runs under its group's own scope, as
-            # its build did. At FINAL scope, unpromoted, it completed its `~`
-            # keys itself beside the domain holding them (the optional-entity
-            # twin's `lines FULL JOIN (lines LEFT JOIN returns)`), and a peel
-            # holding a member of the region (`brand` under `dim:item_id`) was
-            # the only thing putting that member on the extension row; the
-            # domain carries such a member now (`decide_region_domains`).
-            # A domain is the FINAL's own rows and keeps the FINAL's scope: the
-            # customer domain completes its transitive `~` address there, and
-            # the orphan address's state is read off it
-            # (`test_licensed_transitive_attr_span`).
+            # The fresh re-source keeps the root group's own WHERE, and is
+            # skipped when an atom is one the scan cannot state (its value
+            # comes from a constraint parent): `node` alone applies it.
+            # A solid root re-sources under its group's own scope, as it was
+            # built; a region domain is the FINAL's own rows and keeps the
+            # FINAL's scope.
             scope = environment.span_scope
             if not attrs[gid].extent_spans:
                 scope = _group_span_scope(scope, ownership, gid)
@@ -5217,7 +5189,7 @@ def _assemble_final_node(
     # merge: the host side is the one carrying the licensed keys the merge EMITS.
     region_keys = [
         c
-        for span in sorted(frozenset().union(*(region_reads(p) for p in parents)))
+        for span in sorted(spans)
         if span in available
         and span not in mandatory_addresses
         and (c := _concept_at(environment, span)) is not None
@@ -5525,16 +5497,15 @@ def build_strategy_node(
             applied = applied_atoms.conditional if applied_atoms else None
             # a parent holds a region's rows when it reads its domain, the
             # domain itself or a derivation over what it carries (`upper(name)`)
-            domains = [p for p in parents if region_reads(p)]
+            reads = [region_reads(p) for p in parents]
+            domains = [p for p, read in zip(parents, reads) if read]
             if derivation == Derivation.AGGREGATE and domains:
                 # an aggregate evaluated OVER a region: its row-stream
                 # arguments are computed on the solid rows first, then the
                 # region's rows pad them. The solid merge pairs on solid
                 # keys: this group may extend the spans (it reads the
                 # domain), the merge below the domain may not.
-                domain_spans: frozenset[str] = frozenset().union(
-                    *(region_reads(d) for d in domains)
-                )
+                domain_spans: frozenset[str] = frozenset().union(*reads)
                 # a condition feeder keyed by the span (`count(return_id) by
                 # item_sk = 0`) is a value per member of the region: it joins
                 # the united rows, not the solid stream, or a member the solid
