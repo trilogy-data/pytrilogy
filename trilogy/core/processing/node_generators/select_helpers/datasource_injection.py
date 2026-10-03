@@ -1,4 +1,5 @@
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from trilogy.core.enums import (
@@ -382,7 +383,9 @@ def get_union_sources(
 
 
 def union_derived_concepts(
-    children: list[BuildDatasource], environment: BuildEnvironment
+    children: list[BuildDatasource],
+    environment: BuildEnvironment,
+    datasources: Iterable[BuildDatasource],
 ) -> list[BuildConcept]:
     """BASIC derivations a partition union computes inline that some OTHER
     datasource is keyed on (`cell <- f(lat, lon)`; `lookup ... grain (cell)`).
@@ -397,8 +400,8 @@ def union_derived_concepts(
     (TPC-DS q05)."""
     arms = {child.name for child in children}
     keyed: set[str] = set()
-    for datasource in environment.datasources.values():
-        if not isinstance(datasource, BuildDatasource) or datasource.name in arms:
+    for datasource in datasources:
+        if datasource.name in arms:
             continue
         for address in datasource.grain.components:
             keyed.add(address)

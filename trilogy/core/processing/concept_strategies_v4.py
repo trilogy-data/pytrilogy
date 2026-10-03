@@ -575,7 +575,7 @@ def _build_from_graph_traced(
                 materialized_roots=sorted(materialized_roots),
                 complete_partials=complete_partials,
                 span_scope=plan_trace.span_scope(environment.span_scope),
-                environment=plan_trace.environment(environment),
+                environment=plan_trace.environment(environment, g.scope_datasources),
             ),
         )
     concept_graph, concept_attrs, concept_edges = build_concept_graph(
@@ -608,17 +608,14 @@ def _build_from_graph_traced(
         plan_trace.record(
             "keyspace", plan_trace.KeyspaceStep(keyspace=plan_trace.keyspace(keyspace))
         )
-    datasource_columns = [
-        frozenset(c.address for c in ds.output_concepts) for ds in g.scope_datasources
-    ]
     group_graph, group_edges, group_attrs = build_group_graph(
         concept_graph,
         concept_edges,
         concept_attrs,
         conditions,
         mandatory_list,
-        datasource_columns,
         environment=environment,
+        datasources=g.scope_datasources,
         staged_conditions=staged_conditions,
         keyspace=keyspace,
     )

@@ -16,6 +16,8 @@ search it feeds.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.graph_models import (
     ReferenceGraph,
@@ -172,11 +174,7 @@ def rollup_concepts_by_node(
     the scan / merge nodes apply the GROUP BY."""
     if not any(concept.is_aggregate for concept in terminals):
         return {}
-    datasources = [
-        datasource
-        for datasource in environment.datasources.values()
-        if isinstance(datasource, BuildDatasource)
-    ]
+    datasources = graph.scope_datasources
     target_grain = BuildGrain.from_concepts(terminals)
     # A filter FINER than the target grain splits the groups the roll would sum,
     # so the summary has to be filtered before it is aggregated. A binding says
@@ -335,6 +333,7 @@ def _bindings_for(
 def _union_candidates(
     terminals: list[BuildConcept],
     environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
     conditions: BuildWhereClause | None,
     equivalence: dict[str, str],
 ) -> dict[str, SourceCandidate]:
@@ -343,14 +342,9 @@ def _union_candidates(
     candidate the search would answer a whole-population request from one arm.
     Like a single scan, it also emits the derivations every arm computes
     inline, so a lookup keyed on one (`cell <- f(lat, lon)`) can join it."""
-    datasources = [
-        datasource
-        for datasource in environment.datasources.values()
-        if isinstance(datasource, BuildDatasource)
-    ]
     out: dict[str, SourceCandidate] = {}
     excluded = environment.excluded_enum_values
-    for group in get_union_sources(datasources, terminals, excluded):
+    for group in get_union_sources(list(datasources), terminals, excluded):
         merged = merge_conditions(
             [
                 child.non_partial_for.conditional
@@ -370,7 +364,7 @@ def _union_candidates(
             continue
         derived = {
             concept.canonical_address
-            for concept in union_derived_concepts(group, environment)
+            for concept in union_derived_concepts(group, environment, datasources)
         }
         node = "ds~" + "-".join(child.name for child in group)
         out[node] = _candidate(
@@ -740,7 +734,7 @@ def build_source_network(
     union_candidates = {
         node: union_candidate
         for node, union_candidate in _union_candidates(
-            terminals, environment, conditions, equivalence
+            terminals, environment, graph.scope_datasources, conditions, equivalence
         ).items()
         if not union_candidate.condition.disqualifying
     }

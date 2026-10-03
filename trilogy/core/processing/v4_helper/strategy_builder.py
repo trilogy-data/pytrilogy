@@ -3904,7 +3904,10 @@ def _aggregate_reused_from_twin(
 
 
 def _with_null_members(
-    node: StrategyNode, spans: frozenset[str], environment: BuildEnvironment
+    node: StrategyNode,
+    spans: frozenset[str],
+    environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
 ) -> StrategyNode:
     """The domain's rows beside the NULL member of each `?` span: the rows of
     every source binding the span `?` where it is NULL, one each, FULL-joined
@@ -3916,7 +3919,7 @@ def _with_null_members(
     parents: list[StrategyNode] = [node]
     for span in sorted(spans):
         key = environment.concepts[span]
-        for datasource in environment.datasources.values():
+        for datasource in datasources:
             if not any(
                 key.equivalent_addresses & nc.equivalent_addresses
                 for nc in datasource.nullable_concepts
@@ -5795,7 +5798,9 @@ def build_strategy_node(
                     force_group=True,
                 )
             if a.null_member_spans:
-                node = _with_null_members(node, a.null_member_spans, environment)
+                node = _with_null_members(
+                    node, a.null_member_spans, environment, g.scope_datasources
+                )
             # the region contract: this node's rows are the region's own
             node.region_spans = a.extent_spans
         if derivation == Derivation.ROOT:

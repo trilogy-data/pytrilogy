@@ -1,4 +1,4 @@
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 
 from trilogy.constants import PRESENCE_PROBE_PREFIX, logger
 from trilogy.core.graph_models import ReferenceGraph
@@ -101,7 +101,7 @@ def _pinned_member_node(
     member_address: str,
     key: BuildConcept,
     environment: BuildEnvironment,
-    datasources: Iterable[BuildDatasource],
+    datasources: Sequence[BuildDatasource],
     depth: int,
 ) -> StrategyNode | None:
     """A scan of the member's own datasource producing the group key from the
@@ -118,6 +118,7 @@ def _pinned_member_node(
         candidates[0],
         [key],
         environment=environment,
+        datasources=datasources,
         depth=depth + 1,
         conditions=None,
     )

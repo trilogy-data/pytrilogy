@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.core.enums import (
@@ -256,7 +258,9 @@ def _source_concepts_via_graph(
     """
     orig_concepts = list(concepts)
     sourceable_condition_atoms = (
-        _sourceable_condition_atoms(conditions, environment) if conditions else []
+        _sourceable_condition_atoms(conditions, g.scope_datasources)
+        if conditions
+        else []
     )
     concept_attempts = [orig_concepts]
     if sourceable_condition_atoms:
@@ -280,7 +284,9 @@ def _source_concepts_via_graph(
         defer_conditions_to_merge = (
             filter_conditions is None
             and conditions is not None
-            and _conditions_can_be_sourced_by_components(conditions, environment)
+            and _conditions_can_be_sourced_by_components(
+                conditions, g.scope_datasources
+            )
         )
         select_conditions = (
             filter_conditions if filter_conditions is not None else conditions
@@ -294,7 +300,7 @@ def _source_concepts_via_graph(
                 criteria=attempt,
                 environment=environment,
                 conditions=conditions,
-                datasources=list(environment.datasources.values()),
+                datasources=list(g.scope_datasources),
                 depth=depth,
                 allow_intersection=allow_intersection,
             )
@@ -447,32 +453,31 @@ def _source_concepts_via_graph(
 
 def _conditions_can_be_sourced_by_components(
     conditions: BuildWhereClause,
-    environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
 ) -> bool:
     """Whether every WHERE atom is coverable by a complete, non-aggregate
     source, so the WHERE can be merged-then-reapplied rather than pushed per
     source. Only the early routing check: the caller still builds
     conditionless trial candidates and only accepts deferral for flat scans."""
-    return len(_sourceable_condition_atoms(conditions, environment)) == len(
+    return len(_sourceable_condition_atoms(conditions, datasources)) == len(
         decompose_condition(conditions.conditional)
     )
 
 
 def _sourceable_condition_atoms(
     conditions: BuildWhereClause,
-    environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
 ) -> list[BoolExpr]:
-    datasources = [
+    complete = [
         ds
-        for ds in environment.datasources.values()
-        if isinstance(ds, BuildDatasource)
-        and not ds.non_partial_for
+        for ds in datasources
+        if not ds.non_partial_for
         and not any(c.is_aggregate for c in ds.output_concepts)
     ]
-    if not datasources:
+    if not complete:
         return []
     available: set[str] = set()
-    for ds in datasources:
+    for ds in complete:
         partial = {c.canonical_address for c in ds.partial_concepts}
         available.update(
             c.canonical_address
@@ -774,7 +779,9 @@ def gen_select_merge_node(
         if (
             not parents
             and conditions
-            and _conditions_can_be_sourced_by_components(conditions, environment)
+            and _conditions_can_be_sourced_by_components(
+                conditions, g.scope_datasources
+            )
         ):
             augmented = unique(
                 normals
@@ -801,7 +808,7 @@ def gen_select_merge_node(
             # guaranteed to apply them, so foreign datasources survive via the
             # intersection check. The full conditions still go through as
             # filter_conditions so per-datasource WHERE clauses are preserved.
-            covered = covered_conditions(conditions, environment)
+            covered = covered_conditions(conditions, g.scope_datasources)
             if covered:
                 parents = _source_concepts_via_graph(
                     normals,

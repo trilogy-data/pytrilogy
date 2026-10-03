@@ -116,7 +116,7 @@ def test_covered_conditions_returns_only_complete_where_atoms():
         )
     )
 
-    covered = covered_conditions(full_conditions, build_env)
+    covered = covered_conditions(full_conditions, build_env.datasources.values())
 
     assert covered is not None
     assert covered.conditional == year_cond
@@ -276,6 +276,7 @@ def test_union_candidate_leaves_absence_atom_unclaimed():
         datasource=BuildUnionDatasource(children=children),
         all_concepts=[build_env.concepts["order_id"], build_env.concepts["returned"]],
         environment=build_env,
+        datasources=list(build_env.datasources.values()),
         depth=0,
         conditions=conditions,
     )
@@ -333,7 +334,9 @@ def test_covered_conditions_returns_none_when_not_implied():
     assert ds.non_partial_for is not None
     year_cond = _condition(build_env.concepts["sale_year"], 2022)
 
-    covered = covered_conditions(BuildWhereClause(conditional=year_cond), build_env)
+    covered = covered_conditions(
+        BuildWhereClause(conditional=year_cond), build_env.datasources.values()
+    )
 
     assert covered is None
 
@@ -368,7 +371,7 @@ address online_2021_sales;
         )
     )
 
-    covered = covered_conditions(full_conditions, build_env)
+    covered = covered_conditions(full_conditions, build_env.datasources.values())
 
     assert covered is not None
     assert covered.conditional == full_conditions.conditional
@@ -379,7 +382,7 @@ def test_covered_conditions_handles_parenthetical_atoms():
     year_cond = _condition(build_env.concepts["sale_year"], 2021)
     wrapped = BuildWhereClause(conditional=BuildParenthetical(content=year_cond))
 
-    covered = covered_conditions(wrapped, build_env)
+    covered = covered_conditions(wrapped, build_env.datasources.values())
 
     assert covered is not None
     assert covered.conditional == year_cond
@@ -417,7 +420,9 @@ address products;
         )
     )
 
-    assert _conditions_can_be_sourced_by_components(condition, build_env)
+    assert _conditions_can_be_sourced_by_components(
+        condition, list(build_env.datasources.values())
+    )
 
 
 def test_progressive_remaining_condition_after_grouped_parent():

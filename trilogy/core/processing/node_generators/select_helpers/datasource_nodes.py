@@ -205,6 +205,7 @@ def create_select_node_candidate(
             datasource,
             all_concepts,
             environment,
+            g.scope_datasources,
             depth,
             conditions=conditions,
         )
@@ -225,6 +226,7 @@ def create_select_node_candidate(
             datasource,
             all_concepts,
             environment,
+            g.scope_datasources,
             depth,
             conditions=conditions,
         )
@@ -268,6 +270,7 @@ def create_datasource_node(
     datasource: BuildDatasource,
     all_concepts: list[BuildConcept],
     environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
     depth: int,
     conditions: BuildWhereClause | None = None,
     injected_conditions: BoolExpr | None = None,
@@ -300,11 +303,7 @@ def create_datasource_node(
             datasource=datasource,
             requested_concepts=all_concepts,
             concepts_by_address=environment.concepts,
-            datasources=[
-                ds
-                for ds in environment.datasources.values()
-                if isinstance(ds, BuildDatasource)
-            ],
+            datasources=datasources,
             target_grain=target_grain,
             conditions=conditions,
         )
@@ -346,9 +345,7 @@ def create_datasource_node(
     membership_complete = (
         set()
         if partial_is_full
-        else membership_complete_grain_keys(
-            datasource, environment.datasources.values(), conditions
-        )
+        else membership_complete_grain_keys(datasource, datasources, conditions)
     )
 
     routed_conditions = datasource_conditions(
@@ -424,6 +421,7 @@ def create_union_datasource_candidate(
     datasource: BuildUnionDatasource,
     all_concepts: list[BuildConcept],
     environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
     depth: int,
     conditions: BuildWhereClause | None = None,
 ) -> tuple["UnionNode", bool, int]:
@@ -472,6 +470,7 @@ def create_union_datasource_candidate(
             child,
             all_concepts,
             environment,
+            datasources,
             depth + 1,
             injected_conditions=injected_cond,
         )
