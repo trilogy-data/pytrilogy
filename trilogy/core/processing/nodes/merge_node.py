@@ -322,9 +322,8 @@ class MergeNode(StrategyNode):
                 # keys in play, grain coverage decides. This plan's spans only:
                 # a rowset below is a row source, its extension rows are not
                 # this plan's to host.
-                # Still live beside the region contract: without it a domain
-                # merge FULL-joins its readers with coalesced keys
-                # (`test_materialization_invariance`, gcat `test_case_key`).
+                # Beside the region contract, hosting keeps a domain merge
+                # from FULL-joining its readers on coalesced keys.
                 host_grain: set[str] | None = None
                 if self.host_stitch:
                     licensed_outputs = {
@@ -400,7 +399,9 @@ class MergeNode(StrategyNode):
         )
 
     def _join_proofs(
-        self, final_datasets: list[QueryDatasource | BuildDatasource]
+        self,
+        final_datasets: list[QueryDatasource | BuildDatasource],
+        zero: frozenset[str],
     ) -> JoinProofs:
         proofs: set[str] = set()
         side_proofs: set[str] = set()
@@ -409,7 +410,6 @@ class MergeNode(StrategyNode):
             proofs = non_null_proofs(self.conditions)
             side_proofs = gather_non_null_proofs(self.conditions)
             or_groups = gather_or_groups(self.conditions)
-            zero = self._zero_filled_counts()
             if zero:
                 proofs -= zero
                 side_proofs -= zero
@@ -647,7 +647,8 @@ class MergeNode(StrategyNode):
             f"{self.logging_prefix}{LOGGER_PREFIX} has pre grain {raw_pregrain} and final merge node grain {grain}"
         )
         join_candidates = [x for x in final_datasets if x not in existence_final]
-        join_proofs = self._join_proofs(final_datasets)
+        zero_filled = self._zero_filled_counts()
+        join_proofs = self._join_proofs(final_datasets, zero_filled)
         if len(join_candidates) > 1:
             joins: list[BaseJoin | UnnestJoin] = self.generate_joins(
                 join_candidates, final_joins, raw_pregrain, grain, self.environment
@@ -870,7 +871,6 @@ class MergeNode(StrategyNode):
         joined_partials = merge_partial_addresses(
             final_datasets, qd_joins, final_output_concepts
         )
-        zero_filled = self._zero_filled_counts()
         qds = QueryDatasource(
             input_concepts=unique(self.input_concepts, "address"),
             output_concepts=final_output_concepts,
@@ -917,8 +917,7 @@ class MergeNode(StrategyNode):
         column holds just the members the facts below bound; the unmatched
         members belong to the elected owner. Marking them partial makes the
         assembly above preserve the owner's rows instead of INNER-joining them
-        away. Still live beside the region contract
-        (`test_unsold_item_counts_no_lines`)."""
+        away."""
         if not self.span_scope.extent_free:
             return []
         bound_partially = {
