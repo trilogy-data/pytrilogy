@@ -170,3 +170,11 @@ def test_undemanded_pivot_dimension_is_not_a_row(
     request: pytest.FixtureRequest, twin: str, query: str, expected: list[tuple]
 ):
     assert sorted_rows(request.getfixturevalue(twin), query) == expected
+
+
+@pytest.mark.parametrize("twin", ["grained", "ungrained"])
+def test_undemanded_pivot_dimension_is_not_scanned(
+    request: pytest.FixtureRequest, twin: str
+):
+    executor = request.getfixturevalue(twin)
+    assert '"orders"' not in executor.generate_sql("select return_id, reason, qty;")[-1]

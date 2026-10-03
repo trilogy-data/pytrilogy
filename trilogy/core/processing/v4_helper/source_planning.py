@@ -314,6 +314,22 @@ def _search_concepts_for_bridge(request: SourceRequest) -> list[BuildConcept]:
     return concepts
 
 
+def _undemanded_reach_keys(
+    request: SourceRequest, concepts: list[BuildConcept]
+) -> frozenset[str]:
+    """Search terminals the request only reaches through (a grain key added to
+    join on), on a span no region of the statement demands: the fact's own `~`
+    column joins as well as the complete dimension's, and the dimension's extra
+    members would be rows nothing reads."""
+    requested = {c.address for c in _requested_concepts(request)}
+    return frozenset(
+        c.address
+        for c in concepts
+        if c.address not in requested
+        and c.address in request.environment.span_scope.unextended
+    )
+
+
 def _inject_rollup_edges(
     graph: ReferenceGraph,
     concepts: list[BuildConcept],
@@ -397,11 +413,14 @@ def _network_source(
     `_complete_partial_requested` render it without knowing who chose.
     """
     concepts = _search_concepts_for_bridge(request)
+    partial_ok = _undemanded_reach_keys(request, concepts)
     v4_history = request.history if isinstance(request.history, V4History) else None
     arm_local = request.arm_local or (
         v4_history is not None and v4_history.arm_pin_by_default
     )
-    verdict_key: tuple[str, str, bool, tuple[str, ...], bool] | None = None
+    verdict_key: (
+        tuple[str, str, bool, tuple[str, ...], bool, tuple[str, ...]] | None
+    ) = None
     if v4_history is not None:
         verdict_key = (
             "-".join(sorted(c.address for c in concepts)),
@@ -410,6 +429,7 @@ def _network_source(
             # the promoted `~` keys change which scans bind fully
             tuple(sorted(request.environment.span_scope.extent_free)),
             arm_local,
+            tuple(sorted(partial_ok)),
         )
         cached_verdict = v4_history.network_verdicts.get(verdict_key)
         if cached_verdict == "none":
@@ -423,6 +443,7 @@ def _network_source(
         request.conditions,
         request.deferred_conditions,
         arm_local,
+        partial_ok=partial_ok,
     )
     result = _memoized_search(network, request.history)
     if plan_trace.active():

@@ -664,6 +664,7 @@ def build_source_network(
     conditions: BuildWhereClause | None = None,
     deferred_conditions: BuildWhereClause | None = None,
     arm_local: bool = False,
+    partial_ok: frozenset[str] = frozenset(),
 ) -> SourceNetwork:
     addresses = terminal_addresses(terminals)
     all_addresses = set(addresses)
@@ -759,4 +760,5 @@ def build_source_network(
         join_requirements=_join_requirements(terminals, environment, equivalence),
         axis_families=families,
         subsumed_arms=_subsumed_arms(candidates),
+        partial_ok=frozenset(equivalence.get(a, a) for a in partial_ok),
     )
