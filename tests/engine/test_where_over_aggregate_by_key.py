@@ -4,8 +4,7 @@ atom's value comes from a condition branch no bucket holds as a column."""
 
 import pytest
 
-from trilogy import Dialects
-from trilogy.executor import Executor
+from tests.helpers.rows import executor_for, sorted_rows
 
 MODEL = """
 key customer_id int;
@@ -37,39 +36,31 @@ auto status <- case when delivery_date is not null then 'delivered' else 'in-tra
 """
 
 
-def _rows(executor: Executor, query: str) -> list[tuple]:
-    return sorted(tuple(r) for r in executor.execute_text(query)[-1].fetchall())
-
-
-def _executor() -> Executor:
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(MODEL)
-    return executor
-
-
 def test_key_beside_its_property_keeps_the_aggregate_where():
-    executor = _executor()
-    assert _rows(executor, "select customer_id, name where n_orders > 1;") == [
+    executor = executor_for(MODEL)
+    assert sorted_rows(executor, "select customer_id, name where n_orders > 1;") == [
         (1, "ann")
     ]
-    assert _rows(executor, "select customer_id, name where activity = 'single';") == [
-        (2, "bob")
-    ]
+    assert sorted_rows(
+        executor, "select customer_id, name where activity = 'single';"
+    ) == [(2, "bob")]
 
 
 def test_key_alone_keeps_the_aggregate_where():
-    executor = _executor()
-    assert _rows(executor, "select customer_id where n_orders > 1;") == [(1,)]
-    assert _rows(executor, "select name where activity = 'single';") == [("bob",)]
+    executor = executor_for(MODEL)
+    assert sorted_rows(executor, "select customer_id where n_orders > 1;") == [(1,)]
+    assert sorted_rows(executor, "select name where activity = 'single';") == [("bob",)]
 
 
 def test_scalar_over_aggregate_where_beside_a_row_derivation():
-    executor = _executor()
-    assert _rows(executor, "select customer_id, status where activity = 'repeat';") == [
+    executor = executor_for(MODEL)
+    assert sorted_rows(
+        executor, "select customer_id, status where activity = 'repeat';"
+    ) == [
         (1, "delivered"),
         (1, "in-transit"),
     ]
-    assert _rows(executor, "select customer_id, status where n_orders > 1;") == [
+    assert sorted_rows(executor, "select customer_id, status where n_orders > 1;") == [
         (1, "delivered"),
         (1, "in-transit"),
     ]
@@ -79,14 +70,14 @@ def test_scalar_over_aggregate_where_beside_a_row_derivation():
 # that grain to join the branch on it (the ROOT scan has no `status`; it
 # rendered `Missing source map entry for local.status`).
 def test_aggregate_by_a_derived_grain_in_where():
-    executor = _executor()
-    assert _rows(
+    executor = executor_for(MODEL)
+    assert sorted_rows(
         executor, "select customer_id, status where count(order_id) by status > 1;"
     ) == [(1, "delivered"), (2, "delivered")]
-    assert _rows(
+    assert sorted_rows(
         executor, "select order_id, status where count(order_id) by status > 1;"
     ) == [(100, "delivered"), (102, "delivered")]
-    assert _rows(
+    assert sorted_rows(
         executor, "select customer_id, name where count(order_id) by status > 1;"
     ) == [(1, "ann"), (2, "bob")]
 
@@ -136,6 +127,5 @@ auto fx <- x ? x > 15;
     ],
 )
 def test_unselected_aggregate_membership_filters(query: str, expected: list[tuple]):
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(MEMBERSHIP_MODEL)
-    assert _rows(executor, query) == expected
+    executor = executor_for(MEMBERSHIP_MODEL)
+    assert sorted_rows(executor, query) == expected

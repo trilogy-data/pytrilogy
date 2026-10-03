@@ -7,7 +7,7 @@ hand-computed, the fourth is both."""
 
 import pytest
 
-from trilogy import Dialects
+from tests.helpers.rows import executor_for, sort_rows, sorted_rows, twin_rows
 from trilogy.executor import Executor
 
 # ---------------------------------------------------------------- composite key
@@ -332,32 +332,20 @@ TWO_FACT_JOIN_CASES = [
 ]
 
 
-def _executor(model: str) -> Executor:
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(model)
-    return executor
-
-
-def _rows(executor: Executor, query: str) -> list[tuple]:
-    rows = [tuple(r) for r in executor.execute_text(query + ";")[-1].fetchall()]
-    return sorted(rows, key=lambda r: tuple((v is None, str(v)) for v in r))
-
-
 @pytest.fixture(scope="module")
 def composite() -> tuple[Executor, Executor]:
-    return _executor(COMPOSITE_DERIVED), _executor(COMPOSITE_MATERIALIZED)
+    return executor_for(COMPOSITE_DERIVED), executor_for(COMPOSITE_MATERIALIZED)
 
 
 @pytest.fixture(scope="module")
 def rollup() -> tuple[Executor, Executor]:
-    return _executor(ROLLUP_BASE), _executor(ROLLUP_SUMMARY)
+    return executor_for(ROLLUP_BASE), executor_for(ROLLUP_SUMMARY)
 
 
 @pytest.mark.parametrize("query", COMPOSITE_QUERIES)
 def test_composite_key_region(composite: tuple[Executor, Executor], query: str):
     derived, materialized = composite
-    rows = _rows(derived, query)
-    assert rows == _rows(materialized, query)
+    rows = twin_rows(derived, materialized, query)
     assert rows
 
 
@@ -365,7 +353,7 @@ def test_composite_key_region_has_the_unlaunched_vehicle(
     composite: tuple[Executor, Executor],
 ):
     derived, _ = composite
-    assert set(_rows(derived, "select vclass, status")) == {
+    assert set(sorted_rows(derived, "select vclass, status")) == {
         ("heavy", "big"),
         ("light", "small"),
         ("heavy", None),
@@ -378,8 +366,7 @@ def test_materialized_rollup_matches_its_base(
     rollup: tuple[Executor, Executor], query: str
 ):
     base, summary = rollup
-    rows = _rows(base, query)
-    assert rows == _rows(summary, query)
+    rows = twin_rows(base, summary, query)
     assert rows
 
 
@@ -387,7 +374,7 @@ def test_summary_count_is_zero_for_the_customer_it_lacks(
     rollup: tuple[Executor, Executor],
 ):
     _, summary = rollup
-    assert _rows(summary, "select name, count(order_id) as n, total_amount") == [
+    assert sorted_rows(summary, "select name, count(order_id) as n, total_amount") == [
         ("ann", 2, 30),
         ("bob", 1, 30),
         ("cat", 0, None),
@@ -396,14 +383,12 @@ def test_summary_count_is_zero_for_the_customer_it_lacks(
 
 @pytest.mark.parametrize("query,expected", TWO_FACTS_CASES)
 def test_two_facts_partial_on_one_dimension(query: str, expected: list[tuple]):
-    assert _rows(_executor(TWO_FACTS), query) == sorted(
-        expected, key=lambda r: tuple((v is None, str(v)) for v in r)
-    )
+    assert sorted_rows(executor_for(TWO_FACTS), query) == sort_rows(expected)
 
 
 @pytest.fixture(scope="module")
 def two_fact_join() -> tuple[Executor, Executor]:
-    return _executor(TWO_FACT_JOIN_DERIVED), _executor(TWO_FACT_JOIN_MATERIALIZED)
+    return executor_for(TWO_FACT_JOIN_DERIVED), executor_for(TWO_FACT_JOIN_MATERIALIZED)
 
 
 @pytest.mark.parametrize("query,expected", TWO_FACT_JOIN_CASES)
@@ -411,6 +396,5 @@ def test_two_facts_at_one_grain(
     two_fact_join: tuple[Executor, Executor], query: str, expected: list[tuple]
 ):
     derived, materialized = two_fact_join
-    rows = _rows(derived, query)
-    assert rows == _rows(materialized, query)
-    assert rows == sorted(expected, key=lambda r: tuple((v is None, str(v)) for v in r))
+    rows = twin_rows(derived, materialized, query)
+    assert rows == sort_rows(expected)

@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.helpers.planning import built_groups, recorded
+from tests.helpers.rows import executor_for, fetch_rows
 from trilogy import Dialects, Environment
 from trilogy.core.exceptions import DisconnectedConceptsException
 from trilogy.core.processing import plan_trace
@@ -161,12 +163,8 @@ auto avg_bal <- avg(bal) by *;
 
 
 def _trace(query: str, model: str = _MODEL) -> tuple[plan_trace.PlanTrace, list[tuple]]:
-    env, _ = Environment().parse(model)
-    executor = Dialects.DUCK_DB.default_executor(environment=env)
-    with plan_trace.recording(query) as trace:
-        executor.generate_sql(query)
-    rows = [tuple(r) for r in executor.execute_text(query)[-1].fetchall()]
-    return trace, rows
+    executor = executor_for(model)
+    return recorded(executor, query), fetch_rows(executor, query)
 
 
 def _root_reasons(trace: plan_trace.PlanTrace) -> dict[str, str | None]:
@@ -177,10 +175,6 @@ def _root_reasons(trace: plan_trace.PlanTrace) -> dict[str, str | None]:
         for gid, node in graph.nodes.items()
         if node.get("derivation") == "root"
     }
-
-
-def _built(trace: plan_trace.PlanTrace) -> list[str]:
-    return [s.data.group for s in trace.steps if s.phase == "node"]
 
 
 def _domains(trace: plan_trace.PlanTrace) -> dict[tuple[str, ...], str]:
@@ -220,7 +214,7 @@ def test_entity_cluster_is_peeled_onto_its_key():
     trace, rows = _trace(
         "select product_id, brand, sum(sale_price) as revenue order by product_id asc;"
     )
-    assert [g for g in _built(trace) if ":dim:local.product_id" in g]
+    assert [g for g in built_groups(trace) if ":dim:local.product_id" in g]
     assert rows == [(1, "acme", 5.0), (2, "zed", 7.0), (3, "acme", 3.0)]
 
 
@@ -263,7 +257,11 @@ def test_families_peeled_off_two_keys_source_as_one_cluster():
         " order by item_id asc, warehouse_id asc, brand asc;",
         _FORKED,
     )
-    assert [g for g in _built(trace) if g.endswith(":dim:local.item_id|local.order_id")]
+    assert [
+        g
+        for g in built_groups(trace)
+        if g.endswith(":dim:local.item_id|local.order_id")
+    ]
     assert rows == [
         (1000, 1, "A", "west", 5, 50),
         (1000, 2, "A", "west", 5, 50),
@@ -280,7 +278,7 @@ def test_cluster_a_domain_carries_whole_rides_the_row_stream():
         " order by item_id asc, brand asc;",
         _FORKED,
     )
-    assert not [g for g in _built(trace) if ":dim:" in g]
+    assert not [g for g in built_groups(trace) if ":dim:" in g]
     assert rows == [
         (1000, 100, "A", "west", 5),
         (1001, 100, "B", "west", 7),
@@ -296,7 +294,7 @@ def test_condition_aggregate_at_a_composite_grain_keys_no_peel():
         " select part_id, supplier_id, supply_cost order by part_id asc;",
         _PARTSUPP,
     )
-    assert not [g for g in _built(trace) if ":dim:" in g]
+    assert not [g for g in built_groups(trace) if ":dim:" in g]
     assert rows == [(1, 10, 1.5), (2, 10, 3.5)]
 
 
@@ -438,7 +436,7 @@ def test_padded_key_stream_is_never_built(relation: str):
         _REV + " where r.rev > 4" + _REV_KEYS.replace("union", relation)
     )
     assert _outer_row_streams(trace) == []
-    assert [g for g in _built(trace) if g.endswith(":dim:local.product_id")]
+    assert [g for g in built_groups(trace) if g.endswith(":dim:local.product_id")]
     assert [tuple(r) for r in rows] == [
         (1, 1, "ca", "acme", Decimal("5.0")),
         (1, 2, "ca", "zed", Decimal("7.0")),

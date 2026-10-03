@@ -17,8 +17,7 @@ Three planner bugs pinned here, each pre-existing:
 
 import pytest
 
-from trilogy import Dialects
-from trilogy.executor import Executor
+from tests.helpers.rows import executor_for, sort_rows, twin_rows
 
 _BASE = """
 key customer_id int;
@@ -299,39 +298,20 @@ FORKED_CASES: list[tuple[str, list[tuple]]] = [
 ]
 
 
-def _executor(model: str) -> Executor:
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(model)
-    return executor
-
-
 @pytest.fixture(scope="module")
 def twins():
-    return _executor(DERIVED), _executor(MATERIALIZED)
+    return executor_for(DERIVED), executor_for(MATERIALIZED)
 
 
 @pytest.fixture(scope="module")
 def forked_twins():
-    return _executor(FORKED_DERIVED), _executor(FORKED_MATERIALIZED)
-
-
-def _key(row: tuple) -> tuple:
-    return tuple((v is None, str(v)) for v in row)
-
-
-def _rows(executor: Executor, query: str) -> list[tuple]:
-    return sorted(
-        (tuple(r) for r in executor.execute_text(query + ";")[-1].fetchall()),
-        key=_key,
-    )
+    return executor_for(FORKED_DERIVED), executor_for(FORKED_MATERIALIZED)
 
 
 @pytest.mark.parametrize("query,expected", TWIN_CASES, ids=[q for q, _ in TWIN_CASES])
 def test_dimension_attribute_read_on_the_fact_stream(twins, query, expected):
     derived, materialized = twins
-    rows = _rows(derived, query)
-    assert rows == _rows(materialized, query)
-    assert rows == sorted(expected, key=_key)
+    assert twin_rows(derived, materialized, query) == sort_rows(expected)
 
 
 @pytest.mark.parametrize(
@@ -339,6 +319,4 @@ def test_dimension_attribute_read_on_the_fact_stream(twins, query, expected):
 )
 def test_two_families_with_attributes_on_both_streams(forked_twins, query, expected):
     derived, materialized = forked_twins
-    rows = _rows(derived, query)
-    assert rows == _rows(materialized, query)
-    assert rows == sorted(expected, key=_key)
+    assert twin_rows(derived, materialized, query) == sort_rows(expected)

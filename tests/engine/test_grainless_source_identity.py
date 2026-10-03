@@ -9,7 +9,7 @@ the DECLARED side (`FINAL_DEDUP`, `UNDEMANDED_PIVOT`), pinned here too."""
 
 import pytest
 
-from trilogy import Dialects
+from tests.helpers.rows import executor_for, sorted_rows
 from trilogy.executor import Executor
 
 _MODEL = """
@@ -124,38 +124,27 @@ UNDEMANDED_PIVOT = [
 ]
 
 
-def _executor(model: str) -> Executor:
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(model)
-    return executor
-
-
-def _rows(executor: Executor, query: str) -> list[tuple]:
-    rows = [tuple(r) for r in executor.execute_text(query + ";")[-1].fetchall()]
-    return sorted(rows, key=lambda r: tuple((v is None, str(v)) for v in r))
-
-
 @pytest.fixture(scope="module")
 def grained() -> Executor:
-    return _executor(GRAINED)
+    return executor_for(GRAINED)
 
 
 @pytest.fixture(scope="module")
 def ungrained() -> Executor:
-    return _executor(UNGRAINED)
+    return executor_for(UNGRAINED)
 
 
 @pytest.mark.parametrize("query", TWIN_QUERIES)
 def test_ungrained_matches_grained(grained: Executor, ungrained: Executor, query: str):
-    assert _rows(ungrained, query) == _rows(grained, query)
+    assert sorted_rows(ungrained, query) == sorted_rows(grained, query)
 
 
 @pytest.mark.parametrize("query,expected", HAND_ROWS)
 def test_a_return_reaches_its_own_line(
     grained: Executor, ungrained: Executor, query: str, expected: list[tuple]
 ):
-    assert _rows(grained, query) == expected
-    assert _rows(ungrained, query) == expected
+    assert sorted_rows(grained, query) == expected
+    assert sorted_rows(ungrained, query) == expected
 
 
 @pytest.mark.parametrize("query,expected", FINAL_DEDUP)
@@ -163,12 +152,12 @@ def test_a_return_reaches_its_own_line(
 def test_final_dedups_to_the_output_grain(
     request: pytest.FixtureRequest, twin: str, query: str, expected: list[tuple]
 ):
-    assert _rows(request.getfixturevalue(twin), query) == expected
+    assert sorted_rows(request.getfixturevalue(twin), query) == expected
 
 
 def test_null_padded_key_groups_the_lines_it_does_not_name():
-    executor = _executor(COMPLETE_ORDER)
-    assert _rows(executor, "select return_id, count(product_id) as n") == [
+    executor = executor_for(COMPLETE_ORDER)
+    assert sorted_rows(executor, "select return_id, count(product_id) as n") == [
         (900, 1),
         (901, 1),
         (None, 3),
@@ -180,4 +169,4 @@ def test_null_padded_key_groups_the_lines_it_does_not_name():
 def test_undemanded_pivot_dimension_is_not_a_row(
     request: pytest.FixtureRequest, twin: str, query: str, expected: list[tuple]
 ):
-    assert _rows(request.getfixturevalue(twin), query) == expected
+    assert sorted_rows(request.getfixturevalue(twin), query) == expected

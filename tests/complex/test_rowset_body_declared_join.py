@@ -6,6 +6,7 @@ Without it the body refuses, and the refusal says where the join goes."""
 
 import pytest
 
+from tests.helpers.rows import executor_for, sorted_rows
 from trilogy import Dialects
 from trilogy.core.exceptions import DisconnectedConceptsException
 from trilogy.core.models.environment import Environment
@@ -23,8 +24,7 @@ with rs as where amt > 6 select oid as k, amt as v;
 
 
 def _rows(query: str) -> list[tuple]:
-    executor = Dialects.DUCK_DB.default_executor(environment=Environment())
-    return [tuple(r) for r in executor.execute_text(_MODEL + query)[-1].fetchall()]
+    return sorted_rows(executor_for(_MODEL), query)
 
 
 def _refusal(query: str) -> str:
@@ -38,7 +38,7 @@ def test_body_declared_join_pairs_a_handle_with_a_base_concept():
     rows = _rows(
         "with b as select rs.k, cat subset join rs.k = oid; select b.rs.k, b.cat;"
     )
-    assert sorted(rows) == [(1, "a"), (2, "a")]
+    assert rows == [(1, "a"), (2, "a")]
 
 
 def test_body_without_the_join_refuses_naming_the_body():
@@ -51,7 +51,7 @@ def test_membership_subquery_declares_its_own_join():
     rows = _rows(
         "select oid where oid in (select rs.k subset join rs.k = oid where cat = 'a');"
     )
-    assert sorted(rows) == [(1,), (2,)]
+    assert rows == [(1,), (2,)]
 
 
 def test_membership_subquery_without_the_join_refuses_naming_the_subquery():

@@ -1,22 +1,14 @@
 from types import SimpleNamespace
 
+from tests.helpers.join_stubs import stub_join
 from trilogy.core.enums import JoinType
-from trilogy.core.models.execute import CTE, Join
+from trilogy.core.models.execute import CTE
 
 KEY = "local.k"
 
 
-def _pair(side: str) -> SimpleNamespace:
-    concept = SimpleNamespace(address=KEY, pseudonyms=set())
-    return SimpleNamespace(cte=SimpleNamespace(name=side), left=concept, right=concept)
-
-
 def _sources(jointype: JoinType, lefts: list[str]) -> set[str]:
-    join = Join(
-        right_cte=SimpleNamespace(name="c"),  # type: ignore[arg-type]
-        jointype=jointype,
-        joinkey_pairs=[_pair(n) for n in lefts],  # type: ignore[misc]
-    )
+    join = stub_join("c", jointype, lefts, KEY)
     cte = SimpleNamespace(joins=[join], get_concept=lambda address: None)
     return CTE.inner_join_key_sources(cte, KEY)  # type: ignore[arg-type]
 
