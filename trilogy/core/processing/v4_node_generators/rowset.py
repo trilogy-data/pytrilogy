@@ -188,7 +188,7 @@ def resolve_rowset(
     # of that statement, and a body extending them would hand them up as a
     # row source): the body is planned for it without those regions' rows,
     # in its spelling.
-    witness = history.rowset_witness(lineage.rowset.name)
+    witness = history.read_rowset_witness(lineage.rowset.name)
     owned = (
         witness.body_spans_of(
             environment.span_scope.extent_free | environment.span_scope.unextended
@@ -207,7 +207,7 @@ def resolve_rowset(
                 if r.spans and r.spans <= environment.span_scope.extent_free
             )
         )
-        if witness is not None and owned
+        if witness is not None
         else frozenset()
     )
     plan = plan_nested_select(

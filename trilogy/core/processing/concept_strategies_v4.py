@@ -369,7 +369,7 @@ def _binding_only_roots(
     return out
 
 
-def _materialized_root_addresses(
+def materialized_root_addresses(
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     conditions: list[BuildWhereClause],
@@ -745,7 +745,7 @@ def _search_concepts(
     # materializes at grain. If treating those as roots can't be sourced (the
     # summary doesn't combine with the rest of the query), fall back to the
     # derive-from-base plan: try the direct source first.
-    materialized_roots = _materialized_root_addresses(
+    materialized_roots = materialized_root_addresses(
         mandatory_list, environment, conditions
     )
     info = _build_from_graph(

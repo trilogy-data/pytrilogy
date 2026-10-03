@@ -1,6 +1,6 @@
 """Unit coverage for v4 materialized-source selection (stage 1).
 
-Exercises `_materialized_root_addresses` (which demanded concepts get sourced
+Exercises `materialized_root_addresses` (which demanded concepts get sourced
 directly from a precomputed / summary datasource instead of re-derived) and its
 `combine_where_clauses` helper, plus the `materialized_roots` branch of
 `build_concept_graph`, against small inline models — no SQL execution.
@@ -21,8 +21,8 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.concept_strategies_v4 import (
     _datasource_materializes,
-    _materialized_root_addresses,
     _scan_rows_at_grain,
+    materialized_root_addresses,
 )
 from trilogy.core.processing.condition_utility import combine_where_clauses
 from trilogy.core.processing.v4_helper.concept_graph import build_concept_graph
@@ -252,15 +252,15 @@ def _build(
 
 def _roots(select: str, model: str = MODEL) -> set[str]:
     be, mandatory, conditions = _build(select, model)
-    return set(_materialized_root_addresses(mandatory, be, conditions))
+    return set(materialized_root_addresses(mandatory, be, conditions))
 
 
-# ---------- _materialized_root_addresses ----------
+# ---------- materialized_root_addresses ----------
 
 
 def test_empty_mandatory_list():
     env = Environment().materialize_for_select()
-    assert _materialized_root_addresses([], env, []) == frozenset()
+    assert materialized_root_addresses([], env, []) == frozenset()
 
 
 def test_exact_aggregate_uses_summary_table():

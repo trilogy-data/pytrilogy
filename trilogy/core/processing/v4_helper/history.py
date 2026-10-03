@@ -8,6 +8,7 @@ lazy-importing the planner module they are imported *by*.
 from dataclasses import dataclass, field
 
 from trilogy.core.enums import JoinType
+from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.author import MultiSelectLineage, SelectLineage
 from trilogy.core.models.build import (
     BuildConcept,
@@ -18,6 +19,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import History
 
+from .constants import NO_WITNESS_FLOOR
 from .keyspace import RowsetWitness
 from .models import BuildInfo
 from .network_model import SearchResult
@@ -75,12 +77,17 @@ class V4History(History):
     live_witnesses: dict[str, int] = field(default_factory=dict)
     # The shallowest live placeholder read since the innermost computation
     # began: a result that read one above its own frame understates it.
-    witness_floor: int = 1 << 30
+    witness_floor: int = NO_WITNESS_FLOOR
     # `build_nested_select` results; the select itself is held so its id is
     # never recycled.
     nested_builds: dict[
         NestedBuildKey, tuple[SelectLineage | MultiSelectLineage, NestedBuild]
     ] = field(default_factory=dict)
+    # `generate_graph` of a nested build env, by its id; the env is held so its
+    # id is never recycled.
+    nested_graphs: dict[int, tuple[BuildEnvironment, ReferenceGraph]] = field(
+        default_factory=dict
+    )
     # Spans of the body regions the plan reading a rowset holds the rows of:
     # the body, and every plan under it, is built without them. Managed by
     # `plan_nested_select`; part of the build key.
@@ -126,7 +133,9 @@ class V4History(History):
             self._v4_key(search, conditions, complete_partials, staged_conditions)
         ] = output
 
-    def rowset_witness(self, name: str) -> RowsetWitness | None:
+    def read_rowset_witness(self, name: str) -> RowsetWitness | None:
+        """The cached witness of `name`; reading a live placeholder lowers the
+        witness floor."""
         depth = self.live_witnesses.get(name)
         if depth is not None:
             self.witness_floor = min(self.witness_floor, depth)

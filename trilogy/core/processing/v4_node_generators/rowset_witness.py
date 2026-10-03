@@ -18,6 +18,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing.v4_helper.concept_graph import build_concept_graph
+from trilogy.core.processing.v4_helper.constants import NO_WITNESS_FLOOR
 from trilogy.core.processing.v4_helper.history import V4History
 from trilogy.core.processing.v4_helper.keyspace import (
     RowsetWitness,
@@ -76,7 +77,7 @@ def rowset_witnesses(
             lineages[attrs.rowset_name] = concept.lineage.rowset
     out: list[RowsetWitness] = []
     for name in sorted(lineages):
-        witness = history.rowset_witness(name)
+        witness = history.read_rowset_witness(name)
         if witness is None:
             witness = _computed_witness(name, lineages[name], environment, history)
         out.append(witness)
@@ -89,8 +90,8 @@ def _computed_witness(
     environment: BuildEnvironment,
     history: V4History,
 ) -> RowsetWitness:
-    # A body reading its own rowset (TPC-DS q64: a membership over `cs_ui`
-    # inside `cs_ui`) cannot witness itself, so it reads an empty placeholder.
+    # A body reading its own rowset (a membership over the rowset inside its
+    # own body) cannot witness itself, so it reads an empty placeholder.
     # A result that read the placeholder of an enclosing computation
     # understates it and is not cached: mutually recursive bodies would
     # otherwise persist each other's partial answer for the rest of the build.
@@ -99,7 +100,7 @@ def _computed_witness(
     # the placeholder standing as the answer.
     depth = len(history.live_witnesses)
     outer_floor = history.witness_floor
-    history.witness_floor = 1 << 30
+    history.witness_floor = NO_WITNESS_FLOOR
     history.live_witnesses[name] = depth
     history.rowset_witnesses[name] = RowsetWitness(name=name, regions=())
     try:
@@ -123,7 +124,7 @@ def _witness(
     whose summary source does not combine is witnessed over a concept graph
     its plan abandons."""
     from trilogy.core.processing.concept_strategies_v4 import (  # cycle
-        _materialized_root_addresses,
+        materialized_root_addresses,
     )
 
     # a multiselect body is planned arm by arm, with no keyspace of its own
@@ -139,7 +140,7 @@ def _witness(
         outputs,
         env,
         conditions,
-        _materialized_root_addresses(outputs, env, conditions),
+        materialized_root_addresses(outputs, env, conditions),
         staged_conditions=built.where_clauses or None,
     )
     body = statement_keyspace(attrs, outputs, env, conditions, history)

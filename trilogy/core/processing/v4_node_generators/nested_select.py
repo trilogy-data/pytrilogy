@@ -46,8 +46,8 @@ def _inherited_joins(
 ) -> list[tuple[str, str, JoinType]]:
     """The enclosing resolution's joins a nested select builds under: only the
     environment's global merges. A statement's own joins relate ITS concepts
-    and never reach into a nested scope (q64's outer `union join agg_99.x =
-    agg_00.x = ss.item.sk` made the `ss_rows_*` bodies read their own consumers).
+    and never reach into a nested scope: a body built under its reader's join
+    would read that reader as its own source.
     A global merge naming one of a rowset's own derived concepts is dropped
     too: the body would canonicalize its output onto the merge group and source
     it back through itself."""
@@ -216,6 +216,15 @@ def build_nested_select(
     return result
 
 
+def _nested_graph(env: BuildEnvironment, history: V4History) -> ReferenceGraph:
+    """The env's graph, generated once: a body built for its witness and its
+    plan shares one build env."""
+    cached = history.nested_graphs.get(id(env))
+    if cached is None:
+        cached = history.nested_graphs[id(env)] = (env, generate_graph(env))
+    return cached[1]
+
+
 def plan_nested_select(
     select: SelectLineage | MultiSelectLineage,
     history: V4History,
@@ -237,7 +246,7 @@ def plan_nested_select(
     inherited = history.nested_exclusions
     hidden = inherited | frozenset(hide_from_connectivity or exclude_derived or ())
     built, env, where = build_nested_select(select, history, exclude_derived)
-    graph = generate_graph(env)
+    graph = _nested_graph(env, history)
 
     # The nested select resolves on its own; if its required concepts span
     # unconnected models (a grain-only `by` edge does NOT bridge them), surface
