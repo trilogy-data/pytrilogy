@@ -13,6 +13,18 @@ from trilogy.core.processing.v4_helper.functional_dependency import (
 from .common import outputs_with_parent_grain_keys, parent_outputs_needed
 
 
+def basic_regroups(
+    outputs: list[BuildConcept],
+    parents: list[StrategyNode],
+    environment: BuildEnvironment,
+) -> bool:
+    """Whether the BASIC node over `parents` groups instead of projecting its
+    one parent's rows as they stand."""
+    return len(parents) == 1 and _grain_claim_needs_group(
+        outputs_with_parent_grain_keys(outputs, parents), parents[0], environment
+    )
+
+
 def _grain_claim_needs_group(
     outputs: list[BuildConcept],
     parent: StrategyNode,

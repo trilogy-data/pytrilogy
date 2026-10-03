@@ -719,10 +719,7 @@ def _projects_parent_rows(
     nodes, the way its generator would, so the answer needs no node of
     `gid`'s own."""
     from trilogy.core.processing.v4_node_generators.basic import (  # cycle
-        _grain_claim_needs_group,
-    )
-    from trilogy.core.processing.v4_node_generators.common import (
-        outputs_with_parent_grain_keys,
+        basic_regroups,
     )
 
     a = attrs[gid]
@@ -752,9 +749,7 @@ def _projects_parent_rows(
             group_graph, attrs, gid, outputs, mandatory_list, environment
         )
         return filter_row_predicate(outputs, parents, narrows) is None
-    return len(parents) != 1 or not _grain_claim_needs_group(
-        outputs_with_parent_grain_keys(outputs, parents), parents[0], environment
-    )
+    return not basic_regroups(outputs, parents, environment)
 
 
 def _aggregate_inlines(
