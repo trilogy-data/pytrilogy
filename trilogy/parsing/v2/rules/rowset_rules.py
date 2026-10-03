@@ -2,7 +2,15 @@ from __future__ import annotations
 
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.constants import SUBQUERY_NAMESPACE_PREFIX
-from trilogy.core.models.author import SubqueryItem
+from trilogy.core.enums import BooleanOperator, ComparisonOperator
+from trilogy.core.models.author import (
+    Comparison,
+    ConceptRef,
+    Conditional,
+    Parenthetical,
+    SubqueryItem,
+)
+from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import RowsetDerivationStatement, SelectStatement
 from trilogy.parsing.v2.rowset_semantics import rowset_to_concepts_v2
 from trilogy.parsing.v2.rules_context import (
@@ -101,7 +109,7 @@ def scalar_subquery(
     scalar = not context.semantic_state.in_membership_subquery
     # a scalar is joined beside every row, so a body of several rows would
     # repeat them; SQL raises at run time, this says so at parse time
-    if scalar and select.grain.components and select.limit != 1:
+    if scalar and not _one_row(select, context.environment):
         raise fail(
             node,
             "a `(select ...)` used as a scalar value must return one row: "
@@ -125,6 +133,42 @@ def scalar_subquery(
         name=name,
         contents=[c.reference for c in result.concepts],
     )
+
+
+def _one_row(select: SelectStatement, environment: Environment) -> bool:
+    """No grain, `limit 1`, or every grain component pinned by an `=` in the
+    WHERE, itself or through its keys (`where cat_avg.category = 'a'`, or a
+    correlation to the outer row)."""
+    if select.limit == 1:
+        return True
+    pinned = _equated(select.where_clause.conditional) if select.where_clause else set()
+    return all(
+        _pinned(address, pinned, environment) for address in select.grain.components
+    )
+
+
+def _pinned(address: str, pinned: set[str], environment: Environment) -> bool:
+    if address in pinned:
+        return True
+    keys = environment.concepts[address].keys or set()
+    return bool(keys) and keys <= pinned
+
+
+def _equated(condition: object) -> set[str]:
+    if isinstance(condition, Parenthetical):
+        return _equated(condition.content)
+    if isinstance(condition, Conditional) and condition.operator == BooleanOperator.AND:
+        return _equated(condition.left) | _equated(condition.right)
+    if (
+        isinstance(condition, Comparison)
+        and condition.operator == ComparisonOperator.EQ
+    ):
+        return {
+            side.address
+            for side in (condition.left, condition.right)
+            if isinstance(side, ConceptRef)
+        }
+    return set()
 
 
 ROWSET_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
