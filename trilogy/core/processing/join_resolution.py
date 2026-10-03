@@ -1813,16 +1813,26 @@ def _region_padded_sides(
     """Each side an earlier join of the merge null-extends, with the region
     spans the side preserved over it holds: the side's columns are NULL on
     those regions' rows in the joined stream, whatever the side says of
-    itself."""
+    itself. A RIGHT or FULL join pads the whole accumulated input, not just
+    the sides it pairs on."""
     padded: dict[str, frozenset[str]] = {}
-    for join in joins:
-        if join.type not in PADS_RIGHT_JOIN_TYPES:
-            continue
-        held: frozenset[str] = frozenset().union(
-            *(facts.side(left).held_spans for left in join.keys)
-        )
+
+    def pad(side: str, held: frozenset[str]) -> None:
         if held:
-            padded[join.right] = held
+            padded[side] = padded.get(side, frozenset()) | held
+
+    joined: set[str] = set()
+    for join in joins:
+        joined |= join.lefts | ({join.left} if join.left else set())
+        if join.type in PADS_RIGHT_JOIN_TYPES:
+            pad(
+                join.right,
+                frozenset().union(*(facts.side(left).held_spans for left in join.keys)),
+            )
+        if join.type in PADS_LEFT_JOIN_TYPES:
+            for side in joined:
+                pad(side, facts.side(join.right).held_spans)
+        joined.add(join.right)
     return padded
 
 

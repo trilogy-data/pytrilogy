@@ -683,6 +683,23 @@ def _region_domain_grouping_hosts(
     )
 
 
+def _outputs_beside_hosts(
+    hosts: tuple[str, ...],
+    buckets: dict[str, GroupBucket],
+    mandatory_list: list[BuildConcept],
+) -> bool:
+    """Whether the statement outputs a row value no grouping host emits
+    (`customer_id` beside `count(customer_id) by status`). FINAL reads it off
+    the united row stream, unfiltered by the hosts' input atom, so the atom
+    is applied there too."""
+    emitted: set[str] = set()
+    for gid in hosts:
+        emitted |= set(buckets[gid].grain_components) | set(
+            buckets[gid].primary_members
+        )
+    return any(c.address not in emitted for c in mandatory_list)
+
+
 def _hosts_carrying_condition_grain(
     restricted: list[str],
     row_inputs: set[str],
@@ -1425,7 +1442,12 @@ def plan_condition_placements(
                 placements.append(
                     ConditionPlacement(
                         atom=atom,
-                        group_ids=hosts or (FINAL_NODE_ID,),
+                        group_ids=(
+                            hosts + (FINAL_NODE_ID,)
+                            if hosts
+                            and _outputs_beside_hosts(hosts, buckets, mandatory_list)
+                            else hosts or (FINAL_NODE_ID,)
+                        ),
                         reason=PlacementReason.FINAL_SPAN_DOMAIN,
                     )
                 )

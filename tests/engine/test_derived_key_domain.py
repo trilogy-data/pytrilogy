@@ -1726,14 +1726,6 @@ def test_where_aggregate_counting_the_region_by_an_absent_key(
     assert twin_rows(derived, materialized, query) == expected
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "a WHERE beside an output aggregate the region domain feeds is placed "
-        "only on that aggregate's input (FINAL_SPAN_DOMAIN): FINAL re-reads the "
-        "unfiltered rows and pairs them with the surviving groups"
-    ),
-)
 @pytest.mark.parametrize(
     "query,expected",
     [
@@ -1742,8 +1734,20 @@ def test_where_aggregate_counting_the_region_by_an_absent_key(
             [(2, "delivered", 1), (3, None, 1)],
         ),
         (
+            "select customer_id, status, count(customer_id) by status as n where coalesce(sum(amount) by customer_id, 0) != 30",
+            [(3, None, 1)],
+        ),
+        (
+            "select name, status, count(customer_id) by status as n where coalesce(sum(amount) by customer_id, 0) != 30 or customer_id = 2",
+            [("bob", "delivered", 1), ("cat", None, 1)],
+        ),
+        (
             "select customer_id, pstatus, count(customer_id) by pstatus as n where coalesce(sum(amount) by pstatus, 0) = 0",
             [(3, None, 1)],
+        ),
+        (
+            "select customer_id, pstatus, count(customer_id) by pstatus as n, sum(amount) by pstatus as s where coalesce(sum(amount) by pstatus, 0) = 0",
+            [(3, None, 1, None)],
         ),
     ],
 )

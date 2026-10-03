@@ -1492,6 +1492,30 @@ def _widen_mixed_scalar_basic_to_final_spine(
             fact.native_grain = spine
 
 
+def _solid_aggregate_over_region_group(
+    gid: str,
+    pgid: str,
+    addr: str,
+    fact: GroupFacts,
+    domain_readers: set[str],
+    environment: BuildEnvironment,
+) -> bool:
+    """An aggregate a solid parent computes by a key absent on a region does
+    not ride through a grouping over that region's rows: there the key's NULL
+    group unites the padded rows with the value NULL ones, so the solid
+    aggregate's NULL group (value NULL only) cannot be read back off it.
+    FINAL sources it from its producer instead."""
+    if (
+        gid not in domain_readers
+        or pgid in domain_readers
+        or fact.derivation not in GROUPING_DERIVATIONS
+        or addr in fact.grain
+    ):
+        return False
+    concept = environment.concepts.get(addr)
+    return concept is not None and concept.derivation == Derivation.AGGREGATE
+
+
 def _topological_dependency_order(
     group_graph: nx.DiGraph, group_edges: EdgeMap
 ) -> list[str] | None:
@@ -1744,6 +1768,10 @@ def _compute_concept_sets(
                 else frozenset()
             )
             for addr in io.capability.get(pgid, set()):
+                if _solid_aggregate_over_region_group(
+                    gid, pgid, addr, fact, domain_readers, environment
+                ):
+                    continue
                 if (
                     addr in grain_mates
                     or addr in hidden_spans
