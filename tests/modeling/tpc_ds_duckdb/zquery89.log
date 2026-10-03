@@ -1,5 +1,5 @@
 query_id = "89"
-gen_length = 3964
+gen_length = 3908
 preql_size = 1586
 comp_size = 965
 generated_sql = """
@@ -20,7 +20,7 @@ FROM
     INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"store_sales_store_sales\".\"SS_STORE_SK\" = \"store_sales_store_store\".\"S_STORE_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"store_sales_sale_date_date\" on \"store_sales_store_sales\".\"SS_SOLD_DATE_SK\" = \"store_sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"store_sales_sale_date_date\".\"D_YEAR\" = 1999 and \"store_sales_store_sales\".\"SS_STORE_SK\" is not null and ( ( (\"store_sales_item_items\".\"I_CATEGORY\" is not null and \"store_sales_item_items\".\"I_CATEGORY\" in ('Books','Electronics','Sports')) and (\"store_sales_item_items\".\"I_CLASS\" is not null and \"store_sales_item_items\".\"I_CLASS\" in ('computers','stereo','football')) ) or ( (\"store_sales_item_items\".\"I_CATEGORY\" is not null and \"store_sales_item_items\".\"I_CATEGORY\" in ('Men','Jewelry','Women')) and (\"store_sales_item_items\".\"I_CLASS\" is not null and \"store_sales_item_items\".\"I_CLASS\" in ('shirts','birdal','dresses')) ) )
+    \"store_sales_sale_date_date\".\"D_YEAR\" = 1999 and ( ( (\"store_sales_item_items\".\"I_CATEGORY\" is not null and \"store_sales_item_items\".\"I_CATEGORY\" in ('Books','Electronics','Sports')) and (\"store_sales_item_items\".\"I_CLASS\" is not null and \"store_sales_item_items\".\"I_CLASS\" in ('computers','stereo','football')) ) or ( (\"store_sales_item_items\".\"I_CATEGORY\" is not null and \"store_sales_item_items\".\"I_CATEGORY\" in ('Men','Jewelry','Women')) and (\"store_sales_item_items\".\"I_CLASS\" is not null and \"store_sales_item_items\".\"I_CLASS\" in ('shirts','birdal','dresses')) ) )
 
 GROUP BY
     1,

@@ -1,5 +1,5 @@
 query_id = "76"
-gen_length = 5295
+gen_length = 5142
 preql_size = 1833
 comp_size = 1708
 generated_sql = """
@@ -19,7 +19,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"ws_item_items\" on \"ws_web_sales\".\"WS_ITEM_SK\" = \"ws_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"ws_sale_date_date\" on \"ws_web_sales\".\"WS_SOLD_DATE_SK\" = \"ws_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"ws_web_sales\".\"WS_SHIP_CUSTOMER_SK\" is null and \"ws_web_sales\".\"WS_ORDER_NUMBER\" is not null and \"ws_web_sales\".\"WS_SOLD_DATE_SK\" is not null
+    \"ws_web_sales\".\"WS_SHIP_CUSTOMER_SK\" is null and \"ws_web_sales\".\"WS_ORDER_NUMBER\" is not null
 
 GROUP BY
     1,
@@ -39,7 +39,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"ss_store_sales\".\"SS_ITEM_SK\" = \"ss_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_sale_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"ss_store_sales\".\"SS_STORE_SK\" is null and \"ss_store_sales\".\"SS_TICKET_NUMBER\" is not null and \"ss_store_sales\".\"SS_SOLD_DATE_SK\" is not null
+    \"ss_store_sales\".\"SS_STORE_SK\" is null and \"ss_store_sales\".\"SS_TICKET_NUMBER\" is not null
 
 GROUP BY
     1,
@@ -59,7 +59,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"cs_item_items\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_item_items\".\"I_ITEM_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"cs_sale_date_date\" on \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" = \"cs_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" is null and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" is not null and \"cs_catalog_sales\".\"CS_SOLD_DATE_SK\" is not null
+    \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" is null and \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" is not null
 
 GROUP BY
     1,
