@@ -22,19 +22,6 @@ query '''select 2 as id, 200 as b union all select 3, 300''';
 auto id_label <- concat('x', cast(aid as string));
 """
 
-ONE_SIDED_REASON = (
-    "pre-existing on main: a request whose non-axis output sits at one arm's "
-    "row grain is read arm-locally (`_axis_arm_pinned` in "
-    "network_coalescing.py, meant for an aggregate's parent that a later "
-    "assembly coalesces); at the statement's top level nothing coalesces the "
-    "other arm, so its keys are dropped"
-)
-DERIVED_REASON = (
-    "pre-existing on main: a scalar over the axis key is computed inside one "
-    "arm's scan rather than over the coalesced key, so it is NULL on the "
-    "other arm's rows (main and this branch pick different arms)"
-)
-
 
 @pytest.mark.parametrize(
     "query,expected",
@@ -52,30 +39,34 @@ DERIVED_REASON = (
             "select aid, id_label union join aid = bid",
             [(1, "x1"), (2, "x2"), (3, "x3")],
         ),
-        pytest.param(
+        (
             "select aid, b union join aid = bid",
             [(1, None), (2, 200), (3, 300)],
-            marks=pytest.mark.xfail(strict=True, reason=ONE_SIDED_REASON),
         ),
-        pytest.param(
+        (
             "select aid, id_label, b union join aid = bid",
             [(1, "x1", None), (2, "x2", 200), (3, "x3", 300)],
-            marks=pytest.mark.xfail(strict=True, reason=ONE_SIDED_REASON),
         ),
-        pytest.param(
+        (
             "select aid, id_label, a union join aid = bid",
             [(1, "x1", 10), (2, "x2", 20), (3, "x3", None)],
-            marks=pytest.mark.xfail(strict=True, reason=ONE_SIDED_REASON),
         ),
-        pytest.param(
+        (
             "select aid, sum(b) as sb union join aid = bid",
             [(1, None), (2, 200), (3, 300)],
-            marks=pytest.mark.xfail(strict=True, reason=ONE_SIDED_REASON),
         ),
-        pytest.param(
+        (
             "select aid, id_label, a, b union join aid = bid",
             [(1, "x1", 10, None), (2, "x2", 20, 200), (3, "x3", None, 300)],
-            marks=pytest.mark.xfail(strict=True, reason=DERIVED_REASON),
+        ),
+        ("where b > 250 select aid, b union join aid = bid", [(3, 300)]),
+        (
+            "select aid, sum(a) as sa, sum(b) as sb union join aid = bid",
+            [(1, 10, None), (2, 20, 200), (3, None, 300)],
+        ),
+        (
+            "select aid, count(a) as ca union join aid = bid",
+            [(1, 1), (2, 1), (3, 0)],
         ),
     ],
 )

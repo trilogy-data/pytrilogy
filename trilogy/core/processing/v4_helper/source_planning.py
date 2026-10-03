@@ -102,6 +102,10 @@ class SourceRequest:
     # a pre-aggregated summary is not a legal source for an aggregate that a
     # later step will filter to a subset of the rows it already summed.
     deferred_conditions: BuildWhereClause | None = None
+    # The rows are an aggregate's input: a read at one coalescing arm's row
+    # grain may stay arm-local, because the aggregate's consumer reassembles
+    # the arms (see `_axis_arm_pinned`).
+    arm_local: bool = False
 
 
 @dataclass(frozen=True)
@@ -129,6 +133,9 @@ class BridgePlan:
     # looks covered, yet the two scans share no column and only the connector's
     # subplan (e.g. a merged-unnest bridge) can relate them.
     connector_aliases: tuple[str, ...] = ()
+    # The cover assembles a coalescing axis from every member arm: an arm whose
+    # columns another arm also carries is still that axis's own domain.
+    assembles_axis: bool = False
 
 
 def _graph_neighbors(graph: ReferenceGraph, node: str) -> set[str]:
@@ -391,7 +398,7 @@ def _network_source(
     """
     concepts = _search_concepts_for_bridge(request)
     v4_history = request.history if isinstance(request.history, V4History) else None
-    verdict_key: tuple[str, str, bool, tuple[str, ...]] | None = None
+    verdict_key: tuple[str, str, bool, tuple[str, ...], bool] | None = None
     if v4_history is not None:
         verdict_key = (
             "-".join(sorted(c.address for c in concepts)),
@@ -399,6 +406,7 @@ def _network_source(
             defer_single_scan,
             # the promoted `~` keys change which scans bind fully
             tuple(sorted(request.environment.span_scope.extent_free)),
+            request.arm_local,
         )
         cached_verdict = v4_history.network_verdicts.get(verdict_key)
         if cached_verdict == "none":
@@ -411,6 +419,7 @@ def _network_source(
         request.graph,
         request.conditions,
         request.deferred_conditions,
+        request.arm_local,
     )
     result = _memoized_search(network, request.history)
     if plan_trace.active():
@@ -559,6 +568,7 @@ def _network_source(
             concepts=bridge_concepts,
             graph=graph,
             connector_aliases=tuple(connector_aliases),
+            assembles_axis=bool(network.axis_families),
         )
     )
 
@@ -1135,6 +1145,7 @@ def _merge_component_sources(
     request: SourceRequest,
     parents: list[StrategyNode],
     output_concepts: list[BuildConcept] | None = None,
+    preserve_parents: bool = False,
 ) -> StrategyNode | None:
     if not parents:
         return None
@@ -1183,6 +1194,7 @@ def _merge_component_sources(
         ),
         force_group=True if rollup else None,
         rollup_concepts=rollup or None,
+        preserve_parents=preserve_parents,
     )
 
 
@@ -1641,6 +1653,7 @@ def _cross_component_source(request: SourceRequest) -> StrategyNode | None:
                 depth=request.depth + 1,
                 require_full=request.require_full,
                 complete_partials=request.complete_partials,
+                arm_local=request.arm_local,
             )
         )
         if component is None:
@@ -1655,7 +1668,9 @@ def _emit_bridge(request: SourceRequest, bridge: BridgePlan) -> StrategyNode | N
     parents = _datasource_nodes_for_bridge(request, bridge, not request.require_full)
     if parents is None:
         return None
-    merged = _merge_component_sources(request, parents, bridge.concepts)
+    merged = _merge_component_sources(
+        request, parents, bridge.concepts, bridge.assembles_axis
+    )
     if merged is not None and request.complete_partials:
         merged = _complete_partial_requested(request, merged)
     return merged
@@ -1803,6 +1818,7 @@ def _plan_source(request: SourceRequest) -> StrategyNode | None:
                 deferred_conditions=_deferred_conditions(request),
                 depth=request.depth,
                 require_full=request.require_full,
+                arm_local=request.arm_local,
             )
         )
         if unfiltered is not None:
