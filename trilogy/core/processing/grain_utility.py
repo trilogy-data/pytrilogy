@@ -39,6 +39,7 @@ from trilogy.core.processing.join_resolution import (
     deep_extent_free_spans,
     held_region_spans,
 )
+from trilogy.core.processing.utility import join_left_sources
 
 GrainSource = QueryDatasource | BuildDatasource
 
@@ -347,20 +348,14 @@ def _left_join_sources(
     join: BaseJoin,
     final_datasets: list[GrainSource],
 ) -> list[GrainSource]:
-    if join.left_datasource is not None:
-        return [join.left_datasource]
-    if not join.concept_pairs:
-        return [
-            source
-            for source in final_datasets
-            if source.identifier != join.right_datasource.identifier
-        ]
-    sources: dict[str, GrainSource] = {}
-    for pair in join.concept_pairs:
-        sources.setdefault(
-            pair.existing_datasource.identifier, pair.existing_datasource
-        )
-    return list(sources.values())
+    sources = join_left_sources(join)
+    if sources:
+        return sources
+    return [
+        source
+        for source in final_datasets
+        if source.identifier != join.right_datasource.identifier
+    ]
 
 
 def _left_join_addresses(
@@ -630,11 +625,7 @@ def tighten_join_for_filtered_branch(
     } | {concept.address for concept in join.concepts or []}
     if join_addresses & coalescing_keys:
         return
-    left_ids: set[str] = set()
-    if join.left_datasource is not None:
-        left_ids.add(join.left_datasource.identifier)
-    for pair in join.concept_pairs or []:
-        left_ids.add(pair.existing_datasource.identifier)
+    left_ids = {source.identifier for source in join_left_sources(join)}
     left = _partner_facts(
         (by_id[identifier] for identifier in left_ids if identifier in by_id),
         filtered_ids,

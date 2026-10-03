@@ -100,10 +100,17 @@ def get_disconnected_components(
     return len(sub_graphs), sub_graphs
 
 
-def _left_source_ids(join: BaseJoin) -> set[str]:
+def join_left_sources(join: BaseJoin) -> list[BuildDatasource | QueryDatasource]:
+    """Every source the join reads on its left: the declared left side and
+    each key pair's source (the ON clause can reach past the declared side)."""
+    sources: dict[str, BuildDatasource | QueryDatasource] = {}
     if join.left_datasource is not None:
-        return {join.left_datasource.identifier}
-    return {pair.existing_datasource.identifier for pair in join.concept_pairs or []}
+        sources[join.left_datasource.identifier] = join.left_datasource
+    for pair in join.concept_pairs or []:
+        sources.setdefault(
+            pair.existing_datasource.identifier, pair.existing_datasource
+        )
+    return list(sources.values())
 
 
 PADS_RIGHT_JOIN_TYPES = (JoinType.LEFT_OUTER, JoinType.FULL)
@@ -120,7 +127,7 @@ def left_deep_joins(
     for join in joins:
         if not isinstance(join, BaseJoin):
             continue
-        joined |= _left_source_ids(join)
+        joined |= {source.identifier for source in join_left_sources(join)}
         out.append((join, frozenset(joined)))
         joined.add(join.right_datasource.identifier)
     return out
