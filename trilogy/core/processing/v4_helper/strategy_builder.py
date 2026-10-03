@@ -1645,7 +1645,19 @@ def _elide_passthrough_tree(
     node_id = id(node)
     if node_id in seen:
         return seen[node_id]
-    node.parents = [_elide_passthrough_tree(parent, seen) for parent in node.parents]
+    original = node.parents
+    node.parents = [_elide_passthrough_tree(parent, seen) for parent in original]
+    # a merge's authored joins name its parents; they follow the collapse
+    if isinstance(node, MergeNode) and node.node_joins:
+        swap = {id(old): new for old, new in zip(original, node.parents)}
+        node.node_joins = [
+            dc_replace(
+                join,
+                left_node=swap.get(id(join.left_node), join.left_node),
+                right_node=swap.get(id(join.right_node), join.right_node),
+            )
+            for join in node.node_joins
+        ]
     node.resolution_cache = None
     collapsed = _elide_single_parent_passthrough(node)
     seen[node_id] = collapsed
