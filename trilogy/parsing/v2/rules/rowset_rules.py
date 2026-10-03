@@ -98,11 +98,20 @@ def scalar_subquery(
             "must select exactly one column; project only the key/value consumed "
             "by the outer expression",
         )
+    scalar = not context.semantic_state.in_membership_subquery
+    # a scalar is joined beside every row, so a body of several rows would
+    # repeat them; SQL raises at run time, this says so at parse time
+    if scalar and select.grain.components and select.limit != 1:
+        raise fail(
+            node,
+            "a `(select ...)` used as a scalar value must return one row: "
+            "aggregate it with no `by` (`(select max(v))`) or add `limit 1`",
+        )
     output = RowsetDerivationStatement(
         name=name,
         select=select,
         namespace=context.environment.namespace or DEFAULT_NAMESPACE,
-        scalar=not context.semantic_state.in_membership_subquery,
+        scalar=scalar,
     )
     result = rowset_to_concepts_v2(output, context)
     for new_concept in result.concepts:

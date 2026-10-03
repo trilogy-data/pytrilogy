@@ -33,7 +33,10 @@ may miss, which makes the looked-up entity optional on the row), `complete
 where` partitions as regions (the union machinery owns them; they are read
 only to know that mutually exclusive slices are not each other's missing
 rows), and regions only a JOIN of two facts can witness (the base region
-stands in for them).
+stands in for them; a row derivation of one fact is computed on that fact's
+own rows there, `strategy_builder._valued_on_another_fact`). A span some
+source binds `?` holds a NULL member no dimension row has
+(`Keyspace.value_null_spans`).
 """
 
 from __future__ import annotations

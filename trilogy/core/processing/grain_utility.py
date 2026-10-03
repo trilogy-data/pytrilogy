@@ -29,6 +29,8 @@ from trilogy.core.processing.condition_utility import (
     NULL_PROPAGATING_OPS,
     concepts_implied_non_null,
     decompose_condition,
+    gather_non_null_proofs,
+    gather_or_groups,
     is_scalar_condition,
     opaque_binding_addresses,
 )
@@ -441,15 +443,17 @@ def _is_filter_population(
     region's rows this side lacks keeps them on any key: they passed the
     WHERE there, and are NULL on a key absent on the region (`count(customer_id)
     by status where name = 'cat'` beside `sum(amount) by status`). A partner
-    whose key is NULL on some row (a `~?` binding) holds a member this side
-    never has, and the WHERE was never tested on it here: `where customer_id
-    is null` keeps the order with no customer. A null-rejecting WHERE still
-    narrows through its proofs (`downgrade_join_for_proofs`)."""
-    if identifier not in filtered_ids or join_addresses & partner_nullable:
+    whose key is NULL on some row (a `?` binding) holds a member this side
+    never has: its row passed the WHERE unless what this side applied rejects
+    the all-NULL row it pads (`where customer_id is null` keeps the order with
+    no customer, `where state = 'GA'` drops it)."""
+    if identifier not in filtered_ids:
         return False
     source = by_id.get(identifier)
     if source is None:
         return True
+    if join_addresses & partner_nullable and not _rejects_padding(source):
+        return False
     held = source.region_spans if isinstance(source, QueryDatasource) else frozenset()
     if join_addresses & partner_regions and not join_addresses & held:
         return False
@@ -566,6 +570,15 @@ def downgrade_directional_join_for_proofs(
 
 def _nullable_addresses(source: GrainSource) -> frozenset[str]:
     return frozenset(c.address for c in source.nullable_concepts)
+
+
+def _rejects_padding(source: GrainSource) -> bool:
+    """Whether a condition applied in `source` fails on a row where all of its
+    columns are NULL."""
+    return any(
+        gather_non_null_proofs(condition) or gather_or_groups(condition)
+        for condition in collect_applied_conditions(source)
+    )
 
 
 def tighten_join_for_filtered_branch(

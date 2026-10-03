@@ -306,17 +306,27 @@ def _takes_a_value_on_a_null_member(
 ) -> bool:
     """A row-level derivation of what the region carries that is not NULL on a
     fact row keyed on the span's NULL member, where every entity but the
-    span's is present. An aggregate groups that member on the fact's rows."""
+    span's is present. An aggregate, and what is derived from one, groups that
+    member on the fact's rows."""
     if not region.spans & keyspace.value_null_spans:
         return False
     row = Region(present=keyspace.regions[0].present - region.spans)
     return any(
         b.derivation == Derivation.BASIC
         and keyspace.carried_on(m, region)
+        and _row_level(environment.concepts.get(m))
         and takes_a_value_on_padding(m, row, keyspace, environment)
         for b in buckets.values()
         if b.label == label
         for m in b.primary_members
+    )
+
+
+def _row_level(concept: BuildConcept | None) -> bool:
+    if concept is None or concept.lineage is None:
+        return concept is not None
+    return concept.derivation == Derivation.BASIC and all(
+        _row_level(arg) for arg in concept.lineage.concept_arguments
     )
 
 
