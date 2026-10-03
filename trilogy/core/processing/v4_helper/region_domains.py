@@ -20,6 +20,7 @@ from enum import Enum
 
 from trilogy.constants import logger
 from trilogy.core import graph as nx
+from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.enums import Derivation
 from trilogy.core.models.build import BuildConcept, BuildConceptArgs
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -28,7 +29,6 @@ from trilogy.core.models.keyspace import Keyspace, Region
 from .concept_graph import _scope_and_phase
 from .condition_placement import ConditionPlacement, PlacementReason
 from .constants import (
-    ALL_ROWS_ADDRESS,
     FINAL_NODE_ID,
     ROW_STREAM_DERIVATIONS,
     DepthLabel,

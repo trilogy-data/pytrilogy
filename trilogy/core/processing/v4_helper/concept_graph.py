@@ -16,7 +16,7 @@ from collections import defaultdict
 from collections.abc import Callable, Sequence
 
 from trilogy.core import graph as nx
-from trilogy.core.constants import ALL_ROWS_CONCEPT, GRAIN_SEPARATOR
+from trilogy.core.constants import ALL_ROWS_ADDRESS, GRAIN_SEPARATOR
 from trilogy.core.enums import (
     AggregateGroupingMode,
     Derivation,
@@ -571,8 +571,7 @@ def _expand_aggregate_row_identities(
         out.extend(
             environment.concepts[g]
             for g in sorted(c.grain.components)
-            if g in environment.concepts
-            and environment.concepts[g].name != ALL_ROWS_CONCEPT
+            if g in environment.concepts and g != ALL_ROWS_ADDRESS
         )
     return out
 
@@ -780,7 +779,7 @@ def _grouping_pass_sibling_axis_members(
             other_grain = _aggregate_authored_grain(other, other_grain, environment)
         other_input = _aggregate_input_grain(other, environment, other_grain)
         other_dimension_grain = {
-            addr for addr in other_grain if not addr.endswith(f".{ALL_ROWS_CONCEPT}")
+            addr for addr in other_grain if addr != ALL_ROWS_ADDRESS
         }
         if other_input and other_dimension_grain:
             members |= _aggregate_axis_members(other, environment, other_input)
@@ -808,7 +807,7 @@ def _upstream_aggregate(
     # project `1 as __preql_internal.all_rows` and the consumer to INNER JOIN on
     # it instead of cross-joining ON 1=1.
     base = [
-        c for c in _lineage_args(concept, environment) if c.name != ALL_ROWS_CONCEPT
+        c for c in _lineage_args(concept, environment) if c.address != ALL_ROWS_ADDRESS
     ]
     if isinstance(concept.lineage, BuildAggregateWrapper):
         for arg in concept.lineage.function.arguments:
@@ -1455,9 +1454,7 @@ def _add_concept(
     # `merge` identities pair INNER 1:1 and are excluded, as are GLOBAL
     # aggregates (empty/all_rows grain: presence counts stay one total row
     # over the joined relation, never per-axis).
-    dimension_grain = {
-        addr for addr in out_grain if not addr.endswith(f".{ALL_ROWS_CONCEPT}")
-    }
+    dimension_grain = {addr for addr in out_grain if addr != ALL_ROWS_ADDRESS}
     if (
         not is_materialized_root
         and concept.derivation == Derivation.AGGREGATE

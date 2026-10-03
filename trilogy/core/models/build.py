@@ -20,7 +20,7 @@ from trilogy.constants import (
     VIRTUAL_CONCEPT_PREFIX,
     MagicConstants,
 )
-from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
+from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.domain_graph import DomainGraph, EdgeScope, assemble_full_graph
 from trilogy.core.enums import (
     NAVIGATION_WINDOW_TYPES,
@@ -616,7 +616,7 @@ class BuildGrain:
 
     def __post_init__(self):
         self.abstract = not self.components or all(
-            c.endswith(ALL_ROWS_CONCEPT) for c in self.components
+            c == ALL_ROWS_ADDRESS for c in self.components
         )
         self._str_no_condition = self._calculate_string_no_condition()
 
@@ -1773,7 +1773,7 @@ class BuildAggregateWrapper(BuildConceptArgs, DataTyped):
     def is_abstract(self):
         if not self.by:
             return True
-        return bool(all(x.name == ALL_ROWS_CONCEPT for x in self.by))
+        return bool(all(x.address == ALL_ROWS_ADDRESS for x in self.by))
 
     def with_abstract_by(self) -> BuildAggregateWrapper:
         return BuildAggregateWrapper(function=self.function, by=[])
@@ -3411,7 +3411,7 @@ class Factory:
                 and base.purpose == Purpose.PROPERTY
                 and self._build_keys(base.keys)
                 == {
-                    f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}",
+                    ALL_ROWS_ADDRESS,
                 }
             ):
                 granularity = Granularity.SINGLE_ROW
@@ -3538,7 +3538,7 @@ class Factory:
             and base.purpose == Purpose.PROPERTY
             and base.keys
             == {
-                f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}",
+                ALL_ROWS_ADDRESS,
             }
         ):
             granularity = Granularity.SINGLE_ROW

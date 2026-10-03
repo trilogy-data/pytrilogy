@@ -1,10 +1,6 @@
 from enum import Enum
 
-from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
 from trilogy.core.enums import Derivation
-
-# the grain of a `by *` aggregate: one value for every row of the statement
-ALL_ROWS_ADDRESS = f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"
 
 # `V4History.witness_floor` when no live rowset-witness placeholder was read:
 # deeper than any witness depth
