@@ -3958,7 +3958,7 @@ def _distinct_projection(
         input_concepts=outputs,
         environment=environment,
         parents=[node],
-        partial_concepts=node.partial_concepts,
+        partial_concepts=list(node.partial_concepts),
         preexisting_conditions=node.preexisting_conditions,
         force_group=True,
     )
@@ -4019,7 +4019,7 @@ def _wrap_for_grain(
                 input_concepts=distinct_outputs,
                 environment=environment,
                 parents=[parent_node],
-                partial_concepts=parent_node.partial_concepts,
+                partial_concepts=list(parent_node.partial_concepts),
                 preexisting_conditions=parent_node.preexisting_conditions,
                 force_group=True,
             )
@@ -4428,7 +4428,7 @@ def _group_to_grain_if_required(
         input_concepts=targets,
         environment=environment,
         parents=[node],
-        partial_concepts=node.partial_concepts,
+        partial_concepts=list(node.partial_concepts),
         preexisting_conditions=node.preexisting_conditions,
         hidden_concepts=set(node.hidden_concepts) if node.hidden_concepts else None,
         rollup_concepts=rollup or None,
@@ -4823,7 +4823,7 @@ def _assemble_final_node(
                     input_concepts=targets,
                     environment=environment,
                     parents=[conditioned],
-                    partial_concepts=conditioned.partial_concepts,
+                    partial_concepts=list(conditioned.partial_concepts),
                     preexisting_conditions=conditioned.preexisting_conditions,
                     force_group=True,
                 )
@@ -5258,7 +5258,7 @@ def _assemble_final_node(
             input_concepts=targets,
             environment=environment,
             parents=[merged],
-            partial_concepts=merged.partial_concepts,
+            partial_concepts=list(merged.partial_concepts),
             preexisting_conditions=merged.preexisting_conditions,
             force_group=True,
         )
