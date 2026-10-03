@@ -40,7 +40,7 @@ from .constants import (
 )
 from .edges import EdgeMap, edge_kind
 from .functional_dependency import build_fd_determines
-from .group_rules import _add_member
+from .group_rules import _add_member, overlap_components
 from .keyspace import null_rejected
 from .models import ConceptAttrs, GroupBucket, Keyspace, RootReason
 from .region_domains import (
@@ -257,26 +257,14 @@ def _bound_column_components(environment: BuildEnvironment) -> list[set[str]]:
     it (`unnest(native_ecoregions)`) is exactly what does NOT link two scans on
     its own: realizing that link is bridge planning, and bridge planning only
     happens inside one ROOT request."""
-    ds_addresses: list[set[str]] = []
-    for datasource in environment.datasources.values():
-        addresses: set[str] = set()
-        for concept in datasource.output_concepts:
-            addresses.add(concept.address)
-            addresses.update(concept.pseudonyms)
-        if addresses:
-            ds_addresses.append(addresses)
-    components: list[set[str]] = []
-    for addresses in ds_addresses:
-        merged = addresses
-        rest: list[set[str]] = []
-        for component in components:
-            if component & merged:
-                merged = merged | component
-            else:
-                rest.append(component)
-        rest.append(merged)
-        components = rest
-    return components
+    ds_addresses = [
+        {a for c in datasource.output_concepts for a in (c.address, *c.pseudonyms)}
+        for datasource in environment.datasources.values()
+    ]
+    return [
+        set().union(*(ds_addresses[i] for i in component))
+        for component in overlap_components(ds_addresses)
+    ]
 
 
 def _split_strands_condition_scan(
@@ -433,15 +421,13 @@ def _prune_existence_exclusive_roots(
             or bucket.depth_label != DepthLabel.ROOT
         ):
             continue
-        keep = [
-            i
-            for i, address in enumerate(bucket.primary_members)
-            if address not in exclusive_addrs
-        ]
-        if len(keep) == len(bucket.primary_members):
-            continue
-        bucket.primary_members = [bucket.primary_members[i] for i in keep]
-        bucket.primary_node_ids = [bucket.primary_node_ids[i] for i in keep]
+        bucket.drop_members(
+            {
+                i
+                for i, address in enumerate(bucket.primary_members)
+                if address in exclusive_addrs
+            }
+        )
 
 
 def _finest_determining_key(
@@ -743,9 +729,7 @@ def _peel_into_entity_bucket(
         reason=RootReason.ENTITY,
     )
     entity = buckets.setdefault(entity.group_id, entity)
-    entity.primary_members.append(addr)
-    entity.primary_node_ids.append(node_id)
-    entity.member_depths[addr] = source.member_depths.get(addr, DepthLabel.ROOT)
+    entity.add_member(addr, node_id, source.member_depths.get(addr, DepthLabel.ROOT))
     primary_group[node_id] = entity.group_id
 
 
@@ -1138,9 +1122,7 @@ def _split_root_dimension_clusters(
                     bucket.primary_node_ids[idx],
                 )
                 moved.add(idx)
-        kept = [i for i in range(len(bucket.primary_members)) if i not in moved]
-        bucket.primary_members = [bucket.primary_members[i] for i in kept]
-        bucket.primary_node_ids = [bucket.primary_node_ids[i] for i in kept]
+        bucket.drop_members(moved)
 
 
 @dataclass

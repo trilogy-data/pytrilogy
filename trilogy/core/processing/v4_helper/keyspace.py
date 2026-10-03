@@ -53,8 +53,6 @@ from __future__ import annotations
 
 import dataclasses
 from dataclasses import dataclass, field
-from functools import partial
-from weakref import ReferenceType, ref
 
 from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.models.build import (
@@ -68,7 +66,8 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.keyspace import Completion, Keyspace, Region, spans_in_play
 from trilogy.core.processing.condition_utility import gather_non_null_proofs
 
-from .functional_dependency import minimize_build_grain
+from .functional_dependency import EnvCache, minimize_build_grain
+from .group_rules import overlap_components
 from .models import ConceptAttrs
 
 _Declared = tuple[Purpose, Derivation, frozenset[str]]
@@ -266,11 +265,7 @@ def _rowset_sources(witnesses: tuple[RowsetWitness, ...]) -> tuple[_SourceFacts,
     return tuple(out)
 
 
-_FACTS_CACHE: dict[int, tuple[ReferenceType[BuildEnvironment], _ModelFacts]] = {}
-
-
-def _evict_facts(key: int, _dead: ReferenceType) -> None:
-    _FACTS_CACHE.pop(key, None)
+_FACTS_CACHE: EnvCache[_ModelFacts] = EnvCache()
 
 
 def build_datasources(environment: BuildEnvironment) -> list[BuildDatasource]:
@@ -466,21 +461,14 @@ def _with_rowsets(
 
 def _model_facts(environment: BuildEnvironment) -> _ModelFacts:
     datasources = build_datasources(environment)
-    cache_key = id(environment)
-    cached = _FACTS_CACHE.get(cache_key)
+    cached = _FACTS_CACHE.lookup(environment)
     if (
         cached is not None
-        and cached[0]() is environment
-        and len(cached[1].stamp) == len(datasources)
-        and all(a is b for a, b in zip(cached[1].stamp, datasources))
+        and len(cached.stamp) == len(datasources)
+        and all(a is b for a, b in zip(cached.stamp, datasources))
     ):
-        return cached[1]
-    facts = _compute_facts(environment, datasources)
-    _FACTS_CACHE[cache_key] = (
-        ref(environment, partial(_evict_facts, cache_key)),
-        facts,
-    )
-    return facts
+        return cached
+    return _FACTS_CACHE.store(environment, _compute_facts(environment, datasources))
 
 
 def _entity_keys(
@@ -513,7 +501,7 @@ def _entity_keys(
     if own_entity or address in identifying:
         return frozenset({address})
     if derivation == Derivation.BASIC:
-        keys = _read_addresses(address, environment) or keys
+        keys = lineage_reads(address, environment) or keys
     elif derivation == Derivation.AGGREGATE and not keys:
         # a ROLLUP aggregate declares no keys; it is still evaluated by its `by`
         keys = _grouping_addresses(address, environment)
@@ -533,7 +521,8 @@ def entity_keys(address: str, environment: BuildEnvironment) -> frozenset[str]:
     return _entity_keys(address, {}, identifying, environment)
 
 
-def _read_addresses(address: str, environment: BuildEnvironment) -> frozenset[str]:
+def lineage_reads(address: str, environment: BuildEnvironment) -> frozenset[str]:
+    """The addresses the lineage of `address` reads directly."""
     concept = environment.concepts.get(address)
     if concept is None or concept.lineage is None:
         return frozenset()
@@ -652,19 +641,12 @@ def _connected(
 ) -> dict[str, frozenset[str]]:
     """entity -> the entities of its model component: sources sharing a column
     can be joined, so their entities meet on some row."""
-    components: list[tuple[set[str], set[str]]] = []
-    for source in facts.sources:
-        columns = set(source.carried)
-        found = columns & entities
-        for other in [c for c in components if c[0] & columns]:
-            components.remove(other)
-            columns |= other[0]
-            found |= other[1]
-        components.append((columns, found))
+    columns = [source.carried.keys() for source in facts.sources]
     out = {e: frozenset({e}) for e in entities}
-    for _, found in components:
+    for component in overlap_components(columns):
+        found = entities & frozenset().union(*(columns[i] for i in component))
         for entity in found:
-            out[entity] = frozenset(found)
+            out[entity] = found
     return out
 
 

@@ -40,6 +40,7 @@ from .extent_ownership import (
     solid_groups,
     takes_a_value_on_padding,
 )
+from .keyspace import lineage_reads
 from .models import ConceptAttrs, GroupAttrs, GroupBucket, RootReason
 from .projection import reads_a_rollup, reads_rows_only
 from .region_reads import (
@@ -305,9 +306,7 @@ def _own_bucket(
     )
     depths = {a: d for b in eligible for a, d in b.member_depths.items()}
     for address, node_id in members.items():
-        domain.primary_members.append(address)
-        domain.primary_node_ids.append(node_id)
-        domain.member_depths[address] = depths.get(address, DepthLabel.ROOT)
+        domain.add_member(address, node_id, depths.get(address, DepthLabel.ROOT))
     return domain
 
 
@@ -624,30 +623,21 @@ def split_carried_only_row_streams(
             for idx in carried_only:
                 addr = bucket.primary_members[idx]
                 node_id = bucket.primary_node_ids[idx]
-                split.primary_members.append(addr)
-                split.primary_node_ids.append(node_id)
-                split.member_depths[addr] = bucket.member_depths.get(
-                    addr, bucket.depth_label
+                split.add_member(
+                    addr, node_id, bucket.member_depths.get(addr, bucket.depth_label)
                 )
                 primary_group[node_id] = split.group_id
             assert split.group_id not in buckets, split.group_id
             buckets[split.group_id] = split
-            kept = [
-                i for i in range(len(bucket.primary_members)) if i not in carried_only
-            ]
-            bucket.primary_members = [bucket.primary_members[i] for i in kept]
-            bucket.primary_node_ids = [bucket.primary_node_ids[i] for i in kept]
+            bucket.drop_members(carried_only)
 
 
 def _carried_arguments(
     address: str, region: Region, keyspace: Keyspace, environment: BuildEnvironment
 ) -> list[bool]:
-    concept = environment.concepts.get(address)
-    if concept is None or concept.lineage is None:
-        return []
     return [
-        keyspace.carried_on(arg.address, region)
-        for arg in concept.lineage.concept_arguments
+        keyspace.carried_on(read, region)
+        for read in lineage_reads(address, environment)
     ]
 
 
@@ -796,12 +786,9 @@ def _counts_the_domain(
         or not aggregates_over_region(a.primary_members, region, keyspace, environment)
     ):
         return False
-    reads = {
-        arg.address
-        for m in a.primary_members
-        if (c := environment.concepts.get(m)) is not None and c.lineage is not None
-        for arg in c.lineage.concept_arguments
-    }
+    reads = frozenset().union(
+        *(lineage_reads(m, environment) for m in a.primary_members)
+    )
     return reads - {ALL_ROWS_ADDRESS} <= set(domain.primary_members)
 
 
@@ -874,12 +861,9 @@ def _detach_solid_roots(
     supplies a read the domain does not hold: a condition phase's private scan
     holds columns the domain, taken from the row stream, never saw."""
     scope = _scope_and_phase(domain.label)[0]
-    reads = {
-        arg.address
-        for m in attrs[gid].primary_members
-        if (c := environment.concepts.get(m)) is not None and c.lineage is not None
-        for arg in c.lineage.concept_arguments
-    }
+    reads = frozenset().union(
+        *(lineage_reads(m, environment) for m in attrs[gid].primary_members)
+    )
     for pred in list(group_graph.predecessors(gid)):
         if (
             attrs[pred].derivation == Derivation.ROOT

@@ -3,12 +3,38 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from functools import partial
+from typing import Generic, TypeVar
 from weakref import ReferenceType, ref
 
 from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.build_environment import BuildEnvironment
 
 from .models import ConceptAttrs
+
+T = TypeVar("T")
+
+
+class EnvCache(dict[int, tuple[ReferenceType[BuildEnvironment], T]], Generic[T]):
+    """id(environment) -> (weak handle, value). A BuildEnvironment's concepts
+    and datasources are fixed at construction (later writes go to the
+    ReferenceGraph, the authored Environment or a StrategyNode), so a value
+    can never go stale, only be discarded with its environment. The weak
+    handle makes the identity check exact: a recycled id cannot false-hit,
+    because a dead referent is never the live environment."""
+
+    def lookup(self, environment: BuildEnvironment) -> T | None:
+        cached = self.get(id(environment))
+        if cached is not None and cached[0]() is environment:
+            return cached[1]
+        return None
+
+    def store(self, environment: BuildEnvironment, value: T) -> T:
+        key = id(environment)
+        self[key] = (ref(environment, partial(self._evict, key)), value)
+        return value
+
+    def _evict(self, key: int, _dead: ReferenceType) -> None:
+        self.pop(key, None)
 
 
 def _attrs_for_address(
@@ -120,24 +146,13 @@ class _FDFacts:
         return cached
 
 
-# id(environment) -> (weak handle, table). A BuildEnvironment's concepts and
-# datasources are fixed at construction (later writes go to the ReferenceGraph,
-# the authored Environment or a StrategyNode), so a table can never go stale,
-# only be discarded with its environment. The weak handle makes the identity
-# check exact: a recycled id cannot false-hit, because a dead referent is never
-# the live environment.
-_FACTS_CACHE: dict[int, tuple[ReferenceType[BuildEnvironment], _FDFacts]] = {}
-
-
-def _evict_facts(key: int, _dead: ReferenceType) -> None:
-    _FACTS_CACHE.pop(key, None)
+_FACTS_CACHE: EnvCache[_FDFacts] = EnvCache()
 
 
 def _fd_facts(environment: BuildEnvironment) -> _FDFacts:
-    cache_key = id(environment)
-    cached = _FACTS_CACHE.get(cache_key)
-    if cached is not None and cached[0]() is environment:
-        return cached[1]
+    cached = _FACTS_CACHE.lookup(environment)
+    if cached is not None:
+        return cached
     entries: list[tuple[str, str, frozenset[str]]] = []
     equivalents: dict[str, frozenset[str]] = {}
     for key, concept in environment.concepts.items():
@@ -164,18 +179,16 @@ def _fd_facts(environment: BuildEnvironment) -> _FDFacts:
     for i, (_, grain, keys) in enumerate(rows):
         for address in grain | keys:
             row_triggers.setdefault(address, []).append(i)
-    facts = _FDFacts(
-        rows=tuple(rows),
-        equivalents=equivalents,
-        closures={},
-        entry_triggers=entry_triggers,
-        row_triggers=row_triggers,
+    return _FACTS_CACHE.store(
+        environment,
+        _FDFacts(
+            rows=tuple(rows),
+            equivalents=equivalents,
+            closures={},
+            entry_triggers=entry_triggers,
+            row_triggers=row_triggers,
+        ),
     )
-    _FACTS_CACHE[cache_key] = (
-        ref(environment, partial(_evict_facts, cache_key)),
-        facts,
-    )
-    return facts
 
 
 def build_fd_closure(

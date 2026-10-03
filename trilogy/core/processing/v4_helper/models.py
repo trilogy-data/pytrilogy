@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -250,6 +250,25 @@ class GroupAttrs(_HeldKeys):
     # inline: every reader did, so those groups were never built.
     inlined_members: tuple[str, ...] = ()
 
+    @classmethod
+    def from_bucket(cls, bucket: "GroupBucket") -> "GroupAttrs":
+        return cls(
+            depth_label=bucket.depth_label,
+            derivation=bucket.derivation,
+            grain_components=bucket.grain_components,
+            label=bucket.label,
+            primary_members=tuple(bucket.primary_members),
+            carried_spans=tuple(bucket.carried_spans),
+            member_depths=dict(bucket.member_depths),
+            aggregate_input_grain=bucket.aggregate_input_grain,
+            aggregate_distinct_addrs=frozenset(bucket.aggregate_distinct_addrs),
+            grouping_mode=bucket.grouping_mode,
+            extent_spans=bucket.extent_spans,
+            null_member_spans=bucket.null_member_spans,
+            dim_keys=bucket.dim_keys,
+            reason=bucket.reason,
+        )
+
     @property
     def members(self) -> tuple[str, ...]:
         return (*self.primary_members, *self.carried_keys)
@@ -408,6 +427,19 @@ class GroupBucket(_HeldKeys):
     # What the demand pass has the group emit (`_compute_concept_sets`), hidden
     # pass-through columns included. Empty until it has run.
     output_concepts: tuple[str, ...] = ()
+
+    def add_member(self, address: str, node_id: str, depth: DepthLabel) -> None:
+        self.primary_members.append(address)
+        self.primary_node_ids.append(node_id)
+        self.member_depths[address] = depth
+
+    def drop_members(self, indices: Collection[int]) -> None:
+        """Drop the members at `indices`; their depths stay readable."""
+        if not indices:
+            return
+        kept = [i for i in range(len(self.primary_members)) if i not in indices]
+        self.primary_members = [self.primary_members[i] for i in kept]
+        self.primary_node_ids = [self.primary_node_ids[i] for i in kept]
 
     @property
     def carried(self) -> set[str]:

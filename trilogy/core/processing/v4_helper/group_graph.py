@@ -290,22 +290,7 @@ def _materialize_group_graph(
     group_edges: EdgeMap = {}
     attrs: dict[str, GroupAttrs] = {}
     for gid, bucket in buckets.items():
-        attrs[gid] = GroupAttrs(
-            depth_label=bucket.depth_label,
-            derivation=bucket.derivation,
-            grain_components=bucket.grain_components,
-            label=bucket.label,
-            primary_members=tuple(bucket.primary_members),
-            carried_spans=tuple(bucket.carried_spans),
-            member_depths=dict(bucket.member_depths),
-            aggregate_input_grain=bucket.aggregate_input_grain,
-            aggregate_distinct_addrs=frozenset(bucket.aggregate_distinct_addrs),
-            grouping_mode=bucket.grouping_mode,
-            extent_spans=bucket.extent_spans,
-            null_member_spans=bucket.null_member_spans,
-            dim_keys=bucket.dim_keys,
-            reason=bucket.reason,
-        )
+        attrs[gid] = GroupAttrs.from_bucket(bucket)
         group_graph.add_node(gid)
 
     # Propagate concept-level edges to the group level. Both `lineage` and
@@ -2512,15 +2497,7 @@ def _synthetic_dimension_regraft_parent(
     root_gid = bucket.group_id
     if root_gid not in group_graph:
         group_graph.add_node(root_gid)
-        attrs[root_gid] = GroupAttrs(
-            depth_label=bucket.depth_label,
-            derivation=bucket.derivation,
-            grain_components=bucket.grain_components,
-            label=bucket.label,
-            primary_members=tuple(inputs),
-            dim_keys=bucket.dim_keys,
-            reason=bucket.reason,
-        )
+        attrs[root_gid] = GroupAttrs.from_bucket(bucket)
         buckets[root_gid] = bucket
     for pred in root_preds:
         if group_graph.has_edge(pred, gid):
