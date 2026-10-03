@@ -7,6 +7,7 @@ Each stage of discovery lives in its own module:
     models            : BuildInfo result bundle + internal GroupBucket
     concept_graph     : stage 1: build the concept-lineage DAG
     group_graph       : stage 2: collapse concepts into co-projectable groups
+    root_partition    : stage 2: split the root demand by reader
     strategy_builder  : stage 3: walk groups and emit a StrategyNode tree
 
 Source selection for one group is its own stack, layered so that only the

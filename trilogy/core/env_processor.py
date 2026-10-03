@@ -1,11 +1,13 @@
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.graph_models import (
     ReferenceGraph,
+    ScopeDatasources,
     concept_to_node,
     datasource_to_node,
+    union_to_node,
 )
 from trilogy.core.models.build import (
     BuildConcept,
@@ -18,102 +20,13 @@ from trilogy.core.processing.aggregate_rollup import (
     _is_additive_aggregate,
     get_additive_rollup_concepts,
 )
-
-
-@dataclass(slots=True)
-class BasicConceptGraph:
-    """Pre-computed dependency graph for BASIC derived concepts."""
-
-    # concept address -> concept
-    concepts: dict[str, BuildConcept]
-    # concept address -> set of input addresses required
-    dependencies: dict[str, frozenset[str]]
-    # input address -> concepts that depend on it
-    reverse_deps: dict[str, list[str]]
-    # concepts with no dependencies (can be computed from any base concept)
-    roots: list[str]
-
-
-def build_basic_concept_graph(concepts: list[BuildConcept]) -> BasicConceptGraph:
-    """Build dependency graph for BASIC derived concepts.
-
-    Returns a structure that allows efficient single-pass computation
-    of which derived concepts can be added to a datasource.
-    """
-    concept_map: dict[str, BuildConcept] = {}
-    dependencies: dict[str, frozenset[str]] = {}
-    reverse_deps: dict[str, list[str]] = {}
-    roots: list[str] = []
-
-    for concept in concepts:
-        if concept.derivation != Derivation.BASIC or not concept.concept_arguments:
-            continue
-
-        addr = concept.canonical_address
-        concept_map[addr] = concept
-        input_addrs = frozenset(c.canonical_address for c in concept.concept_arguments)
-        dependencies[addr] = input_addrs
-
-        # Build reverse dependency map
-        for input_addr in input_addrs:
-            if input_addr not in reverse_deps:
-                reverse_deps[input_addr] = []
-            reverse_deps[input_addr].append(addr)
-
-    # Find roots - concepts whose inputs are all non-BASIC
-    for addr, deps in dependencies.items():
-        if all(d not in dependencies for d in deps):
-            roots.append(addr)
-
-    return BasicConceptGraph(
-        concepts=concept_map,
-        dependencies=dependencies,
-        reverse_deps=reverse_deps,
-        roots=roots,
-    )
-
-
-def get_derivable_concepts(
-    graph: BasicConceptGraph,
-    available: set[str],
-    already_present: set[str],
-) -> Iterator[BuildConcept]:
-    """Yield concepts derivable from available concepts in topological order.
-
-    Uses the pre-computed dependency graph to traverse in a single pass,
-    yielding each concept as soon as its dependencies are satisfied.
-
-    Args:
-        graph: Pre-computed dependency graph for BASIC concepts
-        available: Set of canonical addresses of complete concepts (will be mutated)
-        already_present: Set of canonical addresses already in the datasource (skip these)
-    """
-    if not graph.roots:
-        return
-
-    # Track which concepts we've already processed
-    processed: set[str] = set()
-    # Queue of concept addresses to check
-    to_check: list[str] = list(graph.roots)
-
-    while to_check:
-        addr = to_check.pop()
-        if addr in processed:
-            continue
-
-        deps = graph.dependencies[addr]
-        if deps.issubset(available):
-            processed.add(addr)
-            available.add(addr)
-
-            # Only yield if not already in the datasource
-            if addr not in already_present:
-                yield graph.concepts[addr]
-
-            # Add concepts that depend on this one to the check queue
-            for dependent in graph.reverse_deps.get(addr, []):
-                if dependent not in processed:
-                    to_check.append(dependent)
+from trilogy.core.processing.basic_graph import (
+    build_basic_concept_graph,
+    get_derivable_concepts,
+)
+from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
+    union_sources,
+)
 
 
 @dataclass(slots=True)
@@ -238,7 +151,7 @@ def get_default_grain_concept(
 
 def additive_rollup_edges(
     concepts: list[BuildConcept],
-    datasources: list[BuildDatasource],
+    datasources: Sequence[BuildDatasource],
     node_stash: dict[str, str],
 ) -> list[tuple[str, str]]:
     """Edges from a summary table to each aggregate it can SUM-roll up to.
@@ -288,10 +201,12 @@ def additive_rollup_edges(
 
 def generate_adhoc_graph(
     concepts: list[BuildConcept],
-    datasources: list[BuildDatasource],
+    scope: ScopeDatasources,
     default_concept_graph: dict[str, BuildConcept],
 ) -> ReferenceGraph:
     g = ReferenceGraph()
+    g.scope = scope
+    datasources = scope.datasources
     concept_mapping = {x.address: x for x in concepts}
     node_stash: dict[str, str] = {}
     seen: set[str] = set()
@@ -382,11 +297,28 @@ def generate_adhoc_graph(
 
 def generate_graph(
     environment: BuildEnvironment,
+    scope: ScopeDatasources | None = None,
 ) -> ReferenceGraph:
+    """The environment's reference graph over ``scope``: a statement's
+    bindings as decided by ``generate_scope_graph``, or, left out, the
+    environment's as authored. The covering unions over the scope's partition
+    families are source nodes of the graph like any scan (`union_sources`)."""
     default_concept_graph: dict[str, BuildConcept] = {}
-    return generate_adhoc_graph(
+    g = generate_adhoc_graph(
         list(environment.concepts.values())
         + list(environment.alias_origin_lookup.values()),
-        list(environment.datasources.values()),
+        scope or ScopeDatasources(environment.datasources.values()),
         default_concept_graph=default_concept_graph,
     )
+    edges: list[tuple[str, str]] = []
+    for union, emits in union_sources(g.scope, environment):
+        node = union_to_node(union)
+        g.datasources[node] = union
+        g.add_datasource_node(node, union)
+        for concept in emits:
+            cnode = concept_to_node(concept)
+            g.concepts.setdefault(cnode, concept)
+            edges.append((node, cnode))
+            edges.append((cnode, node))
+    g.add_edges_from(edges)
+    return g

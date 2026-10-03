@@ -54,6 +54,7 @@ from trilogy.core.models.core import (
     ValidatedType,
     arg_to_datatype,
     is_compatible_datatype,
+    literal_element_datatype,
     merge_datatypes,
 )
 from trilogy.core.models.environment import Environment
@@ -297,6 +298,12 @@ def validate_simple_case_output(args: list[Any]) -> CONCRETE_TYPES:
 
 def validate_case_output(args: list[Any]) -> CONCRETE_TYPES:
     return _resolve_case_output(args)
+
+
+def create_array_output(args: list[Any]) -> ArrayType:
+    # ArrayType has no element nullability to carry
+    dtype, _ = literal_element_datatype(args)
+    return ArrayType(type=dtype)
 
 
 def create_struct_output(
@@ -1134,7 +1141,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     FunctionType.ARRAY: FunctionConfig(
         output_purpose=Purpose.PROPERTY,
         arg_count=InfiniteFunctionArgs,
-        output_type=ArrayType(type=DataType.STRING),
+        output_type_function=create_array_output,
     ),
     FunctionType.LENGTH: FunctionConfig(
         valid_inputs={DataType.STRING, DataType.ARRAY, DataType.MAP},
@@ -1263,7 +1270,6 @@ EXCLUDED_FUNCTIONS = {
     # Temporary
     FunctionType.DATE_LITERAL,
     FunctionType.DATETIME_LITERAL,
-    FunctionType.ARRAY,
     # constructed directly by the parser for composite membership, never via create_function
     FunctionType.ROW_TUPLE,
 }

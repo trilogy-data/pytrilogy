@@ -45,9 +45,19 @@ from trilogy.core.models.execute import (
     Join,
     QueryDatasource,
     UnionCTE,
+    coalesced_key_groups,
+    preserved_key_pairs,
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
-from trilogy.core.optimizations.utils import SENSITIVE_DERIVATIONS, base_datasource
+from trilogy.core.optimizations.utils import (
+    SENSITIVE_DERIVATIONS,
+    accumulated_left_ctes,
+    base_datasource,
+    cte_source_keys,
+    join_padded_ctes,
+    seed_ctes,
+    zero_filled_reads,
+)
 from trilogy.core.processing.condition_utility import (
     gather_non_null_proofs,
     gather_or_groups,
@@ -178,61 +188,10 @@ def _cte_addresses(cte: CTE | UnionCTE | None) -> set[str]:
     return {c.address for c in cte.output_columns}
 
 
-def _seed_ctes(cte: CTE | UnionCTE) -> list[CTE | UnionCTE]:
-    """The CTE supplying the FROM clause: the LEFT side of the chain's first
-    join, resolved in priority order:
-      - ``joins[0].left_cte`` (explicit).
-      - The ``joinkey_pair.cte``\\s of the first join, which by construction
-        supply its left values and so name the FROM directly. This must beat
-        the parent scan: a parent consumed only through an existence subselect
-        never reaches the join chain, and seeding from it makes the real FROM
-        table's columns look right-only, so a WHERE proof on a shared join key
-        would falsely promote the join.
-      - A ``parent_cte`` that is not consumed as any join's right side,
-        skipping existence-only parents.
-      - A ``joinkey_pair.cte`` on any later join, covering a chain whose left
-        is an inlined CTE with no ``parent_cte`` and no explicit ``left_cte``."""
-    if not isinstance(cte, CTE) or not cte.joins:
-        return []
-    first = cte.joins[0]
-    if not isinstance(first, Join):
-        return []
-    if first.left_cte is not None:
-        return [first.left_cte]
-    right_names = {j.right_cte.name for j in cte.joins if isinstance(j, Join)}
-    first_pair_seeds: list[CTE | UnionCTE] = []
-    seen_pair_names: set[str] = set()
-    for pair in first.joinkey_pairs or []:
-        if (
-            isinstance(pair, CTEConceptPair)
-            and pair.cte.name not in right_names
-            and pair.cte.name not in seen_pair_names
-        ):
-            seen_pair_names.add(pair.cte.name)
-            first_pair_seeds.append(pair.cte)
-    if first_pair_seeds:
-        return first_pair_seeds
-    existence = {s for vals in cte.existence_source_map.values() for s in vals}
-    for parent in cte.dependency_nodes(include_inlined=True):
-        if (
-            isinstance(parent, (CTE, UnionCTE))
-            and parent.name not in right_names
-            and not (_cte_source_keys(parent) & existence)
-        ):
-            return [parent]
-    for j in cte.joins:
-        if not isinstance(j, Join):
-            continue
-        for pair in j.joinkey_pairs or []:
-            if isinstance(pair, CTEConceptPair) and pair.cte.name not in right_names:
-                return [pair.cte]
-    return []
-
-
 def _seed_addresses(cte: CTE | UnionCTE) -> set[str]:
-    """Addresses available from the CTE's FROM clause (see ``_seed_ctes``),
+    """Addresses available from the CTE's FROM clause (see ``seed_ctes``),
     falling back to a direct base datasource (raw table FROM)."""
-    seeds = _seed_ctes(cte)
+    seeds = seed_ctes(cte)
     if seeds:
         return {a for seed in seeds for a in _cte_addresses(seed)}
     if not isinstance(cte, CTE) or not cte.joins:
@@ -250,43 +209,11 @@ def _accumulated_left_addresses(cte: CTE | UnionCTE, idx: int) -> set[str]:
     prior join's ``right_cte``. Without the accumulation, ``right_only`` for a
     downstream join over-includes columns the left already carries, and a
     WHERE proof on a shared column would falsely promote the join."""
-    addrs: set[str] = set()
     if not isinstance(cte, CTE):
-        return addrs
-    join = cte.joins[idx] if idx < len(cte.joins) else None
-    if isinstance(join, Join) and join.left_cte is not None:
-        addrs |= _cte_addresses(join.left_cte)
-    addrs |= _seed_addresses(cte)
-    for prior_idx in range(idx):
-        prior = cte.joins[prior_idx]
-        if not isinstance(prior, Join):
-            continue
-        addrs |= _cte_addresses(prior.right_cte)
-    return addrs
-
-
-def _accumulated_left_ctes(cte: CTE | UnionCTE, idx: int) -> list[CTE | UnionCTE]:
-    left_ctes: list[CTE | UnionCTE] = []
-    names: set[str] = set()
-
-    def add_left_cte(left_cte: CTE | UnionCTE) -> None:
-        if left_cte.name in names:
-            return
-        names.add(left_cte.name)
-        left_ctes.append(left_cte)
-
-    if not isinstance(cte, CTE):
-        return left_ctes
-    join = cte.joins[idx] if idx < len(cte.joins) else None
-    if isinstance(join, Join) and join.left_cte is not None:
-        add_left_cte(join.left_cte)
-    for seed_cte in _seed_ctes(cte):
-        add_left_cte(seed_cte)
-    for prior_idx in range(idx):
-        prior = cte.joins[prior_idx]
-        if isinstance(prior, Join):
-            add_left_cte(prior.right_cte)
-    return left_ctes
+        return set()
+    return _seed_addresses(cte) | {
+        a for left in accumulated_left_ctes(cte, idx) for a in _cte_addresses(left)
+    }
 
 
 def _side_addresses(
@@ -313,7 +240,7 @@ def _downgrade(
         return None
 
     pairs = join.joinkey_pairs or []
-    left_ctes = _accumulated_left_ctes(cte, idx)
+    left_ctes = accumulated_left_ctes(cte, idx)
     right_all = _cte_addresses(join.right_cte)
     left_only, right_only = _side_addresses(cte, idx, join)
 
@@ -323,9 +250,17 @@ def _downgrade(
     # cte_keys proof instead.
     right_ds = _source_datasources(join.right_cte)
     left_ds = {d for lc in left_ctes for d in _source_datasources(lc)}
-    right_block = _blocked_partials(cte, partial_addresses(join.right_cte), right_ds)
+    # A source both sides read is exclusively neither's: the solid stream of
+    # a region reads the domain's dimension scan for an attribute, and the
+    # span it binds partially renders from that scan on the domain's side.
+    left_names = {lc.name for lc in left_ctes}
+    right_block = _blocked_partials(
+        cte, partial_addresses(join.right_cte), right_ds - left_ds - left_names
+    )
     left_block = _blocked_partials(
-        cte, {a for lc in left_ctes for a in partial_addresses(lc)}, left_ds
+        cte,
+        {a for lc in left_ctes for a in partial_addresses(lc)},
+        left_ds - right_ds - {join.right_cte.name},
     )
     right_only = right_only - right_block
     left_only = left_only - left_block
@@ -460,11 +395,7 @@ def _downgrade_base_join(
 def _add_inner_join_key_proofs(join: Join, proofs: _ProofState) -> bool:
     """Propagate only key non-nullness proven by rendered INNER predicates."""
     changed = False
-    groups: dict[tuple[str, str], list[CTEConceptPair]] = {}
-    for pair in join.joinkey_pairs or []:
-        groups.setdefault((pair.right.address, pair.left.address), []).append(pair)
-
-    for pairs in groups.values():
+    for pairs in coalesced_key_groups(join.joinkey_pairs or []):
         left_ctes = {p.cte.name for p in pairs}
         if len(left_ctes) > 1:
             # Renders as COALESCE(left1, left2, ...) = right, which proves the
@@ -516,10 +447,6 @@ def _add_inner_base_join_key_proofs(
     return changed
 
 
-def _cte_source_keys(cte: CTE | UnionCTE) -> set[str]:
-    return {cte.name, cte.safe_identifier}
-
-
 def _sensitive_outputs(cte: CTE) -> bool:
     return any(
         c.derivation in SENSITIVE_DERIVATIONS for c in cte.source.output_concepts
@@ -553,20 +480,17 @@ def _inner_pair_rejections(consumer: CTE, producer_keys: set[str]) -> set[str]:
         harvest_left = join.jointype in (JoinType.INNER, JoinType.RIGHT_OUTER)
         if not harvest_right and not harvest_left:
             continue
-        groups: dict[tuple[str, str], list[CTEConceptPair]] = {}
-        for pair in join.joinkey_pairs or []:
-            groups.setdefault((pair.right.address, pair.left.address), []).append(pair)
-        for pairs in groups.values():
+        for pairs in coalesced_key_groups(join.joinkey_pairs or []):
             if any(_pair_can_match_nulls(p, join.modifiers) for p in pairs):
                 continue
             first = pairs[0]
-            if harvest_right and _cte_source_keys(join.right_cte) & producer_keys:
+            if harvest_right and cte_source_keys(join.right_cte) & producer_keys:
                 out.add(first.right.address)
             left_ctes = {p.cte.name for p in pairs}
             if (
                 harvest_left
                 and len(left_ctes) == 1
-                and _cte_source_keys(first.cte) & producer_keys
+                and cte_source_keys(first.cte) & producer_keys
             ):
                 out.add(first.left.address)
     return out
@@ -602,7 +526,7 @@ def _external_forced_map(
     for producer in ctes:
         if not isinstance(producer, CTE):
             continue
-        producer_keys = _cte_source_keys(producer)
+        producer_keys = cte_source_keys(producer)
         outputs = {c.address for c in producer.output_columns}
         for consumer in inverse_map.get(producer.name, []):
             key = (consumer.name, producer.name)
@@ -620,7 +544,7 @@ def _external_forced_map(
                 if consumer.name not in consumer_proofs:
                     consumer_proofs[consumer.name] = gather_non_null_proofs(
                         consumer.condition
-                    )
+                    ) - zero_filled_reads(consumer, consumer.condition)
                 contribution |= {
                     a
                     for a in consumer_proofs[consumer.name]
@@ -636,7 +560,7 @@ def _external_forced_map(
             consumers = inverse_map.get(producer.name, [])
             if not consumers:
                 continue
-            producer_keys = _cte_source_keys(producer)
+            producer_keys = cte_source_keys(producer)
             outputs = {c.address for c in producer.output_columns}
             new: set[str] | None = None
             for consumer in consumers:
@@ -743,6 +667,12 @@ class UpgradeJoinOnGuards(OptimizationRule):
         )
         direct_proofs = direct_proofs | self._external_proofs(cte, inverse_map)
         or_groups = gather_or_groups(cte.condition) if cte.condition else []
+        # `count = 0` over a COUNT this CTE coalesces to 0 on the padded rows
+        # accepts those rows: it proves nothing about the side that padded them
+        zero = zero_filled_reads(cte, cte.condition)
+        if zero:
+            direct_proofs -= zero
+            or_groups = [[d - zero for d in group] for group in or_groups]
         if not direct_proofs and not or_groups:
             return False, None
         proofs = _ProofState(direct=direct_proofs, or_groups=or_groups)
@@ -824,3 +754,35 @@ class UpgradeJoinOnGuards(OptimizationRule):
                 break
             changed = changed or join_changed
         return changed, None
+
+
+def prune_preserved_join_keys(cte: CTE) -> bool:
+    """Read a coalesced join key off one side once the join types are final.
+
+    A key several left sides share renders `coalesce(a.k, b.k) = c.k`, and the
+    planner keeps every side an earlier join pads (any of them may hold the
+    NULL). Once an upgrade narrows a FULL to LEFT, its left side is padded by
+    nothing and equals the key on every row, so the other sides only bloat the
+    coalesce."""
+    padded: set[str] = set()
+    changed = False
+    for join, pads in join_padded_ctes(cte):
+        if join.joinkey_pairs:
+            kept = preserved_key_pairs(
+                join.joinkey_pairs, padded, lambda pair: pair.cte.name
+            )
+            if len(kept) != len(join.joinkey_pairs):
+                join.joinkey_pairs = kept
+                changed = True
+        padded |= {c.name for c in pads}
+    return changed
+
+
+class PrunePreservedJoinKeys(OptimizationRule):
+    def optimize(
+        self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
+    ) -> tuple[bool, MergedCTEMap | None]:
+        if not isinstance(cte, CTE) or not prune_preserved_join_keys(cte):
+            return False, None
+        self.log(f"Read coalesced join keys off a preserved side in {cte.name}")
+        return True, None

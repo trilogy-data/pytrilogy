@@ -95,7 +95,7 @@ are a modeling error the planner cannot detect: it is entitled to assume the
 column is non-null, so `is not null` pins may be dropped as tautological and
 NULL-keyed fact rows may be silently lost or kept depending on plan shape.
 
-## Pin-healing (`heal_pinned_partials`)
+## Pin-healing (`decide_heal`)
 
 An extension row for key `k` is NULL at every concept outside `k`'s FD
 closure. So if the statement WHERE proves non-null

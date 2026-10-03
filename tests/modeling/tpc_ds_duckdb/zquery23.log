@@ -1,5 +1,5 @@
 query_id = "23"
-gen_length = 7006
+gen_length = 6992
 preql_size = 1595
 comp_size = 2441
 generated_sql = """
@@ -49,9 +49,7 @@ FROM
     INNER JOIN \"sweltering\" on 1=1
 WHERE
     \"macho\".\"customer_total_overall\" > 0.5 * \"sweltering\".\"max_total_cmax\"
-
-GROUP BY
-    1),
+),
 abundant as (
 SELECT
     \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_sk\"

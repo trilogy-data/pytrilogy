@@ -3,9 +3,9 @@ from collections.abc import Iterable
 from trilogy.constants import logger
 from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import NoDatasourceException
+from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
     BuildConcept,
-    BuildDatasource,
     BuildGrain,
     BuildWhereClause,
     CanonicalBuildConceptList,
@@ -71,24 +71,22 @@ def _pseudonym_is_sourced(address: str, environment: BuildEnvironment) -> bool:
 def gen_select_node(
     concepts: list[BuildConcept],
     environment: BuildEnvironment,
-    g,
+    g: ReferenceGraph,
     depth: int,
     accept_partial: bool = False,
     fail_if_not_found: bool = True,
     conditions: BuildWhereClause | None = None,
 ) -> StrategyNode | None:
-    build_datasources = [
-        ds for ds in environment.datasources.values() if isinstance(ds, BuildDatasource)
-    ]
+    datasources = g.scope.datasources
     target_grain = BuildGrain.from_concepts(concepts)
     rollup_materialized = {
         concept.canonical_address
-        for datasource in build_datasources
+        for datasource in datasources
         for concept in get_additive_rollup_concepts(
             datasource=datasource,
             requested_concepts=concepts,
             concepts_by_address=environment.concepts,
-            datasources=build_datasources,
+            datasources=datasources,
             conditions=conditions,
             target_grain=target_grain,
         )

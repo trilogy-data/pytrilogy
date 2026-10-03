@@ -1,6 +1,8 @@
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, logger
+from trilogy.core.constants import SUBQUERY_NAMESPACE_PREFIX
 from trilogy.core.enums import (
     Derivation,
     FunctionType,
@@ -18,6 +20,7 @@ from trilogy.core.models.build import (
     BuildGrain,
     BuildParenthetical,
     BuildRowsetItem,
+    BuildRowsetLineage,
     BuildSubselectComparison,
     BuildWhereClause,
     get_concept_arguments,
@@ -30,12 +33,13 @@ from trilogy.core.processing.constants import ROOT_DERIVATIONS
 from trilogy.core.processing.grain_utility import (
     _grain_coverage_addresses,
     concept_source_address,
+    determined_past_nulls,
+    nullable_spellings,
 )
-from trilogy.core.processing.rowset_islanding import (
-    island_rowsets_for_connectivity,
-    link_rowset_outputs_for_connectivity,
+from trilogy.core.processing.utility import (
+    PADS_LEFT_JOIN_TYPES,
+    GroupRequiredResponse,
 )
-from trilogy.core.processing.utility import GroupRequiredResponse
 from trilogy.utility import unique
 
 if TYPE_CHECKING:
@@ -54,6 +58,8 @@ NO_PUSHDOWN_DERIVATIONS: list[Derivation] = ROOT_DERIVATIONS + [
 
 
 LOGGER_PREFIX = "[DISCOVERY LOOP]"
+
+ROWSET_ISLAND_HUB_PREFIX = "rowset_island~"
 
 
 def calculate_effective_parent_grain(
@@ -86,7 +92,12 @@ def calculate_effective_parent_grain(
                 seen.add(left.name)
             keys = [key.right for key in pairs]
             join_grain = BuildGrain.from_concepts(keys)
-            if join_grain == join.right_datasource.grain:
+            # a FULL/RIGHT keeps the right side's unmatched rows, so its grain
+            # is part of the stream's even when the join is keyed on it
+            if (
+                join_grain == join.right_datasource.grain
+                and join.join_type not in PADS_LEFT_JOIN_TYPES
+            ):
                 logger.debug(f"irrelevant right join {join}, does not change grain")
             else:
                 logger.debug(
@@ -119,11 +130,6 @@ def check_if_group_required(
     environment: BuildEnvironment,
     depth: int = 0,
 ) -> GroupRequiredResponse:
-    # Local: v4_helper imports the node package, which imports this module.
-    from trilogy.core.processing.v4_helper.functional_dependency import (
-        build_fd_determines,
-    )
-
     padding = "\t" * depth
     target_grain = BuildGrain.from_concepts(
         downstream_concepts,
@@ -161,6 +167,15 @@ def check_if_group_required(
         environment,
         include_aggregate_by_keys=not target_has_only_aggregates,
     )
+    # A projected column is constant within its own output row, so it covers
+    # itself and determines what it determines, whatever the target grain's
+    # key-hierarchy fold dropped it for: `user.id` beside `id` after `users
+    # LEFT items FULL products` folds under `id`, which the FULL pads.
+    target_coverage.update(
+        equivalent
+        for concept in downstream_concepts
+        for equivalent in concept.equivalent_addresses
+    )
     if comp_grain.components.issubset(target_coverage):
         logger.info(
             f"{padding}{LOGGER_PREFIX} Group requirement check:  {comp_grain} covered by target coverage {target_coverage}, no group node required"
@@ -175,11 +190,15 @@ def check_if_group_required(
     # equality (`subset join fut.period + 53 = agg.period`) merges its ends
     # into one ≡-class there, but it holds only on matched rows, and treating
     # it as an FD elides the re-aggregation and flips the join preserving.
-    if all(
-        build_fd_determines(
-            environment, target_coverage, component, include_empty_grain=False
-        )
-        for component in comp_grain.components - target_coverage
+    # A key the parent holds NULL on some row determines nothing there: after
+    # `lines FULL JOIN returns`, `return_id` names the line on the returned
+    # rows alone, and the unreturned lines under one NULL are not one row
+    # (`select return_id, reason, pname` gave the product's two lines twice).
+    nullable = nullable_spellings(
+        c for parent in parents for c in parent.nullable_concepts
+    )
+    if determined_past_nulls(
+        environment, target_coverage, nullable, comp_grain.components
     ):
         logger.info(
             f"{padding}{LOGGER_PREFIX} Group requirement check: {comp_grain} functionally determined by target {target_grain}, no group node required"
@@ -197,11 +216,12 @@ def check_if_group_required(
         )
 
     # a difference of only properties whose keys sit in the source grain does
-    # not need a group
+    # not need a group; a key the parent NULL-pads is not such a key
     if difference and all(
         x.keys
         and all(
-            environment.concepts[z].address in comp_grain.components for z in x.keys
+            environment.concepts[z].address in comp_grain.components - nullable
+            for z in x.keys
         )
         for x in difference
     ):
@@ -313,6 +333,10 @@ def _literal_derived(concept: BuildConcept, _seen: set[str] | None = None) -> bo
     )
 
 
+def _first_component(concept: BuildConcept, comp_of: dict[str, int]) -> int | None:
+    return next((comp_of[n] for n in _anchor_nodes(concept) if n in comp_of), None)
+
+
 def _anchor_nodes(concept: BuildConcept) -> list[str]:
     """Reference-graph nodes that tie a concept into the model graph: its own
     node, its default-grain node, and its direct source args' default-grain
@@ -367,14 +391,82 @@ def _aggregate_grain_only_parents(
     return out
 
 
+def island_rowsets_for_connectivity(
+    g: "ReferenceGraph", cg, grain_only: dict[str, set[str]] | None = None
+) -> None:
+    """Apply the islanding invariant to the undirected connectivity copy ``cg``.
+
+    A rowset is a materialized result: from outside, only its declared outputs
+    are reachable, never the base concepts behind its select. The raw graph
+    links those internals, so a shared base looks like a phantom bridge to
+    another rowset (masking a genuine scoped-join disconnection).
+
+    Severs every edge crossing a rowset boundary, then re-welds (a) each
+    rowset's own outputs through its OWN hub, (b) external downstream
+    consumers of a declared output, and (c) outputs related across rowsets by
+    a scoped-join pseudonym."""
+    members_by_rowset: dict[str, list[str]] = {}
+    nodes_by_address: dict[str, list[str]] = {}
+    rowset_nodes: set[str] = set()
+    for node, concept in g.concepts.items():
+        if concept.derivation != Derivation.ROWSET:
+            continue
+        rowset_nodes.add(node)
+        nodes_by_address.setdefault(concept.address, []).append(node)
+        if isinstance(concept.lineage, BuildRowsetItem):
+            members_by_rowset.setdefault(concept.lineage.rowset.name, []).append(node)
+
+    if not rowset_nodes:
+        return
+
+    island = rowset_nodes | {
+        n for n in cg.nodes if isinstance(n, str) and n.startswith("rowset~")
+    }
+    cg.remove_edges_from(
+        [(u, v) for u, v in cg.edges if (u in island) != (v in island)]
+    )
+
+    for name, members in members_by_rowset.items():
+        hub = f"{ROWSET_ISLAND_HUB_PREFIX}{name}"
+        cg.add_node(hub)
+        cg.add_edges_from((hub, m) for m in members if m in cg)
+        # Re-weld external downstream consumers (`g`-successors) of each output;
+        # only upstream navigation into the rowset's base concepts stays severed.
+        # A consumer that merely groups `by` the output (grain-only parent) is
+        # skipped: that edge would bridge unrelated models through an aggregate's
+        # grouping key, the same bridge `_aggregate_grain_only_parents` drops.
+        for member in members:
+            member_concept = g.concepts.get(member)
+            member_addr = member_concept.address if member_concept else None
+            for consumer in g.successors(member):
+                if consumer in island or consumer not in cg:
+                    continue
+                consumer_concept = g.concepts.get(consumer)
+                if (
+                    grain_only
+                    and consumer_concept is not None
+                    and member_addr in grain_only.get(consumer_concept.address, set())
+                ):
+                    continue
+                cg.add_edge(hub, consumer)
+
+    for node in rowset_nodes:
+        concept = g.concepts[node]
+        for pseudonym in concept.pseudonyms:
+            if pseudonym == concept.address:
+                continue
+            for other in nodes_by_address.get(pseudonym, []):
+                if node in cg and other in cg:
+                    cg.add_edge(node, other)
+
+
 def _component_map(
     environment: BuildEnvironment,
     g: "ReferenceGraph | None" = None,
-    island_rowsets: bool = True,
     excluded_addresses: frozenset[str] = frozenset(),
 ) -> "tuple[dict[str, int], ReferenceGraph]":
     """Build the connectivity map node -> weakly-connected-component id, dropping
-    aggregate grain-only edges (and optionally islanding rowsets) first. Shared by
+    aggregate grain-only edges and islanding rowsets first. Shared by
     ``disconnected_components`` and the connected-equivalent suggestion path so both
     judge reachability identically. Returns the map and the graph it was built on.
 
@@ -402,13 +494,7 @@ def _component_map(
                 if neighbor_concept is not None and neighbor_concept.address in keys:
                     cg.remove_edge(node, neighbor)
 
-    if island_rowsets:
-        island_rowsets_for_connectivity(g, cg, grain_only)
-    else:
-        # Even without islanding, one rowset's co-produced outputs are a single
-        # sub-query; weld them so a join declared INSIDE the rowset body
-        # (invisible at this level) does not split its own outputs.
-        link_rowset_outputs_for_connectivity(g, cg)
+    island_rowsets_for_connectivity(g, cg, grain_only)
 
     if excluded_addresses:
         for node, concept in g.concepts.items():
@@ -426,7 +512,6 @@ def disconnected_components(
     environment: BuildEnvironment,
     concepts: list[BuildConcept],
     g: "ReferenceGraph | None" = None,
-    island_rowsets: bool = True,
     excluded_addresses: frozenset[str] = frozenset(),
 ) -> list[list[BuildConcept]]:
     """Partition concepts by true join reachability: two concepts share a group
@@ -439,16 +524,13 @@ def disconnected_components(
     skipped. Aggregate grain-only ``by`` edges are dropped first (see
     ``_aggregate_grain_only_parents``).
 
-    ``island_rowsets`` (see ``island_rowsets_for_connectivity``): when set, a
-    base concept reachable only by navigating into a rowset's derivation is not
-    a real join path. Correct as a post-failure message refiner, but as a
-    pre-check gate it false-positives on legitimate rowset join-backs (a base
-    key that IS a rowset output, or a concept DERIVED from one), so the
-    pre-gate disables it and lets discovery decide.
+    Rowsets are islanded (``island_rowsets_for_connectivity``): a base concept
+    reachable only by navigating into a rowset's derivation is not a join
+    path; a rowset pairs with one only through a declared relation.
 
     See ``_component_map`` for ``excluded_addresses``.
     """
-    comp_of, _ = _component_map(environment, g, island_rowsets, excluded_addresses)
+    comp_of, _ = _component_map(environment, g, excluded_addresses)
 
     # concept -> the component id it resolves into; a concept whose nodes are
     # absent from the graph gets a synthetic per-address component so it surfaces
@@ -457,11 +539,7 @@ def disconnected_components(
     for concept in concepts:
         if _crossjoinable(concept):
             continue
-        cid: object | None = None
-        for node in _anchor_nodes(concept):
-            if node in comp_of:
-                cid = comp_of[node]
-                break
+        cid: object | None = _first_component(concept, comp_of)
         if cid is None:
             cid = f"orphan::{concept.address}"
         buckets.setdefault(cid, []).append(concept)
@@ -487,6 +565,172 @@ def _output_is_rootless(outputs: list[BuildConcept]) -> bool:
         )
         for c in outputs
     )
+
+
+def _rowset_handles_read_by_scalars(
+    outputs: list[BuildConcept],
+) -> list[BuildConcept]:
+    """Multi-row rowset handles a single-row output aggregates over.
+
+    ``disconnected_components`` skips a scalar as freely crossjoinable, which
+    holds with no WHERE. With one, `sum(rs.amt) where cat = 'a'` has a row
+    population to define, and it is the handle's rows: the WHERE must reach
+    THEM. Walk the scalar's lineage down to the first multi-row concept; a
+    handle found there is what the output anchors on. A single-row handle (a
+    scalar rowset) is a keyless join and stays skipped."""
+    found: dict[str, BuildConcept] = {}
+    for output in outputs:
+        if not _crossjoinable(output) or output.derivation == Derivation.ROWSET:
+            continue
+        stack = [a for a in output.concept_arguments if isinstance(a, BuildConcept)]
+        seen: set[str] = set()
+        while stack:
+            arg = stack.pop()
+            if arg.address in seen:
+                continue
+            seen.add(arg.address)
+            if arg.derivation == Derivation.ROWSET:
+                if not _crossjoinable(arg):
+                    found.setdefault(arg.address, arg)
+                continue
+            if _crossjoinable(arg):
+                stack.extend(
+                    a for a in arg.concept_arguments if isinstance(a, BuildConcept)
+                )
+    return list(found.values())
+
+
+def _rowsets_read_by(concepts: list[BuildConcept]) -> set[str]:
+    """Names of the rowsets whose handles these concepts are or derive from
+    (`buyers_a.cust_id as a_cust` reads `buyers_a`); the walk stops at a
+    handle, whose body is not the reader's to see."""
+    names: set[str] = set()
+    stack = list(concepts)
+    seen: set[str] = set()
+    while stack:
+        concept = stack.pop()
+        if concept.address in seen:
+            continue
+        seen.add(concept.address)
+        if isinstance(concept.lineage, BuildRowsetItem):
+            names.add(concept.lineage.rowset.name)
+            continue
+        stack.extend(
+            a for a in concept.concept_arguments if isinstance(a, BuildConcept)
+        )
+    return names
+
+
+def _ranked_pairs(
+    pairs: list[tuple[BuildConcept, BuildConcept]],
+    determining: frozenset[str] | set[str] = frozenset(),
+) -> list[tuple[BuildConcept, BuildConcept]]:
+    """Keys before other outputs, and among keys the ones in ``determining``
+    (the other side's addresses and the keys they hang off) first: a key that
+    determines `state` is the join, not a sibling key of its fact."""
+    keyed = [p for p in pairs if p[1].purpose == Purpose.KEY]
+    direct = [p for p in keyed if p[1].address in determining]
+    return sorted(direct or keyed or pairs, key=lambda p: p[1].address)
+
+
+def _body_minted(concept: BuildConcept, rowset_name: str) -> bool:
+    return concept.name.startswith(f"_{rowset_name}_")
+
+
+def _spell_subset_join(left: BuildConcept, right: BuildConcept) -> str:
+    # a renamed body column (`oid as k`) is spelled at its source, not the
+    # mangled alias the body minted for it
+    return (
+        f"`subset join {_strip_default_namespace(_alias_source(left).address)} = "
+        f"{_strip_default_namespace(_alias_source(right).address)}`"
+    )
+
+
+def rowset_relation_hints(
+    subgraphs: list[list[BuildConcept]],
+    environment: BuildEnvironment,
+    g: "ReferenceGraph | None" = None,
+    excluded_addresses: frozenset[str] = frozenset(),
+) -> list[str]:
+    """The declared relations that would connect a rowset read in one subgraph
+    to another subgraph: `subset join <handle> = <content>` for each output
+    of the rowset whose body content lands in the other subgraph's component,
+    or `subset join <their handle> = <our handle>` where a rowset read there
+    wraps the same body concept. The islanding the split was judged under
+    severs exactly these, so a hit is the join the author left implicit. Keys
+    are listed before other outputs."""
+    comp_of, _ = _component_map(environment, g, excluded_addresses)
+    outputs_by_rowset = _joinable_rowset_outputs(environment)
+    hints: list[str] = []
+    sibling_hints: list[str] = []
+    read_by_group = [_rowsets_read_by(group) for group in subgraphs]
+    for index, group in enumerate(subgraphs):
+        if not read_by_group[index]:
+            continue
+        for other_index, other in enumerate(subgraphs):
+            if other is group:
+                continue
+            others = {
+                comp
+                for comp in (_first_component(c, comp_of) for c in other)
+                if comp is not None
+            }
+            determining = {c.address for c in other} | {
+                key for c in other for key in (c.keys or ())
+            }
+            for name in sorted(read_by_group[index]):
+                outputs = outputs_by_rowset.get(name, [])
+                to_base = [
+                    (output, content)
+                    for output, content in outputs
+                    if _first_component(content, comp_of) in others
+                ]
+                for output, content in _ranked_pairs(to_base, determining):
+                    if (hint := _spell_subset_join(output, content)) not in hints:
+                        hints.append(hint)
+                if other_index < index:
+                    continue
+                for sibling in sorted(read_by_group[other_index] - {name}):
+                    for hint in _sibling_hints(
+                        outputs, outputs_by_rowset.get(sibling, [])
+                    ):
+                        if hint not in sibling_hints:
+                            sibling_hints.append(hint)
+    return hints + sibling_hints
+
+
+def _joinable_rowset_outputs(
+    environment: BuildEnvironment,
+) -> dict[str, list[tuple[BuildConcept, BuildConcept]]]:
+    """Rowset name -> (handle, body content) for each output a join can name:
+    a body-minted derivation (`avg(price) as avg_price`) has no name outside
+    the body."""
+    out: dict[str, list[tuple[BuildConcept, BuildConcept]]] = {}
+    for concept in environment.concepts.values():
+        lineage = concept.lineage
+        if (
+            isinstance(lineage, BuildRowsetItem)
+            and isinstance(lineage.content, BuildConcept)
+            and not _crossjoinable(lineage.content)
+            and not _body_minted(_alias_source(lineage.content), lineage.rowset.name)
+        ):
+            out.setdefault(lineage.rowset.name, []).append((concept, lineage.content))
+    return out
+
+
+def _sibling_hints(
+    ours: list[tuple[BuildConcept, BuildConcept]],
+    theirs: list[tuple[BuildConcept, BuildConcept]],
+) -> list[str]:
+    """`subset join` spellings pairing a sibling rowset's handles with ours
+    where both wrap the same body concept."""
+    by_content = {content.address: output for output, content in theirs}
+    shared = [
+        (by_content[content.address], output)
+        for output, content in ours
+        if content.address in by_content
+    ]
+    return [_spell_subset_join(their, our) for their, our in _ranked_pairs(shared)]
 
 
 def _is_global_aggregate_gate(
@@ -520,7 +764,6 @@ def membership_span_note(
     subgraphs: list[list[BuildConcept]],
     environment: BuildEnvironment,
     g: "ReferenceGraph | None" = None,
-    island_rowsets: bool = True,
 ) -> str | None:
     """Name membership/existence predicates in the WHERE whose left side sits in
     one reported subgraph while the right side derives from another. A
@@ -532,7 +775,7 @@ def membership_span_note(
     comparisons = _collect_subselect_comparisons(conditions.conditional)
     if not comparisons:
         return None
-    comp_of, _ = _component_map(environment, g, island_rowsets)
+    comp_of, _ = _component_map(environment, g)
 
     # mirror disconnected_components: a subgraph member's component is its FIRST
     # mapped anchor (an aggregate's later anchors reach into its `by` keys'
@@ -540,10 +783,9 @@ def membership_span_note(
     subgraph_of_component: dict[int, int] = {}
     for idx, group in enumerate(subgraphs):
         for concept in group:
-            for node in _anchor_nodes(concept):
-                if node in comp_of:
-                    subgraph_of_component.setdefault(comp_of[node], idx)
-                    break
+            comp = _first_component(concept, comp_of)
+            if comp is not None:
+                subgraph_of_component.setdefault(comp, idx)
 
     def subgraph_ids(concepts: list[BuildConcept]) -> set[int]:
         # operands consider ALL anchors: an islanded rowset concept's own node
@@ -578,14 +820,57 @@ def membership_span_note(
     )
 
 
+def _rowset_join_advice(
+    hints: list[str],
+    scope: "BuildRowsetLineage | None",
+    conditions: "BuildWhereClause | None",
+    subgraphs: list[list[BuildConcept]],
+) -> str:
+    """Where the declared join goes: on this select when it is the statement,
+    inside the body when the select is a rowset's or a membership subquery's.
+    An inline `(select ...)` is one row by construct, so a base concept its
+    WHERE reads is a correlation, which no join inside it expresses."""
+    joins = ", ".join(hints)
+    if scope is not None and scope.scalar and conditions is not None:
+        read = {c.address for c in conditions.row_arguments}
+        correlated = sorted(
+            _strip_default_namespace(c.address)
+            for group in subgraphs
+            if not _rowsets_read_by(group)
+            for c in group
+            if c.address in read
+        )
+        if correlated:
+            named = ", ".join(f"`{a}`" for a in correlated)
+            return (
+                f"\nAn inline `(select ...)` is a single row and cannot read {named} "
+                "from the enclosing query (a correlated subquery is not supported). "
+                "Read the rowset's outputs in the enclosing select instead and "
+                f"relate them there with a declared join (e.g. {joins})."
+            )
+    if scope is None:
+        where = "declare it on this select"
+    elif scope.name.startswith(SUBQUERY_NAMESPACE_PREFIX):
+        where = "declare it inside the subquery, right after its select list"
+    else:
+        where = (
+            f"declare it inside the body of `{scope.name}`, right after its select list"
+        )
+    return (
+        "\nA rowset's outputs relate to other concepts only through a declared "
+        f"join; to pair them on the rowset's key, {where} (e.g. {joins}), or "
+        "project the concept inside the rowset and reference it through the handle."
+    )
+
+
 def raise_if_disconnected_for(
     outputs: list[BuildConcept],
     conditions: "BuildWhereClause | None",
     environment: BuildEnvironment,
     g: "ReferenceGraph | None" = None,
-    island_rowsets: bool = True,
     line_number: int | None = None,
     excluded_addresses: frozenset[str] = frozenset(),
+    scope: "BuildRowsetLineage | None" = None,
 ) -> None:
     """Connectivity gate for a select's required concepts (outputs plus WHERE
     row args): raise the typed subgraph error when they span unconnected
@@ -594,21 +879,28 @@ def raise_if_disconnected_for(
     aggregate WHERE row-args is a global filter gate, not a missing join, and
     is dropped before counting (``_is_global_aggregate_gate``). Shared by the
     top-level select and nested rowset inner selects so the diagnostic is
-    identical. See ``disconnected_components`` for ``island_rowsets``."""
+    identical; ``scope`` is the rowset whose body this select is, if any."""
     concepts = list(outputs)
     output_addresses = {c.address for c in concepts}
+    outputs_rootless = _output_is_rootless(outputs)
     if conditions:
         concepts += [
             c for c in conditions.row_arguments if c.address not in output_addresses
         ]
+        # a WHERE gives a scalar's rows a population to define: a scalar over
+        # a rowset handle anchors on the handle, and is not an EXISTS gate
+        if any(not _crossjoinable(c) for c in concepts):
+            handles = _rowset_handles_read_by_scalars(outputs)
+            if handles:
+                outputs_rootless = False
+                output_addresses |= {c.address for c in handles}
+                concepts = unique(concepts + handles, "address")
     subgraphs = disconnected_components(
         environment,
         concepts,
         g,
-        island_rowsets=island_rowsets,
         excluded_addresses=excluded_addresses,
     )
-    outputs_rootless = _output_is_rootless(outputs)
     subgraphs = [
         grp
         for grp in subgraphs
@@ -619,13 +911,14 @@ def raise_if_disconnected_for(
     ]
     if len(subgraphs) > 1:
         message = format_disconnected_subgraphs_error(
-            subgraphs, environment, g, island_rowsets, line_number, excluded_addresses
+            subgraphs, environment, g, line_number, excluded_addresses
         )
-        note = membership_span_note(
-            conditions, subgraphs, environment, g, island_rowsets
-        )
+        note = membership_span_note(conditions, subgraphs, environment, g)
         if note:
             message = f"{message}\n{note}"
+        hints = rowset_relation_hints(subgraphs, environment, g, excluded_addresses)
+        if hints:
+            message += _rowset_join_advice(hints, scope, conditions, subgraphs)
         raise DisconnectedConceptsException(
             message,
             subgraphs=[[c.address for c in group] for group in subgraphs],
@@ -633,12 +926,12 @@ def raise_if_disconnected_for(
 
 
 def _physical_tables_by_concept(
-    environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
 ) -> dict[str, frozenset[str]]:
     """Concept address -> the physical locations of the datasources binding it.
     Two imports of one model under different aliases bind the same table."""
     out: dict[str, set[str]] = {}
-    for ds in environment.datasources.values():
+    for ds in datasources:
         location = (
             ds.address.location if isinstance(ds.address, Address) else ds.address
         )
@@ -651,7 +944,6 @@ def connected_equivalent_suggestions(
     environment: BuildEnvironment | None,
     subgraphs: list[list[BuildConcept]],
     g: "ReferenceGraph | None" = None,
-    island_rowsets: bool = True,
     excluded_addresses: frozenset[str] = frozenset(),
 ) -> list[tuple[str, str]]:
     """Detect the separate-import mistake: a model imported a second time as a
@@ -664,20 +956,13 @@ def connected_equivalent_suggestions(
     connected component; shortest such prefix wins. Returns
     ``(stranded_address, connected_address)`` pairs, or ``[]`` when no twin exists
     (the caller then falls back to the generic join/merge hint). Reachability is
-    judged with ``_component_map`` under the same ``island_rowsets`` and
-    ``excluded_addresses`` as the split, so it matches
-    ``disconnected_components``."""
+    judged with ``_component_map`` under the same ``excluded_addresses`` as
+    the split, so it matches ``disconnected_components``."""
     if environment is None:
         return []
-    comp_of, _ = _component_map(environment, g, island_rowsets, excluded_addresses)
+    comp_of, g = _component_map(environment, g, excluded_addresses)
 
-    def component_of(concept: BuildConcept) -> int | None:
-        for node in _anchor_nodes(concept):
-            if node in comp_of:
-                return comp_of[node]
-        return None
-
-    tables = _physical_tables_by_concept(environment)
+    tables = _physical_tables_by_concept(g.scope.datasources)
 
     def twin_of(concept: BuildConcept, target_comps: set[int]) -> str | None:
         # A select alias (`claim.claim_number as company_claim_number`) is
@@ -696,6 +981,9 @@ def connected_equivalent_suggestions(
                 continue
             if VIRTUAL_CONCEPT_PREFIX in addr:
                 continue
+            # a rowset handle names a materialized result, not an import path
+            if candidate.derivation == Derivation.ROWSET:
+                continue
             # The twin is the same path one namespace deeper (same alias
             # both times), or - when the aliases differ (`import policy as
             # p` vs the fact's nested `Policy`) - the same column of the
@@ -709,7 +997,7 @@ def connected_equivalent_suggestions(
                 and stranded_tables & tables.get(addr, frozenset())
             ):
                 continue
-            if component_of(candidate) not in target_comps:
+            if _first_component(candidate, comp_of) not in target_comps:
                 continue
             if best is None or len(addr) < len(best):
                 best = addr
@@ -719,7 +1007,9 @@ def connected_equivalent_suggestions(
     # which side is the connected one: try each until a twin turns up.
     for target in sorted(subgraphs, key=len, reverse=True):
         target_comps = {
-            comp for comp in (component_of(c) for c in target) if comp is not None
+            comp
+            for comp in (_first_component(c, comp_of) for c in target)
+            if comp is not None
         }
         if not target_comps:
             continue
@@ -768,7 +1058,6 @@ def format_disconnected_subgraphs_error(
     subgraphs: list[list[BuildConcept]],
     environment: BuildEnvironment | None = None,
     g: "ReferenceGraph | None" = None,
-    island_rowsets: bool = True,
     line_number: int | None = None,
     excluded_addresses: frozenset[str] = frozenset(),
 ) -> str:
@@ -796,9 +1085,7 @@ def format_disconnected_subgraphs_error(
     )
 
     suggestions = (
-        connected_equivalent_suggestions(
-            environment, subgraphs, g, island_rowsets, excluded_addresses
-        )
+        connected_equivalent_suggestions(environment, subgraphs, g, excluded_addresses)
         if environment is not None
         else []
     )
@@ -945,19 +1232,11 @@ def raise_if_filter_disconnected(
     environment: BuildEnvironment,
     g: "ReferenceGraph | None" = None,
     extra_required: list[BuildConcept] | None = None,
-    island_rowsets: bool = True,
 ) -> None:
     """Re-run the reachability check with FILTER outputs' hidden condition
     concepts surfaced (see ``_filter_hidden_concepts``). When that splits the
     set, raise the standard named-subgraph error plus a rowset-filter-specific
-    hint. No-op otherwise, so the caller falls through to the generic error.
-
-    ``island_rowsets`` as in ``disconnected_components``; it turns on whether
-    the caller reads rowset outputs across the boundary. A WHERE-scope gate
-    resolves its concepts against the base model, where a key that is also a
-    rowset output is a legitimate join-back, so it must pass False. A
-    HAVING-scope gate filters the statement's outputs, where the rowset is
-    genuinely opaque, so it keeps the default."""
+    hint. No-op otherwise, so the caller falls through to the generic error."""
     # Drop the FILTER outputs themselves: their connectivity is fully captured by
     # the surfaced content + condition concepts, and the virtual filter concept
     # has no condition edges in the graph (see add_concept), so keeping it would
@@ -971,7 +1250,7 @@ def raise_if_filter_disconnected(
         + _filter_hidden_concepts(output_concepts),
         "address",
     )
-    groups = disconnected_components(environment, required, g, island_rowsets)
+    groups = disconnected_components(environment, required, g)
     if len(groups) > 1:
         raise DisconnectedConceptsException(
             format_disconnected_subgraphs_error(groups, environment, g)

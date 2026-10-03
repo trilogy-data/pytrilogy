@@ -95,6 +95,12 @@ class NoDatasourceException(UnresolvableQueryException):
     pass
 
 
+class UnbuiltGroupException(UnresolvableQueryException):
+    """A planned group built nothing, and its WHERE atoms, readers or outputs
+    have no other deliverer: assembling the plan without it would drop them.
+    The plan fails; its message rides on the failed plan's ``BuildInfo``."""
+
+
 class DisconnectedConceptsException(ValueError):
     """Discovery dead-ended because the requested concepts split into multiple
     unconnected subgraphs — no declared join/merge relates their models.

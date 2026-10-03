@@ -27,10 +27,11 @@ class RecursiveNode(StrategyNode):
         )
 
     def copy(self) -> "RecursiveNode":
-        return RecursiveNode(
+        node = RecursiveNode(
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
             parents=self.parents,
             depth=self.depth,
         )
+        return self.with_marks(node)

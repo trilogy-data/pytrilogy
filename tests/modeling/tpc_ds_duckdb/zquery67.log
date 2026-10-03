@@ -1,5 +1,5 @@
 query_id = "67"
-gen_length = 3662
+gen_length = 3615
 preql_size = 871
 comp_size = 1224
 generated_sql = """
@@ -23,7 +23,7 @@ FROM
     INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"ss_store_sales\".\"SS_STORE_SK\" = \"ss_store_store\".\"S_STORE_SK\"
     INNER JOIN \"memory\".\"date_dim\" as \"ss_sale_date_date\" on \"ss_store_sales\".\"SS_SOLD_DATE_SK\" = \"ss_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"ss_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211 and \"ss_store_sales\".\"SS_STORE_SK\" is not null
+    \"ss_sale_date_date\".\"D_MONTH_SEQ\" BETWEEN 1200 AND 1211
 ),
 questionable as (
 SELECT

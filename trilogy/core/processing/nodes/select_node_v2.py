@@ -321,15 +321,17 @@ class SelectNode(StrategyNode):
             non_null_proofs=set(self.non_null_proofs),
         )
         node.limit = self.limit
-        return node
+        return self.with_marks(node)
 
 
 class RowsetNode(SelectNode):
     """The boundary projection over a rowset body: re-exposes the body's
     columns under the outer rowset handle addresses, 1:1 with the body's
-    rows. A distinct type so the boundary is recognizable by `isinstance`;
-    it adds no behavior of its own (a merge above it keeps the body's rows
-    through the rowset-output check in `MergeNode._resolve`)."""
+    rows. Its only behavior is `region_boundary`: `region_reads` stops here,
+    since what the body read is the body's (a merge above it keeps the body's
+    rows through the rowset-output check in `MergeNode._resolve`)."""
+
+    region_boundary = True
 
 
 class ConstantNode(SelectNode):
@@ -337,7 +339,7 @@ class ConstantNode(SelectNode):
     """Represents a constant value."""
 
     def copy(self) -> "ConstantNode":
-        return ConstantNode(
+        node = ConstantNode(
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
@@ -349,6 +351,7 @@ class ConstantNode(SelectNode):
             hidden_concepts=self.hidden_concepts,
             ordering=self.ordering,
         )
+        return self.with_marks(node)
 
     def _resolve(self) -> QueryDatasource:
         return self.resolve_from_constant_datasources()

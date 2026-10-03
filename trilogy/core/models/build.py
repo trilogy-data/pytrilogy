@@ -20,11 +20,13 @@ from trilogy.constants import (
     VIRTUAL_CONCEPT_PREFIX,
     MagicConstants,
 )
-from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
+from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.domain_graph import DomainGraph, EdgeScope, assemble_full_graph
 from trilogy.core.enums import (
     NAVIGATION_WINDOW_TYPES,
     NUMBERING_WINDOW_TYPES,
+    SYMMETRIC_JOIN_TYPES,
+    ZERO_ON_EMPTY_AGGREGATES,
     AggregateGroupingMode,
     BooleanOperator,
     ComparisonOperator,
@@ -283,69 +285,6 @@ def nonstandard_grouping_lineage(concept: Any) -> BuildAggregateWrapper | None:
     return None
 
 
-def _trace_grouping_passes(
-    concept: BuildConcept,
-) -> tuple[set[GroupingSpec], bool, bool, set[str]]:
-    """Walk ``concept``'s lineage down to grouping-pass boundaries.
-
-    Returns (specs, pointwise, windowed, root_addresses):
-    - specs: grouping passes whose outputs the lineage reads (descent stops at a
-      pass aggregate — what's below it are the pass's inputs, not outputs)
-    - pointwise: False when any path crosses a non-scalar wrapper (window,
-      filter, standard aggregate, rowset, ...) that computes OVER a pass output
-    - windowed: True when any path crosses a window item
-    - root_addresses: lineage-less leaves reached without crossing a pass"""
-    specs: set[GroupingSpec] = set()
-    pointwise = True
-    windowed = False
-    roots: set[str] = set()
-    seen: set[str] = set()
-    stack: list[BuildConcept] = [concept]
-    while stack:
-        current = stack.pop()
-        if current.address in seen:
-            continue
-        seen.add(current.address)
-        lineage = current.lineage
-        if lineage is None:
-            roots.add(current.address)
-            continue
-        spec = nonstandard_grouping_spec(lineage)
-        if spec is not None:
-            specs.add(spec)
-            continue
-        if isinstance(lineage, (BuildNumberingWindowItem, BuildNavigationWindowItem)):
-            windowed = True
-            pointwise = False
-        elif not isinstance(lineage, (BuildFunction, BuildParenthetical)):
-            pointwise = False
-        if isinstance(lineage, BuildConceptArgs):
-            stack.extend(lineage.concept_arguments)
-    return specs, pointwise, windowed, roots
-
-
-def colocatable_in_grouping_pass(concept: BuildConcept, spec: GroupingSpec) -> bool:
-    """True when ``concept`` is an output of grouping pass ``spec``: the pass's
-    aggregate itself (incl. grouping()/grouping_id() identity) or a pointwise
-    scalar over such outputs, grouping keys, and constants. Such a concept can
-    be emitted by the pass's grouped CTE directly instead of being recovered
-    with a join back on its nullable dims."""
-    specs, pointwise, _, roots = _trace_grouping_passes(concept)
-    if not pointwise or specs != {spec}:
-        return False
-    grouping_keys = set(spec[1]).union(*spec[2]) if spec[2] else set(spec[1])
-    return roots.issubset(grouping_keys)
-
-
-def windowed_over_grouping_pass(concept: BuildConcept, spec: GroupingSpec) -> bool:
-    """True when ``concept`` computes a window (anywhere in its lineage) over an
-    output of grouping pass ``spec``. Recovering such a sibling by joining the
-    pass output back on its visible dims collides grouping-set rows; the caller
-    must decline so the window-first path co-sources the pass instead."""
-    specs, _, windowed, _ = _trace_grouping_passes(concept)
-    return windowed and spec in specs
-
-
 def concept_is_relevant(
     concept: BuildConcept,
     others: list[BuildConcept],
@@ -431,29 +370,6 @@ def concept_collection_equivalent_addresses(
     return addresses
 
 
-def _concept_by_equivalent_address(
-    address: str,
-    concepts: Iterable[BuildConcept],
-) -> BuildConcept | None:
-    return next(
-        (concept for concept in concepts if address in concept.equivalent_addresses),
-        None,
-    )
-
-
-def resolve_concepts_with_equivalents(
-    addresses: Iterable[str],
-    environment: BuildEnvironment,
-    equivalents: Iterable[BuildConcept] | None = None,
-) -> list[BuildConcept]:
-    candidates = list(equivalents or [])
-    return [
-        _concept_by_equivalent_address(address, candidates)
-        or environment.concepts[address]
-        for address in addresses
-    ]
-
-
 def _addr_keys(
     addr: str,
     environment: BuildEnvironment,
@@ -487,8 +403,12 @@ def _key_reduces_to(
 
 
 def concepts_to_build_grain_concepts(
-    concepts: Iterable[BuildConcept | str], environment: BuildEnvironment | None
+    concepts: Iterable[BuildConcept | str],
+    environment: BuildEnvironment | None,
+    padded: frozenset[str] = frozenset(),
 ) -> set[str]:
+    """The minimal components identifying rows over `concepts`. A `padded`
+    (NULL-extended) address determines nothing: its NULL rows are many."""
     pconcepts: list[BuildConcept] = []
     for c in concepts:
         if isinstance(c, BuildConcept):
@@ -513,11 +433,12 @@ def concepts_to_build_grain_concepts(
     # `grain_satisfied_by_pregrain` checks (a stray alias makes pregrain
     # look like a superset of the target and force_group=True flips on).
     # Sorting by `len(equivalent_addresses)` puts canonicals first.
+    determinants = [c for c in pconcepts if c.address not in padded]
     final: set[str] = set()
     for sub in sorted(
         pconcepts, key=lambda c: (len(c.equivalent_addresses), c.address)
     ):
-        if not concept_is_relevant(sub, pconcepts):
+        if not concept_is_relevant(sub, determinants):
             continue
         if final & sub.equivalent_addresses:
             continue
@@ -533,7 +454,9 @@ def concepts_to_build_grain_concepts(
         reduced = set(final)
         for addr in sorted(final):
             keys = _addr_keys(addr, environment, pmap)
-            if keys and _key_reduces_to(keys, reduced - {addr}, environment, pmap):
+            if keys and _key_reduces_to(
+                keys, reduced - {addr} - padded, environment, pmap
+            ):
                 reduced.discard(addr)
         final = reduced
 
@@ -700,7 +623,7 @@ class BuildGrain:
 
     def __post_init__(self):
         self.abstract = not self.components or all(
-            c.endswith(ALL_ROWS_CONCEPT) for c in self.components
+            c == ALL_ROWS_ADDRESS for c in self.components
         )
         self._str_no_condition = self._calculate_string_no_condition()
 
@@ -715,11 +638,12 @@ class BuildGrain:
         concepts: Iterable[BuildConcept | str],
         environment: BuildEnvironment | None = None,
         where_clause: BuildWhereClause | None = None,
+        padded: frozenset[str] = frozenset(),
     ) -> BuildGrain:
 
         return BuildGrain(
             components=concepts_to_build_grain_concepts(
-                concepts, environment=environment
+                concepts, environment=environment, padded=padded
             ),
             where_clause=where_clause,
         )
@@ -1372,6 +1296,14 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
         return self.build_is_aggregate
 
     @property
+    def zero_on_empty(self) -> bool:
+        """An aggregate whose value over no rows is 0, not NULL."""
+        return (
+            isinstance(self.lineage, BuildAggregateWrapper)
+            and self.lineage.function.operator in ZERO_ON_EMPTY_AGGREGATES
+        )
+
+    @property
     def is_nullable(self) -> bool:
         """Intrinsic nullability — a column ``?`` or a nullable derivation."""
         return Modifier.NULLABLE in self.modifiers
@@ -1828,17 +1760,6 @@ class BuildFunction(DataTyped, BuildConceptArgs):
             base += get_rendered_concept_arguments(arg)
         return base
 
-    @property
-    def output_grain(self):
-        # aggregates have an abstract grain
-        if self.operator in FunctionClass.AGGREGATE_FUNCTIONS.value:
-            return BuildGrain(components=[])
-        # scalars have implicit grain of all arguments
-        args = set()
-        for input in self.concept_arguments:
-            args += input.grain.components
-        return BuildGrain(components=args)
-
 
 @dataclass(slots=True)
 class BuildAggregateWrapper(BuildConceptArgs, DataTyped):
@@ -1860,7 +1781,7 @@ class BuildAggregateWrapper(BuildConceptArgs, DataTyped):
     def is_abstract(self):
         if not self.by:
             return True
-        return bool(all(x.name == ALL_ROWS_CONCEPT for x in self.by))
+        return bool(all(x.address == ALL_ROWS_ADDRESS for x in self.by))
 
     def with_abstract_by(self) -> BuildAggregateWrapper:
         return BuildAggregateWrapper(function=self.function, by=[])
@@ -1923,6 +1844,7 @@ class BuildRowsetLineage(BuildConceptArgs):
     name: str
     derived_concepts: list[str]
     select: SelectLineage | MultiSelectLineage
+    scalar: bool = False
 
 
 @dataclass(slots=True)
@@ -2626,6 +2548,24 @@ def requires_concept_nesting(
     return None
 
 
+FOLDED_SCALARS = (str, int, float, Decimal, date, datetime, MagicConstants)
+
+
+def _bare_constant(expr: Any) -> Any:
+    """A folded CASE branch as its bare value: a typed literal (`'..'::date`)
+    builds to a CONSTANT, which would bind as a parameter the author concept
+    (still a CASE) cannot hydrate."""
+    if (
+        isinstance(expr, BuildFunction)
+        and expr.operator == FunctionType.CONSTANT
+        and len(expr.arguments) == 1
+        and isinstance(expr.arguments[0], FOLDED_SCALARS)
+        and not isinstance(expr.arguments[0], bool)
+    ):
+        return expr.arguments[0]
+    return expr
+
+
 def is_constant(x):
     return isinstance(
         x, (str, int, float, bool, MagicConstants, BuildParamaterizedConceptReference)
@@ -2737,7 +2677,7 @@ class JoinScope:
         full_join_sources = {
             source
             for source, target, join_type in self.scoped_joins
-            if join_type is JoinType.FULL
+            if join_type in SYMMETRIC_JOIN_TYPES
         }
         self.scoped_merge_sources_by_target: dict[str, set[str]] = defaultdict(set)
         for source, target in self.scoped_merge_map.items():
@@ -2795,7 +2735,7 @@ class JoinScope:
                 return _is_rowset_keyed(s) or (
                     _is_rowset_keyed(t) and not _is_derived_keyed(s)
                 )
-            if jt is JoinType.FULL:
+            if jt in SYMMETRIC_JOIN_TYPES:
                 return (
                     _is_rowset_keyed(s)
                     or _is_rowset_keyed(t)
@@ -2838,7 +2778,7 @@ class JoinScope:
         # independent source (e.g. `merge derived_metric into unbound_property`,
         # where the canonical is only reachable through the source's derivation).
         for s, t, jt in self.scoped_joins:
-            if jt not in (JoinType.LEFT_OUTER, JoinType.FULL):
+            if jt != JoinType.LEFT_OUTER and jt not in SYMMETRIC_JOIN_TYPES:
                 continue
             for addr in (s, t):
                 if addr not in self.scoped_merge_map:
@@ -2934,7 +2874,7 @@ class JoinScope:
         fail clean and point at the working idiom. LEFT/SUBSET relations
         resolve fine one-table: the anchor column IS the unified axis. Endpoints
         with a binding OUTSIDE the shared tables can still resolve and pass."""
-        pairs = [(s, t) for s, t, jt in self.scoped_joins if jt is JoinType.FULL]
+        pairs = [(s, t) for s, t, jt in self.scoped_joins if jt in SYMMETRIC_JOIN_TYPES]
         if not pairs:
             return
         binding_map: dict[str, set[str]] | None = None
@@ -3284,12 +3224,12 @@ class Factory:
             for arg in farguments:
                 if isinstance(arg, BuildCaseWhen):
                     if arg.comparison is True:
-                        return arg.expr
+                        return _bare_constant(arg.expr)
                     if arg.comparison is False:
                         continue
                 case_args.append(arg)
             if len(case_args) == 1 and isinstance(case_args[0], BuildCaseElse):
-                return case_args[0].expr
+                return _bare_constant(case_args[0].expr)
             farguments = case_args
 
         new = BuildFunction(
@@ -3479,7 +3419,7 @@ class Factory:
                 and base.purpose == Purpose.PROPERTY
                 and self._build_keys(base.keys)
                 == {
-                    f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}",
+                    ALL_ROWS_ADDRESS,
                 }
             ):
                 granularity = Granularity.SINGLE_ROW
@@ -3552,6 +3492,17 @@ class Factory:
                     output_data_type=DataType.BOOL,
                     output_purpose=Purpose.CONSTANT,
                 )
+            elif isinstance(build_lineage, FOLDED_SCALARS):
+                # A constant CASE folds to its winning branch's bare value,
+                # rendered inline (see `_bare_constant`).
+                folded_type = arg_to_datatype(build_lineage)
+                folded_args: list[Any] = [build_lineage, folded_type]
+                build_lineage = BuildFunction(
+                    operator=FunctionType.TYPED_CONSTANT,
+                    arguments=folded_args,
+                    output_data_type=folded_type,
+                    output_purpose=Purpose.CONSTANT,
+                )
 
         else:
             build_lineage = None
@@ -3595,7 +3546,7 @@ class Factory:
             and base.purpose == Purpose.PROPERTY
             and base.keys
             == {
-                f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}",
+                ALL_ROWS_ADDRESS,
             }
         ):
             granularity = Granularity.SINGLE_ROW
@@ -4268,6 +4219,7 @@ class Factory:
             name=base.name,
             derived_concepts=[x.address for x in base.derived_concepts],
             select=base.select,
+            scalar=base.scalar,
         )
         return out
 

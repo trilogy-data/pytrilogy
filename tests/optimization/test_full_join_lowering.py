@@ -170,7 +170,8 @@ def test_refusal_names_the_dialect_limitation():
 
 
 # A `~partial` binding plans a nested FULL, whose coalesced key reads as
-# nullable; under plain `=` a spine would change the NULL-key row count.
+# nullable on that one side; the spine pairs the slot null-safely and the
+# NULL-key rows re-expand against that side alone, the native count.
 PARTIAL_MODEL = """
 key cid int;
 property cid.cname string;
@@ -185,19 +186,73 @@ datasource orders (oid:oid, ocust:~ocust, amt:amt) grain (oid)
 PARTIAL_QUERY = "select cid, cname, sum(amt) as total union join ocust = cid;"
 
 
-def test_nullable_plain_equality_key_is_refused_with_remediation():
-    executor = _executor(PARTIAL_MODEL)
-    _, statements = parse_text(PARTIAL_QUERY, executor.environment)
+# `~?`: the fact's NULL key is a value no dimension row holds. A native FULL
+# under plain `=` keeps each such row unmatched; the spine's one NULL row
+# re-expands against the fact alone, so every NULL-key order keeps its row.
+NULLABLE_FK_MODEL = """
+key customer_id int;
+property customer_id.name string;
+key order_id int;
+property order_id.amount int;
+datasource customers (customer_id: customer_id, name: name) grain (customer_id)
+  query '''select 1 as customer_id, 'ann' as name union all select 2, 'bob' union all select 3, 'cat' ''';
+datasource orders (order_id: order_id, customer_id: ~?customer_id, amount: amount) grain (order_id)
+  query '''select 100 as order_id, 1 as customer_id, 5 as amount union all select 101, null, 7
+           union all select 102, 2, 9 union all select 103, null, 11''';
+auto big <- case when amount > 6 then 'big' else 'small' end;
+auto customer_label <- coalesce(name, 'unknown');
+"""
 
+
+@pytest.mark.parametrize(
+    "model, query",
+    [
+        (PARTIAL_MODEL, PARTIAL_QUERY),
+        (NULLABLE_FK_MODEL, "select order_id, customer_id, name;"),
+        (NULLABLE_FK_MODEL, "select customer_id, big;"),
+        (NULLABLE_FK_MODEL, "select customer_id, name, count(order_id) as n;"),
+        (NULLABLE_FK_MODEL, "select customer_label, big, count(order_id) as n;"),
+        (
+            NULLABLE_FK_MODEL,
+            "select customer_id, customer_label, count(order_id) as n;",
+        ),
+    ],
+)
+def test_one_nullable_side_lowers_and_matches_native(model: str, query: str):
+    executor = _executor(model)
+    native_sql, lowered_sql = _both_sql(executor, query)
+
+    assert "FULL JOIN" in native_sql.upper(), native_sql
+    assert "FULL JOIN" not in lowered_sql.upper(), lowered_sql
+    assert "IS NOT DISTINCT FROM" in lowered_sql.upper(), lowered_sql
+    assert _rows(executor, native_sql) == _rows(executor, lowered_sql)
+
+
+def test_two_nullable_sides_are_refused_with_remediation(monkeypatch):
+    from types import SimpleNamespace
+
+    from trilogy.core.optimizations import full_join_lowering
+
+    monkeypatch.setattr(full_join_lowering, "proven_non_null", lambda c, n: False)
+    key = SimpleNamespace(address="local.cust_id")
+    participants = [
+        (SimpleNamespace(name="orders"), [key]),
+        (SimpleNamespace(name="returns"), [key]),
+    ]
     with pytest.raises(UnsupportedFullJoinError) as excinfo:
-        NoFullJoinDuckDB().generate_queries(executor.environment, statements)
+        full_join_lowering._check_null_keys(
+            SimpleNamespace(name="cte"), [key], [False], participants
+        )
 
     message = str(excinfo.value)
-    assert "may be NULL" in message, message
+    assert "may be NULL in ['orders', 'returns']" in message, message
     # The error must hand back a route out, not just a diagnosis.
     assert "is not null" in message, message
     assert "`~partial`" in message, message
     assert "native FULL JOIN support" in message, message
+    assert full_join_lowering._check_null_keys(
+        SimpleNamespace(name="cte"), [key], [False], participants[:1]
+    ) == [True]
 
 
 def test_suggested_null_reject_actually_unblocks_lowering():
@@ -226,3 +281,18 @@ def test_suggested_complete_binding_actually_unblocks_lowering():
 
     assert "FULL JOIN" not in sql.upper(), sql
     assert '"_spine' in sql, sql
+
+
+def test_repeated_left_key_is_diagnosed_as_repeated():
+    from types import SimpleNamespace
+
+    from trilogy.core.optimizations.full_join_lowering import _pairs_by_slot
+
+    key = SimpleNamespace(address="local.cust_id")
+    join = SimpleNamespace(
+        joinkey_pairs=[SimpleNamespace(left=key), SimpleNamespace(left=key)]
+    )
+    with pytest.raises(UnsupportedFullJoinError) as exc:
+        _pairs_by_slot(join, [key], "cte")
+    assert "bind more than one key" in str(exc.value)
+    assert "different concepts" not in str(exc.value)

@@ -33,7 +33,7 @@ class WindowNode(StrategyNode):
         )
 
     def copy(self) -> "WindowNode":
-        return WindowNode(
+        node = WindowNode(
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
@@ -43,3 +43,4 @@ class WindowNode(StrategyNode):
             preexisting_conditions=self.preexisting_conditions,
             nullable_concepts=list(self.nullable_concepts),
         )
+        return self.with_marks(node)

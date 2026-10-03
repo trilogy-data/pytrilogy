@@ -1,4 +1,7 @@
+from collections.abc import Iterable, Sequence
+
 from trilogy.constants import PRESENCE_PROBE_PREFIX, logger
+from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import BuildConcept, BuildDatasource
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.select_helpers.datasource_nodes import (
@@ -36,7 +39,7 @@ def probe_member_address(
 
 
 def member_binding_datasources(
-    member_address: str, environment: BuildEnvironment
+    member_address: str, datasources: Iterable[BuildDatasource]
 ) -> list[BuildDatasource]:
     """Datasources that PHYSICALLY carry the member's authored column, best
     presence population first. After canonical substitution every group
@@ -51,9 +54,7 @@ def member_binding_datasources(
     fallback when the member has no carrier."""
     at_grain: list[BuildDatasource] = []
     off_grain: list[BuildDatasource] = []
-    for datasource in environment.datasources.values():
-        if not isinstance(datasource, BuildDatasource):
-            continue
+    for datasource in datasources:
         for column in datasource.columns:
             origin = (
                 column.origin_address
@@ -100,11 +101,12 @@ def _pinned_member_node(
     member_address: str,
     key: BuildConcept,
     environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
     depth: int,
 ) -> StrategyNode | None:
     """A scan of the member's own datasource producing the group key from the
     member's authored column, grouped to key grain."""
-    candidates = member_binding_datasources(member_address, environment)
+    candidates = member_binding_datasources(member_address, datasources)
     if not candidates:
         return None
     if len(candidates) > 1:
@@ -116,6 +118,7 @@ def _pinned_member_node(
         candidates[0],
         [key],
         environment=environment,
+        datasources=datasources,
         depth=depth + 1,
         conditions=None,
     )
@@ -137,7 +140,7 @@ def gen_coalescing_axis_node(
     concept: BuildConcept,
     environment: BuildEnvironment,
     depth: int,
-    g=None,
+    g: ReferenceGraph,
     source_concepts=None,
     history: History | None = None,
 ) -> StrategyNode | None:
@@ -168,7 +171,9 @@ def gen_coalescing_axis_node(
         key = environment.concepts.get(canonical) or concept
         sides: list[StrategyNode] = []
         for member in sorted(group):
-            side = _pinned_member_node(member, key, environment, depth)
+            side = _pinned_member_node(
+                member, key, environment, g.scope.datasources, depth
+            )
             if side is None and source_concepts is not None:
                 # No datasource carries the member (rowset/derived): source the
                 # member itself; the in-progress guard keeps that one-sided.

@@ -209,7 +209,7 @@ class GroupNode(StrategyNode):
         return base
 
     def copy(self) -> "GroupNode":
-        return GroupNode(
+        node = GroupNode(
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
@@ -225,3 +225,4 @@ class GroupNode(StrategyNode):
             hidden_concepts=set(self.hidden_concepts),
             ordering=self.ordering,
         )
+        return self.with_marks(node)

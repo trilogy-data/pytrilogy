@@ -57,7 +57,7 @@ reference's cost.
 `where sales.return_date.week_seq in (...)` can only be true on a returns
 row, yet the plan FULL-joined the 3.4M-row sales union to the returns union to
 "complete" the returns' `~order_id`/`~item.sk`, then dropped every sales-only
-row at the date join. The sibling-anchor guard in `heal_pinned_partials`
+row at the date join. The sibling-anchor guard in `decide_heal`
 blocked healing whenever any sibling carried the key in a larger grain.
 
 The guard is now conditional (`_anchors_dispensable`): an anchor is

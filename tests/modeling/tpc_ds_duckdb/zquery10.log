@@ -1,5 +1,5 @@
 query_id = "10"
-gen_length = 7070
+gen_length = 6971
 preql_size = 2161
 comp_size = 1858
 generated_sql = """
@@ -51,21 +51,21 @@ FROM
     \"cheerful\"),
 uneven as (
 SELECT
-    CASE WHEN \"cooperative\".\"sales_channel\" = 'STORE' and \"cooperative\".\"sales_sale_date_year\" = 2002 and (\"cooperative\".\"sales_sale_date_month_of_year\" is not null and \"cooperative\".\"sales_sale_date_month_of_year\" in (1,2,3,4)) THEN \"cooperative\".\"sales_purchasing_customer_sk\" ELSE NULL END as \"store_buyers\"
-FROM
-    \"cooperative\"
-WHERE
-    \"cooperative\".\"sales_channel\" = 'STORE'
-
-GROUP BY
-    1),
-questionable as (
-SELECT
     CASE WHEN (\"cooperative\".\"sales_channel\" is not null and \"cooperative\".\"sales_channel\" in ('WEB','CATALOG')) and \"cooperative\".\"sales_sale_date_year\" = 2002 and (\"cooperative\".\"sales_sale_date_month_of_year\" is not null and \"cooperative\".\"sales_sale_date_month_of_year\" in (1,2,3,4)) THEN \"cooperative\".\"sales_purchasing_customer_sk\" ELSE NULL END as \"webcat_buyers\"
 FROM
     \"cooperative\"
 WHERE
     (\"cooperative\".\"sales_channel\" is not null and \"cooperative\".\"sales_channel\" in ('WEB','CATALOG'))
+
+GROUP BY
+    1),
+questionable as (
+SELECT
+    CASE WHEN \"cooperative\".\"sales_channel\" = 'STORE' and \"cooperative\".\"sales_sale_date_year\" = 2002 and (\"cooperative\".\"sales_sale_date_month_of_year\" is not null and \"cooperative\".\"sales_sale_date_month_of_year\" in (1,2,3,4)) THEN \"cooperative\".\"sales_purchasing_customer_sk\" ELSE NULL END as \"store_buyers\"
+FROM
+    \"cooperative\"
+WHERE
+    \"cooperative\".\"sales_channel\" = 'STORE'
 
 GROUP BY
     1)
@@ -89,7 +89,7 @@ FROM
     INNER JOIN \"memory\".\"customer_address\" as \"sales_purchasing_customer_current_address_customer_address\" on \"sales_purchasing_customer_customers\".\"C_CURRENT_ADDR_SK\" = \"sales_purchasing_customer_current_address_customer_address\".\"CA_ADDRESS_SK\"
     INNER JOIN \"memory\".\"customer_demographics\" as \"sales_purchasing_customer_current_demographics_customer_demographics\" on \"sales_purchasing_customer_customers\".\"C_CURRENT_CDEMO_SK\" = \"sales_purchasing_customer_current_demographics_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
-    (\"sales_purchasing_customer_current_address_customer_address\".\"CA_COUNTY\" is not null and \"sales_purchasing_customer_current_address_customer_address\".\"CA_COUNTY\" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County')) and \"sales_purchasing_customer_current_demographics_customer_demographics\".\"CD_GENDER\" is not null and exists (select 1 from uneven where uneven.\"store_buyers\" is not distinct from \"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\") and exists (select 1 from questionable where questionable.\"webcat_buyers\" is not distinct from \"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\")
+    (\"sales_purchasing_customer_current_address_customer_address\".\"CA_COUNTY\" is not null and \"sales_purchasing_customer_current_address_customer_address\".\"CA_COUNTY\" in ('Rush County','Toole County','Jefferson County','Dona Ana County','La Porte County')) and exists (select 1 from questionable where questionable.\"store_buyers\" is not distinct from \"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\") and exists (select 1 from uneven where uneven.\"webcat_buyers\" is not distinct from \"sales_purchasing_customer_customers\".\"C_CUSTOMER_SK\")
 
 GROUP BY
     1,

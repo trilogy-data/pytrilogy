@@ -32,7 +32,7 @@ from trilogy.constants import (
     VIRTUAL_CONCEPT_PREFIX,
     MagicConstants,
 )
-from trilogy.core.constants import ALL_ROWS_CONCEPT
+from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.enums import (
     AggregateGroupingMode,
     BooleanOperator,
@@ -294,6 +294,7 @@ _JOIN_LABELS: dict[JoinType, str] = {
     JoinType.CROSS: "cross",
     JoinType.SUBSET: "subset",
     JoinType.UNION: "union",
+    JoinType.EQUAL: "equal",
 }
 
 
@@ -913,16 +914,13 @@ class _Extractor:
             render_scope_expr(b)
             for b in by
             if not (
-                isinstance(b, (ConceptRef, Concept))
-                and b.address.endswith(f".{ALL_ROWS_CONCEPT}")
+                isinstance(b, (ConceptRef, Concept)) and b.address == ALL_ROWS_ADDRESS
             )
         ]
         if by:
             return keys or ["*"]
         components = sorted(select.grain.components)
-        grain_keys = [
-            _short(c) for c in components if not c.endswith(f".{ALL_ROWS_CONCEPT}")
-        ]
+        grain_keys = [_short(c) for c in components if c != ALL_ROWS_ADDRESS]
         return grain_keys or ["*"]
 
     def _rowset_filters(self, rowset: BuildRowsetLineage) -> list[str]:
@@ -955,13 +953,11 @@ class _Extractor:
                 hierarchy = ", ".join(_short(c.address) for c in wrapper.by)
                 return [f"{wrapper.grouping.value}({hierarchy})"]
             by_keys = [
-                _short(c.address) for c in wrapper.by if c.name != ALL_ROWS_CONCEPT
+                _short(c.address) for c in wrapper.by if c.address != ALL_ROWS_ADDRESS
             ]
             return by_keys or ["*"]
         components = sorted(concept.grain.components) if concept.grain else []
-        grain_keys = [
-            _short(c) for c in components if not c.endswith(f".{ALL_ROWS_CONCEPT}")
-        ]
+        grain_keys = [_short(c) for c in components if c != ALL_ROWS_ADDRESS]
         return grain_keys or ["*"]
 
     def _finish(self) -> list[DerivedValueScope]:
@@ -1085,6 +1081,7 @@ def scoped_join_unused_side_warnings(
     `prem` scans `pa` alone, and a projected `prem.k` renders from `pa`. The
     rows are right by the never-drop-a-row rule, but nothing tells the reader
     the narrow side was dropped, so name it with the pin and the inversion.
+    Owners are the side's model as authored, whatever this plan's scope hid.
     ``used_datasources`` are the identifiers the finished plan reads from."""
     out: list[dict] = []
     for join in join_clauses:

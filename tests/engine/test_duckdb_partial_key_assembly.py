@@ -213,6 +213,12 @@ def test_keys_only(simple):
     ]
 
 
+def test_keys_only_needs_no_group(simple):
+    query = "select order_id, item_id, product_id, user_id;"
+    assert "GROUP BY" not in simple.generate_sql(query)[-1]
+    assert "GROUP BY" not in simple.generate_sql(_PIN + query)[-1]
+
+
 def test_keys_without_fact_anchor(simple):
     """The pair grain WITHOUT the fact's own row key: fact pairs projected to
     the pair grain, plus one extension row per unmatched member of each `~`
@@ -384,21 +390,18 @@ def test_forked_with_status_pinned(forked):
 
 
 def test_forked_full_column_set(forked):
-    assert (
-        _rows(
-            forked,
-            """select item_id, order_id, product_id, user_id, state, brand, order_status, total_qty, total_pair_cost
-        order by item_id asc nulls last, user_id asc nulls last, product_id asc nulls last;""",
-        )
-        == [
-            (1000, 100, 10, 1, "CA", "A", "FIRST", 5, 100),
-            (1001, 100, 20, 1, "CA", "B", "FIRST", 7, 150),
-            (1002, 101, 10, 2, "NY", "A", "FIRST", 11, 120),
-            (1003, 102, 20, 1, "CA", "B", "LATER", 13, 210),
-            (None, None, None, 3, "TX", None, None, None, None),
-            (None, None, 30, None, None, "C", None, None, None),
-        ]
-    )
+    query = """select item_id, order_id, product_id, user_id, state, brand, order_status, total_qty, total_pair_cost
+        order by item_id asc nulls last, user_id asc nulls last, product_id asc nulls last;"""
+    sql = forked.generate_sql(query)[-1]
+    assert sql.count("JOIN") == 6, sql
+    assert _rows(forked, query) == [
+        (1000, 100, 10, 1, "CA", "A", "FIRST", 5, 100),
+        (1001, 100, 20, 1, "CA", "B", "FIRST", 7, 150),
+        (1002, 101, 10, 2, "NY", "A", "FIRST", 11, 120),
+        (1003, 102, 20, 1, "CA", "B", "LATER", 13, 210),
+        (None, None, None, 3, "TX", None, None, None, None),
+        (None, None, 30, None, None, "C", None, None, None),
+    ]
 
 
 # sales anchors returns' `~` grain keys (the store_sales / store_returns
@@ -671,16 +674,11 @@ def test_composite_grain_families_with_by_span_aggregate():
         (100, 2, 20, 1, "LATER", 7),
         (101, 1, 10, 2, "FIRST", 11),
         (102, 1, 20, 1, "LATER", 13),
-        (None, None, None, 3, "LATER", None),
-        (None, None, 30, None, "LATER", None),
+        (None, None, None, 3, None, None),
+        (None, None, 30, None, None, None),
     ]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="without an aggregate the CASE is evaluated over the padded row and "
-    "its ELSE fires ('LATER'); owed NULL, as the aggregate spelling returns",
-)
 def test_status_on_extension_rows_is_null_without_an_aggregate(forked):
     query = """select order_id, user_id, order_status
         order by order_id asc nulls last, user_id asc nulls last;"""
@@ -689,4 +687,23 @@ def test_status_on_extension_rows_is_null_without_an_aggregate(forked):
         (101, 2, "FIRST"),
         (102, 1, "LATER"),
         (None, 3, None),
+    ]
+
+
+def test_padded_extension_rows_are_one_row_per_output():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        _FORKED.replace(
+            "select 3, 'TX'\n", "select 3, 'TX' union all\nselect 4, 'TX'\n"
+        )
+    )
+    query = """select item_id, order_id, state, brand, qty, qty - cost -> margin
+        order by item_id asc nulls last, state asc nulls last;"""
+    assert _rows(executor, query) == [
+        (1000, 100, "CA", "A", 5, 3),
+        (1001, 100, "CA", "B", 7, 4),
+        (1002, 101, "NY", "A", 11, 9),
+        (1003, 102, "CA", "B", 13, 10),
+        (None, None, "TX", None, None, None),
+        (None, None, None, "C", None, None),
     ]

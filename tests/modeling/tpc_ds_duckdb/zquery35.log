@@ -1,5 +1,5 @@
 query_id = "35"
-gen_length = 9096
+gen_length = 9038
 preql_size = 2381
 comp_size = 1745
 generated_sql = """
@@ -53,7 +53,7 @@ FROM
     INNER JOIN \"memory\".\"customer_address\" as \"customer_current_address_customer_address\" on \"customer_customers\".\"C_CURRENT_ADDR_SK\" = \"customer_current_address_customer_address\".\"CA_ADDRESS_SK\"
     INNER JOIN \"memory\".\"customer_demographics\" as \"customer_current_demographics_customer_demographics\" on \"customer_customers\".\"C_CURRENT_CDEMO_SK\" = \"customer_current_demographics_customer_demographics\".\"CD_DEMO_SK\"
 WHERE
-    \"customer_customers\".\"C_CURRENT_CDEMO_SK\" is not null and exists (select 1 from vacuous where vacuous.\"store_buyers_store_cust_id\" is not distinct from \"customer_customers\".\"C_CUSTOMER_SK\") and ( exists (select 1 from macho where macho.\"web_buyers_web_cust_id\" is not distinct from \"customer_customers\".\"C_CUSTOMER_SK\") or exists (select 1 from cheerful where cheerful.\"catalog_buyers_cat_cust_id\" is not distinct from \"customer_customers\".\"C_CUSTOMER_SK\") )
+    exists (select 1 from vacuous where vacuous.\"store_buyers_store_cust_id\" is not distinct from \"customer_customers\".\"C_CUSTOMER_SK\") and ( exists (select 1 from macho where macho.\"web_buyers_web_cust_id\" is not distinct from \"customer_customers\".\"C_CUSTOMER_SK\") or exists (select 1 from cheerful where cheerful.\"catalog_buyers_cat_cust_id\" is not distinct from \"customer_customers\".\"C_CUSTOMER_SK\") )
 ),
 puzzled as (
 SELECT

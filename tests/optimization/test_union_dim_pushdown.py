@@ -1,3 +1,5 @@
+from trilogy import Dialects
+from trilogy.constants import MagicConstants
 from trilogy.core.enums import ComparisonOperator, FunctionType, JoinType, SourceType
 from trilogy.core.models.build import (
     BuildColumnAssignment,
@@ -24,6 +26,7 @@ from trilogy.core.optimizations.union_dim_pushdown import (
     _datasource_matches_raw_id,
     _DimDescriptor,
     _find_dim_cte_for_qds,
+    _narrow_null_extending_joins,
     base_datasource,
 )
 
@@ -743,3 +746,155 @@ def test_union_dim_pushdown_plain_refuses_dim_derived_from_the_target(
     assert UnionDimPushdown()._apply_plain(target, [consumer], descriptor) is False
     assert target.source.joins == []
     assert target.parent_ctes == []
+
+
+MERGED_FACT_MODEL = """
+key item_id int;
+property item_id.price float;
+key channel enum<string>['A', 'B'];
+key order_id int;
+key outlet_id int;
+properties <order_id, channel, item_id> (
+    sales float?,
+    refund float?,
+);
+
+datasource items (id: item_id, price: price)
+grain (item_id)
+query '''select 1 as id, 10.0 as price union all select 2, 100.0''';
+
+partial datasource sales_a (raw(''' 'A' '''): channel, o: order_id, i: item_id, d: ?outlet_id, s: sales)
+grain (order_id, item_id, channel)
+complete where channel = 'A'
+query '''select 1 as o, 1 as i, 7 as d, 5.0 as s union all select 2, 2, 7, 6.0''';
+
+partial datasource sales_b (raw(''' 'B' '''): channel, o: order_id, i: item_id, d: ?outlet_id, s: sales)
+grain (order_id, item_id, channel)
+complete where channel = 'B'
+query '''select 1 as o, 1 as i, 8 as d, 50.0 as s union all select 2, 2, 8, 60.0''';
+
+partial datasource returns_a (raw(''' 'A' '''): channel, o: ~order_id, i: ~item_id, r: refund)
+grain (order_id, item_id, channel)
+complete where channel = 'A'
+query '''select 2 as o, 2 as i, 1.0 as r union all select 3, 1, 100.0''';
+
+partial datasource returns_b (raw(''' 'B' '''): channel, o: ~order_id, i: ~item_id, r: refund)
+grain (order_id, item_id, channel)
+complete where channel = 'B'
+query '''select 2 as o, 2 as i, 10.0 as r''';
+
+property outlet_id.region string;
+datasource outlets (id: outlet_id, region: region)
+grain (outlet_id)
+query '''select 7 as id, 'east' as region union all select 8, 'west' ''';
+"""
+
+
+def _merged_fact_rows(query: str) -> list[tuple]:
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(MERGED_FACT_MODEL)
+    rows = executor.execute_text(query)[-1].fetchall()
+    return [(r[0], *(None if v is None else float(v) for v in r[1:])) for r in rows]
+
+
+def test_union_dim_pushdown_keeps_filter_on_every_side_of_a_merged_fact():
+    assert _merged_fact_rows("""where price > 50 and outlet_id is not null
+select channel, sum(sales) as total_sales, sum(refund) as total_refund
+order by channel;""") == [("A", 6.0, 1.0), ("B", 60.0, 10.0)]
+
+
+def test_union_dim_pushdown_strip_drops_rows_the_union_side_padded():
+    assert _merged_fact_rows("""where region = 'east'
+select channel, sum(sales) as total_sales, sum(refund) as total_refund
+order by channel;""") == [("A", 11.0, 1.0)]
+
+
+def test_union_dim_pushdown_strip_drops_rows_a_later_join_padded():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        MERGED_FACT_MODEL.replace(
+            "select 2, 100.0'''", "select 2, 100.0 union all select 3, 200.0'''"
+        )
+    )
+    rows = executor.execute_text("""where region = 'east' and price > 50
+select channel, sum(sales) as total_sales, sum(refund) as total_refund
+order by channel;""")[-1].fetchall()
+    assert [(r[0], float(r[1]), float(r[2])) for r in rows] == [("A", 6.0, 1.0)]
+
+
+def test_union_dim_pushdown_strip_rewires_a_later_join_keyed_on_the_dim():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        MERGED_FACT_MODEL.replace("d: ?outlet_id", "d: outlet_id") + """
+property outlet_id.budget float?;
+datasource budgets (id: ~outlet_id, b: budget) grain (outlet_id)
+query '''select 7 as id, 3.0 as b union all select 11, 4.0''';
+"""
+    )
+    rows = executor.execute_text("""where region = 'east'
+select channel, outlet_id, sum(sales) as total_sales, max(budget) as b
+order by channel;""")[-1].fetchall()
+    assert [(r[0], r[1], float(r[2]), float(r[3])) for r in rows] == [
+        ("A", 7, 11.0, 3.0)
+    ]
+
+
+def _consumer_with_trailing_full(env, atom: BuildComparison) -> CTE:
+    category_id = env.concepts["category_id"]
+    branch = _branch_cte("branch", env.datasources["products"], [category_id])
+    union = _union_cte("unioned", [branch], [category_id])
+    dim = CTE.from_datasource(env.datasources["category"])
+    dim.name = "category_dim"
+    other = CTE.from_datasource(env.datasources["category"])
+    other.name = "other"
+    consumer = _dim_consumer(
+        union, dim, category_id, category_id, env.concepts["category_name"], atom
+    )
+    pair = CTEConceptPair(
+        left=category_id,
+        right=category_id,
+        existing_datasource=union.source,
+        cte=union,
+    )
+    consumer.joins.append(
+        Join(
+            right_cte=other,
+            jointype=JoinType.FULL,
+            left_cte=union,
+            joinkey_pairs=[pair],
+        )
+    )
+    return consumer
+
+
+def test_union_dim_pushdown_narrows_later_join_when_atoms_reject_null(
+    test_environment,
+):
+    env = test_environment.materialize_for_select()
+    atom = BuildComparison(
+        left=env.concepts["category_name"],
+        right="special",
+        operator=ComparisonOperator.EQ,
+    )
+    consumer = _consumer_with_trailing_full(env, atom)
+    _narrow_null_extending_joins(consumer, "unioned", "category_dim", [atom])
+    assert consumer.joins[1].jointype == JoinType.LEFT_OUTER
+
+
+def test_union_dim_pushdown_keeps_later_join_when_atoms_accept_null(
+    test_environment,
+):
+    env = test_environment.materialize_for_select()
+    atom = BuildComparison(
+        left=env.concepts["category_name"],
+        right=MagicConstants.NULL,
+        operator=ComparisonOperator.IS,
+    )
+    consumer = _consumer_with_trailing_full(env, atom)
+    _narrow_null_extending_joins(consumer, "unioned", "category_dim", [atom])
+    assert consumer.joins[1].jointype == JoinType.FULL
+    _narrow_null_extending_joins(consumer, "unioned", "category_dim", [])
+    assert consumer.joins[1].jointype == JoinType.FULL
+    consumer.joins.reverse()
+    _narrow_null_extending_joins(consumer, "unioned", "category_dim", [atom])
+    assert consumer.joins[0].jointype == JoinType.LEFT_OUTER

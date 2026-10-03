@@ -307,7 +307,10 @@ def test_q66_derived_over_rowset_output_connects(join_clause: str):
         Q66.format(join=join_clause).replace("wh.reg * 2 as r", "wh.reg as r"),
     )
     _, der_rows = _rows("", tail)
-    assert der_rows == [(r * 2, p) for (r, p) in raw_rows]
+    # Sorted: neither query has an ORDER BY, and the two plans legitimately
+    # differ — `wh.reg` covers its own row identity where `wh.reg * 2` cannot,
+    # so only the raw form sheds the FINAL merge's GROUP BY.
+    assert sorted(der_rows) == sorted((r * 2, p) for (r, p) in raw_rows)
 
 
 def test_q59_shared_canonical_composite_subset_join_no_fanout():

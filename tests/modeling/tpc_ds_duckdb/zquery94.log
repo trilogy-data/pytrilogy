@@ -1,5 +1,5 @@
 query_id = "94"
-gen_length = 2125
+gen_length = 2140
 preql_size = 619
 comp_size = 795
 generated_sql = """
@@ -28,7 +28,9 @@ juicy as (
 SELECT
     \"yummy\".\"ws_order_number\" as \"multi_warehouse_orders\"
 FROM
-    \"yummy\"),
+    \"yummy\"
+GROUP BY
+    1),
 thoughtful as (
 SELECT
     coalesce(\"ws_web_returns\".\"WR_ORDER_NUMBER\",\"ws_web_sales\".\"WS_ORDER_NUMBER\") as \"returned_orders\"

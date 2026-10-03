@@ -45,6 +45,7 @@ from trilogy.core.processing.condition_utility import (
 from trilogy.core.processing.join_resolution import (
     OUTER_JOIN_TYPES,
     _padding_sources,
+    guest_padded_addresses,
     nulls_are_values,
 )
 
@@ -138,6 +139,15 @@ def _complete_distinct(
     return False
 
 
+def _extent_free(concept: BuildConcept, side_cte: CTE) -> bool:
+    """The side was planned not to extend the concept's span: a region domain
+    elsewhere holds the rows it lacks, so it carries only part of the key."""
+    keys = _key_addresses(concept)
+    if isinstance(concept.lineage, BuildRowsetItem):
+        keys.add(concept.lineage.content.address)
+    return bool(keys & side_cte.source.extent_free_spans)
+
+
 def _own_coverage_partial(
     concept: BuildConcept, side_cte: CTE, graph: DomainGraph
 ) -> bool:
@@ -192,6 +202,11 @@ def _rowset_definition_boundary(
         return False
     addr = concept.address
     if not any(out.address == addr for out in side_cte.output_columns):
+        return False
+    if _extent_free(concept, side_cte) or any(
+        isinstance(parent, CTE) and _extent_free(concept, parent)
+        for parent in side_cte.parent_ctes
+    ):
         return False
     if not side_cte.parent_ctes:
         return not _filters_own_rowset_outputs(concept, side_cte)
@@ -301,6 +316,26 @@ def _identity(address: str) -> str:
     return address
 
 
+def _unpaired_guest_padding(
+    sub_concept: BuildConcept,
+    sub_cte: CTE | UnionCTE,
+    sup_concept: BuildConcept,
+    sup_cte: CTE | UnionCTE,
+) -> bool:
+    """The sub side NULLs the key for a `~?` guest (a value-NULL key that
+    found no partner: the guest sale's description) and the sup side does
+    not. Null-safe equality pairs that NULL only with a NULL member the sup
+    side happens to hold, so the sub side's preservation stays load-bearing."""
+    if not isinstance(sub_cte, CTE):
+        return False
+    if not _key_addresses(sub_concept) & guest_padded_addresses(sub_cte.source):
+        return False
+    return not (
+        isinstance(sup_cte, CTE)
+        and _key_addresses(sup_concept) & guest_padded_addresses(sup_cte.source)
+    )
+
+
 def _unshared_join_padding(pair, right_cte: CTE | UnionCTE) -> bool:
     """A side whose key can be NULL via outer-join padding carries the join
     image of the key (the values its preserved rows happened to match, a
@@ -368,7 +403,7 @@ def _complete_values(
     row LIMIT anywhere in the chain vetoes unconditionally."""
     if not isinstance(side_cte, CTE):
         return False
-    if _row_limited(side_cte):
+    if _row_limited(side_cte) or _extent_free(concept, side_cte):
         return False
     keys = _key_addresses(concept)
     if not _own_coverage_partial(concept, side_cte, graph):
@@ -601,16 +636,20 @@ def _pair_side_fully_matches(
     # subset side fully matches it. An external filter on the rowset output
     # fails the boundary test and falls through below.
     #
-    # Gated on a strict directional subset between the two own addresses: a
-    # scoped-join merge collapses every anchor-joined key onto one canonical,
-    # so two independent rowsets joined to a common anchor land in each
-    # other's pseudonym closure and `_proven_subset_of` would falsely read one
-    # sibling as the superset of the other. The own-address relation is
-    # UNKNOWN for such siblings and SUBSET only toward the genuine anchor.
-    if (
-        _rowset_definition_boundary(sup_concept, sup_cte)
-        and domain_graph.relation(sub_concept.address, sup_concept.address)
+    # Gated on a strict directional subset between the two own addresses, or
+    # an authored identity (`equal join`: one domain, so the other side is a
+    # subset of it however it is filtered): a scoped-join merge collapses
+    # every anchor-joined key onto one canonical, so two independent rowsets
+    # joined to a common anchor land in each other's pseudonym closure and
+    # `_proven_subset_of` would falsely read one sibling as the superset of
+    # the other. The own-address relation is UNKNOWN for such siblings and
+    # SUBSET only toward the genuine anchor. A resolved EQUAL that nobody
+    # declared (a `subset join a = rs.k` opposed by the filtered body's own
+    # `rs.k ⊑ a`) is a lying declaration, and stays preserving.
+    if _rowset_definition_boundary(sup_concept, sup_cte) and (
+        domain_graph.relation(sub_concept.address, sup_concept.address)
         is ResolvedRelation.SUBSET
+        or domain_graph.declared_equal(sub_concept.address, sup_concept.address)
     ):
         return True
     if not _complete_values(sup_concept, sup_cte, domain_graph):
@@ -1009,6 +1048,9 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                 )
                 and (
                     pair.is_nullable
+                    and not _unpaired_guest_padding(
+                        pair.right, right_cte, pair.left, pair.cte
+                    )
                     or not _key_nullable(pair.right, right_cte)
                     or relative_right(pair)
                     and not _key_nullable(pair.left, pair.cte)
@@ -1033,6 +1075,9 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                 )
                 and (
                     pair.is_nullable
+                    and not _unpaired_guest_padding(
+                        pair.left, pair.cte, pair.right, right_cte
+                    )
                     or not _key_nullable(pair.left, pair.cte)
                     or relative_left(pair)
                     and not _key_nullable(pair.right, right_cte)

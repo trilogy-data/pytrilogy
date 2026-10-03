@@ -29,6 +29,10 @@ from trilogy.core.optimizations.collapse_single_parent import (
     grouped_unbound_passthrough_should_wait,
 )
 from trilogy.core.optimizations.full_join_lowering import lower_full_joins
+from trilogy.core.optimizations.identity_group import DropIdentityGroup
+from trilogy.core.optimizations.join_upgrade import PrunePreservedJoinKeys
+from trilogy.core.optimizations.reuse_parent_lookup import ReuseParentLookup
+from trilogy.core.processing import plan_trace
 from trilogy.core.processing.utility import sort_select_output_processed
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 from trilogy.utility import unique
@@ -588,6 +592,43 @@ def build_optimization_rule_plan(
                 ),
             )
         )
+    if opts.drop_identity_group:
+        plan.append(
+            OptimizationRulePlan(
+                name="drop_identity_group",
+                rule_factory=DropIdentityGroup,
+                depends_on=_enabled_dependencies(
+                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
+                    (
+                        "upgrade_outer_key_set_equivalence",
+                        opts.upgrade_outer_key_set_equivalence,
+                    ),
+                ),
+                reason=(
+                    "a GROUP BY a plan-time outer join required is a no-op DISTINCT "
+                    "once the joins are upgraded, so it runs after join types settle"
+                ),
+            )
+        )
+    if opts.reuse_parent_lookup:
+        plan.append(
+            OptimizationRulePlan(
+                name="reuse_parent_lookup",
+                rule_factory=ReuseParentLookup,
+                depends_on=_enabled_dependencies(
+                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
+                    (
+                        "upgrade_outer_key_set_equivalence",
+                        opts.upgrade_outer_key_set_equivalence,
+                    ),
+                ),
+                reason=(
+                    "it reads join types and the holder's grouping, so it runs "
+                    "once both are settled and before output pruning hides the "
+                    "columns it carries"
+                ),
+            )
+        )
     if opts.hide_unused_concepts:
         plan.append(
             OptimizationRulePlan(
@@ -613,6 +654,25 @@ def build_optimization_rule_plan(
                     "reads the feeder's visible outputs, so it runs after join "
                     "types and output pruning are final. Adds no CTE and rewrites "
                     "no condition, so nothing downstream needs to re-fire"
+                ),
+            )
+        )
+    if opts.upgrade_condition_joins or opts.upgrade_outer_key_set_equivalence:
+        plan.append(
+            OptimizationRulePlan(
+                name="prune_preserved_join_keys",
+                rule_factory=PrunePreservedJoinKeys,
+                depends_on=_enabled_dependencies(
+                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
+                    (
+                        "upgrade_outer_key_set_equivalence",
+                        opts.upgrade_outer_key_set_equivalence,
+                    ),
+                ),
+                reason=(
+                    "a narrowed outer join preserves a side the planner had to "
+                    "coalesce, so it runs once join types are final, and before the "
+                    "INNER reorder the dropped pairs would pin"
                 ),
             )
         )
@@ -699,6 +759,7 @@ def optimize_ctes(
     cte_lookup[root_cte.name] = root_cte
 
     phase_actions: dict[str, bool] = {}
+    normalized = False
     rule_plan = build_optimization_rule_plan(
         having_alias=having_alias,
         domain_graph=domain_graph,
@@ -718,6 +779,8 @@ def optimize_ctes(
             phase_actions[phase.name] = False
             continue
         rule = phase.make_rule()
+        before = plan_trace.cte_snapshot([*input, root_cte])
+        phase_merged: dict[str, str] = {}
         loops = 0
         complete = False
         phase_changed = False
@@ -730,6 +793,7 @@ def optimize_ctes(
                 opt, merged = rule.optimize(cte, inverse_map)
                 actions_taken = actions_taken or opt
                 if merged:
+                    phase_merged.update(merged)
                     cte_lookup.update({c.name: c for c in input})
                     cte_lookup[root_cte.name] = root_cte
                     if root_cte.name in merged:
@@ -757,7 +821,19 @@ def optimize_ctes(
                     "without converging",
                 )
             )
-        input = reorder_ctes(filter_irrelevant_ctes(input, root_cte))
+        # an unchanged phase leaves an already-normalized list as it was
+        if phase_changed or not normalized:
+            input = reorder_ctes(filter_irrelevant_ctes(input, root_cte))
+            normalized = True
+        _trace_phase(
+            phase.name,
+            type(rule).__name__,
+            loops,
+            before,
+            input,
+            root_cte,
+            phase_merged,
+        )
         phase_actions[phase.name] = phase_changed
         logger.info(
             optimization_log(
@@ -767,9 +843,32 @@ def optimize_ctes(
             )
         )
 
+    before = plan_trace.cte_snapshot([*input, root_cte])
     if not supports_full_join:
         # The rewrite adds CTEs and repoints FROM bases, so every join-type
         # and placement decision must already be final.
         input = lower_full_joins(input, root_cte)
 
-    return reorder_ctes(filter_irrelevant_ctes(input, root_cte))
+    final = reorder_ctes(filter_irrelevant_ctes(input, root_cte))
+    _trace_phase(
+        "final sweep", "filter_irrelevant_ctes", 1, before, final, root_cte, {}
+    )
+    return final
+
+
+def _trace_phase(
+    phase: str,
+    rule: str,
+    loops: int,
+    before: dict[str, plan_trace.CteTrace],
+    after: list[CTE | UnionCTE],
+    root_cte: CTE | UnionCTE,
+    merged: dict[str, str],
+) -> None:
+    if not plan_trace.active():
+        return
+    step = plan_trace.optimizer_step(
+        phase, rule, loops, before, plan_trace.cte_snapshot([*after, root_cte]), merged
+    )
+    plan_trace.note_removed_ctes(phase, rule, {t.name for t in step.removed}, merged)
+    plan_trace.record(f"{phase} ({rule})", step)

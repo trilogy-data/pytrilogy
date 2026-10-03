@@ -1,7 +1,11 @@
 """Tests for the `trilogy file` command group."""
 
+import signal
+import socket
+import threading
 from pathlib import Path
 
+import click
 import pytest
 from click.testing import CliRunner
 
@@ -670,6 +674,51 @@ def test_write_run_and_delete_removes_file_after_failed_run(runner, tmp_path: Pa
     assert not target.exists()
 
 
+def _interrupting_run(monkeypatch, interrupt) -> None:
+    original = type(cli).get_command
+
+    def get_command(self, ctx, name):
+        if name != "run":
+            return original(self, ctx, name)
+        return click.Command("run", callback=lambda **_: interrupt())
+
+    monkeypatch.setattr(type(cli), "get_command", get_command)
+
+
+def _terminate() -> None:
+    handler = signal.getsignal(signal.SIGTERM)
+    assert callable(handler)
+    handler(signal.SIGTERM, None)
+
+
+def _ctrl_c() -> None:
+    raise KeyboardInterrupt
+
+
+@pytest.mark.parametrize("interrupt", [_terminate, _ctrl_c])
+def test_write_run_and_delete_removes_file_when_run_is_interrupted(
+    runner, tmp_path: Path, monkeypatch, interrupt
+):
+    _interrupting_run(monkeypatch, interrupt)
+    target = _duckdb_dir(tmp_path) / "probe.preql"
+    result = runner.invoke(
+        cli,
+        [
+            "file",
+            "write",
+            str(target),
+            "--content",
+            "select 1 -> x;",
+            "--run-and-delete",
+        ],
+    )
+    assert result.exit_code != 0, result.output
+    assert not target.exists()
+    from trilogy.scripts import file as file_module
+
+    assert signal.getsignal(signal.SIGTERM) is not file_module._raise_exit
+
+
 def test_write_run_forwards_params(runner, tmp_path: Path):
     """``--param`` on write --run reaches the run execution, so parameterized
     queries validate in the same single call as everything else."""
@@ -832,3 +881,71 @@ def test_list_cap_emits_truncation_notice(runner, tmp_path: Path, monkeypatch):
     result = runner.invoke(cli, ["file", "list", str(tmp_path)])
     assert result.exit_code == 0, result.output
     assert "capped at 3 entries" in result.output
+
+
+def _signalled_watchdog(
+    monkeypatch, unwound: threading.Event, signums: tuple[int, ...] = (signal.SIGTERM,)
+) -> list[str]:
+    from trilogy.scripts import file as file_module
+
+    events: list[str] = []
+    monkeypatch.setattr(file_module, "TERMINATION_GRACE_SECONDS", 0.01)
+    monkeypatch.setattr(
+        file_module.os, "_exit", lambda code: events.append(f"exit {code}")
+    )
+    reader, writer = socket.socketpair()
+    writer.send(bytes(signums))
+    writer.close()
+    file_module._watch_termination(
+        reader,
+        lambda: events.append("cleanup"),
+        unwound,
+        frozenset({signal.SIGTERM}),
+    )
+    return events
+
+
+def test_termination_watchdog_cleans_up_a_run_hung_past_the_grace(monkeypatch):
+    events = _signalled_watchdog(monkeypatch, threading.Event())
+    assert events == ["cleanup", f"exit {128 + signal.SIGTERM}"]
+
+
+def test_termination_watchdog_stands_down_once_the_run_unwinds(monkeypatch):
+    unwound = threading.Event()
+    unwound.set()
+    assert _signalled_watchdog(monkeypatch, unwound) == []
+
+
+def test_termination_watchdog_ignores_sigint(monkeypatch):
+    assert _signalled_watchdog(monkeypatch, threading.Event(), (signal.SIGINT,)) == []
+
+
+def test_termination_watchdog_arms_on_sigterm_after_sigint(monkeypatch):
+    events = _signalled_watchdog(
+        monkeypatch, threading.Event(), (signal.SIGINT, signal.SIGTERM)
+    )
+    assert events == ["cleanup", f"exit {128 + signal.SIGTERM}"]
+
+
+def test_run_once_cleanup_runs_once():
+    from trilogy.scripts.file import _RunOnce
+
+    calls: list[int] = []
+    cleanup = _RunOnce(lambda: calls.append(1))
+    cleanup()
+    cleanup()
+    assert calls == [1]
+
+
+def test_termination_restores_a_handler_installed_from_c(monkeypatch):
+    from trilogy.scripts import file as file_module
+
+    installed: list[object] = []
+
+    def fake_signal(signum, handler):
+        installed.append(handler)
+
+    monkeypatch.setattr(file_module.signal, "signal", fake_signal)
+    with file_module._exit_on_termination(lambda: None):
+        pass
+    assert signal.SIG_DFL in installed

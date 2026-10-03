@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from trilogy.core import graph as nx
-from trilogy.core.constants import ALL_ROWS_CONCEPT, INTERNAL_NAMESPACE
+from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import (
     DisconnectedConceptsException,
@@ -17,11 +17,13 @@ from trilogy.core.exceptions import (
 )
 from trilogy.core.models.build import (
     BoolExpr,
+    BuildAggregateWrapper,
     BuildConcept,
     BuildRowsetItem,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing.condition_utility import (
     decompose_condition,
 )
@@ -30,18 +32,23 @@ from trilogy.core.processing.node_generators.presence_probe import is_presence_p
 
 from .concept_graph import computed_origin_relation_members
 from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS, DepthLabel, EdgeKind
-from .edges import EdgeMap, lineage_subgraph, subgraph_of_kinds
+from .edges import (
+    EdgeMap,
+    edge_kind,
+    edges_of_kind,
+    lineage_subgraph,
+    subgraph_of_kinds,
+)
 from .functional_dependency import build_fd_determines
 from .models import ConceptAttrs, GroupBucket
-from .projection import output_rowset_base_keys
+from .projection import output_rowset_grain_keys
+from .region_reads import restated_over_region
 from .staged_where import (
     CROSS_ROW_DERIVATIONS,
     concept_is_cross_row,
     stage_computes_cross_row,
     stage_lineage_addresses,
 )
-
-ROOT_D1_DEPTH = DepthLabel.ROOT_D1
 
 _EMITS_GROUP_BY: set[Derivation] = {
     Derivation.AGGREGATE,
@@ -55,7 +62,6 @@ class PlacementReason(Enum):
     FINAL_CROSS_GRAIN_AGGREGATE = "final_cross_grain_aggregate"
     DISCONNECTED_GATE = "disconnected_gate"
     FINAL_UNCOVERED_CONTRIBUTOR = "final_uncovered_contributor"
-    FINAL_PRESERVED_BRANCH = "final_preserved_branch"
     CONJUNCTION_RECOMPUTE = "conjunction_recompute"
     # A row atom copied onto a select-phase aggregate that the elected host
     # does not feed, so both siblings aggregate the same filtered population.
@@ -67,6 +73,9 @@ class PlacementReason(Enum):
     # exposes: hosted on FINAL, which pairs the gate's scan to the
     # boundary on that key.
     FINAL_ROWSET_BASE_KEY = "final_rowset_base_key"
+    # A row atom over something absent on a region that has a domain,
+    # restated at FINAL where the domain's rows join back.
+    FINAL_SPAN_DOMAIN = "final_span_domain"
 
 
 @dataclass(frozen=True)
@@ -84,7 +93,7 @@ def _keyed_by_output_rowset_base(
     """Whether every row input is, or is a property of, a base grain key an
     output rowset boundary exposes. Such a gate is relatable: it pairs with the
     boundary on that key exactly as it would if it were selected."""
-    base_keys = output_rowset_base_keys(mandatory_list, environment)
+    base_keys = output_rowset_grain_keys(mandatory_list)
     if not base_keys:
         return False
     for address in row_inputs:
@@ -332,7 +341,7 @@ def _producer_groups(
         main_producers = [
             gid
             for gid in producers
-            if buckets[gid].depth_label not in (DepthLabel.D1, ROOT_D1_DEPTH)
+            if buckets[gid].depth_label not in (DepthLabel.D1, DepthLabel.ROOT_D1)
         ]
         producer_groups.update(main_producers or producers)
     return producer_groups
@@ -373,11 +382,10 @@ def _post_aggregation_producers(
     host is the row group with the global CTE cross-joined in, so pinning to
     the producer chain strands the row side). Pin only when EVERY row input is
     a global post-aggregation value."""
-    all_rows_address = f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"
     lineage_only = lineage_subgraph(group_graph, group_edges)
 
     def _is_global(gid: str) -> bool:
-        return set(buckets[gid].grain_components) <= {all_rows_address}
+        return set(buckets[gid].grain_components) <= {ALL_ROWS_ADDRESS}
 
     producers: set[str] = set()
     for addr in row_inputs:
@@ -420,6 +428,24 @@ def _routes_to_final_for_cross_grain_aggregates(
         if b.derivation in _EMITS_GROUP_BY and set(b.primary_members) & agg_outputs
     }
     return len(agg_grains) > 1
+
+
+def _host_election_graph(
+    lineage_ancestors_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    buckets: dict[str, GroupBucket],
+) -> nx.DiGraph:
+    """The ancestry an atom's host is elected over. A ROOT re-plans its rows
+    from the datasources and never reads a constraint feeder's node, so the
+    feeder is not upstream of it: an atom elected onto the feeder in its place
+    is never applied."""
+    host_graph = lineage_ancestors_graph.copy()
+    host_graph.remove_edges_from(
+        (u, v)
+        for u, v in edges_of_kind(group_edges, EdgeKind.CONSTRAINT)
+        if v in buckets and buckets[v].derivation == Derivation.ROOT
+    )
+    return host_graph
 
 
 def _upstream_most(
@@ -490,7 +516,7 @@ def _uncovered_exposing_output_contributor(
     for gid in group_graph.predecessors(FINAL_NODE_ID):
         b = buckets.get(gid)
         if b is not None:
-            final_exposable |= set(b.primary_members) | set(b.secondary_members)
+            final_exposable |= set(b.primary_members) | b.carried
     collapsing_hosts = [
         buckets[gid]
         for gid in chosen_groups
@@ -505,15 +531,13 @@ def _uncovered_exposing_output_contributor(
             continue
         covered_members |= set(buckets[gid].primary_members)
         if gid in chosen_groups:
-            covered_members |= set(buckets[gid].secondary_members) | set(
-                buckets[gid].grain_components
-            )
+            covered_members |= buckets[gid].carried | set(buckets[gid].grain_components)
     for gid, b in buckets.items():
         if gid in covered:
             continue
-        if b.depth_label in (DepthLabel.D1, ROOT_D1_DEPTH):
+        if b.depth_label in (DepthLabel.D1, DepthLabel.ROOT_D1):
             continue
-        members = set(b.primary_members) | set(b.secondary_members)
+        members = set(b.primary_members) | b.carried
         if not (members & mandatory_addrs):
             continue
         if row_inputs <= members:
@@ -575,40 +599,134 @@ def _decided_per_group(
     return True
 
 
-def _preserved_final_branch(
-    chosen_groups: tuple[str, ...],
+def _reads_past_region_domain(
     row_inputs: set[str],
     buckets: dict[str, GroupBucket],
-    group_graph: nx.DiGraph,
-    mandatory_addrs: set[str],
+    keyspace: Keyspace,
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
 ) -> bool:
-    """Whether every chosen host is a side branch feeding ONLY the FINAL merge
-    while other select-phase contributors also enter it. The FINAL join against
-    such a filtered branch renders row-preserving whenever its axis is nullable
-    or partial (the enrichment contract), which re-admits the rows the WHERE
-    excluded as NULL-extended pads (a dimension filter hosted on a split
-    dimension cluster, LEFT-joined back to the qualifying aggregate). The
-    WHERE, not the join, owns row dropping, so the atom is re-asserted at
-    FINAL; the re-check is idempotent when the join is already row-identical
-    (the predicate is restated at its merge in the same shape).
-    Gated on the inputs being FINAL-visible mandatory outputs so the copy never
-    drags feeder scans in above the merge, and skipped under non-standard
-    grouping for the same subtotal-NULL reason as
-    ``_uncovered_exposing_output_contributor``."""
-    if any(b.nulls_grouping_keys for b in buckets.values()):
+    """Whether the atom is tested where a region domain's rows join back
+    (`restated_over_region`, the rule that gave the region its domain): at
+    FINAL, or at an aggregate the domain feeds. A null-rejecting atom over an
+    absent value never gets here: it empties the region, and an empty region
+    gets no domain."""
+    for bucket in buckets.values():
+        if not bucket.extent_spans:
+            continue
+        region = keyspace.region_of(bucket.extent_spans)
+        assert region is not None, bucket.extent_spans
+        held = set(bucket.primary_members) | bucket.carried
+        if any(
+            restated_over_region(
+                address, region, held, keyspace, mandatory_list, environment
+            )
+            for address in row_inputs
+        ):
+            return True
+    return False
+
+
+def _over_aggregates_by_span(
+    row_inputs: set[str],
+    buckets: dict[str, GroupBucket],
+    keyspace: Keyspace,
+    environment: BuildEnvironment,
+) -> bool:
+    """Every input is an aggregate keyed on a region domain's spans: a value
+    per member of the region, 0 on the member no fact row references."""
+    spans = [bucket.extent_spans for bucket in buckets.values() if bucket.extent_spans]
+    if not spans or not row_inputs:
         return False
-    if not chosen_groups or not row_inputs or not (row_inputs <= mandatory_addrs):
-        return False
-    if not all(
-        set(group_graph.successors(gid)) == {FINAL_NODE_ID} for gid in chosen_groups
-    ):
-        return False
-    return any(
-        gid not in chosen_groups
-        and gid in buckets
-        and buckets[gid].depth_label not in (DepthLabel.D1, ROOT_D1_DEPTH)
-        for gid in group_graph.predecessors(FINAL_NODE_ID)
+    for address in row_inputs:
+        concept = environment.concepts.get(address)
+        if concept is None or not isinstance(concept.lineage, BuildAggregateWrapper):
+            return False
+        keys = keyspace.keys_by_address.get(address, frozenset())
+        if not keys or not any(keys <= s for s in spans):
+            return False
+    return True
+
+
+def _grain_within_a_span(bucket: GroupBucket, buckets: dict[str, GroupBucket]) -> bool:
+    grain = set(bucket.grain_components)
+    return bool(grain) and any(
+        grain <= b.extent_spans for b in buckets.values() if b.extent_spans
     )
+
+
+def _region_domain_grouping_hosts(
+    candidates: list[str],
+    buckets: dict[str, GroupBucket],
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+) -> tuple[str, ...]:
+    """The candidate grouping groups a region domain feeds. Such a group is
+    evaluated over the region's rows (`count(order_id) by customer_id`,
+    `count(customer_id) by status`): the domain's rows and the solid stream
+    unite on its input, below FINAL, so an atom restated "where the domain's
+    rows join back" belongs there, on every united row before the aggregate.
+    Restated at FINAL instead it would filter aggregated rows by a per-row
+    value (fanning out through its producer, or silently dropping the rows
+    the aggregate should have lost)."""
+    return tuple(
+        gid
+        for gid in candidates
+        if gid in buckets
+        and buckets[gid].derivation in _EMITS_GROUP_BY
+        and any(
+            pred in buckets
+            and buckets[pred].extent_spans
+            and edge_kind(group_edges, pred, gid) == EdgeKind.LINEAGE
+            for pred in group_graph.predecessors(gid)
+        )
+    )
+
+
+def _outputs_beside_hosts(
+    hosts: tuple[str, ...],
+    buckets: dict[str, GroupBucket],
+    mandatory_list: list[BuildConcept],
+) -> bool:
+    """Whether the statement outputs a row value no grouping host emits
+    (`customer_id` beside `count(customer_id) by status`). FINAL reads it off
+    the united row stream, unfiltered by the hosts' input atom, so the atom
+    is applied there too."""
+    emitted: set[str] = set()
+    for gid in hosts:
+        emitted |= set(buckets[gid].grain_components) | set(
+            buckets[gid].primary_members
+        )
+    return any(c.address not in emitted for c in mandatory_list)
+
+
+def _hosts_carrying_condition_grain(
+    restricted: list[str],
+    row_inputs: set[str],
+    buckets: dict[str, GroupBucket],
+    group_own_keys: dict[str, set[str]],
+) -> list[str]:
+    """Hosts that can pair a condition-phase aggregate's branch: an atom over
+    `sum(amount) by status` joins that branch on `status`, so a host without
+    the grain (the ROOT scan, when `status` is a derivation of a sibling
+    group) cannot render it (`Missing source map entry`). Leaves the pool
+    alone when no host carries the grain."""
+    grains: list[set[str]] = [
+        set(b.grain_components)
+        for b in buckets.values()
+        if b.derivation in _EMITS_GROUP_BY
+        and b.depth_label in (DepthLabel.D1, DepthLabel.ROOT_D1)
+        and b.grain_components
+        and row_inputs & set(b.primary_members)
+    ]
+    if not grains:
+        return restricted
+    carrying = [
+        gid
+        for gid in restricted
+        if all(grain <= group_own_keys.get(gid, set()) for grain in grains)
+    ]
+    return carrying or restricted
 
 
 def _grouping_barrier_host(
@@ -676,7 +794,7 @@ def _conjunction_recompute_placements(
             if (
                 bucket is not None
                 and bucket.derivation in _EMITS_GROUP_BY
-                and bucket.depth_label not in (DepthLabel.D1, ROOT_D1_DEPTH)
+                and bucket.depth_label not in (DepthLabel.D1, DepthLabel.ROOT_D1)
             ):
                 hosts.add(gid)
     if not hosts:
@@ -720,6 +838,12 @@ def _conjunction_recompute_placements(
     return extra
 
 
+_COPIED_TO_UNCOVERED_GROUPINGS = (
+    PlacementReason.UPSTREAM_MOST,
+    PlacementReason.FINAL_SPAN_DOMAIN,
+)
+
+
 def _uncovered_grouping_placements(
     clause_placements: list[ConditionPlacement],
     buckets: dict[str, GroupBucket],
@@ -740,7 +864,9 @@ def _uncovered_grouping_placements(
     """
     extra: list[ConditionPlacement] = []
     for placement in clause_placements:
-        if placement.reason is not PlacementReason.UPSTREAM_MOST:
+        if placement.reason not in _COPIED_TO_UNCOVERED_GROUPINGS or (
+            FINAL_NODE_ID in placement.group_ids
+        ):
             continue
         atom = placement.atom
         if any(atom.existence_arguments):
@@ -759,7 +885,7 @@ def _uncovered_grouping_placements(
                 gid in placement.group_ids
                 or gid not in main_lineage
                 or bucket.derivation not in _EMITS_GROUP_BY
-                or bucket.depth_label in (DepthLabel.D1, ROOT_D1_DEPTH)
+                or bucket.depth_label in (DepthLabel.D1, DepthLabel.ROOT_D1)
                 or row_inputs & set(bucket.primary_members)
             ):
                 continue
@@ -814,7 +940,9 @@ def _staged_precondition_placements(
     not mean what it says at the host's input: probe/scoped-axis atoms read an
     axis that only exists post-merge, and an atom over the host's OWN output
     is a gate, which becoming a pre-filter would change."""
-    d1_root_ids = {gid for gid, b in buckets.items() if b.depth_label == ROOT_D1_DEPTH}
+    d1_root_ids = {
+        gid for gid, b in buckets.items() if b.depth_label == DepthLabel.ROOT_D1
+    }
     extra: list[ConditionPlacement] = []
     earlier_atoms: list[BoolExpr] = []
     for clause in staged_conditions:
@@ -827,7 +955,7 @@ def _staged_precondition_placements(
                 gid
                 for gid, b in buckets.items()
                 if b.derivation in CROSS_ROW_DERIVATIONS
-                and b.depth_label in (DepthLabel.D1, ROOT_D1_DEPTH)
+                and b.depth_label in (DepthLabel.D1, DepthLabel.ROOT_D1)
                 and stage_addrs & set(b.primary_members)
             )
             for host in hosts:
@@ -883,6 +1011,7 @@ def plan_condition_placements(
     conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
+    keyspace: Keyspace,
     scoped_join_key_groups: dict[str, set[str]] | None = None,
     concept_attrs: dict[str, ConceptAttrs] | None = None,
     statement_relation_addresses: frozenset[str] = frozenset(),
@@ -908,11 +1037,13 @@ def plan_condition_placements(
         for addr in (canonical, *members)
     )
     d0_group_ids = {gid for gid, b in buckets.items() if b.depth_label == DepthLabel.D0}
-    d1_root_ids = {gid for gid, b in buckets.items() if b.depth_label == ROOT_D1_DEPTH}
+    d1_root_ids = {
+        gid for gid, b in buckets.items() if b.depth_label == DepthLabel.ROOT_D1
+    }
     nested_ids = {
         gid
         for gid, b in buckets.items()
-        if b.depth_label in (DepthLabel.D1, ROOT_D1_DEPTH)
+        if b.depth_label in (DepthLabel.D1, DepthLabel.ROOT_D1)
     }
     main_lineage = (
         main_lineage_groups(group_graph, group_edges, buckets, mandatory_list)
@@ -922,9 +1053,9 @@ def plan_condition_placements(
     lineage_ancestors_graph = subgraph_of_kinds(
         group_graph, group_edges, EdgeKind.LINEAGE, EdgeKind.CONSTRAINT
     )
+    host_graph = _host_election_graph(lineage_ancestors_graph, group_edges, buckets)
     group_members: dict[str, set[str]] = {
-        gid: set(b.primary_members) | set(b.secondary_members)
-        for gid, b in buckets.items()
+        gid: set(b.primary_members) | b.carried for gid, b in buckets.items()
     }
     # Addresses a group can pair a relation on beyond its listed members: the
     # KEYS of its members (a group hosting only `a.aw` still joins on a.aw's
@@ -1244,12 +1375,23 @@ def plan_condition_placements(
                     allowed = reach if allowed is None else (allowed & reach)
                 candidates = [gid for gid in candidates if gid in (allowed or set())]
                 if not candidates:
-                    # The producers' branches only reconverge at FINAL.
+                    # The producers' branches only reconverge at FINAL. Over a
+                    # region domain, the producer joins nothing below it.
                     placements.append(
                         ConditionPlacement(
                             atom=atom,
                             group_ids=(FINAL_NODE_ID,),
-                            reason=PlacementReason.FINAL_RECONVERGENCE,
+                            reason=(
+                                PlacementReason.FINAL_SPAN_DOMAIN
+                                if _reads_past_region_domain(
+                                    row_inputs,
+                                    buckets,
+                                    keyspace,
+                                    mandatory_list,
+                                    environment,
+                                )
+                                else PlacementReason.FINAL_RECONVERGENCE
+                            ),
                         )
                     )
                     continue
@@ -1263,16 +1405,50 @@ def plan_condition_placements(
             # producer is self-referential. Route to FINAL, where each set is a
             # subselect feeder. Memberships with a real consumer candidate (`x
             # in <set>` over a separate output aggregate) are untouched.
-            if (
-                atom.existence_arguments
-                and restricted
-                and all(gid in existence_set_producers for gid in restricted)
+            if atom.existence_arguments and restricted:
+                neutral = [g for g in restricted if g not in existence_set_producers]
+                if not neutral:
+                    placements.append(
+                        ConditionPlacement(
+                            atom=atom,
+                            group_ids=(FINAL_NODE_ID,),
+                            reason=PlacementReason.FINAL_RECONVERGENCE,
+                        )
+                    )
+                    continue
+                restricted = neutral
+            if not atom.existence_arguments and _reads_past_region_domain(
+                row_inputs, buckets, keyspace, mandatory_list, environment
             ):
+                # an atom over aggregates BY the span (`count(return_id) by
+                # item_sk = 0`) is a per-member value. Applied on the input of
+                # a sibling aggregate keyed by the span it would drop the
+                # member's rows there, and the domain pads the member back
+                # (`count(sale_id) by item_sk`): that pair unites at FINAL. A
+                # host grouped by something else (`count(customer_id) by
+                # status`) still takes it on its input rows, member by member.
+                # So does a ROLLUP pass keyed by the span: nothing pads a
+                # member back above it, and FINAL would test its subtotal rows.
+                hosts = _region_domain_grouping_hosts(
+                    candidates, buckets, group_graph, group_edges
+                )
+                if _over_aggregates_by_span(row_inputs, buckets, keyspace, environment):
+                    hosts = tuple(
+                        h
+                        for h in hosts
+                        if buckets[h].nulls_grouping_keys
+                        or not _grain_within_a_span(buckets[h], buckets)
+                    )
                 placements.append(
                     ConditionPlacement(
                         atom=atom,
-                        group_ids=(FINAL_NODE_ID,),
-                        reason=PlacementReason.FINAL_RECONVERGENCE,
+                        group_ids=(
+                            hosts + (FINAL_NODE_ID,)
+                            if hosts
+                            and _outputs_beside_hosts(hosts, buckets, mandatory_list)
+                            else hosts or (FINAL_NODE_ID,)
+                        ),
+                        reason=PlacementReason.FINAL_SPAN_DOMAIN,
                     )
                 )
                 continue
@@ -1378,6 +1554,9 @@ def plan_condition_placements(
                         - consumed_barriers
                     )
                 ]
+            restricted = _hosts_carrying_condition_grain(
+                restricted, row_inputs, buckets, group_own_keys
+            )
             if not restricted:
                 placements.append(
                     ConditionPlacement(
@@ -1387,9 +1566,7 @@ def plan_condition_placements(
                     )
                 )
                 continue
-            chosen_groups = _choose_groups(
-                restricted, lineage_ancestors_graph, main_lineage
-            )
+            chosen_groups = _choose_groups(restricted, host_graph, main_lineage)
             # A d1 scope that cannot discharge the atom cannot hand it to
             # anything else on its chain either, so the WHOLE nested pool steps
             # aside and `_upstream_most` sees the outer host it was shadowing.
@@ -1408,7 +1585,7 @@ def plan_condition_placements(
                 outer_hosts = [gid for gid in restricted if gid not in nested_ids]
                 if outer_hosts:
                     chosen_groups = _choose_groups(
-                        outer_hosts, lineage_ancestors_graph, main_lineage
+                        outer_hosts, host_graph, main_lineage
                     )
             placements.append(
                 ConditionPlacement(
@@ -1434,25 +1611,6 @@ def plan_condition_placements(
                         atom=atom,
                         group_ids=(FINAL_NODE_ID,),
                         reason=PlacementReason.FINAL_UNCOVERED_CONTRIBUTOR,
-                    )
-                )
-            elif (
-                mandatory_list
-                and not atom.existence_arguments
-                and not (row_inputs & scoped_join_member_addresses)
-                and _preserved_final_branch(
-                    chosen_groups,
-                    row_inputs,
-                    buckets,
-                    group_graph,
-                    {c.address for c in mandatory_list},
-                )
-            ):
-                placements.append(
-                    ConditionPlacement(
-                        atom=atom,
-                        group_ids=(FINAL_NODE_ID,),
-                        reason=PlacementReason.FINAL_PRESERVED_BRANCH,
                     )
                 )
         placements.extend(

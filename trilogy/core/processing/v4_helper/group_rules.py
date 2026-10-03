@@ -12,12 +12,13 @@ One registry per shape concern, lookup by derivation, fallback to a default.
 
 import hashlib
 from collections import defaultdict
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Collection, Iterable, Sequence
 
 from trilogy.core import graph as nx
 from trilogy.core.enums import (
     AggregateGroupingMode,
     Derivation,
+    FunctionType,
     Granularity,
     Purpose,
 )
@@ -25,7 +26,7 @@ from trilogy.core.enums import (
 from .concept_graph import _scope_and_phase
 from .constants import DepthLabel, EdgeKind
 from .edges import EdgeMap, edge_kind
-from .models import ConceptAttrs, GroupBucket, nulls_grouping_keys
+from .models import ConceptAttrs, GroupBucket, RootReason, nulls_grouping_keys
 
 
 def _sig_digest(sig_repr: str) -> str:
@@ -97,10 +98,7 @@ def _split_by_label(items: list[NodeItem]) -> dict[str, list[NodeItem]]:
 
 
 def _add_member(bucket: GroupBucket, node: str, data: ConceptAttrs) -> None:
-    address = data.address
-    bucket.primary_members.append(address)
-    bucket.primary_node_ids.append(node)
-    bucket.member_depths[address] = data.depth_label
+    bucket.add_member(data.address, node, data.depth_label)
 
 
 def partition_by_depth_and_grain(
@@ -404,6 +402,19 @@ def _components(n: int, related: Iterable[tuple[int, int]]) -> list[list[int]]:
     return list(groups.values())
 
 
+def overlap_components(sets: Sequence[Collection[str]]) -> list[list[int]]:
+    """Connected components of `sets` (as indices) under sharing an element."""
+    first: dict[str, int] = {}
+    return _components(
+        len(sets),
+        [
+            (first.setdefault(e, i), i)
+            for i, members in enumerate(sets)
+            for e in members
+        ],
+    )
+
+
 def _property_key_pairs(main_items: list[NodeItem]) -> list[tuple[str, str]]:
     """(property root, key root) pairs among `main_items`: a property and its
     declared key sit on one entity row, so they co-source even when no lineage
@@ -480,8 +491,71 @@ def _partition_grouped_aggregates(
                         | set(data.aggregate_input_grain)
                     )
                 _add_member(bucket, node, data)
+            # One pass reads one row stream. A count of a key counts at the
+            # key's grain, and the stream repeats the key wherever it is
+            # finer: a grouping key the counted key does not determine (its
+            # rows repeat on a subtotal), or a sibling's finer or foreign
+            # input (two facts joined below the pass). DISTINCT on the counted
+            # value is the dedup a pass of its own would have had.
+            residual = bucket.aggregate_input_grain - grain
+            bucket.aggregate_distinct_addrs = {
+                members[i][1].address
+                for i in member_indices
+                if (counted := members[i][1].counted_key) is not None
+                and (
+                    members[i][1].aggregate_input_grain != frozenset({counted})
+                    or residual - {counted}
+                )
+            }
+            bucket.aggregate_first_row_grains = _first_row_grains(
+                [members[i][1] for i in member_indices], grain
+            )
             buckets.append(bucket)
     return buckets
+
+
+# a repeated input row cannot change these
+_REPEAT_BLIND_AGGREGATES = frozenset(
+    {
+        FunctionType.MIN,
+        FunctionType.MAX,
+        FunctionType.BOOL_OR,
+        FunctionType.BOOL_AND,
+        FunctionType.ANY,
+        FunctionType.COUNT_DISTINCT,
+        FunctionType.GROUPING,
+        FunctionType.GROUPING_ID,
+    }
+)
+
+
+def _first_row_grains(
+    members: list[ConceptAttrs], grain: frozenset[str]
+) -> dict[str, frozenset[str]]:
+    """Members of one pass whose input rows the shared stream repeats: the
+    stream carries a sibling's input grain theirs does not (two facts joined
+    below the pass). Each reads the first row per tuple of its own input grain,
+    whose grouping keys are one row's, so the dedup never crosses a group.
+
+    A member whose input grain is the grouping grain reads opaque values (a
+    `group(..)` it re-aggregates) and is left alone, as is a grouping()
+    identity's grain, which never fans the stream; a counted key is DISTINCT."""
+    stream = frozenset().union(
+        *(
+            m.aggregate_input_grain
+            for m in members
+            if m.aggregate_operator
+            not in (FunctionType.GROUPING, FunctionType.GROUPING_ID)
+        )
+    )
+    return {
+        m.address: m.aggregate_input_grain | grain
+        for m in members
+        if m.aggregate_operator not in _REPEAT_BLIND_AGGREGATES
+        and m.counted_key is None
+        and m.aggregate_input_grain - grain
+        and not stream <= m.aggregate_input_grain | grain
+    }
 
 
 def _relation_side_partitions(
@@ -546,6 +620,34 @@ def _relation_side_partitions(
     return partitions
 
 
+def _is_row_stream_output(
+    node: str,
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    output_addresses: frozenset[str],
+) -> bool:
+    """`node` is an output, or a row-level derivation of it is: its rows are
+    rows of the statement, whatever aggregate reads it besides."""
+    visited = {node}
+    stack = [node]
+    while stack:
+        cur = stack.pop()
+        if concept_attrs[cur].address in output_addresses:
+            return True
+        for nxt in concept_graph.successors(cur):
+            if (
+                nxt in visited
+                or edge_kind(concept_edges, cur, nxt) != EdgeKind.LINEAGE
+                or concept_attrs[nxt].derivation
+                in (Derivation.AGGREGATE, Derivation.GROUP_TO, Derivation.UNION)
+            ):
+                continue
+            visited.add(nxt)
+            stack.append(nxt)
+    return False
+
+
 def _cosource_component_groups(
     main_items: list[NodeItem],
     concept_graph: nx.DiGraph,
@@ -601,6 +703,7 @@ def _cosource_component_groups(
     # output root maps to its concept-graph component id, and roots sharing
     # one merge. `reaches` holds node ids; map to addresses to test membership.
     output_component: dict[int, int] = {}
+    aggregate_reach: list[bool] = []
     if output_addresses:
         output_roots = [
             i
@@ -660,12 +763,36 @@ def _cosource_component_groups(
         for i in output_roots:
             output_component[i] = comp_of.get(main_items[i][0], -1 - i)
 
+    # Two output roots whose reach is a ROW STREAM (`upper(name)` beside
+    # `quantity * 2`) recombine at FINAL as one row stream, and the axis that
+    # pairs them (the fact's FK) is a datasource fact no lineage edge shows:
+    # sourced apart, the merge has nothing to join on (`ON 1=1`). Co-source
+    # them whatever their component, as the direct spelling `name, quantity`
+    # is (a leaf output has no reach, so it never splits). An aggregate
+    # defines its own input domain and keeps its independent source, unless
+    # its input is a row of the statement besides (`customer_id` beside
+    # `count(customer_id) by *`).
+    row_stream = [
+        i in output_component
+        and (
+            not aggregate_reach[i]
+            or _is_row_stream_output(
+                main_items[i][0],
+                concept_graph,
+                concept_edges,
+                concept_attrs,
+                output_addresses,
+            )
+        )
+        for i in range(n)
+    ]
     related = [
         (i, j)
         for i in range(n)
         for j in range(i + 1, n)
         if reaches[i] & reaches[j]
         or (i in output_component and output_component[i] == output_component.get(j))
+        or (row_stream[i] and row_stream[j])
         or (feeds_union[i] and feeds_union[j])
     ]
     return [
@@ -758,9 +885,11 @@ def partition_roots(
                 grain=frozenset(),
                 label=label_value,
             )
+            bucket.reason = RootReason.ROW_STREAM
             if multi:
                 sig_repr = "|".join(sorted(addr_of[node] for node, _ in members))
                 bucket.discriminator = f"split:{_sig_digest(sig_repr)}"
+                bucket.reason = RootReason.COMPONENT
             for node, data in members:
                 _add_member(bucket, node, data)
             buckets.append(bucket)
@@ -775,6 +904,7 @@ def partition_roots(
             # Distinct id from the keyed `grp:root:root:∅` bucket so they stay
             # separate scans the FINAL node cross-joins.
             single_row_bucket.discriminator = "single_row"
+            single_row_bucket.reason = RootReason.SINGLE_ROW
             for node, data in single_row_items:
                 _add_member(single_row_bucket, node, data)
             buckets.append(single_row_bucket)
@@ -787,6 +917,7 @@ def partition_roots(
                 label=label_value,
             )
             solo.discriminator = f"existence:{addr_of[node]}"
+            solo.reason = RootReason.EXISTENCE
             _add_member(solo, node, data)
             buckets.append(solo)
     return buckets
@@ -868,7 +999,18 @@ def _feeds_extra_signature_group(
     return False
 
 
-def _can_merge_nested_signatures(left: frozenset[str], right: frozenset[str]) -> bool:
+def _has_lineage_consumer(
+    node: str, concept_graph: nx.DiGraph, concept_edges: EdgeMap
+) -> bool:
+    return any(
+        edge_kind(concept_edges, node, succ) == EdgeKind.LINEAGE
+        for _, succ in concept_graph.out_edges(node)
+    )
+
+
+def _can_merge_nested_signatures(
+    left: frozenset[str], right: frozenset[str], root_gids: set[str]
+) -> bool:
     if not left or not right:
         return False
     if left <= right:
@@ -877,7 +1019,7 @@ def _can_merge_nested_signatures(left: frozenset[str], right: frozenset[str]) ->
         smaller = right
     else:
         return False
-    return not any(gid.startswith("grp:root") for gid in smaller)
+    return not smaller & root_gids
 
 
 def _partition_by_signature_and_grain(
@@ -891,6 +1033,8 @@ def _partition_by_signature_and_grain(
     extra_signature: Callable[[str], frozenset[str]] | None = None,
     allow_signature_subset: bool = False,
     signature_exempt: frozenset[str] = frozenset(),
+    merge_terminal_siblings: bool = False,
+    output_addresses: frozenset[str] = frozenset(),
 ) -> list[GroupBucket]:
     """Generic signature+grain bucketing. Used for derivations whose
     upstream identity should split buckets even when row-shape (depth /
@@ -903,7 +1047,13 @@ def _partition_by_signature_and_grain(
     still co-sources when they share an upstream.
 
     ``signature_exempt`` nodes waive only the signature test (the grain
-    test still applies): see `partition_filters_by_signature`."""
+    test still applies): see `partition_filters_by_signature`.
+
+    ``merge_terminal_siblings`` waives the grain test for an equal-signature
+    pair nothing downstream reads and whose grain keys are all statement
+    outputs: FINAL already relates those keys, so one projection at the union
+    grain renders both without asking the upstream for a new key relation
+    (a day key beside a warehouse key would force the fact that links them)."""
     if not items:
         return []
     buckets: list[GroupBucket] = []
@@ -927,7 +1077,23 @@ def _partition_by_signature_and_grain(
             if extra_signature is not None:
                 sig |= set(extra_signature(node))
             sigs.append(frozenset(sig))
+        # after the signatures: reading a stop is what assigns its group
+        root_gids = (
+            {
+                gid
+                for node, gid in primary_group.items()
+                if concept_attrs[node].derivation == Derivation.ROOT
+            }
+            if allow_signature_subset
+            else set()
+        )
         grains = [sub_items[i][1].grain_components for i in range(n)]
+        terminal = [
+            merge_terminal_siblings
+            and data.grain_components <= output_addresses
+            and not _has_lineage_consumer(node, concept_graph, concept_edges)
+            for node, data in sub_items
+        ]
         merged: list[tuple[int, int]] = []
         for i in range(n):
             for j in range(i + 1, n):
@@ -937,7 +1103,7 @@ def _partition_by_signature_and_grain(
                 )
                 signatures_nest = (
                     allow_signature_subset
-                    and _can_merge_nested_signatures(sigs[i], sigs[j])
+                    and _can_merge_nested_signatures(sigs[i], sigs[j], root_gids)
                 )
                 if not signatures_match and not signatures_nest:
                     continue
@@ -953,7 +1119,11 @@ def _partition_by_signature_and_grain(
                         primary_group,
                     ):
                         continue
-                if grains[i] <= grains[j] or grains[j] <= grains[i]:
+                if (
+                    grains[i] <= grains[j]
+                    or grains[j] <= grains[i]
+                    or (sigs[i] == sigs[j] and terminal[i] and terminal[j])
+                ):
                     merged.append((i, j))
 
         for member_indices in _components(n, merged):
@@ -1053,6 +1223,8 @@ def partition_basics_by_signature(
         primary_group,
         ensure_assigned,
         allow_signature_subset=True,
+        merge_terminal_siblings=True,
+        output_addresses=output_addresses,
     )
 
 

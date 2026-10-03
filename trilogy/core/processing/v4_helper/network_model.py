@@ -187,6 +187,9 @@ class SourceNetwork:
     # not a memo: `_prune_subsumed_arms` reads it to keep an obligation from
     # branching onto arms its own satisfier list already covers with the union.
     subsumed_arms: dict[str, str] = field(default_factory=dict)
+    # Terminals a partial binding answers in full: join keys the request only
+    # reaches through, on spans no region of the statement demands.
+    partial_ok: frozenset[str] = frozenset()
     # Pure memo tables over the immutable candidate set (see `join_keys`).
     _join_key_cache: dict[tuple[str, str], frozenset[str]] = _memo()
     _binding_key_cache: dict[str, frozenset[str]] = _memo()
@@ -247,6 +250,7 @@ class SourceNetwork:
             self.join_requirements,
             tuple(sorted(self.axis_families.items())),
             tuple(sorted(self.subsumed_arms.items())),
+            tuple(sorted(self.partial_ok)),
         )
 
     def fans_out(self, node: str, contributed: frozenset[str]) -> bool:

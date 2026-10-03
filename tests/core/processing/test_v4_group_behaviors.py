@@ -9,8 +9,6 @@ concept-graph node id, mirroring production; the graph itself carries only
 topology + lineage edges. ``_cg`` builds both from a compact spec.
 """
 
-from typing import cast
-
 import pytest
 
 from trilogy.core import graph as nx
@@ -21,12 +19,9 @@ from trilogy.core.enums import (
     Purpose,
 )
 from trilogy.core.graph_models import ReferenceGraph
-from trilogy.core.models.author import SelectLineage
 from trilogy.core.models.build import (
     BuildConcept,
     BuildGrain,
-    BuildRowsetItem,
-    BuildRowsetLineage,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import DataType
@@ -214,10 +209,7 @@ def test_final_node_declares_logical_output_grain_contract():
         group_graph,
         group_edges,
         attrs,
-        concept_graph,
-        concept_attrs,
         buckets,
-        conditions=[],
         mandatory_list=[customer_id, customer_name, total_revenue],
     )
 
@@ -230,137 +222,6 @@ def test_final_node_declares_logical_output_grain_contract():
     }
     assert contract.required_grain == {customer_id.address}
     assert contract.deduplicate_to_grain is True
-
-
-def test_final_contributor_contract_preserves_rowset_merge_grain_for_root(
-    empty_environment: BuildEnvironment,
-):
-    customer_id = _build_concept("customer.id", Purpose.KEY)
-    customer_name = _build_concept(
-        "customer.name",
-        Purpose.PROPERTY,
-        datatype=DataType.STRING,
-        grain={customer_id.address},
-        keys={customer_id.address},
-    )
-    bought_city = _build_concept(
-        "bought_city",
-        Purpose.PROPERTY,
-        derivation=Derivation.ROWSET,
-        datatype=DataType.STRING,
-        grain={customer_id.address},
-    )
-    group_graph = nx.DiGraph()
-    group_edges: EdgeMap = {}
-    attrs = {
-        "root": GroupAttrs(
-            depth_label=DepthLabel.ROOT,
-            derivation=Derivation.ROOT,
-            output_concepts=(customer_id.address, customer_name.address),
-        ),
-        "rowset": GroupAttrs(
-            depth_label=DepthLabel.D0,
-            derivation=Derivation.ROWSET,
-            grain_components=frozenset({customer_id.address}),
-            output_concepts=(bought_city.address,),
-        ),
-        FINAL_NODE_ID: GroupAttrs(depth_label=DepthLabel.FINAL),
-    }
-    group_graph.add_nodes_from(attrs)
-    add_edge(group_graph, group_edges, "root", FINAL_NODE_ID, EdgeKind.MERGE)
-    add_edge(group_graph, group_edges, "rowset", FINAL_NODE_ID, EdgeKind.MERGE)
-
-    _refresh_final_contract(
-        group_graph, attrs, [customer_name, bought_city], empty_environment
-    )
-
-    contract = attrs[FINAL_NODE_ID].final_contract
-    assert contract is not None
-    root_contract = next(
-        item for item in contract.contributor_contracts if item.group_id == "root"
-    )
-    assert contract.merge_grain == {customer_id.address}
-    assert root_contract.preserve_keys == {customer_id.address}
-    assert root_contract.projection_grain == set()
-
-
-def test_final_contributor_contract_uses_rowset_lineage_join_key(
-    empty_environment: BuildEnvironment,
-):
-    order_id = _build_concept("order_id", Purpose.KEY)
-    store_id_address = "local.store_id"
-    store_id = _build_concept(
-        "store_id",
-        Purpose.KEY,
-        grain={store_id_address},
-        keys={order_id.address},
-    )
-    rowset_order_id = _build_concept(
-        "even_orders.order_id",
-        Purpose.KEY,
-        derivation=Derivation.ROWSET,
-        grain={"local.even_orders.order_id"},
-    )
-    rowset_store_id = _build_concept(
-        "even_orders.store_id",
-        Purpose.KEY,
-        derivation=Derivation.ROWSET,
-        grain={"local.even_orders.store_id"},
-        keys={rowset_order_id.address},
-    )
-    rowset_lineage = BuildRowsetLineage(
-        name="even_orders",
-        derived_concepts=[rowset_order_id.address, rowset_store_id.address],
-        select=cast(SelectLineage, None),
-    )
-    rowset_order_id.lineage = BuildRowsetItem(
-        content=order_id,
-        rowset=rowset_lineage,
-    )
-    rowset_store_id.lineage = BuildRowsetItem(
-        content=store_id,
-        rowset=rowset_lineage,
-    )
-    group_graph = nx.DiGraph()
-    group_edges: EdgeMap = {}
-    attrs = {
-        "root": GroupAttrs(
-            depth_label=DepthLabel.ROOT,
-            derivation=Derivation.ROOT,
-            output_concepts=(order_id.address,),
-        ),
-        "rowset": GroupAttrs(
-            depth_label=DepthLabel.D0,
-            derivation=Derivation.ROWSET,
-            grain_components=frozenset(
-                {rowset_order_id.address, rowset_store_id.address}
-            ),
-            output_concepts=(rowset_order_id.address, rowset_store_id.address),
-        ),
-        FINAL_NODE_ID: GroupAttrs(depth_label=DepthLabel.FINAL),
-    }
-    group_graph.add_nodes_from(attrs)
-    add_edge(group_graph, group_edges, "root", FINAL_NODE_ID, EdgeKind.MERGE)
-    add_edge(group_graph, group_edges, "rowset", FINAL_NODE_ID, EdgeKind.MERGE)
-
-    _refresh_final_contract(
-        group_graph,
-        attrs,
-        [order_id, rowset_order_id, rowset_store_id],
-        empty_environment,
-    )
-
-    contract = attrs[FINAL_NODE_ID].final_contract
-    assert contract is not None
-    rowset_contract = next(
-        item for item in contract.contributor_contracts if item.group_id == "rowset"
-    )
-    root_contract = next(
-        item for item in contract.contributor_contracts if item.group_id == "root"
-    )
-    assert contract.merge_grain == {order_id.address}
-    assert root_contract.preserve_keys == {order_id.address}
-    assert rowset_contract.projection_grain == {order_id.address}
 
 
 def test_final_merge_grain_takes_a_non_grouping_contributor_grain(
@@ -1674,32 +1535,62 @@ def test_conditioned_filter_does_not_cover_unfiltered_parent_outputs():
         ReferenceGraph(),
         History(base_environment=Environment()),
         needed={supplier_id.address, order_id.address, filtered_supplier.address},
+        root_requests={},
+        mandatory_list=[],
     )
 
     assert {parent.group_id for parent in parents} == {"root", "filter"}
     assert {type(parent.node) for parent in parents} == {StrategyNode, FilterNode}
 
 
-def test_filter_intrinsic_pushdown_blocks_shared_unfiltered_ancestor():
+def _sole_filter_output() -> tuple[list[BuildConcept], BuildEnvironment]:
+    env = Environment()
+    env.parse("key id int; property id.v int; auto f <- filter v where id > 1;")
+    build_env = env.materialize_for_select()
+    return [build_env.concepts["local.f"]], build_env
 
+
+def test_filter_intrinsic_pushdown_blocks_shared_unfiltered_ancestor():
     graph = nx.DiGraph()
     graph.add_edge("root", "filter")
     graph.add_edge("root", "aggregate")
     graph.add_edge("filter", "aggregate")
     graph.add_edge("root", FINAL_NODE_ID)
     graph.add_edge("filter", FINAL_NODE_ID)
+    outputs, env = _sole_filter_output()
+    attrs = {
+        "root": GroupAttrs(
+            depth_label=DepthLabel.ROOT,
+            derivation=Derivation.ROOT,
+            primary_members=["local.id", "local.v"],
+        ),
+        "aggregate": GroupAttrs(
+            depth_label=DepthLabel.STAR,
+            derivation=Derivation.AGGREGATE,
+            grain_components=frozenset({"local.id"}),
+        ),
+    }
 
-    assert _filter_intrinsic_pushdown_safe(graph, "filter") is False
+    assert (
+        _filter_intrinsic_pushdown_safe(graph, attrs, "filter", outputs, outputs, env)
+        is False
+    )
 
 
 def test_filter_intrinsic_pushdown_ignores_final_sink():
-
     graph = nx.DiGraph()
     graph.add_edge("root", "filter")
     graph.add_edge("root", FINAL_NODE_ID)
     graph.add_edge("filter", FINAL_NODE_ID)
+    outputs, env = _sole_filter_output()
 
-    assert _filter_intrinsic_pushdown_safe(graph, "filter") is True
+    assert (
+        _filter_intrinsic_pushdown_safe(graph, {}, "filter", outputs, outputs, env)
+        is True
+    )
+    assert (
+        _filter_intrinsic_pushdown_safe(graph, {}, "filter", outputs, [], env) is False
+    )
 
 
 def test_partition_roots_buckets_per_label():

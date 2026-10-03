@@ -2,7 +2,17 @@ from __future__ import annotations
 
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.constants import SUBQUERY_NAMESPACE_PREFIX
-from trilogy.core.models.author import SubqueryItem
+from trilogy.core.enums import BooleanOperator, ComparisonOperator, Purpose
+from trilogy.core.functions import LITERAL_CONSTANT_TYPES
+from trilogy.core.models.author import (
+    Comparison,
+    ConceptRef,
+    Conditional,
+    Parenthetical,
+    RowsetItem,
+    SubqueryItem,
+)
+from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import RowsetDerivationStatement, SelectStatement
 from trilogy.parsing.v2.rowset_semantics import rowset_to_concepts_v2
 from trilogy.parsing.v2.rules_context import (
@@ -98,10 +108,20 @@ def scalar_subquery(
             "must select exactly one column; project only the key/value consumed "
             "by the outer expression",
         )
+    scalar = not context.semantic_state.in_membership_subquery
+    # a scalar is joined beside every row, so a body of several rows would
+    # repeat them; SQL raises at run time, this says so at parse time
+    if scalar and not _one_row(select, context.environment):
+        raise fail(
+            node,
+            "a `(select ...)` used as a scalar value must return one row: "
+            "aggregate it with no `by` (`(select max(v))`) or add `limit 1`",
+        )
     output = RowsetDerivationStatement(
         name=name,
         select=select,
         namespace=context.environment.namespace or DEFAULT_NAMESPACE,
+        scalar=scalar,
     )
     result = rowset_to_concepts_v2(output, context)
     for new_concept in result.concepts:
@@ -115,6 +135,64 @@ def scalar_subquery(
         name=name,
         contents=[c.reference for c in result.concepts],
     )
+
+
+def _one_row(select: SelectStatement, environment: Environment) -> bool:
+    """No grain, `limit 1`, or every grain component pinned by an `=` in the
+    WHERE, itself or through its keys: to a literal or constant
+    (`where cat_avg.category = 'a'`), or to another scope's column, a
+    correlation the planner refuses with its own message."""
+    if select.limit == 1:
+        return True
+    pinned = (
+        _equated(select.where_clause.conditional, environment)
+        if select.where_clause
+        else set()
+    )
+    return all(
+        _pinned(address, pinned, environment) for address in select.grain.components
+    )
+
+
+def _pinned(address: str, pinned: set[str], environment: Environment) -> bool:
+    if address in pinned:
+        return True
+    keys = environment.concepts[address].keys or set()
+    return bool(keys) and keys <= pinned
+
+
+def _equated(condition: object, environment: Environment) -> set[str]:
+    if isinstance(condition, Parenthetical):
+        return _equated(condition.content, environment)
+    if isinstance(condition, Conditional) and condition.operator == BooleanOperator.AND:
+        return _equated(condition.left, environment) | _equated(
+            condition.right, environment
+        )
+    if (
+        isinstance(condition, Comparison)
+        and condition.operator == ComparisonOperator.EQ
+    ):
+        left, right = condition.left, condition.right
+        return {
+            side.address
+            for side, other in ((left, right), (right, left))
+            if isinstance(side, ConceptRef) and _fixed(side, other, environment)
+        }
+    return set()
+
+
+def _fixed(side: ConceptRef, value: object, environment: Environment) -> bool:
+    if isinstance(value, ConceptRef):
+        other = environment.concepts[value.address]
+        return other.purpose == Purpose.CONSTANT or _rowset_of(
+            other.address, environment
+        ) != _rowset_of(side.address, environment)
+    return isinstance(value, LITERAL_CONSTANT_TYPES)
+
+
+def _rowset_of(address: str, environment: Environment) -> str | None:
+    lineage = environment.concepts[address].lineage
+    return lineage.rowset.name if isinstance(lineage, RowsetItem) else None
 
 
 ROWSET_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {

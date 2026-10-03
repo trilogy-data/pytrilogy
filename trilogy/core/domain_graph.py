@@ -57,6 +57,31 @@ class EdgeScope(Enum):
     ROWSET = "rowset"  # join clause inside a rowset body
 
 
+ScopedJoin = tuple[str, str, JoinType]
+
+
+def tag_scoped_joins(
+    statement: Iterable[ScopedJoin] = (),
+    merges: Iterable[ScopedJoin] = (),
+    rowset: Iterable[ScopedJoin] = (),
+) -> list[tuple[ScopedJoin, EdgeScope]]:
+    """Scope-tag join tuples in declaration-priority order (statement, global
+    merges, rowset bodies); a tuple declared at several scopes keeps its first.
+    Order matters: `DomainGraph.from_scoped_joins` canonical roots follow it."""
+    out: list[tuple[ScopedJoin, EdgeScope]] = []
+    seen: set[ScopedJoin] = set()
+    for joins, scope in (
+        (statement, EdgeScope.STATEMENT),
+        (merges, EdgeScope.GLOBAL),
+        (rowset, EdgeScope.ROWSET),
+    ):
+        for join in joins:
+            if join not in seen:
+                seen.add(join)
+                out.append((join, scope))
+    return out
+
+
 class ResolvedRelation(Enum):
     SUBSET = "subset"
     SUPERSET = "superset"
@@ -131,9 +156,14 @@ def declared_edge_from_join(
     anchors on `s` with `t` the subset side, so it declares t ⊑ s. FULL
     declares EQUAL when authored globally (`merge a into b` asserts one
     identity) but INCOMPARABLE at query scope (`union join` / `full join`
-    assert neither domain contains the other). Other join types declare
+    assert neither domain contains the other); EQUAL (`equal join a = b`) is
+    that same identity declared at query scope. Other join types declare
     nothing about domains.
     """
+    if join_type is JoinType.EQUAL:
+        return DomainEdge(
+            source=source, target=target, relation=DomainRelation.EQUAL, scope=scope
+        )
     if join_type is JoinType.LEFT_OUTER:
         return DomainEdge(
             source=target, target=source, relation=DomainRelation.SUBSET, scope=scope
@@ -163,9 +193,15 @@ class DomainGraph:
         self._fd_keys: set[tuple] = set()
         self._canonical: dict[str, str] | None = None
         self._eq_classes: dict[str, str] | None = None
+        self._declared_equal_classes: frozenset[str] | None = None
+        self._authored_join_members: frozenset[str] | None = None
         self._subset_sources: set[str] | None = None
         self._declared_subset_pairs: list[tuple[str, str]] | None = None
         self._fd_minimal: dict[frozenset[str], frozenset[str]] = {}
+        self._canonical_fds: (
+            list[tuple[frozenset[str], str, str | None, bool]] | None
+        ) = None
+        self._fd_closures: dict[tuple[frozenset[str], str | None], frozenset[str]] = {}
         for e in edges or []:
             self.add_edge(e)
         for b in binding_edges or []:
@@ -195,9 +231,11 @@ class DomainGraph:
         self.edges.append(edge)
         self._canonical = None
         self._eq_classes = None
+        self._declared_equal_classes = None
+        self._authored_join_members = None
         self._subset_sources = None
         self._declared_subset_pairs = None
-        self._fd_minimal.clear()
+        self._invalidate_fds()
         return True
 
     def add_binding(self, edge: BindingEdge) -> bool:
@@ -206,7 +244,7 @@ class DomainGraph:
             return False
         self._binding_keys.add(key)
         self.binding_edges.append(edge)
-        self._fd_minimal.clear()
+        self._invalidate_fds()
         return True
 
     def add_fd(self, edge: FDEdge) -> bool:
@@ -215,8 +253,13 @@ class DomainGraph:
             return False
         self._fd_keys.add(key)
         self.fd_edges.append(edge)
-        self._fd_minimal.clear()
+        self._invalidate_fds()
         return True
+
+    def _invalidate_fds(self) -> None:
+        self._fd_minimal.clear()
+        self._canonical_fds = None
+        self._fd_closures.clear()
 
     def with_overlay(self, edges: Iterable[DomainEdge] | None = None) -> "DomainGraph":
         """Copy-on-write view: a new graph with this graph's edges plus the
@@ -338,6 +381,23 @@ class DomainGraph:
             for addr in (e.source, e.target)
         }
 
+    def authored_join_members(self) -> frozenset[str]:
+        """Raw endpoints of every query-authored join declaration (`subset` /
+        `equal` / `union`, statement or rowset scope). Each is an equality
+        condition the author wrote between two sides' own columns, so no
+        grain or FD implication may infer it away: within one side a grain
+        determines its columns, but nothing makes two sides' rows agree. A
+        global `merge` is excluded — it makes the two one concept."""
+        if self._authored_join_members is None:
+            self._authored_join_members = frozenset(
+                addr
+                for e in self.edges
+                if e.provenance is EdgeProvenance.DECLARED
+                and e.scope is not EdgeScope.GLOBAL
+                for addr in (e.source, e.target)
+            )
+        return self._authored_join_members
+
     def statement_incomparable_keys(self) -> set[str]:
         """Canonicalized endpoints of statement-scoped ∦ declarations
         (historical statement_full_keys)."""
@@ -348,6 +408,28 @@ class DomainGraph:
             and e.scope is EdgeScope.STATEMENT
             for addr in (e.source, e.target)
         }
+
+    def declared_equal(self, left: str, right: str) -> bool:
+        """`left` and `right` are one domain by an AUTHORED identity (`merge a
+        into b`, `equal join a = b`), reached through aliases: same ≡-class,
+        and a declared EQUAL edge in it. A class two opposed subset paths
+        close (a declared `a ⊆ rs.k` against a filtered body's `rs.k ⊑ a`)
+        resolves EQUAL too, but nobody declared it."""
+        rep = self._equivalence_classes()
+        cls = rep.get(left, left)
+        return cls == rep.get(right, right) and cls in self._declared_equal_reps()
+
+    def _declared_equal_reps(self) -> frozenset[str]:
+        """The ≡-classes holding a declared EQUAL edge."""
+        if self._declared_equal_classes is None:
+            rep = self._equivalence_classes()
+            self._declared_equal_classes = frozenset(
+                rep.get(e.source, e.source)
+                for e in self.edges
+                if e.relation is DomainRelation.EQUAL
+                and e.provenance is EdgeProvenance.DECLARED
+            )
+        return self._declared_equal_classes
 
     def equal_narrowable_keys(self) -> set[str]:
         """Canonicalized endpoints of EQUAL declarations, minus keys also
@@ -373,18 +455,6 @@ class DomainGraph:
         for source, target in self.canonical_map().items():
             groups.setdefault(target, {target}).add(source)
         return groups
-
-    def statement_relation_members(self) -> set[str]:
-        """Raw endpoints of statement-scoped declared relations — the join
-        keys the current statement's scoped-join clauses name, as opposed to
-        ambient global merges."""
-        return {
-            addr
-            for e in self.edges
-            if e.provenance is EdgeProvenance.DECLARED
-            and e.scope is EdgeScope.STATEMENT
-            for addr in (e.source, e.target)
-        }
 
     def binding_sources(self, address: str) -> set[str]:
         """Identifiers of datasources natively binding `address`."""
@@ -603,37 +673,56 @@ class DomainGraph:
         population. Closure is transitive over ≡-classes.
         """
         rep = self._equivalence_classes()
+        closure = self._fd_closure(
+            frozenset(rep.get(a, a) for a in determinants), population
+        )
+        return rep.get(dependent, dependent) in closure
 
-        def canon(x: str) -> str:
-            return rep.get(x, x)
-
+    def _canonical_fd_edges(self) -> list[tuple[frozenset[str], str, str | None, bool]]:
+        """Each FD as (canonical determinants, canonical dependent, scope,
+        applies-globally), the last by the complete-binding rule."""
+        if self._canonical_fds is not None:
+            return self._canonical_fds
+        rep = self._equivalence_classes()
         complete_bindings: dict[str, set[str]] = {}
         for b in self.binding_edges:
             if b.complete and b.condition is None:
-                complete_bindings.setdefault(b.datasource, set()).add(canon(b.concept))
+                complete_bindings.setdefault(b.datasource, set()).add(
+                    rep.get(b.concept, b.concept)
+                )
+        canonical: list[tuple[frozenset[str], str, str | None, bool]] = []
+        for fd in self.fd_edges:
+            determinants = frozenset(rep.get(a, a) for a in fd.determinants)
+            dependent = rep.get(fd.dependent, fd.dependent)
+            is_global = fd.scope is None or (determinants | {dependent}) <= (
+                complete_bindings.get(fd.scope, set())
+            )
+            canonical.append((determinants, dependent, fd.scope, is_global))
+        self._canonical_fds = canonical
+        return canonical
 
-        def applies(fd: FDEdge) -> bool:
-            if fd.scope is None or fd.scope == population:
-                return True
-            involved = {canon(a) for a in fd.determinants} | {canon(fd.dependent)}
-            return involved <= complete_bindings.get(fd.scope, set())
-
-        closure = {canon(a) for a in determinants}
-        goal = canon(dependent)
+    def _fd_closure(
+        self, determinants: frozenset[str], population: str | None
+    ) -> frozenset[str]:
+        key = (determinants, population)
+        cached = self._fd_closures.get(key)
+        if cached is not None:
+            return cached
+        fds = [
+            (dets, dep)
+            for dets, dep, scope, is_global in self._canonical_fd_edges()
+            if is_global or scope == population
+        ]
+        closure = set(determinants)
         changed = True
         while changed:
-            if goal in closure:
-                return True
             changed = False
-            for fd in self.fd_edges:
-                if not applies(fd):
-                    continue
-                if {canon(a) for a in fd.determinants} <= closure:
-                    dep = canon(fd.dependent)
-                    if dep not in closure:
-                        closure.add(dep)
-                        changed = True
-        return goal in closure
+            for dets, dep in fds:
+                if dep not in closure and dets <= closure:
+                    closure.add(dep)
+                    changed = True
+        cached = self._fd_closures[key] = frozenset(closure)
+        return cached
 
     def covers(self, determinants: Iterable[str], dependent: str) -> bool:
         """`determines`, through bindings that carry each value's whole domain:

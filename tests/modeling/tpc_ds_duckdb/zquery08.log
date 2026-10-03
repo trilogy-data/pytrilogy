@@ -1,5 +1,5 @@
 query_id = "08"
-gen_length = 2958
+gen_length = 2895
 preql_size = 7495
 comp_size = 19155
 generated_sql = """
@@ -35,7 +35,9 @@ SELECT
     SUBSTRING(CASE WHEN \"questionable\".\"zip_p_count\" > 10 THEN \"cooperative\".\"customer_current_address_zip\" ELSE NULL END,1,5) as \"_virt_func_substring_4293448550966409\"
 FROM
     \"questionable\"
-    INNER JOIN \"cooperative\" on \"questionable\".\"customer_current_address_zip\" is not distinct from \"cooperative\".\"customer_current_address_zip\"),
+    INNER JOIN \"cooperative\" on \"questionable\".\"customer_current_address_zip\" is not distinct from \"cooperative\".\"customer_current_address_zip\"
+GROUP BY
+    1),
 quizzical as (
 SELECT
     unnest(:_virt_7180871482901048) as \"zips_pre\"
@@ -45,19 +47,14 @@ SELECT
     SUBSTRING(cast(\"quizzical\".\"zips_pre\" as string),1,5) as \"zips\"
 FROM
     \"quizzical\"),
-juicy as (
+vacuous as (
 SELECT
     CASE WHEN exists (select 1 from abundant where abundant.\"_virt_func_substring_4293448550966409\" is not distinct from \"highfalutin\".\"zips\") THEN \"highfalutin\".\"zips\" ELSE NULL END as \"_virt_filter_zips_2159288073185462\"
 FROM
     \"highfalutin\"),
-vacuous as (
-SELECT
-    SUBSTRING(\"juicy\".\"_virt_filter_zips_2159288073185462\",1,2) as \"final_zips\"
-FROM
-    \"juicy\"),
 concerned as (
 SELECT
-    \"vacuous\".\"final_zips\" as \"final_zips\"
+    SUBSTRING(\"vacuous\".\"_virt_filter_zips_2159288073185462\",1,2) as \"final_zips\"
 FROM
     \"vacuous\"
 GROUP BY

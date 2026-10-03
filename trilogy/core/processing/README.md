@@ -17,7 +17,14 @@ take place there.
 
 ## Debugging
 
-Base query derivation accepts the `DebuggingHook` defined under hooks, which
+For a phase-by-phase, steppable view of one statement's discovery (requested
+concepts, concept graph, keyspace, grouping passes, source searches, built
+nodes, FINAL, the resolved tree, CTEs before and after optimization), record a
+plan trace and open it in the viewer: `local_scripts/plan_debugger/README.md`
+(`plan_trace.py` here is the recorder; `TRILOGY_PLAN_TRACE=<file>` records any
+`process_query`).
+
+Base query derivation also accepts the `DebuggingHook` defined under hooks, which
 prints each step of the plan to the console. This is a great first step to
 figure out what might be going wrong with discovery in a query.
 

@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 
 from trilogy.core.domain_graph import (
     DomainGraph,
-    EdgeScope,
+    tag_scoped_joins,
 )
 from trilogy.core.domain_graph import (
     DomainRelation as DomainRelationKind,
@@ -62,9 +62,7 @@ def declared_domain_relations(environment: Environment) -> list[DomainRelation]:
     checked the REVERSED direction for subsets — merge tuples store the
     anchor first — and the adversarial proof data, carrying one exclusive
     value per side, could not tell the difference.)"""
-    graph = DomainGraph.from_scoped_joins(
-        [(merge, EdgeScope.GLOBAL) for merge in environment.merges]
-    )
+    graph = DomainGraph.from_scoped_joins(tag_scoped_joins(merges=environment.merges))
     out: list[DomainRelation] = []
     for edge in graph.edges:
         if edge.relation is DomainRelationKind.SUBSET:

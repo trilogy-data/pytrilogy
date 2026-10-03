@@ -105,7 +105,7 @@ order by index;
 #   where   <row condition>        # 1. filter INPUT rows (BEFORE aggregation)
 #   select  <col>, <agg> as name,  # 2. the projection - grouping is AUTOMATIC by the
 #                                  #      non-aggregated columns (never write GROUP BY)
-#   <subset|union join a = b (=c)?>* # 3. blend models (zero or more joins; one per concept RIGHT AFTER the
+#   <subset|union|equal join a = b (=c)?>* # 3. blend models (zero or more joins; one per concept RIGHT AFTER the
 #                                  #      select list - the SQL-like spot)
 #   having  <result condition>     # 4. filter on an AGGREGATED / joined RESULT
 #   order by <col> asc|desc        # 5. sort
@@ -624,7 +624,7 @@ limit 100;
     ),
     SyntaxExample(
         name="scoped-join",
-        title="Blend two models in one query with a scoped subset/union join",
+        title="Blend two models in one query with a scoped subset/union/equal join",
         summary="blending a second fact model or rowset into one query",
         body="""\
 # A query-scoped `join` blends a second model into ONE select without editing the
@@ -635,6 +635,10 @@ limit 100;
 #                         narrow side, b superset, all values in a in b)
 #   union  join a = b  -> neither domain contains the other; the key coalesces
 #                         and unmatched rows from EITHER side are kept
+#   equal  join a = b  -> ONE domain: a is an alias of b, every value on either
+#                         side is on the other (`merge a into b` scoped to this
+#                         query); the join renders inner. Two rowsets ranking
+#                         the same rows two ways pair this way.
 # Place the clause(s) RIGHT AFTER the `select` list (the SQL-like spot).
 import enrollments as enroll;
 import students as students;
@@ -740,7 +744,7 @@ limit 100;
 #    the projected key is the coalesced group axis) or any of its measures /
 #    attributes (`where a.cnt is not null`). Same in `having`.
 #  - `left`/`full`/`inner`/`right`/`cross join` are NOT valid query-scoped joins
-#    (they error) - only `subset`/`union`. Map an old `left join a = b` to
+#    (they error) - only `subset`/`union`/`equal`. Map an old `left join a = b` to
 #    `subset join b = a` (swap operands) and `full join a = b` to
 #    `union join a = b`. A union key-group must be ALL union (can't mix with
 #    subset on the SAME key; `union join a = b = c` chains one union group);

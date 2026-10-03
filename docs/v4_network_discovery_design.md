@@ -1382,7 +1382,7 @@ plan_source(request)
     │   └── for filter_downstream in (True, False):
     │       └── for (search_conditions, allow_intersection) in condition_options:   # full / covered / none
     │           └── _resolve_bridge_graph(...)
-    │               ├── copy graph, _inject_union_datasources, prune_sources_for_conditions(attempt.criteria)
+    │               ├── copy graph, prune_sources_for_conditions(attempt.criteria)   # unions are already graph nodes
     │               └── for _ in range(AMBIGUITY_CHECK_LIMIT=20):
     │                   ├── determine_induced_minimal_nodes(...)   # Steiner tree
     │                   ├── _prune_redundant_partial_connectors    # s31
@@ -1581,8 +1581,8 @@ silent wrong-rows regression, not a build error.
 - **The connector's own mandatory set carries uncovered bridge concepts whose
   grain components are a subset of the origin's grain** (s15: `orders.amt`
   riding the window CTE, otherwise INVALID_REFERENCE at render).
-- **Union injection** (`_inject_union_datasources`) and union exact-match
-  semantics: a child whose partition the conditions fully satisfy beats its
+- **Union sources** (graph nodes since `union_sources` at generation) and union
+  exact-match semantics: a child whose partition the conditions fully satisfy beats its
   union.
 - **Partial markings survive onto built nodes** — they drive the partial→FULL
   join contract downstream. The solution must carry them explicitly.

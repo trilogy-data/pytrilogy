@@ -1144,6 +1144,7 @@ class Renderer:
             JoinType.FULL: "full",
             JoinType.SUBSET: "subset",
             JoinType.UNION: "union",
+            JoinType.EQUAL: "equal",
         }
         joins = []
         for j in arg.join_clauses:
@@ -1525,6 +1526,8 @@ class Renderer:
             # Composite-membership row constructor: render as the `(a, b)` tuple
             # the grammar accepts, not the internal `row_tuple(...)` function name.
             return f"({', '.join(args)})"
+        if arg.operator == FunctionType.ARRAY:
+            return f"[{', '.join(args)}]"
         if arg.operator == FunctionType.GROUP:
             arg_string = ", ".join(args[1:])
             if len(args) == 1:

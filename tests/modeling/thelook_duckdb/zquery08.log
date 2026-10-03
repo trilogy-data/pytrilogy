@@ -1,5 +1,5 @@
 query_id = "08"
-gen_length = 580
+gen_length = 630
 preql_size = 145
 comp_size = 249
 generated_sql = """
@@ -14,6 +14,13 @@ FROM
     \"users\" as \"user_users\"
     LEFT OUTER JOIN \"order_items\" as \"order_items\" on \"user_users\".\"id\" = \"order_items\".\"user_id\"
     FULL JOIN \"products\" as \"product_products\" on \"order_items\".\"product_id\" = \"product_products\".\"id\"
+GROUP BY
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
 ORDER BY 
     \"order_items\".\"id\" asc
 LIMIT (25)"""

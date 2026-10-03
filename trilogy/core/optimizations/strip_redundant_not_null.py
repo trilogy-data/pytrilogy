@@ -20,19 +20,23 @@ The concept must also be a tracked, non-derived output of the CTE:
 - present in ``output_columns``: only there is ``nullable_concepts`` authoritative.
   A concept appearing solely inside the condition is not tracked, so absence from
   the nullable set says nothing about whether it can be NULL.
+
+Independently, an atom on a key this CTE's own INNER join pairs by plain equality
+is tautological when it reads the key off a side of that pair and no later RIGHT
+or FULL join can pad that side back (`ss.customer.sk is not null` beside
+``INNER JOIN customer on ss.customer_sk = c.customer_sk``).
 """
 
 from __future__ import annotations
 
-from trilogy.core.enums import Derivation
-from trilogy.core.models.build import BuildDatasource
-from trilogy.core.models.execute import CTE, QueryDatasource, UnionCTE
+from trilogy.core.enums import BooleanOperator, Derivation, JoinType, Modifier
+from trilogy.core.models.build import BuildConditional, BuildDatasource
+from trilogy.core.models.execute import CTE, Join, QueryDatasource, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import equivalent_addresses
 from trilogy.core.processing.condition_utility import (
     _not_null_concept,
     combine_condition_atoms,
-    decompose_condition,
     is_scalar_condition,
 )
 from trilogy.core.processing.utility import find_nullable_concepts
@@ -68,6 +72,52 @@ def _unfiltered_nullable_addresses(source: QueryDatasource) -> set[str]:
     return out
 
 
+def _and_atoms(condition: object) -> list:
+    """Every AND-ed atom, a bare boolean concept included, which
+    ``decompose_condition`` keeps bundled with its siblings."""
+    if isinstance(condition, BuildConditional) and (
+        condition.operator == BooleanOperator.AND
+    ):
+        return _and_atoms(condition.left) + _and_atoms(condition.right)
+    return [condition]
+
+
+def _inner_join_rejected(cte: CTE) -> set[tuple[str, str]]:
+    """(source, address) pairs every row of ``cte`` holds non-null: a side of a
+    plain-equality INNER join pair no later RIGHT or FULL join can pad."""
+    out: set[tuple[str, str]] = set()
+    for idx, join in enumerate(cte.joins):
+        if (
+            not isinstance(join, Join)
+            or join.jointype != JoinType.INNER
+            or Modifier.NULLABLE in join.modifiers
+            or any(
+                isinstance(later, Join)
+                and later.jointype in (JoinType.RIGHT_OUTER, JoinType.FULL)
+                for later in cte.joins[idx + 1 :]
+            )
+        ):
+            continue
+        for pair in join.joinkey_pairs or []:
+            if Modifier.NULLABLE in (
+                pair.modifiers
+                + (pair.left.modifiers or [])
+                + (pair.right.modifiers or [])
+            ):
+                continue
+            for node, concept in ((pair.cte, pair.left), (join.right_cte, pair.right)):
+                alias = join.name_for(cte, join.authoritative(cte, node))
+                out.update((alias, a) for a in concept.equivalent_addresses)
+    return out
+
+
+def _read_off_rejected_side(
+    cte: CTE, address: str, rejected: set[tuple[str, str]]
+) -> bool:
+    sources = cte.source_map.get(address, [])
+    return len(sources) == 1 and (sources[0], address) in rejected
+
+
 class StripRedundantNotNull(OptimizationRule):
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
@@ -76,12 +126,21 @@ class StripRedundantNotNull(OptimizationRule):
             return False, None
         nullable = equivalent_addresses(cte.nullable_concepts)
         output = equivalent_addresses(cte.output_columns)
-        atoms = decompose_condition(cte.condition)
+        atoms = _and_atoms(cte.condition)
         survivors: list = []
         dropped = False
         unfiltered_nullable: set[str] | None = None
+        rejected = _inner_join_rejected(cte)
         for atom in atoms:
             concept = _not_null_concept(atom)
+            if (
+                concept is not None
+                and is_scalar_condition(atom)
+                and _read_off_rejected_side(cte, concept.address, rejected)
+            ):
+                dropped = True
+                self.log(f"{cte.name}: {concept.address} IS NOT NULL is an INNER key")
+                continue
             if (
                 concept is not None
                 and concept.derivation == Derivation.ROOT

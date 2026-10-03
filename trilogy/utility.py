@@ -78,7 +78,11 @@ class singledispatchmethod(_stdlib_singledispatchmethod):
 
     On CPython 3.12.8 and 3.13.0-3.13.1 that cache is a WeakKeyDictionary whose
     values close over their own key, so every instance that ever called the
-    method is kept alive for the life of the process (gh-127750)."""
+    method is kept alive for the life of the process (gh-127750).
+
+    The bound method is a bare partial, without the `register`/`__name__`/
+    `__doc__` the stdlib's sets: nothing reads them, and setting them on every
+    access slows each dispatch by half (it is on the renderer's hot path)."""
 
     def __get__(self, obj, cls=None):
         return partial(_dispatch_bound, self.dispatcher.dispatch, obj, cls)

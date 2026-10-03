@@ -788,7 +788,7 @@ def test_two_merge_aggregate_compacts_inline_window_query():
     finally:
         CONFIG.optimizations.merge_aggregate = original
 
-    assert len(off_processed.ctes) == 9, off_generated
+    assert len(off_processed.ctes) == 8, off_generated
     assert len(on_processed.ctes) == 5
 
 
@@ -1178,3 +1178,30 @@ def test_fourteen_renders_without_merge_aggregate(engine):
     finally:
         CONFIG.optimizations.merge_aggregate = original
     engine.execute_raw_sql(f"EXPLAIN {sql}")
+
+
+def test_membership_kept_beside_condition_feeder(engine):
+    head = """import store_sales as ss;
+import catalog_sales as cs;
+auto cs_ui_sale <- sum(cs.ext_list_price ? cs.is_returned) by cs.item.sk;
+rowset cs_ui <- where cs_ui_sale > 10000 select cs.item.sk as cs_ui_item_id;
+"""
+    members = {
+        r[0] for r in engine.execute_text(head + "select cs_ui.cs_ui_item_id;")[-1]
+    }
+    rows = engine.execute_text(head + """where ss.item.sk in cs_ui.cs_ui_item_id
+    and ss.is_returned
+    and ss.customer.first_shipto_date.sk is not null
+select ss.item.sk;""")[-1].fetchall()
+    assert rows
+    assert {r[0] for r in rows} <= members
+
+
+def test_row_atom_kept_beside_condition_feeder(engine):
+    rows = engine.execute_text("""import store_sales as ss;
+where ss.item.sk > 17000
+    and ss.is_returned
+    and ss.customer.first_shipto_date.sk is not null
+select ss.item.sk;""")[-1].fetchall()
+    assert rows
+    assert all(r[0] > 17000 for r in rows)

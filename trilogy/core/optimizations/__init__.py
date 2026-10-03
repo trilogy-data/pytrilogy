@@ -1,7 +1,6 @@
 from .base_optimization import MergedCTEMap, OptimizationRule, optimization_log
 from .collapse_single_parent import CollapseSingleParent
-from .filtered_aggregate import PushFilteredAggregateInput
-from .filtered_count_join import PushFilteredCountIntoJoin
+from .filtered_aggregate import PushFilteredAggregateInput, PushFilteredCountIntoJoin
 from .hide_unused_concept import HideUnusedConcepts
 from .inline_datasource import InlineDatasource
 from .join_hoist import JoinHoist

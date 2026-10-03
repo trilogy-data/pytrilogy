@@ -10,7 +10,6 @@ from trilogy.core.models.build import (
     BuildGrain,
     BuildMultiSelectLineage,
     BuildRowsetItem,
-    BuildSelectLineage,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -22,7 +21,7 @@ from trilogy.core.processing.node_generators.presence_probe import (
 from trilogy.core.processing.nodes import History, RowsetNode, StrategyNode
 from trilogy.core.processing.v4_helper.history import V4History
 
-from .condition_sources import resolve_and_inject_condition
+from .condition_sources import inject_condition_at_node, resolve_row_sources
 from .nested_select import plan_nested_select
 
 
@@ -183,12 +182,41 @@ def resolve_rowset(
     select: SelectLineage | MultiSelectLineage = lineage.rowset.select
     derived = lineage.rowset.derived_concepts
 
+    # This boundary is built not to extend a span another group owns (the
+    # rowset's own region domain, reading the padded body beside it), nor one
+    # of a region the reading statement never demands (its rows are not rows
+    # of that statement, and a body extending them would hand them up as a
+    # row source): the body is planned for it without those regions' rows,
+    # in its spelling.
+    witness = history.read_rowset_witness(lineage.rowset.name)
+    owned = (
+        witness.body_spans_of(
+            environment.span_scope.extent_free | environment.span_scope.unextended
+        )
+        if witness is not None
+        else frozenset()
+    )
+    # the spans handed over, in this plan's spelling: this boundary holds
+    # their members only where the solid rows bound them, and what the
+    # region carries likewise (`MergeNode._extent_free_partials`)
+    owned_handles: frozenset[str] = (
+        frozenset().union(
+            *(
+                r.spans
+                for r in witness.regions_within(environment.span_scope.extent_free)
+            )
+        )
+        if witness is not None
+        else frozenset()
+    )
     plan = plan_nested_select(
         select,
         history,
         depth,
         f"rowset {lineage.rowset.name} inner select",
         exclude_derived=derived,
+        owned_spans=owned,
+        rowset=lineage.rowset,
     )
     if plan is None:
         return None
@@ -256,55 +284,6 @@ def resolve_rowset(
         ):
             continue
         boundary.add(handle, produced[hlineage.content.address])
-
-    # A plain rowset's GRAIN keys (e.g. `id`) are the shared join keys back to the
-    # outer query and sibling rowsets, but they're plain roots, not
-    # `BuildRowsetItem` handles, so the loop above skips them. Expose any the
-    # inner producer supplies so they enter the boundary grain below and the
-    # FINAL merge joins on them; otherwise a shared-key rowset with no `merge
-    # into` pseudonym degrades to a `1=1` cross product. Multiselect grains are
-    # align concepts handled separately below, so scope to plain selects.
-    #
-    # Only for an UNFILTERED rowset: a WHERE/HAVING makes its key-set a proper
-    # subset of the base domain, so advertising the key would let the cover step
-    # satisfy the outer bare key FROM the filtered rowset and drop the unfiltered
-    # source (rows outside the filter must survive NULL-extended via a LEFT
-    # add, not be inner-joined away). A filtered rowset stays a separate
-    # outer-added contributor.
-    #
-    # An AGGREGATE rowset whose grain key is RENAMED into a handle (grouping by
-    # `dept as department`) renders only the handle, so the raw key is not in
-    # `produced` and the gate below skips it; exposing it anyway makes assembly
-    # demand a column no CTE projects. A grain key the inner producer DOES
-    # render (a bare `grp_key` beside `count(x) -> total`, or a plain
-    # projection's passthrough `id`) is safe and necessary: without it two
-    # sibling rowsets at the same base grain have no exposable join key and the
-    # FINAL merge cross-joins ON 1=1.
-    #
-    # A key an EXPOSED handle already covers is not re-exposed under its raw
-    # address. The handle is the rowset's own column for that key; adding the
-    # base address beside it publishes a second name for the same value, and two
-    # sibling rowsets over one base then appear to share a join axis they do not
-    # own, which silently outranks an authored scoped join on a derived key
-    # (`agg.period + 53 = fut.period`) and re-types the relation from a subset
-    # LEFT to a FULL join.
-    if (
-        isinstance(built, BuildSelectLineage)
-        and built.where_clause is None
-        and built.having_clause is None
-    ):
-        handle_contents = {
-            h.lineage.content.address
-            for h in boundary.handles
-            if isinstance(h.lineage, BuildRowsetItem)
-        }
-        for key_addr in sorted(built.grain.components):
-            if (
-                key_addr in produced
-                and key_addr not in boundary
-                and key_addr not in handle_contents
-            ):
-                boundary.add(produced[key_addr], produced[key_addr])
 
     # A rowset wrapping a multiselect: an aligned handle's content is the
     # multiselect concept, which the renderer resolves via `find_source`; it
@@ -454,6 +433,17 @@ def resolve_rowset(
             or _anchors_all_rowset(declared_anchors.get(h.address, set()), environment)
         )
     ]
+    if owned_handles:
+        carried = environment.span_scope.extent_free_carried
+        scoped_partial.extend(
+            h
+            for h in handles
+            if h not in scoped_partial
+            and (
+                h.address in owned_handles
+                or carried.get(h.address, frozenset()) & owned_handles
+            )
+        )
     # nullability propagates by ADDRESS between nodes, but a rowset handle is a
     # new address wrapping its body content; map through the BuildRowsetItem
     # content (and pseudonyms) so a `?` column's nullability survives the
@@ -461,10 +451,12 @@ def resolve_rowset(
     # Every handle, not just the boundary's key-like ones: a non-key property
     # becomes a join key the moment split aggregate branches over the same
     # boundary rejoin on their GROUP BY keys, where a NULL is a group label
-    # and a plain `=` drops the whole group.
+    # and a plain `=` drops the whole group. Read off the RESOLVED body: the
+    # node attribute is a construction-time snapshot without the body's
+    # outer-join padding (a guest's property NULL through its `~?` key).
     base_nullable = {
         alias
-        for c in inner_node.nullable_concepts
+        for c in inner_node.resolve().nullable_concepts
         for alias in (c.address, *c.pseudonyms)
     }
     nullable_handles = [h for h in handles if _nullability_aliases(h) & base_nullable]
@@ -508,7 +500,7 @@ def resolve_rowset(
     # predicate over the rowset's rows (a multiselect arm's per-arm filter over
     # the row-projection rowset it reads). The inner plan didn't apply it (it's
     # not part of the rowset's own select), so apply it here over the
-    # materialized rows.
+    # materialized rows. Its memberships are the group graph's to wire.
     if conditions is not None:
         condition_outputs = [
             h
@@ -518,14 +510,15 @@ def resolve_rowset(
             or h.address in hidden
             or h.pseudonyms
         ]
-        node = resolve_and_inject_condition(
+        sources = resolve_row_sources(
+            node, conditions, plan.environment, plan.graph, history, depth
+        )
+        node = inject_condition_at_node(
             node,
             conditions,
             condition_outputs,
-            environment=plan.environment,
-            graph=plan.graph,
-            history=history,
-            depth=depth,
+            plan.environment,
+            sources,
             grain=node.grain,
             hidden_concepts=hidden,
         )

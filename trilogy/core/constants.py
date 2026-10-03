@@ -1,6 +1,8 @@
 CONSTANT_DATASET: str = "preql_internal_constant_dataset"
 ALL_ROWS_CONCEPT = "all_rows"
 INTERNAL_NAMESPACE = "__preql_internal"
+# the grain of a `by *` aggregate: one value for every row of the statement
+ALL_ROWS_ADDRESS = f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"
 PERSISTED_CONCEPT_PREFIX = "__pre_persist"
 UNNEST_NAME = "_unnest_alias"
 WORKING_PATH_CONCEPT = "_env_working_path"
