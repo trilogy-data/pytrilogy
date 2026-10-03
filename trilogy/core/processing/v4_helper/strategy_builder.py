@@ -131,14 +131,14 @@ class ParentBuild:
 @dataclass(frozen=True)
 class RootRequest:
     """The question a ROOT group's node answers: what the build asked for, the
-    WHERE it asked under, the scope and the parents it was built over. Two
-    equal requests have one answer, so a group, a consumer slice or the FINAL
-    asking it again reads the built node instead of planning it again."""
+    WHERE it asked under and the scope. A ROOT re-sources from datasources, so
+    its parents are no part of it. Two equal requests have one answer, so a
+    group, a consumer slice or the FINAL asking it again reads the built node
+    instead of planning it again."""
 
     outputs: frozenset[str]
     conditions: BuildWhereClause | None
     scope: SpanScope
-    parents: frozenset[str] = frozenset()
     # the ancestors' atoms a ROOT re-applies to the rows it re-sources
     preexisting: BuildWhereClause | None = None
 
@@ -156,7 +156,6 @@ class RootRequest:
             self.conditions == asked.conditions
             and self.preexisting == asked.preexisting
             and self.scope == asked.scope
-            and self.parents == asked.parents
             and self.outputs <= {c.address for c in node.output_concepts} - partial
         ):
             return False
@@ -5721,7 +5720,6 @@ def build_strategy_node(
                 frozenset(c.address for c in outputs),
                 condition_for_generator,
                 environment.span_scope,
-                frozenset(parent_group_ids),
                 preexisting,
             )
             if derivation == Derivation.ROOT
