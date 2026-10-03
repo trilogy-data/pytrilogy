@@ -54,6 +54,7 @@ from trilogy.core.models.core import (
     ValidatedType,
     arg_to_datatype,
     is_compatible_datatype,
+    literal_element_datatype,
     merge_datatypes,
 )
 from trilogy.core.models.environment import Environment
@@ -300,12 +301,9 @@ def validate_case_output(args: list[Any]) -> CONCRETE_TYPES:
 
 
 def create_array_output(args: list[Any]) -> ArrayType:
-    types = {arg_to_datatype(x) for x in args} - {DataType.NULL}
-    if len(types) > 1:
-        raise InvalidSyntaxException(
-            f"Cannot create an array with this set of types: {types}"
-        )
-    return ArrayType(type=next(iter(types), DataType.NULL))
+    # ArrayType has no element nullability to carry
+    dtype, _ = literal_element_datatype(args)
+    return ArrayType(type=dtype)
 
 
 def create_struct_output(
