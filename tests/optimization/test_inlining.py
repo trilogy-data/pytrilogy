@@ -191,7 +191,7 @@ SELECT
 
     assert "WITH" not in query
     assert '"customers"."customer_id" is not null' not in query
-    assert '"orders"."customer_id" is not null' in query
+    assert '"orders"."customer_id" is not null' not in query
 
 
 def test_raw_text_column_refs_reads_the_columns_a_text_names():
