@@ -33,7 +33,7 @@ from trilogy.core.processing.discovery_utility import (
 )
 from trilogy.core.processing.nodes import BuildCaches, SelectNode, StrategyNode
 from trilogy.core.processing.partial_bridging import scope_statement
-from trilogy.core.processing.v4_helper.history import V4History
+from trilogy.core.processing.v4_helper.history import NestedBuildKey, V4History
 
 from .common import search_parent
 from .condition_sources import resolve_and_inject_condition
@@ -143,10 +143,16 @@ def build_nested_select(
     )
     scoped_joins = outer_scoped + [j for j in nested_scoped if j not in outer_scoped]
     # A rowset body is built for its witness and again for its plan; both
-    # read the same scope, and planning restores the span scope it sets.
-    key = (id(select), tuple(exclude_derived or ()), tuple(scoped_joins))
+    # read one build env. A hit skips the pseudonym sync: the author env gains
+    # no concept while a statement resolves, and planning mutates no build-env
+    # state but `span_scope`, which it restores.
+    key: NestedBuildKey = (
+        id(select),
+        tuple(exclude_derived or ()),
+        tuple(scoped_joins),
+    )
     cached = history.nested_builds.get(key)
-    if cached is not None and cached[0] is select:
+    if cached is not None:
         return cached[1]
     caches.sync_pseudonym_map(author_env)
     # The shared build caches are keyed on address/grain identity alone, which
