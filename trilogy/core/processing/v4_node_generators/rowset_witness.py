@@ -1,5 +1,5 @@
 """A plan's keyspace, with every rowset it reads as a witness
-(`keyspace.RowsetWitness`, docs/keyspace_phase_plan.md).
+(`keyspace.RowsetWitness`).
 
 A rowset's rows are its body's regions. The body's keyspace is computed here
 the way the body's own plan will compute it (built in its own scope, healed,

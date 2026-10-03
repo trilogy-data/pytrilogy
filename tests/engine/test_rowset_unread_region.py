@@ -1,5 +1,5 @@
 """A rowset body's region the reader reads nothing of is not a row of the
-reader (docs/keyspace_phase_plan.md, "A rowset as a witness").
+reader.
 
 The body pads every region it demands. A reader whose population spells no
 entity present on one of them (`select s.o, s.st` over a body naming the

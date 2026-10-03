@@ -1,7 +1,0 @@
-import root.store_sales as ss;
-import root.store_returns as sr;
-select
-  count(ss.quantity) as n, count(sr.return_quantity) as m
-equal join ss.customer.customer_sk = sr.customer.customer_sk
-equal join ss.item.item_sk = sr.item.item_sk
-equal join ss.ticket_number = sr.ticket_number;

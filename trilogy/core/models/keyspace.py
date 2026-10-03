@@ -1,4 +1,4 @@
-"""A plan's row universe (docs/keyspace_phase_plan.md), as a value: built by
+"""A plan's row universe, as a value: built by
 ``processing.v4_helper.keyspace.build_keyspace`` and read by grouping, join
 typing and pin-heal. Model-level so ``BuildEnvironment.span_scope`` can carry
 it into every merge built under a plan."""

@@ -1,5 +1,4 @@
-"""A plan's row universe, computed once before grouping
-(docs/keyspace_phase_plan.md).
+"""A plan's row universe, computed once before grouping.
 
 A REGION is one kind of row the plan can return: the set of requested entity
 keys present on it. Customers and orders, `orders.customer_id: ~customer_id`,
@@ -37,6 +36,17 @@ stands in for them; a row derivation of one fact is computed on that fact's
 own rows there, `strategy_builder._valued_on_another_fact`). A span some
 source binds `?` holds a NULL member no dimension row has
 (`Keyspace.value_null_spans`).
+
+Regions are keyed by ENTITY keys, never properties (a property is a witness
+only where it identifies a source's rows). Presence is not FD: "the span does
+not FD-determine it" is not the region test. A concept is DEFINED on a region
+when every one of its FD-minimal keys is present there and ABSENT elsewhere,
+which renders as NULL but is not a NULL value; a BASIC is keyed on what it
+reads, not its declared keys. An aggregate is evaluated OVER regions
+(`count(order_id) by customer_id` is 0 on `{customer}`), and an aggregate
+argument demands its key's region. `by rollup` subtotal rows are a grouping
+product, not a region, and a WHERE null-rejecting a concept absent on a region
+empties it (`emptied_by`).
 """
 
 from __future__ import annotations

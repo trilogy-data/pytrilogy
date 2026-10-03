@@ -1,7 +1,7 @@
 """TPC-H q22's shape: a scalar aggregate `by *` over a `~` customer region,
 a per-country count, `then where`, and `order_id is null` for the customers
 without an order. Each spelling is checked against reference SQL over the
-same tables (docs/keyspace_phase_plan.md, open item "TPC-H q22")."""
+same tables."""
 
 import pytest
 

@@ -1,6 +1,6 @@
 """`array_agg` collects present values on every dialect.
 
-Owner ruling (docs/keyspace_phase_plan.md): a NULL value on a real row is not an
+A NULL value on a real row is not an
 element, and a group of only NULLs is NULL like an empty group. Backends
 disagree natively (DuckDB and Postgres keep the NULL, ClickHouse drops it,
 BigQuery raises), so each dialect lowers to its own NULL-ignoring form.

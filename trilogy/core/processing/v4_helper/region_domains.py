@@ -1,7 +1,18 @@
 """Region domains: a live `~` extension region's own rows, carried by a ROOT
-group of their own so a derivation absent there never reads padded rows
-(docs/keyspace_phase_plan.md). Created during grouping, fed to the scalars that
-evaluate on the region, and restated at FINAL for the WHERE atoms over it.
+group of their own so a derivation absent there never reads padded rows.
+Created during grouping, fed to the scalars that evaluate on the region, and
+restated at FINAL for the WHERE atoms over it.
+
+A region gets a domain only when demanded (an output is a function of what
+its spans reach, or an aggregate counts its rows); otherwise FINAL would add
+all-NULL rows past the WHERE. The padded plan is right exactly while nothing
+takes a value on a padded row, and it is the smaller plan, so it is kept
+until something does. The spans ride hidden on the domain and every bucket
+split from it and are the join axis everywhere; only a bucket that MIXES
+kinds of row pads. An aggregate over the region computes its named BASIC
+arguments on the solid rows first, then the domain merges in, so `count(x)`
+never counts a padded row; a COUNT the domain pads is 0, stamped by the merge
+that pads it (`CTE.zero_fills_count`).
 """
 
 from dataclasses import dataclass

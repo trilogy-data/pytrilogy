@@ -3,7 +3,7 @@
 Oracle is materialization invariance: storing a derivation as a column at its
 grain must never change a query's rows. `OWED` queries are strict xfails: the
 planner still evaluates them over rows padded for a `~` extension. A fix shows
-up as XPASS; move the query to `HOLDS`. See docs/keyspace_phase_plan.md.
+up as XPASS; move the query to `HOLDS`.
 """
 
 import pytest

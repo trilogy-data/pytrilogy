@@ -1,4 +1,4 @@
-"""The region shapes docs/keyspace_phase_plan.md once listed as not modelled,
+"""Region shapes the keyspace does not model with a region of their own,
 rows first: a composite-key `~` dimension, a materialized rollup beside its
 base fact, two facts partial on one dimension, and two facts at ONE grain
 where only their join witnesses the full region (TPC-DS q64's returned sale
