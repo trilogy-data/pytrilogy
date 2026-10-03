@@ -1,18 +1,14 @@
 """A `~` region with two demanded dimension attributes, one read by a
-derivation on the FACT stream and one plain. The twin is the materialization oracle; hand rows are the
-contract where both twins could be wrong together.
+derivation on the FACT stream and one plain. The twin is the materialization
+oracle; hand rows are the contract where both twins could be wrong together.
 
-Three planner bugs pinned here, each pre-existing:
-
-- the aggregate over `tier_amount` beside `name` INNER-joined the domain: the
-  solid stream reads the domain's dimension scan for `tier`, so the guard
-  upgrade read the span as rendering exclusively from the solid side and a
-  FINAL non-null proof narrowed the domain's LEFT (`join_upgrade._downgrade`);
-- `ensure_content_preservation` preserved the users dimension after
-  `orders RIGHT JOIN items`, padding the solid stream and evaluating
-  `state_qty`'s ELSE on user 3;
-- two row streams at FD-related grains (`pair_cost` at (order, product),
-  `state_qty` at item) paired on the one requested key and fanned out.
+- a solid stream reading the domain's dimension scan (for `tier`) does not
+  render the span from the solid side alone, so no FINAL non-null proof
+  narrows the domain's LEFT join;
+- a dimension joined after `orders RIGHT JOIN items` is not preserved over the
+  solid stream, so `state_qty`'s ELSE is never evaluated on a user with no item;
+- row streams at FD-related grains (`pair_cost` at (order, product),
+  `state_qty` at item) pair without fanning out.
 """
 
 import pytest
