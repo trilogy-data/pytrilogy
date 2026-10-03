@@ -378,6 +378,7 @@ def gen_root(
     history: History,
     g,
     staged_conditions: list[BuildWhereClause] | None = None,
+    arm_local: bool = False,
 ) -> StrategyNode | None:
     """Source ROOT concepts through the v4 source planner.
 
@@ -402,6 +403,7 @@ def gen_root(
             history=history,
             conditions=row_conditions,
             complete_partials=complete_partials,
+            arm_local=arm_local,
         )
     )
     if node is None and conditions is not None:
@@ -434,6 +436,7 @@ def gen_root(
                     conditions=row_atoms,
                     deferred_conditions=gates,
                     complete_partials=complete_partials,
+                    arm_local=arm_local,
                 )
             )
             if node is not None:
@@ -451,6 +454,7 @@ def gen_root(
                     conditions=None,
                     deferred_conditions=conditions,
                     complete_partials=complete_partials,
+                    arm_local=arm_local,
                 )
             )
         if node is None:

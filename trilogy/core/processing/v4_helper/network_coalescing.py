@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import replace
 
+from trilogy.core.enums import Derivation
 from trilogy.core.models.build import BuildDatasource, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.presence_probe import (
@@ -188,6 +189,7 @@ def axis_families(
     equivalence: dict[str, str],
     address_grain: dict[str, frozenset[str]],
     conditions: BuildWhereClause | None,
+    arm_local: bool = False,
 ) -> dict[str, tuple[tuple[str, ...], ...]]:
     """Requested coalescing axis classes that must be family-assembled, mapped
     to per-member carrier candidates.
@@ -202,8 +204,11 @@ def axis_families(
 
     A group with a member no candidate carries (a rowset member) is left out:
     the search cannot complete it, and the rowset machinery that owns those
-    members already assembles the axis downstream. Arm-pinned requests are
-    likewise left out (see `_axis_arm_pinned`)."""
+    members already assembles the axis downstream. When the request is
+    `arm_local` (an aggregate's input, which the aggregate's consumer
+    reassembles), arm-pinned requests are likewise left out (see
+    `_axis_arm_pinned`); a statement's own rows never are, since nothing above
+    them coalesces the other arms."""
     groups: dict[str, set[str]] = {}
     for address in terminals:
         found = coalescing_axis_group(address, environment)
@@ -249,7 +254,7 @@ def axis_families(
             for node in nodes
             if candidates[node].grain
         ]
-        if _axis_arm_pinned(
+        if arm_local and _axis_arm_pinned(
             terminals, axis_classes, condition_classes, carrier_grains, address_grain
         ):
             continue
@@ -274,5 +279,57 @@ def downgrade_axis_bindings(
             bindings[representative] = replace(
                 binding, strength=BindingStrength.PARTIAL
             )
+            out[node] = replace(candidate, bindings=bindings)
+    return out
+
+
+def _reads_only_axis(
+    address: str,
+    environment: BuildEnvironment,
+    axes: set[str],
+    equivalence: dict[str, str],
+) -> bool:
+    # a probe asks "did THIS arm match?": arm-local by design
+    if is_presence_probe(address):
+        return False
+    concept = environment.concepts.get(address) or environment.canonical_concepts.get(
+        address
+    )
+    if concept is None or concept.derivation is not Derivation.BASIC:
+        return False
+    if concept.lineage is None or not concept.lineage.concept_arguments:
+        return False
+    for argument in concept.lineage.concept_arguments:
+        representative = equivalence.get(argument.address, argument.address)
+        if representative in axes:
+            continue
+        if not _reads_only_axis(argument.address, environment, axes, equivalence):
+            return False
+    return True
+
+
+def drop_axis_scalar_bindings(
+    families: dict[str, tuple[tuple[str, ...], ...]],
+    candidates: dict[str, SourceCandidate],
+    environment: BuildEnvironment,
+    equivalence: dict[str, str],
+) -> dict[str, SourceCandidate]:
+    """A scalar of a family-assembled axis alone is a function of the COALESCED
+    key: one arm's scan computing it inline leaves it NULL on the other arms'
+    rows. Unbind it, so it is computed above the assembly."""
+    if not families:
+        return candidates
+    axes = set(families)
+    out = dict(candidates)
+    for node, candidate in candidates.items():
+        dropped = [
+            representative
+            for representative, binding in candidate.bindings.items()
+            if not binding.stored
+            and representative not in axes
+            and _reads_only_axis(binding.address, environment, axes, equivalence)
+        ]
+        if dropped:
+            bindings = {k: v for k, v in candidate.bindings.items() if k not in dropped}
             out[node] = replace(candidate, bindings=bindings)
     return out

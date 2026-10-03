@@ -64,6 +64,7 @@ def build_node(
     g: ReferenceGraph,
     staged_conditions: list[BuildWhereClause] | None = None,
     depth: int = 0,
+    arm_local: bool = False,
 ) -> StrategyNode | None:
     """Dispatch on `derivation`. Only the generators that re-enter the planner
     take `history` (ROOT for datasource selection, ROWSET and SUBSELECT for
@@ -98,6 +99,7 @@ def build_node(
             history=history,
             g=g,
             staged_conditions=staged_conditions,
+            arm_local=arm_local,
         )
     if derivation == Derivation.ROWSET:
         return fn(

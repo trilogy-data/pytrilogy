@@ -47,6 +47,7 @@ from trilogy.core.processing.node_generators.presence_probe import (
 from trilogy.core.processing.v4_helper.network_coalescing import (
     axis_families,
     downgrade_axis_bindings,
+    drop_axis_scalar_bindings,
     pin_unoffered_probes,
     probe_owners,
 )
@@ -639,12 +640,29 @@ def _relevant_nodes(
     return included
 
 
+def _searched_terminals(
+    requested: list[str],
+    candidates: dict[str, SourceCandidate],
+    environment: BuildEnvironment,
+    equivalence: dict[str, str],
+) -> list[str]:
+    bound = {address for c in candidates.values() for address in c.bindings}
+    sourced = {address for address in requested if address in bound}
+    return [
+        address
+        for address in requested
+        if address in sourced
+        or not _decomposable(address, environment, sourced, equivalence)
+    ]
+
+
 def build_source_network(
     terminals: list[BuildConcept],
     environment: BuildEnvironment,
     graph: ReferenceGraph,
     conditions: BuildWhereClause | None = None,
     deferred_conditions: BuildWhereClause | None = None,
+    arm_local: bool = False,
 ) -> SourceNetwork:
     addresses = terminal_addresses(terminals)
     all_addresses = set(addresses)
@@ -710,14 +728,7 @@ def build_source_network(
     candidates = pin_unoffered_probes(
         addresses, candidates, environment, graph.scope.datasources, equivalence
     )
-    bound = {address for c in candidates.values() for address in c.bindings}
-    sourced = {address for address in requested if address in bound}
-    searched = [
-        address
-        for address in requested
-        if address in sourced
-        or not _decomposable(address, environment, sourced, equivalence)
-    ]
+    searched = _searched_terminals(requested, candidates, environment, equivalence)
     address_grain = _address_grains(environment, all_addresses, equivalence)
     families = axis_families(
         searched,
@@ -727,7 +738,12 @@ def build_source_network(
         equivalence,
         address_grain,
         conditions,
+        arm_local,
     )
+    unbound = drop_axis_scalar_bindings(families, candidates, environment, equivalence)
+    if unbound != candidates:
+        candidates = unbound
+        searched = _searched_terminals(requested, candidates, environment, equivalence)
     candidates = downgrade_axis_bindings(families, candidates)
     return SourceNetwork(
         terminals=tuple(searched),

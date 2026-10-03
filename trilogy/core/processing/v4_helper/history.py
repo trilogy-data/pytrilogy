@@ -62,7 +62,7 @@ class V4History(History):
     # re-learn "not mine". Solution-bearing outcomes are NOT cached here:
     # emission needs the network, whose candidates are build-scoped objects a
     # later request must not reuse.
-    network_verdicts: dict[tuple[str, str, bool, tuple[str, ...]], str] = field(
+    network_verdicts: dict[tuple[str, str, bool, tuple[str, ...], bool], str] = field(
         default_factory=dict
     )
     # Outputs of every nested construct enclosing the scope being planned

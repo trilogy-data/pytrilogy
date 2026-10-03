@@ -148,6 +148,8 @@ class RootRequest:
     scope: SpanScope
     # the ancestors' atoms a ROOT re-applies to the rows it re-sources
     preexisting: BuildWhereClause | None = None
+    # the rows feed only aggregates (`SourceRequest.arm_local`)
+    arm_local: bool = False
 
     def answered_by(self, node: StrategyNode, asked: "RootRequest") -> bool:
         """Whether `node`, built for `asked`, already answers this request:
@@ -496,6 +498,15 @@ def _iter_strategy_nodes(root: StrategyNode) -> Iterator[StrategyNode]:
 
 def _strategy_nodes(root: StrategyNode) -> list[StrategyNode]:
     return list(_iter_strategy_nodes(root))
+
+
+def _feeds_only_aggregates(
+    group_graph: nx.DiGraph, attrs: dict[str, GroupAttrs], gid: str
+) -> bool:
+    successors = list(group_graph.successors(gid))
+    return bool(successors) and all(
+        attrs[succ].derivation == Derivation.AGGREGATE for succ in successors
+    )
 
 
 def _leaf_datasources(node: StrategyNode) -> dict[str, BuildDatasource]:
@@ -1296,11 +1307,14 @@ def _parent_nodes_for(
         # a slice is the parent's rows narrowed, so it is sourced under the
         # parent's own scope: under the consumer's, a span a region domain owns
         # is completed again, and the slice grows a join instead of losing one
+        # an aggregate's input slice may read one coalescing arm's rows
+        arm_local = consumer.derivation == Derivation.AGGREGATE
         request = RootRequest(
             frozenset(slice_addresses),
             conditions,
             asked.scope if asked else environment.span_scope,
             preexisting=preexisting,
+            arm_local=arm_local,
         )
         if asked == request:
             return node.copy()
@@ -1321,6 +1335,7 @@ def _parent_nodes_for(
                 history=history,
                 g=graph,
                 staged_conditions=staged_conditions,
+                arm_local=arm_local,
             )
             if sliced is None:
                 sliced = plan_source(
@@ -1331,6 +1346,7 @@ def _parent_nodes_for(
                         history=history,
                         conditions=conditions,
                         complete_partials=complete_partials,
+                        arm_local=arm_local,
                     )
                 )
         if sliced is None:
@@ -5802,12 +5818,14 @@ def build_strategy_node(
         # The same root in two phases (the d1 twin feeding the condition-phase
         # aggregates) asks the same question when the WHERE placed on each is
         # the same; the second reads the first's answer.
+        arm_local = _feeds_only_aggregates(group_graph, attrs, gid)
         request = (
             RootRequest(
                 frozenset(c.address for c in outputs),
                 condition_for_generator,
                 environment.span_scope,
                 preexisting,
+                arm_local,
             )
             if derivation == Derivation.ROOT
             else None
@@ -5853,6 +5871,7 @@ def build_strategy_node(
                 g=g,
                 staged_conditions=staged_conditions,
                 depth=depth,
+                arm_local=arm_local,
             )
         # a generator may hand back a parent's node; that one keeps its group
         if node is not None and node.origin_group is None:
