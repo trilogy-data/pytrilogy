@@ -41,6 +41,7 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildConceptArgs,
     BuildDatasource,
+    BuildExpr,
     BuildFilterItem,
     BuildFunction,
     BuildGrain,
@@ -5354,7 +5355,7 @@ def _read_first_rows(
                         right=1,
                         operator=ComparisonOperator.EQ,
                     ),
-                    expr=value,
+                    expr=cast(BuildExpr, value),
                 )
             ],
             output_data_type=arg_to_datatype(value),
