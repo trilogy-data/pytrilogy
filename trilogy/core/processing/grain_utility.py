@@ -37,6 +37,7 @@ from trilogy.core.processing.condition_utility import (
 from trilogy.core.processing.join_resolution import (
     deep_extent_free_carried,
     deep_extent_free_spans,
+    held_region_spans,
 )
 
 GrainSource = QueryDatasource | BuildDatasource
@@ -419,15 +420,45 @@ def collect_applied_conditions(source: GrainSource) -> list[BoolExpr]:
     return out
 
 
+@dataclass(frozen=True)
+class _PartnerFacts:
+    """What one side of a join knows that decides whether the other side is
+    the WHERE's population."""
+
+    partial: frozenset[str] = frozenset()
+    regions: frozenset[str] = frozenset()
+    filtered_regions: frozenset[str] = frozenset()
+    nullable: frozenset[str] = frozenset()
+
+
+def _partner_facts(
+    sources: Iterable[GrainSource], filtered_ids: set[str]
+) -> _PartnerFacts:
+    partial: set[str] = set()
+    regions: set[str] = set()
+    filtered_regions: set[str] = set()
+    nullable: set[str] = set()
+    for source in sources:
+        partial |= {c.address for c in source.partial_concepts}
+        nullable |= _nullable_addresses(source)
+        spans = held_region_spans(source)
+        regions |= spans
+        if source.identifier in filtered_ids:
+            filtered_regions |= spans
+    return _PartnerFacts(
+        frozenset(partial),
+        frozenset(regions),
+        frozenset(filtered_regions),
+        frozenset(nullable),
+    )
+
+
 def _is_filter_population(
     identifier: str,
     by_id: dict[str, GrainSource],
     filtered_ids: set[str],
     join_addresses: set[str],
-    partner_partial: set[str],
-    partner_regions: frozenset[str] = frozenset(),
-    partner_filtered_regions: frozenset[str] = frozenset(),
-    partner_nullable: frozenset[str] = frozenset(),
+    partner: _PartnerFacts,
 ) -> bool:
     """Whether this side's row set IS the request WHERE's population.
 
@@ -452,19 +483,19 @@ def _is_filter_population(
     source = by_id.get(identifier)
     if source is None:
         return True
-    if join_addresses & partner_nullable and not _rejects_padding(source):
+    if join_addresses & partner.nullable and not _rejects_padding(source):
         return False
-    held = source.region_spans if isinstance(source, QueryDatasource) else frozenset()
-    if join_addresses & partner_regions and not join_addresses & held:
+    held = held_region_spans(source)
+    if join_addresses & partner.regions and not join_addresses & held:
         return False
-    if partner_filtered_regions - held:
+    if partner.filtered_regions - held:
         return False
     suppressed = {c.address for c in source.partial_concepts} & (
         deep_extent_free_spans(source) | deep_extent_free_carried(source)
     )
     if not (join_addresses & suppressed):
         return True
-    return bool(join_addresses & partner_partial)
+    return bool(join_addresses & partner.partial)
 
 
 def _join_key_addresses(join: BaseJoin) -> tuple[set[str], set[str]]:
@@ -604,44 +635,18 @@ def tighten_join_for_filtered_branch(
         left_ids.add(join.left_datasource.identifier)
     for pair in join.concept_pairs or []:
         left_ids.add(pair.existing_datasource.identifier)
-    left_partial: set[str] = set()
-    left_nullable: frozenset[str] = frozenset()
-    left_regions: frozenset[str] = frozenset()
-    left_filtered_regions: frozenset[str] = frozenset()
-    for identifier in left_ids:
-        source = by_id.get(identifier)
-        if source is not None:
-            left_partial |= {c.address for c in source.partial_concepts}
-            left_nullable |= _nullable_addresses(source)
-            if isinstance(source, QueryDatasource):
-                left_regions |= source.region_spans
-                if identifier in filtered_ids:
-                    left_filtered_regions |= source.region_spans
-    right = join.right_datasource
-    right_partial = {c.address for c in right.partial_concepts}
-    right_regions = (
-        right.region_spans if isinstance(right, QueryDatasource) else frozenset()
-    )
-    right_filtered = _is_filter_population(
-        right.identifier,
-        by_id,
+    left = _partner_facts(
+        (by_id[identifier] for identifier in left_ids if identifier in by_id),
         filtered_ids,
-        join_addresses,
-        left_partial,
-        left_regions,
-        left_filtered_regions,
-        left_nullable,
     )
+    right = join.right_datasource
+    right_filtered = _is_filter_population(
+        right.identifier, by_id, filtered_ids, join_addresses, left
+    )
+    right_facts = _partner_facts([right], filtered_ids)
     left_filtered = any(
         _is_filter_population(
-            identifier,
-            by_id,
-            filtered_ids,
-            join_addresses,
-            right_partial,
-            right_regions,
-            right_regions if right.identifier in filtered_ids else frozenset(),
-            _nullable_addresses(right),
+            identifier, by_id, filtered_ids, join_addresses, right_facts
         )
         for identifier in left_ids
     )
