@@ -691,3 +691,22 @@ def test_status_on_extension_rows_is_null_without_an_aggregate(forked):
         (102, 1, "LATER"),
         (None, 3, None),
     ]
+
+
+def test_padded_extension_rows_are_one_row_per_output():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        _FORKED.replace(
+            "select 3, 'TX'\n", "select 3, 'TX' union all\nselect 4, 'TX'\n"
+        )
+    )
+    query = """select item_id, order_id, state, brand, qty, qty - cost -> margin
+        order by item_id asc nulls last, state asc nulls last;"""
+    assert _rows(executor, query) == [
+        (1000, 100, "CA", "A", 5, 3),
+        (1001, 100, "CA", "B", 7, 4),
+        (1002, 101, "NY", "A", 11, 9),
+        (1003, 102, "CA", "B", 13, 10),
+        (None, None, "TX", None, None, None),
+        (None, None, None, "C", None, None),
+    ]

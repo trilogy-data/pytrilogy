@@ -10,6 +10,8 @@ the DECLARED side (`FINAL_DEDUP`, `UNDEMANDED_PIVOT`), pinned here too."""
 import pytest
 
 from tests.helpers.rows import executor_for, sorted_rows
+from trilogy import Environment
+from trilogy.core.query_processor import process_query
 from trilogy.executor import Executor
 
 _MODEL = """
@@ -178,3 +180,13 @@ def test_undemanded_pivot_dimension_is_not_scanned(
 ):
     executor = request.getfixturevalue(twin)
     assert '"orders"' not in executor.generate_sql("select return_id, reason, qty;")[-1]
+
+
+def test_padded_key_does_not_fold_the_merge_grain():
+    env, statements = Environment().parse(GRAINED + "select return_id, reason, pname;")
+    final = process_query(env, statements[-1]).ctes[-1]
+    assert final.grain.components == {
+        "local.return_id",
+        "local.reason",
+        "local.pname",
+    }

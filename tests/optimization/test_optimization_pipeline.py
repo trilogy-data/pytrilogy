@@ -24,6 +24,7 @@ FLAGS = {
     "upgrade_outer_key_set_equivalence",
     "simplify_null_safe_joins",
     "strip_redundant_not_null",
+    "drop_identity_group",
     "union_dim_pushdown",
     "hide_unused_concepts",
     "order_inner_joins_first",
