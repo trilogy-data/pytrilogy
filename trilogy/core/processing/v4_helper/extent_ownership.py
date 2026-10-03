@@ -12,11 +12,12 @@ discard one through a plain equality.
 
 A region with a domain group of its own is owned by that domain
 (`DomainKind.OWN`). The ranking (most downstream, then membership, then joint
-coverage of every span) elects an owner for a demanded span whose rows come
-from anywhere else: the row stream itself (a composite-key `~` region), the
-padded plan, or a region only a join of two facts witnesses (returns beside
-sales), where leaving the span unmanaged pads every branch (the aggregate
-reads the padded root, the fact FULL-joins its returns). It is the same judgment ``_cover_groups_for_mandatory``
+coverage of every span) elects an owner for every other demanded span: a
+region whose domain has no bucket (ROW_STREAM, BOUNDARY, RELATION, PADDED),
+and a base-region completion (`Region.live_completes`: a partial source beside
+its fact, returns beside sales), where no entity is absent, so there are no
+rows of its own for a domain to hold, and leaving the span unmanaged pads
+every branch. It is the same judgment ``_cover_groups_for_mandatory``
 applies to already-built nodes. The cover consumes this result rather than
 re-deriving it, since a predicted election that diverges from the actual one
 leaves a contributor dangling at render time.
