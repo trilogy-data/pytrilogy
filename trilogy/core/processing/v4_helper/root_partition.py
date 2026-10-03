@@ -23,11 +23,12 @@ pass's inputs.
 """
 
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, Purpose
-from trilogy.core.models.build import BuildConcept, BuildWhereClause
+from trilogy.core.models.build import BuildConcept, BuildDatasource, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing import plan_trace
@@ -118,6 +119,7 @@ def _d1_calc_subgraph(
     concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
     environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
 ) -> tuple[dict[int | None, set[str]], set[str]]:
     """Identify (d1_calc_roots by `then where` stage, d1_subgraph_nodes).
 
@@ -175,7 +177,13 @@ def _d1_calc_subgraph(
             - hard
         )
         if soft and _split_strands_condition_scan(
-            concept_graph, concept_edges, concept_attrs, soft, d1_subgraph, environment
+            concept_graph,
+            concept_edges,
+            concept_attrs,
+            soft,
+            d1_subgraph,
+            environment,
+            datasources,
         ):
             soft = set()
         roots_by_stage[stage] = hard | soft
@@ -224,7 +232,9 @@ def _condition_exclusive_root(
     return reached
 
 
-def _bound_column_components(environment: BuildEnvironment) -> list[set[str]]:
+def _bound_column_components(
+    datasources: Sequence[BuildDatasource],
+) -> list[set[str]]:
     """Address components of the PHYSICAL join graph: two datasources land in
     one component when some address (or pseudonym) is a bound column of both.
 
@@ -234,7 +244,7 @@ def _bound_column_components(environment: BuildEnvironment) -> list[set[str]]:
     happens inside one ROOT request."""
     ds_addresses = [
         {a for c in datasource.output_concepts for a in (c.address, *c.pseudonyms)}
-        for datasource in environment.datasources.values()
+        for datasource in datasources
     ]
     return [
         set().union(*(ds_addresses[i] for i in component))
@@ -249,6 +259,7 @@ def _split_strands_condition_scan(
     split_roots: set[str],
     d1_subgraph: set[str],
     environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
 ) -> bool:
     """Whether scanning `split_roots` privately would leave that scan no join
     key back to the rows it filters, so co-sourcing in one ROOT request (where
@@ -282,7 +293,7 @@ def _split_strands_condition_scan(
         return False
     return not any(
         component & condition_addresses and component & select_addresses
-        for component in _bound_column_components(environment)
+        for component in _bound_column_components(datasources)
     )
 
 
@@ -1093,6 +1104,7 @@ def partition_root_demand(
     conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
     keyspace: Keyspace,
     rollup_padded: frozenset[str],
 ) -> RootPartition:
@@ -1102,7 +1114,7 @@ def partition_root_demand(
     )
     output_addresses = frozenset(c.address for c in mandatory_list)
     roots_by_stage, condition_nodes = _d1_calc_subgraph(
-        concept_graph, concept_edges, concept_attrs, environment
+        concept_graph, concept_edges, concept_attrs, environment, datasources
     )
     condition_roots: set[str] = set().union(*roots_by_stage.values())
     _prune_existence_exclusive_roots(

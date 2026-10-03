@@ -68,7 +68,7 @@ def _planned_keyspace(monkeypatch, model: str, query: str) -> Keyspace:
 @dataclass
 class _EagerAuthoredKeyspace(partial_bridging._AuthoredKeyspace):
     def __post_init__(self) -> None:
-        self.keyspace
+        _ = self.keyspace
 
 
 def _heal_keyspace(monkeypatch, model: str, query: str) -> Keyspace:

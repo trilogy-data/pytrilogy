@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, logger
@@ -925,12 +926,12 @@ def raise_if_disconnected_for(
 
 
 def _physical_tables_by_concept(
-    environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
 ) -> dict[str, frozenset[str]]:
     """Concept address -> the physical locations of the datasources binding it.
     Two imports of one model under different aliases bind the same table."""
     out: dict[str, set[str]] = {}
-    for ds in environment.datasources.values():
+    for ds in datasources:
         location = (
             ds.address.location if isinstance(ds.address, Address) else ds.address
         )
@@ -959,9 +960,9 @@ def connected_equivalent_suggestions(
     the split, so it matches ``disconnected_components``."""
     if environment is None:
         return []
-    comp_of, _ = _component_map(environment, g, excluded_addresses)
+    comp_of, g = _component_map(environment, g, excluded_addresses)
 
-    tables = _physical_tables_by_concept(environment)
+    tables = _physical_tables_by_concept(g.scope_datasources)
 
     def twin_of(concept: BuildConcept, target_comps: set[int]) -> str | None:
         # A select alias (`claim.claim_number as company_claim_number`) is

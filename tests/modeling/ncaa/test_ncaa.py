@@ -37,6 +37,7 @@ def test_union_node():
         datasource=BuildUnionDatasource(children=datasource),
         all_concepts=[team_name],
         environment=build_env,
+        datasources=datasources,
         depth=0,
         conditions=None,
     )

@@ -16,6 +16,7 @@ single bucket). No derivation is privileged in the orchestrator.
 """
 
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from trilogy.constants import logger
@@ -24,6 +25,7 @@ from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
+    BuildDatasource,
     BuildGrain,
     BuildRowsetItem,
     BuildWhereClause,
@@ -2046,9 +2048,9 @@ def build_group_graph(
     concept_attrs: dict[str, ConceptAttrs],
     conditions: list[BuildWhereClause],
     mandatory_list: list[BuildConcept],
-    datasource_columns: list[frozenset[str]] | None = None,
     *,
     environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
     staged_conditions: list[BuildWhereClause] | None = None,
     keyspace: Keyspace,
 ) -> tuple[nx.DiGraph, EdgeMap, dict[str, GroupAttrs]]:
@@ -2094,6 +2096,7 @@ def build_group_graph(
         conditions,
         mandatory_list,
         environment,
+        datasources,
         keyspace,
         rollup_padded,
     )
@@ -2162,7 +2165,7 @@ def build_group_graph(
         concept_graph,
         concept_edges,
         concept_attrs,
-        datasource_columns or [],
+        [frozenset(c.address for c in ds.output_concepts) for ds in datasources],
     )
     _color_phases(group_graph, group_edges, condition_group_ids)
     # Members of an authored join-axis equality whose collapsed side keeps

@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from copy import copy
@@ -928,10 +928,12 @@ def datasource(ds: BuildDatasource) -> DatasourceTrace:
 
 
 @off_clock
-def environment(env: BuildEnvironment) -> EnvironmentTrace:
+def environment(
+    env: BuildEnvironment, datasources: Sequence[BuildDatasource]
+) -> EnvironmentTrace:
     outputs, hidden = env.statement_output_addresses, env.statement_hidden_addresses
     return EnvironmentTrace(
-        datasources=[datasource(ds) for ds in env.datasources.values()],
+        datasources=[datasource(ds) for ds in datasources],
         statement_outputs=sorted(outputs) if outputs is not None else None,
         statement_hidden=sorted(hidden) if hidden is not None else None,
     )

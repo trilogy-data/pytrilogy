@@ -180,7 +180,9 @@ def _deferred_conditions(request: SourceRequest) -> BuildWhereClause | None:
     )
 
 
-def _single_source_covers(requested: set[str], environment: BuildEnvironment) -> bool:
+def _single_source_covers(
+    requested: set[str], datasources: Sequence[BuildDatasource]
+) -> bool:
     """Some datasource binds every requested address by itself, COMPLETELY.
 
     Completeness is the whole condition: a `partial`/`complete where` source
@@ -188,9 +190,7 @@ def _single_source_covers(requested: set[str], environment: BuildEnvironment) ->
     keys are what carry the other arms in. A partial binding of a single column
     is the same story at column scope.
     """
-    for datasource in environment.datasources.values():
-        if not isinstance(datasource, BuildDatasource):
-            continue
+    for datasource in datasources:
         if datasource.non_partial_for is not None:
             continue
         if requested & {c.address for c in datasource.partial_concepts}:
@@ -203,6 +203,7 @@ def _single_source_covers(requested: set[str], environment: BuildEnvironment) ->
 def _concepts_with_grain_keys(
     concepts: list[BuildConcept],
     environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
 ) -> list[BuildConcept]:
     expanded: list[BuildConcept] = []
     requested_addresses = {concept.address for concept in concepts}
@@ -213,7 +214,7 @@ def _concepts_with_grain_keys(
     # nothing reads. Whenever a join IS in play the key stays a terminal:
     # dropping it there does not degrade to a connector, it re-picks the
     # source and pairs on properties instead.
-    keys_are_affordances = _single_source_covers(requested_addresses, environment)
+    keys_are_affordances = _single_source_covers(requested_addresses, datasources)
     # A requested aggregate pins the population at its own grain: its axis
     # members join BY THEMSELVES, so their authored host-row keys are not
     # requirements of the request. Expanding them would demand the finer key
@@ -303,6 +304,7 @@ def _search_concepts_for_bridge(request: SourceRequest) -> list[BuildConcept]:
             request.environment,
         ),
         request.environment,
+        request.graph.scope_datasources,
     )
     # Static model-path validation, BEFORE any source search: an ambiguous
     # relation is a model/request defect the search must never arbitrate.
@@ -315,14 +317,10 @@ def _inject_union_datasources(
     concepts: list[BuildConcept],
     environment: BuildEnvironment,
 ) -> None:
-    datasources = [
-        datasource
-        for datasource in environment.datasources.values()
-        if isinstance(datasource, BuildDatasource)
-    ]
+    datasources = graph.scope_datasources
     union_edges: list[tuple[str, str]] = []
     excluded = environment.excluded_enum_values
-    for datasource_group in get_union_sources(datasources, concepts, excluded):
+    for datasource_group in get_union_sources(list(datasources), concepts, excluded):
         union_node = "ds~" + "-".join(
             [datasource.name for datasource in datasource_group]
         )
@@ -348,7 +346,7 @@ def _inject_union_datasources(
         common_outputs = set(datasource_group[0].output_concepts)
         for datasource in datasource_group[1:]:
             common_outputs &= set(datasource.output_concepts)
-        derived = union_derived_concepts(datasource_group, environment)
+        derived = union_derived_concepts(datasource_group, environment, datasources)
         for concept in [*common_outputs, *derived]:
             concept_node = concept_to_node(concept)
             graph.concepts.setdefault(concept_node, concept)
@@ -957,6 +955,7 @@ def _datasource_rolls_up_to(
     datasource: BuildDatasource | BuildUnionDatasource | None,
     concept: BuildConcept,
     environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
 ) -> bool:
     """`datasource` binds an additive aggregate that SUM-rolls up to `concept` at
     `concept`'s own grain: the anonymous-alias analogue of binding it outright.
@@ -974,11 +973,7 @@ def _datasource_rolls_up_to(
             datasource=datasource,
             requested_concepts=[concept],
             concepts_by_address=environment.concepts,
-            datasources=[
-                ds
-                for ds in environment.datasources.values()
-                if isinstance(ds, BuildDatasource)
-            ],
+            datasources=datasources,
             target_grain=concept.grain,
         )
     )
@@ -1167,7 +1162,9 @@ def _local_concept_nodes_for_datasource(
                     _datasource_binds_canonical(datasource, canonical)
                     # ...or it binds a finer additive aggregate that rolls up to
                     # it, which is how an anonymous alias reaches a summary table.
-                    or _datasource_rolls_up_to(datasource, canonical, environment)
+                    or _datasource_rolls_up_to(
+                        datasource, canonical, environment, graph.scope_datasources
+                    )
                 )
             )
             if (
@@ -1342,11 +1339,8 @@ def _finer_filter_rollup_source(request: SourceRequest) -> BuildDatasource | Non
     if not finer:
         return None
     finer_canonicals = {c.canonical_address for c in finer}
-    datasources = [
-        ds for ds in environment.datasources.values() if isinstance(ds, BuildDatasource)
-    ]
     matches: list[BuildDatasource] = []
-    for ds in datasources:
+    for ds in request.graph.scope_datasources:
         ds_canonicals = {c.canonical_address for c in ds.output_concepts}
         ds_addresses = {c.address for c in ds.output_concepts}
         if not finer_canonicals.issubset(ds_canonicals):
@@ -1357,7 +1351,7 @@ def _finer_filter_rollup_source(request: SourceRequest) -> BuildDatasource | Non
             datasource=ds,
             requested_concepts=list(outputs),
             concepts_by_address=environment.concepts,
-            datasources=datasources,
+            datasources=request.graph.scope_datasources,
             target_grain=target_grain,
             conditions=conditions,
         )
@@ -1407,8 +1401,8 @@ def _plan_complete_where_source(request: SourceRequest) -> StrategyNode | None:
         if c.granularity != Granularity.SINGLE_ROW
     }
     matches: list[BuildDatasource] = []
-    for ds in environment.datasources.values():
-        if not isinstance(ds, BuildDatasource) or ds.non_partial_for is None:
+    for ds in request.graph.scope_datasources:
+        if ds.non_partial_for is None:
             continue
         # Only datasources exposed as a standalone scan in this graph are
         # addressable here. A union *member* lives in the environment but the

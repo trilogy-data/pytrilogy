@@ -1003,11 +1003,7 @@ def _plan_query_node(
     partial_requested = requested & {c.address for c in ds.partial_concepts}
     if partial_requested:
         detail = describe_incomplete_partitions(
-            [
-                x
-                for x in build_environment.datasources.values()
-                if isinstance(x, BuildDatasource)
-            ],
+            list(graph.scope_datasources),
             [c for c in ds.partial_concepts if c.address in partial_requested],
             build_environment.excluded_enum_values,
         )
