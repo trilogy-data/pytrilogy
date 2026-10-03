@@ -102,9 +102,9 @@ class SourceRequest:
     # a pre-aggregated summary is not a legal source for an aggregate that a
     # later step will filter to a subset of the rows it already summed.
     deferred_conditions: BuildWhereClause | None = None
-    # The rows are an aggregate's input: a read at one coalescing arm's row
-    # grain may stay arm-local, because the aggregate's consumer reassembles
-    # the arms (see `_axis_arm_pinned`).
+    # A read at one coalescing arm's row grain may stay arm-local: the rows
+    # are an aggregate's input, which its consumer reassembles, or a sibling
+    # contributor brings every other arm (see `_axis_arm_pinned`).
     arm_local: bool = False
 
 
@@ -415,9 +415,7 @@ def _network_source(
     concepts = _search_concepts_for_bridge(request)
     partial_ok = _undemanded_reach_keys(request, concepts)
     v4_history = request.history if isinstance(request.history, V4History) else None
-    arm_local = request.arm_local or (
-        v4_history is not None and v4_history.arm_pin_by_default
-    )
+    arm_local = request.arm_local
     verdict_key: (
         tuple[str, str, bool, tuple[str, ...], bool, tuple[str, ...]] | None
     ) = None
