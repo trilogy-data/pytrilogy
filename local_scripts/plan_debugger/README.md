@@ -38,10 +38,12 @@ and drop, or with `?trace=<url>` when served.
 | `group_graph` | group-graph pass | the group DAG after materialization, after FINAL + concept sets + regraft, and after conditions + phases + contracts + extent owners; nodes and edges diffed against the previous pass; region domains outlined |
 | `source` | source request | the network search (candidates × terminals binding table with the chosen cover, cost axes, assignments, join keys, partial terminals, completions) and the planned node for each `plan_source` call with its span scope |
 | `node` | built group | the group's outputs, needed set, atoms injected, parent groups, join keys, the span scope during the build, and the node tree |
+| `join` | join typed | one `get_join_type` decision: the two sides, connecting keys, the sides already joined, the resulting type, the rule that decided it (`full_join_keys`, `region_contract`, `extent_free`, `partial_domain`, `rollup_padding`, `nullable`), both sides' `SideFacts` and the merge-wide `JoinFacts` |
 | `final` | plan | the FINAL contract, the extent ownership, the built groups and the assembled tree |
 | `strategy` | plan | the plan's returned node |
 | `resolve` | statement | the resolved `QueryDatasource` tree: every join with its type and pairs, `region_spans`, `zero_filled`, `extent_free_spans` |
 | `ctes` | before / after optimization | every CTE with outputs, parents, joins, WHERE, GROUP BY; after optimization each has its rendered SQL |
+| `optimizer` | optimization phase | the rule, its loop count, and its effect on the CTE list: CTEs added, CTEs removed (merged into another, or swept), and per CTE the fields that changed (before / after); the step's time is the phase's |
 | `sql` | statement | the compiled statement and, with `--rows`, the result |
 
 A rowset body, a multiselect arm or a condition feeder is planned as its own

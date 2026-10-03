@@ -39,6 +39,7 @@ from trilogy.core.models.execute import (
     preserved_key_pairs,
 )
 from trilogy.core.models.keyspace import Keyspace
+from trilogy.core.processing import plan_trace
 from trilogy.core.processing.condition_utility import is_scalar_condition
 from trilogy.core.processing.utility import (
     PADS_LEFT_JOIN_TYPES,
@@ -703,17 +704,58 @@ def get_join_type(
     (UpgradeOuterFromKeySetEquivalence) restores a directional/INNER form only
     when provably row-identical.
     """
+    join_type, rule = _decide_join_type(left, right, all_connecting_keys, facts, joined)
+    if plan_trace.active():
+        _trace_join_type(
+            left, right, all_connecting_keys, facts, joined, join_type, rule
+        )
+    return join_type
+
+
+def _trace_join_type(
+    left: str,
+    right: str,
+    keys: set[str],
+    facts: JoinFacts,
+    joined: Collection[str],
+    join_type: JoinType,
+    rule: str,
+) -> None:
+    plan_trace.record(
+        f"{left} ~ {right}: {join_type.value}",
+        plan_trace.JoinTypeStep(
+            left=left,
+            right=right,
+            keys=sorted(keys),
+            joined=sorted(joined),
+            type=join_type.value,
+            rule=rule,
+            left_facts=plan_trace.jsonable(facts.side(left)),
+            right_facts=plan_trace.jsonable(facts.side(right)),
+            merge_facts=plan_trace.jsonable(replace(facts, sides={})),
+        ),
+    )
+
+
+def _decide_join_type(
+    left: str,
+    right: str,
+    all_connecting_keys: set[str],
+    facts: JoinFacts,
+    joined: Collection[str],
+) -> tuple[JoinType, str]:
+    """`get_join_type`'s answer and the name of the rule that decided it."""
     # UNION-declared keys (query-scoped `full join` / `union join`, non-partial
     # merges): neither domain contains the other, so FULL with the key
     # coalesced; the registry also vetoes narrowing, and keeps the key complete.
     if all_connecting_keys & facts.full_join_keys:
-        return JoinType.FULL
+        return JoinType.FULL, "full_join_keys"
 
     region_type, region_hosts_equally = _region_contract_join(
         left, right, all_connecting_keys, facts, joined
     )
     if region_type is not None:
-        return region_type
+        return region_type, "region_contract"
     # two holders of one region (its domain and a reader of it) pair on what
     # they hold, and neither out-hosts the other by its bindings
     host = (
@@ -724,11 +766,14 @@ def get_join_type(
 
     extent_type, typed_keys = _extent_free_join(left, right, all_connecting_keys, facts)
     if extent_type is not None:
-        return extent_type
+        return extent_type, "extent_free"
     left_facts, right_facts = facts.side(left), facts.side(right)
     partial_keys = all_connecting_keys if typed_keys is None else typed_keys
     if partial_keys & (left_facts.partials | right_facts.partials):
-        return _partial_domain_join(left, right, all_connecting_keys, facts, host)
+        return (
+            _partial_domain_join(left, right, all_connecting_keys, facts, host),
+            "partial_domain",
+        )
 
     # A grouping-set NULL is padding, not a value: the subtotal/grand-total row
     # a ROLLUP/CUBE/GROUPING SETS emits has no counterpart on a side that does
@@ -738,8 +783,10 @@ def get_join_type(
     # sets, so the NULL groups do pair.
     left_pads = bool(all_connecting_keys & left_facts.rollup_padded)
     if left_pads != bool(all_connecting_keys & right_facts.rollup_padded):
-        return JoinType.LEFT_OUTER if left_pads else JoinType.RIGHT_OUTER
-    return _nullable_join(left, right, all_connecting_keys, facts, host)
+        return (
+            JoinType.LEFT_OUTER if left_pads else JoinType.RIGHT_OUTER
+        ), "rollup_padding"
+    return _nullable_join(left, right, all_connecting_keys, facts, host), "nullable"
 
 
 def reduce_join_types(join_types: set[JoinType]) -> JoinType:

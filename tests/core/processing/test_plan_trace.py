@@ -151,7 +151,7 @@ def test_steps_carry_planner_time_except_snapshot_only_steps():
     trace = _trace("select name, count(order_id) as order_count;")
     steps = trace["steps"]
     untimed = {s["phase"] for s in steps if s["ms"] is None}
-    assert untimed == {"request", "strategy"}
+    assert untimed == {"request", "strategy", "join"}
     assert all(s["ms"] >= 0 for s in steps if s["ms"] is not None)
     at = [s["at_ms"] for s in steps]
     assert at == sorted(at)
@@ -196,3 +196,35 @@ def test_condition_atoms_serialize_as_expressions():
     ]
     assert atoms
     assert all(isinstance(a, str) and "5" in a for a in atoms)
+
+
+def test_join_steps_name_the_deciding_rule_and_both_sides_facts():
+    trace = _trace("select name, count(order_id) as order_count;")
+    joins = [s for s in trace["steps"] if s["phase"] == "join"]
+    assert joins
+    data = joins[0]["data"]
+    assert data["type"] == "left outer"
+    assert data["rule"] == "region_contract"
+    assert data["keys"]
+    assert data["left_facts"]["hosts"] is True
+    assert "held_spans" in data["right_facts"]
+    assert data["merge_facts"]["sides"] == {}
+
+
+def test_optimizer_steps_diff_each_phase_against_the_last():
+    trace = _trace("select name, count(order_id) as order_count;")
+    steps = [s for s in trace["steps"] if s["phase"] == "optimizer"]
+    assert steps[-1]["data"]["phase"] == "final sweep"
+    assert all(s["ms"] is not None for s in steps)
+    collapsed = next(
+        s["data"] for s in steps if s["data"]["rule"] == "CollapseSingleParent"
+    )
+    (removed,) = collapsed["removed"]
+    assert removed["merged_into"] in collapsed["changed"]
+    changed = collapsed["changed"][removed["merged_into"]]
+    assert all(len(pair) == 2 and pair[0] != pair[1] for pair in changed.values())
+    tombstones = [s for s in trace["steps"] if s["phase"] == "ctes"][-1]["data"][
+        "removed"
+    ]
+    removed_by_steps = [r["name"] for s in steps for r in s["data"]["removed"]]
+    assert [t["name"] for t in tombstones] == removed_by_steps

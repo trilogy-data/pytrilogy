@@ -171,7 +171,7 @@ kbd { font-family: var(--mono); border: 1px solid var(--line); border-radius: 3p
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $ = sel => document.querySelector(sel);
 const PHASE_COLORS = { query: '#a0aec0', request: '#718096', concept_graph: '#3182ce', keyspace: '#805ad5', grouping: '#d69e2e', group_graph: '#dd6b20',
-  source: '#38a169', node: '#319795', final: '#2c7a7b', strategy: '#2b6cb0', resolve: '#4a5568', ctes: '#975a16', sql: '#1a202c' };
+  source: '#38a169', node: '#319795', join: '#2f855a', final: '#2c7a7b', strategy: '#2b6cb0', resolve: '#4a5568', ctes: '#975a16', optimizer: '#b7791f', sql: '#1a202c' };
 const DEPTH_FILL = { 'd0': 'var(--d0)', 'd1': 'var(--d1)', 'd*': 'var(--dstar)', 'root': 'var(--droot)', 'root_d1': 'var(--drootd1)', 'final': 'var(--dfinal)' };
 // planner-minted concepts (`_virt_*`) read as their lineage
 const VIRT = /(?:[A-Za-z_]\w*\.)?_virt_\w+/g;
