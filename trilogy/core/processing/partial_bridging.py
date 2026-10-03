@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Iterable
+from functools import cached_property
 
 from trilogy.core.enums import Modifier
 from trilogy.core.models.build import (
@@ -85,7 +86,7 @@ def _proven_bound(
     proven: set[str],
     bound: set[str],
     environment: BuildEnvironment,
-    keyspace: Keyspace,
+    authored: _AuthoredKeyspace,
 ) -> set[str]:
     """The bound spellings the WHERE's non-null proofs stand for.
 
@@ -97,7 +98,7 @@ def _proven_bound(
     """
     out = proven & bound
     for address in proven - bound:
-        for key in keyspace.keys_by_address.get(address, ()):
+        for key in authored.keyspace.keys_by_address.get(address, ()):
             concept = environment.concepts.get(key)
             out |= (_spellings(concept) if concept is not None else {key}) & bound
     return out
@@ -230,16 +231,23 @@ def _component_reach(
     return reach
 
 
-def _authored_bindings_keyspace(
-    environment: BuildEnvironment,
-    outputs: list[BuildConcept],
-    conditions: list[BuildWhereClause],
-) -> Keyspace:
+@dataclasses.dataclass
+class _AuthoredKeyspace:
     """The statement's row universe over its bindings as authored. Healing
     runs before the reference graph exists (the graph holds the datasource
-    objects, so they have to be final by then); the keyspace needs neither."""
-    _, attrs, _ = build_concept_graph(outputs, environment, conditions)
-    return build_keyspace(attrs, outputs, environment, conditions)
+    objects, so they have to be final by then); the keyspace needs neither.
+    Built on first read: most heals settle without it."""
+
+    environment: BuildEnvironment
+    outputs: list[BuildConcept]
+    conditions: list[BuildWhereClause]
+
+    @cached_property
+    def keyspace(self) -> Keyspace:
+        _, attrs, _ = build_concept_graph(
+            self.outputs, self.environment, self.conditions
+        )
+        return build_keyspace(attrs, self.outputs, self.environment, self.conditions)
 
 
 def heal_pinned_partials(
@@ -261,9 +269,9 @@ def heal_pinned_partials(
     proven = null_rejected(conditions)
     if not proven:
         return
-    keyspace = _authored_bindings_keyspace(environment, outputs, conditions)
+    authored = _AuthoredKeyspace(environment, outputs, conditions)
     bound = _bound_spellings(datasources)
-    proven_bound = _proven_bound(proven, bound, environment, keyspace)
+    proven_bound = _proven_bound(proven, bound, environment, authored)
     if not proven_bound:
         return
     referenced_bound = (environment.statement_authored_addresses or set()) & bound
@@ -290,7 +298,7 @@ def heal_pinned_partials(
                 ds, anchors, killers, component_refs, datasources
             ):
                 continue
-            if keyspace.binding_is_complete(ds.identifier, key.address):
+            if authored.keyspace.binding_is_complete(ds.identifier, key.address):
                 healed.add(key.address)
         if not healed:
             continue
