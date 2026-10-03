@@ -3447,29 +3447,53 @@ def _add_relation_axis_contributors(
                 chosen.add(provider)
 
 
+def _holds_statement_rows(
+    reader: GroupAttrs, required: frozenset[str], environment: BuildEnvironment
+) -> bool:
+    """A reader of a region carries the statement's rows: a row stream does,
+    an aggregate only when its grain determines the statement's."""
+    if reader.derivation not in GROUPING_DERIVATIONS:
+        return True
+    return all(
+        build_fd_determines(
+            environment, reader.grain_components, address, include_empty_grain=False
+        )
+        for address in required
+    )
+
+
 def _add_region_domain_contributors(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     built: dict[str, StrategyNode],
     per_group: dict[str, list[BuildConcept]],
+    environment: BuildEnvironment,
 ) -> None:
     """A region domain contributes ROWS: the region's own members, NULL on
     everything absent there. The mandatory cover only sees columns, so a domain
     whose every column some sibling also renders (`select order_id, max(amount)
     by user_id`: the user with no order is a row of all NULLs) is added as a
-    contributor of no concepts. Not when a contributor already read it: an
-    aggregate evaluated over the region's rows has them in its groups.
+    contributor of no concepts. Not when a contributor already read it and
+    holds the statement's rows: an aggregate evaluated over the region's rows
+    has them in its groups, but only at its own grain. Two aggregates by
+    `status` and by `name` each read the region and neither pairs a name with
+    a status; the domain's rows do.
 
     A rename of something the domain carries (`item_desc as d`, `customer_id
     as c2`) is rendered on the domain: any other host holds it for the matched
     members only. Still reachable: the alias rides its source's ROOT bucket,
     so `feed_region_domains_to_present_scalars` never sees it as a group of
     its own (`test_unsold_item_counts_no_lines`)."""
+    required = _required_final_contract(attrs).required_grain
     for gid in sorted(built):
         if not attrs[gid].extent_spans:
             continue
         readers = nx.descendants(group_graph, gid)
-        if gid not in per_group and any(other in readers for other in per_group):
+        if gid not in per_group and any(
+            other in readers
+            and _holds_statement_rows(attrs[other], required, environment)
+            for other in per_group
+        ):
             continue
         per_group.setdefault(gid, [])
         base = built[gid]
@@ -4746,7 +4770,7 @@ def _assemble_final_node(
     )
     # last: the promotion above drops a contributor left with no concepts,
     # which is all a row-only domain ever has
-    _add_region_domain_contributors(group_graph, attrs, built, per_group)
+    _add_region_domain_contributors(group_graph, attrs, built, per_group, environment)
     contributing = list(per_group.keys())
     final_probe_args = (
         [

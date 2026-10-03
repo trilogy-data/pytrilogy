@@ -502,6 +502,46 @@ def test_per_key_atom_under_an_aggregate_by_another_key(
     assert sorted_rows(derived, query) == expected
 
 
+# Each aggregate reads the region's rows at its own grain, and neither pairs a
+# name with a status: the statement's rows are the domain's.
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select name, status, count(customer_id) by status as c, count(customer_id) by name as n",
+            [
+                ("ann", "delivered", 2, 1),
+                ("ann", "in-transit", 1, 1),
+                ("bob", "delivered", 2, 1),
+                ("cat", None, 1, 1),
+            ],
+        ),
+        (
+            "select name, status, count(order_id) by status as c, count(order_id) by name as n",
+            [
+                ("ann", "delivered", 2, 2),
+                ("ann", "in-transit", 1, 2),
+                ("bob", "delivered", 2, 1),
+                ("cat", None, 0, 0),
+            ],
+        ),
+        (
+            "select name, status, count(customer_id) by status as c, max(amount) by name as m",
+            [
+                ("ann", "delivered", 2, 20),
+                ("ann", "in-transit", 1, 20),
+                ("bob", "delivered", 2, 30),
+                ("cat", None, 1, None),
+            ],
+        ),
+    ],
+)
+def test_aggregates_at_disjoint_grains_pair_on_the_region_rows(
+    derived: Executor, materialized: Executor, query: str, expected: list[tuple]
+):
+    assert twin_rows(derived, materialized, query) == expected
+
+
 def test_orderless_customer_has_no_status(derived: Executor):
     assert sorted_rows(derived, "select customer_id, status, count(order_id) as n") == [
         (1, "delivered", 1),
