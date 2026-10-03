@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.constants import SUBQUERY_NAMESPACE_PREFIX
-from trilogy.core.enums import BooleanOperator, ComparisonOperator
+from trilogy.core.enums import BooleanOperator, ComparisonOperator, Purpose
+from trilogy.core.functions import LITERAL_CONSTANT_TYPES
 from trilogy.core.models.author import (
     Comparison,
     ConceptRef,
@@ -136,12 +137,16 @@ def scalar_subquery(
 
 
 def _one_row(select: SelectStatement, environment: Environment) -> bool:
-    """No grain, `limit 1`, or every grain component pinned by an `=` in the
-    WHERE, itself or through its keys (`where cat_avg.category = 'a'`, or a
-    correlation to the outer row)."""
+    """No grain, `limit 1`, or every grain component pinned to a literal or
+    constant by an `=` in the WHERE, itself or through its keys
+    (`where cat_avg.category = 'a'`)."""
     if select.limit == 1:
         return True
-    pinned = _equated(select.where_clause.conditional) if select.where_clause else set()
+    pinned = (
+        _equated(select.where_clause.conditional, environment)
+        if select.where_clause
+        else set()
+    )
     return all(
         _pinned(address, pinned, environment) for address in select.grain.components
     )
@@ -154,21 +159,30 @@ def _pinned(address: str, pinned: set[str], environment: Environment) -> bool:
     return bool(keys) and keys <= pinned
 
 
-def _equated(condition: object) -> set[str]:
+def _equated(condition: object, environment: Environment) -> set[str]:
     if isinstance(condition, Parenthetical):
-        return _equated(condition.content)
+        return _equated(condition.content, environment)
     if isinstance(condition, Conditional) and condition.operator == BooleanOperator.AND:
-        return _equated(condition.left) | _equated(condition.right)
+        return _equated(condition.left, environment) | _equated(
+            condition.right, environment
+        )
     if (
         isinstance(condition, Comparison)
         and condition.operator == ComparisonOperator.EQ
     ):
+        left, right = condition.left, condition.right
         return {
             side.address
-            for side in (condition.left, condition.right)
-            if isinstance(side, ConceptRef)
+            for side, other in ((left, right), (right, left))
+            if isinstance(side, ConceptRef) and _fixed(other, environment)
         }
     return set()
+
+
+def _fixed(value: object, environment: Environment) -> bool:
+    if isinstance(value, ConceptRef):
+        return environment.concepts[value.address].purpose == Purpose.CONSTANT
+    return isinstance(value, LITERAL_CONSTANT_TYPES)
 
 
 ROWSET_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
