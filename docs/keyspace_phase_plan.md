@@ -1,8 +1,8 @@
 # Project plan: a keyspace phase in discovery
 
-> **Status (2026-09-28).** Phases 0-7 are built on branch `extension-row-null-semantics`, PR #702, except for the deletions that stay as the fallback for regions the keyspace does not model yet ([What stays](#what-stays-and-why)). No wrong-rows item is owed and no ruling is pending; what remains is the optimization candidates (a redundant FINAL dedup, a fact-sized re-join to carry dimension attributes, a merge's own grain claim folding through a padded key, a no-op pivot lookup) and the shapes the keyspace does not model ([Open items](#open-items)). A fresh session should read [The problem](#the-problem) and [The idea](#the-idea) for the vocabulary, then the open items. Before touching a seam, read its section under [Rules as built](#rules-as-built). Git history holds the per-session narratives and A/B tallies this doc used to carry.
+Phases 0-7 are built. The deletions listed under [What stays](#what-stays-and-why) remain as the fallback for regions the keyspace does not model yet; what is left is in [Open items](#open-items). Read [The problem](#the-problem) and [The idea](#the-idea) for the vocabulary, and a seam's section under [Rules as built](#rules-as-built) before changing it.
 
-Background: `docs/extent_ownership.md`, `docs/domain_graph_design.md`. Tooling: `local_scripts/keyspace_ab/README.md` (the A/B), `local_scripts/plan_debugger/README.md` (the step-through [visual debugger](#visual-debugger-mvp-2026-09-27)).
+Background: `docs/extent_ownership.md`, `docs/domain_graph_design.md`. Tooling: `local_scripts/keyspace_ab/README.md` (the A/B), `local_scripts/plan_debugger/README.md` (the step-through [visual debugger](#visual-debugger)).
 
 ## The problem
 
@@ -281,7 +281,7 @@ No wrong-rows item is owed (the `OWED` list, the `array_agg` xfail, and the two 
 - `tests/dialect/test_bigquery_full_join_keys.py`: renders planner output, anchored on a three-fact `union join`. It breaks silently when a fixture's FULL join tightens away.
 - `tests/modeling` SQL-size budgets and `zquery<N>.log` hashes.
 
-## Visual debugger (MVP, 2026-09-27)
+## Visual debugger
 
 A step-through viewer for one statement's discovery, so the keyspace can be read as a story instead of reasoned about from `[v4] built` lines: `local_scripts/plan_debugger/` (README there), recorder `trilogy/core/processing/plan_trace.py`, guards `tests/core/processing/test_plan_trace.py`.
 
@@ -289,12 +289,12 @@ A step-through viewer for one statement's discovery, so the keyspace can be read
 
 **What to read, per phase, for a `~` plan** (the README's "Reading a `~` plan"): the region exists with own rows and its span is output-demanded, the outputs that must be NULL on it read "absent" in the outputs × regions matrix; the `extent:<span>` bucket appears in "region domain buckets added" (the bucket diff outlines it); the domain feeds the aggregate and FINAL in the group graph; the domain's `node` step is a scan on the dimension and every other group's span scope lists the span `extent_free`; the resolved merge carries `region <span>` and its join preserves the holder; the LEFT survives the optimizer and a padded COUNT is `0-fill`. Each step's cards, graph nodes and tree nodes open in the inspector with every field the recorder kept, including the raw `GroupAttrs`, `SpanScope` and `Keyspace` values.
 
-**Scope of the MVP, and what is not there yet.** The trace is a record, not a replay: join typing (`get_join_type` per pair, `JoinFacts`), the FINAL cover passes and the optimizer's rule-by-rule changes are visible only through their results (the resolved tree, the CTEs after optimization), where the probe tracers under `local_scripts/keyspace_ab/probes/` still print them per decision. Next candidates, in the order they would have paid off this project: a `join` phase recording each plan-time `get_join_type` call with both `SideFacts` and the rule that answered; an `optimizer` phase recording each rule application as a CTE diff; a trace diff (two traces side by side, step-aligned by plan and title) for the A/B method below; and the heal audit's two keyspaces (authored vs healed) as one step.
+**Scope of the MVP, and what is not there yet.** The trace is a record, not a replay: join typing (`get_join_type` per pair, `JoinFacts`), the FINAL cover passes and the optimizer's rule-by-rule changes are visible only through their results (the resolved tree, the CTEs after optimization),. Next candidates, in the order they would have paid off this project: a `join` phase recording each plan-time `get_join_type` call with both `SideFacts` and the rule that answered; an `optimizer` phase recording each rule application as a CTE diff; a trace diff (two traces side by side, step-aligned by plan and title) for the A/B method below; and the heal audit's two keyspaces (authored vs healed) as one step.
 
 ## Process and verification
 
-- **Commit early and push to PR #702.** CI only runs on PRs; the local full suite is 2h+ and gets killed. First thing in a session: `gh run list --branch extension-row-null-semantics --limit 5`. Known CI flakes: gcat's `UnicodeDecodeError` in `duckdb_engine` followed by "transaction is aborted" (its `httpfs` GCS fetch), BigQuery `test_readme` `RefreshError`, and a windows timing assertion in `test_non_benchmark_queries.py`.
-- **Probe with rows first.** Use the twin pattern in `test_derived_key_domain.py`, the plain model in `test_filter_concept_is_a_value.py`, or rowset-vs-direct pairs on `UNSOLD_MODEL`. `local_scripts/keyspace_ab/probes/` has the loop scripts and tracers (see its README). A script looping pairs and printing SAME/DIFF found every bug of a session in one run.
+- **CI is the full suite.** The local full suite is 2h+. Known CI flakes: gcat's `UnicodeDecodeError` in `duckdb_engine` followed by "transaction is aborted" (its `httpfs` GCS fetch), BigQuery `test_readme` `RefreshError`, and a windows timing assertion in `test_non_benchmark_queries.py`.
+- **Probe with rows first.** Use the twin pattern in `test_derived_key_domain.py`, the plain model in `test_filter_concept_is_a_value.py`, or rowset-vs-direct pairs on `UNSOLD_MODEL`. A script looping such pairs and printing SAME/DIFF finds most bugs in one run.
 - **Trace, don't reason.**
   - `[v4] built grp:...` INFO lines give buckets and parents.
   - Monkeypatch `edges.add_edge`/`remove_edge` for group-graph edges (patch it in `region_domains` and `group_graph` too, since they import it).
@@ -312,4 +312,4 @@ A step-through viewer for one statement's discovery, so the keyspace can be read
   - `adhoc07` and the gcat tests are SQL-only, so growth there cannot be timed.
   - A passing modeling run regenerates benchmark artifacts under `tests/modeling`; commit them.
 - **Sentinel set for fast triage**: the keyspace guards plus gcat `test_case_key`, TPC-DS q64, the field report and thelook (~15 s with `ks_sqldump`). Only survivors go to the full A/B.
-- One pytest at a time; never `stash`/`reset` in this tree.
+- One pytest run at a time: concurrent runs share `zquery<N>.log`s and give phantom failures.

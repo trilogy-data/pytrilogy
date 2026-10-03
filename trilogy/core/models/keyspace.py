@@ -100,6 +100,9 @@ class Keyspace:
     # the spans of a rowset body's regions no requested entity is present on:
     # the body pads them, and they are not rows of this plan
     unread_spans: frozenset[str] = frozenset()
+    # spans some source binds `?`: a NULL key is a member of its own there,
+    # one no dimension row holds, so a fact row keyed on it pairs with nothing
+    value_null_spans: frozenset[str] = frozenset()
 
     @property
     def live_regions(self) -> tuple[Region, ...]:

@@ -370,16 +370,6 @@ def concept_collection_equivalent_addresses(
     return addresses
 
 
-def _concept_by_equivalent_address(
-    address: str,
-    concepts: Iterable[BuildConcept],
-) -> BuildConcept | None:
-    return next(
-        (concept for concept in concepts if address in concept.equivalent_addresses),
-        None,
-    )
-
-
 def _addr_keys(
     addr: str,
     environment: BuildEnvironment,
