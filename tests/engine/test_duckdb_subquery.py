@@ -87,10 +87,15 @@ def test_scalar_subquery_of_several_rows_rejected(backend, query: str):
         _engine().generate_sql(query)
 
 
-def test_scalar_subquery_limited_to_one_row(backend):
-    assert _engine().execute_text(
-        "select id where val >= (select val order by val desc limit 1);"
-    )[-1].fetchall() == [(3,)]
+@pytest.mark.parametrize(
+    "query",
+    [
+        "select id where val >= (select val order by val desc limit 1);",
+        "select id where val >= (select val where id = 3);",
+    ],
+)
+def test_scalar_subquery_of_one_row(backend, query: str):
+    assert _engine().execute_text(query)[-1].fetchall() == [(3,)]
 
 
 def test_scalar_subquery_round_trips(backend):
