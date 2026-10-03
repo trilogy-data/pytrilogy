@@ -629,6 +629,7 @@ def split_carried_only_row_streams(
                     addr, bucket.depth_label
                 )
                 primary_group[node_id] = split.group_id
+            assert split.group_id not in buckets, split.group_id
             buckets[split.group_id] = split
             kept = [
                 i for i in range(len(bucket.primary_members)) if i not in carried_only
