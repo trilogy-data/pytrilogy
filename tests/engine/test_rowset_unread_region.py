@@ -18,8 +18,12 @@ its direct one, on the oracle twin (both models) and on a two-family model.
 
 import pytest
 
-from tests.engine.test_derived_key_domain import _ACTIVITY, _DERIVED, _MATERIALIZED
-from trilogy import Dialects
+from tests.helpers.models import (
+    CUSTOMER_ACTIVITY,
+    CUSTOMERS_DERIVED,
+    CUSTOMERS_MATERIALIZED,
+)
+from tests.helpers.rows import executor_for, sorted_rows
 from trilogy.executor import Executor
 
 KEYED = "rowset s <- select customer_id as c, name as n, order_id as o, status as st, amount as a;\n"
@@ -122,30 +126,19 @@ FAMILY_ROWS = {
 }
 
 
-def _executor(model: str) -> Executor:
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(model)
-    return executor
-
-
-def _rows(executor: Executor, query: str) -> list[tuple]:
-    rows = [tuple(r) for r in executor.execute_text(query)[-1].fetchall()]
-    return sorted(rows, key=lambda r: tuple((v is None, str(v)) for v in r))
-
-
 @pytest.fixture(scope="module")
 def derived() -> Executor:
-    return _executor(_DERIVED + _ACTIVITY)
+    return executor_for(CUSTOMERS_DERIVED + CUSTOMER_ACTIVITY)
 
 
 @pytest.fixture(scope="module")
 def materialized() -> Executor:
-    return _executor(_MATERIALIZED + _ACTIVITY)
+    return executor_for(CUSTOMERS_MATERIALIZED + CUSTOMER_ACTIVITY)
 
 
 @pytest.fixture(scope="module")
 def family() -> Executor:
-    return _executor(FAMILY_MODEL)
+    return executor_for(FAMILY_MODEL)
 
 
 @pytest.mark.parametrize("rowset_query,direct_query", TWIN_PAIRS)
@@ -153,15 +146,17 @@ def test_rowset_matches_direct_on_both_twins(
     derived: Executor, materialized: Executor, rowset_query: str, direct_query: str
 ):
     for executor in (derived, materialized):
-        assert _rows(executor, rowset_query) == _rows(executor, direct_query)
+        assert sorted_rows(executor, rowset_query) == sorted_rows(
+            executor, direct_query
+        )
 
 
 @pytest.mark.parametrize("rowset_query,direct_query", FAMILY_PAIRS)
 def test_rowset_matches_direct_on_two_families(
     family: Executor, rowset_query: str, direct_query: str
 ):
-    rows = _rows(family, rowset_query)
-    assert rows == _rows(family, direct_query)
+    rows = sorted_rows(family, rowset_query)
+    assert rows == sorted_rows(family, direct_query)
     expected = FAMILY_ROWS.get(rowset_query.splitlines()[-1])
     if expected is not None:
         assert rows == expected

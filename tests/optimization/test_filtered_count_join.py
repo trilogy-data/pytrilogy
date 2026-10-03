@@ -5,7 +5,7 @@ the left row is NULL-extended instead. The rule is sound only when the aggregate
 is the sole reader of that side — the TPC-H q13 shape.
 """
 
-from trilogy import Dialects, Environment
+from tests.helpers.rows import executor_for, fetch_rows
 
 _MODEL = """
 key line_id int;
@@ -30,19 +30,10 @@ select 1 uid, 'ca' st union all select 2 uid, 'ny' st union all select 3 uid, 'w
 """
 
 
-def _executor():
-    env, _ = Environment().parse(_MODEL)
-    return Dialects.DUCK_DB.default_executor(environment=env)
-
-
 def _fired(sql: str) -> bool:
     """The predicate moved onto the ON clause rather than staying in the count."""
     on_clause = sql.split("LEFT OUTER JOIN")[-1].split("\n")[0]
     return "sale_price" in on_clause and "CASE WHEN" not in sql
-
-
-def _rows(executor, query: str) -> list[tuple]:
-    return [tuple(r) for r in executor.execute_text(query)[-1].fetchall()]
 
 
 _BY_ORDER = """select order_id, state, count(line_id ? sale_price > 4) as big_lines
@@ -56,14 +47,18 @@ order by user_id asc;"""
 
 
 def test_grouping_key_off_the_right_keeps_its_value():
-    executor = _executor()
-    assert _rows(executor, _BY_ORDER) == [(10, "ca", 2), (11, "ny", 0), (None, "wa", 0)]
+    executor = executor_for(_MODEL)
+    assert fetch_rows(executor, _BY_ORDER) == [
+        (10, "ca", 2),
+        (11, "ny", 0),
+        (None, "wa", 0),
+    ]
     assert not _fired(executor.generate_sql(_BY_ORDER)[-1])
 
 
 def test_named_filter_grouping_key_off_the_right_keeps_its_value():
-    executor = _executor()
-    assert _rows(executor, _BY_ORDER_NAMED) == [
+    executor = executor_for(_MODEL)
+    assert fetch_rows(executor, _BY_ORDER_NAMED) == [
         (10, "ca", 2),
         (11, "ny", 0),
         (None, "wa", 0),
@@ -72,6 +67,6 @@ def test_named_filter_grouping_key_off_the_right_keeps_its_value():
 
 
 def test_fires_when_the_count_is_the_sole_reader_of_the_right():
-    executor = _executor()
-    assert _rows(executor, _BY_USER) == [(1, "ca", 2), (2, "ny", 0), (3, "wa", 0)]
+    executor = executor_for(_MODEL)
+    assert fetch_rows(executor, _BY_USER) == [(1, "ca", 2), (2, "ny", 0), (3, "wa", 0)]
     assert _fired(executor.generate_sql(_BY_USER)[-1])

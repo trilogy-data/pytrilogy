@@ -35,10 +35,11 @@ QUERIES = {
 
 
 def _run() -> dict[str, list]:
-    from tests.engine.test_derived_key_domain import _MATERIALIZED, _executor, _rows
+    from tests.helpers.models import CUSTOMER_ACTIVITY, CUSTOMERS_MATERIALIZED
+    from tests.helpers.rows import executor_for, sorted_rows
 
-    executor = _executor(_MATERIALIZED + _RETURNS)
-    return {query: [list(r) for r in _rows(executor, query)] for query in QUERIES}
+    executor = executor_for(CUSTOMERS_MATERIALIZED + _RETURNS + CUSTOMER_ACTIVITY)
+    return {query: [list(r) for r in sorted_rows(executor, query)] for query in QUERIES}
 
 
 def test_rows_hold_under_every_hash_seed():

@@ -4,15 +4,12 @@ Asserts the REGIONS, never a rendered shape. The row-level consequences are
 pinned by tests/engine/test_derived_key_domain.py.
 """
 
+from collections.abc import Callable
+from typing import Any
+from unittest.mock import Mock
+
 import pytest
 
-from tests.core.processing.test_extent_ownership import _SIMPLE, _plan
-from tests.engine.test_derived_key_domain import (
-    _ACTIVITY,
-    _DERIVED,
-    _NULLABLE_FK,
-    _PARTIAL_PROPERTY_SOURCE,
-)
 from tests.engine.test_duckdb_partial_fk_field_report import MODEL as FIELD_REPORT
 from tests.engine.test_duckdb_rowset_null_group_rejoin import (
     KEYLESS_CASES,
@@ -20,6 +17,14 @@ from tests.engine.test_duckdb_rowset_null_group_rejoin import (
     ROWSET_QUERY,
     UNSOLD_MODEL,
 )
+from tests.helpers.models import (
+    CUSTOMER_ACTIVITY,
+    CUSTOMERS_DERIVED,
+    NULLABLE_FK,
+    PARTIAL_PROPERTY_SOURCE,
+    TWO_FAMILIES,
+)
+from tests.helpers.planning import plan
 from trilogy import Dialects
 from trilogy.core.models.keyspace import Keyspace, Region
 from trilogy.core.processing import partial_bridging
@@ -35,16 +40,17 @@ ITEM = "local.item_id"
 
 
 def _keyspace(model: str, query: str) -> Keyspace:
-    info, _ = _plan(model, query)
+    info, _ = plan(model, query)
     return info.keyspace
 
 
 class _Capture:
-    def __init__(self) -> None:
-        self.seen: list[Keyspace] = []
+    def __init__(self, wrapped: Callable[..., Any] = build_keyspace) -> None:
+        self.wrapped = wrapped
+        self.seen: list[Any] = []
 
-    def __call__(self, *args, **kwargs) -> Keyspace:
-        self.seen.append(build_keyspace(*args, **kwargs))
+    def __call__(self, *args, **kwargs) -> Any:
+        self.seen.append(self.wrapped(*args, **kwargs))
         return self.seen[-1]
 
 
@@ -83,7 +89,7 @@ def _absent(keyspace: Keyspace, address: str) -> list[frozenset[str]]:
 
 
 def test_demanded_partial_key_adds_its_extension_region():
-    keyspace = _keyspace(_DERIVED, "select customer_id, status;")
+    keyspace = _keyspace(CUSTOMERS_DERIVED, "select customer_id, status;")
     assert _cells(keyspace) == {frozenset({CUSTOMER, ORDER}), frozenset({CUSTOMER})}
     (extension,) = _extensions(keyspace)
     assert extension.spans == frozenset({CUSTOMER})
@@ -92,7 +98,7 @@ def test_demanded_partial_key_adds_its_extension_region():
 
 
 def test_concept_is_defined_only_where_its_keys_are_present():
-    keyspace = _keyspace(_DERIVED, "select customer_id, name, status, label;")
+    keyspace = _keyspace(CUSTOMERS_DERIVED, "select customer_id, name, status, label;")
     (extension,) = _extensions(keyspace)
     assert keyspace.defined_on("local.name", extension)
     assert not keyspace.defined_on("local.status", extension)
@@ -101,31 +107,35 @@ def test_concept_is_defined_only_where_its_keys_are_present():
 
 
 def test_aggregate_by_the_span_is_defined_on_the_extension_region():
-    keyspace = _keyspace(_DERIVED + _ACTIVITY, "select customer_id, status, activity;")
+    keyspace = _keyspace(
+        CUSTOMERS_DERIVED + CUSTOMER_ACTIVITY, "select customer_id, status, activity;"
+    )
     (extension,) = _extensions(keyspace)
     assert keyspace.defined_on("local.activity", extension)
     assert not keyspace.defined_on("local.status", extension)
 
 
 def test_join_axis_only_key_adds_no_region():
-    keyspace = _keyspace(_DERIVED, "select status, count(order_id) as n;")
+    keyspace = _keyspace(CUSTOMERS_DERIVED, "select status, count(order_id) as n;")
     assert _cells(keyspace) == {frozenset({ORDER})}
 
 
 def test_span_demanded_through_a_member_it_determines():
-    keyspace = _keyspace(_DERIVED, "select name, status;")
+    keyspace = _keyspace(CUSTOMERS_DERIVED, "select name, status;")
     assert _cells(keyspace) == {frozenset({CUSTOMER, ORDER}), frozenset({CUSTOMER})}
     assert keyspace.output_demanded_spans == frozenset({CUSTOMER})
 
 
 def test_span_demanded_only_as_an_aggregate_argument():
-    keyspace = _keyspace(_DERIVED, "select status, count(customer_id) as customers;")
+    keyspace = _keyspace(
+        CUSTOMERS_DERIVED, "select status, count(customer_id) as customers;"
+    )
     assert keyspace.demanded_spans == frozenset({CUSTOMER})
     assert keyspace.output_demanded_spans == frozenset()
 
 
 def test_extension_families_never_cross_pair():
-    keyspace = _keyspace(_SIMPLE, "select state, brand;")
+    keyspace = _keyspace(TWO_FAMILIES, "select state, brand;")
     assert _cells(keyspace) == {
         frozenset({USER, PRODUCT}),
         frozenset({USER}),
@@ -135,32 +145,35 @@ def test_extension_families_never_cross_pair():
 
 
 def test_completely_bound_key_is_absorbed_by_the_finer_source():
-    keyspace = _keyspace(_SIMPLE, "select order_id, total_qty;")
+    keyspace = _keyspace(TWO_FAMILIES, "select order_id, total_qty;")
     assert _cells(keyspace) == {frozenset({ORDER, ITEM})}
 
 
 def test_source_binding_its_own_grain_partially_is_the_same_region():
-    keyspace = _keyspace(_PARTIAL_PROPERTY_SOURCE, "select order_id, is_returned;")
+    keyspace = _keyspace(PARTIAL_PROPERTY_SOURCE, "select order_id, is_returned;")
     assert _cells(keyspace) == {frozenset({ORDER, ITEM})}
     assert _absent(keyspace, "local.is_returned") == []
 
 
 def test_nullable_key_is_a_value_on_one_region():
-    keyspace = _keyspace(_NULLABLE_FK, "select order_id, customer_label;")
+    keyspace = _keyspace(NULLABLE_FK, "select order_id, customer_label;")
     assert _cells(keyspace) == {frozenset({ORDER, CUSTOMER})}
 
 
 def test_rollup_subtotal_is_not_a_region():
-    flat = _keyspace(_DERIVED, "select customer_id, sum(amount) as total;")
+    flat = _keyspace(CUSTOMERS_DERIVED, "select customer_id, sum(amount) as total;")
     rolled = _keyspace(
-        _DERIVED, "select customer_id, sum(amount) as total by rollup (customer_id);"
+        CUSTOMERS_DERIVED,
+        "select customer_id, sum(amount) as total by rollup (customer_id);",
     )
     assert _cells(rolled) == _cells(flat)
 
 
 def test_where_null_rejecting_an_absent_concept_empties_the_region(monkeypatch):
     keyspace = _heal_keyspace(
-        monkeypatch, _DERIVED, "select customer_id, status where status = 'delivered';"
+        monkeypatch,
+        CUSTOMERS_DERIVED,
+        "select customer_id, status where status = 'delivered';",
     )
     (extension,) = _extensions(keyspace)
     assert extension.emptied_by == frozenset({"local.status"})
@@ -184,7 +197,7 @@ merge order_amount into amount;
 def test_where_naming_a_pseudonym_empties_the_region(monkeypatch, where: str):
     keyspace = _heal_keyspace(
         monkeypatch,
-        _DERIVED + _MERGED_ORDER,
+        CUSTOMERS_DERIVED + _MERGED_ORDER,
         f"select customer_id, status where {where};",
     )
     (extension,) = _extensions(keyspace)
@@ -194,7 +207,7 @@ def test_where_naming_a_pseudonym_empties_the_region(monkeypatch, where: str):
 def test_where_between_on_an_absent_concept_empties_the_region(monkeypatch):
     keyspace = _heal_keyspace(
         monkeypatch,
-        _DERIVED,
+        CUSTOMERS_DERIVED,
         "select customer_id, status where amount between 1 and 9;",
     )
     (extension,) = _extensions(keyspace)
@@ -204,7 +217,7 @@ def test_where_between_on_an_absent_concept_empties_the_region(monkeypatch):
 
 def test_where_over_a_present_concept_leaves_the_region_live(monkeypatch):
     keyspace = _planned_keyspace(
-        monkeypatch, _DERIVED, "select customer_id, status where name = 'cat';"
+        monkeypatch, CUSTOMERS_DERIVED, "select customer_id, status where name = 'cat';"
     )
     assert keyspace.demanded_spans == frozenset({CUSTOMER})
 
@@ -223,7 +236,7 @@ def test_field_report_has_one_region_per_family():
 
 
 def test_needed_partial_source_beside_a_complete_one_is_a_completion():
-    keyspace = _keyspace(_PARTIAL_PROPERTY_SOURCE, "select order_id, is_returned;")
+    keyspace = _keyspace(PARTIAL_PROPERTY_SOURCE, "select order_id, is_returned;")
     (base,) = keyspace.regions
     assert base.completes == frozenset({ORDER, ITEM})
     # the election's question: whose unmatched members carry an output
@@ -231,7 +244,7 @@ def test_needed_partial_source_beside_a_complete_one_is_a_completion():
 
 
 def test_unneeded_partial_source_demands_nothing():
-    keyspace = _keyspace(_PARTIAL_PROPERTY_SOURCE, "select order_id, qty;")
+    keyspace = _keyspace(PARTIAL_PROPERTY_SOURCE, "select order_id, qty;")
     (base,) = keyspace.regions
     assert base.completes == frozenset()
     assert keyspace.output_demanded_spans == frozenset()
@@ -261,7 +274,7 @@ def test_partial_binding_survives_a_merge_onto_its_target():
 
 
 def test_election_routes_the_spans_the_keyspace_demands():
-    info, _ = _plan(
+    info, _ = plan(
         FIELD_REPORT,
         "select order_id, item_id, user_id, product_id, total_revenue,"
         " total_quantity, total_cost;",
@@ -273,7 +286,7 @@ def test_election_routes_the_spans_the_keyspace_demands():
 def test_span_no_read_source_binds_is_not_routed():
     """`select user_id, state` reads `users` alone. `orders` binding `~user_id`
     somewhere in the model demands nothing of this statement."""
-    info, _ = _plan(_SIMPLE, "select user_id, state;")
+    info, _ = plan(TWO_FAMILIES, "select user_id, state;")
     assert len(info.keyspace.regions) == 1
     assert info.group_attrs[FINAL_NODE_ID].extent_ownership.spans == frozenset()
 
@@ -336,7 +349,7 @@ def test_property_identifying_a_source_is_an_entity():
 
 def test_row_computed_key_lives_on_its_arguments_entity():
     keyspace = _keyspace(
-        _DERIVED + "auto name_key <- upper(name);",
+        CUSTOMERS_DERIVED + "auto name_key <- upper(name);",
         "select name_key, count(order_id) as n;",
     )
     assert keyspace.keys_by_address["local.name_key"] == frozenset({CUSTOMER})
@@ -411,7 +424,7 @@ def test_partial_sources_with_no_complete_one_do_not_complete_each_other():
     assert keyspace.in_play_spans == frozenset()
 
 
-_ROWSET = _DERIVED + """
+_ROWSET = CUSTOMERS_DERIVED + """
 rowset delivered <- select customer_id, order_id where delivery_date is not null;
 """
 
@@ -474,14 +487,18 @@ def test_rowset_over_a_rowset_is_a_region_of_the_reader(monkeypatch):
 
 def test_binding_is_complete_once_the_where_empties_the_rows_it_lacks(monkeypatch):
     dead = _heal_keyspace(
-        monkeypatch, _DERIVED, "select customer_id, status where status = 'delivered';"
+        monkeypatch,
+        CUSTOMERS_DERIVED,
+        "select customer_id, status where status = 'delivered';",
     )
     assert dead.binding_is_complete("orders", CUSTOMER)
 
 
 def test_a_healed_binding_leaves_the_plan_no_region(monkeypatch):
     planned = _planned_keyspace(
-        monkeypatch, _DERIVED, "select customer_id, status where status = 'delivered';"
+        monkeypatch,
+        CUSTOMERS_DERIVED,
+        "select customer_id, status where status = 'delivered';",
     )
     assert _extensions(planned) == []
     assert planned.in_play_spans == frozenset()
@@ -489,14 +506,16 @@ def test_a_healed_binding_leaves_the_plan_no_region(monkeypatch):
 
 def test_binding_stays_partial_while_the_rows_it_lacks_are_live(monkeypatch):
     live = _planned_keyspace(
-        monkeypatch, _DERIVED, "select customer_id, status where name = 'cat';"
+        monkeypatch, CUSTOMERS_DERIVED, "select customer_id, status where name = 'cat';"
     )
     assert not live.binding_is_complete("orders", CUSTOMER)
 
 
 def test_binding_out_of_play_is_not_called_complete(monkeypatch):
     keyspace = _planned_keyspace(
-        monkeypatch, _DERIVED, "select order_id, status where status = 'delivered';"
+        monkeypatch,
+        CUSTOMERS_DERIVED,
+        "select order_id, status where status = 'delivered';",
     )
     assert CUSTOMER not in keyspace.in_play_spans
     assert not keyspace.binding_is_complete("orders", CUSTOMER)
@@ -507,7 +526,7 @@ def test_completion_is_emptied_by_a_column_only_the_partial_source_binds(monkeyp
     rows `returns` lacks are still gone once `ret_order` must be non-null."""
     pinned = _heal_keyspace(
         monkeypatch,
-        _PARTIAL_PROPERTY_SOURCE,
+        PARTIAL_PROPERTY_SOURCE,
         "select order_id, item_id, ret_order where ret_order is not null;",
     )
     (base,) = pinned.regions
@@ -520,7 +539,7 @@ def test_completion_is_emptied_by_a_column_only_the_partial_source_binds(monkeyp
 def test_completion_stays_live_under_a_column_both_sources_reach(monkeypatch):
     unpinned = _heal_keyspace(
         monkeypatch,
-        _PARTIAL_PROPERTY_SOURCE,
+        PARTIAL_PROPERTY_SOURCE,
         "select order_id, item_id, ret_order where qty > 1;",
     )
     assert not unpinned.binding_is_complete("returns", ORDER)
@@ -532,7 +551,7 @@ def test_pin_heal_reads_a_derived_null_rejection(monkeypatch):
     customer key is complete for the statement."""
     keyspace = _heal_keyspace(
         monkeypatch,
-        _DERIVED,
+        CUSTOMERS_DERIVED,
         "select customer_id, status where status = 'delivered' and name = 'cat';",
     )
     assert keyspace.binding_is_complete("orders", CUSTOMER)
@@ -558,14 +577,14 @@ def _domains(info) -> dict[str, frozenset[str]]:
 
 def test_basic_over_an_aggregate_is_keyed_on_what_it_reads():
     keyspace = _keyspace(
-        _DERIVED, "select customer_id, coalesce(sum(amount), 0) as total;"
+        CUSTOMERS_DERIVED, "select customer_id, coalesce(sum(amount), 0) as total;"
     )
     (extension,) = _extensions(keyspace)
     assert keyspace.defined_on("local.total", extension)
 
 
 def test_extension_row_carries_what_its_span_reaches():
-    keyspace = _keyspace(_DERIVED, "select customer_id, name, status;")
+    keyspace = _keyspace(CUSTOMERS_DERIVED, "select customer_id, name, status;")
     (extension,) = _extensions(keyspace)
     assert keyspace.carried_on("local.name", extension)
     assert not keyspace.carried_on("local.status", extension)
@@ -573,19 +592,19 @@ def test_extension_row_carries_what_its_span_reaches():
 
 
 def test_region_with_an_absent_derivation_gets_a_domain():
-    info, _ = _plan(_DERIVED, "select customer_id, status;")
+    info, _ = plan(CUSTOMERS_DERIVED, "select customer_id, status;")
     assert set(_domains(info).values()) == {frozenset({CUSTOMER})}
 
 
 def test_demanded_region_gets_a_domain_whatever_the_outputs():
     """The region's rows come from its domain even when nothing absent would
     take a value on a padded row: one ownership mechanism, not two."""
-    info, _ = _plan(_DERIVED, "select customer_id, amount;")
+    info, _ = plan(CUSTOMERS_DERIVED, "select customer_id, amount;")
     assert set(_domains(info).values()) == {frozenset({CUSTOMER})}
 
 
 def test_unnamed_span_rides_the_domain_as_a_hidden_member():
-    info, _ = _plan(_DERIVED, "select name, status;")
+    info, _ = plan(CUSTOMERS_DERIVED, "select name, status;")
     ((gid, spans),) = _domains(info).items()
     assert spans == frozenset({CUSTOMER})
     assert CUSTOMER in info.group_attrs[gid].carried_keys
@@ -593,7 +612,7 @@ def test_unnamed_span_rides_the_domain_as_a_hidden_member():
 
 
 def test_each_extension_family_gets_its_own_domain():
-    info, _ = _plan(
+    info, _ = plan(
         FIELD_REPORT,
         "auto big <- case when price > 1 then 'big' else 'small' end;"
         " select order_id, item_id, user_id, product_id, big;",
@@ -602,7 +621,7 @@ def test_each_extension_family_gets_its_own_domain():
 
 
 def test_aggregate_over_a_region_reads_its_domain():
-    info, _ = _plan(_DERIVED, "select status, count(customer_id) as customers;")
+    info, _ = plan(CUSTOMERS_DERIVED, "select status, count(customer_id) as customers;")
     ((domain, _),) = _domains(info).items()
     readers = {
         info.group_attrs[gid].derivation.value
@@ -616,18 +635,12 @@ def _planned_info(monkeypatch, model: str, query: str):
     """The statement's plan through the full path, WHERE included."""
     from trilogy.core import query_processor
 
-    seen = []
-    original = query_processor.search_concepts_v4
-
-    def capture(*args, **kwargs):
-        seen.append(original(*args, **kwargs))
-        return seen[-1]
-
+    capture = _Capture(query_processor.search_concepts_v4)
     monkeypatch.setattr(query_processor, "search_concepts_v4", capture)
     executor = Dialects.DUCK_DB.default_executor()
     executor.parse_text(model)
     executor.generate_sql(query)
-    return seen[0]
+    return capture.seen[0]
 
 
 def test_where_over_a_carried_scalar_keeps_the_domain(monkeypatch):
@@ -636,7 +649,7 @@ def test_where_over_a_carried_scalar_keeps_the_domain(monkeypatch):
     hosted at FINAL over the united rows."""
     info = _planned_info(
         monkeypatch,
-        _DERIVED + _ACTIVITY,
+        CUSTOMERS_DERIVED + CUSTOMER_ACTIVITY,
         "select customer_id, status where activity = 'dormant';",
     )
     ((domain, spans),) = _domains(info).items()
@@ -660,7 +673,9 @@ def test_where_over_a_carried_scalar_keeps_the_domain(monkeypatch):
 def test_where_over_an_absent_null_rejecting_value_empties_the_region(monkeypatch):
     """Healed before the plan: the region is gone, not merely empty."""
     info = _planned_info(
-        monkeypatch, _DERIVED, "select customer_id, status where status = 'delivered';"
+        monkeypatch,
+        CUSTOMERS_DERIVED,
+        "select customer_id, status where status = 'delivered';",
     )
     assert not _domains(info)
     assert _extensions(info.keyspace) == []
@@ -677,7 +692,7 @@ def test_emptied_completion_demands_nothing(monkeypatch):
     padding) and demanded by no output."""
     keyspace = _heal_keyspace(
         monkeypatch,
-        _PARTIAL_PROPERTY_SOURCE,
+        PARTIAL_PROPERTY_SOURCE,
         "select order_id, item_id, ret_order where ret_order is not null;",
     )
     (base,) = keyspace.regions
@@ -695,7 +710,7 @@ def test_entity_is_spelled_the_same_with_and_without_a_license(monkeypatch):
     monkeypatch.setattr(partial_bridging, "build_keyspace", healed)
     monkeypatch.setattr(rowset_witness, "build_keyspace", planned)
     executor = Dialects.DUCK_DB.default_executor()
-    executor.parse_text(_DERIVED + _ACTIVITY)
+    executor.parse_text(CUSTOMERS_DERIVED + CUSTOMER_ACTIVITY)
     executor.generate_sql("select customer_id as c2, status;")
     healed.seen.clear()
     planned.seen.clear()
@@ -714,7 +729,7 @@ def test_sub_plan_without_the_where_inherits_the_statement_heal(monkeypatch):
     capture = _Capture()
     monkeypatch.setattr(rowset_witness, "build_keyspace", capture)
     executor = Dialects.DUCK_DB.default_executor()
-    executor.parse_text(_DERIVED)
+    executor.parse_text(CUSTOMERS_DERIVED)
     executor.generate_sql("select customer_id, name where order_seq = 1;")
     feeders = [k for k in capture.seen if "local.order_seq" in k.keys_by_address]
     assert feeders
@@ -737,15 +752,10 @@ def test_nested_rowset_witness_is_computed_once(monkeypatch):
     """Each rowset reads the two before it; a nested witness that read no
     placeholder is cached, so every rowset is witnessed once, not once per
     path."""
-    calls: list[str] = []
-    original = rowset_witness._witness
-
-    def counted(rowset, *args, **kwargs):
-        calls.append(rowset.name)
-        return original(rowset, *args, **kwargs)
-
-    monkeypatch.setattr(rowset_witness, "_witness", counted)
+    witness = Mock(wraps=rowset_witness._witness)
+    monkeypatch.setattr(rowset_witness, "_witness", witness)
     executor = Dialects.DUCK_DB.default_executor()
     executor.parse_text(_CHAIN_MODEL)
     executor.generate_sql("select r6.id, r6.v;")
+    calls = [call.args[0].name for call in witness.call_args_list]
     assert sorted(calls) == sorted(set(calls))

@@ -3,8 +3,8 @@ customers-with-no-order region of the derived-key-domain model."""
 
 import pytest
 
-from tests.core.processing.test_extent_ownership import _plan
-from tests.engine.test_derived_key_domain import _DERIVED
+from tests.helpers.models import CUSTOMERS_DERIVED
+from tests.helpers.planning import plan
 from trilogy.core.processing.v4_helper import region_reads
 
 QUERY = """select customer_id,
@@ -16,7 +16,7 @@ QUERY = """select customer_id,
 
 @pytest.fixture(scope="module")
 def planned():
-    info, environment = _plan(_DERIVED, QUERY)
+    info, environment = plan(CUSTOMERS_DERIVED, QUERY)
     (region,) = [r for r in info.keyspace.live_regions if r.spans]
     return region, info.keyspace, environment
 

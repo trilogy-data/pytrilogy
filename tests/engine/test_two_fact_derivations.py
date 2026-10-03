@@ -4,7 +4,7 @@ padding. Oracle: the same labels stored as columns."""
 
 import pytest
 
-from trilogy import Dialects
+from tests.helpers.rows import executor_for, sorted_rows, twin_rows
 from trilogy.executor import Executor
 
 _BASE = """
@@ -63,36 +63,25 @@ QUERIES = [
 ]
 
 
-def _executor(model: str) -> Executor:
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(model)
-    return executor
-
-
-def _rows(executor: Executor, query: str) -> list[tuple]:
-    rows = [tuple(r) for r in executor.execute_text(query + ";")[-1].fetchall()]
-    return sorted(rows, key=lambda r: tuple((v is None, str(v)) for v in r))
-
-
 @pytest.fixture(scope="module")
 def derived() -> Executor:
-    return _executor(DERIVED)
+    return executor_for(DERIVED)
 
 
 @pytest.fixture(scope="module")
 def materialized() -> Executor:
-    return _executor(MATERIALIZED)
+    return executor_for(MATERIALIZED)
 
 
 @pytest.mark.parametrize("query", QUERIES)
 def test_materialization_invariance(
     derived: Executor, materialized: Executor, query: str
 ):
-    assert _rows(derived, query) == _rows(materialized, query)
+    twin_rows(derived, materialized, query)
 
 
 def test_each_label_is_absent_on_the_other_facts_rows(derived: Executor):
-    assert _rows(derived, "select customer_id, amt_label, sev_label") == [
+    assert sorted_rows(derived, "select customer_id, amt_label, sev_label") == [
         (1, "big", None),
         (1, "small", None),
         (2, "big", "hi"),

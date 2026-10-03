@@ -1,362 +1,386 @@
 """A derived concept is a function of its keys: NULL wherever a key is absent.
 
 Oracle is materialization invariance: storing a derivation as a column at its
-grain must never change a query's rows. `OWED` queries are strict xfails: the
-planner still evaluates them over rows padded for a `~` extension. A fix shows
-up as XPASS; move the query to `HOLDS`.
+grain must never change a query's rows.
 """
 
 import pytest
 
-from trilogy import Dialects
+from tests.helpers.models import (
+    CUSTOMER_ACTIVITY,
+    CUSTOMERS_DERIVED,
+    CUSTOMERS_MATERIALIZED,
+    NULLABLE_FK,
+    PARTIAL_PROPERTY_SOURCE,
+)
+from tests.helpers.rows import executor_for, sorted_rows, twin_rows
 from trilogy.executor import Executor
 
-_BASE = """
-key customer_id int;
-property customer_id.name string;
-key order_id int;
-property order_id.delivery_date date?;
-property order_id.amount int;
 
-root datasource customers (customer_id: customer_id, name: name)
-grain (customer_id)
-query '''
-select 1 as customer_id, 'ann' as name union all
-select 2, 'bob' union all
-select 3, 'cat'
-''';
-"""
+def _labelled(label: str, *queries: str) -> list:
+    return [pytest.param(query, id=f"{label}: {query}") for query in queries]
 
-_ORDER_ROWS = """
-select 100 as order_id, 1 as customer_id, date '2026-01-01' as delivery_date, 10 as amount union all
-select 101, 1, null, 20 union all
-select 102, 2, date '2026-01-02', 30
-"""
 
-_DERIVED = _BASE + f"""
-root datasource orders (
-    order_id: order_id, customer_id: ~customer_id,
-    delivery_date: delivery_date, amount: amount,
-)
-grain (order_id)
-query '''{_ORDER_ROWS}''';
-
-auto status <- case when delivery_date is not null then 'delivered' else 'in-transit' end;
-auto undelivered <- delivery_date is null;
-auto amount_or_zero <- coalesce(amount, 0);
-auto label <- concat(name, '-', status);
-auto flag <- case when undelivered then 1 else 0 end;
-auto order_seq <- row_number order_id over customer_id order by amount asc;
-auto order_rank <- rank order_id by amount desc;
-"""
-
-_MATERIALIZED = _BASE + f"""
-property order_id.status string;
-property order_id.undelivered bool;
-property order_id.amount_or_zero int;
-property order_id.label string;
-property order_id.flag int;
-property order_id.order_seq int;
-property order_id.order_rank int;
-
-root datasource orders (
-    order_id: order_id, customer_id: ~customer_id,
-    delivery_date: delivery_date, amount: amount,
-    status: status, undelivered: undelivered,
-    amount_or_zero: amount_or_zero, label: label,
-    flag: flag, order_seq: order_seq, order_rank: order_rank,
-)
-grain (order_id)
-query '''
-select o.*,
-    case when o.delivery_date is not null then 'delivered' else 'in-transit' end as status,
-    o.delivery_date is null as undelivered,
-    coalesce(o.amount, 0) as amount_or_zero,
-    concat(c.name, '-', case when o.delivery_date is not null then 'delivered' else 'in-transit' end) as label,
-    case when o.delivery_date is null then 1 else 0 end as flag,
-    row_number() over (partition by o.customer_id order by o.amount asc) as order_seq,
-    rank() over (order by o.amount desc) as order_rank
-from ({_ORDER_ROWS}) o
-join (select 1 as customer_id, 'ann' as name union all select 2, 'bob') c
-    on o.customer_id = c.customer_id
-''';
-"""
-
-_ACTIVITY = """
-auto activity <- case when count(order_id) by customer_id > 0 then 'active' else 'dormant' end;
-auto late_name <- filter name where status = 'in-transit';
-auto undelivered_customer <- filter name where undelivered;
-auto big_name <- filter name where count(order_id) by customer_id > 1;
-auto double_amount <- amount * 2;
-"""
-
-# already evaluated on the key's own rows (or NULL-propagating) today
-HOLDS = [
-    "select customer_id, coalesce(sum(amount), 0) as total",
-    "select customer_id, name where status = 'in-transit'",
-    "select customer_id, order_id, order_rank",
-    "select customer_id, activity",
-    "select customer_id, status where status = 'delivered'",
-    "select customer_id, status where amount > 15",
-    "select customer_id, status where status is null",
-    "select customer_id, status where status is null or status = 'delivered'",
-    "select customer_id, status",
-    "select customer_id, order_id, status",
-    "select customer_id, status, count(order_id) as n",
-    "select customer_id, count(status) as n_status, count(order_id) as n_orders",
-    "select customer_id, undelivered",
-    "select customer_id, sum(case when undelivered then 1 else 0 end) as n_undelivered",
-    "select customer_id, amount_or_zero",
-    "select customer_id, sum(amount_or_zero) as total",
-    "select customer_id, label",
-    "select customer_id, name, status, amount_or_zero, label",
-    "select customer_id, status, activity",
-    "select customer_id, sum(flag) as n_undelivered",
-    "select customer_id, order_id, order_seq",
-    "select customer_id, order_seq",
-    "select customer_id, count(order_seq) as numbered",
-    "select customer_id, name where order_seq = 1",
-    "select customer_id, status where name = 'cat'",
-    "select customer_id, status, amount where amount is null",
-    "select customer_id, status, amount where amount is null or amount > 15",
+QUERIES = [
+    *_labelled(
+        "solid",
+        "select customer_id, coalesce(sum(amount), 0) as total",
+        "select customer_id, name where status = 'in-transit'",
+        "select customer_id, order_id, order_rank",
+        "select customer_id, activity",
+        "select customer_id, status where status = 'delivered'",
+        "select customer_id, status where amount > 15",
+        "select customer_id, status where status is null",
+        "select customer_id, status where status is null or status = 'delivered'",
+        "select customer_id, status",
+        "select customer_id, order_id, status",
+        "select customer_id, status, count(order_id) as n",
+        "select customer_id, count(status) as n_status, count(order_id) as n_orders",
+        "select customer_id, undelivered",
+        "select customer_id, sum(case when undelivered then 1 else 0 end) as n_undelivered",
+        "select customer_id, amount_or_zero",
+        "select customer_id, sum(amount_or_zero) as total",
+        "select customer_id, label",
+        "select customer_id, name, status, amount_or_zero, label",
+        "select customer_id, status, activity",
+        "select customer_id, sum(flag) as n_undelivered",
+        "select customer_id, order_id, order_seq",
+        "select customer_id, order_seq",
+        "select customer_id, count(order_seq) as numbered",
+        "select customer_id, name where order_seq = 1",
+        "select customer_id, status where name = 'cat'",
+        "select customer_id, status, amount where amount is null",
+        "select customer_id, status, amount where amount is null or amount > 15",
+    ),
     # the span is demanded only through a member it determines
-    "select name, status",
+    *_labelled(
+        "span via a member",
+        "select name, status",
+    ),
     # the span is demanded only as an aggregate argument
-    "select status, count(customer_id) as customers",
+    *_labelled(
+        "span as an aggregate argument",
+        "select status, count(customer_id) as customers",
+    ),
     # a WHERE over an off-span column the statement does not project
-    "select customer_id, status where amount is null",
+    *_labelled(
+        "unprojected off-span where",
+        "select customer_id, status where amount is null",
+    ),
     # the span is never named and the aggregate groups by a member it carries:
     # the solid stream holds that member for customers WITH an order only
-    "select name, count(status) as n",
-    "select status, name, count(order_id) as n",
-    "select name, label, order_seq",
+    *_labelled(
+        "unnamed span grouped by a carried member",
+        "select name, count(status) as n",
+        "select status, name, count(order_id) as n",
+        "select name, label, order_seq",
+    ),
     # aggregates over the region beside aggregates absent on it
-    "select status, count(customer_id) as c, sum(amount) as s",
-    "select status, count(customer_id) as c, count(order_id) as o",
-    "select status, count(name) as n",
-    "select label, count(customer_id) as n",
-    "select status, activity, count(customer_id) as n",
+    *_labelled(
+        "fed beside unfed aggregates",
+        "select status, count(customer_id) as c, sum(amount) as s",
+        "select status, count(customer_id) as c, count(order_id) as o",
+        "select status, count(name) as n",
+        "select label, count(customer_id) as n",
+        "select status, activity, count(customer_id) as n",
+    ),
     # no output is a function of the customer: the region is not demanded, and
     # the orderless customer is not a row of the statement
-    "select order_id, status",
-    "select order_id, status where name = 'ann'",
-    "select order_id, order_seq where name = 'ann'",
-    "select status, order_seq where customer_id = 1",
-    "select order_id, status where customer_id in (1, 3)",
+    *_labelled(
+        "region not demanded",
+        "select order_id, status",
+        "select order_id, status where name = 'ann'",
+        "select order_id, order_seq where name = 'ann'",
+        "select status, order_seq where customer_id = 1",
+        "select order_id, status where customer_id in (1, 3)",
+    ),
     # a rename of what the region carries is rendered on the domain
-    "select name as n2, status",
-    "select customer_id as c2, status",
-    "select name as n2, customer_id, count(coalesce(amount, 0)) as n",
+    *_labelled(
+        "rename of a carried column",
+        "select name as n2, status",
+        "select customer_id as c2, status",
+        "select name as n2, customer_id, count(coalesce(amount, 0)) as n",
+    ),
     # a WHERE over a value the region's rows carry but no domain column holds
     # (a scalar over an aggregate by the span): its producer reads the domain
     # and the atom is restated at FINAL, over the united rows
-    "select customer_id, status where activity = 'dormant'",
-    "select customer_id, status where activity = 'active'",
-    "select customer_id, name where activity = 'dormant'",
-    "select customer_id, status, activity where activity = 'dormant'",
-    "select name, status where activity = 'dormant'",
-    "select customer_id, status where activity = 'dormant' or status = 'delivered'",
+    *_labelled(
+        "where over a carried scalar",
+        "select customer_id, status where activity = 'dormant'",
+        "select customer_id, status where activity = 'active'",
+        "select customer_id, name where activity = 'dormant'",
+        "select customer_id, status, activity where activity = 'dormant'",
+        "select name, status where activity = 'dormant'",
+        "select customer_id, status where activity = 'dormant' or status = 'delivered'",
+    ),
     # a WHERE over the span key itself: the extension row carries the
     # dimension's key, so the customer with no order passes
-    "select customer_id, status where customer_id in (2, 3)",
-    "select customer_id, status where customer_id = 3",
-    "select name, status where customer_id in (2, 3)",
+    *_labelled(
+        "where over the span key",
+        "select customer_id, status where customer_id in (2, 3)",
+        "select customer_id, status where customer_id = 3",
+        "select name, status where customer_id in (2, 3)",
+    ),
     # the aggregate is grouped at a grain that determines the atom's input, so
     # the atom restated at FINAL rejects the rows its input would have lost
-    "select customer_id, count(order_id) as n where activity = 'dormant'",
-    # a filter concept is a value beside other outputs (owner answer 5), and
-    # the statement's population when it is the only output
-    "select customer_id, late_name",
-    "select customer_id, undelivered_customer",
-    "select customer_id, big_name",
-    "select name, late_name",
-    "select order_id, late_name",
-    "select late_name",
-    "select undelivered_customer",
-    "select big_name",
+    *_labelled(
+        "atom at a determining grain",
+        "select customer_id, count(order_id) as n where activity = 'dormant'",
+    ),
+    # a filter concept is a value beside other outputs, and the statement's
+    # population when it is the only output
+    *_labelled(
+        "filter concept",
+        "select customer_id, late_name",
+        "select customer_id, undelivered_customer",
+        "select customer_id, big_name",
+        "select name, late_name",
+        "select order_id, late_name",
+        "select late_name",
+        "select undelivered_customer",
+        "select big_name",
+    ),
     # a derived null-rejection heals the `~`: the orderless customer is not a
     # row, on either model
-    "select customer_id, amount_or_zero where amount_or_zero is not null",
-    "select customer_id, name where undelivered",
+    *_labelled(
+        "derived null rejection heals",
+        "select customer_id, amount_or_zero where amount_or_zero is not null",
+        "select customer_id, name where undelivered",
+    ),
     # a renamed group key reads the domain, and a COUNT read through the join
     # that adds the region's rows is 0 there, grouped or not
-    "select name as n2, count(status) as n",
-    "select late_name, count(order_id) as n",
+    *_labelled(
+        "renamed group key",
+        "select name as n2, count(status) as n",
+        "select late_name, count(order_id) as n",
+    ),
     # a null-accepting atom over an absent value under an aggregate the domain
     # feeds: applied on the aggregate's input, over the united rows, where the
     # padded row is NULL and a rejected order is not counted
-    "select customer_id, count(order_id) as n where flag = 1 or flag is null",
-    "select customer_id, count(order_id) as n where status is null",
-    "select customer_id, count(order_id) as n where status is null or status = 'delivered'",
-    "select customer_id, sum(amount) as t where flag = 0 or flag is null",
-    "select customer_id, count(order_id) as n where order_seq = 1 or order_seq is null",
-    "select customer_id, count(order_id) as n where amount_or_zero > 10 or amount_or_zero is null",
-    "select name, count(order_id) as n where order_seq = 1 or order_seq is null",
-    "select customer_id, status, count(order_id) as n where order_seq = 1 or order_seq is null",
-    "select customer_id, status, count(order_id) as n where flag = 1 or flag is null",
-    "select order_id, count(customer_id) as n where order_seq = 1 or order_seq is null",
+    *_labelled(
+        "null-accepting atom on a fed aggregate",
+        "select customer_id, count(order_id) as n where flag = 1 or flag is null",
+        "select customer_id, count(order_id) as n where status is null",
+        "select customer_id, count(order_id) as n where status is null or status = 'delivered'",
+        "select customer_id, sum(amount) as t where flag = 0 or flag is null",
+        "select customer_id, count(order_id) as n where order_seq = 1 or order_seq is null",
+        "select customer_id, count(order_id) as n where amount_or_zero > 10 or amount_or_zero is null",
+        "select name, count(order_id) as n where order_seq = 1 or order_seq is null",
+        "select customer_id, status, count(order_id) as n where order_seq = 1 or order_seq is null",
+        "select customer_id, status, count(order_id) as n where flag = 1 or flag is null",
+        "select order_id, count(customer_id) as n where order_seq = 1 or order_seq is null",
+    ),
     # the aggregate is grouped by something absent on the region and counts the
     # span: the domain feeds it, so a carried atom is applied on its input
     # whatever the grain
-    "select status, count(customer_id) as n where activity = 'dormant'",
-    "select status, count(customer_id) as n where activity = 'active'",
-    "select label, count(customer_id) as n where activity = 'dormant'",
-    "select status, count(customer_id) as n where big_name is null",
-    "select status, count(customer_id) as n where late_name is null",
+    *_labelled(
+        "carried atom on an aggregate counting the span",
+        "select status, count(customer_id) as n where activity = 'dormant'",
+        "select status, count(customer_id) as n where activity = 'active'",
+        "select label, count(customer_id) as n where activity = 'dormant'",
+        "select status, count(customer_id) as n where big_name is null",
+        "select status, count(customer_id) as n where late_name is null",
+    ),
     # a WHERE over an aggregate BY the span, evaluated over the region: the
     # count is 0 (and the sum NULL) for the customer with no order, tested
     # where the domain and the aggregate unite, never pushed into the
     # aggregate's HAVING or read as proving the feeder present
-    "select customer_id, name where count(order_id) by customer_id = 0",
-    "select customer_id where count(order_id) by customer_id = 0",
-    "select customer_id, count(order_id) as n where count(order_id) by customer_id = 0",
-    "select customer_id, name where count(order_id) by customer_id < 2",
-    "select customer_id, name where count(order_id) by customer_id > 0",
-    "select customer_id, name where count(order_id) by customer_id = 0 or name = 'ann'",
-    "select customer_id, name where sum(amount) by customer_id is null",
-    "select customer_id, name where sum(amount) by customer_id > 25",
-    "select customer_id, status where count(order_id) by customer_id < 2",
-    "select name, count(order_id) as n where count(order_id) by customer_id < 2",
+    *_labelled(
+        "where over an aggregate by the span",
+        "select customer_id, name where count(order_id) by customer_id = 0",
+        "select customer_id where count(order_id) by customer_id = 0",
+        "select customer_id, count(order_id) as n where count(order_id) by customer_id = 0",
+        "select customer_id, name where count(order_id) by customer_id < 2",
+        "select customer_id, name where count(order_id) by customer_id > 0",
+        "select customer_id, name where count(order_id) by customer_id = 0 or name = 'ann'",
+        "select customer_id, name where sum(amount) by customer_id is null",
+        "select customer_id, name where sum(amount) by customer_id > 25",
+        "select customer_id, status where count(order_id) by customer_id < 2",
+        "select name, count(order_id) as n where count(order_id) by customer_id < 2",
+    ),
     # a null-accepting WHERE over an absent value beside dimension-only
     # outputs: its producer reaches FINAL on its own and pairs with the
     # domain on the span the condition scan carries
-    "select customer_id, name where status is null",
-    "select customer_id where status is null",
-    "select customer_id, name where status is null or amount > 15",
-    "select customer_id, name where flag = 1 or flag is null",
+    *_labelled(
+        "null-accepting where beside dimensions",
+        "select customer_id, name where status is null",
+        "select customer_id where status is null",
+        "select customer_id, name where status is null or amount > 15",
+        "select customer_id, name where flag = 1 or flag is null",
+    ),
     # the status stream over the solid scan keeps the ORDER grain beside the
-    # span riding hidden on that scan (read as a dim-peel key, it was anchored
-    # to the customer, could not carry `amount` for the WHERE, and was joined
-    # to its own parent on the span: ann's delivered order passed on the other
-    # order's amount)
-    "select name, status where status is null or amount > 15",
-    "select name, status where status is null or amount > 15 or amount is null",
-    "select name, label where status is null or amount > 15",
+    # span riding hidden on that scan, so it carries `amount` for the WHERE
+    *_labelled(
+        "status stream keeps the order grain",
+        "select name, status where status is null or amount > 15",
+        "select name, status where status is null or amount > 15 or amount is null",
+        "select name, label where status is null or amount > 15",
+    ),
     # the span is never named: the condition scan pairs with the domain on the
     # span it hides BEFORE the dedup to the output grain strips it
-    "select name where status is null",
-    "select name where status is null or status = 'delivered'",
-    "select name where undelivered is null",
-    "select name where status is null and name != 'bob'",
-    "select name where count(order_id) by customer_id = 0",
-    "select name, count(order_id) as n where status is null",
+    *_labelled(
+        "unnamed span pairs before dedup",
+        "select name where status is null",
+        "select name where status is null or status = 'delivered'",
+        "select name where undelivered is null",
+        "select name where status is null and name != 'bob'",
+        "select name where count(order_id) by customer_id = 0",
+        "select name, count(order_id) as n where status is null",
+    ),
     # nothing demands the customer region: it is not a row of the statement,
     # so its span is never extended and no order derivation is evaluated on a
-    # padding of the orderless customer (`label` was 'cat-in-transit')
-    "select order_id, label",
-    "select order_id, label where status is null",
-    "select status where count(order_id) by customer_id = 0",
-    "select status, sum(amount) as t where count(order_id) by customer_id = 0",
-    "select status, count(order_id) as n where count(order_id) by customer_id = 0",
-    "select status, sum(amount) as t where count(order_id) by customer_id < 2",
+    # padding of the orderless customer
+    *_labelled(
+        "undemanded region is not padded",
+        "select order_id, label",
+        "select order_id, label where status is null",
+        "select status where count(order_id) by customer_id = 0",
+        "select status, sum(amount) as t where count(order_id) by customer_id = 0",
+        "select status, count(order_id) as n where count(order_id) by customer_id = 0",
+        "select status, sum(amount) as t where count(order_id) by customer_id < 2",
+    ),
     # a bare `is null` over a column the `~` scan binds is routed off the scan
-    # as a merge-level test; with no extension here it is applied over the
-    # lone scan, not lost (the plain model returned every order)
-    "select label where status is null",
-    "select order_id where status is null",
-    "select label where undelivered is null",
+    # as a merge-level test; with no extension it is applied over the lone scan
+    *_labelled(
+        "bare is-null off a partial scan",
+        "select label where status is null",
+        "select order_id where status is null",
+        "select label where undelivered is null",
+    ),
     # a ROLLUP over a key the region carries: the derivation is computed on the
     # solid rows and the region's rows enter below the pass, never joined back
     # to its subtotal rows
-    "select customer_id, count(status) as n by rollup (customer_id)",
-    "select name, count(status) as n by rollup (name)",
-    "select customer_id, name, count(status) as n by rollup (customer_id, name)",
-    "select customer_id, count(label) as n, sum(flag) as f by rollup (customer_id)",
-    "select customer_id, status, count(order_id) as n by rollup (customer_id, status)",
-    "select name, status, count(customer_id) as n by rollup (name, status)",
-    "select customer_id, sum(amount_or_zero) as t by rollup (customer_id)",
-    "select customer_id as cid, coalesce(count(status), 0) as n by rollup (customer_id)",
-    "select customer_id, count(order_id) as n where status is null by rollup (customer_id)",
-    "select customer_id, count(order_id) as n where status is null or status = 'delivered' by rollup (customer_id)",
-    "select customer_id, count(status) as n where name != 'ann' by rollup (customer_id)",
-    "select name, count(order_id) as n where order_seq = 1 or order_seq is null by rollup (name)",
+    *_labelled(
+        "rollup over a carried key",
+        "select customer_id, count(status) as n by rollup (customer_id)",
+        "select name, count(status) as n by rollup (name)",
+        "select customer_id, name, count(status) as n by rollup (customer_id, name)",
+        "select customer_id, count(label) as n, sum(flag) as f by rollup (customer_id)",
+        "select customer_id, status, count(order_id) as n by rollup (customer_id, status)",
+        "select name, status, count(customer_id) as n by rollup (name, status)",
+        "select customer_id, sum(amount_or_zero) as t by rollup (customer_id)",
+        "select customer_id as cid, coalesce(count(status), 0) as n by rollup (customer_id)",
+        "select customer_id, count(order_id) as n where status is null by rollup (customer_id)",
+        "select customer_id, count(order_id) as n where status is null or status = 'delivered' by rollup (customer_id)",
+        "select customer_id, count(status) as n where name != 'ann' by rollup (customer_id)",
+        "select name, count(order_id) as n where order_seq = 1 or order_seq is null by rollup (name)",
+    ),
     # a ROLLUP over a key absent on the region whose aggregate counts it
-    "select status, count(customer_id) as c, count(order_id) as o by rollup (status)",
-    "select status, count(customer_id) as c, sum(amount) as s by rollup (status)",
-    "select status, count(customer_id) as n where activity = 'dormant' by rollup (status)",
+    *_labelled(
+        "rollup over an absent counted key",
+        "select status, count(customer_id) as c, count(order_id) as o by rollup (status)",
+        "select status, count(customer_id) as c, sum(amount) as s by rollup (status)",
+        "select status, count(customer_id) as n where activity = 'dormant' by rollup (status)",
+    ),
     # a statement-wide gate the region's rows feed
-    "select customer_id, status where count(customer_id) by * > 2",
-    "select customer_id, label where count(customer_id) by * > 2",
-    "select customer_id, flag where count(customer_id) by * > 2",
-    "select customer_id, status where customer_id >= avg(customer_id) by *",
-    "select customer_id, status where customer_id >= avg(customer_id) by * and status is null",
-    "select customer_id, count(status) as n where count(customer_id) by * > 2",
-    "select status, count(customer_id) as n where count(customer_id) by * > 2",
-    "select customer_id, count(status) as n where count(customer_id) by * > 2 by rollup (customer_id)",
-    "where customer_id >= avg(customer_id) by * and status is null select name, count(customer_id) as n",
-    "where customer_id >= avg(customer_id) by * and order_id is null select name, count(customer_id) as n",
+    *_labelled(
+        "statement-wide gate",
+        "select customer_id, status where count(customer_id) by * > 2",
+        "select customer_id, label where count(customer_id) by * > 2",
+        "select customer_id, flag where count(customer_id) by * > 2",
+        "select customer_id, status where customer_id >= avg(customer_id) by *",
+        "select customer_id, status where customer_id >= avg(customer_id) by * and status is null",
+        "select customer_id, count(status) as n where count(customer_id) by * > 2",
+        "select status, count(customer_id) as n where count(customer_id) by * > 2",
+        "select customer_id, count(status) as n where count(customer_id) by * > 2 by rollup (customer_id)",
+        "where customer_id >= avg(customer_id) by * and status is null select name, count(customer_id) as n",
+        "where customer_id >= avg(customer_id) by * and order_id is null select name, count(customer_id) as n",
+    ),
     # the gate counts the domain, not the condition scan it shares with an
     # atom over the orders (which holds only the customers an order references)
-    "select customer_id, status where count(order_id) by * > 2 and count(customer_id) by * > 2",
-    "select customer_id, status where count(customer_id) by * > 2 and activity = 'dormant'",
-    "select customer_id, status where count(customer_id) by * > 2 and (amount > 15 or amount is null)",
+    *_labelled(
+        "gate counts the domain",
+        "select customer_id, status where count(order_id) by * > 2 and count(customer_id) by * > 2",
+        "select customer_id, status where count(customer_id) by * > 2 and activity = 'dormant'",
+        "select customer_id, status where count(customer_id) by * > 2 and (amount > 15 or amount is null)",
+    ),
     # a per-member atom under a ROLLUP keyed by the span is applied on the
     # pass's input: FINAL would test the subtotal rows
-    "select customer_id, count(status) as n where count(order_id) by customer_id < 2 by rollup (customer_id)",
-    "select customer_id, count(status) as n where count(order_id) by customer_id < 2 or name = 'ann' by rollup (customer_id)",
-    "select name, count(status) as n where sum(amount) by customer_id > 25 by rollup (name)",
+    *_labelled(
+        "per-member atom under a span rollup",
+        "select customer_id, count(status) as n where count(order_id) by customer_id < 2 by rollup (customer_id)",
+        "select customer_id, count(status) as n where count(order_id) by customer_id < 2 or name = 'ann' by rollup (customer_id)",
+        "select name, count(status) as n where sum(amount) by customer_id > 25 by rollup (name)",
+    ),
     # a `by *` aggregate as an OUTPUT is one value beside every row: its input
     # being a row of the statement too does not source the customer apart from
     # the order columns, and its grain is no join key
-    "select customer_id, status, count(customer_id) by * as total",
-    "select customer_id as c2, status, count(customer_id) by * as total",
-    "select upper(name) as u, status, count(name) by * as t",
-    "select name as n2, status, sum(amount) by * as amt",
-    "select customer_id, status, count(customer_id) by * as total, sum(amount) by * as amt",
+    *_labelled(
+        "by-star aggregate output",
+        "select customer_id, status, count(customer_id) by * as total",
+        "select customer_id as c2, status, count(customer_id) by * as total",
+        "select upper(name) as u, status, count(name) by * as t",
+        "select name as n2, status, sum(amount) by * as amt",
+        "select customer_id, status, count(customer_id) by * as total, sum(amount) by * as amt",
+    ),
     # a WHERE the domain applies itself: beside an aggregate the region does
     # not feed, the filtered solid stream is not the statement's population
-    "select status, count(customer_id) as c, sum(amount) as s where name = 'cat'",
-    "select status, count(customer_id) as c, sum(amount) as s where name != 'ann'",
-    "select status, count(customer_id) as c, sum(amount) as s where customer_id = 3",
-    "select status, count(customer_id) as c, count(order_id) as o where name = 'cat'",
-    "select label, count(name) as c, max(amount) as s where name in ('cat', 'bob')",
+    *_labelled(
+        "where the domain applies",
+        "select status, count(customer_id) as c, sum(amount) as s where name = 'cat'",
+        "select status, count(customer_id) as c, sum(amount) as s where name != 'ann'",
+        "select status, count(customer_id) as c, sum(amount) as s where customer_id = 3",
+        "select status, count(customer_id) as c, count(order_id) as o where name = 'cat'",
+        "select label, count(name) as c, max(amount) as s where name in ('cat', 'bob')",
+    ),
     # a WHERE filters the statement's rows and never adds one: an aggregate of
     # its own counting the region does not make the orderless customer a row
-    "select status, count(order_id) as o where count(customer_id) by customer_id > 0",
-    "select status where count(customer_id) by customer_id > 0",
-    "select order_id, status where count(customer_id) by customer_id > 0",
-    "select status, sum(amount) as t where count(name) by customer_id > 0",
-    "select status, count(customer_id) as c where count(customer_id) by customer_id > 0",
+    *_labelled(
+        "where adds no row",
+        "select status, count(order_id) as o where count(customer_id) by customer_id > 0",
+        "select status where count(customer_id) by customer_id > 0",
+        "select order_id, status where count(customer_id) by customer_id > 0",
+        "select status, sum(amount) as t where count(name) by customer_id > 0",
+        "select status, count(customer_id) as c where count(customer_id) by customer_id > 0",
+    ),
     # an inline aggregate argument under a ROLLUP is a concept of its own, so
     # one taking a value on a padded row is computed on the solid rows before
     # the region's rows enter below the pass, at any depth of its lineage
-    "select customer_id, sum(coalesce(amount, 0)) as t by rollup (customer_id)",
-    "select customer_id, sum(1 + coalesce(amount, 0)) as t by rollup (customer_id)",
-    "select customer_id, sum(amount_or_zero + 1) as t by rollup (customer_id)",
-    "select customer_id, sum(case when undelivered then 1 else 0 end) as n by rollup (customer_id)",
-    "select name, count(coalesce(amount, 0)) as n by rollup (name)",
-    "select name, count(coalesce(name, 'x')) as n, sum(coalesce(amount, 0)) as t by rollup (name)",
-    "select customer_id, sum(coalesce(amount, 0)) as t, count(status) as n by cube (customer_id)",
-    "select customer_id as cid, sum(coalesce(amount, 0)) as t where name != 'ann' by rollup (customer_id)",
+    *_labelled(
+        "inline argument under rollup",
+        "select customer_id, sum(coalesce(amount, 0)) as t by rollup (customer_id)",
+        "select customer_id, sum(1 + coalesce(amount, 0)) as t by rollup (customer_id)",
+        "select customer_id, sum(amount_or_zero + 1) as t by rollup (customer_id)",
+        "select customer_id, sum(case when undelivered then 1 else 0 end) as n by rollup (customer_id)",
+        "select name, count(coalesce(amount, 0)) as n by rollup (name)",
+        "select name, count(coalesce(name, 'x')) as n, sum(coalesce(amount, 0)) as t by rollup (name)",
+        "select customer_id, sum(coalesce(amount, 0)) as t, count(status) as n by cube (customer_id)",
+        "select customer_id as cid, sum(coalesce(amount, 0)) as t where name != 'ann' by rollup (customer_id)",
+    ),
     # an argument left to render inline beside one projected below the padding
     # keeps its own row inputs
-    "select customer_id, sum(double_amount) as t, count(status) as n",
-    "select customer_id, sum(double_amount) as t, count(status) as n by rollup (customer_id)",
-    "select customer_id, sum(amount * 2) as t, count(label) as n by rollup (customer_id)",
+    *_labelled(
+        "inline argument keeps its row inputs",
+        "select customer_id, sum(double_amount) as t, count(status) as n",
+        "select customer_id, sum(double_amount) as t, count(status) as n by rollup (customer_id)",
+        "select customer_id, sum(amount * 2) as t, count(label) as n by rollup (customer_id)",
+    ),
     # a renamed ROLLUP key renders from the pass's key, not from the column of
     # the same name computed below the pass
-    "select status as s2, sum(amount) as a, sum(amount_or_zero) as t by rollup (status)",
-    "select status as s2, label as l2, sum(amount_or_zero) as t, sum(flag) as f by rollup (status, label)",
+    *_labelled(
+        "renamed rollup key",
+        "select status as s2, sum(amount) as a, sum(amount_or_zero) as t by rollup (status)",
+        "select status as s2, label as l2, sum(amount_or_zero) as t, sum(flag) as f by rollup (status, label)",
+    ),
     # an aggregate over the region grouped by a key absent on it, as an OUTPUT
     # beside the rows: the region's rows are its NULL group, and the padded
     # row pairs with it
-    "select customer_id, status, count(customer_id) by status as per_status",
-    "select name, label, count(name) by label as per_label, sum(amount) by label as amt",
-    "select customer_id, status, count(customer_id) by status as per_status where name != 'ann'",
-    "select customer_id, status, count(customer_id) by status as c, count(customer_id) by * as total",
-    "select name, status, count(customer_id) by status as c, count(order_id) by customer_id as o",
+    *_labelled(
+        "aggregate by an absent key as output",
+        "select customer_id, status, count(customer_id) by status as per_status",
+        "select name, label, count(name) by label as per_label, sum(amount) by label as amt",
+        "select customer_id, status, count(customer_id) by status as per_status where name != 'ann'",
+        "select customer_id, status, count(customer_id) by status as c, count(customer_id) by * as total",
+        "select name, status, count(customer_id) by status as c, count(order_id) by customer_id as o",
+    ),
     # a count of a key under a ROLLUP counts at the key's grain on every row
     # of the pass
-    "select name, status, count(customer_id) as n by rollup (name, status)",
-    "select status, count(customer_id) as c, count(order_id) as o by rollup (status)",
-    "select undelivered, count(customer_id) as n by rollup (undelivered)",
-]
-
-# none owed today; a strict xfail here is the target for the next planner fix
-OWED: list[str] = []
-
-QUERIES = HOLDS + [
-    pytest.param(q, marks=pytest.mark.xfail(strict=True, reason="owed")) for q in OWED
+    *_labelled(
+        "key count under rollup",
+        "select name, status, count(customer_id) as n by rollup (name, status)",
+        "select status, count(customer_id) as c, count(order_id) as o by rollup (status)",
+        "select undelivered, count(customer_id) as n by rollup (undelivered)",
+    ),
 ]
 
 # the same expression spelled inline and as a named concept
@@ -370,37 +394,26 @@ SPELLINGS = [
 ]
 
 
-def _executor(model: str) -> Executor:
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(model + _ACTIVITY)
-    return executor
-
-
-def _rows(executor: Executor, query: str) -> list[tuple]:
-    rows = [tuple(r) for r in executor.execute_text(query + ";")[-1].fetchall()]
-    return sorted(rows, key=lambda r: tuple((v is None, str(v)) for v in r))
-
-
 @pytest.fixture(scope="module")
 def derived() -> Executor:
-    return _executor(_DERIVED)
+    return executor_for(CUSTOMERS_DERIVED + CUSTOMER_ACTIVITY)
 
 
 @pytest.fixture(scope="module")
 def materialized() -> Executor:
-    return _executor(_MATERIALIZED)
+    return executor_for(CUSTOMERS_MATERIALIZED + CUSTOMER_ACTIVITY)
 
 
 @pytest.mark.parametrize("query", QUERIES)
 def test_materialization_invariance(
     derived: Executor, materialized: Executor, query: str
 ):
-    assert _rows(derived, query) == _rows(materialized, query)
+    twin_rows(derived, materialized, query)
 
 
 @pytest.mark.parametrize("named,inline", SPELLINGS)
 def test_inline_spelling_matches_named(derived: Executor, named: str, inline: str):
-    assert _rows(derived, f"select customer_id, {named} as v") == _rows(
+    assert sorted_rows(derived, f"select customer_id, {named} as v") == sorted_rows(
         derived, f"select customer_id, {inline} as v"
     )
 
@@ -424,8 +437,8 @@ select 1 as customer_id, 'ann' as name, 'ANN' as upper_name union all
 select 2, 'bob', 'BOB' union all
 select 3, 'cat', 'CAT'
 ''';"""
-_UPPER_DERIVED = _DERIVED + "auto upper_name <- upper(name);"
-_UPPER_MATERIALIZED = _MATERIALIZED.replace(_CUSTOMERS, _CUSTOMERS_UPPER)
+_UPPER_DERIVED = CUSTOMERS_DERIVED + "auto upper_name <- upper(name);"
+_UPPER_MATERIALIZED = CUSTOMERS_MATERIALIZED.replace(_CUSTOMERS, _CUSTOMERS_UPPER)
 
 
 @pytest.mark.parametrize(
@@ -439,11 +452,10 @@ _UPPER_MATERIALIZED = _MATERIALIZED.replace(_CUSTOMERS, _CUSTOMERS_UPPER)
     ],
 )
 def test_present_derivation_beside_an_absent_one(query: str):
-    assert _CUSTOMERS in _MATERIALIZED
-    derived = _executor(_UPPER_DERIVED)
-    materialized = _executor(_UPPER_MATERIALIZED)
-    rows = _rows(derived, query)
-    assert rows == _rows(materialized, query)
+    assert _CUSTOMERS in CUSTOMERS_MATERIALIZED
+    derived = executor_for(_UPPER_DERIVED + CUSTOMER_ACTIVITY)
+    materialized = executor_for(_UPPER_MATERIALIZED + CUSTOMER_ACTIVITY)
+    rows = twin_rows(derived, materialized, query)
     assert any("CAT" in r for r in rows)
 
 
@@ -488,11 +500,11 @@ def test_present_derivation_beside_an_absent_one(query: str):
 def test_per_key_atom_under_an_aggregate_by_another_key(
     derived: Executor, query: str, expected: list[tuple]
 ):
-    assert _rows(derived, query) == expected
+    assert sorted_rows(derived, query) == expected
 
 
 def test_orderless_customer_has_no_status(derived: Executor):
-    assert _rows(derived, "select customer_id, status, count(order_id) as n") == [
+    assert sorted_rows(derived, "select customer_id, status, count(order_id) as n") == [
         (1, "delivered", 1),
         (1, "in-transit", 1),
         (2, "delivered", 1),
@@ -521,11 +533,12 @@ def test_orderless_customer_has_no_status(derived: Executor):
 def test_null_skipping_function_is_absent_on_the_region(
     query: str, expected: list[tuple]
 ):
-    executor = _executor(
-        _DERIVED
+    executor = executor_for(
+        CUSTOMERS_DERIVED
         + "auto floored <- greatest(amount, 0);\nauto capped <- least(amount, 100);"
+        + CUSTOMER_ACTIVITY
     )
-    assert _rows(executor, query) == expected
+    assert sorted_rows(executor, query) == expected
 
 
 # Aggregates are evaluated OVER a region's extended rows, which is right for
@@ -571,7 +584,7 @@ def test_array_agg_over_a_region_is_empty_not_a_null_element(
     request: pytest.FixtureRequest, model: str, query: str, expected: list[tuple]
 ):
     executor: Executor = request.getfixturevalue(model)
-    assert _sorted_arrays(_rows(executor, query)) == _sorted_arrays(expected)
+    assert _sorted_arrays(sorted_rows(executor, query)) == _sorted_arrays(expected)
 
 
 # The twin is blind here: a bound `amount` is a ROOT value on both models, and
@@ -599,8 +612,7 @@ def test_array_agg_over_a_region_is_empty_not_a_null_element(
 def test_atom_under_an_aggregate_the_domain_feeds(
     derived: Executor, materialized: Executor, query: str, expected: list[tuple]
 ):
-    assert _rows(derived, query) == expected
-    assert _rows(materialized, query) == expected
+    assert twin_rows(derived, materialized, query) == expected
 
 
 # An existence set reading only what the region carries is not keyed by the
@@ -631,11 +643,16 @@ auto n_orders <- count(order_id) by customer_id;
         ),
     ],
 )
-@pytest.mark.parametrize("model", [_DERIVED, _MATERIALIZED], ids=["derived", "mat"])
+@pytest.mark.parametrize(
+    "model", [CUSTOMERS_DERIVED, CUSTOMERS_MATERIALIZED], ids=["derived", "mat"]
+)
 def test_existence_set_over_carried_values_keeps_its_source(
     model: str, query: str, expected: list[tuple]
 ):
-    assert _rows(_executor(model + _EXISTENCE_SETS), query) == expected
+    assert (
+        sorted_rows(executor_for(model + _EXISTENCE_SETS + CUSTOMER_ACTIVITY), query)
+        == expected
+    )
 
 
 # An aggregate by the span beside a row-level atom over the facts: both are
@@ -666,35 +683,15 @@ def test_existence_set_over_carried_values_keeps_its_source(
 def test_row_atom_beside_a_span_aggregate_joins_on_the_span(
     derived: Executor, materialized: Executor, query: str, expected: list[tuple]
 ):
-    assert _rows(derived, query) == expected
-    assert _rows(materialized, query) == expected
+    assert twin_rows(derived, materialized, query) == expected
 
 
 def test_else_fires_when_the_key_is_present(derived: Executor):
-    assert _rows(derived, "select customer_id, activity") == [
+    assert sorted_rows(derived, "select customer_id, activity") == [
         (1, "active"),
         (2, "active"),
         (3, "dormant"),
     ]
-
-
-# `key is null` does not witness absence: these shapes have a NULL key or an
-# unbound property on a REAL row.
-_NULLABLE_FK = """
-key customer_id int;
-property customer_id.name string;
-key order_id int;
-
-root datasource customers (customer_id: customer_id, name: name)
-grain (customer_id)
-query '''select 1 as customer_id, 'ann' as name''';
-
-root datasource orders (order_id: order_id, customer_id: ?customer_id)
-grain (order_id)
-query '''select 100 as order_id, 1 as customer_id union all select 101, null''';
-
-auto customer_label <- coalesce(name, 'unknown');
-"""
 
 
 _PARTIAL_NULLABLE_FK = """
@@ -796,43 +793,27 @@ def test_partial_nullable_key_null_is_a_value(query: str, expected: list[tuple])
     customer row has; the customer with no order is the region. A domain of
     the customer's rows holds the NULL member when a derivation of what it
     carries takes a value there."""
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(_PARTIAL_NULLABLE_FK)
-    assert _rows(executor, query) == expected
+    executor = executor_for(_PARTIAL_NULLABLE_FK)
+    assert sorted_rows(executor, query) == expected
 
 
 def test_nullable_key_is_a_value_not_absence():
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(_NULLABLE_FK)
-    assert _rows(executor, "select order_id, customer_label") == [
+    executor = executor_for(NULLABLE_FK)
+    assert sorted_rows(executor, "select order_id, customer_label") == [
         (100, "ann"),
         (101, "unknown"),
     ]
 
 
-# `returns` binds its OWN grain keys `~`: a line with no return still has its
-# (order, item) entity, from `lines`, so a derivation keyed on it evaluates.
-_PARTIAL_PROPERTY_SOURCE = """
-key order_id int;
-key item_id int;
-properties <order_id, item_id> (qty int, ret_order int?);
-auto is_returned <- ret_order is not null;
-
-root datasource lines (o: order_id, i: item_id, q: qty)
-grain (order_id, item_id)
-query '''select 1 as o, 10 as i, 5 as q union all select 2, 10, 7''';
-
-root datasource returns (o: ~order_id, i: ~item_id, ro: ret_order)
-grain (order_id, item_id)
-query '''select 1 as o, 10 as i, 1 as ro''';
-"""
-
-
 def test_present_entity_with_an_unbound_property_still_evaluates():
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(_PARTIAL_PROPERTY_SOURCE)
-    assert _rows(executor, "select order_id, is_returned") == [(1, True), (2, False)]
-    assert _rows(executor, "select order_id, bool_or(is_returned) as any_return") == [
+    executor = executor_for(PARTIAL_PROPERTY_SOURCE)
+    assert sorted_rows(executor, "select order_id, is_returned") == [
+        (1, True),
+        (2, False),
+    ]
+    assert sorted_rows(
+        executor, "select order_id, bool_or(is_returned) as any_return"
+    ) == [
         (1, True),
         (2, False),
     ]
@@ -842,7 +823,7 @@ def test_rollup_subtotal_row_keeps_its_value(derived: Executor):
     query = (
         "select customer_id, coalesce(sum(amount), 0) as total by rollup (customer_id)"
     )
-    assert _rows(derived, query) == [(1, 30), (2, 30), (3, 0), (None, 60)]
+    assert sorted_rows(derived, query) == [(1, 30), (2, 30), (3, 0), (None, 60)]
 
 
 # The twin is blind where both models pad alike, so the region's rows below an
@@ -973,8 +954,7 @@ def test_rollup_subtotal_row_keeps_its_value(derived: Executor):
 def test_region_rows_below_an_aggregate_not_grouped_by_its_key(
     derived: Executor, materialized: Executor, query: str, expected: list[tuple]
 ):
-    assert _rows(derived, query) == expected
-    assert _rows(materialized, query) == expected
+    assert twin_rows(derived, materialized, query) == expected
 
 
 def test_where_aggregate_over_a_region_adds_no_row(
@@ -982,8 +962,7 @@ def test_where_aggregate_over_a_region_adds_no_row(
 ):
     query = "select order_id, status where count(customer_id) by customer_id > 0"
     expected = [(100, "delivered"), (101, "in-transit"), (102, "delivered")]
-    assert _rows(derived, query) == expected
-    assert _rows(materialized, query) == expected
+    assert twin_rows(derived, materialized, query) == expected
 
 
 _RETURNS = """
@@ -998,17 +977,22 @@ select 900 as return_id, 1 as customer_id
 
 # One ROLLUP pass reads one row stream, so two facts are joined below it and
 # each key repeats per row of the other: a count of a key is DISTINCT there.
-@pytest.mark.parametrize("model", [_DERIVED, _MATERIALIZED])
+@pytest.mark.parametrize("model", [CUSTOMERS_DERIVED, CUSTOMERS_MATERIALIZED])
 def test_counts_of_two_facts_under_one_rollup(model: str):
-    executor = _executor(model + _RETURNS)
+    executor = executor_for(model + _RETURNS + CUSTOMER_ACTIVITY)
     query = "select customer_id, count(order_id) as n, count(return_id) as r by rollup (customer_id)"
-    assert _rows(executor, query) == [(1, 2, 1), (2, 1, 0), (3, 0, 0), (None, 3, 1)]
+    assert sorted_rows(executor, query) == [
+        (1, 2, 1),
+        (2, 1, 0),
+        (3, 0, 0),
+        (None, 3, 1),
+    ]
 
 
 # A second fact binding the span names another key path to it, so the concept
 # graph's FD no longer says the order determines its customer; the model's
 # does, and the row stream keeps carrying the span its region joins back on.
-@pytest.mark.parametrize("model", [_DERIVED, _MATERIALIZED])
+@pytest.mark.parametrize("model", [CUSTOMERS_DERIVED, CUSTOMERS_MATERIALIZED])
 @pytest.mark.parametrize(
     "query,expected",
     [
@@ -1044,7 +1028,10 @@ def test_counts_of_two_facts_under_one_rollup(model: str):
 def test_second_fact_binding_the_span_keeps_the_rows_paired(
     model: str, query: str, expected: list[tuple]
 ):
-    assert _rows(_executor(model + _RETURNS), query) == expected
+    assert (
+        sorted_rows(executor_for(model + _RETURNS + CUSTOMER_ACTIVITY), query)
+        == expected
+    )
 
 
 def test_rollup_by_an_absent_key_counts_the_region(
@@ -1054,7 +1041,7 @@ def test_rollup_by_an_absent_key_counts_the_region(
         "select status, count(customer_id) as c, sum(amount) as s by rollup (status)"
     )
     for executor in (derived, materialized):
-        assert _rows(executor, query)[:3] == [
+        assert sorted_rows(executor, query)[:3] == [
             ("delivered", 2, 40),
             ("in-transit", 1, 20),
             (None, 1, None),
@@ -1107,12 +1094,9 @@ union all select 3, 11, 901, null, 'none' ''';
     ],
 )
 def test_optional_entity_is_absent_on_rows_without_it(query: str):
-    derived = Dialects.DUCK_DB.default_executor()
-    derived.execute_text(_OPTIONAL_DERIVED)
-    materialized = Dialects.DUCK_DB.default_executor()
-    materialized.execute_text(_OPTIONAL_MATERIALIZED)
-    rows = _rows(derived, query)
-    assert rows == _rows(materialized, query)
+    derived = executor_for(_OPTIONAL_DERIVED)
+    materialized = executor_for(_OPTIONAL_MATERIALIZED)
+    rows = twin_rows(derived, materialized, query)
     assert any(r[-1] in (None, 0) for r in rows)
 
 
@@ -1121,8 +1105,7 @@ def test_optional_entity_solid_stream_reads_returns_alone():
     itself: re-sourced at FINAL under its group's own scope, it no longer
     completes its `~` keys with `lines`, which the domain already holds
     (`lines FULL JOIN (lines LEFT JOIN returns)` was the shape)."""
-    materialized = Dialects.DUCK_DB.default_executor()
-    materialized.execute_text(_OPTIONAL_MATERIALIZED)
+    materialized = executor_for(_OPTIONAL_MATERIALIZED)
     sql = materialized.generate_sql(
         "select order_id, item_id, qty, return_id, reason_label;"
     )[-1]
@@ -1185,12 +1168,11 @@ def test_completion_keeps_its_padding_beside_a_domain_on_its_span(
     """`order_id` keeps the unordered customer out of the base region AND is a
     span `returns` completes `lines` on: the customer domain owning it must not
     turn `lines LEFT JOIN returns` into an INNER join."""
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(_COMPLETION_BESIDE_DOMAIN)
-    assert _rows(executor, query) == expected
+    executor = executor_for(_COMPLETION_BESIDE_DOMAIN)
+    assert sorted_rows(executor, query) == expected
 
 
-_FILTERED_SET = _DERIVED + """auto up_name <- upper(name);
+_FILTERED_SET = CUSTOMERS_DERIVED + """auto up_name <- upper(name);
 auto ab_up <- filter up_name where name in ('ann', 'cat');
 """
 
@@ -1209,7 +1191,9 @@ auto ab_up <- filter up_name where name in ('ann', 'cat');
 def test_membership_set_sourced_beside_its_probe(query: str, expected: list[tuple]):
     """The set and the probe come from one CTE: the subselect reads it under its
     own alias, or the probe binds to the subselect's rows and is always true."""
-    assert _rows(_executor(_FILTERED_SET), query) == expected
+    assert (
+        sorted_rows(executor_for(_FILTERED_SET + CUSTOMER_ACTIVITY), query) == expected
+    )
 
 
 _NULL_NAMED = _FILTERED_SET.replace(
@@ -1240,7 +1224,7 @@ def test_null_probe_is_not_a_member_of_a_filtered_set(
 ):
     """The set holds the filter's rows only, never the NULL its CASE leaves on
     a rejected row, so a NULL probe is not a member."""
-    assert _rows(_executor(_NULL_NAMED), query) == expected
+    assert sorted_rows(executor_for(_NULL_NAMED + CUSTOMER_ACTIVITY), query) == expected
 
 
 # A domain-fed aggregate beside one it cannot feed: the atom is applied on each
@@ -1268,7 +1252,7 @@ def test_unfed_aggregate_beside_a_fed_one_takes_the_atom(
     request: pytest.FixtureRequest, model: str, query: str, expected: list[tuple]
 ):
     executor: Executor = request.getfixturevalue(model)
-    assert _rows(executor, query) == expected
+    assert sorted_rows(executor, query) == expected
 
 
 # `upper(name)` reads only what the domain carries: its input is the domain,
@@ -1297,7 +1281,7 @@ def test_unfed_aggregate_beside_a_fed_one_takes_the_atom(
 def test_present_derivation_reads_a_filtered_domain(
     model: str, query: str, expected: list[tuple]
 ):
-    assert _rows(_executor(model), query) == expected
+    assert sorted_rows(executor_for(model + CUSTOMER_ACTIVITY), query) == expected
 
 
 # A dimension keyed on its own entity (`city` by `city_id`) and a second `~`
@@ -1340,11 +1324,16 @@ query '''select 500 as return_id, 1 as customer_id, 'broken' as reason''';
         ),
     ],
 )
-@pytest.mark.parametrize("model", [_DERIVED, _MATERIALIZED], ids=["derived", "mat"])
+@pytest.mark.parametrize(
+    "model", [CUSTOMERS_DERIVED, CUSTOMERS_MATERIALIZED], ids=["derived", "mat"]
+)
 def test_root_group_key_keyed_off_the_span(
     model: str, query: str, expected: list[tuple]
 ):
-    assert _rows(_executor(model + _CITIES), query) == expected
+    assert (
+        sorted_rows(executor_for(model + _CITIES + CUSTOMER_ACTIVITY), query)
+        == expected
+    )
 
 
 # A statement-wide gate (`count(order_id) by *`) has one value for every row,
@@ -1377,7 +1366,7 @@ def test_statement_wide_gate_beside_a_region(
     request: pytest.FixtureRequest, model: str, query: str, expected: list[tuple]
 ):
     executor: Executor = request.getfixturevalue(model)
-    assert _rows(executor, query) == expected
+    assert sorted_rows(executor, query) == expected
 
 
 # An aggregate by a column the domain carries (`city`) read by a WHERE pairs
@@ -1403,11 +1392,16 @@ def test_statement_wide_gate_beside_a_region(
         ),
     ],
 )
-@pytest.mark.parametrize("model", [_DERIVED, _MATERIALIZED], ids=["derived", "mat"])
+@pytest.mark.parametrize(
+    "model", [CUSTOMERS_DERIVED, CUSTOMERS_MATERIALIZED], ids=["derived", "mat"]
+)
 def test_aggregate_by_a_carried_column_pairs_on_it(
     model: str, query: str, expected: list[tuple]
 ):
-    assert _rows(_executor(model + _CITIES), query) == expected
+    assert (
+        sorted_rows(executor_for(model + _CITIES + CUSTOMER_ACTIVITY), query)
+        == expected
+    )
 
 
 @pytest.mark.parametrize(
@@ -1472,7 +1466,7 @@ def test_null_accepting_atom_keeps_the_padded_row(
     request: pytest.FixtureRequest, model: str, query: str, expected: list[tuple]
 ):
     executor: Executor = request.getfixturevalue(model)
-    assert _rows(executor, query) == expected
+    assert sorted_rows(executor, query) == expected
 
 
 # A `?` store beside the `~` customer region: an order with no store is a REAL
@@ -1533,13 +1527,12 @@ auto store_label <- coalesce(store_name, 'unknown');
     ],
 )
 def test_nullable_key_beside_a_region_domain(query: str, expected: list[tuple]):
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(_NULLABLE_STORE)
-    assert _rows(executor, query) == expected
+    executor = executor_for(_NULLABLE_STORE)
+    assert sorted_rows(executor, query) == expected
 
 
 def test_having_on_a_passed_through_key_beside_an_aggregate(derived: Executor):
-    assert _rows(
+    assert sorted_rows(
         derived,
         "select customer_id, count(order_id) as n having n = 0 or customer_id = 1",
     ) == [(1, 2), (3, 0)]
@@ -1572,9 +1565,8 @@ auto big <- case when amount > 6 then 'big' else 'small' end;
     ],
 )
 def test_named_argument_over_a_union_source_is_solid(query: str, expected: list[tuple]):
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(_UNION_ORDERS)
-    assert _rows(executor, query) == expected
+    executor = executor_for(_UNION_ORDERS)
+    assert sorted_rows(executor, query) == expected
 
 
 _TWO_SPANS = """
@@ -1595,9 +1587,8 @@ union all select 101, 1, 11 union all select 102, 2, 10''';
 def test_counting_a_second_span_demands_its_region():
     """`count(product_id)` counts the product no order references, under a
     customer it has none of."""
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(_TWO_SPANS)
-    assert _rows(
+    executor = executor_for(_TWO_SPANS)
+    assert sorted_rows(
         executor,
         "select customer_id, count(order_id) as n, count(product_id) as np",
     ) == [(1, 2, 2), (2, 1, 1), (3, 0, 0), (None, 0, 1)]

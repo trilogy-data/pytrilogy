@@ -3,8 +3,10 @@ group graph before it is built."""
 
 from pytest import raises
 
-from tests.core.processing.test_v4_dim_peel_not_built import _MODEL
-from trilogy import Dialects, Environment
+from tests.helpers.models import LINE_ITEMS
+from tests.helpers.planning import built_groups, recorded
+from tests.helpers.rows import executor_for, fetch_rows
+from trilogy import Environment
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation
 from trilogy.core.env_processor import generate_graph
@@ -28,74 +30,55 @@ from trilogy.core.processing.v4_helper.strategy_builder import (
 )
 
 
-def _executor():
-    env, _ = Environment().parse(_MODEL)
-    return Dialects.DUCK_DB.default_executor(environment=env)
-
-
-def _trace(executor, query: str) -> plan_trace.PlanTrace:
-    with plan_trace.recording(query) as trace:
-        executor.generate_sql(query)
-    return trace
-
-
-def _built(trace: plan_trace.PlanTrace, derivation: str) -> list[str]:
-    return [
-        s.data.group
-        for s in trace.steps
-        if s.phase == "node" and s.data.derivation == derivation
-    ]
-
-
 def _final_graph_groups(trace: plan_trace.PlanTrace) -> set[str]:
     graphs = [s for s in trace.steps if s.phase == "group_graph"]
     return set(graphs[-1].data.graph.nodes)
 
 
 def test_inlined_basic_is_not_built():
-    executor = _executor()
+    executor = executor_for(LINE_ITEMS)
     query = "select order_id, sum(item_margin) as margin order by order_id asc;"
-    trace = _trace(executor, query)
-    assert not _built(trace, "basic")
+    trace = recorded(executor, query)
+    assert not built_groups(trace, "basic")
     assert not [g for g in _final_graph_groups(trace) if g.startswith("grp:basic")]
-    rows = [tuple(r) for r in executor.execute_text(query)[-1].fetchall()]
+    rows = fetch_rows(executor, query)
     assert rows == [(10, 9.0), (11, 2.0)]
 
 
 def test_basic_the_final_reads_is_built():
-    executor = _executor()
+    executor = executor_for(LINE_ITEMS)
     query = """select line_id, item_margin, sum(item_margin) by order_id as margin
 order by line_id asc;"""
-    trace = _trace(executor, query)
-    assert _built(trace, "basic")
-    rows = [tuple(r) for r in executor.execute_text(query)[-1].fetchall()]
+    trace = recorded(executor, query)
+    assert built_groups(trace, "basic")
+    rows = fetch_rows(executor, query)
     assert rows == [(1, 4.0, 9.0), (2, 5.0, 9.0), (3, 2.0, 2.0)]
 
 
 def test_input_behind_an_inlined_filter_is_not_built():
-    executor = _executor()
+    executor = executor_for(LINE_ITEMS)
     query = """select order_id, sum(item_margin ? item_margin > 3) as big_margin
 order by order_id asc;"""
-    trace = _trace(executor, query)
-    assert not _built(trace, "basic") and not _built(trace, "filter")
-    rows = [tuple(r) for r in executor.execute_text(query)[-1].fetchall()]
+    trace = recorded(executor, query)
+    assert not built_groups(trace, "basic") and not built_groups(trace, "filter")
+    rows = fetch_rows(executor, query)
     assert rows == [(10, 9.0), (11, None)]
 
 
 def test_condition_phase_twins_are_not_built():
-    executor = _executor()
+    executor = executor_for(LINE_ITEMS)
     query = """auto ca_avg <- avg(sale_price ? user_id = 1) by order_id;
 where order_id in (10, 11) and ca_avg > 1
 select line_id, rank(order_id) over (order by ca_avg asc) as rnk
 order by line_id asc;"""
-    trace = _trace(executor, query)
-    assert not _built(trace, "filter")
-    rows = [tuple(r) for r in executor.execute_text(query)[-1].fetchall()]
+    trace = recorded(executor, query)
+    assert not built_groups(trace, "filter")
+    rows = fetch_rows(executor, query)
     assert rows == [(1, 1), (2, 1)]
 
 
 def test_reader_holding_folded_members_is_never_built():
-    env, _ = Environment().parse(_MODEL)
+    env, _ = Environment().parse(LINE_ITEMS)
     build_env = env.materialize_for_select()
     graph = nx.DiGraph()
     graph.add_node("filter")

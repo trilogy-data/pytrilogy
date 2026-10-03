@@ -6,7 +6,7 @@ INNER-joined and lost rows."""
 
 import pytest
 
-from trilogy import Dialects
+from tests.helpers.rows import executor_for, sort_rows, sorted_rows
 from trilogy.executor import Executor
 
 _SALES = """select 1 as ticket, 1 as item, 1 as customer_id, 10 as store_id, 100 as date_id
@@ -49,7 +49,7 @@ query '''{_SALES}''';
 """
 
 # 'wed' and 'east' have no sale: each is an extension row
-EXPECTED = sorted(
+EXPECTED = sort_rows(
     [
         (1, 1, 1, "mon", "north"),
         (1, 2, 1, "mon", "north"),
@@ -60,38 +60,29 @@ EXPECTED = sorted(
         (6, 1, None, "mon", None),
         (None, None, None, "wed", None),
         (None, None, None, None, "east"),
-    ],
-    key=str,
+    ]
 )
 
 
 @pytest.fixture
 def executor() -> Executor:
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.parse_text(MODEL)
-    return executor
-
-
-def _rows(executor: Executor, text: str) -> list[tuple]:
-    return sorted(
-        (tuple(r) for r in executor.execute_text(text)[-1].fetchall()), key=str
-    )
+    return executor_for(MODEL)
 
 
 def test_renamed_columns_of_three_regions(executor: Executor):
     renamed = (
         "select ticket as t, item as i, customer_id as c, day as d, store_name as s;"
     )
-    assert _rows(executor, "select ticket, item, customer_id, day, store_name;") == (
-        EXPECTED
-    )
-    assert _rows(executor, renamed) == EXPECTED
+    assert sorted_rows(
+        executor, "select ticket, item, customer_id, day, store_name;"
+    ) == (EXPECTED)
+    assert sorted_rows(executor, renamed) == EXPECTED
     assert executor.generate_sql(renamed)[-1].count(_SALES) == 1
 
 
 def test_rowset_of_region_renames_keeps_fact_rows(executor: Executor):
     assert (
-        _rows(
+        sorted_rows(
             executor,
             """rowset r <- select ticket as t, item as i, customer_id as c, day as d, store_name as s;
 select count(r.t) as n, count(r.d) as d;""",
