@@ -92,7 +92,9 @@ def row_lineage_arguments(concept: BuildConcept) -> list[BuildConcept]:
 def reads_rows_only(concept: BuildConcept) -> bool:
     """A row-stream derivation whose lineage never crosses an aggregate. One
     over an aggregate is evaluated on a ``~`` extension row (`count(...) > 0`
-    is false there, not NULL); one over rows alone is NULL there."""
+    is false there, not NULL); one over rows alone is NULL there. Windows and
+    filters count: unlike `region_domains._null_propagating`, this asks what an
+    extension row lacks, not what a row keyed on a NULL member computes."""
     if concept.derivation not in ROW_STREAM_DERIVATIONS or concept.lineage is None:
         return False
     return all(
