@@ -1,7 +1,0 @@
-import root.store_sales as ss;
-import root.store_returns as sr;
-select
-  count(ss.quantity) as n, count(sr.return_quantity) as m
-subset join sr.customer.customer_sk = ss.customer.customer_sk
-subset join sr.item.item_sk = ss.item.item_sk
-subset join sr.ticket_number = ss.ticket_number;

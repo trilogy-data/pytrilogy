@@ -1,3 +1,0 @@
-import root.store_sales as ss;
-rowset r <- select ss.ticket_number as a, ss.item.item_sk as i, ss.customer.customer_sk as b, ss.store.store_name as d;
-select count(r.a) as n;

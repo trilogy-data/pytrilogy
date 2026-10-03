@@ -1,7 +1,0 @@
-import root.store_sales as ss;
-import root.web_sales as ws;
-with u as union(
- (where ss.date_dim.year = 2001 and ss.date_dim.moy = 11 select ss.ticket_number as o, ss.item.item_sk as i, ss.quantity as q, ss.list_price as p),
- (where ws.sold_date.year = 2001 and ws.sold_date.moy = 11 select ws.order_number as o, ws.item.item_sk as i, ws.quantity as q, ws.list_price as p)
-) -> (o, i, q, p);
-select sum(u.q * u.p ? u.q > 0) as s_filtered, sum(u.q * u.p) as s_plain;

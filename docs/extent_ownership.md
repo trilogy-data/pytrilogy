@@ -24,8 +24,7 @@ Extent routing is now a decision, taken once, before any node is built.
 `build_group_graph` once the FINAL contract is known.
 
 1. **Which spans are in play.** The election does not decide this; it is handed
-   `Keyspace.output_demanded_spans` (`v4_helper/keyspace.py`,
-   `docs/keyspace_phase_plan.md`). A span is in play when the statement's row
+   `Keyspace.output_demanded_spans` (`v4_helper/keyspace.py`). A span is in play when the statement's row
    universe has a live region that span keeps apart (unmatched dimension
    members, or a needed source holding only part of a region beside one holding
    all of it), and some output is a function of what the span alone reaches,

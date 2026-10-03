@@ -1,5 +1,5 @@
 """A step-by-step record of one statement's discovery, for the visual plan
-debugger (``local_scripts/plan_debugger``, docs/keyspace_phase_plan.md).
+debugger (``local_scripts/plan_debugger``).
 
 The planner calls ``record`` at its phase seams; when no recorder is active
 that is one boolean check. Activate with ``start()``/``stop()`` around a

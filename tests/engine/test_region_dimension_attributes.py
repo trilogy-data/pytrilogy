@@ -1,6 +1,5 @@
 """A `~` region with two demanded dimension attributes, one read by a
-derivation on the FACT stream and one plain (docs/keyspace_phase_plan.md,
-open item 3). The twin is the materialization oracle; hand rows are the
+derivation on the FACT stream and one plain. The twin is the materialization oracle; hand rows are the
 contract where both twins could be wrong together.
 
 Three planner bugs pinned here, each pre-existing:

@@ -1,7 +1,7 @@
 # Plan debugger
 
 A step-through viewer for one statement's discovery, built to read the keyspace
-implementation in human form (`docs/keyspace_phase_plan.md`, "Visual debugger").
+implementation in human form.
 The planner records each phase into a JSON trace
 (`trilogy/core/processing/plan_trace.py`); `viewer.html` renders the trace and
 lets you step through it.
@@ -95,12 +95,4 @@ The story a keyspace plan should tell, phase by phase:
 - `examples/`: `customers_orders.preql` (the oracle model, one `~` region),
   `rowset_region.preql` (the same model through a rowset: a nested plan and a
   rowset witness). Generated `*.trace.*` files are git-ignored.
-- `source_repeats.py`: counts `plan_source` requests a statement repeats
-  verbatim across a corpus.
-- `dead_groups.py`: counts built groups whose node never reaches their plan's
-  FINAL tree (the viewer's strike-through) across a corpus, classified by
-  derivation and by why (same doc, "Dead groups").
 - Guards: `tests/core/processing/test_plan_trace.py`.
-- `check_viewer.js`: renders every step of a trace through the viewer's code
-  under a stub DOM (`node check_viewer.js viewer.html <trace.json>`); run it
-  after editing `viewer.html`.

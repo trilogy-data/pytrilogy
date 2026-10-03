@@ -1,4 +1,4 @@
-"""The keyspace: a plan's row universe (docs/keyspace_phase_plan.md).
+"""The keyspace: a plan's row universe.
 
 Asserts the REGIONS, never a rendered shape. The row-level consequences are
 pinned by tests/engine/test_derived_key_domain.py.
@@ -666,9 +666,9 @@ def test_where_over_an_absent_null_rejecting_value_empties_the_region(monkeypatc
     assert _extensions(info.keyspace) == []
 
 
-# What the heal audit (`local_scripts/keyspace_ab/ks_heal_audit.py`) established: the keyspace over the
-# bindings as authored and the one over the rewritten bindings answer the same
-# reader-visible questions, with heal a STATEMENT fact every plan inherits.
+# The keyspace over the bindings as authored and the one over the rewritten
+# bindings answer the same reader-visible questions: heal is a STATEMENT fact
+# every plan inherits.
 
 
 def test_emptied_completion_demands_nothing(monkeypatch):

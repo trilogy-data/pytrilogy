@@ -62,7 +62,7 @@ def test_null_dimension_group_survives_branch_rejoin(query):
 
 # An item no sale references: `grain(order_number, item_sk)` is keyed on the
 # sale line, so it is absent there and the counts are 0, not 1 for a hash of
-# padding (docs/keyspace_phase_plan.md, phase 4). Through the rowset too: the
+# padding. Through the rowset too: the
 # body pads the item, and the plan reading it holds the same region
 # (`keyspace.RowsetWitness`), so the counts read the body's solid rows.
 UNSOLD_MODEL = MODEL.replace(
