@@ -33,6 +33,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import (
     BuildEnvironment,
 )
+from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing import plan_trace
 from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
 
@@ -82,7 +83,6 @@ from .models import (
     GroupBucket,
     GroupInputContract,
     InputChannel,
-    Keyspace,
     RootReason,
 )
 from .projection import (
@@ -1647,7 +1647,6 @@ def _compute_concept_sets(
     if topo is None:
         return
 
-    pseudonym_mates: dict[str, frozenset[str]] = {}
     mate_accumulator: dict[str, set[str]] = {}
     for ca in concept_attrs.values():
         for twin in ca.pseudonyms:
@@ -1728,8 +1727,8 @@ def _compute_concept_sets(
         # back on, a handle of its own the statement never named
         if fact.derivation == Derivation.ROWSET:
             cap |= region_join_keys & set(attrs[gid].carried_spans)
-        # a region's span riding HIDDEN on a solid fact scan (a secondary
-        # member of a ROOT, `region_join_keys`) has no concept attributes of
+        # a region's span riding HIDDEN on a solid fact scan (one of a ROOT's
+        # `carried_spans`, `region_join_keys`) has no concept attributes of
         # its own, so the FD rule below cannot see that the fact binds it at
         # its grain; a pointwise child of that scan carries it, as the axis
         # every FINAL feeder pairs the region's rows on
@@ -1902,8 +1901,8 @@ def _compute_concept_sets(
                         # solid stream), so the coarser exposes its grain and
                         # the finer the coarser's, or the two pair on the one
                         # requested key and every item fans out by its
-                        # product's other orders. Two solid streams fold (TPC-DS
-                        # q23's customer rename beside its line values);
+                        # product's other orders. Two solid streams fold (a
+                        # customer rename beside the line values);
                         # nested grains are the subset rule below; a grouping
                         # sibling pairs on its own grain, which it emits.
                         if (
@@ -2458,8 +2457,9 @@ def _synthetic_dimension_regraft_parent(
     inputs = list(current.input_concepts)
     if not inputs:
         return None
-    if not all(concept_attr_fd_determines(concept_attrs, key, address)
-        for address in inputs):
+    if not all(
+        concept_attr_fd_determines(concept_attrs, key, address) for address in inputs
+    ):
         return None
     if not any(
         key <= set(attrs[candidate].grain_components)

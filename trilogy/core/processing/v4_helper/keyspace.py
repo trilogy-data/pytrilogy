@@ -445,9 +445,7 @@ def _compute_facts(
     )
 
 
-def _with_rowsets(
-    facts: _ModelFacts, rowsets: tuple[_SourceFacts, ...]
-) -> _ModelFacts:
+def _with_rowsets(facts: _ModelFacts, rowsets: tuple[_SourceFacts, ...]) -> _ModelFacts:
     """`facts` beside the rowsets a plan reads: only `carried` changes for the
     model's own sources."""
     respelled = tuple(_respelled(r, facts.canonical) for r in rowsets)

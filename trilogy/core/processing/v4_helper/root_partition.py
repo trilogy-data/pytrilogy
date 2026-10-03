@@ -29,6 +29,7 @@ from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, Purpose
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing import plan_trace
 
 from .concept_graph import condition_stage_of_label
@@ -42,7 +43,7 @@ from .edges import EdgeMap, edge_kind
 from .functional_dependency import build_fd_determines
 from .group_rules import _add_member, overlap_components
 from .keyspace import null_rejected
-from .models import ConceptAttrs, GroupBucket, Keyspace, RootReason
+from .models import ConceptAttrs, GroupBucket, RootReason
 from .region_domains import (
     RegionDomain,
     carry_region_spans,
@@ -120,43 +121,17 @@ def _d1_calc_subgraph(
 ) -> tuple[dict[int | None, set[str]], set[str]]:
     """Identify (d1_calc_roots by `then where` stage, d1_subgraph_nodes).
 
-    Roots are keyed by the condition label's stage qualifier: None is the
-    plain condition phase (the first cross-row-hosting stage of a chain), and
-    each later cross-row-hosting stage gets its own root set. Its feeder scan
-    carries the earlier stages' bounds, so it must not be shared with a
-    differently-bounded stage's computations.
+    Every condition-phase node (label suffix ``@condition``) is d1. A
+    blank-phase root feeds a private root_d1 scan when it feeds a d1 node that
+    is either a row-shape barrier or semijoin-set definition (``where x >
+    avg(price)``: it must see rows free of sibling WHERE atoms), or a
+    condition on a non-grouping d0 output co-sourced in the same root bucket
+    (folding it in would 2-cycle). A scalar BASIC condition needs neither.
 
-    Any concept reached via the WHERE recursion lives at a condition-phase
-    label (suffix ``@condition``) and is classified d1. A root feeds a
-    dedicated root_d1 bucket only when it feeds a d1 node that needs an
-    independent scan, i.e. one that is EITHER:
-      - a row-shape barrier (``where x > avg(price)``) or a semijoin-set
-        definition: such a calc must see a pristine scan, free of sibling
-        WHERE atoms pushed onto the SELECT-side scan; or
-      - a condition that constrains a NON-grouping d0 output (a ROOT/BASIC the
-        SELECT scans directly). That output is co-sourced into the same root
-        bucket, so folding the condition into it would 2-cycle (root ->
-        condition lineage -> root). When the constraint target is an
-        aggregate, it lives in its own group and the condition folds into the
-        co-sourced root cleanly.
-
-    A condition that is only a scalar BASIC (``where flag = 'x'`` with
-    ``flag <- case state_code ...``) needs no pristine scan: applying it over
-    rows a sibling filter already narrowed still selects exactly the
-    conjunction, and splitting its root would re-scan the source as an
-    independent CTE that, when co-sourced with the SELECT through a bridge,
-    is cross-joined ON 1=1.
-
-    The second reason is cycle avoidance ONLY, so it yields to the split's own
-    precondition: the private scan has to be joinable back to the rows it
-    filters. `_split_strands_condition_scan` withholds the split when the
-    condition's roots share no join axis with the SELECT's; co-sourcing is
-    then the only plan with a key, and `_materialize_group_graph` drops the
-    now-redundant constraint back-edge so the fold does not cycle.
-
-    - d1_calc_roots: blank-phase roots feeding such a d1 node.
-    - d1_subgraph_nodes: every condition-phase node; edge routing uses this
-      as the destination side of the predicate."""
+    The second reason yields when the private scan could not join back to the
+    rows it filters (`_split_strands_condition_scan`). Roots are keyed by
+    stage qualifier (None for the plain condition phase): a later stage's scan
+    carries the earlier stages' bounds, so it is never shared across stages."""
     d1_subgraph: set[str] = {
         n for n in concept_graph.nodes if concept_attrs[n].depth_label == DepthLabel.D1
     }
@@ -276,32 +251,15 @@ def _split_strands_condition_scan(
     environment: BuildEnvironment,
 ) -> bool:
     """Whether scanning `split_roots` privately would leave that scan no join
-    key back to the rows it filters.
+    key back to the rows it filters, so co-sourcing in one ROOT request (where
+    the bridge planner finds the connector) is the only keyed plan.
 
-    A root_d1 scan is only useful if the FINAL merge can pair it with the
-    SELECT side. When the condition's roots reach the SELECT's roots only
-    through a BRIDGE (`auto x <- unnest(list); merge x into dim_key`, where the
-    condition's entity reaches the SELECT's only via an enrichment table keyed
-    by a third entity), a scan of the condition side alone shares no key with
-    them and the merge degrades to `ON 1=1`. Co-sourcing is then the only plan
-    with a key: one ROOT request holding both sides is what lets the bridge
-    planner discover the connector.
-
-    The SELECT side is every blank-phase root the SELECT actually reads: a
-    condition-exclusive root is not one of them (it reaches the merge only
-    through the private scan being decided on), but a root the condition SHARES
-    with the SELECT is, and its keys settle the question on their own.
-
-    Both sides must be row-bearing for the question to mean anything: a
-    grainless condition root (a constant, a global aggregate) joins by cross
-    product by construction and keeps its split.
-
-    Disjoint axes are necessary but NOT sufficient: two dimensions of a star
-    schema share no key either, and their private scans still meet over the
-    fact table. What makes the bridge case different is that NO chain of bound
-    datasource columns relates the two sides at all, so the physical-column
-    components decide it.
-    """
+    The SELECT side is every blank-phase root the SELECT reads; a
+    condition-exclusive root is not one. Both sides must have a join axis (a
+    grainless condition root cross-joins by construction and keeps its
+    split), the axes must be disjoint, and no chain of bound datasource
+    columns may relate the two sides: two star-schema dimensions share no key
+    either, but still meet over the fact table."""
     condition_axis: set[str] = set()
     condition_addresses: set[str] = set()
     for node in split_roots:
@@ -645,8 +603,7 @@ def _split_padded_row_streams(
     WHERE rejects, and attributes of those keys, is never built: every row
     it adds is a padded one, and every row it matches takes its keys from
     the rowset. Each key and its attributes source from the entity's own
-    scan instead (TPC-DS q64: no store_sales tuple stream beside the per-year
-    aggregates).
+    scan instead: no fact tuple stream beside the rowset's aggregates.
 
     One rowset, since keys paired with two would lose the co-occurrence the
     stream's rows pair them by. Each key a member, since a scan without its
@@ -830,11 +787,10 @@ def _keep_extension_families_together(
     A cluster keyed by the region's span reads the dimension's own table and
     pads nothing, so it stays apart. Any other cluster is a solid stream beside
     the region's domain, which it can only be if it holds something absent on
-    the region too: holding only what the domain carries it reads the span off
-    the table it was peeled onto (`test_field_report_select` read `user_id`
-    through the orders and stopped reading the items' own binding; a TPC-H
-    select joined `orders` a second time at FINAL). Un-peeled, the members
-    ride the row stream the region's rows join back to."""
+    the region too: holding only what the domain carries it would read the
+    span off the table it was peeled onto, not the row stream's own binding,
+    and join that table a second time at FINAL. Un-peeled, the members ride
+    the row stream the region's rows join back to."""
     carrying = {
         assignment[address]
         for domain in domains
@@ -916,33 +872,18 @@ def _split_root_dimension_clusters(
     condition_roots: set[str],
 ) -> None:
     """Peel single-entity FD dimension clusters out of a keyed ROOT bucket into
-    their own ``grp:root:root:dim:<entity_key>`` ROOT buckets.
+    their own ``grp:root:root:dim:<entity_key>`` ROOT buckets, so wide dims
+    source from their own tables keyed by the entity instead of re-rooting on
+    the fact and deduping back.
 
-    A wide output dimension projection lands in the single keyed root bucket
-    alongside the fact-grain columns it converges with at the FINAL
-    projection. Sourced together they re-root on the fact and dedup back to
-    entity grain; sourcing the dims from their own tables keyed by the entity
-    id avoids those joins.
+    A cluster peels onto a key that is also a grouping key at any depth (a
+    condition-phase aggregate's grain is the axis its twin merges into FINAL
+    on), or onto a composite d0 grouping grain. A member FD by two
+    incomparable entities co-occurs only through the fact and stays put. A
+    region domain holding a cluster whole takes it (`_domain_holding`).
 
-    When a subset of a root bucket's members is functionally determined by a
-    single entity key that is ALSO a grouping key, that subset can source
-    independently from its own dim tables and join on the key: a grouped
-    stream keyed by it is what the cluster joins back to. Any depth counts. A
-    condition-phase aggregate's grain is the axis its population twin merges
-    into FINAL on (tpc-ds q11: customer attributes beside four HAVING sums by
-    `customer.sk`), so its key is a join column like a d0 aggregate's. A
-    composite key comes from a d0 grain only. Each such cluster becomes its
-    own ROOT bucket, per entity. A member FD by two
-    incomparable entities only co-occurs through the fact and stays put.
-
-    A region domain that holds a cluster whole takes it (`_domain_holding`).
-
-    FD is resolved against the full build environment (not the concept-graph
-    side-table), so the chain through an intermediate FK the query never
-    names (``customer.id -> customer.current_addr -> address.city``) is
-    visible. ``include_empty_grain=False`` so a constant is never treated as
-    a dim member.
-    """
+    FD is resolved against the full build environment, so a chain through an
+    FK the query never names is visible; constants are never dim members."""
     grouping_keys = _grouping_keys(buckets)
     if not grouping_keys:
         return
@@ -987,8 +928,7 @@ def _split_root_dimension_clusters(
         # entity peel onto it. The same bound as above: a grain that determines
         # every other member is the bucket's own row key. d0 only: keyed by a
         # condition-phase aggregate's composite grain, the peel reaches FINAL
-        # beside the row stream the WHERE filters and both are built (tpc-h
-        # q20 with its keys selected: 2 CTEs to 6).
+        # beside the row stream the WHERE filters and both are built.
         composite_grains = [
             grain
             for grain in d0_grouping_grains

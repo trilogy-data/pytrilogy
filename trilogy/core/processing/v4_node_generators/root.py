@@ -381,10 +381,9 @@ def gen_root(
 ) -> StrategyNode | None:
     """Source ROOT concepts through the v4 source planner.
 
-    Existence-bearing atoms (`x IN <subselect>`) are applied in a wrapper so
-    the existence feeder remains a side-channel parent rather than being pulled
-    into the row stream.
-    """
+    An existence atom (`x IN <subselect>`) is hosted on the sourced node, or
+    on a wrapper over it; the set's feeder is not sourced here but wired onto
+    the host after the build (`strategy_builder._wire_existence`)."""
     row_conditions, existence_conditions = split_existence_atoms(conditions)
 
     output_addresses = {c.address for c in outputs}

@@ -184,7 +184,16 @@ def test_q02_shape_basic_exposes_inherited_grain_key(
     mandatory = [_FakeConcept("round_result"), _FakeConcept("week_seq")]
 
     _compute_concept_sets(
-        gg, gedges, attrs, cg, cedges, cattrs, buckets, mandatory, empty_environment, frozenset()
+        gg,
+        gedges,
+        attrs,
+        cg,
+        cedges,
+        cattrs,
+        buckets,
+        mandatory,
+        empty_environment,
+        frozenset(),
     )
 
     basic_out = set(attrs["basic"].output_concepts)
@@ -233,7 +242,16 @@ def test_q02_shape_root_does_not_leak_finer_columns_to_aggregate(
     mandatory = [_FakeConcept("agg_sum"), _FakeConcept("week_seq")]
 
     _compute_concept_sets(
-        gg, gedges, attrs, cg, cedges, cattrs, buckets, mandatory, empty_environment, frozenset()
+        gg,
+        gedges,
+        attrs,
+        cg,
+        cedges,
+        cattrs,
+        buckets,
+        mandatory,
+        empty_environment,
+        frozenset(),
     )
 
     agg_out = set(attrs["agg"].output_concepts)
@@ -309,7 +327,16 @@ def test_q04_shape_basic_at_customer_grain_does_not_pull_row_grain(
     mandatory = [_FakeConcept("local_id"), _FakeConcept("local_name")]
 
     _compute_concept_sets(
-        gg, gedges, attrs, cg, cedges, cattrs, buckets, mandatory, empty_environment, frozenset()
+        gg,
+        gedges,
+        attrs,
+        cg,
+        cedges,
+        cattrs,
+        buckets,
+        mandatory,
+        empty_environment,
+        frozenset(),
     )
 
     basic_out = set(attrs["basic"].output_concepts)
@@ -361,7 +388,16 @@ def test_aggregate_inputs_include_primary_lineage_args(
     mandatory = [_FakeConcept("agg_sum"), _FakeConcept("week_seq")]
 
     _compute_concept_sets(
-        gg, gedges, attrs, cg, cedges, cattrs, buckets, mandatory, empty_environment, frozenset()
+        gg,
+        gedges,
+        attrs,
+        cg,
+        cedges,
+        cattrs,
+        buckets,
+        mandatory,
+        empty_environment,
+        frozenset(),
     )
 
     agg_in = set(attrs["agg"].input_concepts)
@@ -414,7 +450,16 @@ def test_basic_inputs_drop_primaries_that_are_computed_locally(
     mandatory = [_FakeConcept("round_result")]
 
     _compute_concept_sets(
-        gg, gedges, attrs, cg, cedges, cattrs, buckets, mandatory, empty_environment, frozenset()
+        gg,
+        gedges,
+        attrs,
+        cg,
+        cedges,
+        cattrs,
+        buckets,
+        mandatory,
+        empty_environment,
+        frozenset(),
     )
 
     basic_in = set(attrs["basic"].input_concepts)
