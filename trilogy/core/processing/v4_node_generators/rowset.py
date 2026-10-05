@@ -86,13 +86,6 @@ class _Boundary:
             self.hidden.add(handle.address)
 
 
-def _anchors_all_rowset(anchors: set[str], environment: BuildEnvironment) -> bool:
-    concepts = [environment.concepts.get(a) for a in anchors]
-    return bool(concepts) and all(
-        c is not None and c.derivation == Derivation.ROWSET for c in concepts
-    )
-
-
 def _rowset_handles(
     environment: BuildEnvironment, derived: list[str]
 ) -> list[BuildConcept]:
@@ -409,29 +402,14 @@ def resolve_rowset(
     # A handle that is a declared-subset SOURCE (`subset join rs.k = anchor.k`)
     # spans only the subset side's domain: mark it partial so join resolution
     # anchors the complete side and LEFT-joins this boundary instead of
-    # INNER-narrowing the anchor to the intersection. Gated on the subset edge's
-    # ANCHOR (its declared superset target) being a rowset handle, not on the
-    # whole relation: a mixed root/rowset relation whose anchor is the ROOT
-    # side resolves through binding substitution, and marking the rowset side
-    # there re-routes a boundary measure onto the root scan. But a ROOT member
-    # elsewhere in the relation (a dim BRIDGE beside rowset-anchored subsets)
-    # must not strip the flag from siblings whose own anchor IS a rowset;
-    # unmarked, two subset boundaries INNER-join each other and drop the anchor
-    # rows they don't share.
-    # A LIMITED body overrides the ROOT-anchor exemption: the limit truncates
-    # rows no condition expresses, so the anchor scan's handle binding cannot
-    # stand in for the boundary's row set; unmarked, the merge INNER-narrows
-    # the anchor to the limited rows.
-    declared_anchors = environment.domain_graph.declared_subset_anchors()
+    # INNER-narrowing the anchor to the intersection. A ROOT anchor needs it
+    # too: reading any boundary value beside `customer_id` under `subset join
+    # rs.cid = customer_id` otherwise drops the customers a filtered body
+    # misses.
     scoped_partial = [
         h
         for h in handles
-        if h.address in subset_sources
-        and isinstance(h.lineage, BuildRowsetItem)
-        and (
-            select.limit is not None
-            or _anchors_all_rowset(declared_anchors.get(h.address, set()), environment)
-        )
+        if h.address in subset_sources and isinstance(h.lineage, BuildRowsetItem)
     ]
     if owned_handles:
         scoped_partial.extend(

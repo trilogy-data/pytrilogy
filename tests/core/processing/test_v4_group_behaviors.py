@@ -348,7 +348,9 @@ def test_input_contract_declares_projection_grain_with_barrier_sibling():
         ),
         "daily_rides": _attrs("daily_rides", {"purpose": Purpose.METRIC}),
     }
-    _refresh_input_contracts(group_graph, group_edges, attrs, concept_attrs, {})
+    _refresh_input_contracts(
+        group_graph, group_edges, attrs, concept_attrs, {}, BuildEnvironment()
+    )
 
     dim_contract = next(
         item
@@ -409,7 +411,12 @@ def test_input_contract_declares_shared_row_parent_join_key():
         EdgeKind.LINEAGE,
     )
     _refresh_input_contracts(
-        group_graph, group_edges, attrs, concept_attrs, concept_edges
+        group_graph,
+        group_edges,
+        attrs,
+        concept_attrs,
+        concept_edges,
+        BuildEnvironment(),
     )
 
     for contract in attrs["consumer"].input_contracts:
@@ -440,7 +447,9 @@ def test_input_contract_keeps_existence_parent_side_channel():
     group_graph.add_nodes_from(attrs)
     add_edge(group_graph, group_edges, "existence_src", "consumer", EdgeKind.EXISTENCE)
 
-    _refresh_input_contracts(group_graph, group_edges, attrs, {}, {})
+    _refresh_input_contracts(
+        group_graph, group_edges, attrs, {}, {}, BuildEnvironment()
+    )
 
     contract = attrs["consumer"].input_contracts[0]
     assert contract.channel == InputChannel.EXISTENCE

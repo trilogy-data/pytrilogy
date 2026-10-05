@@ -77,9 +77,9 @@ SELECT
     sum(\"vacuous\".\"store_sales_quantity\") as \"_per_pair_sq\",
     sum(\"vacuous\".\"store_sales_return_quantity\") as \"_per_pair_srq\"
 FROM
-    \"wakeful\"
-    INNER JOIN \"vacuous\" on \"wakeful\".\"catalog_customer_item_cat_customer_sk\" = \"vacuous\".\"store_sales_customer_sk\" AND \"wakeful\".\"catalog_customer_item_cat_item_sk\" = \"vacuous\".\"store_sales_item_sk\"
-    LEFT OUTER JOIN \"concerned\" on \"vacuous\".\"store_sales_ticket_number\" is not distinct from \"concerned\".\"store_sales_ticket_number\" AND coalesce(\"wakeful\".\"catalog_customer_item_cat_item_sk\", \"vacuous\".\"store_sales_item_sk\") is not distinct from \"concerned\".\"store_sales_item_sk\"
+    \"vacuous\"
+    INNER JOIN \"wakeful\" on \"vacuous\".\"store_sales_customer_sk\" = \"wakeful\".\"catalog_customer_item_cat_customer_sk\" AND \"vacuous\".\"store_sales_item_sk\" = \"wakeful\".\"catalog_customer_item_cat_item_sk\"
+    LEFT OUTER JOIN \"concerned\" on \"vacuous\".\"store_sales_ticket_number\" is not distinct from \"concerned\".\"store_sales_ticket_number\" AND coalesce(\"vacuous\".\"store_sales_item_sk\", \"wakeful\".\"catalog_customer_item_cat_item_sk\") is not distinct from \"concerned\".\"store_sales_item_sk\"
 WHERE
     \"concerned\".\"store_sales_is_returned\" and \"vacuous\".\"store_sales_return_date_month_of_year\" BETWEEN 9 AND 12 and \"vacuous\".\"store_sales_return_date_year\" = 1999 and \"vacuous\".\"store_sales_customer_sk\" = \"vacuous\".\"store_sales_return_customer_sk\" and \"wakeful\".\"catalog_customer_item_cat_quantity\" > 0 and \"vacuous\".\"store_sales_sale_date_month_of_year\" = 9 and \"vacuous\".\"store_sales_sale_date_year\" = 1999
 

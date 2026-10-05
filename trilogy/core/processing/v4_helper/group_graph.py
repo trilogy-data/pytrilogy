@@ -41,6 +41,7 @@ from trilogy.core.processing.node_generators.presence_probe import is_presence_p
 
 from .concept_graph import (
     _statement_scoped_relation_members,
+    coalescing_relation,
     computed_origin_relation_members,
     condition_stage_of_label,
 )
@@ -1091,12 +1092,52 @@ def _shared_row_parent_join_keys(
     )
 
 
+def _rowset_relation_keys(
+    row_parents: list[str],
+    attrs: dict[str, GroupAttrs],
+    environment: BuildEnvironment,
+) -> frozenset[str]:
+    """The statement relations tying a rowset row parent to its siblings.
+
+    `count(rs2.oid)` by `name` under `subset join rs2.cid = customer_id` reads
+    `name` off a customers scan and `oid` off the rowset: neither is the other's
+    key, and the declared relation is their only link. Without it the sibling
+    projects `name` alone and the merge cross-joins. A `union join` relation
+    pairs through its coalesced axis instead (`_aggregate_axis_members`)."""
+    if len(row_parents) < 2:
+        return frozenset()
+    rowsets = {
+        concept.lineage.rowset.name
+        for pred in row_parents
+        if attrs[pred].derivation == Derivation.ROWSET
+        for addr in attrs[pred].members
+        if (concept := environment.concepts.get(addr)) is not None
+        and isinstance(concept.lineage, BuildRowsetItem)
+    }
+    if not rowsets:
+        return frozenset()
+    statement = _statement_scoped_relation_members(environment)
+    keys: set[str] = set()
+    for canonical, members in environment.scoped_join_key_groups.items():
+        relation = {canonical, *members}
+        if not relation & statement or coalescing_relation(relation, environment):
+            continue
+        if any(
+            isinstance(c.lineage, BuildRowsetItem) and c.lineage.rowset.name in rowsets
+            for addr in relation
+            if (c := environment.concepts.get(addr)) is not None
+        ):
+            keys |= relation
+    return frozenset(keys)
+
+
 def _refresh_input_contracts(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     concept_attrs: dict[str, ConceptAttrs],
     concept_edges: EdgeMap,
+    environment: BuildEnvironment,
 ) -> None:
     key_addresses = frozenset(
         a.address for a in concept_attrs.values() if a.purpose == Purpose.KEY
@@ -1127,6 +1168,7 @@ def _refresh_input_contracts(
         domain_spans: frozenset[str] = frozenset().union(
             *(attrs[pred].extent_spans for pred in row_parents)
         )
+        relation_keys = _rowset_relation_keys(row_parents, attrs, environment)
         contracts: list[GroupInputContract] = []
         for pred in sorted(group_graph.predecessors(gid)):
             if pred == FINAL_NODE_ID or pred not in attrs:
@@ -1145,6 +1187,7 @@ def _refresh_input_contracts(
                         | bridge_keys
                         | grouping_parent_grain
                         | domain_spans
+                        | relation_keys
                     ),
                     channel=(
                         InputChannel.EXISTENCE
@@ -2224,7 +2267,7 @@ def build_group_graph(
         relation_edge_members=relation_edge_members,
     )
     _refresh_input_contracts(
-        group_graph, group_edges, attrs, concept_attrs, concept_edges
+        group_graph, group_edges, attrs, concept_attrs, concept_edges, environment
     )
     _refresh_final_contract(
         group_graph,

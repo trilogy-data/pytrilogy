@@ -698,6 +698,7 @@ def _aggregate_axis_members(
     concept: BuildConcept,
     environment: BuildEnvironment,
     aggregate_input_grain: frozenset[str],
+    out_grain: frozenset[str],
 ) -> frozenset[str]:
     """Statement-scoped relation members an aggregate's inputs ride: the axis
     columns to widen its grouping grain by (see the caller in `_add_concept`).
@@ -721,7 +722,12 @@ def _aggregate_axis_members(
     customer instead of the customers per region.
 
     Nor a member the aggregate names inside a counted `grain(...)` tuple:
-    that is row identity, not an axis (`_row_identity_components`)."""
+    that is row identity, not an axis (`_row_identity_components`).
+
+    Nor a SUBSET axis the authored `by` names under no spelling: `sum(rs.amt)`
+    by `customer_id` under `subset join rs.oid = order_id` reads rs rows per
+    order, but sums them per customer; grouping by the order axis would
+    return one row per order instead."""
     candidates = set(aggregate_input_grain)
     if isinstance(concept.lineage, BuildAggregateWrapper):
         candidates |= {
@@ -746,6 +752,29 @@ def _aggregate_axis_members(
         if _relation_crosses_rowset_boundary(addr, environment)
         and addr not in own_anchor_args
         and addr not in row_identity
+        and _axis_reaches_grain(addr, environment, out_grain)
+    )
+
+
+def _axis_reaches_grain(
+    address: str, environment: BuildEnvironment, out_grain: frozenset[str]
+) -> bool:
+    """Whether widening by a relation member keeps the authored grain: the
+    `by` names the relation, or the relation coalesces (`union join`), whose
+    axis rows are row identity of their own."""
+    relation = {address} | _relation_mates(address, environment)
+    return bool(relation & out_grain) or coalescing_relation(relation, environment)
+
+
+def coalescing_relation(relation: set[str], environment: BuildEnvironment) -> bool:
+    """Whether a statement declares the relation INCOMPARABLE (`union join`)."""
+    from trilogy.core.domain_graph import DomainRelation, EdgeScope
+
+    return any(
+        e.scope is EdgeScope.STATEMENT
+        and e.relation is DomainRelation.INCOMPARABLE
+        and {e.source, e.target} & relation
+        for e in environment.domain_graph.edges
     )
 
 
@@ -782,7 +811,9 @@ def _grouping_pass_sibling_axis_members(
             addr for addr in other_grain if addr != ALL_ROWS_ADDRESS
         }
         if other_input and other_dimension_grain:
-            members |= _aggregate_axis_members(other, environment, other_input)
+            members |= _aggregate_axis_members(
+                other, environment, other_input, other_grain
+            )
     return frozenset(members)
 
 
@@ -1474,7 +1505,7 @@ def _add_concept(
             out_grain |= _grouping_pass_sibling_axis_members(concept, environment)
         elif aggregate_input_grain:
             out_grain |= _aggregate_axis_members(
-                concept, environment, aggregate_input_grain
+                concept, environment, aggregate_input_grain, out_grain
             )
     graph.add_node(nid)
     attrs[nid] = ConceptAttrs(

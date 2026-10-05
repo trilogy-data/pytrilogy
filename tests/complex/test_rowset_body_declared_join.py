@@ -41,7 +41,7 @@ def test_body_declared_join_pairs_a_handle_with_a_base_concept(executor: Executo
         executor,
         "with b as select rs.k, cat subset join rs.k = oid; select b.rs.k, b.cat;",
     )
-    assert rows == [(1, "a"), (2, "a")]
+    assert rows == [(1, "a"), (2, "a"), (3, "b")]
 
 
 def test_body_without_the_join_refuses_naming_the_body():
