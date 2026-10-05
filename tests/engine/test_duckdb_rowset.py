@@ -1445,30 +1445,17 @@ order by st asc, c asc;
 """
 
 
-# Expected rows per (aggregate, key-count). The two-pass aggregate on the union
-# anchor is isolated into its own CTE and joined back on the carried composite
-# keys. Single-key: the CTE groups by (state, ticket) — a real multi-item group
-# (CA ticket 100 holds items 1&2, q=5,7) yields a genuine stddev/variance.
-# Composite key: (item, ticket) is unique, so the aggregate sits at its own
-# grain and collapses to NULL (stddev/variance of one value) — the grain-match
-# formula, not a bare ungrouped aggregate (which was the q17 binder error).
+# Expected rows per (aggregate, key-count): the axis pairs the input stream on
+# every key, but the answer stays one row per state. Under three keys
+# `return_quantity` coalesces with `quantity`, so it counts every axis row; the
+# return-only rows carry no `year` and the where drops them.
 _COMPOSITE_UNION_JOIN_EXPECTED = {
     ("stddev", 1): [("CA", 1.4142135623730951, 1), ("NY", None, 1)],
-    ("stddev", 2): [("CA", None, 0), ("CA", None, 1), ("NY", None, 1)],
-    ("stddev", 3): [
-        ("CA", None, 0),
-        ("CA", None, 1),
-        ("NY", None, 1),
-        (None, None, None),
-    ],
+    ("stddev", 2): [("CA", 1.4142135623730951, 1), ("NY", None, 1)],
+    ("stddev", 3): [("CA", 1.4142135623730951, 2), ("NY", None, 1)],
     ("variance", 1): [("CA", 2.0, 1), ("NY", None, 1)],
-    ("variance", 2): [("CA", None, 0), ("CA", None, 1), ("NY", None, 1)],
-    ("variance", 3): [
-        ("CA", None, 0),
-        ("CA", None, 1),
-        ("NY", None, 1),
-        (None, None, None),
-    ],
+    ("variance", 2): [("CA", 2.0, 1), ("NY", None, 1)],
+    ("variance", 3): [("CA", 2.0, 2), ("NY", None, 1)],
 }
 
 
@@ -1492,15 +1479,37 @@ def test_composite_union_join_rowset_two_pass_aggregate_groups(agg, keys):
 
 @pytest.mark.parametrize("agg", ["avg", "sum", "count"])
 def test_composite_union_join_rowset_simple_aggregate_still_groups(agg):
-    # Guard the grain-match formulas for the single-pass aggregates still elide
-    # to identity at grain (never a spurious GROUP BY that would collapse rows).
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_text(_COMPOSITE_UNION_JOIN_STDDEV_FIXTURE)
     query = _composite_union_join_query(agg, keys=2)
     results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
-    assert [r[0] for r in results] == ["CA", "CA", "NY"]
-    if agg == "count":
-        assert [r[2] for r in results] == [0, 1, 1]
+    assert [(r[0], r[2]) for r in results] == [("CA", 1), ("NY", 1)]
+
+
+def test_composite_union_join_rowset_keeps_axis_only_rows():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_COMPOSITE_UNION_JOIN_STDDEV_FIXTURE)
+    query = _composite_union_join_query("stddev", keys=3).replace(
+        "where year = 2001", ""
+    )
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    assert results == [
+        ("CA", 1.4142135623730951, 2),
+        ("NY", 1.4142135623730951, 2),
+        (None, 0.7071067811865476, 2),
+    ]
+
+
+@pytest.mark.parametrize("keys", [1, 2, 3])
+def test_composite_union_join_rowset_lone_measure_count(keys):
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_COMPOSITE_UNION_JOIN_STDDEV_FIXTURE)
+    query = _composite_union_join_query("stddev", keys).replace(
+        "stddev(quantity) as m,", ""
+    )
+    results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
+    expected = [(r[0], r[2]) for r in _COMPOSITE_UNION_JOIN_EXPECTED[("stddev", keys)]]
+    assert results == expected
 
 
 _ROWSET_DERIVED_SEGMENT_FIXTURE = """

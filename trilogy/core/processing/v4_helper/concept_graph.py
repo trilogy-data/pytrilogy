@@ -694,22 +694,21 @@ def _row_identity_components(
     return frozenset(out)
 
 
-def _aggregate_axis_members(
+def _aggregate_relation_members(
     concept: BuildConcept,
     environment: BuildEnvironment,
     aggregate_input_grain: frozenset[str],
-    out_grain: frozenset[str],
 ) -> frozenset[str]:
     """Statement-scoped relation members an aggregate's inputs ride: the axis
-    columns to widen its grouping grain by (see the caller in `_add_concept`).
+    columns its input stream pairs on (see the caller in `_add_concept`).
 
     The MEASURE the aggregate reads can itself be a relation member
     (`count(r_filtered.return_quantity)` under `union join quantity =
     r_filtered.return_quantity`). It never enters `aggregate_input_grain`
     (an argument contributes its own grain, not itself), but a measure the
     relation pairs on is an axis column like any other: the aggregate reads
-    it per coalesced axis row, so the axis has to be in the grain or the
-    merge above loses that leg of the pairing. Only the FUNCTION's arguments
+    it per coalesced axis row, so the input stream has to pair on it or
+    loses that leg of the pairing. Only the FUNCTION's arguments
     count: the wrapper's `by` grain is already the output grain, and feeding
     those back through here re-adds them as axis members and splits the
     answer per joined row.
@@ -722,12 +721,7 @@ def _aggregate_axis_members(
     customer instead of the customers per region.
 
     Nor a member the aggregate names inside a counted `grain(...)` tuple:
-    that is row identity, not an axis (`_row_identity_components`).
-
-    Nor a SUBSET axis the authored `by` names under no spelling: `sum(rs.amt)`
-    by `customer_id` under `subset join rs.oid = order_id` reads rs rows per
-    order, but sums them per customer; grouping by the order axis would
-    return one row per order instead."""
+    that is row identity, not an axis (`_row_identity_components`)."""
     candidates = set(aggregate_input_grain)
     if isinstance(concept.lineage, BuildAggregateWrapper):
         candidates |= {
@@ -752,18 +746,48 @@ def _aggregate_axis_members(
         if _relation_crosses_rowset_boundary(addr, environment)
         and addr not in own_anchor_args
         and addr not in row_identity
-        and _axis_reaches_grain(addr, environment, out_grain)
     )
 
 
-def _axis_reaches_grain(
-    address: str, environment: BuildEnvironment, out_grain: frozenset[str]
-) -> bool:
-    """Whether widening by a relation member keeps the authored grain: the
-    `by` names the relation, or the relation coalesces (`union join`), whose
-    axis rows are row identity of their own."""
-    relation = {address} | _relation_mates(address, environment)
-    return bool(relation & out_grain) or coalescing_relation(relation, environment)
+def _aggregate_axis_members(
+    concept: BuildConcept,
+    environment: BuildEnvironment,
+    aggregate_input_grain: frozenset[str],
+    out_grain: frozenset[str],
+) -> frozenset[str]:
+    """The relation members to widen an aggregate's grouping grain by: those
+    whose relation the `by` already names, so widening keeps its grain. Not a
+    SUBSET axis the `by` names under no spelling: `sum(rs.amt)` by
+    `customer_id` under `subset join rs.oid = order_id` sums per customer, not
+    per order."""
+    return frozenset(
+        addr
+        for addr in _aggregate_relation_members(
+            concept, environment, aggregate_input_grain
+        )
+        if ({addr} | _relation_mates(addr, environment)) & out_grain
+    )
+
+
+def _aggregate_coalesced_axis(
+    concept: BuildConcept,
+    environment: BuildEnvironment,
+    aggregate_input_grain: frozenset[str],
+    out_grain: frozenset[str],
+) -> frozenset[str]:
+    """The `union join` axis an aggregate's inputs ride and its `by` does not
+    name, with every side's member: the input stream pairs on the whole axis
+    before aggregating, but the answer stays at the authored grain. Widening
+    the grouping grain instead splits `stddev(quantity)` by `state` into one
+    row per axis row, which no merge above can recombine."""
+    out: set[str] = set()
+    for addr in _aggregate_relation_members(
+        concept, environment, aggregate_input_grain
+    ):
+        relation = {addr} | _relation_mates(addr, environment)
+        if not relation & out_grain and coalescing_relation(relation, environment):
+            out |= relation
+    return frozenset(out)
 
 
 def coalescing_relation(relation: set[str], environment: BuildEnvironment) -> bool:
@@ -1476,16 +1500,14 @@ def _add_concept(
         if is_materialized_root
         else _aggregate_input_grain(concept, environment, out_grain)
     )
-    # Under a STATEMENT-scoped preserving join to a ROWSET (`union join ticket
-    # = r_filtered.r_ticket`), row identity is the coalesced relation axis: an
-    # aggregate whose inputs ride the relation computes per axis row, not per
-    # its authored dimension grain. It renders at the joined relation's grain
-    # via the grain-match formulas, and the outer select then dedups. Widen
-    # the grouping grain by the relation members its inputs carry. Global
+    # Under a STATEMENT-scoped join to a ROWSET, an aggregate whose inputs
+    # ride the relation reads them per relation row: a `union join` axis pairs
+    # its input stream, a relation the `by` names widens its grain. Global
     # `merge` identities pair INNER 1:1 and are excluded, as are GLOBAL
     # aggregates (empty/all_rows grain: presence counts stay one total row
     # over the joined relation, never per-axis).
     dimension_grain = {addr for addr in out_grain if addr != ALL_ROWS_ADDRESS}
+    coalesced_axis: frozenset[str] = frozenset()
     if (
         not is_materialized_root
         and concept.derivation == Derivation.AGGREGATE
@@ -1504,9 +1526,13 @@ def _add_concept(
             # aggregates sharing its grouping spec.
             out_grain |= _grouping_pass_sibling_axis_members(concept, environment)
         elif aggregate_input_grain:
+            coalesced_axis = _aggregate_coalesced_axis(
+                concept, environment, aggregate_input_grain, out_grain
+            )
             out_grain |= _aggregate_axis_members(
                 concept, environment, aggregate_input_grain, out_grain
             )
+            aggregate_input_grain |= coalesced_axis
     graph.add_node(nid)
     attrs[nid] = ConceptAttrs(
         address=concept.address,
@@ -1622,7 +1648,15 @@ def _add_concept(
                 and _relation_crosses_rowset_boundary(addr, environment)
             ):
                 upstreams.append(axis)
-    upstream_labels = _upstream_labels(concept, upstreams, label, environment)
+    # The `union join` axis an aggregate's input pairs on is read from every
+    # side, so each side's scan parents the aggregate.
+    upstream_addrs = {u.address for u in upstreams}
+    upstreams.extend(
+        environment.concepts[addr]
+        for addr in sorted(coalesced_axis - upstream_addrs)
+        if addr in environment.concepts
+    )
+    upstream_labels =_upstream_labels(concept, upstreams, label, environment)
     for upstream, upstream_walk_label in zip(upstreams, upstream_labels):
         # Substitute here too so the edge wires to the origin's node (the
         # recursive call below adds the origin, not the bare key); otherwise

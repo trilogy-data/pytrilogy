@@ -1096,6 +1096,7 @@ def _rowset_relation_keys(
     row_parents: list[str],
     attrs: dict[str, GroupAttrs],
     environment: BuildEnvironment,
+    input_grain: frozenset[str] = frozenset(),
 ) -> frozenset[str]:
     """The statement relations tying a rowset row parent to its siblings.
 
@@ -1103,8 +1104,9 @@ def _rowset_relation_keys(
     `name` off a customers scan and `oid` off the rowset: neither is the other's
     key, and the declared relation is their only link. Without it the sibling
     projects `name` alone and the merge cross-joins. Only a relation reaching a
-    ROOT concept: two rowsets pair through their own handles, and a `union
-    join` through its coalesced axis (`_aggregate_axis_members`)."""
+    ROOT concept: two rowsets pair through their own handles. A `union join`
+    counts only when the consumer's input grain holds its coalesced axis
+    (`_aggregate_coalesced_axis`)."""
     if len(row_parents) < 2:
         return frozenset()
     rowsets = {
@@ -1121,7 +1123,9 @@ def _rowset_relation_keys(
     keys: set[str] = set()
     for canonical, members in environment.scoped_join_key_groups.items():
         relation = {canonical, *members}
-        if not relation & statement or coalescing_relation(relation, environment):
+        if not relation & statement or (
+            coalescing_relation(relation, environment) and not relation & input_grain
+        ):
             continue
         concepts = [
             c for addr in relation if (c := environment.concepts.get(addr)) is not None
@@ -1171,7 +1175,9 @@ def _refresh_input_contracts(
         domain_spans: frozenset[str] = frozenset().union(
             *(attrs[pred].extent_spans for pred in row_parents)
         )
-        relation_keys = _rowset_relation_keys(row_parents, attrs, environment)
+        relation_keys = _rowset_relation_keys(
+            row_parents, attrs, environment, attrs[gid].aggregate_input_grain
+        )
         contracts: list[GroupInputContract] = []
         for pred in sorted(group_graph.predecessors(gid)):
             if pred == FINAL_NODE_ID or pred not in attrs:
