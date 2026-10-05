@@ -1656,7 +1656,7 @@ def _add_concept(
         for addr in sorted(coalesced_axis - upstream_addrs)
         if addr in environment.concepts
     )
-    upstream_labels =_upstream_labels(concept, upstreams, label, environment)
+    upstream_labels = _upstream_labels(concept, upstreams, label, environment)
     for upstream, upstream_walk_label in zip(upstreams, upstream_labels):
         # Substitute here too so the edge wires to the origin's node (the
         # recursive call below adds the origin, not the bare key); otherwise
