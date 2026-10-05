@@ -9,6 +9,8 @@ from functools import cache
 import pytest
 
 from tests.helpers.models import (
+    _CUSTOMER_BASE,
+    _ORDER_ROWS,
     CUSTOMER_ACTIVITY,
     CUSTOMERS_DERIVED,
     CUSTOMERS_MATERIALIZED,
@@ -1861,3 +1863,92 @@ def test_where_beside_a_region_fed_output_aggregate_filters_the_rows(
     query: str, expected: list[tuple]
 ):
     assert twin_rows(*_customer_twins(_PSTATUS), query) == expected
+
+
+# The persisted shape of a derivation: `status` bound ONLY in a table at its
+# own grain, apart from the orders that carry the customer. Reading it back
+# must not move the orderless customer's NULL.
+_ORDERS_PLAIN = f"""
+root datasource orders (
+    order_id: order_id, customer_id: ~customer_id,
+    delivery_date: delivery_date, amount: amount,
+)
+grain (order_id)
+query '''{_ORDER_ROWS}''';
+"""
+_STATUS_PERSISTED = """
+property order_id.status string;
+root datasource order_status (order_id: order_id, status: status)
+grain (order_id)
+query '''
+select 100 as order_id, 'delivered' as status union all
+select 101, 'in-transit' union all
+select 102, 'delivered'
+''';
+"""
+_STATUS_DERIVED = """
+auto status <- case when delivery_date is not null then 'delivered' else 'in-transit' end;
+"""
+# `status` lives on the order; each spelling below re-homes it on the customer
+_REHOMED = """
+auto any_status <- coalesce(any(status) by customer_id, 'none');
+auto last_status <- coalesce(max(status) by customer_id, 'none');
+auto each_status <- coalesce(group(status) by customer_id, 'none');
+"""
+
+
+def _persisted_twins() -> tuple[Executor, Executor]:
+    base = _CUSTOMER_BASE + _ORDERS_PLAIN
+    return _twins(
+        base + _STATUS_DERIVED + _REHOMED, base + _STATUS_PERSISTED + _REHOMED
+    )
+
+
+@pytest.mark.parametrize(
+    "query, expected",
+    [
+        (
+            "select order_id, status",
+            [(100, "delivered"), (101, "in-transit"), (102, "delivered")],
+        ),
+        (
+            "select customer_id, order_id, status",
+            [
+                (1, 100, "delivered"),
+                (1, 101, "in-transit"),
+                (2, 102, "delivered"),
+                (3, None, None),
+            ],
+        ),
+        (
+            "select customer_id, coalesce(status, 'none') as s",
+            [(1, "delivered"), (1, "in-transit"), (2, "delivered"), (3, None)],
+        ),
+    ],
+)
+def test_persisted_property_keeps_its_key_domain(query: str, expected: list[tuple]):
+    assert twin_rows(*_persisted_twins(), query) == expected
+
+
+def test_any_by_the_customer_takes_one_of_its_statuses():
+    for executor in _persisted_twins():
+        rows = sorted_rows(executor, "select customer_id, any_status")
+        assert rows[1:] == [(2, "delivered"), (3, "none")]
+        assert rows[0] in [(1, "delivered"), (1, "in-transit")]
+
+
+def test_max_by_the_customer_picks_its_status():
+    assert twin_rows(*_persisted_twins(), "select customer_id, last_status") == [
+        (1, "in-transit"),
+        (2, "delivered"),
+        (3, "none"),
+    ]
+
+
+def test_group_by_the_customer_pairs_every_customer_with_its_statuses():
+    assert twin_rows(*_persisted_twins(), "select customer_id, each_status") == [
+        (1, "delivered"),
+        (1, "in-transit"),
+        (2, "delivered"),
+        (3, "none"),
+    ]

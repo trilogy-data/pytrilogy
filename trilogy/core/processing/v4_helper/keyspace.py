@@ -62,6 +62,7 @@ from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
+    BuildFunction,
     BuildRowsetItem,
     BuildWhereClause,
 )
@@ -495,6 +496,10 @@ def _entity_keys(
     elif derivation == Derivation.AGGREGATE and not keys:
         # a ROLLUP aggregate declares no keys; it is still evaluated by its `by`
         keys = _grouping_addresses(address, environment)
+    elif derivation == Derivation.GROUP_TO:
+        # `group(status) by customer_id` pairs the customer's domain with the
+        # statuses it has: a row of the customer, NULL-valued where it has none
+        keys = _group_to_addresses(address, environment) or keys
     seen = seen | {address}
     return frozenset().union(
         *(
@@ -519,6 +524,17 @@ def lineage_reads(address: str, environment: BuildEnvironment) -> frozenset[str]
     if concept is None or concept.lineage is None:
         return frozenset()
     return frozenset(arg.address for arg in concept.lineage.concept_arguments)
+
+
+def _group_to_addresses(address: str, environment: BuildEnvironment) -> frozenset[str]:
+    concept = environment.concepts.get(address)
+    if concept is None or not isinstance(concept.lineage, BuildFunction):
+        return frozenset()
+    return frozenset(
+        arg.address
+        for arg in concept.lineage.arguments[1:]
+        if isinstance(arg, BuildConcept)
+    )
 
 
 def _grouping_addresses(address: str, environment: BuildEnvironment) -> frozenset[str]:

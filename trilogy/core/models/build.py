@@ -3170,8 +3170,11 @@ class Factory:
         raw_args: list[Concept | FuncArgs] = []
         for arg in base.arguments:
             # to do proper discovery, we need to inject virtual intermediate concepts
-            # we don't use requires_concept_nesting here by design
-            if isinstance(arg, (AggregateWrapper, FilterItem, WindowItem)):
+            # we don't use requires_concept_nesting here by design; a nested
+            # `group(x) by k` is a concept keyed on `k`, not a read of `x`
+            if isinstance(arg, (AggregateWrapper, FilterItem, WindowItem)) or (
+                isinstance(arg, Function) and arg.operator == FunctionType.GROUP
+            ):
                 narg, _ = self.instantiate_concept(arg)
                 raw_args.append(narg)
             else:
