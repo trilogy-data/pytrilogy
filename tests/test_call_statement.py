@@ -54,6 +54,32 @@ def test_call_execution(tmp_path: Path):
     assert out_file.read_text() == "--file daily.html --count_val 42"
 
 
+@pytest.mark.parametrize(
+    "statement, expected_args",
+    [
+        ("call `./tool/s.py`;", ""),
+        ("call `./tool/s.py` from select 'x' -> file;", "--file x"),
+    ],
+)
+def test_call_from_relative_working_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, statement: str, expected_args: str
+):
+    tool = tmp_path / "sub" / "tool"
+    tool.mkdir(parents=True)
+    (tool / "s.py").write_text(
+        "import sys, pathlib\n"
+        "pathlib.Path('args.txt').write_text(' '.join(sys.argv[1:]))\n",
+        newline="\n",
+    )
+    monkeypatch.chdir(tmp_path)
+    exec = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=Path("sub"))
+    )
+    results = exec.execute_text(statement)
+    assert results[-1].as_dict() == [{"target": "./tool/s.py", "status": "success"}]
+    assert (tmp_path / "sub" / "args.txt").read_text() == expected_args
+
+
 def test_call_execution_failure_surfaces_stderr(tmp_path: Path):
     script = tmp_path / "boom.py"
     script.write_text(
