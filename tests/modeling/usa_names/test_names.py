@@ -1,6 +1,8 @@
 import re
 from pathlib import Path
 
+import pytest
+
 from trilogy import Dialects, Environment
 from trilogy.parsing.common import concept_is_relevant
 
@@ -58,26 +60,13 @@ order by
     assert join_pattern.search(sql), sql
 
 
-def test_aggregate_filter_anonymous():
-    query = """
-    import names;
-    where abs(sum(births? gender = 'M') by name - sum(births? gender = 'F') by name) < (.05*sum(births) by name)
-    select
-    state,
-    percent_of_total
-    ;
-    """
-    env = Environment(working_path=Path(__file__).parent)
-    exec = Dialects.DUCK_DB.default_executor(environment=env)
-    sql = exec.generate_sql(query)[0]
-
-    # The aggregate-result predicate is relocated into the by-name group's
-    # HAVING (PredicatePushdown), so the qualifying-name filter runs during
-    # aggregation -- before the join back to the base table -- and the
-    # redundant downstream WHERE copy is stripped. (Unanchored: v4 orders the
-    # HAVING group after a base-scan CTE. Either order must carry
-    # the HAVING shape and no WHERE.)
-    pattern = r"""
+# The aggregate-result predicate is relocated into the by-name group's HAVING
+# (PredicatePushdown), so the qualifying-name filter runs during aggregation,
+# before the join back to the base table, and no downstream WHERE copy remains.
+# A `group(x) by name` is keyed on the name like the inline aggregate, so every
+# spelling plans the same way. (Unanchored: v4 orders the HAVING group after a
+# base-scan CTE.)
+_HAVING_FILTER = r"""
 [a-z_]+\s+as\s+\(
 \s*SELECT
 \s*"[^"]+"\."name"\s+as\s+"name"
@@ -95,91 +84,32 @@ def test_aggregate_filter_anonymous():
 SELECT
 \s*"[^"]+"\."state"\s+as\s+"state",
 \s*cast\(\(".*?"\s*/\s*".*?"\)\s+as\s+float\)\s+as\s+"percent_of_total"
-    """
+"""
 
-    assert re.search(pattern, sql, re.DOTALL | re.VERBOSE), sql
-    # filter applied once (in HAVING), not duplicated in a downstream WHERE
+
+@pytest.mark.parametrize(
+    "gap",
+    [
+        "sum(births? gender = 'M') by name - sum(births ? gender = 'F') by name",
+        "group(male_births) by name - group(female_births) by name",
+        "group male_births by name - group female_births by name",
+    ],
+    ids=["anonymous", "group()", "group"],
+)
+def test_aggregate_filter(gap: str):
+    query = f"""
+    import names;
+    where abs({gap}) < (.05*sum(births) by name)
+    select
+    state,
+    percent_of_total
+    ;
+    """
+    env = Environment(working_path=Path(__file__).parent)
+    exec = Dialects.DUCK_DB.default_executor(environment=env)
+    sql = exec.generate_sql(query)[0]
+    assert re.search(_HAVING_FILTER, sql, re.DOTALL | re.VERBOSE), sql
     assert "WHERE" not in sql, sql
-
-
-def test_aggregate_filter():
-    query = """
-    import names;
-    where abs(group(male_births) by name - group(female_births) by name) < (.05*sum(births) by name)
-    select
-    state,
-    percent_of_total
-    ;
-    """
-    env = Environment(working_path=Path(__file__).parent)
-    exec = Dialects.DUCK_DB.default_executor(environment=env)
-    sql = exec.generate_sql(query)[0]
-    # The leading `.*?` tolerates a CTE before the aggregate CTE: v4 emits the base
-    # `usa_names` scan as one shared CTE (reused by the aggregate and the filtered
-    # join) rather than duplicating the scan inline. Rows are identical; the aggregate
-    # structure + WHERE below are still asserted exactly.
-    pattern = r"""
-WITH\s+
-.*?[a-z_]+\s+as\s+\(
-\s*SELECT
-\s*"[^"]+"\."name"\s+as\s+"name",
-\s*sum\(".*?"\."number"\)\s+as\s+"_virt_agg_sum_\d+(?:_wscope)?",
-\s*sum\(CASE\s+WHEN\s+".*?"\."gender"\s+=\s+'F'\s+THEN\s+".*?"\."number"\s+ELSE\s+NULL\s+END\)\s+as\s+"_virt_agg_sum_\d+(?:_wscope)?",
-\s*sum\(CASE\s+WHEN\s+".*?"\."gender"\s+=\s+'M'\s+THEN\s+".*?"\."number"\s+ELSE\s+NULL\s+END\)\s+as\s+"_virt_agg_sum_\d+(?:_wscope)?"
-\s*FROM
-\s*"bigquery-public-data"\."usa_names"\."usa_1910_current"\s+as\s+"[^"]+"
-\s*GROUP\s+BY
-\s*1\s*\)
-.*?
-WHERE
-\s*abs\(
-\s*"[^"]+"\."_virt_agg_sum_\d+(?:_wscope)?"
-\s*-\s*
-\s*"[^"]+"\."_virt_agg_sum_\d+(?:_wscope)?"
-\s*\)\s*<\s*\(\s*0\.05\s*\*\s*"[^"]+"\."_virt_agg_sum_\d+(?:_wscope)?"\s*\)
-.*?
-SELECT
-\s*"[^"]+"\."state"\s+as\s+"state",
-\s*cast\(\(".*?"\s*/\s*".*?"\)\s+as\s+float\)\s+as\s+"percent_of_total"
-        """
-
-    assert re.search(pattern, sql, re.DOTALL | re.VERBOSE)
-
-
-def test_aggregate_filter_short_syntax():
-    query = """
-    import names;
-    where abs(group male_births by name - group female_births by name) < (.05*sum(births) by name)
-    select
-    state,
-    percent_of_total
-    ;
-    """
-    env = Environment(working_path=Path(__file__).parent)
-    exec = Dialects.DUCK_DB.default_executor(environment=env)
-    sql = exec.generate_sql(query)[0]
-    # After CollapseSingleParent optimization, aggregate selects directly from
-    # datasource. Leading `.*?` tolerates a preceding CTE: v4 emits the base scan as
-    # one shared CTE rather than duplicating it inline; aggregate asserted.
-    pattern = r"""
-WITH\s+
-.*?[a-z_]+\s+as\s+\(
-\s*SELECT
-\s*"[^"]+"\."name"\s+as\s+"name",
-\s*sum\(".*?"\."number"\)\s+as\s+"_virt_agg_sum_\d+(?:_wscope)?",
-\s*sum\(CASE\s+WHEN\s+".*?"\."gender"\s+=\s+'F'\s+THEN\s+".*?"\."number"\s+ELSE\s+NULL\s+END\)\s+as\s+"_virt_agg_sum_\d+(?:_wscope)?",
-\s*sum\(CASE\s+WHEN\s+".*?"\."gender"\s+=\s+'M'\s+THEN\s+".*?"\."number"\s+ELSE\s+NULL\s+END\)\s+as\s+"_virt_agg_sum_\d+(?:_wscope)?"
-\s*FROM
-\s*"bigquery-public-data"\."usa_names"\."usa_1910_current"\s+as\s+"[^"]+"
-\s*GROUP\s+BY
-\s*1\s*\)
-.*?
-SELECT
-\s*"[^"]+"\."state"\s+as\s+"state",
-\s*cast\(\(".*?"\s*/\s*".*?"\)\s+as\s+float\)\s+as\s+"percent_of_total"
-    """
-
-    assert re.search(pattern, sql, re.DOTALL | re.VERBOSE)
 
 
 def test_group_by_with_existing():
