@@ -184,6 +184,22 @@ def test_cli_run_reports_and_prints_outputs(tmp_path: Path, rich: bool):
     assert_output_listed(result.output, "fix_pr", "link", PR_URL, rich)
 
 
+def test_cli_run_relative_entry_in_subdirectory_calls_script(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    (tmp_path / "sub" / "tool").mkdir(parents=True)
+    _emit_script(tmp_path / "sub" / "tool", "s.py")
+    (tmp_path / "sub" / "entry.preql").write_text(
+        "call `./tool/s.py`;\n", encoding="utf-8"
+    )
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(
+        cli, ["run", str(Path("sub") / "entry.preql"), "duck_db"]
+    )
+    assert result.exit_code == 0, result.output
+    assert collected_outputs() == [RunOutput("fix_pr", PR_URL, "link", "./tool/s.py")]
+
+
 def test_cli_run_json_mode_emits_outputs_event(tmp_path: Path):
     script = _call_workspace(tmp_path)
     result = CliRunner().invoke(

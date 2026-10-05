@@ -1009,7 +1009,10 @@ class Executor:
                 )
             for ref, value in zip(visible, row):
                 arg_pairs.append((call_arg_name(ref.address), value))
-        command = build_script_command(self._resolve_copy_target(query.target))
+        # Absolute: the subprocess also runs from working_path, so a relative
+        # working_path would otherwise be applied a second time.
+        script = Path(self._resolve_copy_target(query.target)).resolve()
+        command = build_script_command(str(script))
         for name, value in arg_pairs:
             serialized = serialize_call_arg(value)
             if serialized is None:
