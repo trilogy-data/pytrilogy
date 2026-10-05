@@ -1102,8 +1102,9 @@ def _rowset_relation_keys(
     `count(rs2.oid)` by `name` under `subset join rs2.cid = customer_id` reads
     `name` off a customers scan and `oid` off the rowset: neither is the other's
     key, and the declared relation is their only link. Without it the sibling
-    projects `name` alone and the merge cross-joins. A `union join` relation
-    pairs through its coalesced axis instead (`_aggregate_axis_members`)."""
+    projects `name` alone and the merge cross-joins. Only a relation reaching a
+    ROOT concept: two rowsets pair through their own handles, and a `union
+    join` through its coalesced axis (`_aggregate_axis_members`)."""
     if len(row_parents) < 2:
         return frozenset()
     rowsets = {
@@ -1122,10 +1123,12 @@ def _rowset_relation_keys(
         relation = {canonical, *members}
         if not relation & statement or coalescing_relation(relation, environment):
             continue
-        if any(
+        concepts = [
+            c for addr in relation if (c := environment.concepts.get(addr)) is not None
+        ]
+        if any(c.derivation == Derivation.ROOT for c in concepts) and any(
             isinstance(c.lineage, BuildRowsetItem) and c.lineage.rowset.name in rowsets
-            for addr in relation
-            if (c := environment.concepts.get(addr)) is not None
+            for c in concepts
         ):
             keys |= relation
     return frozenset(keys)
