@@ -1545,6 +1545,16 @@ def _synthesizes_handle(
     )
 
 
+def _merges_coalesced_sides(node: StrategyNode) -> bool:
+    """A merge pairing the sides of a `union`/`full` relation holds every side's
+    rows: no single sibling's rows render it (`union join ticket = rs.t` keeps
+    the tickets the rowset never saw)."""
+    if not isinstance(node, MergeNode) or len(node.parents) < 2:
+        return False
+    coalescing = node.environment.domain_graph.coalescing_relation_members()
+    return any(o.address in coalescing for o in node.output_concepts)
+
+
 def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
     """Absorb a parent into a row-preserving sibling that can render it.
 
@@ -1606,6 +1616,8 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
             ) and any(o.derivation != Derivation.ROWSET for o in a.output_concepts):
                 continue
             if any(_synthesizes_handle(o, b, available) for o in a.output_concepts):
+                continue
+            if _merges_coalesced_sides(a):
                 continue
             if any(
                 crosses_unsourced_aggregate(o, available) for o in a.output_concepts
@@ -2870,7 +2882,9 @@ def _raise_if_rowset_islanded(
             )
 
 
-def _drop_unadvertised_rowset_handles(node: StrategyNode, advertised: set[str]) -> None:
+def _drop_unadvertised_rowset_handles(
+    node: StrategyNode, advertised: set[str], environment: BuildEnvironment
+) -> None:
     """Strip a rowset handle a ROOT scan renders only by pseudonym substitution.
 
     A `union join quantity = rs.return_quantity` makes the two members
@@ -2880,11 +2894,19 @@ def _drop_unadvertised_rowset_handles(node: StrategyNode, advertised: set[str]) 
     names a value of the rowset body, and a consumer reading it off the anchor
     sees the anchor's own row (`count(rs.return_quantity)` counts every sales
     row instead of the matched returns). The mates the merge genuinely needs as
-    a join axis ARE advertised, so keeping the contract is enough."""
+    a join axis ARE advertised, so keeping the contract is enough.
+
+    A handle that is the ONLY spelling of an advertised mate stays: the scan
+    answered that mate under the relation's canonical name (`ticket` under
+    `union join ticket = rs.r_ticket` is the FULL-joined axis rendered as
+    `rs.r_ticket`), and stripping it drops the anchor-only rows."""
+    emitted = {o.address for o in node.output_concepts}
     keep = [
         o
         for o in node.output_concepts
-        if o.address in advertised or not isinstance(o.lineage, BuildRowsetItem)
+        if o.address in advertised
+        or not isinstance(o.lineage, BuildRowsetItem)
+        or (_relation_mates(o.address, environment) & advertised) - emitted
     ]
     if len(keep) == len(node.output_concepts):
         return
@@ -3383,6 +3405,7 @@ def _cover_groups_for_mandatory(
     election is read here rather than re-derived, because the two answers
     diverging is what leaves a contributor dangling at render time."""
     per_group: dict[str, list[BuildConcept]] = defaultdict(list)
+    coalescing = environment.domain_graph.coalescing_relation_members()
     for concept in mandatory_list:
         addr = concept.address
         mates = _scoped_join_mates(environment, addr)
@@ -3404,6 +3427,15 @@ def _cover_groups_for_mandatory(
             ]
         if not candidates:
             continue
+        # A COALESCING mate carries only its own side's domain: a group that
+        # never read the one hosting the concept itself misses that side's rows.
+        if addr in coalescing:
+            hosts = {gid for gid in candidates if addr in attrs[gid].members}
+            candidates = [
+                gid
+                for gid in candidates
+                if gid in hosts or hosts & nx.ancestors(group_graph, gid)
+            ] or candidates
         # A dim peeled off a row stream decorates the stream's keys; its own
         # key carries every entity, not the rows the stream's WHERE kept.
         candidates.sort(
@@ -5983,7 +6015,7 @@ def build_strategy_node(
             # the region contract: this node's rows are the region's own
             node.region_spans = a.extent_spans
         if derivation == Derivation.ROOT:
-            _drop_unadvertised_rowset_handles(node, set(select_addrs))
+            _drop_unadvertised_rowset_handles(node, set(select_addrs), environment)
         # Elide here, not only in the tree pass: consumers take their own copy
         # of this node, so a passthrough left standing becomes the SHARED
         # parent two single-column consumers each regroup over, and the merge

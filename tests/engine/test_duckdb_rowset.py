@@ -1512,6 +1512,46 @@ def test_composite_union_join_rowset_lone_measure_count(keys):
     assert results == expected
 
 
+@pytest.mark.parametrize(
+    "select, where, expected",
+    [
+        (
+            "ticket, count(r_filtered.return_quantity) as c",
+            "",
+            [(100, 1), (101, 1), (102, 0)],
+        ),
+        (
+            "ticket, count(r_filtered.return_quantity) as c",
+            "where year = 2001",
+            [(100, 1), (101, 1)],
+        ),
+        (
+            "ticket, r_filtered.return_quantity",
+            "",
+            [(100, 2), (101, 3), (102, None)],
+        ),
+        (
+            "ticket, r_filtered.r_ticket, r_filtered.return_quantity",
+            "",
+            [(100, 100, 2), (101, 101, 3), (102, 102, None)],
+        ),
+    ],
+)
+def test_union_join_rowset_keeps_anchor_only_keys(select, where, expected):
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_COMPOSITE_UNION_JOIN_STDDEV_FIXTURE)
+    query = f"""{where}
+select {select}
+union join ticket = r_filtered.r_ticket
+order by ticket asc;"""
+    oracle = query.replace("r_filtered.return_quantity", "return_quantity").replace(
+        "r_filtered.r_ticket", "r_ticket"
+    )
+    results = [tuple(r) for r in executor.execute_text(query)[-1].fetchall()]
+    assert results == expected
+    assert [tuple(r) for r in executor.execute_text(oracle)[-1].fetchall()] == expected
+
+
 _ROWSET_DERIVED_SEGMENT_FIXTURE = """
 key sale_id int;
 property sale_id.cust_id int;
