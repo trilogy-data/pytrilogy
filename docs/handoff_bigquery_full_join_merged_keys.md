@@ -61,39 +61,10 @@ Known asymmetry with `=`: encoded FLOAT64s compare textually, so NaN matches
 itself and `-0.0` stops matching `0.0`. A float join key is pathological, and
 the alternative is a query that does not run.
 
-## How it surfaced
-
-`thelook-daily-sales` on prod, run `c426ac95-a2e9-5675-a1db-6be6299c7550`,
-2026-08-17 04:29 UTC:
-
-```
-Failed to refresh datasource 'sales_reporting' (33 stale partitions):
-BadRequest: 400 FULL OUTER JOIN cannot be used without a condition that is an
-equality of fields from both sides of the join.
-```
-
-One of the 16 FULL joins in that rebuild was the offender — the one whose key is
-merged across three row-preserving sources:
-
-```sql
-FULL JOIN `divergent` on (coalesce(`young`.`order_item_order_id`,
-  `abhorrent`.`order_item_order_id`, `vacuous`.`order_item_order_id`)
-  = `divergent`.`order_item_order_id` or (coalesce(…) is null and … is null))
-```
-
-Reproducible with no cloud dependency at all via
-`tests/dialect/test_bigquery_full_join_keys.py`, which carries a model small
-enough to read. The live test asserts the rejections as well as the
-acceptances: a relaxed rule would leave the encoding as pure cost, and the
-message's wording is misleading enough that the accepted set is worth pinning
-rather than reasoning about. Against the real thing,
-`trilogy refresh sales_reporting.preql --dry-run` in
-`trilogy-cloud/demo_models/thelook_ecommerce` and a `bq query --dry_run` of the
-statement it prints.
-
-The other five thelook jobs were checked with `--force` (they were up to date,
-so a plain dry run compiles nothing) and are all field-keyed. `sales_reporting`
-was the only one exposed.
+Offline repro with a model small enough to read:
+`tests/dialect/test_bigquery_full_join_keys.py`. The live test asserts the
+rejections as well as the acceptances: a relaxed rule would leave the encoding
+as pure cost, so the accepted set is pinned rather than reasoned about.
 
 ## The follow-up
 
@@ -102,8 +73,8 @@ urgent — the workaround is correct, and it fires on one join in one query.
 
 **1. Hoist a merged key into its producing CTE.** `coalesce(a.x, b.x, c.x)` in
 an ON clause is a value the consumer already selects as a column
-(`charming.order_item_order_id` is literally that COALESCE, one line above the
-join that recomputes it). Projecting it in the parent and joining on the column
+(in the thelook `sales_reporting` refresh that surfaced this, the projected
+column is literally that COALESCE, one line above the join that recomputes it). Projecting it in the parent and joining on the column
 would make both sides fields, which fixes this for BigQuery *and* is the shape
 every engine plans better — the expression is opaque to clustering and to any
 key-ordering the source could have offered. This is the real fix; it is a
