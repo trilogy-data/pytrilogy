@@ -362,16 +362,27 @@ def _graph_sources(concept: BuildConcept) -> list[BuildConcept]:
     return [a for a in concept.concept_arguments if isinstance(a, BuildConcept)]
 
 
+def _reads_through(concept: BuildConcept, bound: set[str]) -> bool:
+    """A derivation computed from its inputs and read from no datasource: its
+    rows are wherever its inputs' are. A bound one is read from its binding."""
+    return (
+        concept.derivation in READ_THROUGH_DERIVATIONS
+        and concept.lineage is not None
+        and concept.address not in bound
+    )
+
+
 def _reading_anchors(
-    concept: BuildConcept, grain_only: dict[str, set[str]]
+    concept: BuildConcept, grain_only: dict[str, set[str]], bound: set[str]
 ) -> list[BuildConcept]:
     """The concepts a derivation's rows are read from: what its lineage reaches
-    below the derivations computed from their inputs (ROOT concepts, rowset
-    outputs, unnests...). A derivation is producible only where every one of
-    them is, so its connectivity is theirs, never its own node's: a node whose
-    inputs span components is a bridge nobody declared. Crossjoinable inputs
-    and an aggregate's grain-only `by` keys are skipped, as their edges are."""
-    if concept.derivation not in READ_THROUGH_DERIVATIONS or concept.lineage is None:
+    below the derivations computed from their inputs (ROOT and bound concepts,
+    rowset outputs, unnests...). A derivation is producible only where every
+    one of them is, so its connectivity is theirs, never its own node's: a
+    node whose inputs span components is a bridge nobody declared.
+    Crossjoinable inputs and an aggregate's grain-only `by` keys are skipped,
+    as their edges are."""
+    if not _reads_through(concept, bound):
         return [concept]
     anchors: list[BuildConcept] = []
     seen: set[str] = {concept.address}
@@ -383,7 +394,7 @@ def _reading_anchors(
             if arg.address in seen or arg.address in skipped or _crossjoinable(arg):
                 continue
             seen.add(arg.address)
-            if arg.derivation in READ_THROUGH_DERIVATIONS and arg.lineage is not None:
+            if _reads_through(arg, bound):
                 stack.append(arg)
             else:
                 anchors.append(arg)
@@ -561,6 +572,66 @@ def _graph_inputs(
     ]
 
 
+def _is_bound(g: "ReferenceGraph", node: str) -> bool:
+    """A concept node a datasource binds, or serves as an additive rollup."""
+    return any(
+        neighbor.startswith("ds~")
+        for neighbor in (*g.successors(node), *g.predecessors(node))
+    )
+
+
+def _bound_addresses(g: "ReferenceGraph") -> set[str]:
+    return {
+        concept.address for node, concept in g.concepts.items() if _is_bound(g, node)
+    }
+
+
+def _find(parent: dict[int, int], i: int) -> int:
+    while parent[i] != i:
+        parent[i] = parent[parent[i]]
+        i = parent[i]
+    return i
+
+
+def _detach_bridging_derivations(
+    g: "ReferenceGraph", cg, grain_only: dict[str, set[str]]
+) -> None:
+    """A derivation no datasource binds is producible only where every input
+    is, so its node relates nothing: `av + bv` over two unrelated models joined
+    them through its own node. Its input edges are dropped, then restored only
+    once its inputs sit in one component (a benign chain re-attaches layer by
+    layer; a bridge stays loose, and the gate reads it by its anchors)."""
+    from trilogy.core import graph as gx
+
+    bound = _bound_addresses(g)
+    detached: dict[str, list[str]] = {}
+    for node, concept in g.concepts.items():
+        if node not in cg or not _reads_through(concept, bound):
+            continue
+        inputs = [i for i in _graph_inputs(g, node, grain_only) if cg.has_edge(node, i)]
+        if inputs:
+            cg.remove_edges_from([(node, i) for i in inputs])
+            detached[node] = inputs
+    if not detached:
+        return
+    component: dict[str, int] = {}
+    for i, members in enumerate(gx.connected_components(cg)):
+        for member in members:
+            component[member] = i
+    parent = {i: i for i in set(component.values())}
+    restored = True
+    while detached and restored:
+        restored = False
+        for node, inputs in list(detached.items()):
+            roots = {_find(parent, component[i]) for i in inputs if i in component}
+            if len(roots) != 1:
+                continue
+            parent[_find(parent, component[node])] = roots.pop()
+            cg.add_edges_from([(node, i) for i in inputs])
+            del detached[node]
+            restored = True
+
+
 def _component_map(
     environment: BuildEnvironment,
     g: "ReferenceGraph | None" = None,
@@ -596,6 +667,7 @@ def _component_map(
                     cg.remove_edge(node, neighbor)
 
     island_rowsets_for_connectivity(g, cg, grain_only)
+    _detach_bridging_derivations(g, cg, grain_only)
 
     if excluded_addresses:
         for node, concept in g.concepts.items():
@@ -636,9 +708,10 @@ def disconnected_components(
 
     See ``_component_map`` for ``excluded_addresses``.
     """
-    comp_of, _ = _component_map(environment, g, excluded_addresses)
+    comp_of, g = _component_map(environment, g, excluded_addresses)
     if grain_only is None:
         grain_only = _aggregate_grain_only_parents(environment)
+    bound = _bound_addresses(g)
 
     # concept -> the component id it resolves into; a concept whose nodes are
     # absent from the graph gets a synthetic per-address component so it surfaces
@@ -648,7 +721,7 @@ def disconnected_components(
     for concept in concepts:
         if _crossjoinable(concept) or concept.address in placed:
             continue
-        anchors = _reading_anchors(concept, grain_only)
+        anchors = _reading_anchors(concept, grain_only, bound)
         cids: list[object] = []
         for anchor in anchors:
             cid: object | None = _first_component(anchor, comp_of)
@@ -1013,6 +1086,9 @@ def raise_if_disconnected_for(
                 outputs_rootless = False
                 output_addresses |= {c.address for c in handles}
                 concepts = unique(concepts + handles, "address")
+    from trilogy.core.env_processor import generate_graph
+
+    g = g if g is not None else generate_graph(environment)
     grain_only = _aggregate_grain_only_parents(environment)
     subgraphs = disconnected_components(
         environment,
@@ -1022,10 +1098,11 @@ def raise_if_disconnected_for(
         grain_only=grain_only,
     )
     # what an output reads is the output's own demand, never a WHERE gate
+    bound = _bound_addresses(g)
     required = output_addresses | {
         anchor.address
         for output in outputs
-        for anchor in _reading_anchors(output, grain_only)
+        for anchor in _reading_anchors(output, grain_only, bound)
     }
     subgraphs = [
         grp
