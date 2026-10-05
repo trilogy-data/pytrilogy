@@ -163,6 +163,10 @@ ERROR_CODES: dict[int, str] = {
         "b.key` or `select <cols> subset join a.key = b.key where <filters>`. "
         "Full reference: `trilogy agent-info syntax example query-structure`."
     ),
+    232: (
+        "A call/copy into target is a file path and must be wrapped in "
+        "backticks: write `{path}`, e.g. call `./scripts/notify.py`;"
+    ),
 }
 
 
@@ -281,6 +285,26 @@ def module_path_from_file_path(text: str, pos: int) -> str:
         raw = raw[: -len(".preql")]
     raw = re.sub(r"^\.[/\\]", "", raw)
     return re.sub(r"[/\\]+", ".", raw).rstrip(".") or "raw.store_sales"
+
+
+_PATH_TARGET_HEAD_RE = re.compile(
+    r"\b(?:call|copy\s+into\s+\w+)\s+(?=[^\s`'\";])", re.IGNORECASE
+)
+_PATH_TARGET_RE = re.compile(r"[^\s;]+")
+
+
+def detect_unquoted_path_target(text: str, pos: int) -> int | None:
+    """Locate a bare `call`/`copy into` target (`call ./s.py;`). The path must
+    be backtick-quoted; both backends otherwise list grammar token names
+    (`FILE_PATH`, `MULTILINE_STRING`). Returns the target's start, or None."""
+    stmt_start = text.rfind(";", 0, pos) + 1
+    m = _PATH_TARGET_HEAD_RE.search(text, stmt_start, pos + 1)
+    return m.end() if m and m.end() == pos else None
+
+
+def unquoted_path_target(text: str, pos: int) -> str:
+    m = _PATH_TARGET_RE.match(text, pos)
+    return m.group(0) if m else "./script.py"
 
 
 _FROM_PAREN_RE = re.compile(r"\bfrom\s*\(", re.IGNORECASE)
@@ -926,6 +950,8 @@ def create_syntax_error(code: int, pos: int, text: str) -> InvalidSyntaxExceptio
         message = message.format(name=m.group(0) if m else "fn")
     elif code == 229:
         message = message.format(path=module_path_from_file_path(text, pos))
+    elif code == 232:
+        message = message.format(path=unquoted_path_target(text, pos))
     return InvalidSyntaxException(
         f"Syntax [{code}]: "
         + message

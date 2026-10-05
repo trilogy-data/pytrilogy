@@ -24,6 +24,7 @@ from trilogy.parsing.v2.errors import (
     detect_select_distinct,
     detect_star_argument,
     detect_subselect,
+    detect_unquoted_path_target,
     misplaced_join_candidate,
 )
 from trilogy.parsing.v2.syntax import (
@@ -279,6 +280,11 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
     import_path_pos = detect_import_file_path(text, pos)
     if import_path_pos is not None:
         return create_syntax_error(229, import_path_pos, text)
+
+    # 232: a `call`/`copy into` path target missing its backticks.
+    target_pos = detect_unquoted_path_target(text, pos)
+    if target_pos is not None:
+        return create_syntax_error(232, target_pos, text)
 
     # 211: BY clause with an unparenthesized expression (e.g. `by substring(x,1,2)`).
     # Detect by probing with parens around the run after `by`.

@@ -25,6 +25,7 @@ from trilogy.parsing.v2.errors import (
     detect_select_distinct,
     detect_star_argument,
     detect_subselect,
+    detect_unquoted_path_target,
     misplaced_join_candidate,
 )
 from trilogy.parsing.v2.syntax import SyntaxDocument, syntax_document_from_parser
@@ -145,6 +146,11 @@ def _handle_unexpected_token(e: UnexpectedToken, text: str) -> None:
     import_path_pos = detect_import_file_path(text, pos)
     if import_path_pos is not None:
         raise create_syntax_error(229, import_path_pos, text)
+
+    # 232: a `call`/`copy into` path target missing its backticks.
+    target_pos = detect_unquoted_path_target(text, pos)
+    if target_pos is not None:
+        raise create_syntax_error(232, target_pos, text)
 
     # `__ANON_0` is Lark's auto-name for the inline "<-" literal — only used by
     # derivation/binding rules. If it appears in `expected`, the user is in a
