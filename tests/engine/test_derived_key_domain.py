@@ -1384,6 +1384,104 @@ query '''select 500 as return_id, 1 as customer_id, 'broken' as reason''';
 """
 
 
+@pytest.fixture(scope="module")
+def derived_cities() -> Executor:
+    return executor_for(CUSTOMERS_DERIVED + _CITIES)
+
+
+@pytest.fixture(scope="module")
+def materialized_cities() -> Executor:
+    return executor_for(CUSTOMERS_MATERIALIZED + _CITIES)
+
+
+# A WHERE no region domain can restate (a total the region's rows feed) or a
+# rollup over the span reads the region's rows below every derivation, which
+# is NULL there by the key-domain rule.
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select customer_id, status where count(customer_id) by * > 2",
+            [(1, "delivered"), (1, "in-transit"), (2, "delivered"), (3, None)],
+        ),
+        (
+            "select customer_id, label where count(customer_id) by * > 2",
+            [
+                (1, "ann-delivered"),
+                (1, "ann-in-transit"),
+                (2, "bob-delivered"),
+                (3, None),
+            ],
+        ),
+        (
+            "select customer_id, status, flag where count(customer_id) by * > 2",
+            [
+                (1, "delivered", 0),
+                (1, "in-transit", 1),
+                (2, "delivered", 0),
+                (3, None, None),
+            ],
+        ),
+        (
+            "select customer_id, amount_or_zero where count(customer_id) by * > 2",
+            [(1, 10), (1, 20), (2, 30), (3, None)],
+        ),
+        (
+            "select customer_id, order_seq where count(customer_id) by * > 2",
+            [(1, 1), (1, 2), (2, 1), (3, None)],
+        ),
+        (
+            "select customer_id, status where count(customer_id) by * > 2 and undelivered is null",
+            [(3, None)],
+        ),
+        (
+            "select customer_id, status where count(customer_id) by * > 2 and coalesce(flag, 1) = 1",
+            [(1, "in-transit"), (3, None)],
+        ),
+        (
+            "select customer_id, status where count(customer_id) by * > 2 and reason is null",
+            [(2, "delivered"), (3, None)],
+        ),
+        (
+            "select customer_id, label where customer_id >= avg(customer_id) by *",
+            [(2, "bob-delivered"), (3, None)],
+        ),
+        (
+            "select customer_id, count(status) as n by rollup (customer_id)",
+            [(1, 2), (2, 1), (3, 0), (None, 3)],
+        ),
+        (
+            "select customer_id, sum(flag) as n by rollup (customer_id)",
+            [(1, 1), (2, 0), (3, None), (None, 1)],
+        ),
+        (
+            "select customer_id, max(label) as ml by rollup (customer_id)",
+            [
+                (1, "ann-in-transit"),
+                (2, "bob-delivered"),
+                (3, None),
+                (None, "bob-delivered"),
+            ],
+        ),
+        (
+            "select customer_id, max(order_seq) as m by rollup (customer_id)",
+            [(1, 2), (2, 1), (3, None), (None, 2)],
+        ),
+        (
+            "select customer_id, count(order_id) as n where status is null or status = 'delivered' by rollup (customer_id)",
+            [(1, 1), (2, 1), (3, 0), (None, 2)],
+        ),
+    ],
+)
+def test_padded_region_derivation_is_null_on_padding(
+    derived_cities: Executor,
+    materialized_cities: Executor,
+    query: str,
+    expected: list[tuple],
+):
+    assert twin_rows(derived_cities, materialized_cities, query) == expected
+
+
 # `city` is a ROOT group key: it crosses no aggregate, so the per-customer
 # count restates where the domain's rows join back, and `reason is null` is
 # not pushed into the returns scan.
