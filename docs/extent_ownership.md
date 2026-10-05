@@ -24,7 +24,7 @@ Extent routing is now a decision, taken once, before any node is built.
 `build_group_graph` once the FINAL contract is known.
 
 1. **Which spans are in play.** The election does not decide this; it is handed
-   `Keyspace.output_demanded_spans` (`v4_helper/keyspace.py`). A span is in play when the statement's row
+   `Keyspace.output_demanded_spans` (`trilogy/core/models/keyspace.py`). A span is in play when the statement's row
    universe has a live region that span keeps apart (unmatched dimension
    members, or a needed source holding only part of a region beside one holding
    all of it), and some output is a function of what the span alone reaches,
@@ -69,14 +69,17 @@ marks behind. Three things follow, all in
   the owner's branch those NULLs are somebody else's rows, so they do not make a
   key nullable here and do not drive preservation or null-safe pairing.
 - **No host, no reunion.** A suppressed span is not a licensed key for hosting
-  or for the `family_anchored` exemption, so an extent-free merge gets neither.
+  (`SideFacts.hosts`, `_sole_host` in `join_resolution.py`), and
+  `_extent_free_join` grants its `~` mark no row intent, so an extent-free
+  merge neither hosts extension rows nor preserves to reunite them.
 
 Declining to extend narrows the branch, and it has to say so: the merge marks
 every suppressed span it holds a `~` binding for as PARTIAL
 (`MergeNode._extent_free_partials`). That is what makes the assembly above
 preserve the owner instead of INNER-joining it against a branch that no longer
 pads itself to the full domain, and it is why
-`_tighten_joins_for_filtered_branches` stops treating such a branch as the
+`_is_filter_population` (`grain_utility.py`, read by
+`tighten_join_for_filtered_branch`) stops treating such a branch as the
 population: a row missing from it is a member its facts never bound, not a row
 the WHERE rejected.
 
