@@ -183,11 +183,14 @@ class Keyspace:
     def region_of(self, spans: frozenset[str]) -> Region | None:
         return next((r for r in self.regions if r.spans == spans), None)
 
+    def keys_of(self, address: str) -> frozenset[str]:
+        return self.keys_by_address.get(address, frozenset())
+
     def carried_on(self, address: str, region: Region) -> bool:
         """Does an extension row of ``region`` hold a value for ``address``: it
         is keyed on what a lookup from the region's spans reaches. An entity
         merely cross-joined onto the region is present, but not carried."""
-        keys = self.keys_by_address.get(address, frozenset())
+        keys = self.keys_of(address)
         return bool(keys) and keys <= region.reach
 
     def describe(self) -> str:

@@ -980,7 +980,7 @@ def _split_root_dimension_clusters(
             if addr not in output_addresses and not all(
                 grain
                 and build_fd_determines(
-                    environment, set(grain), addr, include_empty_grain=False
+                    environment, grain, addr, include_empty_grain=False
                 )
                 for grain in d0_grouping_grains
             ):

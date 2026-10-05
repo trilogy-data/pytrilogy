@@ -39,7 +39,10 @@ from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
     is_scalar_condition,
 )
-from trilogy.core.processing.utility import find_nullable_concepts
+from trilogy.core.processing.utility import (
+    PADS_LEFT_JOIN_TYPES,
+    find_nullable_concepts,
+)
 
 
 def _unfiltered_nullable_addresses(source: QueryDatasource) -> set[str]:
@@ -92,8 +95,7 @@ def _inner_join_rejected(cte: CTE) -> set[tuple[str, str]]:
             or join.jointype != JoinType.INNER
             or Modifier.NULLABLE in join.modifiers
             or any(
-                isinstance(later, Join)
-                and later.jointype in (JoinType.RIGHT_OUTER, JoinType.FULL)
+                isinstance(later, Join) and later.jointype in PADS_LEFT_JOIN_TYPES
                 for later in cte.joins[idx + 1 :]
             )
         ):

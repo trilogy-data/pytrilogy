@@ -71,8 +71,8 @@ from .extent_ownership import (
     elect_extent_owners,
 )
 from .functional_dependency import (
-    build_fd_closure,
     build_fd_determines,
+    build_fd_determines_all,
     concept_attr_fd_determines,
 )
 from .group_behaviors import Behavior, behavior_for
@@ -646,8 +646,8 @@ def _grain_determines(
     """Every key of `targets` is a function of `determinants` together."""
     if not determinants or not targets:
         return False
-    return targets <= build_fd_closure(
-        environment, determinants, include_empty_grain=False
+    return build_fd_determines_all(
+        environment, determinants, targets, include_empty_grain=False
     )
 
 
@@ -1478,11 +1478,8 @@ def _widen_mixed_scalar_basic_to_final_spine(
         return
     mandatory_addresses = {c.address for c in mandatory_list}
     extra_keys = spine - mandatory_addresses
-    if extra_keys and not all(
-        build_fd_determines(
-            environment, mandatory_addresses, addr, include_empty_grain=False
-        )
-        for addr in extra_keys
+    if extra_keys and not build_fd_determines_all(
+        environment, mandatory_addresses, extra_keys, include_empty_grain=False
     ):
         return
     for gid in candidates:

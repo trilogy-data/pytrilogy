@@ -364,7 +364,7 @@ function renderKeyspace(step) {
     <h3>outputs × regions</h3><table class="matrix"><tr><th>output</th><th>keys</th>${regions.map(r => `<th>${esc(r.describe)}</th>`).join('')}</tr>
     ${matrix.map(([o, cells]) => `<tr><td class="mono">${esc(o)}</td><td>${chips(k.keys_by_address[o])}</td>${cells.map(c => `<td class="${c}">${c === 'defined' ? '● defined' : c === 'carried' ? '◐ carried' : '○ absent'}</td>`).join('')}</tr>`).join('')}</table>
     <div class="small">defined: every FD-minimal key present · carried: the extension row holds a value (keyed on the spans' reach) · absent: renders NULL, not a value</div>
-    <div class="two"><div><h3>demanded spans</h3>${chips(k.demanded_spans, 'domain')}<h3>output-demanded spans</h3>${chips(k.output_demanded_spans, 'domain')}<h3>in-play spans</h3>${chips(k.in_play_spans)}<h3>families</h3>${k.families.length ? k.families.map(f => `<div>${chips(f)}</div>`).join('') : '<span class="small">—</span>'}</div>
+    <div class="two"><div><h3>output-demanded spans</h3>${chips(k.output_demanded_spans, 'domain')}<h3>in-play spans</h3>${chips(k.in_play_spans)}<h3>families</h3>${k.families.length ? k.families.map(f => `<div>${chips(f)}</div>`).join('') : '<span class="small">—</span>'}</div>
     <div><h3>span reach</h3>${renderValue(k.span_reach)}<h3>unread spans</h3>${chips(k.unread_spans)}<h3>witnessed spellings</h3>${renderValue(k.witnessed)}</div></div>
     <h3>keys by address</h3>${renderValue(k.keys_by_address)}`;
 }

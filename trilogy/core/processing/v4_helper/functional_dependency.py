@@ -245,6 +245,18 @@ def build_fd_determines(
     )
 
 
+def build_fd_determines_all(
+    environment: BuildEnvironment,
+    determinants: Iterable[str],
+    targets: Iterable[str],
+    *,
+    include_empty_grain: bool = True,
+) -> bool:
+    return set(targets) <= build_fd_closure(
+        environment, determinants, include_empty_grain=include_empty_grain
+    )
+
+
 def minimize_build_grain(
     environment: BuildEnvironment,
     grain: Iterable[str],

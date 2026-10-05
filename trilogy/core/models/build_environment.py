@@ -117,6 +117,12 @@ class SpanScope:
     # group: address -> the extent-free spans whose region domain carries it
     extent_free_carried: dict[str, frozenset[str]] = field(default_factory=dict)
 
+    def held_on(self, address: str, spans: set[str] | frozenset[str]) -> bool:
+        """`address` is one of `spans`, or a region domain of one carries it."""
+        return address in spans or bool(
+            self.extent_free_carried.get(address, frozenset()) & spans
+        )
+
 
 @dataclass
 class BuildEnvironment:

@@ -2,7 +2,7 @@
 them and the WHERE inputs tested over them. Shared by the region-domain
 decision (`region_domains`) and condition placement, which must agree."""
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from typing import TypeGuard
 
 from trilogy.core.enums import FunctionType
@@ -52,16 +52,29 @@ def nameable(argument: BuildConceptArgs) -> TypeGuard[BuildFunction]:
     return isinstance(argument, BuildFunction)
 
 
+def arguments_within(
+    concept: BuildConcept | None,
+    keys_of: Callable[[str], frozenset[str]],
+    reach: frozenset[str],
+) -> bool:
+    """An aggregate is evaluated OVER a region's rows when they hold its every
+    argument: `count(customer_id) by status` counts the customer with no order,
+    under the NULL status of a row that has none."""
+    if concept is None or not isinstance(concept.lineage, BuildAggregateWrapper):
+        return False
+    arguments = concept.lineage.function.concept_arguments
+    return bool(arguments) and all(
+        (keys := keys_of(arg.address)) and keys <= reach for arg in arguments
+    )
+
+
 def aggregates_over_region(
     members: Iterable[str],
     region: Region,
     keyspace: Keyspace,
     environment: BuildEnvironment,
 ) -> bool:
-    """An aggregate is evaluated OVER a region's rows when they hold its
-    argument: `count(customer_id) by status` counts the customer with no order,
-    under the NULL status of a row that has none."""
-    members = tuple(members)
+    """Every member is an aggregate evaluated over the region's rows."""
     counted = False
     for member in members:
         concept = environment.concepts.get(member)
@@ -71,10 +84,7 @@ def aggregates_over_region(
             # a ROLLUP pass's own flag, whatever rows enter the pass
             continue
         counted = True
-        arguments = concept.lineage.function.concept_arguments
-        if not arguments or not all(
-            keyspace.carried_on(arg.address, region) for arg in arguments
-        ):
+        if not arguments_within(concept, keyspace.keys_of, region.reach):
             return False
     return counted
 

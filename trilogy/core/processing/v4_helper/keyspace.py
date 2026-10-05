@@ -72,6 +72,7 @@ from trilogy.core.processing.condition_utility import gather_non_null_proofs
 from .functional_dependency import minimize_build_grain
 from .group_rules import overlap_components
 from .models import ConceptAttrs
+from .region_reads import arguments_within
 
 _Declared = tuple[Purpose, Derivation, frozenset[str]]
 
@@ -814,18 +815,15 @@ def _counts_the_rows(
     canonical: dict[str, str],
     environment: BuildEnvironment,
 ) -> bool:
-    """An aggregate whose every argument the region's rows carry is evaluated
-    over them, and takes a value there whatever its `by` (`count(customer_id)
-    by status` counts the customer with no order under the NULL status): a
-    WHERE rejecting its NULL leaves those rows in."""
-    concept = environment.concepts.get(address)
-    if concept is None or not isinstance(concept.lineage, BuildAggregateWrapper):
-        return False
-    arguments = concept.lineage.function.concept_arguments
-    return bool(arguments) and all(
-        (keys := _entity_keys(arg.address, declared, identifying, environment))
-        and {canonical.get(k, k) for k in keys} <= reach
-        for arg in arguments
+    """An aggregate evaluated over the region's rows takes a value there
+    whatever its `by`: a WHERE rejecting its NULL leaves those rows in."""
+    return arguments_within(
+        environment.concepts.get(address),
+        lambda a: frozenset(
+            canonical.get(k, k)
+            for k in _entity_keys(a, declared, identifying, environment)
+        ),
+        reach,
     )
 
 

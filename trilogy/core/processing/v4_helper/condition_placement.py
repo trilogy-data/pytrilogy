@@ -39,7 +39,7 @@ from .edges import (
     lineage_subgraph,
     subgraph_of_kinds,
 )
-from .functional_dependency import build_fd_determines
+from .functional_dependency import build_fd_determines_all
 from .models import ConceptAttrs, GroupBucket
 from .projection import output_rowset_grain_keys
 from .region_reads import restated_over_region
@@ -557,10 +557,7 @@ def _uncovered_exposing_output_contributor(
             and len(collapsing_hosts) == len(chosen_groups)
             and own_outputs
             and not any(
-                all(
-                    build_fd_determines(environment, host.grain_components, addr)
-                    for addr in own_outputs
-                )
+                build_fd_determines_all(environment, host.grain_components, own_outputs)
                 for host in collapsing_hosts
             )
             and row_inputs <= final_exposable

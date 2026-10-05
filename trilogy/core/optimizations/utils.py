@@ -5,7 +5,6 @@ from trilogy.core.enums import (
     BooleanOperator,
     Derivation,
     FunctionType,
-    JoinType,
     SourceType,
 )
 from trilogy.core.models.build import (
@@ -26,6 +25,10 @@ from trilogy.core.models.execute import (
     UnionCTE,
 )
 from trilogy.core.processing.condition_utility import merge_conditions_and_dedup
+from trilogy.core.processing.utility import (
+    PADS_LEFT_JOIN_TYPES,
+    PADS_RIGHT_JOIN_TYPES,
+)
 from trilogy.utility import unique
 
 # Derivations whose rows cannot be re-scoped: a window, unnest or recursive
@@ -197,9 +200,9 @@ def join_padded_ctes(cte: CTE) -> list[tuple[Join, list[CTE | UnionCTE]]]:
         if not isinstance(join, Join):
             continue
         padded: list[CTE | UnionCTE] = []
-        if join.jointype in (JoinType.LEFT_OUTER, JoinType.FULL):
+        if join.jointype in PADS_RIGHT_JOIN_TYPES:
             padded.append(join.right_cte)
-        if join.jointype in (JoinType.RIGHT_OUTER, JoinType.FULL):
+        if join.jointype in PADS_LEFT_JOIN_TYPES:
             padded.extend(accumulated_left_ctes(cte, idx))
             padded.extend(pair.cte for pair in join.joinkey_pairs or [])
         out.append((join, padded))

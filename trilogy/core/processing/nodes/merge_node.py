@@ -42,6 +42,7 @@ from trilogy.core.processing.join_resolution import (
     compute_outer_null_status,
     deep_extent_free_spans,
     get_node_joins,
+    held_region_spans,
     merge_partial_addresses,
     narrow_keyless_joins,
     partial_binding_sources,
@@ -71,10 +72,6 @@ def _has_applied_condition(source: QueryDatasource | BuildDatasource) -> bool:
             _has_applied_condition(parent) for parent in source.datasources
         )
     return bool(source.where)
-
-
-def _region_spans(source: QueryDatasource | BuildDatasource) -> frozenset[str]:
-    return source.region_spans if isinstance(source, QueryDatasource) else frozenset()
 
 
 def _join_padded_addresses(
@@ -164,7 +161,7 @@ def deduplicate_nodes(
                 and not _has_applied_condition(merged[k2])
                 and not _has_applied_condition(merged[k1])
                 # a region domain's rows are the region's, whatever it projects
-                and _region_spans(merged[k1]) <= _region_spans(merged[k2])
+                and held_region_spans(merged[k1]) <= held_region_spans(merged[k2])
                 # a row-limited source is a proper row subset, never
                 # interchangeable with a superset source
                 and getattr(merged[k1], "limit", None) is None
@@ -984,9 +981,7 @@ class MergeNode(StrategyNode):
         return [
             concept
             for concept in outputs
-            if concept.address in bound_partially
-            or self.span_scope.extent_free_carried.get(concept.address, frozenset())
-            & bound_partially
+            if self.span_scope.held_on(concept.address, bound_partially)
         ]
 
     def copy(self) -> "MergeNode":

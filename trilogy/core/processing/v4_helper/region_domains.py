@@ -15,6 +15,7 @@ never counts a padded row; a COUNT the domain pads is 0, stamped by the merge
 that pads it (`CTE.zero_fills_count`).
 """
 
+from collections.abc import Collection, Iterator
 from dataclasses import dataclass
 from enum import Enum
 
@@ -101,6 +102,25 @@ def _splits_for_region(bucket: GroupBucket) -> bool:
     return bucket.reason in (RootReason.ROW_STREAM, RootReason.ENTITY)
 
 
+def _members_of(
+    buckets: dict[str, GroupBucket],
+    label: str,
+    derivations: Collection[Derivation],
+    exact: bool,
+) -> Iterator[str]:
+    """Primary members of `derivations` buckets in `label` (`exact`) or in any
+    phase of its scope."""
+    scope = _scope_and_phase(label)[0]
+    for bucket in buckets.values():
+        in_scope = (
+            bucket.label == label
+            if exact
+            else _scope_and_phase(bucket.label)[0] == scope
+        )
+        if in_scope and bucket.derivation in derivations:
+            yield from bucket.primary_members
+
+
 def _needs_solid_rows(
     buckets: dict[str, GroupBucket],
     label: str,
@@ -112,22 +132,15 @@ def _needs_solid_rows(
     absent from: a row-stream derivation that takes a value on the padding
     (`count(grain(s.o, s.sk))`: the hash coalesces NULLs), or an aggregate
     whose inline argument does."""
-    for bucket in buckets.values():
-        if bucket.label != label:
-            continue
-        if bucket.derivation in ROW_STREAM_DERIVATIONS and any(
-            takes_a_value_on_padding(m, region, keyspace, environment)
-            for m in bucket.primary_members
-        ):
-            return True
-        if bucket.derivation == Derivation.AGGREGATE and any(
-            inline_arguments_taking_a_value(
-                environment.concepts.get(m), region, keyspace, environment
-            )
-            for m in bucket.primary_members
-        ):
-            return True
-    return False
+    return any(
+        takes_a_value_on_padding(m, region, keyspace, environment)
+        for m in _members_of(buckets, label, ROW_STREAM_DERIVATIONS, exact=True)
+    ) or any(
+        inline_arguments_taking_a_value(
+            environment.concepts.get(m), region, keyspace, environment
+        )
+        for m in _members_of(buckets, label, (Derivation.AGGREGATE,), exact=True)
+    )
 
 
 def _named_value_on_padding(
@@ -140,14 +153,10 @@ def _named_value_on_padding(
     """A named row-stream derivation of the scope, its WHERE included, takes a
     value on a padded row of `region`. One reading a ROLLUP pass is computed
     on the pass's subtotal rows, where no region is absent."""
-    scope = _scope_and_phase(label)[0]
     return any(
         takes_a_value_on_padding(m, region, keyspace, environment)
         and not reads_a_rollup(m, environment)
-        for bucket in buckets.values()
-        if bucket.derivation in ROW_STREAM_DERIVATIONS
-        and _scope_and_phase(bucket.label)[0] == scope
-        for m in bucket.primary_members
+        for m in _members_of(buckets, label, ROW_STREAM_DERIVATIONS, exact=False)
     )
 
 
@@ -159,13 +168,9 @@ def _inline_values_on_padding(
     environment: BuildEnvironment,
 ) -> list[BuildConceptArgs]:
     """The inline arguments of the scope's aggregates doing the same."""
-    scope = _scope_and_phase(label)[0]
     return [
         argument
-        for bucket in buckets.values()
-        if bucket.derivation == Derivation.AGGREGATE
-        and _scope_and_phase(bucket.label)[0] == scope
-        for m in bucket.primary_members
+        for m in _members_of(buckets, label, (Derivation.AGGREGATE,), exact=False)
         for argument in inline_arguments_taking_a_value(
             environment.concepts.get(m), region, keyspace, environment
         )
@@ -722,12 +727,11 @@ def feed_region_domains_to_present_scalars(
                 _detach_solid_roots(
                     group_graph, group_edges, attrs, gid, domain, environment
                 )
-            elif _counts_the_region_in_condition(
-                a, domain, region, keyspace, environment
-            ):
-                pass
             elif not (
-                a.derivation == Derivation.AGGREGATE
+                _counts_the_region_in_condition(
+                    a, domain, region, keyspace, environment
+                )
+                or a.derivation == Derivation.AGGREGATE
                 and a.label == domain.label
                 and evaluated_over_region(
                     a.primary_members,

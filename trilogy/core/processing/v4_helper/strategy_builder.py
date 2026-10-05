@@ -97,7 +97,7 @@ from .constants import (
 )
 from .edges import EdgeAttrs, EdgeMap, dependency_subgraph, edge_kind, remove_edge
 from .extent_ownership import takes_a_value_on_padding
-from .functional_dependency import build_fd_determines
+from .functional_dependency import build_fd_determines, build_fd_determines_all
 from .group_graph import trace_group_graph
 from .history import V4History
 from .models import (
@@ -222,7 +222,7 @@ def _root_atoms_satisfiable_from(
 def _members_of(attrs: dict[str, GroupAttrs], gid: str) -> set[str]:
     """What the group computes and the keys it holds. Not what it emits: a
     ROOT's re-source at FINAL asks which merge keys are its own, and a hidden
-    pass-through is not one (`test_duckdb_subset_join_pivot_axis`)."""
+    pass-through is not one."""
     return set(attrs[gid].members)
 
 
@@ -3488,11 +3488,8 @@ def _holds_statement_rows(
     an aggregate only when its grain determines the statement's."""
     if reader.derivation not in GROUPING_DERIVATIONS:
         return True
-    return all(
-        build_fd_determines(
-            environment, reader.grain_components, address, include_empty_grain=False
-        )
-        for address in required
+    return build_fd_determines_all(
+        environment, reader.grain_components, required, include_empty_grain=False
     )
 
 
@@ -4320,14 +4317,9 @@ def _region_paired_args(
     missing = filter_only - available
     if not spans:
         return missing
-    grain = {
-        component
-        for address in missing
-        if (concept := _concept_at(environment, address)) is not None
-        and concept.derivation == Derivation.AGGREGATE
-        and concept.grain is not None
-        for component in concept.grain.components
-    }
+    grain = _gate_grain_keys(
+        [c for a in missing if (c := _concept_at(environment, a)) is not None]
+    )
     return missing | (grain - available)
 
 

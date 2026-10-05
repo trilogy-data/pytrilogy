@@ -434,15 +434,11 @@ def resolve_rowset(
         )
     ]
     if owned_handles:
-        carried = environment.span_scope.extent_free_carried
         scoped_partial.extend(
             h
             for h in handles
             if h not in scoped_partial
-            and (
-                h.address in owned_handles
-                or carried.get(h.address, frozenset()) & owned_handles
-            )
+            and environment.span_scope.held_on(h.address, owned_handles)
         )
     # nullability propagates by ADDRESS between nodes, but a rowset handle is a
     # new address wrapping its body content; map through the BuildRowsetItem

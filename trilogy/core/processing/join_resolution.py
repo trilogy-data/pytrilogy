@@ -1815,25 +1815,19 @@ def _region_padded_sides(
     those regions' rows in the joined stream, whatever the side says of
     itself. A RIGHT or FULL join pads the whole accumulated input, not just
     the sides it pairs on."""
-    padded: dict[str, frozenset[str]] = {}
-
-    def pad(side: str, held: frozenset[str]) -> None:
-        if held:
-            padded[side] = padded.get(side, frozenset()) | held
-
+    padded: dict[str, frozenset[str]] = defaultdict(frozenset)
     joined: set[str] = set()
     for join in joins:
         joined |= join.lefts | ({join.left} if join.left else set())
         if join.type in PADS_RIGHT_JOIN_TYPES:
-            pad(
-                join.right,
-                frozenset().union(*(facts.side(left).held_spans for left in join.keys)),
+            padded[join.right] |= frozenset().union(
+                *(facts.side(left).held_spans for left in join.keys)
             )
         if join.type in PADS_LEFT_JOIN_TYPES:
             for side in joined:
-                pad(side, facts.side(join.right).held_spans)
+                padded[side] |= facts.side(join.right).held_spans
         joined.add(join.right)
-    return padded
+    return {side: held for side, held in padded.items() if held}
 
 
 def _pairs_region_padding(
