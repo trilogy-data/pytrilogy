@@ -4,7 +4,7 @@ as the product of each customer's fact rows."""
 
 import pytest
 
-from trilogy import Dialects
+from tests.helpers.rows import executor_for, fetch_rows
 
 MODEL = """
 key cust_id int;
@@ -47,8 +47,7 @@ THREE = (
     ],
 )
 def test_facts_are_summed_before_they_meet(query: str, expected: list[tuple]):
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(MODEL)
+    executor = executor_for(MODEL)
     sql = executor.generate_sql(query)[-1]
     assert "FULL JOIN" not in sql, sql
-    assert [tuple(r) for r in executor.execute_text(query)[-1].fetchall()] == expected
+    assert fetch_rows(executor, query) == expected

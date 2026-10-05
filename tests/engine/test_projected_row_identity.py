@@ -8,8 +8,7 @@ place of its key does not (the unsold products collapse per category)."""
 
 import pytest
 
-from trilogy import Dialects
-from trilogy.core.models.environment import Environment
+from tests.helpers.rows import executor_for, sort_rows
 from trilogy.executor import Executor
 
 MODEL = """
@@ -47,21 +46,19 @@ IDENTITY_ROWS = [
 
 @pytest.fixture(scope="module")
 def executor() -> Executor:
-    env = Environment()
-    env.parse(MODEL)
-    return Dialects.DUCK_DB.default_executor(environment=env)
+    return executor_for(MODEL)
 
 
 def _run(executor: Executor, query: str) -> tuple[str, list[tuple]]:
     sql = executor.generate_sql(query)[-1]
     rows = executor.execute_raw_sql(sql).fetchall()
-    return sql, sorted(rows, key=lambda r: tuple((v is None, v) for v in r))
+    return sql, sort_rows(rows)
 
 
 def test_projected_identity_is_not_grouped(executor: Executor):
     sql, rows = _run(executor, "select user_id, item_id, product_id;")
     assert "GROUP BY" not in sql, sql
-    assert rows == sorted(IDENTITY_ROWS, key=lambda r: tuple((v is None, v) for v in r))
+    assert rows == sort_rows(IDENTITY_ROWS)
 
 
 def test_projected_identity_beside_an_aggregate_is_not_regrouped(
@@ -72,7 +69,7 @@ def test_projected_identity_beside_an_aggregate_is_not_regrouped(
         "select user_id, item_id, product_id, sum(price) by user_id as user_total;",
     )
     assert sql.count("GROUP BY") == 1, sql
-    assert rows == sorted(
+    assert rows == sort_rows(
         [
             (1, 1000, 10, 12),
             (1, 1001, 20, 12),
@@ -80,21 +77,19 @@ def test_projected_identity_beside_an_aggregate_is_not_regrouped(
             (3, None, None, None),
             (None, None, 30, None),
             (None, None, 40, None),
-        ],
-        key=lambda r: tuple((v is None, v) for v in r),
+        ]
     )
 
 
 def test_unprojected_full_side_key_is_grouped(executor: Executor):
     sql, rows = _run(executor, "select user_id, item_id, category;")
     assert "GROUP BY" in sql, sql
-    assert rows == sorted(
+    assert rows == sort_rows(
         [
             (1, 1000, "shoes"),
             (1, 1001, "shoes"),
             (2, 1002, "shoes"),
             (3, None, None),
             (None, None, "hats"),
-        ],
-        key=lambda r: tuple((v is None, v) for v in r),
+        ]
     )

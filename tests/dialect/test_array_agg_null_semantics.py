@@ -9,7 +9,7 @@ ClickHouse has no Nullable(Array), so its all-NULL group is `[]`, not NULL.
 
 import pytest
 
-from trilogy import Dialects
+from tests.helpers.rows import executor_for, fetch_rows
 from trilogy.core.enums import FunctionType
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.bigquery import BigqueryDialect
@@ -67,13 +67,11 @@ def test_grain_match_singleton_is_null_for_a_null_value():
 
 
 def test_null_values_are_not_elements_and_all_null_is_null():
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(MODEL)
     rows = sorted(
         (c, sorted(a) if a is not None else None)
-        for c, a in executor.execute_text(
-            "select customer_id, array_agg(amount) as amts;"
-        )[-1].fetchall()
+        for c, a in fetch_rows(
+            executor_for(MODEL), "select customer_id, array_agg(amount) as amts;"
+        )
     )
     # ann: one value and one NULL; bob: only a NULL; cat: no orders
     assert rows == [(1, [10]), (2, None), (3, None)]

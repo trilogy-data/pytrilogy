@@ -1,3 +1,6 @@
+from collections.abc import Callable
+from typing import Any
+
 from trilogy import Environment
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.models.build import Factory, get_canonical_pseudonyms
@@ -62,3 +65,23 @@ def built_groups(
         for s in trace.steps
         if s.phase == "node" and derivation in (None, s.data.derivation)
     ]
+
+
+class Spy:
+    """Calls `wrapped`, recording `record(result, *args, **kwargs)` per call
+    (the result itself by default)."""
+
+    def __init__(
+        self, wrapped: Callable[..., Any], record: Callable[..., Any] | None = None
+    ) -> None:
+        self.wrapped = wrapped
+        self.record = record
+        self.seen: list[Any] = []
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        result = self.wrapped(*args, **kwargs)
+        if self.record is None:
+            self.seen.append(result)
+        else:
+            self.seen.append(self.record(result, *args, **kwargs))
+        return result

@@ -6,7 +6,7 @@ identity (every key plus the grouping flags) to rejoin its siblings."""
 
 import pytest
 
-from trilogy import Dialects
+from tests.helpers.rows import executor_for, sort_rows
 
 FIXTURE = """
 key item_id int;
@@ -80,22 +80,6 @@ CASES = [
 ]
 
 
-def _norm(rows):
-    return sorted(
-        (tuple(row) for row in rows),
-        key=lambda t: tuple((x is not None, str(x)) for x in t),
-    )
-
-
-@pytest.mark.parametrize("query,oracle", CASES)
-def test_rollup_over_partial_dimension_keeps_subtotals(query, oracle):
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(FIXTURE)
-    sql = executor.generate_sql(query)[-1]
-    got = _norm(executor.execute_raw_sql(sql).fetchall())
-    assert got == _norm(executor.execute_raw_sql(oracle).fetchall()), sql
-
-
 # every row of the statement: the sales, and the dates no sale references
 UNITED = """
 from (select s.*, i.category, case when s.qty > 4 then 'big' else 'small' end big,
@@ -154,10 +138,9 @@ DERIVED_BELOW_CASES = [
 ]
 
 
-@pytest.mark.parametrize("query,oracle", DERIVED_BELOW_CASES)
-def test_rollup_over_a_derivation_absent_on_the_region(query, oracle):
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(FIXTURE)
+@pytest.mark.parametrize("query,oracle", CASES + DERIVED_BELOW_CASES)
+def test_rollup_over_partial_dimension_matches_oracle(query, oracle):
+    executor = executor_for(FIXTURE)
     sql = executor.generate_sql(query)[-1]
-    got = _norm(executor.execute_raw_sql(sql).fetchall())
-    assert got == _norm(executor.execute_raw_sql(oracle).fetchall()), sql
+    got = sort_rows(executor.execute_raw_sql(sql).fetchall())
+    assert got == sort_rows(executor.execute_raw_sql(oracle).fetchall()), sql

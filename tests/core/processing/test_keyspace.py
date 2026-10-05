@@ -6,6 +6,7 @@ pinned by tests/engine/test_derived_key_domain.py.
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from types import ModuleType
 from typing import Any
 from unittest.mock import Mock
 
@@ -25,12 +26,14 @@ from tests.helpers.models import (
     PARTIAL_PROPERTY_SOURCE,
     TWO_FAMILIES,
 )
-from tests.helpers.planning import plan
+from tests.helpers.planning import Spy, plan
 from trilogy import Dialects
+from trilogy.core import query_processor
 from trilogy.core.models.keyspace import Keyspace, Region
 from trilogy.core.processing import partial_bridging
 from trilogy.core.processing.v4_helper.constants import FINAL_NODE_ID
 from trilogy.core.processing.v4_helper.keyspace import build_keyspace
+from trilogy.core.processing.v4_helper.models import BuildInfo
 from trilogy.core.processing.v4_node_generators import rowset_witness
 
 CUSTOMER = "local.customer_id"
@@ -45,24 +48,22 @@ def _keyspace(model: str, query: str) -> Keyspace:
     return info.keyspace
 
 
-class _Capture:
-    def __init__(self, wrapped: Callable[..., Any] = build_keyspace) -> None:
-        self.wrapped = wrapped
-        self.seen: list[Any] = []
-
-    def __call__(self, *args, **kwargs) -> Any:
-        self.seen.append(self.wrapped(*args, **kwargs))
-        return self.seen[-1]
-
-
-def _planned_keyspace(monkeypatch, model: str, query: str) -> Keyspace:
-    """Through the full statement path, so the WHERE reaches the plan."""
-    capture = _Capture()
-    monkeypatch.setattr(rowset_witness, "build_keyspace", capture)
+def _spied(
+    monkeypatch,
+    model: str,
+    query: str,
+    module: ModuleType = rowset_witness,
+    name: str = "build_keyspace",
+    wrapped: Callable[..., Any] = build_keyspace,
+) -> list[Any]:
+    """What `module.name` returned planning `query` through the full statement
+    path, so the WHERE reaches the plan."""
+    spy = Spy(wrapped)
+    monkeypatch.setattr(module, name, spy)
     executor = Dialects.DUCK_DB.default_executor()
     executor.parse_text(model)
     executor.generate_sql(query)
-    return capture.seen[0]
+    return spy.seen
 
 
 @dataclass
@@ -74,13 +75,8 @@ class _EagerAuthoredKeyspace(partial_bridging._AuthoredKeyspace):
 def _heal_keyspace(monkeypatch, model: str, query: str) -> Keyspace:
     """What pin-heal asks: the statement's bindings as authored, built even
     when the heal's own guards settle the binding before reading it."""
-    capture = _Capture()
-    monkeypatch.setattr(partial_bridging, "build_keyspace", capture)
     monkeypatch.setattr(partial_bridging, "_AuthoredKeyspace", _EagerAuthoredKeyspace)
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.parse_text(model)
-    executor.generate_sql(query)
-    return capture.seen[0]
+    return _spied(monkeypatch, model, query, partial_bridging)[0]
 
 
 def _extensions(keyspace: Keyspace) -> list[Region]:
@@ -225,9 +221,9 @@ def test_where_between_on_an_absent_concept_empties_the_region(monkeypatch):
 
 
 def test_where_over_a_present_concept_leaves_the_region_live(monkeypatch):
-    keyspace = _planned_keyspace(
+    keyspace = _spied(
         monkeypatch, CUSTOMERS_DERIVED, "select customer_id, status where name = 'cat';"
-    )
+    )[0]
     assert keyspace.families == (frozenset({CUSTOMER}),)
 
 
@@ -444,21 +440,11 @@ def test_rowset_key_is_its_own_entity():
     assert keyspace.output_demanded_spans == frozenset()
 
 
-def _plan_keyspaces(monkeypatch, model: str, query: str) -> list[Keyspace]:
-    """Every keyspace the statement builds: witnesses, bodies and the plan."""
-    capture = _Capture()
-    monkeypatch.setattr(rowset_witness, "build_keyspace", capture)
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.parse_text(model)
-    executor.generate_sql(query)
-    return capture.seen
-
-
 def test_rowset_witness_spells_the_body_padding_by_the_handle(monkeypatch):
     """The body of `s` pads for `local.item_sk`; the plan reading `s.sk` names
     that padding by the handle, so a merge above the boundary attributes it to
     the region it holds rather than to a span of another plan."""
-    seen = _plan_keyspaces(monkeypatch, UNSOLD_MODEL, ROWSET_QUERY)
+    seen = _spied(monkeypatch, UNSOLD_MODEL, ROWSET_QUERY)
     outer = next(k for k in seen if "s.d" in k.outputs)
     assert outer.in_play_spans == frozenset({"s.sk"})
     assert outer.witnessed == {"local.item_sk": "s.sk", "local._s_sk": "s.sk"}
@@ -468,7 +454,7 @@ def test_key_no_handle_spells_is_spelled_by_what_carries_it(monkeypatch):
     """`select order_number as o, item_desc as d, quantity as q` exposes no
     item key; the reader identifies the item's rows by `s.d` alone, so the
     region and its padding are spelled by it."""
-    seen = _plan_keyspaces(monkeypatch, UNSOLD_MODEL, KEYLESS_CASES[0][0])
+    seen = _spied(monkeypatch, UNSOLD_MODEL, KEYLESS_CASES[0][0])
     outer = next(k for k in seen if "s.d" in k.outputs)
     assert outer.describe() == "{s.d, s.o} | {s.d} ~['s.d']"
     assert outer.keys_by_address["s.d"] == frozenset({"s.d"})
@@ -481,7 +467,7 @@ def test_rowset_over_a_rowset_is_a_region_of_the_reader(monkeypatch):
     `t`'s handles alone it matched no entity, `s` had one region, and the
     count ran over the padding. The plan above names every spelling below by
     `s.sk2`."""
-    seen = _plan_keyspaces(monkeypatch, UNSOLD_MODEL, NESTED_ROWSET_QUERY)
+    seen = _spied(monkeypatch, UNSOLD_MODEL, NESTED_ROWSET_QUERY)
     body = next(k for k in seen if "local._s_o2" in k.outputs)
     assert body.describe() == "{local._s_o2, local._s_sk2} | {local._s_sk2} ~['t.sk']"
     outer = next(k for k in seen if "s.d2" in k.outputs)
@@ -504,28 +490,28 @@ def test_binding_is_complete_once_the_where_empties_the_rows_it_lacks(monkeypatc
 
 
 def test_a_healed_binding_leaves_the_plan_no_region(monkeypatch):
-    planned = _planned_keyspace(
+    planned = _spied(
         monkeypatch,
         CUSTOMERS_DERIVED,
         "select customer_id, status where status = 'delivered';",
-    )
+    )[0]
     assert _extensions(planned) == []
     assert planned.in_play_spans == frozenset()
 
 
 def test_binding_stays_partial_while_the_rows_it_lacks_are_live(monkeypatch):
-    live = _planned_keyspace(
+    live = _spied(
         monkeypatch, CUSTOMERS_DERIVED, "select customer_id, status where name = 'cat';"
-    )
+    )[0]
     assert not live.binding_is_complete("orders", CUSTOMER)
 
 
 def test_binding_out_of_play_is_not_called_complete(monkeypatch):
-    keyspace = _planned_keyspace(
+    keyspace = _spied(
         monkeypatch,
         CUSTOMERS_DERIVED,
         "select order_id, status where status = 'delivered';",
-    )
+    )[0]
     assert CUSTOMER not in keyspace.in_play_spans
     assert not keyspace.binding_is_complete("orders", CUSTOMER)
 
@@ -640,16 +626,11 @@ def test_aggregate_over_a_region_reads_its_domain():
     assert "aggregate" in readers
 
 
-def _planned_info(monkeypatch, model: str, query: str):
-    """The statement's plan through the full path, WHERE included."""
-    from trilogy.core import query_processor
-
-    capture = _Capture(query_processor.search_concepts_v4)
-    monkeypatch.setattr(query_processor, "search_concepts_v4", capture)
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.parse_text(model)
-    executor.generate_sql(query)
-    return capture.seen[0]
+def _planned_info(monkeypatch, model: str, query: str) -> BuildInfo:
+    wrapped = query_processor.search_concepts_v4
+    return _spied(
+        monkeypatch, model, query, query_processor, "search_concepts_v4", wrapped
+    )[0]
 
 
 def test_where_over_a_carried_scalar_keeps_the_domain(monkeypatch):
@@ -715,7 +696,7 @@ def test_entity_is_spelled_the_same_with_and_without_a_license(monkeypatch):
     """`customer_id as c2` earlier in the session makes `c2` the canonical
     spelling. Healing the last `~` must not change that: the plan keyspace
     (no license left) and heal's (as authored) key `late_name` alike."""
-    healed, planned = _Capture(), _Capture()
+    healed, planned = Spy(build_keyspace), Spy(build_keyspace)
     monkeypatch.setattr(partial_bridging, "build_keyspace", healed)
     monkeypatch.setattr(rowset_witness, "build_keyspace", planned)
     executor = Dialects.DUCK_DB.default_executor()
@@ -735,14 +716,11 @@ def test_sub_plan_without_the_where_inherits_the_statement_heal(monkeypatch):
     to read the authored bindings it would pad the orderless customer and
     number the padding row: `order_seq = 1` for a customer with no order.
     Heal is decided once per statement and every plan under it is complete."""
-    capture = _Capture()
-    monkeypatch.setattr(rowset_witness, "build_keyspace", capture)
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.parse_text(CUSTOMERS_DERIVED)
-    executor.generate_sql("select customer_id, name where order_seq = 1;")
-    feeders = [k for k in capture.seen if "local.order_seq" in k.keys_by_address]
-    assert feeders
-    assert all(k.families == () for k in capture.seen)
+    seen = _spied(
+        monkeypatch, CUSTOMERS_DERIVED, "select customer_id, name where order_seq = 1;"
+    )
+    assert [k for k in seen if "local.order_seq" in k.keys_by_address]
+    assert all(k.families == () for k in seen)
 
 
 _CHAIN_MODEL = """

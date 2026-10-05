@@ -2,6 +2,7 @@
 join-analysis padding; the optimizer's value-set upgrade reads it to tell
 shared padding (one source's rows arriving twice) from unrelated NULLs."""
 
+from collections.abc import Collection
 from dataclasses import fields
 
 from trilogy.core.enums import JoinType, Modifier, Purpose, SourceType
@@ -112,11 +113,11 @@ def _typed(padding: dict[str, dict[str, frozenset[str]]]) -> JoinType:
 _MERGE_FIELDS = {f.name for f in fields(JoinFacts)} - {"sides"}
 
 
-def _join(keys: set[str], **facts) -> JoinType:
+def _join(keys: set[str], joined: Collection[str] = frozenset(), **facts) -> JoinType:
     """Merge-wide `JoinFacts` fields by name, everything else a per-side map."""
     merge = {k: v for k, v in facts.items() if k in _MERGE_FIELDS}
     sides = _sides(**{k: v for k, v in facts.items() if k not in _MERGE_FIELDS})
-    return get_join_type(_LEFT, _RIGHT, keys, JoinFacts(sides=sides, **merge))
+    return get_join_type(_LEFT, _RIGHT, keys, JoinFacts(sides=sides, **merge), joined)
 
 
 def test_padding_for_different_spans_never_pairs():
@@ -304,19 +305,19 @@ def test_region_join_escalates_only_over_another_familys_rows():
     exist only in the stream joined against the holder: the side being added
     when the holder is already joined, everything joined when the holder is
     the one being added."""
-    partition = (frozenset({_SPAN}), frozenset({_OTHER_SPAN}))
-
-    def typed(held: dict[str, set[str]], joined: set[str]) -> JoinType:
-        facts = JoinFacts(sides=_sides(held_spans=held), region_partition=partition)
-        return get_join_type(_LEFT, _RIGHT, {_SPAN}, facts, joined)
-
-    other = {_OTHER: {_OTHER_SPAN}}
-    assert typed({_LEFT: {_SPAN}, **other}, {_LEFT}) == JoinType.LEFT_OUTER
-    assert typed({_LEFT: {_SPAN}, **other}, {_LEFT, _OTHER}) == JoinType.LEFT_OUTER
-    assert typed({_LEFT: {_SPAN}, _RIGHT: {_OTHER_SPAN}}, {_LEFT}) == JoinType.FULL
-    assert typed({_RIGHT: {_SPAN}, **other}, {_LEFT}) == JoinType.RIGHT_OUTER
-    assert typed({_RIGHT: {_SPAN}, **other}, {_LEFT, _OTHER}) == JoinType.FULL
-    assert typed({_RIGHT: {_SPAN}, _LEFT: {_OTHER_SPAN}}, {_LEFT}) == JoinType.FULL
+    region = {"region_partition": (frozenset({_SPAN}), frozenset({_OTHER_SPAN}))}
+    held_left = {_LEFT: {_SPAN}, _OTHER: {_OTHER_SPAN}}
+    held_right = {_RIGHT: {_SPAN}, _OTHER: {_OTHER_SPAN}}
+    cases = [
+        (held_left, {_LEFT}, JoinType.LEFT_OUTER),
+        (held_left, {_LEFT, _OTHER}, JoinType.LEFT_OUTER),
+        ({_LEFT: {_SPAN}, _RIGHT: {_OTHER_SPAN}}, {_LEFT}, JoinType.FULL),
+        (held_right, {_LEFT}, JoinType.RIGHT_OUTER),
+        (held_right, {_LEFT, _OTHER}, JoinType.FULL),
+        ({_RIGHT: {_SPAN}, _LEFT: {_OTHER_SPAN}}, {_LEFT}, JoinType.FULL),
+    ]
+    for held, joined, expected in cases:
+        assert _join({_SPAN}, joined, held_spans=held, **region) == expected
 
 
 def _scan(name: str, outputs: list[str], partial: list[str] | None = None):

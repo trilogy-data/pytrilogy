@@ -1,4 +1,4 @@
-from trilogy import Dialects
+from tests.helpers.rows import executor_for, fetch_rows
 from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.enums import Granularity
 
@@ -17,13 +17,12 @@ auto total <- sum(amount) by *;
 
 
 def test_user_concept_named_all_rows_is_an_ordinary_grain() -> None:
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(MODEL)
+    executor = executor_for(MODEL)
     concepts = executor.environment.concepts
     assert concepts["local.per_bucket"].granularity == Granularity.MULTI_ROW
     assert concepts["local.total"].granularity == Granularity.SINGLE_ROW
     assert concepts["local.total"].grain.components == {ALL_ROWS_ADDRESS}
-    rows = executor.execute_text(
-        "select all_rows, per_bucket, total order by all_rows asc;"
-    )[-1].fetchall()
-    assert [tuple(r) for r in rows] == [(1, 30, 35), (2, 5, 35)]
+    rows = fetch_rows(
+        executor, "select all_rows, per_bucket, total order by all_rows asc;"
+    )
+    assert rows == [(1, 30, 35), (2, 5, 35)]

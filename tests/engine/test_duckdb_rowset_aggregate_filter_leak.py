@@ -13,7 +13,7 @@ from decimal import Decimal
 
 import pytest
 
-from trilogy import Dialects
+from tests.helpers.rows import executor_for, fetch_rows
 from trilogy.core.exceptions import DisconnectedConceptsException
 
 MODEL = r"""
@@ -46,8 +46,7 @@ JOIN = "subset join rs.oid = oid"
 
 
 def _rows(query: str) -> list[tuple]:
-    exec = Dialects.DUCK_DB.default_executor()
-    return [tuple(r) for r in exec.execute_query(MODEL + "\n" + query).fetchall()]
+    return fetch_rows(executor_for(MODEL), query)
 
 
 def _total(query: str) -> Decimal:

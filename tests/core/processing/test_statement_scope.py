@@ -7,6 +7,7 @@ import pytest
 from tests.engine.test_enum_unions import PREQL as UNION_FAMILY
 from tests.engine.test_partition_source_exclusion import THREE_WAY
 from tests.helpers.models import CUSTOMERS_DERIVED
+from tests.helpers.planning import Spy
 from trilogy import Dialects
 from trilogy.core import query_processor
 from trilogy.core.enums import Modifier
@@ -31,15 +32,14 @@ class _Graphs:
         return graph
 
 
-class _Heals:
-    def __init__(self, wrapped):
-        self.wrapped = wrapped
-        self.seen: list[tuple] = []
+def _healed(replacements, environment, scope, *args) -> tuple:
+    return scope, replacements
 
-    def __call__(self, environment, scope, *args):
-        replacements = self.wrapped(environment, scope, *args)
-        self.seen.append((scope, replacements))
-        return replacements
+
+def _spy_heals(monkeypatch) -> Spy:
+    heals = Spy(statement_scope.decide_heal, _healed)
+    monkeypatch.setattr(statement_scope, "decide_heal", heals)
+    return heals
 
 
 def _plan(monkeypatch, module, model: str, query: str) -> _Graphs:
@@ -84,8 +84,7 @@ def test_exclusion_records_the_ruled_out_domain_on_the_scope(monkeypatch):
 
 
 def test_heal_changing_nothing_keeps_the_authored_scope_and_its_facts(monkeypatch):
-    heals = _Heals(statement_scope.decide_heal)
-    monkeypatch.setattr(statement_scope, "decide_heal", heals)
+    heals = _spy_heals(monkeypatch)
     graphs = _plan(
         monkeypatch,
         query_processor,
@@ -149,8 +148,7 @@ merge ocid into cid;
 def test_a_binding_merged_onto_its_target_heals_like_its_own(
     monkeypatch, query, healed, rows
 ):
-    heals = _Heals(statement_scope.decide_heal)
-    monkeypatch.setattr(statement_scope, "decide_heal", heals)
+    heals = _spy_heals(monkeypatch)
     executor = Dialects.DUCK_DB.default_executor()
     executor.parse_text(MERGED_PARTIAL)
     assert executor.execute_text(query)[-1].fetchall() == rows

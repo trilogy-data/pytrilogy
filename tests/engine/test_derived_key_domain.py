@@ -4,6 +4,8 @@ Oracle is materialization invariance: storing a derivation as a column at its
 grain must never change a query's rows.
 """
 
+from functools import cache
+
 import pytest
 
 from tests.helpers.models import (
@@ -15,6 +17,15 @@ from tests.helpers.models import (
 )
 from tests.helpers.rows import executor_for, sorted_rows, twin_rows
 from trilogy.executor import Executor
+
+
+@cache
+def _twins(derived_model: str, materialized_model: str) -> tuple[Executor, Executor]:
+    return executor_for(derived_model), executor_for(materialized_model)
+
+
+def _customer_twins(extra: str) -> tuple[Executor, Executor]:
+    return _twins(CUSTOMERS_DERIVED + extra, CUSTOMERS_MATERIALIZED + extra)
 
 
 def _labelled(label: str, *queries: str) -> list:
@@ -396,12 +407,12 @@ SPELLINGS = [
 
 @pytest.fixture(scope="module")
 def derived() -> Executor:
-    return executor_for(CUSTOMERS_DERIVED + CUSTOMER_ACTIVITY)
+    return _customer_twins(CUSTOMER_ACTIVITY)[0]
 
 
 @pytest.fixture(scope="module")
 def materialized() -> Executor:
-    return executor_for(CUSTOMERS_MATERIALIZED + CUSTOMER_ACTIVITY)
+    return _customer_twins(CUSTOMER_ACTIVITY)[1]
 
 
 @pytest.mark.parametrize("query", QUERIES)
@@ -453,9 +464,10 @@ _UPPER_MATERIALIZED = CUSTOMERS_MATERIALIZED.replace(_CUSTOMERS, _CUSTOMERS_UPPE
 )
 def test_present_derivation_beside_an_absent_one(query: str):
     assert _CUSTOMERS in CUSTOMERS_MATERIALIZED
-    derived = executor_for(_UPPER_DERIVED + CUSTOMER_ACTIVITY)
-    materialized = executor_for(_UPPER_MATERIALIZED + CUSTOMER_ACTIVITY)
-    rows = twin_rows(derived, materialized, query)
+    twins = _twins(
+        _UPPER_DERIVED + CUSTOMER_ACTIVITY, _UPPER_MATERIALIZED + CUSTOMER_ACTIVITY
+    )
+    rows = twin_rows(*twins, query)
     assert any("CAT" in r for r in rows)
 
 
@@ -1174,9 +1186,7 @@ union all select 3, 11, 901, null, 'none' ''';
     ],
 )
 def test_optional_entity_is_absent_on_rows_without_it(query: str):
-    derived = executor_for(_OPTIONAL_DERIVED)
-    materialized = executor_for(_OPTIONAL_MATERIALIZED)
-    rows = twin_rows(derived, materialized, query)
+    rows = twin_rows(*_twins(_OPTIONAL_DERIVED, _OPTIONAL_MATERIALIZED), query)
     assert any(r[-1] in (None, 0) for r in rows)
 
 
@@ -1184,7 +1194,7 @@ def test_optional_entity_solid_stream_reads_returns_alone():
     """The solid stream beside the `{order, item}` domain is `returns` by
     itself: re-sourced at FINAL under its group's own scope, it does not
     complete its `~` keys with `lines`, which the domain already holds."""
-    materialized = executor_for(_OPTIONAL_MATERIALIZED)
+    _, materialized = _twins(_OPTIONAL_DERIVED, _OPTIONAL_MATERIALIZED)
     sql = materialized.generate_sql(
         "select order_id, item_id, qty, return_id, reason_label;"
     )[-1]
@@ -1386,12 +1396,12 @@ query '''select 500 as return_id, 1 as customer_id, 'broken' as reason''';
 
 @pytest.fixture(scope="module")
 def derived_cities() -> Executor:
-    return executor_for(CUSTOMERS_DERIVED + _CITIES)
+    return _customer_twins(_CITIES)[0]
 
 
 @pytest.fixture(scope="module")
 def materialized_cities() -> Executor:
-    return executor_for(CUSTOMERS_MATERIALIZED + _CITIES)
+    return _customer_twins(_CITIES)[1]
 
 
 # A WHERE no region domain can restate (a total the region's rows feed) or a
@@ -1792,9 +1802,7 @@ _PSTATUS = "auto pstatus <- case when amount > 15 then 'big' end;\n"
     ],
 )
 def test_padded_null_is_not_the_value_null_group(query: str, expected: list[tuple]):
-    derived = executor_for(CUSTOMERS_DERIVED + _PSTATUS)
-    materialized = executor_for(CUSTOMERS_MATERIALIZED + _PSTATUS)
-    assert twin_rows(derived, materialized, query) == expected
+    assert twin_rows(*_customer_twins(_PSTATUS), query) == expected
 
 
 @pytest.mark.parametrize(
@@ -1852,6 +1860,4 @@ def test_where_aggregate_counting_the_region_by_an_absent_key(
 def test_where_beside_a_region_fed_output_aggregate_filters_the_rows(
     query: str, expected: list[tuple]
 ):
-    derived = executor_for(CUSTOMERS_DERIVED + _PSTATUS)
-    materialized = executor_for(CUSTOMERS_MATERIALIZED + _PSTATUS)
-    assert twin_rows(derived, materialized, query) == expected
+    assert twin_rows(*_customer_twins(_PSTATUS), query) == expected

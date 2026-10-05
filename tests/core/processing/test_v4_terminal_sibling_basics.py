@@ -1,10 +1,8 @@
 """Terminal BASICs over one upstream, each at its own output key, plan as one
 projection: the keys are statement outputs FINAL relates anyway."""
 
-from trilogy import Dialects, Environment
-from trilogy.core.processing import plan_trace
-from trilogy.core.query_processor import process_query
-from trilogy.core.statements.author import SelectStatement
+from tests.helpers.planning import built_groups, recorded
+from tests.helpers.rows import executor_for
 
 MODEL = """
 key item_sk int;
@@ -27,20 +25,8 @@ address sales;
 
 
 def _built_basic_groups(query: str) -> list[str]:
-    env, statements = Environment().parse(MODEL + query)
-    statement = statements[-1]
-    assert isinstance(statement, SelectStatement)
-    renderer = Dialects.DUCK_DB.default_renderer()
-    trace = plan_trace.start(MODEL + query, renderer, None)
-    try:
-        process_query(env, statement)
-    finally:
-        plan_trace.stop()
-    return [
-        step["title"]
-        for step in trace.to_dict()["steps"]
-        if step["title"].startswith("built grp:basic")
-    ]
+    trace = recorded(executor_for(MODEL), query)
+    return [g for g in built_groups(trace) if g.startswith("grp:basic")]
 
 
 def test_terminal_sibling_basics_share_a_group():

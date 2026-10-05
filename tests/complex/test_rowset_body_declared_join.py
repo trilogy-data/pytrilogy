@@ -10,6 +10,7 @@ from tests.helpers.rows import executor_for, sorted_rows
 from trilogy import Dialects
 from trilogy.core.exceptions import DisconnectedConceptsException
 from trilogy.core.models.environment import Environment
+from trilogy.executor import Executor
 
 _MODEL = """
 key oid int;
@@ -23,8 +24,9 @@ with rs as where amt > 6 select oid as k, amt as v;
 """
 
 
-def _rows(query: str) -> list[tuple]:
-    return sorted_rows(executor_for(_MODEL), query)
+@pytest.fixture(scope="module")
+def executor() -> Executor:
+    return executor_for(_MODEL)
 
 
 def _refusal(query: str) -> str:
@@ -34,9 +36,10 @@ def _refusal(query: str) -> str:
     return str(exc.value)
 
 
-def test_body_declared_join_pairs_a_handle_with_a_base_concept():
-    rows = _rows(
-        "with b as select rs.k, cat subset join rs.k = oid; select b.rs.k, b.cat;"
+def test_body_declared_join_pairs_a_handle_with_a_base_concept(executor: Executor):
+    rows = sorted_rows(
+        executor,
+        "with b as select rs.k, cat subset join rs.k = oid; select b.rs.k, b.cat;",
     )
     assert rows == [(1, "a"), (2, "a")]
 
@@ -47,9 +50,10 @@ def test_body_without_the_join_refuses_naming_the_body():
     assert "`subset join rs.k = oid`" in message, message
 
 
-def test_membership_subquery_declares_its_own_join():
-    rows = _rows(
-        "select oid where oid in (select rs.k subset join rs.k = oid where cat = 'a');"
+def test_membership_subquery_declares_its_own_join(executor: Executor):
+    rows = sorted_rows(
+        executor,
+        "select oid where oid in (select rs.k subset join rs.k = oid where cat = 'a');",
     )
     assert rows == [(1,), (2,)]
 

@@ -1,4 +1,4 @@
-from trilogy import Dialects
+from tests.helpers.rows import executor_for, sorted_rows
 
 MODEL = """
 key customer_id int;
@@ -25,9 +25,8 @@ auto customer_label <- coalesce(name, 'unknown');
 
 
 def test_null_member_domain_under_a_filtered_passthrough():
-    executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(MODEL)
-    rows = executor.execute_text(
-        "select customer_label, count(order_id) as n where tier is null;"
-    )[-1].fetchall()
-    assert sorted(tuple(r) for r in rows) == [("bob", 1), ("unknown", 2)]
+    rows = sorted_rows(
+        executor_for(MODEL),
+        "select customer_label, count(order_id) as n where tier is null;",
+    )
+    assert rows == [("bob", 1), ("unknown", 2)]
