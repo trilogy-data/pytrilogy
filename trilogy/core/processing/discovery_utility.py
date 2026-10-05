@@ -13,6 +13,7 @@ from trilogy.core.exceptions import DisconnectedConceptsException
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
+    BuildConceptArgs,
     BuildConditional,
     BuildDatasource,
     BuildFilterItem,
@@ -346,10 +347,19 @@ READ_THROUGH_DERIVATIONS = (
 )
 
 
+def _existence_addresses(concept: BuildConcept) -> set[str]:
+    """The set side of a membership (`k in <set>`): planned by its own feeder,
+    it filters the left side and is never a row read."""
+    lineage = concept.lineage
+    if not isinstance(lineage, BuildConceptArgs):
+        return set()
+    return {c.address for group in lineage.existence_arguments for c in group}
+
+
 def _graph_sources(concept: BuildConcept) -> list[BuildConcept]:
-    """The inputs a derivation is read from, as `add_concept` wires them: a
-    FILTER's condition args are not join inputs unless its content is
-    grainless."""
+    """The inputs a derivation is read from, as `add_concept` wires them, less
+    a membership's set side: a FILTER's condition args are not join inputs
+    unless its content is grainless."""
     if isinstance(concept.lineage, BuildFilterItem):
         sources: Sequence[BuildConcept] = concept.lineage.content_concept_arguments
         if not any(
@@ -358,8 +368,10 @@ def _graph_sources(concept: BuildConcept) -> list[BuildConcept]:
             for s in sources
         ):
             sources = list(concept.lineage.where.row_arguments)
-        return [s for s in sources if isinstance(s, BuildConcept)]
-    return [a for a in concept.concept_arguments if isinstance(a, BuildConcept)]
+    else:
+        sources = concept.concept_arguments
+    sets = _existence_addresses(concept)
+    return [s for s in sources if isinstance(s, BuildConcept) and s.address not in sets]
 
 
 def _reads_through(concept: BuildConcept, bound: set[str]) -> bool:
@@ -559,9 +571,10 @@ def _graph_inputs(
     g: "ReferenceGraph", node: str, grain_only: dict[str, set[str]]
 ) -> list[str]:
     """The concept nodes a derivation node is read from: its predecessors less
-    its pseudonyms (a relation, not a read), crossjoinable inputs and its
-    grain-only `by` keys."""
-    skipped = grain_only.get(g.concepts[node].address, set())
+    its pseudonyms (a relation, not a read), crossjoinable inputs, its
+    grain-only `by` keys and a membership's set side."""
+    concept = g.concepts[node]
+    skipped = grain_only.get(concept.address, set()) | _existence_addresses(concept)
     return [
         source
         for source in g.predecessors(node)
@@ -608,6 +621,17 @@ def _detach_bridging_derivations(
     for node, concept in g.concepts.items():
         if node not in cg or not _reads_through(concept, bound):
             continue
+        # a membership's set side relates nothing: severed for good
+        sets = _existence_addresses(concept)
+        cg.remove_edges_from(
+            [
+                (node, source)
+                for source in g.predecessors(node)
+                if source in g.concepts
+                and g.concepts[source].address in sets
+                and cg.has_edge(node, source)
+            ]
+        )
         inputs = [i for i in _graph_inputs(g, node, grain_only) if cg.has_edge(node, i)]
         if inputs:
             cg.remove_edges_from([(node, i) for i in inputs])
