@@ -337,6 +337,59 @@ def _first_component(concept: BuildConcept, comp_of: dict[str, int]) -> int | No
     return next((comp_of[n] for n in _anchor_nodes(concept) if n in comp_of), None)
 
 
+READ_THROUGH_DERIVATIONS = (
+    Derivation.BASIC,
+    Derivation.AGGREGATE,
+    Derivation.WINDOW,
+    Derivation.FILTER,
+    Derivation.GROUP_TO,
+)
+
+
+def _graph_sources(concept: BuildConcept) -> list[BuildConcept]:
+    """The inputs a derivation is read from, as `add_concept` wires them: a
+    FILTER's condition args are not join inputs unless its content is
+    grainless."""
+    if isinstance(concept.lineage, BuildFilterItem):
+        sources: Sequence[BuildConcept] = concept.lineage.content_concept_arguments
+        if not any(
+            s.derivation != Derivation.CONSTANT
+            and s.granularity != Granularity.SINGLE_ROW
+            for s in sources
+        ):
+            sources = list(concept.lineage.where.row_arguments)
+        return [s for s in sources if isinstance(s, BuildConcept)]
+    return [a for a in concept.concept_arguments if isinstance(a, BuildConcept)]
+
+
+def _reading_anchors(
+    concept: BuildConcept, grain_only: dict[str, set[str]]
+) -> list[BuildConcept]:
+    """The concepts a derivation's rows are read from: what its lineage reaches
+    below the derivations computed from their inputs (ROOT concepts, rowset
+    outputs, unnests...). A derivation is producible only where every one of
+    them is, so its connectivity is theirs, never its own node's: a node whose
+    inputs span components is a bridge nobody declared. Crossjoinable inputs
+    and an aggregate's grain-only `by` keys are skipped, as their edges are."""
+    if concept.derivation not in READ_THROUGH_DERIVATIONS or concept.lineage is None:
+        return [concept]
+    anchors: list[BuildConcept] = []
+    seen: set[str] = {concept.address}
+    stack = [concept]
+    while stack:
+        current = stack.pop()
+        skipped = grain_only.get(current.address, set())
+        for arg in _graph_sources(current):
+            if arg.address in seen or arg.address in skipped or _crossjoinable(arg):
+                continue
+            seen.add(arg.address)
+            if arg.derivation in READ_THROUGH_DERIVATIONS and arg.lineage is not None:
+                stack.append(arg)
+            else:
+                anchors.append(arg)
+    return anchors or [concept]
+
+
 def _anchor_nodes(concept: BuildConcept) -> list[str]:
     """Reference-graph nodes that tie a concept into the model graph: its own
     node, its default-grain node, and its direct source args' default-grain
@@ -430,25 +483,7 @@ def island_rowsets_for_connectivity(
         hub = f"{ROWSET_ISLAND_HUB_PREFIX}{name}"
         cg.add_node(hub)
         cg.add_edges_from((hub, m) for m in members if m in cg)
-        # Re-weld external downstream consumers (`g`-successors) of each output;
-        # only upstream navigation into the rowset's base concepts stays severed.
-        # A consumer that merely groups `by` the output (grain-only parent) is
-        # skipped: that edge would bridge unrelated models through an aggregate's
-        # grouping key, the same bridge `_aggregate_grain_only_parents` drops.
-        for member in members:
-            member_concept = g.concepts.get(member)
-            member_addr = member_concept.address if member_concept else None
-            for consumer in g.successors(member):
-                if consumer in island or consumer not in cg:
-                    continue
-                consumer_concept = g.concepts.get(consumer)
-                if (
-                    grain_only
-                    and consumer_concept is not None
-                    and member_addr in grain_only.get(consumer_concept.address, set())
-                ):
-                    continue
-                cg.add_edge(hub, consumer)
+        _weld_rowset_consumers(g, cg, hub, members, island, grain_only or {})
 
     for node in rowset_nodes:
         concept = g.concepts[node]
@@ -458,6 +493,72 @@ def island_rowsets_for_connectivity(
             for other in nodes_by_address.get(pseudonym, []):
                 if node in cg and other in cg:
                     cg.add_edge(node, other)
+
+
+def _weld_rowset_consumers(
+    g: "ReferenceGraph",
+    cg,
+    hub: str,
+    members: list[str],
+    island: set[str],
+    grain_only: dict[str, set[str]],
+) -> None:
+    """Re-weld through the hub what a rowset's outputs reach downstream: the
+    pseudonyms a declared join gave them, and the derivations read off this
+    rowset alone (`rs.n * 2`, and derivations over those). A derivation that
+    also reads another rowset or a base concept is a join nobody declared, so
+    its input edges are severed on every side and it bridges nothing; the gate
+    judges it by its inputs (`_reading_anchors`). Only upstream navigation into
+    the rowset's base concepts stays severed. A consumer that merely groups
+    `by` an output (grain-only parent) is skipped: that edge would bridge
+    unrelated models through an aggregate's grouping key, the same bridge
+    `_aggregate_grain_only_parents` drops."""
+    owned = set(members)
+    frontier = list(members)
+    while frontier:
+        reached: list[str] = []
+        for member in frontier:
+            member_address = g.concepts[member].address
+            for consumer in g.successors(member):
+                if consumer in island or consumer not in cg or consumer in owned:
+                    continue
+                consumer_concept = g.concepts.get(consumer)
+                if consumer_concept is None or (member, consumer) in g.pseudonyms:
+                    cg.add_edge(hub, consumer)
+                    continue
+                if member_address in grain_only.get(consumer_concept.address, set()):
+                    continue
+                inputs = _graph_inputs(g, consumer, grain_only)
+                if all(node in owned for node in inputs):
+                    cg.add_edge(hub, consumer)
+                    owned.add(consumer)
+                    reached.append(consumer)
+                else:
+                    cg.remove_edges_from(
+                        [
+                            (consumer, node)
+                            for node in inputs
+                            if cg.has_edge(consumer, node)
+                        ]
+                    )
+        frontier = reached
+
+
+def _graph_inputs(
+    g: "ReferenceGraph", node: str, grain_only: dict[str, set[str]]
+) -> list[str]:
+    """The concept nodes a derivation node is read from: its predecessors less
+    its pseudonyms (a relation, not a read), crossjoinable inputs and its
+    grain-only `by` keys."""
+    skipped = grain_only.get(g.concepts[node].address, set())
+    return [
+        source
+        for source in g.predecessors(node)
+        if source in g.concepts
+        and (source, node) not in g.pseudonyms
+        and not _crossjoinable(g.concepts[source])
+        and g.concepts[source].address not in skipped
+    ]
 
 
 def _component_map(
@@ -513,6 +614,7 @@ def disconnected_components(
     concepts: list[BuildConcept],
     g: "ReferenceGraph | None" = None,
     excluded_addresses: frozenset[str] = frozenset(),
+    grain_only: dict[str, set[str]] | None = None,
 ) -> list[list[BuildConcept]]:
     """Partition concepts by true join reachability: two concepts share a group
     iff their reference-graph nodes are in the same weakly-connected component.
@@ -528,21 +630,37 @@ def disconnected_components(
     reachable only by navigating into a rowset's derivation is not a join
     path; a rowset pairs with one only through a declared relation.
 
+    A derivation sits with the concepts it reads (``_reading_anchors``); one
+    whose reads span components also lists those reads, the pairing no
+    declared relation connects.
+
     See ``_component_map`` for ``excluded_addresses``.
     """
     comp_of, _ = _component_map(environment, g, excluded_addresses)
+    if grain_only is None:
+        grain_only = _aggregate_grain_only_parents(environment)
 
     # concept -> the component id it resolves into; a concept whose nodes are
     # absent from the graph gets a synthetic per-address component so it surfaces
     # rather than silently vanishing.
     buckets: dict[object, list[BuildConcept]] = {}
+    placed: set[str] = set()
     for concept in concepts:
-        if _crossjoinable(concept):
+        if _crossjoinable(concept) or concept.address in placed:
             continue
-        cid: object | None = _first_component(concept, comp_of)
-        if cid is None:
-            cid = f"orphan::{concept.address}"
-        buckets.setdefault(cid, []).append(concept)
+        anchors = _reading_anchors(concept, grain_only)
+        cids: list[object] = []
+        for anchor in anchors:
+            cid: object | None = _first_component(anchor, comp_of)
+            cids.append(f"orphan::{anchor.address}" if cid is None else cid)
+        buckets.setdefault(cids[0], []).append(concept)
+        placed.add(concept.address)
+        if len(set(cids)) == 1:
+            continue
+        for anchor, cid in zip(anchors, cids):
+            if anchor.address not in placed:
+                buckets.setdefault(cid, []).append(anchor)
+                placed.add(anchor.address)
 
     groups = [sorted(grp, key=lambda c: c.address) for grp in buckets.values()]
     return sorted(groups, key=lambda grp: min(c.address for c in grp))
@@ -895,19 +1013,25 @@ def raise_if_disconnected_for(
                 outputs_rootless = False
                 output_addresses |= {c.address for c in handles}
                 concepts = unique(concepts + handles, "address")
+    grain_only = _aggregate_grain_only_parents(environment)
     subgraphs = disconnected_components(
         environment,
         concepts,
         g,
         excluded_addresses=excluded_addresses,
+        grain_only=grain_only,
     )
+    # what an output reads is the output's own demand, never a WHERE gate
+    required = output_addresses | {
+        anchor.address
+        for output in outputs
+        for anchor in _reading_anchors(output, grain_only)
+    }
     subgraphs = [
         grp
         for grp in subgraphs
-        if not _is_global_aggregate_gate(grp, output_addresses)
-        and not (
-            outputs_rootless and all(c.address not in output_addresses for c in grp)
-        )
+        if not _is_global_aggregate_gate(grp, required)
+        and not (outputs_rootless and all(c.address not in required for c in grp))
     ]
     if len(subgraphs) > 1:
         message = format_disconnected_subgraphs_error(
