@@ -168,5 +168,4 @@ FINAL row-spine merge and computes over the extension-bearing stream, so
 extension rows take the CASE's ELSE value ('LATER'), not a join NULL. The
 former xfail pins (`test_forked_with_status`, `test_forked_with_status_pinned`,
 `test_forked_full_column_set`, `test_partial_grain_with_by_key_aggregate`) are
-promoted to plain row asserts. See
-`docs/handoff_partial_bridge_residuals.md` for the fix's gates.
+promoted to plain row asserts (6bdb4d7b4, #650).

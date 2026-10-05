@@ -244,7 +244,7 @@ Generated at runtime: `warehouse.duckdb`, `data/orders.csv`, `state/state.json`,
   Everywhere else it remains a logical declaration that still drives state,
   slice discovery, and per-slice replacement on write. The remaining engines and
   why each is deferred are written up in
-  [`../PARTITION_DDL_PLAN.md`](../PARTITION_DDL_PLAN.md).
+  [`docs/partition_ddl_plan.md`](../../docs/partition_ddl_plan.md).
 - Expected partitions come from a full scan of the roots. On a real warehouse
   you would want that bounded (a lookback window), which the model has no way to
   express today.

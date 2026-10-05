@@ -1,6 +1,6 @@
 # Handoff: generation cost, s73 (continues s72)
 
-Picks up `docs/handoff_generation_audit_s72.md`. Four wins landed; the
+Continues the s72 audit. Four wins landed; the
 handoff's headline open item (A — scope materialization to the query's
 closure) is **measured and closed as not-viable on this corpus**.
 

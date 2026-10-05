@@ -3,7 +3,7 @@
 ## STATUS: not started (evidence from the dict_resolver_perf pass, PR #667)
 
 Audience: an agent starting fresh on the next query-generation perf increment.
-`docs/handoff_dict_resolver_import_store.md` removed import hydration from the
+The dict-resolver import store (PR #667) removed import hydration from the
 studio request path; what is left is planner- and optimizer-bound, and flat.
 Nothing below is a single dominant cost, so pick by risk, not by size.
 

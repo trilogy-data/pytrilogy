@@ -2,8 +2,8 @@
 //! `trilogy/core/processing/v4_helper/network_search.py` + `network_obligations.py`
 //! + the walk-facing slice of `network_model.py`/`network_topology.py`.
 //!
-//! The Python implementation is the spec. Semantics that must survive exactly
-//! (docs/handoff_rust_network_search.md): level-order walk with deterministic
+//! The Python implementation is the spec. Semantics that must survive exactly:
+//! level-order walk with deterministic
 //! push order, proper-superset dominance against emitted covers by binding
 //! profile, scarcest-obligation branching with `(len, identity)` tiebreak,
 //! visited dedup by state set, both budgets reported by name, soft full-binder

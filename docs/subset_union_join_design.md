@@ -1,8 +1,7 @@
 # SUBSET / UNION joins — design sketch
 
 Status: **phase 2 landed** (2026-07-03). Rendering is row-preserving by
-default; the narrowing pass is load-bearing. See `merge_join_unification.md`
-for the relation mechanisms these declarations ride on.
+default; the narrowing pass is load-bearing.
 
 ## Landed (phase 1 — declarations + narrowing groundwork, 2026-07-02)
 

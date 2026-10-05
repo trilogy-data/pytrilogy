@@ -38,8 +38,7 @@ Controls unchanged: `parse_syntax` 132, `hydrate_rule` 38,940, `add_import`
 166, `add_concept` 52,775. 132/132 SQL byte-identical vs baseline and across
 store-off / cold / warm legs; full suite 7131 passed.
 
-`add_concept` was what remained of the merge, and it is now **also done** (s71,
-`docs/handoff_add_concept_bulk_merge.md`): a projection whose target keys are
+`add_concept` was what remained of the merge, and it is now **also done** (s71): a projection whose target keys are
 all absent from the importer is inserted with one `dict.update` plus a `hidden`
 union, with the per-concept loop kept as the fallback. `add_concept` 52,775 ->
 4,076, corpus parse 0.698s -> 0.613s (1.14x, not the 1.3x predicted — the

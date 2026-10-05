@@ -13,8 +13,8 @@ to anchor on and either reunited the rest null-safely or read them through a
 plain equality that threw them away. A plan containing a join whose rows the
 same plan discards is a logical-plan defect, and the only layer that could see
 it was the CTE optimizer, which is why the first fix lived there
-(`PruneInvisibleOuterJoins`, `docs/handoff_field_report_residual_stitch.md`;
-since deleted, the planner no longer builds these joins).
+(`PruneInvisibleOuterJoins`; since deleted, the planner no longer builds these
+joins).
 
 Extent routing is now a decision, taken once, before any node is built.
 
@@ -111,8 +111,8 @@ That net had a hole: it paired any two padded keys null-safely, assuming the
 padding shared provenance. Two sides padded for *different* spans (a product
 never sold, a user who never ordered) name different members, and pairing them
 invents a row. `join_resolution._span_padded_addresses` attributes padding to
-the span that caused it; disjoint attributions join FULL on plain equality
-(`docs/handoff_aggregate_grain_fd_canonicalization.md`). The spans it looks for
+the span that caused it; disjoint attributions join FULL on plain equality.
+The spans it looks for
 are the ones the keyspace has a region for, not every `~` address in the model;
 a rowset body pads for its own regions under its own spelling, and its witness
 names each by the handle the plan reads (`Keyspace.witnessed`); the host grain
@@ -125,7 +125,6 @@ owner to elect.
 changed two statements outside the tpc corpus (gcat's aggregate query, thelook
 `adhoc04`), and in both the dead join was keyed on something that is not a `~`
 span at all: invisible CONTRIBUTORS, a separate defect class. Both are now
-fixed at the planner (`docs/handoff_invisible_contributor_joins.md`,
-`docs/handoff_contributor_reachability.md`), and
+fixed at the planner (`group_graph._fold_covered_contributors`), and
 `tests/optimization/test_no_invisible_contributor_joins.py` asserts the field
 report's plan joins nothing it does not read.

@@ -24,9 +24,10 @@ on inspection or coverage alone.
 Every item below is gated the same way: render SQL only (no DB) for every
 `query*.preql` under `tpc_ds_duckdb`, `tpc_ds_duckdb/aggregates` (working_path
 stays `tpc_ds_duckdb`) and `tpc_h`, and diff per statement against a
-same-process control leg. The ~80-line harness is described in
-`docs/handoff_invisible_contributor_joins.md` ("Reproduce"). Run the control
-leg from a cwd outside the repo with `PYTHONPATH=<worktree>`. A corpus-only
+base worktree with `local_scripts/sql_ab` (`corpus_sql.py` + `sqldiff.py`; see
+its README). Glob `tpc_ds_duckdb/aggregates` too: they are the
+`partial ... complete where` summary-table shapes a source-selection change
+re-routes first, and a per-directory glob skips them. A corpus-only
 gate is not sufficient on its own: it missed two keyless-join-guard raises in
 this stack that the full suite caught, so run `-m "not adventureworks_execution"`
 before landing anything here.

@@ -1961,8 +1961,7 @@ def _host_outputs_on_row_preserving_aggregates(
 
     A covered KEY hosts like any value (`order_id` beside `sum(qty)` at
     `item_id`). It makes the grouping grain two-keyed, which is only safe
-    because a two-`~` span keeps its extension families apart on its own
-    (`docs/handoff_aggregate_grain_fd_canonicalization.md`)."""
+    because a two-`~` span keeps its extension families apart on its own."""
     hosts = [
         nid
         for nid, node in attrs.items()
