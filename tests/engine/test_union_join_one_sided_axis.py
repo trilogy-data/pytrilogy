@@ -68,22 +68,6 @@ auto id_label <- concat('x', cast(aid as string));
             "select aid, count(a) as ca union join aid = bid",
             [(1, 1), (2, 1), (3, 0)],
         ),
-    ],
-)
-def test_union_join_axis_keeps_both_sides(query: str, expected: list[tuple]):
-    assert sorted_rows(executor_for(MODEL), query) == expected
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "axis_arms_delivered counts an arm read under a grand total as "
-        "delivering its keys, so the axis is read off the other arm alone"
-    ),
-)
-@pytest.mark.parametrize(
-    "query,expected",
-    [
         (
             "select aid, a, sum(b) by * as t union join aid = bid",
             [(1, 10, 500), (2, 20, 500), (3, None, 500)],
@@ -94,5 +78,5 @@ def test_union_join_axis_keeps_both_sides(query: str, expected: list[tuple]):
         ),
     ],
 )
-def test_union_join_axis_beside_a_grand_total(query: str, expected: list[tuple]):
+def test_union_join_axis_keeps_both_sides(query: str, expected: list[tuple]):
     assert sorted_rows(executor_for(MODEL), query) == expected

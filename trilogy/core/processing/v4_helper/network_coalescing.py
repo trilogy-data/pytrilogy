@@ -199,9 +199,9 @@ def requested_axis_groups(
     return groups
 
 
-def _row_lineage(
-    concepts: Sequence[BuildConcept], environment: BuildEnvironment
-) -> set[str]:
+def _row_lineage(concepts: Sequence[BuildConcept], axis: set[str]) -> set[str]:
+    """Addresses the outputs read per row of the axis: an aggregate not grouped
+    by the axis (a grand total) reads its inputs without their keys."""
     seen: set[str] = set()
     stack = list(concepts)
     while stack:
@@ -209,8 +209,13 @@ def _row_lineage(
         if concept.address in seen:
             continue
         seen.add(concept.address)
-        if concept.lineage is not None:
-            stack.extend(concept.lineage.concept_arguments)
+        if concept.lineage is None:
+            continue
+        if concept.derivation == Derivation.AGGREGATE and not (
+            concept.grain.components & axis
+        ):
+            continue
+        stack.extend(concept.lineage.concept_arguments)
     return seen
 
 
@@ -237,7 +242,7 @@ def axis_arms_delivered(
     if not groups:
         return True
     axis = {a for canonical, members in groups.items() for a in {canonical, *members}}
-    read = _row_lineage(outputs, environment) - axis
+    read = _row_lineage(outputs, axis) - axis
     for members in groups.values():
         bound = {
             member: set().union(
