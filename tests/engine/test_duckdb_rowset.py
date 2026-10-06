@@ -1552,6 +1552,25 @@ order by ticket asc;"""
     assert [tuple(r) for r in executor.execute_text(oracle)[-1].fetchall()] == expected
 
 
+def test_union_join_anchor_where_drops_rowset_only_keys():
+    """`year` lives on the anchor, so a return with no sale has none and the
+    WHERE drops it, even with the rowset's handle projected beside `ticket`."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        _COMPOSITE_UNION_JOIN_STDDEV_FIXTURE.replace(
+            "select 1 as ri, 101 as rt, 2 as rd, 3 as rq",
+            "select 1 as ri, 101 as rt, 2 as rd, 3 as rq union all\n"
+            "select 5 as ri, 104 as rt, 1 as rd, 4 as rq",
+        )
+    )
+    query = """where year = 2001
+select ticket, r_filtered.r_ticket, r_filtered.return_quantity
+union join ticket = r_filtered.r_ticket
+order by ticket asc;"""
+    results = [tuple(r) for r in executor.execute_text(query)[-1].fetchall()]
+    assert results == [(100, 100, 2), (101, 101, 3)]
+
+
 _ROWSET_DERIVED_SEGMENT_FIXTURE = """
 key sale_id int;
 property sale_id.cust_id int;

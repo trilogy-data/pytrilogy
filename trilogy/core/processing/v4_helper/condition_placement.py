@@ -1095,6 +1095,15 @@ def plan_condition_placements(
         if all_existence_addrs & set(b.primary_members)
     }
 
+    subset_sources = environment.domain_graph.subset_sources()
+
+    def _is_rowset_handle(addr: str) -> bool:
+        ca = attrs_by_address.get(addr)
+        if ca is not None:
+            return ca.rowset_name is not None
+        concept = environment.concepts.get(addr)
+        return concept is not None and isinstance(concept.lineage, BuildRowsetItem)
+
     def _group_in_active_relation(gid: str) -> bool:
         """True when ``gid`` is one SIDE of a scoped relation whose mate lives
         in a DIFFERENT group of THIS graph, i.e. the completion merge that
@@ -1164,8 +1173,16 @@ def plan_condition_placements(
                 if _own_handle(addr)
             }
         else:
+            # A rowset handle a plain group emits is its own key relabelled as
+            # the axis (`t as r_filtered_r_ticket`), never that side's rows:
+            # owning it would put both sides in one scan. A handle declared a
+            # subset of this side brings no rows of its own, so it may stay.
             members = group_own_keys.get(gid, set()) | set(b.grain_components)
-            keys = members & scoped_join_member_addresses
+            keys = {
+                addr
+                for addr in members & scoped_join_member_addresses
+                if not _is_rowset_handle(addr) or addr in subset_sources
+            }
         if not keys:
             return False
         mates: set[str] = set()
