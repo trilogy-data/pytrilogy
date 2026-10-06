@@ -209,20 +209,26 @@ def _read_partials(
     datasources: Sequence[BuildDatasource],
     environment: BuildEnvironment,
 ) -> list[BuildDatasource]:
-    """The ``~`` siblings the statement must read: each supplies a ROOT
-    concept it references that ``ds`` cannot reach without it. A sibling
-    serving only derived values (a rollup's ``revenue``) is a materialization
-    the plan may skip, so its rows decide nothing."""
+    """The ``~`` siblings the statement may read: each supplies a ROOT
+    concept it references that ``ds`` cannot reach without it, or binds one
+    ``ds`` does not. A lookup elsewhere reaching that concept does not stop
+    the plan sourcing it off the sibling (`customer` bound on sales beside a
+    complete orders table). A sibling serving only derived values (a rollup's
+    ``revenue``) is a materialization the plan may skip, so its rows decide
+    nothing."""
     roots = {
         addr
         for addr in referenced_bound
         if (c := environment.concepts.get(addr)) is not None
         and c.derivation == Derivation.ROOT
     }
+    own = _bound_spellings([ds])
     read: list[BuildDatasource] = []
     for p in partials:
         others = [d for d in datasources if d.identifier != p.identifier]
-        if (roots - _lookup_supply(ds, others)) & _lookup_supply(p, datasources):
+        if (roots - _lookup_supply(ds, others)) & _lookup_supply(p, datasources) or (
+            (roots - own) & _bound_spellings([p])
+        ):
             read.append(p)
     return read
 

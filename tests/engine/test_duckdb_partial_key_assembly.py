@@ -543,6 +543,58 @@ def test_co_partial_pin_keeps_saleless_return(co_partial):
     assert _rows(co_partial, _ANCHOR_NEEDED) == [(1, 5, 50), (9, 9, None)]
 
 
+# A `~` rollup binds the ROOT customer that complete orders also supplies, and
+# carries the pinned week: the plan may read it, so returns must not heal.
+_ROLLUP_ROOT = _SALES_RETURNS_DECLARATIONS + """
+property order_id.customer string;
+
+root datasource orders (order_id: order_id, customer: customer) grain (order_id)
+query '''select 1 as order_id, 'a' as customer union all select 2, 'b' union all select 4, 'd' union all select 9, 'z' ''';
+
+root datasource items (item_id: item_id) grain (item_id)
+query '''select 10 as item_id union all select 20''';
+
+root datasource returns (
+    order_id: ~order_id,
+    item_id: ~item_id,
+    date_id: ?date_id,
+    refund: refund,
+)
+grain (order_id, item_id)
+query '''
+select 1 as order_id, 10 as item_id, 5 as date_id, 5 as refund union all
+select 2, 10, 6, 7 union all
+select 9, 10, 5, 9
+''';
+
+root datasource order_day (
+    order_id: ~order_id,
+    date_id: ?date_id,
+    customer: customer,
+)
+grain (order_id, date_id)
+query '''
+select 1 as order_id, 5 as date_id, 'a' as customer union all
+select 2, 6, 'b' union all
+select 4, 5, 'd'
+''';
+"""
+
+
+@pytest.mark.parametrize(
+    "select, expected",
+    [
+        ("order_id, item_id, customer", [(1, 10, "a"), (9, 10, "z")]),
+        ("item_id, customer", [(10, "a"), (10, "z")]),
+    ],
+)
+def test_partial_rollup_binding_a_root_blocks_the_heal(select, expected):
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_ROLLUP_ROOT)
+    pinned = f"where week = 1 select {select} order by customer asc;"
+    assert _rows(executor, pinned) == expected
+
+
 # returns binds `returned` as a raw literal: the flag is true on a returns row
 # and NULL only where the merge finds no returns row. Line (2, 10) is returned.
 _FLAGGED = """
