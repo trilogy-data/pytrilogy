@@ -754,40 +754,31 @@ def _aggregate_axis_members(
     environment: BuildEnvironment,
     aggregate_input_grain: frozenset[str],
     out_grain: frozenset[str],
-) -> frozenset[str]:
-    """The relation members to widen an aggregate's grouping grain by: those
-    whose relation the `by` already names, so widening keeps its grain. Not a
-    SUBSET axis the `by` names under no spelling: `sum(rs.amt)` by
-    `customer_id` under `subset join rs.oid = order_id` sums per customer, not
-    per order."""
-    return frozenset(
-        addr
-        for addr in _aggregate_relation_members(
-            concept, environment, aggregate_input_grain
-        )
-        if ({addr} | _relation_mates(addr, environment)) & out_grain
-    )
+) -> tuple[frozenset[str], frozenset[str]]:
+    """The relation members an aggregate's inputs ride, split by how they
+    apply: (members to widen its grouping grain by, `union join` axis its input
+    stream pairs on).
 
+    Widen by a member whose relation the `by` already names, so widening keeps
+    its grain. Not a SUBSET axis the `by` names under no spelling: `sum(rs.amt)`
+    by `customer_id` under `subset join rs.oid = order_id` sums per customer,
+    not per order.
 
-def _aggregate_coalesced_axis(
-    concept: BuildConcept,
-    environment: BuildEnvironment,
-    aggregate_input_grain: frozenset[str],
-    out_grain: frozenset[str],
-) -> frozenset[str]:
-    """The `union join` axis an aggregate's inputs ride and its `by` does not
-    name, with every side's member: the input stream pairs on the whole axis
-    before aggregating, but the answer stays at the authored grain. Widening
+    A `union join` axis the `by` does not name pairs the input stream with
+    every side's member, but the answer stays at the authored grain. Widening
     the grouping grain instead splits `stddev(quantity)` by `state` into one
     row per axis row, which no merge above can recombine."""
-    out: set[str] = set()
+    widen: set[str] = set()
+    coalesced: set[str] = set()
     for addr in _aggregate_relation_members(
         concept, environment, aggregate_input_grain
     ):
         relation = {addr} | _relation_mates(addr, environment)
-        if not relation & out_grain and coalescing_relation(relation, environment):
-            out |= relation
-    return frozenset(out)
+        if relation & out_grain:
+            widen.add(addr)
+        elif coalescing_relation(relation, environment):
+            coalesced |= relation
+    return frozenset(widen), frozenset(coalesced)
 
 
 def coalescing_relation(relation: set[str], environment: BuildEnvironment) -> bool:
@@ -837,7 +828,7 @@ def _grouping_pass_sibling_axis_members(
         if other_input and other_dimension_grain:
             members |= _aggregate_axis_members(
                 other, environment, other_input, other_grain
-            )
+            )[0]
     return frozenset(members)
 
 
@@ -1526,12 +1517,10 @@ def _add_concept(
             # aggregates sharing its grouping spec.
             out_grain |= _grouping_pass_sibling_axis_members(concept, environment)
         elif aggregate_input_grain:
-            coalesced_axis = _aggregate_coalesced_axis(
+            widen, coalesced_axis = _aggregate_axis_members(
                 concept, environment, aggregate_input_grain, out_grain
             )
-            out_grain |= _aggregate_axis_members(
-                concept, environment, aggregate_input_grain, out_grain
-            )
+            out_grain |= widen
             aggregate_input_grain |= coalesced_axis
     graph.add_node(nid)
     attrs[nid] = ConceptAttrs(

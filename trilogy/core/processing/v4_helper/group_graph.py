@@ -1096,7 +1096,7 @@ def _rowset_relation_keys(
     row_parents: list[str],
     attrs: dict[str, GroupAttrs],
     environment: BuildEnvironment,
-    input_grain: frozenset[str] = frozenset(),
+    input_grain: frozenset[str],
 ) -> frozenset[str]:
     """The statement relations tying a rowset row parent to its siblings.
 
@@ -1106,7 +1106,7 @@ def _rowset_relation_keys(
     projects `name` alone and the merge cross-joins. Only a relation reaching a
     ROOT concept: two rowsets pair through their own handles. A `union join`
     counts only when the consumer's input grain holds its coalesced axis
-    (`_aggregate_coalesced_axis`)."""
+    (`_aggregate_axis_members`)."""
     if len(row_parents) < 2:
         return frozenset()
     rowsets = {

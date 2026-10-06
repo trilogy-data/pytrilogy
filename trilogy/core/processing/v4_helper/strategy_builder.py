@@ -1594,6 +1594,7 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
         )
 
     dropped: set[int] = set()
+    coalesced_merges = {id(a) for a in parents if _merges_coalesced_sides(a)}
     for b in parents:
         if id(b) in dropped or not isinstance(b, SelectNode) or b.force_group:
             continue
@@ -1617,7 +1618,7 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
                 continue
             if any(_synthesizes_handle(o, b, available) for o in a.output_concepts):
                 continue
-            if _merges_coalesced_sides(a):
+            if id(a) in coalesced_merges:
                 continue
             if any(
                 crosses_unsourced_aggregate(o, available) for o in a.output_concepts
@@ -2906,7 +2907,7 @@ def _drop_unadvertised_rowset_handles(
         for o in node.output_concepts
         if o.address in advertised
         or not isinstance(o.lineage, BuildRowsetItem)
-        or (_relation_mates(o.address, environment) & advertised) - emitted
+        or (_scoped_join_mates(environment, o.address) & advertised) - emitted
     ]
     if len(keep) == len(node.output_concepts):
         return
@@ -3431,11 +3432,12 @@ def _cover_groups_for_mandatory(
         # never read the one hosting the concept itself misses that side's rows.
         if addr in coalescing:
             hosts = {gid for gid in candidates if addr in attrs[gid].members}
-            candidates = [
-                gid
-                for gid in candidates
-                if gid in hosts or hosts & nx.ancestors(group_graph, gid)
-            ] or candidates
+            if hosts:
+                candidates = [
+                    gid
+                    for gid in candidates
+                    if gid in hosts or hosts & nx.ancestors(group_graph, gid)
+                ]
         # A dim peeled off a row stream decorates the stream's keys; its own
         # key carries every entity, not the rows the stream's WHERE kept.
         candidates.sort(
