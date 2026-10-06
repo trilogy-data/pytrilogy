@@ -482,14 +482,41 @@ def test_anchor_needed_stays_partial(anchored):
     assert _rows(anchored, _ANCHOR_NEEDED)[0] == (1, 5, 50)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="pre-existing: the anchor merge renders INNER under the pin, dropping the saleless return",
+# _ANCHORED with sales `~` too and complete key tables: a saleless return is
+# valid data here, where under a complete sales binding it is not.
+_CO_PARTIAL = (
+    _ANCHORED.replace(
+        "    order_id: order_id,\n    item_id: item_id,\n    amount: amount,",
+        "    order_id: ~order_id,\n    item_id: ~item_id,\n    amount: amount,",
+    )
+    + """
+root datasource orders (order_id: order_id) grain (order_id)
+query '''select 1 as order_id union all select 2 union all select 9''';
+
+root datasource items (item_id: item_id) grain (item_id)
+query '''select 10 as item_id union all select 20''';
+"""
 )
-def test_anchor_needed_keeps_saleless_return(anchored):
-    """A return with no sale is a fact row of the `~` binding and must survive
-    the pin with a NULL amount."""
-    assert _rows(anchored, _ANCHOR_NEEDED) == [(1, 5, 50), (9, 9, None)]
+
+
+@pytest.fixture(scope="module")
+def co_partial():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_CO_PARTIAL)
+    return executor
+
+
+def test_co_partial_unpinned_keeps_saleless_return(co_partial):
+    query = "select order_id, sum(refund) as total_refund, sum(amount) as total_amount order by order_id asc;"
+    assert _rows(co_partial, query) == [(1, 5, 110), (2, 7, 70), (9, 9, None)]
+
+
+def test_co_partial_pin_keeps_saleless_return(co_partial):
+    """The pin kills sales' extensions but not returns' rows, which carry the
+    week: sales stays `~` and joins LEFT onto the healed returns."""
+    sql = co_partial.generate_sql(_ANCHOR_NEEDED)[-1]
+    assert "LEFT OUTER JOIN" in sql, sql
+    assert _rows(co_partial, _ANCHOR_NEEDED) == [(1, 5, 50), (9, 9, None)]
 
 
 # returns binds `returned` as a raw literal: the flag is true on a returns row

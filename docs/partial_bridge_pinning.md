@@ -129,6 +129,13 @@ Guards, each load-bearing:
   lets `where sales.return_date.week_seq in (...)` (TPC-DS q83, q01, q91)
   plan the returns partitions alone instead of stitching the sales union in
   and filtering it away.
+- **A `~` sibling the statement reads blocks when its rows survive.** Two
+  `~` bindings never anchor each other, but when the statement reads a ROOT
+  concept only a `~` sibling supplies (returns' `refund` beside a `~` sales)
+  and that sibling's rows carry every killer, its kept rows hold members `ds`
+  may lack: healing `ds` would claim it complete and INNER them away
+  (`_read_partials`). A sibling serving only derived values (a pair-grain
+  rollup's `revenue`, thelook q16) is a materialization the plan skips.
 - **Killers must be bound and component-local.** A derived tautology
   (`coalesce(x, 5) is not null`) or a concept from a disconnected subgraph
   (attached via a cross-join gate) is non-null on extension rows too and
@@ -154,10 +161,10 @@ generates the table above.
 
 ## Known residual
 
-A `~`-keyed fact row with no anchor row (a return whose sale is absent) is
-dropped when a pin on the fact's own concept sits beside an anchor-only
-measure: the anchor merge renders INNER. Pinned as a strict xfail
-(`test_anchor_needed_keeps_saleless_return`); TPC-DS data never exercises it.
+A return whose sale is absent is valid data only when sales binds its keys
+`~` as well: a complete sales binding declares every order present, so such a
+return is a modeling error the plan may drop (it does, pinned or not). With
+both `~`, the pin keeps it (`test_co_partial_pin_keeps_saleless_return`).
 
 The by-key-aggregate shape (`min(amount) by user_id` compared against a
 row value, selected beside additional keys and metrics) — a pre-existing

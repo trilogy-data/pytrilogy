@@ -35,7 +35,7 @@ import dataclasses
 from collections.abc import Iterable, Sequence
 from functools import cached_property
 
-from trilogy.core.enums import Modifier
+from trilogy.core.enums import Derivation, Modifier
 from trilogy.core.graph_models import ScopeDatasources
 from trilogy.core.models.build import (
     BuildColumnAssignment,
@@ -122,33 +122,37 @@ def _partition_disjoint(a: BuildDatasource, b: BuildDatasource) -> bool:
     )
 
 
-def _pair_anchors(
+def _pair_siblings(
     key_spellings: set[str], ds: BuildDatasource, datasources: Sequence[BuildDatasource]
-) -> list[BuildDatasource]:
-    """Sibling row-sources carrying this key inside a LARGER grain.
+) -> tuple[list[BuildDatasource], list[BuildDatasource]]:
+    """Sibling row-sources carrying this key inside a LARGER grain, split into
+    (anchors, siblings themselves ``~`` on the key).
 
-    Such a sibling supplies key combinations beyond ``ds``'s subset, so a pin
-    that kills dimension extensions does not by itself shrink the population
-    to ``ds``'s own rows; unless the anchors are dispensable for the statement
+    An anchor supplies key combinations beyond ``ds``'s subset, so a pin that
+    kills dimension extensions does not by itself shrink the population to
+    ``ds``'s own rows; unless the anchors are dispensable for the statement
     the binding stays partial and the sibling-stitch machinery owns the merge.
+
+    A ``~`` sibling holds no full set of anything: two partial bindings have
+    no defined relationship, so it never anchors (a pair-grain rollup beside
+    its fact). Its rows are still rows, though: see ``_read_partials``.
     """
     anchors: list[BuildDatasource] = []
+    partials: list[BuildDatasource] = []
     for other in datasources:
         if other.identifier == ds.identifier or _partition_disjoint(ds, other):
             continue
         grain = set(other.grain.components)
         if not (grain & key_spellings and grain - key_spellings):
             continue
-        # a sibling itself `~` on the key holds no full set of anything: two
-        # partial bindings have no defined relationship, so it cannot be what
-        # keeps this one partial (a pair-grain rollup beside its fact)
         if any(
             _structural_partial(other, c) and c.concept.address in key_spellings
             for c in other.columns
         ):
-            continue
-        anchors.append(other)
-    return anchors
+            partials.append(other)
+        else:
+            anchors.append(other)
+    return anchors, partials
 
 
 def _lookup_supply(
@@ -184,6 +188,41 @@ def _lookup_supply(
     return supply
 
 
+def _any_supplies_killers(
+    siblings: list[BuildDatasource],
+    killers: set[str],
+    datasources: Sequence[BuildDatasource],
+) -> bool:
+    """Whether some sibling's rows carry a value for every killer, so the WHERE
+    keeps them."""
+    return any(killers <= _lookup_supply(s, datasources) for s in siblings)
+
+
+def _read_partials(
+    ds: BuildDatasource,
+    partials: list[BuildDatasource],
+    referenced_bound: set[str],
+    datasources: Sequence[BuildDatasource],
+    environment: BuildEnvironment,
+) -> list[BuildDatasource]:
+    """The ``~`` siblings the statement must read: each supplies a ROOT
+    concept it references that ``ds`` cannot reach without it. A sibling
+    serving only derived values (a rollup's ``revenue``) is a materialization
+    the plan may skip, so its rows decide nothing."""
+    roots = {
+        addr
+        for addr in referenced_bound
+        if (c := environment.concepts.get(addr)) is not None
+        and c.derivation == Derivation.ROOT
+    }
+    read: list[BuildDatasource] = []
+    for p in partials:
+        others = [d for d in datasources if d.identifier != p.identifier]
+        if (roots - _lookup_supply(ds, others)) & _lookup_supply(p, datasources):
+            read.append(p)
+    return read
+
+
 def _anchors_dispensable(
     ds: BuildDatasource,
     anchors: list[BuildDatasource],
@@ -204,9 +243,8 @@ def _anchors_dispensable(
     absent). Partition-disjoint siblings never serve ``ds``'s rows, so their
     bindings do not count either.
     """
-    for anchor in anchors:
-        if killers <= _lookup_supply(anchor, datasources):
-            return False
+    if _any_supplies_killers(anchors, killers, datasources):
+        return False
     anchor_ids = {a.identifier for a in anchors}
     usable = [
         d
@@ -310,10 +348,17 @@ def decide_heal(
             if span is None:
                 continue
             key = column.concept
-            anchors = _pair_anchors(_spellings(key), ds, datasources)
+            anchors, partials = _pair_siblings(_spellings(key), ds, datasources)
             if anchors and not _anchors_dispensable(
                 ds, anchors, killers, component_refs, datasources
             ):
+                continue
+            # A `~` sibling's rows the WHERE keeps hold members ``ds`` may lack
+            # (a return whose sale is absent): ``ds`` is not complete for them.
+            read = _read_partials(
+                ds, partials, component_refs, datasources, environment
+            )
+            if _any_supplies_killers(read, killers, datasources):
                 continue
             if authored.keyspace.binding_is_complete(ds.identifier, span):
                 healed.add(span)
