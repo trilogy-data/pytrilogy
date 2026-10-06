@@ -82,8 +82,8 @@ WHERE
 ),
 yummy as (
 SELECT
-    \"abundant\".\"sales_item_sk\" as \"sales_item_sk\",
     \"cheerful\".\"sales_channel\" as \"sales_channel\",
+    \"cheerful\".\"sales_item_sk\" as \"sales_item_sk\",
     sum(\"abundant\".\"sales_net_paid\") as \"sale_paid\",
     sum(\"abundant\".\"sales_quantity\") as \"sale_qty\",
     sum(\"cheerful\".\"sales_return_amount\") as \"return_amt\",

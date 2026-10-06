@@ -130,8 +130,12 @@ def _pair_siblings(
 
     An anchor supplies key combinations beyond ``ds``'s subset, so a pin that
     kills dimension extensions does not by itself shrink the population to
-    ``ds``'s own rows; unless the anchors are dispensable for the statement
-    the binding stays partial and the sibling-stitch machinery owns the merge.
+    ``ds``'s own rows. The heal holds only when the WHERE kills the anchor's
+    rows too: they carry values only for what the anchor binds or can look up
+    and are NULL elsewhere, so a proven-non-null concept outside that supply
+    kills them exactly as it kills a dimension extension. A statement reading
+    the anchor beside the heal is fine: the anchor is complete, so every row
+    of ``ds`` has its anchor row and the merge with it may be INNER.
 
     A ``~`` sibling holds no full set of anything: two partial bindings have
     no defined relationship, so it never anchors (a pair-grain rollup beside
@@ -221,37 +225,6 @@ def _read_partials(
         if (roots - _lookup_supply(ds, others)) & _lookup_supply(p, datasources):
             read.append(p)
     return read
-
-
-def _anchors_dispensable(
-    ds: BuildDatasource,
-    anchors: list[BuildDatasource],
-    killers: set[str],
-    referenced_bound: set[str],
-    datasources: Sequence[BuildDatasource],
-) -> bool:
-    """True when the WHERE filters out every anchor-only row and the statement
-    can be answered from ``ds``'s own rows without any anchor.
-
-    An anchor's rows carry values only for what they bind or can look up and
-    are NULL elsewhere, so a proven-non-null concept outside that supply kills
-    them exactly as it kills a dimension extension. The second guard is
-    load-bearing: were the statement to reference a concept ``ds`` can only
-    reach through an anchor (a sales measure, or a dimension hung off the
-    sale's own key), the healed key would license an INNER merge with the
-    anchor that drops the fact's own unmatched rows (a return whose sale is
-    absent). Partition-disjoint siblings never serve ``ds``'s rows, so their
-    bindings do not count either.
-    """
-    if _any_supplies_killers(anchors, killers, datasources):
-        return False
-    anchor_ids = {a.identifier for a in anchors}
-    usable = [
-        d
-        for d in datasources
-        if d.identifier not in anchor_ids and not _partition_disjoint(ds, d)
-    ]
-    return referenced_bound <= _lookup_supply(ds, usable)
 
 
 def _component_reach(
@@ -349,13 +322,9 @@ def decide_heal(
                 continue
             key = column.concept
             anchors, partials = _pair_siblings(_spellings(key), ds, datasources)
-            if anchors and not _anchors_dispensable(
-                ds, anchors, killers, component_refs, datasources
-            ):
-                continue
-            # A `~` sibling's rows the WHERE keeps hold members ``ds`` may lack
-            # (a return whose sale is absent): ``ds`` is not complete for them.
-            read = _read_partials(
+            # A sibling's rows the WHERE keeps hold members ``ds`` may lack: an
+            # anchor's always, a `~` sibling's only when the statement reads it.
+            read = anchors + _read_partials(
                 ds, partials, component_refs, datasources, environment
             )
             if _any_supplies_killers(read, killers, datasources):

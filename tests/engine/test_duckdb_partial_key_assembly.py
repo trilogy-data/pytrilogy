@@ -478,11 +478,12 @@ def test_anchor_exclusive_pin_heals(anchored):
 _ANCHOR_NEEDED = "where week = 1 select order_id, sum(refund) as total_refund, sum(amount) as total_amount order by order_id asc;"
 
 
-def test_anchor_needed_stays_partial(anchored):
-    """The same pin beside a sales-only measure: the anchor is not dispensable,
-    so the keys stay `~` and sales is still merged in."""
+def test_anchor_read_beside_pin_heals(anchored):
+    """The same pin beside a sales-only measure still heals: sales is complete,
+    so every return has its sale and the merge is INNER."""
     sql = anchored.generate_sql(_ANCHOR_NEEDED)[-1]
     assert "50 as amount" in sql, sql
+    assert "OUTER JOIN" not in sql and "FULL JOIN" not in sql, sql
     assert _rows(anchored, _ANCHOR_NEEDED) == [(1, 5, 50), (3, 9, 80)]
 
 

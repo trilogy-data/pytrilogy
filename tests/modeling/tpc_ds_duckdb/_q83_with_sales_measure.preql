@@ -1,6 +1,5 @@
-# query83 plus a sales-side measure. The return-date pin heals the returns'
-# `~` keys in query83 itself (no sibling stitch), so this variant is the corpus
-# fixture for the sales/returns FULL JOIN that shares one key set.
+# query83 plus a sales-side measure. Sales is complete, so the return-date pin
+# heals the returns' `~` keys here too: no FULL stitch of the sales union.
 
 import all_sales as sales;
 import date as date;

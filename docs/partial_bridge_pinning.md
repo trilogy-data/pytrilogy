@@ -112,23 +112,21 @@ Guards, each load-bearing:
   (`partial datasource ... complete where`) is a row-subset contract the union
   machinery completes across siblings; healing it breaks that assembly
   (`test_partial_key_union_matrix`).
-- **Sibling anchor blocks unless dispensable.** If another row-source carries
-  the key inside a LARGER grain (store_sales anchoring store_returns' `~`
-  grain keys), a pin that kills dimension extensions does not by itself
+- **A sibling anchor blocks when its rows survive.** If another row-source
+  carries the key inside a LARGER grain (store_sales anchoring store_returns'
+  `~` grain keys), a pin that kills dimension extensions does not by itself
   shrink the population to this datasource's rows: anchor-only rows carry the
-  anchor's own values, not manufactured NULLs. The key still heals when the
-  anchor is dispensable (`_anchors_dispensable`): (a) some killer lies
-  outside what the anchor's rows can carry by keyed lookup
+  anchor's own values, not manufactured NULLs. The key still heals when some
+  killer lies outside what the anchor's rows can carry by keyed lookup
   (`_lookup_supply`, which walks complete lookups and stops at `~` bindings;
   the FD closure is the wrong tool because a same-grain sibling's columns are
-  in it), and (b) every statement reference in the fact's component is
-  reachable from the fact without an anchor. (b) is load-bearing: with an
-  anchor-only measure selected, the healed key would license an INNER merge
-  that drops the fact's own unmatched rows. Partition-disjoint `complete
-  where` siblings never anchor and never count as suppliers. This is what
-  lets `where sales.return_date.week_seq in (...)` (TPC-DS q83, q01, q91)
-  plan the returns partitions alone instead of stitching the sales union in
-  and filtering it away.
+  in it). Reading the anchor beside the heal (a sales measure) is fine: the
+  anchor is complete, so every fact row has its anchor row and the healed
+  merge may be INNER. Partition-disjoint `complete where` siblings never
+  anchor and never count as suppliers. This is what lets `where
+  sales.return_date.week_seq in (...)` (TPC-DS q83, q01, q91, and q17, q24,
+  q25, q29, q50, q84 beside sales measures) plan without a FULL stitch of the
+  sales union.
 - **A `~` sibling the statement reads blocks when its rows survive.** Two
   `~` bindings never anchor each other, but when the statement reads a ROOT
   concept only a `~` sibling supplies (returns' `refund` beside a `~` sales)

@@ -304,9 +304,7 @@ select
 def test_return_date_pin_heals_unified_returns(engine_sf001: Executor):
     """query83 pins the return date, which only the returns partitions carry:
     every sales-only line is filtered out, so the returns' `~` keys heal and
-    the plan is the returns union alone - no sales scan, no FULL stitch. A
-    sales measure beside the same pin keeps the stitch (see
-    `_q83_sales_returns_full_join.preql`)."""
+    the plan is the returns union alone - no sales scan, no FULL stitch."""
     engine_sf001.environment = Environment(working_path=working_path)
     sql = engine_sf001.generate_sql(
         (working_path / "query83.preql").read_text(encoding="utf-8")
@@ -316,6 +314,17 @@ def test_return_date_pin_heals_unified_returns(engine_sf001: Executor):
         assert _scans(sql, table) == 0, (table, sql)
     for table in ("store_returns", "catalog_returns", "web_returns"):
         assert _scans(sql, table) == 1, (table, sql)
+
+
+def test_return_date_pin_heals_beside_sales_measure(engine: Executor):
+    """The same pin beside a sales measure still heals: sales is complete, so
+    every return has its sale and the merge needs no FULL stitch."""
+    engine.environment = Environment(working_path=working_path)
+    sql = engine.generate_sql(
+        (working_path / "_q83_with_sales_measure.preql").read_text(encoding="utf-8")
+    )[-1]
+    assert sql.count("FULL JOIN") == 0, sql
+    assert len(engine.execute_raw_sql(sql).fetchall()) == 24
 
 
 def test_partition_pin_keeps_returns_absence_at_merge(engine_sf001: Executor):
