@@ -332,6 +332,9 @@ class ConceptAttrs:
     # (semijoin RHS) and never as a row arg; `partition_roots` places such a
     # node in its own scan bucket (side-channel subselect source).
     existence_only: bool = False
+    # Added only to carry a statement join onto a rowset handle (a mate the
+    # statement never names): a join key, not a row the statement demands.
+    relation_only: bool = False
 
     @property
     def keys_are_conditional_fd(self) -> bool:

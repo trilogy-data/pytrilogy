@@ -721,7 +721,7 @@ def build_keyspace(
     declared = {
         a.address: (a.purpose, a.derivation, handle_keys.get(a.address, a.keys))
         for a in concept_attrs.values()
-        if not a.existence_only
+        if not a.existence_only and not a.relation_only
     }
     keys_by_address = {
         address: frozenset(

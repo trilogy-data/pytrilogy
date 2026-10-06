@@ -95,7 +95,14 @@ from .constants import (
     DepthLabel,
     EdgeKind,
 )
-from .edges import EdgeAttrs, EdgeMap, dependency_subgraph, edge_kind, remove_edge
+from .edges import (
+    EdgeAttrs,
+    EdgeMap,
+    dependency_subgraph,
+    edge_kind,
+    edges_of_kind,
+    remove_edge,
+)
 from .extent_ownership import takes_a_value_on_padding
 from .functional_dependency import build_fd_determines, build_fd_determines_all
 from .group_graph import trace_group_graph
@@ -2467,8 +2474,7 @@ def _rowset_base_join_keys(
     """Output rowset boundaries' base grain keys that BOTH the assembled
     contributor and every feeder can render.
 
-    A FINAL-hosted gate keyed by such an address (see
-    `condition_placement.PlacementReason.FINAL_ROWSET_BASE_KEY`) pairs to the
+    A FINAL-hosted gate whose feeder renders such an address pairs to the
     boundary on it; without the widening the merge has no shared column and
     cross-joins, which the keyless-join guard rejects."""
     base_keys = output_rowset_grain_keys(mandatory_list)
@@ -3382,6 +3388,7 @@ def _scoped_join_mates(environment: BuildEnvironment, address: str) -> frozenset
 
 def _cover_groups_for_mandatory(
     group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     built: dict[str, StrategyNode],
     mandatory_list: list[BuildConcept],
@@ -3407,6 +3414,10 @@ def _cover_groups_for_mandatory(
     diverging is what leaves a contributor dangling at render time."""
     per_group: dict[str, list[BuildConcept]] = defaultdict(list)
     coalescing = environment.domain_graph.coalescing_relation_members()
+    # a side-channel set feeds no rows: reading a host through one is not
+    # reading that host's side
+    row_graph = group_graph.copy()
+    row_graph.remove_edges_from(edges_of_kind(group_edges, EdgeKind.EXISTENCE))
     for concept in mandatory_list:
         addr = concept.address
         mates = _scoped_join_mates(environment, addr)
@@ -3436,7 +3447,7 @@ def _cover_groups_for_mandatory(
                 candidates = [
                     gid
                     for gid in candidates
-                    if gid in hosts or hosts & nx.ancestors(group_graph, gid)
+                    if gid in hosts or hosts & nx.ancestors(row_graph, gid)
                 ]
         # A dim peeled off a row stream decorates the stream's keys; its own
         # key carries every entity, not the rows the stream's WHERE kept.
@@ -4686,6 +4697,7 @@ def _clear_groupmate_completed_partials(
 
 def _assemble_final_node(
     group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     built: dict[str, StrategyNode],
     mandatory_list: list[BuildConcept],
@@ -4817,6 +4829,7 @@ def _assemble_final_node(
     ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
     per_group = _cover_groups_for_mandatory(
         group_graph,
+        group_edges,
         attrs,
         built,
         mandatory_list,
@@ -6049,6 +6062,7 @@ def build_strategy_node(
     plan_trace.set_context("FINAL")
     final = _assemble_final_node(
         group_graph,
+        group_edges,
         attrs,
         built,
         mandatory_list,

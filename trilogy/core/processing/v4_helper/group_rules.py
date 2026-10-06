@@ -25,7 +25,7 @@ from trilogy.core.enums import (
 
 from .concept_graph import _scope_and_phase
 from .constants import DepthLabel, EdgeKind
-from .edges import EdgeMap, edge_kind
+from .edges import EdgeMap, edge_kind, lineage_subgraph
 from .models import ConceptAttrs, GroupBucket, RootReason, nulls_grouping_keys
 
 
@@ -581,7 +581,11 @@ def _relation_side_partitions(
         for u, v in concept_graph.edges
         if edge_kind(concept_edges, u, v) == EdgeKind.RELATION
     }
-    if not relation_pairs or len(main_items) < 2:
+    if len(main_items) < 2:
+        return [main_items]
+    roots = {node for node, _ in main_items}
+    lineage = lineage_subgraph(concept_graph, concept_edges)
+    if not any(_rooted_on_both_sides(pair, roots, lineage) for pair in relation_pairs):
         return [main_items]
     adjacency: dict[str, set[str]] = defaultdict(set)
     for u, v in concept_graph.edges:
@@ -618,6 +622,18 @@ def _relation_side_partitions(
         assigned.update(item[0] for item in members)
         partitions.append(members)
     return partitions
+
+
+def _rooted_on_both_sides(
+    pair: frozenset[str], roots: set[str], lineage: nx.DiGraph
+) -> bool:
+    """Whether each side of a relation reads one of these roots. A side that is
+    a rowset handle is a leaf no scan sources: the roots then stay one scan,
+    and sourcing finds the path to the declared key."""
+    return all(
+        node in roots or (node in lineage and nx.ancestors(lineage, node) & roots)
+        for node in pair
+    )
 
 
 def _is_row_stream_output(

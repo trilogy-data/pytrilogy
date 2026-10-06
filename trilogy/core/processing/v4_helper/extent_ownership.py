@@ -41,10 +41,13 @@ def elect_extent_owners(
     attrs: dict[str, GroupAttrs],
     environment: BuildEnvironment,
     keyspace: Keyspace,
+    relation_only: frozenset[str] = frozenset(),
 ) -> ExtentOwnership:
     """Elect an owner for each span the statement asks extension rows of
     (`Keyspace.output_demanded_spans`). A `~` FK that only shows up as a join
-    axis is not among them, and with none the whole mechanism is inert."""
+    axis is not among them, and with none the whole mechanism is inert. Nor
+    does a key a group carries only to pair with a rowset handle
+    (`relation_only`) make it a candidate."""
     # a region with a domain group of its own is demanded by that alone: a
     # derivation absent on it is an output no lookup from the span reaches
     domains = {
@@ -61,7 +64,7 @@ def elect_extent_owners(
             continue
         # a member counts as well as an output: a stream joining on a span
         # the statement never names (`select name, status`) still pads for it
-        owned = spans & (set(attr.output_concepts) | set(attr.members))
+        owned = spans & (set(attr.output_concepts) | set(attr.members)) - relation_only
         if owned:
             exposes[gid] = frozenset(owned)
     if not exposes:

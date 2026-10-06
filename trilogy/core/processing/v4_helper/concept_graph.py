@@ -51,11 +51,12 @@ from .constants import (
     DepthLabel,
     EdgeKind,
 )
-from .edges import EdgeMap, add_edge, edge_kind
+from .edges import EdgeMap, add_edge, edge_kind, lineage_subgraph
 from .functional_dependency import build_fd_determines, minimize_build_grain
 from .models import ConceptAttrs
 from .projection import (
     concept_satisfiable,
+    decided_at_output_grain,
     lineage_existence_only,
     lineage_existence_parts,
 )
@@ -1947,10 +1948,12 @@ def _constraint_crosses_rowset(
     2-cycle the two rowset groups)."""
     if attrs[dst].rowset_name and attrs[dst].rowset_name in src_ancestor_rowsets:
         return True
-    return bool(
-        attrs[src].rowset_name
+    # A rowset's body is planned apart, so a condition of the reading
+    # statement filters nothing inside it: an edge onto the boundary only
+    # makes the condition's scans look upstream of the rowset's rows.
+    return (
+        attrs[dst].derivation == Derivation.ROWSET
         and attrs[src].rowset_name != attrs[dst].rowset_name
-        and attrs[dst].derivation == Derivation.ROWSET
     )
 
 
@@ -2073,6 +2076,156 @@ def _stamp_determining_key_roots(
                 ):
                     kept = rest
             root.determining_key_roots = frozenset(kept)
+
+
+def _lineage_leaves(concepts: list[BuildConcept]) -> list[BuildConcept]:
+    """The rowset handles and ROOT concepts ``concepts`` read, walking lineage."""
+    leaves: list[BuildConcept] = []
+    seen: set[str] = set()
+    stack = list(concepts)
+    while stack:
+        concept = stack.pop()
+        if concept.address in seen:
+            continue
+        seen.add(concept.address)
+        if isinstance(concept.lineage, BuildRowsetItem) or concept.lineage is None:
+            leaves.append(concept)
+            continue
+        stack.extend(concept.lineage.concept_arguments)
+    return leaves
+
+
+def _rowset_read_grain(
+    attrs: dict[str, ConceptAttrs], rowset_name: str
+) -> frozenset[str]:
+    return frozenset().union(
+        *(a.grain_components for a in attrs.values() if a.rowset_name == rowset_name)
+    )
+
+
+def _add_rowset_handle_relations(
+    mandatory_list: list[BuildConcept],
+    conditions: list[BuildWhereClause],
+    environment: BuildEnvironment,
+    graph: nx.DiGraph,
+    edges: EdgeMap,
+    attrs: dict[str, ConceptAttrs],
+    materialized_roots: frozenset[str],
+    datasource_addresses: frozenset[str],
+    pinned_probes: frozenset[str],
+    datasources: Sequence[BuildDatasource],
+) -> None:
+    """A statement join on a demanded rowset's handle (`union join ticket =
+    rs.t`) is a RELATION edge from the other side's member to the handle leaf,
+    as a collapsed key would be for two scans. The rowset stays an island: the
+    handle is a leaf, never walked. Only when the statement reads beside the
+    rowset: a select of the rowset alone reads its rows alone. A rowset the
+    WHERE alone reads is a condition source, paired through its feeder."""
+    leaves = _lineage_leaves(
+        [
+            *mandatory_list,
+            *(c for clause in conditions for c in clause.concept_arguments),
+        ]
+    )
+    rowsets = {
+        c.lineage.rowset.name
+        for c in _lineage_leaves(mandatory_list)
+        if isinstance(c.lineage, BuildRowsetItem)
+    }
+    if not rowsets or all(isinstance(c.lineage, BuildRowsetItem) for c in leaves):
+        return
+    statement = _statement_scoped_relation_members(environment)
+    for canonical, members in sorted(environment.scoped_join_key_groups.items()):
+        relation = {canonical, *members}
+        if not relation & statement:
+            continue
+        concepts = [
+            c for addr in sorted(relation) if (c := environment.concepts.get(addr))
+        ]
+        handles = [
+            (c, c.lineage.rowset.name)
+            for c in concepts
+            if isinstance(c.lineage, BuildRowsetItem)
+            and c.lineage.rowset.name in rowsets
+        ]
+        mates = [c for c in concepts if c.derivation == Derivation.ROOT]
+        for handle, rowset_name in handles:
+            handle_nid = node_id("", handle.address)
+            licensed_only = handle_nid not in graph
+            read_grain = _rowset_read_grain(attrs, rowset_name)
+            for concept in (handle, *mates):
+                nid = node_id("", concept.address)
+                added = nid not in graph
+                _add_concept(
+                    concept,
+                    environment,
+                    graph,
+                    edges,
+                    attrs,
+                    materialized_roots=materialized_roots,
+                    datasource_addresses=datasource_addresses,
+                    pinned_probes=pinned_probes,
+                    datasources=datasources,
+                )
+                if added and nid in attrs:
+                    attrs[nid].relation_only = True
+            if licensed_only and handle_nid in attrs:
+                # Added only to carry the edge: the boundary keeps the grain of
+                # the rowset outputs the statement reads, not the join's key.
+                attrs[handle_nid].grain_components = (
+                    read_grain or attrs[handle_nid].grain_components
+                )
+            for mate in mates:
+                mate_nid = node_id("", mate.address)
+                if (
+                    handle_nid in graph
+                    and mate_nid in graph
+                    and not graph.has_edge(mate_nid, handle_nid)
+                ):
+                    add_edge(graph, edges, mate_nid, handle_nid, EdgeKind.RELATION)
+
+
+def _constrain_aggregates_by_root_conditions(
+    graph: nx.DiGraph,
+    edges: EdgeMap,
+    attrs: dict[str, ConceptAttrs],
+    environment: BuildEnvironment,
+    row_arg_addresses: set[str],
+    root_like: frozenset[str],
+) -> None:
+    """A WHERE on a ROOT column filters the rows an outer aggregate reads unless
+    the aggregate's grain decides it. An aggregate over roots shares its input
+    scan with the WHERE's roots (root partitioning co-sources them); one that
+    reads no root (a rowset paired on a declared join) has nothing else making
+    the WHERE's scan a row parent, and the WHERE could only filter its output."""
+    lineage = lineage_subgraph(graph, edges)
+    for address in sorted(row_arg_addresses):
+        concept = environment.concepts.get(address)
+        if concept is None or concept.derivation != Derivation.ROOT:
+            continue
+        src = node_id(_effective_label(concept, "", root_like), address)
+        if src not in graph:
+            continue
+        for dst, node in attrs.items():
+            if (
+                node.label != ""
+                or node.derivation != Derivation.AGGREGATE
+                or node.depth_label != DepthLabel.D0
+                or dst == src
+                or graph.has_edge(src, dst)
+                or src in nx.ancestors(graph, dst)
+                or any(
+                    attrs[a].derivation == Derivation.ROOT
+                    for a in nx.ancestors(lineage, dst)
+                )
+            ):
+                continue
+            aggregate = environment.concepts.get(node.address)
+            if aggregate is None or decided_at_output_grain(
+                address, [aggregate], environment
+            ):
+                continue
+            add_edge(graph, edges, src, dst, EdgeKind.LINEAGE)
 
 
 def build_concept_graph(
@@ -2267,6 +2420,18 @@ def build_concept_graph(
                 and not graph.has_edge(origin_nid, canonical_nid)
             ):
                 add_edge(graph, edges, origin_nid, canonical_nid, EdgeKind.RELATION)
+        _add_rowset_handle_relations(
+            mandatory_list,
+            conditions,
+            environment,
+            graph,
+            edges,
+            attrs,
+            materialized_roots=materialized_roots,
+            datasource_addresses=datasource_addresses,
+            pinned_probes=pinned_probes,
+            datasources=datasources,
+        )
 
     # A ROWSET concept stays a leaf in the outer graph (see `_add_concept`):
     # its inner select is a self-contained sub-query that `gen_rowset` plans
@@ -2436,6 +2601,10 @@ def build_concept_graph(
                 # constraint ordering it would carry is implied by the lineage.
                 if not graph.has_edge(src, dst):
                     add_edge(graph, edges, src, dst, EdgeKind.CONSTRAINT)
+
+    _constrain_aggregates_by_root_conditions(
+        graph, edges, attrs, environment, row_arg_addresses, root_like
+    )
 
     # Existence edges: for each `... IN <subselect>` atom, the existence
     # source must be built and topologically ordered before the host

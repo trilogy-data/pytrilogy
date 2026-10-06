@@ -86,6 +86,18 @@ def rejects_absent_feeders(
     return True
 
 
+def pairs_on_outer_relation(
+    node: StrategyNode, feeders: list[StrategyNode], environment: BuildEnvironment
+) -> bool:
+    """Whether a feeder meets `node` on a `union join` axis: it is that
+    relation's other side, whose rows are rows of the statement, not a filter
+    input. The WHERE is then a post-join predicate over the preserved pair."""
+    outer = environment.domain_graph.outer_relation_keys()
+    if not outer & {o.address for o in node.output_concepts}:
+        return False
+    return any(outer & {o.address for o in f.output_concepts} for f in feeders)
+
+
 def inject_condition_at_node(
     node: StrategyNode,
     condition: BuildWhereClause,
@@ -138,6 +150,7 @@ def inject_condition_at_node(
             force_join_type=(
                 JoinType.INNER
                 if not holds_region
+                and not pairs_on_outer_relation(node, sources.row_parents, environment)
                 and rejects_absent_feeders(
                     condition.conditional, node, sources.row_parents
                 )

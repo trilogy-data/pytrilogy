@@ -789,31 +789,10 @@ def _final_merge_grain(
                 grain |= set(concept.grain.components)
             else:
                 grain |= set(concept.keys or set())
-    # A mixed root/rowset relation (`union join return_demos.demo_id = c_demo`)
-    # whose members are not outputs never enters the grain through the loops
-    # above; the rowset boundary and the mate's contributor then share no
-    # declared join key and the FINAL merge cross-joins ON 1=1. The authored
-    # members ARE the join axis: add them whenever a member lives on a FINAL
-    # rowset boundary and another contributor exists to pair with.
     if environment.scoped_join_key_groups:
         finals = [
             gid for gid in group_graph.predecessors(FINAL_NODE_ID) if gid in attrs
         ]
-        rowset_namespaces: set[str] = set()
-        for gid in finals:
-            if attrs[gid].derivation == Derivation.ROWSET:
-                for member in attrs[gid].members:
-                    namespace, _, _ = member.rpartition(".")
-                    if namespace:
-                        rowset_namespaces.add(namespace)
-        if len(finals) > 1 and rowset_namespaces:
-            for canonical, members in environment.scoped_join_key_groups.items():
-                relation_addrs = {canonical, *members}
-                if any(
-                    addr.rpartition(".")[0] in rowset_namespaces
-                    for addr in relation_addrs
-                ):
-                    grain |= relation_addrs
         # A relation carried on the concept graph's RELATION edges (an
         # authored axis whose collapsed side is a first-class computed node)
         # and HOSTED by different FINAL contributors is the merge's join axis:
@@ -821,8 +800,7 @@ def _final_merge_grain(
         # the inline computed-member family (`union join rank orders.oid
         # order by orders.amt desc = customers.rnk`), where one side's member
         # is its own row-shape-barrier group and the other side's canonical
-        # rides a ROOT scan, so no rowset namespace exists for the block above
-        # to see. Only the hosted members enter the grain: an unhosted third
+        # rides a ROOT scan. Only the hosted members enter the grain: an unhosted third
         # member of a chained relation is not this merge's to demand.
         if len(finals) > 1 and relation_edge_members:
             for canonical, members in environment.scoped_join_key_groups.items():
@@ -945,6 +923,14 @@ def _refresh_final_contract(
         axis_only_projection = any(
             len({canonical, *members} & mandatory_addresses) >= 2
             for canonical, members in environment.scoped_join_key_groups.items()
+        )
+    # ...and a WHERE FINAL tests carries its columns at their own grain: when
+    # every side's rows are just its projected member, those columns add only
+    # rows the dedup to the outputs removes (`year` per sale line beside
+    # `ticket`).
+    if axis_only_projection and attrs[FINAL_NODE_ID].condition_atoms:
+        axis_only_projection = not all(
+            contract.projection_grain <= output_addresses for contract in contributors
         )
     attrs[FINAL_NODE_ID].final_contract = FinalAssemblyContract(
         output_addresses=output_addresses,
@@ -1618,7 +1604,6 @@ def _hosted_condition_outputs(
 
 def _final_gate_rowset_base_keys(
     attrs: dict[str, GroupAttrs],
-    buckets: dict[str, GroupBucket],
     gid: str,
     fact: GroupFacts,
     mandatory_list: list[BuildConcept],
@@ -1626,11 +1611,10 @@ def _final_gate_rowset_base_keys(
 ) -> set[str]:
     """Base grain keys of the output rowset boundaries that `gid` must render
     to pair with them at FINAL, when every one of its members is a row arg of a
-    FINAL-hosted gate and none is a mandatory output."""
+    FINAL-hosted gate and none is a mandatory output: the keys its own grain,
+    or its members' keys, determine (`status` at order grain pairs on the
+    order's `customer_id`)."""
     if FINAL_NODE_ID not in attrs or not attrs[FINAL_NODE_ID].condition_atoms:
-        return set()
-    bucket = buckets.get(gid)
-    if bucket is None or bucket.derivation != Derivation.ROOT:
         return set()
     members = set(fact.primary)
     if not members or members & {c.address for c in mandatory_list}:
@@ -1645,12 +1629,17 @@ def _final_gate_rowset_base_keys(
     base_keys = output_rowset_grain_keys(mandatory_list)
     if not base_keys:
         return set()
-    keyed: set[str] = set()
+    keyed: set[str] = set(fact.grain)
     for member in members:
         if member not in environment.concepts:
             continue
         keyed |= set(environment.concepts[member].keys or ())
-    return base_keys & keyed
+    return {
+        key
+        for key in base_keys
+        if key in keyed
+        or build_fd_determines(environment, keyed, key, include_empty_grain=False)
+    }
 
 
 def _compute_concept_sets(
@@ -1758,6 +1747,13 @@ def _compute_concept_sets(
             and member not in all_primary_members
         ):
             scan_advertisable_members.append(member)
+    # an output rowset's base keys a FINAL gate's feeder pairs on (see
+    # `_final_gate_rowset_base_keys`): a scan offers the ones it can re-source
+    gate_pair_keys = (
+        output_rowset_grain_keys(mandatory_list)
+        if attrs.get(FINAL_NODE_ID) and attrs[FINAL_NODE_ID].condition_atoms
+        else frozenset()
+    )
     for gid in topo:
         if gid == FINAL_NODE_ID:
             continue
@@ -1774,7 +1770,7 @@ def _compute_concept_sets(
             # FINAL merge loses the authored join key. Rowset handles are
             # excluded: a scan that absorbs one would drop the rowset's
             # internal filter.
-            for member in scan_advertisable_members:
+            for member in [*scan_advertisable_members, *sorted(gate_pair_keys)]:
                 if member not in cap and build_fd_determines(
                     environment, cap, member, include_empty_grain=False
                 ):
@@ -2065,7 +2061,7 @@ def _compute_concept_sets(
         # arrives as a hidden feeder built from this demand alone. Without the
         # key the FINAL merge has no shared column and cross-joins.
         outs |= _final_gate_rowset_base_keys(
-            attrs, buckets, gid, fact, mandatory_list, environment
+            attrs, gid, fact, mandatory_list, environment
         )
         io.outputs[gid] = outs
 
@@ -2286,7 +2282,13 @@ def build_group_graph(
         relation_edge_members=relation_edge_members,
     )
     attrs[FINAL_NODE_ID].extent_ownership = elect_extent_owners(
-        group_graph, attrs, environment, keyspace
+        group_graph,
+        attrs,
+        environment,
+        keyspace,
+        relation_only=frozenset(
+            a.address for a in concept_attrs.values() if a.relation_only
+        ),
     )
     trace_group_graph(
         "conditions injected, phases colored, contracts and extent owners set",

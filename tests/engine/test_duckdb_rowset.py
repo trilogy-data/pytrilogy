@@ -1571,6 +1571,56 @@ order by ticket asc;"""
     assert results == [(100, 100, 2), (101, 101, 3)]
 
 
+# 103: a 2001 sale with no return. 104: a return with no sale.
+_ANCHOR_WHERE_FIXTURE = _COMPOSITE_UNION_JOIN_STDDEV_FIXTURE.replace(
+    "select 3 as i, 102 as t, 2 as s, 2 as d, 13 as q",
+    "select 3 as i, 102 as t, 2 as s, 2 as d, 13 as q union all\n"
+    "select 4 as i, 103 as t, 1 as s, 1 as d, 17 as q",
+).replace(
+    "select 1 as ri, 101 as rt, 2 as rd, 3 as rq",
+    "select 1 as ri, 101 as rt, 2 as rd, 3 as rq union all\n"
+    "select 5 as ri, 104 as rt, 1 as rd, 4 as rq",
+)
+
+
+@pytest.mark.parametrize(
+    "where, select, expected",
+    [
+        ("year = 2001", "r_filtered.return_quantity", [(2,), (3,), (None,)]),
+        ("store_id = 1", "r_filtered.return_quantity", [(2,), (None,)]),
+        ("year = 2001", "count(r_filtered.return_quantity) as c", [(2,)]),
+        (
+            "year = 2001",
+            "ticket, count(r_filtered.return_quantity) as c",
+            [(100, 1), (101, 1), (103, 0)],
+        ),
+        (
+            "year = 2001",
+            "ticket, r_filtered.r_ticket",
+            [(100, 100), (101, 101), (103, 103)],
+        ),
+        (
+            "r_filtered.r_ticket in (ticket ? year = 2001)",
+            "r_filtered.r_ticket, ticket",
+            [(100, 100), (101, 101)],
+        ),
+    ],
+)
+def test_union_join_anchor_where_precedes_the_rowset_pairing(where, select, expected):
+    """An anchor-side WHERE sources its columns through the anchor's fact and
+    pairs with the rowset on the declared key, before any aggregate: the rows
+    match the same statement over the base concepts."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_ANCHOR_WHERE_FIXTURE)
+    query = f"where {where} select {select} union join ticket = r_filtered.r_ticket;"
+    oracle = query.replace("r_filtered.return_quantity", "return_quantity").replace(
+        "r_filtered.r_ticket", "r_ticket"
+    )
+    for statement in (query, oracle):
+        rows = executor.execute_text(statement)[-1].fetchall()
+        assert sorted((tuple(r) for r in rows), key=str) == expected, statement
+
+
 _ROWSET_DERIVED_SEGMENT_FIXTURE = """
 key sale_id int;
 property sale_id.cust_id int;

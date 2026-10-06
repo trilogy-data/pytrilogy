@@ -595,6 +595,91 @@ def test_partial_rollup_binding_a_root_blocks_the_heal(select, expected):
     assert _rows(executor, pinned) == expected
 
 
+# Two `~` facts, each dated by its own key: a sale's date is not its return's.
+_SEPARATELY_DATED = """
+key order_id int;
+key item_id int;
+key date_id int;
+key return_date_id int;
+property date_id.week int;
+property return_date_id.return_week int;
+property order_id.customer string;
+properties <order_id, item_id> (
+    amount int?,
+    refund int?,
+);
+
+root datasource dates (date_id: date_id, week: week) grain (date_id)
+query '''select 5 as date_id, 1 as week union all select 6, 2''';
+
+root datasource return_dates (return_date_id: return_date_id, return_week: return_week)
+grain (return_date_id)
+query '''select 5 as return_date_id, 1 as return_week union all select 6, 2''';
+
+root datasource items (item_id: item_id) grain (item_id)
+query '''select 10 as item_id union all select 20''';
+
+root datasource orders (order_id: order_id) grain (order_id)
+query '''select 1 as order_id union all select 2 union all select 4 union all select 9''';
+
+root datasource sales (
+    order_id: ~order_id,
+    item_id: ~item_id,
+    date_id: ?date_id,
+    customer: customer,
+    amount: amount,
+)
+grain (order_id, item_id)
+query '''
+select 1 as order_id, 10 as item_id, 5 as date_id, 'a' as customer, 50 as amount union all
+select 1, 20, 5, 'a', 60 union all
+select 2, 10, 6, 'b', 70 union all
+select 4, 10, 5, 'd', 80
+''';
+
+root datasource returns (
+    order_id: ~order_id,
+    item_id: ~item_id,
+    return_date_id: ?return_date_id,
+    refund: refund,
+)
+grain (order_id, item_id)
+query '''
+select 1 as order_id, 10 as item_id, 5 as return_date_id, 5 as refund union all
+select 2, 10, 6, 7 union all
+select 9, 10, 5, 9
+''';
+"""
+
+
+@pytest.mark.parametrize(
+    "query, expected",
+    [
+        (
+            "where week = 1 select order_id, customer order by order_id asc;",
+            [(1, "a"), (4, "d")],
+        ),
+        (
+            "where return_week = 1 select order_id, customer order by order_id asc;",
+            [(1, "a"), (9, None)],
+        ),
+        (
+            (
+                "where week = 1 select order_id, sum(refund) as r, "
+                "sum(amount) as a order by order_id asc;"
+            ),
+            [(1, 5, 110), (4, None, 80)],
+        ),
+    ],
+)
+def test_each_pin_reads_the_fact_it_dates(query, expected):
+    """With a date key per fact, a pin's rows are the rows of the fact it
+    dates, whichever binding the plan reads the order through."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_SEPARATELY_DATED)
+    assert _rows(executor, query) == expected
+
+
 # returns binds `returned` as a raw literal: the flag is true on a returns row
 # and NULL only where the merge finds no returns row. Line (2, 10) is returned.
 _FLAGGED = """

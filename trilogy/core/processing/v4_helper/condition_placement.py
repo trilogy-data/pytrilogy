@@ -41,7 +41,7 @@ from .edges import (
 )
 from .functional_dependency import build_fd_determines_all
 from .models import ConceptAttrs, GroupBucket
-from .projection import output_rowset_grain_keys
+from .projection import decided_at_output_grain
 from .region_reads import restated_over_region
 from .staged_where import (
     CROSS_ROW_DERIVATIONS,
@@ -69,10 +69,6 @@ class PlacementReason(Enum):
     # An earlier `then where` stage's row atom delivered as an input filter on
     # a later stage's cross-row computation (its d1 feeder scan or host).
     STAGE_PRECONDITION = "stage_precondition"
-    # A row atom keyed by a base grain key an output rowset boundary
-    # exposes: hosted on FINAL, which pairs the gate's scan to the
-    # boundary on that key.
-    FINAL_ROWSET_BASE_KEY = "final_rowset_base_key"
     # A row atom over something absent on a region that has a domain,
     # restated at FINAL where the domain's rows join back.
     FINAL_SPAN_DOMAIN = "final_span_domain"
@@ -83,28 +79,6 @@ class ConditionPlacement:
     atom: BoolExpr
     group_ids: tuple[str, ...]
     reason: PlacementReason
-
-
-def _keyed_by_output_rowset_base(
-    row_inputs: set[str],
-    mandatory_list: list[BuildConcept],
-    environment: BuildEnvironment,
-) -> bool:
-    """Whether every row input is, or is a property of, a base grain key an
-    output rowset boundary exposes. Such a gate is relatable: it pairs with the
-    boundary on that key exactly as it would if it were selected."""
-    base_keys = output_rowset_grain_keys(mandatory_list)
-    if not base_keys:
-        return False
-    for address in row_inputs:
-        concept = environment.concepts.get(address)
-        if concept is None:
-            return False
-        if address in base_keys:
-            continue
-        if not concept.keys or not set(concept.keys) <= base_keys:
-            return False
-    return True
 
 
 def _output_rowset_body_condition_addresses(
@@ -1489,28 +1463,6 @@ def plan_condition_placements(
                     )
                 )
                 continue
-            # A gate keyed by a base grain key an output rowset boundary
-            # exposes is relatable, not disconnected: it pairs with the boundary
-            # on that key exactly as it would if it were selected
-            # (`select cat, rs.oid` already joins there). Host it on FINAL,
-            # which merges the gate's scan onto the boundary on that key.
-            if (
-                mandatory_list
-                and candidates
-                and not atom.existence_arguments
-                and all(gid not in main_lineage for gid in candidates)
-                and _keyed_by_output_rowset_base(
-                    row_inputs, mandatory_list, environment
-                )
-            ):
-                placements.append(
-                    ConditionPlacement(
-                        atom=atom,
-                        group_ids=(FINAL_NODE_ID,),
-                        reason=PlacementReason.FINAL_ROWSET_BASE_KEY,
-                    )
-                )
-                continue
             # A row atom whose EVERY candidate host lies outside the main
             # lineage (with real datasource outputs; the rootless case became
             # a FINAL EXISTS gate above) has no host FINAL assembly will keep:
@@ -1657,4 +1609,61 @@ def plan_condition_placements(
                 scoped_join_member_addresses,
             )
         )
+    _check_final_atoms_precede_aggregates(placements, mandatory_list, environment)
     return placements
+
+
+def _crosses_outer_aggregate(concept: BuildConcept) -> bool:
+    """Whether ``concept``'s lineage in THIS statement crosses an aggregate; a
+    rowset handle is a leaf, its body planned apart."""
+    stack = [concept]
+    seen: set[str] = set()
+    while stack:
+        current = stack.pop()
+        if current.address in seen:
+            continue
+        seen.add(current.address)
+        lineage = current.lineage
+        if lineage is None or isinstance(lineage, BuildRowsetItem):
+            continue
+        if isinstance(lineage, BuildAggregateWrapper):
+            return True
+        stack.extend(lineage.concept_arguments)
+    return False
+
+
+def _check_final_atoms_precede_aggregates(
+    placements: list[ConditionPlacement],
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> None:
+    """A row atom hosted only at FINAL filters the aggregates' outputs, not
+    their inputs: right only when each aggregate output's grain determines what
+    the atom reads. Otherwise the aggregate never saw the WHERE, a wrong answer
+    no later pass can repair."""
+    aggregates = [c for c in mandatory_list if _crosses_outer_aggregate(c)]
+    if not aggregates:
+        return
+    hosted_below = {
+        str(p.atom) for p in placements if set(p.group_ids) - {FINAL_NODE_ID}
+    }
+    for placement in placements:
+        if (
+            placement.group_ids != (FINAL_NODE_ID,)
+            or str(placement.atom) in hosted_below
+        ):
+            continue
+        args = placement.atom.row_arguments
+        if any(_crosses_outer_aggregate(c) for c in args):
+            continue
+        undecided = sorted(
+            c.address
+            for c in args
+            if not decided_at_output_grain(c.address, aggregates, environment)
+        )
+        if undecided:
+            raise UnresolvableQueryException(
+                f"WHERE atom {placement.atom} reads {undecided} but could only "
+                f"be placed after the aggregates {[c.address for c in aggregates]} "
+                f"({placement.reason.value}); they would never see it."
+            )
