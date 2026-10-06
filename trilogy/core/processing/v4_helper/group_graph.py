@@ -41,7 +41,6 @@ from trilogy.core.processing.node_generators.presence_probe import is_presence_p
 
 from .concept_graph import (
     _statement_scoped_relation_members,
-    coalescing_relation,
     computed_origin_relation_members,
     condition_stage_of_label,
 )
@@ -1120,11 +1119,12 @@ def _rowset_relation_keys(
     if not rowsets:
         return frozenset()
     statement = _statement_scoped_relation_members(environment)
+    coalescing = environment.domain_graph.coalescing_relation_members()
     keys: set[str] = set()
     for canonical, members in environment.scoped_join_key_groups.items():
         relation = {canonical, *members}
         if not relation & statement or (
-            coalescing_relation(relation, environment) and not relation & input_grain
+            relation & coalescing and not relation & input_grain
         ):
             continue
         concepts = [

@@ -368,7 +368,9 @@ class DomainGraph:
 
     def coalescing_relation_members(self) -> set[str]:
         """Raw (uncanonicalized) endpoints of declared INCOMPARABLE relations —
-        the authored key members of coalescing (`full`/`union`) joins. Each
+        the authored key members of coalescing (`full`/`union`) joins. Only a
+        query or rowset-body join declares one: a global FULL `merge` is EQUAL,
+        so a planning build's graph holds statement-scoped ones alone. Each
         pairs by its own physical column; equality on them is part of the
         authored join semantics and must never be inferred away. EQUAL
         (`merge`) declarations are excluded: their domains are declared

@@ -770,27 +770,16 @@ def _aggregate_axis_members(
     row per axis row, which no merge above can recombine."""
     widen: set[str] = set()
     coalesced: set[str] = set()
+    coalescing = environment.domain_graph.coalescing_relation_members()
     for addr in _aggregate_relation_members(
         concept, environment, aggregate_input_grain
     ):
         relation = {addr} | _relation_mates(addr, environment)
         if relation & out_grain:
             widen.add(addr)
-        elif coalescing_relation(relation, environment):
+        elif relation & coalescing:
             coalesced |= relation
     return frozenset(widen), frozenset(coalesced)
-
-
-def coalescing_relation(relation: set[str], environment: BuildEnvironment) -> bool:
-    """Whether a statement declares the relation INCOMPARABLE (`union join`)."""
-    from trilogy.core.domain_graph import DomainRelation, EdgeScope
-
-    return any(
-        e.scope is EdgeScope.STATEMENT
-        and e.relation is DomainRelation.INCOMPARABLE
-        and {e.source, e.target} & relation
-        for e in environment.domain_graph.edges
-    )
 
 
 def _grouping_pass_sibling_axis_members(
