@@ -358,6 +358,8 @@ class PredicatePushdown(OptimizationRule):
                 return False
             if not _predicate_safe_past_grouping(candidate, branch):
                 return False
+            if not _parent_holds_the_same_concepts(candidate, branch):
+                return False
             join_derived_addrs = {x.address for x in branch.join_derived_concepts}
             if row_conditions & join_derived_addrs:
                 return False
