@@ -66,6 +66,33 @@ def _row_keys(concept: Concept) -> set[str]:
     return set(concept.grain.components) or {concept.address}
 
 
+def _entity_keys(
+    concept: Concept,
+    local: Mapping[str, Concept],
+    environment: Environment,
+    seen: frozenset[str] = frozenset(),
+) -> set[str]:
+    """The entities `concept` is a function of, as the keyspace reads them
+    (`keyspace._entity_keys`): a key is its own entity unless derived (`c` of
+    `customer_id as c`), and a derived grouping value (`count(..) by status`)
+    stands for the rows it is keyed on, never as an input another pinned value
+    could be derived beside."""
+    if concept.purpose == Purpose.KEY and concept.derivation != Derivation.BASIC:
+        return {concept.address}
+    if concept.derivation == Derivation.BASIC and concept.lineage is not None:
+        reads = {r.address for r in concept.lineage.concept_arguments}
+    else:
+        reads = _row_keys(concept) - {concept.address}
+    out: set[str] = set()
+    for address in reads - seen:
+        read = _lookup(address, local, environment)
+        if read is not None:
+            out |= _entity_keys(read, local, environment, seen | {concept.address})
+    return out or (
+        {concept.address} if concept.derivation != Derivation.CONSTANT else set()
+    )
+
+
 def _own_keys(expr: Any, environment: Environment, anchors: set[str]) -> set[str]:
     """The keys of the rows `expr` reads. An inline aggregate is read on its
     `by` (a bare one on the select's grain), never on its argument's rows."""
@@ -94,8 +121,37 @@ def select_anchors(
     for ref in base.selection:
         concept = _lookup(ref.address, base.local_concepts, environment)
         if concept is not None:
-            out[concept.address] = graph.fd_minimal(_row_keys(concept))
+            out[concept.address] = graph.fd_minimal(
+                _entity_keys(concept, base.local_concepts, environment)
+            )
     return out
+
+
+def _reads(address: str, target: str, environment: Environment) -> bool:
+    """`address` is derived from `target`: a select key computed from the
+    pinned value cannot be one of its inputs."""
+    seen: set[str] = set()
+    stack = [address]
+    while stack:
+        current = stack.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        concept = _lookup(current, {}, environment)
+        if concept is None or concept.lineage is None:
+            continue
+        for ref in concept.lineage.concept_arguments:
+            if ref.address == target:
+                return True
+            stack.append(ref.address)
+    return False
+
+
+def _always_beside(own: set[str], key: str, graph: DomainGraph) -> bool:
+    """No select row holds `key` without the rows `expr` reads: those rows
+    hold every `key` (`covers`), or every `key` row carries them (an order
+    carries its customer)."""
+    return graph.covers(own, key) or all(graph.determines({key}, o) for o in own)
 
 
 def pin_keys(
@@ -122,11 +178,15 @@ def pin_keys(
     for child in _child_exprs(expr):
         out |= pin_keys(child, owner, anchors, environment, graph, named)
     if is_null_absorbing(expr):
-        keys: set[str] = set().union(
-            *(k for address, k in anchors.items() if address != owner)
-        ) - {owner}
+        keys = {
+            k
+            for address, ks in anchors.items()
+            if address != owner
+            for k in ks
+            if k != owner and not (owner and _reads(k, owner, environment))
+        }
         own = _own_keys(expr, environment, keys)
-        out |= {k for k in keys - own if not graph.covers(own, k)}
+        out |= {k for k in keys - own if not _always_beside(own, k, graph)}
     return frozenset(out)
 
 
