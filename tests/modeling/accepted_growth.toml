@@ -6,3 +6,6 @@ reason = "the user region's domain LEFT-joins one CTE of order_items INNER order
 
 ["tpc_ds_duckdb/zquery11.log"]
 reason = "applies the outer row WHERE (channel, year) that main dropped; the extra scan is the cost of a correct plan"
+
+["tpc_ds_duckdb/zquery84.log"]
+reason = "customername (coalesce) beside the hidden ss line keys is evaluated on the select's row (grain pin, docs/grain_pin.md); the WHERE null-rejects the line so no padded row survives, but proving that needs the keyspace the build runs before; rows-checked"

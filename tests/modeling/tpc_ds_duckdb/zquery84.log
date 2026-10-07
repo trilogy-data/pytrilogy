@@ -1,5 +1,5 @@
 query_id = "84"
-gen_length = 1752
+gen_length = 1872
 preql_size = 676
 comp_size = 606
 generated_sql = """
@@ -7,7 +7,9 @@ generated_sql = """
 WITH 
 thoughtful as (
 SELECT
-    \"ss_store_returns\".\"SR_CDEMO_SK\" as \"customer_current_demographics_sk\"
+    \"ss_store_returns\".\"SR_CDEMO_SK\" as \"customer_current_demographics_sk\",
+    \"ss_store_returns\".\"SR_ITEM_SK\" as \"ss_item_sk\",
+    \"ss_store_returns\".\"SR_TICKET_NUMBER\" as \"ss_ticket_number\"
 FROM
     \"memory\".\"store_returns\" as \"ss_store_returns\"
 WHERE
@@ -15,7 +17,7 @@ WHERE
 )
 SELECT
     \"customer_customers\".\"C_CUSTOMER_ID\" as \"customer_id\",
-    CONCAT(coalesce(\"customer_customers\".\"C_LAST_NAME\",''), ', ', coalesce(\"customer_customers\".\"C_FIRST_NAME\",'')) as \"customername\"
+    (CONCAT(coalesce(\"customer_customers\".\"C_LAST_NAME\",''), ', ', coalesce(\"customer_customers\".\"C_FIRST_NAME\",''))) as \"customername\"
 FROM
     \"memory\".\"customer\" as \"customer_customers\"
     INNER JOIN \"thoughtful\" on \"customer_customers\".\"C_CURRENT_CDEMO_SK\" is not distinct from \"thoughtful\".\"customer_current_demographics_sk\"
