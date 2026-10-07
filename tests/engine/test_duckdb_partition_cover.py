@@ -115,3 +115,23 @@ def test_one_complete_source_outranks_a_covering_union(query):
     assert "rollup" in sql
     assert "pub_A" not in sql and "pub_B" not in sql
     assert len(rows) == (8 if query.startswith("select id") else 2)
+
+
+DERIVED_OVER_PARTITIONS = (
+    CONCEPTS
+    + "auto band <- case when x > 1.5 then 'high' else 'low' end;\n"
+    + _pub("A")
+    + _pub("B")
+)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "select id, band where band = 'high' order by id asc;",
+        "select id where band = 'high' order by id asc;",
+    ],
+)
+def test_where_on_a_derivation_over_partitions_filters(query):
+    rows, _ = _run(DERIVED_OVER_PARTITIONS, query)
+    assert [r[0] for r in rows] == ["A-MUN-2", "A-OSM-2", "B-MUN-2", "B-OSM-2"]

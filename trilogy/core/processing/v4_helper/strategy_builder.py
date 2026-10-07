@@ -1577,9 +1577,10 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
     finer-grain sibling can spuriously look able to "render" a global
     aggregate's output by recomputing the aggregate's inner expression (the
     bare CASE, silently dropping the `avg()`). Only a row-preserving
-    contributor is foldable: a SelectNode, a plain (non-grouping) MergeNode
-    such as a multi-table root scan, or a virt-filter FilterNode (a CASE-WHEN
-    projection with no row-reducing WHERE/semijoin).
+    contributor is foldable: a SelectNode or plain (non-grouping) MergeNode
+    such as a multi-table root scan, with no WHERE of its own, or a
+    virt-filter FilterNode (a CASE-WHEN projection with no row-reducing
+    WHERE/semijoin).
 
     Widen B's OUTPUT with A's outputs and B's INPUT with A's inputs (the source
     columns A consumed). `resolve_concept_map` then sources a passthrough from
@@ -1614,10 +1615,16 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
             if region_reads(a) != b_regions:
                 continue
             # Never dissolve a row-shape barrier into a row sibling. Foldable:
-            # SelectNode, non-grouping MergeNode, or a row-preserving FilterNode
-            # (a CASE-WHEN virt-filter with no row-reducing WHERE or semijoin).
-            if a.force_group or not (
-                isinstance(a, (SelectNode, MergeNode)) or _is_row_preserving_filter(a)
+            # an unfiltered SelectNode or non-grouping MergeNode, or a
+            # row-preserving FilterNode (a CASE-WHEN virt-filter with no
+            # row-reducing WHERE or semijoin).
+            if (
+                a.force_group
+                or a.conditions is not None
+                or not (
+                    isinstance(a, (SelectNode, MergeNode))
+                    or _is_row_preserving_filter(a)
+                )
             ):
                 continue
             if any(
