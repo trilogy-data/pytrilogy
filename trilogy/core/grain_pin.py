@@ -94,14 +94,20 @@ def _entity_keys(
 
 
 def _own_keys(expr: Any, environment: Environment, anchors: set[str]) -> set[str]:
-    """The keys of the rows `expr` reads. An inline aggregate is read on its
-    `by` (a bare one on the select's grain), never on its argument's rows."""
+    """The entities of the rows `expr` reads. An inline aggregate is read on
+    its `by` (a bare one on the select's grain), never on its argument's
+    rows."""
     if isinstance(expr, ConceptRef):
         read = _lookup(expr.address, {}, environment)
-        return _row_keys(read) if read is not None else set()
+        return _entity_keys(read, {}, environment) if read is not None else set()
     if isinstance(expr, AggregateWrapper):
-        return {b.address for b in expr.by} if expr.by else set(anchors)
-    out: set[str] = set()
+        if not expr.by:
+            return set(anchors)
+        out: set[str] = set()
+        for b in expr.by:
+            out |= _own_keys(b, environment, anchors)
+        return out
+    out = set()
     for child in _child_exprs(expr):
         out |= _own_keys(child, environment, anchors)
     return out
