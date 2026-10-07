@@ -595,6 +595,17 @@ def _propagate_raw_filters_to_d1_roots(
     return touched
 
 
+def _scan_columns(ds: BuildDatasource, environment: BuildEnvironment) -> frozenset[str]:
+    """The addresses `ds` holds as this plan's concept, not a namesake: a
+    select-pinned value is not the column persisting it (`grain_pin`)."""
+    out: set[str] = set()
+    for c in ds.output_concepts:
+        planned = environment.concepts.get(c.address)
+        if planned is None or planned.canonical_address == c.canonical_address:
+            out.add(c.address)
+    return frozenset(out)
+
+
 def _color_phases(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -2238,7 +2249,7 @@ def build_group_graph(
         concept_graph,
         concept_edges,
         concept_attrs,
-        [frozenset(c.address for c in ds.output_concepts) for ds in datasources],
+        [_scan_columns(ds, environment) for ds in datasources],
     )
     _color_phases(group_graph, group_edges, condition_group_ids)
     # Members of an authored join-axis equality whose collapsed side keeps
