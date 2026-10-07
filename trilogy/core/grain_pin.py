@@ -15,7 +15,7 @@ persisted at the reads' own grain answers only a select its reads cover.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any, TypeGuard
 
 from trilogy.core.domain_graph import DomainGraph
@@ -54,16 +54,6 @@ def is_null_absorbing(expr: Any) -> TypeGuard[Function]:
             and any(isinstance(a, CaseElse) for a in expr.arguments)
         )
     )
-
-
-def absorbs_null(expr: Any) -> bool:
-    """A NULL-absorbing function in a row expression, outside any inline
-    aggregate (whose argument is read on the aggregate's input rows)."""
-    if is_null_absorbing(expr):
-        return True
-    if isinstance(expr, AggregateWrapper):
-        return False
-    return any(absorbs_null(child) for child in _child_exprs(expr))
 
 
 def _row_keys(concept: Concept) -> set[str]:
@@ -108,28 +98,43 @@ def select_anchors(
     return out
 
 
-def grain_pin(
+def pin_keys(
     expr: Any,
     owner: str | None,
     anchors: Mapping[str, frozenset[str]],
     environment: Environment,
     graph: DomainGraph,
-) -> Function | None:
-    """`expr` evaluated on the select's row: the select keys, but `owner`'s
-    own, that the rows `expr` reads do not cover become its inputs. None when
-    they cover every one, so the plain lineage (and any column persisting it)
-    stands."""
-    keys: set[str] = set().union(
-        *(k for address, k in anchors.items() if address != owner)
-    ) - {owner}
-    own = _own_keys(expr, environment, keys)
-    uncovered = sorted(k for k in keys - own if not graph.covers(own, k))
-    if not uncovered:
-        return None
+    named: Callable[[str], frozenset[str]],
+) -> frozenset[str]:
+    """The select keys `expr` must take as inputs: for each NULL-absorbing
+    expression in it, the keys (but `owner`'s own) the rows it reads do not
+    cover, and whatever a derivation it reads by name is pinned to (`named`):
+    a value computed from a pinned one is pinned with it. An inline aggregate
+    pins its own argument when it is built."""
+    if isinstance(expr, ConceptRef):
+        read = _lookup(expr.address, {}, environment)
+        if read is None or read.derivation != Derivation.BASIC:
+            return frozenset()
+        return named(read.address)
+    if isinstance(expr, AggregateWrapper):
+        return frozenset()
+    out: set[str] = set()
+    for child in _child_exprs(expr):
+        out |= pin_keys(child, owner, anchors, environment, graph, named)
+    if is_null_absorbing(expr):
+        keys: set[str] = set().union(
+            *(k for address, k in anchors.items() if address != owner)
+        ) - {owner}
+        own = _own_keys(expr, environment, keys)
+        out |= {k for k in keys - own if not graph.covers(own, k)}
+    return frozenset(out)
+
+
+def grain_pin(expr: Any, keys: frozenset[str], environment: Environment) -> Function:
     return Function(
         operator=FunctionType.GRAIN_PIN,
         output_datatype=expr.output_datatype,
         output_purpose=expr.output_purpose,
-        arguments=[expr, *(environment.concepts[k].reference for k in uncovered)],
+        arguments=[expr, *(environment.concepts[k].reference for k in sorted(keys))],
         arg_count=-1,
     )

@@ -12,6 +12,7 @@ from typing import (
     Any,
     ClassVar,
     Self,
+    TypeGuard,
 )
 
 from trilogy.constants import (
@@ -47,7 +48,7 @@ from trilogy.core.exceptions import (
     InvalidSyntaxException,
     UnionOutputResolutionError,
 )
-from trilogy.core.grain_pin import absorbs_null, grain_pin, is_null_absorbing
+from trilogy.core.grain_pin import grain_pin, is_null_absorbing, pin_keys
 from trilogy.core.models.author import (
     AggregateGrouping,
     AggregateWrapper,
@@ -2938,6 +2939,7 @@ class Factory:
         # building a pin's own expression: it is evaluated on the select's row
         # already, so nothing inline in it is pinned again
         self._in_grain_pin = False
+        self._pin_memo: dict[str, frozenset[str]] = {}
         # Suffix for virtual concepts minted for CROSS-ROW expressions
         # (aggregates/windows/group-to). The WHERE-clause factory sets this so
         # an anonymous aggregate nested in a WHERE expression gets a DIFFERENT
@@ -3185,11 +3187,7 @@ class Factory:
             if (
                 isinstance(arg, (AggregateWrapper, FilterItem, WindowItem))
                 or (isinstance(arg, Function) and arg.operator == FunctionType.GROUP)
-                or (
-                    base.operator != FunctionType.GRAIN_PIN
-                    and is_null_absorbing(arg)
-                    and self._grain_pin(arg, None)
-                )
+                or (base.operator != FunctionType.GRAIN_PIN and self._pins_inline(arg))
             ):
                 narg, _ = self.instantiate_concept(arg)
                 raw_args.append(narg)
@@ -3335,34 +3333,58 @@ class Factory:
     def _(self, base: Concept) -> BuildConcept:
         return self._build_concept(base)
 
-    def _grain_pin(self, expr: Any, owner: str | None) -> Function | None:
-        if not self.select_anchors or not absorbs_null(expr):
-            return None
-        if owner is None and self._in_grain_pin:
-            return None
-        return grain_pin(
+    def _pin_keys(self, expr: Any, owner: str | None) -> frozenset[str]:
+        if not self.select_anchors:
+            return frozenset()
+        return pin_keys(
             expr,
             owner,
             self.select_anchors,
             self.environment,
             assemble_full_graph(self.environment, self.domain_graph),
+            self._named_pin_keys,
         )
 
+    def _named_pin_keys(self, address: str) -> frozenset[str]:
+        known = self._pin_memo.get(address)
+        if known is None:
+            self._pin_memo[address] = frozenset()  # a cycle pins nothing
+            concept = self.environment.concepts[address]
+            known = self._pin_memo[address] = self._pin_keys(concept.lineage, address)
+        return known
+
     def _grain_pinned(self, base: Concept) -> Concept:
-        """A NULL-absorbing row expression read by a select, pinned to the
-        select's keys like a bare aggregate (see `grain_pin`)."""
-        if base.derivation != Derivation.BASIC or base.lineage is None:
+        """A row expression read by a select, pinned to the select's keys like
+        a bare aggregate where it absorbs NULLs or reads a value that does
+        (see `grain_pin`)."""
+        if (
+            base.derivation != Derivation.BASIC
+            or base.lineage is None
+            or (
+                isinstance(base.lineage, Function)
+                and base.lineage.operator == FunctionType.GRAIN_PIN
+            )
+        ):
             return base
-        pinned = self._grain_pin(base.lineage, base.address)
-        return base if pinned is None else dc_replace(base, lineage=pinned)
+        keys = self._pin_keys(base.lineage, base.address)
+        if not keys:
+            return base
+        return dc_replace(base, lineage=grain_pin(base.lineage, keys, self.environment))
+
+    def _pins_inline(self, expr: Any) -> TypeGuard[Function]:
+        """An inline NULL-absorbing expression the select pins: it builds as
+        its own concept, as an inline aggregate does."""
+        return (
+            not self._in_grain_pin
+            and is_null_absorbing(expr)
+            and bool(self._pin_keys(expr, None))
+        )
 
     def _nests(self, expr: Any) -> Any:
         """`expr` if it builds as its own concept: an aggregate, window or
         filter, or an inline NULL-absorbing expression the select pins."""
         nested = requires_concept_nesting(expr)
-        if nested is None and is_null_absorbing(expr) and self._grain_pin(expr, None):
-            return expr
-        return nested
+        return expr if nested is None and self._pins_inline(expr) else nested
 
     def _fd_minimal_lineage(self, lineage: Any) -> Any:
         """An aggregate's `by` less every member the rest functionally
