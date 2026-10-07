@@ -1,9 +1,10 @@
 """Models shared across test modules.
 
 The customers twin is a materialization oracle: `CUSTOMERS_MATERIALIZED`
-stores as columns what `CUSTOMERS_DERIVED` derives, so every query returns
-the same rows on both. Customer 3 (cat) has no order: the `~customer_id`
-region."""
+persists as columns, at their own grain, the derivations `CUSTOMERS_DERIVED`
+only derives, so every query returns the same rows on both: a select reads a
+persisted column only where it answers that select (`grain_pin`). Customer 3
+(cat) has no order: the `~customer_id` region."""
 
 _CUSTOMER_BASE = """
 key customer_id int;
@@ -27,14 +28,7 @@ select 101, 1, null, 20 union all
 select 102, 2, date '2026-01-02', 30
 """
 
-CUSTOMERS_DERIVED = _CUSTOMER_BASE + f"""
-root datasource orders (
-    order_id: order_id, customer_id: ~customer_id,
-    delivery_date: delivery_date, amount: amount,
-)
-grain (order_id)
-query '''{_ORDER_ROWS}''';
-
+_CUSTOMER_DERIVATIONS = """
 auto status <- case when delivery_date is not null then 'delivered' else 'in-transit' end;
 auto undelivered <- delivery_date is null;
 auto amount_or_zero <- coalesce(amount, 0);
@@ -44,15 +38,16 @@ auto order_seq <- row_number order_id over customer_id order by amount asc;
 auto order_rank <- rank order_id by amount desc;
 """
 
-CUSTOMERS_MATERIALIZED = _CUSTOMER_BASE + f"""
-property order_id.status string;
-property order_id.undelivered bool;
-property order_id.amount_or_zero int;
-property order_id.label string;
-property order_id.flag int;
-property order_id.order_seq int;
-property order_id.order_rank int;
+CUSTOMERS_DERIVED = _CUSTOMER_BASE + f"""
+root datasource orders (
+    order_id: order_id, customer_id: ~customer_id,
+    delivery_date: delivery_date, amount: amount,
+)
+grain (order_id)
+query '''{_ORDER_ROWS}''';
+""" + _CUSTOMER_DERIVATIONS
 
+CUSTOMERS_MATERIALIZED = _CUSTOMER_BASE + _CUSTOMER_DERIVATIONS + f"""
 root datasource orders (
     order_id: order_id, customer_id: ~customer_id,
     delivery_date: delivery_date, amount: amount,

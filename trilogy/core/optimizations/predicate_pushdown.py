@@ -164,6 +164,20 @@ def _parent_covers_condition(parent: CTE | UnionCTE, condition) -> bool:
     )
 
 
+def _parent_holds_the_same_concepts(candidate: BuildConceptArgs, parent: CTE) -> bool:
+    """Every concept the predicate reads is the parent's concept of that
+    address, not only a namesake: a select-pinned value is not the column
+    persisting it at its own grain (`grain_pin`)."""
+    held = {c.address: c.canonical_address for c in parent.output_columns}
+    if parent.is_root_datasource and parent.source.base_datasource is not None:
+        for c in parent.source.base_datasource.output_concepts:
+            held.setdefault(c.address, c.canonical_address)
+    return all(
+        held.get(x.address, x.canonical_address) == x.canonical_address
+        for x in candidate.row_arguments
+    )
+
+
 def _parent_materialized_addrs(parent: CTE | UnionCTE) -> set[str]:
     """Addresses a parent CTE exposes as plain output columns: a non-empty
     ``source_map`` entry means the concept is pulled from upstream rather than
@@ -514,6 +528,8 @@ class PredicatePushdown(OptimizationRule):
                 f"CTE {parent_cte.name} is null-extended by {cte.name}'s outer join "
                 f"and {candidate} is not null-rejecting; not pushing"
             )
+            return False
+        if not _parent_holds_the_same_concepts(candidate, parent_cte):
             return False
         materialized = {k for k, v in parent_cte.source_map.items() if v != []}
 
