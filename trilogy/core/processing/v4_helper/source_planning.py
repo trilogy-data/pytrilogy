@@ -62,6 +62,7 @@ from trilogy.core.processing.v4_helper.constants import ROW_SHAPE_BARRIER_DERIVA
 from trilogy.core.processing.v4_helper.functional_dependency import build_fd_closure
 from trilogy.core.processing.v4_helper.history import V4History
 from trilogy.core.processing.v4_helper.network_build import (
+    absorbs_null,
     build_source_network,
     connector_join_keys,
     rollup_concepts_by_node,
@@ -1694,19 +1695,13 @@ def _cross_component_source(request: SourceRequest) -> StrategyNode | None:
 
 
 def _filters_a_partial_derivation(request: SourceRequest, node: StrategyNode) -> bool:
-    """The WHERE reads a derivation `node` computed over a partial scan's rows
-    alone: on a row that scan lacks it is NULL, not its value there
-    (`coalesce(ret, 0)` is 0), so a filter above the join tests the wrong one."""
+    """The WHERE reads a NULL-absorbing derivation `node` computed over a
+    partial scan's rows alone: on a row that scan lacks it is NULL, not its
+    value there (`coalesce(ret, 0)` is 0), so a filter above the join tests
+    the wrong one."""
     assert request.conditions is not None
-    stored = {
-        column.concept.address
-        for datasource in request.graph.scope.datasources
-        for column in datasource.columns
-    }
     args = {
-        c.address
-        for c in condition_row_args(request.conditions)
-        if c.derivation == Derivation.BASIC and c.address not in stored
+        c.address for c in condition_row_args(request.conditions) if absorbs_null(c)
     }
     return any(c.address in args for c in node.partial_concepts)
 

@@ -16,15 +16,18 @@ search it feeds.
 
 from __future__ import annotations
 
-from trilogy.core.enums import Derivation, Granularity, Purpose
+from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
 from trilogy.core.graph_models import (
     ReferenceGraph,
     datasource_has_filter_sensitive_aggregate,
 )
 from trilogy.core.models.build import (
+    BuildCaseElse,
     BuildConcept,
     BuildDatasource,
+    BuildFunction,
     BuildGrain,
+    BuildParenthetical,
     BuildUnionDatasource,
     BuildWhereClause,
 )
@@ -441,6 +444,35 @@ def terminal_addresses(terminals: list[BuildConcept]) -> list[str]:
     )
 
 
+def _concept(address: str, environment: BuildEnvironment) -> BuildConcept | None:
+    return environment.concepts.get(address) or environment.canonical_concepts.get(
+        address
+    )
+
+
+def absorbs_null(concept: BuildConcept | None) -> bool:
+    """A BASIC row value that takes a value where its inputs are NULL: a
+    COALESCE or a CASE with an ELSE in its lineage."""
+    if concept is None or concept.derivation is not Derivation.BASIC:
+        return False
+    return _expr_absorbs_null(concept.lineage)
+
+
+def _expr_absorbs_null(expr: object) -> bool:
+    if isinstance(expr, BuildConcept):
+        return absorbs_null(expr)
+    if isinstance(expr, BuildParenthetical):
+        return _expr_absorbs_null(expr.content)
+    if not isinstance(expr, BuildFunction):
+        return False
+    if expr.operator == FunctionType.COALESCE or (
+        expr.operator == FunctionType.CASE
+        and any(isinstance(arg, BuildCaseElse) for arg in expr.arguments)
+    ):
+        return True
+    return any(_expr_absorbs_null(arg) for arg in expr.arguments)
+
+
 def _decomposable(
     address: str,
     environment: BuildEnvironment,
@@ -468,9 +500,7 @@ def _decomposable(
         # won, which is the exact collapse the probe exists to prevent. It is
         # pinned to its own side by `_datasource_renders_probe`.
         return False
-    concept = environment.concepts.get(address) or environment.canonical_concepts.get(
-        address
-    )
+    concept = _concept(address, environment)
     if concept is None or concept.derivation is not Derivation.BASIC:
         return False
     lineage = concept.lineage
@@ -680,12 +710,16 @@ def _searched_terminals(
         if binding.strength is BindingStrength.FULL
     }
     sourced = {address for address in requested if address in bound}
-    # an inline derivation bound only partially is computed over the joined
-    # rows instead, where its inputs hold a value on every row
+    # a NULL-absorbing derivation a scan computes over only part of the rows
+    # is wrong on the rest (`coalesce(ret, 0)` is NULL there, not 0): it is
+    # computed over the joined rows instead, from its inputs
     return [
         address
         for address in requested
-        if address in full
+        if (
+            address in sourced
+            and (address in full or not absorbs_null(_concept(address, environment)))
+        )
         or not _decomposable(address, environment, sourced - {address}, equivalence)
     ]
 
