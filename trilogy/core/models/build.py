@@ -4460,6 +4460,7 @@ class Factory:
             base,
             self.environment,
             assemble_full_graph(self.environment, self.domain_graph),
+            self.scoped_merge_map,
         )
 
         materialized: dict[str, BuildConcept] = {}

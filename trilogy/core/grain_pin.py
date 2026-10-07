@@ -114,22 +114,25 @@ def _own_keys(expr: Any, environment: Environment, anchors: set[str]) -> set[str
 
 
 def select_anchors(
-    base: SelectLineage, environment: Environment, graph: DomainGraph
+    base: SelectLineage,
+    environment: Environment,
+    graph: DomainGraph,
+    merged: Mapping[str, str],
 ) -> dict[str, frozenset[str]] | None:
     """Each output's own row identity, or None when nothing is pinned: every
     output of a ROLLUP/CUBE select is a grouping key, evaluated on the rows the
     pass groups and never on its subtotal rows. FD-reduced per output, so a
     window's partition key (determined by the row it numbers) is not a row of
-    the select."""
+    the select. `merged` folds a statement join's source key into its target."""
     if base.grouping is not None:
         return None
     out: dict[str, frozenset[str]] = {}
     for ref in base.selection:
         concept = _lookup(ref.address, base.local_concepts, environment)
         if concept is not None:
-            out[concept.address] = graph.fd_minimal(
-                _entity_keys(concept, base.local_concepts, environment)
-            )
+            # a declared join's two keys are one select key
+            keys = _entity_keys(concept, base.local_concepts, environment)
+            out[concept.address] = graph.fd_minimal(merged.get(k, k) for k in keys)
     return out
 
 
