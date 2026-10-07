@@ -87,15 +87,15 @@ def _entity_keys(
     could be derived beside."""
     if concept.purpose == Purpose.KEY and concept.derivation != Derivation.BASIC:
         return {concept.address}
+    seen = seen | {concept.address}
     if concept.derivation == Derivation.BASIC and concept.lineage is not None:
-        reads = {r.address for r in concept.lineage.concept_arguments}
+        out = _expr_entities(concept.lineage, local, environment, seen, set())
     else:
-        reads = _row_keys(concept) - {concept.address}
-    out: set[str] = set()
-    for address in reads - seen:
-        read = _lookup(address, local, environment)
-        if read is not None:
-            out |= _entity_keys(read, local, environment, seen | {concept.address})
+        out = set()
+        for address in _row_keys(concept) - seen:
+            read = _lookup(address, local, environment)
+            if read is not None:
+                out |= _entity_keys(read, local, environment, seen)
     # a stored or rowset column with no key is its own row identity; a keyless
     # aggregate, metric or derived value has none to anchor on (an abstract
     # count resolves its grain through the very select it would anchor)
@@ -108,24 +108,36 @@ def _entity_keys(
     return {concept.address}
 
 
-def _own_keys(expr: Any, environment: Environment, anchors: set[str]) -> set[str]:
+def _expr_entities(
+    expr: Any,
+    local: Mapping[str, Concept],
+    environment: Environment,
+    seen: frozenset[str],
+    bare: set[str],
+) -> set[str]:
     """The entities of the rows `expr` reads. An inline aggregate is read on
-    its `by` (a bare one on the select's grain), never on its argument's
-    rows."""
+    its `by` (a bare one on `bare`, the select's grain), never on its
+    argument's rows."""
     if isinstance(expr, ConceptRef):
-        read = _lookup(expr.address, {}, environment)
-        return _entity_keys(read, {}, environment) if read is not None else set()
+        if expr.address in seen:
+            return set()
+        read = _lookup(expr.address, local, environment)
+        return _entity_keys(read, local, environment, seen) if read else set()
     if isinstance(expr, AggregateWrapper):
         if not expr.by:
-            return set(anchors)
+            return set(bare)
         out: set[str] = set()
         for b in expr.by:
-            out |= _own_keys(b, environment, anchors)
+            out |= _expr_entities(b, local, environment, seen, bare)
         return out
     out = set()
     for child in _child_exprs(expr):
-        out |= _own_keys(child, environment, anchors)
+        out |= _expr_entities(child, local, environment, seen, bare)
     return out
+
+
+def _own_keys(expr: Any, environment: Environment, anchors: set[str]) -> set[str]:
+    return _expr_entities(expr, {}, environment, frozenset(), anchors)
 
 
 def select_anchors(
@@ -222,6 +234,7 @@ def pin_keys(
     environment: Environment,
     graph: DomainGraph,
     named: Callable[[str], frozenset[str]],
+    merged: Mapping[str, str],
 ) -> frozenset[str]:
     """The select keys `expr` must take as inputs: for each NULL-absorbing
     expression in it, the keys (but `owner`'s own) the rows it reads do not
@@ -237,7 +250,7 @@ def pin_keys(
         return frozenset()
     out: set[str] = set()
     for child in _child_exprs(expr):
-        out |= pin_keys(child, owner, anchors, environment, graph, named)
+        out |= pin_keys(child, owner, anchors, environment, graph, named, merged)
     if is_null_absorbing(expr):
         reads = {r.address for r in expr.concept_arguments}
         keys = {
@@ -248,7 +261,7 @@ def pin_keys(
             for k in ks
             if k != owner and not (owner and _reads(k, owner, environment))
         }
-        own = _own_keys(expr, environment, keys)
+        own = {merged.get(k, k) for k in _own_keys(expr, environment, keys)}
         out |= {k for k in keys - own if not _always_beside(own, k, graph)}
     return frozenset(out)
 

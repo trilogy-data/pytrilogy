@@ -3343,6 +3343,7 @@ class Factory:
             self.environment,
             assemble_full_graph(self.environment, self.domain_graph),
             self._named_pin_keys,
+            self.domain_graph.canonical_map(),
         )
 
     def _named_pin_keys(self, address: str) -> frozenset[str]:
