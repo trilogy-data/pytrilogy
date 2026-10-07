@@ -170,18 +170,22 @@ def rowset_witness(
     cannot name, so it is not a region of the reader's plan (its rows are
     read as the base region's)."""
     canonical = scope_facts(body_scope, body_environment).canonical
-    contents = {
-        h.address: canonical.get(h.lineage.content.address, h.lineage.content.address)
+    # the body keys what it DECLARED (`local._t_st`, the pinned alias); its
+    # canonical spelling may be another pseudonym of the same value that the
+    # body never read (an earlier rowset's `local._a_st`, keyed on the order)
+    declared = {
+        h.address: h.lineage.content.address
         for h in handles
         if isinstance(h.lineage, BuildRowsetItem)
     }
+    contents = {h: canonical.get(a, a) for h, a in declared.items()}
     keys = {
-        handle: body.keys_by_address.get(content)
+        handle: body.keys_by_address.get(address)
         or frozenset(
             canonical.get(k, k)
-            for k in entity_keys(content, body_environment, body_scope)
+            for k in entity_keys(address, body_environment, body_scope)
         )
-        for handle, content in contents.items()
+        for handle, address in declared.items()
     }
     handles_of: dict[str, frozenset[str]] = {
         c: frozenset(h for h, hc in contents.items() if hc == c)

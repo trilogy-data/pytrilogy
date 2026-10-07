@@ -168,15 +168,26 @@ def test_rowset_reads_a_value_its_body_pinned(model: str, rowset_query: str):
     assert sorted_rows(executor, rowset_query) == PINNED_ROWS
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="an earlier rowset of the same name in the session changes the "
-    "reader's unread-region decision, dropping the body's pinned row",
-)
 def test_redefined_rowset_reads_the_same_rows():
     executor = executor_for(CUSTOMERS_DERIVED + CUSTOMER_ACTIVITY)
     sorted_rows(executor, KEYED + "select s.o, s.st;")
     assert sorted_rows(executor, PINNED[-1]) == PINNED_ROWS
+
+
+# `local._a_st` sorts before `local._t_st` as the status family's canonical
+# spelling; the witness of `t` keys its handles by what t's body declared
+@pytest.mark.parametrize("model", [CUSTOMERS_DERIVED, CUSTOMERS_MATERIALIZED])
+def test_an_earlier_rowsets_alias_does_not_respell_a_later_body(model: str):
+    executor = executor_for(model + CUSTOMER_ACTIVITY)
+    executor.execute_text("rowset a <- select customer_id as c, status as st;")
+    assert (
+        sorted_rows(
+            executor,
+            "rowset t <- select customer_id as c, order_id as o, status as st;"
+            " select t.o, t.st;",
+        )
+        == PINNED_ROWS
+    )
 
 
 @pytest.mark.parametrize("rowset_query,direct_query", FAMILY_PAIRS)

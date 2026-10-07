@@ -232,3 +232,22 @@ property user_id.name string;
     assert user_id.metadata.line_number == 1
     # Column positions should be captured
     assert user_id.metadata.column is not None
+
+
+def test_redefined_rowset_retires_the_prior_outputs():
+    env = Environment()
+    env.parse(
+        """key order_id int;
+property order_id.amount int;
+datasource orders (order_id: order_id, amount: amount) grain (order_id) address orders;
+rowset s <- select order_id as o, amount as a;
+"""
+    )
+    assert {"s.o", "s.a", "local._s_o", "local._s_a"} <= set(env.concepts.data)
+    env.parse("rowset s <- select order_id as o2;")
+    assert {"s.o2", "local._s_o2"} <= set(env.concepts.data)
+    assert not {"s.o", "s.a", "local._s_o", "local._s_a"} & set(env.concepts.data)
+    assert env.concepts.rowset_alias_outputs == {"s.o2"}
+    with raises(UndefinedConceptException):
+        env.parse("select s.a;")
+    env.parse("select s.o2;")
