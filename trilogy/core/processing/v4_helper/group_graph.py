@@ -2343,6 +2343,7 @@ def _regraft_candidate(
     gid: str,
     *,
     allow_partial: bool,
+    environment: BuildEnvironment | None = None,
 ) -> str | None:
     """Find the richest row-compatible sibling to source `gid`'s inputs.
 
@@ -2367,6 +2368,12 @@ def _regraft_candidate(
     is preferred over the bare `sum_sales` aggregate it sits downstream of, so
     the aggregate folds in and the window, itself a required output, never
     has to be re-joined.
+
+    Grains are the same rows when each determines the other (`environment`
+    given): an aggregate by (item, order) beside a pinned BASIC at the item
+    holds its rows once per item. A BASIC reading a region domain keeps that
+    edge, so a spine the domain does not feed is padded in the BASIC's own
+    merge.
     """
     current = attrs[gid]
     needed = set(current.input_concepts)
@@ -2404,7 +2411,9 @@ def _regraft_candidate(
             # right one is chosen by depth below, not by derivation type.
             if not allow_partial or current.derivation != Derivation.BASIC:
                 continue
-            if cattrs.grain_components != current.grain_components:
+            if not _same_rows(
+                cattrs.grain_components, current.grain_components, environment
+            ):
                 continue
             if not (needed - covered) <= pred_outputs:
                 continue
@@ -2426,6 +2435,20 @@ def _regraft_candidate(
             best_score = score
             best_gid = candidate
     return best_gid
+
+
+def _same_rows(
+    a: frozenset[str], b: frozenset[str], environment: BuildEnvironment | None
+) -> bool:
+    """Two grains that key the same rows: equal, or each determining the
+    other's extra components (an order beside the item that belongs to it)."""
+    if a == b:
+        return True
+    if environment is None or not a or not b:
+        return False
+    return (not (b - a) or _grain_determines(environment, a, b - a)) and (
+        not (a - b) or _grain_determines(environment, b, a - b)
+    )
 
 
 def _grain_needed_by_independent_sibling(
@@ -2767,7 +2790,12 @@ def _regraft_group_sources(
             )
         if parent_gid is None:
             parent_gid = _regraft_candidate(
-                group_graph, group_edges, attrs, gid, allow_partial=True
+                group_graph,
+                group_edges,
+                attrs,
+                gid,
+                allow_partial=True,
+                environment=environment,
             )
         if parent_gid is None or group_graph.has_edge(parent_gid, gid):
             continue

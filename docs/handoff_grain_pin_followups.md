@@ -52,13 +52,17 @@ as plain cases; each fix is a rule, named here so a regression has a home.
 
 ## Plan size
 
-6. **A pinned row value builds its own copy of the select's rows.**
-   `test_forked_full_column_set` (`tests/engine/test_duckdb_partial_key_assembly.py`)
-   went 6 -> 10 joins, rows right. The pinned `order_status` group reads both
-   region domains plus the order dimension and is INNER-joined back null-safely
-   on every key, while the main row stream already holds those rows. The fix is
-   to evaluate a pinned BASIC on the FINAL merge's rows (the group-fold machinery,
-   `_read_parents_in_place`, only folds into aggregates today).
+6. **A pinned row value built its own copy of the select's rows** - CLOSED.
+   `test_forked_full_column_set` is back to 7 joins. The pinned `order_status`
+   group had read root, both region domains and the order dimension itself and
+   was INNER-joined back to the item-grain aggregate holding the same rows.
+   The 7-join plan had only ever arisen because `item_id` was a pin anchor,
+   so the BASIC read the aggregate as `item_id`'s producer; once the anchors
+   narrowed to `product_id` the edge vanished. Rule: `_regraft_candidate`'s
+   same-grain spine test compares rows, not key sets (`_same_rows`: grains
+   that determine each other, an aggregate by (item, order) beside a BASIC
+   at the item), so the BASIC rides the sibling's stream and the FINAL
+   computes the CASE on it.
 7. **An aggregate under a pinned reader takes the region's rows.**
    `min(amount) by user_id` is fed the user region once its reader is no longer
    solid (`region_domains`: an aggregate grouped by a carried key is evaluated
