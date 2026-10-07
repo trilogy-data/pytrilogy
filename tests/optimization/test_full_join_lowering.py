@@ -6,8 +6,11 @@ capability flag flipped off, so the only difference between the two SQL strings
 is the rewrite under test.
 """
 
+from decimal import Decimal
+
 import pytest
 
+from tests.helpers.rows import sorted_rows
 from trilogy import Dialects
 from trilogy.core.models.environment import Environment
 from trilogy.core.optimizations.full_join_lowering import UnsupportedFullJoinError
@@ -267,8 +270,13 @@ def test_suggested_null_reject_actually_unblocks_lowering():
         NoFullJoinDuckDB().generate_queries(executor.environment, statements)[0]
     )
 
+    # the WHERE makes the customer side the population: the FULL narrows to
+    # a LEFT, so there is nothing left to lower
     assert "FULL JOIN" not in sql.upper(), sql
-    assert '"_spine' in sql, sql
+    assert sorted_rows(executor, "where cid is not null " + PARTIAL_QUERY) == [
+        (1, "a", None),
+        (2, "b", Decimal("5.0")),
+    ]
 
 
 def test_suggested_complete_binding_actually_unblocks_lowering():

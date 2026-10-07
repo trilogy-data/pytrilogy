@@ -3194,7 +3194,7 @@ class Factory:
         for arg in base.arguments:
             if self._by_scoped and isinstance(arg, ConceptRef):
                 inlined = inline_basic(arg, self.environment)
-                if inlined is not arg and absorbs_null(inlined):
+                if inlined is not arg and self._pins_inline_tree(inlined):
                     arg = inlined
             # to do proper discovery, we need to inject virtual intermediate concepts
             # we don't use requires_concept_nesting here by design; a nested
@@ -3376,6 +3376,7 @@ class Factory:
         if (
             base.derivation != Derivation.BASIC
             or base.lineage is None
+            or PRESENCE_PROBE_PREFIX in base.name
             or (
                 isinstance(base.lineage, Function)
                 and base.lineage.operator == FunctionType.GRAIN_PIN
@@ -3387,6 +3388,9 @@ class Factory:
             return base
         lineage = inline_basic(base.lineage, self.environment)
         return dc_replace(base, lineage=grain_pin(lineage, keys, self.environment))
+
+    def _pins_inline_tree(self, expr: Any) -> bool:
+        return absorbs_null(expr) and bool(self._pin_keys(expr, None))
 
     def _pins_inline(self, expr: Any) -> TypeGuard[Function]:
         """An inline NULL-absorbing expression the select pins: it builds as

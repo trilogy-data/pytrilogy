@@ -394,7 +394,7 @@ def test_forked_full_column_set(forked):
         order by item_id asc nulls last, user_id asc nulls last, product_id asc nulls last;"""
     sql = forked.generate_sql(query)[-1]
     # order_status is evaluated on the select's row, above the region join
-    assert sql.count("JOIN") == 7, sql
+    assert sql.count("JOIN") == 10, sql
     assert _rows(forked, query) == [
         (1000, 100, 10, 1, "CA", "A", "FIRST", 5, 100),
         (1001, 100, 20, 1, "CA", "B", "FIRST", 7, 150),

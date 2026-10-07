@@ -8,7 +8,7 @@ from tests.helpers.planning import plan
 from trilogy.core.processing.v4_helper import region_reads
 
 QUERY = """select customer_id,
-    sum(case when undelivered then 1 else 0 end) as n_undelivered,
+    sum(cast(delivery_date is null as int)) as n_undelivered,
     sum(amount) as total,
     count(order_id) by * as n_orders,
     count(customer_id) by * as n_customers;"""
@@ -24,7 +24,7 @@ def planned():
 @pytest.mark.parametrize(
     "address, expected",
     [
-        # the CASE answers 0 on a padded row, where no row at all is NULL
+        # IS NULL answers true on a padded row, where no row at all is NULL
         ("local.n_undelivered", True),
         # a plain concept argument is NULL on the padding
         ("local.total", False),

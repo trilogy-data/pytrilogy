@@ -86,7 +86,10 @@ def inline_basic(expr: Any, environment: Environment) -> Any:
         if read is None or read.derivation != Derivation.BASIC or not read.lineage:
             return expr
         return inline_basic(read.lineage, environment)
-    if isinstance(expr, AggregateWrapper):
+    # an inline aggregate or group() is its own concept over its own rows
+    if isinstance(expr, AggregateWrapper) or (
+        isinstance(expr, Function) and expr.operator == FunctionType.GROUP
+    ):
         return expr
     if isinstance(expr, Function):
         return dc_replace(
@@ -340,7 +343,9 @@ def grain_pin(expr: Any, keys: frozenset[str], environment: Environment) -> Func
     return Function(
         operator=FunctionType.GRAIN_PIN,
         output_datatype=expr.output_datatype,
-        output_purpose=expr.output_purpose,
+        output_purpose=(
+            expr.output_purpose if isinstance(expr, Function) else Purpose.PROPERTY
+        ),
         arguments=[expr, *(environment.concepts[k].reference for k in sorted(keys))],
         arg_count=-1,
     )

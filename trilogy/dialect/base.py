@@ -584,7 +584,7 @@ FUNCTION_MAP = {
     # generic types
     FunctionType.ALIAS: lambda x, types: f"{x[0]}",
     FunctionType.GROUP: lambda x, types: f"{x[0]}",
-    FunctionType.GRAIN_PIN: lambda x, types: f"{x[0]}",
+    FunctionType.GRAIN_PIN: lambda x, types: f"({x[0]})",
     FunctionType.CONSTANT: lambda x, types: f"{x[0]}",
     FunctionType.TYPED_CONSTANT: lambda x, types: f"{x[0]}",
     FunctionType.COALESCE: lambda x, types: f"coalesce({','.join(x)})",

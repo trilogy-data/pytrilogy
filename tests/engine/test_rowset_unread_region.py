@@ -162,11 +162,21 @@ def test_rowset_matches_direct_on_both_twins(
 
 
 @pytest.mark.parametrize("rowset_query", PINNED)
-def test_rowset_reads_a_value_its_body_pinned(
-    derived: Executor, materialized: Executor, rowset_query: str
-):
-    for executor in (derived, materialized):
-        assert sorted_rows(executor, rowset_query) == PINNED_ROWS
+@pytest.mark.parametrize("model", [CUSTOMERS_DERIVED, CUSTOMERS_MATERIALIZED])
+def test_rowset_reads_a_value_its_body_pinned(model: str, rowset_query: str):
+    executor = executor_for(model + CUSTOMER_ACTIVITY)
+    assert sorted_rows(executor, rowset_query) == PINNED_ROWS
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="an earlier rowset of the same name in the session changes the "
+    "reader's unread-region decision, dropping the body's pinned row",
+)
+def test_redefined_rowset_reads_the_same_rows():
+    executor = executor_for(CUSTOMERS_DERIVED + CUSTOMER_ACTIVITY)
+    sorted_rows(executor, KEYED + "select s.o, s.st;")
+    assert sorted_rows(executor, PINNED[-1]) == PINNED_ROWS
 
 
 @pytest.mark.parametrize("rowset_query,direct_query", FAMILY_PAIRS)

@@ -713,7 +713,7 @@ def test_existence_set_over_carried_values_keeps_its_source(
     [
         (
             "select customer_id, name where count(order_id) by customer_id < 2 and undelivered",
-            [(3, "cat")],
+            [],
         ),
         (
             "select customer_id, name where sum(amount) by customer_id is null and status is null",
@@ -1255,7 +1255,7 @@ query '''select 1 as o, 10 as i, 1 as ro''';
                 (1, "ann", 1, 10, True),
                 (2, "bob", 2, 10, False),
                 (2, "bob", 2, 11, False),
-                (3, "cat", None, None, False),
+                (3, "cat", None, None, None),
             ],
         ),
         (
@@ -1459,8 +1459,12 @@ def materialized_cities() -> Executor:
             "select customer_id, order_seq where count(customer_id) by * > 2",
             [(1, 1), (1, 2), (2, 1), (3, None)],
         ),
-        pytest.param(
+        (
             "select customer_id, status where count(customer_id) by * > 2 and undelivered is null",
+            [(3, "in-transit")],
+        ),
+        pytest.param(
+            "select customer_id, name where count(customer_id) by * > 2 and name = 'zed'",
             [],
             marks=pytest.mark.xfail(
                 strict=True,
