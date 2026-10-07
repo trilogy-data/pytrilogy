@@ -287,6 +287,19 @@ def _held_beside(reads: set[str], key: str, graph: DomainGraph) -> bool:
     return any(reads <= bound[datasource] for datasource in complete)
 
 
+def _co_held_only_beside(own: set[str], keys: set[str], graph: DomainGraph) -> bool:
+    """Several anchors that only ever meet on the expression's own rows: every
+    table holding them together holds its keys too (an item and a date meet on
+    the sale), so no row has them all without its reads."""
+    if len(keys) < 2:
+        return False
+    bound: dict[str, set[str]] = {}
+    for b in graph.binding_edges:
+        bound.setdefault(b.datasource, set()).add(b.concept)
+    holders = [concepts for concepts in bound.values() if keys <= concepts]
+    return bool(holders) and all(own <= concepts for concepts in holders)
+
+
 def _always_beside(own: set[str], key: str, graph: DomainGraph) -> bool:
     """No select row holds `key` without the rows `expr` reads: nothing in
     the statement pads them, those rows hold every `key` (`covers`), every
@@ -335,7 +348,9 @@ def pin_keys(
             if k != owner and not (owner and _reads(k, owner, environment))
         }
         own = {merged.get(k, k) for k in _own_keys(expr, environment, keys)}
-        out |= {k for k in keys - own if not _always_beside(own, k, graph)}
+        uncovered = {k for k in keys - own if not _always_beside(own, k, graph)}
+        if not _co_held_only_beside(own, uncovered, graph):
+            out |= uncovered
     return frozenset(out)
 
 
