@@ -96,9 +96,16 @@ def _entity_keys(
         read = _lookup(address, local, environment)
         if read is not None:
             out |= _entity_keys(read, local, environment, seen | {concept.address})
-    return out or (
-        {concept.address} if concept.derivation != Derivation.CONSTANT else set()
-    )
+    # a stored or rowset column with no key is its own row identity; a keyless
+    # aggregate, metric or derived value has none to anchor on (an abstract
+    # count resolves its grain through the very select it would anchor)
+    if (
+        out
+        or concept.purpose == Purpose.METRIC
+        or concept.derivation not in (Derivation.ROOT, Derivation.ROWSET)
+    ):
+        return out
+    return {concept.address}
 
 
 def _own_keys(expr: Any, environment: Environment, anchors: set[str]) -> set[str]:
@@ -135,13 +142,24 @@ def select_anchors(
     if base.grouping is not None:
         return None
     out: dict[str, frozenset[str]] = {}
+    outputs = {ref.address for ref in base.selection}
     for ref in base.selection:
         concept = _lookup(ref.address, base.local_concepts, environment)
-        if concept is not None:
-            # a declared join's two keys are one select key
-            keys = _entity_keys(concept, base.local_concepts, environment)
-            out[concept.address] = graph.fd_minimal(merged.get(k, k) for k in keys)
+        if concept is None or _restates_outputs(concept, outputs):
+            continue
+        # a declared join's two keys are one select key
+        keys = _entity_keys(concept, base.local_concepts, environment)
+        out[concept.address] = graph.fd_minimal(merged.get(k, k) for k in keys)
     return out
+
+
+def _restates_outputs(concept: Concept, outputs: set[str]) -> bool:
+    """An aggregate grouped by the other outputs restates their rows."""
+    lineage = concept.lineage
+    return (
+        isinstance(lineage, AggregateWrapper)
+        and {b.address for b in lineage.by} <= outputs
+    )
 
 
 def _reads(address: str, target: str, environment: Environment) -> bool:
@@ -164,20 +182,37 @@ def _reads(address: str, target: str, environment: Environment) -> bool:
     return False
 
 
-def _always_beside(own: set[str], key: str, graph: DomainGraph) -> bool:
-    """No select row holds `key` without the rows `expr` reads: those rows
-    hold every `key` (`covers`), every `key` row carries them (an order
-    carries its customer), or a table holding `key`'s whole domain carries
-    them on each of its rows."""
-    if graph.covers(own, key) or all(graph.determines({key}, o) for o in own):
-        return True
+def _may_pad(graph: DomainGraph) -> bool:
+    """A row can lack what another holds only through a `~` binding or a
+    coalescing (union/full) join somewhere in the statement's scope."""
+    return any(not b.complete for b in graph.binding_edges) or bool(
+        graph.coalescing_relation_members()
+    )
+
+
+def _held_beside(reads: set[str], key: str, graph: DomainGraph) -> bool:
+    """A table holding `key`'s whole domain carries `reads` on each of its
+    rows: no row of `key` lacks them."""
     bound: dict[str, set[str]] = {}
     complete: set[str] = set()
     for b in graph.binding_edges:
         bound.setdefault(b.datasource, set()).add(b.concept)
         if b.concept == key and b.complete and b.condition is None:
             complete.add(b.datasource)
-    return any(own <= bound[datasource] for datasource in complete)
+    return any(reads <= bound[datasource] for datasource in complete)
+
+
+def _always_beside(own: set[str], key: str, graph: DomainGraph) -> bool:
+    """No select row holds `key` without the rows `expr` reads: nothing in
+    the statement pads them, those rows hold every `key` (`covers`), every
+    `key` row carries them (an order carries its customer), or a table holding
+    `key`'s whole domain does."""
+    return (
+        not _may_pad(graph)
+        or graph.covers(own, key)
+        or all(graph.determines({key}, o) for o in own)
+        or _held_beside(own, key, graph)
+    )
 
 
 def pin_keys(
@@ -204,10 +239,12 @@ def pin_keys(
     for child in _child_exprs(expr):
         out |= pin_keys(child, owner, anchors, environment, graph, named)
     if is_null_absorbing(expr):
+        reads = {r.address for r in expr.concept_arguments}
         keys = {
             k
             for address, ks in anchors.items()
-            if address != owner
+            # a table holding the output column carries the reads beside it
+            if address != owner and not _held_beside(reads, address, graph)
             for k in ks
             if k != owner and not (owner and _reads(k, owner, environment))
         }
