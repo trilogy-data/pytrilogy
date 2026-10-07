@@ -21,21 +21,29 @@ select customer_id, coalesce(amount, 0) as a;   -- cat: 0
 select order_id, status;             -- unchanged: the expression's own grain
 ```
 
-- **One address, one value per statement.** Grouping keys, aggregate inputs and the
-  WHERE read the same pinned value, as they read the same bare aggregate:
-  `where status = 'in-transit'` keeps cat, `count(status)` per customer counts cat's
-  row, `sum(coalesce(amount, 0))` per customer gives cat 0. An inline expression
-  pins like its named spelling.
-- **A value computed from a pinned value is pinned:** `concat(name, '-', status)`
-  is `'cat-in-transit'`.
+- **One address, one value per statement.** Grouping keys, a bare aggregate's
+  inputs and the WHERE read the same pinned value, as they read the same bare
+  aggregate: `where status = 'in-transit'` keeps cat, `count(status)` per customer
+  counts cat's row, `sum(coalesce(amount, 0))` per customer gives cat 0. An inline
+  expression pins like its named spelling.
+- **An aggregate with a `by` defines its own input rowset:** its inputs pin to
+  that `by`, not to the outer select. `sum(coalesce(amount, 0)) by customer_id`
+  gives cat 0; `sum(amount_or_zero) by order_id` reads order rows and pins nothing.
+- **A pinned expression evaluates its whole tree on the select's row.** Named
+  derived values it reads are inlined (`flag <- case when undelivered ...` reads
+  `delivery_date is null` on cat's row: 1), stopping at an inline aggregate or
+  `group()`, which have their own rows. A value computed from a pinned value is
+  pinned: `concat(name, '-', status)` is `'cat-in-transit'`.
 - **Only keys a row can hold without the inputs pin.** A select key whose rows
   always carry the expression's inputs (the inputs' rows hold every key value, or
   every key row carries the inputs: an order carries its customer) adds nothing.
   So customer-level `case when count(order_id) by customer_id > 0 ... else ...`
   beside order rows is not pinned to the order.
 - **Not pinned:** a select with no other key (`select status, count(customer_id)`
-  keeps its NULL group), and a ROLLUP/CUBE select, whose outputs are grouping keys
-  of the subtotal pass.
+  keeps its NULL group); a ROLLUP/CUBE select, whose outputs are grouping keys
+  of the subtotal pass; a scope with no `~` binding or coalescing join (nothing
+  pads); `IS [NOT] NULL` alone (it feeds presence probes and null-rejection
+  proofs, so `undelivered` stays NULL on a padded row); a `grain()` hash.
 - **A rowset is a select:** a value pinned in its body is a real value of its rows.
 
 ## Persistence
@@ -52,10 +60,17 @@ columns, and every query returns the same rows on both.
 - `FunctionType.GRAIN_PIN(expr, *anchors)` renders as `expr`
   (`trilogy/core/grain_pin.py`).
 - `Factory._grain_pinned` applies it where a bare aggregate resolves its grain,
-  against `Factory.select_anchors` (each output's entity keys, FD-reduced, a
-  declared join's two keys folded into one); the select's projection and WHERE
-  factories carry the anchors, a datasource's does not. An inline
+  against `Factory.select_anchors`: each output's entity keys (a derived key or
+  grouping value read through to the entities under it, an inline aggregate read
+  on its `by`), FD-reduced, a declared join's two keys folded into one. A keyless
+  metric and an aggregate grouped by the other outputs contribute none. The
+  select's projection and WHERE factories carry the anchors, a datasource's does
+  not; `_build_aggregate_input` swaps in an explicit `by`'s keys. An inline
   NULL-absorbing expression nests as its own concept, like an inline aggregate.
+- An anchor is uncovered, and pins, only if some row can hold it without the
+  expression's reads: not when a complete table of the anchor (or of the output
+  column) carries the reads on each row, nor when the reads' rows hold every
+  anchor value, nor when every anchor row carries the reads.
 - The keyspace keys a pin on its anchors (`keyspace._entity_keys`), so it is
   defined on the extension region and the region domain feeds it, as it feeds an
   aggregate by the span.
