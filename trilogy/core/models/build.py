@@ -48,7 +48,14 @@ from trilogy.core.exceptions import (
     InvalidSyntaxException,
     UnionOutputResolutionError,
 )
-from trilogy.core.grain_pin import grain_pin, is_null_absorbing, pin_keys
+from trilogy.core.grain_pin import (
+    absorbs_null,
+    by_anchors,
+    grain_pin,
+    inline_basic,
+    is_null_absorbing,
+    pin_keys,
+)
 from trilogy.core.models.author import (
     AggregateGrouping,
     AggregateWrapper,
@@ -2940,6 +2947,10 @@ class Factory:
         # already, so nothing inline in it is pinned again
         self._in_grain_pin = False
         self._pin_memo: dict[str, frozenset[str]] = {}
+        # building an aggregate's input under its own `by` (see
+        # `_build_aggregate_input`): a named absorbing read is inlined so it
+        # pins to that `by`, never picking up the select's pin of its address
+        self._by_scoped = False
         # Suffix for virtual concepts minted for CROSS-ROW expressions
         # (aggregates/windows/group-to). The WHERE-clause factory sets this so
         # an anonymous aggregate nested in a WHERE expression gets a DIFFERENT
@@ -3181,6 +3192,10 @@ class Factory:
     def _build_function(self, base: Function) -> Any:
         raw_args: list[Concept | FuncArgs] = []
         for arg in base.arguments:
+            if self._by_scoped and isinstance(arg, ConceptRef):
+                inlined = inline_basic(arg, self.environment)
+                if inlined is not arg and absorbs_null(inlined):
+                    arg = inlined
             # to do proper discovery, we need to inject virtual intermediate concepts
             # we don't use requires_concept_nesting here by design; a nested
             # `group(x) by k` is a concept keyed on `k`, not a read of `x`
@@ -3370,7 +3385,8 @@ class Factory:
         keys = self._pin_keys(base.lineage, base.address)
         if not keys:
             return base
-        return dc_replace(base, lineage=grain_pin(base.lineage, keys, self.environment))
+        lineage = inline_basic(base.lineage, self.environment)
+        return dc_replace(base, lineage=grain_pin(lineage, keys, self.environment))
 
     def _pins_inline(self, expr: Any) -> TypeGuard[Function]:
         """An inline NULL-absorbing expression the select pins: it builds as
@@ -3386,6 +3402,25 @@ class Factory:
         filter, or an inline NULL-absorbing expression the select pins."""
         nested = requires_concept_nesting(expr)
         return expr if nested is None and self._pins_inline(expr) else nested
+
+    def _build_aggregate_input(self, base: AggregateWrapper) -> BuildFunction:
+        """An aggregate with a `by` reads its own input rowset, keyed on that
+        `by`: a NULL-absorbing input pins to it, not to the outer select (a
+        bare aggregate's input stays on the select's grain)."""
+        if not base.by or not self.select_anchors:
+            return self._build_function(base.function)  # type: ignore
+        saved, scoped = self.select_anchors, self._by_scoped
+        self.select_anchors = by_anchors(
+            [b for b in base.by if isinstance(b, ConceptRef)],
+            self.environment,
+            assemble_full_graph(self.environment, self.domain_graph),
+            self.domain_graph.canonical_map(),
+        )
+        self._by_scoped = True
+        try:
+            return self._build_function(base.function)  # type: ignore
+        finally:
+            self.select_anchors, self._by_scoped = saved, scoped
 
     def _fd_minimal_lineage(self, lineage: Any) -> Any:
         """An aggregate's `by` less every member the rest functionally
@@ -3779,7 +3814,7 @@ class Factory:
         if grouping == AggregateGroupingMode.STANDARD:
             by = sorted(by, key=lambda x: x.address)
 
-        parent: BuildFunction = self._build_function(base.function)  # type: ignore
+        parent: BuildFunction = self._build_aggregate_input(base)
         return BuildAggregateWrapper(
             function=parent,
             by=by,

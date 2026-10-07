@@ -16,19 +16,24 @@ persisted at the reads' own grain answers only a select its reads cover.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from dataclasses import replace as dc_replace
 from typing import Any, TypeGuard
 
 from trilogy.core.constants import GRAIN_NULL_SENTINEL
 from trilogy.core.domain_graph import DomainGraph
-from trilogy.core.enums import ComparisonOperator, Derivation, FunctionType, Purpose
+from trilogy.core.enums import Derivation, FunctionType, Purpose
 from trilogy.core.having_normalization import _child_exprs
 from trilogy.core.models.author import (
     AggregateWrapper,
     CaseElse,
+    CaseSimpleWhen,
+    CaseWhen,
     Comparison,
     Concept,
     ConceptRef,
+    Conditional,
     Function,
+    Parenthetical,
     SelectLineage,
     UndefinedConcept,
 )
@@ -37,7 +42,6 @@ from trilogy.core.models.environment import Environment
 # What takes a value where its arguments are NULL; a CASE does so through
 # its ELSE.
 NULL_ABSORBING_FUNCTIONS = frozenset({FunctionType.COALESCE})
-NULL_TESTS = (ComparisonOperator.IS, ComparisonOperator.IS_NOT)
 
 
 def _lookup(
@@ -49,11 +53,9 @@ def _lookup(
     return concept
 
 
-def is_null_absorbing(expr: Any) -> TypeGuard[Function | Comparison]:
+def is_null_absorbing(expr: Any) -> TypeGuard[Function]:
     """A `grain()` hash's sentinel coalesce is not a fallback: it makes the
     hash total over a NULL member, and a padded row is still no combination."""
-    if isinstance(expr, Comparison):
-        return expr.operator in NULL_TESTS
     if not isinstance(expr, Function):
         return False
     if expr.operator == FunctionType.CASE:
@@ -62,6 +64,57 @@ def is_null_absorbing(expr: Any) -> TypeGuard[Function | Comparison]:
         expr.operator in NULL_ABSORBING_FUNCTIONS
         and GRAIN_NULL_SENTINEL not in expr.arguments
     )
+
+
+def absorbs_null(expr: Any) -> bool:
+    """A NULL-absorbing function in a row expression, outside any inline
+    aggregate (whose argument is read on the aggregate's input rows)."""
+    if is_null_absorbing(expr):
+        return True
+    if isinstance(expr, AggregateWrapper):
+        return False
+    return any(absorbs_null(child) for child in _child_exprs(expr))
+
+
+def inline_basic(expr: Any, environment: Environment) -> Any:
+    """`expr` with every derived row value it reads by name replaced by its
+    lineage, so a pinned expression evaluates its whole tree on the select's
+    row (`flag <- case when undelivered ...` as `case when delivery_date is
+    null ...`)."""
+    if isinstance(expr, ConceptRef):
+        read = _lookup(expr.address, {}, environment)
+        if read is None or read.derivation != Derivation.BASIC or not read.lineage:
+            return expr
+        return inline_basic(read.lineage, environment)
+    if isinstance(expr, AggregateWrapper):
+        return expr
+    if isinstance(expr, Function):
+        return dc_replace(
+            expr, arguments=[inline_basic(a, environment) for a in expr.arguments]
+        )
+    if isinstance(expr, (Comparison, Conditional)):
+        return dc_replace(
+            expr,
+            left=inline_basic(expr.left, environment),
+            right=inline_basic(expr.right, environment),
+        )
+    if isinstance(expr, Parenthetical):
+        return dc_replace(expr, content=inline_basic(expr.content, environment))
+    if isinstance(expr, CaseWhen):
+        return dc_replace(
+            expr,
+            comparison=inline_basic(expr.comparison, environment),
+            expr=inline_basic(expr.expr, environment),
+        )
+    if isinstance(expr, CaseSimpleWhen):
+        return dc_replace(
+            expr,
+            value_expr=inline_basic(expr.value_expr, environment),
+            expr=inline_basic(expr.expr, environment),
+        )
+    if isinstance(expr, CaseElse):
+        return dc_replace(expr, expr=inline_basic(expr.expr, environment))
+    return expr
 
 
 def _row_keys(concept: Concept) -> set[str]:
@@ -162,6 +215,23 @@ def select_anchors(
         # a declared join's two keys are one select key
         keys = _entity_keys(concept, base.local_concepts, environment)
         out[concept.address] = graph.fd_minimal(merged.get(k, k) for k in keys)
+    return out
+
+
+def by_anchors(
+    by: list[ConceptRef],
+    environment: Environment,
+    graph: DomainGraph,
+    merged: Mapping[str, str],
+) -> dict[str, frozenset[str]]:
+    """An aggregate's `by` as anchors: its input rowset is keyed on them, not
+    on the outer select's rows."""
+    out: dict[str, frozenset[str]] = {}
+    for ref in by:
+        concept = _lookup(ref.address, {}, environment)
+        if concept is not None:
+            keys = _entity_keys(concept, {}, environment)
+            out[concept.address] = graph.fd_minimal(merged.get(k, k) for k in keys)
     return out
 
 
@@ -270,9 +340,7 @@ def grain_pin(expr: Any, keys: frozenset[str], environment: Environment) -> Func
     return Function(
         operator=FunctionType.GRAIN_PIN,
         output_datatype=expr.output_datatype,
-        output_purpose=(
-            expr.output_purpose if isinstance(expr, Function) else Purpose.PROPERTY
-        ),
+        output_purpose=expr.output_purpose,
         arguments=[expr, *(environment.concepts[k].reference for k in sorted(keys))],
         arg_count=-1,
     )
