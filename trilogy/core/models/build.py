@@ -47,6 +47,7 @@ from trilogy.core.exceptions import (
     InvalidSyntaxException,
     UnionOutputResolutionError,
 )
+from trilogy.core.grain_pin import absorbs_null, grain_pin, is_null_absorbing
 from trilogy.core.models.author import (
     AggregateGrouping,
     AggregateWrapper,
@@ -2926,8 +2927,17 @@ class Factory:
         select_grouping: AggregateGrouping | None = None,
         virtual_scope_salt: str | None = None,
         join_scope: JoinScope | None = None,
+        select_anchors: dict[str, frozenset[str]] | None = None,
     ):
         self.grain = grain or Grain()
+        # Each output of the select this factory builds -> its row keys. A
+        # NULL-absorbing expression resolves against them as a bare aggregate
+        # resolves against the select grain (`grain_pin`). None outside a
+        # select's projection and WHERE (a datasource's columns, a ROLLUP).
+        self.select_anchors = select_anchors
+        # building a pin's own expression: it is evaluated on the select's row
+        # already, so nothing inline in it is pinned again
+        self._in_grain_pin = False
         # Suffix for virtual concepts minted for CROSS-ROW expressions
         # (aggregates/windows/group-to). The WHERE-clause factory sets this so
         # an anonymous aggregate nested in a WHERE expression gets a DIFFERENT
@@ -3172,9 +3182,14 @@ class Factory:
             # to do proper discovery, we need to inject virtual intermediate concepts
             # we don't use requires_concept_nesting here by design; a nested
             # `group(x) by k` is a concept keyed on `k`, not a read of `x`
-            if isinstance(arg, (AggregateWrapper, FilterItem, WindowItem)) or (
-                isinstance(arg, Function)
-                and arg.operator in (FunctionType.GROUP, FunctionType.GRAIN_PIN)
+            if (
+                isinstance(arg, (AggregateWrapper, FilterItem, WindowItem))
+                or (isinstance(arg, Function) and arg.operator == FunctionType.GROUP)
+                or (
+                    base.operator != FunctionType.GRAIN_PIN
+                    and is_null_absorbing(arg)
+                    and self._grain_pin(arg, None)
+                )
             ):
                 narg, _ = self.instantiate_concept(arg)
                 raw_args.append(narg)
@@ -3222,6 +3237,20 @@ class Factory:
                     arg_count=base.arg_count,
                 )
 
+        if base.operator == FunctionType.GRAIN_PIN:
+            saved, self._in_grain_pin = self._in_grain_pin, True
+            try:
+                pin_args = [self.handle_constant(self.build(c)) for c in raw_args]
+            finally:
+                self._in_grain_pin = saved
+            return BuildFunction(
+                operator=base.operator,
+                arguments=pin_args,
+                output_data_type=base.output_datatype,
+                output_purpose=base.output_purpose,
+                valid_inputs=base.valid_inputs,
+                arg_count=base.arg_count,
+            )
         farguments: list[Any] = [self.handle_constant(self.build(c)) for c in raw_args]
         if base.operator == FunctionType.CASE:
             case_args: list[Any] = []
@@ -3305,6 +3334,35 @@ class Factory:
     @_build_dispatch.register
     def _(self, base: Concept) -> BuildConcept:
         return self._build_concept(base)
+
+    def _grain_pin(self, expr: Any, owner: str | None) -> Function | None:
+        if not self.select_anchors or not absorbs_null(expr):
+            return None
+        if owner is None and self._in_grain_pin:
+            return None
+        return grain_pin(
+            expr,
+            owner,
+            self.select_anchors,
+            self.environment,
+            assemble_full_graph(self.environment, self.domain_graph),
+        )
+
+    def _grain_pinned(self, base: Concept) -> Concept:
+        """A NULL-absorbing row expression read by a select, pinned to the
+        select's keys like a bare aggregate (see `grain_pin`)."""
+        if base.derivation != Derivation.BASIC or base.lineage is None:
+            return base
+        pinned = self._grain_pin(base.lineage, base.address)
+        return base if pinned is None else dc_replace(base, lineage=pinned)
+
+    def _nests(self, expr: Any) -> Any:
+        """`expr` if it builds as its own concept: an aggregate, window or
+        filter, or an inline NULL-absorbing expression the select pins."""
+        nested = requires_concept_nesting(expr)
+        if nested is None and is_null_absorbing(expr) and self._grain_pin(expr, None):
+            return expr
+        return nested
 
     def _fd_minimal_lineage(self, lineage: Any) -> Any:
         """An aggregate's `by` less every member the rest functionally
@@ -3457,6 +3515,7 @@ class Factory:
                 self._env_writes.add(base.address)
             self.canonical_build_cache[base.address] = rval
             return rval
+        base = self._grain_pinned(base)
         resolution_grain = (
             self._abstract_resolution_grain() if base.is_aggregate else self.grain
         )
@@ -4091,12 +4150,12 @@ class Factory:
                 if probe is not None:
                     base = dc_replace(base, right=probe.reference)
         left = base.left
-        validation = requires_concept_nesting(base.left)
+        validation = self._nests(base.left)
         if validation:
             left_c, _ = self.instantiate_concept(validation)
             left = left_c  # type: ignore
         right = base.right
-        validation = requires_concept_nesting(base.right)
+        validation = self._nests(base.right)
         if validation:
             right_c, _ = self.instantiate_concept(validation)
             right = right_c  # type: ignore
@@ -4356,10 +4415,7 @@ class Factory:
         return self._build_select_lineage(base)
 
     def _build_select_lineage(self, base: SelectLineage) -> BuildSelectLineage:
-        from trilogy.core.grain_pin_normalization import (
-            is_grain_pin,
-            normalize_select_grain_pins,
-        )
+        from trilogy.core.grain_pin import select_anchors
         from trilogy.core.having_normalization import normalize_select_having
         from trilogy.core.models.build import (
             BuildSelectLineage,
@@ -4378,8 +4434,7 @@ class Factory:
         # Split dual-scope WHERE references (a cross-row select output also
         # used as a row gate) into a minted WHERE-scope twin.
         base = normalize_select_where_scope(base, self.environment)
-        # A NULL-absorbing output is evaluated on the select's row.
-        base = normalize_select_grain_pins(
+        anchors = select_anchors(
             base,
             self.environment,
             assemble_full_graph(self.environment, self.domain_graph),
@@ -4397,6 +4452,7 @@ class Factory:
             scoped_joins=self.scoped_joins,
             join_scope=self.join_scope,
             select_grouping=base.grouping,
+            select_anchors=anchors,
         )
         # WHERE-scope twins (normalize_select_where_scope) are the local
         # concepts referenced by the WHERE but absent from the environment.
@@ -4436,6 +4492,7 @@ class Factory:
             # cross-row virtuals in the WHERE are population-scope gates and
             # must not share addresses with select-scope twins
             virtual_scope_salt=WHERE_SCOPE_SALT,
+            select_anchors=anchors,
         )
         # Build the WHERE-scope twins here so their refs resolve — in this
         # factory, like their inline equivalents, so bare aggregates co-grain
@@ -4444,10 +4501,6 @@ class Factory:
             where_factory.local_concepts[k] = where_factory.build(
                 base.local_concepts[k]
             )
-        # a pinned concept carries one value in the select and its WHERE
-        for k, v in base.local_concepts.items():
-            if is_grain_pin(v):
-                where_factory.local_concepts[k] = materialized[k]
         where_clause = (
             where_factory.build(base.where_clause) if base.where_clause else None
         )

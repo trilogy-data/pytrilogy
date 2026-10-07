@@ -101,16 +101,49 @@ def test_window_partition_is_not_a_select_key():
         ),
     ],
 )
-def test_grouping_key_is_read_on_the_aggregate_input(query: str, expected: list[tuple]):
+def test_no_other_select_key_leaves_it_unpinned(query: str, expected: list[tuple]):
     assert sorted_rows(_executor(), query) == expected
 
 
-@pytest.mark.xfail(
-    strict=True, reason="the output and the aggregate argument share one address"
+@pytest.mark.parametrize(
+    "query, expected",
+    [
+        (
+            "select customer_id, status, count(order_id) as n",
+            [
+                (1, "delivered", 1),
+                (1, "in-transit", 1),
+                (2, "delivered", 1),
+                (3, "in-transit", 0),
+            ],
+        ),
+        ("select customer_id where status = 'in-transit'", [(1,), (3,)]),
+        ("select customer_id where coalesce(amount, 0) = 0", [(3,)]),
+        ("select customer_id, sum(amount_or_zero) as t", [(1, 30), (2, 30), (3, 0)]),
+        (
+            "select customer_id, sum(coalesce(amount, 0)) as t",
+            [(1, 30), (2, 30), (3, 0)],
+        ),
+        (
+            "select customer_id, count(coalesce(amount, 0)) as n",
+            [(1, 2), (2, 1), (3, 1)],
+        ),
+        (
+            "select customer_id, amount_or_zero, sum(amount_or_zero) by customer_id as t",
+            [(1, 10, 30), (1, 20, 30), (2, 30, 30), (3, 0, 0)],
+        ),
+        (
+            "select customer_id, label",
+            [
+                (1, "ann-delivered"),
+                (1, "ann-in-transit"),
+                (2, "bob-delivered"),
+                (3, "cat-in-transit"),
+            ],
+        ),
+    ],
 )
-def test_pinned_output_beside_an_aggregate_of_itself():
-    rows = sorted_rows(
-        _executor(),
-        "select customer_id, amount_or_zero, sum(amount_or_zero) by customer_id as t",
-    )
-    assert rows[-1][:2] == (3, 0)
+def test_every_read_in_the_statement_carries_the_pinned_value(
+    query: str, expected: list[tuple]
+):
+    assert sorted_rows(_executor(), query) == expected
