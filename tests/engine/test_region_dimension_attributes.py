@@ -202,14 +202,15 @@ datasource items (
 grain (item_id)
 query '''{_ITEMS}''';
 
-auto pair_cost <- cost * amount;
-auto state_qty <- case when state = 'CA' then qty else 0 end;
 auto total_pair_cost <- sum(pair_cost);
 """
+_FORKED_DERIVATIONS = """
+auto pair_cost <- cost * amount;
+auto state_qty <- case when state = 'CA' then qty else 0 end;
+"""
+FORKED_DERIVED += _FORKED_DERIVATIONS
 
-FORKED_MATERIALIZED = _FBASE + f"""
-property item_id.pair_cost int;
-property item_id.state_qty int;
+FORKED_MATERIALIZED = _FBASE + _FORKED_DERIVATIONS + f"""
 
 datasource items (
     item_id: item_id, order_id: order_id, product_id: ~product_id,

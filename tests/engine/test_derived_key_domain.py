@@ -1166,7 +1166,7 @@ auto reason_label <- coalesce(reason, 'none');
 """
 
 _OPTIONAL_MATERIALIZED = _LINES + """
-property return_id.reason_label string;
+auto reason_label <- coalesce(reason, 'none');
 
 root datasource returns (
     o: ~order_id, i: ~item_id, r: return_id, reason: reason, rl: reason_label,
@@ -1877,7 +1877,7 @@ grain (order_id)
 query '''{_ORDER_ROWS}''';
 """
 _STATUS_PERSISTED = """
-property order_id.status string;
+auto status <- case when delivery_date is not null then 'delivered' else 'in-transit' end;
 root datasource order_status (order_id: order_id, status: status)
 grain (order_id)
 query '''

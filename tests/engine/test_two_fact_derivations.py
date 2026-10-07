@@ -1,6 +1,6 @@
 """Two facts each bind `~customer_id`, and no source holds a row of both: each
 fact's derivations are evaluated on its own rows, never on the other's
-padding. Oracle: the same labels stored as columns."""
+padding. Oracle: the same labels also persisted as columns at their grain."""
 
 import pytest
 
@@ -28,13 +28,14 @@ root datasource tickets (ticket_id: ticket_id, customer_id: ~customer_id, severi
 grain (ticket_id)
 query '''select 500 as ticket_id, 2 as customer_id, 3 as severity
 union all select 501, 3, null''';
+"""
+_LABELS = """
 auto sev_label <- case when severity > 2 then 'hi' else 'lo' end;
 auto amt_label <- case when amount > 6 then 'big' else 'small' end;
 """
+DERIVED += _LABELS
 
-MATERIALIZED = _BASE + """
-property ticket_id.sev_label string;
-property order_id.amt_label string;
+MATERIALIZED = _BASE + _LABELS + """
 root datasource orders (
     order_id: order_id, customer_id: ~customer_id, amount: amount, amt_label: amt_label
 )
