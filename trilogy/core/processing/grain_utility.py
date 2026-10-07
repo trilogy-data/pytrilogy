@@ -607,6 +607,21 @@ def _rejects_padding(source: GrainSource) -> bool:
     )
 
 
+def _joins_a_coalescing_relation(join: BaseJoin, coalescing_keys: set[str]) -> bool:
+    """The join is an authored union/full relation's own pairing: it crosses
+    the relation's two endpoints, or names a member with no pairing to read.
+    Two sources of ONE endpoint (a filtered scan beside a value keyed on the
+    same key) are not the relation."""
+    pairs = join.concept_pairs or []
+    if not pairs:
+        return bool({c.address for c in join.concepts or []} & coalescing_keys)
+    return any(
+        pair.left.address != pair.right.address
+        and {pair.left.address, pair.right.address} & coalescing_keys
+        for pair in pairs
+    )
+
+
 def tighten_join_for_filtered_branch(
     join: BaseJoin | UnnestJoin,
     filtered_ids: set[str],
@@ -623,7 +638,7 @@ def tighten_join_for_filtered_branch(
         for pair in join.concept_pairs or []
         for address in (pair.left.address, pair.right.address)
     } | {concept.address for concept in join.concepts or []}
-    if join_addresses & coalescing_keys:
+    if _joins_a_coalescing_relation(join, coalescing_keys):
         return
     left_ids = {source.identifier for source in join_left_sources(join)}
     left = _partner_facts(
