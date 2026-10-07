@@ -1148,6 +1148,9 @@ class BaseJoin:
     left_datasource: BuildDatasource | QueryDatasource | None = None
     concept_pairs: list[ConceptPair] | None = None
     modifiers: list[Modifier] = field(default_factory=list)
+    # a predicate beside the key pairs (`order_id is not null`: a padded row
+    # whose key is NULL by absence never pairs with a value-NULL group)
+    condition: BoolExpr | None = None
 
     def __post_init__(self):
         if (
@@ -1200,6 +1203,7 @@ class BaseJoin:
         # `b JOIN a ON y=x` are one join, and two independently-built merges
         # over the same parents can pick opposite bases; keeping both joins the
         # same partner twice (duplicate alias).
+        guard = f" and {self.condition}" if self.condition is not None else ""
         if self.concept_pairs:
             if self.join_type == JoinType.INNER:
                 partners = sorted(
@@ -1211,13 +1215,13 @@ class BaseJoin:
                     + f"[{','.join(sorted(m.value for m in p.modifiers))}]"
                     for p in self.concept_pairs
                 )
-                return f"{self.join_type.value} {'&'.join(partners)} on {','.join(pair_keys)}"
+                return f"{self.join_type.value} {'&'.join(partners)} on {','.join(pair_keys)}{guard}"
             pair_keys = sorted(
                 f"{p.existing_datasource.name}.{p.left}={p.right}"
                 for p in self.concept_pairs
             )
-            return f"{self.join_type.value} {self.right_datasource.name} on {','.join(pair_keys)}"
-        return str(self)
+            return f"{self.join_type.value} {self.right_datasource.name} on {','.join(pair_keys)}{guard}"
+        return str(self) + guard
 
     @property
     def input_concepts(self) -> list[BuildConcept]:
@@ -1227,6 +1231,8 @@ class BaseJoin:
                 base += [pair.left, pair.right]
         elif self.concepts:
             base += self.concepts
+        if self.condition is not None:
+            base += list(self.condition.row_arguments)
         return base
 
     def __str__(self):

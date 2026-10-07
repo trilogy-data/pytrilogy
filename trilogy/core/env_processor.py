@@ -264,20 +264,10 @@ def generate_adhoc_graph(
         complete_contains = {
             c.concept.canonical_address for c in dataset.columns if c.is_complete
         }
-        # a derivation keyed on an entity the scan binds `~` has rows the scan
-        # lacks (the lines no return references), and is not NULL on them
-        # (`ret_qty is not null`): the scan computes it for its own rows only
-        partial_keys = {
-            address
-            for c in dataset.columns
-            if not c.is_complete
-            for address in (c.concept.address, c.concept.canonical_address)
-        }
         for derived in get_derivable_concepts(
             basic_graph, complete_contains, already_present
         ):
-            if not partial_keys & set(derived.keys or derived.grain.components):
-                eligible.append(derived)
+            eligible.append(derived)
 
         # Collect this datasource's edges and inject them in one Rust call;
         # the per-edge Python<->Rust crossing dominated otherwise. The core

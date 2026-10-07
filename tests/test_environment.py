@@ -236,13 +236,11 @@ property user_id.name string;
 
 def test_redefined_rowset_retires_the_prior_outputs():
     env = Environment()
-    env.parse(
-        """key order_id int;
+    env.parse("""key order_id int;
 property order_id.amount int;
 datasource orders (order_id: order_id, amount: amount) grain (order_id) address orders;
 rowset s <- select order_id as o, amount as a;
-"""
-    )
+""")
     assert {"s.o", "s.a", "local._s_o", "local._s_a"} <= set(env.concepts.data)
     env.parse("rowset s <- select order_id as o2;")
     assert {"s.o2", "local._s_o2"} <= set(env.concepts.data)

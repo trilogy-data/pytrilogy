@@ -367,6 +367,7 @@ class JoinHoist(OptimizationRule):
                 join_type=join_type,
                 concept_pairs=new_concept_pairs,
                 modifiers=list(join.modifiers),
+                condition=join.condition,
             )
             parent_cte.source.joins.append(new_base_join)
             add_datasource_sorted(parent_cte, dim_qds)
@@ -392,6 +393,7 @@ class JoinHoist(OptimizationRule):
                 jointype=join_type,
                 left_cte=None,
                 joinkey_pairs=new_joinkey_pairs,
+                condition=join.condition,
                 modifiers=list(join.modifiers),
                 # The synthetic left base is the parent's own raw datasource
                 # (no parent-CTE alias); its FK keys are local columns.

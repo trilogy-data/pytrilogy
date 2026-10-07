@@ -1235,12 +1235,21 @@ def _complete_partial_requested(
     """
     requested = {c.address for c in _requested_concepts(request)}
     # a span this group is built not to extend is completed by its region
-    # domain, above: the fact's own column is the solid stream's key
+    # domain, above: the fact's own column is the solid stream's key. A
+    # derivation a scan computes over its own rows (`scan_stamps`) has no
+    # dimension to complete against: only a column storing it elsewhere binds
+    # the rows the scan lacks, and the search prefers that column already.
+    stored = {
+        column.concept.address
+        for datasource in request.graph.scope.datasources
+        for column in datasource.columns
+    }
     partial_requested = [
         c
         for c in node.partial_concepts
         if c.address in requested
         and c.address not in request.environment.span_scope.extent_free
+        and (c.derivation != Derivation.BASIC or c.address in stored)
     ]
     if not partial_requested:
         return node

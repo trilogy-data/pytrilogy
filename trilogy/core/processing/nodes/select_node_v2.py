@@ -34,7 +34,10 @@ def scan_stamps(
     """Partial and nullable outputs of a scan: the datasource's column flags
     over the projected outputs, narrowed by the scan's proofs. An address also
     bound complete on the same datasource is fully providable, and a BASIC
-    computed here over a nullable column is NULL wherever that column is."""
+    computed here over a nullable column is NULL wherever that column is. A
+    BASIC keyed on a `~` column is as partial as the column: the scan computes
+    it for its own rows, and the rows it lacks (the lines no return
+    references) hold a value it cannot (`ret_qty is not null`)."""
     complete = {c.concept.address for c in datasource.columns if c.is_complete}
     partial_lcl = CanonicalBuildConceptList(
         concepts=[
@@ -50,10 +53,21 @@ def scan_stamps(
     # partition heals; a ~ it does not heal is an extension license and keeps
     # its join preservation.
     structural = datasource.pinned_partial_addresses
+    partial_keys = {c.address for c in partial_lcl.concepts} | {
+        c.canonical_address for c in partial_lcl.concepts
+    }
+    stored = {c.concept.address for c in datasource.columns}
     partials = [
         c
         for c in outputs
-        if c in partial_lcl
+        if (
+            c in partial_lcl
+            or (
+                c.derivation == Derivation.BASIC
+                and c.address not in stored
+                and bool(partial_keys & set(c.keys or c.grain.components))
+            )
+        )
         and c.canonical_address not in complete_proofs
         and (not partial_is_full or c.address in structural)
     ]

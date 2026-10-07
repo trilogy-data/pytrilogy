@@ -1874,14 +1874,13 @@ def test_where_aggregate_counting_the_region_by_an_absent_key(
             "select customer_id, pstatus, count(customer_id) by pstatus as n where coalesce(sum(amount) by pstatus, 0) = 0",
             [(3, None, 1)],
         ),
-        pytest.param(
+        # `s` restates the WHERE's own aggregate, so it is computed once over
+        # the solid rows and joins the padded stream on `pstatus`: cat's padded
+        # NULL is not order 100's value-NULL group, and `s` is NULL on her row
+        # as it is without the WHERE (`test_padded_null_is_not_the_value_null_group`)
+        (
             "select customer_id, pstatus, count(customer_id) by pstatus as n, sum(amount) by pstatus as s where coalesce(sum(amount) by pstatus, 0) = 0",
             [(3, None, 1, None)],
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="the pinned WHERE reads sum by pstatus on the padded row "
-                "and pairs its padded NULL with the value-NULL group",
-            ),
         ),
     ],
 )

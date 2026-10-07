@@ -76,6 +76,15 @@ columns, and every query returns the same rows on both.
   aggregate by the span.
 - `NULL_ABSORBING_FUNCTIONS` is the registry: another function whose output the
   select grain changes is added there, with oracle cases.
+- A pinned value read by a WHERE makes the condition node absorb the region, so
+  a value keyed on the solid rows alone (an aggregate by a no-ELSE CASE) can
+  meet a stream whose key is NULL both as a value and as padding. A key NULL by
+  absence never pairs with a value-NULL group: the join keeps its null-safe
+  pairing and excludes the padded rows by a key NULL exactly there
+  (`join_resolution._padding_guard`, carried as `BaseJoin.condition`).
+- A rowset body's keyspace is keyed by the addresses the body declared; its
+  witness reads it by the handle content's declared address, never by the
+  canonical spelling, which another rowset's hidden alias can take.
 
 A check that compares a pinned concept to a datasource column must compare
 `canonical_address`, not `address`: the two share an address.

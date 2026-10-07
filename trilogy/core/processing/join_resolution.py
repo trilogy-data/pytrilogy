@@ -10,9 +10,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from trilogy.core import graph as nx
 
+from trilogy.constants import MagicConstants
 from trilogy.core.domain_graph import DomainGraph
 from trilogy.core.enums import (
     AggregateGroupingMode,
+    ComparisonOperator,
     Derivation,
     Granularity,
     JoinType,
@@ -23,6 +25,8 @@ from trilogy.core.enums import (
 from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.functions import propagates_argument_nulls
 from trilogy.core.models.build import (
+    BoolExpr,
+    BuildComparison,
     BuildConcept,
     BuildDatasource,
     BuildRowsetItem,
@@ -40,7 +44,10 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing import plan_trace
-from trilogy.core.processing.condition_utility import is_scalar_condition
+from trilogy.core.processing.condition_utility import (
+    and_optional,
+    is_scalar_condition,
+)
 from trilogy.core.processing.utility import (
     PADS_LEFT_JOIN_TYPES,
     PADS_RIGHT_JOIN_TYPES,
@@ -1803,6 +1810,99 @@ def _span_padding_matrix(
     return out
 
 
+def _padding_witness(
+    datasource: DataSource,
+    spans: frozenset[str],
+    spellings: dict[str, str],
+    memos: dict[str, dict[int, frozenset[str]]],
+    elsewhere: set[str],
+) -> list[BuildConcept]:
+    """Columns of `datasource` that are NULL exactly on the rows padded for
+    `spans`: one per span, a KEY padded by it that carries no value NULL (the
+    solid grain's, absent on a row standing in for a region's member; a
+    property is NULL on a `~?` NULL member's row too), emitted by no other
+    side so the ON clause reads this one. Empty when a span has none."""
+    out: list[BuildConcept] = []
+    hidden = {
+        h.address if isinstance(h, BuildConcept) else h
+        for h in datasource.hidden_concepts
+    }
+    for span in sorted(spans):
+        padded: set[str] = set()
+        for spelling, named in spellings.items():
+            if named == span:
+                padded |= _span_padded_addresses(
+                    datasource, spelling, memos.setdefault(spelling, {})
+                )
+        witnesses = sorted(
+            (
+                c
+                for c in datasource.output_concepts
+                if c.purpose == Purpose.KEY
+                and c.address in padded
+                and c.address not in hidden
+                and c.address not in elsewhere
+                and not nulls_are_values(c, datasource)
+            ),
+            key=lambda c: c.address,
+        )
+        if not witnesses:
+            return []
+        if witnesses[0] not in out:
+            out.append(witnesses[0])
+    return out
+
+
+def _padding_guard(
+    join: JoinOrderOutput,
+    facts: JoinFacts,
+    ds_node_map: dict[str, DataSource],
+    spellings: dict[str, str],
+    memos: dict[str, dict[int, frozenset[str]]],
+) -> BoolExpr | None:
+    """A key NULL by absence never pairs with a value-NULL group. A side whose
+    NULLs on a key are both (`pstatus`, a no-ELSE CASE, on a stream a region
+    padded) keeps the null-safe pairing for its value NULLs and excludes its
+    padded rows: `order_id is not null`, a column NULL exactly there. The
+    other side's NULL group is a value of rows that are not the region's,
+    unless it holds the region too (`_pairs_region_padding`)."""
+    guard: BoolExpr | None = None
+    for left_node, keys in join.keys.items():
+        for padded_node, other_node in (
+            (left_node, join.right),
+            (join.right, left_node),
+        ):
+            padded, other = facts.side(padded_node), facts.side(other_node)
+            others = {
+                c.address
+                for node, ds in ds_node_map.items()
+                if node != padded_node
+                for c in ds.output_concepts
+            }
+            for key in sorted(keys):
+                spans = padded.span_padding.get(key, frozenset())
+                if (
+                    not spans
+                    or key not in padded.value_nullables
+                    or key not in other.value_nullables
+                    or other.span_padding.get(key, frozenset()) & spans
+                    or other.held_spans & spans
+                ):
+                    continue
+                for witness in _padding_witness(
+                    ds_node_map[padded_node], spans, spellings, memos, others
+                ):
+                    guard = and_optional(
+                        guard,
+                        BuildComparison(
+                            left=witness,
+                            right=MagicConstants.NULL,
+                            operator=ComparisonOperator.IS_NOT,
+                        ),
+                    )
+    return guard
+
+
 def _region_padded_sides(
     joins: list[JoinOrderOutput], facts: JoinFacts
 ) -> dict[str, frozenset[str]]:
@@ -1972,11 +2072,12 @@ def get_node_joins(
 
     # Beside the region contract: a FULL join between two families' padding
     # must not pair NULL with NULL null-safely.
+    spellings = _span_spellings(keyspace.in_play_spans, environment, keyspace.witnessed)
     if sum(1 for side in sides.values() if side.nullables) > 1:
         matrix = _span_padding_matrix(
             ds_node_map,
             {ds_node: side.nullables for ds_node, side in sides.items()},
-            _span_spellings(keyspace.in_play_spans, environment, keyspace.witnessed),
+            spellings,
             canon_node,
         )
         sides = {
@@ -2032,12 +2133,14 @@ def get_node_joins(
         ),
         environment,
     )
+    pad_memos: dict[str, dict[int, frozenset[str]]] = {}
     return [
         BaseJoin(
             left_datasource=ds_node_map[j.left] if j.left else None,
             right_datasource=ds_node_map[j.right],
             join_type=j.type,
             concepts=[] if not j.keys else None,
+            condition=_padding_guard(j, facts, ds_node_map, spellings, pad_memos),
             concept_pairs=reduce_concept_pairs(
                 [
                     ConceptPair(
