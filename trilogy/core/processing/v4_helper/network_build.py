@@ -468,7 +468,9 @@ def _decomposable(
         # won, which is the exact collapse the probe exists to prevent. It is
         # pinned to its own side by `_datasource_renders_probe`.
         return False
-    concept = environment.concepts.get(address)
+    concept = environment.concepts.get(address) or environment.canonical_concepts.get(
+        address
+    )
     if concept is None or concept.derivation is not Derivation.BASIC:
         return False
     lineage = concept.lineage
@@ -671,12 +673,20 @@ def _searched_terminals(
     equivalence: dict[str, str],
 ) -> list[str]:
     bound = {address for c in candidates.values() for address in c.bindings}
+    full = {
+        address
+        for c in candidates.values()
+        for address, binding in c.bindings.items()
+        if binding.strength is BindingStrength.FULL
+    }
     sourced = {address for address in requested if address in bound}
+    # an inline derivation bound only partially is computed over the joined
+    # rows instead, where its inputs hold a value on every row
     return [
         address
         for address in requested
-        if address in sourced
-        or not _decomposable(address, environment, sourced, equivalence)
+        if address in full
+        or not _decomposable(address, environment, sourced - {address}, equivalence)
     ]
 
 

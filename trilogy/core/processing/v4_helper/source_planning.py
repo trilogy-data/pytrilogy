@@ -1693,6 +1693,24 @@ def _cross_component_source(request: SourceRequest) -> StrategyNode | None:
     return _merge_component_sources(request, parents)
 
 
+def _filters_a_partial_derivation(request: SourceRequest, node: StrategyNode) -> bool:
+    """The WHERE reads a derivation `node` computed over a partial scan's rows
+    alone: on a row that scan lacks it is NULL, not its value there
+    (`coalesce(ret, 0)` is 0), so a filter above the join tests the wrong one."""
+    assert request.conditions is not None
+    stored = {
+        column.concept.address
+        for datasource in request.graph.scope.datasources
+        for column in datasource.columns
+    }
+    args = {
+        c.address
+        for c in condition_row_args(request.conditions)
+        if c.derivation == Derivation.BASIC and c.address not in stored
+    }
+    return any(c.address in args for c in node.partial_concepts)
+
+
 def _emit_bridge(request: SourceRequest, bridge: BridgePlan) -> StrategyNode | None:
     # The search already priced partiality, so there is no escalation to do:
     # render at the request's own permissiveness and let the solution speak.
@@ -1852,7 +1870,9 @@ def _plan_source(request: SourceRequest) -> StrategyNode | None:
                 arm_local=request.arm_local,
             )
         )
-        if unfiltered is not None:
+        if unfiltered is not None and not _filters_a_partial_derivation(
+            request, unfiltered
+        ):
             return SelectNode(
                 output_concepts=request.outputs,
                 input_concepts=unfiltered.output_concepts,

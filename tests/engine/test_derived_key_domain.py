@@ -868,6 +868,21 @@ def test_present_entity_with_an_unbound_property_still_evaluates():
     ]
 
 
+@pytest.mark.parametrize(
+    "query, expected",
+    [
+        ("select order_id, item_id, qty where rf != 5", [(1, 10, 5), (2, 10, 7)]),
+        ("select order_id, item_id, rf where rf != 5", [(1, 10, 1), (2, 10, 0)]),
+        ("select order_id, qty where rf = 0", [(2, 7)]),
+    ],
+)
+def test_where_over_a_coalesce_of_a_partially_bound_property(query, expected):
+    executor = executor_for(
+        PARTIAL_PROPERTY_SOURCE + "auto rf <- coalesce(ret_order, 0);"
+    )
+    assert sorted_rows(executor, query) == expected
+
+
 def test_rollup_subtotal_row_keeps_its_value(derived: Executor):
     query = (
         "select customer_id, coalesce(sum(amount), 0) as total by rollup (customer_id)"
