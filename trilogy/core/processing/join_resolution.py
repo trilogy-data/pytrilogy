@@ -1791,16 +1791,15 @@ def _span_padding_matrix(
     nullables: Mapping[str, frozenset[str]],
     spellings: dict[str, str],
     canon_node: Callable[[str], str],
+    memos: dict[str, dict[int, frozenset[str]]],
 ) -> dict[str, dict[str, frozenset[str]]]:
     """Per side, per nullable key: the spans whose extension rows NULL it."""
-    span_memos: dict[str, dict[int, frozenset[str]]] = {
-        spelling: {} for spelling in sorted(spellings)
-    }
     out: dict[str, dict[str, frozenset[str]]] = {}
     for ds_node, datasource in ds_node_map.items():
         by_key: dict[str, set[str]] = defaultdict(set)
-        for spelling, span_memo in span_memos.items():
-            for address in _span_padded_addresses(datasource, spelling, span_memo):
+        for spelling in sorted(spellings):
+            memo = memos.setdefault(spelling, {})
+            for address in _span_padded_addresses(datasource, spelling, memo):
                 by_key[canon_node(address)].add(spellings[spelling])
         out[ds_node] = {
             key: frozenset(found)
@@ -2073,12 +2072,14 @@ def get_node_joins(
     # Beside the region contract: a FULL join between two families' padding
     # must not pair NULL with NULL null-safely.
     spellings = _span_spellings(keyspace.in_play_spans, environment, keyspace.witnessed)
+    pad_memos: dict[str, dict[int, frozenset[str]]] = {}
     if sum(1 for side in sides.values() if side.nullables) > 1:
         matrix = _span_padding_matrix(
             ds_node_map,
             {ds_node: side.nullables for ds_node, side in sides.items()},
             spellings,
             canon_node,
+            pad_memos,
         )
         sides = {
             ds_node: replace(side, span_padding=matrix.get(ds_node, {}))
@@ -2133,7 +2134,6 @@ def get_node_joins(
         ),
         environment,
     )
-    pad_memos: dict[str, dict[int, frozenset[str]]] = {}
     return [
         BaseJoin(
             left_datasource=ds_node_map[j.left] if j.left else None,
