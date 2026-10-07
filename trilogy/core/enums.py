@@ -325,6 +325,8 @@ class FunctionType(Enum):
     ## group is not a real aggregate - it just means group by this + some other set of fields
     ## but is here as syntax is identical
     GROUP = "group"
+    # internal: `expr` evaluated on a row of the select, keyed on the anchors
+    GRAIN_PIN = "grain_pin"
 
     COUNT = "count"
     COUNT_DISTINCT = "count_distinct"

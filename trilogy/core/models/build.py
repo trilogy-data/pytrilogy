@@ -1752,7 +1752,7 @@ class BuildFunction(DataTyped, BuildConceptArgs):
 
     @property
     def rendered_concept_arguments(self) -> list[BuildConcept]:
-        if self.operator == FunctionType.GROUP:
+        if self.operator in (FunctionType.GROUP, FunctionType.GRAIN_PIN):
             base = self.arguments[0]
             return get_rendered_concept_arguments(base)
         base = []
@@ -4355,6 +4355,7 @@ class Factory:
         return self._build_select_lineage(base)
 
     def _build_select_lineage(self, base: SelectLineage) -> BuildSelectLineage:
+        from trilogy.core.grain_pin_normalization import normalize_select_grain_pins
         from trilogy.core.having_normalization import normalize_select_having
         from trilogy.core.models.build import (
             BuildSelectLineage,
@@ -4373,6 +4374,12 @@ class Factory:
         # Split dual-scope WHERE references (a cross-row select output also
         # used as a row gate) into a minted WHERE-scope twin.
         base = normalize_select_where_scope(base, self.environment)
+        # A NULL-absorbing output is evaluated on the select's row.
+        base = normalize_select_grain_pins(
+            base,
+            self.environment,
+            assemble_full_graph(self.environment, self.domain_graph),
+        )
 
         materialized: dict[str, BuildConcept] = {}
         factory = Factory(

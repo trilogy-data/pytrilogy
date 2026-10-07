@@ -415,6 +415,10 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         arg_count=-1,
         output_type_function=lambda args: get_output_type_at_index(args, 0),
     ),
+    FunctionType.GRAIN_PIN: FunctionConfig(
+        arg_count=-1,
+        output_type_function=lambda args: get_output_type_at_index(args, 0),
+    ),
     FunctionType.COUNT: FunctionConfig(
         output_purpose=Purpose.METRIC,
         output_type=DataType.INTEGER,

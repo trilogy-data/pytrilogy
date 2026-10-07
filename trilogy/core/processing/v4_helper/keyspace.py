@@ -56,7 +56,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from weakref import WeakKeyDictionary
 
-from trilogy.core.enums import Derivation, Purpose
+from trilogy.core.enums import Derivation, FunctionType, Purpose
 from trilogy.core.graph_models import ScopeDatasources
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
@@ -492,7 +492,12 @@ def _entity_keys(
     if own_entity or address in identifying:
         return frozenset({address})
     if derivation == Derivation.BASIC:
-        keys = lineage_reads(address, environment) or keys
+        # a select-row expression is keyed on the anchors it was pinned to
+        keys = (
+            _grain_pin_addresses(address, environment)
+            or lineage_reads(address, environment)
+            or keys
+        )
     elif derivation == Derivation.AGGREGATE and not keys:
         # a ROLLUP aggregate declares no keys; it is still evaluated by its `by`
         keys = _grouping_addresses(address, environment)
@@ -535,6 +540,17 @@ def _group_to_addresses(address: str, environment: BuildEnvironment) -> frozense
         for arg in concept.lineage.arguments[1:]
         if isinstance(arg, BuildConcept)
     )
+
+
+def _grain_pin_addresses(address: str, environment: BuildEnvironment) -> frozenset[str]:
+    concept = environment.concepts.get(address)
+    if (
+        concept is None
+        or not isinstance(concept.lineage, BuildFunction)
+        or concept.lineage.operator != FunctionType.GRAIN_PIN
+    ):
+        return frozenset()
+    return _group_to_addresses(address, environment)
 
 
 def _grouping_addresses(address: str, environment: BuildEnvironment) -> frozenset[str]:
