@@ -9,6 +9,7 @@ import pytest
 
 from tests.helpers.models import CUSTOMERS_DERIVED
 from tests.helpers.rows import executor_for, sorted_rows
+from trilogy.core.exceptions import NoDatasourceException
 from trilogy.executor import Executor
 
 # sentinels: a read of the persisted column is visible in the rows
@@ -147,3 +148,35 @@ def test_every_read_in_the_statement_carries_the_pinned_value(
     query: str, expected: list[tuple]
 ):
     assert sorted_rows(_executor(), query) == expected
+
+
+# `amount_or_zero` is stored on orders; its definition reads `_raw`, which no
+# table binds: like a persisted aggregate, it answers its own keyspace only
+_STORED_ONLY = """
+key customer_id int;
+property customer_id.name string;
+key order_id int;
+property order_id._raw int;
+auto amount_or_zero <- coalesce(_raw, 0);
+
+root datasource customers (customer_id: customer_id, name: name)
+grain (customer_id)
+query '''select 1 as customer_id, 'ann' as name union all select 3, 'cat' ''';
+
+root datasource orders (
+    order_id: order_id, customer_id: ~customer_id, amount_or_zero: amount_or_zero
+)
+grain (order_id)
+query '''select 100 as order_id, 1 as customer_id, 10 as amount_or_zero''';
+"""
+
+
+def test_stored_only_value_answers_its_own_keyspace():
+    executor = executor_for(_STORED_ONLY)
+    assert sorted_rows(executor, "select order_id, amount_or_zero") == [(100, 10)]
+
+
+def test_stored_only_value_cannot_be_pinned_to_another_keyspace():
+    executor = executor_for(_STORED_ONLY)
+    with pytest.raises(NoDatasourceException):
+        sorted_rows(executor, "select customer_id, amount_or_zero")
