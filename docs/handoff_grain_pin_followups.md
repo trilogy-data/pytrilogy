@@ -50,6 +50,20 @@ as plain cases; each fix is a rule, named here so a regression has a home.
    revisited FULLs. Rule: a keyless outer join where either side provably holds
    one row is INNER (`join_resolution.narrow_keyless_joins`).
 
+Found by the audit that followed (both wrong on main too):
+
+- **A WHERE on a derivation over a partition union was dropped.** A filtered
+  ROOT merge was folded into its unfiltered sibling projection as a passthrough.
+  Rule: a filtered parent folds only into a sibling whose own conditions or
+  preexisting conditions hold every atom (`strategy_builder._rows_passed`).
+- **A WHERE over `coalesce(ret, 0)` on a `~` property tested NULL for 0.** The
+  scan computed the coalesce over its own rows and the filter ran above the
+  LEFT join. Rule: a NULL-absorbing inline derivation a scan binds only
+  partially is no search terminal; it is computed over the joined rows
+  (`network_build._searched_terminals`, `absorbs_null`), and the unfiltered
+  retry declines a WHERE that reads one (`_filters_a_partial_derivation`). A
+  derivation that stays NULL on NULL inputs (`is_returned`) keeps scan hosting.
+
 ## Plan size
 
 6. **A pinned row value built its own copy of the select's rows** - CLOSED.
@@ -93,8 +107,11 @@ as plain cases; each fix is a rule, named here so a regression has a home.
     `undelivered` itself stays NULL there. Revisit if the registry grows.
 11. **Address vs canonical audit.** A pinned concept and the column persisting it
     share an address. Two planner checks compared by address and were fixed
-    (`predicate_pushdown._parent_holds_the_same_concepts`,
-    `group_graph._scan_columns`); others likely remain. The bound twins in
+    (`predicate_pushdown._parent_holds_the_same_concepts`, now also on the
+    union-branch path, and `group_graph._scan_columns`). Still compared by
+    address, unproven either way: `select_node_v2.scan_stamps` (`stored`),
+    `join_resolution.complete_key_domain` / `merge_partial_addresses` on leaf
+    scans, `source_scoring.membership_complete_grain_keys`. The bound twins in
     `tests/helpers/models.py` are the oracle that catches them.
 12. **Anchor heuristics are build-time approximations** of what the keyspace
     knows: `_always_beside`, `_held_beside`, `_co_held_only_beside`, `_may_pad`.
@@ -126,7 +143,15 @@ far from the information that decides it. Each cost an hour of this handoff.
   bridges (`equivalence`, `canonical.get(a, a)`, `_keyed_on`, `hidden_concepts`
   being `list[BuildConcept]` on `BuildDatasource` but `set[str]` on
   `QueryDatasource`, which `join_resolution` compares a string against).
-- **Partiality is stamped in three places that must agree.** The datasource's
+- **A guarded FULL join cannot lower on MySQL.** `_padding_guard` does not
+  look at the join type and `full_join_lowering._validate` refuses any FULL
+  with an ON predicate, telling the user to move a predicate they never wrote.
+  No test reaches it yet.
+- **Partiality is stamped in three places that must agree.** They do not quite:
+  the network counts any unstored address (rollups too) as an inline
+  derivation, `scan_stamps` only BASIC; the network exempts promoted
+  (`extent_free`) keys before the derivation step; the union node stamp has
+  no inline rule at all. The datasource's
   `~` columns (`BuildDatasource.partial_concepts`), the network binding
   (`network_build._bindings_for`) and the scan node (`scan_stamps`) each decide
   what a scan provides partially; item 4 needed the same rule in two of them,
@@ -138,8 +163,11 @@ far from the information that decides it. Each cost an hour of this handoff.
   `guest_padded_addresses`, `_pairs_region_padding`, `_pads_for_different_members`
   and now `_padding_guard` each walk the parent chain to classify a NULL as
   value, padding, guest or rollup. `SideFacts` collects the results but is built
-  inside `get_node_joins`, so the merge node, the grain narrowing pass and the
-  optimizer (`UpgradeJoinOnGuards`) re-ask. A per-`QueryDatasource` cached
+  inside `get_node_joins`, so the merge node, the grain narrowing pass
+  (`grain_utility._partner_facts`, raw `nullable_concepts`) and the optimizer
+  (`UpgradeOuterFromKeySetEquivalence`) re-ask. A cache is safe at plan time
+  only: optimizer passes mutate `cte.source.joins`, which are the child
+  `QueryDatasource`s. A per-`QueryDatasource` cached
   `NullProvenance` (address -> kind, spans, witness key) would make item 2's
   guard a lookup and give `get_modifiers` the mixed case it cannot see today.
 - **`BaseJoin` grew a `condition` beside `Join.condition`.** Before this branch
