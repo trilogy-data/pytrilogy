@@ -6,7 +6,8 @@ oracle; hand rows are the contract where both twins could be wrong together.
   render the span from the solid side alone, so no FINAL non-null proof
   narrows the domain's LEFT join;
 - a dimension joined after `orders RIGHT JOIN items` is not preserved over the
-  solid stream, so `state_qty`'s ELSE is never evaluated on a user with no item;
+  solid stream, so `state_qty` never reads a user with no item's state (that
+  padded row takes the pinned ELSE);
 - row streams at FD-related grains (`pair_cost` at (order, product),
   `state_qty` at item) pair without fanning out.
 """
@@ -241,7 +242,7 @@ FORKED_CASES: list[tuple[str, list[tuple]]] = [
             (1001, 20, 150, 7),
             (1002, 10, 120, 0),
             (1003, 20, 210, 13),
-            (None, 30, None, None),
+            (None, 30, None, 0),
         ],
     ),
     (
@@ -251,8 +252,8 @@ FORKED_CASES: list[tuple[str, list[tuple]]] = [
             (1001, 20, 1, "B", "west", 150, 7),
             (1002, 10, 2, "A", "east", 120, 0),
             (1003, 20, 1, "B", "west", 210, 13),
-            (None, 30, None, "C", None, None, None),
-            (None, None, 3, None, "south", None, None),
+            (None, 30, None, "C", None, None, 0),
+            (None, None, 3, None, "south", None, 0),
         ],
     ),
     (
@@ -262,8 +263,8 @@ FORKED_CASES: list[tuple[str, list[tuple]]] = [
             (1001, 100, 20, 1, "CA", "B", 150, 7),
             (1002, 101, 10, 2, "NY", "A", 120, 0),
             (1003, 102, 20, 1, "CA", "B", 210, 13),
-            (None, None, 30, None, None, "C", None, None),
-            (None, None, None, 3, "TX", None, None, None),
+            (None, None, 30, None, None, "C", None, 0),
+            (None, None, None, 3, "TX", None, None, 0),
         ],
     ),
     (
@@ -280,8 +281,8 @@ FORKED_CASES: list[tuple[str, list[tuple]]] = [
             ("west", "A", 100, 5),
             ("west", "B", 360, 20),
             ("east", "A", 120, 0),
-            (None, "C", None, None),
-            ("south", None, None, None),
+            (None, "C", None, 0),
+            ("south", None, None, 0),
         ],
     ),
     (

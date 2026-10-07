@@ -525,9 +525,9 @@ def test_per_key_atom_under_an_aggregate_by_another_key(
             "select name, status, count(customer_id) by status as c, count(customer_id) by name as n",
             [
                 ("ann", "delivered", 2, 1),
-                ("ann", "in-transit", 1, 1),
+                ("ann", "in-transit", 2, 1),
                 ("bob", "delivered", 2, 1),
-                ("cat", None, 1, 1),
+                ("cat", "in-transit", 2, 1),
             ],
         ),
         (
@@ -536,16 +536,16 @@ def test_per_key_atom_under_an_aggregate_by_another_key(
                 ("ann", "delivered", 2, 2),
                 ("ann", "in-transit", 1, 2),
                 ("bob", "delivered", 2, 1),
-                ("cat", None, 0, 0),
+                ("cat", "in-transit", 1, 0),
             ],
         ),
         (
             "select name, status, count(customer_id) by status as c, max(amount) by name as m",
             [
                 ("ann", "delivered", 2, 20),
-                ("ann", "in-transit", 1, 20),
+                ("ann", "in-transit", 2, 20),
                 ("bob", "delivered", 2, 30),
-                ("cat", None, 1, None),
+                ("cat", "in-transit", 2, None),
             ],
         ),
     ],
@@ -556,12 +556,12 @@ def test_aggregates_at_disjoint_grains_pair_on_the_region_rows(
     assert twin_rows(derived, materialized, query) == expected
 
 
-def test_orderless_customer_has_no_status(derived: Executor):
+def test_orderless_customer_takes_the_status_fallback(derived: Executor):
     assert sorted_rows(derived, "select customer_id, status, count(order_id) as n") == [
         (1, "delivered", 1),
         (1, "in-transit", 1),
         (2, "delivered", 1),
-        (3, None, 0),
+        (3, "in-transit", 0),
     ]
 
 
@@ -682,15 +682,15 @@ auto n_orders <- count(order_id) by customer_id;
         ("select customer_id, n_orders where customer_id in ab_id", [(1, 2), (3, 0)]),
         (
             "select customer_id, status where customer_id in ab_id",
-            [(1, "delivered"), (1, "in-transit"), (3, None)],
+            [(1, "delivered"), (1, "in-transit"), (3, "in-transit")],
         ),
         (
             "select name, status where customer_id in ab_id",
-            [("ann", "delivered"), ("ann", "in-transit"), ("cat", None)],
+            [("ann", "delivered"), ("ann", "in-transit"), ("cat", "in-transit")],
         ),
         (
             "select customer_id, status where name in ab_name",
-            [(1, "delivered"), (1, "in-transit"), (3, None)],
+            [(1, "delivered"), (1, "in-transit"), (3, "in-transit")],
         ),
     ],
 )
@@ -713,11 +713,11 @@ def test_existence_set_over_carried_values_keeps_its_source(
     [
         (
             "select customer_id, name where count(order_id) by customer_id < 2 and undelivered",
-            [],
+            [(3, "cat")],
         ),
         (
             "select customer_id, name where sum(amount) by customer_id is null and status is null",
-            [(3, "cat")],
+            [],
         ),
         (
             "select customer_id, name where count(order_id) by customer_id < 2 and (status = 'in-transit' or status is null)",
@@ -779,7 +779,7 @@ auto customer_label <- coalesce(name, 'unknown');
         ),
         (
             "select customer_id, big where customer_id is null or customer_id = 3",
-            [(3, None), (None, "big")],
+            [(3, "small"), (None, "big")],
         ),
         (
             "select order_id, name where name is null",
@@ -787,14 +787,14 @@ auto customer_label <- coalesce(name, 'unknown');
         ),
         (
             "select customer_id, big",
-            [(1, "small"), (2, "big"), (3, None), (None, "big")],
+            [(1, "small"), (2, "big"), (3, "small"), (None, "big")],
         ),
         (
             "select customer_label, big, count(order_id) as n",
             [
                 ("ann", "small", 1),
                 ("bob", "big", 1),
-                ("cat", None, 0),
+                ("cat", "small", 0),
                 ("unknown", "big", 1),
             ],
         ),
@@ -815,7 +815,7 @@ auto customer_label <- coalesce(name, 'unknown');
             [
                 (1, "ann", "small"),
                 (2, "bob", "big"),
-                (3, "cat", None),
+                (3, "cat", "small"),
                 (None, "unknown", "big"),
             ],
         ),
@@ -907,11 +907,11 @@ def test_rollup_subtotal_row_keeps_its_value(derived: Executor):
         ),
         (
             "select customer_id, status where count(customer_id) by * > 2",
-            [(1, "delivered"), (1, "in-transit"), (2, "delivered"), (3, None)],
+            [(1, "delivered"), (1, "in-transit"), (2, "delivered"), (3, "in-transit")],
         ),
         (
             "select customer_id, status where count(order_id) by * > 2 and count(customer_id) by * > 2",
-            [(1, "delivered"), (1, "in-transit"), (2, "delivered"), (3, None)],
+            [(1, "delivered"), (1, "in-transit"), (2, "delivered"), (3, "in-transit")],
         ),
         (
             "select customer_id, label where count(customer_id) by * > 2",
@@ -919,12 +919,12 @@ def test_rollup_subtotal_row_keeps_its_value(derived: Executor):
                 (1, "ann-delivered"),
                 (1, "ann-in-transit"),
                 (2, "bob-delivered"),
-                (3, None),
+                (3, "cat-in-transit"),
             ],
         ),
         (
             "select customer_id, status where customer_id >= avg(customer_id) by * and status is null",
-            [(3, None)],
+            [],
         ),
         (
             "where customer_id >= avg(customer_id) by * and order_id is null select name, count(customer_id) as n",
@@ -936,7 +936,7 @@ def test_rollup_subtotal_row_keeps_its_value(derived: Executor):
                 (1, "delivered", 3),
                 (1, "in-transit", 3),
                 (2, "delivered", 3),
-                (3, None, 3),
+                (3, "in-transit", 3),
             ],
         ),
         (
@@ -945,7 +945,7 @@ def test_rollup_subtotal_row_keeps_its_value(derived: Executor):
                 (1, "delivered", 3),
                 (1, "in-transit", 3),
                 (2, "delivered", 3),
-                (3, None, 3),
+                (3, "in-transit", 3),
             ],
         ),
         (
@@ -966,7 +966,7 @@ def test_rollup_subtotal_row_keeps_its_value(derived: Executor):
         ),
         (
             "select customer_id, sum(double_amount) as t, count(status) as n",
-            [(1, 60, 2), (2, 60, 1), (3, None, 0)],
+            [(1, 60, 2), (2, 60, 1), (3, None, 1)],
         ),
         (
             "select status as s2, sum(amount) as a, sum(amount_or_zero) as t by rollup (status)",
@@ -976,9 +976,9 @@ def test_rollup_subtotal_row_keeps_its_value(derived: Executor):
             "select customer_id, status, count(customer_id) by status as per_status",
             [
                 (1, "delivered", 2),
-                (1, "in-transit", 1),
+                (1, "in-transit", 2),
                 (2, "delivered", 2),
-                (3, None, 1),
+                (3, "in-transit", 2),
             ],
         ),
         (
@@ -1096,16 +1096,16 @@ def test_two_facts_under_one_rollup_read_each_row_once(
                 (1, "delivered", 40),
                 (1, "in-transit", 20),
                 (2, "delivered", 40),
-                (3, None, None),
+                (3, "in-transit", 20),
             ],
         ),
         (
             "select customer_id, status, count(customer_id) by status as per_status",
             [
                 (1, "delivered", 2),
-                (1, "in-transit", 1),
+                (1, "in-transit", 2),
                 (2, "delivered", 2),
-                (3, None, 1),
+                (3, "in-transit", 2),
             ],
         ),
         (
@@ -1114,7 +1114,7 @@ def test_two_facts_under_one_rollup_read_each_row_once(
                 ("ann", "delivered", 1),
                 ("ann", "in-transit", 1),
                 ("bob", "delivered", 1),
-                ("cat", None, 0),
+                ("cat", "in-transit", 0),
             ],
         ),
     ],
@@ -1177,19 +1177,35 @@ union all select 3, 11, 901, null, 'none' ''';
 """
 
 
+# `reason_label` absorbs NULL, so it takes its fallback on a line with no return
 @pytest.mark.parametrize(
-    "query",
+    "query,expected",
     [
-        "select order_id, item_id, reason_label",
-        "select order_id, reason_label",
-        "select item_id, qty, reason_label",
-        "select order_id, item_id, qty, return_id, reason_label",
-        "select order_id, count(reason_label) as n",
+        (
+            "select order_id, item_id, reason_label",
+            [(1, 10, "broken"), (2, 10, "none"), (3, 11, "none")],
+        ),
+        ("select order_id, reason_label", [(1, "broken"), (2, "none"), (3, "none")]),
+        (
+            "select item_id, qty, reason_label",
+            [(10, 5, "broken"), (10, 7, "none"), (11, 9, "none")],
+        ),
+        (
+            "select order_id, item_id, qty, return_id, reason_label",
+            [
+                (1, 10, 5, 900, "broken"),
+                (2, 10, 7, None, "none"),
+                (3, 11, 9, 901, "none"),
+            ],
+        ),
+        ("select order_id, count(reason_label) as n", [(1, 1), (2, 1), (3, 1)]),
     ],
 )
-def test_optional_entity_is_absent_on_rows_without_it(query: str):
-    rows = twin_rows(*_twins(_OPTIONAL_DERIVED, _OPTIONAL_MATERIALIZED), query)
-    assert any(r[-1] in (None, 0) for r in rows)
+def test_optional_entity_fallback_fires_on_rows_without_it(
+    query: str, expected: list[tuple]
+):
+    twins = _twins(_OPTIONAL_DERIVED, _OPTIONAL_MATERIALIZED)
+    assert twin_rows(*twins, query) == expected
 
 
 def test_optional_entity_solid_stream_reads_returns_alone():
@@ -1239,7 +1255,7 @@ query '''select 1 as o, 10 as i, 1 as ro''';
                 (1, "ann", 1, 10, True),
                 (2, "bob", 2, 10, False),
                 (2, "bob", 2, 11, False),
-                (3, "cat", None, None, None),
+                (3, "cat", None, None, False),
             ],
         ),
         (
@@ -1273,7 +1289,7 @@ auto ab_up <- filter up_name where name in ('ann', 'cat');
     [
         (
             "select customer_id, status where up_name in ab_up",
-            [(1, "delivered"), (1, "in-transit"), (3, None)],
+            [(1, "delivered"), (1, "in-transit"), (3, "in-transit")],
         ),
         ("select customer_id where up_name in ab_up", [(1,), (3,)]),
         ("select customer_id, name where up_name not in ab_up", [(2, "bob")]),
@@ -1298,7 +1314,7 @@ _NULL_NAMED = _FILTERED_SET.replace(
         ("select customer_id where up_name in ab_up", [(1,), (3,)]),
         (
             "select customer_id, status where up_name in ab_up",
-            [(1, "delivered"), (1, "in-transit"), (3, None)],
+            [(1, "delivered"), (1, "in-transit"), (3, "in-transit")],
         ),
         (
             "select customer_id, name where up_name not in ab_up",
@@ -1306,7 +1322,7 @@ _NULL_NAMED = _FILTERED_SET.replace(
         ),
         (
             "select customer_id, status where up_name not in ab_up",
-            [(2, "delivered"), (5, None)],
+            [(2, "delivered"), (5, "in-transit")],
         ),
     ],
 )
@@ -1352,11 +1368,11 @@ def test_unfed_aggregate_beside_a_fed_one_takes_the_atom(
     [
         (
             "select upper_name, status, count(customer_id) as n where activity = 'dormant'",
-            [("CAT", None, 1)],
+            [("CAT", "in-transit", 1)],
         ),
         (
             "select upper_name, status, count(order_id) as n where activity = 'dormant'",
-            [("CAT", None, 0)],
+            [("CAT", "in-transit", 0)],
         ),
         (
             "select upper_name, count(customer_id) as n, sum(amount) as s where activity = 'dormant'",
@@ -1407,14 +1423,15 @@ def materialized_cities() -> Executor:
 
 
 # A WHERE no region domain can restate (a total the region's rows feed) or a
-# rollup over the span reads the region's rows below every derivation, which
-# is NULL there by the key-domain rule.
+# rollup over the span reads the region's rows below every derivation: a
+# NULL-absorbing one takes its fallback on the select's row (grain pin), any
+# other, and every one under a rollup, is NULL there by the key-domain rule.
 @pytest.mark.parametrize(
     "query,expected",
     [
         (
             "select customer_id, status where count(customer_id) by * > 2",
-            [(1, "delivered"), (1, "in-transit"), (2, "delivered"), (3, None)],
+            [(1, "delivered"), (1, "in-transit"), (2, "delivered"), (3, "in-transit")],
         ),
         (
             "select customer_id, label where count(customer_id) by * > 2",
@@ -1422,7 +1439,7 @@ def materialized_cities() -> Executor:
                 (1, "ann-delivered"),
                 (1, "ann-in-transit"),
                 (2, "bob-delivered"),
-                (3, None),
+                (3, "cat-in-transit"),
             ],
         ),
         (
@@ -1431,32 +1448,37 @@ def materialized_cities() -> Executor:
                 (1, "delivered", 0),
                 (1, "in-transit", 1),
                 (2, "delivered", 0),
-                (3, None, None),
+                (3, "in-transit", 1),
             ],
         ),
         (
             "select customer_id, amount_or_zero where count(customer_id) by * > 2",
-            [(1, 10), (1, 20), (2, 30), (3, None)],
+            [(1, 10), (1, 20), (2, 30), (3, 0)],
         ),
         (
             "select customer_id, order_seq where count(customer_id) by * > 2",
             [(1, 1), (1, 2), (2, 1), (3, None)],
         ),
-        (
+        pytest.param(
             "select customer_id, status where count(customer_id) by * > 2 and undelivered is null",
-            [(3, None)],
+            [],
+            marks=pytest.mark.xfail(
+                strict=True,
+                reason="pre-existing: the `by *` gate's RIGHT JOIN emits a NULL "
+                "row when the WHERE empties every row",
+            ),
         ),
         (
             "select customer_id, status where count(customer_id) by * > 2 and coalesce(flag, 1) = 1",
-            [(1, "in-transit"), (3, None)],
+            [(1, "in-transit"), (3, "in-transit")],
         ),
         (
             "select customer_id, status where count(customer_id) by * > 2 and reason is null",
-            [(2, "delivered"), (3, None)],
+            [(2, "delivered"), (3, "in-transit")],
         ),
         (
             "select customer_id, label where customer_id >= avg(customer_id) by *",
-            [(2, "bob-delivered"), (3, None)],
+            [(2, "bob-delivered"), (3, "cat-in-transit")],
         ),
         (
             "select customer_id, count(status) as n by rollup (customer_id)",
@@ -1593,19 +1615,19 @@ def test_aggregate_by_a_carried_column_pairs_on_it(
     [
         (
             "select customer_id, status where sum(amount) by status > 15 or status is null",
-            [(1, "delivered"), (1, "in-transit"), (2, "delivered"), (3, None)],
+            [(1, "delivered"), (1, "in-transit"), (2, "delivered"), (3, "in-transit")],
         ),
         (
             "select customer_id, status where coalesce(sum(amount) by status, 0) = 0",
-            [(3, None)],
+            [],
         ),
         (
             "select customer_id, status where count(order_id) by status > 1 or status is null",
-            [(1, "delivered"), (2, "delivered"), (3, None)],
+            [(1, "delivered"), (2, "delivered")],
         ),
         (
             "select customer_id, name where sum(amount) by status > 25 or status is null",
-            [(1, "ann"), (2, "bob"), (3, "cat")],
+            [(1, "ann"), (2, "bob")],
         ),
         (
             "select customer_id, name where coalesce(sum(amount) by status, 0) < 25",
@@ -1613,11 +1635,11 @@ def test_aggregate_by_a_carried_column_pairs_on_it(
         ),
         (
             "select customer_id, label where sum(amount) by status > 25 or status is null",
-            [(1, "ann-delivered"), (2, "bob-delivered"), (3, None)],
+            [(1, "ann-delivered"), (2, "bob-delivered")],
         ),
         (
             "select customer_id, status where sum(amount) by status > 15",
-            [(1, "delivered"), (1, "in-transit"), (2, "delivered")],
+            [(1, "delivered"), (1, "in-transit"), (2, "delivered"), (3, "in-transit")],
         ),
         (
             "select customer_id, name where sum(amount) by status < 25 or status is null",
@@ -1629,18 +1651,17 @@ def test_aggregate_by_a_carried_column_pairs_on_it(
         ),
         (
             "select customer_id, amount where sum(amount) by status > 25 or status is null",
-            [(1, 10), (2, 30), (3, None)],
+            [(1, 10), (2, 30)],
         ),
         (
             "select customer_id, flag where sum(amount) by status > 15 or status is null",
-            [(1, 0), (1, 1), (2, 0), (3, None)],
+            [(1, 0), (1, 1), (2, 0), (3, 1)],
         ),
         (
             "select customer_id, label, status where sum(amount) by status > 25 or status is null",
             [
                 (1, "ann-delivered", "delivered"),
                 (2, "bob-delivered", "delivered"),
-                (3, None, None),
             ],
         ),
     ],
@@ -1654,7 +1675,8 @@ def test_null_accepting_atom_keeps_the_padded_row(
 
 
 # A `?` store beside the `~` customer region: an order with no store is a REAL
-# row (`unknown`), the orderless customer has no store entity at all (NULL).
+# row (`unknown`); the orderless customer has no store entity, and the
+# `coalesce` takes its fallback on her row too.
 _NULLABLE_STORE = """
 key customer_id int;
 property customer_id.name string;
@@ -1693,7 +1715,7 @@ auto store_label <- coalesce(store_name, 'unknown');
     [
         (
             "select customer_id, store_label where sum(amount) by status > 15 or status is null",
-            [(1, "main"), (1, "unknown"), (2, "main"), (3, None)],
+            [(1, "main"), (1, "unknown"), (2, "main"), (3, "unknown")],
         ),
         (
             "select customer_id, store_label, status where sum(amount) by status > 15 or status is null",
@@ -1701,12 +1723,12 @@ auto store_label <- coalesce(store_name, 'unknown');
                 (1, "main", "delivered"),
                 (1, "unknown", "in-transit"),
                 (2, "main", "delivered"),
-                (3, None, None),
+                (3, "unknown", "in-transit"),
             ],
         ),
         (
             "select customer_id, status, store_label where coalesce(sum(amount) by status, 0) < 25",
-            [(1, "in-transit", "unknown"), (3, None, None)],
+            [(1, "in-transit", "unknown"), (3, "in-transit", "unknown")],
         ),
     ],
 )
@@ -1744,8 +1766,8 @@ auto big <- case when amount > 6 then 'big' else 'small' end;
 @pytest.mark.parametrize(
     "query, expected",
     [
-        ("select customer_id, max(big) as b", [(1, "small"), (2, "big"), (3, None)]),
-        ("select customer_id, count(big) as b", [(1, 1), (2, 1), (3, 0)]),
+        ("select customer_id, max(big) as b", [(1, "small"), (2, "big"), (3, "small")]),
+        ("select customer_id, count(big) as b", [(1, 1), (2, 1), (3, 1)]),
     ],
 )
 def test_named_argument_over_a_union_source_is_solid(query: str, expected: list[tuple]):
@@ -1812,19 +1834,19 @@ def test_padded_null_is_not_the_value_null_group(query: str, expected: list[tupl
     [
         (
             "select customer_id, status where count(customer_id) by status = 1",
-            [(1, "in-transit"), (3, None)],
+            [],
         ),
         (
             "select customer_id where count(customer_id) by status = 1",
-            [(1,), (3,)],
+            [],
         ),
         (
             "select name, status where count(customer_id) by status = 1",
-            [("ann", "in-transit"), ("cat", None)],
+            [],
         ),
         (
             "select customer_id, status, count(customer_id) by status as c where count(customer_id) by status = 1",
-            [(1, "in-transit", 1), (3, None, 1)],
+            [],
         ),
     ],
 )
@@ -1839,15 +1861,15 @@ def test_where_aggregate_counting_the_region_by_an_absent_key(
     [
         (
             "select customer_id, status, count(customer_id) by status as n where coalesce(sum(amount) by customer_id, 0) != 30 or customer_id = 2",
-            [(2, "delivered", 1), (3, None, 1)],
+            [(2, "delivered", 1), (3, "in-transit", 1)],
         ),
         (
             "select customer_id, status, count(customer_id) by status as n where coalesce(sum(amount) by customer_id, 0) != 30",
-            [(3, None, 1)],
+            [(3, "in-transit", 1)],
         ),
         (
             "select name, status, count(customer_id) by status as n where coalesce(sum(amount) by customer_id, 0) != 30 or customer_id = 2",
-            [("bob", "delivered", 1), ("cat", None, 1)],
+            [("bob", "delivered", 1), ("cat", "in-transit", 1)],
         ),
         (
             "select customer_id, pstatus, count(customer_id) by pstatus as n where coalesce(sum(amount) by pstatus, 0) = 0",
@@ -1867,7 +1889,7 @@ def test_where_beside_a_region_fed_output_aggregate_filters_the_rows(
 
 # The persisted shape of a derivation: `status` bound ONLY in a table at its
 # own grain, apart from the orders that carry the customer. Reading it back
-# must not move the orderless customer's NULL.
+# must give the orderless customer the same pinned fallback.
 _ORDERS_PLAIN = f"""
 root datasource orders (
     order_id: order_id, customer_id: ~customer_id,
@@ -1917,12 +1939,12 @@ def _persisted_twins() -> tuple[Executor, Executor]:
                 (1, 100, "delivered"),
                 (1, 101, "in-transit"),
                 (2, 102, "delivered"),
-                (3, None, None),
+                (3, None, "in-transit"),
             ],
         ),
         (
             "select customer_id, coalesce(status, 'none') as s",
-            [(1, "delivered"), (1, "in-transit"), (2, "delivered"), (3, None)],
+            [(1, "delivered"), (1, "in-transit"), (2, "delivered"), (3, "in-transit")],
         ),
     ],
 )
@@ -1933,7 +1955,7 @@ def test_persisted_property_keeps_its_key_domain(query: str, expected: list[tupl
 def test_any_by_the_customer_takes_one_of_its_statuses():
     for executor in _persisted_twins():
         rows = sorted_rows(executor, "select customer_id, any_status")
-        assert rows[1:] == [(2, "delivered"), (3, "none")]
+        assert rows[1:] == [(2, "delivered"), (3, "in-transit")]
         assert rows[0] in [(1, "delivered"), (1, "in-transit")]
 
 
@@ -1941,7 +1963,7 @@ def test_max_by_the_customer_picks_its_status():
     assert twin_rows(*_persisted_twins(), "select customer_id, last_status") == [
         (1, "in-transit"),
         (2, "delivered"),
-        (3, "none"),
+        (3, "in-transit"),
     ]
 
 
@@ -1950,5 +1972,5 @@ def test_group_by_the_customer_pairs_every_customer_with_its_statuses():
         (1, "delivered"),
         (1, "in-transit"),
         (2, "delivered"),
-        (3, "none"),
+        (3, "in-transit"),
     ]

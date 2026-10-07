@@ -43,15 +43,15 @@ grain (launch_id)
 query '''select l.*, case when l.m > 8 then 'big' else 'small' end as s from ({_LAUNCH_ROWS}) l''';
 """
 # the vehicle with no launch (C/1, and A/2) is a row of the statement whenever
-# a property of the composite key is projected, and `status` is NULL there:
-# the region is demanded by what its two spans reach TOGETHER
+# a property of the composite key is projected, and `status` is pinned to its
+# ELSE there: the region is demanded by what its two spans reach TOGETHER
 COMPOSITE_QUERIES = [
     "select vname, variant, status",
     "select vclass, status",
     "select vname, variant, vclass, status",
     "select vclass, status, count(launch_id) as n",
     "select vclass, count(launch_id) as n where status = 'big' or status is null",
-    "select vname, variant where status is null",
+    "select vname, variant where status = 'small'",
     "select vname, status where vclass != 'light'",
     "select vclass, count(vname) as n",
     "select vname, variant, count(status) as n, count(launch_id) as l",
@@ -245,15 +245,15 @@ query '''select r.*, case when r.d = 'broken' then 'defect' else 'other' end as 
 TWO_FACT_JOIN_CASES = [
     (
         "select item_sk, ticket, reason_class",
-        [(10, 1, "defect"), (10, 2, None), (20, 3, "other"), (30, 4, None)],
+        [(10, 1, "defect"), (10, 2, "other"), (20, 3, "other"), (30, 4, "other")],
     ),
     (
         "select sale_year, reason_class",
-        [(1999, "defect"), (1999, "other"), (2000, None)],
+        [(1999, "defect"), (1999, "other"), (2000, "other")],
     ),
     (
         "select sale_year, reason_class, sum(qty) as q",
-        [(1999, "defect", 5), (1999, "other", 9), (2000, None, 9)],
+        [(1999, "defect", 5), (1999, "other", 9), (2000, "other", 9)],
     ),
     pytest.param(
         "select item_desc, reason_class, is_returned",
@@ -278,14 +278,14 @@ TWO_FACT_JOIN_CASES = [
         [("defect", 1), ("other", 1)],
     ),
     # outputs that are exactly the region's spans under a null-accepting WHERE
-    # over the absent value: the solid stream and the domain ask the search for
+    # over the pinned value: the solid stream and the domain ask the search for
     # the same columns under different promotions, and the domain must not take
     # the solid stream's cached partial scan (`no complete sources found`)
-    ("select item_sk, ticket where reason_class is null", [(10, 2), (30, 4)]),
-    ("select ticket where reason_class is null", [(2,), (4,)]),
+    ("select item_sk, ticket where reason_class is null", []),
+    ("select ticket where reason_class is null", []),
     (
         "select item_sk, ticket where reason_class is null or reason_class = 'defect'",
-        [(10, 1), (10, 2), (30, 4)],
+        [(10, 1)],
     ),
     (
         "select sale_year, count(ticket) as n where reason_class = 'other' or reason_class is null",
@@ -306,7 +306,7 @@ TWO_FACT_JOIN_CASES = [
     ),
     (
         "select item_desc, reason_class where sale_year = 2000",
-        [("alpha", None), ("gamma", None)],
+        [("alpha", "other"), ("gamma", "other")],
     ),
     (
         "select sale_year, is_returned, count(ticket) as n",
@@ -320,14 +320,14 @@ TWO_FACT_JOIN_CASES = [
     ),
     (
         "select sale_year, reason_class, count(item_sk) as i where qty > 4",
-        [(1999, "defect", 1), (1999, "other", 1), (2000, None, 1)],
+        [(1999, "defect", 1), (1999, "other", 1), (2000, "other", 1)],
     ),
     ("select reason_desc, sum(qty) as q", [("broken", 5), ("late", 9), (None, 9)]),
-    ("select sale_year, count(ticket) as n where reason_class is null", [(2000, 2)]),
+    ("select sale_year, count(ticket) as n where reason_class is null", []),
     ("select sale_year, count(ticket) as n where reason_class = 'defect'", [(1999, 1)]),
     (
         "select item_desc, count(ticket) as n where reason_class is null",
-        [("alpha", 1), ("gamma", 1)],
+        [],
     ),
     (
         "select reason_class, count(sale_date) as d",
@@ -335,7 +335,7 @@ TWO_FACT_JOIN_CASES = [
     ),
     (
         "select sale_year, count(ticket) as n, count(reason_class) as c",
-        [(1999, 2, 2), (2000, 2, 0)],
+        [(1999, 2, 2), (2000, 2, 2)],
     ),
 ]
 
@@ -363,9 +363,9 @@ def test_composite_key_region_has_the_unlaunched_vehicle(
     derived, _ = composite
     assert set(sorted_rows(derived, "select vclass, status")) == {
         ("heavy", "big"),
+        ("heavy", "small"),
         ("light", "small"),
-        ("heavy", None),
-        ("medium", None),
+        ("medium", "small"),
     }
 
 

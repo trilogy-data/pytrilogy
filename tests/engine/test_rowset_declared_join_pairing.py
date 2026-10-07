@@ -2,9 +2,10 @@
 
 `r.status` beside `status` pairs on `r.customer_id = customer_id` alone, so
 customer 1's two orders cross with the rowset's two rows, and cat (no order)
-keeps her row with both statuses NULL: `status` is a property of `order_id`,
-absent for her, and her rowset row carries no status either. Checked on the
-oracle twin, where `status` is derived on one model and a column on the other.
+keeps her row with both statuses 'in-transit': `status` absorbs NULL, so it is
+pinned to the select's row, and so it was in the rowset's body. No row has a
+NULL status. Checked on the oracle twin, where `status` is derived on one model
+and a column on the other.
 """
 
 import pytest
@@ -20,9 +21,8 @@ PAIRED = [
     (1, "in-transit", "delivered"),
     (1, "in-transit", "in-transit"),
     (2, "delivered", "delivered"),
-    (3, None, None),
+    (3, "in-transit", "in-transit"),
 ]
-CAT = [(3, None, None)]
 
 
 @pytest.fixture(scope="module")
@@ -38,11 +38,11 @@ UNION = "union join r.customer_id = customer_id"
     "query, expected",
     [
         (f"select customer_id, status, r.status {SUBSET};", PAIRED),
-        (f"select customer_id, status, r.status {SUBSET} where status is null;", CAT),
-        (f"select customer_id, status, r.status {SUBSET} where r.status is null;", CAT),
-        (f"select customer_id, r.status {SUBSET} where status is null;", [(3, None)]),
+        (f"select customer_id, status, r.status {SUBSET} where status is null;", []),
+        (f"select customer_id, status, r.status {SUBSET} where r.status is null;", []),
+        (f"select customer_id, r.status {SUBSET} where status is null;", []),
         (f"select customer_id, status, r.status {UNION};", PAIRED),
-        (f"select customer_id, status, r.status {UNION} where status is null;", CAT),
+        (f"select customer_id, status, r.status {UNION} where status is null;", []),
     ],
 )
 def test_rowset_pairs_on_the_declared_join_only(

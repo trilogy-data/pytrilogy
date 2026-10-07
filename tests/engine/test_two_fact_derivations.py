@@ -1,6 +1,7 @@
 """Two facts each bind `~customer_id`, and no source holds a row of both: each
-fact's derivations are evaluated on its own rows, never on the other's
-padding. Oracle: the same labels also persisted as columns at their grain."""
+fact's derivations read only its own rows, and a select keyed by customer
+pins each label to its ELSE on the other's padding. Oracle: the same labels also persisted as columns at their grain.
+"""
 
 import pytest
 
@@ -81,11 +82,11 @@ def test_materialization_invariance(
     twin_rows(derived, materialized, query)
 
 
-def test_each_label_is_absent_on_the_other_facts_rows(derived: Executor):
+def test_each_label_takes_its_else_on_the_other_facts_rows(derived: Executor):
     assert sorted_rows(derived, "select customer_id, amt_label, sev_label") == [
-        (1, "big", None),
-        (1, "small", None),
+        (1, "big", "lo"),
+        (1, "small", "lo"),
         (2, "big", "hi"),
-        (3, None, "lo"),
-        (4, None, None),
+        (3, "small", "lo"),
+        (4, "small", "lo"),
     ]

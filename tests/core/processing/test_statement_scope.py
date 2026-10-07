@@ -54,7 +54,10 @@ def _plan(monkeypatch, module, model: str, query: str) -> _Graphs:
 @pytest.mark.parametrize(
     "model, query",
     [
-        (CUSTOMERS_DERIVED, "select customer_id, status where status = 'delivered';"),
+        (
+            CUSTOMERS_DERIVED,
+            "select customer_id, undelivered where undelivered = false;",
+        ),
         (THREE_WAY, "where channel in ('WEB', 'CATALOG') select sum(amount) as total;"),
     ],
 )

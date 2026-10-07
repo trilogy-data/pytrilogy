@@ -8,6 +8,9 @@ for it in its own keyspace, so nothing marks it undemanded, and the padded
 row came up as a row source: `(NULL, 0)` for a product no user bought. The
 keyspace names those spans (`Keyspace.unread_spans`) and the boundary plans
 its body without extending them, as it does for a span the reader owns.
+A value the body PINS is a real row value, though: `status` absorbs NULL, so
+the body evaluates it on cat's row and `select s.o, s.st` reads her
+`(NULL, 'in-transit')`, a row the direct `select order_id, status` lacks.
 
 A region the reader COLLAPSES is different: `select s.c, s.k` over an
 aggregate body reads only customer-level handles, so the body's two regions
@@ -37,12 +40,10 @@ NESTED = (
 
 TWIN_PAIRS = [
     # the customer region is unread: not a row
-    (KEYED + "select s.o, s.st;", "select order_id, status;"),
     (
         KEYED + "select s.o, s.a where s.st is null;",
         "select order_id, amount where status is null;",
     ),
-    (NESTED + "select s.o2, s.st2;", "select order_id, status;"),
     # the customer region is read, or collapsed into the reader's one region
     (KEYED + "select s.c, s.st;", "select customer_id, status;"),
     (KEYED + "select s.n, count(s.o) as k;", "select name, count(order_id) as k;"),
@@ -60,6 +61,15 @@ TWIN_PAIRS = [
     (NESTED + "select s.c2, s.st2;", "select customer_id, status;"),
     (NESTED + "select s.n2, count(s.o2) as k;", "select name, count(order_id) as k;"),
 ]
+
+# the body pinned cat's status: her row carries a value
+PINNED_ROWS = [
+    (100, "delivered"),
+    (101, "in-transit"),
+    (102, "delivered"),
+    (None, "in-transit"),
+]
+PINNED = [KEYED + "select s.o, s.st;", NESTED + "select s.o2, s.st2;"]
 
 FAMILY_MODEL = """
 key user_id int;
@@ -149,6 +159,14 @@ def test_rowset_matches_direct_on_both_twins(
         assert sorted_rows(executor, rowset_query) == sorted_rows(
             executor, direct_query
         )
+
+
+@pytest.mark.parametrize("rowset_query", PINNED)
+def test_rowset_reads_a_value_its_body_pinned(
+    derived: Executor, materialized: Executor, rowset_query: str
+):
+    for executor in (derived, materialized):
+        assert sorted_rows(executor, rowset_query) == PINNED_ROWS
 
 
 @pytest.mark.parametrize("rowset_query,direct_query", FAMILY_PAIRS)

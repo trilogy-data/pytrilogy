@@ -103,21 +103,26 @@ def test_demanded_partial_key_adds_its_extension_region():
 
 
 def test_concept_is_defined_only_where_its_keys_are_present():
-    keyspace = _keyspace(CUSTOMERS_DERIVED, "select customer_id, name, status, label;")
+    keyspace = _keyspace(
+        CUSTOMERS_DERIVED,
+        "select customer_id, name, undelivered,"
+        " concat(name, '-', cast(undelivered as string)) -> tag;",
+    )
     (extension,) = _extensions(keyspace)
     assert keyspace.defined_on("local.name", extension)
-    assert not keyspace.defined_on("local.status", extension)
-    assert not keyspace.defined_on("local.label", extension)
-    assert _absent(keyspace, "local.status") == [frozenset({CUSTOMER})]
+    assert not keyspace.defined_on("local.undelivered", extension)
+    assert not keyspace.defined_on("local.tag", extension)
+    assert _absent(keyspace, "local.undelivered") == [frozenset({CUSTOMER})]
 
 
 def test_aggregate_by_the_span_is_defined_on_the_extension_region():
     keyspace = _keyspace(
-        CUSTOMERS_DERIVED + CUSTOMER_ACTIVITY, "select customer_id, status, activity;"
+        CUSTOMERS_DERIVED + CUSTOMER_ACTIVITY,
+        "select customer_id, undelivered, activity;",
     )
     (extension,) = _extensions(keyspace)
     assert keyspace.defined_on("local.activity", extension)
-    assert not keyspace.defined_on("local.status", extension)
+    assert not keyspace.defined_on("local.undelivered", extension)
 
 
 def test_join_axis_only_key_adds_no_region():
@@ -178,10 +183,10 @@ def test_where_null_rejecting_an_absent_concept_empties_the_region(monkeypatch):
     keyspace = _heal_keyspace(
         monkeypatch,
         CUSTOMERS_DERIVED,
-        "select customer_id, status where status = 'delivered';",
+        "select customer_id, undelivered where undelivered = false;",
     )
     (extension,) = _extensions(keyspace)
-    assert extension.emptied_by == frozenset({"local.status"})
+    assert extension.emptied_by == frozenset({"local.undelivered"})
     assert keyspace.families == ()
     # a merge below the WHERE still sees the dead region's padding
     assert keyspace.in_play_spans == frozenset({CUSTOMER})
@@ -484,7 +489,7 @@ def test_binding_is_complete_once_the_where_empties_the_rows_it_lacks(monkeypatc
     dead = _heal_keyspace(
         monkeypatch,
         CUSTOMERS_DERIVED,
-        "select customer_id, status where status = 'delivered';",
+        "select customer_id, undelivered where undelivered = false;",
     )
     assert dead.binding_is_complete("orders", CUSTOMER)
 
@@ -493,7 +498,7 @@ def test_a_healed_binding_leaves_the_plan_no_region(monkeypatch):
     planned = _spied(
         monkeypatch,
         CUSTOMERS_DERIVED,
-        "select customer_id, status where status = 'delivered';",
+        "select customer_id, undelivered where undelivered = false;",
     )[0]
     assert _extensions(planned) == []
     assert planned.in_play_spans == frozenset()
@@ -541,13 +546,14 @@ def test_completion_stays_live_under_a_column_both_sources_reach(monkeypatch):
 
 
 def test_pin_heal_reads_a_derived_null_rejection(monkeypatch):
-    """`status` is derived and absent on an orderless customer: a WHERE that
-    rejects NULL `status` empties the customer region, and orders' `~` on the
+    """`undelivered` is derived and absent on an orderless customer: a WHERE
+    that rejects NULL `undelivered` empties the customer region, and orders' `~` on the
     customer key is complete for the statement."""
     keyspace = _heal_keyspace(
         monkeypatch,
         CUSTOMERS_DERIVED,
-        "select customer_id, status where status = 'delivered' and name = 'cat';",
+        "select customer_id, undelivered"
+        " where undelivered = false and name = 'cat';",
     )
     assert keyspace.binding_is_complete("orders", CUSTOMER)
 
@@ -579,10 +585,10 @@ def test_basic_over_an_aggregate_is_keyed_on_what_it_reads():
 
 
 def test_extension_row_carries_what_its_span_reaches():
-    keyspace = _keyspace(CUSTOMERS_DERIVED, "select customer_id, name, status;")
+    keyspace = _keyspace(CUSTOMERS_DERIVED, "select customer_id, name, undelivered;")
     (extension,) = _extensions(keyspace)
     assert keyspace.carried_on("local.name", extension)
-    assert not keyspace.carried_on("local.status", extension)
+    assert not keyspace.carried_on("local.undelivered", extension)
     assert keyspace.region_of(extension.spans) is extension
 
 
@@ -599,7 +605,7 @@ def test_demanded_region_gets_a_domain_whatever_the_outputs():
 
 
 def test_unnamed_span_rides_the_domain_as_a_hidden_member():
-    info, _ = plan(CUSTOMERS_DERIVED, "select name, status;")
+    info, _ = plan(CUSTOMERS_DERIVED, "select name, undelivered;")
     ((gid, spans),) = _domains(info).items()
     assert spans == frozenset({CUSTOMER})
     assert CUSTOMER in info.group_attrs[gid].carried_keys
@@ -665,7 +671,7 @@ def test_where_over_an_absent_null_rejecting_value_empties_the_region(monkeypatc
     info = _planned_info(
         monkeypatch,
         CUSTOMERS_DERIVED,
-        "select customer_id, status where status = 'delivered';",
+        "select customer_id, undelivered where undelivered = false;",
     )
     assert not _domains(info)
     assert _extensions(info.keyspace) == []
@@ -695,7 +701,8 @@ def test_emptied_completion_demands_nothing(monkeypatch):
 def test_entity_is_spelled_the_same_with_and_without_a_license(monkeypatch):
     """`customer_id as c2` earlier in the session makes `c2` the canonical
     spelling. Healing the last `~` must not change that: the plan keyspace
-    (no license left) and heal's (as authored) key `late_name` alike."""
+    (no license left) and heal's (as authored) key `undelivered_customer`
+    alike."""
     healed, planned = Spy(build_keyspace), Spy(build_keyspace)
     monkeypatch.setattr(partial_bridging, "build_keyspace", healed)
     monkeypatch.setattr(rowset_witness, "build_keyspace", planned)
@@ -704,11 +711,11 @@ def test_entity_is_spelled_the_same_with_and_without_a_license(monkeypatch):
     executor.generate_sql("select customer_id as c2, status;")
     healed.seen.clear()
     planned.seen.clear()
-    executor.generate_sql("select late_name;")
+    executor.generate_sql("select undelivered_customer;")
     assert _extensions(planned.seen[0]) == []
-    spelled = healed.seen[0].keys_by_address["local.late_name"]
+    spelled = healed.seen[0].keys_by_address["local.undelivered_customer"]
     assert spelled == frozenset({"local.c2"})
-    assert planned.seen[0].keys_by_address["local.late_name"] == spelled
+    assert planned.seen[0].keys_by_address["local.undelivered_customer"] == spelled
 
 
 def test_sub_plan_without_the_where_inherits_the_statement_heal(monkeypatch):

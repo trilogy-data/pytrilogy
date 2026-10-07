@@ -18,12 +18,14 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Any, TypeGuard
 
+from trilogy.core.constants import GRAIN_NULL_SENTINEL
 from trilogy.core.domain_graph import DomainGraph
-from trilogy.core.enums import Derivation, FunctionType, Purpose
+from trilogy.core.enums import ComparisonOperator, Derivation, FunctionType, Purpose
 from trilogy.core.having_normalization import _child_exprs
 from trilogy.core.models.author import (
     AggregateWrapper,
     CaseElse,
+    Comparison,
     Concept,
     ConceptRef,
     Function,
@@ -32,9 +34,10 @@ from trilogy.core.models.author import (
 )
 from trilogy.core.models.environment import Environment
 
-# Functions that take a value where their arguments are NULL; a CASE does so
-# through its ELSE.
+# What takes a value where its arguments are NULL; a CASE does so through
+# its ELSE.
 NULL_ABSORBING_FUNCTIONS = frozenset({FunctionType.COALESCE})
+NULL_TESTS = (ComparisonOperator.IS, ComparisonOperator.IS_NOT)
 
 
 def _lookup(
@@ -46,13 +49,18 @@ def _lookup(
     return concept
 
 
-def is_null_absorbing(expr: Any) -> TypeGuard[Function]:
-    return isinstance(expr, Function) and (
+def is_null_absorbing(expr: Any) -> TypeGuard[Function | Comparison]:
+    """A `grain()` hash's sentinel coalesce is not a fallback: it makes the
+    hash total over a NULL member, and a padded row is still no combination."""
+    if isinstance(expr, Comparison):
+        return expr.operator in NULL_TESTS
+    if not isinstance(expr, Function):
+        return False
+    if expr.operator == FunctionType.CASE:
+        return any(isinstance(a, CaseElse) for a in expr.arguments)
+    return (
         expr.operator in NULL_ABSORBING_FUNCTIONS
-        or (
-            expr.operator == FunctionType.CASE
-            and any(isinstance(a, CaseElse) for a in expr.arguments)
-        )
+        and GRAIN_NULL_SENTINEL not in expr.arguments
     )
 
 
@@ -158,9 +166,18 @@ def _reads(address: str, target: str, environment: Environment) -> bool:
 
 def _always_beside(own: set[str], key: str, graph: DomainGraph) -> bool:
     """No select row holds `key` without the rows `expr` reads: those rows
-    hold every `key` (`covers`), or every `key` row carries them (an order
-    carries its customer)."""
-    return graph.covers(own, key) or all(graph.determines({key}, o) for o in own)
+    hold every `key` (`covers`), every `key` row carries them (an order
+    carries its customer), or a table holding `key`'s whole domain carries
+    them on each of its rows."""
+    if graph.covers(own, key) or all(graph.determines({key}, o) for o in own):
+        return True
+    bound: dict[str, set[str]] = {}
+    complete: set[str] = set()
+    for b in graph.binding_edges:
+        bound.setdefault(b.datasource, set()).add(b.concept)
+        if b.concept == key and b.complete and b.condition is None:
+            complete.add(b.datasource)
+    return any(own <= bound[datasource] for datasource in complete)
 
 
 def pin_keys(
@@ -203,7 +220,9 @@ def grain_pin(expr: Any, keys: frozenset[str], environment: Environment) -> Func
     return Function(
         operator=FunctionType.GRAIN_PIN,
         output_datatype=expr.output_datatype,
-        output_purpose=expr.output_purpose,
+        output_purpose=(
+            expr.output_purpose if isinstance(expr, Function) else Purpose.PROPERTY
+        ),
         arguments=[expr, *(environment.concepts[k].reference for k in sorted(keys))],
         arg_count=-1,
     )

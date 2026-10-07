@@ -353,8 +353,8 @@ def test_forked_with_brand_only(forked):
 
 def test_forked_with_status(forked):
     """`order_status` reads the order's `amount`. An extension row has no
-    order, so it is NULL there like everything outside the span's closure; the
-    CASE's ELSE does not fire on padding."""
+    order, but the select's other keys pin the CASE to the row, so its ELSE
+    fires on padding while the plain aggregates stay NULL."""
     assert (
         _rows(
             forked,
@@ -366,8 +366,8 @@ def test_forked_with_status(forked):
             (1001, 100, 20, 1, "FIRST", 7, 150),
             (1002, 101, 10, 2, "FIRST", 11, 120),
             (1003, 102, 20, 1, "LATER", 13, 210),
-            (None, None, 30, None, None, None, None),
-            (None, None, None, 3, None, None, None),
+            (None, None, 30, None, "LATER", None, None),
+            (None, None, None, 3, "LATER", None, None),
         ]
     )
 
@@ -399,8 +399,8 @@ def test_forked_full_column_set(forked):
         (1001, 100, 20, 1, "CA", "B", "FIRST", 7, 150),
         (1002, 101, 10, 2, "NY", "A", "FIRST", 11, 120),
         (1003, 102, 20, 1, "CA", "B", "LATER", 13, 210),
-        (None, None, None, 3, "TX", None, None, None, None),
-        (None, None, 30, None, None, "C", None, None, None),
+        (None, None, None, 3, "TX", None, "LATER", None, None),
+        (None, None, 30, None, None, "C", "LATER", None, None),
     ]
 
 
@@ -862,8 +862,8 @@ def test_composite_grain_families_with_by_span_aggregate():
         (100, 2, 20, 1, "LATER", 7),
         (101, 1, 10, 2, "FIRST", 11),
         (102, 1, 20, 1, "LATER", 13),
-        (None, None, None, 3, None, None),
-        (None, None, 30, None, None, None),
+        (None, None, None, 3, "LATER", None),
+        (None, None, 30, None, "LATER", None),
     ]
 
 

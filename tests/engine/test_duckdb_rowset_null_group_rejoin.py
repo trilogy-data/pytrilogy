@@ -109,6 +109,8 @@ KEYLESS_CASES = [
 # A row-stream derivation over the solid rows beside the region's domain: the
 # split has to carry the span the domain joins back on, whether the statement
 # names it (`s.sk`) or not (`s.d` beside it), or FINAL cross-joins the two.
+# The band absorbs NULL and the reader is keyed on the item, so it is pinned
+# to the reader's row: the unsold item's band is 'lo'.
 ROW_STREAM_CASES = [
     (
         (
@@ -116,7 +118,7 @@ ROW_STREAM_CASES = [
             "select s.sk, case when s.q > 10 then 'hi' else 'lo' end as band"
             " order by s.sk asc, band asc nulls last;"
         ),
-        [(10, "lo"), (20, "hi"), (30, "hi"), (30, "lo"), (40, None)],
+        [(10, "lo"), (20, "hi"), (30, "hi"), (30, "lo"), (40, "lo")],
     ),
     (
         (
@@ -124,7 +126,7 @@ ROW_STREAM_CASES = [
             + "select s.d, case when s.q > 10 then 'hi' else 'lo' end as band"
             " order by s.d asc nulls last, band asc nulls last;"
         ),
-        [("alpha", "lo"), ("beta", "hi"), ("gamma", None), (None, "hi"), (None, "lo")],
+        [("alpha", "lo"), ("beta", "hi"), ("gamma", "lo"), (None, "hi"), (None, "lo")],
     ),
 ]
 
@@ -417,15 +419,6 @@ STAND_IN_KEY_SPELLINGS = [
     ),
     (
         TWO_PROP_ROWSET
-        + "select s.n, case when s.q > 10 then 'hi' else 'lo' end as band"
-        " order by s.n asc nulls last, band asc nulls last;",
-        (
-            "select item_name as n, case when quantity > 10 then 'hi' else 'lo' end as band"
-            " order by n asc nulls last, band asc nulls last;"
-        ),
-    ),
-    (
-        TWO_PROP_ROWSET
         + "select s.n, count(s.o) as total, count(grain(s.o, s.n) ? s.q > 10) as hi"
         " order by s.n asc nulls last;",
         (
@@ -438,15 +431,6 @@ STAND_IN_KEY_SPELLINGS = [
         NAME_ONLY_ROWSET
         + "select s.n, count(grain(s.o, s.n)) as total order by s.n asc nulls last;",
         "select item_name as n, count(grain(order_number, item_name)) as total order by n asc nulls last;",
-    ),
-    (
-        NAME_ONLY_ROWSET
-        + "select s.n, case when s.q > 10 then 'hi' else 'lo' end as band"
-        " order by s.n asc nulls last, band asc nulls last;",
-        (
-            "select item_name as n, case when quantity > 10 then 'hi' else 'lo' end as band"
-            " order by n asc nulls last, band asc nulls last;"
-        ),
     ),
 ]
 
@@ -471,6 +455,34 @@ def test_stand_in_key_pairs_the_guest(model, rowset_query, direct_query):
     rows = executor.execute_query(rowset_query).fetchall()
     assert rows == executor.execute_query(direct_query).fetchall()
     assert ("G", 0) in rows or ("G", None) in rows or ("G", 0, 0) in rows, rows
+
+
+# The band absorbs NULL. The rowset exposes no item key, so its reader has no
+# other key and the unsold item's band stays NULL; the direct `item_name` is
+# keyed on the item, so there the band is pinned to the row: 'lo'.
+BAND = (
+    "case when s.q > 10 then 'hi' else 'lo' end as band"
+    " order by s.n asc nulls last, band asc nulls last;"
+)
+DIRECT_BAND = (
+    "select item_name as n, case when quantity > 10 then 'hi' else 'lo' end as band"
+    " order by n asc nulls last, band asc nulls last;"
+)
+SOLD_BANDS = [("A", "lo"), ("B", "hi"), ("C", "hi"), ("C", "lo")]
+GUEST_BANDS = {"TWO_PROP_MODEL": [], "TWO_PROP_GUEST_ALLDESC_MODEL": [(None, "lo")]}
+
+
+@pytest.mark.parametrize("body", [TWO_PROP_ROWSET, NAME_ONLY_ROWSET])
+@pytest.mark.parametrize("model", ["TWO_PROP_MODEL", "TWO_PROP_GUEST_ALLDESC_MODEL"])
+def test_stand_in_band_pins_on_the_keyed_spelling(model, body):
+    env = Environment()
+    env.parse(globals()[model])
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    guest = GUEST_BANDS[model]
+    rows = executor.execute_query(body + "select s.n, " + BAND).fetchall()
+    assert rows == SOLD_BANDS + [("G", None)] + guest
+    direct = executor.execute_query(DIRECT_BAND).fetchall()
+    assert direct == SOLD_BANDS + [("G", "lo")] + guest
 
 
 # Direct spellings that were wrong beside a right rowset spelling. A row
