@@ -1563,6 +1563,19 @@ def _merges_coalesced_sides(node: StrategyNode) -> bool:
     return any(o.address in coalescing for o in node.output_concepts)
 
 
+def _rows_passed(node: StrategyNode, condition: BoolExpr | None) -> bool:
+    """Every atom of `condition` is one `node` applies or already holds."""
+    if condition is None:
+        return True
+    applied = [
+        atom
+        for clause in (node.conditions, node.preexisting_conditions)
+        if clause is not None
+        for atom in decompose_condition(clause)
+    ]
+    return all(atom in applied for atom in decompose_condition(condition))
+
+
 def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
     """Absorb a parent into a row-preserving sibling that can render it.
 
@@ -1578,7 +1591,7 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
     aggregate's output by recomputing the aggregate's inner expression (the
     bare CASE, silently dropping the `avg()`). Only a row-preserving
     contributor is foldable: a SelectNode or plain (non-grouping) MergeNode
-    such as a multi-table root scan, with no WHERE of its own, or a
+    such as a multi-table root scan, whose WHERE B's rows already passed, or a
     virt-filter FilterNode (a CASE-WHEN projection with no row-reducing
     WHERE/semijoin).
 
@@ -1615,12 +1628,12 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
             if region_reads(a) != b_regions:
                 continue
             # Never dissolve a row-shape barrier into a row sibling. Foldable:
-            # an unfiltered SelectNode or non-grouping MergeNode, or a
-            # row-preserving FilterNode (a CASE-WHEN virt-filter with no
-            # row-reducing WHERE or semijoin).
+            # a SelectNode or non-grouping MergeNode whose WHERE, if any, `b`'s
+            # rows already passed, or a row-preserving FilterNode (a
+            # CASE-WHEN virt-filter with no row-reducing WHERE or semijoin).
             if (
                 a.force_group
-                or a.conditions is not None
+                or not _rows_passed(b, a.conditions)
                 or not (
                     isinstance(a, (SelectNode, MergeNode))
                     or _is_row_preserving_filter(a)
