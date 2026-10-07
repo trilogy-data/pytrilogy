@@ -479,7 +479,7 @@ class TupleWrapper(tuple, Generic[VT]):
         return cls(v, type=arg_to_datatype(v[0]))
 
 
-def literal_element_datatype(args) -> tuple[CONCRETE_TYPES, bool]:
+def literal_element_datatype(args: Sequence[Any]) -> tuple[CONCRETE_TYPES, bool]:
     """The one element-type rule for list, tuple and array literals."""
     try:
         return reduce_tuple_element_datatypes([arg_to_datatype(arg) for arg in args])

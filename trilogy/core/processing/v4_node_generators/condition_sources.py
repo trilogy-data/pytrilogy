@@ -14,7 +14,6 @@ HAVING) has no such provider and sources the set itself
 ROOT forks the ROW branch (`root._resolve_root_condition_sources`), because it
 re-sources from datasources rather than consuming parents and so must widen the
 search to grain keys, seed a correlation identity, and carry ancestor atoms.
-A fix that belongs to one row path usually belongs to both.
 """
 
 from trilogy.core.exceptions import UnresolvableQueryException

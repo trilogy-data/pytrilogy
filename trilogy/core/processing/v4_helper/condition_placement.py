@@ -975,6 +975,16 @@ def _staged_precondition_placements(
     return extra
 
 
+def _is_rowset_handle(
+    addr: str, attrs_by_address: dict[str, ConceptAttrs], environment: BuildEnvironment
+) -> bool:
+    ca = attrs_by_address.get(addr)
+    if ca is not None:
+        return ca.rowset_name is not None
+    concept = environment.concepts.get(addr)
+    return concept is not None and isinstance(concept.lineage, BuildRowsetItem)
+
+
 def plan_condition_placements(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -1071,13 +1081,6 @@ def plan_condition_placements(
 
     subset_sources = environment.domain_graph.subset_sources()
 
-    def _is_rowset_handle(addr: str) -> bool:
-        ca = attrs_by_address.get(addr)
-        if ca is not None:
-            return ca.rowset_name is not None
-        concept = environment.concepts.get(addr)
-        return concept is not None and isinstance(concept.lineage, BuildRowsetItem)
-
     def _group_in_active_relation(gid: str) -> bool:
         """True when ``gid`` is one SIDE of a scoped relation whose mate lives
         in a DIFFERENT group of THIS graph, i.e. the completion merge that
@@ -1155,7 +1158,8 @@ def plan_condition_placements(
             keys = {
                 addr
                 for addr in members & scoped_join_member_addresses
-                if not _is_rowset_handle(addr) or addr in subset_sources
+                if not _is_rowset_handle(addr, attrs_by_address, environment)
+                or addr in subset_sources
             }
         if not keys:
             return False

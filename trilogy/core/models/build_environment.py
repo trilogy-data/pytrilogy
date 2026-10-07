@@ -207,8 +207,8 @@ class BuildEnvironment:
 
         The authored keys ARE the join axis for these, so passes that
         volunteer extra equalities (rowset-grain resolution, lineage grain
-        pinning) must skip them or they silently narrow the authored fan-out
-        (q59 shape). Contrast `distinct_scoped_join_group_mates`, which asks
+        pinning) must skip them or they silently narrow the authored fan-out.
+        Contrast `distinct_scoped_join_group_mates`, which asks
         the narrower question of who must MATERIALIZE a column."""
         return frozenset(
             addr

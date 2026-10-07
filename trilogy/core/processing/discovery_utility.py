@@ -746,17 +746,17 @@ def disconnected_components(
         if _crossjoinable(concept) or concept.address in placed:
             continue
         anchors = _reading_anchors(concept, grain_only, bound)
-        cids: list[object] = []
+        cids: list[int | str] = []
         for anchor in anchors:
-            cid: object | None = _first_component(anchor, comp_of)
+            cid: int | None = _first_component(anchor, comp_of)
             cids.append(f"orphan::{anchor.address}" if cid is None else cid)
         buckets.setdefault(cids[0], []).append(concept)
         placed.add(concept.address)
         if len(set(cids)) == 1:
             continue
-        for anchor, cid in zip(anchors, cids):
+        for anchor, bucket in zip(anchors, cids):
             if anchor.address not in placed:
-                buckets.setdefault(cid, []).append(anchor)
+                buckets.setdefault(bucket, []).append(anchor)
                 placed.add(anchor.address)
 
     groups = [sorted(grp, key=lambda c: c.address) for grp in buckets.values()]
