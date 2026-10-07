@@ -3173,7 +3173,8 @@ class Factory:
             # we don't use requires_concept_nesting here by design; a nested
             # `group(x) by k` is a concept keyed on `k`, not a read of `x`
             if isinstance(arg, (AggregateWrapper, FilterItem, WindowItem)) or (
-                isinstance(arg, Function) and arg.operator == FunctionType.GROUP
+                isinstance(arg, Function)
+                and arg.operator in (FunctionType.GROUP, FunctionType.GRAIN_PIN)
             ):
                 narg, _ = self.instantiate_concept(arg)
                 raw_args.append(narg)
@@ -4355,7 +4356,10 @@ class Factory:
         return self._build_select_lineage(base)
 
     def _build_select_lineage(self, base: SelectLineage) -> BuildSelectLineage:
-        from trilogy.core.grain_pin_normalization import normalize_select_grain_pins
+        from trilogy.core.grain_pin_normalization import (
+            is_grain_pin,
+            normalize_select_grain_pins,
+        )
         from trilogy.core.having_normalization import normalize_select_having
         from trilogy.core.models.build import (
             BuildSelectLineage,
@@ -4440,6 +4444,10 @@ class Factory:
             where_factory.local_concepts[k] = where_factory.build(
                 base.local_concepts[k]
             )
+        # a pinned concept carries one value in the select and its WHERE
+        for k, v in base.local_concepts.items():
+            if is_grain_pin(v):
+                where_factory.local_concepts[k] = materialized[k]
         where_clause = (
             where_factory.build(base.where_clause) if base.where_clause else None
         )

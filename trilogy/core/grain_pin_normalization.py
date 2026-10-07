@@ -130,9 +130,123 @@ def _own_keys(
     return out
 
 
+def _referenced(
+    roots: list[str], local: Mapping[str, Concept], environment: Environment
+) -> list[Concept]:
+    """Every concept the statement reads by address, through row expressions
+    and aggregates. A filter or window scopes its own reads, so it is not
+    entered."""
+    seen: dict[str, Concept] = {}
+    stack = list(roots)
+    while stack:
+        address = stack.pop()
+        if address in seen:
+            continue
+        concept = _lookup(address, local, environment)
+        if concept is None:
+            continue
+        seen[address] = concept
+        if concept.lineage is not None and concept.derivation in (
+            Derivation.BASIC,
+            Derivation.AGGREGATE,
+        ):
+            stack.extend(r.address for r in concept.lineage.concept_arguments)
+    return list(seen.values())
+
+
+def is_grain_pin(concept: Concept) -> bool:
+    return (
+        isinstance(concept.lineage, Function)
+        and concept.lineage.operator == FunctionType.GRAIN_PIN
+    )
+
+
+def _is_absorbing_node(expr: Any) -> bool:
+    if not isinstance(expr, Function):
+        return False
+    return expr.operator == FunctionType.COALESCE or (
+        expr.operator == FunctionType.CASE
+        and any(isinstance(a, CaseElse) for a in expr.arguments)
+    )
+
+
+class _Pinner:
+    def __init__(
+        self,
+        local: Mapping[str, Concept],
+        environment: Environment,
+        graph: DomainGraph,
+        output_keys: dict[str, frozenset[str]],
+    ):
+        self.local = local
+        self.environment = environment
+        self.graph = graph
+        self.output_keys = output_keys
+
+    def pin(self, expr: Any, owner: str | None) -> Function | None:
+        """`expr` evaluated on the select's row, or None when its reads' rows
+        already cover every select key but `owner`'s own."""
+        anchors: set[str] = set().union(
+            *(keys for address, keys in self.output_keys.items() if address != owner)
+        ) - {owner}
+        own = _own_keys(expr, self.local, self.environment, anchors)
+        uncovered = sorted(k for k in anchors - own if not self.graph.covers(own, k))
+        if not uncovered:
+            return None
+        return Function(
+            operator=FunctionType.GRAIN_PIN,
+            output_datatype=expr.output_datatype,
+            output_purpose=expr.output_purpose,
+            arguments=[
+                expr,
+                *(self.environment.concepts[k].reference for k in uncovered),
+            ],
+            arg_count=-1,
+        )
+
+    def inline_pins(self, expr: Any, owner: str | None, in_agg: bool) -> Any:
+        """`expr` with each inline NULL-absorbing expression an aggregate reads
+        (or, `in_agg`, any it holds) pinned; a concept read by address is
+        pinned by address."""
+        if in_agg and _is_absorbing_node(expr):
+            inlined = _inline(expr, self.local, self.environment)
+            return self.pin(inlined, owner) or expr
+        if isinstance(expr, AggregateWrapper):
+            return dc_replace(
+                expr,
+                function=dc_replace(
+                    expr.function,
+                    arguments=[
+                        self.inline_pins(a, owner, True)
+                        for a in expr.function.arguments
+                    ],
+                ),
+            )
+        if isinstance(expr, Function):
+            return dc_replace(
+                expr,
+                arguments=[self.inline_pins(a, owner, in_agg) for a in expr.arguments],
+            )
+        if isinstance(expr, Parenthetical):
+            return dc_replace(
+                expr, content=self.inline_pins(expr.content, owner, in_agg)
+            )
+        if isinstance(expr, (Comparison, Conditional)):
+            return dc_replace(
+                expr,
+                left=self.inline_pins(expr.left, owner, in_agg),
+                right=self.inline_pins(expr.right, owner, in_agg),
+            )
+        return expr
+
+
 def normalize_select_grain_pins(
     base: SelectLineage, environment: Environment, graph: DomainGraph
 ) -> SelectLineage:
+    """One address carries one value per statement, as a bare aggregate does:
+    a NULL-absorbing concept is pinned wherever the statement reads it, as an
+    output, a grouping key, an aggregate's input or in the WHERE, and so is
+    the same expression written inline in an aggregate or the WHERE."""
     # every output of a ROLLUP/CUBE select is a grouping key: evaluated on the
     # rows the pass groups, never on its subtotal rows
     if base.grouping is not None:
@@ -143,39 +257,40 @@ def normalize_select_grain_pins(
         for ref in base.selection
         if (c := _lookup(ref.address, local, environment)) is not None
     ]
+    # each output's own row identity: a window's partition key is determined
+    # by the row it numbers, not a row of the select
+    pinner = _Pinner(
+        local,
+        environment,
+        graph,
+        {c.address: graph.fd_minimal(_row_keys(c)) for c in outputs},
+    )
+    roots = [c.address for c in outputs]
+    if base.where_clause is not None:
+        roots += [r.address for r in base.where_clause.concept_arguments]
     pins: dict[str, Concept] = {}
-    for concept in outputs:
-        if concept.derivation != Derivation.BASIC or concept.lineage is None:
+    for concept in _referenced(roots, local, environment):
+        if concept.lineage is None or concept.derivation not in (
+            Derivation.BASIC,
+            Derivation.AGGREGATE,
+        ):
             continue
         inlined = _inline(concept.lineage, local, environment)
-        if not absorbs_null(inlined):
-            continue
-        anchors: set[str] = set()
-        for other in outputs:
-            if other.address != concept.address:
-                # each output's own row identity: a window's partition key is
-                # determined by the row it numbers, not a row of the select
-                anchors |= graph.fd_minimal(_row_keys(other))
-        # a grouping key of another output is read on that output's input rows
-        if concept.address in anchors:
-            continue
-        own = _own_keys(inlined, local, environment, anchors)
-        uncovered = sorted(k for k in anchors - own if not graph.covers(own, k))
-        if not uncovered:
-            continue
-        pins[concept.address] = dc_replace(
-            concept,
-            lineage=Function(
-                operator=FunctionType.GRAIN_PIN,
-                output_datatype=concept.datatype,
-                output_purpose=concept.purpose,
-                arguments=[
-                    inlined,
-                    *(environment.concepts[k].reference for k in uncovered),
-                ],
-                arg_count=-1,
-            ),
-        )
-    if not pins:
+        if concept.derivation == Derivation.BASIC and absorbs_null(inlined):
+            lineage = pinner.pin(inlined, concept.address)
+        else:
+            rewritten = pinner.inline_pins(concept.lineage, concept.address, False)
+            lineage = None if rewritten == concept.lineage else rewritten
+        if lineage is not None:
+            pins[concept.address] = dc_replace(concept, lineage=lineage)
+    where_clauses = [
+        dc_replace(wc, conditional=pinner.inline_pins(wc.conditional, None, True))
+        for wc in base.where_clauses
+    ]
+    if not pins and where_clauses == base.where_clauses:
         return base
-    return dc_replace(base, local_concepts={**local, **pins})
+    # pins build first, so every later read of the address resolves to them
+    rest = {k: v for k, v in local.items() if k not in pins}
+    return dc_replace(
+        base, local_concepts={**pins, **rest}, where_clauses=where_clauses
+    )
