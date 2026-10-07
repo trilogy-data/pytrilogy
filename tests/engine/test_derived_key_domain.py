@@ -1463,14 +1463,9 @@ def materialized_cities() -> Executor:
             "select customer_id, status where count(customer_id) by * > 2 and undelivered is null",
             [(3, "in-transit")],
         ),
-        pytest.param(
+        (
             "select customer_id, name where count(customer_id) by * > 2 and name = 'zed'",
             [],
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="pre-existing: the `by *` gate's RIGHT JOIN emits a NULL "
-                "row when the WHERE empties every row",
-            ),
         ),
         (
             "select customer_id, status where count(customer_id) by * > 2 and coalesce(flag, 1) = 1",

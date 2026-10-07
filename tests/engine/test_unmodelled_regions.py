@@ -255,7 +255,7 @@ TWO_FACT_JOIN_CASES = [
         "select sale_year, reason_class, sum(qty) as q",
         [(1999, "defect", 5), (1999, "other", 9), (2000, "other", 9)],
     ),
-    pytest.param(
+    (
         "select item_desc, reason_class, is_returned",
         [
             ("alpha", "defect", True),
@@ -263,11 +263,6 @@ TWO_FACT_JOIN_CASES = [
             ("beta", "other", True),
             ("gamma", "other", False),
         ],
-        marks=pytest.mark.xfail(
-            strict=True,
-            reason="pre-existing: the bound is_returned column reads NULL on "
-            "an unreturned line beside the reason region (materialized twin)",
-        ),
     ),
     (
         "select reason_class, count(ticket) as n",

@@ -47,15 +47,7 @@ UNION = "union join r.customer_id = customer_id"
             [(1, "delivered", "delivered"), (1, "delivered", "in-transit")]
             + [(2, "delivered", "delivered")],
         ),
-        pytest.param(
-            f"select customer_id, status, r.status {UNION} where status is null;",
-            [],
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="a null-accepting WHERE over a pinned value on the union "
-                "axis: its filter feeder joins back preserving the unfiltered rows",
-            ),
-        ),
+        (f"select customer_id, status, r.status {UNION} where status is null;", []),
     ],
 )
 def test_rowset_pairs_on_the_declared_join_only(

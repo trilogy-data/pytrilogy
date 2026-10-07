@@ -424,6 +424,7 @@ class _PartnerFacts:
     regions: frozenset[str] = frozenset()
     filtered_regions: frozenset[str] = frozenset()
     nullable: frozenset[str] = frozenset()
+    identifiers: frozenset[str] = frozenset()
 
 
 def _partner_facts(
@@ -433,7 +434,9 @@ def _partner_facts(
     regions: set[str] = set()
     filtered_regions: set[str] = set()
     nullable: set[str] = set()
+    identifiers: set[str] = set()
     for source in sources:
+        identifiers.add(source.identifier)
         partial |= {c.address for c in source.partial_concepts}
         nullable |= _nullable_addresses(source)
         spans = held_region_spans(source)
@@ -445,6 +448,16 @@ def _partner_facts(
         frozenset(regions),
         frozenset(filtered_regions),
         frozenset(nullable),
+        frozenset(identifiers),
+    )
+
+
+def _reads_partner(source: GrainSource, partner: _PartnerFacts) -> bool:
+    """This side filters the partner's own row stream: it holds every member
+    the partner has, a NULL-keyed one included, less what the WHERE rejected,
+    and the null-safe pairing finds each of them."""
+    return isinstance(source, QueryDatasource) and any(
+        parent.identifier in partner.identifiers for parent in source.datasources
     )
 
 
@@ -472,13 +485,18 @@ def _is_filter_population(
     whose key is NULL on some row (a `?` binding) holds a member this side
     never has: its row passed the WHERE unless what this side applied rejects
     the all-NULL row it pads (`where customer_id is null` keeps the order with
-    no customer, `where state = 'GA'` drops it)."""
+    no customer, `where state = 'GA'` drops it), unless this side filtered the
+    partner's own rows and so has that member too (`_reads_partner`)."""
     if identifier not in filtered_ids:
         return False
     source = by_id.get(identifier)
     if source is None:
         return True
-    if join_addresses & partner.nullable and not _rejects_padding(source):
+    if (
+        join_addresses & partner.nullable
+        and not _rejects_padding(source)
+        and not _reads_partner(source, partner)
+    ):
         return False
     held = held_region_spans(source)
     if join_addresses & partner.regions and not join_addresses & held:
@@ -611,13 +629,20 @@ def _joins_a_coalescing_relation(join: BaseJoin, coalescing_keys: set[str]) -> b
     """The join is an authored union/full relation's own pairing: it crosses
     the relation's two endpoints, or names a member with no pairing to read.
     Two sources of ONE endpoint (a filtered scan beside a value keyed on the
-    same key) are not the relation."""
+    same key) are not the relation, nor are two sides that each already hold
+    both members (a filtered copy of the paired stream joined back to it):
+    the relation was paired below them."""
     pairs = join.concept_pairs or []
     if not pairs:
         return bool({c.address for c in join.concepts or []} & coalescing_keys)
+    held = [
+        _datasource_addresses(source)
+        for source in (*join_left_sources(join), join.right_datasource)
+    ]
     return any(
         pair.left.address != pair.right.address
         and {pair.left.address, pair.right.address} & coalescing_keys
+        and not all({pair.left.address, pair.right.address} <= h for h in held)
         for pair in pairs
     )
 

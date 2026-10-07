@@ -57,6 +57,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment, SpanScope
 from trilogy.core.models.core import arg_to_datatype
 from trilogy.core.models.execute import BaseJoin
+from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing import plan_trace
 from trilogy.core.processing.aggregate_rollup import _is_additive_aggregate
 from trilogy.core.processing.condition_utility import (
@@ -2986,6 +2987,20 @@ def _consumer_reads(consumer: GroupAttrs, environment: BuildEnvironment) -> set[
     return read
 
 
+def _reads_only_values_defined_everywhere(atom: BoolExpr, keyspace: Keyspace) -> bool:
+    """Every value the atom reads is defined on every region of the plan: a
+    value pinned to the select's grain takes its fallback on a padded row,
+    so `status is null` is false there however the row is joined, and the
+    scan hosting the atom holds exactly its population."""
+    arguments = list(atom.row_arguments)
+    return bool(arguments) and all(
+        arg.address in keyspace.keys_by_address
+        and keyspace.defined_on(arg.address, region)
+        for arg in arguments
+        for region in keyspace.live_regions
+    )
+
+
 def _pre_merge_parents(
     parents: list[StrategyNode],
     environment: BuildEnvironment,
@@ -5690,7 +5705,9 @@ def build_strategy_node(
             # the atom's population, so the merge may claim it. A grouping
             # parent applies the atom to its INPUT rows and its output claims
             # nothing (the FINAL still gates); an `is null` atom is satisfied
-            # by the padding a preserving join adds.
+            # by the padding a preserving join adds, unless what it reads is
+            # defined on every row (a pinned value), where it is as exact.
+            keyspace = environment.span_scope.keyspace
             applied_atoms = _wrap_atoms(
                 [
                     atom
@@ -5698,6 +5715,7 @@ def build_strategy_node(
                     if attrs[parent.group_id].derivation == Derivation.ROOT
                     for atom in attrs[parent.group_id].condition_atoms
                     if non_null_proofs(atom)
+                    or _reads_only_values_defined_everywhere(atom, keyspace)
                 ]
             )
             applied = applied_atoms.conditional if applied_atoms else None

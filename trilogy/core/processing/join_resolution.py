@@ -1711,29 +1711,24 @@ def single_row_source(ds: DataSource) -> bool:
     return is_scalar_condition(ds.condition, materialized=materialized)
 
 
-def _narrowed_keyless_type(left_has_rows: bool, right_has_rows: bool) -> JoinType:
-    if left_has_rows and right_has_rows:
-        return JoinType.INNER
-    if left_has_rows:
-        return JoinType.LEFT_OUTER
-    if right_has_rows:
-        return JoinType.RIGHT_OUTER
-    return JoinType.FULL
-
-
 def narrow_keyless_joins(joins: list[BaseJoin | UnnestJoin]) -> None:
-    """A keyless FULL (``ON 1=1``) pairs every row with every row, so FULL
-    only differs from INNER when a side is EMPTY. Walk the joins in order
-    carrying whether the relation built so far provably has rows. While only
-    keyless FULL joins precede, a join's explicit left is part of that
-    relation and its rows count; a keyed or unnest join can empty the
-    relation, so after one only the keyless right sides accumulate."""
+    """A keyless outer join (``ON 1=1``) pairs every row with every row, so it
+    only differs from INNER when a side is EMPTY. A side that provably holds
+    one row pairs with every row of the other, and when the other is empty
+    there is no row for it to pair with: a statement-wide gate (`count(x) by *
+    > 2`, FULL narrowed to RIGHT by the WHERE's proof) beside a WHERE that
+    empties the row stream must not come back as one NULL-padded row, so the
+    join is INNER. Walk the joins in order carrying whether the relation built
+    so far provably has rows. While only keyless outer joins precede, a join's
+    explicit left is part of that relation and its rows count; a keyed or
+    unnest join can empty the relation, so after one only the keyless right
+    sides accumulate."""
     left_has_rows = False
     keyed_seen = False
     for join in joins:
         if (
             not isinstance(join, BaseJoin)
-            or join.join_type != JoinType.FULL
+            or join.join_type not in OUTER_JOIN_TYPES
             or join.concept_pairs
             or join.concepts
         ):
@@ -1743,7 +1738,8 @@ def narrow_keyless_joins(joins: list[BaseJoin | UnnestJoin]) -> None:
         if join.left_datasource is not None and not keyed_seen:
             left_has_rows = left_has_rows or single_row_source(join.left_datasource)
         right_has_rows = single_row_source(join.right_datasource)
-        join.join_type = _narrowed_keyless_type(left_has_rows, right_has_rows)
+        if left_has_rows or right_has_rows:
+            join.join_type = JoinType.INNER
         left_has_rows = left_has_rows or right_has_rows
 
 
