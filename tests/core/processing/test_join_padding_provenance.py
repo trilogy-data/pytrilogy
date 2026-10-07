@@ -197,6 +197,7 @@ def _matrix(span: str, spellings: dict[str, str]) -> dict[str, frozenset[str]]:
         {"ds~merged": frozenset({ORDER})},
         spellings,
         _identity,
+        {},
     )["ds~merged"]
 
 
