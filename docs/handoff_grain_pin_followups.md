@@ -124,6 +124,34 @@ triaged by hand. All the fixes moved zero corpus plans.
   came from the join's key providers only. Rule: the partner's regions are
   read off everything joined before
   (`tighten_join_for_filtered_branch(stream=...)`).
+- **The padding guard read the join order's keys, not the rendered ones.**
+  A plain `target` key looked like proof that no NULL pairs, then
+  `reduce_concept_pairs` pruned it. Guards are now decided from
+  `BaseJoin.concept_pairs` (`_absent_key_groups`).
+
+The same battery on `tests/helpers/models.py::LINE_ITEMS` (users and
+products each with members no line has) found five more, all wrong on the
+branch and right on main:
+
+- **`sum(cost) by product_id` summed each product's cost once per line**
+  (2d9bdc536). The product region fed the aggregate as products LEFT JOIN
+  lines. An aggregate whose every read the domain holds reads the domain
+  alone (`region_domains._reads_only_the_domain`), except under a WHERE that
+  tests a region (`filtered_beside`), whose atom reads the solid stream.
+- **A region row with a NULL key counted as a subset match.** In `select
+  state, product_id, revenue`, `UpgradeOuterFromKeySetEquivalence` narrowed
+  products FULL aggregate to LEFT, though the aggregate's user-region row has
+  a padded NULL `product_id` (it lost 'wa'). `_pair_side_fully_matches` now
+  fails when the subset side emits a NULL key the superset side never does.
+  Item 7's seeding change exposed it.
+- **An outer join off a padded key provider read the key off that provider
+  alone.** `where cost is null` beside `sum(cost) by product_id` let every
+  user through. `restore_full_join_providers` also restores an outer join's
+  providers when its kept provider was padded earlier. Two corpus plans
+  moved, and their rows were verified (TPC-H q09 smaller, TPC-DS q05 +42
+  chars of coalesce).
+- **A coalesced INNER key rendered `=`** whatever its null-safe modifier
+  (`dialect/common._build_joinkeys`).
 
 Still open from it:
 
