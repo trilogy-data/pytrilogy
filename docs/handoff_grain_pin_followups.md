@@ -117,6 +117,13 @@ triaged by hand. All the fixes moved zero corpus plans.
   `count(customer_id) by bucket` gave her 0 (main: 2); broken since
   d3cf6906c. Rule: among pivots on a held span, the one whose sides hold no
   other region goes first.
+- **A per-customer total beside a WHERE the bucket region passes dropped the
+  region's row** (`select bucket, sum(amount) by customer_id where target >
+  6` lost z; main kept it). The merge read the filtered total as the WHERE's
+  population and tightened its LEFT join to INNER, because the partner facts
+  came from the join's key providers only. Rule: the partner's regions are
+  read off everything joined before
+  (`tighten_join_for_filtered_branch(stream=...)`).
 
 Still open from it:
 
@@ -126,6 +133,17 @@ Still open from it:
   by bucket, 0) = 0`, the FINAL reads a stream (`customer_id`, `bucket`, the
   WHERE value) with no column that is NULL exactly on cat's padded row. The
   inner merge would have to carry one out. Main returns no rows.
+- **A WHERE the region passes beside a solid total by another key is
+  refused** (strict xfail
+  `test_where_kept_region_row_beside_a_solid_total_by_another_key`, on the
+  bucket-only model; main answers it). In `select bucket, sum(amount) by
+  customer_id where amount is null`, the atom has to filter the total's input
+  and also test FINAL's region rows, and both read one orders group. Copying
+  the atom onto the total's input (`_uncovered_grouping_placements` taking
+  FINAL span-domain placements) filters that shared scan for FINAL too.
+  Buckets whose orders were all rejected then come back padded and pass
+  `amount is null`, so the copy was reverted. The fix needs FINAL to read an
+  unfiltered stream of its own.
 - **Owner question: does a WHERE-only read add a region?** The convention
   the tests hold is that a WHERE filters and never adds a row: `select
   status, count(order_id) where name = 'cat'` is `[]`. Yet `select
