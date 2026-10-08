@@ -68,7 +68,7 @@ class JoinOrderOutput:
     left: str | None = None
     # left sources providing the same keys, left out as redundant: a FULL
     # join needs them back (`restore_full_join_providers`)
-    redundant: dict[str, set[str]] = field(default_factory=dict)
+    redundant: dict[str, set[str]] = field(default_factory=dict, compare=False)
 
     @property
     def lefts(self) -> set[str]:

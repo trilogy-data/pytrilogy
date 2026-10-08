@@ -64,6 +64,78 @@ Found by the audit that followed (both wrong on main too):
   retry declines a WHERE that reads one (`_filters_a_partial_derivation`). A
   derivation that stays NULL on NULL inputs (`is_returned`) keeps scan hosting.
 
+Found by the two-region probe (2026-10-08). The model is
+`tests/engine/test_padded_null_pairing.py::TWO_REGIONS`: customers and
+buckets each have members no order has, and the bucket key is `?` and bound on
+a second table. A 210-query battery was run against main, against the commit
+before item 7 (ff0781487) and against 02e809880, and every difference was
+triaged by hand. All the fixes moved zero corpus plans.
+
+- **Padding an earlier join of the same merge added paired with a value-NULL
+  group** (main too). `customers LEFT orders`, then `orders.bucket <=>
+  targets.bucket`, gave cat the NULL bucket's target. `_padding_guard` only
+  knew padding inside an input. Rule: a join is guarded against the padding
+  the joins before it added (`_padding_guards`, `_MergePadding`). The guard is
+  the rows where the host has a row and the padded side has none:
+  `orders.customer_id is not null or customers.customer_id is null`. A later
+  side the guard kept apart joins the padding's `absent` set, so a coalesced
+  key over both stays guarded. The guard is now structured
+  (`BaseJoin.guard`/`Join.guard`, a CNF of side-bound NULL tests) and renders
+  each witness off its own CTE. That retired `BaseJoin.condition` and the old
+  "a witness no other side emits" restriction.
+- **The guard's "the other side holds the region" exemption was dead.**
+  `held_spans` holds graph nodes (`c~...`) and `span_padding` held bare span
+  names. `span_padding` is now spelled the way `held_spans` is.
+- **Two islands of FINAL contributors cross-joined ON 1=1.** One island was
+  a customer aggregate beside the customer's name, the other a bucket
+  aggregate beside its region domain. `_bridge_unpaired_parents` only rescued
+  a lone contributor; it now bridges connected components
+  (`_pairing_islands`). This was a regression of 3a4ea4cfa.
+- **A count reading one region and padded onto another's rows read NULL,
+  not 0.** `_zero_filled_counts` zero-fills any parent that misses a region
+  another parent reads.
+- **Item 7 regressions.** `select bucket, sum(amount) where name is null`
+  raised "could only be placed after the aggregates", and with `or name =
+  'ann'` the atom also decides which orders are summed. Rule: a WHERE that
+  reads a value absent on a region (`Region.filtered`, decided in
+  `build_keyspace`) feeds every region an aggregate's grain is carried on
+  (`region_reads.filtered_beside`), so the WHERE is tested on one input that
+  holds all of them. Feeding only the region the WHERE read an absent value
+  of was tried first. It left the other region's domain unfiltered at FINAL
+  (`where bucket is null` returned buckets a, b and z), and `where name is
+  null` failed to render. An aggregate whose grain no filtered region carries
+  keeps item 7's solid rows (`sum(amount) by customer_id where name is null`
+  returns only bucket z, as it did after item 7 and unlike main).
+- **A customer whose every order the WHERE rejected came back as a region
+  row.** Main got this right; 925ff17bc broke it. The customers domain was
+  FULL joined on the filtered aggregate's key alone: the orders stream was
+  dropped as a redundant provider while the join was still LEFT, and
+  `ensure_content_preservation` widened it to FULL afterwards. Rule:
+  providers are restored once the join types are final
+  (`restore_full_join_providers`).
+- **An aggregate holding both regions' rows met cat before she existed.**
+  `count(customer_id) by bucket` gave her 0 (main: 2); broken since
+  d3cf6906c. Rule: among pivots on a held span, the one whose sides hold no
+  other region goes first.
+
+Still open from it:
+
+- **No witness, no guard** (strict xfail
+  `test_where_over_the_value_null_group_aggregate_keeps_padding_apart`). In
+  `select customer_id, bucket, sum(target) by bucket where coalesce(sum(target)
+  by bucket, 0) = 0`, the FINAL reads a stream (`customer_id`, `bucket`, the
+  WHERE value) with no column that is NULL exactly on cat's padded row. The
+  inner merge would have to carry one out. Main returns no rows.
+- **Owner question: does a WHERE-only read add a region?** The convention
+  the tests hold is that a WHERE filters and never adds a row: `select
+  status, count(order_id) where name = 'cat'` is `[]`. Yet `select
+  customer_id, sum(amount) where bucket = 'z' or name = 'cat'` returns the
+  bucket region's `z` row, on main too.
+- `select customer_id, count(customer_id) by bucket as cb where name = 'ann'`
+  returns `(1, 1)` twice. This is the select's grain (customer, bucket)
+  projected, and the same shape without the WHERE is no different. Main
+  dedups it.
+
 ## Plan size
 
 6. **A pinned row value built its own copy of the select's rows** - CLOSED.
@@ -107,22 +179,31 @@ Found by the audit that followed (both wrong on main too):
 
 ## Design edges
 
-9. **A stored-only value pinned to another keyspace** raises the generic
-   `NoDatasourceException` for its unbound input
-   (`test_stored_only_value_cannot_be_pinned_to_another_keyspace`). A message
-   naming the keyspace mismatch ("stored only at the order keyspace") would help.
+9. **A stored-only value pinned to another keyspace** - CLOSED. The
+   `NoDatasourceException` now says the value is stored only at its own grain,
+   that the select evaluates it on its row (a grain pin), and what that reads
+   (`select_node._stored_pinned_readers`).
 10. **IS [NOT] NULL is not NULL-absorbing**, by decision: it feeds presence probes
     and null-rejection proofs. A pinned expression inlines its named reads, so a
     CASE over `undelivered` sees `delivery_date is null` on the select's row, while
     `undelivered` itself stays NULL there. Revisit if the registry grows.
-11. **Address vs canonical audit.** A pinned concept and the column persisting it
-    share an address. Two planner checks compared by address and were fixed
+11. **Address vs canonical audit** - CLOSED: the four remaining sites never
+    see a pinned value. A pinned concept and the column persisting it share an
+    address. Two planner checks compared by address and were fixed earlier
     (`predicate_pushdown._parent_holds_the_same_concepts`, now also on the
-    union-branch path, and `group_graph._scan_columns`). Still compared by
-    address, unproven either way: `select_node_v2.scan_stamps` (`stored`),
-    `join_resolution.complete_key_domain` / `merge_partial_addresses` on leaf
-    scans, `source_scoring.membership_complete_grain_keys`. The bound twins in
-    `tests/helpers/models.py` are the oracle that catches them.
+    union-branch path, and `group_graph._scan_columns`). A detector was
+    instrumented on the other four: `select_node_v2.scan_stamps` (`stored`),
+    `join_resolution.complete_key_domain` and `merge_partial_addresses`, and
+    `source_scoring.membership_complete_grain_keys`. It logged any address
+    carrying two canonicals among the concepts each one compares. It ran over
+    the pin and twin suites (555 tests) and the corpus. The control at
+    `_scan_columns` fired 149 times; the four sites never fired on a pin. A
+    pinned WHERE never reaches a scan's condition, because it is tested on the
+    select's row. The corpus showed two harmless doubles: a metric column
+    (`revenue` at the pair grain, a different `sum` canonical than the
+    request's) at `scan_stamps`, which only the BASIC clause would read, and a
+    multiselect align key (`report_date`) in two spellings of one value at
+    `merge_partial_addresses`.
 12. **Anchor heuristics are build-time approximations** of what the keyspace
     knows: `_always_beside`, `_held_beside`, `_co_held_only_beside`, `_may_pad`.
     Each avoids a pin that cannot change a value; an over-pin costs plan size,
@@ -156,16 +237,27 @@ far from the information that decides it. Each cost an hour of this handoff.
   being `list[BuildConcept]` on `BuildDatasource` but `set[str]` on
   `QueryDatasource` is a typing wart only: `BuildConcept == str` compares
   addresses, so `join_resolution`'s string membership tests hold on both.
-  Still the biggest item, about 40 call sites; the two refactors below are
-  done and narrow it.
-- **A guarded FULL join cannot lower on MySQL.** `_padding_guard` does not
-  look at the join type and `full_join_lowering._validate` refuses any FULL
-  with an ON predicate, telling the user to move a predicate they never wrote.
-  No test reaches it yet. The key spine cannot carry the guard as written: a
-  padded row the guard excludes from pairing must still come out unmatched,
-  and `LEFT JOIN padded ON k <=> spine.k AND witness is not null` drops it.
-  It would need its own spine rows, so the fix is a lowering case, not a
-  guard change.
+  Still the biggest item, about 40 call sites, and NOT a mechanical one: the
+  three maps a shared class would replace differ in scope by design.
+  `keyspace._canonical_addresses` is environment-wide, the smallest pseudonym.
+  `network_build._equivalence_map` is request-scoped, folds in `_virt_*`
+  spellings and graph pseudonym pairs, and keeps presence probes apart.
+  `join_resolution.build_canonical_address_map` is per merge and skips hidden
+  columns. A per-environment `AddressClass` needs those scopes designed
+  first. The cost of crossing spellings is real: the dead `held_spans &
+  span_padding` exemption (2026-10-08) was one more such crossing.
+- **A guarded FULL join cannot lower on MySQL** - refused honestly now.
+  The guard is `Join.guard`, apart from `Join.condition`, and `_validate`
+  refuses it with the reason, a padded NULL kept apart from a value NULL that
+  a spine would fold together
+  (`test_guarded_full_join_is_refused_not_dropped`). Before this, a
+  structured guard would have been silently dropped. Every guarded FULL
+  found so far (the two-region battery) is refused earlier anyway: the
+  padding host is the FROM base and joins on another key. Lowering one needs
+  its own spine rows. Each arm emits `(k, g)`, with `g` the participant's
+  guard (TRUE without one); a participant joins on `k <=> spine.k AND g =
+  spine.g`, and at most one participant may carry a guard. That is renderer
+  work (a computed arm column) with no reachable case to test it.
 - **Partiality is stamped in three places that must agree** - DONE.
   `scan_partials.scan_partial_addresses` answers "what does this scan bind,
   and how fully" for the network candidate (`network_build._candidate`), the
@@ -187,18 +279,19 @@ far from the information that decides it. Each cost an hour of this handoff.
   by `_process_query` around discovery and resolution, shares it across every
   merge of a plan. The scope ends before the optimizer, which rewrites joins
   on the same `QueryDatasource`s and walks uncached
-  (`UpgradeOuterFromKeySetEquivalence`). Still open from the original note:
-  `grain_utility._partner_facts` reads raw `nullable_concepts`, and
-  `get_modifiers` still cannot see a key whose NULLs are both value and
-  padding (item 2's guard handles it join-side).
-- **`BaseJoin` grew a `condition` beside `Join.condition`.** Before this branch
-  a plan-level join had no predicate and only the optimizer
-  (`filtered_aggregate`) added one at the CTE level. Two places now build joins
-  from an existing one (`join_hoist`, `union_dim_pushdown`); the first carries
-  the condition, the second rebuilds from `d.key_pairs` and would drop it if a
-  guarded join ever reached it (it cannot today: the guard needs a padded side,
-  the pushdown a leaf dim scan). A single `BaseJoin.derive(...)` constructor
-  used by every rebuild site would make that structural.
+  (`UpgradeOuterFromKeySetEquivalence`). `grain_utility._partner_facts`
+  reads raw `nullable_concepts` on purpose: a partner key that is NULL by
+  padding is a member the filtered side lacks just as a value NULL is.
+  Narrowing it to value NULLs moved no corpus plan and failed no engine test,
+  so the docstring now carries the reason. `get_modifiers` still cannot see a
+  key whose NULLs are both value and padding; the guard handles that on the
+  join side.
+- **`BaseJoin` grew a `condition` beside `Join.condition`** - replaced by
+  the structured `guard`. The passes that rebuild a join from an existing one
+  (`join_hoist`, `union_dim_pushdown`, `semi_join_pushdown`,
+  `reuse_parent_lookup`) skip a guarded join (`Join.has_predicate`). Every
+  pass that repoints CTEs walks `Join.cte_bindings`, which covers the key
+  pairs and the guard terms alike.
 - **Condition placement has two exemption registries for the same question.**
   `_check_final_atoms_precede_aggregates` (an atom only at FINAL must be decided
   at every output aggregate's grain) and `_uncovered_grouping_placements` (copy a
@@ -208,7 +301,13 @@ far from the information that decides it. Each cost an hour of this handoff.
   over aggregates; the copy skips placements naming FINAL). Item 2's `s` fell
   between them: pre-condition, never checked, right only through group
   atomicity. One predicate `atom_decided_for(aggregate)` used by both would
-  close the gap and let item 7 be reasoned about in the same terms.
+  close the gap and let item 7 be reasoned about in the same terms. Tried on
+  2026-10-08: letting the copy take FINAL span-domain placements cleared the
+  refusal, but the rows came out wrong (buckets a and b survived `name is
+  null`). The FINAL's rows came from a domain that does not carry `name`, so
+  the FINAL copy of the atom had nothing to test. Feeding the aggregate the
+  region fixed it instead. A unified predicate would have to know which FINAL
+  contributor carries each read.
 - **The filter-population claim is computed twice.** `MergeNode._join_proofs`
   decides `filtered_ids` from `preexisting_conditions`, and
   `strategy_builder` decides which atoms become `preexisting` for a pre-merge
@@ -224,9 +323,11 @@ far from the information that decides it. Each cost an hour of this handoff.
   and `retire_rowset` reconstructs it by prefix (`_{name}_`) and lineage walk.
   A `RowsetDefinition(name, outputs, aliases, lineage)` registered once would
   make retire a deletion and give `_mangled_rowset_content_addresses`
-  (`strategy_builder`) the same answer without the prefix test.
-- **Test scaffolding.** `tests/helpers/rows.py` and the twin models are good; the
-  `--runxfail` + strict-xfail idiom is the right contract for open bugs, but
-  five modules each spelled their own `executor_for(model + extras)` fixture.
-  A shared `twins(extra: str)` fixture factory would cut the next handoff's
-  test diff in half.
+  (`strategy_builder`) the same answer without the prefix test. Not done: the
+  outputs are pending when `add_rowset` runs (the semantic state commits them
+  later), so the definition would need hooks at three parse stages. The
+  prefix is already a single scheme (`SemanticState.mangle_rowset_alias`).
+- **Test scaffolding** - DONE. `tests.helpers.rows.customer_twins(extra)`
+  (and `twins(derived, materialized)`) build the twin. It deliberately
+  returns fresh executors, because a rowset statement redefines the
+  environment it runs in; each module scopes its own.
