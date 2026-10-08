@@ -221,20 +221,26 @@ Still open from it:
   Buckets whose orders were all rejected then come back padded and pass
   `amount is null`, so the copy was reverted. The fix needs FINAL to read an
   unfiltered stream of its own.
-- **Owner question: does a WHERE-only read add a region?** The convention
-  the tests hold is that a WHERE filters and never adds a row: `select
-  status, count(order_id) where name = 'cat'` is `[]`. Yet `select
-  customer_id, sum(amount) where bucket = 'z' or name = 'cat'` returns the
-  bucket region's `z` row, on main too.
-- **Owner question: is an aggregate's `by` key part of the select's grain?**
-  `select customer_id, count(customer_id) by bucket as cb where name = 'ann'`
-  returns `(1, 1)` twice, once per bucket. `check_if_group_required` counts an
-  output aggregate's by-keys as covered (`include_aggregate_by_keys`), so a
-  stream at (customer, bucket) is not regrouped. Excluding them dedups this
-  query but grows ten TPC-DS plans (q23, q30, q53, q63, q65, q79, q81, q91...),
-  whose reference rows keep one row per by-key. So the branch's two rows follow
-  the corpus convention; main and `BUCKET_REGION` collapse them only because
-  their FINAL merge claims grain `<bucket>` and the MergeNode forces a group.
+- **A WHERE restricts the output range and never expands it** - DECIDED
+  (owner, 2026-10-08) and FIXED. `select customer_id, sum(amount) where
+  bucket = 'z' or name = 'cat'` returned the bucket region's `z` row (main
+  too); `where bucket = 'z'` alone returned none. The root row stream carried
+  `bucket` for the WHERE and completed the partial `~?bucket` against
+  `targets`, dragging in the buckets no order has, though no region of the
+  statement demands that span (`SpanScope.unextended`). Rules: a requested
+  unextended span may bind partially in the search (`_undemanded_reach_keys`),
+  a single scan binding one partially renders through the bridge emitter
+  (`_binds_undemanded_span_partially`), and `_complete_partial_requested`
+  never completes one. TPC-H adhoc03 lost a customer join (rows verified).
+- **An aggregate's explicit `by` key is part of the select's grain** -
+  DECIDED (owner, 2026-10-08). `select customer_id, count(customer_id) by
+  bucket` is `select customer_id, --bucket, count(customer_id) by bucket`, so
+  `(1, 1)` once per bucket is right; the explicit grain makes it no responsive
+  aggregate. `check_if_group_required` encodes this by counting an output
+  aggregate's by-keys as covered (`include_aggregate_by_keys`), and ten TPC-DS
+  reference queries rely on it. Main and `BUCKET_REGION` collapse such rows
+  only because their FINAL merge claims grain `<bucket>` and the MergeNode
+  forces a group: that is the inconsistency, if anything is.
 
 ## Plan size
 

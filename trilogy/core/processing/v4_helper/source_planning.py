@@ -318,16 +318,14 @@ def _search_concepts_for_bridge(request: SourceRequest) -> list[BuildConcept]:
 def _undemanded_reach_keys(
     request: SourceRequest, concepts: list[BuildConcept]
 ) -> frozenset[str]:
-    """Search terminals the request only reaches through (a grain key added to
-    join on), on a span no region of the statement demands: the fact's own `~`
-    column joins as well as the complete dimension's, and the dimension's extra
-    members would be rows nothing reads."""
-    requested = {c.address for c in _requested_concepts(request)}
+    """Search terminals on a span no region of the statement demands: the
+    fact's own `~` column joins as well as the complete dimension's, and reads
+    as well (a WHERE restricts the output range and never expands it), while
+    the dimension's extra members would be rows nothing reads."""
     return frozenset(
         c.address
         for c in concepts
-        if c.address not in requested
-        and c.address in request.environment.span_scope.unextended
+        if c.address in request.environment.span_scope.unextended
     )
 
 
@@ -472,6 +470,7 @@ def _network_source(
                 result.solution.sources[0]
             ].bindings.values()
         )
+        and not _binds_undemanded_span_partially(network, result.solution.sources[0])
     ):
         # A one-scan solution is `_direct_source`'s job: it is the renderer for
         # a single assignment and knows the grain-aware scoring and the
@@ -593,6 +592,18 @@ def _network_source(
             connector_aliases=tuple(connector_aliases),
             assembles_axis=bool(network.axis_families),
         )
+    )
+
+
+def _binds_undemanded_span_partially(network: SourceNetwork, source: str) -> bool:
+    """The scan reads a span no region demands off its own `~` column
+    (`partial_ok`). `_direct_source` would complete it against the dimension
+    and add the members nothing demands; the bridge emitter keeps the scan's
+    own rows."""
+    bindings = network.candidates[source].bindings
+    return any(
+        address in bindings and bindings[address].partial
+        for address in network.partial_ok
     )
 
 
@@ -1250,6 +1261,7 @@ def _complete_partial_requested(
         for c in node.partial_concepts
         if c.address in requested
         and c.address not in request.environment.span_scope.extent_free
+        and c.address not in request.environment.span_scope.unextended
         and (c.derivation != Derivation.BASIC or c.address in stored)
     ]
     if not partial_requested:

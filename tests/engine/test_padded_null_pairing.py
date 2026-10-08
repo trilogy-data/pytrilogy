@@ -413,3 +413,27 @@ def test_a_rename_on_a_region_domain_reads_the_domain_not_a_wider_scan():
         _executor(_RENAMED_DOMAIN),
         "rowset s <- select group_id as g, sum(amount) as total; select s.g, s.total",
     ) == [(1, 5), (2, 7), (3, None)]
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select customer_id, sum(amount) as s where bucket = 'z' or name = 'cat'",
+            [(3, None)],
+        ),
+        (
+            "select customer_id, count(order_id) as n where bucket = 'z' or name = 'cat'",
+            [(3, 0)],
+        ),
+        (
+            "select customer_id, bucket, sum(amount) as s where bucket = 'z' or name = 'cat'",
+            [(3, None, None), (None, "z", None)],
+        ),
+        ("select customer_id, sum(amount) as s where bucket = 'z'", []),
+    ],
+)
+def test_a_where_restricts_the_output_range_and_never_expands_it(
+    query: str, expected: list[tuple]
+):
+    assert sorted_rows(_executor(TWO_REGIONS), query) == expected
