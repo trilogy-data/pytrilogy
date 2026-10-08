@@ -1055,11 +1055,12 @@ def test_source_datasources_normalizes_to_safe_identifier_tokens():
 
 
 def test_source_datasources_cte_returns_source_map_tokens():
-    """A CTE/UnionCTE source_map already holds string tokens — returned as-is."""
+    """A CTE/UnionCTE is named by its own CTE name in a consumer's source_map,
+    and by its physical tables once a leaf scan is inlined."""
     key = _build_concept("KEY")
     cte = _build_cte("c", [key])
     cte.source_map = {key.address: ["test_c", "other_src"]}
-    assert _source_datasources(cte) == {"test_c", "other_src"}
+    assert _source_datasources(cte) == {"c", "test_c", "other_src"}
 
 
 def test_blocked_partials_intersects_operand_tokens():

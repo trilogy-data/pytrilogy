@@ -130,20 +130,32 @@ class _ProofState:
 
 def _source_datasources(
     source: CTE | UnionCTE | BuildDatasource | QueryDatasource,
+    consumer: CTE | UnionCTE | None = None,
 ) -> set[str]:
-    """Physical ``safe_identifier`` tokens an operand renders from, matching the
-    tokens stored in ``CTE.source_map`` that ``_blocked_partials`` intersects
-    against. ``identifier`` keeps dots while ``source_map`` stores the
+    """The ``safe_identifier`` tokens a consumer's ``source_map`` names an
+    operand by, which ``_blocked_partials`` intersects against: the operand's
+    own CTE name (`generate_source_map` writes ``cte.safe_identifier``) and the
+    physical tables it renders from, which the consumer names once a leaf
+    scan is inlined. ``identifier`` keeps dots while ``source_map`` stores the
     underscored form, so only ``safe_identifier`` ever intersects."""
     if isinstance(source, (CTE, UnionCTE)):
-        return {d for vals in source.source_map.values() for d in vals}
+        return {source.safe_identifier} | {
+            d for vals in source.source_map.values() for d in vals
+        }
     if isinstance(source, QueryDatasource):
-        return {
+        tokens = {
             d.safe_identifier
             for vals in source.source_map.values()
             for d in vals
             if isinstance(d, (BuildDatasource, QueryDatasource))
         }
+        if consumer is not None:
+            tokens |= {
+                parent.safe_identifier
+                for parent in consumer.parent_ctes
+                if parent.source.safe_identifier == source.safe_identifier
+            }
+        return tokens
     return {source.safe_identifier}
 
 
@@ -362,9 +374,9 @@ def _downgrade_base_join(
     right_partial = partial_addresses(right_ds)
     if right_base is not None:
         right_partial |= partial_addresses(right_base)
-    right_operand_ds = _source_datasources(right_ds)
+    right_operand_ds = _source_datasources(right_ds, cte)
     if right_base is not None:
-        right_operand_ds |= _source_datasources(right_base)
+        right_operand_ds |= _source_datasources(right_base, cte)
     right_block = _blocked_partials(cte, right_partial, right_operand_ds)
     right_only = right_only - right_block
     # Structurally non-null (CASE/raw) bindings do not force the side present.
