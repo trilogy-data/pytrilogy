@@ -72,7 +72,7 @@ from trilogy.core.models.execute import (
     UnnestJoin,
 )
 from trilogy.core.optimization import optimize_ctes
-from trilogy.core.processing import plan_trace
+from trilogy.core.processing import null_provenance, plan_trace
 from trilogy.core.processing.concept_strategies_v4 import (
     V4History,
     append_existence_check,
@@ -1580,12 +1580,15 @@ def _process_query(
     hooks = hooks or []
 
     build_lineage_sink: list[BuildSelectLineage | BuildMultiSelectLineage] = []
-    root_datasource = get_query_datasources(
-        environment=environment,
-        statement=statement,
-        hooks=hooks,
-        build_lineage_sink=build_lineage_sink,
-    )
+    # one null-provenance memo for every merge the plan resolves; the optimizer
+    # below rewrites joins, so it stays outside the scope
+    with null_provenance.plan_scope():
+        root_datasource = get_query_datasources(
+            environment=environment,
+            statement=statement,
+            hooks=hooks,
+            build_lineage_sink=build_lineage_sink,
+        )
     for hook in hooks:
         hook.process_root_datasource(root_datasource)
     # this should always return 1 - TODO, refactor

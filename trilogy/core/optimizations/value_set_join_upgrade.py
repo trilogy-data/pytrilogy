@@ -45,6 +45,8 @@ from trilogy.core.processing.condition_utility import (
 from trilogy.core.processing.join_resolution import (
     OUTER_JOIN_TYPES,
     _padding_sources,
+)
+from trilogy.core.processing.null_provenance import (
     guest_padded_addresses,
     nulls_are_values,
 )

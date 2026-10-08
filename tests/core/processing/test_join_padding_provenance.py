@@ -24,8 +24,8 @@ from trilogy.core.processing.join_resolution import (
     _span_spellings,
     complete_key_domain,
     get_join_type,
-    guest_padded_addresses,
 )
+from trilogy.core.processing.null_provenance import guest_padded_addresses
 
 KEY = "local.padded"
 
@@ -197,7 +197,6 @@ def _matrix(span: str, spellings: dict[str, str]) -> dict[str, frozenset[str]]:
         {"ds~merged": frozenset({ORDER})},
         spellings,
         _identity,
-        {},
     )["ds~merged"]
 
 

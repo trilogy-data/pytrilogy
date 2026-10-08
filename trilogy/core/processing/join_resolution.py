@@ -13,7 +13,6 @@ if TYPE_CHECKING:
 from trilogy.constants import MagicConstants
 from trilogy.core.domain_graph import DomainGraph
 from trilogy.core.enums import (
-    AggregateGroupingMode,
     ComparisonOperator,
     Derivation,
     Granularity,
@@ -23,7 +22,6 @@ from trilogy.core.enums import (
     SourceType,
 )
 from trilogy.core.exceptions import UnresolvableQueryException
-from trilogy.core.functions import propagates_argument_nulls
 from trilogy.core.models.build import (
     BoolExpr,
     BuildComparison,
@@ -47,6 +45,12 @@ from trilogy.core.processing import plan_trace
 from trilogy.core.processing.condition_utility import (
     and_optional,
     is_scalar_condition,
+)
+from trilogy.core.processing.null_provenance import (
+    ProvenanceMemo,
+    active_memo,
+    side_nullable,
+    span_padded_addresses,
 )
 from trilogy.core.processing.utility import (
     PADS_LEFT_JOIN_TYPES,
@@ -118,213 +122,6 @@ def get_connection_keys(
 ) -> set[str]:
     key: tuple[str, str] = (min(left, right), max(left, right))
     return all_connections.get(key, set())
-
-
-def rollup_padded_addresses(datasource: DataSource) -> set[str]:
-    """Grouping-key addresses this source NULL-pads because it renders
-    `GROUP BY ROLLUP/CUBE/GROUPING SETS` itself. A wrapper already computed
-    upstream is a passthrough: it re-emits the padded rows, it does not
-    create them."""
-    if not isinstance(datasource, QueryDatasource):
-        return set()
-    upstream = {
-        c.address for parent in datasource.datasources for c in parent.output_concepts
-    }
-    padded: set[str] = set()
-    for concept in datasource.output_concepts:
-        wrapper = get_grouped_aggregate_wrapper(concept)
-        if (
-            wrapper is None
-            or wrapper.grouping == AggregateGroupingMode.STANDARD
-            or concept.address in upstream
-        ):
-            continue
-        padded.update(b.address for b in wrapper.by)
-    return padded
-
-
-def _leaf_null_addresses(datasource: BuildDatasource) -> set[str]:
-    out: set[str] = set()
-    for concept in datasource.nullable_concepts:
-        out.add(concept.address)
-        out.update(concept.pseudonyms)
-    return out
-
-
-def _no_leaf_addresses(datasource: BuildDatasource) -> set[str]:
-    return set()
-
-
-def _value_null_driven(join: BaseJoin, memo: dict[int, bool]) -> bool:
-    driven = memo.get(id(join))
-    if driven is None:
-        driven = memo[id(join)] = any(
-            nulls_are_values(pair.left, pair.existing_datasource)
-            or nulls_are_values(pair.right, join.right_datasource)
-            for pair in join.concept_pairs or []
-        )
-    return driven
-
-
-def _span_keyed(join: BaseJoin, spans: frozenset[str]) -> bool:
-    return any(
-        pair.left.address in spans or pair.right.address in spans
-        for pair in join.concept_pairs or []
-    ) or any(concept.address in spans for concept in join.concepts or [])
-
-
-def _padded_addresses(
-    datasource: DataSource,
-    leaf_addresses: Callable[[BuildDatasource], set[str]],
-    join_extends: Callable[[BaseJoin], bool],
-    memo: dict[int, frozenset[str]] | None = None,
-    chain: bool = False,
-) -> frozenset[str]:
-    """Addresses this source emits NULL for because an outer join `join_extends`
-    licenses padded them, or because a leaf declared them nullable.
-
-    Left-deep accumulation as in find_nullable_concepts: a RIGHT/FULL join
-    null-extends the whole accumulated left input, not just one operand. An
-    address counts only when EVERY provider of it was extended (or was already
-    padded inside that provider)."""
-    memo = {} if memo is None else memo
-    cached = memo.get(id(datasource))
-    if cached is not None:
-        return cached
-    memo[id(datasource)] = frozenset()
-    if isinstance(datasource, BuildDatasource):
-        memo[id(datasource)] = frozenset(leaf_addresses(datasource))
-        return memo[id(datasource)]
-    child_padded = {
-        child.identifier: _padded_addresses(
-            child, leaf_addresses, join_extends, memo, chain
-        )
-        for child in datasource.datasources
-    }
-    right_ids = {
-        j.right_datasource.identifier
-        for j in datasource.joins
-        if isinstance(j, BaseJoin)
-    }
-    extended: set[str] = set()
-    out: set[str] = set()
-    base_ids = [i for i in child_padded if i not in right_ids]
-    for join, accumulated in left_deep_joins(datasource.joins, base_ids):
-        right_id = join.right_datasource.identifier
-        pairs = join.concept_pairs or []
-        extends = join_extends(join)
-        # a lookup keyed on a column already padded on its preserved side pads
-        # for the same rows (a guest order's customer, then that customer's
-        # address)
-        left_padded = chain and any(
-            pair.existing_datasource.identifier in extended
-            or pair.left.address
-            in child_padded.get(pair.existing_datasource.identifier, frozenset())
-            for pair in pairs
-        )
-        right_padded = chain and any(
-            pair.right.address in child_padded.get(right_id, frozenset())
-            for pair in pairs
-        )
-        if join.join_type in PADS_RIGHT_JOIN_TYPES and (extends or left_padded):
-            extended.add(right_id)
-        if join.join_type in PADS_LEFT_JOIN_TYPES and (extends or right_padded):
-            extended |= accumulated
-    for address, providers in datasource.source_map.items():
-        idents = {
-            p.identifier
-            for p in providers
-            if isinstance(p, (BuildDatasource, QueryDatasource))
-        }
-        if idents and all(
-            ident in extended or address in child_padded.get(ident, frozenset())
-            for ident in idents
-        ):
-            out.add(address)
-    for concept in datasource.output_concepts:
-        if concept.address in out:
-            out.update(concept.pseudonyms)
-    memo[id(datasource)] = frozenset(out)
-    return memo[id(datasource)]
-
-
-def extent_null_addresses(
-    datasource: DataSource,
-    _memo: dict[int, frozenset[str]] | None = None,
-    _driven: dict[int, bool] | None = None,
-) -> frozenset[str]:
-    """Addresses this source can genuinely emit NULL for or omit a member of
-    BECAUSE of a `?` declaration: a `?` binding at a leaf, or a key every
-    provider of which is null-extended by a VALUE-NULL-DRIVEN outer join in
-    this source's own tree (or already extent-null within that provider).
-    Narrower than ``nullable_concepts`` twice over: a side merely JOINED on a
-    nullable condition gets no mark (an INNER join introduces no NULLs), and
-    padding from partial-driven (`~`) preserving joins gets none either, since
-    extension families ride the host machinery and claiming their padding here
-    would re-preserve rows that machinery already keeps exactly once. ROLLUP
-    padding is likewise excluded; ``rollup_padded_addresses`` owns it."""
-    return _padded_addresses(
-        datasource,
-        _leaf_null_addresses,
-        partial(_value_null_driven, memo={} if _driven is None else _driven),
-        _memo,
-        chain=True,
-    )
-
-
-def guest_padded_addresses(
-    datasource: DataSource,
-    _memo: dict[int, frozenset[str]] | None = None,
-    _driven: dict[int, bool] | None = None,
-) -> frozenset[str]:
-    """Addresses this source emits NULL for because a VALUE-NULL key found no
-    partner: a `~?` guest sale's item columns, and whatever is chained off
-    them. ``extent_null_addresses`` without the `?` leaves: a leaf's NULL is a
-    member some holder of the key has a row for, and a guest's NULL is not."""
-    return _padded_addresses(
-        datasource,
-        _no_leaf_addresses,
-        partial(_value_null_driven, memo={} if _driven is None else _driven),
-        _memo,
-        chain=True,
-    )
-
-
-def extension_padded_addresses(
-    datasource: DataSource,
-    spans: frozenset[str],
-    _memo: dict[int, frozenset[str]] | None = None,
-) -> frozenset[str]:
-    """Addresses this source only emits NULL for because a ``~``-preserving
-    join keyed on one of ``spans`` padded them to carry its extension members.
-
-    A merge extent-free for those spans reads them as absence, not content:
-    another branch owns those rows. An ordinary outer lookup's nullability
-    stands."""
-    return _padded_addresses(
-        datasource,
-        _no_leaf_addresses,
-        partial(_span_keyed, spans=spans),
-        _memo,
-    )
-
-
-def _span_padded_addresses(
-    datasource: DataSource, span: str, memo: dict[int, frozenset[str]]
-) -> frozenset[str]:
-    """Addresses this source emits NULL for on the rows that carry `span`'s
-    extension members.
-
-    Wider than ``extension_padded_addresses`` by one step: a lookup chained off
-    an already padded key (`users LEFT orders` on the span, then `LEFT lines`
-    on `order_id`) pads for the same member, though the span does not key it."""
-    return _padded_addresses(
-        datasource,
-        _no_leaf_addresses,
-        partial(_span_keyed, spans=frozenset({span})),
-        memo,
-        chain=True,
-    )
 
 
 @dataclass(frozen=True)
@@ -1127,88 +924,12 @@ def resolve_join_order_v2(g: nx.Graph, facts: JoinFacts) -> list[JoinOrderOutput
     return output
 
 
-def side_nullable(concept: BuildConcept, side: DataSource | None) -> bool:
-    if side is None:
-        return False
-    # Intrinsic nullability: the concept's own definition can yield NULL (a
-    # `?` column, a filtered value or aggregate, a no-else CASE) on any side
-    # that carries it, regardless of that side's join structure.
-    if concept.is_nullable:
-        return True
-    equivalent = concept.equivalent_addresses
-    if any(equivalent & nc.equivalent_addresses for nc in side.nullable_concepts):
-        return True
-    # a side that COMPUTES the join key from nullable inputs yields NULL keys
-    # too (`l_key + 1` is NULL wherever `l_key` is) even when the derived key
-    # itself never got flagged
-    if not propagates_argument_nulls(concept):
-        return False
-    args = {a.address for a in concept.concept_arguments}
-    if not args:
-        return False
-    nullable_addrs: set[str] = set()
-    for nc in side.nullable_concepts:
-        nullable_addrs |= nc.equivalent_addresses
-    return bool(args & nullable_addrs)
-
-
-def _side_outputs(concept: BuildConcept, side: DataSource) -> bool:
-    equivalent = concept.equivalent_addresses
-    return any(equivalent & c.equivalent_addresses for c in side.output_concepts)
-
-
-def nulls_are_values(
-    concept: BuildConcept,
-    side: DataSource,
-    _seen: frozenset[tuple[str, int]] = frozenset(),
-) -> bool:
-    """Whether the NULLs this side carries for ``concept`` are VALUES (a `?`
-    column, a nullable derivation, a nullable input to a null-propagating
-    expression, a ROLLUP grouping key) rather than pure outer-join extension.
-
-    Outer-join extension means absent: there is no row on that side, so no
-    key. Pairing that against a real NULL group cross-joins the two."""
-    if concept.is_nullable:
-        return True
-    # Argument chains can be mutually recursive; a repeat visit of the same
-    # concept on the same source contributes nothing new.
-    visit = (concept.address, id(side))
-    if visit in _seen:
-        return False
-    seen = _seen | {visit}
-    equivalent = concept.equivalent_addresses
-    if isinstance(side, BuildDatasource):
-        # Column-level `?` is the only value-NULL source on a physical table.
-        return any(
-            equivalent & nc.equivalent_addresses for nc in side.nullable_concepts
-        )
-    # A grouping-set NULL is padding too, but a twin-rollup partner pads the
-    # same key, so it stays pairable here; get_join_type handles the mismatch.
-    if equivalent & rollup_padded_addresses(side):
-        return True
-    carriers = [p for p in side.datasources if _side_outputs(concept, p)]
-    if not carriers:
-        # Nothing upstream to attribute the NULL to; stay conservative rather
-        # than call an unexplained nullability extension.
-        return True
-    if any(nulls_are_values(concept, p, seen) for p in carriers):
-        return True
-    if not propagates_argument_nulls(concept):
-        return False
-    args = {a.address for a in concept.concept_arguments}
-    if not args:
-        return False
-    return any(
-        (args & nc.equivalent_addresses) and nulls_are_values(nc, side, seen)
-        for nc in side.nullable_concepts
-    )
-
-
 def get_modifiers(
     left_concept: BuildConcept,
     right_concept: BuildConcept,
     left: DataSource | None,
     right: DataSource | None,
+    memo: ProvenanceMemo | None = None,
 ) -> list[Modifier]:
     """Use null-safe equality only when both exposed join keys can be NULL.
 
@@ -1219,7 +940,8 @@ def get_modifiers(
     if not (side_nullable(left_concept, left) and side_nullable(right_concept, right)):
         return []
     assert left is not None and right is not None
-    if nulls_are_values(left_concept, left) != nulls_are_values(right_concept, right):
+    memo = memo or ProvenanceMemo()
+    if memo.of(left).values(left_concept) != memo.of(right).values(right_concept):
         return []
     return [Modifier.NULLABLE]
 
@@ -1791,15 +1513,15 @@ def _span_padding_matrix(
     nullables: Mapping[str, frozenset[str]],
     spellings: dict[str, str],
     canon_node: Callable[[str], str],
-    memos: dict[str, dict[int, frozenset[str]]],
+    memo: ProvenanceMemo | None = None,
 ) -> dict[str, dict[str, frozenset[str]]]:
     """Per side, per nullable key: the spans whose extension rows NULL it."""
+    memo = memo or ProvenanceMemo()
     out: dict[str, dict[str, frozenset[str]]] = {}
     for ds_node, datasource in ds_node_map.items():
         by_key: dict[str, set[str]] = defaultdict(set)
         for spelling in sorted(spellings):
-            memo = memos.setdefault(spelling, {})
-            for address in _span_padded_addresses(datasource, spelling, memo):
+            for address in span_padded_addresses(datasource, spelling, memo):
                 by_key[canon_node(address)].add(spellings[spelling])
         out[ds_node] = {
             key: frozenset(found)
@@ -1813,7 +1535,7 @@ def _padding_witness(
     datasource: DataSource,
     spans: frozenset[str],
     spellings: dict[str, str],
-    memos: dict[str, dict[int, frozenset[str]]],
+    memo: ProvenanceMemo,
     elsewhere: set[str],
 ) -> list[BuildConcept]:
     """Columns of `datasource` that are NULL exactly on the rows padded for
@@ -1826,13 +1548,12 @@ def _padding_witness(
         h.address if isinstance(h, BuildConcept) else h
         for h in datasource.hidden_concepts
     }
+    provenance = memo.of(datasource)
     for span in sorted(spans):
         padded: set[str] = set()
         for spelling, named in spellings.items():
             if named == span:
-                padded |= _span_padded_addresses(
-                    datasource, spelling, memos.setdefault(spelling, {})
-                )
+                padded |= provenance.padded_by(spelling)
         witnesses = sorted(
             (
                 c
@@ -1841,7 +1562,7 @@ def _padding_witness(
                 and c.address in padded
                 and c.address not in hidden
                 and c.address not in elsewhere
-                and not nulls_are_values(c, datasource)
+                and not provenance.values(c)
             ),
             key=lambda c: c.address,
         )
@@ -1857,7 +1578,7 @@ def _padding_guard(
     facts: JoinFacts,
     ds_node_map: dict[str, DataSource],
     spellings: dict[str, str],
-    memos: dict[str, dict[int, frozenset[str]]],
+    memo: ProvenanceMemo,
 ) -> BoolExpr | None:
     """A key NULL by absence never pairs with a value-NULL group. A side whose
     NULLs on a key are both (`pstatus`, a no-ELSE CASE, on a stream a region
@@ -1889,7 +1610,7 @@ def _padding_guard(
                 ):
                     continue
                 for witness in _padding_witness(
-                    ds_node_map[padded_node], spans, spellings, memos, others
+                    ds_node_map[padded_node], spans, spellings, memo, others
                 ):
                     guard = and_optional(
                         guard,
@@ -1954,10 +1675,7 @@ def get_node_joins(
         return f"c~{canonical.get(address, address)}"
 
     graph = nx.Graph()
-    extent_memo: dict[int, frozenset[str]] = {}
-    guest_memo: dict[int, frozenset[str]] = {}
-    pad_memo: dict[int, frozenset[str]] = {}
-    driven_memo: dict[int, bool] = {}
+    memo = active_memo()
     ds_node_map: dict[str, DataSource] = {}
     ds_concept_map: dict[tuple[str, str], BuildConcept] = {}
     sides: dict[str, SideFacts] = {}
@@ -1986,15 +1704,13 @@ def get_node_joins(
                 for c in datasource.output_concepts
                 if c.address in environment.scoped_partial_derived
             }
+        provenance = memo.of(datasource)
         nullable_nodes = {canon_node(c.address) for c in datasource.nullable_concepts}
         if extent_free_spans:
             nullable_nodes -= {
-                canon_node(a)
-                for a in extension_padded_addresses(
-                    datasource, extent_free_spans, pad_memo
-                )
+                canon_node(a) for a in provenance.extension_padded(extent_free_spans)
             }
-        padded_nodes = {canon_node(a) for a in rollup_padded_addresses(datasource)}
+        padded_nodes = {canon_node(a) for a in provenance.rollup}
         partial_keys: set[str] = set()
         nullable_keys: set[str] = set()
         rollup_keys: set[str] = set()
@@ -2011,18 +1727,12 @@ def get_node_joins(
             # the FIRST concept spelling the node decides the provenance
             if node in nullable_nodes and node not in nullable_keys:
                 nullable_keys.add(node)
-                if nulls_are_values(concept, datasource):
+                if provenance.values(concept):
                     value_keys.add(node)
             if node in padded_nodes:
                 rollup_keys.add(node)
-        extent_addrs = {
-            canon_node(a)
-            for a in extent_null_addresses(datasource, extent_memo, driven_memo)
-        }
-        guest_addrs = {
-            canon_node(a)
-            for a in guest_padded_addresses(datasource, guest_memo, driven_memo)
-        }
+        extent_addrs = {canon_node(a) for a in provenance.extent}
+        guest_addrs = {canon_node(a) for a in provenance.guest}
         # A side holding a region's rows (its domain, or whatever read it) hosts
         # that region's extension rows on the join keyed by its span, whatever
         # columns it emits: the contract, not an inference from the bindings.
@@ -2072,14 +1782,13 @@ def get_node_joins(
     # Beside the region contract: a FULL join between two families' padding
     # must not pair NULL with NULL null-safely.
     spellings = _span_spellings(keyspace.in_play_spans, environment, keyspace.witnessed)
-    pad_memos: dict[str, dict[int, frozenset[str]]] = {}
     if sum(1 for side in sides.values() if side.nullables) > 1:
         matrix = _span_padding_matrix(
             ds_node_map,
             {ds_node: side.nullables for ds_node, side in sides.items()},
             spellings,
             canon_node,
-            pad_memos,
+            memo,
         )
         sides = {
             ds_node: replace(side, span_padding=matrix.get(ds_node, {}))
@@ -2140,7 +1849,7 @@ def get_node_joins(
             right_datasource=ds_node_map[j.right],
             join_type=j.type,
             concepts=[] if not j.keys else None,
-            condition=_padding_guard(j, facts, ds_node_map, spellings, pad_memos),
+            condition=_padding_guard(j, facts, ds_node_map, spellings, memo),
             concept_pairs=reduce_concept_pairs(
                 [
                     ConceptPair(
@@ -2164,6 +1873,7 @@ def get_node_joins(
                                     ds_concept_map[(j.right, concept)],
                                     ds_node_map[k],
                                     ds_node_map[j.right],
+                                    memo,
                                 )
                             )
                         )

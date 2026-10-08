@@ -47,7 +47,6 @@ from trilogy.core.processing.join_resolution import (
     narrow_keyless_joins,
     partial_binding_sources,
     prune_outer_join_pairs,
-    side_nullable,
 )
 from trilogy.core.processing.nodes.base_node import (
     NodeJoin,
@@ -56,6 +55,7 @@ from trilogy.core.processing.nodes.base_node import (
     resolve_concept_map,
     resolve_existence_map,
 )
+from trilogy.core.processing.null_provenance import side_nullable
 from trilogy.core.processing.utility import (
     find_nullable_concepts,
     left_deep_joins,
