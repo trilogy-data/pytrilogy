@@ -178,5 +178,8 @@ def test_stored_only_value_answers_its_own_keyspace():
 
 def test_stored_only_value_cannot_be_pinned_to_another_keyspace():
     executor = executor_for(_STORED_ONLY)
-    with pytest.raises(NoDatasourceException):
+    with pytest.raises(
+        NoDatasourceException,
+        match=r"amount_or_zero is stored only at its own grain \(local.order_id\)",
+    ):
         sorted_rows(executor, "select customer_id, amount_or_zero")

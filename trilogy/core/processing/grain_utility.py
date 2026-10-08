@@ -482,11 +482,13 @@ def _is_filter_population(
     region's rows this side lacks keeps them on any key: they passed the
     WHERE there, and are NULL on a key absent on the region (`count(customer_id)
     by status where name = 'cat'` beside `sum(amount) by status`). A partner
-    whose key is NULL on some row (a `?` binding) holds a member this side
-    never has: its row passed the WHERE unless what this side applied rejects
+    whose key is NULL on some row holds a member this side never has, whatever
+    made it NULL (a `?` binding, or a join below that padded it): no key pairs
+    with it, so its row passed the WHERE unless what this side applied rejects
     the all-NULL row it pads (`where customer_id is null` keeps the order with
     no customer, `where state = 'GA'` drops it), unless this side filtered the
-    partner's own rows and so has that member too (`_reads_partner`)."""
+    partner's own rows and so has that member too (`_reads_partner`). Hence
+    the raw `nullable_concepts`, not their provenance."""
     if identifier not in filtered_ids:
         return False
     source = by_id.get(identifier)

@@ -1,11 +1,12 @@
 from collections.abc import Iterable
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation
+from trilogy.core.enums import Derivation, FunctionType
 from trilogy.core.exceptions import NoDatasourceException
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
     BuildConcept,
+    BuildFunction,
     BuildGrain,
     BuildWhereClause,
     CanonicalBuildConceptList,
@@ -47,12 +48,42 @@ def validate_query_is_resolvable(
             continue
         if not root_is_unsourced(concept, environment):
             continue
+        pinned = _stored_pinned_readers(concept, environment)
+        if pinned:
+            raise NoDatasourceException(
+                f"{pinned[0].address} is stored only at its own grain "
+                f"({', '.join(sorted(pinned[0].keys or ()))}); this select's grain "
+                "is not that, so it is evaluated on the select's row instead "
+                f"(a grain pin), which reads {concept.address}, a concept no "
+                "datasource binds. Select it beside the keys it is stored at, or "
+                f"bind {concept.address}."
+            )
         raise NoDatasourceException(
             f"No datasource exists for root concept {concept}, and no resolvable "
             f"pseudonyms found from {concept.pseudonyms}. This query is "
             "unresolvable from your environment. Check your datasources and "
             "imports to make sure this concept is bound."
         )
+
+
+def _stored_pinned_readers(
+    root: BuildConcept, environment: BuildEnvironment
+) -> list[BuildConcept]:
+    """Values this statement pins to its own grain that read `root`, though
+    a datasource persists them at theirs (`grain_pin`)."""
+    stored = {
+        column.concept.address
+        for datasource in environment.datasources.values()
+        for column in datasource.columns
+    }
+    return [
+        concept
+        for concept in environment.concepts.values()
+        if isinstance(concept.lineage, BuildFunction)
+        and concept.lineage.operator == FunctionType.GRAIN_PIN
+        and concept.address in stored
+        and root.address in {a.address for a in concept.lineage.concept_arguments}
+    ]
 
 
 def _pseudonym_is_sourced(address: str, environment: BuildEnvironment) -> bool:
