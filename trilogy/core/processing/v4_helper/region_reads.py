@@ -14,8 +14,8 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.condition_utility import condition_proves_non_null
 from trilogy.core.models.keyspace import Keyspace, Region
+from trilogy.core.processing.condition_utility import condition_proves_non_null
 
 from .extent_ownership import null_on_padding
 from .projection import decided_at_output_grain
