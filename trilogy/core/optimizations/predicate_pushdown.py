@@ -197,6 +197,25 @@ def _parent_nullable_in_cte(cte: CTE, parent_name: str) -> bool:
     return any(node.name == parent_name for node in null_padded_nodes(cte))
 
 
+def _passes_padding_a_child_adds(
+    candidate: BuildConditional | BuildComparison | BuildParenthetical,
+    parent: CTE | UnionCTE,
+    children: list[CTE | UnionCTE],
+) -> bool:
+    """A child that outer-joins the parent tests the atom on rows the join
+    padded too. One the all-NULL row passes (`cost is null`) keeps those
+    rows, so filtering the parent first changes which rows the child pads:
+    a product the WHERE drops comes back as a padded NULL cost."""
+    if set(condition_proves_non_null(candidate)) & {
+        c.address for c in candidate.row_arguments
+    }:
+        return False
+    return any(
+        isinstance(child, CTE) and _parent_nullable_in_cte(child, parent.name)
+        for child in children
+    )
+
+
 def _consumer_may_emit_without_parent(cte: CTE, parent_name: str) -> bool:
     for j in cte.joins or []:
         if not isinstance(j, Join):
@@ -580,7 +599,7 @@ class PredicatePushdown(OptimizationRule):
             if all(
                 condition_contains_atom(candidate, child.condition)
                 for child in children
-            ):
+            ) and not _passes_padding_a_child_adds(candidate, parent_cte, children):
                 # Existence sources to promote onto the parent, computed before
                 # any mutation so the cycle guard can veto the whole push. The
                 # consumer may source an existence concept from a dependency

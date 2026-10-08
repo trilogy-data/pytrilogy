@@ -319,3 +319,22 @@ def test_a_coalesced_inner_key_pairs_value_nulls_null_safely():
         _executor(TWO_REGIONS),
         "select customer_id, target, count(customer_id) by bucket as cb where name = 'ann'",
     ) == [(1, 5, 1), (1, 7, 1)]
+
+
+def test_a_where_the_padded_row_passes_is_not_pushed_into_the_padded_side():
+    assert sorted_rows(
+        _executor(LINE_ITEMS),
+        "select user_id, cost, sum(cost) by product_id as sc where cost is null",
+    ) == [(3, None, None)]
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="FINAL reads the WHERE's `cost` off the filtered aggregate, which "
+    "groups by it, instead of off the products the lines name",
+)
+def test_a_where_read_off_a_filtered_aggregate_misses_the_rejected_members():
+    assert sorted_rows(
+        _executor(LINE_ITEMS),
+        "select user_id, count(user_id) by product_id as cu where cost is null",
+    ) == [(3, 1)]
