@@ -280,3 +280,28 @@ def test_a_property_summed_by_its_own_key_over_a_region_counts_each_once(
     query: str, expected: list[tuple]
 ):
     assert sorted_rows(_executor(LINE_ITEMS), query) == expected
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select state, product_id, revenue",
+            [
+                ("ca", 1, D("5.0")),
+                ("ca", 2, D("7.0")),
+                ("ny", 1, D("3.0")),
+                ("wa", None, None),
+                (None, 3, None),
+            ],
+        ),
+        (
+            "select user_id, sum(cost) as sc",
+            [(1, D("3.0")), (2, D("1.0")), (3, None), (None, D("3.0"))],
+        ),
+    ],
+)
+def test_a_region_row_with_a_null_key_is_no_subset_match(
+    query: str, expected: list[tuple]
+):
+    assert sorted_rows(_executor(LINE_ITEMS), query) == expected

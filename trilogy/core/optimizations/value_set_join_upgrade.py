@@ -600,7 +600,14 @@ def _pair_side_fully_matches(
     to the former: rule-B narrowing through an authored incomparable veto
     trusts only a proven path, never the stamp heuristics, because that veto
     collapses two genuinely distinct populations onto one address, exactly
-    what stamps cannot see."""
+    what stamps cannot see.
+
+    A row whose key is NULL finds no partner on a side that never emits a
+    NULL key, whatever the domains say: a subset side that outer-joined a
+    region in (`state` beside `product_id`, the user with no line) carries
+    one the complete dimension cannot match."""
+    if _emits_null(sub_concept, sub_cte) and not _emits_null(sup_concept, sup_cte):
+        return False
     declared = _proven_subset_of(domain_graph, sub_concept, sup_concept)
     if not declared:
         if graph_proof_only:
@@ -657,6 +664,12 @@ def _pair_side_fully_matches(
     if not _complete_values(sup_concept, sup_cte, domain_graph):
         return False
     return _accumulate_filter(sup_cte) is None
+
+
+def _emits_null(concept: BuildConcept, cte: CTE | UnionCTE) -> bool:
+    return isinstance(cte, CTE) and concept.address in {
+        c.address for c in cte.nullable_concepts
+    }
 
 
 def _datasource_ids_for_key(cte: CTE, concept: BuildConcept) -> set[str]:
