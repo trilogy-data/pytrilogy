@@ -158,21 +158,33 @@ branch and right on main:
   the filter removed came back as a padded NULL cost and passed
   (`_passes_padding_a_child_adds`).
 
-Still open from `LINE_ITEMS` (all wrong at 02e809880 too, main right):
+Fixed after the battery script landed (2026-10-08; zero corpus plans moved
+for the first two, the third shrank two GROUP BYs, TPC-H q11 rows verified):
 
-- `select user_id, count(user_id) by product_id where cost is null` returns
-  users 1 and 2 (strict xfail
-  `test_a_where_read_off_a_filtered_aggregate_misses_the_rejected_members`).
-  FINAL reads `cost` off the filtered aggregate, which groups by it because
-  the atom ran on its input, instead of off the products the lines name.
-- `select state, product_id, sum(cost) by product_id where state is null`
-  and `select user_id, cost, sum(sale_price) by user_id where cost is null`
-  fail to render ("Missing source reference"): a WHERE over a region value
-  beside an aggregate keyed on the other region's span. On `TWO_REGIONS` the
-  same holds for `select customer_id, max(target) where name is null` and
-  `select name, bucket, sum(target) by bucket where name is null`.
-  `local_scripts/sql_ab/region_battery.py` reruns both batteries and diffs
-  them against any tree.
+- **A WHERE over one region beside an aggregate another region feeds failed
+  to render** ("Missing source reference"; `select customer_id, max(target)
+  where name is null`, `select state, product_id, sum(cost) by product_id
+  where state is null` and three more). A solid root feeding an aggregate
+  beside a region domain dropped every column ANY domain of its label carried,
+  so the bucket-fed aggregate lost `name`, which only the customer domain
+  holds. Rule: only a domain feeding that consumer supplies it
+  (`_compute_concept_sets`, `domain_members`). Main answered the `state` query
+  with invented rows for products 1 and 2.
+- **That atom then let the other region's rows through at FINAL.** The atom
+  sat on the aggregate only, and FINAL FULL-joined the customer domain
+  unfiltered. Rule: an atom placed on its region-domain hosts is applied at
+  FINAL too when a region domain no host reads holds an output
+  (`condition_placement._domain_rows_beside_hosts`).
+- **FINAL read the WHERE's value off a filtered aggregate**
+  (`select user_id, count(user_id) by product_id where cost is null` returned
+  users 1 and 2). A FINAL condition argument was exposed by every FINAL
+  contributor able to produce it, so the aggregate, whose input read `cost`,
+  grouped by it and FINAL tested its padded NULL. Rule: a grouping group
+  exposes a FINAL condition argument only when it is a member or grain
+  component, as with mandatory outputs.
+
+`local_scripts/sql_ab/region_battery.py` reruns both batteries and diffs them
+against any tree; both now differ from 3e80810bb only on the rows above.
 
 Still open from it:
 
@@ -198,10 +210,15 @@ Still open from it:
   status, count(order_id) where name = 'cat'` is `[]`. Yet `select
   customer_id, sum(amount) where bucket = 'z' or name = 'cat'` returns the
   bucket region's `z` row, on main too.
-- `select customer_id, count(customer_id) by bucket as cb where name = 'ann'`
-  returns `(1, 1)` twice. This is the select's grain (customer, bucket)
-  projected, and the same shape without the WHERE is no different. Main
-  dedups it.
+- **Owner question: is an aggregate's `by` key part of the select's grain?**
+  `select customer_id, count(customer_id) by bucket as cb where name = 'ann'`
+  returns `(1, 1)` twice, once per bucket. `check_if_group_required` counts an
+  output aggregate's by-keys as covered (`include_aggregate_by_keys`), so a
+  stream at (customer, bucket) is not regrouped. Excluding them dedups this
+  query but grows ten TPC-DS plans (q23, q30, q53, q63, q65, q79, q81, q91...),
+  whose reference rows keep one row per by-key. So the branch's two rows follow
+  the corpus convention; main and `BUCKET_REGION` collapse them only because
+  their FINAL merge claims grain `<bucket>` and the MergeNode forces a group.
 
 ## Plan size
 

@@ -1739,11 +1739,13 @@ def _compute_concept_sets(
         *(nx.descendants(group_graph, d) for d in domain_gids)
     )
     solid = {g for g in attrs if domain_gids and g not in domain_readers}
+    domain_members = {
+        gid: {m for m in attrs[gid].primary_members if m not in region_join_keys}
+        for gid in domain_gids
+    }
     domain_carried: dict[str, set[str]] = {}
-    for gid in domain_gids:
-        domain_carried.setdefault(attrs[gid].label, set()).update(
-            m for m in attrs[gid].primary_members if m not in region_join_keys
-        )
+    for gid, members in domain_members.items():
+        domain_carried.setdefault(attrs[gid].label, set()).update(members)
     # Non-ROWSET members of authored statement relations that NO group hosts:
     # the axis vocabulary a fresh scan may advertise below. A member some group
     # already carries as a primary needs no re-sourcing, and advertising it
@@ -1922,6 +1924,10 @@ def _compute_concept_sets(
                     mand -= domain_carried.get(attrs[gid].label, set())
                 outs |= mand
                 final_args_here = cap_gid & final_condition_args
+                if fact.derivation in GROUPING_DERIVATIONS:
+                    # a value the aggregate's input read is not one it groups
+                    # by: FINAL reads it off the rows it describes
+                    final_args_here &= fact.primary | fact.grain
                 outs |= final_args_here
                 outs |= cap_gid & region_join_keys
                 if gid in domain_gids:
@@ -2026,10 +2032,11 @@ def _compute_concept_sets(
             if edge_kind(group_edges, gid, succ) == EdgeKind.EXISTENCE:
                 continue
             demanded = io.inputs.get(succ, set()) & cap_gid
-            if solid_root and any(
-                pred in domain_gids for pred in group_graph.predecessors(succ)
-            ):
-                demanded -= domain_carried.get(attrs[gid].label, set())
+            if solid_root:
+                # only a domain feeding `succ` supplies it: another region's
+                # domain (the customers beside a bucket-fed aggregate) does not
+                for pred in group_graph.predecessors(succ):
+                    demanded -= domain_members.get(pred, set())
             if fact.derivation in GROUPING_DERIVATIONS:
                 sibling_providable: set[str] = set()
                 for sib in group_graph.predecessors(succ):

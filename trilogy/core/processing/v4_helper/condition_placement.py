@@ -671,6 +671,25 @@ def _outputs_beside_hosts(
     return any(c.address not in emitted for c in mandatory_list)
 
 
+def _domain_rows_beside_hosts(
+    hosts: tuple[str, ...],
+    buckets: dict[str, GroupBucket],
+    group_graph: nx.DiGraph,
+    mandatory_list: list[BuildConcept],
+) -> bool:
+    """Whether a region domain no host reads holds an output: FINAL unites its
+    rows (the customers beside `max(target) by customer_id`, fed by the
+    buckets) with the hosts' filtered ones, so the atom is applied there too."""
+    outputs = {c.address for c in mandatory_list}
+    feeding = {pred for gid in hosts for pred in group_graph.predecessors(gid)}
+    return any(
+        bucket.extent_spans
+        and gid not in feeding
+        and outputs & set(bucket.primary_members)
+        for gid, bucket in buckets.items()
+    )
+
+
 def _hosts_carrying_condition_grain(
     restricted: list[str],
     row_inputs: set[str],
@@ -1437,7 +1456,12 @@ def plan_condition_placements(
                         group_ids=(
                             hosts + (FINAL_NODE_ID,)
                             if hosts
-                            and _outputs_beside_hosts(hosts, buckets, mandatory_list)
+                            and (
+                                _outputs_beside_hosts(hosts, buckets, mandatory_list)
+                                or _domain_rows_beside_hosts(
+                                    hosts, buckets, group_graph, mandatory_list
+                                )
+                            )
                             else hosts or (FINAL_NODE_ID,)
                         ),
                         reason=PlacementReason.FINAL_SPAN_DOMAIN,

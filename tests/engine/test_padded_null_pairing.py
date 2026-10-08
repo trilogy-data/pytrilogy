@@ -328,13 +328,60 @@ def test_a_where_the_padded_row_passes_is_not_pushed_into_the_padded_side():
     ) == [(3, None, None)]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="FINAL reads the WHERE's `cost` off the filtered aggregate, which "
-    "groups by it, instead of off the products the lines name",
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select user_id, count(user_id) by product_id as cu where cost is null",
+            [(3, 1)],
+        ),
+        (
+            "select state, product_id, count(user_id) by product_id as cu where cost is null",
+            [("wa", None, 1)],
+        ),
+        (
+            "select user_id, product_id, count(user_id) by product_id as cu where cost is null",
+            [(3, None, 1)],
+        ),
+    ],
 )
-def test_a_where_read_off_a_filtered_aggregate_misses_the_rejected_members():
-    assert sorted_rows(
-        _executor(LINE_ITEMS),
-        "select user_id, count(user_id) by product_id as cu where cost is null",
-    ) == [(3, 1)]
+def test_a_where_read_off_a_filtered_aggregate_misses_the_rejected_members(
+    query: str, expected: list[tuple]
+):
+    assert sorted_rows(_executor(LINE_ITEMS), query) == expected
+
+
+@pytest.mark.parametrize(
+    "model,query,expected",
+    [
+        (
+            TWO_REGIONS,
+            "select customer_id, max(target) as mt where name is null",
+            [(None, 9)],
+        ),
+        (
+            TWO_REGIONS,
+            "select name, bucket, sum(target) by bucket as t where name is null",
+            [(None, "z", 9)],
+        ),
+        (
+            TWO_REGIONS,
+            "select name, bucket, sum(target) by bucket as t where bucket = 'z' or name = 'cat'",
+            [("cat", None, None), (None, "z", 9)],
+        ),
+        (
+            LINE_ITEMS,
+            "select state, product_id, sum(cost) by product_id as sc where state is null",
+            [(None, 3, D("3.0"))],
+        ),
+        (
+            LINE_ITEMS,
+            "select user_id, cost, sum(sale_price) by user_id as su where cost is null",
+            [(3, None, None)],
+        ),
+    ],
+)
+def test_a_where_over_one_region_beside_an_aggregate_fed_by_the_other(
+    model: str, query: str, expected: list[tuple]
+):
+    assert sorted_rows(_executor(model), query) == expected
