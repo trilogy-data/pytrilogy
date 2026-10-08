@@ -152,6 +152,23 @@ branch and right on main:
   chars of coalesce).
 - **A coalesced INNER key rendered `=`** whatever its null-safe modifier
   (`dialect/common._build_joinkeys`).
+- **A null-accepting WHERE was pushed into a side a consumer pads.**
+  `PredicatePushdown` moved `cost is null` into the products scan because
+  both consumers applied it. The FINAL FULL-joins that scan, so every product
+  the filter removed came back as a padded NULL cost and passed
+  (`_passes_padding_a_child_adds`).
+
+Still open from `LINE_ITEMS` (all wrong at 02e809880 too, main right):
+
+- `select user_id, count(user_id) by product_id where cost is null` returns
+  users 1 and 2 (strict xfail
+  `test_a_where_read_off_a_filtered_aggregate_misses_the_rejected_members`).
+  FINAL reads `cost` off the filtered aggregate, which groups by it because
+  the atom ran on its input, instead of off the products the lines name.
+- `select state, product_id, sum(cost) by product_id where state is null`
+  and `select user_id, cost, sum(sale_price) by user_id where cost is null`
+  fail to render ("Missing source reference"): a WHERE over a region value
+  beside an aggregate keyed on the other region's span.
 
 Still open from it:
 
