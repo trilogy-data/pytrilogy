@@ -229,3 +229,23 @@ def test_an_aggregate_holding_both_regions_pairs_after_they_are_stitched(
     query: str, expected: list[tuple]
 ):
     assert sorted_rows(_executor(TWO_REGIONS), query) == expected
+
+
+@pytest.mark.parametrize("model", [TWO_REGIONS, BUCKET_REGION])
+def test_a_region_row_the_where_keeps_beside_a_total_it_lacks(model: str):
+    assert sorted_rows(
+        _executor(model),
+        "select bucket, sum(amount) by customer_id as a where target > 6",
+    ) == [("a", 20), ("b", 30), ("z", None)]
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="the WHERE must reach the solid total's input and FINAL's region "
+    "rows apart; both read one orders group, so it is refused",
+)
+def test_where_kept_region_row_beside_a_solid_total_by_another_key():
+    assert sorted_rows(
+        _executor(BUCKET_REGION),
+        "select bucket, sum(amount) by customer_id as a where amount is null",
+    ) == [("z", None)]

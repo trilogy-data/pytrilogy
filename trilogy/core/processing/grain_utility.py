@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from trilogy.constants import MagicConstants
 from trilogy.core.enums import (
@@ -39,7 +39,7 @@ from trilogy.core.processing.join_resolution import (
     deep_extent_free_spans,
     held_region_spans,
 )
-from trilogy.core.processing.utility import join_left_sources
+from trilogy.core.processing.utility import join_left_sources, left_deep_joins
 
 GrainSource = QueryDatasource | BuildDatasource
 
@@ -654,10 +654,14 @@ def tighten_join_for_filtered_branch(
     filtered_ids: set[str],
     coalescing_keys: set[str],
     by_id: dict[str, GrainSource],
+    stream: frozenset[str] = frozenset(),
 ) -> None:
     """A side that IS the request WHERE's population must match every final
     row, so a join that null-extends it resurrects rows the WHERE rejected.
-    Authored coalescing relations keep their preserving typing."""
+    Authored coalescing relations keep their preserving typing. `stream` is
+    everything joined before: a region an earlier join brought in holds rows
+    the right side never has (a bucket no order references, beside a total
+    per customer), whichever side the keys are read off."""
     if not isinstance(join, BaseJoin) or not filtered_ids:
         return
     join_addresses = {
@@ -671,6 +675,15 @@ def tighten_join_for_filtered_branch(
     left = _partner_facts(
         (by_id[identifier] for identifier in left_ids if identifier in by_id),
         filtered_ids,
+    )
+    held = _partner_facts(
+        (by_id[identifier] for identifier in stream if identifier in by_id),
+        filtered_ids,
+    )
+    left = replace(
+        left,
+        regions=left.regions | held.regions,
+        filtered_regions=left.filtered_regions | held.filtered_regions,
     )
     right = join.right_datasource
     right_filtered = _is_filter_population(
@@ -708,11 +721,16 @@ def narrow_join_types(
     preserving form ``get_join_type`` chose is kept only where no surviving
     row is already proven to match the preserved side."""
     by_id = {source.identifier: source for source in final_datasets}
+    streams = {id(join): left for join, left in left_deep_joins(joins)}
     for join in joins:
         downgrade_join_for_proofs(join, proofs.proofs, final_datasets)
         downgrade_join_for_proofs(join, proofs.branch_proofs, final_datasets)
         tighten_join_for_filtered_branch(
-            join, proofs.filtered_ids, proofs.coalescing_keys, by_id
+            join,
+            proofs.filtered_ids,
+            proofs.coalescing_keys,
+            by_id,
+            streams.get(id(join), frozenset()),
         )
 
 
