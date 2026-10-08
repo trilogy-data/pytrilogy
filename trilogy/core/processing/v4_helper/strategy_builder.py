@@ -5209,7 +5209,13 @@ def _assemble_final_node(
             if not attrs[gid].extent_spans:
                 scope = _group_span_scope(scope, ownership, gid)
             with under_span_scope(environment, scope):
-                projected = _projection_root_concepts(group_concepts, environment)
+                # a region domain's rows are identified by its spans: a
+                # rename it carries (`group_id as g`) adds no grain of its own
+                projected = (
+                    unique(group_concepts, "address")
+                    if attrs[gid].extent_spans
+                    else _projection_root_concepts(group_concepts, environment)
+                )
                 request = RootRequest(
                     frozenset(c.address for c in projected),
                     _wrap_atoms(satisfiable),

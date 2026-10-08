@@ -183,6 +183,22 @@ for the first two, the third shrank two GROUP BYs, TPC-H q11 rows verified):
   exposes a FINAL condition argument only when it is a member or grain
   component, as with mandatory outputs.
 
+- **CI's differential fuzzer failed 6 of 260 since item 7 (02e809880)**
+  (`rollup_over_union_joined_rowsets`, `rollup_label_...`,
+  `chasm_mixed_measure_predicate`; main 260/260). Item 7 stopped feeding
+  `sum(...) by group_id` the region, so a rowset body's rename
+  `group_id as g` was no longer regrafted onto the aggregate and FINAL handed
+  it to the region domain. Re-sourcing the domain for `[g, group_id]` widened
+  the request with each concept's build grain, and the build environment gives
+  `group_id` FK-path keys `{visit_id}` (main too), so the alias carried grain
+  `visit_id` and the domain was re-read from `visits` instead of `groups`. Rule:
+  a region domain's FINAL re-source projects its concepts as they are; its rows
+  are identified by its spans (`_assemble_final_node`). Caveat: the fixture's
+  `visits` binds `?group_id` (every group) yet holds only some, and only data
+  like that shows the difference; the test
+  `test_a_rename_on_a_region_domain_reads_the_domain_not_a_wider_scan` has the
+  same shape. The FK-path `keys` on `group_id` are the deeper oddity.
+
 `local_scripts/sql_ab/region_battery.py` reruns both batteries and diffs them
 against any tree; both now differ from 3e80810bb only on the rows above.
 

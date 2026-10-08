@@ -385,3 +385,31 @@ def test_a_where_over_one_region_beside_an_aggregate_fed_by_the_other(
     model: str, query: str, expected: list[tuple]
 ):
     assert sorted_rows(_executor(model), query) == expected
+
+
+_RENAMED_DOMAIN = """
+key group_id int;
+property group_id.name string;
+key sale_id int;
+property sale_id.amount int;
+key visit_id int;
+
+datasource groups (gid: group_id, name: name)
+grain (group_id)
+query '''select 1 as gid, 'a' as name union all select 2, 'b' union all select 3, 'c' ''';
+
+datasource sales (id: sale_id, gid: ~group_id, amount: amount)
+grain (sale_id)
+query '''select 1 as id, 1 as gid, 5 as amount union all select 2, 2, 7''';
+
+datasource visits (id: visit_id, gid: ?group_id)
+grain (visit_id)
+query '''select 1 as id, 1 as gid union all select 2, null''';
+"""
+
+
+def test_a_rename_on_a_region_domain_reads_the_domain_not_a_wider_scan():
+    assert sorted_rows(
+        _executor(_RENAMED_DOMAIN),
+        "rowset s <- select group_id as g, sum(amount) as total; select s.g, s.total",
+    ) == [(1, 5), (2, 7), (3, None)]
