@@ -162,17 +162,16 @@ def test_full_to_one_sided_outer_when_only_one_side_proven():
 
 
 def test_full_kept_when_only_coalesced_key_proven():
-    """`region IS NOT NULL` on the merged join-key concept materializes as
-    `coalesce(left.region, right.region) IS NOT NULL`; coalesce is null-
-    opaque, so we can't prove either side individually → leave FULL."""
+    """`region IS NOT NULL` on the merged join-key concept proves neither side
+    alone, so no join may be downgraded on it. The region domain is read off
+    `region_dim` alone (no coalesced key to prove) and the region the fact
+    lacks survives."""
     executor = Dialects.DUCK_DB.default_executor()
     _persist_setup(executor)
 
     text = "WHERE region is not null SELECT region, sum(amount) as total;"
     sql = executor.generate_sql(executor.parse_text(text)[-1])[0]
-    # The coalesce form keeps left-unmatched and right-unmatched rows alike,
-    # so a downgrade would lose data — verify we don't emit the wrong shape.
-    assert "FULL JOIN" in sql, sql
+    assert "INNER JOIN" not in sql, sql
     assert _rows(executor, text) == {("NA", 10), ("EU", 20), ("AS", None)}
 
 
