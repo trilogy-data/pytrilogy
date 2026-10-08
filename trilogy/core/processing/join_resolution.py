@@ -683,6 +683,10 @@ def _score_join_candidate(
         base += 2
     elif is_partial:
         base -= 1
+    # the side holding the region's rows seeds the tree: its feeders hang
+    # LEFT off it instead of meeting FULL before it arrives
+    if side.hosts and not is_partial:
+        base += 3
     if root in side.nullables:
         base += 1
     return (base, len(side.grain), x)

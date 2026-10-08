@@ -395,8 +395,9 @@ def test_forked_full_column_set(forked):
     sql = forked.generate_sql(query)[-1]
     # order_status is evaluated on the select's row: the pinned CASE rides the
     # item-grain aggregate's padded stream (its (item, order) grain is the
-    # item's rows) instead of rebuilding the two region joins
-    assert sql.count("JOIN") == 7, sql
+    # item's rows) instead of rebuilding the two region joins, and the user
+    # region seeds the join tree with its feeders LEFT off it
+    assert sql.count("JOIN") == 6, sql
     assert _rows(forked, query) == [
         (1000, 100, 10, 1, "CA", "A", "FIRST", 5, 100),
         (1001, 100, 20, 1, "CA", "B", "FIRST", 7, 150),

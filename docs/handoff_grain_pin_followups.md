@@ -77,23 +77,33 @@ Found by the audit that followed (both wrong on main too):
    that determine each other, an aggregate by (item, order) beside a BASIC
    at the item), so the BASIC rides the sibling's stream and the FINAL
    computes the CASE on it.
-7. **An aggregate under a pinned reader takes the region's rows.**
-   `min(amount) by user_id` is fed the user region once its reader is no longer
-   solid (`region_domains`: an aggregate grouped by a carried key is evaluated
-   over the region). For `min`/`max`/`sum` the region adds only NULL groups the
-   FINAL would pad anyway; only a count (`zero_on_empty`) or an inline argument
-   taking a value on padding needs them. Broad: every span aggregate goes through
-   `evaluated_over_region`.
-8. **q84 +208 chars** over this branch's own baseline (still 213 chars under
-   main, so no `accepted_growth.toml` entry). Item 4's rule stamps
-   `ss.is_returned` partial on the `store_returns` scan, so the WHERE over it is
-   no longer pushed into that scan but tested above it beside a presence probe,
-   with the scan LEFT-joined. The
-   atom null-rejects the derivation's own `~` input (`sr_ticket_number is not
-   null`), so inside the scan it is exact: a scan may host an atom over a
-   partial inline derivation when the atom rejects the rows the scan lacks.
-   The earlier +124 (pinning before the keyspace that proves no padded row
-   survives) is folded into this; the keyspace's `emptied_by` would remove both.
+7. **An aggregate under a pinned reader took the region's rows** - CLOSED.
+   `min(amount) by user_id` was fed the user region once its reader was no
+   longer solid. Rule (`region_reads.evaluated_over_region`): grouped by the
+   span key alone, an aggregate reads the solid rows; it is NULL on the
+   extension row as it is where the FINAL pads the group it never had, and
+   only one answering a padded row differently from no row (`count`,
+   `zero_on_empty`) or a ROLLUP pass takes the region. Grouped by a property
+   of the span (`by state`) it keeps the region: the lookup it needs joins
+   the region anyway, so the feed is free. thelook q06/q07/q22 and tpc_h
+   adhoc04 shrank; nothing grew. The one shape it moved was a second bug:
+   two facts summed by `~cust_id` beside `custs` met FULL before the host
+   arrived, because the join order's `multi_partial` bump ranked the partial
+   feeders above the complete host. Rule (`_score_join_candidate`): a side
+   that hosts the region seeds the tree, so its feeders hang LEFT off it.
+8. **q84 +208 chars** - CLOSED, and not where this handoff had it. The
+   partial stamp was on the presence probe (`coalesce(sr_cdemo_sk)`, a BASIC
+   keyed on the subset-joined `~` key), not on `is_returned`; the plan was
+   identical to the baseline's up to the optimizer. `UpgradeJoinOnGuards`
+   then could not read `probe is not null` as proof the scan matched:
+   `_blocked_partials` compared the consumer's `source_map` tokens (the
+   operand's CTE name) with `_source_datasources(operand)` (the operand's
+   own parents' tokens), so a partial value bound solely to a CTE operand
+   was always "blocked", the join stayed LEFT and the `is_returned` atom
+   stayed above it. Rule: an operand's tokens are its CTE name and the
+   physical tables it renders from (`join_upgrade._source_datasources`).
+   The "+124 before" was the same block under the earlier pin. q84 is 1876
+   chars, its branch baseline.
 
 ## Design edges
 
@@ -137,39 +147,50 @@ far from the information that decides it. Each cost an hour of this handoff.
   canonical, `stored` by the column's real address (so a stored column shows
   `stored=False` under its canonical: `is_returned` on `sales` in
   `tests/engine/test_unmodelled_regions.py`), `_FACTS_CACHE.canonical` by the
-  class minimum. Item 3 was one crossing; `network_build._keyed_on` had to be
-  written to bridge another. One `AddressClass` resolved once per build
-  environment, with the four spellings as fields, would retire the ad-hoc
-  bridges (`equivalence`, `canonical.get(a, a)`, `_keyed_on`, `hidden_concepts`
+  class minimum. Item 3 was one crossing; `network_build._keyed_on` was
+  written to bridge another (retired: `scan_partial_addresses` matches both
+  spellings). One `AddressClass` resolved once per build environment, with
+  the four spellings as fields, would retire the remaining ad-hoc bridges
+  (`equivalence`, `canonical.get(a, a)`, the `{address, canonical_address}`
+  pairs `scan_partial_addresses` and `scan_stamps` build). `hidden_concepts`
   being `list[BuildConcept]` on `BuildDatasource` but `set[str]` on
-  `QueryDatasource`, which `join_resolution` compares a string against).
+  `QueryDatasource` is a typing wart only: `BuildConcept == str` compares
+  addresses, so `join_resolution`'s string membership tests hold on both.
+  Still the biggest item, about 40 call sites; the two refactors below are
+  done and narrow it.
 - **A guarded FULL join cannot lower on MySQL.** `_padding_guard` does not
   look at the join type and `full_join_lowering._validate` refuses any FULL
   with an ON predicate, telling the user to move a predicate they never wrote.
-  No test reaches it yet.
-- **Partiality is stamped in three places that must agree.** They do not quite:
-  the network counts any unstored address (rollups too) as an inline
-  derivation, `scan_stamps` only BASIC; the network exempts promoted
-  (`extent_free`) keys before the derivation step; the union node stamp has
-  no inline rule at all. The datasource's
-  `~` columns (`BuildDatasource.partial_concepts`), the network binding
-  (`network_build._bindings_for`) and the scan node (`scan_stamps`) each decide
-  what a scan provides partially; item 4 needed the same rule in two of them,
-  and the third (the concept-graph edge, `env_processor.generate_adhoc_graph`)
-  was the wrong place and grew q64. One function answering "what does this scan
-  bind, and how fully" for the three callers would make the rule a rule.
-- **Null provenance is re-derived per consumer.** `nulls_are_values`,
-  `side_nullable`, `_span_padding_matrix`, `extent_null_addresses`,
-  `guest_padded_addresses`, `_pairs_region_padding`, `_pads_for_different_members`
-  and now `_padding_guard` each walk the parent chain to classify a NULL as
-  value, padding, guest or rollup. `SideFacts` collects the results but is built
-  inside `get_node_joins`, so the merge node, the grain narrowing pass
-  (`grain_utility._partner_facts`, raw `nullable_concepts`) and the optimizer
-  (`UpgradeOuterFromKeySetEquivalence`) re-ask. A cache is safe at plan time
-  only: optimizer passes mutate `cte.source.joins`, which are the child
-  `QueryDatasource`s. A per-`QueryDatasource` cached
-  `NullProvenance` (address -> kind, spans, witness key) would make item 2's
-  guard a lookup and give `get_modifiers` the mixed case it cannot see today.
+  No test reaches it yet. The key spine cannot carry the guard as written: a
+  padded row the guard excludes from pairing must still come out unmatched,
+  and `LEFT JOIN padded ON k <=> spine.k AND witness is not null` drops it.
+  It would need its own spine rows, so the fix is a lowering case, not a
+  guard change.
+- **Partiality is stamped in three places that must agree** - DONE.
+  `scan_partials.scan_partial_addresses` answers "what does this scan bind,
+  and how fully" for the network candidate (`network_build._candidate`), the
+  scan node's stamp (`select_node_v2.scan_stamps`) and the union node's
+  (`create_union_datasource_candidate`). Where the three disagreed, the
+  function decides: a hosted aggregate is no inline derivation (no other
+  column binds it, so its keys' partiality is the only one it has); an
+  exemption (a promoted span, a membership proof) applies before the inline
+  step, so a derivation keyed on an exempt key is complete; the union stamp
+  has the inline rule; both spellings of an address match. Zero corpus plans
+  moved; `tests/core/processing/test_scan_partials.py` pins each clause.
+- **Null provenance is re-derived per consumer** - DONE, as a memo. The
+  walks (`nulls_are_values`, `extent_null_addresses`, `guest_padded_addresses`,
+  `extension_padded_addresses`, `span_padded_addresses`,
+  `rollup_padded_addresses`) live in `null_provenance.py` behind
+  `ProvenanceMemo`, whose `of(source)` view answers each question once per
+  source; `get_node_joins` builds `SideFacts`, the span-padding matrix, the
+  padding witness and `get_modifiers` off one memo, and `plan_scope`, opened
+  by `_process_query` around discovery and resolution, shares it across every
+  merge of a plan. The scope ends before the optimizer, which rewrites joins
+  on the same `QueryDatasource`s and walks uncached
+  (`UpgradeOuterFromKeySetEquivalence`). Still open from the original note:
+  `grain_utility._partner_facts` reads raw `nullable_concepts`, and
+  `get_modifiers` still cannot see a key whose NULLs are both value and
+  padding (item 2's guard handles it join-side).
 - **`BaseJoin` grew a `condition` beside `Join.condition`.** Before this branch
   a plan-level join had no predicate and only the optimizer
   (`filtered_aggregate`) added one at the CTE level. Two places now build joins

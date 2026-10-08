@@ -1,25 +1,24 @@
 query_id = "07"
-gen_length = 581
+gen_length = 473
 preql_size = 103
 comp_size = 181
 generated_sql = """
 
 WITH 
-wakeful as (
+quizzical as (
 SELECT
-    \"product_products\".\"id\" as \"product_id\",
+    \"order_items\".\"product_id\" as \"product_id\",
     sum(\"order_items\".\"sale_price\") as \"revenue\"
 FROM
-    \"products\" as \"product_products\"
-    LEFT OUTER JOIN \"order_items\" as \"order_items\" on \"product_products\".\"id\" = \"order_items\".\"product_id\"
+    \"order_items\"
 GROUP BY
     1)
 SELECT
-    \"wakeful\".\"product_id\" as \"product_id\",
+    \"product_products\".\"id\" as \"product_id\",
     \"product_products\".\"brand\" as \"product_brand\",
-    \"wakeful\".\"revenue\" as \"revenue\"
+    \"quizzical\".\"revenue\" as \"revenue\"
 FROM
     \"products\" as \"product_products\"
-    INNER JOIN \"wakeful\" on \"product_products\".\"id\" = \"wakeful\".\"product_id\"
+    LEFT OUTER JOIN \"quizzical\" on \"product_products\".\"id\" = \"quizzical\".\"product_id\"
 ORDER BY 
-    \"wakeful\".\"product_id\" asc"""
+    \"product_products\".\"id\" asc"""
