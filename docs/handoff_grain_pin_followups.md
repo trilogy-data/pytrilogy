@@ -168,7 +168,11 @@ Still open from `LINE_ITEMS` (all wrong at 02e809880 too, main right):
 - `select state, product_id, sum(cost) by product_id where state is null`
   and `select user_id, cost, sum(sale_price) by user_id where cost is null`
   fail to render ("Missing source reference"): a WHERE over a region value
-  beside an aggregate keyed on the other region's span.
+  beside an aggregate keyed on the other region's span. On `TWO_REGIONS` the
+  same holds for `select customer_id, max(target) where name is null` and
+  `select name, bucket, sum(target) by bucket where name is null`.
+  `local_scripts/sql_ab/region_battery.py` reruns both batteries and diffs
+  them against any tree.
 
 Still open from it:
 
