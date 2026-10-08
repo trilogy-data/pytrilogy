@@ -47,6 +47,7 @@ from trilogy.core.processing.node_generators.presence_probe import (
     member_binding_datasources,
     probe_member_address,
 )
+from trilogy.core.processing.scan_partials import scan_partial_addresses
 from trilogy.core.processing.v4_helper.network_coalescing import (
     axis_families,
     downgrade_axis_bindings,
@@ -244,7 +245,7 @@ def _candidate(
     stored: set[str],
     conditions: BuildWhereClause | None,
     equivalence: dict[str, str],
-    keyed_on: dict[str, frozenset[str]],
+    environment: BuildEnvironment,
     promoted: frozenset[str] = frozenset(),
 ) -> SourceCandidate:
     """Label one scan. The only thing a caller decides is which addresses the
@@ -252,16 +253,14 @@ def _candidate(
     derivations; everything else follows from the datasource. `promoted`: `~`
     keys whose members this request need not complete (a region domain does,
     above it), so the fact's own column binds them as fully as the request
-    needs. An inline derivation keyed on an entity the scan binds `~` is as
-    partial as that key: the scan computes it for its own rows, and the rows
-    it lacks (the lines no return references) hold a value it cannot
-    (`ret_qty is not null`), so a complete column elsewhere must bind them."""
-    partial = {concept.address for concept in datasource.partial_concepts} - promoted
-    partial |= {
-        address
-        for address in emitted - stored
-        if keyed_on.get(address, frozenset()) & partial
-    }
+    needs. What the scan binds partially is `scan_partial_addresses`, the
+    rule the scan node stamps by too."""
+    partial = scan_partial_addresses(
+        datasource,
+        [c for c in (_concept(a, environment) for a in emitted) if c is not None],
+        stored,
+        exempt=promoted,
+    )
     return SourceCandidate(
         node=node,
         datasource=datasource,
@@ -272,18 +271,6 @@ def _candidate(
     )
 
 
-def _keyed_on(environment: BuildEnvironment) -> dict[str, frozenset[str]]:
-    """Address -> the keys a concept is a function of, under its authored
-    address and the canonical (`_virt_*`) spelling a scan's edge emits."""
-    out: dict[str, frozenset[str]] = {}
-    for concept in environment.concepts.values():
-        keys = frozenset(concept.keys or concept.grain.components)
-        if keys:
-            out.setdefault(concept.address, keys)
-            out.setdefault(concept.canonical_address, keys)
-    return out
-
-
 def _candidate_for(
     node: str,
     datasource: BuildDatasource | BuildUnionDatasource,
@@ -291,7 +278,7 @@ def _candidate_for(
     conditions: BuildWhereClause | None,
     equivalence: dict[str, str],
     owners: dict[str, frozenset[str]],
-    keyed_on: dict[str, frozenset[str]],
+    environment: BuildEnvironment,
     rolled: frozenset[str] = frozenset(),
     promoted: frozenset[str] = frozenset(),
 ) -> SourceCandidate | None:
@@ -310,7 +297,7 @@ def _candidate_for(
         stored={column.concept.address for column in datasource.columns} - rolled,
         conditions=conditions,
         equivalence=equivalence,
-        keyed_on=keyed_on,
+        environment=environment,
         promoted=promoted,
     )
 
@@ -773,7 +760,6 @@ def build_source_network(
         [frozenset(candidate.bindings) for candidate in connector_candidates.values()],
     )
     candidates: dict[str, SourceCandidate] = {}
-    keyed_on = _keyed_on(environment)
     for node, datasource in sorted(graph.datasources.items()):
         if node not in relevant:
             continue
@@ -784,7 +770,7 @@ def build_source_network(
             conditions,
             equivalence,
             owners,
-            keyed_on,
+            environment,
             frozenset(concept.address for concept in rollups.get(node, [])),
             # the spans this group is built not to extend: its region domain
             # completes them, so the fact's `~` column is a full binding here

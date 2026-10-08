@@ -19,6 +19,7 @@ from trilogy.core.processing.nodes.base_node import (
     resolve_concept_map,
     resolve_existence_map,
 )
+from trilogy.core.processing.scan_partials import scan_partial_addresses
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - SELECT NODE]"
@@ -32,45 +33,21 @@ def scan_stamps(
     non_null_proofs: set[str],
 ) -> tuple[list[BuildConcept], list[BuildConcept]]:
     """Partial and nullable outputs of a scan: the datasource's column flags
-    over the projected outputs, narrowed by the scan's proofs. An address also
-    bound complete on the same datasource is fully providable, and a BASIC
-    computed here over a nullable column is NULL wherever that column is. A
-    BASIC keyed on a `~` column is as partial as the column: the scan computes
-    it for its own rows, and the rows it lacks (the lines no return
-    references) hold a value it cannot (`ret_qty is not null`)."""
-    complete = {c.concept.address for c in datasource.columns if c.is_complete}
-    partial_lcl = CanonicalBuildConceptList(
-        concepts=[
-            c.concept
-            for c in datasource.columns
-            if not c.is_complete and c.concept.address not in complete
-        ]
+    over the projected outputs, narrowed by the scan's proofs. Partiality is
+    `scan_partial_addresses`, the rule the network candidate binds by; a
+    BASIC computed here over a nullable column is NULL wherever that column
+    is."""
+    partial = scan_partial_addresses(
+        datasource,
+        outputs,
+        {c.concept.address for c in datasource.columns},
+        exempt=complete_proofs,
+        partial_is_full=partial_is_full,
     )
+    partials = [c for c in outputs if c.address in partial]
     nullable_lcl = CanonicalBuildConceptList(
         concepts=[c.concept for c in datasource.columns if c.is_nullable]
     )
-    # A satisfied partition pin completes the table-level stamp and any ~ the
-    # partition heals; a ~ it does not heal is an extension license and keeps
-    # its join preservation.
-    structural = datasource.pinned_partial_addresses
-    partial_keys = {c.address for c in partial_lcl.concepts} | {
-        c.canonical_address for c in partial_lcl.concepts
-    }
-    stored = {c.concept.address for c in datasource.columns}
-    partials = [
-        c
-        for c in outputs
-        if (
-            c in partial_lcl
-            or (
-                c.derivation == Derivation.BASIC
-                and c.address not in stored
-                and bool(partial_keys & set(c.keys or c.grain.components))
-            )
-        )
-        and c.canonical_address not in complete_proofs
-        and (not partial_is_full or c.address in structural)
-    ]
     nullables = [
         c
         for c in outputs
