@@ -770,7 +770,10 @@ def resolve_join_order_v2(g: nx.Graph, facts: JoinFacts) -> list[JoinOrderOutput
     # CARRIES (an aggregate by the description) joins the united rows after
     # it. Pivoting on the carried key instead joins the aggregate to the
     # domain alone, where a `~?` guest (a value-NULL key, so no domain row)
-    # never reaches its NULL group.
+    # never reaches its NULL group. A side holding several regions' rows (an
+    # aggregate by `bucket` over customers no order has) pivots after the
+    # others are stitched: its NULL group holds their padded rows, which only
+    # exist once their own stitch ran.
     held = facts.held_spans
     solo = [x for x in pivot_map if len(pivot_map[x]) == 1]
     pivot_map.update(_solid_value_null_pivots(pivot_map, facts))
@@ -780,6 +783,10 @@ def resolve_join_order_v2(g: nx.Graph, facts: JoinFacts) -> list[JoinOrderOutput
             x not in facts.authored_join_keys,
             not x.endswith(_SOLID),
             x not in held,
+            max(
+                len(facts.side(side).held_spans - {x.removesuffix(_SOLID)})
+                for side in pivot_map[x]
+            ),
             len(pivot_map[x]),
             len(x),
             x,

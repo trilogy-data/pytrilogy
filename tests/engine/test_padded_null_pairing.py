@@ -210,3 +210,22 @@ def test_a_member_the_where_emptied_is_not_a_region_row(
     query: str, expected: list[tuple]
 ):
     assert sorted_rows(_executor(TWO_REGIONS), query) == expected
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select customer_id, bucket, count(customer_id) by bucket as cb",
+            [(1, "a", 1), (1, None, 2), (2, "b", 1), (3, None, 2), (None, "z", 0)],
+        ),
+        (
+            "select customer_id, count(customer_id) by bucket as cb",
+            [(1, 1), (1, 2), (2, 1), (3, 2), (None, 0)],
+        ),
+    ],
+)
+def test_an_aggregate_holding_both_regions_pairs_after_they_are_stitched(
+    query: str, expected: list[tuple]
+):
+    assert sorted_rows(_executor(TWO_REGIONS), query) == expected
