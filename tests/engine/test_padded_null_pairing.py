@@ -160,3 +160,19 @@ def test_where_over_the_value_null_group_aggregate_keeps_padding_apart():
         _executor(TWO_REGIONS),
         "select customer_id, bucket, sum(target) by bucket as t where coalesce(sum(target) by bucket, 0) = 0",
     ) == [(3, None, None)]
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        ("select bucket, sum(amount) as s where name is null", [("z", None)]),
+        (
+            "select bucket, sum(amount) as s where name is null or name = 'ann'",
+            [("a", 20), ("z", None), (None, 10)],
+        ),
+    ],
+)
+def test_where_keeping_the_region_precedes_an_aggregate_by_its_span(
+    query: str, expected: list[tuple]
+):
+    assert sorted_rows(_executor(TWO_REGIONS), query) == expected

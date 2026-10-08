@@ -11,8 +11,10 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildConceptArgs,
     BuildFunction,
+    BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.condition_utility import condition_proves_non_null
 from trilogy.core.models.keyspace import Keyspace, Region
 
 from .extent_ownership import null_on_padding
@@ -89,6 +91,23 @@ def aggregates_over_region(
     return counted
 
 
+def where_keeps_padding(
+    conditions: Iterable[BuildWhereClause], region: Region, keyspace: Keyspace
+) -> bool:
+    """A WHERE an extension row of `region` can pass though it reads a value
+    absent there (`name is null` over a bucket no order has): an aggregate the
+    WHERE precedes groups the rows it keeps, the region's among them."""
+    for clause in conditions:
+        absent = {
+            c.address
+            for c in clause.row_arguments
+            if not keyspace.carried_on(c.address, region)
+        }
+        if absent and not absent & condition_proves_non_null(clause.conditional):
+            return True
+    return False
+
+
 def evaluated_over_region(
     members: Iterable[str],
     grain: Iterable[str],
@@ -96,6 +115,7 @@ def evaluated_over_region(
     keyspace: Keyspace,
     environment: BuildEnvironment,
     one_pass: bool = False,
+    filtered_padding: bool = False,
 ) -> bool:
     """Aggregates the region's rows survive: they count what the region holds,
     or group by something it carries (each extension row its own group) with
@@ -104,7 +124,9 @@ def evaluated_over_region(
     aggregate that is NULL on the extension row as it is where the FINAL pads
     the group it never had; only one answering a padded row differently from
     no row (`count`: 0, not NULL) takes the region. A property of the span
-    (`by state`) reads the region's rows through the lookup it needs anyway.
+    (`by state`) reads the region's rows through the lookup it needs anyway,
+    and one a WHERE keeping the region's rows precedes (`filtered_padding`,
+    `where_keeps_padding`) reads the rows the WHERE is tested on.
 
     `one_pass`: a ROLLUP/CUBE/GROUPING SETS pass, whose subtotal rows nothing
     joins back to. One member counting the region brings its rows under the
@@ -126,6 +148,7 @@ def evaluated_over_region(
     if carried:
         return (
             one_pass
+            or filtered_padding
             or any(g not in region.spans for g in carried)
             or any(
                 (concept := environment.concepts.get(m)) is not None

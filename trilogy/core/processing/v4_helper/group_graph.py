@@ -2197,7 +2197,7 @@ def build_group_graph(
         partition,
     )
     feed_region_domains_to_present_scalars(
-        group_graph, group_edges, attrs, keyspace, environment
+        group_graph, group_edges, attrs, keyspace, environment, conditions
     )
     trace_group_graph("group graph materialized", group_graph, group_edges, attrs)
     # FINAL must exist before injection so a cross-arm post-merge filter can
