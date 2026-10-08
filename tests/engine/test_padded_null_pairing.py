@@ -9,10 +9,12 @@ Cat has no order, so her `bucket` is padding; order 100's NULL bucket is a
 value, and `targets` has a row for it. Bucket `z` has no order: the bucket
 region."""
 
+from decimal import Decimal as D
 from functools import cache
 
 import pytest
 
+from tests.helpers.models import LINE_ITEMS
 from tests.helpers.rows import executor_for, sorted_rows
 from trilogy.executor import Executor
 
@@ -249,3 +251,28 @@ def test_where_kept_region_row_beside_a_solid_total_by_another_key():
         _executor(BUCKET_REGION),
         "select bucket, sum(amount) by customer_id as a where amount is null",
     ) == [("z", None)]
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select line_id, sum(cost) by product_id as sc",
+            [(1, D("1.0")), (2, D("2.0")), (3, D("1.0")), (None, D("3.0"))],
+        ),
+        (
+            "select user_id, product_id, sum(cost) by product_id as sc",
+            [
+                (1, 1, D("1.0")),
+                (1, 2, D("2.0")),
+                (2, 1, D("1.0")),
+                (3, None, None),
+                (None, 3, D("3.0")),
+            ],
+        ),
+    ],
+)
+def test_a_property_summed_by_its_own_key_over_a_region_counts_each_once(
+    query: str, expected: list[tuple]
+):
+    assert sorted_rows(_executor(LINE_ITEMS), query) == expected

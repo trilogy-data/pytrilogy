@@ -48,6 +48,7 @@ from .region_reads import (
     aggregates_over_region,
     evaluated_over_region,
     fed_gate,
+    filtered_beside,
     inline_arguments_taking_a_value,
     keyless,
     nameable,
@@ -744,6 +745,12 @@ def feed_region_domains_to_present_scalars(
                 and not (solid and solid & nx.descendants(group_graph, gid))
             ):
                 continue
+            elif _reads_only_the_domain(a, domain, environment) and not (
+                filtered_beside(a.grain_components, keyspace)
+            ):
+                _detach_solid_roots(
+                    group_graph, group_edges, attrs, gid, domain, environment
+                )
             add_edge(group_graph, group_edges, domain_gid, gid, EdgeKind.LINEAGE)
 
 
@@ -767,6 +774,17 @@ def _counts_the_domain(
         or not aggregates_over_region(a.primary_members, region, keyspace, environment)
     ):
         return False
+    return _reads_only_the_domain(a, domain, environment)
+
+
+def _reads_only_the_domain(
+    a: GroupAttrs, domain: GroupAttrs, environment: BuildEnvironment
+) -> bool:
+    """Every value `a` reads is one the domain holds: `sum(cost) by
+    product_id` over the products, one row each. Read beside a solid stream
+    at a finer grain (the lines), each product's cost would count once per
+    line. Not under a WHERE testing a region's rows (`filtered_beside`): the
+    atom reads the solid stream, before the aggregate."""
     reads = frozenset().union(
         *(lineage_reads(m, environment) for m in a.primary_members)
     )
