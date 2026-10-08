@@ -305,7 +305,18 @@ def _build_joinkeys(
             unique_renders = list(dict.fromkeys(left_renders))
             if len(unique_renders) > 1:
                 coalesced = f"coalesce({', '.join(unique_renders)})"
-                result.append(f"{coalesced} = {right_render}")
+                result.append(
+                    null_wrapper(
+                        coalesced,
+                        right_render,
+                        [
+                            modifier
+                            for pair in sub_pairs
+                            for modifier in _collect_modifiers(pair, join)
+                        ],
+                        join.jointype,
+                    )
+                )
             else:
                 result.append(
                     null_wrapper(

@@ -312,3 +312,10 @@ def test_a_lookup_off_a_padded_provider_reads_the_key_where_it_survives():
         _executor(LINE_ITEMS),
         "select user_id, sum(cost) by product_id as sc where cost is null",
     ) == [(3, None)]
+
+
+def test_a_coalesced_inner_key_pairs_value_nulls_null_safely():
+    assert sorted_rows(
+        _executor(TWO_REGIONS),
+        "select customer_id, target, count(customer_id) by bucket as cb where name = 'ann'",
+    ) == [(1, 5, 1), (1, 7, 1)]
