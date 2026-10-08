@@ -26,7 +26,7 @@ from tests.helpers.models import (
     CUSTOMERS_DERIVED,
     CUSTOMERS_MATERIALIZED,
 )
-from tests.helpers.rows import executor_for, sorted_rows
+from tests.helpers.rows import customer_twins, executor_for, sorted_rows
 from trilogy.executor import Executor
 
 KEYED = "rowset s <- select customer_id as c, name as n, order_id as o, status as st, amount as a;\n"
@@ -137,13 +137,18 @@ FAMILY_ROWS = {
 
 
 @pytest.fixture(scope="module")
-def derived() -> Executor:
-    return executor_for(CUSTOMERS_DERIVED + CUSTOMER_ACTIVITY)
+def customers() -> tuple[Executor, Executor]:
+    return customer_twins(CUSTOMER_ACTIVITY)
 
 
 @pytest.fixture(scope="module")
-def materialized() -> Executor:
-    return executor_for(CUSTOMERS_MATERIALIZED + CUSTOMER_ACTIVITY)
+def derived(customers: tuple[Executor, Executor]) -> Executor:
+    return customers[0]
+
+
+@pytest.fixture(scope="module")
+def materialized(customers: tuple[Executor, Executor]) -> Executor:
+    return customers[1]
 
 
 @pytest.fixture(scope="module")

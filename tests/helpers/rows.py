@@ -10,6 +10,19 @@ def executor_for(model: str) -> Executor:
     return executor
 
 
+def twins(derived: str, materialized: str) -> tuple[Executor, Executor]:
+    return executor_for(derived), executor_for(materialized)
+
+
+def customer_twins(extra: str = "") -> tuple[Executor, Executor]:
+    """The customers materialization twin (`tests.helpers.models`) with
+    `extra` on both sides. Fresh executors: a rowset statement redefines the
+    environment it runs in, so share one only within a module."""
+    from tests.helpers.models import CUSTOMERS_DERIVED, CUSTOMERS_MATERIALIZED
+
+    return twins(CUSTOMERS_DERIVED + extra, CUSTOMERS_MATERIALIZED + extra)
+
+
 def row_key(row: tuple) -> tuple:
     return tuple((v is None, str(v)) for v in row)
 

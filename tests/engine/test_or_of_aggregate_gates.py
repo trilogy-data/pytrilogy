@@ -3,8 +3,13 @@ applied at FINAL; each gate joins the row stream on its own key."""
 
 import pytest
 
-from tests.helpers.models import CUSTOMERS_DERIVED, CUSTOMERS_MATERIALIZED
-from tests.helpers.rows import executor_for, twin_rows
+from tests.helpers.rows import customer_twins, twin_rows
+from trilogy.executor import Executor
+
+
+@pytest.fixture(scope="module")
+def customers() -> tuple[Executor, Executor]:
+    return customer_twins()
 
 
 @pytest.mark.parametrize(
@@ -40,7 +45,7 @@ from tests.helpers.rows import executor_for, twin_rows
         ),
     ],
 )
-def test_or_of_gates_on_unprojected_keys(query: str, expected: list[tuple]):
-    derived = executor_for(CUSTOMERS_DERIVED)
-    materialized = executor_for(CUSTOMERS_MATERIALIZED)
-    assert twin_rows(derived, materialized, query) == expected
+def test_or_of_gates_on_unprojected_keys(
+    customers: tuple[Executor, Executor], query: str, expected: list[tuple]
+):
+    assert twin_rows(*customers, query) == expected

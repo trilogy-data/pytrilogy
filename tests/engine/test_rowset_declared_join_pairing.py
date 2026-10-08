@@ -10,8 +10,7 @@ and a column on the other.
 
 import pytest
 
-from tests.helpers.models import CUSTOMERS_DERIVED, CUSTOMERS_MATERIALIZED
-from tests.helpers.rows import executor_for, twin_rows
+from tests.helpers.rows import customer_twins, twin_rows
 from trilogy.executor import Executor
 
 ROWSET = "with r as select customer_id, status;\n"
@@ -27,7 +26,7 @@ PAIRED = [
 
 @pytest.fixture(scope="module")
 def twins() -> tuple[Executor, Executor]:
-    return executor_for(CUSTOMERS_DERIVED), executor_for(CUSTOMERS_MATERIALIZED)
+    return customer_twins()
 
 
 SUBSET = "subset join r.customer_id = customer_id"

@@ -17,17 +17,17 @@ from tests.helpers.models import (
     NULLABLE_FK,
     PARTIAL_PROPERTY_SOURCE,
 )
-from tests.helpers.rows import executor_for, sorted_rows, twin_rows
+from tests.helpers.rows import (
+    customer_twins,
+    executor_for,
+    sorted_rows,
+    twin_rows,
+    twins,
+)
 from trilogy.executor import Executor
 
-
-@cache
-def _twins(derived_model: str, materialized_model: str) -> tuple[Executor, Executor]:
-    return executor_for(derived_model), executor_for(materialized_model)
-
-
-def _customer_twins(extra: str) -> tuple[Executor, Executor]:
-    return _twins(CUSTOMERS_DERIVED + extra, CUSTOMERS_MATERIALIZED + extra)
+_twins = cache(twins)
+_customer_twins = cache(customer_twins)
 
 
 def _labelled(label: str, *queries: str) -> list:
