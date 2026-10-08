@@ -84,6 +84,10 @@ def _executor(model: str) -> Executor:
             [(1, "a", 7), (1, None, 5), (2, "b", 8), (3, None, None), (None, "z", 9)],
         ),
         (
+            "select customer_id, target, sum(target) by bucket as t where bucket is null",
+            [(1, 5, 5), (3, None, None)],
+        ),
+        (
             "select customer_id, bucket, sum(target) by bucket as t, count(customer_id) by bucket as n",
             [
                 (1, "a", 7, 1),

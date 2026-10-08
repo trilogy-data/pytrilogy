@@ -1693,14 +1693,20 @@ def _merge_paddings_from(
     return out
 
 
-def _absent_keys(join: JoinOrderOutput, absent: set[str]) -> list[str]:
-    """Keys of `join` NULL by absence on rows where no `absent` side has a
-    row: every left side providing them is one of those."""
-    providers: dict[str, set[str]] = defaultdict(set)
-    for left, connecting in join.keys.items():
-        for key in connecting:
-            providers[key].add(left)
-    return sorted(key for key, sides in providers.items() if sides <= absent)
+def _absent_key_groups(
+    pairs: list[ConceptPair], absent: set[str]
+) -> list[list[ConceptPair]]:
+    """The join's keys (its pairs grouped by right concept, as they render
+    coalesced) NULL by absence on rows where no `absent` side has a row:
+    every left side providing them is one of those."""
+    groups: dict[str, list[ConceptPair]] = defaultdict(list)
+    for pair in pairs:
+        groups[pair.right.address].append(pair)
+    return [
+        group
+        for group in groups.values()
+        if all(f"ds~{p.existing_datasource.identifier}" in absent for p in group)
+    ]
 
 
 def _pads_beside(other: SideFacts, key: str, spans: frozenset[str]) -> bool:
@@ -1708,16 +1714,6 @@ def _pads_beside(other: SideFacts, key: str, spans: frozenset[str]) -> bool:
     same rows, and pairs."""
     return bool(
         other.held_spans & spans or other.span_padding.get(key, frozenset()) & spans
-    )
-
-
-def _pairs_null_groups(join: JoinOrderOutput, facts: JoinFacts, key: str) -> bool:
-    """Every side `key` connects carries value NULLs on it, so the join pairs
-    NULL with NULL."""
-    return key in facts.side(join.right).value_nullables and all(
-        key in facts.side(left).value_nullables
-        for left, connecting in join.keys.items()
-        if key in connecting
     )
 
 
@@ -1729,6 +1725,7 @@ def _padding_guard(
     canon_node: Callable[[str], str],
     memo: ProvenanceMemo,
     earlier: list[_MergePadding],
+    pairs: list[ConceptPair],
 ) -> JoinGuard:
     """A key NULL by absence never pairs with a value-NULL group.
 
@@ -1765,10 +1762,13 @@ def _padding_guard(
                         clauses.append(clause)
     right = facts.side(join.right)
     for padding in earlier:
-        absent = _absent_keys(join, padding.absent)
-        if not absent or any(_pads_beside(right, k, padding.spans) for k in absent):
+        absent = _absent_key_groups(pairs, padding.absent)
+        if not absent or any(
+            _pads_beside(right, canon_node(group[0].right.address), padding.spans)
+            for group in absent
+        ):
             continue
-        if not all(_pairs_null_groups(join, facts, k) for k in absent):
+        if not all(any(p.is_nullable for p in group) for group in absent):
             # a key compared with `=` never pairs a NULL
             padding.absent.add(join.right)
             continue
@@ -1786,6 +1786,7 @@ def _padding_guard(
 
 def _padding_guards(
     joins: list[JoinOrderOutput],
+    base_joins: list[BaseJoin],
     facts: JoinFacts,
     ds_node_map: dict[str, DataSource],
     ds_concept_map: dict[tuple[str, str], BuildConcept],
@@ -1794,14 +1795,21 @@ def _padding_guards(
     memo: ProvenanceMemo,
 ) -> list[JoinGuard]:
     """Each join's guard, in join order: a join is guarded against the
-    padding the joins before it added."""
+    padding the joins before it added, read off the key pairs it renders."""
     earlier: list[_MergePadding] = []
     joined: set[str] = set()
     out: list[JoinGuard] = []
-    for join in joins:
+    for join, base in zip(joins, base_joins):
         out.append(
             _padding_guard(
-                join, facts, ds_node_map, spellings, canon_node, memo, earlier
+                join,
+                facts,
+                ds_node_map,
+                spellings,
+                canon_node,
+                memo,
+                earlier,
+                base.concept_pairs or [],
             )
         )
         joined |= join.lefts
@@ -2021,9 +2029,6 @@ def get_node_joins(
     )
     joins = resolve_join_order_v2(graph, facts)
     region_padded = _region_padded_sides(joins, facts)
-    guards = _padding_guards(
-        joins, facts, ds_node_map, ds_concept_map, spellings, canon_node, memo
-    )
     _raise_if_keyless_row_bearing_join(
         joins,
         ds_node_map,
@@ -2035,13 +2040,12 @@ def get_node_joins(
         ),
         environment,
     )
-    return [
+    base_joins = [
         BaseJoin(
             left_datasource=ds_node_map[j.left] if j.left else None,
             right_datasource=ds_node_map[j.right],
             join_type=j.type,
             concepts=[] if not j.keys else None,
-            guard=guard,
             concept_pairs=reduce_concept_pairs(
                 [
                     ConceptPair(
@@ -2086,5 +2090,20 @@ def get_node_joins(
                 domain_graph=environment.domain_graph,
             ),
         )
-        for j, guard in zip(joins, guards)
+        for j in joins
     ]
+    for base, guard in zip(
+        base_joins,
+        _padding_guards(
+            joins,
+            base_joins,
+            facts,
+            ds_node_map,
+            ds_concept_map,
+            spellings,
+            canon_node,
+            memo,
+        ),
+    ):
+        base.guard = guard
+    return base_joins
