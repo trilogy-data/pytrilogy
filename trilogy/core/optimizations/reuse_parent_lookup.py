@@ -35,7 +35,7 @@ from trilogy.core.optimizations.utils import is_grouped_cte
 
 def _plain(join: Join) -> bool:
     return (
-        join.condition is None
+        not join.has_predicate
         and Modifier.NULLABLE not in join.modifiers
         and all(
             Modifier.NULLABLE not in pair.modifiers for pair in join.joinkey_pairs or []

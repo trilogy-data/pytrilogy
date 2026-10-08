@@ -10,10 +10,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from trilogy.core import graph as nx
 
-from trilogy.constants import MagicConstants
 from trilogy.core.domain_graph import DomainGraph
 from trilogy.core.enums import (
-    ComparisonOperator,
     Derivation,
     Granularity,
     JoinType,
@@ -23,8 +21,6 @@ from trilogy.core.enums import (
 )
 from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.build import (
-    BoolExpr,
-    BuildComparison,
     BuildConcept,
     BuildDatasource,
     BuildRowsetItem,
@@ -36,6 +32,8 @@ from trilogy.core.models.build_environment import (
 from trilogy.core.models.execute import (
     BaseJoin,
     ConceptPair,
+    GuardTerm,
+    JoinGuard,
     QueryDatasource,
     UnnestJoin,
     preserved_key_pairs,
@@ -43,7 +41,6 @@ from trilogy.core.models.execute import (
 from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing import plan_trace
 from trilogy.core.processing.condition_utility import (
-    and_optional,
     is_scalar_condition,
 )
 from trilogy.core.processing.null_provenance import (
@@ -1519,14 +1516,15 @@ def _span_padding_matrix(
     canon_node: Callable[[str], str],
     memo: ProvenanceMemo | None = None,
 ) -> dict[str, dict[str, frozenset[str]]]:
-    """Per side, per nullable key: the spans whose extension rows NULL it."""
+    """Per side, per nullable key: the spans (as `held_spans` spells them)
+    whose extension rows NULL it."""
     memo = memo or ProvenanceMemo()
     out: dict[str, dict[str, frozenset[str]]] = {}
     for ds_node, datasource in ds_node_map.items():
         by_key: dict[str, set[str]] = defaultdict(set)
         for spelling in sorted(spellings):
             for address in span_padded_addresses(datasource, spelling, memo):
-                by_key[canon_node(address)].add(spellings[spelling])
+                by_key[canon_node(address)].add(canon_node(spellings[spelling]))
         out[ds_node] = {
             key: frozenset(found)
             for key, found in by_key.items()
@@ -1535,28 +1533,32 @@ def _span_padding_matrix(
     return out
 
 
+def _hidden_addresses(datasource: DataSource) -> set[str]:
+    return {
+        h.address if isinstance(h, BuildConcept) else h
+        for h in datasource.hidden_concepts
+    }
+
+
 def _padding_witness(
     datasource: DataSource,
     spans: frozenset[str],
     spellings: dict[str, str],
+    canon_node: Callable[[str], str],
     memo: ProvenanceMemo,
-    elsewhere: set[str],
 ) -> list[BuildConcept]:
     """Columns of `datasource` that are NULL exactly on the rows padded for
     `spans`: one per span, a KEY padded by it that carries no value NULL (the
     solid grain's, absent on a row standing in for a region's member; a
-    property is NULL on a `~?` NULL member's row too), emitted by no other
-    side so the ON clause reads this one. Empty when a span has none."""
+    property is NULL on a `~?` NULL member's row too). Empty when a span has
+    none."""
     out: list[BuildConcept] = []
-    hidden = {
-        h.address if isinstance(h, BuildConcept) else h
-        for h in datasource.hidden_concepts
-    }
+    hidden = _hidden_addresses(datasource)
     provenance = memo.of(datasource)
     for span in sorted(spans):
         padded: set[str] = set()
         for spelling, named in spellings.items():
-            if named == span:
+            if canon_node(named) == span:
                 padded |= provenance.padded_by(spelling)
         witnesses = sorted(
             (
@@ -1565,7 +1567,6 @@ def _padding_witness(
                 if c.purpose == Purpose.KEY
                 and c.address in padded
                 and c.address not in hidden
-                and c.address not in elsewhere
                 and not provenance.values(c)
             ),
             key=lambda c: c.address,
@@ -1577,54 +1578,225 @@ def _padding_witness(
     return out
 
 
+def _row_witness(
+    datasource: DataSource, prefer: list[BuildConcept]
+) -> BuildConcept | None:
+    """A column of `datasource` NULL exactly where the side has no row: a KEY
+    it never emits NULL for, the join key it was paired on first."""
+    hidden = _hidden_addresses(datasource)
+    emitted = {c.address for c in datasource.output_concepts}
+    for c in (*prefer, *sorted(datasource.output_concepts, key=lambda c: c.address)):
+        if (
+            c.purpose == Purpose.KEY
+            and c.address in emitted
+            and c.address not in hidden
+            and not side_nullable(c, datasource)
+        ):
+            return c
+    return None
+
+
+@dataclass
+class _MergePadding:
+    """Rows an earlier join of this merge null-extended `padded` on, to carry
+    the regions `host` holds (`spans`). `absent`: every side with no row
+    there, the padded one and each later side that could not pair with them."""
+
+    padded: str
+    host: str
+    spans: frozenset[str]
+    absent: set[str]
+    witness: BuildConcept | None
+    host_witness: BuildConcept | None
+
+
+def _one_sided_padding(
+    host: str,
+    padded: str,
+    keys: list[str],
+    absent: set[str],
+    facts: JoinFacts,
+    ds_node_map: dict[str, DataSource],
+    ds_concept_map: dict[tuple[str, str], BuildConcept],
+) -> _MergePadding:
+    return _MergePadding(
+        padded=padded,
+        host=host,
+        spans=facts.side(host).held_spans,
+        absent=absent,
+        witness=_row_witness(
+            ds_node_map[padded], [ds_concept_map[(padded, k)] for k in keys]
+        ),
+        host_witness=_row_witness(
+            ds_node_map[host], [ds_concept_map[(host, k)] for k in keys]
+        ),
+    )
+
+
+def _merge_paddings_from(
+    join: JoinOrderOutput,
+    joined: set[str],
+    facts: JoinFacts,
+    ds_node_map: dict[str, DataSource],
+    ds_concept_map: dict[tuple[str, str], BuildConcept],
+) -> list[_MergePadding]:
+    """The padding `join` adds for the regions of a side it pairs with: a
+    LEFT pads its right for the one left holding any, a RIGHT pads every side
+    already `joined` for the right's, read off the one left it pairs with; a
+    FULL does both."""
+    out: list[_MergePadding] = []
+    if join.type in PADS_RIGHT_JOIN_TYPES:
+        hosts = [left for left in sorted(join.keys) if facts.side(left).held_spans]
+        if len(hosts) == 1:
+            keys = sorted(join.keys[hosts[0]])
+            out.append(
+                _one_sided_padding(
+                    hosts[0],
+                    join.right,
+                    keys,
+                    {join.right},
+                    facts,
+                    ds_node_map,
+                    ds_concept_map,
+                )
+            )
+    if (
+        join.type in PADS_LEFT_JOIN_TYPES
+        and facts.side(join.right).held_spans
+        and len(join.keys) == 1
+    ):
+        [(left, connecting)] = join.keys.items()
+        out.append(
+            _one_sided_padding(
+                join.right,
+                left,
+                sorted(connecting),
+                set(joined),
+                facts,
+                ds_node_map,
+                ds_concept_map,
+            )
+        )
+    return out
+
+
+def _absent_keys(join: JoinOrderOutput, absent: set[str]) -> list[str]:
+    """Keys of `join` NULL by absence on rows where no `absent` side has a
+    row: every left side providing them is one of those."""
+    providers: dict[str, set[str]] = defaultdict(set)
+    for left, connecting in join.keys.items():
+        for key in connecting:
+            providers[key].add(left)
+    return sorted(key for key, sides in providers.items() if sides <= absent)
+
+
+def _pads_beside(other: SideFacts, key: str, spans: frozenset[str]) -> bool:
+    """`other` holds those regions' rows too: its NULL group on `key` is the
+    same rows, and pairs."""
+    return bool(
+        other.held_spans & spans or other.span_padding.get(key, frozenset()) & spans
+    )
+
+
+def _pairs_null_groups(join: JoinOrderOutput, facts: JoinFacts, key: str) -> bool:
+    """Every side `key` connects carries value NULLs on it, so the join pairs
+    NULL with NULL."""
+    return key in facts.side(join.right).value_nullables and all(
+        key in facts.side(left).value_nullables
+        for left, connecting in join.keys.items()
+        if key in connecting
+    )
+
+
 def _padding_guard(
     join: JoinOrderOutput,
     facts: JoinFacts,
     ds_node_map: dict[str, DataSource],
     spellings: dict[str, str],
+    canon_node: Callable[[str], str],
     memo: ProvenanceMemo,
-) -> BoolExpr | None:
-    """A key NULL by absence never pairs with a value-NULL group. A side whose
-    NULLs on a key are both (`pstatus`, a no-ELSE CASE, on a stream a region
-    padded) keeps the null-safe pairing for its value NULLs and excludes its
-    padded rows: `order_id is not null`, a column NULL exactly there. The
+    earlier: list[_MergePadding],
+) -> JoinGuard:
+    """A key NULL by absence never pairs with a value-NULL group.
+
+    A side whose NULLs on a key are both (`pstatus`, a no-ELSE CASE, on a
+    stream a region padded) keeps the null-safe pairing for its value NULLs
+    and excludes its padded rows: `order_id is not null`, a column NULL
+    exactly there. Padding an earlier join of this merge added (`customers
+    LEFT orders`, then `orders.bucket` paired with `targets.bucket`) is the
+    rows where the host has a row and the padded side none:
+    `orders.customer_id is not null or customers.customer_id is null`. The
     other side's NULL group is a value of rows that are not the region's,
-    unless it holds the region too (`_pairs_region_padding`)."""
-    guard: BoolExpr | None = None
+    unless it holds the region too (`_pads_beside`)."""
+    clauses: list[tuple[GuardTerm, ...]] = []
     for left_node, keys in join.keys.items():
         for padded_node, other_node in (
             (left_node, join.right),
             (join.right, left_node),
         ):
             padded, other = facts.side(padded_node), facts.side(other_node)
-            others = {
-                c.address
-                for node, ds in ds_node_map.items()
-                if node != padded_node
-                for c in ds.output_concepts
-            }
             for key in sorted(keys):
                 spans = padded.span_padding.get(key, frozenset())
                 if (
                     not spans
                     or key not in padded.value_nullables
                     or key not in other.value_nullables
-                    or other.span_padding.get(key, frozenset()) & spans
-                    or other.held_spans & spans
+                    or _pads_beside(other, key, spans)
                 ):
                     continue
                 for witness in _padding_witness(
-                    ds_node_map[padded_node], spans, spellings, memo, others
+                    ds_node_map[padded_node], spans, spellings, canon_node, memo
                 ):
-                    guard = and_optional(
-                        guard,
-                        BuildComparison(
-                            left=witness,
-                            right=MagicConstants.NULL,
-                            operator=ComparisonOperator.IS_NOT,
-                        ),
-                    )
-    return guard
+                    clause = (GuardTerm(witness, ds_node_map[padded_node], True),)
+                    if clause not in clauses:
+                        clauses.append(clause)
+    right = facts.side(join.right)
+    for padding in earlier:
+        absent = _absent_keys(join, padding.absent)
+        if not absent or any(_pads_beside(right, k, padding.spans) for k in absent):
+            continue
+        if not all(_pairs_null_groups(join, facts, k) for k in absent):
+            # a key compared with `=` never pairs a NULL
+            padding.absent.add(join.right)
+            continue
+        if padding.witness is None or padding.host_witness is None:
+            continue
+        clauses.append(
+            (
+                GuardTerm(padding.witness, ds_node_map[padding.padded], True),
+                GuardTerm(padding.host_witness, ds_node_map[padding.host], False),
+            )
+        )
+        padding.absent.add(join.right)
+    return tuple(clauses)
+
+
+def _padding_guards(
+    joins: list[JoinOrderOutput],
+    facts: JoinFacts,
+    ds_node_map: dict[str, DataSource],
+    ds_concept_map: dict[tuple[str, str], BuildConcept],
+    spellings: dict[str, str],
+    canon_node: Callable[[str], str],
+    memo: ProvenanceMemo,
+) -> list[JoinGuard]:
+    """Each join's guard, in join order: a join is guarded against the
+    padding the joins before it added."""
+    earlier: list[_MergePadding] = []
+    joined: set[str] = set()
+    out: list[JoinGuard] = []
+    for join in joins:
+        out.append(
+            _padding_guard(
+                join, facts, ds_node_map, spellings, canon_node, memo, earlier
+            )
+        )
+        joined |= join.lefts
+        earlier += _merge_paddings_from(
+            join, joined, facts, ds_node_map, ds_concept_map
+        )
+        joined.add(join.right)
+    return out
 
 
 def _region_padded_sides(
@@ -1836,6 +2008,9 @@ def get_node_joins(
     )
     joins = resolve_join_order_v2(graph, facts)
     region_padded = _region_padded_sides(joins, facts)
+    guards = _padding_guards(
+        joins, facts, ds_node_map, ds_concept_map, spellings, canon_node, memo
+    )
     _raise_if_keyless_row_bearing_join(
         joins,
         ds_node_map,
@@ -1853,7 +2028,7 @@ def get_node_joins(
             right_datasource=ds_node_map[j.right],
             join_type=j.type,
             concepts=[] if not j.keys else None,
-            condition=_padding_guard(j, facts, ds_node_map, spellings, memo),
+            guard=guard,
             concept_pairs=reduce_concept_pairs(
                 [
                     ConceptPair(
@@ -1898,5 +2073,5 @@ def get_node_joins(
                 domain_graph=environment.domain_graph,
             ),
         )
-        for j in joins
+        for j, guard in zip(joins, guards)
     ]

@@ -147,6 +147,16 @@ def _validate(cte: CTE, joins: list[Join]) -> None:
                 "give the two sides a shared key to join on, or aggregate one of "
                 "them to a grand total (no `by`), which makes the cartesian exact",
             )
+        if join.guard:
+            raise _unsupported(
+                f"Cannot lower the FULL JOIN to {join.right_cte.name} in "
+                f"{cte.name}: a row padded for a `~` region has a NULL key "
+                "there by absence, and the join keeps it from pairing with a "
+                "NULL group that is a value. A key spine folds both NULLs into "
+                "one spine row and would pair them.",
+                NULL_REJECT_LEVER.format(key=_slots(join)[0].address),
+                COMPLETE_BINDING_LEVER,
+            )
         if join.condition is not None:
             raise _unsupported(
                 f"Cannot lower the FULL JOIN to {join.right_cte.name} in "

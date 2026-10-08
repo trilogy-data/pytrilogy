@@ -500,7 +500,7 @@ class UnionDimPushdown(OptimizationRule):
         for j in consumer.source.joins:
             if not isinstance(j, BaseJoin):
                 continue
-            if j.join_type != JoinType.INNER:
+            if j.join_type != JoinType.INNER or j.guard:
                 continue
             if not j.concept_pairs:
                 continue
@@ -1034,9 +1034,9 @@ class UnionDimPushdown(OptimizationRule):
                 continue
             if join.left_cte is not None and join.left_cte.name == dim_cte.name:
                 join.left_cte = union
-            for pair in join.joinkey_pairs or []:
-                if pair.cte.name == dim_cte.name:
-                    pair.cte = union
+            for keyed in join.cte_bindings():
+                if keyed.cte.name == dim_cte.name:
+                    keyed.cte = union
         still_used = any(_is_dim_basejoin(j) for j in consumer.source.joins)
         if not still_used:
             consumer.source.datasources = [

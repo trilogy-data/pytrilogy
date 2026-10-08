@@ -14,6 +14,7 @@ from trilogy.core.models.execute import (
     CTE,
     ConceptPair,
     CTEConceptPair,
+    CTEGuardTerm,
     InstantiatedUnnestJoin,
     Join,
     UnionCTE,
@@ -194,6 +195,51 @@ def _render_right_concept(
     )
 
 
+def render_guard_term(
+    term: CTEGuardTerm,
+    join: Join,
+    consumer: CTE | UnionCTE,
+    quote_character: str,
+    render_expr_func: Callable,
+    use_map: dict[str, set[str]],
+) -> str:
+    node = join.authoritative(consumer, term.cte)
+    col = (
+        consumer.column_for(node, term.concept)
+        if isinstance(consumer, CTE)
+        else term.concept.safe_address
+    )
+    column = render_join_concept(
+        join.name_for(consumer, node),
+        quote_character,
+        node,
+        term.concept,
+        col,
+        render_expr_func,
+        use_map=use_map,
+    )
+    return f"{column} is {'not ' if term.present else ''}null"
+
+
+def _render_guard(
+    join: Join,
+    consumer: CTE | UnionCTE,
+    quote_character: str,
+    render_expr_func: Callable,
+    use_map: dict[str, set[str]],
+) -> list[str]:
+    clauses = []
+    for clause in join.guard:
+        terms = [
+            render_guard_term(
+                term, join, consumer, quote_character, render_expr_func, use_map
+            )
+            for term in clause
+        ]
+        clauses.append(terms[0] if len(terms) == 1 else f"({' or '.join(terms)})")
+    return clauses
+
+
 def _build_joinkeys(
     join: Join,
     consumer: CTE | UnionCTE,
@@ -303,6 +349,8 @@ def render_join(
     )
     right_ref = join.reference_for(cte, join.right_cte, quote_character)
     base = f"{join.jointype.value.upper()} JOIN {right_ref} on {joinkeys}"
+    for clause in _render_guard(join, cte, quote_character, render_expr_func, use_map):
+        base = f"{base} and {clause}"
     if join.condition:
         base = f"{base} and {render_expr_func(join.condition, cte)}"
     return base

@@ -304,3 +304,15 @@ def test_repeated_left_key_is_diagnosed_as_repeated():
         _pairs_by_slot(join, [key], "cte")
     assert "bind more than one key" in str(exc.value)
     assert "different concepts" not in str(exc.value)
+
+
+def test_guarded_full_join_is_refused_not_dropped():
+    from tests.engine.test_padded_null_pairing import TWO_REGIONS
+
+    executor = _executor(TWO_REGIONS)
+    _, statements = parse_text(
+        "select customer_id, bucket, sum(target) by bucket as t;",
+        executor.environment,
+    )
+    with pytest.raises(UnsupportedFullJoinError, match="padded for a `~` region"):
+        NoFullJoinDuckDB().generate_queries(executor.environment, statements)

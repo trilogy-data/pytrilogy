@@ -418,16 +418,19 @@ class MergeNode(StrategyNode):
         return joins
 
     def _zero_filled_counts(self) -> frozenset[str]:
-        """COUNTs evaluated on the solid rows and padded here onto a region's
-        rows: they count an empty group there, 0. The dialect coalesces them
-        (`QueryDatasource.zero_filled`), so a WHERE over one (`count(order_id)
-        by customer_id = 0`) accepts the padded row and proves nothing about
-        the side that padded it. The WHERE's own inputs count: such a count
-        need not be an output."""
-        solid = [p for p in self.parents if not region_reads(p)]
-        if not solid or len(solid) == len(self.parents):
+        """COUNTs evaluated off a region's rows and padded here onto them:
+        they count an empty group there, 0. A count reading one region is
+        still padded onto another's (a customer's orders beside a bucket no
+        order has). The dialect coalesces them (`QueryDatasource.zero_filled`),
+        so a WHERE over one (`count(order_id) by customer_id = 0`) accepts the
+        padded row and proves nothing about the side that padded it. The
+        WHERE's own inputs count: such a count need not be an output."""
+        reads = [region_reads(p) for p in self.parents]
+        regions = frozenset().union(*reads)
+        short = [p for p, read in zip(self.parents, reads) if regions - read]
+        if not short:
             return frozenset()
-        solid_outputs = {o.address for p in solid for o in p.output_concepts}
+        solid_outputs = {o.address for p in short for o in p.output_concepts}
         read = list(self.output_concepts)
         if isinstance(self.conditions, BuildConceptArgs):
             read.extend(self.conditions.row_arguments)

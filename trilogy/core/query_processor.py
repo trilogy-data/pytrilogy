@@ -63,6 +63,7 @@ from trilogy.core.models.execute import (
     CTE,
     BaseJoin,
     CTEConceptPair,
+    CTEGuardTerm,
     DatasourceCTE,
     InstantiatedUnnestJoin,
     Join,
@@ -211,7 +212,17 @@ def base_join_to_join(
         right_cte=right_cte,
         jointype=base_join.join_type,
         joinkey_pairs=final_pairs,
-        condition=base_join.condition,
+        guard=[
+            [
+                CTEGuardTerm(
+                    concept=term.concept,
+                    cte=get_datasource_cte(term.datasource),
+                    present=term.present,
+                )
+                for term in clause
+            ]
+            for clause in base_join.guard
+        ],
         modifiers=base_join.modifiers,
     )
 

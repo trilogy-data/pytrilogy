@@ -98,9 +98,9 @@ def canonicalize_graph(input: list[CTE]) -> None:
             join.right_cte = resolve(join.right_cte)
             if join.left_cte is not None:
                 join.left_cte = resolve(join.left_cte)
-            for pair in join.joinkey_pairs or []:
-                if pair.cte is not None:
-                    pair.cte = resolve(pair.cte)
+            for keyed in join.cte_bindings():
+                if keyed.cte is not None:
+                    keyed.cte = resolve(keyed.cte)
         if isinstance(cte, UnionCTE):
             new_branches: list[CTE | UnionCTE] = []
             for binding in cte.source_bindings(include_branches=True):

@@ -4273,20 +4273,37 @@ def _pairing_addresses(node: StrategyNode, environment: BuildEnvironment) -> set
     return addresses
 
 
+def _pairing_islands(outputs: list[set[str]]) -> list[set[int]]:
+    """Parent indices grouped by what pairs them: two parents sharing a
+    pairing column, directly or through a third, are one island."""
+    islands: list[tuple[set[int], set[str]]] = []
+    for index, own in enumerate(outputs):
+        members, columns = {index}, set(own)
+        for island in [i for i in islands if i[1] & own]:
+            islands.remove(island)
+            members |= island[0]
+            columns |= island[1]
+        islands.append((members, columns))
+    return [members for members, _ in islands]
+
+
 def _bridge_unpaired_parents(
     parents: list[StrategyNode],
     group_graph: nx.DiGraph,
     built: dict[str, StrategyNode],
     environment: BuildEnvironment,
 ) -> list[StrategyNode]:
-    """Pull in the built group that pairs a contributor sharing no column with
-    any sibling, so the merge below joins on an axis instead of `ON 1=1`.
+    """Pull in the built group that pairs contributors sharing no column, so
+    the merge below joins on an axis instead of `ON 1=1`.
 
     `select id, min(x) by id, min(y) by cell` leaves two aggregates, one keyed
     on `id` and one on `cell`, with nothing that maps between them: the
     row-grain projection of `{id, cell}` that fed the cell aggregate covers no
     mandatory output, so neither the cover election nor a consumer's parent
-    dedup keeps it. Add it back as a join-only parent.
+    dedup keeps it. Add it back as a join-only parent. The same between two
+    islands of contributors that pair among themselves (a customer aggregate
+    beside the customer's name, a bucket aggregate beside the bucket's region
+    domain).
 
     A contributor that genuinely cross joins (a global aggregate) is untouched:
     nothing else renders its column, so it has no candidate."""
@@ -4298,32 +4315,46 @@ def _bridge_unpaired_parents(
     }
     present = {id(parent) for parent in parents}
     added: list[StrategyNode] = []
-    for index, own in enumerate(outputs):
-        others: set[str] = set()
-        for other_index, other in enumerate(outputs):
-            if other_index != index:
-                others |= other
-        if own & others:
-            continue
+    while True:
+        islands = _pairing_islands(outputs)
+        if len(islands) < 2:
+            break
+        bridge = _island_bridge(islands, outputs, exposed, present, built, group_graph)
+        if bridge is None:
+            break
+        present.add(id(built[bridge]))
+        added.append(built[bridge])
+        outputs.append(exposed[bridge])
+    return parents + added
+
+
+def _island_bridge(
+    islands: list[set[int]],
+    outputs: list[set[str]],
+    exposed: dict[str, set[str]],
+    present: set[int],
+    built: dict[str, StrategyNode],
+    group_graph: nx.DiGraph,
+) -> str | None:
+    """The most derived built group pairing the first island with any other
+    that has a candidate."""
+    columns = [set().union(*(outputs[i] for i in island)) for island in islands]
+    for index, own in enumerate(columns):
+        others = set().union(*(c for i, c in enumerate(columns) if i != index))
         candidates = [
             gid
             for gid, node in built.items()
             if id(node) not in present and exposed[gid] & own and exposed[gid] & others
         ]
-        if not candidates:
-            continue
-        candidates.sort(
-            key=lambda gid: (
-                sum(1 for a in nx.ancestors(group_graph, gid) if a in built),
-                gid,
-            ),
-            reverse=True,
-        )
-        bridge = built[candidates[0]]
-        present.add(id(bridge))
-        added.append(bridge)
-        outputs.append(exposed[candidates[0]])
-    return parents + added
+        if candidates:
+            return max(
+                candidates,
+                key=lambda gid: (
+                    sum(1 for a in nx.ancestors(group_graph, gid) if a in built),
+                    gid,
+                ),
+            )
+    return None
 
 
 def _gate_grain_keys(concepts: list[BuildConcept]) -> frozenset[str]:

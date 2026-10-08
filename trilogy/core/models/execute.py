@@ -997,10 +997,9 @@ class CTE:
                 continue
             if join.left_cte and join.left_cte.safe_identifier == old.safe_identifier:
                 join.left_cte = new
-            if join.joinkey_pairs:
-                for pair in join.joinkey_pairs:
-                    if pair.cte and pair.cte.safe_identifier == old.safe_identifier:
-                        pair.cte = new
+            for keyed in join.cte_bindings():
+                if keyed.cte and keyed.cte.safe_identifier == old.safe_identifier:
+                    keyed.cte = new
             if join.right_cte.safe_identifier == old.safe_identifier:
                 join.right_cte = new
 
@@ -1035,6 +1034,40 @@ class BaseConceptPair:
     left: BuildConcept
     right: BuildConcept
     existing_datasource: BuildDatasource | QueryDatasource
+
+
+@dataclass(frozen=True)
+class GuardTerm:
+    """`concept` read off one side of a join, NOT NULL when `present`."""
+
+    concept: BuildConcept
+    datasource: BuildDatasource | QueryDatasource
+    present: bool
+
+    def __str__(self) -> str:
+        test = "is not null" if self.present else "is null"
+        return f"{self.datasource.name}.{self.concept.address} {test}"
+
+
+@dataclass
+class CTEGuardTerm:
+    concept: BuildConcept
+    cte: CTE | UnionCTE
+    present: bool
+
+    def __str__(self) -> str:
+        test = "is not null" if self.present else "is null"
+        return f"{self.cte.name}.{self.concept.address} {test}"
+
+
+# A conjunction of disjunctions of side-bound NULL tests; empty is no guard.
+JoinGuard = tuple[tuple[GuardTerm, ...], ...]
+
+
+def guard_text(guard: Sequence[Sequence[GuardTerm | CTEGuardTerm]]) -> str:
+    return "".join(
+        f" and ({' or '.join(str(term) for term in clause)})" for clause in guard
+    )
 
 
 @dataclass
@@ -1148,9 +1181,9 @@ class BaseJoin:
     left_datasource: BuildDatasource | QueryDatasource | None = None
     concept_pairs: list[ConceptPair] | None = None
     modifiers: list[Modifier] = field(default_factory=list)
-    # a predicate beside the key pairs (`order_id is not null`: a padded row
-    # whose key is NULL by absence never pairs with a value-NULL group)
-    condition: BoolExpr | None = None
+    # beside the key pairs: a padded row whose key is NULL by absence never
+    # pairs with a value-NULL group (`join_resolution._padding_guard`)
+    guard: JoinGuard = ()
 
     def __post_init__(self):
         if (
@@ -1203,7 +1236,7 @@ class BaseJoin:
         # `b JOIN a ON y=x` are one join, and two independently-built merges
         # over the same parents can pick opposite bases; keeping both joins the
         # same partner twice (duplicate alias).
-        guard = f" and {self.condition}" if self.condition is not None else ""
+        guard = guard_text(self.guard)
         if self.concept_pairs:
             if self.join_type == JoinType.INNER:
                 partners = sorted(
@@ -1231,8 +1264,7 @@ class BaseJoin:
                 base += [pair.left, pair.right]
         elif self.concepts:
             base += self.concepts
-        if self.condition is not None:
-            base += list(self.condition.row_arguments)
+        base += [term.concept for clause in self.guard for term in clause]
         return base
 
     def __str__(self):
@@ -2149,6 +2181,7 @@ class Join:
     left_cte: CTE | UnionCTE | None = None
     joinkey_pairs: list[CTEConceptPair] | None = None
     condition: BoolExpr | None = None
+    guard: list[list[CTEGuardTerm]] = field(default_factory=list)
     modifiers: list[Modifier] = field(default_factory=list)
     # Set by union_dim_pushdown when LHS join keys are local to the rendering
     # CTE rather than read from a parent alias.
@@ -2160,7 +2193,20 @@ class Join:
         if self.left_cte is not None:
             out.append(self.left_cte)
         out.extend(pair.cte for pair in self.joinkey_pairs or [])
+        out.extend(term.cte for term in self.guard_terms())
         return out
+
+    def guard_terms(self) -> list[CTEGuardTerm]:
+        return [term for clause in self.guard for term in clause]
+
+    def cte_bindings(self) -> list[CTEConceptPair | CTEGuardTerm]:
+        """Everything naming a CTE by reference: a rewrite repoints each."""
+        return [*(self.joinkey_pairs or []), *self.guard_terms()]
+
+    @property
+    def has_predicate(self) -> bool:
+        """Something beside the key pairs decides which rows match."""
+        return self.condition is not None or bool(self.guard)
 
     @staticmethod
     def authoritative(consumer: CTE | UnionCTE, node: CTE | UnionCTE) -> CTE | UnionCTE:
@@ -2229,14 +2275,12 @@ class Join:
                     + f"[{','.join(sorted(m.value for m in k.modifiers))}]"
                     for k in self.joinkey_pairs
                 )
-                return f"{self.jointype.value} join {'&'.join(partners)} on {','.join(pair_keys)}"
+                return f"{self.jointype.value} join {'&'.join(partners)} on {','.join(pair_keys)}{guard_text(self.guard)}"
             pair_keys = sorted(
                 f"{k.cte.name}.{k.left.address}={k.right.address}"
                 for k in self.joinkey_pairs
             )
-            return (
-                f"{self.jointype.value} join {self.right_name} on {','.join(pair_keys)}"
-            )
+            return f"{self.jointype.value} join {self.right_name} on {','.join(pair_keys)}{guard_text(self.guard)}"
         return str(self)
 
     def __str__(self):
