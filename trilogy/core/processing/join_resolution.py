@@ -66,6 +66,9 @@ class JoinOrderOutput:
     type: JoinType
     keys: dict[str, set[str]]
     left: str | None = None
+    # left sources providing the same keys, left out as redundant: a FULL
+    # join needs them back (`restore_full_join_providers`)
+    redundant: dict[str, set[str]] = field(default_factory=dict)
 
     @property
     def lefts(self) -> set[str]:
@@ -863,22 +866,12 @@ def resolve_join_order_v2(g: nx.Graph, facts: JoinFacts) -> list[JoinOrderOutput
                 join_types.add(join_type)
                 joinkeys[left_candidate] = all_connecting_keys
 
-            final_join_type = reduce_join_types(join_types)
-
-            # A FULL from get_join_type (a nullable-driven grain-aligned merge)
-            # arrives after the dedup above ran; restore the dropped providers
-            # so the ON clause coalesces across every left source, as
-            # is_full_key pre-empts for registry keys. A single-source ON
-            # misses rows that exist only on a previously-preserved side.
-            if final_join_type == JoinType.FULL:
-                for left_candidate, all_connecting_keys in deduped:
-                    joinkeys[left_candidate] = all_connecting_keys
-
             output.append(
                 JoinOrderOutput(
                     right=right,
-                    type=final_join_type,
+                    type=reduce_join_types(join_types),
                     keys=joinkeys,
+                    redundant=dict(deduped),
                 )
             )
             eligible_left.add(right)
@@ -921,8 +914,21 @@ def resolve_join_order_v2(g: nx.Graph, facts: JoinFacts) -> list[JoinOrderOutput
             eligible_left.add(ds)
 
     ensure_content_preservation(output, facts.axis_keys, facts.demanded_domains)
-
+    restore_full_join_providers(output)
     return output
+
+
+def restore_full_join_providers(joins: list[JoinOrderOutput]) -> None:
+    """A FULL join's ON clause coalesces across every left source providing
+    its keys, as `is_full_key` pre-empts for registry keys: the row may exist
+    on only one of them (a customer whose orders a WHERE rejected is on the
+    orders stream, not on the aggregate over them). Read after the types are
+    final, so a join `ensure_content_preservation` widened to FULL gets its
+    providers back too."""
+    for join in joins:
+        if join.type == JoinType.FULL:
+            for left, keys in join.redundant.items():
+                join.keys.setdefault(left, keys)
 
 
 def get_modifiers(

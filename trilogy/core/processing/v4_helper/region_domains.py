@@ -23,11 +23,7 @@ from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.enums import Derivation
-from trilogy.core.models.build import (
-    BuildConcept,
-    BuildConceptArgs,
-    BuildWhereClause,
-)
+from trilogy.core.models.build import BuildConcept, BuildConceptArgs
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.keyspace import Keyspace, Region
 
@@ -56,7 +52,6 @@ from .region_reads import (
     keyless,
     nameable,
     restated_over_region,
-    where_keeps_padding,
 )
 
 
@@ -681,7 +676,6 @@ def feed_region_domains_to_present_scalars(
     attrs: dict[str, GroupAttrs],
     keyspace: Keyspace,
     environment: BuildEnvironment,
-    conditions: Collection[BuildWhereClause] = (),
 ) -> None:
     """Wire each region domain to what evaluates on the region's rows.
 
@@ -746,7 +740,6 @@ def feed_region_domains_to_present_scalars(
                     keyspace,
                     environment,
                     one_pass=a.nulls_grouping_keys,
-                    filtered_padding=where_keeps_padding(conditions, region, keyspace),
                 )
                 and not (solid and solid & nx.descendants(group_graph, gid))
             ):

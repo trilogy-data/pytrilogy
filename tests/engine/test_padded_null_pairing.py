@@ -1,6 +1,9 @@
-"""A key NULL by absence never pairs with a value-NULL group, wherever the
+"""Two regions beside a `?` key bound on a second table.
+
+A key NULL by absence never pairs with a value-NULL group, wherever the
 padding happened: inside a source the merge reads, or in an earlier join of
-the merge itself.
+the merge itself. A WHERE is tested on every row it can keep, the regions'
+included, before the aggregates it precedes.
 
 Cat has no order, so her `bucket` is padding; order 100's NULL bucket is a
 value, and `targets` has a row for it. Bucket `z` has no order: the bucket
@@ -170,9 +173,40 @@ def test_where_over_the_value_null_group_aggregate_keeps_padding_apart():
             "select bucket, sum(amount) as s where name is null or name = 'ann'",
             [("a", 20), ("z", None), (None, 10)],
         ),
+        (
+            "select bucket, sum(amount) by customer_id as a where name is null",
+            [("z", None)],
+        ),
+        (
+            "select customer_id, bucket, sum(amount) as s where bucket is null",
+            [(1, None, 10), (3, None, None)],
+        ),
+        (
+            "select customer_id, bucket, max(target) as mt where name is null",
+            [(None, "z", 9)],
+        ),
     ],
 )
-def test_where_keeping_the_region_precedes_an_aggregate_by_its_span(
+def test_where_testing_a_region_precedes_the_aggregates_grouping_it(
+    query: str, expected: list[tuple]
+):
+    assert sorted_rows(_executor(TWO_REGIONS), query) == expected
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select customer_id, bucket, sum(amount) by customer_id as a where bucket is null",
+            [(1, None, 10), (3, None, None)],
+        ),
+        (
+            "select customer_id, bucket, sum(amount) by customer_id as a where amount is null",
+            [(3, None, None), (None, "z", None)],
+        ),
+    ],
+)
+def test_a_member_the_where_emptied_is_not_a_region_row(
     query: str, expected: list[tuple]
 ):
     assert sorted_rows(_executor(TWO_REGIONS), query) == expected

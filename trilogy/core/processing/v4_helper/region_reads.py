@@ -11,11 +11,9 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildConceptArgs,
     BuildFunction,
-    BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.keyspace import Keyspace, Region
-from trilogy.core.processing.condition_utility import condition_proves_non_null
 
 from .extent_ownership import null_on_padding
 from .projection import decided_at_output_grain
@@ -91,21 +89,16 @@ def aggregates_over_region(
     return counted
 
 
-def where_keeps_padding(
-    conditions: Iterable[BuildWhereClause], region: Region, keyspace: Keyspace
-) -> bool:
-    """A WHERE an extension row of `region` can pass though it reads a value
-    absent there (`name is null` over a bucket no order has): an aggregate the
-    WHERE precedes groups the rows it keeps, the region's among them."""
-    for clause in conditions:
-        absent = {
-            c.address
-            for c in clause.row_arguments
-            if not keyspace.carried_on(c.address, region)
-        }
-        if absent and not absent & condition_proves_non_null(clause.conditional):
-            return True
-    return False
+def filtered_beside(grain: Iterable[str], keyspace: Keyspace) -> bool:
+    """The WHERE tests a value absent on a region the grain is carried on
+    (`Region.filtered`): the aggregate reads that region's rows, and every
+    other region's it groups, so the one input the WHERE is tested on holds
+    them all."""
+    grain = tuple(grain)
+    return any(
+        region.filtered and any(keyspace.carried_on(g, region) for g in grain)
+        for region in keyspace.live_regions
+    )
 
 
 def evaluated_over_region(
@@ -115,7 +108,6 @@ def evaluated_over_region(
     keyspace: Keyspace,
     environment: BuildEnvironment,
     one_pass: bool = False,
-    filtered_padding: bool = False,
 ) -> bool:
     """Aggregates the region's rows survive: they count what the region holds,
     or group by something it carries (each extension row its own group) with
@@ -125,8 +117,8 @@ def evaluated_over_region(
     the group it never had; only one answering a padded row differently from
     no row (`count`: 0, not NULL) takes the region. A property of the span
     (`by state`) reads the region's rows through the lookup it needs anyway,
-    and one a WHERE keeping the region's rows precedes (`filtered_padding`,
-    `where_keeps_padding`) reads the rows the WHERE is tested on.
+    and one a WHERE testing a region's rows precedes reads the rows the WHERE
+    keeps (`filtered_beside`).
 
     `one_pass`: a ROLLUP/CUBE/GROUPING SETS pass, whose subtotal rows nothing
     joins back to. One member counting the region brings its rows under the
@@ -148,7 +140,7 @@ def evaluated_over_region(
     if carried:
         return (
             one_pass
-            or filtered_padding
+            or filtered_beside(grain, keyspace)
             or any(g not in region.spans for g in carried)
             or any(
                 (concept := environment.concepts.get(m)) is not None

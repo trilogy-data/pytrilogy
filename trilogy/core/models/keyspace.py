@@ -48,6 +48,10 @@ class Region:
     witnesses: frozenset[str] = frozenset()
     completions: tuple[Completion, ...] = ()
     reach: frozenset[str] = frozenset()
+    # the WHERE reads a value absent here (`name is null` over a bucket no
+    # order has): it is tested on these rows, so an aggregate it precedes
+    # reads them (`region_reads.filtered_beside`)
+    filtered: bool = False
 
     @property
     def is_empty(self) -> bool:

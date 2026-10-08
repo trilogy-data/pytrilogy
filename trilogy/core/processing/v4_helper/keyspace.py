@@ -826,6 +826,11 @@ def build_keyspace(
                     )
                 ),
                 reach=reach,
+                filtered=any(
+                    not (keys := keys_by_address.get(c.address)) or not keys <= reach
+                    for clause in conditions
+                    for c in clause.row_arguments
+                ),
             )
         )
     return Keyspace(
