@@ -305,3 +305,10 @@ def test_a_region_row_with_a_null_key_is_no_subset_match(
     query: str, expected: list[tuple]
 ):
     assert sorted_rows(_executor(LINE_ITEMS), query) == expected
+
+
+def test_a_lookup_off_a_padded_provider_reads_the_key_where_it_survives():
+    assert sorted_rows(
+        _executor(LINE_ITEMS),
+        "select user_id, sum(cost) by product_id as sc where cost is null",
+    ) == [(3, None)]

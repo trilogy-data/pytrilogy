@@ -929,13 +929,26 @@ def restore_full_join_providers(joins: list[JoinOrderOutput]) -> None:
     """A FULL join's ON clause coalesces across every left source providing
     its keys, as `is_full_key` pre-empts for registry keys: the row may exist
     on only one of them (a customer whose orders a WHERE rejected is on the
-    orders stream, not on the aggregate over them). Read after the types are
-    final, so a join `ensure_content_preservation` widened to FULL gets its
-    providers back too."""
+    orders stream, not on the aggregate over them). So does any join whose
+    kept provider an earlier join padded, if it preserves rows itself: on the
+    padded rows the key is read off the provider left out (a product a
+    user's lines name, beside a total the WHERE emptied). Read after the types are final, so a join
+    `ensure_content_preservation` widened gets its providers back too;
+    `prune_preserved_join_keys` drops the ones no join padded."""
+    padded: set[str] = set()
+    joined: set[str] = set()
     for join in joins:
-        if join.type == JoinType.FULL:
+        joined |= join.lefts
+        if join.type == JoinType.FULL or (
+            join.type in OUTER_JOIN_TYPES and padded & set(join.keys)
+        ):
             for left, keys in join.redundant.items():
                 join.keys.setdefault(left, keys)
+        if join.type in PADS_RIGHT_JOIN_TYPES:
+            padded.add(join.right)
+        if join.type in PADS_LEFT_JOIN_TYPES:
+            padded |= joined
+        joined.add(join.right)
 
 
 def get_modifiers(
