@@ -206,27 +206,6 @@ def _read_partials(
     return read
 
 
-def _component_reach(
-    ds: BuildDatasource, datasources: Sequence[BuildDatasource]
-) -> set[str]:
-    """All concept spellings connected to ``ds`` through shared bindings."""
-    reach = _bound_spellings([ds])
-    changed = True
-    remaining = [d for d in datasources if d.identifier != ds.identifier]
-    while changed:
-        changed = False
-        still: list[BuildDatasource] = []
-        for other in remaining:
-            other_spellings = _bound_spellings([other])
-            if other_spellings & reach:
-                reach |= other_spellings
-                changed = True
-            else:
-                still.append(other)
-        remaining = still
-    return reach
-
-
 @dataclasses.dataclass
 class _AuthoredKeyspace:
     """The statement's row universe over its bindings as authored. Healing
@@ -287,14 +266,16 @@ def decide_heal(
         # A killer must be related to the key's own model component: a concept
         # from a disconnected subgraph attaches via a cross-join gate and is
         # non-null on extension rows too, so it proves nothing.
-        reach = _component_reach(ds, datasources)
-        killers = proven_bound & reach
+        reach = facts.component_of(ds.identifier)
+        killers = {a for a in proven_bound if facts.canonical.get(a, a) in reach}
         if not killers:
             continue
         # References outside the component (a membership set built from a
         # separately imported dimension) are sourced by their own subquery,
         # never through an anchor.
-        component_refs = referenced_bound & reach
+        component_refs = {
+            a for a in referenced_bound if facts.canonical.get(a, a) in reach
+        }
         healed: set[str] = set()
         for column in ds.columns:
             span = _partial_spelling(ds, column)

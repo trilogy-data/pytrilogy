@@ -122,6 +122,16 @@ class ModelFacts:
         rest = tuple(s for s in self.sources if s.identifier != without)
         return frozenset(_carried(source, rest))
 
+    def component_of(self, identifier: str) -> frozenset[str]:
+        """Every address bound by a source connected to `identifier` through
+        shared bindings: its model component."""
+        bound = [source.bound.keys() for source in self.sources]
+        index = next(
+            i for i, s in enumerate(self.sources) if s.identifier == identifier
+        )
+        component = next(c for c in overlap_components(bound) if index in c)
+        return frozenset().union(*(bound[i] for i in component))
+
     def reach_of(self, keys: frozenset[str]) -> frozenset[str]:
         """Addresses a keyed lookup arrives at from `keys` together: a
         composite-key dimension (`grain (name, variant)`) is entered only
