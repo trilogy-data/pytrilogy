@@ -1638,6 +1638,280 @@ def _final_gate_rowset_base_keys(
     }
 
 
+@dataclass
+class _InputPass:
+    """What `_compute_concept_sets` derives before its reverse pass, read by
+    each group's inputs (`_group_inputs`)."""
+
+    attrs: dict[str, GroupAttrs]
+    domain_carried: dict[str, set[str]]
+    domain_gids: set[str]
+    domain_members: dict[str, set[str]]
+    environment: BuildEnvironment
+    existence_demand: dict[str, set[str]]
+    facts: dict[str, GroupFacts]
+    final_condition_args: set[str]
+    final_gate_grains: frozenset[str]
+    group_edges: EdgeMap
+    group_graph: nx.DiGraph
+    io: GroupIOPlan
+    lineage_parents: dict[str, set[str]]
+    lineage_sub: nx.DiGraph
+    mandatory_alias_addresses: set[str]
+    mandatory_list: list[BuildConcept]
+    pseudonym_mates: dict[str, frozenset[str]]
+    region_join_keys: frozenset[str]
+    relation_edge_members: frozenset[str]
+    rollup_padded: frozenset[str]
+    scoped_axis_mates: dict[str, frozenset[str]] | None
+    scoped_join_member_addresses: frozenset[str]
+    solid: set[str]
+    source_grain_of: dict[str, frozenset[str]]
+
+
+def _group_inputs(gid: str, ctx: _InputPass) -> None:
+    """One step of the reverse topological pass: what `gid` reads from its
+    parents, given what its consumers read from it."""
+    attrs = ctx.attrs
+    domain_carried = ctx.domain_carried
+    domain_gids = ctx.domain_gids
+    domain_members = ctx.domain_members
+    environment = ctx.environment
+    existence_demand = ctx.existence_demand
+    facts = ctx.facts
+    final_condition_args = ctx.final_condition_args
+    final_gate_grains = ctx.final_gate_grains
+    group_edges = ctx.group_edges
+    group_graph = ctx.group_graph
+    io = ctx.io
+    lineage_parents = ctx.lineage_parents
+    lineage_sub = ctx.lineage_sub
+    mandatory_alias_addresses = ctx.mandatory_alias_addresses
+    mandatory_list = ctx.mandatory_list
+    pseudonym_mates = ctx.pseudonym_mates
+    region_join_keys = ctx.region_join_keys
+    relation_edge_members = ctx.relation_edge_members
+    rollup_padded = ctx.rollup_padded
+    scoped_axis_mates = ctx.scoped_axis_mates
+    scoped_join_member_addresses = ctx.scoped_join_member_addresses
+    solid = ctx.solid
+    source_grain_of = ctx.source_grain_of
+    if gid == FINAL_NODE_ID:
+        return
+    fact = facts[gid]
+    cap_gid = io.capability[gid]
+    outs: set[str] = existence_demand.get(gid, set()) & cap_gid
+    outs |= _hosted_condition_outputs(
+        attrs[gid].condition_atoms, fact.derivation, cap_gid
+    )
+    solid_root = gid in solid
+    for succ in group_graph.successors(gid):
+        if succ == FINAL_NODE_ID:
+            mand = cap_gid & mandatory_alias_addresses
+            if fact.derivation in GROUPING_DERIVATIONS:
+                mand &= fact.primary | fact.grain
+            for desc in nx.descendants(lineage_sub, gid):
+                if facts[desc].derivation in GROUPING_DERIVATIONS:
+                    mand -= io.outputs[desc]
+            if solid_root:
+                mand -= domain_carried.get(attrs[gid].label, set())
+            outs |= mand
+            final_args_here = cap_gid & final_condition_args
+            if fact.derivation in GROUPING_DERIVATIONS:
+                # a value the aggregate's input read is not one it groups
+                # by: FINAL reads it off the rows it describes
+                final_args_here &= fact.primary | fact.grain
+            outs |= final_args_here
+            outs |= cap_gid & region_join_keys
+            if gid in domain_gids:
+                outs |= cap_gid & final_gate_grains
+            # a dim peel beside a region domain joins the region's rows
+            # back on its keys (the fact's FK cluster is the bridge)
+            if attrs[gid].dim_keys and region_join_keys:
+                outs |= cap_gid & attrs[gid].dim_keys
+            # A FINAL-deferred presence-probe filter joins its producer
+            # back on the probe's KEY (`ord_cust` ~ the anchor's key via
+            # the scoped-join pseudonym); expose the key alongside the
+            # probe or the side input degrades to a 1=1 cross join.
+            for addr in final_args_here:
+                if is_presence_probe(addr):
+                    outs |= lineage_parents.get(addr, set()) & cap_gid
+            # Same shape for a ROWSET boundary feeding a FINAL-deferred
+            # filter (`where return_demos.r_ticket is not null` over a
+            # `union join return_demos.demo_id = c_demo`): the feeder must
+            # join back on the relation axis, so expose the boundary's own
+            # scoped member handles. Not cap-gated: the boundary always
+            # materializes its authored handles from its body.
+            if final_args_here and fact.derivation == Derivation.ROWSET:
+                boundary_namespaces = {addr.rpartition(".")[0] for addr in fact.primary}
+                outs |= {
+                    member
+                    for member in scoped_join_member_addresses
+                    if member.rpartition(".")[0] in boundary_namespaces
+                }
+            # A relation carried on the concept graph's RELATION edges (an
+            # authored axis whose collapsed side is a first-class computed
+            # node) joins its sides at THIS merge: expose the group's own
+            # member whenever a FINAL sibling hosts one of its mates.
+            # Without the exposure neither side outputs the axis and the
+            # minimum-contributor cover drops the member's group entirely
+            # (`union join rank orders.oid order by orders.amt desc =
+            # customers.rnk` degrades to a 1=1 cross join).
+            if relation_edge_members and scoped_axis_mates:
+                for member in sorted(fact.primary & relation_edge_members):
+                    member_mates = scoped_axis_mates.get(member, frozenset())
+                    if not member_mates:
+                        continue
+                    for sibling in group_graph.predecessors(succ):
+                        if sibling in (gid, FINAL_NODE_ID):
+                            continue
+                        if member_mates & facts[sibling].primary:
+                            outs.add(member)
+                            break
+            if fact.grain:
+                for sibling in group_graph.predecessors(succ):
+                    if sibling == gid or sibling == FINAL_NODE_ID:
+                        continue
+                    sibling_fact = facts[sibling]
+                    # Two ROW STREAMS at incomparable grains related by
+                    # FD, one solid and one reading a region domain: a
+                    # scalar keyed on what it reads (`cost * amount` at
+                    # (order, product), fed by the product domain) beside
+                    # `state_qty` at item grain over the solid rows, item
+                    # -> order and item -> product. Neither folds into the
+                    # other (the fold would put the solid derivation on
+                    # the padding, or the domain reader's rows on the
+                    # solid stream), so the coarser exposes its grain and
+                    # the finer the coarser's, or the two pair on the one
+                    # requested key and every item fans out by its
+                    # product's other orders. Two solid streams fold (a
+                    # customer rename beside the line values);
+                    # nested grains are the subset rule below; a grouping
+                    # sibling pairs on its own grain, which it emits.
+                    if (
+                        solid_root != (sibling in solid)
+                        and fact.derivation not in GROUPING_DERIVATIONS
+                        and sibling_fact.derivation not in GROUPING_DERIVATIONS
+                        and not fact.grain <= sibling_fact.grain
+                        and not sibling_fact.grain <= fact.grain
+                    ):
+                        if fact.grain <= io.capability[sibling] and _grain_determines(
+                            environment, sibling_fact.grain, fact.grain
+                        ):
+                            outs |= (fact.grain - rollup_padded) & cap_gid
+                        if _grain_determines(
+                            environment, fact.grain, sibling_fact.grain
+                        ):
+                            outs |= (sibling_fact.grain - rollup_padded) & cap_gid
+                    # Same-grain sibling: the grain IS the shared row
+                    # identity. A STRICTLY FINER sibling that can also
+                    # produce these components is the same story one level
+                    # down: this group is a dimension projection joining
+                    # back to the fact stream on its FD key (a rowset
+                    # body's `cid as s_cid` beside `sum(net)` grouped by
+                    # `csk, year`). Without the axis the merge cross-joins
+                    # every dimension row onto every fact row.
+                    if sibling_fact.grain == fact.grain or (
+                        fact.grain < sibling_fact.grain
+                        and fact.grain <= io.capability[sibling]
+                    ):
+                        outs |= fact.grain & cap_gid
+                        break
+            continue
+        if edge_kind(group_edges, gid, succ) == EdgeKind.EXISTENCE:
+            continue
+        demanded = io.inputs.get(succ, set()) & cap_gid
+        if solid_root:
+            # only a domain feeding `succ` supplies it: another region's
+            # domain (the customers beside a bucket-fed aggregate) does not
+            for pred in group_graph.predecessors(succ):
+                demanded -= domain_members.get(pred, set())
+        if fact.derivation in GROUPING_DERIVATIONS:
+            sibling_providable: set[str] = set()
+            for sib in group_graph.predecessors(succ):
+                if sib in (gid, FINAL_NODE_ID):
+                    continue
+                if facts[sib].derivation in GROUPING_DERIVATIONS:
+                    continue
+                sibling_providable |= io.capability.get(sib, set())
+            keep = fact.primary | fact.grain
+            demanded -= sibling_providable - keep
+        outs |= demanded
+        for sibling in group_graph.predecessors(succ):
+            if sibling == gid or sibling == FINAL_NODE_ID:
+                continue
+            if edge_kind(group_edges, sibling, succ) == EdgeKind.EXISTENCE:
+                continue
+            outs |= facts[sibling].grain & cap_gid
+    if fact.derivation in GROUPING_DERIVATIONS:
+        outs |= fact.grain & cap_gid
+        # A grouping group whose grain component is a STATEMENT-scoped join
+        # axis it cannot produce still owns that axis through its OWN side's
+        # member of the relation (`subset join fut.period + 53 = agg.period`
+        # canonicalizes the axis to `agg.period`, but the fut side's column IS
+        # the derived key). Advertise the member it can produce, or the group
+        # renders as a grainless global aggregate the FINAL merge can only
+        # cross-join. A global-merge pseudonym twin licenses the same
+        # substitution (an unbound `merge` key whose only physical column is
+        # its rowset rename).
+        for missing in fact.grain - cap_gid:
+            mates = set((scoped_axis_mates or {}).get(missing, frozenset()))
+            mates |= pseudonym_mates.get(missing, frozenset())
+            for mate in sorted(mates):
+                if mate in cap_gid:
+                    outs.add(mate)
+                    break
+    # A condition-only ROOT feeding a FINAL-hosted gate that pairs to an
+    # output rowset boundary on its base grain key must RENDER that key:
+    # the group covers no mandatory output, so it never becomes a FINAL
+    # contributor and never picks up the contract's preserve_keys; it
+    # arrives as a hidden feeder built from this demand alone. Without the
+    # key the FINAL merge has no shared column and cross-joins.
+    outs |= _final_gate_rowset_base_keys(attrs, fact, mandatory_list, environment)
+    io.outputs[gid] = outs
+
+    ins: set[str] = set()
+    is_grouping = fact.derivation in GROUPING_DERIVATIONS
+    # A primary member a hosted atom references is computed here for the
+    # WHERE even when nothing downstream demands it (`where all_amt > 0`
+    # over a union that selects only `all_k`), so it demands its inputs of
+    # the parents exactly like an output does.
+    hosted_primary = {
+        arg.address
+        for atom in attrs[gid].condition_atoms
+        for arg in atom.row_arguments
+        if arg.address in fact.primary
+    }
+    for concept_addr in outs | hosted_primary:
+        if concept_addr in fact.primary:
+            stack = list(lineage_parents.get(concept_addr, set()))
+            seen_chain: set[str] = set()
+            while stack:
+                parent_addr = stack.pop()
+                if parent_addr in seen_chain:
+                    continue
+                seen_chain.add(parent_addr)
+                if parent_addr in fact.primary:
+                    stack.extend(lineage_parents.get(parent_addr, set()))
+                    continue
+                ins.add(parent_addr)
+                if is_grouping and parent_addr not in fact.grain:
+                    for gc in source_grain_of.get(parent_addr, frozenset()):
+                        if gc not in fact.primary:
+                            ins.add(gc)
+        else:
+            parent_addrs = lineage_parents.get(concept_addr, set())
+            if is_grouping and parent_addrs and parent_addrs <= fact.grain:
+                ins |= parent_addrs
+            else:
+                ins.add(concept_addr)
+    for atom in attrs[gid].condition_atoms:
+        for arg in atom.row_arguments:
+            if arg.address not in fact.primary:
+                ins.add(arg.address)
+    io.inputs[gid] = ins
+
+
 def _compute_concept_sets(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -1887,225 +2161,34 @@ def _compute_concept_sets(
     for src_gid, _ in edges_of_kind(group_edges, EdgeKind.EXISTENCE):
         existence_demand[src_gid].update(attrs[src_gid].primary_members)
 
+    ctx = _InputPass(
+        attrs=attrs,
+        domain_carried=domain_carried,
+        domain_gids=domain_gids,
+        domain_members=domain_members,
+        environment=environment,
+        existence_demand=existence_demand,
+        facts=facts,
+        final_condition_args=final_condition_args,
+        final_gate_grains=final_gate_grains,
+        group_edges=group_edges,
+        group_graph=group_graph,
+        io=io,
+        lineage_parents=lineage_parents,
+        lineage_sub=lineage_sub,
+        mandatory_alias_addresses=mandatory_alias_addresses,
+        mandatory_list=mandatory_list,
+        pseudonym_mates=pseudonym_mates,
+        region_join_keys=region_join_keys,
+        relation_edge_members=relation_edge_members,
+        rollup_padded=rollup_padded,
+        scoped_axis_mates=scoped_axis_mates,
+        scoped_join_member_addresses=scoped_join_member_addresses,
+        solid=solid,
+        source_grain_of=source_grain_of,
+    )
     for gid in reversed(topo):
-        if gid == FINAL_NODE_ID:
-            continue
-        fact = facts[gid]
-        cap_gid = io.capability[gid]
-        outs: set[str] = existence_demand.get(gid, set()) & cap_gid
-        outs |= _hosted_condition_outputs(
-            attrs[gid].condition_atoms, fact.derivation, cap_gid
-        )
-        solid_root = gid in solid
-        for succ in group_graph.successors(gid):
-            if succ == FINAL_NODE_ID:
-                mand = cap_gid & mandatory_alias_addresses
-                if fact.derivation in GROUPING_DERIVATIONS:
-                    mand &= fact.primary | fact.grain
-                for desc in nx.descendants(lineage_sub, gid):
-                    if facts[desc].derivation in GROUPING_DERIVATIONS:
-                        mand -= io.outputs[desc]
-                if solid_root:
-                    mand -= domain_carried.get(attrs[gid].label, set())
-                outs |= mand
-                final_args_here = cap_gid & final_condition_args
-                if fact.derivation in GROUPING_DERIVATIONS:
-                    # a value the aggregate's input read is not one it groups
-                    # by: FINAL reads it off the rows it describes
-                    final_args_here &= fact.primary | fact.grain
-                outs |= final_args_here
-                outs |= cap_gid & region_join_keys
-                if gid in domain_gids:
-                    outs |= cap_gid & final_gate_grains
-                # a dim peel beside a region domain joins the region's rows
-                # back on its keys (the fact's FK cluster is the bridge)
-                if attrs[gid].dim_keys and region_join_keys:
-                    outs |= cap_gid & attrs[gid].dim_keys
-                # A FINAL-deferred presence-probe filter joins its producer
-                # back on the probe's KEY (`ord_cust` ~ the anchor's key via
-                # the scoped-join pseudonym); expose the key alongside the
-                # probe or the side input degrades to a 1=1 cross join.
-                for addr in final_args_here:
-                    if is_presence_probe(addr):
-                        outs |= lineage_parents.get(addr, set()) & cap_gid
-                # Same shape for a ROWSET boundary feeding a FINAL-deferred
-                # filter (`where return_demos.r_ticket is not null` over a
-                # `union join return_demos.demo_id = c_demo`): the feeder must
-                # join back on the relation axis, so expose the boundary's own
-                # scoped member handles. Not cap-gated: the boundary always
-                # materializes its authored handles from its body.
-                if final_args_here and fact.derivation == Derivation.ROWSET:
-                    boundary_namespaces = {
-                        addr.rpartition(".")[0] for addr in fact.primary
-                    }
-                    outs |= {
-                        member
-                        for member in scoped_join_member_addresses
-                        if member.rpartition(".")[0] in boundary_namespaces
-                    }
-                # A relation carried on the concept graph's RELATION edges (an
-                # authored axis whose collapsed side is a first-class computed
-                # node) joins its sides at THIS merge: expose the group's own
-                # member whenever a FINAL sibling hosts one of its mates.
-                # Without the exposure neither side outputs the axis and the
-                # minimum-contributor cover drops the member's group entirely
-                # (`union join rank orders.oid order by orders.amt desc =
-                # customers.rnk` degrades to a 1=1 cross join).
-                if relation_edge_members and scoped_axis_mates:
-                    for member in sorted(fact.primary & relation_edge_members):
-                        member_mates = scoped_axis_mates.get(member, frozenset())
-                        if not member_mates:
-                            continue
-                        for sibling in group_graph.predecessors(succ):
-                            if sibling in (gid, FINAL_NODE_ID):
-                                continue
-                            if member_mates & facts[sibling].primary:
-                                outs.add(member)
-                                break
-                if fact.grain:
-                    for sibling in group_graph.predecessors(succ):
-                        if sibling == gid or sibling == FINAL_NODE_ID:
-                            continue
-                        sibling_fact = facts[sibling]
-                        # Two ROW STREAMS at incomparable grains related by
-                        # FD, one solid and one reading a region domain: a
-                        # scalar keyed on what it reads (`cost * amount` at
-                        # (order, product), fed by the product domain) beside
-                        # `state_qty` at item grain over the solid rows, item
-                        # -> order and item -> product. Neither folds into the
-                        # other (the fold would put the solid derivation on
-                        # the padding, or the domain reader's rows on the
-                        # solid stream), so the coarser exposes its grain and
-                        # the finer the coarser's, or the two pair on the one
-                        # requested key and every item fans out by its
-                        # product's other orders. Two solid streams fold (a
-                        # customer rename beside the line values);
-                        # nested grains are the subset rule below; a grouping
-                        # sibling pairs on its own grain, which it emits.
-                        if (
-                            solid_root != (sibling in solid)
-                            and fact.derivation not in GROUPING_DERIVATIONS
-                            and sibling_fact.derivation not in GROUPING_DERIVATIONS
-                            and not fact.grain <= sibling_fact.grain
-                            and not sibling_fact.grain <= fact.grain
-                        ):
-                            if fact.grain <= io.capability[
-                                sibling
-                            ] and _grain_determines(
-                                environment, sibling_fact.grain, fact.grain
-                            ):
-                                outs |= (fact.grain - rollup_padded) & cap_gid
-                            if _grain_determines(
-                                environment, fact.grain, sibling_fact.grain
-                            ):
-                                outs |= (sibling_fact.grain - rollup_padded) & cap_gid
-                        # Same-grain sibling: the grain IS the shared row
-                        # identity. A STRICTLY FINER sibling that can also
-                        # produce these components is the same story one level
-                        # down: this group is a dimension projection joining
-                        # back to the fact stream on its FD key (a rowset
-                        # body's `cid as s_cid` beside `sum(net)` grouped by
-                        # `csk, year`). Without the axis the merge cross-joins
-                        # every dimension row onto every fact row.
-                        if sibling_fact.grain == fact.grain or (
-                            fact.grain < sibling_fact.grain
-                            and fact.grain <= io.capability[sibling]
-                        ):
-                            outs |= fact.grain & cap_gid
-                            break
-                continue
-            if edge_kind(group_edges, gid, succ) == EdgeKind.EXISTENCE:
-                continue
-            demanded = io.inputs.get(succ, set()) & cap_gid
-            if solid_root:
-                # only a domain feeding `succ` supplies it: another region's
-                # domain (the customers beside a bucket-fed aggregate) does not
-                for pred in group_graph.predecessors(succ):
-                    demanded -= domain_members.get(pred, set())
-            if fact.derivation in GROUPING_DERIVATIONS:
-                sibling_providable: set[str] = set()
-                for sib in group_graph.predecessors(succ):
-                    if sib in (gid, FINAL_NODE_ID):
-                        continue
-                    if facts[sib].derivation in GROUPING_DERIVATIONS:
-                        continue
-                    sibling_providable |= io.capability.get(sib, set())
-                keep = fact.primary | fact.grain
-                demanded -= sibling_providable - keep
-            outs |= demanded
-            for sibling in group_graph.predecessors(succ):
-                if sibling == gid or sibling == FINAL_NODE_ID:
-                    continue
-                if edge_kind(group_edges, sibling, succ) == EdgeKind.EXISTENCE:
-                    continue
-                outs |= facts[sibling].grain & cap_gid
-        if fact.derivation in GROUPING_DERIVATIONS:
-            outs |= fact.grain & cap_gid
-            # A grouping group whose grain component is a STATEMENT-scoped join
-            # axis it cannot produce still owns that axis through its OWN side's
-            # member of the relation (`subset join fut.period + 53 = agg.period`
-            # canonicalizes the axis to `agg.period`, but the fut side's column IS
-            # the derived key). Advertise the member it can produce, or the group
-            # renders as a grainless global aggregate the FINAL merge can only
-            # cross-join. A global-merge pseudonym twin licenses the same
-            # substitution (an unbound `merge` key whose only physical column is
-            # its rowset rename).
-            for missing in fact.grain - cap_gid:
-                mates = set((scoped_axis_mates or {}).get(missing, frozenset()))
-                mates |= pseudonym_mates.get(missing, frozenset())
-                for mate in sorted(mates):
-                    if mate in cap_gid:
-                        outs.add(mate)
-                        break
-        # A condition-only ROOT feeding a FINAL-hosted gate that pairs to an
-        # output rowset boundary on its base grain key must RENDER that key:
-        # the group covers no mandatory output, so it never becomes a FINAL
-        # contributor and never picks up the contract's preserve_keys; it
-        # arrives as a hidden feeder built from this demand alone. Without the
-        # key the FINAL merge has no shared column and cross-joins.
-        outs |= _final_gate_rowset_base_keys(attrs, fact, mandatory_list, environment)
-        io.outputs[gid] = outs
-
-        ins: set[str] = set()
-        is_grouping = fact.derivation in GROUPING_DERIVATIONS
-        # A primary member a hosted atom references is computed here for the
-        # WHERE even when nothing downstream demands it (`where all_amt > 0`
-        # over a union that selects only `all_k`), so it demands its inputs of
-        # the parents exactly like an output does.
-        hosted_primary = {
-            arg.address
-            for atom in attrs[gid].condition_atoms
-            for arg in atom.row_arguments
-            if arg.address in fact.primary
-        }
-        for concept_addr in outs | hosted_primary:
-            if concept_addr in fact.primary:
-                stack = list(lineage_parents.get(concept_addr, set()))
-                seen_chain: set[str] = set()
-                while stack:
-                    parent_addr = stack.pop()
-                    if parent_addr in seen_chain:
-                        continue
-                    seen_chain.add(parent_addr)
-                    if parent_addr in fact.primary:
-                        stack.extend(lineage_parents.get(parent_addr, set()))
-                        continue
-                    ins.add(parent_addr)
-                    if is_grouping and parent_addr not in fact.grain:
-                        for gc in source_grain_of.get(parent_addr, frozenset()):
-                            if gc not in fact.primary:
-                                ins.add(gc)
-            else:
-                parent_addrs = lineage_parents.get(concept_addr, set())
-                if is_grouping and parent_addrs and parent_addrs <= fact.grain:
-                    ins |= parent_addrs
-                else:
-                    ins.add(concept_addr)
-        for atom in attrs[gid].condition_atoms:
-            for arg in atom.row_arguments:
-                if arg.address not in fact.primary:
-                    ins.add(arg.address)
-        io.inputs[gid] = ins
+        _group_inputs(gid, ctx)
 
     for gid in group_graph.nodes:
         if gid == FINAL_NODE_ID:
