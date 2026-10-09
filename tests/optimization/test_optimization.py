@@ -520,7 +520,6 @@ auto sale_count <- count(sale_id);
         condition=None,
         group_to_grain=True,
     )
-    consumer = _simple_cte("consumer", [sale_count], condition=condition)
     plain_parent = _simple_cte(
         "plain",
         [sale_count],
@@ -529,11 +528,10 @@ auto sale_count <- count(sale_id);
     )
 
     assert not rule._push_having_into_group_parent(
-        consumer, plain_parent, condition, {}
+        plain_parent, condition, {}
     )
-    assert not rule._push_having_into_group_parent(consumer, group_parent, None, {})
+    assert not rule._push_having_into_group_parent(group_parent, None, {})
     assert not rule._push_having_into_group_parent(
-        consumer,
         group_parent,
         BuildSubselectComparison(
             left=sale_count,
@@ -543,21 +541,20 @@ auto sale_count <- count(sale_id);
         {},
     )
     assert not rule._push_having_into_group_parent(
-        consumer,
         group_parent,
         BuildComparison(left=1, right=2, operator=ComparisonOperator.EQ),
         {},
     )
     group_parent.condition = condition
     assert not rule._push_having_into_group_parent(
-        consumer, group_parent, condition, {}
+        group_parent, condition, {}
     )
     group_parent.condition = None
     assert not rule._push_having_into_group_parent(
-        consumer, group_parent, condition, {}
+        group_parent, condition, {}
     )
     assert not rule._push_having_into_group_parent(
-        consumer, group_parent, condition, {group_parent.name: [object()]}
+        group_parent, condition, {group_parent.name: [object()]}
     )
     unfiltered_child = _simple_cte(
         "unfiltered_child",
@@ -566,7 +563,7 @@ auto sale_count <- count(sale_id);
         source_map={sale_count.address: [group_parent.name]},
     )
     assert not rule._push_having_into_group_parent(
-        consumer, group_parent, condition, {group_parent.name: [unfiltered_child]}
+        group_parent, condition, {group_parent.name: [unfiltered_child]}
     )
 
 
@@ -680,7 +677,6 @@ auto qty_per_order <- sum(order_id);
     # the group is the FROM base of a FULL join, so the consumer's padded rows
     # would bypass a filter moved into it: the push waits for the join upgrade
     assert not rule._push_having_into_group_parent(
-        consumer,
         group_parent,
         condition,
         {group_parent.name: [consumer]},

@@ -704,7 +704,6 @@ class PredicatePushdown(OptimizationRule):
 
     def _push_having_into_group_parent(
         self,
-        cte: CTE | UnionCTE,
         parent_cte: CTE | UnionCTE,
         candidate: BuildConditional | BuildComparison | BuildParenthetical | None,
         inverse_map: dict[str, list[CTE | UnionCTE]],
@@ -864,7 +863,6 @@ class PredicatePushdown(OptimizationRule):
                     # Non-scalar even for this parent; only a group parent can
                     # carry it as HAVING.
                     local = self._push_having_into_group_parent(
-                        cte=cte,
                         parent_cte=parent_cte,
                         candidate=candidate,
                         inverse_map=inverse_map,

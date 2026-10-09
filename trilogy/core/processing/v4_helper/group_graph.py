@@ -276,7 +276,6 @@ def _fold_rollup_key_dims(
 
 
 def _materialize_group_graph(
-    concept_graph: nx.DiGraph,
     concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
     primary_group: dict[str, str],
@@ -1615,12 +1614,11 @@ def _hosted_condition_outputs(
 
 def _final_gate_rowset_base_keys(
     attrs: dict[str, GroupAttrs],
-    gid: str,
     fact: GroupFacts,
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
 ) -> set[str]:
-    """Base grain keys of the output rowset boundaries that `gid` must render
+    """Base grain keys of the output rowset boundaries that a group must render
     to pair with them at FINAL, when every one of its members is a row arg of a
     FINAL-hosted gate and none is a mandatory output: the keys its own grain,
     or its members' keys, determine (`status` at order grain pairs on the
@@ -2078,9 +2076,7 @@ def _compute_concept_sets(
         # contributor and never picks up the contract's preserve_keys; it
         # arrives as a hidden feeder built from this demand alone. Without the
         # key the FINAL merge has no shared column and cross-joins.
-        outs |= _final_gate_rowset_base_keys(
-            attrs, gid, fact, mandatory_list, environment
-        )
+        outs |= _final_gate_rowset_base_keys(attrs, fact, mandatory_list, environment)
         io.outputs[gid] = outs
 
         ins: set[str] = set()
@@ -2196,7 +2192,6 @@ def build_group_graph(
     )
     trace_buckets("carried-only row streams split", buckets, primary_group)
     group_graph, attrs, group_edges = _materialize_group_graph(
-        concept_graph,
         concept_edges,
         concept_attrs,
         primary_group,

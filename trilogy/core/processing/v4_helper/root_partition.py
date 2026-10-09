@@ -118,7 +118,6 @@ def _d1_calc_subgraph(
     concept_graph: nx.DiGraph,
     concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
-    environment: BuildEnvironment,
     datasources: Sequence[BuildDatasource],
 ) -> tuple[dict[int | None, set[str]], set[str]]:
     """Identify (d1_calc_roots by `then where` stage, d1_subgraph_nodes).
@@ -182,7 +181,6 @@ def _d1_calc_subgraph(
             concept_attrs,
             soft,
             d1_subgraph,
-            environment,
             datasources,
         ):
             soft = set()
@@ -258,7 +256,6 @@ def _split_strands_condition_scan(
     concept_attrs: dict[str, ConceptAttrs],
     split_roots: set[str],
     d1_subgraph: set[str],
-    environment: BuildEnvironment,
     datasources: Sequence[BuildDatasource],
 ) -> bool:
     """Whether scanning `split_roots` privately would leave that scan no join
@@ -1114,7 +1111,7 @@ def partition_root_demand(
     )
     output_addresses = frozenset(c.address for c in mandatory_list)
     roots_by_stage, condition_nodes = _d1_calc_subgraph(
-        concept_graph, concept_edges, concept_attrs, environment, datasources
+        concept_graph, concept_edges, concept_attrs, datasources
     )
     condition_roots: set[str] = set().union(*roots_by_stage.values())
     _prune_existence_exclusive_roots(
