@@ -103,7 +103,7 @@ def _splits_for_region(bucket: GroupBucket) -> bool:
     return bucket.reason in (RootReason.ROW_STREAM, RootReason.ENTITY)
 
 
-def _members_of(
+def _scope_members(
     buckets: dict[str, GroupBucket],
     label: str,
     derivations: Collection[Derivation],
@@ -135,12 +135,12 @@ def _needs_solid_rows(
     whose inline argument does."""
     return any(
         takes_a_value_on_padding(m, region, keyspace, environment)
-        for m in _members_of(buckets, label, ROW_STREAM_DERIVATIONS, exact=True)
+        for m in _scope_members(buckets, label, ROW_STREAM_DERIVATIONS, exact=True)
     ) or any(
         inline_arguments_taking_a_value(
             environment.concepts.get(m), region, keyspace, environment
         )
-        for m in _members_of(buckets, label, (Derivation.AGGREGATE,), exact=True)
+        for m in _scope_members(buckets, label, (Derivation.AGGREGATE,), exact=True)
     )
 
 
@@ -157,7 +157,7 @@ def _named_value_on_padding(
     return any(
         takes_a_value_on_padding(m, region, keyspace, environment)
         and not reads_a_rollup(m, environment)
-        for m in _members_of(buckets, label, ROW_STREAM_DERIVATIONS, exact=False)
+        for m in _scope_members(buckets, label, ROW_STREAM_DERIVATIONS, exact=False)
     )
 
 
@@ -171,7 +171,7 @@ def _inline_values_on_padding(
     """The inline arguments of the scope's aggregates doing the same."""
     return [
         argument
-        for m in _members_of(buckets, label, (Derivation.AGGREGATE,), exact=False)
+        for m in _scope_members(buckets, label, (Derivation.AGGREGATE,), exact=False)
         for argument in inline_arguments_taking_a_value(
             environment.concepts.get(m), region, keyspace, environment
         )

@@ -227,7 +227,7 @@ def _root_atoms_satisfiable_from(
     ]
 
 
-def _members_of(attrs: dict[str, GroupAttrs], gid: str) -> set[str]:
+def _own_members(attrs: dict[str, GroupAttrs], gid: str) -> set[str]:
     """What the group computes and the keys it holds. Not what it emits: a
     ROOT's re-source at FINAL asks which merge keys are its own, and a hidden
     pass-through is not one."""
@@ -638,7 +638,7 @@ def _accumulated_atoms_above(
         collapsing = anc_attrs.derivation in GROUPING_DERIVATIONS and not (
             nulls_grouping_keys(anc_attrs.grouping_mode)
         )
-        columns = _members_of(attrs, anc) | set(anc_attrs.grain_components)
+        columns = _own_members(attrs, anc) | set(anc_attrs.grain_components)
         for atom in anc_attrs.condition_atoms:
             if collapsing and not ({c.address for c in atom.row_arguments} <= columns):
                 continue
@@ -3090,7 +3090,7 @@ def _filter_intrinsic_pushdown_safe(
         unfiltered = ancestors & set(group_graph.predecessors(succ))
         if not unfiltered:
             continue
-        supplied = frozenset().union(*(_members_of(attrs, a) for a in unfiltered))
+        supplied = frozenset().union(*(_own_members(attrs, a) for a in unfiltered))
         if not _consumer_reads(attrs[succ], environment) & supplied <= emitted:
             return False
     return True
@@ -5211,7 +5211,7 @@ def _assemble_final_node(
                 environment,
                 group_concepts,
                 preserve_keys,
-                frozenset(_members_of(attrs, gid)),
+                frozenset(_own_members(attrs, gid)),
             )
             # A ROOT that already carries a merge key among its own concepts
             # joins its siblings on that key alone. Preserving the OTHER merge
@@ -5277,7 +5277,7 @@ def _assemble_final_node(
             # never leaks it. Restricted to bucket members so a
             # global-aggregate/cross-arm filter arg (handled as a hidden
             # cross-join input via `_filter_arg_parents`) is untouched.
-            bucket_members = _members_of(attrs, gid)
+            bucket_members = _own_members(attrs, gid)
             seen_group_addrs = {c.address for c in group_concepts}
             filter_only_concepts = [
                 c
