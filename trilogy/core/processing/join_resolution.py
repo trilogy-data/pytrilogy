@@ -1614,18 +1614,24 @@ def _row_witness(
     return None
 
 
+def _mark_present(datasource: QueryDatasource, marker: BuildConcept) -> None:
+    """A UNION's arms each project the marker, so the union has it."""
+    datasource.presence_marker = marker
+    if datasource.source_type == SourceType.UNION:
+        for arm in datasource.datasources:
+            assert isinstance(arm, QueryDatasource)
+            _mark_present(arm, marker)
+
+
 def _presence_marker(datasource: DataSource) -> BuildConcept | None:
     """A constant `datasource` projects so a join can tell its padded rows
     from its rows: the side had no column NULL exactly there."""
-    if (
-        not isinstance(datasource, QueryDatasource)
-        or datasource.source_type == SourceType.UNION
-    ):
+    if not isinstance(datasource, QueryDatasource):
         return None
     if datasource.presence_marker is not None:
         return datasource.presence_marker
     name = f"{PRESENCE_MARKER_PREFIX}{string_to_hash(datasource.identifier)}"
-    datasource.presence_marker = BuildConcept(
+    marker = BuildConcept(
         name=name,
         canonical_name=name,
         namespace=DEFAULT_NAMESPACE,
@@ -1641,7 +1647,8 @@ def _presence_marker(datasource: DataSource) -> BuildConcept | None:
             output_purpose=Purpose.CONSTANT,
         ),
     )
-    return datasource.presence_marker
+    _mark_present(datasource, marker)
+    return marker
 
 
 @dataclass

@@ -451,10 +451,16 @@ def datasource_to_cte(
             output_columns=[
                 c.with_grain(query_datasource.grain)
                 for c in query_datasource.output_concepts
+                + (
+                    [query_datasource.presence_marker]
+                    if query_datasource.presence_marker is not None
+                    else []
+                )
             ],
             grain=direct_parents[0].grain,
             operator=query_datasource.set_operator.value,
             order_by=query_datasource.ordering,
+            partial_concepts=query_datasource.partial_concepts,
             rollup_concepts=query_datasource.rollup_concepts,
         )
         return final

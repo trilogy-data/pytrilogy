@@ -102,6 +102,41 @@ select 102, 2, 30, 'b', 'web'
 )
 
 
+# The same orders, split across two partitions: the padded side is a UNION.
+SECOND_OPTIONAL_KEY_UNION = (
+    _BASE
+    + _CHANNELS.format(channels="""query '''
+select null as channel, 50 as fee union all
+select 'web', 60 union all
+select 'shop', 70
+'''""")
+    + """
+property order_id.year int;
+
+datasource orders_old (
+    order_id: order_id, customer_id: ~customer_id, amount: amount,
+    bucket: ~?bucket, channel: ~?channel, year: year
+)
+grain (order_id)
+complete where year <= 2020
+query '''
+select 100 as order_id, 1 as customer_id, 10 as amount, null as bucket, 'web' as channel, 2019 as year
+''';
+
+datasource orders_new (
+    order_id: order_id, customer_id: ~customer_id, amount: amount,
+    bucket: ~?bucket, channel: ~?channel, year: year
+)
+grain (order_id)
+complete where year > 2020
+query '''
+select 101 as order_id, 1 as customer_id, 20 as amount, 'a' as bucket, null as channel, 2021 as year union all
+select 102, 2, 30, 'b', 'web', 2022
+''';
+"""
+)
+
+
 @cache
 def _executor(model: str) -> Executor:
     return executor_for(model)
@@ -554,6 +589,7 @@ def test_padding_on_a_second_optional_key_never_pairs_its_null_member(
     query: str, expected: list[tuple]
 ):
     assert sorted_rows(_executor(SECOND_OPTIONAL_KEY), query) == expected
+    assert sorted_rows(_executor(SECOND_OPTIONAL_KEY_UNION), query) == expected
 
 
 def test_a_side_with_no_solid_key_keeps_its_presence_marker_off_a_table():
@@ -578,3 +614,23 @@ address sales;
         (None, "shop", 70),
         (None, "web", 60),
     ]
+
+
+@pytest.mark.parametrize("model", [SECOND_OPTIONAL_KEY, SECOND_OPTIONAL_KEY_UNION])
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select customer_id, channel, sum(fee) by channel as f where bucket = 'z' or channel = 'shop'",
+            [(None, "shop", 70)],
+        ),
+        (
+            "select customer_id, channel, count(order_id) by channel as nc where bucket = 'z' or channel = 'shop'",
+            [(None, "shop", 0)],
+        ),
+    ],
+)
+def test_a_where_on_a_partial_column_keeps_rows_another_side_supplies(
+    model: str, query: str, expected: list[tuple]
+):
+    assert sorted_rows(_executor(model), query) == expected
