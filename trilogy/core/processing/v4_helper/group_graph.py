@@ -813,8 +813,7 @@ def _final_merge_grain(
         # rides a ROOT scan. Only the hosted members enter the grain: an unhosted third
         # member of a chained relation is not this merge's to demand.
         if len(finals) > 1 and relation_edge_members:
-            for canonical, members in environment.scoped_join_key_groups.items():
-                relation_addrs = {canonical, *members}
+            for relation_addrs in environment.scoped_join_relations():
                 if not relation_addrs & relation_edge_members:
                     continue
                 hosts: set[str] = set()
@@ -1110,8 +1109,7 @@ def _rowset_relation_keys(
     statement = _statement_scoped_relation_members(environment)
     coalescing = environment.domain_graph.coalescing_relation_members()
     keys: set[str] = set()
-    for canonical, members in environment.scoped_join_key_groups.items():
-        relation = {canonical, *members}
+    for relation in environment.scoped_join_relations():
         if not relation & statement or (
             relation & coalescing and not relation & input_grain
         ):
@@ -2269,11 +2267,7 @@ def build_group_graph(
         mandatory_list,
         environment,
         rollup_padded,
-        scoped_join_member_addresses=frozenset(
-            addr
-            for canonical, members in environment.scoped_join_key_groups.items()
-            for addr in (canonical, *members)
-        ),
+        scoped_join_member_addresses=environment.all_scoped_join_group_members(),
         scoped_axis_mates=_scoped_axis_mates(environment),
         relation_edge_members=relation_edge_members,
     )

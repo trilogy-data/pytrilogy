@@ -2071,11 +2071,7 @@ def get_node_joins(
             canon_node(a) for a in environment.domain_graph.outer_relation_keys()
         ),
         scoped_keys=frozenset(canon_node(a) for a in environment.scoped_partial_derived)
-        | frozenset(
-            canon_node(a)
-            for group_canonical, members in environment.scoped_join_key_groups.items()
-            for a in (group_canonical, *members)
-        ),
+        | frozenset(canon_node(a) for a in environment.all_scoped_join_group_members()),
         # the join tree bases on the complete source providing an anchor key so
         # co-anchored optional sources stay LEFT
         anchor_keys=frozenset(

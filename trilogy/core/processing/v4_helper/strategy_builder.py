@@ -2440,8 +2440,7 @@ def _unprojected_expression_mates(
         for parent in parents
     ]
     mates: set[str] = set()
-    for canonical, members in environment.scoped_join_key_groups.items():
-        group = {canonical, *members}
+    for group in environment.scoped_join_relations():
         candidates: dict[str, BuildConcept] = {}
         for address in group - projected:
             mate = _concept_at(environment, address)
@@ -2737,11 +2736,7 @@ def _fold_covered_contributors(
     """
     if len(parents) <= 1:
         return parents
-    relation_members = {
-        addr
-        for canonical, members in environment.scoped_join_key_groups.items()
-        for addr in (canonical, *members)
-    }
+    relation_members = environment.all_scoped_join_group_members()
     visible = [_visible_addresses(p) for p in parents]
     partials = [{c.address for c in p.partial_concepts} for p in parents]
     dropped: set[int] = set()
@@ -2965,8 +2960,7 @@ def _raise_if_rowset_islanded(
             # the phantom bridge islanding exists to sever.
             if o.address not in mangled_contents:
                 addrs.update(o.pseudonyms)
-        for canonical, members in environment.scoped_join_key_groups.items():
-            relation = {canonical, *members}
+        for relation in environment.scoped_join_relations():
             if addrs & relation:
                 addrs |= relation
         keys.append(addrs)
@@ -3522,8 +3516,7 @@ def _scoped_join_mates(environment: BuildEnvironment, address: str) -> frozenset
     coalescing = environment.domain_graph.coalescing_relation_members()
     if address not in coalescing:
         return frozenset()
-    for canonical, members in environment.scoped_join_key_groups.items():
-        group = {canonical, *members}
+    for group in environment.scoped_join_relations():
         if address in group:
             return frozenset(group - {address}) & coalescing
     return frozenset()
@@ -3805,8 +3798,7 @@ def _add_partial_completion_contributors(
         return {o.address for o in built[gid].output_concepts}
 
     coalescing = environment.domain_graph.coalescing_relation_members()
-    for canonical, members in environment.scoped_join_key_groups.items():
-        relation = {canonical, *members}
+    for relation in environment.scoped_join_relations():
         # Coalescing sides are BOTH partial by declaration (neither domain
         # contains the other; the coalesce of the sides is what's complete),
         # so the mate boundary qualifies by exposing the member at all. A
@@ -4374,8 +4366,7 @@ def _pairing_addresses(node: StrategyNode, environment: BuildEnvironment) -> set
             origin = environment.alias_origin_lookup.get(pseudonym)
             if origin is not None:
                 addresses.add(origin.address)
-    for canonical, members in environment.scoped_join_key_groups.items():
-        relation = {canonical, *members}
+    for relation in environment.scoped_join_relations():
         if addresses & relation:
             addresses |= relation
     return addresses
@@ -4967,8 +4958,7 @@ def _assemble_final_node(
             relation_keys: set[str] = set()
             for feeder in arg_nodes:
                 feeder_outs = {o.address for o in feeder.output_concepts}
-                for canonical, members in environment.scoped_join_key_groups.items():
-                    relation = {canonical, *members}
+                for relation in environment.scoped_join_relations():
                     if feeder_outs & relation:
                         relation_keys |= relation
             if relation_keys:
@@ -5087,11 +5077,7 @@ def _assemble_final_node(
                 group_graph, built, filter_only_addrs - sole_avail
             )
             feeder_outs = [{o.address for o in f.output_concepts} for f in feeder_nodes]
-            scoped_addrs = {
-                addr
-                for canonical, members in environment.scoped_join_key_groups.items()
-                for addr in (canonical, *members)
-            }
+            scoped_addrs = environment.all_scoped_join_group_members()
             relation_paired_feeders = any(outs & scoped_addrs for outs in feeder_outs)
             spans = region_reads(sole_node)
             region_paired_feeders = bool(spans) and any(
@@ -5463,8 +5449,7 @@ def _assemble_final_node(
     axis_mates: list[BuildConcept] = []
     if environment.scoped_join_key_groups:
         coalescing_addrs = environment.domain_graph.coalescing_relation_members()
-        for canonical, group_members in environment.scoped_join_key_groups.items():
-            relation = {canonical, *group_members}
+        for relation in environment.scoped_join_relations():
             if not relation & mandatory_addresses & coalescing_addrs:
                 continue
             axis_mates.extend(

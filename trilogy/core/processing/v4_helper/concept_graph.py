@@ -1004,8 +1004,7 @@ def _statement_scoped_relation_members(environment: BuildEnvironment) -> frozens
         for addr in (e.source, e.target)
     }
     out: set[str] = set()
-    for canonical, members in environment.scoped_join_key_groups.items():
-        relation = {canonical, *members}
+    for relation in environment.scoped_join_relations():
         if relation & statement_addrs:
             out |= relation
     return frozenset(out)
@@ -1112,8 +1111,7 @@ def computed_origin_relation_members(environment: BuildEnvironment) -> frozenset
     if not environment.scoped_join_key_groups:
         return frozenset()
     out: set[str] = set()
-    for canonical, members in environment.scoped_join_key_groups.items():
-        relation = {canonical, *members}
+    for relation in environment.scoped_join_relations():
         for member in relation:
             resolved = environment.concepts.get(member)
             origin = environment.alias_origin_lookup.get(member)
@@ -2359,8 +2357,7 @@ def build_concept_graph(
         }
         relation_members = set(_statement_scoped_relation_members(environment))
         computed_members = computed_origin_relation_members(environment)
-        for canonical_addr, group in environment.scoped_join_key_groups.items():
-            relation = {canonical_addr, *group}
+        for relation in environment.scoped_join_relations():
             if relation & computed_members and relation & demanded_addresses:
                 relation_members |= relation
         for member in sorted(relation_members):

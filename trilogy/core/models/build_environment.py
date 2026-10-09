@@ -210,6 +210,13 @@ class BuildEnvironment:
                 out.append((canonical, distinct))
         return out
 
+    def scoped_join_relations(self) -> list[frozenset[str]]:
+        """Each scoped-join key group as one set: its canonical and members."""
+        return [
+            frozenset({canonical, *members})
+            for canonical, members in self.scoped_join_key_groups.items()
+        ]
+
     def all_scoped_join_group_members(self) -> frozenset[str]:
         """Every address participating in a scoped-join key group — each
         group's canonical plus all its members, with no identity filter.
@@ -219,11 +226,7 @@ class BuildEnvironment:
         pinning) must skip them or they silently narrow the authored fan-out.
         Contrast `distinct_scoped_join_group_mates`, which asks
         the narrower question of who must MATERIALIZE a column."""
-        return frozenset(
-            addr
-            for canonical, members in self.scoped_join_key_groups.items()
-            for addr in (canonical, *members)
-        )
+        return frozenset().union(*self.scoped_join_relations())
 
     def distinct_scoped_join_group_mates(self) -> dict[str, set[str]]:
         """Map each distinct-identity group member to its distinct group-mates,

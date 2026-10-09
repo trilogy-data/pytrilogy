@@ -924,7 +924,10 @@ def detach_final_span_domain_producers(
             continue
         inputs = {a.address for a in placement.atom.row_arguments}
         hosts = {
-            gid for p in placements if p.atom is placement.atom for gid in p.group_ids
+            gid
+            for p in placements
+            if str(p.atom) == str(placement.atom)
+            for gid in p.group_ids
         }
         for gid, bucket in buckets.items():
             if not inputs & set(bucket.primary_members):
