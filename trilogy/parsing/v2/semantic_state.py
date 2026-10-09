@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Never
 
 from trilogy.constants import DEFAULT_NAMESPACE
+from trilogy.core.constants import rowset_alias_prefix
 from trilogy.core.enums import Modifier, Purpose
 from trilogy.core.exceptions import UndefinedConceptException
 from trilogy.core.models.author import (
@@ -161,7 +162,7 @@ class SemanticState:
         the exact ``_{rowset_name}_`` prefix to recover the user-facing
         rowset-output name.
         """
-        return f"_{rowset_name}_{name}"
+        return f"{rowset_alias_prefix(rowset_name)}{name}"
 
     def add(
         self,

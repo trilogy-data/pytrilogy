@@ -13,6 +13,7 @@ from trilogy.core.constants import (
     INTERNAL_NAMESPACE,
     SUBQUERY_NAMESPACE_PREFIX,
     WORKING_PATH_CONCEPT,
+    rowset_alias_prefix,
 )
 from trilogy.core.enums import (
     ConceptSource,
@@ -210,7 +211,7 @@ class Renderer:
 
     @contextmanager
     def _rowset_scope(self, rowset_name: str):
-        prefix = f"_{rowset_name}_"
+        prefix = rowset_alias_prefix(rowset_name)
         self._rowset_prefix_stack.append(prefix)
         try:
             yield

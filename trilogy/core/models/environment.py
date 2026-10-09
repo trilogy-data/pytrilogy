@@ -22,6 +22,7 @@ from trilogy.constants import DEFAULT_NAMESPACE, ENV_CACHE_NAME, logger
 from trilogy.core.constants import (
     INTERNAL_NAMESPACE,
     WORKING_PATH_CONCEPT,
+    rowset_alias_prefix,
 )
 from trilogy.core.enums import (
     ConceptSource,
@@ -1114,7 +1115,7 @@ class Environment:
         no later statement reads the old rows, and no planner spelling of a
         shared value resolves to a column no body declares. The new
         definition's concepts are pending at this point, not durable."""
-        prefix = f"_{name}_"
+        prefix = rowset_alias_prefix(name)
         retired: set[str] = set()
         with self.concepts.without_overlays():
             for address, concept in self.concepts.all_items():

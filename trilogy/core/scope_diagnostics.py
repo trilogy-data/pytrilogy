@@ -32,7 +32,7 @@ from trilogy.constants import (
     VIRTUAL_CONCEPT_PREFIX,
     MagicConstants,
 )
-from trilogy.core.constants import ALL_ROWS_ADDRESS
+from trilogy.core.constants import ALL_ROWS_ADDRESS, rowset_alias_prefix
 from trilogy.core.enums import (
     AggregateGroupingMode,
     BooleanOperator,
@@ -819,7 +819,7 @@ class _Extractor:
             return
         # rowset bodies rewrite member names to `_{rowset}_{alias}`; strip the
         # bookkeeping prefix so records read as `rowset.alias`
-        mangle = f"_{rowset_name}_"
+        mangle = rowset_alias_prefix(rowset_name)
 
         def clean(text: str) -> str:
             return text.replace(mangle, "")

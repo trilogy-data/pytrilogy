@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, logger
 from trilogy.core import graph as gx
-from trilogy.core.constants import SUBQUERY_NAMESPACE_PREFIX
+from trilogy.core.constants import SUBQUERY_NAMESPACE_PREFIX, rowset_alias_prefix
 from trilogy.core.enums import (
     Derivation,
     FunctionType,
@@ -852,7 +852,7 @@ def _ranked_pairs(
 
 
 def _body_minted(concept: BuildConcept, rowset_name: str) -> bool:
-    return concept.name.startswith(f"_{rowset_name}_")
+    return concept.name.startswith(rowset_alias_prefix(rowset_name))
 
 
 def _spell_subset_join(left: BuildConcept, right: BuildConcept) -> str:

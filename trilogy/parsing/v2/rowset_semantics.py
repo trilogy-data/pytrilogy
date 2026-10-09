@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from dataclasses import replace as dc_replace
 from typing import TYPE_CHECKING
 
+from trilogy.core.constants import rowset_alias_prefix
 from trilogy.core.enums import ConceptSource, Derivation, Granularity
 from trilogy.core.models.author import (
     AggregateWrapper,
@@ -68,7 +69,7 @@ def _unmangle_alias_name(name: str, rowset_name: str) -> str:
     ``_buyers_a_cust_id``). ``rowset_name`` is exact here, so stripping
     the precise prefix is unambiguous even when names contain underscores.
     """
-    prefix = f"_{rowset_name}_"
+    prefix = rowset_alias_prefix(rowset_name)
     if name.startswith(prefix):
         return name[len(prefix) :]
     return name

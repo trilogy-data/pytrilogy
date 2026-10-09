@@ -23,7 +23,7 @@ from typing import cast
 
 from trilogy.constants import MagicConstants, logger
 from trilogy.core import graph as nx
-from trilogy.core.constants import ALL_ROWS_ADDRESS
+from trilogy.core.constants import ALL_ROWS_ADDRESS, rowset_alias_prefix
 from trilogy.core.enums import (
     ComparisonOperator,
     Derivation,
@@ -2356,7 +2356,7 @@ def _mangled_rowset_content_addresses(environment: BuildEnvironment) -> set[str]
     ]:
         lineage = concept.lineage
         if isinstance(lineage, BuildRowsetItem) and lineage.content.name.startswith(
-            f"_{lineage.rowset.name}_"
+            rowset_alias_prefix(lineage.rowset.name)
         ):
             out.add(lineage.content.address)
     return out
