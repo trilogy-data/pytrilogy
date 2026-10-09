@@ -1,5 +1,5 @@
 import difflib
-from collections.abc import ItemsView, ValuesView
+from collections.abc import Callable, ItemsView, Iterable, Iterator, ValuesView
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from functools import cached_property
@@ -25,6 +25,22 @@ def _find(parent: dict[str, str], node: str) -> str:
     while (up := parent.setdefault(node, node)) != node:
         parent[node] = node = parent.setdefault(up, up)
     return node
+
+
+def _ranked_classes(
+    edges: Iterable[tuple[str, str]], rank: Callable[[str], tuple[bool, bool, str]]
+) -> dict[str, tuple[str, ...]]:
+    parent: dict[str, str] = {}
+    for left, right in edges:
+        parent[_find(parent, right)] = _find(parent, left)
+    classes: dict[str, list[str]] = {}
+    for address in parent:
+        classes.setdefault(_find(parent, address), []).append(address)
+    out: dict[str, tuple[str, ...]] = {}
+    for members in classes.values():
+        ranked = tuple(sorted(members, key=rank))
+        out.update(dict.fromkeys(ranked, ranked))
+    return out
 
 
 class BuildEnvironmentConceptDict(dict):
@@ -334,59 +350,66 @@ class BuildEnvironment:
         }
         return [origins[address] for address in sorted(origins)]
 
-    @cached_property
-    def address_classes(self) -> dict[str, tuple[str, ...]]:
-        """Every spelling of one value -> all of its spellings, best name first.
+    def _value_edges(self) -> Iterator[tuple[str, str]]:
+        for key, concept in self.concepts.items():
+            yield key, concept.address
+            for pseudonym in concept.pseudonyms:
+                yield concept.address, pseudonym
+        for key, origin in self.alias_origin_lookup.items():
+            yield key, origin.address
 
-        A class joins a concept's key, address, canonical (`_virt_*`) address
-        and pseudonyms, for the concepts and the merge-demoted alias origins
-        alike. A presence probe keeps its own canonical: its identity pins side
-        membership and must not collapse onto the value every member binds.
-        Names rank an authored concept address over a canonical-only spelling,
-        and a surviving merge target over a demoted alias."""
-        parent: dict[str, str] = {}
-        for key, concept in [
-            *self.concepts.items(),
-            *self.alias_origin_lookup.items(),
-        ]:
-            spellings = {key, concept.address, *concept.pseudonyms}
+    def _spelling_edges(self) -> Iterator[tuple[str, str]]:
+        yield from self._value_edges()
+        for concept in [*self.concepts.values(), *self.alias_origin_lookup.values()]:
+            for pseudonym in concept.pseudonyms:
+                yield concept.address, pseudonym
             if not any(
                 PRESENCE_PROBE_PREFIX in a
                 for a in (concept.address, concept.canonical_address)
             ):
-                spellings.add(concept.canonical_address)
-            root = _find(parent, key)
-            for spelling in spellings:
-                parent[_find(parent, spelling)] = root
-        classes: dict[str, list[str]] = {}
-        for address in parent:
-            classes.setdefault(_find(parent, address), []).append(address)
-        out: dict[str, tuple[str, ...]] = {}
-        for members in classes.values():
-            ranked = tuple(sorted(members, key=self._address_rank))
-            out.update(dict.fromkeys(ranked, ranked))
-        return out
+                yield concept.address, concept.canonical_address
 
-    def _address_rank(self, address: str) -> tuple[bool, bool, str]:
-        return (
-            address in self.alias_origin_lookup,
-            address not in self.concepts,
-            address,
+    @cached_property
+    def value_classes(self) -> dict[str, tuple[str, ...]]:
+        """Every name of one value -> all of its names, an authored concept
+        address first: a concept's key, address and pseudonyms, and a
+        merge-demoted alias's origin. A surviving merge target outranks the
+        alias it demoted."""
+        return _ranked_classes(
+            self._value_edges(),
+            lambda a: (a in self.alias_origin_lookup, a not in self.concepts, a),
         )
 
-    def address_roots(self, scope: AbstractSet[str] | None = None) -> dict[str, str]:
-        """Each spelling -> the best name of its class that `scope` holds (any
-        name when unscoped). A consumer whose roots are read back as concepts
-        scopes them to what it can read; classes `scope` misses are absent."""
-        classes = self.address_classes
+    @cached_property
+    def spelling_classes(self) -> dict[str, tuple[str, ...]]:
+        """`value_classes` widened to the reference graph's spellings, each
+        concept's and alias origin's canonical (`_virt_*`) address, which is
+        how a scan's edge names what a request asks for by address. A
+        canonical name ranks first: unlike the authored address it names the
+        variant a scan renders (a merge's derived side). Wider than a value: a
+        union join's member and a projection of the same expression share a
+        canonical but not their NULLs. A presence probe keeps its own
+        canonical, which pins side membership."""
+        return _ranked_classes(
+            self._spelling_edges(),
+            lambda a: (a in self.alias_origin_lookup, a in self.concepts, a),
+        )
+
+    def address_roots(
+        self, scope: AbstractSet[str] | None = None, spellings: bool = False
+    ) -> dict[str, str]:
+        """Each name -> the first name of its class (`spelling_classes` when
+        `spellings`) that `scope` holds, any when unscoped. A consumer that
+        reads its roots back as concepts scopes them to what it can read."""
+        classes = self.spelling_classes if spellings else self.value_classes
         if scope is None:
-            return {address: spellings[0] for address, spellings in classes.items()}
+            return {address: names[0] for address, names in classes.items()}
         out: dict[str, str] = {}
         for address in scope:
-            spellings = classes.get(address)
-            if spellings is not None and address not in out:
-                root = next(s for s in spellings if s in scope)
-                out.update(dict.fromkeys(spellings, root))
+            names = classes.get(address)
+            if names is not None and address not in out:
+                root = next(n for n in names if n in scope)
+                out.update(dict.fromkeys(names, root))
         return out
 
     def gen_concept_list_caches(self) -> None:

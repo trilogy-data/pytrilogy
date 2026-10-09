@@ -71,7 +71,6 @@ datasource people (id:id, name:name) grain(id) address people;
     assert build.address_roots({"local.name"}) == {
         "local.label": "local.name",
         "local.name": "local.name",
-        build.concepts["local.label"].canonical_address: "local.name",
     }
 
 

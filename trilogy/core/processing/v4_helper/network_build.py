@@ -677,7 +677,7 @@ def build_source_network(
                 concept.address for concept in rollups.get(node, [])
             }
             all_addresses |= emitted_by_node[node]
-    equivalence = environment.address_roots(all_addresses)
+    equivalence = environment.address_roots(all_addresses, spellings=True)
     owners = probe_owners(
         environment,
         graph.scope.datasources,
