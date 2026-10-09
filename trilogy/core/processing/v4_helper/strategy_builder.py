@@ -5661,6 +5661,549 @@ def _read_first_rows(
     return rewritten, [window]
 
 
+@dataclass
+class _GroupBuild:
+    """What every group of one `build_strategy_node` call reads and fills."""
+
+    group_graph: nx.DiGraph
+    group_edges: EdgeMap
+    attrs: dict[str, GroupAttrs]
+    mandatory_list: list[BuildConcept]
+    environment: BuildEnvironment
+    g: ReferenceGraph
+    history: History
+    complete_partials: bool
+    staged_conditions: list[BuildWhereClause] | None
+    depth: int
+    arms_delivered: bool
+    built: dict[str, StrategyNode]
+    root_requests: dict[str, RootRequest]
+    feeder_cache: _CleanFeederCache
+    unbuilt: dict[str, list[BuildConcept]]
+
+
+def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
+    """Build one group of the plan with explicit parent nodes, under the
+    group's span scope. None when it builds nothing (`ctx.unbuilt` says what
+    it owed)."""
+    from trilogy.core.processing.v4_node_generators import build_node  # cycle
+
+    group_graph, group_edges, attrs = ctx.group_graph, ctx.group_edges, ctx.attrs
+    environment, g, history = ctx.environment, ctx.g, ctx.history
+    mandatory_list, built, feeder_cache = (
+        ctx.mandatory_list,
+        ctx.built,
+        ctx.feeder_cache,
+    )
+    complete_partials, staged_conditions = ctx.complete_partials, ctx.staged_conditions
+    depth, arms_delivered, root_requests = (
+        ctx.depth,
+        ctx.arms_delivered,
+        ctx.root_requests,
+    )
+    a = attrs[gid]
+    # Only the FINAL sink carries a None derivation, and it is skipped above.
+    assert a.derivation is not None
+    derivation = a.derivation
+    select_addrs = _select_addresses(a)
+    if derivation == Derivation.ROWSET:
+        # A boundary group's outputs can carry ANOTHER rowset's handles
+        # (a deferred WHERE's args exposed through a scoped relation).
+        # `resolve_rowset` plans the rowset of the first handle it sees, so
+        # order this group's OWN handles (its primary members) first so a
+        # foreign condition-arg handle can't hijack the boundary. Permanent:
+        # a body is a statement planned in its own scope, so the boundary
+        # can never take a foreign handle from a parent.
+        primary = set(a.primary_members)
+        select_addrs = (
+            *(addr for addr in select_addrs if addr in primary),
+            *(addr for addr in select_addrs if addr not in primary),
+        )
+    outputs = [
+        c for addr in select_addrs if (c := _concept_at(environment, addr)) is not None
+    ]
+    if not outputs:
+        ctx.unbuilt[gid] = outputs
+        return None
+    if derivation == Derivation.AGGREGATE and a.aggregate_distinct_addrs:
+        outputs = _apply_count_distinct_rewrites(outputs, a.aggregate_distinct_addrs)
+    primary_addrs = set(a.primary_members)
+    twin_reused: dict[str, bool] = (
+        {
+            c.address: _aggregate_reused_from_twin(c.address, gid, attrs, built)
+            for c in outputs
+            if c.address in primary_addrs and c.lineage is not None
+        }
+        if derivation in _AGGREGATING_DERIVATIONS
+        else {}
+    )
+    atoms = _atoms_at(attrs, gid)
+    # Conjunction-coverage siblings only bind when this group recomputes
+    # its aggregate over rows; a fully twin-reused value is read through,
+    # so its input population is not this group's to filter, and keeping
+    # the atom would resurrect the redundant fact-rescan parent through
+    # its `needed` args.
+    if a.conjunction_atoms and twin_reused and all(twin_reused.values()):
+        atoms = [atom for atom in atoms if atom not in a.conjunction_atoms]
+    injected = _wrap_atoms(atoms)
+    preexisting = _wrap_atoms(_accumulated_atoms_above(group_graph, attrs, gid))
+    # The "needed" set drives ancestor-dedup: a parent is kept only if
+    # it contributes something to it that no descendant parent also
+    # provides. Includes the output addresses themselves, the lineage
+    # args of *primary* outputs (the columns this group actually
+    # computes), and the inputs of any conditions applied at this
+    # group. Passthroughs' lineage is intentionally NOT walked: a
+    # passthrough output like `sum_sales` rides through this group
+    # from an aggregate parent; if we walked its lineage we'd add
+    # `sales_price` to `needed`, which ROOT provides but the aggregate
+    # doesn't, and ROOT would escape dedup. The aggregate already
+    # owns that lineage upstream.
+    needed: set[str] = set()
+    for c in outputs:
+        needed.add(c.address)
+        if c.address in primary_addrs and c.lineage is not None:
+            if derivation in _AGGREGATING_DERIVATIONS:
+                # A post-condition aggregate that REUSES a same-grain twin
+                # (its pre-condition d1 sibling already materialized this
+                # value) reads the value through rather than recomputing,
+                # so its raw recompute inputs (the input-grain keys, measure
+                # columns) don't belong in `needed`. Pulling them keeps a
+                # redundant fact-rescan ROOT parent alive that only
+                # re-supplies grouping keys the twin already carries. Treat
+                # it like a passthrough: skip its lineage.
+                if not twin_reused.get(c.address, False):
+                    _add_aggregate_needed_concepts(needed, c)
+            else:
+                # Recurse through args that are THEMSELVES primary members
+                # of this group (intermediates computed here, e.g. a window
+                # output exposed through a wrapping BASIC): their inputs
+                # must come from parents, so they belong in `needed`; else
+                # a parent supplying only those deep inputs reads as
+                # redundant and dedup can drop every candidate (the
+                # lead-over-derived-partition-key shape). Non-primary args
+                # stay unwalked (the passthrough rule above).
+                stack = list(c.lineage.concept_arguments)
+                walked: set[str] = set()
+                while stack:
+                    arg = stack.pop()
+                    if arg.address in walked:
+                        continue
+                    walked.add(arg.address)
+                    needed.add(arg.address)
+                    if arg.address in primary_addrs and arg.lineage is not None:
+                        stack.extend(arg.lineage.concept_arguments)
+    if injected is not None:
+        for arg in condition_row_args(injected):
+            _add_needed_concept(needed, arg)
+    # Honor the group-planning contract's declared join keys: a bridge key
+    # (e.g. `order` linking a window-derived dimension to the fact scan) is
+    # not an aggregate input, so it isn't in `needed` and `_parent_nodes_for`
+    # would slice it off the root scan, leaving the merge with no shared
+    # key (ON 1=1). Pull in only the EXTRA bridge keys (those not already in
+    # the group's grain/outputs) so a grouping key (e.g. a `by rollup`
+    # dimension) is never re-added to `needed` and forced into the SELECT
+    # outside its GROUP BY.
+    needed |= (
+        set(_input_contract_join_keys(a))
+        - set(a.grain_components)
+        - set(a.output_concepts)
+    )
+    parent_builds = _parent_nodes_for(
+        group_graph,
+        group_edges,
+        attrs,
+        built,
+        gid,
+        environment,
+        g,
+        history,
+        needed=needed,
+        root_requests=root_requests,
+        mandatory_list=mandatory_list,
+        complete_partials=complete_partials,
+        staged_conditions=staged_conditions,
+        feeder_cache=feeder_cache,
+        arms_delivered=arms_delivered,
+    )
+    parent_group_ids = {parent.group_id for parent in parent_builds}
+    join_key_addresses = _input_contract_join_keys(a, parent_group_ids)
+    if derivation == Derivation.UNION:
+        parents = _union_arm_parents(
+            parent_builds, attrs, environment, needed, group_graph, built
+        )
+    else:
+        # A WHERE-only root scan a constraint edge feeds into this consumer
+        # is a filter on the input rows: it may only remove them, so the merge is INNER.
+        filter_scan = any(
+            attrs[parent.group_id].derivation == Derivation.ROOT
+            and edge_kind(group_edges, parent.group_id, gid) == EdgeKind.CONSTRAINT
+            for parent in parent_builds
+        )
+        parents = _apply_input_contracts(parent_builds, a, needed, environment)
+        # A ROOT scan hosting a null-rejecting request atom emits exactly
+        # the atom's population, so the merge may claim it. A grouping
+        # parent applies the atom to its INPUT rows and its output claims
+        # nothing (the FINAL still gates); an `is null` atom is satisfied
+        # by the padding a preserving join adds, unless what it reads is
+        # defined on every row (a pinned value), where it is as exact.
+        keyspace = environment.span_scope.keyspace
+        applied_atoms = _wrap_atoms(
+            [
+                atom
+                for parent in parent_builds
+                if attrs[parent.group_id].derivation == Derivation.ROOT
+                for atom in attrs[parent.group_id].condition_atoms
+                if non_null_proofs(atom)
+                or _reads_only_values_defined_everywhere(atom, keyspace)
+            ]
+        )
+        applied = applied_atoms.conditional if applied_atoms else None
+        # a parent holds a region's rows when it reads its domain, the
+        # domain itself or a derivation over what it carries (`upper(name)`)
+        reads = [region_reads(p) for p in parents]
+        domains = [p for p, read in zip(parents, reads) if read]
+        if derivation == Derivation.AGGREGATE and domains:
+            # an aggregate evaluated OVER a region: its row-stream
+            # arguments are computed on the solid rows first, then the
+            # region's rows pad them. The solid merge pairs on solid
+            # keys: this group may extend the spans (it reads the
+            # domain), the merge below the domain may not.
+            domain_spans: frozenset[str] = frozenset().union(*reads)
+            # a condition feeder keyed by the span (`count(return_id) by
+            # item_sk = 0`) is a value per member of the region: it joins
+            # the united rows, not the solid stream, or a member the solid
+            # stream lacks (an item with returns and no sale) is padded
+            # past it and reads its count as 0. So does one value for the
+            # whole statement (`avg(bal) by *`), NULL on a padded row when
+            # it rides the solid stream
+            feeders = [
+                p
+                for p, build in zip(parents, parent_builds)
+                if p not in domains
+                and edge_kind(group_edges, build.group_id, gid) == EdgeKind.CONSTRAINT
+                and attrs[build.group_id].grain_components
+                and attrs[build.group_id].grain_components
+                <= domain_spans | {ALL_ROWS_ADDRESS}
+            ]
+            group_scope = environment.span_scope
+            with under_span_scope(
+                environment,
+                dc_replace(
+                    group_scope, extent_free=group_scope.extent_free | domain_spans
+                ),
+            ):
+                solid = _pre_merge_parents(
+                    [p for p in parents if p not in domains and p not in feeders],
+                    environment,
+                    join_key_addresses=join_key_addresses,
+                    needed=needed,
+                    group_graph=group_graph,
+                    built=built,
+                    preexisting_conditions=applied,
+                )
+            outputs, named_arguments = _name_inline_arguments(
+                outputs, primary_addrs, domain_spans, environment
+            )
+            parents = (
+                _project_basic_aggregate_inputs(
+                    outputs,
+                    primary_addrs,
+                    solid,
+                    environment,
+                    region_spans=domain_spans,
+                    named=named_arguments,
+                )
+                + domains
+                + feeders
+            )
+        parents = _pre_merge_parents(
+            parents,
+            environment,
+            join_key_addresses=join_key_addresses,
+            needed=needed,
+            group_graph=group_graph,
+            built=built,
+            force_join_type=JoinType.INNER if filter_scan else None,
+            preexisting_conditions=applied,
+        )
+    # ROOT scans source columns from datasources directly, not from their
+    # group-graph predecessors. A `constraint`-edge predecessor (e.g. a
+    # d1 aggregate feeding a HAVING-style filter on this root) is real
+    # row-flow at SQL time (INNER JOIN to apply the filter) but doesn't
+    # supply the root's primary scan columns. Pruning by parent outputs
+    # there would strip every requested column and the root would never
+    # build. A ROWSET boundary likewise sources from its own
+    # recursively-planned inner select (`gen_rowset` consumes no parents,
+    # permanently: a body is a statement planned in its own scope);
+    # pruning it by a constraint-edge sibling would drop any handle the
+    # sibling happens not to pseudonym-cover.
+    if derivation not in (
+        Derivation.ROOT,
+        Derivation.UNNEST,
+        Derivation.ROWSET,
+    ):
+        wanted = outputs
+        outputs = satisfiable_outputs(outputs, parents)
+        if not outputs:
+            ctx.unbuilt[gid] = wanted
+            return None
+    # For aggregating derivations, peel `injected` off into a pre-filter
+    # wrapper so the GroupNode itself sees no `conditions`. GroupNode's
+    # non-scalar-condition path reacts to a condition that references an
+    # aggregate concept (`cp > 1.2 * avg`) by appending the condition's
+    # row args to the group's outputs, which then leak into the GROUP BY
+    # and shrink every row to a unique (state, cp, avg) bucket. Wrapping
+    # in a SelectNode does the WHERE first; the GroupNode then aggregates
+    # the filtered rows with a clean GROUP BY at the intended grain.
+    condition_for_generator = injected
+    # WINDOW gets the same peel: WindowNode has no `conditions` slot (its
+    # generator folds them into `preexisting_conditions`, silently dropping
+    # the filter), and WHERE-before-window is exactly the required
+    # semantics: the window computes over the filtered rows.
+    if (
+        injected is not None
+        and derivation in (*_AGGREGATING_DERIVATIONS, Derivation.WINDOW)
+        and parents
+    ):
+        parent_output_by_addr = {
+            output.address: output
+            for parent in parents
+            for output in parent.output_concepts
+        }
+        parent_outputs = list(parent_output_by_addr.values())
+        wrapper = SelectNode(
+            input_concepts=parent_outputs,
+            output_concepts=parent_outputs,
+            environment=environment,
+            parents=parents,
+            conditions=injected.conditional,
+        )
+        parents = [wrapper]
+        condition_for_generator = None
+    if derivation == Derivation.AGGREGATE and parents:
+        parents = _project_basic_aggregate_inputs(
+            outputs,
+            primary_addrs,
+            parents,
+            environment,
+            region_spans=frozenset().union(*(region_reads(p) for p in parents)),
+        )
+    # Normalize aggregate inputs to the row grain implied by their
+    # arguments before the aggregate runs. This is generic across aggregate
+    # functions: the normalization preserves both the input-grain keys and
+    # the argument columns the aggregate will read.
+    if (
+        derivation == Derivation.AGGREGATE
+        and a.aggregate_input_grain
+        and a.aggregate_input_grain != a.grain_components
+        and parents
+        and not _aggregate_inputs_are_row_preserving(outputs, primary_addrs, parents)
+        and not _parents_already_at_input_grain(
+            outputs, parents, a.aggregate_input_grain, environment
+        )
+    ):
+        normalize_addrs = set(a.aggregate_input_grain)
+        aggregate_arg_addrs: set[str] = set()
+        for c in outputs:
+            normalize_addrs.add(c.address)
+            if c.address not in primary_addrs or c.lineage is None:
+                continue
+            for arg in _parent_supplied_args(c, primary_addrs):
+                normalize_addrs.add(arg.address)
+                aggregate_arg_addrs.add(arg.address)
+        normalize_parent_output_by_addr: dict[str, BuildConcept] = {}
+        for parent in parents:
+            for output in parent.output_concepts:
+                normalize_parent_output_by_addr.setdefault(output.address, output)
+        # A parent may carry a needed address only under a pseudonym twin
+        # (`count(actor)` over a boundary that emits `stages.event_id`, the
+        # global-merge alias); dropping it here would dedup the input
+        # stream at the wrong grain before the aggregate reads it.
+        normalize_concepts: list[BuildConcept] = []
+        matched_addrs: set[str] = set()
+        for addr in sorted(normalize_addrs):
+            concept_match = normalize_parent_output_by_addr.get(addr)
+            if concept_match is None:
+                concept_match = next(
+                    (
+                        output
+                        for output in normalize_parent_output_by_addr.values()
+                        if addr in output.pseudonyms
+                    ),
+                    None,
+                )
+            if concept_match is None and addr in aggregate_arg_addrs:
+                # An aggregate argument the parent never materialized (a
+                # filter virtual the plan meant to re-derive at the
+                # aggregate itself) must be computed BELOW the dedup:
+                # re-deriving it above the normalization GROUP both
+                # evaluates the filter on already-deduped rows and strands
+                # the virtual's row inputs outside the projection. Widen
+                # the parent that can render it.
+                candidate = _concept_at(environment, addr)
+                if candidate is not None:
+                    for parent in parents:
+                        available = renderable_addresses(parent)
+                        if not concept_satisfiable(candidate, available):
+                            continue
+                        widen_projection(
+                            parent,
+                            [candidate],
+                            input_candidates=_row_lineage_closure(candidate),
+                            available_addresses=available,
+                        )
+                        concept_match = candidate
+                        break
+            if concept_match is not None and concept_match.address not in matched_addrs:
+                matched_addrs.add(concept_match.address)
+                normalize_concepts.append(concept_match)
+        if normalize_concepts:
+            parents = [
+                GroupNode(
+                    output_concepts=normalize_concepts,
+                    input_concepts=normalize_concepts,
+                    environment=environment,
+                    parents=parents,
+                )
+            ]
+    if derivation == Derivation.AGGREGATE and a.aggregate_first_row_grains:
+        outputs, parents = _read_first_rows(
+            outputs, a.aggregate_first_row_grains, parents, environment
+        )
+    # The same root in two phases (the d1 twin feeding the condition-phase
+    # aggregates) asks the same question when the WHERE placed on each is
+    # the same; the second reads the first's answer.
+    arm_local = arms_delivered or _feeds_only_aggregates(group_graph, attrs, gid)
+    request = (
+        RootRequest(
+            frozenset(c.address for c in outputs),
+            condition_for_generator,
+            environment.span_scope,
+            preexisting,
+            arm_local,
+        )
+        if derivation == Derivation.ROOT
+        else None
+    )
+    # the region contract is the group's, not the request's: a twin's
+    # copy would carry the twin's region marker
+    twin = next(
+        (
+            other
+            for other, asked in root_requests.items()
+            if asked == request and attrs[other].extent_spans == a.extent_spans
+        ),
+        None,
+    )
+    node: StrategyNode | None
+    if twin is not None:
+        node = built[twin].copy()
+        node.origin_group = gid
+        logger.info(f"[v4] built {gid} reads {twin}: the same ROOT request")
+    else:
+        if derivation == Derivation.ROOT:
+            _raise_on_discarded_parent_atoms(gid, parent_group_ids, attrs)
+        node = build_node(
+            derivation=derivation,
+            outputs=outputs,
+            parents=parents,
+            environment=environment,
+            conditions=condition_for_generator,
+            preexisting_conditions=preexisting,
+            intrinsic_filter_pushdown=_filter_intrinsic_pushdown_safe(
+                group_graph, attrs, gid, outputs, mandatory_list, environment
+            ),
+            existence_source=any(
+                edge_kind(group_edges, gid, succ) == EdgeKind.EXISTENCE
+                for succ in group_graph.successors(gid)
+            ),
+            collapse_to_grain=all(
+                attrs[succ].derivation != Derivation.AGGREGATE
+                for succ in group_graph.successors(gid)
+            ),
+            complete_partials=complete_partials,
+            history=history,
+            g=g,
+            staged_conditions=staged_conditions,
+            depth=depth,
+            arm_local=arm_local,
+        )
+    # a generator may hand back a parent's node; that one keeps its group
+    if node is not None and node.origin_group is None:
+        node.origin_group = gid
+    if node is not None and request is not None:
+        root_requests[gid] = request
+    if logger.isEnabledFor(logging.INFO):
+        logger.info(
+            f"[v4] built {gid} derivation={derivation} "
+            f"outputs={[o.address for o in outputs]} "
+            f"parents={[type(p).__name__ for p in parents]} "
+            f"-> {type(node).__name__ if node else None}"
+        )
+    if plan_trace.active():
+        plan_trace.record(
+            f"built {gid}",
+            plan_trace.NodeBuiltStep(
+                group=gid,
+                derivation=derivation.value,
+                attrs=plan_trace.jsonable(a),
+                outputs=plan_trace.addresses(outputs),
+                needed=sorted(needed),
+                atoms=[plan_trace.expression(atom) for atom in atoms],
+                preexisting=plan_trace.expression(preexisting),
+                parent_groups=sorted(parent_group_ids),
+                join_keys=sorted(join_key_addresses),
+                span_scope=plan_trace.span_scope(environment.span_scope),
+                node=plan_trace.strategy_node(node),
+            ),
+        )
+    if node is None:
+        ctx.unbuilt[gid] = outputs
+        return None
+    if a.extent_spans:
+        if derivation == Derivation.ROWSET:
+            # a boundary's rows are the body's (a sold item once per sale
+            # line, its grain claim notwithstanding); the domain's are the
+            # region's own members, once each
+            members = [o for o in node.output_concepts if o.address in select_addrs]
+            node = GroupNode(
+                output_concepts=members,
+                input_concepts=members,
+                environment=environment,
+                parents=[node],
+                partial_concepts=list(node.partial_concepts),
+                force_group=True,
+            )
+        if a.null_member_spans:
+            node = _with_null_members(
+                node, a.null_member_spans, environment, g.scope.datasources
+            )
+        # the region contract: this node's rows are the region's own
+        node.region_spans = a.extent_spans
+    if derivation == Derivation.ROOT:
+        _drop_unadvertised_rowset_handles(node, set(select_addrs), environment)
+    # Elide here, not only in the tree pass: consumers take their own copy
+    # of this node, so a passthrough left standing becomes the SHARED
+    # parent two single-column consumers each regroup over, and the merge
+    # above them has no key to pair on (union-TVF arm outputs split into a
+    # cross join).
+    node = _elide_single_parent_passthrough(node)
+    # The subtree walk lands the wiring on whichever node emits the WHERE
+    # referencing the IN-RHS concept (the peeled SelectNode wrapper for an
+    # aggregating derivation, not the GroupNode above it).
+    _wire_existence(
+        node,
+        built,
+        feeder_cache,
+        preferred=[
+            pgid
+            for pgid in group_graph.predecessors(gid)
+            if edge_kind(group_edges, pgid, gid) == EdgeKind.EXISTENCE
+        ],
+    )
+    return node
+
+
 def build_strategy_node(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -5677,8 +6220,6 @@ def build_strategy_node(
     with explicit parent nodes. Returns the most-downstream built node, or
     None if nothing built. `depth` is the nesting of this plan inside rowset
     bodies, for trace indentation."""
-    from trilogy.core.processing.v4_node_generators import build_node  # cycle
-
     # whether a request may read a coalescing axis off one arm: decided once,
     # from the statement's shape
     arms_delivered = axis_arms_delivered(
@@ -5686,10 +6227,26 @@ def build_strategy_node(
     )
 
     built: dict[str, StrategyNode] = {}
-    root_requests: dict[str, RootRequest] = {}
-    feeder_cache = _CleanFeederCache(environment, g, history)
-    ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
     unbuilt: dict[str, list[BuildConcept]] = {}
+    ctx = _GroupBuild(
+        group_graph,
+        group_edges,
+        attrs,
+        mandatory_list,
+        environment,
+        g,
+        history,
+        complete_partials,
+        staged_conditions,
+        depth,
+        arms_delivered,
+        built,
+        {},
+        _CleanFeederCache(environment, g, history),
+        unbuilt,
+    )
+    ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
+    plan_scope = environment.span_scope
 
     for gid in _topological_order(group_graph, group_edges):
         if gid == FINAL_NODE_ID:
@@ -5705,570 +6262,66 @@ def build_strategy_node(
         # consumer-side re-sources `_parent_nodes_for` plans below. A region
         # domain is the FINAL's own rows and is built under the FINAL's scope,
         # as its every reader sees it there (`_assemble_final_node`).
-        environment.span_scope = (
-            _final_span_scope(environment.span_scope)
-            if a.extent_spans
-            else _group_span_scope(environment.span_scope, ownership, gid)
-        )
-        # Only the FINAL sink carries a None derivation, and it is skipped above.
-        assert a.derivation is not None
-        derivation = a.derivation
-        select_addrs = _select_addresses(a)
-        if derivation == Derivation.ROWSET:
-            # A boundary group's outputs can carry ANOTHER rowset's handles
-            # (a deferred WHERE's args exposed through a scoped relation).
-            # `resolve_rowset` plans the rowset of the first handle it sees, so
-            # order this group's OWN handles (its primary members) first so a
-            # foreign condition-arg handle can't hijack the boundary. Permanent:
-            # a body is a statement planned in its own scope, so the boundary
-            # can never take a foreign handle from a parent.
-            primary = set(a.primary_members)
-            select_addrs = (
-                *(addr for addr in select_addrs if addr in primary),
-                *(addr for addr in select_addrs if addr not in primary),
-            )
-        outputs = [
-            c
-            for addr in select_addrs
-            if (c := _concept_at(environment, addr)) is not None
-        ]
-        if not outputs:
-            unbuilt[gid] = outputs
-            continue
-        if derivation == Derivation.AGGREGATE and a.aggregate_distinct_addrs:
-            outputs = _apply_count_distinct_rewrites(
-                outputs, a.aggregate_distinct_addrs
-            )
-        primary_addrs = set(a.primary_members)
-        twin_reused: dict[str, bool] = (
-            {
-                c.address: _aggregate_reused_from_twin(c.address, gid, attrs, built)
-                for c in outputs
-                if c.address in primary_addrs and c.lineage is not None
-            }
-            if derivation in _AGGREGATING_DERIVATIONS
-            else {}
-        )
-        atoms = _atoms_at(attrs, gid)
-        # Conjunction-coverage siblings only bind when this group recomputes
-        # its aggregate over rows; a fully twin-reused value is read through,
-        # so its input population is not this group's to filter, and keeping
-        # the atom would resurrect the redundant fact-rescan parent through
-        # its `needed` args.
-        if a.conjunction_atoms and twin_reused and all(twin_reused.values()):
-            atoms = [atom for atom in atoms if atom not in a.conjunction_atoms]
-        injected = _wrap_atoms(atoms)
-        preexisting = _wrap_atoms(_accumulated_atoms_above(group_graph, attrs, gid))
-        # The "needed" set drives ancestor-dedup: a parent is kept only if
-        # it contributes something to it that no descendant parent also
-        # provides. Includes the output addresses themselves, the lineage
-        # args of *primary* outputs (the columns this group actually
-        # computes), and the inputs of any conditions applied at this
-        # group. Passthroughs' lineage is intentionally NOT walked: a
-        # passthrough output like `sum_sales` rides through this group
-        # from an aggregate parent; if we walked its lineage we'd add
-        # `sales_price` to `needed`, which ROOT provides but the aggregate
-        # doesn't, and ROOT would escape dedup. The aggregate already
-        # owns that lineage upstream.
-        needed: set[str] = set()
-        for c in outputs:
-            needed.add(c.address)
-            if c.address in primary_addrs and c.lineage is not None:
-                if derivation in _AGGREGATING_DERIVATIONS:
-                    # A post-condition aggregate that REUSES a same-grain twin
-                    # (its pre-condition d1 sibling already materialized this
-                    # value) reads the value through rather than recomputing,
-                    # so its raw recompute inputs (the input-grain keys, measure
-                    # columns) don't belong in `needed`. Pulling them keeps a
-                    # redundant fact-rescan ROOT parent alive that only
-                    # re-supplies grouping keys the twin already carries. Treat
-                    # it like a passthrough: skip its lineage.
-                    if not twin_reused.get(c.address, False):
-                        _add_aggregate_needed_concepts(needed, c)
-                else:
-                    # Recurse through args that are THEMSELVES primary members
-                    # of this group (intermediates computed here, e.g. a window
-                    # output exposed through a wrapping BASIC): their inputs
-                    # must come from parents, so they belong in `needed`; else
-                    # a parent supplying only those deep inputs reads as
-                    # redundant and dedup can drop every candidate (the
-                    # lead-over-derived-partition-key shape). Non-primary args
-                    # stay unwalked (the passthrough rule above).
-                    stack = list(c.lineage.concept_arguments)
-                    walked: set[str] = set()
-                    while stack:
-                        arg = stack.pop()
-                        if arg.address in walked:
-                            continue
-                        walked.add(arg.address)
-                        needed.add(arg.address)
-                        if arg.address in primary_addrs and arg.lineage is not None:
-                            stack.extend(arg.lineage.concept_arguments)
-        if injected is not None:
-            for arg in condition_row_args(injected):
-                _add_needed_concept(needed, arg)
-        # Honor the group-planning contract's declared join keys: a bridge key
-        # (e.g. `order` linking a window-derived dimension to the fact scan) is
-        # not an aggregate input, so it isn't in `needed` and `_parent_nodes_for`
-        # would slice it off the root scan, leaving the merge with no shared
-        # key (ON 1=1). Pull in only the EXTRA bridge keys (those not already in
-        # the group's grain/outputs) so a grouping key (e.g. a `by rollup`
-        # dimension) is never re-added to `needed` and forced into the SELECT
-        # outside its GROUP BY.
-        needed |= (
-            set(_input_contract_join_keys(a))
-            - set(a.grain_components)
-            - set(a.output_concepts)
-        )
-        parent_builds = _parent_nodes_for(
-            group_graph,
-            group_edges,
-            attrs,
-            built,
-            gid,
+        with under_span_scope(
             environment,
-            g,
-            history,
-            needed=needed,
-            root_requests=root_requests,
-            mandatory_list=mandatory_list,
-            complete_partials=complete_partials,
-            staged_conditions=staged_conditions,
-            feeder_cache=feeder_cache,
-            arms_delivered=arms_delivered,
-        )
-        parent_group_ids = {parent.group_id for parent in parent_builds}
-        join_key_addresses = _input_contract_join_keys(a, parent_group_ids)
-        if derivation == Derivation.UNION:
-            parents = _union_arm_parents(
-                parent_builds, attrs, environment, needed, group_graph, built
-            )
-        else:
-            # A WHERE-only root scan a constraint edge feeds into this consumer
-            # is a filter on the input rows: it may only remove them, so the merge is INNER.
-            filter_scan = any(
-                attrs[parent.group_id].derivation == Derivation.ROOT
-                and edge_kind(group_edges, parent.group_id, gid) == EdgeKind.CONSTRAINT
-                for parent in parent_builds
-            )
-            parents = _apply_input_contracts(parent_builds, a, needed, environment)
-            # A ROOT scan hosting a null-rejecting request atom emits exactly
-            # the atom's population, so the merge may claim it. A grouping
-            # parent applies the atom to its INPUT rows and its output claims
-            # nothing (the FINAL still gates); an `is null` atom is satisfied
-            # by the padding a preserving join adds, unless what it reads is
-            # defined on every row (a pinned value), where it is as exact.
-            keyspace = environment.span_scope.keyspace
-            applied_atoms = _wrap_atoms(
-                [
-                    atom
-                    for parent in parent_builds
-                    if attrs[parent.group_id].derivation == Derivation.ROOT
-                    for atom in attrs[parent.group_id].condition_atoms
-                    if non_null_proofs(atom)
-                    or _reads_only_values_defined_everywhere(atom, keyspace)
-                ]
-            )
-            applied = applied_atoms.conditional if applied_atoms else None
-            # a parent holds a region's rows when it reads its domain, the
-            # domain itself or a derivation over what it carries (`upper(name)`)
-            reads = [region_reads(p) for p in parents]
-            domains = [p for p, read in zip(parents, reads) if read]
-            if derivation == Derivation.AGGREGATE and domains:
-                # an aggregate evaluated OVER a region: its row-stream
-                # arguments are computed on the solid rows first, then the
-                # region's rows pad them. The solid merge pairs on solid
-                # keys: this group may extend the spans (it reads the
-                # domain), the merge below the domain may not.
-                domain_spans: frozenset[str] = frozenset().union(*reads)
-                # a condition feeder keyed by the span (`count(return_id) by
-                # item_sk = 0`) is a value per member of the region: it joins
-                # the united rows, not the solid stream, or a member the solid
-                # stream lacks (an item with returns and no sale) is padded
-                # past it and reads its count as 0. So does one value for the
-                # whole statement (`avg(bal) by *`), NULL on a padded row when
-                # it rides the solid stream
-                feeders = [
-                    p
-                    for p, build in zip(parents, parent_builds)
-                    if p not in domains
-                    and edge_kind(group_edges, build.group_id, gid)
-                    == EdgeKind.CONSTRAINT
-                    and attrs[build.group_id].grain_components
-                    and attrs[build.group_id].grain_components
-                    <= domain_spans | {ALL_ROWS_ADDRESS}
-                ]
-                group_scope = environment.span_scope
-                with under_span_scope(
-                    environment,
-                    dc_replace(
-                        group_scope, extent_free=group_scope.extent_free | domain_spans
-                    ),
-                ):
-                    solid = _pre_merge_parents(
-                        [p for p in parents if p not in domains and p not in feeders],
-                        environment,
-                        join_key_addresses=join_key_addresses,
-                        needed=needed,
-                        group_graph=group_graph,
-                        built=built,
-                        preexisting_conditions=applied,
-                    )
-                outputs, named_arguments = _name_inline_arguments(
-                    outputs, primary_addrs, domain_spans, environment
-                )
-                parents = (
-                    _project_basic_aggregate_inputs(
-                        outputs,
-                        primary_addrs,
-                        solid,
-                        environment,
-                        region_spans=domain_spans,
-                        named=named_arguments,
-                    )
-                    + domains
-                    + feeders
-                )
-            parents = _pre_merge_parents(
-                parents,
-                environment,
-                join_key_addresses=join_key_addresses,
-                needed=needed,
-                group_graph=group_graph,
-                built=built,
-                force_join_type=JoinType.INNER if filter_scan else None,
-                preexisting_conditions=applied,
-            )
-        # ROOT scans source columns from datasources directly, not from their
-        # group-graph predecessors. A `constraint`-edge predecessor (e.g. a
-        # d1 aggregate feeding a HAVING-style filter on this root) is real
-        # row-flow at SQL time (INNER JOIN to apply the filter) but doesn't
-        # supply the root's primary scan columns. Pruning by parent outputs
-        # there would strip every requested column and the root would never
-        # build. A ROWSET boundary likewise sources from its own
-        # recursively-planned inner select (`gen_rowset` consumes no parents,
-        # permanently: a body is a statement planned in its own scope);
-        # pruning it by a constraint-edge sibling would drop any handle the
-        # sibling happens not to pseudonym-cover.
-        if derivation not in (
-            Derivation.ROOT,
-            Derivation.UNNEST,
-            Derivation.ROWSET,
-        ):
-            wanted = outputs
-            outputs = satisfiable_outputs(outputs, parents)
-            if not outputs:
-                unbuilt[gid] = wanted
-                continue
-        # For aggregating derivations, peel `injected` off into a pre-filter
-        # wrapper so the GroupNode itself sees no `conditions`. GroupNode's
-        # non-scalar-condition path reacts to a condition that references an
-        # aggregate concept (`cp > 1.2 * avg`) by appending the condition's
-        # row args to the group's outputs, which then leak into the GROUP BY
-        # and shrink every row to a unique (state, cp, avg) bucket. Wrapping
-        # in a SelectNode does the WHERE first; the GroupNode then aggregates
-        # the filtered rows with a clean GROUP BY at the intended grain.
-        condition_for_generator = injected
-        # WINDOW gets the same peel: WindowNode has no `conditions` slot (its
-        # generator folds them into `preexisting_conditions`, silently dropping
-        # the filter), and WHERE-before-window is exactly the required
-        # semantics: the window computes over the filtered rows.
-        if (
-            injected is not None
-            and derivation in (*_AGGREGATING_DERIVATIONS, Derivation.WINDOW)
-            and parents
-        ):
-            parent_output_by_addr = {
-                output.address: output
-                for parent in parents
-                for output in parent.output_concepts
-            }
-            parent_outputs = list(parent_output_by_addr.values())
-            wrapper = SelectNode(
-                input_concepts=parent_outputs,
-                output_concepts=parent_outputs,
-                environment=environment,
-                parents=parents,
-                conditions=injected.conditional,
-            )
-            parents = [wrapper]
-            condition_for_generator = None
-        if derivation == Derivation.AGGREGATE and parents:
-            parents = _project_basic_aggregate_inputs(
-                outputs,
-                primary_addrs,
-                parents,
-                environment,
-                region_spans=frozenset().union(*(region_reads(p) for p in parents)),
-            )
-        # Normalize aggregate inputs to the row grain implied by their
-        # arguments before the aggregate runs. This is generic across aggregate
-        # functions: the normalization preserves both the input-grain keys and
-        # the argument columns the aggregate will read.
-        if (
-            derivation == Derivation.AGGREGATE
-            and a.aggregate_input_grain
-            and a.aggregate_input_grain != a.grain_components
-            and parents
-            and not _aggregate_inputs_are_row_preserving(
-                outputs, primary_addrs, parents
-            )
-            and not _parents_already_at_input_grain(
-                outputs, parents, a.aggregate_input_grain, environment
-            )
-        ):
-            normalize_addrs = set(a.aggregate_input_grain)
-            aggregate_arg_addrs: set[str] = set()
-            for c in outputs:
-                normalize_addrs.add(c.address)
-                if c.address not in primary_addrs or c.lineage is None:
-                    continue
-                for arg in _parent_supplied_args(c, primary_addrs):
-                    normalize_addrs.add(arg.address)
-                    aggregate_arg_addrs.add(arg.address)
-            normalize_parent_output_by_addr: dict[str, BuildConcept] = {}
-            for parent in parents:
-                for output in parent.output_concepts:
-                    normalize_parent_output_by_addr.setdefault(output.address, output)
-            # A parent may carry a needed address only under a pseudonym twin
-            # (`count(actor)` over a boundary that emits `stages.event_id`, the
-            # global-merge alias); dropping it here would dedup the input
-            # stream at the wrong grain before the aggregate reads it.
-            normalize_concepts: list[BuildConcept] = []
-            matched_addrs: set[str] = set()
-            for addr in sorted(normalize_addrs):
-                concept_match = normalize_parent_output_by_addr.get(addr)
-                if concept_match is None:
-                    concept_match = next(
-                        (
-                            output
-                            for output in normalize_parent_output_by_addr.values()
-                            if addr in output.pseudonyms
-                        ),
-                        None,
-                    )
-                if concept_match is None and addr in aggregate_arg_addrs:
-                    # An aggregate argument the parent never materialized (a
-                    # filter virtual the plan meant to re-derive at the
-                    # aggregate itself) must be computed BELOW the dedup:
-                    # re-deriving it above the normalization GROUP both
-                    # evaluates the filter on already-deduped rows and strands
-                    # the virtual's row inputs outside the projection. Widen
-                    # the parent that can render it.
-                    candidate = _concept_at(environment, addr)
-                    if candidate is not None:
-                        for parent in parents:
-                            available = renderable_addresses(parent)
-                            if not concept_satisfiable(candidate, available):
-                                continue
-                            widen_projection(
-                                parent,
-                                [candidate],
-                                input_candidates=_row_lineage_closure(candidate),
-                                available_addresses=available,
-                            )
-                            concept_match = candidate
-                            break
-                if (
-                    concept_match is not None
-                    and concept_match.address not in matched_addrs
-                ):
-                    matched_addrs.add(concept_match.address)
-                    normalize_concepts.append(concept_match)
-            if normalize_concepts:
-                parents = [
-                    GroupNode(
-                        output_concepts=normalize_concepts,
-                        input_concepts=normalize_concepts,
-                        environment=environment,
-                        parents=parents,
-                    )
-                ]
-        if derivation == Derivation.AGGREGATE and a.aggregate_first_row_grains:
-            outputs, parents = _read_first_rows(
-                outputs, a.aggregate_first_row_grains, parents, environment
-            )
-        # The same root in two phases (the d1 twin feeding the condition-phase
-        # aggregates) asks the same question when the WHERE placed on each is
-        # the same; the second reads the first's answer.
-        arm_local = arms_delivered or _feeds_only_aggregates(group_graph, attrs, gid)
-        request = (
-            RootRequest(
-                frozenset(c.address for c in outputs),
-                condition_for_generator,
-                environment.span_scope,
-                preexisting,
-                arm_local,
-            )
-            if derivation == Derivation.ROOT
-            else None
-        )
-        # the region contract is the group's, not the request's: a twin's
-        # copy would carry the twin's region marker
-        twin = next(
             (
-                other
-                for other, asked in root_requests.items()
-                if asked == request and attrs[other].extent_spans == a.extent_spans
+                _final_span_scope(plan_scope)
+                if a.extent_spans
+                else _group_span_scope(plan_scope, ownership, gid)
             ),
-            None,
-        )
-        node: StrategyNode | None
-        if twin is not None:
-            node = built[twin].copy()
-            node.origin_group = gid
-            logger.info(f"[v4] built {gid} reads {twin}: the same ROOT request")
-        else:
-            if derivation == Derivation.ROOT:
-                _raise_on_discarded_parent_atoms(gid, parent_group_ids, attrs)
-            node = build_node(
-                derivation=derivation,
-                outputs=outputs,
-                parents=parents,
-                environment=environment,
-                conditions=condition_for_generator,
-                preexisting_conditions=preexisting,
-                intrinsic_filter_pushdown=_filter_intrinsic_pushdown_safe(
-                    group_graph, attrs, gid, outputs, mandatory_list, environment
-                ),
-                existence_source=any(
-                    edge_kind(group_edges, gid, succ) == EdgeKind.EXISTENCE
-                    for succ in group_graph.successors(gid)
-                ),
-                collapse_to_grain=all(
-                    attrs[succ].derivation != Derivation.AGGREGATE
-                    for succ in group_graph.successors(gid)
-                ),
-                complete_partials=complete_partials,
-                history=history,
-                g=g,
-                staged_conditions=staged_conditions,
-                depth=depth,
-                arm_local=arm_local,
-            )
-        # a generator may hand back a parent's node; that one keeps its group
-        if node is not None and node.origin_group is None:
-            node.origin_group = gid
-        if node is not None and request is not None:
-            root_requests[gid] = request
-        if logger.isEnabledFor(logging.INFO):
-            logger.info(
-                f"[v4] built {gid} derivation={derivation} "
-                f"outputs={[o.address for o in outputs]} "
-                f"parents={[type(p).__name__ for p in parents]} "
-                f"-> {type(node).__name__ if node else None}"
-            )
-        if plan_trace.active():
-            plan_trace.record(
-                f"built {gid}",
-                plan_trace.NodeBuiltStep(
-                    group=gid,
-                    derivation=derivation.value,
-                    attrs=plan_trace.jsonable(a),
-                    outputs=plan_trace.addresses(outputs),
-                    needed=sorted(needed),
-                    atoms=[plan_trace.expression(atom) for atom in atoms],
-                    preexisting=plan_trace.expression(preexisting),
-                    parent_groups=sorted(parent_group_ids),
-                    join_keys=sorted(join_key_addresses),
-                    span_scope=plan_trace.span_scope(environment.span_scope),
-                    node=plan_trace.strategy_node(node),
-                ),
-            )
-        if node is None:
-            unbuilt[gid] = outputs
-            continue
-        if a.extent_spans:
-            if derivation == Derivation.ROWSET:
-                # a boundary's rows are the body's (a sold item once per sale
-                # line, its grain claim notwithstanding); the domain's are the
-                # region's own members, once each
-                members = [o for o in node.output_concepts if o.address in select_addrs]
-                node = GroupNode(
-                    output_concepts=members,
-                    input_concepts=members,
-                    environment=environment,
-                    parents=[node],
-                    partial_concepts=list(node.partial_concepts),
-                    force_group=True,
-                )
-            if a.null_member_spans:
-                node = _with_null_members(
-                    node, a.null_member_spans, environment, g.scope.datasources
-                )
-            # the region contract: this node's rows are the region's own
-            node.region_spans = a.extent_spans
-        if derivation == Derivation.ROOT:
-            _drop_unadvertised_rowset_handles(node, set(select_addrs), environment)
-        # Elide here, not only in the tree pass: consumers take their own copy
-        # of this node, so a passthrough left standing becomes the SHARED
-        # parent two single-column consumers each regroup over, and the merge
-        # above them has no key to pair on (union-TVF arm outputs split into a
-        # cross join).
-        node = _elide_single_parent_passthrough(node)
-        # The subtree walk lands the wiring on whichever node emits the WHERE
-        # referencing the IN-RHS concept (the peeled SelectNode wrapper for an
-        # aggregating derivation, not the GroupNode above it).
-        _wire_existence(
-            node,
-            built,
-            feeder_cache,
-            preferred=[
-                pgid
-                for pgid in group_graph.predecessors(gid)
-                if edge_kind(group_edges, pgid, gid) == EdgeKind.EXISTENCE
-            ],
-        )
-        built[gid] = node
+        ):
+            node = _build_group(gid, ctx)
+        if node is not None:
+            built[gid] = node
 
     _raise_if_unbuilt_group_owed(group_graph, attrs, built, unbuilt)
     # The FINAL assembly is where the owner and the extent-free branches meet;
     # it must see every span again to host the owner's rows, except the ones
     # the plan above holds.
-    environment.span_scope = _final_span_scope(environment.span_scope)
-    if not built:
-        return None
-    plan_trace.set_context("FINAL")
-    final = _assemble_final_node(
-        group_graph,
-        group_edges,
-        attrs,
-        built,
-        mandatory_list,
-        environment,
-        g,
-        history,
-        root_requests,
-        feeder_cache=feeder_cache,
-        arms_delivered=arms_delivered,
-    )
-    if plan_trace.active():
-        plan_trace.record(
-            "FINAL assembled",
-            plan_trace.FinalStep(
-                contract=plan_trace.jsonable(attrs[FINAL_NODE_ID].final_contract),
-                extent_ownership=plan_trace.jsonable(ownership),
-                built={gid: repr(node) for gid, node in built.items()},
-                node=plan_trace.strategy_node(final),
-            ),
-        )
-    plan_trace.set_context(None)
-    if final is not None:
-        _raise_if_output_unrendered(final, mandatory_list)
-        final = _elide_passthrough_tree(final)
-        if _has_unsourced_leaf(final):
-            # A parent-less, datasource-less node that outputs a ROOT concept (a
-            # base column that must come from a datasource) has no source for
-            # it. This is an unresolvable query (e.g. a projection / aggregate
-            # over concepts from two unconnected namespaces); fail so it raises
-            # UnresolvableQueryException rather than invalid SQL.
-            # Unnest-of-literal / constant leaves output only derived concepts
-            # and are left alone.
+    with under_span_scope(environment, _final_span_scope(plan_scope)):
+        if not built:
             return None
-        # FINAL's own re-sources host their memberships unwired until here.
-        _wire_existence(final, built, feeder_cache)
-        _drop_stale_resolutions(final, set())
-    return final
+        plan_trace.set_context("FINAL")
+        final = _assemble_final_node(
+            group_graph,
+            group_edges,
+            attrs,
+            built,
+            mandatory_list,
+            environment,
+            g,
+            history,
+            ctx.root_requests,
+            feeder_cache=ctx.feeder_cache,
+            arms_delivered=arms_delivered,
+        )
+        if plan_trace.active():
+            plan_trace.record(
+                "FINAL assembled",
+                plan_trace.FinalStep(
+                    contract=plan_trace.jsonable(attrs[FINAL_NODE_ID].final_contract),
+                    extent_ownership=plan_trace.jsonable(ownership),
+                    built={gid: repr(node) for gid, node in built.items()},
+                    node=plan_trace.strategy_node(final),
+                ),
+            )
+        plan_trace.set_context(None)
+        if final is not None:
+            _raise_if_output_unrendered(final, mandatory_list)
+            final = _elide_passthrough_tree(final)
+            if _has_unsourced_leaf(final):
+                # A parent-less, datasource-less node that outputs a ROOT concept (a
+                # base column that must come from a datasource) has no source for
+                # it. This is an unresolvable query (e.g. a projection / aggregate
+                # over concepts from two unconnected namespaces); fail so it raises
+                # UnresolvableQueryException rather than invalid SQL.
+                # Unnest-of-literal / constant leaves output only derived concepts
+                # and are left alone.
+                return None
+            # FINAL's own re-sources host their memberships unwired until here.
+            _wire_existence(final, built, ctx.feeder_cache)
+            _drop_stale_resolutions(final, set())
+        return final
 
 
 def _drop_stale_resolutions(node: StrategyNode, seen: set[int]) -> None:
