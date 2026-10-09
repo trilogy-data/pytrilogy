@@ -27,11 +27,10 @@ def _rows_unique_at_set(
 ) -> bool:
     """Whether the parents' rows are already one per set value. A filter
     emits its content column, so uniqueness is judged on that."""
-    grains = [parent.grain for parent in parents]
-    if any(grain is None for grain in grains):
-        return False
     joined = BuildGrain(
-        components=set().union(*(set(grain.components) for grain in grains if grain))
+        components=set().union(
+            *(parent.resolve().grain.components for parent in parents)
+        )
     )
     nullable = [c for parent in parents for c in parent.nullable_concepts]
     emitted = [
