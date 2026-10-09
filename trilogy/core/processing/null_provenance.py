@@ -43,8 +43,7 @@ class ProvenanceMemo:
         self.extent: dict[int, frozenset[str]] = {}
         self.guest: dict[int, frozenset[str]] = {}
         self.driven: dict[int, bool] = {}
-        self.extension: dict[frozenset[str], dict[int, frozenset[str]]] = {}
-        self.span: dict[str, dict[int, frozenset[str]]] = {}
+        self.span: dict[frozenset[str], dict[int, frozenset[str]]] = {}
         self.rollup: dict[int, frozenset[str]] = {}
         self.value: dict[tuple[int, str], bool] = {}
 
@@ -78,11 +77,8 @@ class NullProvenance:
             )
         return found
 
-    def extension_padded(self, spans: frozenset[str]) -> frozenset[str]:
-        return extension_padded_addresses(self.source, spans, self.memo)
-
-    def padded_by(self, span: str) -> frozenset[str]:
-        return span_padded_addresses(self.source, span, self.memo)
+    def padded_by(self, spans: frozenset[str]) -> frozenset[str]:
+        return span_padded_addresses(self.source, spans, self.memo)
 
     def values(self, concept: BuildConcept) -> bool:
         """Whether the NULLs this source carries for `concept` are values."""
@@ -280,11 +276,13 @@ def guest_padded_addresses(
     )
 
 
-def extension_padded_addresses(
+def span_padded_addresses(
     datasource: DataSource, spans: frozenset[str], memo: ProvenanceMemo | None = None
 ) -> frozenset[str]:
-    """Addresses this source only emits NULL for because a ``~``-preserving
-    join keyed on one of ``spans`` padded them to carry its extension members.
+    """Addresses this source only emits NULL for on the rows that carry the
+    extension members of one of ``spans``: a ``~``-preserving join keyed on
+    the span padded them, or a lookup chained off a key it padded (`users
+    LEFT orders` on the span, then `LEFT lines` on `order_id`).
 
     A merge extent-free for those spans reads them as absence, not content:
     another branch owns those rows. An ordinary outer lookup's nullability
@@ -294,24 +292,7 @@ def extension_padded_addresses(
         datasource,
         _no_leaf_addresses,
         partial(_span_keyed, spans=spans),
-        memo.extension.setdefault(spans, {}),
-    )
-
-
-def span_padded_addresses(
-    datasource: DataSource, span: str, memo: ProvenanceMemo
-) -> frozenset[str]:
-    """Addresses this source emits NULL for on the rows that carry `span`'s
-    extension members.
-
-    Wider than ``extension_padded_addresses`` by one step: a lookup chained off
-    an already padded key (`users LEFT orders` on the span, then `LEFT lines`
-    on `order_id`) pads for the same member, though the span does not key it."""
-    return _padded_addresses(
-        datasource,
-        _no_leaf_addresses,
-        partial(_span_keyed, spans=frozenset({span})),
-        memo.span.setdefault(span, {}),
+        memo.span.setdefault(spans, {}),
         chain=True,
     )
 

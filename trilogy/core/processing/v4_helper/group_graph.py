@@ -951,19 +951,12 @@ def _refresh_final_contract(
     )
 
 
-def _row_parents(
-    group_graph: nx.DiGraph,
-    group_edges: EdgeMap,
-    attrs: dict[str, GroupAttrs],
-    gid: str,
-) -> list[str]:
-    """`gid`'s parents that feed it rows: real groups, reached by an edge that
-    is not an existence reference."""
+def row_parents(group_graph: nx.DiGraph, group_edges: EdgeMap, gid: str) -> list[str]:
+    """`gid`'s parents that feed it rows, not a subselect."""
     return [
         pred
         for pred in group_graph.predecessors(gid)
         if pred != FINAL_NODE_ID
-        and pred in attrs
         and edge_kind(group_edges, pred, gid) != EdgeKind.EXISTENCE
     ]
 
@@ -983,7 +976,7 @@ def _consumer_required_input_grain(
     # it as an input grain forces a parent to re-derive the concept (e.g. a
     # filter's per-row CASE at a merge that lacks the aggregate arg). Drop it.
     grain: set[str] = set(attrs[gid].grain_components) - set(attrs[gid].primary_members)
-    row_preds = _row_parents(group_graph, group_edges, attrs, gid)
+    row_preds = row_parents(group_graph, group_edges, gid)
     for pred in row_preds:
         if (
             attrs[pred].derivation in GROUPING_DERIVATIONS
@@ -1062,8 +1055,8 @@ def _shared_row_parent_join_keys(
     sourcing."""
     if attrs[gid].derivation not in _ROW_JOIN_CONSUMER_DERIVATIONS:
         return frozenset()
-    row_parents = _row_parents(group_graph, group_edges, attrs, gid)
-    if len(row_parents) < 2:
+    rows = row_parents(group_graph, group_edges, gid)
+    if len(rows) < 2:
         return frozenset()
     grain_ancestors = _transitive_lineage_ancestors(
         attrs[gid].grain_components, lineage_parents
@@ -1072,7 +1065,7 @@ def _shared_row_parent_join_keys(
         return frozenset()
     counts: dict[str, int] = defaultdict(int)
     grain_owners: set[str] = set()
-    for pred in row_parents:
+    for pred in rows:
         for addr in set(attrs[pred].output_concepts):
             counts[addr] += 1
             if addr in attrs[pred].grain_components:
@@ -1155,24 +1148,24 @@ def _refresh_input_contracts(
         bridge_keys = _shared_row_parent_join_keys(
             group_graph, group_edges, attrs, gid, key_addresses, lineage_parents
         )
-        row_parents = _row_parents(group_graph, group_edges, attrs, gid)
+        rows = row_parents(group_graph, group_edges, gid)
         # A non-grouping consumer pairing a GROUPING row parent (a population
         # aggregate at grain G) with row-grain siblings joins them ON G; the
         # aggregate's value repeats per G-group across the row stream (`sum(z)
         # by x + w`: the sum CTE pairs to the w rows on x). Declare G so the
         # sibling projections keep the bridge instead of degrading to 1=1.
         grouping_parent_grain: set[str] = set()
-        if attrs[gid].derivation not in GROUPING_DERIVATIONS and len(row_parents) >= 2:
-            for pred in row_parents:
+        if attrs[gid].derivation not in GROUPING_DERIVATIONS and len(rows) >= 2:
+            for pred in rows:
                 if attrs[pred].derivation in GROUPING_DERIVATIONS:
                     grouping_parent_grain |= set(attrs[pred].grain_components)
         # a region domain among the parents joins the rest on its spans: the
         # axis every side keeps, whatever the consumer's grain
         domain_spans: frozenset[str] = frozenset().union(
-            *(attrs[pred].extent_spans for pred in row_parents)
+            *(attrs[pred].extent_spans for pred in rows)
         )
         relation_keys = _rowset_relation_keys(
-            row_parents, attrs, environment, attrs[gid].aggregate_input_grain
+            rows, attrs, environment, attrs[gid].aggregate_input_grain
         )
         contracts: list[GroupInputContract] = []
         for pred in sorted(group_graph.predecessors(gid)):

@@ -32,7 +32,6 @@ from dataclasses import dataclass, field
 
 from trilogy.core.enums import (
     JoinType,
-    Modifier,
 )
 from trilogy.core.models.build import (
     BuildDatasource,
@@ -41,11 +40,11 @@ from trilogy.core.models.execute import (
     CTE,
     BaseJoin,
     ConceptPair,
-    CTEConceptPair,
     Join,
     QueryDatasource,
     UnionCTE,
     coalesced_key_groups,
+    pair_matches_nulls,
     preserved_key_pairs,
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
@@ -181,18 +180,6 @@ def _blocked_partials(
         if binds and not (binds <= operand_ds):
             blocked.add(addr)
     return blocked
-
-
-def _pair_can_match_nulls(
-    pair: CTEConceptPair | ConceptPair,
-    join_modifiers: list[Modifier],
-) -> bool:
-    return Modifier.NULLABLE in (
-        pair.modifiers
-        + (pair.left.modifiers or [])
-        + (pair.right.modifiers or [])
-        + (join_modifiers or [])
-    )
 
 
 def _seed_addresses(cte: CTE | UnionCTE) -> set[str]:
@@ -413,7 +400,7 @@ def _add_inner_join_key_proofs(join: Join, proofs: _ProofState) -> bool:
             continue
 
         pair = pairs[0]
-        if _pair_can_match_nulls(pair, join.modifiers):
+        if pair_matches_nulls(pair, join.modifiers):
             continue
         changed = proofs.add_cte_key(pair.cte, pair.left.address) or changed
         changed = proofs.add_cte_key(join.right_cte, pair.right.address) or changed
@@ -441,7 +428,7 @@ def _add_inner_base_join_key_proofs(
             continue
 
         pair = pairs[0]
-        if _pair_can_match_nulls(pair, base_join.modifiers):
+        if pair_matches_nulls(pair, base_join.modifiers):
             continue
         changed = (
             proofs.add_datasource_key(pair.existing_datasource, pair.left.address)
@@ -488,7 +475,7 @@ def _inner_pair_rejections(consumer: CTE, producer_keys: set[str]) -> set[str]:
         if not harvest_right and not harvest_left:
             continue
         for pairs in coalesced_key_groups(join.joinkey_pairs or []):
-            if any(_pair_can_match_nulls(p, join.modifiers) for p in pairs):
+            if any(pair_matches_nulls(p, join.modifiers) for p in pairs):
                 continue
             first = pairs[0]
             if harvest_right and cte_source_keys(join.right_cte) & producer_keys:

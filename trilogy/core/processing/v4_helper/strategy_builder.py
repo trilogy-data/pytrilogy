@@ -106,7 +106,7 @@ from .edges import (
 )
 from .extent_ownership import takes_a_value_on_padding
 from .functional_dependency import build_fd_determines, build_fd_determines_all
-from .group_graph import trace_group_graph
+from .group_graph import row_parents, trace_group_graph
 from .history import V4History
 from .models import (
     ExtentOwnership,
@@ -717,16 +717,6 @@ def _provider_feeds_other_grouping(
     )
 
 
-def _row_parents(group_graph: nx.DiGraph, group_edges: EdgeMap, gid: str) -> list[str]:
-    """`gid`'s parents that feed it rows, not a subselect."""
-    return [
-        pgid
-        for pgid in group_graph.predecessors(gid)
-        if pgid != FINAL_NODE_ID
-        and edge_kind(group_edges, pgid, gid) != EdgeKind.EXISTENCE
-    ]
-
-
 def _select_addresses(a: GroupAttrs) -> tuple[str, ...]:
     """A group the demand pass left without outputs projects every member."""
     return a.output_concepts or a.members
@@ -829,7 +819,7 @@ def _aggregate_inlines(
         return False
     parents = [
         built[pgid]
-        for pgid in _row_parents(group_graph, group_edges, gid)
+        for pgid in row_parents(group_graph, group_edges, gid)
         if pgid in built
     ]
     if not parents or any(_contains_shape_barrier(parent) for parent in parents):
@@ -872,7 +862,7 @@ def _inline_aggregate_inputs(
             ):
                 expanded.extend(
                     (fgid, built[fgid])
-                    for fgid in _row_parents(group_graph, group_edges, pgid)
+                    for fgid in row_parents(group_graph, group_edges, pgid)
                     if fgid in built
                 )
             else:
@@ -981,7 +971,7 @@ def _reader_inlines(
     # the reader's fold is decided off its parents' nodes, `gid`'s in its place
     if any(
         pgid != gid and pgid not in built
-        for pgid in _row_parents(group_graph, group_edges, reader)
+        for pgid in row_parents(group_graph, group_edges, reader)
     ):
         return False
     return _inlined_by_every_reader(
@@ -1022,10 +1012,7 @@ def _inlined_by_every_reader(
     # its rows are its parents' rows, so what it passes through they carry
     carried: set[str] = set().union(
         *(attrs[r].output_concepts for r in readers),
-        *(
-            attrs[p].output_concepts
-            for p in _row_parents(group_graph, group_edges, gid)
-        ),
+        *(attrs[p].output_concepts for p in row_parents(group_graph, group_edges, gid)),
     )
     if not set(a.output_concepts) & final_reads <= carried:
         return False
@@ -1066,7 +1053,7 @@ def _read_parents_in_place(
 ) -> None:
     """Each reader reads `gid`'s parents where it read `gid`, and computes
     `gid`'s members itself, with whatever was folded into `gid`."""
-    parents = _row_parents(group_graph, group_edges, gid)
+    parents = row_parents(group_graph, group_edges, gid)
     for reader in _readers(group_graph, gid):
         # in-edges are re-added in order, so the parents take `gid`'s place
         feeds = {
@@ -1209,7 +1196,7 @@ def _parent_nodes_for(
     candidates: list[tuple[str, StrategyNode]] = []
     # Existence-kind edges feed a subselect, not the row stream;
     # `_wire_existence` wires them as side-channel parents post-build.
-    for pgid in _row_parents(group_graph, group_edges, gid):
+    for pgid in row_parents(group_graph, group_edges, gid):
         if attrs[pgid].depth_label == DepthLabel.D1 and (
             (
                 attrs[gid].derivation == Derivation.UNNEST
@@ -1790,7 +1777,7 @@ def _group_filter_has_existence(
         concept = _concept_at(environment, addr)
         if not concept or not isinstance(concept.lineage, BuildFilterItem):
             continue
-        if concept.lineage.where.existence_arguments:
+        if any(concept.lineage.where.existence_arguments):
             return True
     return False
 
@@ -2232,13 +2219,13 @@ def _parents_already_at_input_grain(
         ):
             return at_input_grain(parent.parents[0], seen)
         if isinstance(parent, MergeNode) and parent.force_group is not True:
-            row_parents = [
+            grained = [
                 candidate
                 for candidate in parent.parents
                 if candidate.resolve().grain.components
             ]
-            if len(row_parents) == 1:
-                return at_input_grain(row_parents[0], seen)
+            if len(grained) == 1:
+                return at_input_grain(grained[0], seen)
         return False
 
     for parent in parents:

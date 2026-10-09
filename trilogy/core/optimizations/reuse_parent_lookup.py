@@ -28,6 +28,7 @@ from trilogy.core.models.execute import (
     InstantiatedUnnestJoin,
     Join,
     UnionCTE,
+    pair_matches_nulls,
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import is_grouped_cte
@@ -37,9 +38,7 @@ def _plain(join: Join) -> bool:
     return (
         not join.has_predicate
         and Modifier.NULLABLE not in join.modifiers
-        and all(
-            Modifier.NULLABLE not in pair.modifiers for pair in join.joinkey_pairs or []
-        )
+        and not any(pair_matches_nulls(pair) for pair in join.joinkey_pairs or [])
     )
 
 

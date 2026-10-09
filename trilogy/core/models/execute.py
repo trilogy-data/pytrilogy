@@ -1097,6 +1097,27 @@ class CTEConceptPair(BaseConceptPair):
         return Modifier.NULLABLE in self.modifiers
 
 
+def pair_modifiers(
+    pair: ConceptPair | CTEConceptPair, join_modifiers: list[Modifier] | None = None
+) -> list[Modifier]:
+    """Every modifier the rendered comparison of `pair` honours: the pair's,
+    each side concept's and the join's."""
+    return (
+        pair.modifiers
+        + (pair.left.modifiers or [])
+        + (pair.right.modifiers or [])
+        + (join_modifiers or [])
+    )
+
+
+def pair_matches_nulls(
+    pair: ConceptPair | CTEConceptPair, join_modifiers: list[Modifier] | None = None
+) -> bool:
+    """`pair` renders null-safe: a NULL on one side can pair with one on the
+    other."""
+    return Modifier.NULLABLE in pair_modifiers(pair, join_modifiers)
+
+
 PairT = TypeVar("PairT", bound=BaseConceptPair)
 
 

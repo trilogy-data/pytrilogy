@@ -117,6 +117,15 @@ class SpanScope:
     # group: address -> the extent-free spans whose region domain carries it
     extent_free_carried: dict[str, frozenset[str]] = field(default_factory=dict)
 
+    @property
+    def extendable(self) -> frozenset[str]:
+        """Spans a merge under this scope may pad extension rows for. A
+        merge reads it three ways: hosting takes it whole; a region domain
+        also drops `unextended` (nothing demands the region, join typing
+        only); the coalesced-key proof keeps only the spans whose extension
+        rows carry an output (`Keyspace.output_demanded_spans`)."""
+        return self.keyspace.in_play_spans - self.extent_free
+
     def held_on(self, address: str, spans: set[str] | frozenset[str]) -> bool:
         """`address` is one of `spans`, or a region domain of one carries it."""
         return address in spans or bool(

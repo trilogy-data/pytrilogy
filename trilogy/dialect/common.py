@@ -20,6 +20,7 @@ from trilogy.core.models.execute import (
     Join,
     UnionCTE,
     _datasource_column_for_concept,
+    pair_modifiers,
 )
 
 # Renders one join key. The join type is passed because dialects may restrict
@@ -99,12 +100,7 @@ def _render_unnest_join(
 
 
 def _collect_modifiers(pair: ConceptPair, join: Join) -> list[Modifier]:
-    return (
-        pair.modifiers
-        + (pair.left.modifiers or [])
-        + (pair.right.modifiers or [])
-        + (join.modifiers or [])
-    )
+    return pair_modifiers(pair, join.modifiers)
 
 
 def _renders_in_from(consumer: CTE, join: Join, node: CTE | UnionCTE) -> bool:

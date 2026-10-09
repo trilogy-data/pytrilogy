@@ -363,11 +363,11 @@ class MergeNode(StrategyNode):
                 # from FULL-joining its readers on coalesced keys.
                 host_grain: set[str] | None = None
                 if self.host_stitch:
+                    extendable = self.span_scope.extendable
                     licensed_outputs = {
                         c.address
                         for c in self.output_concepts
-                        if c.address in self.span_scope.keyspace.in_play_spans
-                        and c.address not in self.span_scope.extent_free
+                        if c.address in extendable
                     }
                     host_grain = licensed_outputs or set(grain.components)
                 # Domains this node emits: visible outputs and the grain,

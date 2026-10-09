@@ -1539,7 +1539,9 @@ def _span_padding_matrix(
     for ds_node, datasource in ds_node_map.items():
         by_key: dict[str, set[str]] = defaultdict(set)
         for spelling in sorted(spellings):
-            for address in span_padded_addresses(datasource, spelling, memo):
+            for address in span_padded_addresses(
+                datasource, frozenset({spelling}), memo
+            ):
                 by_key[canon_node(address)].add(canon_node(spellings[spelling]))
         out[ds_node] = {
             key: frozenset(found)
@@ -1575,7 +1577,7 @@ def _padding_witness(
         padded: set[str] = set()
         for spelling, named in spellings.items():
             if canon_node(named) == span:
-                padded |= provenance.padded_by(spelling)
+                padded |= provenance.padded_by(frozenset({spelling}))
         witnesses = sorted(
             (
                 c
@@ -1971,7 +1973,7 @@ def get_node_joins(
         nullable_nodes = {canon_node(c.address) for c in datasource.nullable_concepts}
         if extent_free_spans:
             nullable_nodes -= {
-                canon_node(a) for a in provenance.extension_padded(extent_free_spans)
+                canon_node(a) for a in provenance.padded_by(extent_free_spans)
             }
         padded_nodes = {canon_node(a) for a in provenance.rollup}
         partial_keys: set[str] = set()

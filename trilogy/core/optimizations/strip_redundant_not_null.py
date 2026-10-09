@@ -31,7 +31,13 @@ from __future__ import annotations
 
 from trilogy.core.enums import BooleanOperator, Derivation, JoinType, Modifier
 from trilogy.core.models.build import BuildConditional, BuildDatasource
-from trilogy.core.models.execute import CTE, Join, QueryDatasource, UnionCTE
+from trilogy.core.models.execute import (
+    CTE,
+    Join,
+    QueryDatasource,
+    UnionCTE,
+    pair_matches_nulls,
+)
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import equivalent_addresses
 from trilogy.core.processing.condition_utility import (
@@ -101,11 +107,7 @@ def _inner_join_rejected(cte: CTE) -> set[tuple[str, str]]:
         ):
             continue
         for pair in join.joinkey_pairs or []:
-            if Modifier.NULLABLE in (
-                pair.modifiers
-                + (pair.left.modifiers or [])
-                + (pair.right.modifiers or [])
-            ):
+            if pair_matches_nulls(pair):
                 continue
             for node, concept in ((pair.cte, pair.left), (join.right_cte, pair.right)):
                 alias = join.name_for(cte, join.authoritative(cte, node))
