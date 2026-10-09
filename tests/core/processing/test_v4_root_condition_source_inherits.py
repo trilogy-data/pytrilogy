@@ -22,6 +22,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from trilogy import Dialects, Environment
+from trilogy.constants import CONFIG
 from trilogy.core.models.execute import CTE, UnionCTE
 from trilogy.core.processing import concept_strategies_v4
 from trilogy.core.processing.v4_node_generators import root as root_generator
@@ -70,13 +71,16 @@ def test_condition_source_subsearch_receives_the_inherited_atoms(monkeypatch):
     ), f"no inherited not-null reached a condition-source sub-search: {inherited}"
 
 
-def test_only_atoms_expressible_on_the_request_are_inherited():
+def test_only_atoms_expressible_on_the_request_are_inherited(monkeypatch):
     """The boundary, read off q11 itself. Its `billing_customer.sk is not null`
     is a grain key of the aggregates being re-planned, so it comes along and
     renders once per union arm. Its `sale_date.year in (...)` is not — applying
     it would narrow the aggregates' INPUT, which the population/select
     dual-scope split forbids (`test_where_select_dual_scope`), so the year stays
-    on the outer group and date_dim is still joined above the union."""
+    on the outer group and date_dim is still joined above the union. Read with
+    the existence fold off: it later moves the year onto the aggregate's input
+    when every aggregate's own filter implies it, which is not inheritance."""
+    monkeypatch.setattr(CONFIG.optimizations, "fold_existence_into_aggregate", False)
     env = Environment(working_path=_WORKING)
     query = Dialects.DUCK_DB.default_executor(environment=env).parse_text(
         (_WORKING / "query11.preql").read_text()
