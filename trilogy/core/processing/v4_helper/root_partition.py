@@ -1069,7 +1069,7 @@ def trace_buckets(
     title: str,
     buckets: dict[str, GroupBucket],
     primary_group: dict[str, str],
-    domains: list[RegionDomain] | None = None,
+    domains: Sequence[RegionDomain] = (),
 ) -> None:
     if plan_trace.active():
         plan_trace.record(
@@ -1086,7 +1086,7 @@ def trace_buckets(
                         bucket=d.bucket.group_id if d.bucket else None,
                         note=d.note,
                     )
-                    for d in domains or []
+                    for d in domains
                 ],
             ),
         )

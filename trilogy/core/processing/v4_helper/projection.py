@@ -326,7 +326,7 @@ def filter_row_predicate(
 
 def statement_filter_population(
     mandatory_list: list[BuildConcept],
-    hidden: set[str] | None = None,
+    hidden: set[str] | None,
 ) -> BuildWhereClause | None:
     """When every output a statement shows is a filter value over one
     predicate, a NULL row is one nothing would keep: `gen_filter` pushes the

@@ -389,7 +389,7 @@ def _covering_built_node(
     addresses: set[str],
     built: dict[str, StrategyNode],
     skip: StrategyNode | None,
-    preferred: Sequence[str] = (),
+    preferred: Sequence[str],
 ) -> StrategyNode | None:
     """The first built group able to supply EVERY address of an arg group,
     the host's existence-edge predecessors first. A composite membership
@@ -1969,7 +1969,7 @@ def _project_basic_aggregate_inputs(
     primary_addrs: set[str],
     parents: list[StrategyNode],
     environment: BuildEnvironment,
-    region_spans: frozenset[str] = frozenset(),
+    region_spans: frozenset[str],
     named: frozenset[str] = frozenset(),
 ) -> list[StrategyNode]:
     """Project scalar aggregate inputs without exposing the merge's join inputs.
@@ -4025,8 +4025,8 @@ def _fresh_final_root_projection(
     environment: BuildEnvironment,
     graph: ReferenceGraph,
     history: History,
-    conditions: BuildWhereClause | None = None,
-    arm_local: bool = False,
+    conditions: BuildWhereClause | None,
+    arm_local: bool,
 ) -> StrategyNode | None:
     node = plan_source(
         SourceRequest(

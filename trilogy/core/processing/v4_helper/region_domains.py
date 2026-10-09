@@ -300,7 +300,7 @@ def _own_bucket(
     eligible: list[GroupBucket],
     rowset: list[GroupBucket],
     members: dict[str, str],
-    null_members: frozenset[str] = frozenset(),
+    null_members: frozenset[str],
 ) -> GroupBucket:
     extent = f"extent:{'|'.join(sorted(region.spans))}"
     domain = GroupBucket(
