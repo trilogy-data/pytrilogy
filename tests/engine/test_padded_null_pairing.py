@@ -159,16 +159,31 @@ def test_contributors_paired_only_among_themselves_get_a_bridge(
     assert sorted_rows(_executor(BUCKET_REGION), query) == expected
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="the padded stream the FINAL reads carries no column NULL exactly "
-    "on cat's row, so no guard can tell her padded bucket from a value NULL",
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select customer_id, bucket, sum(target) by bucket as t where coalesce(sum(target) by bucket, 0) = 0",
+            [(3, None, None)],
+        ),
+        (
+            "select customer_id, bucket, sum(target) by bucket as t where coalesce(max(target) by bucket, 0) = 0",
+            [(3, None, None)],
+        ),
+        (
+            "select customer_id, bucket, count(target) by bucket as t where coalesce(max(target) by bucket, 0) = 0",
+            [(3, None, 0)],
+        ),
+        (
+            "select customer_id, bucket, sum(target) by bucket as t where coalesce(max(target) by bucket, 0) < 6",
+            [(1, None, 5), (3, None, None)],
+        ),
+    ],
 )
-def test_where_over_the_value_null_group_aggregate_keeps_padding_apart():
-    assert sorted_rows(
-        _executor(TWO_REGIONS),
-        "select customer_id, bucket, sum(target) by bucket as t where coalesce(sum(target) by bucket, 0) = 0",
-    ) == [(3, None, None)]
+def test_where_over_the_value_null_group_aggregate_keeps_padding_apart(
+    query: str, expected: list[tuple]
+):
+    assert sorted_rows(_executor(TWO_REGIONS), query) == expected
 
 
 @pytest.mark.parametrize(
@@ -245,16 +260,31 @@ def test_a_region_row_the_where_keeps_beside_a_total_it_lacks(model: str):
     ) == [("a", 20), ("b", 30), ("z", None)]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="the WHERE must reach the solid total's input and FINAL's region "
-    "rows apart; both read one orders group, so it is refused",
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select bucket, sum(amount) by customer_id as a where amount is null",
+            [("z", None)],
+        ),
+        (
+            "select bucket, sum(amount) by customer_id as a where amount is null or amount = 10",
+            [("z", None), (None, 10)],
+        ),
+        (
+            "select bucket, customer_id, sum(amount) by customer_id as a where amount is null or amount = 10",
+            [("z", None, None), (None, 1, 10)],
+        ),
+        (
+            "select bucket, count(order_id) by customer_id as n where amount is null or amount = 20",
+            [("a", 1), ("z", 0)],
+        ),
+    ],
 )
-def test_where_kept_region_row_beside_a_solid_total_by_another_key():
-    assert sorted_rows(
-        _executor(BUCKET_REGION),
-        "select bucket, sum(amount) by customer_id as a where amount is null",
-    ) == [("z", None)]
+def test_where_kept_region_row_beside_a_solid_total_by_another_key(
+    query: str, expected: list[tuple]
+):
+    assert sorted_rows(_executor(BUCKET_REGION), query) == expected
 
 
 @pytest.mark.parametrize(

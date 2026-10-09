@@ -841,6 +841,7 @@ def _uncovered_grouping_placements(
     lineage_ancestors_graph: nx.DiGraph,
     main_lineage: set[str],
     scoped_join_member_addresses: frozenset[str],
+    environment: BuildEnvironment,
 ) -> list[ConditionPlacement]:
     """Copy a row atom onto every select-phase aggregate its host does not feed.
 
@@ -851,11 +852,15 @@ def _uncovered_grouping_placements(
     so a host elected on that projection leaves the plain count aggregating
     unfiltered rows. Aggregates already downstream of a host inherit the filter;
     ones reading the atom's inputs as their own output are HAVING and stay out.
+    An atom tested on FINAL's region rows (`amount is null` keeping bucket z)
+    goes to an aggregate it is not decided for (`sum(amount) by customer_id`)
+    too: the aggregate filters its own input, and FINAL's stream stays whole.
     """
     extra: list[ConditionPlacement] = []
     for placement in clause_placements:
+        at_final = FINAL_NODE_ID in placement.group_ids
         if placement.reason not in _COPIED_TO_UNCOVERED_GROUPINGS or (
-            FINAL_NODE_ID in placement.group_ids
+            at_final and placement.reason is not PlacementReason.FINAL_SPAN_DOMAIN
         ):
             continue
         atom = placement.atom
@@ -886,6 +891,12 @@ def _uncovered_grouping_placements(
                 gid, lineage_ancestors_graph, buckets, group_members
             ):
                 continue
+            # tested on FINAL's rows, the atom reaches an aggregate it is not
+            # decided for only here; one it is decided for reads every row
+            if at_final and _atom_decided_for(
+                atom, _bucket_concepts(bucket, environment), environment
+            ):
+                continue
             extra.append(
                 ConditionPlacement(
                     atom=atom,
@@ -894,6 +905,28 @@ def _uncovered_grouping_placements(
                 )
             )
     return extra
+
+
+def _bucket_concepts(
+    bucket: GroupBucket, environment: BuildEnvironment
+) -> list[BuildConcept]:
+    return [
+        environment.concepts[m]
+        for m in bucket.primary_members
+        if m in environment.concepts
+    ]
+
+
+def _atom_decided_for(
+    atom: BoolExpr, aggregates: list[BuildConcept], environment: BuildEnvironment
+) -> bool:
+    """A row atom tested after `aggregates` keeps exactly the rows it would
+    have kept before them: it reads an aggregate itself, or each aggregate's
+    grain determines every value it reads."""
+    args = atom.row_arguments
+    return any(_crosses_outer_aggregate(c) for c in args) or all(
+        decided_at_output_grain(c.address, aggregates, environment) for c in args
+    )
 
 
 def _staged_precondition_placements(
@@ -1615,6 +1648,7 @@ def plan_condition_placements(
                 lineage_ancestors_graph,
                 main_lineage,
                 scoped_join_member_addresses,
+                environment,
             )
         )
         placements.extend(
@@ -1681,17 +1715,15 @@ def _check_final_atoms_precede_aggregates(
             or str(placement.atom) in hosted_below
         ):
             continue
-        args = placement.atom.row_arguments
-        if any(_crosses_outer_aggregate(c) for c in args):
+        if _atom_decided_for(placement.atom, aggregates, environment):
             continue
         undecided = sorted(
             c.address
-            for c in args
+            for c in placement.atom.row_arguments
             if not decided_at_output_grain(c.address, aggregates, environment)
         )
-        if undecided:
-            raise UnresolvableQueryException(
-                f"WHERE atom {placement.atom} reads {undecided} but could only "
-                f"be placed after the aggregates {[c.address for c in aggregates]} "
-                f"({placement.reason.value}); they would never see it."
-            )
+        raise UnresolvableQueryException(
+            f"WHERE atom {placement.atom} reads {undecided} but could only "
+            f"be placed after the aggregates {[c.address for c in aggregates]} "
+            f"({placement.reason.value}); they would never see it."
+        )

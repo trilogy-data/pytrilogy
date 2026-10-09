@@ -2821,6 +2821,96 @@ def _fold_covered_contributors(
     return [p for idx, p in enumerate(parents) if idx not in dropped]
 
 
+def _visible_addresses(node: StrategyNode) -> set[str]:
+    return {
+        o.address for o in node.output_concepts if o.address not in node.hidden_concepts
+    }
+
+
+def _padding_merge(stream: StrategyNode) -> MergeNode | None:
+    """The merge where `stream`'s region padding happens: the stream itself, or
+    the one merge a row-preserving projection of it reads."""
+    if isinstance(stream, MergeNode):
+        return stream
+    if (
+        isinstance(stream, SelectNode)
+        and not stream.conditions
+        and len(stream.parents) == 1
+        and isinstance(stream.parents[0], MergeNode)
+    ):
+        return stream.parents[0]
+    return None
+
+
+def _pads_a_value_null_group(
+    stream: StrategyNode, contributor: StrategyNode, keys: set[str], keyspace: Keyspace
+) -> bool:
+    """`stream` NULLs one of `keys` on a region's rows it holds, and
+    `contributor`, holding no region, has a value-NULL group on it."""
+    regions = keyspace.live_regions_within(region_reads(stream))
+    value_nulls = {c.address for c in contributor.nullable_concepts}
+    return any(
+        key in value_nulls
+        and any(not keyspace.defined_on(key, region) for region in regions)
+        for key in keys
+    )
+
+
+def _pair_inside_padding_streams(
+    parents: list[StrategyNode], environment: BuildEnvironment
+) -> list[StrategyNode]:
+    """A grouping contributor holding no region pairs with a stream that
+    padded one inside its own merge, there and not at FINAL.
+
+    The stream's NULL on a `?` key it padded is mixed: padding on a region's
+    row (cat, no order, so no bucket), a value elsewhere (order 100's NULL
+    bucket). FINAL can only keep them apart with a column NULL exactly on the
+    padded rows, and the stream need not carry one. Inside the merge the
+    padded side's own keys are columns, so the earlier-padding guard
+    (`join_resolution._padding_guards`) applies."""
+    keyspace = environment.span_scope.keyspace
+    out = list(parents)
+    for stream in parents:
+        merge = _padding_merge(stream)
+        if merge is None or not region_reads(stream):
+            continue
+        for other in list(out):
+            if (
+                other is stream
+                or not isinstance(other, GroupNode)
+                or region_reads(other)
+                or _derives_from(other, stream)
+                or _derives_from(stream, other)
+            ):
+                continue
+            shared = _visible_addresses(other) & _visible_addresses(stream)
+            if not shared or not _pads_a_value_null_group(
+                stream, other, shared, keyspace
+            ):
+                continue
+            carried = [
+                o
+                for o in other.output_concepts
+                if o.address in _visible_addresses(other) - _visible_addresses(stream)
+            ]
+            logger.info(
+                f"[v4] {sorted(c.address for c in carried)} pair inside the merge "
+                f"that pads {sorted(shared)}, not at FINAL"
+            )
+            merge.add_parents([other])
+            merge.input_concepts = unique(merge.input_concepts + carried, "address")
+            merge.add_output_concepts(carried, rebuild=False)
+            if stream is not merge:
+                stream.input_concepts = unique(
+                    stream.input_concepts + carried, "address"
+                )
+                stream.add_output_concepts(carried, rebuild=False)
+            merge.rebuild_cache()
+            stream.rebuild_cache()
+            out.remove(other)
+    return out
+
+
 def _raise_if_rowset_islanded(
     parents: list[StrategyNode],
     mandatory_list: list[BuildConcept],
@@ -5295,6 +5385,7 @@ def _assemble_final_node(
         {id(built[gid]) for gid in ownership.owner_by_span.values() if gid in built},
     )
     parents = _bridge_unpaired_parents(parents, group_graph, built, environment)
+    parents = _pair_inside_padding_streams(parents, environment)
     _raise_if_rowset_islanded(parents, mandatory_list, environment, graph)
 
     available: set[str] = set()
