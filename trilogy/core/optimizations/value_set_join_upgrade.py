@@ -42,13 +42,11 @@ from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
     condition_implies,
 )
-from trilogy.core.processing.join_resolution import (
-    OUTER_JOIN_TYPES,
-    _padding_sources,
-)
+from trilogy.core.processing.join_resolution import OUTER_JOIN_TYPES
 from trilogy.core.processing.null_provenance import (
     guest_padded_addresses,
     nulls_are_values,
+    padding_sources,
 )
 
 
@@ -357,12 +355,12 @@ def _unshared_join_padding(pair, right_cte: CTE | UnionCTE) -> bool:
         return False
     keys = _key_addresses(pair.left) | _key_addresses(pair.right)
     left_pad = (
-        _padding_sources(pair.cte.source, keys, _identity)
+        padding_sources(pair.cte.source, keys, _identity)
         if isinstance(pair.cte, CTE)
         else set()
     )
     right_pad = (
-        _padding_sources(right_cte.source, keys, _identity)
+        padding_sources(right_cte.source, keys, _identity)
         if isinstance(right_cte, CTE)
         else set()
     )

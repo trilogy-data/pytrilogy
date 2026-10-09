@@ -391,3 +391,19 @@ def nulls_are_values(
         (args & nc.equivalent_addresses) and nulls_are_values(nc, side, seen)
         for nc in side.nullable_concepts
     )
+
+
+def padding_sources(
+    side: DataSource, keys: set[str], canon: Callable[[str], str]
+) -> set[str]:
+    """Identifiers of the sources at or above `side` whose own rows carry the
+    key as join-analysis padding. A leaf datasource never pads: a NULL in its
+    column is a value, which the caller has already exempted."""
+    found: set[str] = set()
+    if not isinstance(side, QueryDatasource):
+        return found
+    if keys & {canon(c.address) for c in side.nullable_concepts}:
+        found.add(side.identifier)
+    for parent in side.datasources:
+        found |= padding_sources(parent, keys, canon)
+    return found

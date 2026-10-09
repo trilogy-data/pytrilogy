@@ -1499,22 +1499,6 @@ def narrow_keyless_joins(joins: list[BaseJoin | UnnestJoin]) -> None:
         left_has_rows = left_has_rows or right_has_rows
 
 
-def _padding_sources(
-    side: DataSource, keys: set[str], canon: Callable[[str], str]
-) -> set[str]:
-    """Identifiers of the sources at or above `side` whose own rows carry the
-    key as join-analysis padding. A leaf datasource never pads: a NULL in its
-    column is a value, which the caller has already exempted."""
-    found: set[str] = set()
-    if not isinstance(side, QueryDatasource):
-        return found
-    if keys & {canon(c.address) for c in side.nullable_concepts}:
-        found.add(side.identifier)
-    for parent in side.datasources:
-        found |= _padding_sources(parent, keys, canon)
-    return found
-
-
 def _span_spellings(
     spans: frozenset[str],
     environment: BuildEnvironment,

@@ -1,4 +1,4 @@
-"""``_padding_sources`` names the sources whose own rows carry a join key as
+"""``padding_sources`` names the sources whose own rows carry a join key as
 join-analysis padding; the optimizer's value-set upgrade reads it to tell
 shared padding (one source's rows arriving twice) from unrelated NULLs."""
 
@@ -18,14 +18,16 @@ from trilogy.core.models.execute import BaseJoin, ConceptPair, QueryDatasource
 from trilogy.core.processing.join_resolution import (
     JoinFacts,
     SideFacts,
-    _padding_sources,
     _pads_for_different_members,
     _span_padding_matrix,
     _span_spellings,
     complete_key_domain,
     get_join_type,
 )
-from trilogy.core.processing.null_provenance import guest_padded_addresses
+from trilogy.core.processing.null_provenance import (
+    guest_padded_addresses,
+    padding_sources,
+)
 
 KEY = "local.padded"
 
@@ -66,24 +68,24 @@ def _identity(address: str) -> str:
     return address
 
 
-def test_padding_sources_ignores_leaf_and_unpadded():
-    assert _padding_sources(_qds([KEY], []), {KEY}, _identity) == set()
+def testpadding_sources_ignores_leaf_and_unpadded():
+    assert padding_sources(_qds([KEY], []), {KEY}, _identity) == set()
 
 
-def test_padding_sources_reports_own_identifier():
+def testpadding_sources_reports_own_identifier():
     padded = _qds([KEY], [KEY])
-    assert _padding_sources(padded, {KEY}, _identity) == {padded.identifier}
+    assert padding_sources(padded, {KEY}, _identity) == {padded.identifier}
 
 
-def test_padding_sources_walks_parents():
+def testpadding_sources_walks_parents():
     padded = _qds([KEY], [KEY])
     consumer = _qds([KEY], [], parents=[padded])
-    assert padded.identifier in _padding_sources(consumer, {KEY}, _identity)
+    assert padded.identifier in padding_sources(consumer, {KEY}, _identity)
 
 
-def test_padding_sources_scoped_to_the_requested_key():
+def testpadding_sources_scoped_to_the_requested_key():
     padded = _qds([KEY, "local.other"], ["local.other"])
-    assert _padding_sources(padded, {KEY}, _identity) == set()
+    assert padding_sources(padded, {KEY}, _identity) == set()
 
 
 _LEFT, _RIGHT, _AXIS = "ds~left", "ds~right", "c~local.order_id"
