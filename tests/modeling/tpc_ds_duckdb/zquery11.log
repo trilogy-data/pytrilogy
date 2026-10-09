@@ -1,23 +1,11 @@
 query_id = "11"
-gen_length = 5278
+gen_length = 4717
 preql_size = 1867
 comp_size = 3006
 generated_sql = """
 
 WITH 
 thoughtful as (
-SELECT
-    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
-     'CATALOG'  as \"sales_channel\",
-    \"sales_catalog_sales_unified\".\"CS_EXT_DISCOUNT_AMT\" as \"sales_ext_discount_amount\",
-    \"sales_catalog_sales_unified\".\"CS_EXT_LIST_PRICE\" as \"sales_ext_list_price\",
-    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_sale_date_sk\"
-FROM
-    \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
-WHERE
-    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" is not null
-
-UNION ALL
 SELECT
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
      'STORE'  as \"sales_channel\",
@@ -48,7 +36,7 @@ FROM
     \"thoughtful\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"thoughtful\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"thoughtful\".\"sales_billing_customer_sk\" is not null
+    \"thoughtful\".\"sales_billing_customer_sk\" is not null and (\"thoughtful\".\"sales_channel\" is not null and \"thoughtful\".\"sales_channel\" in ('STORE','WEB')) and (2001 is not distinct from \"sales_sale_date_date\".\"D_YEAR\" or 2002 is not distinct from \"sales_sale_date_date\".\"D_YEAR\")
 
 GROUP BY
     1
@@ -59,9 +47,7 @@ HAVING
 	END ) > ( CASE
 	WHEN sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) > 0 THEN (sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2002 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) * 1.0) / sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END)
 	ELSE cast(0.0 as numeric)
-	END ) and count(CASE
-	WHEN (\"thoughtful\".\"sales_channel\" is not null and \"thoughtful\".\"sales_channel\" in ('STORE','WEB')) and (2001 is not distinct from \"sales_sale_date_date\".\"D_YEAR\" or 2002 is not distinct from \"sales_sale_date_date\".\"D_YEAR\") THEN 1
-	END) > 0
+	END )
 ),
 questionable as (
 SELECT

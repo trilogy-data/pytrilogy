@@ -1,22 +1,11 @@
 query_id = "74"
-gen_length = 4083
+gen_length = 3647
 preql_size = 1416
 comp_size = 2151
 generated_sql = """
 
 WITH 
 thoughtful as (
-SELECT
-    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
-     'CATALOG'  as \"sales_channel\",
-    \"sales_catalog_sales_unified\".\"CS_NET_PAID\" as \"sales_net_paid\",
-    \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" as \"sales_sale_date_sk\"
-FROM
-    \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
-WHERE
-    \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" is not null
-
-UNION ALL
 SELECT
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
      'STORE'  as \"sales_channel\",
@@ -49,14 +38,12 @@ FROM
     \"thoughtful\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"thoughtful\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    \"thoughtful\".\"sales_billing_customer_sk\" is not null
+    \"thoughtful\".\"sales_billing_customer_sk\" is not null and (\"thoughtful\".\"sales_channel\" is not null and \"thoughtful\".\"sales_channel\" in ('STORE','WEB'))
 
 GROUP BY
     1
 HAVING
-    \"store_first_year\" > 0 and count(CASE
-	WHEN (\"thoughtful\".\"sales_channel\" is not null and \"thoughtful\".\"sales_channel\" in ('STORE','WEB')) THEN 1
-	END) > 0
+    \"store_first_year\" > 0 and \"web_first_year\" > 0
 ),
 cooperative as (
 SELECT

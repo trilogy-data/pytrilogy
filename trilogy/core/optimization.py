@@ -609,6 +609,19 @@ def build_optimization_rule_plan(
                 ),
             )
         )
+        if opts.predicate_pushdown:
+            plan.append(
+                OptimizationRulePlan(
+                    name="predicate_pushdown.after_existence_fold",
+                    rule_factory=lambda: PredicatePushdown(having_alias=having_alias),
+                    depends_on=("fold_existence_into_aggregate",),
+                    refires_after=("fold_existence_into_aggregate",),
+                    reason=(
+                        "a WHERE the fold moved onto an aggregate sinks into "
+                        "the scan below it"
+                    ),
+                )
+            )
     if opts.hide_unused_concepts:
         plan.append(
             OptimizationRulePlan(

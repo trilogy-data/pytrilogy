@@ -25,6 +25,8 @@ Sound when:
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from trilogy.core.enums import (
     ComparisonOperator,
     Derivation,
@@ -34,12 +36,16 @@ from trilogy.core.enums import (
 )
 from trilogy.core.models.build import (
     BoolExpr,
+    BuildAggregateWrapper,
     BuildCaseWhen,
     BuildComparison,
     BuildConcept,
     BuildDatasource,
+    BuildFilterItem,
     BuildFunction,
+    BuildParamaterizedConceptReference,
     BuildParenthetical,
+    BuildSubselectComparison,
 )
 from trilogy.core.models.core import DataType
 from trilogy.core.models.execute import CTE, DatasourceCTE, Join, UnionCTE
@@ -117,6 +123,98 @@ def _existence_term(condition: BoolExpr) -> BuildComparison:
     return BuildComparison(left=count, right=0, operator=ComparisonOperator.GT)
 
 
+NULL_PROPAGATING = {
+    FunctionType.ADD,
+    FunctionType.SUBTRACT,
+    FunctionType.MULTIPLY,
+    FunctionType.DIVIDE,
+}
+NULL_IGNORING_AGGREGATES = {
+    FunctionType.SUM,
+    FunctionType.COUNT,
+    FunctionType.AVG,
+    FunctionType.MIN,
+    FunctionType.MAX,
+}
+
+
+def _same_value(left: object, right: object) -> bool:
+    left, right = (
+        v.concept if isinstance(v, BuildParamaterizedConceptReference) else v
+        for v in (left, right)
+    )
+    if isinstance(left, BuildConcept) or isinstance(right, BuildConcept):
+        return (
+            isinstance(left, BuildConcept)
+            and isinstance(right, BuildConcept)
+            and left.address == right.address
+        )
+    return left == right
+
+
+def _equality(atom: object) -> tuple[str, object] | None:
+    if (
+        type(atom) is BuildComparison
+        and atom.operator == ComparisonOperator.EQ
+        and isinstance(atom.left, BuildConcept)
+    ):
+        return atom.left.address, atom.right
+    return None
+
+
+def _implies(conjunct: object, atom: BoolExpr) -> bool:
+    """`conjunct` true forces `atom` true: the same atom, or `col = v` against
+    `col = v` / `col in (.., v, ..)`."""
+    if str(conjunct) == str(atom):
+        return True
+    equality = _equality(conjunct)
+    if equality is None:
+        return False
+    column, value = equality
+    if isinstance(atom, BuildSubselectComparison):
+        return (
+            atom.operator == ComparisonOperator.IN
+            and isinstance(atom.left, BuildConcept)
+            and atom.left.address == column
+            and isinstance(atom.right, (tuple, list))
+            and any(_same_value(value, v) for v in atom.right)
+        )
+    other = _equality(atom)
+    return other is not None and other[0] == column and _same_value(value, other[1])
+
+
+def _null_unless(expr: object, atom: BoolExpr) -> bool:
+    """`expr` is NULL on every row where `atom` is not true."""
+    if isinstance(expr, BuildConcept):
+        return _null_unless(expr.lineage, atom)
+    if isinstance(expr, BuildFilterItem):
+        return any(
+            _implies(c, atom) for c in decompose_condition(expr.where.conditional)
+        ) or _null_unless(expr.content, atom)
+    if isinstance(expr, BuildFunction) and expr.operator in NULL_PROPAGATING:
+        return any(_null_unless(arg, atom) for arg in expr.arguments)
+    return False
+
+
+def _aggregates_ignore(aggregate: CTE, condition: BoolExpr) -> bool:
+    """Every aggregate `aggregate` computes reads NULL off a row failing
+    `condition`, so filtering its input by `condition` changes no value."""
+    atoms = decompose_condition(condition)
+    computed = [
+        c
+        for c in aggregate.output_columns
+        if not aggregate.source_map.get(c.address)
+        and isinstance(c.lineage, BuildAggregateWrapper)
+    ]
+    return bool(computed) and all(
+        c.lineage.function.operator in NULL_IGNORING_AGGREGATES
+        and len(c.lineage.function.arguments) == 1
+        and all(_null_unless(c.lineage.function.arguments[0], a) for a in atoms)
+        for c in computed
+        if isinstance(c.lineage, BuildAggregateWrapper)
+    )
+
+
 def _aggregate_reads_all(
     aggregate: CTE, key: BuildConcept, row_atoms: list[str]
 ) -> bool:
@@ -142,8 +240,11 @@ def _dimension_join(rows: CTE, key: BuildConcept) -> Join | None:
     for join in rows.joins:
         if not isinstance(join, Join) or join.left_cte is not None:
             return None
-        if _single_pair_inner(join) and (
-            (join.joinkey_pairs or [])[0].left.equivalent_addresses
+        if (
+            join.jointype in (JoinType.INNER, JoinType.LEFT_OUTER)
+            and not join.has_predicate
+            and len(join.joinkey_pairs or []) == 1
+            and (join.joinkey_pairs or [])[0].left.equivalent_addresses
             & key.equivalent_addresses
         ):
             if found is not None:
@@ -192,22 +293,49 @@ def _evaluable_in(aggregate: CTE, condition: BoolExpr) -> bool:
     )
 
 
-def _rebase_on_dimension(rows: CTE, dimension: Join, key: BuildConcept) -> None:
+def _rebase_on_dimension(
+    rows: CTE, dimension: Join, key: BuildConcept, aggregate: CTE
+) -> None:
+    """An INNER dimension holds exactly the keys the consumer's join keeps, so
+    `rows` reads it alone. A LEFT one also yields keys it lacks (and a NULL
+    key), so `rows` reads the aggregate's keys padded by it."""
     raw = _inlined_lookup(rows, dimension)
     assert raw is not None
     alias = raw.safe_identifier
+    padded = dimension.jointype == JoinType.LEFT_OUTER
+    key_source = aggregate.name if padded else alias
     keep = _reads_from(rows, alias) | key.equivalent_addresses
     rows.source_map = {
-        a: ([alias] if a in key.equivalent_addresses else sources)
+        a: ([key_source] if a in key.equivalent_addresses else sources)
         for a, sources in rows.source_map.items()
         if a in keep
     }
-    rows.joins = []
     rows.condition = None
     rows.source.condition = None
-    rows.parent_ctes = []
     rows.inlined_parents = [dimension.right_cte]  # type: ignore[list-item]
     rows.source.joins = []
+    if padded:
+        pair = (dimension.joinkey_pairs or [])[0]
+        rows.joins = [
+            replace(
+                dimension,
+                joinkey_pairs=[
+                    replace(pair, cte=aggregate, existing_datasource=aggregate.source)
+                ],
+            )
+        ]
+        rows.parent_ctes = [aggregate]
+        rows.source.datasources = [aggregate.source, raw]
+        rows.source.base_datasource = None
+        rows.source.source_map = {
+            a: {aggregate.source if sources == [aggregate.name] else raw}
+            for a, sources in rows.source_map.items()
+        }
+        rows.base_name_override = aggregate.name
+        rows.base_alias_override = aggregate.name
+        return
+    rows.joins = []
+    rows.parent_ctes = []
     rows.source.datasources = [raw]
     rows.source.base_datasource = raw
     rows.source.source_map = {a: {raw} for a in rows.source_map}
@@ -290,7 +418,15 @@ class FoldExistenceIntoAggregate(OptimizationRule):
         ):
             return False
         self.log(f"{rows.name}'s existence test folds into {aggregate.name}'s HAVING")
-        term = _existence_term(condition)
-        aggregate.condition = append_condition(aggregate.condition, term)
-        _rebase_on_dimension(rows, dimension, r_key)
+        # an aggregate blind to the rows W drops may filter its input instead,
+        # which also leaves only keys with a passing row
+        aggregate.condition = append_condition(
+            aggregate.condition,
+            (
+                condition
+                if _aggregates_ignore(aggregate, condition)
+                else _existence_term(condition)
+            ),
+        )
+        _rebase_on_dimension(rows, dimension, r_key, aggregate)
         return True

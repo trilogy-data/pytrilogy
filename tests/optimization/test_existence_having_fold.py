@@ -46,8 +46,14 @@ FOLDED = (
     "where channel in ('STORE','WEB') and store_total > 0 and web_total > 0 "
     "select name order by name asc;"
 )
+COUNTED = (
+    "where channel in ('STORE','WEB') and all_total > 0 and store_total > 0 "
+    "select name order by name asc;"
+)
 QUERIES = [
     FOLDED,
+    COUNTED,
+    "where channel in ('WEB', 'CATALOG') and all_total > 5 select name order by name asc;",
     "where channel = 'WEB' and store_total > 0 select name as n order by n asc;",
     "where year = 2001 and store_total > 0 select name order by name asc;",
     "where year in (2001, 2002) and channel = 'WEB' and store_01 > 0 select name order by name asc;",
@@ -81,6 +87,10 @@ def _compiled(executor: Executor, query: str, enabled: bool) -> str:
         return executor.generate_sql(query)[-1]
 
 
+def _fact_scans(sql: str) -> int:
+    return sql.count('    "sales"\n') + sql.count('    "sales" as')
+
+
 def _rows(executor: Executor, sql: str) -> list[tuple]:
     return [tuple(r) for r in executor.execute_raw_sql(sql).fetchall()]
 
@@ -91,10 +101,17 @@ def test_fold_keeps_rows(executor: Executor, query: str):
     assert _rows(executor, folded) == _rows(executor, _compiled(executor, query, False))
 
 
-def test_existence_scan_reads_the_dimension_alone(executor: Executor):
+def test_implied_where_filters_the_aggregate_input(executor: Executor):
     sql = _compiled(executor, FOLDED, True)
+    assert "count(CASE" not in sql
+    assert _fact_scans(sql) == 1
+    assert _rows(executor, sql) == [("a",), ("b",), ("d",), ("e",)]
+
+
+def test_existence_becomes_a_having_count(executor: Executor):
+    sql = _compiled(executor, COUNTED, True)
     assert "count(CASE" in sql
-    assert sql.count('FROM\n    "sales"') == 1
+    assert _fact_scans(sql) == 1
     assert _rows(executor, sql) == [("a",), ("b",), ("d",), ("e",)]
 
 
