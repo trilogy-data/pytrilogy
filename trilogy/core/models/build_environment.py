@@ -28,7 +28,8 @@ def _find(parent: dict[str, str], node: str) -> str:
 
 
 def _ranked_classes(
-    edges: Iterable[tuple[str, str]], rank: Callable[[str], tuple[bool, bool, str]]
+    edges: Iterable[tuple[str, str]],
+    rank: Callable[[str], tuple[bool, bool, str]] | None = None,
 ) -> dict[str, tuple[str, ...]]:
     parent: dict[str, str] = {}
     for left, right in edges:
@@ -360,9 +361,10 @@ class BuildEnvironment:
 
     def _spelling_edges(self) -> Iterator[tuple[str, str]]:
         yield from self._value_edges()
+        for origin in self.alias_origin_lookup.values():
+            for pseudonym in origin.pseudonyms:
+                yield origin.address, pseudonym
         for concept in [*self.concepts.values(), *self.alias_origin_lookup.values()]:
-            for pseudonym in concept.pseudonyms:
-                yield concept.address, pseudonym
             if not any(
                 PRESENCE_PROBE_PREFIX in a
                 for a in (concept.address, concept.canonical_address)
@@ -384,16 +386,16 @@ class BuildEnvironment:
     def spelling_classes(self) -> dict[str, tuple[str, ...]]:
         """`value_classes` widened to the reference graph's spellings, each
         concept's and alias origin's canonical (`_virt_*`) address, which is
-        how a scan's edge names what a request asks for by address. A
-        canonical name ranks first: unlike the authored address it names the
-        variant a scan renders (a merge's derived side). Wider than a value: a
-        union join's member and a projection of the same expression share a
-        canonical but not their NULLs. A presence probe keeps its own
-        canonical, which pins side membership."""
-        return _ranked_classes(
-            self._spelling_edges(),
-            lambda a: (a in self.alias_origin_lookup, a in self.concepts, a),
-        )
+        how a scan's edge names what a request asks for by address. Wider than
+        a value: a union join's member and a projection of the same expression
+        share a canonical but not their NULLs. A presence probe keeps its own
+        canonical, which pins side membership.
+
+        Named by the smallest spelling. Source planning reads these names back
+        as concepts and its plans depend on which one it gets: an authored
+        name loses the merge variant a scan renders, and a canonical-first one
+        grows TPC-DS plans."""
+        return _ranked_classes(self._spelling_edges())
 
     def address_roots(
         self, scope: AbstractSet[str] | None = None, spellings: bool = False
