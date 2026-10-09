@@ -543,6 +543,113 @@ class MergeNode(StrategyNode):
             coalescing_keys=coalescing,
         )
 
+    def _group_decision(
+        self,
+        pregrain: BuildGrain,
+        grain: BuildGrain,
+        join_candidates: list[QueryDatasource | BuildDatasource],
+        joins: list[BaseJoin | UnnestJoin],
+        final_datasets: list[QueryDatasource | BuildDatasource],
+    ) -> tuple[bool | None, bool]:
+        """Whether the joined rows regroup to `grain` (None: the parents'
+        grain decides), and whether that was forced by no parent carrying
+        the full grain."""
+        condition_key_requires_group = has_condition_key_outside_grain(
+            self.conditions, grain, self.environment
+        )
+        grain_forced = False
+
+        if self.force_group is True:
+            # A node producing rowset outputs at a grain its parents satisfy
+            # must not regroup. TVF_UNION counts too: a UNION ALL stack defines
+            # its own no-dedup row semantics, so a wrapper at the stack grain
+            # must never collapse duplicate rows. The grain tested is the one
+            # the OUTPUTS carry: a FINAL dedup narrows the outputs to the
+            # requested columns while `self.grain` still claims the merge's
+            # row grain (`{s.d, s.o}` over `select s.d, band`), which the
+            # parents satisfy trivially.
+            rowset_output = any(
+                concept.derivation in (Derivation.ROWSET, Derivation.TVF_UNION)
+                for concept in self.output_concepts
+            )
+            force_group = condition_key_requires_group or not (
+                rowset_output
+                and grain_satisfied_by_pregrain(
+                    pregrain,
+                    BuildGrain.from_concepts(
+                        self.output_concepts, environment=self.environment
+                    ),
+                    self.environment,
+                )
+            )
+        elif self.whole_grain:
+            force_group = False
+        elif condition_key_requires_group:
+            force_group = True
+        elif self.force_group is False:
+            force_group = not grain_satisfied_by_pregrain(
+                pregrain, grain, self.environment
+            )
+        elif not grain_satisfied_by_pregrain(pregrain, grain, self.environment):
+            logger.info(
+                f"{self.logging_prefix}{LOGGER_PREFIX} no parents include full grain {grain} and pregrain {pregrain} does not match, assume must group to grain. Have {[str(d.grain) for d in final_datasets]}"
+            )
+            force_group = True
+            grain_forced = True
+        else:
+            force_group = None
+        # A regroup is an identity when the joined rows are already unique at
+        # the output grain: nothing to collapse (a row filter on keys outside
+        # the grain cannot create duplicates), so render a plain projection.
+        if force_group and is_identity_group(
+            join_candidates,
+            joins,
+            BuildGrain.from_concepts(
+                self.output_concepts, environment=self.environment
+            ),
+            self.conditions,
+            self.output_concepts,
+            self.rollup_concepts,
+        ):
+            force_group = False
+        # Rows passed through from a ROLLUP/CUBE/GROUPING SETS parent are already
+        # final-shape: a regroup would re-aggregate the subtotal rows away.
+        if force_group and any(
+            nonstandard_grouping_lineage(c) is not None for c in self.output_concepts
+        ):
+            force_group = False
+        return force_group, grain_forced
+
+    def _existence_only(
+        self, source: QueryDatasource | BuildDatasource, merge_outputs: set[str]
+    ) -> bool:
+        """`source` only feeds this merge's memberships: every row output it
+        provides is an existence concept. Incidental extra columns must not
+        promote it to a joined row source: it has no join key, only a
+        subselect, and would dangle in the FROM.
+
+        A coalescing (union/full) key the feeder exposes only as the KEY of
+        its own semijoin probe is likewise incidental: the feeder reaches its
+        rows through the EXISTS subselect, not a row join. A feeder exposing
+        OTHER coalescing keys is a real bridge row source and stays a join
+        candidate."""
+        existence = {c.address for c in self.existence_concepts}
+        out_addrs = {y.address for y in source.output_concepts}
+        provided = out_addrs & existence
+        if not provided:
+            return False
+        coalescing = self.environment.domain_graph.coalescing_relation_members()
+        probe_keys = {
+            k
+            for c in self.existence_concepts
+            if c.address in provided
+            for k in (c.keys or set())
+            if k in coalescing
+        }
+        return all(
+            a in existence or a in probe_keys for a in out_addrs if a in merge_outputs
+        )
+
     def _resolve(self) -> QueryDatasource:
         parent_sources: list[QueryDatasource | BuildDatasource] = [
             p.resolve() for p in self.parents
@@ -581,41 +688,9 @@ class MergeNode(StrategyNode):
             if self.conditions
             else set()
         )
-        existence_addr_set = {c.address for c in self.existence_concepts}
-        # Coalescing (union/full) key members. A semijoin feeder keyed on one of
-        # these because its probe filters the coalesced key carries that key
-        # only incidentally; the genuine union sides supply it (see below).
-        coalescing_members = self.environment.domain_graph.coalescing_relation_members()
-        existence_key_by_addr: dict[str, set[str]] = {
-            c.address: {k for k in (c.keys or set()) if k in coalescing_members}
-            for c in self.existence_concepts
-        }
-
-        def _is_existence_only(x: QueryDatasource | BuildDatasource) -> bool:
-            out_addrs = {y.address for y in x.output_concepts}
-            provided_existence = out_addrs & existence_addr_set
-            if not provided_existence:
-                return False
-            # Existence-only if every concept it provides that this merge emits
-            # as a row output is an existence concept. Incidental extra columns
-            # must not promote it to a joined row source: it has no join key,
-            # only a subselect, and would dangle in the FROM.
-            #
-            # A coalescing key the feeder exposes only as the KEY of its own
-            # semijoin probe is likewise incidental: the feeder reaches its rows
-            # through the EXISTS subselect, not a row join. A feeder exposing
-            # OTHER coalescing keys is a real bridge row source and stays a
-            # join candidate.
-            probe_keys: set[str] = set()
-            for addr in provided_existence:
-                probe_keys |= existence_key_by_addr.get(addr, set())
-            return all(
-                a in existence_addr_set or a in probe_keys
-                for a in out_addrs
-                if a in merge_output_addresses
-            )
-
-        existence_final = [x for x in final_datasets if _is_existence_only(x)]
+        existence_final = [
+            x for x in final_datasets if self._existence_only(x, merge_output_addresses)
+        ]
         # ``force_group is True`` means this merge exists to regroup its finer
         # parent to the output grain; returning a parent that merely covers the
         # output columns would drop that group. ``preserve_parents`` marks a
@@ -734,70 +809,9 @@ class MergeNode(StrategyNode):
         logger.debug(
             f"{self.logging_prefix}{LOGGER_PREFIX} effective joined pregrain is {pregrain}"
         )
-        condition_key_requires_group = has_condition_key_outside_grain(
-            self.conditions, grain, self.environment
+        force_group, grain_forced = self._group_decision(
+            pregrain, grain, join_candidates, joins, final_datasets
         )
-        grain_forced = False
-
-        if self.force_group is True:
-            # A node producing rowset outputs at a grain its parents satisfy
-            # must not regroup. TVF_UNION counts too: a UNION ALL stack defines
-            # its own no-dedup row semantics, so a wrapper at the stack grain
-            # must never collapse duplicate rows. The grain tested is the one
-            # the OUTPUTS carry: a FINAL dedup narrows the outputs to the
-            # requested columns while `self.grain` still claims the merge's
-            # row grain (`{s.d, s.o}` over `select s.d, band`), which the
-            # parents satisfy trivially.
-            rowset_output = any(
-                concept.derivation in (Derivation.ROWSET, Derivation.TVF_UNION)
-                for concept in self.output_concepts
-            )
-            force_group = condition_key_requires_group or not (
-                rowset_output
-                and grain_satisfied_by_pregrain(
-                    pregrain,
-                    BuildGrain.from_concepts(
-                        self.output_concepts, environment=self.environment
-                    ),
-                    self.environment,
-                )
-            )
-        elif self.whole_grain:
-            force_group = False
-        elif condition_key_requires_group:
-            force_group = True
-        elif self.force_group is False:
-            force_group = not grain_satisfied_by_pregrain(
-                pregrain, grain, self.environment
-            )
-        elif not grain_satisfied_by_pregrain(pregrain, grain, self.environment):
-            logger.info(
-                f"{self.logging_prefix}{LOGGER_PREFIX} no parents include full grain {grain} and pregrain {pregrain} does not match, assume must group to grain. Have {[str(d.grain) for d in final_datasets]}"
-            )
-            force_group = True
-            grain_forced = True
-        else:
-            force_group = None
-        # A regroup is an identity when the joined rows are already unique at
-        # the output grain: nothing to collapse (a row filter on keys outside
-        # the grain cannot create duplicates), so render a plain projection.
-        if force_group and is_identity_group(
-            join_candidates,
-            joins,
-            BuildGrain.from_concepts(
-                self.output_concepts, environment=self.environment
-            ),
-            self.conditions,
-            self.output_concepts,
-            self.rollup_concepts,
-        ):
-            force_group = False
-        # Rows passed through from a ROLLUP/CUBE/GROUPING SETS parent are already
-        # final-shape: a regroup would re-aggregate the subtotal rows away.
-        if force_group and any(
-            nonstandard_grouping_lineage(c) is not None for c in self.output_concepts
-        ):
-            force_group = False
 
         qd_joins: list[BaseJoin | UnnestJoin] = [*joins]
 
