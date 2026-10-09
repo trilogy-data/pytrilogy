@@ -98,7 +98,7 @@ class _SourceFacts:
 
 
 @dataclass
-class _ModelFacts:
+class ModelFacts:
     """Binding facts of one scope, canonicalized over pseudonyms."""
 
     canonical: dict[str, str]
@@ -106,6 +106,21 @@ class _ModelFacts:
     # every spelling of an address that is part of some source's row identity
     identifying: frozenset[str] = frozenset()
     reach: dict[frozenset[str], frozenset[str]] = field(default_factory=dict)
+
+    def lookup_supply(
+        self, identifier: str, without: str | None = None
+    ) -> frozenset[str]:
+        """What a row of source `identifier` has a value for by keyed lookup,
+        with the `without` source left out of the model. The FD closure is the
+        wrong tool for this: a same-grain sibling binding its keys `~` is in
+        the closure yet may hold no row for the key. The lookup over-
+        approximates (a nullable FK may miss), the safe direction for the
+        pin-heal: a killer counted as suppliable only blocks healing."""
+        source = next(s for s in self.sources if s.identifier == identifier)
+        if without is None:
+            return frozenset(source.carried)
+        rest = tuple(s for s in self.sources if s.identifier != without)
+        return frozenset(_carried(source, rest))
 
     def reach_of(self, keys: frozenset[str]) -> frozenset[str]:
         """Addresses a keyed lookup arrives at from `keys` together: a
@@ -276,10 +291,10 @@ def _rowset_sources(witnesses: tuple[RowsetWitness, ...]) -> tuple[_SourceFacts,
 
 
 # per scope, for the life of its graph; see `ScopeDatasources`
-_FACTS_CACHE: WeakKeyDictionary[ScopeDatasources, _ModelFacts] = WeakKeyDictionary()
+_FACTS_CACHE: WeakKeyDictionary[ScopeDatasources, ModelFacts] = WeakKeyDictionary()
 
 
-def scope_facts(scope: ScopeDatasources, environment: BuildEnvironment) -> _ModelFacts:
+def scope_facts(scope: ScopeDatasources, environment: BuildEnvironment) -> ModelFacts:
     """The binding facts of one scope, computed on first read."""
     facts = _FACTS_CACHE.get(scope)
     if facts is None:
@@ -437,25 +452,25 @@ def _identifying(
 
 def _compute_facts(
     environment: BuildEnvironment, datasources: Sequence[BuildDatasource]
-) -> _ModelFacts:
+) -> ModelFacts:
     canonical = _canonical_addresses(environment)
     identities = _row_identities(environment, datasources)
     bound = tuple(
         _source_facts(ds, canonical, identities[ds.identifier]) for ds in datasources
     )
     sources = _stamped(bound + _generated_domains(environment, canonical, bound))
-    return _ModelFacts(
+    return ModelFacts(
         canonical=canonical,
         sources=sources,
         identifying=_identifying(canonical, sources),
     )
 
 
-def _with_rowsets(facts: _ModelFacts, rowsets: tuple[_SourceFacts, ...]) -> _ModelFacts:
+def _with_rowsets(facts: ModelFacts, rowsets: tuple[_SourceFacts, ...]) -> ModelFacts:
     """`facts` beside the rowsets a plan reads: only `carried` changes for the
     model's own sources."""
     respelled = tuple(_respelled(r, facts.canonical) for r in rowsets)
-    return _ModelFacts(
+    return ModelFacts(
         canonical=facts.canonical,
         sources=_stamped(facts.sources + respelled),
         identifying=facts.identifying | _identifying(facts.canonical, respelled),
@@ -569,7 +584,7 @@ def _identifying_keys(source: _SourceFacts, present: frozenset[str]) -> frozense
 
 
 def _witnesses(
-    entities: frozenset[str], facts: _ModelFacts
+    entities: frozenset[str], facts: ModelFacts
 ) -> dict[frozenset[str], list[_SourceFacts]]:
     """present -> the sources whose rows carry exactly those entities."""
     out: dict[frozenset[str], list[_SourceFacts]] = {}
@@ -609,7 +624,7 @@ def _bridges(
     source: _SourceFacts,
     present: frozenset[str],
     entities: frozenset[str],
-    facts: _ModelFacts,
+    facts: ModelFacts,
 ) -> bool:
     """`source` shares a column with a source carrying an entity outside
     `present`: the fan-out join that relates this region to the rest of the
@@ -628,7 +643,7 @@ def _completions(
     requested_roots: frozenset[str],
     entities: frozenset[str],
     rejected: frozenset[str],
-    facts: _ModelFacts,
+    facts: ModelFacts,
 ) -> tuple[Completion, ...]:
     """The sources the plan needs that hold only some of this region's rows,
     beside a source holding all of them: `returns` beside `lines`. Needed
@@ -661,7 +676,7 @@ def _completions(
 
 
 def _connected(
-    entities: frozenset[str], facts: _ModelFacts
+    entities: frozenset[str], facts: ModelFacts
 ) -> dict[str, frozenset[str]]:
     """entity -> the entities of its model component: sources sharing a column
     can be joined, so their entities meet on some row."""
@@ -693,7 +708,7 @@ def _has_extension_license(datasources: Sequence[BuildDatasource]) -> bool:
 
 
 def _entity_reach(
-    facts: _ModelFacts,
+    facts: ModelFacts,
     canonical: dict[str, str],
     entities: frozenset[str],
     spans: frozenset[str],

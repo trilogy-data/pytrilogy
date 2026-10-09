@@ -51,7 +51,12 @@ from trilogy.core.processing.condition_utility import (
     gate_allowed_values,
 )
 from trilogy.core.processing.v4_helper.concept_graph import build_concept_graph
-from trilogy.core.processing.v4_helper.keyspace import build_keyspace, null_rejected
+from trilogy.core.processing.v4_helper.keyspace import (
+    ModelFacts,
+    build_keyspace,
+    null_rejected,
+    scope_facts,
+)
 
 
 def _spellings(concept: BuildConcept) -> set[str]:
@@ -158,54 +163,20 @@ def _pair_siblings(
     return anchors, partials
 
 
-def _lookup_supply(
-    anchor: BuildDatasource, datasources: Sequence[BuildDatasource]
-) -> set[str]:
-    """Spellings an ``anchor`` row can carry a value for: its own bindings plus
-    every datasource reachable by keyed lookup on what it already carries.
-
-    The FD closure is the wrong tool here: a sibling at the SAME grain binding
-    its keys ``~`` puts its columns in the closure, yet may hold no row for the
-    anchor's key, so the lookup walk stops at partial key bindings. Sources it
-    does enter over-approximate (a nullable FK may miss), which is the safe
-    direction: a killer counted as suppliable only blocks healing.
-    """
-    supply = _bound_spellings([anchor])
-    remaining = [d for d in datasources if d.identifier != anchor.identifier]
-    changed = True
-    while changed:
-        changed = False
-        still: list[BuildDatasource] = []
-        for d in remaining:
-            grain = set(d.grain.components)
-            partial_key = any(
-                _structural_partial(d, c) and c.concept.address in grain
-                for c in d.columns
-            )
-            if grain <= supply and not partial_key:
-                supply |= _bound_spellings([d])
-                changed = True
-            else:
-                still.append(d)
-        remaining = still
-    return supply
-
-
 def _any_supplies_killers(
-    siblings: list[BuildDatasource],
-    killers: set[str],
-    datasources: Sequence[BuildDatasource],
+    siblings: list[BuildDatasource], killers: set[str], facts: ModelFacts
 ) -> bool:
     """Whether some sibling's rows carry a value for every killer, so the WHERE
     keeps them."""
-    return any(killers <= _lookup_supply(s, datasources) for s in siblings)
+    wanted = {facts.canonical.get(k, k) for k in killers}
+    return any(wanted <= facts.lookup_supply(s.identifier) for s in siblings)
 
 
 def _read_partials(
     ds: BuildDatasource,
     partials: list[BuildDatasource],
     referenced_bound: set[str],
-    datasources: Sequence[BuildDatasource],
+    facts: ModelFacts,
     environment: BuildEnvironment,
 ) -> list[BuildDatasource]:
     """The ``~`` siblings the statement may read: each supplies a ROOT
@@ -222,10 +193,13 @@ def _read_partials(
         and c.derivation == Derivation.ROOT
     }
     own = _bound_spellings([ds])
+    canonical_roots = {facts.canonical.get(r, r) for r in roots}
     read: list[BuildDatasource] = []
     for p in partials:
-        others = [d for d in datasources if d.identifier != p.identifier]
-        if (roots - _lookup_supply(ds, others)) & _lookup_supply(p, datasources) or (
+        unreached = canonical_roots - facts.lookup_supply(
+            ds.identifier, without=p.identifier
+        )
+        if unreached & facts.lookup_supply(p.identifier) or (
             (roots - own) & _bound_spellings([p])
         ):
             read.append(p)
@@ -307,6 +281,7 @@ def decide_heal(
     if not proven_bound:
         return {}
     referenced_bound = (environment.statement_authored_addresses or set()) & bound
+    facts = scope_facts(scope, environment)
     replacements: dict[str, BuildDatasource] = {}
     for ds in partial_hosts:
         # A killer must be related to the key's own model component: a concept
@@ -330,9 +305,9 @@ def decide_heal(
             # A sibling's rows the WHERE keeps hold members ``ds`` may lack: an
             # anchor's always, a `~` sibling's only when the statement reads it.
             read = anchors + _read_partials(
-                ds, partials, component_refs, datasources, environment
+                ds, partials, component_refs, facts, environment
             )
-            if _any_supplies_killers(read, killers, datasources):
+            if _any_supplies_killers(read, killers, facts):
                 continue
             if authored.keyspace.binding_is_complete(ds.identifier, span):
                 healed.add(span)
