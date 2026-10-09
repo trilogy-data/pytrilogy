@@ -776,7 +776,7 @@ def _output_is_rootless(outputs: list[BuildConcept]) -> bool:
         or (
             c.lineage is not None
             and c.derivation != Derivation.ROOT
-            and not any(isinstance(a, BuildConcept) for a in c.concept_arguments)
+            and not c.concept_arguments
         )
         for c in outputs
     )
@@ -797,7 +797,7 @@ def _rowset_handles_read_by_scalars(
     for output in outputs:
         if not _crossjoinable(output) or output.derivation == Derivation.ROWSET:
             continue
-        stack = [a for a in output.concept_arguments if isinstance(a, BuildConcept)]
+        stack = list(output.concept_arguments)
         seen: set[str] = set()
         while stack:
             arg = stack.pop()
@@ -809,9 +809,7 @@ def _rowset_handles_read_by_scalars(
                     found.setdefault(arg.address, arg)
                 continue
             if _crossjoinable(arg):
-                stack.extend(
-                    a for a in arg.concept_arguments if isinstance(a, BuildConcept)
-                )
+                stack.extend(arg.concept_arguments)
     return list(found.values())
 
 
@@ -830,9 +828,7 @@ def _rowsets_read_by(concepts: list[BuildConcept]) -> set[str]:
         if isinstance(concept.lineage, BuildRowsetItem):
             names.add(concept.lineage.rowset.name)
             continue
-        stack.extend(
-            a for a in concept.concept_arguments if isinstance(a, BuildConcept)
-        )
+        stack.extend(concept.concept_arguments)
     return names
 
 

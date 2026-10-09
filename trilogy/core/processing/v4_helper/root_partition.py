@@ -454,11 +454,7 @@ def _row_arg_lineage_closure(arg: BuildConcept) -> set[str]:
             continue
         closure.add(concept.address)
         if concept.lineage is not None:
-            stack.extend(
-                c
-                for c in concept.lineage.concept_arguments
-                if isinstance(c, BuildConcept)
-            )
+            stack.extend(concept.lineage.concept_arguments)
     return closure
 
 
@@ -505,9 +501,7 @@ def _post_aggregate_basic_args(
             continue
         has_aggregate = False
         collected: set[str] = set()
-        stack = [
-            c for c in concept.lineage.concept_arguments if isinstance(c, BuildConcept)
-        ]
+        stack = list(concept.lineage.concept_arguments)
         seen: set[str] = set()
         while stack:
             arg = stack.pop()
@@ -522,11 +516,7 @@ def _post_aggregate_basic_args(
                 continue
             if arg.derivation == Derivation.BASIC and arg.lineage is not None:
                 collected.add(arg.address)
-                stack.extend(
-                    c
-                    for c in arg.lineage.concept_arguments
-                    if isinstance(c, BuildConcept)
-                )
+                stack.extend(arg.lineage.concept_arguments)
         if has_aggregate:
             args |= collected
     return frozenset(args)
