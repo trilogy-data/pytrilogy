@@ -312,18 +312,6 @@ def scope_facts(scope: ScopeDatasources, environment: BuildEnvironment) -> Model
     return facts
 
 
-def _canonical_addresses(environment: BuildEnvironment) -> dict[str, str]:
-    """address -> the smallest spelling among it and its pseudonyms."""
-    classes: dict[str, set[str]] = {}
-    for key, concept in environment.concepts.items():
-        merged = {key, concept.address, *concept.pseudonyms}
-        for member in list(merged):
-            merged |= classes.get(member, set())
-        for member in merged:
-            classes[member] = merged
-    return {address: min(members) for address, members in classes.items()}
-
-
 def _better(new: frozenset[str], old: frozenset[str] | None) -> bool:
     return old is None or len(new) < len(old)
 
@@ -463,7 +451,7 @@ def _identifying(
 def _compute_facts(
     environment: BuildEnvironment, datasources: Sequence[BuildDatasource]
 ) -> ModelFacts:
-    canonical = _canonical_addresses(environment)
+    canonical = environment.address_roots()
     identities = _row_identities(environment, datasources)
     bound = tuple(
         _source_facts(ds, canonical, identities[ds.identifier]) for ds in datasources

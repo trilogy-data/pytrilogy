@@ -1224,39 +1224,6 @@ def reduce_concept_pairs(
     return final
 
 
-def build_canonical_address_map(
-    datasources: list[DataSource],
-    environment: BuildEnvironment,
-) -> dict[str, str]:
-    """Collapse pseudonym-equivalent concept addresses to one canonical address.
-
-    Join resolution treats each class as one graph node. Pseudonym addresses are
-    also linked through ``alias_origin_lookup`` so merged targets and their
-    pre-merge addresses share a class.
-    """
-    from trilogy.core import graph as nx
-
-    pseudonym_graph = nx.Graph()
-    for datasource in datasources:
-        hidden = datasource.hidden_concepts
-        for concept in datasource.output_concepts:
-            if concept.address in hidden:
-                continue
-            pseudonym_graph.add_node(concept.address)
-            for pseudo_addr in concept.pseudonyms:
-                pseudonym_graph.add_edge(concept.address, pseudo_addr)
-                origin = environment.alias_origin_lookup.get(pseudo_addr)
-                if origin is not None and origin.address != pseudo_addr:
-                    pseudonym_graph.add_edge(pseudo_addr, origin.address)
-
-    canonical: dict[str, str] = {}
-    for component in nx.connected_components(pseudonym_graph):
-        root = min(component, key=lambda a: (a in environment.alias_origin_lookup, a))
-        for address in component:
-            canonical[address] = root
-    return canonical
-
-
 def _sole_projected_relation(ds: DataSource) -> str | None:
     """The identifier of the one relation this source only projects (and
     possibly dedups): a single parent, and nothing it computes itself changes
@@ -1941,7 +1908,15 @@ def get_node_joins(
     keyspace = keyspace or Keyspace()
     from trilogy.core import graph as nx
 
-    canonical = build_canonical_address_map(datasources, environment)
+    # each pseudonym class is one graph node, named by a source's own output
+    canonical = environment.address_roots(
+        {
+            concept.address
+            for datasource in datasources
+            for concept in datasource.output_concepts
+            if concept.address not in datasource.hidden_concepts
+        }
+    )
 
     def canon_node(address: str) -> str:
         return f"c~{canonical.get(address, address)}"

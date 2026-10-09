@@ -65,66 +65,8 @@ from trilogy.core.processing.v4_helper.network_model import (
     SourceCandidate,
     SourceNetwork,
     datasource_identifiers,
-    find,
     node_address,
-    union,
 )
-
-
-def _equivalence_map(
-    environment: BuildEnvironment,
-    addresses: set[str],
-    pseudonym_pairs: frozenset[tuple[str, str]] = frozenset(),
-) -> dict[str, str]:
-    """Collapse pseudonym twins onto one representative so a merged key counts as
-    one join axis. Only addresses reachable in this request participate.
-
-    `environment.concepts` alone cannot see a derived merge key's twins: after
-    `merge ka into kb` both real addresses carry the surviving side's lineage,
-    while each side's own variant lives in the graph under its canonical
-    (`_virt_*`) address, the a-side's under `alias_origin_lookup`'s entry. The
-    graph's pseudonym edges relate those canonical nodes, so they are passed in
-    as extra union pairs; without them the two scans' bindings share no class
-    and the sources disconnect."""
-    parent: dict[str, str] = {}
-    for address in addresses:
-        parent.setdefault(address, address)
-        concept = environment.concepts.get(address)
-        if concept is None:
-            continue
-        # A concept's own canonical (`_virt_*`) address is the SAME concept in
-        # the graph's spelling: a request asks for the authored address while
-        # the scan's edge emits its `_virt_comp_*` form. Presence probes are
-        # the deliberate exception: the `_virt_presence_*` identity pins side
-        # membership and must never collapse onto the `_virt_func_*` class
-        # every member binds.
-        canonical = concept.canonical_address
-        if (
-            canonical
-            and canonical != address
-            and canonical in addresses
-            and not is_presence_probe(address)
-            and not is_presence_probe(canonical)
-        ):
-            parent.setdefault(canonical, canonical)
-            union(parent, address, canonical)
-        for pseudonym in concept.pseudonyms:
-            if pseudonym in addresses:
-                parent.setdefault(pseudonym, pseudonym)
-                union(parent, address, pseudonym)
-    for left, right in pseudonym_pairs:
-        parent.setdefault(left, left)
-        parent.setdefault(right, right)
-        union(parent, left, right)
-    return {address: find(parent, address) for address in parent}
-
-
-def _graph_pseudonym_pairs(graph: ReferenceGraph) -> frozenset[tuple[str, str]]:
-    return frozenset(
-        (node_address(left), node_address(right))
-        for left, right in graph.pseudonyms
-        if left.startswith("c~") and right.startswith("c~")
-    )
 
 
 def _condition_fit(
@@ -735,9 +677,7 @@ def build_source_network(
                 concept.address for concept in rollups.get(node, [])
             }
             all_addresses |= emitted_by_node[node]
-    equivalence = _equivalence_map(
-        environment, all_addresses, _graph_pseudonym_pairs(graph)
-    )
+    equivalence = environment.address_roots(all_addresses)
     owners = probe_owners(
         environment,
         graph.scope.datasources,

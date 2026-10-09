@@ -1,10 +1,12 @@
 import difflib
 from collections.abc import ItemsView, ValuesView
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
+from functools import cached_property
 from pathlib import Path
 from typing import Never
 
-from trilogy.constants import DEFAULT_NAMESPACE
+from trilogy.constants import DEFAULT_NAMESPACE, PRESENCE_PROBE_PREFIX
 from trilogy.core.domain_graph import DomainGraph
 from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import (
@@ -17,6 +19,12 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.core import DataType
 from trilogy.core.models.keyspace import Keyspace
+
+
+def _find(parent: dict[str, str], node: str) -> str:
+    while (up := parent.setdefault(node, node)) != node:
+        parent[node] = node = parent.setdefault(up, up)
+    return node
 
 
 class BuildEnvironmentConceptDict(dict):
@@ -325,6 +333,61 @@ class BuildEnvironment:
             and origin.lineage is not None
         }
         return [origins[address] for address in sorted(origins)]
+
+    @cached_property
+    def address_classes(self) -> dict[str, tuple[str, ...]]:
+        """Every spelling of one value -> all of its spellings, best name first.
+
+        A class joins a concept's key, address, canonical (`_virt_*`) address
+        and pseudonyms, for the concepts and the merge-demoted alias origins
+        alike. A presence probe keeps its own canonical: its identity pins side
+        membership and must not collapse onto the value every member binds.
+        Names rank an authored concept address over a canonical-only spelling,
+        and a surviving merge target over a demoted alias."""
+        parent: dict[str, str] = {}
+        for key, concept in [
+            *self.concepts.items(),
+            *self.alias_origin_lookup.items(),
+        ]:
+            spellings = {key, concept.address, *concept.pseudonyms}
+            if not any(
+                PRESENCE_PROBE_PREFIX in a
+                for a in (concept.address, concept.canonical_address)
+            ):
+                spellings.add(concept.canonical_address)
+            root = _find(parent, key)
+            for spelling in spellings:
+                parent[_find(parent, spelling)] = root
+        classes: dict[str, list[str]] = {}
+        for address in parent:
+            classes.setdefault(_find(parent, address), []).append(address)
+        out: dict[str, tuple[str, ...]] = {}
+        for members in classes.values():
+            ranked = tuple(sorted(members, key=self._address_rank))
+            out.update(dict.fromkeys(ranked, ranked))
+        return out
+
+    def _address_rank(self, address: str) -> tuple[bool, bool, str]:
+        return (
+            address in self.alias_origin_lookup,
+            address not in self.concepts,
+            address,
+        )
+
+    def address_roots(self, scope: AbstractSet[str] | None = None) -> dict[str, str]:
+        """Each spelling -> the best name of its class that `scope` holds (any
+        name when unscoped). A consumer whose roots are read back as concepts
+        scopes them to what it can read; classes `scope` misses are absent."""
+        classes = self.address_classes
+        if scope is None:
+            return {address: spellings[0] for address, spellings in classes.items()}
+        out: dict[str, str] = {}
+        for address in scope:
+            spellings = classes.get(address)
+            if spellings is not None and address not in out:
+                root = next(s for s in spellings if s in scope)
+                out.update(dict.fromkeys(spellings, root))
+        return out
 
     def gen_concept_list_caches(self) -> None:
         concrete_concepts: list[BuildConcept] = []
