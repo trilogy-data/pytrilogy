@@ -32,6 +32,7 @@ from trilogy.core.enums import (
     Derivation,
     FunctionType,
     JoinType,
+    Modifier,
     Purpose,
 )
 from trilogy.core.models.build import (
@@ -48,7 +49,15 @@ from trilogy.core.models.build import (
     BuildSubselectComparison,
 )
 from trilogy.core.models.core import DataType
-from trilogy.core.models.execute import CTE, DatasourceCTE, Join, UnionCTE
+from trilogy.core.models.execute import (
+    CTE,
+    BaseJoin,
+    DatasourceCTE,
+    Join,
+    QueryDatasource,
+    UnionCTE,
+    pair_matches_nulls,
+)
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import append_condition, is_sole_consumer
 from trilogy.core.processing.condition_utility import (
@@ -333,6 +342,8 @@ def _rebase_on_dimension(
         }
         rows.base_name_override = aggregate.name
         rows.base_alias_override = aggregate.name
+        if set(raw.grain.components) <= key.equivalent_addresses:
+            rows.group_to_grain = False
         return
     rows.joins = []
     rows.parent_ctes = []
@@ -343,6 +354,78 @@ def _rebase_on_dimension(
     rows.base_alias_override = alias
     if set(raw.grain.components) <= key.equivalent_addresses:
         rows.group_to_grain = False
+
+
+def _tighten_rejected_padding(aggregate: CTE, condition: BoolExpr) -> None:
+    """A LEFT join whose padded rows the moved WHERE now rejects is INNER, which
+    lets a dimension it filters sink into a union below."""
+    proven = condition_proves_non_null(condition)
+    for join in aggregate.joins:
+        if not (isinstance(join, Join) and join.jointype == JoinType.LEFT_OUTER):
+            continue
+        raw = _inlined_lookup(aggregate, join)
+        if raw is None or not _reads_from(aggregate, raw.safe_identifier) & proven:
+            continue
+        join.jointype = JoinType.INNER
+        for base_join in aggregate.source.joins:
+            if not isinstance(base_join, BaseJoin):
+                continue
+            right = base_join.right_datasource
+            underlying = (
+                right.base_datasource if isinstance(right, QueryDatasource) else right
+            )
+            if underlying is not None and underlying.identifier == raw.identifier:
+                base_join.join_type = JoinType.INNER
+
+
+def _read_through_rows(
+    consumer: CTE, join: Join, aggregate: CTE, rows: CTE, key: BuildConcept
+) -> bool:
+    """`rows`, rebased on `aggregate` padded by a dimension unique on the key,
+    has exactly one row per aggregate row: the consumer's join back onto the
+    aggregate pairs each row with itself, so `rows` carries the aggregate's
+    columns and the consumer reads it alone. A plain `=` join also drops the
+    aggregate's NULL key, so it collapses only when that key cannot be NULL."""
+    if rows.group_to_grain or any(j is not join for j in consumer.joins):
+        return False
+    pair = (join.joinkey_pairs or [])[0]
+    where = aggregate.condition_placement.where
+    if not (
+        pair_matches_nulls(pair)
+        or Modifier.NULLABLE in join.modifiers
+        or (
+            where is not None
+            and condition_proves_non_null(where) & key.equivalent_addresses
+        )
+    ):
+        return False
+    carried = {
+        a for a, sources in consumer.source_map.items() if aggregate.name in sources
+    }
+    present = {c.address for c in rows.output_columns}
+    for column in aggregate.output_columns:
+        if column.address in carried and column.address not in present:
+            rows.output_columns.append(column)
+            rows.source.output_concepts.append(column)
+            rows.source_map[column.address] = [aggregate.name]
+            rows.source.source_map[column.address] = {aggregate.source}
+            rows.hidden_concepts.discard(column.address)
+    consumer.joins = []
+    consumer.source.joins = []
+    consumer.parent_ctes = [rows]
+    consumer.source.datasources = [rows.source]
+    consumer.source.base_datasource = None
+    consumer.source_map = {
+        a: ([rows.name] if sources else sources)
+        for a, sources in consumer.source_map.items()
+    }
+    consumer.source.source_map = {
+        a: ({rows.source} if sources else sources)
+        for a, sources in consumer.source.source_map.items()
+    }
+    consumer.base_name_override = rows.name
+    consumer.base_alias_override = rows.name
+    return True
 
 
 class FoldExistenceIntoAggregate(OptimizationRule):
@@ -357,13 +440,14 @@ class FoldExistenceIntoAggregate(OptimizationRule):
             pair = (join.joinkey_pairs or [])[0]
             sides = [(pair.cte.name, pair.left), (join.right_cte.name, pair.right)]
             for (a_name, a_key), (r_name, r_key) in (sides, sides[::-1]):
-                if self._fold(cte, a_name, r_name, a_key, r_key, inverse_map):
+                if self._fold(cte, join, a_name, r_name, a_key, r_key, inverse_map):
                     return True, None
         return False, None
 
     def _fold(
         self,
         consumer: CTE,
+        join: Join,
         a_name: str,
         r_name: str,
         a_key: BuildConcept,
@@ -420,13 +504,14 @@ class FoldExistenceIntoAggregate(OptimizationRule):
         self.log(f"{rows.name}'s existence test folds into {aggregate.name}'s HAVING")
         # an aggregate blind to the rows W drops may filter its input instead,
         # which also leaves only keys with a passing row
-        aggregate.condition = append_condition(
-            aggregate.condition,
-            (
-                condition
-                if _aggregates_ignore(aggregate, condition)
-                else _existence_term(condition)
-            ),
-        )
+        if _aggregates_ignore(aggregate, condition):
+            aggregate.condition = append_condition(aggregate.condition, condition)
+            _tighten_rejected_padding(aggregate, condition)
+        else:
+            aggregate.condition = append_condition(
+                aggregate.condition, _existence_term(condition)
+            )
         _rebase_on_dimension(rows, dimension, r_key, aggregate)
+        if dimension.jointype == JoinType.LEFT_OUTER:
+            _read_through_rows(consumer, join, aggregate, rows, r_key)
         return True

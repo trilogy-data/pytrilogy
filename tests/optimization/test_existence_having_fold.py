@@ -1,10 +1,12 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 
 import pytest
 
-from trilogy import Dialects
+from trilogy import Dialects, Environment
 from trilogy.constants import CONFIG
+from trilogy.core.models.execute import UnionCTE
 from trilogy.executor import Executor
 
 MODEL = """
@@ -123,3 +125,42 @@ def test_aggregate_with_filtered_input_is_not_folded(executor: Executor):
     )
     assert "count(CASE" not in sql
     assert _rows(executor, sql) == [("a",), ("b",), ("d",), ("e",)]
+
+
+@pytest.fixture(scope="module")
+def partial_executor() -> Executor:
+    executor = Dialects.DUCK_DB.default_executor()
+    for statement in SETUP:
+        executor.execute_raw_sql(statement)
+    executor.parse_text(
+        MODEL.replace(
+            "(cid: customer_id, cname: name)", "(cid: ~customer_id, cname: name)"
+        )
+    )
+    return executor
+
+
+@pytest.mark.parametrize("query", [FOLDED, COUNTED])
+def test_padded_dimension_reads_the_aggregate_once(
+    partial_executor: Executor, query: str
+):
+    sql = _compiled(partial_executor, query, True)
+    assert 'LEFT OUTER JOIN "customers"' in sql
+    assert _fact_scans(sql) == 1
+    assert _rows(partial_executor, sql) == _rows(
+        partial_executor, _compiled(partial_executor, query, False)
+    )
+    assert _rows(partial_executor, sql) == [("a",), ("b",), ("d",), ("e",), (None,)]
+
+
+def test_moved_dimension_filter_sinks_into_union_arms():
+    tpcds = Path(__file__).parent.parent / "modeling" / "tpc_ds_duckdb"
+    query = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=tpcds)
+    ).parse_text((tpcds / "query04.preql").read_text())[-1]
+    (union,) = [cte for cte in query.ctes if isinstance(cte, UnionCTE)]
+    assert all(
+        "sales.sale_date.date" in [d.identifier for d in arm.source.datasources]
+        and arm.condition is not None
+        for arm in union.internal_ctes
+    )

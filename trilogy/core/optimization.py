@@ -609,6 +609,20 @@ def build_optimization_rule_plan(
                 ),
             )
         )
+        if opts.union_dim_pushdown:
+            plan.append(
+                OptimizationRulePlan(
+                    name="union_dim_pushdown.after_existence_fold",
+                    rule_factory=UnionDimPushdown,
+                    depends_on=("fold_existence_into_aggregate",),
+                    refires_after=("fold_existence_into_aggregate",),
+                    reason=(
+                        "a dimension filter the fold moved onto an aggregate "
+                        "over a union, behind a join it made INNER, sinks into "
+                        "the union's branches"
+                    ),
+                )
+            )
         if opts.predicate_pushdown:
             plan.append(
                 OptimizationRulePlan(
