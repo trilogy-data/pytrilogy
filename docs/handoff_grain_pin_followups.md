@@ -202,25 +202,35 @@ for the first two, the third shrank two GROUP BYs, TPC-H q11 rows verified):
 `local_scripts/sql_ab/region_battery.py` reruns both batteries and diffs them
 against any tree; both now differ from 3e80810bb only on the rows above.
 
-Still open from it:
+Closed from it (2026-10-08; zero corpus plans moved, both batteries
+unchanged, fuzzer 260/260):
 
-- **No witness, no guard** (strict xfail
-  `test_where_over_the_value_null_group_aggregate_keeps_padding_apart`). In
-  `select customer_id, bucket, sum(target) by bucket where coalesce(sum(target)
-  by bucket, 0) = 0`, the FINAL reads a stream (`customer_id`, `bucket`, the
-  WHERE value) with no column that is NULL exactly on cat's padded row. The
-  inner merge would have to carry one out. Main returns no rows.
-- **A WHERE the region passes beside a solid total by another key is
-  refused** (strict xfail
-  `test_where_kept_region_row_beside_a_solid_total_by_another_key`, on the
-  bucket-only model; main answers it). In `select bucket, sum(amount) by
-  customer_id where amount is null`, the atom has to filter the total's input
-  and also test FINAL's region rows, and both read one orders group. Copying
-  the atom onto the total's input (`_uncovered_grouping_placements` taking
-  FINAL span-domain placements) filters that shared scan for FINAL too.
-  Buckets whose orders were all rejected then come back padded and pass
-  `amount is null`, so the copy was reverted. The fix needs FINAL to read an
-  unfiltered stream of its own.
+- **No witness, no guard** - FIXED. In `select customer_id, bucket,
+  sum(target) by bucket where coalesce(max(target) by bucket, 0) = 0` (or
+  the `sum` twin), the WHERE's stream padded cat's bucket inside its own merge
+  and FINAL joined the bucket total onto it null-safely, pairing her padded
+  NULL with the value-NULL bucket. The stream carries no column NULL exactly
+  on her row. Rule: a grouping contributor holding no region, keyed on a key
+  the stream pads on a region's rows and has a value-NULL group on, joins
+  inside the stream's merge, where the padded side's keys are columns and the
+  earlier-padding guard applies (`strategy_builder._pair_inside_padding_streams`).
+  The plan is smaller: the FINAL join is gone. The `coalesce(t, 0)` spelling
+  was right before (one instance, already in the stream).
+- **A WHERE the region passes beside a solid total by another key** - FIXED.
+  `select bucket, sum(amount) by customer_id where amount is null` (bucket-only
+  model) was refused. Rule: an atom placed at FINAL for a region's rows is
+  copied onto each aggregate it is not decided for
+  (`condition_placement._uncovered_grouping_placements`): the aggregate filters
+  its own input, and FINAL's stream stays whole. The handoff's earlier attempt
+  at the same copy filtered the shared scan; that no longer happens
+  (`PredicatePushdown._passes_padding_a_child_adds` landed since). Copying onto
+  an aggregate the atom IS decided for was wrong: `t` above summed the
+  filtered stream, region rows included, and its GROUP BY united cat's padding
+  with the value NULL. The copy and `_check_final_atoms_precede_aggregates`
+  now ask one predicate, `_atom_decided_for`.
+
+Decided from it:
+
 - **A WHERE restricts the output range and never expands it** - DECIDED
   (owner, 2026-10-08) and FIXED. `select customer_id, sum(amount) where
   bucket = 'z' or name = 'cat'` returned the bucket region's `z` row (main
@@ -398,7 +408,10 @@ far from the information that decides it. Each cost an hour of this handoff.
   `reuse_parent_lookup`) skip a guarded join (`Join.has_predicate`). Every
   pass that repoints CTEs walks `Join.cte_bindings`, which covers the key
   pairs and the guard terms alike.
-- **Condition placement has two exemption registries for the same question.**
+- **Condition placement has two exemption registries for the same
+  question** - PARTLY DONE: for an atom at FINAL the copy and the check now
+  share `_atom_decided_for(atom, aggregates)`; an UPSTREAM_MOST atom is still
+  copied to every uncovered aggregate.
   `_check_final_atoms_precede_aggregates` (an atom only at FINAL must be decided
   at every output aggregate's grain) and `_uncovered_grouping_placements` (copy a
   row atom to aggregates its host does not feed) both encode "a WHERE precedes
