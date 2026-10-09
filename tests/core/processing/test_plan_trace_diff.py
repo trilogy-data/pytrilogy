@@ -1,12 +1,14 @@
 import copy
+import sys
+from pathlib import Path
 
 from tests.core.processing.test_plan_trace import _trace
-from trilogy.core.processing.plan_trace_diff import (
-    diff_traces,
-    format_diff,
-    keyed_steps,
-    value_diff,
-)
+
+_DEBUGGER_DIR = Path(__file__).resolve().parents[3] / "local_scripts" / "plan_debugger"
+if str(_DEBUGGER_DIR) not in sys.path:
+    sys.path.insert(0, str(_DEBUGGER_DIR))
+
+from plan_trace_diff import diff_traces, format_diff, keyed_steps, value_diff
 
 QUERY = "select name, count(order_id) as order_count;"
 

@@ -108,7 +108,7 @@ not move a plan.
 ## Files
 
 - `trace_query.py`: records a statement and writes the JSON and the embedded viewer.
-- `trace_diff.py`: compares two traces (`trilogy/core/processing/plan_trace_diff.py`).
+- `trace_diff.py`: compares two traces (`plan_trace_diff.py`).
 - `viewer.html`: the viewer. `trace_query.py` replaces its `<!--TRACE-->` marker.
 - `examples/`: `customers_orders.preql` (the oracle model, one `~` region),
   `rowset_region.preql` (the same model through a rowset: a nested plan and a
