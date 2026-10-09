@@ -1859,32 +1859,29 @@ def _plan_source(request: SourceRequest) -> StrategyNode | None:
             if merged is not None:
                 return merged
     if request.conditions is None:
-        crossed = _cross_component_source(request)
-        if crossed is not None:
-            return crossed
-    if request.conditions is not None:
-        outputs = _requested_concepts(request)
-        unfiltered = plan_source(
-            SourceRequest(
-                outputs=outputs,
-                environment=request.environment,
-                graph=request.graph,
-                history=request.history,
-                conditions=None,
-                deferred_conditions=_deferred_conditions(request),
-                depth=request.depth,
-                require_full=request.require_full,
-                arm_local=request.arm_local,
-            )
+        return _cross_component_source(request)
+    outputs = _requested_concepts(request)
+    unfiltered = plan_source(
+        SourceRequest(
+            outputs=outputs,
+            environment=request.environment,
+            graph=request.graph,
+            history=request.history,
+            conditions=None,
+            deferred_conditions=_deferred_conditions(request),
+            depth=request.depth,
+            require_full=request.require_full,
+            arm_local=request.arm_local,
         )
-        if unfiltered is not None and not _filters_a_partial_derivation(
-            request, unfiltered
-        ):
-            return SelectNode(
-                output_concepts=request.outputs,
-                input_concepts=unfiltered.output_concepts,
-                environment=request.environment,
-                parents=[unfiltered],
-                conditions=request.conditions.conditional,
-            )
+    )
+    if unfiltered is not None and not _filters_a_partial_derivation(
+        request, unfiltered
+    ):
+        return SelectNode(
+            output_concepts=request.outputs,
+            input_concepts=unfiltered.output_concepts,
+            environment=request.environment,
+            parents=[unfiltered],
+            conditions=request.conditions.conditional,
+        )
     return None

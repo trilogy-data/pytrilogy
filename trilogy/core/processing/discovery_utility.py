@@ -1166,7 +1166,7 @@ def _physical_tables_by_concept(
 
 
 def connected_equivalent_suggestions(
-    environment: BuildEnvironment | None,
+    environment: BuildEnvironment,
     subgraphs: list[list[BuildConcept]],
     g: "ReferenceGraph | None" = None,
     excluded_addresses: frozenset[str] = frozenset(),
@@ -1183,8 +1183,6 @@ def connected_equivalent_suggestions(
     (the caller then falls back to the generic join/merge hint). Reachability is
     judged with ``_component_map`` under the same ``excluded_addresses`` as
     the split, so it matches ``disconnected_components``."""
-    if environment is None:
-        return []
     comp_of, g = _component_map(environment, g, excluded_addresses)
 
     tables = _physical_tables_by_concept(g.scope.datasources)

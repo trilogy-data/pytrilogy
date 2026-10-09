@@ -25,8 +25,8 @@ from trilogy.core.models.execute import (
     CTE,
     BaseJoin,
     DatasourceCTE,
+    InstantiatedUnnestJoin,
     Join,
-    QueryDatasource,
     UnionCTE,
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
@@ -151,7 +151,7 @@ class ReuseParentLookup(OptimizationRule):
                 return True, None
         return False, None
 
-    def _reuse(self, cte: CTE, join: object) -> bool:
+    def _reuse(self, cte: CTE, join: Join | InstantiatedUnnestJoin) -> bool:
         if not (
             isinstance(join, Join)
             and join.jointype == JoinType.LEFT_OUTER
@@ -167,7 +167,6 @@ class ReuseParentLookup(OptimizationRule):
         if (
             _regular_parent(holder, lookup.name) is None
             or is_grouped_cte(holder)
-            or not isinstance(holder.source, QueryDatasource)
             or not _unique_on(lookup, pair.right)
             or not _key_anchored_on(holder, lookup, pair.left)
             or _referenced_elsewhere(cte, join, lookup)

@@ -77,9 +77,9 @@ def _closure(keys: set[str], joins: list[Join]) -> set[str]:
 def rows_unique_at_group(cte: CTE) -> bool:
     if not cte.group_to_grain or not _is_pure_distinct(cte):
         return False
-    if not all(isinstance(j, Join) for j in cte.joins):
+    joins = [j for j in cte.joins if isinstance(j, Join)]
+    if len(joins) != len(cte.joins):
         return False
-    joins: list[Join] = [j for j in cte.joins if isinstance(j, Join)]
     nodes = {b.node.name: b.node for b in cte.source_bindings() if b.node is not None}
     rights = {j.right_cte.name for j in joins}
     bases = [node for name, node in nodes.items() if name not in rights]
