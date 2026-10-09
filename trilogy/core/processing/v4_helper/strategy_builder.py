@@ -13,11 +13,12 @@ generator dispatch lives in `v4_node_generators.dispatch.build_node`."""
 
 import logging
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from dataclasses import replace as dc_replace
 from datetime import date, datetime
+from functools import partial
 from typing import cast
 
 from trilogy.constants import MagicConstants, logger
@@ -4860,6 +4861,359 @@ def _clear_groupmate_completed_partials(
         node.partial_lcl = LooseBuildConceptList(concepts=keep)
 
 
+def _resourced_root_contributor(
+    gid: str,
+    node: StrategyNode,
+    group_concepts: list[BuildConcept],
+    projection_grain: frozenset[str],
+    attrs: dict[str, GroupAttrs],
+    environment: BuildEnvironment,
+    ownership: ExtentOwnership,
+    root_request: RootRequest,
+    graph: ReferenceGraph,
+    history: History,
+    arms_delivered: bool,
+    grouping_sibling: bool,
+) -> list[StrategyNode]:
+    """A ROOT contributor to FINAL, re-sourced when the merge needs more of
+    it than its build carries (preserved join keys, filter-only args), and
+    wrapped to the grain the merge joins it at."""
+    # A filter-only WHERE arg the SELECT never projects (a dim attribute
+    # FD by this dim bucket's key) is not in `group_concepts`, so
+    # `_root_atoms_satisfiable_from` would drop its atom and the fresh
+    # re-source would lose the WHERE. When such an arg was peeled INTO
+    # this bucket (a primary member), add it to the projection so
+    # plan_source sources the dim table and applies the filter. It
+    # isn't mandatory, so the FINAL merge selects only the outputs and
+    # never leaks it. Restricted to bucket members so a
+    # global-aggregate/cross-arm filter arg (handled as a hidden
+    # cross-join input via `_filter_arg_parents`) is untouched.
+    bucket_members = _own_members(attrs, gid)
+    seen_group_addrs = {c.address for c in group_concepts}
+    filter_only_concepts = [
+        c
+        for address in sorted(
+            arg.address
+            for atom in _atoms_at(attrs, gid)
+            for arg in atom.row_arguments
+            if arg.address in bucket_members
+        )
+        if address not in seen_group_addrs
+        and (c := _concept_at(environment, address)) is not None
+    ]
+    group_concepts.extend(filter_only_concepts)
+    root_atoms = _atoms_at(attrs, gid)
+    satisfiable = _root_atoms_satisfiable_from(root_atoms, group_concepts)
+    # The fresh re-source keeps the root group's own WHERE, and is
+    # skipped when an atom is one the scan cannot state (its value
+    # comes from a constraint parent): `node` alone applies it.
+    # A solid root re-sources under its group's own scope, as it was
+    # built; a region domain is the FINAL's own rows and keeps the
+    # FINAL's scope.
+    scope = environment.span_scope
+    if not attrs[gid].extent_spans:
+        scope = _group_span_scope(scope, ownership, gid)
+    with under_span_scope(environment, scope):
+        # a region domain's rows are identified by its spans: a
+        # rename it carries (`group_id as g`) adds no grain of its own
+        projected = (
+            unique(group_concepts, "address")
+            if attrs[gid].extent_spans
+            else _projection_root_concepts(group_concepts, environment)
+        )
+        request = RootRequest(
+            frozenset(c.address for c in projected),
+            _wrap_atoms(satisfiable),
+            environment.span_scope,
+            preexisting=root_request.preexisting,
+        )
+        # Only a request the built node does not answer is planned:
+        # the preserved keys and filter-only args widened it beyond
+        # what the scan carries, or the scope moved.
+        fresh = (
+            _fresh_final_root_projection(
+                projected,
+                environment,
+                graph,
+                history,
+                request.conditions,
+                arms_delivered,
+            )
+            if projected
+            and len(satisfiable) == len(root_atoms)
+            and not request.answered_by(node, root_request)
+            else None
+        )
+    if fresh is not None:
+        node = fresh
+    # The filter-only args above exist so the scan can SOURCE and APPLY
+    # the WHERE; they are not columns the merge consumes. Bucketing them
+    # by natural grain shatters off a GroupNode at the filter's own grain
+    # (`date_dim.date` -> {date_sk}) that projects nothing anyone reads,
+    # and it shares no key with the real projection, so the merge
+    # cross-joins it ON 1=1. The condition is already applied inside
+    # `node`, so dropping them here loses nothing.
+    merge_concepts = [c for c in group_concepts if c not in filter_only_concepts]
+    if attrs[gid].extent_spans:
+        # A region's rows are identified by ALL its spans together:
+        # bucketing the keys by natural grain would stitch each back
+        # on its own and NULL the rest on the extension rows.
+        wrapped = [_distinct_projection(node, merge_concepts, environment)]
+        wrapped[0].region_spans = attrs[gid].extent_spans
+    else:
+        wrapped = _wrap_for_grain(
+            node,
+            merge_concepts,
+            environment,
+            projection_grain,
+            dedup_orthogonal=grouping_sibling,
+        )
+    return wrapped
+
+
+def _assemble_sole_contributor(
+    gid: str,
+    per_group: dict[str, list[BuildConcept]],
+    final_conditions: BuildWhereClause | None,
+    final_probe_args: list[BuildConcept],
+    filter_only_addrs: set[str],
+    apply_final_conditions: Callable[[StrategyNode], StrategyNode],
+    mandatory_list: list[BuildConcept],
+    final_contract: FinalAssemblyContract,
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    built: dict[str, StrategyNode],
+    environment: BuildEnvironment,
+) -> StrategyNode:
+    """FINAL when one group covers every output: that group's node, deduped
+    to the output grain, under the WHERE deferred onto FINAL."""
+    mandatory_addresses = {c.address for c in mandatory_list}
+    sole_node = built[gid]
+    # A sole contributor can CONTAIN the completion merge (the ratio BASIC
+    # over `subset join a.wk = b.wk` pairs both boundaries internally), so
+    # the subset-side key it carries is complete here even though the
+    # multi-contributor clearing at the FINAL merge never runs.
+    _clear_groupmate_completed_partials(sole_node, environment)
+    # A FINAL-deferred presence-probe filter joins its feeder back on the
+    # probe's key group. The normal path hides non-mandatory grain keys and
+    # dedups to the output grain FIRST, which strips the join key and
+    # degrades the feeder join to 1=1; apply the condition over the raw
+    # contributor (keys intact), then dedup the filtered rows. Same path
+    # for a feeder that participates in a scoped relation with this
+    # contributor (`where return_demos.r_ticket is not null` over a
+    # `union join return_demos.demo_id = c_demo` selecting only c_name):
+    # its join back rides the relation axis, which only the raw
+    # contributor can still widen to.
+    final_already_applied = final_conditions is not None and (
+        _subtree_applies_conditions(sole_node, final_conditions)
+    )
+    # A row condition available on the contributor's input is
+    # population-scope. Apply it there before aggregation rather than
+    # materializing the same input as a filter-only sibling. This also
+    # preserves ROLLUP subtotal rows whose grouping keys become NULL.
+    if (
+        final_conditions is not None
+        and not final_already_applied
+        and not final_conditions.existence_arguments
+        and _push_row_condition_before_group(sole_node, final_conditions, environment)
+    ):
+        final_already_applied = True
+    # Same again for a feeder joining a region holder on its span (`select
+    # name where status is null`: the condition scan carries `customer_id`,
+    # the domain hides it), or on a column the holder carries beside its
+    # outputs (`count(order_id) by city`), which the dedup to `name` would
+    # strip.
+    relation_paired_feeders = False
+    region_paired_feeders = False
+    if final_conditions is not None and not final_already_applied:
+        sole_avail = {o.address for o in sole_node.output_concepts}
+        feeder_nodes, _ = _filter_arg_parents(
+            group_graph, built, filter_only_addrs - sole_avail
+        )
+        feeder_outs = [{o.address for o in f.output_concepts} for f in feeder_nodes]
+        scoped_addrs = environment.all_scoped_join_group_members()
+        relation_paired_feeders = any(outs & scoped_addrs for outs in feeder_outs)
+        spans = region_reads(sole_node)
+        region_paired_feeders = bool(spans) and any(
+            outs & (spans | sole_avail) - mandatory_addresses for outs in feeder_outs
+        )
+    if final_probe_args or relation_paired_feeders or region_paired_feeders:
+        conditioned = apply_final_conditions(sole_node)
+        # The feeder join reads the probe at ITS OWN row grain (the fact
+        # side of the relation), fanning the contributor out; the merge's
+        # claimed grain predates that join, so grain-satisfaction checks
+        # (including MergeNode's own rowset-output carve-out) wave the
+        # dedup through. Collapse explicitly to the requested outputs
+        # after the filter.
+        if conditioned is not sole_node and final_contract.deduplicate_to_grain:
+            targets = [
+                o
+                for o in conditioned.output_concepts
+                if o.address in mandatory_addresses
+            ] or list(conditioned.output_concepts)
+            final_node: StrategyNode = GroupNode(
+                output_concepts=targets,
+                input_concepts=targets,
+                environment=environment,
+                parents=[conditioned],
+                partial_concepts=list(conditioned.partial_concepts),
+                preexisting_conditions=conditioned.preexisting_conditions,
+                force_group=True,
+            )
+        else:
+            final_node = _group_to_grain_if_required(
+                conditioned, mandatory_list, final_contract, environment
+            )
+        _bridge_pseudonyms(final_node, per_group[gid])
+        return final_node
+    # The contributing group's outputs include grain keys it exposed
+    # for sibling JOINs (see `_compute_concept_sets`). At the user-
+    # facing FINAL projection those keys aren't part of mandatory and
+    # would otherwise leak into the SELECT. Mask them with
+    # hidden_concepts; only valid at the FINAL layer, since hiding
+    # them at an intermediate group blocks downstream consumers from
+    # using them as JOIN keys (MergeNode validates non-hidden parent
+    # outputs only).
+    # A basic riding a window-over-aggregate (dimensions over a
+    # ROLLUP-then-rank) passes the aggregate's grain keys through as
+    # row-identity / partition columns. Those aren't this basic's declared
+    # grain, so add every grouping ancestor's grain to the hide candidates;
+    # otherwise the carried keys leak into the FINAL projection alongside
+    # their mandatory rename.
+    _hide_final_only_grain_keys(
+        group_graph,
+        attrs,
+        gid,
+        sole_node,
+        mandatory_addresses,
+    )
+    final_node = _group_to_grain_if_required(
+        sole_node,
+        mandatory_list,
+        final_contract,
+        environment,
+    )
+    # The multi-contributor path projects `per_group` directly; the
+    # single-contributor path returns the node's raw output, which can name a
+    # merged key under a sibling alias the user didn't write. Bridge last, so
+    # the hidden bridge concepts can't perturb the grain decision above.
+    _bridge_pseudonyms(final_node, per_group[gid])
+    conditioned = (
+        final_node if final_already_applied else apply_final_conditions(final_node)
+    )
+    if conditioned is final_node:
+        return conditioned
+    # Applying a FINAL-deferred condition can wrap the contributor in a node
+    # that reads it at a finer grain than the output: a membership
+    # (`cust_id in <set>`) filters a contributor that carries an extra grain
+    # key (`channel`) only so the IN-set subselect can read it, so the
+    # filtered rows still duplicate at the output grain. Re-dedup the
+    # conditioned result (no-op when it already sits at the output grain).
+    return _group_to_grain_if_required(
+        conditioned, mandatory_list, final_contract, environment
+    )
+
+
+def _apply_final_conditions(
+    node: StrategyNode,
+    final_conditions: BuildWhereClause | None,
+    filter_only_addrs: set[str],
+    mandatory_list: list[BuildConcept],
+    group_graph: nx.DiGraph,
+    built: dict[str, StrategyNode],
+    environment: BuildEnvironment,
+    feeder_cache: "_CleanFeederCache | None",
+) -> StrategyNode:
+    """`node` under the WHERE deferred onto FINAL, its filter-only args'
+    producers joined in as hidden inputs."""
+    mandatory_addresses = {c.address for c in mandatory_list}
+    if final_conditions is None:
+        return node
+    # Project only the user-requested columns. The merge below may expose
+    # extra align inputs (per-arm keys folded into the align key) that
+    # aren't mandatory and don't render at this layer.
+    keep = [o for o in node.output_concepts if o.address in mandatory_addresses]
+    avail = {o.address for o in node.output_concepts}
+    spans = region_reads(node)
+    arg_nodes, arg_concepts = _filter_arg_parents(
+        group_graph,
+        built,
+        _region_paired_args(filter_only_addrs, avail, spans, environment),
+        spans,
+    )
+    row_arg_addrs = {c.address for c in condition_row_args(final_conditions)}
+    row_concepts = [
+        concept for concept in node.output_concepts if concept.address in row_arg_addrs
+    ]
+    # A membership (`x in <set>`) deferred onto FINAL is hosted on a merge
+    # built here, so its subselect feeder is wired here too.
+    ex_groups = _condition_existence_arg_groups(final_conditions.conditional)
+    ex_concepts = _flatten_arg_groups(ex_groups)
+    ex_parents = (
+        _existence_parents_for(ex_groups, built, skip=node, feeder_cache=feeder_cache)
+        if ex_groups
+        else []
+    )
+    # A feeder that participates in a scoped relation must join back on
+    # the relation axis, not cross-join: widen the contributor (and the
+    # feeder) with the authored members each side can render: a leaf
+    # scan picks up the mate it binds, the boundary its member handle.
+    # Feeders with no relation stay hidden cross-join inputs.
+    # A gate keyed by a base grain key of an output rowset boundary pairs
+    # to the boundary on that key; widen both sides so the merge joins on
+    # it instead of cross-joining.
+    if arg_nodes:
+        # A gate keyed by a column the contributor never projects
+        # (`sum(amount) by status > 35 or ...` over `select oid`) pairs on
+        # that key; carried hidden, or the merge has nothing to join on.
+        gate_keys = _gate_grain_keys(arg_concepts) - avail
+        if gate_keys:
+            _widen_merge_join_keys([node, *arg_nodes], environment, gate_keys)
+        base_keys = _rowset_base_join_keys(mandatory_list, node, arg_nodes)
+        if base_keys:
+            _widen_merge_join_keys([node, *arg_nodes], environment, base_keys)
+        # A row-level atom over the facts (`undelivered`) beside a node
+        # holding a region joins it on the span: cross-joined, any fact
+        # row's value would pass for every member of the region.
+        if node_spans := region_reads(node):
+            _widen_merge_join_keys([node, *arg_nodes], environment, node_spans)
+    if arg_nodes and environment.scoped_join_key_groups:
+        relation_keys: set[str] = set()
+        for feeder in arg_nodes:
+            feeder_outs = {o.address for o in feeder.output_concepts}
+            for relation in environment.scoped_join_relations():
+                if feeder_outs & relation:
+                    relation_keys |= relation
+        if relation_keys:
+            _widen_merge_join_keys(
+                [node, *arg_nodes], environment, frozenset(relation_keys)
+            )
+    sources = ConditionSources(
+        row_concepts=row_concepts + arg_concepts,
+        row_parents=arg_nodes,
+        existence_concepts=ex_concepts,
+        existence_parents=ex_parents,
+    )
+    return inject_condition_at_node(
+        node,
+        final_conditions,
+        keep,
+        environment,
+        sources,
+        hidden_concepts=(
+            {c.address for c in arg_concepts} - mandatory_addresses
+            if arg_nodes
+            else None
+        ),
+        input_concepts=[
+            c for c in node.output_concepts if c.address not in node.hidden_concepts
+        ]
+        + arg_concepts,
+        condition_on_merge=bool(arg_nodes),
+        combine_existing=False,
+    )
+
+
 def _assemble_final_node(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -4899,96 +5253,16 @@ def _assemble_final_node(
         filter_only_addrs |= {a.address for a in atom.row_arguments}
     filter_only_addrs -= mandatory_addresses
 
-    def _apply_final_conditions(node: StrategyNode) -> StrategyNode:
-        if final_conditions is None:
-            return node
-        # Project only the user-requested columns. The merge below may expose
-        # extra align inputs (per-arm keys folded into the align key) that
-        # aren't mandatory and don't render at this layer.
-        keep = [o for o in node.output_concepts if o.address in mandatory_addresses]
-        avail = {o.address for o in node.output_concepts}
-        spans = region_reads(node)
-        arg_nodes, arg_concepts = _filter_arg_parents(
-            group_graph,
-            built,
-            _region_paired_args(filter_only_addrs, avail, spans, environment),
-            spans,
-        )
-        row_arg_addrs = {c.address for c in condition_row_args(final_conditions)}
-        row_concepts = [
-            concept
-            for concept in node.output_concepts
-            if concept.address in row_arg_addrs
-        ]
-        # A membership (`x in <set>`) deferred onto FINAL is hosted on a merge
-        # built here, so its subselect feeder is wired here too.
-        ex_groups = _condition_existence_arg_groups(final_conditions.conditional)
-        ex_concepts = _flatten_arg_groups(ex_groups)
-        ex_parents = (
-            _existence_parents_for(
-                ex_groups, built, skip=node, feeder_cache=feeder_cache
-            )
-            if ex_groups
-            else []
-        )
-        # A feeder that participates in a scoped relation must join back on
-        # the relation axis, not cross-join: widen the contributor (and the
-        # feeder) with the authored members each side can render: a leaf
-        # scan picks up the mate it binds, the boundary its member handle.
-        # Feeders with no relation stay hidden cross-join inputs.
-        # A gate keyed by a base grain key of an output rowset boundary pairs
-        # to the boundary on that key; widen both sides so the merge joins on
-        # it instead of cross-joining.
-        if arg_nodes:
-            # A gate keyed by a column the contributor never projects
-            # (`sum(amount) by status > 35 or ...` over `select oid`) pairs on
-            # that key; carried hidden, or the merge has nothing to join on.
-            gate_keys = _gate_grain_keys(arg_concepts) - avail
-            if gate_keys:
-                _widen_merge_join_keys([node, *arg_nodes], environment, gate_keys)
-            base_keys = _rowset_base_join_keys(mandatory_list, node, arg_nodes)
-            if base_keys:
-                _widen_merge_join_keys([node, *arg_nodes], environment, base_keys)
-            # A row-level atom over the facts (`undelivered`) beside a node
-            # holding a region joins it on the span: cross-joined, any fact
-            # row's value would pass for every member of the region.
-            if node_spans := region_reads(node):
-                _widen_merge_join_keys([node, *arg_nodes], environment, node_spans)
-        if arg_nodes and environment.scoped_join_key_groups:
-            relation_keys: set[str] = set()
-            for feeder in arg_nodes:
-                feeder_outs = {o.address for o in feeder.output_concepts}
-                for relation in environment.scoped_join_relations():
-                    if feeder_outs & relation:
-                        relation_keys |= relation
-            if relation_keys:
-                _widen_merge_join_keys(
-                    [node, *arg_nodes], environment, frozenset(relation_keys)
-                )
-        sources = ConditionSources(
-            row_concepts=row_concepts + arg_concepts,
-            row_parents=arg_nodes,
-            existence_concepts=ex_concepts,
-            existence_parents=ex_parents,
-        )
-        return inject_condition_at_node(
-            node,
-            final_conditions,
-            keep,
-            environment,
-            sources,
-            hidden_concepts=(
-                {c.address for c in arg_concepts} - mandatory_addresses
-                if arg_nodes
-                else None
-            ),
-            input_concepts=[
-                c for c in node.output_concepts if c.address not in node.hidden_concepts
-            ]
-            + arg_concepts,
-            condition_on_merge=bool(arg_nodes),
-            combine_existing=False,
-        )
+    apply_final_conditions = partial(
+        _apply_final_conditions,
+        final_conditions=final_conditions,
+        filter_only_addrs=filter_only_addrs,
+        mandatory_list=mandatory_list,
+        group_graph=group_graph,
+        built=built,
+        environment=environment,
+        feeder_cache=feeder_cache,
+    )
 
     ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
     per_group = _cover_groups_for_mandatory(
@@ -5001,7 +5275,7 @@ def _assemble_final_node(
         ownership,
     )
     if not per_group:
-        return _apply_final_conditions(
+        return apply_final_conditions(
             _group_to_grain_if_required(
                 next(iter(built.values())),
                 mandatory_list,
@@ -5031,133 +5305,19 @@ def _assemble_final_node(
         else []
     )
     if len(contributing) == 1:
-        gid = contributing[0]
-        sole_node = built[gid]
-        # A sole contributor can CONTAIN the completion merge (the ratio BASIC
-        # over `subset join a.wk = b.wk` pairs both boundaries internally), so
-        # the subset-side key it carries is complete here even though the
-        # multi-contributor clearing at the FINAL merge never runs.
-        _clear_groupmate_completed_partials(sole_node, environment)
-        # A FINAL-deferred presence-probe filter joins its feeder back on the
-        # probe's key group. The normal path hides non-mandatory grain keys and
-        # dedups to the output grain FIRST, which strips the join key and
-        # degrades the feeder join to 1=1; apply the condition over the raw
-        # contributor (keys intact), then dedup the filtered rows. Same path
-        # for a feeder that participates in a scoped relation with this
-        # contributor (`where return_demos.r_ticket is not null` over a
-        # `union join return_demos.demo_id = c_demo` selecting only c_name):
-        # its join back rides the relation axis, which only the raw
-        # contributor can still widen to.
-        final_already_applied = final_conditions is not None and (
-            _subtree_applies_conditions(sole_node, final_conditions)
-        )
-        # A row condition available on the contributor's input is
-        # population-scope. Apply it there before aggregation rather than
-        # materializing the same input as a filter-only sibling. This also
-        # preserves ROLLUP subtotal rows whose grouping keys become NULL.
-        if (
-            final_conditions is not None
-            and not final_already_applied
-            and not final_conditions.existence_arguments
-            and _push_row_condition_before_group(
-                sole_node, final_conditions, environment
-            )
-        ):
-            final_already_applied = True
-        # Same again for a feeder joining a region holder on its span (`select
-        # name where status is null`: the condition scan carries `customer_id`,
-        # the domain hides it), or on a column the holder carries beside its
-        # outputs (`count(order_id) by city`), which the dedup to `name` would
-        # strip.
-        relation_paired_feeders = False
-        region_paired_feeders = False
-        if final_conditions is not None and not final_already_applied:
-            sole_avail = {o.address for o in sole_node.output_concepts}
-            feeder_nodes, _ = _filter_arg_parents(
-                group_graph, built, filter_only_addrs - sole_avail
-            )
-            feeder_outs = [{o.address for o in f.output_concepts} for f in feeder_nodes]
-            scoped_addrs = environment.all_scoped_join_group_members()
-            relation_paired_feeders = any(outs & scoped_addrs for outs in feeder_outs)
-            spans = region_reads(sole_node)
-            region_paired_feeders = bool(spans) and any(
-                outs & (spans | sole_avail) - mandatory_addresses
-                for outs in feeder_outs
-            )
-        if final_probe_args or relation_paired_feeders or region_paired_feeders:
-            conditioned = _apply_final_conditions(sole_node)
-            # The feeder join reads the probe at ITS OWN row grain (the fact
-            # side of the relation), fanning the contributor out; the merge's
-            # claimed grain predates that join, so grain-satisfaction checks
-            # (including MergeNode's own rowset-output carve-out) wave the
-            # dedup through. Collapse explicitly to the requested outputs
-            # after the filter.
-            if conditioned is not sole_node and final_contract.deduplicate_to_grain:
-                targets = [
-                    o
-                    for o in conditioned.output_concepts
-                    if o.address in mandatory_addresses
-                ] or list(conditioned.output_concepts)
-                final_node: StrategyNode = GroupNode(
-                    output_concepts=targets,
-                    input_concepts=targets,
-                    environment=environment,
-                    parents=[conditioned],
-                    partial_concepts=list(conditioned.partial_concepts),
-                    preexisting_conditions=conditioned.preexisting_conditions,
-                    force_group=True,
-                )
-            else:
-                final_node = _group_to_grain_if_required(
-                    conditioned, mandatory_list, final_contract, environment
-                )
-            _bridge_pseudonyms(final_node, per_group[gid])
-            return final_node
-        # The contributing group's outputs include grain keys it exposed
-        # for sibling JOINs (see `_compute_concept_sets`). At the user-
-        # facing FINAL projection those keys aren't part of mandatory and
-        # would otherwise leak into the SELECT. Mask them with
-        # hidden_concepts; only valid at the FINAL layer, since hiding
-        # them at an intermediate group blocks downstream consumers from
-        # using them as JOIN keys (MergeNode validates non-hidden parent
-        # outputs only).
-        # A basic riding a window-over-aggregate (dimensions over a
-        # ROLLUP-then-rank) passes the aggregate's grain keys through as
-        # row-identity / partition columns. Those aren't this basic's declared
-        # grain, so add every grouping ancestor's grain to the hide candidates;
-        # otherwise the carried keys leak into the FINAL projection alongside
-        # their mandatory rename.
-        _hide_final_only_grain_keys(
-            group_graph,
-            attrs,
-            gid,
-            sole_node,
-            mandatory_addresses,
-        )
-        final_node = _group_to_grain_if_required(
-            sole_node,
+        return _assemble_sole_contributor(
+            contributing[0],
+            per_group,
+            final_conditions,
+            final_probe_args,
+            filter_only_addrs,
+            apply_final_conditions,
             mandatory_list,
             final_contract,
+            group_graph,
+            attrs,
+            built,
             environment,
-        )
-        # The multi-contributor path projects `per_group` directly; the
-        # single-contributor path returns the node's raw output, which can name a
-        # merged key under a sibling alias the user didn't write. Bridge last, so
-        # the hidden bridge concepts can't perturb the grain decision above.
-        _bridge_pseudonyms(final_node, per_group[gid])
-        conditioned = (
-            final_node if final_already_applied else _apply_final_conditions(final_node)
-        )
-        if conditioned is final_node:
-            return conditioned
-        # Applying a FINAL-deferred condition can wrap the contributor in a node
-        # that reads it at a finer grain than the output: a membership
-        # (`cust_id in <set>`) filters a contributor that carries an extra grain
-        # key (`channel`) only so the IN-set subselect can read it, so the
-        # filtered rows still duplicate at the output grain. Re-dedup the
-        # conditioned result (no-op when it already sits at the output grain).
-        return _group_to_grain_if_required(
-            conditioned, mandatory_list, final_contract, environment
         )
 
     # Only root scans get the grain projection: their grain is the row-level
@@ -5267,99 +5427,22 @@ def _assemble_final_node(
                 )
             )
         if is_root:
-            # A filter-only WHERE arg the SELECT never projects (a dim attribute
-            # FD by this dim bucket's key) is not in `group_concepts`, so
-            # `_root_atoms_satisfiable_from` would drop its atom and the fresh
-            # re-source would lose the WHERE. When such an arg was peeled INTO
-            # this bucket (a primary member), add it to the projection so
-            # plan_source sources the dim table and applies the filter. It
-            # isn't mandatory, so the FINAL merge selects only the outputs and
-            # never leaks it. Restricted to bucket members so a
-            # global-aggregate/cross-arm filter arg (handled as a hidden
-            # cross-join input via `_filter_arg_parents`) is untouched.
-            bucket_members = _own_members(attrs, gid)
-            seen_group_addrs = {c.address for c in group_concepts}
-            filter_only_concepts = [
-                c
-                for address in sorted(
-                    arg.address
-                    for atom in _atoms_at(attrs, gid)
-                    for arg in atom.row_arguments
-                    if arg.address in bucket_members
-                )
-                if address not in seen_group_addrs
-                and (c := _concept_at(environment, address)) is not None
-            ]
-            group_concepts.extend(filter_only_concepts)
-            root_atoms = _atoms_at(attrs, gid)
-            satisfiable = _root_atoms_satisfiable_from(root_atoms, group_concepts)
-            # The fresh re-source keeps the root group's own WHERE, and is
-            # skipped when an atom is one the scan cannot state (its value
-            # comes from a constraint parent): `node` alone applies it.
-            # A solid root re-sources under its group's own scope, as it was
-            # built; a region domain is the FINAL's own rows and keeps the
-            # FINAL's scope.
-            scope = environment.span_scope
-            if not attrs[gid].extent_spans:
-                scope = _group_span_scope(scope, ownership, gid)
-            with under_span_scope(environment, scope):
-                # a region domain's rows are identified by its spans: a
-                # rename it carries (`group_id as g`) adds no grain of its own
-                projected = (
-                    unique(group_concepts, "address")
-                    if attrs[gid].extent_spans
-                    else _projection_root_concepts(group_concepts, environment)
-                )
-                request = RootRequest(
-                    frozenset(c.address for c in projected),
-                    _wrap_atoms(satisfiable),
-                    environment.span_scope,
-                    preexisting=root_requests[gid].preexisting,
-                )
-                # Only a request the built node does not answer is planned:
-                # the preserved keys and filter-only args widened it beyond
-                # what the scan carries, or the scope moved.
-                fresh = (
-                    _fresh_final_root_projection(
-                        projected,
-                        environment,
-                        graph,
-                        history,
-                        request.conditions,
-                        arms_delivered,
-                    )
-                    if projected
-                    and len(satisfiable) == len(root_atoms)
-                    and not request.answered_by(node, root_requests[gid])
-                    else None
-                )
-            if fresh is not None:
-                node = fresh
-            # The filter-only args above exist so the scan can SOURCE and APPLY
-            # the WHERE; they are not columns the merge consumes. Bucketing them
-            # by natural grain shatters off a GroupNode at the filter's own grain
-            # (`date_dim.date` -> {date_sk}) that projects nothing anyone reads,
-            # and it shares no key with the real projection, so the merge
-            # cross-joins it ON 1=1. The condition is already applied inside
-            # `node`, so dropping them here loses nothing.
-            merge_concepts = [
-                c for c in group_concepts if c not in filter_only_concepts
-            ]
-            if attrs[gid].extent_spans:
-                # A region's rows are identified by ALL its spans together:
-                # bucketing the keys by natural grain would stitch each back
-                # on its own and NULL the rest on the extension rows.
-                wrapped = [_distinct_projection(node, merge_concepts, environment)]
-                wrapped[0].region_spans = attrs[gid].extent_spans
-            else:
-                wrapped = _wrap_for_grain(
+            parents.extend(
+                _resourced_root_contributor(
+                    gid,
                     node,
-                    merge_concepts,
-                    environment,
+                    group_concepts,
                     projection_grain,
-                    dedup_orthogonal=grouping_sibling,
+                    attrs,
+                    environment,
+                    ownership,
+                    root_requests[gid],
+                    graph,
+                    history,
+                    arms_delivered,
+                    grouping_sibling,
                 )
-            parents.extend(wrapped)
+            )
         else:
             parents.append(node)
 
