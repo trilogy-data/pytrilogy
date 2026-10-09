@@ -204,10 +204,11 @@ def select_anchors(
 ) -> dict[str, frozenset[str]] | None:
     """Each output's own row identity, or None when nothing is pinned: every
     output of a ROLLUP/CUBE select is a grouping key, evaluated on the rows the
-    pass groups and never on its subtotal rows. FD-reduced per output, so a
+    pass groups and never on its subtotal rows, and a statement nothing pads
+    has no row lacking what another holds (`_may_pad`). FD-reduced per output, so a
     window's partition key (determined by the row it numbers) is not a row of
     the select. `merged` folds a statement join's source key into its target."""
-    if base.grouping is not None:
+    if base.grouping is not None or not _may_pad(graph):
         return None
     out: dict[str, frozenset[str]] = {}
     outputs = {ref.address for ref in base.selection}
@@ -275,41 +276,49 @@ def _may_pad(graph: DomainGraph) -> bool:
     )
 
 
-def _held_beside(reads: set[str], key: str, graph: DomainGraph) -> bool:
-    """A table holding `key`'s whole domain carries `reads` on each of its
-    rows: no row of `key` lacks them."""
+def _bound_by_datasource(graph: DomainGraph) -> dict[str, set[str]]:
     bound: dict[str, set[str]] = {}
-    complete: set[str] = set()
     for b in graph.binding_edges:
         bound.setdefault(b.datasource, set()).add(b.concept)
-        if b.concept == key and b.complete and b.condition is None:
-            complete.add(b.datasource)
-    return any(reads <= bound[datasource] for datasource in complete)
+    return bound
 
 
-def _co_held_only_beside(own: set[str], keys: set[str], graph: DomainGraph) -> bool:
+def _held_beside(
+    reads: set[str], key: str, graph: DomainGraph, bound: dict[str, set[str]]
+) -> bool:
+    """A table holding `key`'s whole domain carries `reads` on each of its
+    rows: no row of `key` lacks them."""
+    return any(
+        b.concept == key
+        and b.complete
+        and b.condition is None
+        and reads <= bound[b.datasource]
+        for b in graph.binding_edges
+    )
+
+
+def _co_held_only_beside(
+    own: set[str], keys: set[str], bound: dict[str, set[str]]
+) -> bool:
     """Several anchors that only ever meet on the expression's own rows: every
     table holding them together holds its keys too (an item and a date meet on
     the sale), so no row has them all without its reads."""
     if len(keys) < 2:
         return False
-    bound: dict[str, set[str]] = {}
-    for b in graph.binding_edges:
-        bound.setdefault(b.datasource, set()).add(b.concept)
     holders = [concepts for concepts in bound.values() if keys <= concepts]
     return bool(holders) and all(own <= concepts for concepts in holders)
 
 
-def _always_beside(own: set[str], key: str, graph: DomainGraph) -> bool:
-    """No select row holds `key` without the rows `expr` reads: nothing in
-    the statement pads them, those rows hold every `key` (`covers`), every
-    `key` row carries them (an order carries its customer), or a table holding
-    `key`'s whole domain does."""
+def _always_beside(
+    own: set[str], key: str, graph: DomainGraph, bound: dict[str, set[str]]
+) -> bool:
+    """No select row holds `key` without the rows `expr` reads: those rows
+    hold every `key` (`covers`), every `key` row carries them (an order
+    carries its customer), or a table holding `key`'s whole domain does."""
     return (
-        not _may_pad(graph)
-        or graph.covers(own, key)
+        graph.covers(own, key)
         or all(graph.determines({key}, o) for o in own)
-        or _held_beside(own, key, graph)
+        or _held_beside(own, key, graph, bound)
     )
 
 
@@ -339,17 +348,18 @@ def pin_keys(
         out |= pin_keys(child, owner, anchors, environment, graph, named, merged)
     if is_null_absorbing(expr):
         reads = {r.address for r in expr.concept_arguments}
+        bound = _bound_by_datasource(graph)
         keys = {
             k
             for address, ks in anchors.items()
             # a table holding the output column carries the reads beside it
-            if address != owner and not _held_beside(reads, address, graph)
+            if address != owner and not _held_beside(reads, address, graph, bound)
             for k in ks
             if k != owner and not (owner and _reads(k, owner, environment))
         }
         own = {merged.get(k, k) for k in _own_keys(expr, environment, keys)}
-        uncovered = {k for k in keys - own if not _always_beside(own, k, graph)}
-        if not _co_held_only_beside(own, uncovered, graph):
+        uncovered = {k for k in keys - own if not _always_beside(own, k, graph, bound)}
+        if not _co_held_only_beside(own, uncovered, bound):
             out |= uncovered
     return frozenset(out)
 
