@@ -76,10 +76,9 @@ def _partial_spelling(ds: BuildDatasource, column: BuildColumnAssignment) -> str
     still relates its keys; treating it as an extension license breaks that
     assembly.
     """
-    if Modifier.PARTIAL not in column.modifiers:
-        return None
+    spelled = ds.partial_spellings(column)
     for address in (column.concept.address, column.origin_concept_address):
-        if address in ds.column_level_partial_addresses:
+        if address in spelled:
             return address
     return None
 

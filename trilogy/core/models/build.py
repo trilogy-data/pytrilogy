@@ -2334,6 +2334,15 @@ class BuildDatasource:
             return None
         return self.aggregate_column_for(concept)
 
+    def partial_spellings(self, column: BuildColumnAssignment) -> frozenset[str]:
+        """The addresses `column`'s column-level ``~`` was authored on, the
+        only mark that licenses extension: a merge respells the column onto
+        its target while the ``~`` stays recorded under the authored one."""
+        return frozenset(
+            {column.concept.address, column.origin_concept_address}
+            & self.column_level_partial_addresses
+        )
+
     @property
     def column_level_partial_concepts(self) -> list[BuildConcept]:
         """Columns with intrinsic (pre-stamp) PARTIAL — survive a covering UNION."""

@@ -332,15 +332,11 @@ def _row_identities(
 def _source_facts(
     ds: BuildDatasource, canonical: dict[str, str], identity: frozenset[str]
 ) -> _SourceFacts:
-    partial_addresses = ds.column_level_partial_addresses
     bound: Carried = {}
     for column in ds.columns:
         address = column.concept.address
         key = canonical.get(address, address)
-        # a merge respells the column onto its target; the `~` stays recorded
-        # under the address it was authored on
-        spelled = {address, column.origin_concept_address} & partial_addresses
-        cause = frozenset(spelled)
+        cause = ds.partial_spellings(column)
         if _better(cause, bound.get(key)):
             bound[key] = cause
     grain = frozenset(canonical.get(g, g) for g in identity)
