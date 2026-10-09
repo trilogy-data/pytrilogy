@@ -6,7 +6,7 @@
 Run it from the root of the tree under test (cwd goes first on sys.path) to
 compare a branch against main or a pre-change commit, then triage each
 difference by hand. The corpus and the suite are blind to most of what this
-finds (docs/handoff_grain_pin_followups.md, "two-region probe").
+finds (docs/handoff_extension_row_followups.md).
 """
 
 from __future__ import annotations

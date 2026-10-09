@@ -10,6 +10,7 @@ import pytest
 from tests.helpers.models import CUSTOMERS_DERIVED
 from tests.helpers.rows import executor_for, sorted_rows
 from trilogy.core.exceptions import NoDatasourceException
+from trilogy.core.grain_pin import _co_held_only_beside
 from trilogy.executor import Executor
 
 # sentinels: a read of the persisted column is visible in the rows
@@ -183,3 +184,20 @@ def test_stored_only_value_cannot_be_pinned_to_another_keyspace():
         match=r"amount_or_zero is stored only at its own grain \(local.order_id\)",
     ):
         sorted_rows(executor, "select customer_id, amount_or_zero")
+
+
+@pytest.mark.parametrize(
+    "keys, bound, expected",
+    [
+        ({"item", "date"}, {"sales": {"item", "date", "amount"}}, True),
+        (
+            {"item", "date"},
+            {"sales": {"item", "date", "amount"}, "plan": {"item", "date"}},
+            False,
+        ),
+        ({"item", "date"}, {"items": {"item"}, "dates": {"date"}}, False),
+        ({"item"}, {"sales": {"item", "amount"}}, False),
+    ],
+)
+def test_co_held_only_beside(keys: set[str], bound: dict, expected: bool):
+    assert _co_held_only_beside({"amount"}, keys, bound) is expected
