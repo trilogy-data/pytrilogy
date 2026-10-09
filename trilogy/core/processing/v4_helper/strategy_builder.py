@@ -2938,7 +2938,7 @@ def _pair_inside_padding_streams(
             for node in reversed(path[:-1]):
                 node.input_concepts = unique(node.input_concepts + carried, "address")
                 node.add_output_concepts(carried, rebuild=False)
-            for node in path:
+            for node in reversed(path):
                 node.rebuild_cache()
             out.remove(other)
     return out

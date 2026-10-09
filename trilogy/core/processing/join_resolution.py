@@ -1644,86 +1644,119 @@ def _presence_marker(datasource: DataSource) -> BuildConcept | None:
 
 @dataclass
 class _MergePadding:
-    """Rows an earlier join of this merge null-extended `padded` on, to carry
-    the regions `host` holds (`spans`). `absent`: every side with no row
-    there, the padded one and each later side that could not pair with them."""
+    """Rows an earlier join of this merge null-extended every `padded` side
+    on, to carry the regions `host` holds (`spans`). `keys`: what each side
+    was paired on. `absent`: every side with no row there, the padded ones
+    and each later side that could not pair with them."""
 
-    padded: str
+    padded: frozenset[str]
     host: str
     spans: frozenset[str]
+    keys: dict[str, set[str]]
     absent: set[str]
-    witness: BuildConcept | None
-    host_witness: BuildConcept | None
 
 
-def _one_sided_padding(
-    host: str,
-    padded: str,
-    keys: list[str],
-    absent: set[str],
-    facts: JoinFacts,
-    ds_node_map: dict[str, DataSource],
-    ds_concept_map: dict[tuple[str, str], BuildConcept],
-) -> _MergePadding:
-    return _MergePadding(
-        padded=padded,
-        host=host,
-        spans=facts.side(host).held_spans,
-        absent=absent,
-        witness=_row_witness(
-            ds_node_map[padded], [ds_concept_map[(padded, k)] for k in keys]
-        ),
-        host_witness=_row_witness(
-            ds_node_map[host], [ds_concept_map[(host, k)] for k in keys]
-        ),
-    )
-
-
-def _merge_paddings_from(
-    join: JoinOrderOutput,
-    joined: set[str],
-    facts: JoinFacts,
-    ds_node_map: dict[str, DataSource],
-    ds_concept_map: dict[tuple[str, str], BuildConcept],
-) -> list[_MergePadding]:
-    """The padding `join` adds for the regions of a side it pairs with: a
-    LEFT pads its right for the one left holding any, a RIGHT pads every side
-    already `joined` for the right's, read off the one left it pairs with; a
-    FULL does both."""
-    out: list[_MergePadding] = []
-    if join.type in PADS_RIGHT_JOIN_TYPES:
-        hosts = [left for left in sorted(join.keys) if facts.side(left).held_spans]
-        if len(hosts) == 1:
-            keys = sorted(join.keys[hosts[0]])
-            out.append(
-                _one_sided_padding(
-                    hosts[0],
-                    join.right,
-                    keys,
-                    {join.right},
-                    facts,
-                    ds_node_map,
-                    ds_concept_map,
+def _merge_paddings(
+    joins: list[JoinOrderOutput], facts: JoinFacts
+) -> list[list[_MergePadding]]:
+    """The padding each join adds for the regions of a side it pairs with: a
+    LEFT pads its right for each left holding any, a RIGHT pads every side
+    already joined for the right's; a FULL does both."""
+    out: list[list[_MergePadding]] = []
+    joined: set[str] = set()
+    for join in joins:
+        joined |= join.lefts | ({join.left} if join.left else set())
+        added: list[_MergePadding] = []
+        if join.type in PADS_RIGHT_JOIN_TYPES:
+            added += [
+                _MergePadding(
+                    padded=frozenset({join.right}),
+                    host=left,
+                    spans=facts.side(left).held_spans,
+                    keys={left: keys, join.right: keys},
+                    absent={join.right},
+                )
+                for left, keys in sorted(join.keys.items())
+                if facts.side(left).held_spans
+            ]
+        if join.type in PADS_LEFT_JOIN_TYPES and facts.side(join.right).held_spans:
+            added.append(
+                _MergePadding(
+                    padded=frozenset(joined),
+                    host=join.right,
+                    spans=facts.side(join.right).held_spans,
+                    keys={
+                        **join.keys,
+                        join.right: set().union(*join.keys.values()),
+                    },
+                    absent=set(joined),
                 )
             )
-    if (
-        join.type in PADS_LEFT_JOIN_TYPES
-        and facts.side(join.right).held_spans
-        and len(join.keys) == 1
-    ):
-        [(left, connecting)] = join.keys.items()
-        out.append(
-            _one_sided_padding(
-                join.right,
-                left,
-                sorted(connecting),
-                set(joined),
-                facts,
-                ds_node_map,
-                ds_concept_map,
-            )
-        )
+        out.append(added)
+        joined.add(join.right)
     return out
+
+
+def _region_padded_sides(
+    paddings: list[list[_MergePadding]],
+) -> dict[str, frozenset[str]]:
+    """Each side an earlier join of the merge null-extends, with the region
+    spans the side preserved over it holds: the side's columns are NULL on
+    those regions' rows in the joined stream, whatever the side says of
+    itself."""
+    padded: dict[str, frozenset[str]] = defaultdict(frozenset)
+    for padding in (p for added in paddings for p in added):
+        for side in padding.padded:
+            padded[side] |= padding.spans
+    return {side: held for side, held in padded.items() if held}
+
+
+def _side_witness(
+    side: str,
+    keys: Collection[str],
+    ds_node_map: dict[str, DataSource],
+    ds_concept_map: dict[tuple[str, str], BuildConcept],
+) -> BuildConcept | None:
+    return _row_witness(
+        ds_node_map[side],
+        [
+            ds_concept_map[(side, k)]
+            for k in sorted(keys)
+            if (side, k) in ds_concept_map
+        ],
+    ) or _presence_marker(ds_node_map[side])
+
+
+def _padding_clause(
+    padding: _MergePadding,
+    presence: set[frozenset[str]],
+    ds_node_map: dict[str, DataSource],
+    ds_concept_map: dict[tuple[str, str], BuildConcept],
+) -> tuple[GuardTerm, ...] | None:
+    """False exactly on the padding's rows: some padded side has a row (the
+    fewest whose rows cover every row any of them has, paired sides first),
+    or the host has none (tested only when some row lacks it and every
+    padded side). None when a side to test has no witness."""
+    rows = [present & padding.padded for present in presence]
+    covered: set[str] = set()
+    terms: list[tuple[str, bool]] = []
+    for side in sorted(padding.padded, key=lambda s: (s not in padding.keys, s)):
+        if any(side in row and not row & covered for row in rows):
+            covered.add(side)
+            terms.append((side, True))
+    if any(
+        padding.host not in present and not row for present, row in zip(presence, rows)
+    ):
+        terms.append((padding.host, False))
+    tested: list[GuardTerm] = []
+    for side, present in terms:
+        witness = _side_witness(
+            side, padding.keys.get(side, ()), ds_node_map, ds_concept_map
+        )
+        if witness is None:
+            return None
+        tested.append(GuardTerm(witness, ds_node_map[side], present))
+    return tuple(tested) or None
 
 
 def _absent_key_groups(
@@ -1760,6 +1793,7 @@ def _padding_guard(
     earlier: list[_MergePadding],
     pairs: list[ConceptPair],
     presence: set[frozenset[str]],
+    ds_concept_map: dict[tuple[str, str], BuildConcept],
 ) -> JoinGuard:
     """A key NULL by absence never pairs with a value-NULL group.
 
@@ -1813,21 +1847,11 @@ def _padding_guard(
             # a key compared with `=` never pairs a NULL
             padding.absent.add(join.right)
             continue
-        terms = [(padding.padded, padding.witness, True)]
-        if any(
-            padding.host not in present and padding.padded not in present
-            for present in presence
-        ):
-            terms.append((padding.host, padding.host_witness, False))
-        tested = tuple(
-            GuardTerm(read, ds_node_map[side], present)
-            for side, known, present in terms
-            if (read := known or _presence_marker(ds_node_map[side]))
-        )
-        if len(tested) < len(terms):
+        tested = _padding_clause(padding, presence, ds_node_map, ds_concept_map)
+        if tested is None:
             logger.info(
-                f"[JOIN_RESOLUTION] no row witness to keep {padding.padded}'s padding"
-                f" from pairing on {join.right}"
+                f"[JOIN_RESOLUTION] no row witness to keep {sorted(padding.padded)}'s"
+                f" padding from pairing on {join.right}"
             )
             continue
         clauses.append(tested)
@@ -1852,6 +1876,7 @@ def _presence_after(
 def _padding_guards(
     joins: list[JoinOrderOutput],
     base_joins: list[BaseJoin],
+    paddings: list[list[_MergePadding]],
     facts: JoinFacts,
     ds_node_map: dict[str, DataSource],
     ds_concept_map: dict[tuple[str, str], BuildConcept],
@@ -1862,10 +1887,9 @@ def _padding_guards(
     """Each join's guard, in join order: a join is guarded against the
     padding the joins before it added, read off the key pairs it renders."""
     earlier: list[_MergePadding] = []
-    joined: set[str] = set()
     presence = {frozenset(joins[0].lefts)} if joins else set()
     out: list[JoinGuard] = []
-    for join, base in zip(joins, base_joins):
+    for join, base, added in zip(joins, base_joins, paddings):
         out.append(
             _padding_guard(
                 join,
@@ -1877,38 +1901,12 @@ def _padding_guards(
                 earlier,
                 base.concept_pairs or [],
                 presence,
+                ds_concept_map,
             )
         )
-        joined |= join.lefts
-        earlier += _merge_paddings_from(
-            join, joined, facts, ds_node_map, ds_concept_map
-        )
+        earlier += added
         presence = _presence_after(presence, join)
-        joined.add(join.right)
     return out
-
-
-def _region_padded_sides(
-    joins: list[JoinOrderOutput], facts: JoinFacts
-) -> dict[str, frozenset[str]]:
-    """Each side an earlier join of the merge null-extends, with the region
-    spans the side preserved over it holds: the side's columns are NULL on
-    those regions' rows in the joined stream, whatever the side says of
-    itself. A RIGHT or FULL join pads the whole accumulated input, not just
-    the sides it pairs on."""
-    padded: dict[str, frozenset[str]] = defaultdict(frozenset)
-    joined: set[str] = set()
-    for join in joins:
-        joined |= join.lefts | ({join.left} if join.left else set())
-        if join.type in PADS_RIGHT_JOIN_TYPES:
-            padded[join.right] |= frozenset().union(
-                *(facts.side(left).held_spans for left in join.keys)
-            )
-        if join.type in PADS_LEFT_JOIN_TYPES:
-            for side in joined:
-                padded[side] |= facts.side(join.right).held_spans
-        joined.add(join.right)
-    return {side: held for side, held in padded.items() if held}
 
 
 def _pairs_region_padding(
@@ -2096,7 +2094,8 @@ def get_node_joins(
         demanded_domains=frozenset(canon_node(a) for a in demanded_domains),
     )
     joins = resolve_join_order_v2(graph, facts)
-    region_padded = _region_padded_sides(joins, facts)
+    paddings = _merge_paddings(joins, facts)
+    region_padded = _region_padded_sides(paddings)
     _raise_if_keyless_row_bearing_join(
         joins,
         ds_node_map,
@@ -2165,6 +2164,7 @@ def get_node_joins(
         _padding_guards(
             joins,
             base_joins,
+            paddings,
             facts,
             ds_node_map,
             ds_concept_map,
