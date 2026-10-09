@@ -1164,7 +1164,7 @@ def _valued_on_another_fact(
     return any(
         takes_a_value_on_padding(
             m,
-            keyspace.row_absent(keyspace.keys_by_address.get(m, frozenset())),
+            keyspace.row_absent(keyspace.keys_of(m)),
             keyspace,
             environment,
         )
@@ -1207,9 +1207,9 @@ def _parent_nodes_for(
     from trilogy.core.processing.v4_node_generators import build_node
 
     candidates: list[tuple[str, StrategyNode]] = []
-    for pgid in group_graph.predecessors(gid):
-        if pgid == FINAL_NODE_ID:
-            continue
+    # Existence-kind edges feed a subselect, not the row stream;
+    # `_wire_existence` wires them as side-channel parents post-build.
+    for pgid in _row_parents(group_graph, group_edges, gid):
         if attrs[pgid].depth_label == DepthLabel.D1 and (
             (
                 attrs[gid].derivation == Derivation.UNNEST
@@ -1225,12 +1225,6 @@ def _parent_nodes_for(
                 and attrs[pgid].derivation == Derivation.WINDOW
             )
         ):
-            continue
-        # Existence-kind edges feed a subselect, not the row stream;
-        # `_wire_existence` wires them as side-channel parents post-build.
-        # Including them here would put them in JOIN dedup and mistakenly
-        # merge their row stream into this group's FROM.
-        if edge_kind(group_edges, pgid, gid) == EdgeKind.EXISTENCE:
             continue
         node = built.get(pgid)
         if node is not None:
@@ -2761,10 +2755,7 @@ def _fold_covered_contributors(
         for canonical, members in environment.scoped_join_key_groups.items()
         for addr in (canonical, *members)
     }
-    visible = [
-        {o.address for o in p.output_concepts if o.address not in p.hidden_concepts}
-        for p in parents
-    ]
+    visible = [_visible_addresses(p) for p in parents]
     partials = [{c.address for c in p.partial_concepts} for p in parents]
     dropped: set[int] = set()
     for idx, parent in enumerate(parents):
@@ -3072,9 +3063,7 @@ def _filter_intrinsic_pushdown_safe(
     if not ancestors:
         return True
     emitted = {o.address for o in outputs}
-    for succ in group_graph.successors(gid):
-        if succ == FINAL_NODE_ID:
-            continue
+    for succ in _readers(group_graph, gid):
         unfiltered = ancestors & set(group_graph.predecessors(succ))
         if not unfiltered:
             continue
@@ -6324,7 +6313,7 @@ def _raise_if_unbuilt_group_owed(
     }
     for gid, outputs in unbuilt.items():
         atoms = _atoms_at(attrs, gid)
-        readers = sorted(set(group_graph.successors(gid)) - {FINAL_NODE_ID})
+        readers = sorted(_readers(group_graph, gid))
         missing = sorted({o.address for o in outputs} - delivered)
         if atoms or readers or missing:
             raise UnbuiltGroupException(

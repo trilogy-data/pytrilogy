@@ -613,7 +613,7 @@ def _over_aggregates_by_span(
         concept = environment.concepts.get(address)
         if concept is None or not isinstance(concept.lineage, BuildAggregateWrapper):
             return False
-        keys = keyspace.keys_by_address.get(address, frozenset())
+        keys = keyspace.keys_of(address)
         if not keys or not any(keys <= s for s in spans):
             return False
     return True

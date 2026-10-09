@@ -182,7 +182,7 @@ class Keyspace:
         return True
 
     def defined_on(self, address: str, region: Region) -> bool:
-        return self.keys_by_address.get(address, frozenset()) <= region.present
+        return self.keys_of(address) <= region.present
 
     def region_of(self, spans: frozenset[str]) -> Region | None:
         return next((r for r in self.regions if r.spans == spans), None)
