@@ -1382,9 +1382,7 @@ class QueryDatasource:
             intrinsic_nullable = [
                 c
                 for c in intrinsic_nullable
-                if not proven.intersection(
-                    {c.address, c.canonical_address, *c.pseudonyms}
-                )
+                if not proven.intersection(c.all_spellings)
             ]
         if intrinsic_nullable:
             self.nullable_concepts = unique(

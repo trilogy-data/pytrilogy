@@ -59,14 +59,6 @@ def _source_address(concept: BuildConcept) -> str:
     return concept.canonical_address
 
 
-def _key_addresses(concept: BuildConcept) -> set[str]:
-    return (
-        {concept.address, concept.canonical_address}
-        | set(concept.pseudonyms)
-        | concept.equivalent_addresses
-    )
-
-
 def _row_limited(
     side_cte: CTE | UnionCTE, _visited: frozenset[str] = frozenset()
 ) -> bool:
@@ -125,10 +117,10 @@ def _complete_distinct(
         return False
     if _row_limited(side_cte):
         return False
-    keys = _key_addresses(concept)
+    keys = concept.all_spellings
     partial_addrs: set[str] = set()
     for partial in side_cte.partial_concepts:
-        partial_addrs |= _key_addresses(partial)
+        partial_addrs |= partial.all_spellings
     if partial_addrs & keys:
         return False
     if side_cte.group_to_grain or (
@@ -142,7 +134,7 @@ def _complete_distinct(
 def _extent_free(concept: BuildConcept, side_cte: CTE) -> bool:
     """The side was planned not to extend the concept's span: a region domain
     elsewhere holds the rows it lacks, so it carries only part of the key."""
-    keys = _key_addresses(concept)
+    keys = concept.all_spellings
     if isinstance(concept.lineage, BuildRowsetItem):
         keys.add(concept.lineage.content.address)
     return bool(keys & side_cte.source.extent_free_spans)
@@ -305,10 +297,10 @@ def _key_nullable(concept: BuildConcept, side_cte: CTE | UnionCTE) -> bool:
     GROUPING SETS key carries NULL at its subtotal rows)."""
     if not isinstance(side_cte, CTE):
         return False
-    keys = _key_addresses(concept)
+    keys = concept.all_spellings
     nullable_addrs: set[str] = set()
     for nc in side_cte.nullable_concepts:
-        nullable_addrs |= _key_addresses(nc)
+        nullable_addrs |= nc.all_spellings
     return bool(nullable_addrs & keys)
 
 
@@ -328,11 +320,11 @@ def _unpaired_guest_padding(
     side happens to hold, so the sub side's preservation stays load-bearing."""
     if not isinstance(sub_cte, CTE):
         return False
-    if not _key_addresses(sub_concept) & guest_padded_addresses(sub_cte.source):
+    if not sub_concept.all_spellings & guest_padded_addresses(sub_cte.source):
         return False
     return not (
         isinstance(sup_cte, CTE)
-        and _key_addresses(sup_concept) & guest_padded_addresses(sup_cte.source)
+        and sup_concept.all_spellings & guest_padded_addresses(sup_cte.source)
     )
 
 
@@ -353,7 +345,7 @@ def _unshared_join_padding(pair, right_cte: CTE | UnionCTE) -> bool:
             padded = True
     if not padded:
         return False
-    keys = _key_addresses(pair.left) | _key_addresses(pair.right)
+    keys = pair.left.all_spellings | pair.right.all_spellings
     left_pad = (
         padding_sources(pair.cte.source, keys, _identity)
         if isinstance(pair.cte, CTE)
@@ -405,7 +397,7 @@ def _complete_values(
         return False
     if _row_limited(side_cte) or _extent_free(concept, side_cte):
         return False
-    keys = _key_addresses(concept)
+    keys = concept.all_spellings
     if not _own_coverage_partial(concept, side_cte, graph):
         # Scan evidence is trusted here because every caller of this path is
         # declaration-gated.
@@ -431,7 +423,7 @@ def _complete_values(
     ):
         parent = side_cte.parent_ctes[0]
         for parent_concept in parent.output_columns:
-            if _key_addresses(parent_concept) & keys and _complete_values(
+            if parent_concept.all_spellings & keys and _complete_values(
                 parent_concept, parent, graph
             ):
                 return True
@@ -474,7 +466,7 @@ def _side_origins(side_cte: CTE | UnionCTE, group: set[str]) -> set[str]:
             if isinstance(ds, BuildDatasource):
                 for column in ds.columns:
                     if column.origin_address is not None and (
-                        _key_addresses(column.concept) & group
+                        column.concept.all_spellings & group
                     ):
                         out.add(column.origin_address)
             else:
@@ -500,10 +492,10 @@ def _declared_partial(concept: BuildConcept, side_cte: CTE | UnionCTE) -> bool:
     CTE chain via ``partial_concepts``."""
     if not isinstance(side_cte, CTE):
         return False
-    keys = _key_addresses(concept)
+    keys = concept.all_spellings
     partial_addrs: set[str] = set()
     for partial in side_cte.partial_concepts:
-        partial_addrs |= _key_addresses(partial)
+        partial_addrs |= partial.all_spellings
     return bool(partial_addrs & keys)
 
 
@@ -530,7 +522,7 @@ def _proven_subset_of(
         return False
     group = graph.join_key_groups().get(graph.canonical(sup_concept.address), set())
     siblings = (group & graph.coalescing_relation_members()) - {sup_concept.address}
-    for candidate in sorted(_key_addresses(sup_concept)):
+    for candidate in sorted(sup_concept.all_spellings):
         if candidate == sub_concept.address or candidate in siblings:
             continue
         if graph.proven_subset(sub_concept.address, candidate):
@@ -552,14 +544,14 @@ def _genuine_partial_stamp(
     one-sided presence proves the subset direction: the author declared both
     sides' relations to the domain (`~` on the sub, a complete binding on the
     sup, verified by ``_complete_values`` after)."""
-    keys = _key_addresses(sub_concept)
+    keys = sub_concept.all_spellings
     subset_endpoints = graph.subset_sources()
     genuine = {
         p.address
         for p in sub_cte.partial_concepts
         if p.address not in subset_endpoints
         and p.derivation != Derivation.ROWSET
-        and _key_addresses(p) & keys
+        and p.all_spellings & keys
     }
     if not genuine:
         return False
@@ -627,7 +619,7 @@ def _pair_side_fully_matches(
             if not subset_join_map:
                 return False
             pair_canon = scoped_canonical.get(sub_concept.address, sub_concept.address)
-            group = _key_addresses(sub_concept) | {pair_canon}
+            group = sub_concept.all_spellings | {pair_canon}
             sub_origins = _side_origins(sub_cte, group)
             sup_origins = _side_origins(sup_cte, group)
             if not any(
@@ -677,7 +669,7 @@ def _datasource_ids_for_key(cte: CTE, concept: BuildConcept) -> set[str]:
         for datasource in cte.source.datasources
         if isinstance(datasource, BuildDatasource)
         and datasource.safe_identifier in providers
-        and set(datasource.grain.components) & _key_addresses(concept)
+        and set(datasource.grain.components) & concept.all_spellings
     }
 
 
@@ -704,7 +696,7 @@ def _provider_joins_preserve_rows(
         return (
             isinstance(sup_cte, CTE)
             and _source_address(sub_concept) == _source_address(sup_concept)
-            and bool(set(sup_cte.grain.components) & _key_addresses(sup_concept))
+            and bool(set(sup_cte.grain.components) & sup_concept.all_spellings)
             and _complete_values(sub_concept, sub_cte, graph)
             and _complete_values(sup_concept, sup_cte, graph)
             and _accumulate_filter(sup_cte) is None
@@ -767,7 +759,7 @@ def _relative_key_subset(
         return False
     if _source_address(sub_concept) != _source_address(sup_concept):
         return False
-    if not set(sup_cte.grain.components) & _key_addresses(sup_concept):
+    if not set(sup_cte.grain.components) & sup_concept.all_spellings:
         return False
     sub_filter = _accumulate_filter(sub_cte)
     sup_filter = _accumulate_filter(sup_cte)
@@ -790,8 +782,8 @@ def _relative_key_subset(
         isinstance(join, Join)
         and join.jointype == JoinType.INNER
         and any(
-            _key_addresses(pair.left) & _key_addresses(sub_concept)
-            and _key_addresses(pair.right) & _key_addresses(sup_concept)
+            pair.left.all_spellings & sub_concept.all_spellings
+            and pair.right.all_spellings & sup_concept.all_spellings
             and (
                 _cte_contains_datasource(pair.cte, source)
                 or _cte_contains_datasource(join.right_cte, source)
@@ -896,8 +888,8 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
             if _emits_grouping_set_rows(cte) or _emits_grouping_set_rows(right_cte):
                 continue
             if self.full_join_keys and any(
-                _key_addresses(pair.left) & self.full_join_keys
-                or _key_addresses(pair.right) & self.full_join_keys
+                pair.left.all_spellings & self.full_join_keys
+                or pair.right.all_spellings & self.full_join_keys
                 for pair in join.joinkey_pairs
             ):
                 # Rule B: the veto blocks the equivalence upgrade and the
@@ -918,7 +910,7 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
     def _pair_equal_declared(self, pair) -> bool:
         return bool(
             self.equal_join_keys
-            and (_key_addresses(pair.left) | _key_addresses(pair.right))
+            and (pair.left.all_spellings | pair.right.all_spellings)
             & self.equal_join_keys
         )
 

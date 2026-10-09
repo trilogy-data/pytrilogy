@@ -138,9 +138,7 @@ class GroupNode(StrategyNode):
             x
             for x in self.output_concepts
             if (x.address in nullable_addresses or x.address in node_nullable)
-            and not proven_non_null.intersection(
-                {x.address, x.canonical_address, *x.pseudonyms}
-            )
+            and not proven_non_null.intersection(x.all_spellings)
         ]
         # ROLLUP/CUBE/GROUPING SETS inject NULLs into grouping-key dims on the
         # subtotal rows. Mark those dims, and any dim derived from them,

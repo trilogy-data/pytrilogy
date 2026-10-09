@@ -519,7 +519,7 @@ def connector_join_keys(alias: str, origin: BuildConcept) -> set[str]:
     `keys` is where parse put the input axis, and it survives the canonical
     rewrite the grain did not. Empty for a keyless spine (`unnest([1,2,3])`),
     which has no axis to offer and needs none."""
-    provided = {alias, origin.address, origin.canonical_address} | origin.pseudonyms
+    provided = {alias} | origin.all_spellings
     if set(origin.grain.components) - provided:
         return set()
     return set(origin.keys or ()) - provided
@@ -544,7 +544,7 @@ def _connector_candidates(
     for alias, origin in sorted(environment.alias_origin_lookup.items()):
         if origin.lineage is None or origin.derivation is Derivation.BASIC:
             continue
-        provided = {alias, origin.address, origin.canonical_address}
+        provided = {alias} | origin.spellings
         input_keys = connector_join_keys(alias, origin)
         grain = frozenset(
             equivalence.get(component, component)

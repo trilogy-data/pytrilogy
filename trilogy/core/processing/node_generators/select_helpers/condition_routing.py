@@ -47,12 +47,9 @@ def datasource_condition_atom_state(
         address
         for column in datasource.columns
         if not column.is_nullable
-        for address in (column.concept.address, column.concept.canonical_address)
+        for address in column.concept.spellings
     }
-    if (
-        concept.address not in non_nullable
-        and concept.canonical_address not in non_nullable
-    ):
+    if concept.spellings.isdisjoint(non_nullable):
         return DatasourceConditionAtomState.KEEP
     if atom.operator == ComparisonOperator.IS_NOT:
         return DatasourceConditionAtomState.ALWAYS_TRUE
@@ -84,17 +81,11 @@ def absence_atoms(datasource: BuildDatasource, condition: BoolExpr) -> list[Bool
     """
     if not datasource.column_level_partial_addresses:
         return []
-    bound = {
-        address
-        for column in datasource.columns
-        for address in (column.concept.address, column.concept.canonical_address)
-    }
+    bound = datasource.bound_spellings
     out: list[BoolExpr] = []
     for atom in decompose_condition(condition):
         concept = _is_null_test(atom)
-        if concept is not None and (
-            concept.address in bound or concept.canonical_address in bound
-        ):
+        if concept is not None and concept.spellings & bound:
             out.append(atom)
     return out
 

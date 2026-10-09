@@ -1395,6 +1395,16 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
     def equivalent_addresses(self) -> set[str]:
         return {self.address, *self.pseudonyms}
 
+    @property
+    def spellings(self) -> set[str]:
+        """The authored and the canonical address: one column, two names."""
+        return {self.address, self.canonical_address}
+
+    @property
+    def all_spellings(self) -> set[str]:
+        """`spellings` widened to the pseudonym class: any name of the value."""
+        return {self.address, self.canonical_address, *self.pseudonyms}
+
     def with_materialized_source(self) -> Self:
 
         return self.__class__(
@@ -2333,6 +2343,10 @@ class BuildDatasource:
         if self.grain.components.issubset({c.address for c in lineage.by}):
             return None
         return self.aggregate_column_for(concept)
+
+    @property
+    def bound_spellings(self) -> set[str]:
+        return {a for column in self.columns for a in column.concept.spellings}
 
     def partial_spellings(self, column: BuildColumnAssignment) -> frozenset[str]:
         """The addresses `column`'s column-level ``~`` was authored on, the

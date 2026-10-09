@@ -58,9 +58,7 @@ def scan_stamps(
                 and any(arg in nullable_lcl for arg in c.concept_arguments)
             )
         )
-        and not non_null_proofs.intersection(
-            {c.address, c.canonical_address, *c.pseudonyms}
-        )
+        and not non_null_proofs.intersection(c.all_spellings)
     ]
     return partials, nullables
 
@@ -195,9 +193,7 @@ class SelectNode(StrategyNode):
                 + [
                     c
                     for c in self.nullable_concepts
-                    if not non_null_proofs.intersection(
-                        {c.address, c.canonical_address, *c.pseudonyms}
-                    )
+                    if not non_null_proofs.intersection(c.all_spellings)
                 ],
                 "address",
             ),

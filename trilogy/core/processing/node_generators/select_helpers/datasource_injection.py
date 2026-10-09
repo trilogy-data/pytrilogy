@@ -459,7 +459,7 @@ def union_derived_concepts(
     return [
         concept
         for concept in get_derivable_concepts(basic_graph, complete, present)
-        if concept.address in keyed or concept.canonical_address in keyed
+        if concept.spellings & keyed
     ]
 
 

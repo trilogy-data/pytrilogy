@@ -1606,8 +1606,7 @@ def _lineage_connected(graph: ReferenceGraph, outputs: list[BuildConcept]) -> bo
         matches = {
             node
             for node in graph.nodes
-            if node.startswith("c~")
-            and node_address(node) in (concept.address, concept.canonical_address)
+            if node.startswith("c~") and node_address(node) in concept.spellings
         }
         if not matches:
             return False

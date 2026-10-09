@@ -125,7 +125,7 @@ def pin_unoffered_probes(
             if concept is not None and concept.lineage is not None
             else []
         ):
-            spellings = {argument.address, argument.canonical_address}
+            spellings = argument.spellings
             argument_concept = environment.concepts.get(argument.address)
             if argument_concept is not None:
                 spellings.add(argument_concept.canonical_address)
@@ -219,14 +219,6 @@ def _row_lineage(concepts: Sequence[BuildConcept], axis: set[str]) -> set[str]:
     return seen
 
 
-def _bound_addresses(datasource: BuildDatasource) -> set[str]:
-    return {
-        address
-        for column in datasource.columns
-        for address in (column.concept.address, column.concept.canonical_address)
-    }
-
-
 def axis_arms_delivered(
     outputs: Sequence[BuildConcept],
     environment: BuildEnvironment,
@@ -247,7 +239,7 @@ def axis_arms_delivered(
         bound = {
             member: set().union(
                 *(
-                    _bound_addresses(carrier)
+                    carrier.bound_spellings
                     for carrier in member_binding_datasources(member, datasources)
                 )
             )

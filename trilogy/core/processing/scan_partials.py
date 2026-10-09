@@ -13,10 +13,6 @@ from trilogy.core.models.build import (
 )
 
 
-def _spellings(concept: BuildConcept) -> set[str]:
-    return {concept.address, concept.canonical_address}
-
-
 def scan_partial_addresses(
     datasource: BuildDatasource | BuildUnionDatasource,
     emitted: Iterable[BuildConcept],
@@ -48,7 +44,7 @@ def scan_partial_addresses(
     )
     partial: set[str] = set()
     for column in datasource.partial_concepts:
-        spellings = _spellings(column)
+        spellings = column.spellings
         if spellings & exempted:
             continue
         if structural is not None and column.address not in structural:
@@ -59,7 +55,7 @@ def scan_partial_addresses(
     stored_addresses = set(stored)
     out: set[str] = set()
     for concept in emitted:
-        spellings = _spellings(concept)
+        spellings = concept.spellings
         if spellings & partial or (
             concept.derivation == Derivation.BASIC
             and not spellings & stored_addresses

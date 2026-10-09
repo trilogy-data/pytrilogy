@@ -59,16 +59,13 @@ from trilogy.core.processing.v4_helper.keyspace import (
 )
 
 
-def _spellings(concept: BuildConcept) -> set[str]:
-    return {concept.address, concept.canonical_address, *concept.pseudonyms}
-
-
 def _bound_spellings(datasources: Iterable[BuildDatasource]) -> set[str]:
-    out: set[str] = set()
-    for ds in datasources:
-        for column in ds.columns:
-            out |= _spellings(column.concept)
-    return out
+    return {
+        a
+        for ds in datasources
+        for column in ds.columns
+        for a in column.concept.all_spellings
+    }
 
 
 def _partial_spelling(ds: BuildDatasource, column: BuildColumnAssignment) -> str | None:
@@ -110,7 +107,7 @@ def _proven_bound(
     for address in proven - bound:
         for key in authored.keyspace.keys_by_address.get(address, ()):
             concept = environment.concepts.get(key)
-            out |= (_spellings(concept) if concept is not None else {key}) & bound
+            out |= (concept.all_spellings if concept is not None else {key}) & bound
     return out
 
 
@@ -282,7 +279,7 @@ def decide_heal(
             if span is None:
                 continue
             key = column.concept
-            anchors, partials = _pair_siblings(_spellings(key), ds, datasources)
+            anchors, partials = _pair_siblings(key.all_spellings, ds, datasources)
             # A sibling's rows the WHERE keeps hold members ``ds`` may lack: an
             # anchor's always, a `~` sibling's only when the statement reads it.
             read = anchors + _read_partials(
