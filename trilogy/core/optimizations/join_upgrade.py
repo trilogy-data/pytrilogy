@@ -55,6 +55,7 @@ from trilogy.core.optimizations.utils import (
     base_datasource,
     cte_source_keys,
     join_padded_ctes,
+    output_addresses,
     seed_ctes,
     zero_filled_reads,
 )
@@ -194,18 +195,12 @@ def _pair_can_match_nulls(
     )
 
 
-def _cte_addresses(cte: CTE | UnionCTE | None) -> set[str]:
-    if cte is None:
-        return set()
-    return {c.address for c in cte.output_columns}
-
-
 def _seed_addresses(cte: CTE | UnionCTE) -> set[str]:
     """Addresses available from the CTE's FROM clause (see ``seed_ctes``),
     falling back to a direct base datasource (raw table FROM)."""
     seeds = seed_ctes(cte)
     if seeds:
-        return {a for seed in seeds for a in _cte_addresses(seed)}
+        return {a for seed in seeds for a in output_addresses(seed)}
     if not isinstance(cte, CTE) or not cte.joins:
         return set()
     if not isinstance(cte.joins[0], Join):
@@ -224,7 +219,7 @@ def _accumulated_left_addresses(cte: CTE | UnionCTE, idx: int) -> set[str]:
     if not isinstance(cte, CTE):
         return set()
     return _seed_addresses(cte) | {
-        a for left in accumulated_left_ctes(cte, idx) for a in _cte_addresses(left)
+        a for left in accumulated_left_ctes(cte, idx) for a in output_addresses(left)
     }
 
 
@@ -236,7 +231,7 @@ def _side_addresses(
     """Addresses unique to each side of the join. Filters that touch only
     one side are unambiguous about which side they constrain."""
     left_all = _accumulated_left_addresses(cte, idx)
-    right_all = _cte_addresses(join.right_cte)
+    right_all = output_addresses(join.right_cte)
     return left_all - right_all, right_all - left_all
 
 
@@ -253,7 +248,7 @@ def _downgrade(
 
     pairs = join.joinkey_pairs or []
     left_ctes = accumulated_left_ctes(cte, idx)
-    right_all = _cte_addresses(join.right_cte)
+    right_all = output_addresses(join.right_cte)
     left_only, right_only = _side_addresses(cte, idx, join)
 
     # A filter on a concept the operand only partially covers cannot force the
@@ -300,7 +295,7 @@ def _downgrade(
         proofs.direct_intersects(left_only)
         or proofs.side_forced_by_or(left_only)
         or any(
-            proofs.proves_cte_present(left_cte, _cte_addresses(left_cte))
+            proofs.proves_cte_present(left_cte, output_addresses(left_cte))
             for left_cte in left_ctes
         )
         or (bool(pairs) and all(proves_left_key(p.cte, p.left.address) for p in pairs))

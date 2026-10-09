@@ -16,12 +16,9 @@ from __future__ import annotations
 from trilogy.core.enums import Derivation, JoinType, Purpose, SourceType
 from trilogy.core.models.execute import CTE, DatasourceCTE, Join, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
+from trilogy.core.optimizations.utils import output_addresses
 
 _PRESERVING = (JoinType.INNER, JoinType.LEFT_OUTER)
-
-
-def _outputs(node: CTE | UnionCTE) -> set[str]:
-    return {c.address for c in node.output_columns}
 
 
 def unique_key(node: CTE | UnionCTE) -> set[str] | None:
@@ -30,7 +27,7 @@ def unique_key(node: CTE | UnionCTE) -> set[str] | None:
         return None
     if isinstance(node, DatasourceCTE):
         grain = set(node.datasource.grain.components)
-        return grain if grain and grain <= _outputs(node) else None
+        return grain if grain and grain <= output_addresses(node) else None
     if node.group_to_grain:
         return {c.address for c in node.group_concepts}
     if node.source.source_type == SourceType.GROUP or node.joins:
@@ -39,7 +36,7 @@ def unique_key(node: CTE | UnionCTE) -> set[str] | None:
     if len(parents) != 1:
         return None
     parent_key = unique_key(parents[0])
-    if parent_key is None or not parent_key <= _outputs(node):
+    if parent_key is None or not parent_key <= output_addresses(node):
         return None
     return parent_key
 

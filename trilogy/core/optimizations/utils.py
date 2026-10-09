@@ -113,6 +113,10 @@ def carry_child_state(parent: CTE, cte: CTE) -> None:
         parent.order_by = cte.order_by
 
 
+def output_addresses(cte: CTE | UnionCTE) -> set[str]:
+    return {c.address for c in cte.output_columns}
+
+
 def cte_source_keys(cte: CTE | UnionCTE) -> set[str]:
     return {cte.name, cte.safe_identifier}
 

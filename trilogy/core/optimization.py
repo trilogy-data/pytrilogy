@@ -278,6 +278,10 @@ def build_optimization_rule_plan(
     domain_graph: DomainGraph | None = None,
 ) -> list[OptimizationRulePlan]:
     opts = CONFIG.optimizations
+    join_upgrades = _enabled_dependencies(
+        ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
+        ("upgrade_outer_key_set_equivalence", opts.upgrade_outer_key_set_equivalence),
+    )
     plan: list[OptimizationRulePlan] = []
 
     if opts.merge_aggregate:
@@ -501,20 +505,8 @@ def build_optimization_rule_plan(
             OptimizationRulePlan(
                 name="inline_datasource.after_join_upgrades",
                 rule_factory=lambda: InlineDatasource(raw_scope_only=True),
-                depends_on=_enabled_dependencies(
-                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
-                    (
-                        "upgrade_outer_key_set_equivalence",
-                        opts.upgrade_outer_key_set_equivalence,
-                    ),
-                ),
-                refires_after=_enabled_dependencies(
-                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
-                    (
-                        "upgrade_outer_key_set_equivalence",
-                        opts.upgrade_outer_key_set_equivalence,
-                    ),
-                ),
+                depends_on=join_upgrades,
+                refires_after=join_upgrades,
                 reason=(
                     "a raw() scan folds only where every result row carries one "
                     "of its rows, which the initial pass has to read off "
@@ -527,13 +519,7 @@ def build_optimization_rule_plan(
             OptimizationRulePlan(
                 name="push_filtered_count_into_join",
                 rule_factory=PushFilteredCountIntoJoin,
-                depends_on=_enabled_dependencies(
-                    (
-                        "upgrade_outer_key_set_equivalence",
-                        opts.upgrade_outer_key_set_equivalence,
-                    ),
-                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
-                ),
+                depends_on=join_upgrades,
                 reason=(
                     "runs after join types settle; a sole filtered COUNT over a "
                     "left-joined side can move its filter into the join predicate"
@@ -545,13 +531,7 @@ def build_optimization_rule_plan(
             OptimizationRulePlan(
                 name="push_filtered_aggregate_input",
                 rule_factory=PushFilteredAggregateInput,
-                depends_on=_enabled_dependencies(
-                    (
-                        "upgrade_outer_key_set_equivalence",
-                        opts.upgrade_outer_key_set_equivalence,
-                    ),
-                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
-                ),
+                depends_on=join_upgrades,
                 reason=(
                     "runs after consumers settle; filtered aggregate input can "
                     "move before grouping when all consumers reject empty groups"
@@ -563,13 +543,7 @@ def build_optimization_rule_plan(
             OptimizationRulePlan(
                 name="simplify_null_safe_joins",
                 rule_factory=SimplifyNullSafeJoins,
-                depends_on=_enabled_dependencies(
-                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
-                    (
-                        "upgrade_outer_key_set_equivalence",
-                        opts.upgrade_outer_key_set_equivalence,
-                    ),
-                ),
+                depends_on=join_upgrades,
                 reason=(
                     "join types and CTE nullability are settled, so redundant "
                     "null-safe join keys can be downgraded to ="
@@ -597,13 +571,7 @@ def build_optimization_rule_plan(
             OptimizationRulePlan(
                 name="drop_identity_group",
                 rule_factory=DropIdentityGroup,
-                depends_on=_enabled_dependencies(
-                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
-                    (
-                        "upgrade_outer_key_set_equivalence",
-                        opts.upgrade_outer_key_set_equivalence,
-                    ),
-                ),
+                depends_on=join_upgrades,
                 reason=(
                     "a GROUP BY a plan-time outer join required is a no-op DISTINCT "
                     "once the joins are upgraded, so it runs after join types settle"
@@ -615,13 +583,7 @@ def build_optimization_rule_plan(
             OptimizationRulePlan(
                 name="reuse_parent_lookup",
                 rule_factory=ReuseParentLookup,
-                depends_on=_enabled_dependencies(
-                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
-                    (
-                        "upgrade_outer_key_set_equivalence",
-                        opts.upgrade_outer_key_set_equivalence,
-                    ),
-                ),
+                depends_on=join_upgrades,
                 reason=(
                     "it reads join types and the holder's grouping, so it runs "
                     "once both are settled and before output pruning hides the "
@@ -642,13 +604,9 @@ def build_optimization_rule_plan(
                 name="push_semi_join_into_aggregate",
                 rule_factory=PushSemiJoinIntoAggregate,
                 depends_on=_enabled_dependencies(
-                    ("hide_unused_concepts", opts.hide_unused_concepts),
-                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
-                    (
-                        "upgrade_outer_key_set_equivalence",
-                        opts.upgrade_outer_key_set_equivalence,
-                    ),
-                ),
+                    ("hide_unused_concepts", opts.hide_unused_concepts)
+                )
+                + join_upgrades,
                 reason=(
                     "the mirror is only sound for a settled INNER join, and it "
                     "reads the feeder's visible outputs, so it runs after join "
@@ -662,13 +620,7 @@ def build_optimization_rule_plan(
             OptimizationRulePlan(
                 name="prune_preserved_join_keys",
                 rule_factory=PrunePreservedJoinKeys,
-                depends_on=_enabled_dependencies(
-                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
-                    (
-                        "upgrade_outer_key_set_equivalence",
-                        opts.upgrade_outer_key_set_equivalence,
-                    ),
-                ),
+                depends_on=join_upgrades,
                 reason=(
                     "a narrowed outer join preserves a side the planner had to "
                     "coalesce, so it runs once join types are final, and before the "
@@ -681,13 +633,7 @@ def build_optimization_rule_plan(
             OptimizationRulePlan(
                 name="order_inner_joins_first",
                 rule_factory=OrderInnerJoinsFirst,
-                depends_on=_enabled_dependencies(
-                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
-                    (
-                        "upgrade_outer_key_set_equivalence",
-                        opts.upgrade_outer_key_set_equivalence,
-                    ),
-                ),
+                depends_on=join_upgrades,
                 reason=(
                     "runs last so join types are final (INNER<->OUTER upgrades have "
                     "settled) before INNER joins are bubbled ahead of LEFT joins"

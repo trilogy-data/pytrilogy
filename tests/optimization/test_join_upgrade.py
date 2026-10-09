@@ -33,7 +33,6 @@ from trilogy.core.optimizations.join_upgrade import (
     UpgradeJoinOnGuards,
     _accumulated_left_addresses,
     _blocked_partials,
-    _cte_addresses,
     _seed_addresses,
     _source_datasources,
 )
@@ -573,11 +572,6 @@ def test_proves_non_null_coalesce_default_rejection():
         )
         == set()
     )
-
-
-def test_cte_addresses_none_returns_empty():
-    """Defensive guard: a None CTE has no addresses."""
-    assert _cte_addresses(None) == set()
 
 
 def test_left_address_helpers_skip_non_join_entries():
