@@ -1,6 +1,6 @@
 """Run a row battery over a two-region model; write {query: rows}.
 
-    python local_scripts/sql_ab/region_battery.py <two|lines> <out.json>
+    python local_scripts/sql_ab/region_battery.py <two|channels|lines> <out.json>
     python local_scripts/sql_ab/region_battery.py diff <a.json> <b.json> [<c.json> ...]
 
 Run it from the root of the tree under test (cwd goes first on sys.path) to
@@ -44,6 +44,30 @@ SPECS = {
             "target > 6",
             "amount is null",
             "bucket = 'z' or name = 'cat'",
+        ],
+    ),
+    "channels": (
+        "tests.engine.test_padded_null_pairing:SECOND_OPTIONAL_KEY",
+        [
+            ["bucket", "channel"],
+            ["customer_id", "channel"],
+            ["bucket", "channel", "fee"],
+            ["customer_id", "bucket", "channel"],
+            ["channel", "target"],
+        ],
+        [
+            "count(order_id) as n",
+            "sum(amount) as s",
+            "sum(fee) by channel as f",
+            "sum(target) by bucket as t",
+            "count(order_id) by channel as nc",
+            "max(fee) as mf",
+        ],
+        [
+            "channel is null",
+            "bucket is null",
+            "fee > 55",
+            "bucket = 'z' or channel = 'shop'",
         ],
     ),
     "lines": (

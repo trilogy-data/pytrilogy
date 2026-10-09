@@ -10,9 +10,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from trilogy.core import graph as nx
 
+from trilogy.constants import DEFAULT_NAMESPACE, PRESENCE_MARKER_PREFIX, logger
 from trilogy.core.domain_graph import DomainGraph
 from trilogy.core.enums import (
     Derivation,
+    FunctionType,
     Granularity,
     JoinType,
     Modifier,
@@ -23,12 +25,15 @@ from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
+    BuildFunction,
+    BuildGrain,
     BuildRowsetItem,
     get_grouped_aggregate_wrapper,
 )
 from trilogy.core.models.build_environment import (
     BuildEnvironment,
 )
+from trilogy.core.models.core import DataType
 from trilogy.core.models.execute import (
     BaseJoin,
     ConceptPair,
@@ -56,6 +61,7 @@ from trilogy.core.processing.utility import (
     left_deep_joins,
     padded_by,
 )
+from trilogy.utility import string_to_hash
 
 DataSource = QueryDatasource | BuildDatasource
 
@@ -1606,6 +1612,36 @@ def _row_witness(
     return None
 
 
+def _presence_marker(datasource: DataSource) -> BuildConcept | None:
+    """A constant `datasource` projects so a join can tell its padded rows
+    from its rows: the side had no column NULL exactly there."""
+    if (
+        not isinstance(datasource, QueryDatasource)
+        or datasource.source_type == SourceType.UNION
+    ):
+        return None
+    if datasource.presence_marker is not None:
+        return datasource.presence_marker
+    name = f"{PRESENCE_MARKER_PREFIX}{string_to_hash(datasource.identifier)}"
+    datasource.presence_marker = BuildConcept(
+        name=name,
+        canonical_name=name,
+        namespace=DEFAULT_NAMESPACE,
+        datatype=DataType.INTEGER,
+        purpose=Purpose.CONSTANT,
+        derivation=Derivation.CONSTANT,
+        grain=BuildGrain(),
+        build_is_aggregate=False,
+        lineage=BuildFunction(
+            operator=FunctionType.CONSTANT,
+            arguments=[1],
+            output_data_type=DataType.INTEGER,
+            output_purpose=Purpose.CONSTANT,
+        ),
+    )
+    return datasource.presence_marker
+
+
 @dataclass
 class _MergePadding:
     """Rows an earlier join of this merge null-extended `padded` on, to carry
@@ -1723,6 +1759,7 @@ def _padding_guard(
     memo: ProvenanceMemo,
     earlier: list[_MergePadding],
     pairs: list[ConceptPair],
+    presence: set[frozenset[str]],
 ) -> JoinGuard:
     """A key NULL by absence never pairs with a value-NULL group.
 
@@ -1732,7 +1769,8 @@ def _padding_guard(
     exactly there. Padding an earlier join of this merge added (`customers
     LEFT orders`, then `orders.bucket` paired with `targets.bucket`) is the
     rows where the host has a row and the padded side none:
-    `orders.customer_id is not null or customers.customer_id is null`. The
+    `orders.customer_id is not null or customers.customer_id is null`, the
+    the second test dropped when no row lacks both sides. The
     other side's NULL group is a value of rows that are not the region's,
     unless it holds the region too (`_pads_beside`)."""
     clauses: list[tuple[GuardTerm, ...]] = []
@@ -1751,9 +1789,15 @@ def _padding_guard(
                     or _pads_beside(other, key, spans)
                 ):
                     continue
-                for witness in _padding_witness(
+                witnesses = _padding_witness(
                     ds_node_map[padded_node], spans, spellings, canon_node, memo
-                ):
+                )
+                if not witnesses:
+                    logger.info(
+                        f"[JOIN_RESOLUTION] no row witness to keep {padded_node}'s"
+                        f" padding on {key} from pairing with {other_node}"
+                    )
+                for witness in witnesses:
                     clause = (GuardTerm(witness, ds_node_map[padded_node], True),)
                     if clause not in clauses:
                         clauses.append(clause)
@@ -1769,16 +1813,40 @@ def _padding_guard(
             # a key compared with `=` never pairs a NULL
             padding.absent.add(join.right)
             continue
-        if padding.witness is None or padding.host_witness is None:
-            continue
-        clauses.append(
-            (
-                GuardTerm(padding.witness, ds_node_map[padding.padded], True),
-                GuardTerm(padding.host_witness, ds_node_map[padding.host], False),
-            )
+        terms = [(padding.padded, padding.witness, True)]
+        if any(
+            padding.host not in present and padding.padded not in present
+            for present in presence
+        ):
+            terms.append((padding.host, padding.host_witness, False))
+        tested = tuple(
+            GuardTerm(read, ds_node_map[side], present)
+            for side, known, present in terms
+            if (read := known or _presence_marker(ds_node_map[side]))
         )
+        if len(tested) < len(terms):
+            logger.info(
+                f"[JOIN_RESOLUTION] no row witness to keep {padding.padded}'s padding"
+                f" from pairing on {join.right}"
+            )
+            continue
+        clauses.append(tested)
         padding.absent.add(join.right)
     return tuple(clauses)
+
+
+def _presence_after(
+    presence: set[frozenset[str]], join: JoinOrderOutput
+) -> set[frozenset[str]]:
+    """Which sides have a row, over the rows of the stream once `join` is
+    applied: one set per pattern a row can show."""
+    right = frozenset({join.right})
+    out = {present | right for present in presence}
+    if join.type in PADS_RIGHT_JOIN_TYPES:
+        out |= presence
+    if join.type in PADS_LEFT_JOIN_TYPES:
+        out.add(right)
+    return out
 
 
 def _padding_guards(
@@ -1795,6 +1863,7 @@ def _padding_guards(
     padding the joins before it added, read off the key pairs it renders."""
     earlier: list[_MergePadding] = []
     joined: set[str] = set()
+    presence = {frozenset(joins[0].lefts)} if joins else set()
     out: list[JoinGuard] = []
     for join, base in zip(joins, base_joins):
         out.append(
@@ -1807,12 +1876,14 @@ def _padding_guards(
                 memo,
                 earlier,
                 base.concept_pairs or [],
+                presence,
             )
         )
         joined |= join.lefts
         earlier += _merge_paddings_from(
             join, joined, facts, ds_node_map, ds_concept_map
         )
+        presence = _presence_after(presence, join)
         joined.add(join.right)
     return out
 

@@ -20,6 +20,10 @@ VIRTUAL_CONCEPT_PREFIX = "_virt"
 # datasource-bound ROOT members, by source_planning's
 # `_datasource_renders_probe` pinning.
 PRESENCE_PROBE_PREFIX = f"{VIRTUAL_CONCEPT_PREFIX}_presence_"
+# A constant a join side with no solid key projects so a later join's padding
+# guard can tell its rows from the rows an earlier join padded it on
+# (`join_resolution._presence_marker`).
+PRESENCE_MARKER_PREFIX = f"{VIRTUAL_CONCEPT_PREFIX}_row_present_"
 
 # Magic rowset name for an inline `from union(...) -> (...)` TVF; its outputs are
 # exposed as bare select-local bindings, so the name never collides.

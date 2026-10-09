@@ -16,6 +16,7 @@ import pytest
 
 from tests.helpers.models import LINE_ITEMS
 from tests.helpers.rows import executor_for, sorted_rows
+from trilogy import Dialects
 from trilogy.executor import Executor
 
 _BASE = """
@@ -65,6 +66,40 @@ root datasource orders (
 grain (order_id)
 query '''{_ORDER_ROWS}''';
 """).replace(" union all\nselect 3, 'cat'", "")
+
+_CHANNELS = """
+key channel string;
+property channel.fee int;
+
+root datasource channels (channel: ?channel, fee: fee)
+grain (channel)
+{channels};
+"""
+
+# Two `?` keys on the fact: no solid key on the stream grouped to them.
+SECOND_OPTIONAL_KEY = (
+    _BASE
+    + _CHANNELS.format(channels="""query '''
+select null as channel, 50 as fee union all
+select 'web', 60 union all
+select 'shop', 70
+'''""")
+    + """
+root datasource orders (
+    order_id: order_id,
+    customer_id: ~customer_id,
+    amount: amount,
+    bucket: ~?bucket,
+    channel: ~?channel
+)
+grain (order_id)
+query '''
+select 100 as order_id, 1 as customer_id, 10 as amount, null as bucket, 'web' as channel union all
+select 101, 1, 20, 'a', null union all
+select 102, 2, 30, 'b', 'web'
+''';
+"""
+)
 
 
 @cache
@@ -467,3 +502,79 @@ def test_a_where_restricts_the_output_range_and_never_expands_it(
     query: str, expected: list[tuple]
 ):
     assert sorted_rows(_executor(TWO_REGIONS), query) == expected
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select bucket, channel, fee",
+            [
+                ("a", None, 50),
+                ("b", "web", 60),
+                ("z", None, None),
+                (None, "shop", 70),
+                (None, "web", 60),
+            ],
+        ),
+        (
+            "select bucket, channel, count(order_id) as n, fee",
+            [
+                ("a", None, 1, 50),
+                ("b", "web", 1, 60),
+                ("z", None, 0, None),
+                (None, "shop", 0, 70),
+                (None, "web", 1, 60),
+            ],
+        ),
+        (
+            "select bucket, channel, sum(fee) by channel as f",
+            [
+                ("a", None, 50),
+                ("b", "web", 60),
+                ("z", None, None),
+                (None, "shop", 70),
+                (None, "web", 60),
+            ],
+        ),
+        (
+            "select customer_id, bucket, channel, target, fee",
+            [
+                (1, "a", None, 7, 50),
+                (1, None, "web", 5, 60),
+                (2, "b", "web", 8, 60),
+                (3, None, None, None, None),
+                (None, "z", None, 9, None),
+                (None, None, "shop", None, 70),
+            ],
+        ),
+    ],
+)
+def test_padding_on_a_second_optional_key_never_pairs_its_null_member(
+    query: str, expected: list[tuple]
+):
+    assert sorted_rows(_executor(SECOND_OPTIONAL_KEY), query) == expected
+
+
+def test_a_side_with_no_solid_key_keeps_its_presence_marker_off_a_table():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_raw_sql(
+        "create table sales as select null::varchar as bucket, 'web' as channel"
+        " union all select 'a', null union all select 'b', 'web'"
+    )
+    executor.execute_raw_sql(
+        "create table channels as select null::varchar as channel, 50 as fee"
+        " union all select 'web', 60 union all select 'shop', 70"
+    )
+    executor.execute_text(_BASE + _CHANNELS.format(channels="address channels") + """
+root datasource sales (bucket: ~?bucket, channel: ~?channel)
+grain (bucket, channel)
+address sales;
+""")
+    assert sorted_rows(executor, "select bucket, channel, fee") == [
+        ("a", None, 50),
+        ("b", "web", 60),
+        ("z", None, None),
+        (None, "shop", 70),
+        (None, "web", 60),
+    ]

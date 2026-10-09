@@ -1328,6 +1328,11 @@ class QueryDatasource:
     # holding a region's rows and one that does not preserves the holder.
     # Stamped by `StrategyNode.resolve`; not identity.
     region_spans: frozenset[str] = frozenset()
+    # A constant the CTE projects beside the outputs, NULL only where a join
+    # padded this side: a consumer's padding guard reads it when the side has
+    # no column NULL exactly there (`join_resolution._presence_marker`). Not
+    # an output, so planning never sees it; not identity.
+    presence_marker: BuildConcept | None = None
 
     def __post_init__(self) -> None:
         if self.set_operator is SetOperator.UNION_ALL:

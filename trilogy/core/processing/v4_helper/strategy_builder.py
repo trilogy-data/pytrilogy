@@ -2818,19 +2818,48 @@ def _visible_addresses(node: StrategyNode) -> set[str]:
     }
 
 
-def _padding_merge(stream: StrategyNode) -> MergeNode | None:
-    """The merge where `stream`'s region padding happens: the stream itself, or
-    the one merge a row-preserving projection of it reads."""
-    if isinstance(stream, MergeNode):
-        return stream
-    if (
-        isinstance(stream, SelectNode)
-        and not stream.conditions
-        and len(stream.parents) == 1
-        and isinstance(stream.parents[0], MergeNode)
-    ):
-        return stream.parents[0]
-    return None
+def _padding_path(stream: StrategyNode) -> list[StrategyNode]:
+    """`stream`, then each single-parent projection or grouping under it, down
+    to the merge where its region padding happens; empty when there is none."""
+    path = [stream]
+    while not isinstance(path[-1], MergeNode):
+        node = path[-1]
+        if not isinstance(node, (SelectNode, GroupNode)) or len(node.parents) != 1:
+            return []
+        path.append(node.parents[0])
+    return path
+
+
+def _row_preserving(path: list[StrategyNode]) -> bool:
+    """The merge's rows are `stream`'s: it is the merge, or projects it."""
+    return len(path) == 1 or (
+        len(path) == 2 and isinstance(path[0], SelectNode) and not path[0].conditions
+    )
+
+
+def _carries_through(
+    path: list[StrategyNode],
+    carried: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> bool:
+    """`carried` can pass up `path` without changing its rows. A grouping
+    carries only what its keys determine, and only when it is keyed on each
+    region's own span: a group uniting a region's padding with value NULLs
+    (`count(customer_id) by bucket`, cat in the NULL bucket) would split on
+    a column that is NULL on one and not the other."""
+    for node in path:
+        if not isinstance(node, GroupNode):
+            continue
+        keys = {
+            c.address
+            for c in node.output_concepts
+            if c.derivation != Derivation.AGGREGATE
+        }
+        if not region_reads(node) <= keys or not build_fd_determines_all(
+            environment, keys, [c.address for c in carried]
+        ):
+            return False
+    return True
 
 
 def _pads_a_value_null_group(
@@ -2862,14 +2891,13 @@ def _pair_inside_padding_streams(
     keyspace = environment.span_scope.keyspace
     out = list(parents)
     for stream in parents:
-        merge = _padding_merge(stream)
-        if merge is None or not region_reads(stream):
+        path = _padding_path(stream)
+        if not path or not region_reads(stream):
             continue
+        merge = path[-1]
         for other in list(out):
             if (
                 other is stream
-                or not isinstance(other, GroupNode)
-                or region_reads(other)
                 or any(n is stream for n in _iter_strategy_nodes(other))
                 or any(n is other for n in _iter_strategy_nodes(stream))
             ):
@@ -2884,20 +2912,34 @@ def _pair_inside_padding_streams(
                 for o in other.output_concepts
                 if o.address in _visible_addresses(other) - _visible_addresses(stream)
             ]
+            # the merge reads `other`'s outputs already; the nodes above it
+            # dropped them
+            in_merge = (
+                bool(carried)
+                and {c.address for c in carried} <= merge.output_lcl.addresses
+            )
+            if (
+                not in_merge
+                and not (
+                    isinstance(other, GroupNode)
+                    and not region_reads(other)
+                    and _row_preserving(path)
+                )
+            ) or not _carries_through(path, carried, environment):
+                continue
             logger.info(
                 f"[v4] {sorted(c.address for c in carried)} pair inside the merge "
                 f"that pads {sorted(shared)}, not at FINAL"
             )
-            merge.add_parents([other])
-            merge.input_concepts = unique(merge.input_concepts + carried, "address")
-            merge.add_output_concepts(carried, rebuild=False)
-            if stream is not merge:
-                stream.input_concepts = unique(
-                    stream.input_concepts + carried, "address"
-                )
-                stream.add_output_concepts(carried, rebuild=False)
-            merge.rebuild_cache()
-            stream.rebuild_cache()
+            if not in_merge:
+                merge.add_parents([other])
+                merge.input_concepts = unique(merge.input_concepts + carried, "address")
+                merge.add_output_concepts(carried, rebuild=False)
+            for node in reversed(path[:-1]):
+                node.input_concepts = unique(node.input_concepts + carried, "address")
+                node.add_output_concepts(carried, rebuild=False)
+            for node in path:
+                node.rebuild_cache()
             out.remove(other)
     return out
 

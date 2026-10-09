@@ -1,5 +1,6 @@
 from collections.abc import Callable
 
+from trilogy.constants import PRESENCE_MARKER_PREFIX
 from trilogy.core.constants import UNNEST_NAME
 from trilogy.core.enums import FunctionType, JoinType, Modifier, UnnestMode
 from trilogy.core.models.build import (
@@ -209,6 +210,9 @@ def render_guard_term(
         if isinstance(consumer, CTE)
         else term.concept.safe_address
     )
+    if PRESENCE_MARKER_PREFIX in term.concept.address and not isinstance(col, str):
+        # inlined, the constant would test itself, not the side's row
+        raise ValueError(f"Presence marker {term.concept.address} lost its column")
     column = render_join_concept(
         join.name_for(consumer, node),
         quote_character,

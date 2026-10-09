@@ -498,6 +498,9 @@ def datasource_to_cte(
             source_map = {k: [] for k in query_datasource.source_map}
             existence_map = source_map
 
+    marker = query_datasource.presence_marker
+    if marker is not None:
+        source_map[marker.address] = []
     human_id = generate_cte_name(query_datasource.identifier, name_map)
 
     final_joins = [
@@ -539,7 +542,9 @@ def datasource_to_cte(
         # output columns are what are selected/grouped by
         output_columns=[
             c.with_grain(query_datasource.grain)
-            for c in query_datasource.output_concepts + passthrough_columns
+            for c in query_datasource.output_concepts
+            + passthrough_columns
+            + ([marker] if marker is not None else [])
         ],
         source_map=source_map,
         existence_source_map=existence_map,

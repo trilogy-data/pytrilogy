@@ -311,6 +311,11 @@ class InlineDatasource(OptimizationRule):
             if parent_cte.dependency_nodes():
                 self.debug(f"Cannot inline: parent {parent_cte.name} has parents")
                 continue
+            if parent_cte.source.presence_marker is not None:
+                self.debug(
+                    f"Cannot inline: a padding guard reads {parent_cte.name}'s presence marker"
+                )
+                continue
             filtered_inline = _can_inline_filtered_parent(cte, parent_cte, inverse_map)
             if parent_cte.condition and not filtered_inline:
                 self.debug(
