@@ -2,6 +2,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, logger
+from trilogy.core import graph as gx
 from trilogy.core.constants import SUBQUERY_NAMESPACE_PREFIX
 from trilogy.core.enums import (
     Derivation,
@@ -607,16 +608,13 @@ def _find(parent: dict[int, int], i: int) -> int:
 
 
 def _detach_bridging_derivations(
-    g: "ReferenceGraph", cg, grain_only: dict[str, set[str]]
+    g: "ReferenceGraph", cg, grain_only: dict[str, set[str]], bound: set[str]
 ) -> None:
     """A derivation no datasource binds is producible only where every input
     is, so its node relates nothing: `av + bv` over two unrelated models joined
     them through its own node. Its input edges are dropped, then restored only
     once its inputs sit in one component (a benign chain re-attaches layer by
     layer; a bridge stays loose, and the gate reads it by its anchors)."""
-    from trilogy.core import graph as gx
-
-    bound = _bound_addresses(g)
     detached: dict[str, list[str]] = {}
     for node, concept in g.concepts.items():
         if node not in cg or not _reads_through(concept, bound):
@@ -660,6 +658,8 @@ def _component_map(
     environment: BuildEnvironment,
     g: "ReferenceGraph | None" = None,
     excluded_addresses: frozenset[str] = frozenset(),
+    grain_only: dict[str, set[str]] | None = None,
+    bound: set[str] | None = None,
 ) -> "tuple[dict[str, int], ReferenceGraph]":
     """Build the connectivity map node -> weakly-connected-component id, dropping
     aggregate grain-only edges and islanding rowsets first. Shared by
@@ -672,14 +672,14 @@ def _component_map(
     unrelated models look joined). Dropped from the undirected COPY only:
     surviving concepts still name these addresses as pseudonyms, so narrowing
     the environment is not an option."""
-    from trilogy.core import graph as gx
     from trilogy.core.env_processor import generate_graph
 
     g = g if g is not None else generate_graph(environment)
+    if grain_only is None:
+        grain_only = _aggregate_grain_only_parents(environment)
 
     # undirected copy, so edges can be dropped without mutating the shared graph
     cg = g.to_undirected()
-    grain_only = _aggregate_grain_only_parents(environment)
     if grain_only:
         for node, concept in g.concepts.items():
             keys = grain_only.get(concept.address)
@@ -691,7 +691,9 @@ def _component_map(
                     cg.remove_edge(node, neighbor)
 
     island_rowsets_for_connectivity(g, cg, grain_only)
-    _detach_bridging_derivations(g, cg, grain_only)
+    _detach_bridging_derivations(
+        g, cg, grain_only, bound if bound is not None else _bound_addresses(g)
+    )
 
     if excluded_addresses:
         for node, concept in g.concepts.items():
@@ -711,6 +713,7 @@ def disconnected_components(
     g: "ReferenceGraph | None" = None,
     excluded_addresses: frozenset[str] = frozenset(),
     grain_only: dict[str, set[str]] | None = None,
+    bound: set[str] | None = None,
 ) -> list[list[BuildConcept]]:
     """Partition concepts by true join reachability: two concepts share a group
     iff their reference-graph nodes are in the same weakly-connected component.
@@ -732,10 +735,14 @@ def disconnected_components(
 
     See ``_component_map`` for ``excluded_addresses``.
     """
-    comp_of, g = _component_map(environment, g, excluded_addresses)
+    from trilogy.core.env_processor import generate_graph
+
+    g = g if g is not None else generate_graph(environment)
     if grain_only is None:
         grain_only = _aggregate_grain_only_parents(environment)
-    bound = _bound_addresses(g)
+    if bound is None:
+        bound = _bound_addresses(g)
+    comp_of, g = _component_map(environment, g, excluded_addresses, grain_only, bound)
 
     # concept -> the component id it resolves into; a concept whose nodes are
     # absent from the graph gets a synthetic per-address component so it surfaces
@@ -1110,15 +1117,16 @@ def raise_if_disconnected_for(
 
     g = g if g is not None else generate_graph(environment)
     grain_only = _aggregate_grain_only_parents(environment)
+    bound = _bound_addresses(g)
     subgraphs = disconnected_components(
         environment,
         concepts,
         g,
         excluded_addresses=excluded_addresses,
         grain_only=grain_only,
+        bound=bound,
     )
     # what an output reads is the output's own demand, never a WHERE gate
-    bound = _bound_addresses(g)
     required = output_addresses | {
         anchor.address
         for output in outputs

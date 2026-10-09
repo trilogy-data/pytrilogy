@@ -527,9 +527,7 @@ auto sale_count <- count(sale_id);
         group_to_grain=False,
     )
 
-    assert not rule._push_having_into_group_parent(
-        plain_parent, condition, {}
-    )
+    assert not rule._push_having_into_group_parent(plain_parent, condition, {})
     assert not rule._push_having_into_group_parent(group_parent, None, {})
     assert not rule._push_having_into_group_parent(
         group_parent,
@@ -546,13 +544,9 @@ auto sale_count <- count(sale_id);
         {},
     )
     group_parent.condition = condition
-    assert not rule._push_having_into_group_parent(
-        group_parent, condition, {}
-    )
+    assert not rule._push_having_into_group_parent(group_parent, condition, {})
     group_parent.condition = None
-    assert not rule._push_having_into_group_parent(
-        group_parent, condition, {}
-    )
+    assert not rule._push_having_into_group_parent(group_parent, condition, {})
     assert not rule._push_having_into_group_parent(
         group_parent, condition, {group_parent.name: [object()]}
     )
