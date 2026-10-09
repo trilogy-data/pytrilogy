@@ -42,7 +42,7 @@ from .constants import (
 )
 from .edges import EdgeMap, edge_kind
 from .functional_dependency import build_fd_determines
-from .group_rules import _add_member, overlap_components
+from .group_rules import overlap_components
 from .keyspace import null_rejected
 from .models import ConceptAttrs, GroupBucket, RootReason
 from .region_domains import (
@@ -317,7 +317,8 @@ def _condition_scans(
         if stage is not None:
             bucket.discriminator = f"stage:s{stage}"
         for node in sorted(d1_calc_roots):
-            _add_member(bucket, node, concept_attrs[node])
+            data = concept_attrs[node]
+            bucket.add_member(data.address, node, data.depth_label)
         scans[stage] = bucket
     return scans
 
