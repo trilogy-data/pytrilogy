@@ -2403,9 +2403,7 @@ def coalesce_duplicate_joins(
             for addition in additions:
                 inner_existing.joinkey_pairs.append(addition)
                 by_norm[_pair_norm(existing_right, addition)] = addition
-            for modifier in join.modifiers:
-                if modifier not in inner_existing.modifiers:
-                    inner_existing.modifiers.append(modifier)
+            _absorb_join(inner_existing, join)
             continue
         key = (
             join.jointype,
@@ -2427,10 +2425,20 @@ def coalesce_duplicate_joins(
             if pair_key not in seen:
                 existing.joinkey_pairs.append(pair)
                 seen.add(pair_key)
-        for modifier in join.modifiers:
-            if modifier not in existing.modifiers:
-                existing.modifiers.append(modifier)
+        _absorb_join(existing, join)
     return out
+
+
+def _absorb_join(existing: Join, join: Join) -> None:
+    """The coalesced join's rows satisfy both copies: their modifiers and
+    their padding guards both hold."""
+    for modifier in join.modifiers:
+        if modifier not in existing.modifiers:
+            existing.modifiers.append(modifier)
+    held = {tuple(map(str, clause)) for clause in existing.guard}
+    for clause in join.guard:
+        if tuple(map(str, clause)) not in held:
+            existing.guard.append(clause)
 
 
 def merge_ctes(ctes: list[CTE | UnionCTE]) -> list[CTE | UnionCTE]:

@@ -76,3 +76,13 @@ def test_keyless_and_conditioned_joins_pass_through():
     conditioned.condition = object()  # type: ignore[assignment]
     merged = coalesce_duplicate_joins([keyless, keyless2, conditioned])
     assert merged == [keyless, keyless2, conditioned]
+
+
+def test_merged_join_keeps_either_copys_padding_guard():
+    guard = [["o.order_id is not null"]]
+    a = _join("t", [_pair("l", "k", "k")])
+    b = _join("t", [_pair("l", "k", "k")])
+    b.guard = guard  # type: ignore[assignment]
+    merged = coalesce_duplicate_joins([a, b, _join("t", [_pair("l", "k", "k")])])
+    assert merged == [a]
+    assert a.guard == guard
