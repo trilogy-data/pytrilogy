@@ -32,6 +32,7 @@ from trilogy.core.models.build import BuildConcept, BuildDatasource, BuildWhereC
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing import plan_trace
+from trilogy.core.processing.utility import walk_lineage
 
 from .concept_graph import condition_stage_of_label
 from .constants import (
@@ -447,16 +448,7 @@ def _row_arg_lineage_closure(arg: BuildConcept) -> set[str]:
     """The arg's address plus every address reachable through its lineage: a
     derived filter arg (``label <- concat(name, '-', variant)``) needs its
     ROOT inputs co-located wherever the filter is evaluated."""
-    closure: set[str] = set()
-    stack: list[BuildConcept] = [arg]
-    while stack:
-        concept = stack.pop()
-        if concept.address in closure:
-            continue
-        closure.add(concept.address)
-        if concept.lineage is not None:
-            stack.extend(concept.lineage.concept_arguments)
-    return closure
+    return {concept.address for concept in walk_lineage([arg])}
 
 
 def _filter_args(
@@ -500,26 +492,17 @@ def _post_aggregate_basic_args(
     for concept in mandatory_list:
         if concept.derivation != Derivation.BASIC or concept.lineage is None:
             continue
-        has_aggregate = False
-        collected: set[str] = set()
-        stack = list(concept.lineage.concept_arguments)
-        seen: set[str] = set()
-        while stack:
-            arg = stack.pop()
-            if arg.address in seen:
-                continue
-            seen.add(arg.address)
-            if arg.derivation == Derivation.AGGREGATE:
-                has_aggregate = True
-                continue
-            if arg.derivation in (Derivation.ROOT, Derivation.CONSTANT):
-                collected.add(arg.address)
-                continue
-            if arg.derivation == Derivation.BASIC and arg.lineage is not None:
-                collected.add(arg.address)
-                stack.extend(arg.lineage.concept_arguments)
-        if has_aggregate:
-            args |= collected
+        reached = walk_lineage(
+            concept.lineage.concept_arguments,
+            lambda arg: arg.derivation == Derivation.BASIC,
+        )
+        if any(arg.derivation == Derivation.AGGREGATE for arg in reached):
+            args |= {
+                arg.address
+                for arg in reached
+                if arg.derivation in (Derivation.ROOT, Derivation.CONSTANT)
+                or (arg.derivation == Derivation.BASIC and arg.lineage is not None)
+            }
     return frozenset(args)
 
 
@@ -694,20 +677,14 @@ def _projected_scalar_root_args(
             or concept.address in grouping_keys
         ):
             continue
-        stack = list(concept.lineage.concept_arguments)
-        seen: set[str] = set()
-        while stack:
-            arg = stack.pop()
-            if arg.address in seen:
-                continue
-            seen.add(arg.address)
-            if arg.derivation == Derivation.ROOT:
-                args.add(arg.address)
-            elif (
-                arg.derivation in _SCALAR_PROJECTION_DERIVATIONS
-                and arg.lineage is not None
-            ):
-                stack.extend(arg.lineage.concept_arguments)
+        args |= {
+            arg.address
+            for arg in walk_lineage(
+                concept.lineage.concept_arguments,
+                lambda arg: arg.derivation in _SCALAR_PROJECTION_DERIVATIONS,
+            )
+            if arg.derivation == Derivation.ROOT
+        }
     return frozenset(args)
 
 

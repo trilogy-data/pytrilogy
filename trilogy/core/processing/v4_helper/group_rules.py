@@ -25,7 +25,13 @@ from trilogy.core.enums import (
 
 from .concept_graph import _scope_and_phase
 from .constants import DepthLabel, EdgeKind
-from .edges import EdgeMap, edge_kind, lineage_subgraph
+from .edges import (
+    EdgeMap,
+    edge_kind,
+    lineage_predecessors,
+    lineage_subgraph,
+    lineage_successors,
+)
 from .models import ConceptAttrs, GroupBucket, RootReason, nulls_grouping_keys
 
 
@@ -200,9 +206,7 @@ def _arg_rowset_populations(
     stack: list[str] = [node]
     while stack:
         current = stack.pop()
-        for pred, _ in concept_graph.in_edges(current):
-            if edge_kind(concept_edges, pred, current) != EdgeKind.LINEAGE:
-                continue
+        for pred in lineage_predecessors(concept_graph, concept_edges, current):
             if pred in visited:
                 continue
             visited.add(pred)
@@ -301,9 +305,7 @@ def _lineage_layers(
         stack: list[str] = [node]
         while stack:
             current = stack.pop()
-            for pred, _child in concept_graph.in_edges(current):
-                if edge_kind(concept_edges, pred, current) != EdgeKind.LINEAGE:
-                    continue
+            for pred in lineage_predecessors(concept_graph, concept_edges, current):
                 if pred in visited:
                     continue
                 visited.add(pred)
@@ -651,12 +653,11 @@ def _is_row_stream_output(
         cur = stack.pop()
         if concept_attrs[cur].address in output_addresses:
             return True
-        for nxt in concept_graph.successors(cur):
-            if (
-                nxt in visited
-                or edge_kind(concept_edges, cur, nxt) != EdgeKind.LINEAGE
-                or concept_attrs[nxt].derivation
-                in (Derivation.AGGREGATE, Derivation.GROUP_TO, Derivation.UNION)
+        for nxt in lineage_successors(concept_graph, concept_edges, cur):
+            if nxt in visited or concept_attrs[nxt].derivation in (
+                Derivation.AGGREGATE,
+                Derivation.GROUP_TO,
+                Derivation.UNION,
             ):
                 continue
             visited.add(nxt)
@@ -689,10 +690,8 @@ def _cosource_component_groups(
         stacked = False
         while stack:
             cur = stack.pop()
-            for nxt in concept_graph.successors(cur):
+            for nxt in lineage_successors(concept_graph, concept_edges, cur):
                 if nxt in visited:
-                    continue
-                if edge_kind(concept_edges, cur, nxt) != EdgeKind.LINEAGE:
                     continue
                 if concept_attrs[nxt].derivation == Derivation.UNION:
                     stacked = True
@@ -963,9 +962,7 @@ def _stop_signature(
     stack: list[str] = [node]
     while stack:
         current = stack.pop()
-        for pred, _ in concept_graph.in_edges(current):
-            if edge_kind(concept_edges, pred, current) != EdgeKind.LINEAGE:
-                continue
+        for pred in lineage_predecessors(concept_graph, concept_edges, current):
             if pred in visited:
                 continue
             visited.add(pred)
@@ -1004,9 +1001,7 @@ def _feeds_extra_signature_group(
     stack: list[str] = [node]
     while stack:
         cur = stack.pop()
-        for _, succ in concept_graph.out_edges(cur):
-            if edge_kind(concept_edges, cur, succ) != EdgeKind.LINEAGE:
-                continue
+        for succ in lineage_successors(concept_graph, concept_edges, cur):
             if succ in targets:
                 return True
             if succ not in visited:
@@ -1018,10 +1013,7 @@ def _feeds_extra_signature_group(
 def _has_lineage_consumer(
     node: str, concept_graph: nx.DiGraph, concept_edges: EdgeMap
 ) -> bool:
-    return any(
-        edge_kind(concept_edges, node, succ) == EdgeKind.LINEAGE
-        for _, succ in concept_graph.out_edges(node)
-    )
+    return bool(lineage_successors(concept_graph, concept_edges, node))
 
 
 def _can_merge_nested_signatures(
@@ -1444,8 +1436,7 @@ def partition_unions(
         scope = _scope_and_phase(data.label)[0]
         arms = frozenset(
             _scope_and_phase(concept_attrs[pred].label)[0]
-            for pred in concept_graph.predecessors(node)
-            if edge_kind(concept_edges, pred, node) == EdgeKind.LINEAGE
+            for pred in lineage_predecessors(concept_graph, concept_edges, node)
         )
         key = (scope, arms)
         bucket = by_key.get(key)

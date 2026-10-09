@@ -59,6 +59,7 @@ from trilogy.core.processing.discovery_utility import (
 )
 from trilogy.core.processing.node_generators.select_node import root_is_unsourced
 from trilogy.core.processing.nodes import History, StrategyNode
+from trilogy.core.processing.utility import walk_lineage
 from trilogy.core.processing.v4_helper import (
     FINAL_NODE_ID,
     ROW_SHAPE_BARRIER_DERIVATIONS,
@@ -256,19 +257,9 @@ def _lineage_sourceable(
 def _lineage_closure(
     concept: BuildConcept, environment: BuildEnvironment
 ) -> list[BuildConcept]:
-    out: dict[str, BuildConcept] = {}
-    stack = [concept]
-    while stack:
-        current = stack.pop()
-        if current.address in out:
-            continue
-        out[current.address] = current
-        if current.lineage is not None:
-            stack.extend(
-                environment.concepts.get(arg.address) or arg
-                for arg in current.lineage.concept_arguments
-            )
-    return list(out.values())
+    return walk_lineage(
+        [concept], resolve=lambda arg: environment.concepts.get(arg.address) or arg
+    )
 
 
 # Derivations a stored column reproduces row for row. The rest (FILTER/UNNEST/

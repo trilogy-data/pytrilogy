@@ -29,8 +29,7 @@ from dataclasses import dataclass
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation
 
-from .constants import EdgeKind
-from .edges import EdgeMap, edge_kind
+from .edges import EdgeMap, lineage_predecessors
 from .functional_dependency import concept_attr_fd_closure, concept_attr_fd_determines
 from .models import ConceptAttrs, GroupBucket
 
@@ -58,11 +57,7 @@ def _lineage_parents(
 ) -> frozenset[str]:
     if address not in concept_graph.nodes:
         return frozenset()
-    return frozenset(
-        u
-        for u, _ in concept_graph.in_edges(address)
-        if edge_kind(concept_edges, u, address) == EdgeKind.LINEAGE
-    )
+    return frozenset(lineage_predecessors(concept_graph, concept_edges, address))
 
 
 # ----- native_grain implementations -----------------------------------
@@ -172,8 +167,7 @@ def _lineage_parent_addrs(
         return set()
     return {
         concept_attrs[u].address
-        for u, _ in concept_graph.in_edges(address)
-        if edge_kind(concept_edges, u, address) == EdgeKind.LINEAGE
+        for u in lineage_predecessors(concept_graph, concept_edges, address)
     }
 
 

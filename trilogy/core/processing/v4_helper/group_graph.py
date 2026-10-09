@@ -64,6 +64,7 @@ from .edges import (
     edge_kind,
     edges_of_kind,
     lineage_edges,
+    lineage_predecessors,
     lineage_subgraph,
     remove_edge,
 )
@@ -190,11 +191,7 @@ def _lineage_leaf_addresses(
     stack = [node]
     while stack:
         cur = stack.pop()
-        preds = [
-            p
-            for p, _ in concept_graph.in_edges(cur)
-            if edge_kind(concept_edges, p, cur) == EdgeKind.LINEAGE
-        ]
+        preds = lineage_predecessors(concept_graph, concept_edges, cur)
         if cur != node and not preds:
             leaves.add(concept_attrs[cur].address)
         for p in preds:
@@ -477,9 +474,8 @@ def _virtual_filter_scoped_columns(
             continue
         for addr in attrs[desc].primary_members:
             for nid in addr_to_nodes.get(addr, []):
-                for parent in concept_graph.predecessors(nid):
-                    if edge_kind(concept_edges, parent, nid) == EdgeKind.LINEAGE:
-                        scoped.add(concept_attrs[parent].address)
+                for parent in lineage_predecessors(concept_graph, concept_edges, nid):
+                    scoped.add(concept_attrs[parent].address)
     return scoped
 
 
@@ -1283,8 +1279,8 @@ def _grouping_output_contributors(
     not have."""
     return [
         pred
-        for pred in group_graph.predecessors(gid)
-        if edge_kind(group_edges, pred, gid) == EdgeKind.LINEAGE and pred in rides
+        for pred in lineage_predecessors(group_graph, group_edges, gid)
+        if pred in rides
     ]
 
 
@@ -1381,7 +1377,7 @@ def _anchor_scalars_to_dim_peel_key(
     for gid, fact in facts.items():
         if gid == FINAL_NODE_ID or fact.derivation != Derivation.BASIC:
             continue
-        parents = _lineage_predecessors(group_graph, group_edges, gid)
+        parents = lineage_predecessors(group_graph, group_edges, gid)
         keys = {
             attrs[pred].anchor_keys - region_join_keys
             for pred in parents
@@ -1409,8 +1405,8 @@ def _grouping_lineage_ancestors(
     stack = [gid]
     while stack:
         node = stack.pop()
-        for pred in group_graph.predecessors(node):
-            if pred in seen or edge_kind(group_edges, pred, node) != EdgeKind.LINEAGE:
+        for pred in lineage_predecessors(group_graph, group_edges, node):
+            if pred in seen:
                 continue
             seen.add(pred)
             if facts[pred].derivation in GROUPING_DERIVATIONS:
@@ -1486,7 +1482,7 @@ def _widen_mixed_scalar_basic_to_final_spine(
             continue
         if not group_graph.has_edge(gid, FINAL_NODE_ID):
             continue
-        lineage_preds = _lineage_predecessors(group_graph, group_edges, gid)
+        lineage_preds = lineage_predecessors(group_graph, group_edges, gid)
         pred_derivations = {facts[pred].derivation for pred in lineage_preds}
         if Derivation.ROOT not in pred_derivations or not (
             pred_derivations & GROUPING_DERIVATIONS
@@ -2315,16 +2311,6 @@ def trace_group_graph(
         )
 
 
-def _lineage_predecessors(
-    group_graph: nx.DiGraph, group_edges: EdgeMap, gid: str
-) -> list[str]:
-    return [
-        pred
-        for pred in group_graph.predecessors(gid)
-        if edge_kind(group_edges, pred, gid) == EdgeKind.LINEAGE
-    ]
-
-
 def _regraft_candidate(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -2371,7 +2357,7 @@ def _regraft_candidate(
     # Concepts a partial-coverage spine may lean on for the inputs it lacks.
     pred_outputs: set[str] = set()
     if allow_partial:
-        for pred in _lineage_predecessors(group_graph, group_edges, gid):
+        for pred in lineage_predecessors(group_graph, group_edges, gid):
             pred_outputs |= set(attrs[pred].output_concepts)
     my_ancestors = nx.ancestors(group_graph, gid)
     best_gid: str | None = None
@@ -2553,7 +2539,7 @@ def _synthetic_dimension_regraft_parent(
     key = set(current.grain_components)
     if not key:
         return None
-    lineage_preds = _lineage_predecessors(group_graph, group_edges, gid)
+    lineage_preds = lineage_predecessors(group_graph, group_edges, gid)
     root_preds = [
         pred for pred in lineage_preds if attrs[pred].derivation == Derivation.ROOT
     ]
@@ -2766,7 +2752,7 @@ def _regraft_group_sources(
                 # pairs the provider's groups on a non-key (a region domain on
                 # a nullable description) and drops or multiplies them.
                 provider_ancestors = nx.ancestors(group_graph, provider_gid)
-                for pred in _lineage_predecessors(group_graph, group_edges, gid):
+                for pred in lineage_predecessors(group_graph, group_edges, gid):
                     if pred in provider_ancestors:
                         remove_edge(group_graph, group_edges, pred, gid)
         if parent_gid is None:

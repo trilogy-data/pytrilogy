@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Collection, Sequence
+from collections.abc import Callable, Collection, Iterable, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
@@ -111,6 +111,34 @@ def join_left_sources(join: BaseJoin) -> list[BuildDatasource | QueryDatasource]
             pair.existing_datasource.identifier, pair.existing_datasource
         )
     return list(sources.values())
+
+
+def _descend_all(concept: BuildConcept) -> bool:
+    return True
+
+
+def _as_is(concept: BuildConcept) -> BuildConcept:
+    return concept
+
+
+def walk_lineage(
+    starts: Iterable[BuildConcept],
+    descend: Callable[[BuildConcept], bool] = _descend_all,
+    resolve: Callable[[BuildConcept], BuildConcept] = _as_is,
+) -> list[BuildConcept]:
+    """Every concept reachable from `starts` through the lineage arguments of
+    those `descend` accepts, `starts` included, each once, in visit order.
+    `resolve` maps each argument before it is visited."""
+    out: dict[str, BuildConcept] = {}
+    stack = list(starts)
+    while stack:
+        concept = stack.pop()
+        if concept.address in out:
+            continue
+        out[concept.address] = concept
+        if concept.lineage is not None and descend(concept):
+            stack.extend(resolve(arg) for arg in concept.lineage.concept_arguments)
+    return list(out.values())
 
 
 PADS_RIGHT_JOIN_TYPES = (JoinType.LEFT_OUTER, JoinType.FULL)
