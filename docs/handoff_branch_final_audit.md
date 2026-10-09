@@ -69,13 +69,28 @@ corpus, the four region batteries and the suite SQL capture, and no plans moved.
   site to `all_spellings` changes which partials, null tests and connector
   keys match.
 
-  OPEN: a per-environment `AddressClass`. The three canonical maps differ in
-  their root choice as well as in scope: `keyspace._canonical_addresses` takes
-  the smallest member, `network_build._equivalence_map` the union-find root, and
-  `join_resolution.build_canonical_address_map` uses `min` with alias origins
-  ranked last. The roots reach join-graph node names and sort orders, so
-  merging them would move plans. Design the scopes first. Nothing asserts that
-  a canonical-keyed map is read by a canonical.
+  DONE (7401056f4, 0ffffef4f, cef1abfb2): two address classes per
+  environment from one builder, with one scoped-root rule
+  (`BuildEnvironment.address_roots(scope, spellings=)`). They replace
+  keyspace's, network_build's and join_resolution's hand-rolled maps.
+  `value_classes` (key, address, pseudonyms, alias key to origin; authored
+  name first) serve keyspace (unscoped) and join_resolution (scoped to visible
+  outputs). `spelling_classes` add each concept's and alias origin's canonical
+  `_virt_*` spelling, which is the reference graph's node name. They serve
+  network_build, scoped to the request. They cannot be one class: through a
+  shared canonical, a projection of `upper(s.channel)` joined a union join's
+  `upper(s) = upper(r)` member and took the other side's value. Network
+  scoping is load-bearing: unscoped, TPC-H q07 named a class after an alias
+  nothing read and grew 3x.
+
+  OPEN, punted: spelling classes keep the smallest spelling as the name.
+  Source planning reads network roots back as concepts and plans depend on
+  the name. Authored-first lost the merge variant a scan renders (the
+  titanic merge-rowset demo cross-joined), and canonical-first grew five
+  TPC-DS plans. Reading graph nodes by concept address so the network could
+  use value classes failed the same way: discovery needs the canonical
+  spelling to know which variant a scan renders. Corpus 0 moved, batteries 0
+  differ, suite: one same-size join operand swap (scalar subquery test).
 - **`RowsetDefinition`.** The cheap part is DONE (a5c25edec):
   `core.constants.rowset_alias_prefix` is the one spelling of the `_{rowset}_`
   scheme, which was hand-written in seven places. The definition object
@@ -89,7 +104,7 @@ corpus, the four region batteries and the suite SQL capture, and no plans moved.
   keyspace, persisted-column matching and predicate pushdown all read the pin
   back from the lineage, so it would mean building twice or making the pin a
   lazy annotation. No bug traced. `_co_held_only_beside` has no focused test;
-  only the TPC-DS q51 plan budget guards it.
+  only the TPC-DS q51 plan budget guards it. WE MUST add a test ofr this.
 - **"The filter-population claim is computed twice".** CLOSED, not a
   duplicate. The builder's `applied_atoms` chooses which request atoms a merge
   may claim. `MergeNode._join_proofs` finds which resolved datasets carry
