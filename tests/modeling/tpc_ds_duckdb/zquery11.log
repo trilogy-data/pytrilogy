@@ -1,5 +1,5 @@
 query_id = "11"
-gen_length = 5501
+gen_length = 5278
 preql_size = 1867
 comp_size = 3006
 generated_sql = """
@@ -59,22 +59,19 @@ HAVING
 	END ) > ( CASE
 	WHEN sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) > 0 THEN (sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2002 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) * 1.0) / sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END)
 	ELSE cast(0.0 as numeric)
-	END )
+	END ) and count(CASE
+	WHEN (\"thoughtful\".\"sales_channel\" is not null and \"thoughtful\".\"sales_channel\" in ('STORE','WEB')) and (2001 is not distinct from \"sales_sale_date_date\".\"D_YEAR\" or 2002 is not distinct from \"sales_sale_date_date\".\"D_YEAR\") THEN 1
+	END) > 0
 ),
 questionable as (
 SELECT
     \"sales_billing_customer_customers\".\"C_CUSTOMER_ID\" as \"sales_billing_customer_id\",
+    \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
     \"sales_billing_customer_customers\".\"C_FIRST_NAME\" as \"sales_billing_customer_first_name\",
     \"sales_billing_customer_customers\".\"C_LAST_NAME\" as \"sales_billing_customer_last_name\",
-    \"sales_billing_customer_customers\".\"C_PREFERRED_CUST_FLAG\" as \"sales_billing_customer_preferred_cust_flag\",
-    \"thoughtful\".\"sales_billing_customer_sk\" as \"sales_billing_customer_sk\"
+    \"sales_billing_customer_customers\".\"C_PREFERRED_CUST_FLAG\" as \"sales_billing_customer_preferred_cust_flag\"
 FROM
-    \"thoughtful\"
-    INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"thoughtful\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
-    INNER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"thoughtful\".\"sales_billing_customer_sk\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
-WHERE
-    (\"thoughtful\".\"sales_channel\" is not null and \"thoughtful\".\"sales_channel\" in ('STORE','WEB')) and (2001 is not distinct from \"sales_sale_date_date\".\"D_YEAR\" or 2002 is not distinct from \"sales_sale_date_date\".\"D_YEAR\")
-)
+    \"memory\".\"customer\" as \"sales_billing_customer_customers\")
 SELECT
     \"questionable\".\"sales_billing_customer_id\" as \"sales_billing_customer_id\",
     \"questionable\".\"sales_billing_customer_first_name\" as \"sales_billing_customer_first_name\",

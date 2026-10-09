@@ -26,6 +26,7 @@ FLAGS = {
     "strip_redundant_not_null",
     "drop_identity_group",
     "reuse_parent_lookup",
+    "fold_existence_into_aggregate",
     "union_dim_pushdown",
     "hide_unused_concepts",
     "order_inner_joins_first",

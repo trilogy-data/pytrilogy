@@ -40,7 +40,7 @@ from .edges import (
     subgraph_of_kinds,
 )
 from .functional_dependency import build_fd_determines_all
-from .models import ConceptAttrs, GroupBucket
+from .models import ConceptAttrs, GroupBucket, RootReason
 from .projection import decided_at_output_grain
 from .region_reads import restated_over_region
 from .staged_where import (
@@ -211,6 +211,34 @@ def _candidate_groups(
             continue
         hosts.append(gid)
     return hosts
+
+
+def _entity_peels_beside_row_stream(
+    candidates: list[str],
+    buckets: dict[str, GroupBucket],
+    group_members: dict[str, set[str]],
+    main_lineage: set[str],
+) -> list[str]:
+    """Entity peels that can host a row atom held only by a row stream FINAL
+    never merges. The stream carries no output, so an atom elected onto it
+    alone is dropped; a peel re-plans its rows from the datasources and,
+    joined through the stream's copy of its key, keeps only the entities with
+    a qualifying row."""
+    streams = [
+        gid
+        for gid in candidates
+        if gid in buckets and buckets[gid].reason is RootReason.ROW_STREAM
+    ]
+    if not streams or any(gid in main_lineage for gid in streams):
+        return []
+    return [
+        gid
+        for gid in sorted(main_lineage)
+        if gid not in candidates
+        and gid in buckets
+        and buckets[gid].anchor_keys
+        and any(buckets[gid].anchor_keys <= group_members[s] for s in streams)
+    ]
 
 
 def _nested_scope_chain(
@@ -1241,6 +1269,9 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
         lineage_ancestors_graph,
         buckets,
     )
+    candidates += _entity_peels_beside_row_stream(
+        candidates, buckets, group_members, main_lineage
+    )
     # A presence probe's null test is only meaningful ABOVE the merge
     # that null-extends it: hosting it at the member's own rowset
     # boundary reads the probe one-sided (never NULL for `is not
@@ -1536,16 +1567,21 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
     # reading it is equally nested and equally invisible to the output
     # population. If there is no outer candidate the atom is genuinely
     # scoped and placement proceeds unchanged.
+    # Elected beside an outer host, the nested copy still narrows the
+    # scope's population; the outer copy alone reaches the output rows.
+    outer_chosen = tuple(gid for gid in chosen_groups if gid not in nested_ids)
     if _nested_scope_swallows_atom(
         row_inputs,
-        chosen_groups,
+        tuple(gid for gid in chosen_groups if gid in nested_ids),
         restricted,
         nested_ids,
         buckets,
         lineage_ancestors_graph,
     ):
         outer_hosts = [gid for gid in restricted if gid not in nested_ids]
-        if outer_hosts:
+        if outer_chosen:
+            chosen_groups = outer_chosen
+        elif outer_hosts:
             chosen_groups = _choose_groups(outer_hosts, host_graph, main_lineage)
     out.append(
         ConditionPlacement(

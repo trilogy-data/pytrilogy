@@ -30,6 +30,9 @@ from trilogy.core.optimizations import (
 from trilogy.core.optimizations.collapse_single_parent import (
     grouped_unbound_passthrough_should_wait,
 )
+from trilogy.core.optimizations.existence_having_fold import (
+    FoldExistenceIntoAggregate,
+)
 from trilogy.core.optimizations.full_join_lowering import lower_full_joins
 from trilogy.core.optimizations.identity_group import DropIdentityGroup
 from trilogy.core.optimizations.join_upgrade import PrunePreservedJoinKeys
@@ -590,6 +593,19 @@ def build_optimization_rule_plan(
                     "it reads join types and the holder's grouping, so it runs "
                     "once both are settled and before output pruning hides the "
                     "columns it carries"
+                ),
+            )
+        )
+    if opts.fold_existence_into_aggregate:
+        plan.append(
+            OptimizationRulePlan(
+                name="fold_existence_into_aggregate",
+                rule_factory=FoldExistenceIntoAggregate,
+                depends_on=join_upgrades,
+                reason=(
+                    "it reads settled INNER joins and the aggregate's final "
+                    "WHERE, and runs before output pruning hides the dimension "
+                    "columns the rebased scan keeps"
                 ),
             )
         )
