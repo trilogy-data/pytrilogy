@@ -1,5 +1,5 @@
 query_id = "16"
-gen_length = 2281
+gen_length = 2266
 preql_size = 633
 comp_size = 821
 generated_sql = """
@@ -28,9 +28,7 @@ yummy as (
 SELECT
     \"uneven\".\"cs_order_number\" as \"multi_warehouse_sales\"
 FROM
-    \"uneven\"
-GROUP BY
-    1),
+    \"uneven\"),
 cheerful as (
 SELECT
     coalesce(\"cs_catalog_returns\".\"CR_ORDER_NUMBER\",\"cs_catalog_sales\".\"CS_ORDER_NUMBER\") as \"returned_orders\"
