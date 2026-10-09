@@ -96,10 +96,24 @@ parts (02a4f07c2, 09a8f95d9):
 The channels battery moved 42 of 150 queries, every changed row a `z`/`shop`
 padding row. TWO_REGIONS and LINE_ITEMS moved 0. Corpus moved 0.
 
-A padded side that is a UNION has no marker yet and still logs and skips.
-So does the in-source path (`_padding_witness`), where the padding happened
-inside the side's own merge: a marker there would need to be aggregated up
-through the grouping.
+**UNION sides (2be0ff7d6).** A padded side that is a UNION gets the marker
+on every arm. The `SECOND_OPTIONAL_KEY_UNION` model (the same orders in two
+`complete where` partitions; battery `channels_union`) also exposed a
+pre-existing bug: `datasource_to_cte` built a `UnionCTE` without its
+`partial_concepts`, so `UpgradeJoinOnGuards` read the union's `~` columns
+as complete and narrowed `customers LEFT orders` to INNER under `where
+bucket = 'z' or channel = 'shop'`, dropping the channel region's row. The
+union battery now matches the single-table one row for row.
+
+**The in-source path (`_padding_witness`) is left as is, deliberately.**
+Here the padding happened inside the side's own merge. Its skip still fires
+in 123 battery queries (37 TWO_REGIONS, 43 each channels model; the
+earlier-join skip no longer fires anywhere). Every affected row is right:
+the TWO_REGIONS ones are pinned by tests, and in cases like `customer_id,
+count(customer_id) by bucket` the pairing the skip allows is the intended
+answer (cat's padding unites with the NULL bucket group, `(3, 2)`). A marker
+there would deny those pairings. If a wrong row ever turns up on this path,
+first check why `_pads_beside` does not exempt the pairing.
 
 ## 4. Keyspace vs the other nullability machinery
 
@@ -127,13 +141,12 @@ Ranked overlaps:
    wrong rows, not reproduced. **Proposal:** one pass that emits a
    `_MergePadding` per host, with `region_padded` derived from it. Write a
    two-host test first. It is probably the same fix family as section 3.
-2. **MOSTLY DONE (6ed660cdb, 20b284510).** `BuildDatasource.partial_spellings`
+2. **DONE (6ed660cdb, 20b284510, a52bc86f2).** `BuildDatasource.partial_spellings`
    serves both `_partial_spelling` and `keyspace._source_facts`; the heal's
    lookup supply is `ModelFacts.lookup_supply` over `scope_facts` (the
-   keyspace's `_carried`). 0 plans moved. Left: `_component_reach` vs
-   `_connected`. The heal intersects raw spellings with it, and `_connected`
-   answers over canonical entities, so swapping it needs the heal's sets
-   canonicalized first. Original finding: **The pin-heal re-derived keyspace
+   keyspace's `_carried`), and its component reach is
+   `ModelFacts.component_of` (a52bc86f2), both compared in canonical
+   spelling. 0 plans moved. Original finding: **The pin-heal re-derived keyspace
    reach with different rules.** The pairs
    are:
    - `partial_bridging._partial_spelling` and `keyspace._source_facts` (which
@@ -254,8 +267,8 @@ Do NOT "simplify":
 
 ## 6. Architectural items carried from `handoff_grain_pin_followups.md`
 
-Still open, and still the largest structural debts. These are design work,
-not refactors:
+Still open, and still the largest structural debts. These are simplifying
+refactors that may need more design:
 
 - **One `AddressClass` for a value's four spellings.** About 40 sites. The
   three maps it would replace differ in scope on purpose: environment-wide
