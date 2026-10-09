@@ -118,7 +118,8 @@ Guards, each load-bearing:
   shrink the population to this datasource's rows: anchor-only rows carry the
   anchor's own values, not manufactured NULLs. The key still heals when some
   killer lies outside what the anchor's rows can carry by keyed lookup
-  (`_lookup_supply`, which walks complete lookups and stops at `~` bindings;
+  (`ModelFacts.lookup_supply`, the keyspace's walk over complete lookups,
+  which stops at `~` bindings;
   the FD closure is the wrong tool because a same-grain sibling's columns are
   in it). Reading the anchor beside the heal (a sales measure) is fine: the
   anchor is complete, so every fact row has its anchor row and the healed

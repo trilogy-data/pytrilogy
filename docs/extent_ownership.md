@@ -64,8 +64,9 @@ marks behind. Three things follow, all in
   dropping either side's is a chasm rather than an extension, so their typing
   stands whoever owns the extent.
 - **Inherited padding is absence, not content.** A shared ancestor may
-  legitimately pad on the way to the owner (`extension_padded_addresses` finds
-  exactly the addresses it padded, and only for span-keyed joins). Downstream of
+  legitimately pad on the way to the owner (`span_padded_addresses` finds
+  exactly the addresses it padded: span-keyed joins and lookups chained off a
+  key they padded). Downstream of
   the owner's branch those NULLs are somebody else's rows, so they do not make a
   key nullable here and do not drive preservation or null-safe pairing.
 - **No host, no reunion.** A suppressed span is not a licensed key for hosting

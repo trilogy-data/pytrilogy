@@ -69,53 +69,37 @@ parse time included, so the machine was loaded.
   function in `join_resolution` read only by the optimizer.
 - **Mechanical cleanups:** listed in section 5.
 
-## 3. Open: wrong rows (pre-existing, main too)
+## 3. FIXED: a padded key with no witness (pre-existing, main too)
 
-**A padded key with no witness pairs with a value-NULL group.** Found by this
-audit. `_padding_guard` needs a column that is NULL exactly where a side has
-no row: a KEY the side never emits NULL for. When neither side has one, the
-guard is skipped with `continue`.
+`_padding_guard` skipped the guard (a silent `continue`) when neither side
+had a column NULL exactly where it has no row. Model:
+`tests/engine/test_padded_null_pairing.py::SECOND_OPTIONAL_KEY` (a second
+`?` key, `channel`, on the fact), now in `region_battery.py` as `channels`.
+Bucket `z` (no orders) got the NULL channel's `fee = 50`. Fixed in three
+parts (02a4f07c2, 09a8f95d9):
 
-- The padded side can lack one: a stream grouped to `(bucket, channel)` has
-  dropped `order_id`.
-- The host can lack one: a `?`-keyed dimension such as `targets(bucket:
-  ?bucket)`, whose only key has a NULL member.
+- **Host term only when needed.** The guard is `padded present or host
+  absent`. Presence patterns over the join order (`_presence_after`) show
+  whether any row lacks both; when none does, the host term is dropped, so a
+  `?`-keyed host no longer blocks the guard.
+- **Presence marker.** A padded side with no solid key projects a constant
+  (`QueryDatasource.presence_marker`, `_virt_row_present_<hash>`), rendered by
+  the CTE only, so planning never sees it. The inliner keeps such a CTE, and
+  the renderer raises if the marker would render as anything but a column.
+- **Pair inside the padding merge.** `_pair_inside_padding_streams` now
+  reaches a stream that is a grouping or filtered projection over the
+  padding merge (`_padding_path`). When the merge already reads the lookup's
+  columns, they are carried up, but only through groups keyed on every
+  region's own span: `count(customer_id) by bucket` unites cat's padding with
+  value NULLs, and carrying `target` there split that group.
 
-Model: TWO_REGIONS plus a second `?` key on orders.
+The channels battery moved 42 of 150 queries, every changed row a `z`/`shop`
+padding row. TWO_REGIONS and LINE_ITEMS moved 0. Corpus moved 0.
 
-```
-key channel string; property channel.fee int;
-root datasource channels (channel: ?channel, fee: fee) grain (channel)
-  query '''select null as channel, 50 as fee union all select 'web', 60 union all select 'shop', 70''';
-orders (order_id, customer_id: ~customer_id, amount, bucket: ~?bucket, channel: ~?channel)
-  (100, 1, 10, NULL, 'web'), (101, 1, 20, 'a', NULL), (102, 2, 30, 'b', 'web')
-```
-
-Each of these gives bucket `z` (which has no orders) the NULL channel's
-`fee = 50` where NULL is correct:
-
-- `select bucket, channel, fee`
-- `select bucket, channel, count(order_id) as n, fee`
-- `select bucket, channel, sum(fee) by channel as f`
-- `select customer_id, bucket, channel, target, fee`
-
-The customer region in the same model is right, because `customers` has a
-solid key.
-
-Why the simple patch does not help: emitting `padded.witness is not null` when
-only the host witness is missing fixes the merge inside `count(order_id)`. The
-FINAL then joins `channels` again, null-safely, onto the grouped stream, which
-has no witness. The real fix is a presence marker:
-
-- when a padded side has no solid key, the merge projects a non-null
-  constant for it (or keeps the grain key it grouped away);
-- the guard tests that marker.
-
-Add this model to `local_scripts/sql_ab/region_battery.py` when fixing. Neither
-battery model has a second `?` key on the fact, so neither can reach this.
-Until then the `continue` in `_padding_guard` is a silent skip
-([[feedback_silent_planner_skip_is_a_wrong_answer]]). Consider at least logging
-it.
+A padded side that is a UNION has no marker yet and still logs and skips.
+So does the in-source path (`_padding_witness`), where the padding happened
+inside the side's own merge: a marker there would need to be aggregated up
+through the grouping.
 
 ## 4. Keyspace vs the other nullability machinery
 
@@ -124,8 +108,14 @@ An audit compared the keyspace (`v4_helper/keyspace.py`, `region_domains`,
 `partial_bridging`, `scan_partials` and `grain_utility`. Dead code: none.
 Ranked overlaps:
 
-1. **Two loops in one merge decide which side an earlier join padded for a
-   region.** These are `join_resolution._region_padded_sides` (key-pair
+1. **DONE (09a8f95d9).** `_merge_paddings` records each join's paddings once
+   (per host for a LEFT, over every joined side for a RIGHT/FULL);
+   `_region_padded_sides` derives from it, and the guard tests "some padded
+   side present" over the fewest sides whose rows cover the rest. 0 plans
+   moved. Probed: multi-host and multi-left joins occur only in the battery
+   models, under a WHERE, and their rows were already right. Original
+   finding: **Two loops in one merge decided which side an earlier join
+   padded for a region.** These are `join_resolution._region_padded_sides` (key-pair
    NULLABLE typing) and `_merge_paddings_from` (guards). Both walk the same
    joins and read `held_spans`, but differ when a join has several hosts:
    - `_merge_paddings_from` records a padding only when exactly one left
@@ -137,7 +127,14 @@ Ranked overlaps:
    wrong rows, not reproduced. **Proposal:** one pass that emits a
    `_MergePadding` per host, with `region_padded` derived from it. Write a
    two-host test first. It is probably the same fix family as section 3.
-2. **The pin-heal re-derives keyspace reach with different rules.** The pairs
+2. **MOSTLY DONE (6ed660cdb, 20b284510).** `BuildDatasource.partial_spellings`
+   serves both `_partial_spelling` and `keyspace._source_facts`; the heal's
+   lookup supply is `ModelFacts.lookup_supply` over `scope_facts` (the
+   keyspace's `_carried`). 0 plans moved. Left: `_component_reach` vs
+   `_connected`. The heal intersects raw spellings with it, and `_connected`
+   answers over canonical entities, so swapping it needs the heal's sets
+   canonicalized first. Original finding: **The pin-heal re-derived keyspace
+   reach with different rules.** The pairs
    are:
    - `partial_bridging._partial_spelling` and `keyspace._source_facts` (which
      column's `~` licenses extension);
@@ -150,23 +147,33 @@ Ranked overlaps:
    **Proposal:** `decide_heal` reads `scope_facts(scope, environment)`, and
    one `partial_cause(ds, column)` helper serves both. Gate it on a corpus
    A/B and the pin-heal tests (`_ANCHORED`, the co-partial siblings).
-3. **"This side holds region R" has two representations.** One is
+3. **MEASURED.** Over the corpus, `_pads_beside` is decided by
+   `span_padding` alone in exactly one call (TPC-DS q81,
+   `cs.return_customer.sk` padded for `cs.item.sk`/`cs.order_number`); in the
+   three batteries `held_spans` alone decides every case (137 held-only, 0
+   padding-only). So the observed-padding half is still load-bearing, for
+   q81. Original finding: **"This side holds region R" has two
+   representations.** One is
    `region_spans`/`held_spans` (the contract). The other is
    `SideFacts.span_padding`, a join-tree walk via
    `null_provenance.span_padded_addresses`. `_pads_beside` ORs them. The
    keyspace could answer the per-key half (`not defined_on(key, R)`), but
    observed padding also covers owners with no domain group (ROW_STREAM,
    BOUNDARY, RELATION, PADDED) and completions. It also depends on the
-   spellings item. **Next step:** a debug-only cross-check that measures how
-   often the two disagree on the corpus.
-4. **`extension_padded_addresses` vs `span_padded_addresses`.** They are
+   spellings item. The measurement above was the proposed next step;
+   retiring `span_padding` means explaining q81 first.
+4. **DONE (126ed0989).** Chaining moved no plan, so the two walks are one:
+   `span_padded_addresses(source, spans)`. Original finding:
+   **`extension_padded_addresses` vs `span_padded_addresses`.** They are
    already one walk (`_padded_addresses`); only the span walk passes
    `chain=True` and follows lookups chained off a padded key. The open
    question is about meaning, not duplication. Under an extent-free span, a
    chained lookup's padding (a customer's address off a padded customer) stays
    nullable in `get_node_joins`. Check whether the extension walk should chain
    too; if no plan moves, it can.
-5. **`MergeNode` computes "spans this merge may extend" three ways**
+5. **DONE (126ed0989).** `SpanScope.extendable` names it and documents the
+   three readings. Original finding: **`MergeNode` computed "spans this merge
+   may extend" three ways**
    (`licensed_outputs`, `demanded_domains`, `coalesced`). Only
    `demanded_domains` subtracts `unextended`. Name the difference with a
    `SpanScope` property, or comment it.
@@ -204,44 +211,39 @@ Checked and left alone:
   would change behaviour.
 - `filtered_aggregate`'s wrapper check: it narrows the type.
 
-Left, because they can change plans and each needs a SQL A/B:
+Second pass (this session; each A/B'd on the corpus and the three region
+batteries, 0 plans moved):
 
-- **Atom identity.** `condition_placement` (~1710) matches atoms by
-  `str(atom)`; `region_domains` (~927) matches by `is`.
-- **"Has existence args" means three things.** These are
-  `projection._has_concept_existence` (a literal IN-list does not count),
-  `strategy_builder._group_filter_has_existence` (it does), and
-  `any(atom.existence_arguments)` in `condition_placement`, `join_hoist` and
-  `union_dim_pushdown`.
-- **Pair-can-match-NULLs.** `join_upgrade._pair_can_match_nulls` is the full
-  check; `strip_redundant_not_null` inlines it; `reuse_parent_lookup._plain`
-  skips the side modifiers.
-- **`_row_parents` is defined twice** (`strategy_builder`, `group_graph`; the
-  second also requires `pred in attrs`).
-- **Lineage walks.** Four BuildConcept-lineage closures in `root_partition`
-  and `concept_strategies_v4` (only the last resolves through
-  `environment.concepts`). Seven concept-graph edge walks could use
-  `lineage_predecessors`/`lineage_successors` helpers in `edges.py`.
-- **Same names, different meanings.** `_members_of`
-  (`strategy_builder` vs `region_domains`) and "solid"
-  (`group_graph._solid*` vs `extent_ownership.solid_groups`).
-- **`{canonical, *members}` over `scoped_join_key_groups`.** About 19 sites;
-  one `BuildEnvironment` method.
-- **Long functions** (lines in function / lines this branch added):
-  - `strategy_builder._assemble_final_node` (691/115);
-  - `build_strategy_node` (608/266), which also sets
-    `environment.span_scope` directly where the rest of the code uses
-    `under_span_scope`;
-  - `condition_placement.plan_condition_placements` (635/84);
-  - `group_graph._compute_concept_sets` (477/152);
-  - `root_partition._split_root_dimension_clusters` (182, all new);
-  - `merge_node._resolve` (415).
+- **Atom identity**: both sites match by text (1395c1256).
+- **"Has existence args"**: `_group_filter_has_existence` ignores a literal
+  IN-list like the rest (126ed0989).
+- **Pair-can-match-NULLs**: `execute.pair_matches_nulls`/`pair_modifiers`
+  back join_upgrade, strip_redundant_not_null, reuse_parent_lookup and the
+  renderer (126ed0989).
+- **`row_parents`** lives in group_graph only; the `pred in attrs` filter
+  never removed a parent (probed) (126ed0989).
+- **Lineage walks**: `edges.lineage_predecessors`/`lineage_successors`, and
+  `utility.walk_lineage` for the four BuildConcept closures (6f7bdbd1e).
+- **Same names**: the two `_members_of` are `_own_members` and
+  `_scope_members`. "solid" means the same thing at both sites (a group that
+  sees no region rows), so it stays.
+- **`{canonical, *members}`**: `BuildEnvironment.scoped_join_relations()` and
+  `all_scoped_join_group_members()` (1395c1256). Two sites keep the loop:
+  one needs the canonical, one the sorted order.
+- **Long functions** (lines before -> after):
+  - `build_strategy_node`'s group loop is `_build_group`, entered under
+    `under_span_scope` (000c4d062);
+  - `_assemble_final_node` 691 -> 416 (4372233b4);
+  - `plan_condition_placements` 635 -> 176 (`_place_atom` keeps ~375)
+    (7abc62e39);
+  - `MergeNode._resolve` loses `_existence_only` and `_group_decision`
+    (35f925449);
+  - `_compute_concept_sets` 477 -> ~290 (f342743b9).
 
-  Each has an obvious extraction or two (the region-domain re-source block,
-  the FINAL_SPAN_DOMAIN host branch, `_region_context`).
-- **`plan_trace.py` costs 25-29ms at import** (about 45 frozen dataclasses)
-  and nothing per query when off. Splitting `active`/`record`/`set_context`
-  from the step classes would let those load lazily.
+  Left: `_split_root_dimension_clusters` (182 lines, no clear seam) and
+  `_place_atom`, which could split by placement reason.
+- **`plan_trace`**: payloads live in `plan_trace_model`, loaded only while
+  recording; import 25-29ms -> 0.6ms (087df3590).
 
 Do NOT "simplify":
 
@@ -252,7 +254,8 @@ Do NOT "simplify":
 
 ## 6. Architectural items carried from `handoff_grain_pin_followups.md`
 
-Unchanged, and still the largest structural debts:
+Still open, and still the largest structural debts. These are design work,
+not refactors:
 
 - **One `AddressClass` for a value's four spellings.** About 40 sites. The
   three maps it would replace differ in scope on purpose: environment-wide
@@ -271,4 +274,5 @@ Unchanged, and still the largest structural debts:
 - **The filter-population claim is computed twice** (`MergeNode._join_proofs`
   and the builder's `applied_atoms`). Proposal: pass the group graph's
   constraint edges down as `JoinProofs.feeder_of`, retiring
-  `_reads_partner`'s identifier walk. Not done.
+  `_reads_partner`'s identifier walk. Not done: it threads group-graph edges
+  through MergeNode to replace a five-line walk.
