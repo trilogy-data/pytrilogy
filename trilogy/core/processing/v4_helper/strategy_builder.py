@@ -2879,8 +2879,8 @@ def _pair_inside_padding_streams(
                 other is stream
                 or not isinstance(other, GroupNode)
                 or region_reads(other)
-                or _derives_from(other, stream)
-                or _derives_from(stream, other)
+                or any(n is stream for n in _iter_strategy_nodes(other))
+                or any(n is other for n in _iter_strategy_nodes(stream))
             ):
                 continue
             shared = _visible_addresses(other) & _visible_addresses(stream)
