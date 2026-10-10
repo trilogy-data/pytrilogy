@@ -1,11 +1,5 @@
 # Benchmark plans allowed to be larger than on main, each with why.
 # Read by .scripts/check_benchmark_growth.py; remove an entry once the plan shrinks back.
 
-["thelook_duckdb/zquery22.log"]
-reason = "the user region's domain LEFT-joins one CTE of order_items INNER orders/products (complete bindings) instead of chaining LEFT joins; rows-checked"
-
-["tpc_ds_duckdb/zquery04.log"]
-reason = "the fixpoint collapses the year-total and customer CTEs into the final SELECT (two fewer CTEs); the WHERE can no longer alias the aggregates so it re-renders them; same rows"
-
-["tpc_ds_duckdb/zquery31.log"]
-reason = "the fixpoint collapses the quarterly-sums CTE into the final SELECT (one fewer CTE); HAVING and the ratios re-render the sums they can no longer alias; the dropped channel WHERE was implied by the two union arms; same rows"
+["tpc_ds_duckdb/zquery83.log"]
+reason = "the date dim and its week filter push into each returns union branch (the stale FULL copy of the join had blocked union dim pushdown); same rows, 120ms -> 72ms at sf=1"

@@ -4,7 +4,11 @@ from trilogy.core.enums import (
     Modifier,
 )
 from trilogy.core.models.build import BuildGrain
-from trilogy.core.models.execute import BaseJoin, ConceptPair, QueryDatasource
+from trilogy.core.models.execute import (
+    ConceptPair,
+    Join,
+    QueryDatasource,
+)
 from trilogy.core.processing.utility import find_nullable_concepts
 
 
@@ -74,23 +78,19 @@ select 1 as customer_id
             product_name.address: {product_ds},
         },
     )
-    join = BaseJoin(
-        left_datasource=order_qds,
-        right_datasource=product_qds,
+    join = Join(
+        left=order_qds,
+        right=product_qds,
         join_type=JoinType.LEFT_OUTER,
         concepts=[],
-        concept_pairs=[
-            ConceptPair(
-                left=product_id, right=product_id, existing_datasource=order_qds
-            )
-        ],
+        pairs=[ConceptPair(left=product_id, right=product_id, node=order_qds)],
     )
     source_map = {
         order_id.address: {order_qds},
         product_id.address: {product_qds, order_qds},
         product_name.address: {product_qds},
     }
-    assert join.concept_pairs[0].left in join.left_datasource.nullable_concepts
+    assert join.pairs[0].left in join.left.nullable_concepts
     nullable = find_nullable_concepts(
         source_map=source_map, datasources=[order_qds, product_qds], joins=[join]
     )
@@ -153,16 +153,12 @@ query '''select 1 as order_id, null as product_id''';
         joins=[],
         source_map={product_id.address: {order_ds}},
     )
-    join = BaseJoin(
-        left_datasource=order_qds,
-        right_datasource=synthetic_qds,
+    join = Join(
+        left=order_qds,
+        right=synthetic_qds,
         join_type=JoinType.INNER,
         concepts=[],
-        concept_pairs=[
-            ConceptPair(
-                left=product_id, right=product_id, existing_datasource=order_qds
-            )
-        ],
+        pairs=[ConceptPair(left=product_id, right=product_id, node=order_qds)],
     )
     # `datasources` deliberately omits synthetic_qds → its identifier is absent
     # from datasource_map; the nullable product_id condition reaches the lookup.

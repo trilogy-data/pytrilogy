@@ -96,11 +96,11 @@ from trilogy.core.models.execute import (
     CTE,
     CompiledCTE,
     DatasourceCTE,
-    InstantiatedUnnestJoin,
     Join,
     RecursiveCTE,
     SemiJoinFilter,
     UnionCTE,
+    UnnestJoin,
 )
 from trilogy.core.processing.condition_utility import (
     condition_implies,
@@ -1227,7 +1227,7 @@ class BaseDialect:
         if not cte.parent_ctes:
             return False
         if isinstance(cte, CTE) and any(
-            not isinstance(join, Join) or join.jointype != JoinType.INNER
+            not isinstance(join, Join) or join.join_type != JoinType.INNER
             for join in cte.joins
         ):
             return False
@@ -2662,7 +2662,7 @@ class BaseDialect:
     def quote(self, name: str) -> str:
         return f"{self.QUOTE_CHARACTER}{name}{self.QUOTE_CHARACTER}"
 
-    def render_join(self, join: Join | InstantiatedUnnestJoin, cte: CTE) -> str | None:
+    def render_join(self, join: Join | UnnestJoin, cte: CTE) -> str | None:
         return render_join_clause(
             join,
             self.QUOTE_CHARACTER,

@@ -297,9 +297,7 @@ def test_repeated_left_key_is_diagnosed_as_repeated():
     from trilogy.core.optimizations.full_join_lowering import _pairs_by_slot
 
     key = SimpleNamespace(address="local.cust_id")
-    join = SimpleNamespace(
-        joinkey_pairs=[SimpleNamespace(left=key), SimpleNamespace(left=key)]
-    )
+    join = SimpleNamespace(pairs=[SimpleNamespace(left=key), SimpleNamespace(left=key)])
     with pytest.raises(UnsupportedFullJoinError) as exc:
         _pairs_by_slot(join, [key], "cte")
     assert "bind more than one key" in str(exc.value)

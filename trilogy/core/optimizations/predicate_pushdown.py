@@ -15,7 +15,6 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import (
     CTE,
-    BaseJoin,
     DatasourceCTE,
     Join,
     UnionCTE,
@@ -102,12 +101,12 @@ def _consumer_outer_joins_union(consumer: CTE | UnionCTE, union: UnionCTE) -> bo
     if not isinstance(consumer, CTE):
         return True
     for j in consumer.joins:
-        if not isinstance(j, Join) or j.jointype == JoinType.INNER:
+        if not isinstance(j, Join) or j.join_type == JoinType.INNER:
             continue
-        if isinstance(j.right_cte, UnionCTE) and j.right_cte.name == union.name:
+        if isinstance(j.right, UnionCTE) and j.right.name == union.name:
             return True
-        if j.jointype in (JoinType.RIGHT_OUTER, JoinType.FULL) and (
-            isinstance(j.left_cte, UnionCTE) and j.left_cte.name == union.name
+        if j.join_type in (JoinType.RIGHT_OUTER, JoinType.FULL) and (
+            isinstance(j.left, UnionCTE) and j.left.name == union.name
         ):
             return True
     return False
@@ -220,11 +219,11 @@ def _consumer_may_emit_without_parent(cte: CTE, parent_name: str) -> bool:
     for j in cte.joins or []:
         if not isinstance(j, Join):
             continue
-        if j.jointype == JoinType.FULL:
+        if j.join_type == JoinType.FULL:
             return True
-        if j.jointype != JoinType.RIGHT_OUTER:
+        if j.join_type != JoinType.RIGHT_OUTER:
             continue
-        if isinstance(j.right_cte, (CTE, UnionCTE)) and j.right_cte.name == parent_name:
+        if isinstance(j.right, (CTE, UnionCTE)) and j.right.name == parent_name:
             continue
         return True
     return False
@@ -933,11 +932,8 @@ class PredicatePushdownRemove(OptimizationRule):
         if self.after_join_upgrades:
             return False
         return any(
-            isinstance(join, Join) and join.jointype in OUTER_JOIN_TYPES
+            isinstance(join, Join) and join.join_type in OUTER_JOIN_TYPES
             for join in cte.joins or []
-        ) or any(
-            isinstance(join, BaseJoin) and join.join_type in OUTER_JOIN_TYPES
-            for join in cte.source.joins or []
         )
 
     def optimize(

@@ -51,10 +51,8 @@ from trilogy.core.models.build import (
 from trilogy.core.models.core import DataType
 from trilogy.core.models.execute import (
     CTE,
-    BaseJoin,
     DatasourceCTE,
     Join,
-    QueryDatasource,
     UnionCTE,
     pair_matches_nulls,
 )
@@ -68,9 +66,9 @@ from trilogy.core.processing.condition_utility import (
 
 def _single_pair_inner(join: Join) -> bool:
     return (
-        join.jointype == JoinType.INNER
+        join.join_type == JoinType.INNER
         and not join.has_predicate
-        and len(join.joinkey_pairs or []) == 1
+        and len(join.pairs or []) == 1
     )
 
 
@@ -95,9 +93,9 @@ def _consumed_from(consumer: CTE, name: str, key: BuildConcept) -> set[str]:
 def _inlined_lookup(rows: CTE, join: Join) -> BuildDatasource | None:
     """The raw datasource an inlined join side renders from; `rows`' source map
     names its columns by that datasource's alias."""
-    if join.right_cte not in rows.inlined_parents:
+    if join.right not in rows.inlined_parents:
         return None
-    lookup = join.right_cte
+    lookup = join.right
     assert isinstance(lookup, DatasourceCTE)
     for datasource in rows.source.datasources:
         if (
@@ -228,7 +226,7 @@ def _aggregate_reads_all(
     aggregate: CTE, key: BuildConcept, row_atoms: list[str]
 ) -> bool:
     if any(
-        isinstance(j, Join) and j.jointype != JoinType.LEFT_OUTER
+        isinstance(j, Join) and j.join_type != JoinType.LEFT_OUTER
         for j in aggregate.joins
     ):
         return False
@@ -247,13 +245,13 @@ def _aggregate_reads_all(
 def _dimension_join(rows: CTE, key: BuildConcept) -> Join | None:
     found = None
     for join in rows.joins:
-        if not isinstance(join, Join) or join.left_cte is not None:
+        if not isinstance(join, Join) or join.left is not None:
             return None
         if (
-            join.jointype in (JoinType.INNER, JoinType.LEFT_OUTER)
+            join.join_type in (JoinType.INNER, JoinType.LEFT_OUTER)
             and not join.has_predicate
-            and len(join.joinkey_pairs or []) == 1
-            and (join.joinkey_pairs or [])[0].left.equivalent_addresses
+            and len(join.pairs or []) == 1
+            and (join.pairs or [])[0].left.equivalent_addresses
             & key.equivalent_addresses
         ):
             if found is not None:
@@ -283,14 +281,14 @@ def _filter_only_joins_droppable(
             continue
         assert isinstance(join, Join)
         name = _join_side_name(rows, join)
-        if name is None or join.left_cte is not None or join.has_predicate:
+        if name is None or join.left is not None or join.has_predicate:
             return False
         reads = _reads_from(rows, name)
         if reads & consumed:
             return False
-        if join.jointype == JoinType.INNER and not reads & proven:
+        if join.join_type == JoinType.INNER and not reads & proven:
             return False
-        if join.jointype not in (JoinType.INNER, JoinType.LEFT_OUTER):
+        if join.join_type not in (JoinType.INNER, JoinType.LEFT_OUTER):
             return False
     return True
 
@@ -311,7 +309,7 @@ def _rebase_on_dimension(
     raw = _inlined_lookup(rows, dimension)
     assert raw is not None
     alias = raw.safe_identifier
-    padded = dimension.jointype == JoinType.LEFT_OUTER
+    padded = dimension.join_type == JoinType.LEFT_OUTER
     key_source = aggregate.name if padded else alias
     keep = _reads_from(rows, alias) | key.equivalent_addresses
     rows.source_map = {
@@ -321,16 +319,13 @@ def _rebase_on_dimension(
     }
     rows.condition = None
     rows.source.condition = None
-    rows.inlined_parents = [dimension.right_cte]  # type: ignore[list-item]
-    rows.source.joins = []
+    rows.inlined_parents = [dimension.right]  # type: ignore[list-item]
     if padded:
-        pair = (dimension.joinkey_pairs or [])[0]
+        pair = (dimension.pairs or [])[0]
         rows.joins = [
             replace(
                 dimension,
-                joinkey_pairs=[
-                    replace(pair, cte=aggregate, existing_datasource=aggregate.source)
-                ],
+                pairs=[replace(pair, node=aggregate)],
             )
         ]
         rows.parent_ctes = [aggregate]
@@ -361,21 +356,12 @@ def _tighten_rejected_padding(aggregate: CTE, condition: BoolExpr) -> None:
     lets a dimension it filters sink into a union below."""
     proven = condition_proves_non_null(condition)
     for join in aggregate.joins:
-        if not (isinstance(join, Join) and join.jointype == JoinType.LEFT_OUTER):
+        if not (isinstance(join, Join) and join.join_type == JoinType.LEFT_OUTER):
             continue
         raw = _inlined_lookup(aggregate, join)
         if raw is None or not _reads_from(aggregate, raw.safe_identifier) & proven:
             continue
-        join.jointype = JoinType.INNER
-        for base_join in aggregate.source.joins:
-            if not isinstance(base_join, BaseJoin):
-                continue
-            right = base_join.right_datasource
-            underlying = (
-                right.base_datasource if isinstance(right, QueryDatasource) else right
-            )
-            if underlying is not None and underlying.identifier == raw.identifier:
-                base_join.join_type = JoinType.INNER
+        join.join_type = JoinType.INNER
 
 
 def _read_through_rows(
@@ -388,7 +374,7 @@ def _read_through_rows(
     aggregate's NULL key, so it collapses only when that key cannot be NULL."""
     if rows.group_to_grain or any(j is not join for j in consumer.joins):
         return False
-    pair = (join.joinkey_pairs or [])[0]
+    pair = (join.pairs or [])[0]
     where = aggregate.condition_placement.where
     if not (
         pair_matches_nulls(pair)
@@ -411,7 +397,6 @@ def _read_through_rows(
             rows.source.source_map[column.address] = {aggregate.source}
             rows.hidden_concepts.discard(column.address)
     consumer.joins = []
-    consumer.source.joins = []
     consumer.parent_ctes = [rows]
     consumer.source.datasources = [rows.source]
     consumer.source.base_datasource = None
@@ -433,21 +418,17 @@ def _join_dimension_directly(consumer: CTE, rows: CTE, dimension: Join) -> None:
     the consumer reads only its columns off `rows`: the consumer joins the
     dimension's own datasource CTE in `rows`' place, which datasource inlining
     then folds into the consumer."""
-    lookup = dimension.right_cte
+    lookup = dimension.right
     for join in consumer.joins:
         if not isinstance(join, Join):
             continue
-        if join.right_cte is rows:
-            join.right_cte = lookup
-        if join.left_cte is rows:
-            join.left_cte = lookup
-        join.joinkey_pairs = [
-            (
-                replace(pair, cte=lookup, existing_datasource=lookup.source)
-                if pair.cte is rows
-                else pair
-            )
-            for pair in join.joinkey_pairs or []
+        if join.right is rows:
+            join.right = lookup
+        if join.left is rows:
+            join.left = lookup
+        join.pairs = [
+            (replace(pair, node=lookup) if pair.node is rows else pair)
+            for pair in join.pairs or []
         ]
     consumer.parent_ctes = [lookup if p is rows else p for p in consumer.parent_ctes]
     consumer.source_map = {
@@ -462,13 +443,6 @@ def _join_dimension_directly(consumer: CTE, rows: CTE, dimension: Join) -> None:
         a: {lookup.source if d is rows.source else d for d in sources}
         for a, sources in source.source_map.items()
     }
-    for base_join in source.joins:
-        if not isinstance(base_join, BaseJoin):
-            continue
-        if base_join.right_datasource is rows.source:
-            base_join.right_datasource = lookup.source
-        if base_join.left_datasource is rows.source:
-            base_join.left_datasource = lookup.source
     if source.base_datasource is rows.source:
         source.base_datasource = lookup.source
     if consumer.base_name_override == rows.name:
@@ -486,8 +460,8 @@ class FoldExistenceIntoAggregate(OptimizationRule):
         for join in cte.joins:
             if not (isinstance(join, Join) and _single_pair_inner(join)):
                 continue
-            pair = (join.joinkey_pairs or [])[0]
-            sides = [(pair.cte.name, pair.left), (join.right_cte.name, pair.right)]
+            pair = (join.pairs or [])[0]
+            sides = [(pair.node.name, pair.left), (join.right.name, pair.right)]
             for (a_name, a_key), (r_name, r_key) in (sides, sides[::-1]):
                 if self._fold(cte, join, a_name, r_name, a_key, r_key, inverse_map):
                     return True, None
@@ -560,7 +534,7 @@ class FoldExistenceIntoAggregate(OptimizationRule):
             aggregate.condition = append_condition(
                 aggregate.condition, _existence_term(condition)
             )
-        if dimension.jointype == JoinType.INNER:
+        if dimension.join_type == JoinType.INNER:
             _join_dimension_directly(consumer, rows, dimension)
             return True
         _rebase_on_dimension(rows, dimension, r_key, aggregate)

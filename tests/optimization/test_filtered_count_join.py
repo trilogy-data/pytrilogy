@@ -37,7 +37,7 @@ def _fired(executor: Executor, query: str) -> bool:
     """The predicate moved onto a LEFT JOIN's ON clause."""
     return any(
         isinstance(join, Join)
-        and join.jointype == JoinType.LEFT_OUTER
+        and join.join_type == JoinType.LEFT_OUTER
         and join.condition is not None
         for cte in executor.parse_text(query)[-1].ctes
         for join in cte.joins

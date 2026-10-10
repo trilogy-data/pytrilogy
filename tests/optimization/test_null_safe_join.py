@@ -10,7 +10,7 @@ from trilogy.core.models.core import DataType
 from trilogy.core.models.execute import (
     CTE,
     BuildDatasource,
-    CTEConceptPair,
+    ConceptPair,
     Join,
     QueryDatasource,
     UnionCTE,
@@ -56,15 +56,14 @@ def _root_with_join(jointype: JoinType, left_nullable, right_nullable):
     root.parent_ctes = [left_cte, right_cte]
     root.joins = [
         Join(
-            jointype=jointype,
-            right_cte=right_cte,
+            join_type=jointype,
+            right=right_cte,
             modifiers=[Modifier.NULLABLE],
-            joinkey_pairs=[
-                CTEConceptPair(
+            pairs=[
+                ConceptPair(
                     left=key,
                     right=key,
-                    existing_datasource=left_cte.source,
-                    cte=left_cte,
+                    node=left_cte,
                     modifiers=[Modifier.NULLABLE],
                 )
             ],
@@ -90,7 +89,7 @@ def test_inner_join_stripped_when_a_side_non_null():
     assert changed
     join = root.joins[0]
     assert Modifier.NULLABLE not in join.modifiers
-    assert Modifier.NULLABLE not in join.joinkey_pairs[0].modifiers
+    assert Modifier.NULLABLE not in join.pairs[0].modifiers
 
 
 def test_full_join_preserves_null_safe_form():
@@ -100,14 +99,14 @@ def test_full_join_preserves_null_safe_form():
     assert not changed
     join = root.joins[0]
     assert Modifier.NULLABLE in join.modifiers
-    assert Modifier.NULLABLE in join.joinkey_pairs[0].modifiers
+    assert Modifier.NULLABLE in join.pairs[0].modifiers
 
 
 def test_inner_kept_when_both_sides_nullable():
     root, _ = _root_with_join(JoinType.INNER, left_nullable=True, right_nullable=True)
     changed, _ = SimplifyNullSafeJoins().optimize(root, {})
     assert not changed
-    assert Modifier.NULLABLE in root.joins[0].joinkey_pairs[0].modifiers
+    assert Modifier.NULLABLE in root.joins[0].pairs[0].modifiers
 
 
 def test_inner_join_stripped_by_local_condition():
@@ -122,7 +121,7 @@ def test_inner_join_stripped_by_local_condition():
     assert changed
     join = root.joins[0]
     assert Modifier.NULLABLE not in join.modifiers
-    assert Modifier.NULLABLE not in join.joinkey_pairs[0].modifiers
+    assert Modifier.NULLABLE not in join.pairs[0].modifiers
 
 
 def test_local_condition_on_unrelated_concept_keeps_null_safe():
@@ -134,7 +133,7 @@ def test_local_condition_on_unrelated_concept_keeps_null_safe():
     )
     changed, _ = SimplifyNullSafeJoins().optimize(root, {})
     assert not changed
-    assert Modifier.NULLABLE in root.joins[0].joinkey_pairs[0].modifiers
+    assert Modifier.NULLABLE in root.joins[0].pairs[0].modifiers
 
 
 def test_full_join_ignores_local_condition_proof():
@@ -144,7 +143,7 @@ def test_full_join_ignores_local_condition_proof():
     )
     changed, _ = SimplifyNullSafeJoins().optimize(root, {})
     assert not changed
-    assert Modifier.NULLABLE in root.joins[0].joinkey_pairs[0].modifiers
+    assert Modifier.NULLABLE in root.joins[0].pairs[0].modifiers
 
 
 def testproven_non_null_via_cte_condition():

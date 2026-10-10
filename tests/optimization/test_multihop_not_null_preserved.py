@@ -188,3 +188,53 @@ order by order_id;
     assert "INNER JOIN" in sql, sql
     assert "is not null" not in sql.lower(), sql
     assert exec.execute_query(body).fetchall() == [(10, "a")]
+
+
+def test_inlined_parent_reads_its_table_not_its_narrowed_list():
+    from trilogy.core.enums import Modifier, Purpose
+    from trilogy.core.models.build import (
+        BuildColumnAssignment,
+        BuildConcept,
+        BuildDatasource,
+        BuildGrain,
+    )
+    from trilogy.core.models.core import DataType
+    from trilogy.core.models.execute import CTE
+    from trilogy.core.optimizations.strip_redundant_not_null import (
+        _nullable_before_own_filter,
+    )
+
+    opt = BuildConcept(
+        name="opt",
+        canonical_name="opt",
+        datatype=DataType.STRING,
+        purpose=Purpose.PROPERTY,
+        build_is_aggregate=False,
+        namespace="test",
+        grain=BuildGrain(),
+    )
+    table = BuildDatasource(
+        name="t",
+        columns=[
+            BuildColumnAssignment(
+                alias="opt", concept=opt, modifiers=[Modifier.NULLABLE]
+            )
+        ],
+        address="t",
+        namespace="test",
+        grain=BuildGrain(),
+    )
+    parent = CTE.from_datasource(table)
+    parent.nullable_concepts = []
+    other = BuildDatasource(
+        name="u",
+        columns=[BuildColumnAssignment(alias="opt", concept=opt)],
+        address="u",
+        namespace="test",
+        grain=BuildGrain(),
+    )
+    consumer = CTE.from_datasource(other)
+    consumer.nullable_concepts = []
+    consumer.inlined_parents = [parent]
+
+    assert opt.address in _nullable_before_own_filter(consumer)

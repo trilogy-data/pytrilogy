@@ -234,13 +234,13 @@ class PushFilteredCountIntoJoin(OptimizationRule):
         if len(joins) != 1 or len(aggregates) != 1:
             return False, None
         join = joins[0]
-        if join.jointype != JoinType.LEFT_OUTER:
+        if join.join_type != JoinType.LEFT_OUTER:
             return False, None
         match = _filtered_count(aggregates[0])
         if match is None:
             return False, None
         filtered, item = match
-        right_source = cte.source_key_for(join.right_cte)
+        right_source = cte.source_key_for(join.right)
         required = {
             argument.address
             for argument in [

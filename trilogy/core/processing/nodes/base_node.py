@@ -1,11 +1,8 @@
 from collections import defaultdict
 from collections.abc import Sequence
-from dataclasses import dataclass, field
 from typing import TypeVar
 
 from trilogy.core.enums import (
-    JoinType,
-    Modifier,
     SetOperator,
     SourceType,
 )
@@ -19,7 +16,7 @@ from trilogy.core.models.build import (
     LooseBuildConceptList,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.models.execute import ConceptPair, QueryDatasource, UnnestJoin
+from trilogy.core.models.execute import Join, QueryDatasource, UnnestJoin
 from trilogy.core.processing.condition_utility import (
     drop_proven_non_null,
     merge_conditions_and_dedup,
@@ -589,31 +586,4 @@ class StrategyNode:
         return node
 
 
-@dataclass
-class NodeJoin:
-    left_node: StrategyNode
-    right_node: StrategyNode
-    concepts: list[BuildConcept]
-    join_type: JoinType
-    concept_pairs: list[ConceptPair] | None = None
-    modifiers: list[Modifier] = field(default_factory=list)
-
-    def __post_init__(self):
-        if self.left_node == self.right_node:
-            raise SyntaxError("Invalid join, left and right nodes are the same")
-        if self.concept_pairs:
-            return
-        for concept in self.concepts:
-            for ds in [self.left_node, self.right_node]:
-                if concept.address not in [c.address for c in ds.all_concepts]:
-                    raise SyntaxError(
-                        f"Invalid join, missing {concept} on {ds!s}, have"
-                        f" {[c.address for c in ds.all_concepts]}"
-                    )
-
-    def __str__(self):
-        return (
-            f"{self.join_type.value} JOIN {self.left_node} and"
-            f" {self.right_node} on"
-            f" {','.join([str(k) for k in self.concepts])}"
-        )
+NodeJoin = Join[StrategyNode]

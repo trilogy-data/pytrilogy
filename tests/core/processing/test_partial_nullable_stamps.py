@@ -5,7 +5,11 @@ resolved join types."""
 
 from trilogy import Dialects
 from trilogy.core.enums import JoinType
-from trilogy.core.models.execute import BaseJoin, QueryDatasource
+from trilogy.core.models.execute import (
+    Join,
+    QueryDatasource,
+    SourceJoin,
+)
 from trilogy.core.processing.join_resolution import (
     merge_partial_addresses,
     preserved_sources,
@@ -103,8 +107,8 @@ class _Concept:
         self.address = address
 
 
-def _join(left: _Side, right: _Side, join_type: JoinType) -> BaseJoin:
-    return BaseJoin(left_datasource=left, right_datasource=right, join_type=join_type)
+def _join(left: _Side, right: _Side, join_type: JoinType) -> SourceJoin:
+    return Join(left=left, right=right, join_type=join_type)
 
 
 def test_merge_partials_follow_join_types():

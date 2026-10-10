@@ -26,7 +26,11 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
-from trilogy.core.models.execute import BaseJoin, QueryDatasource, UnnestJoin
+from trilogy.core.models.execute import (
+    Join,
+    QueryDatasource,
+    UnnestJoin,
+)
 from trilogy.core.processing.grain_utility import (
     JoinProofs,
     _concept_covers_grain,
@@ -50,8 +54,8 @@ def test_anti_join_preserves_retained_side_grain():
     orders = _datasource(
         "orders", [order_id], BuildGrain(components={order_id.address})
     )
-    join = BaseJoin(
-        right_datasource=orders,
+    join = Join(
+        right=orders,
         join_type=JoinType.LEFT_OUTER,
         concepts=[],
     )
@@ -162,8 +166,8 @@ def test_join_right_preserves_cardinality_abstract_right_grain():
         "k", purpose=Purpose.PROPERTY
     )  # PROPERTY so effective_grain stays empty
     right = _datasource("r", [k])
-    join = BaseJoin(
-        right_datasource=right,
+    join = Join(
+        right=right,
         join_type=JoinType.LEFT_OUTER,
         concepts=[k],
     )
@@ -181,8 +185,8 @@ def test_join_right_preserves_cardinality_fd_determined_grain():
     a = _concept("a", purpose=Purpose.PROPERTY)
     b = _concept("b")
     right = _datasource("r", [a, b], grain=BuildGrain(components={b.address}))
-    join = BaseJoin(
-        right_datasource=right,
+    join = Join(
+        right=right,
         join_type=JoinType.LEFT_OUTER,
         concepts=[a],
     )
@@ -232,12 +236,12 @@ def test_join_left_keys_covered_by_grain_no_pairs_no_concepts():
     fall through to False."""
     k = _concept("k", purpose=Purpose.PROPERTY)
     right = _datasource("r", [k])
-    join = BaseJoin(
-        right_datasource=right,
+    join = Join(
+        right=right,
         join_type=JoinType.LEFT_OUTER,
         concepts=[],
     )
-    join.concept_pairs = None
+    join.pairs = None
     join.concepts = None
     assert (
         _join_left_keys_covered_by_grain(
@@ -257,12 +261,12 @@ def test_left_join_addresses_no_pairs_no_left_datasource():
     left = _datasource("left", [a])
     right = _datasource("right", [b])
 
-    join = BaseJoin(
-        right_datasource=right,
+    join = Join(
+        right=right,
         join_type=JoinType.LEFT_OUTER,
         concepts=[],
     )
-    join.concept_pairs = None
+    join.pairs = None
     addresses = _left_join_addresses(join, [left, right])
     assert addresses == {a.address}
 

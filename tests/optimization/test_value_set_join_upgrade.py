@@ -24,7 +24,7 @@ from trilogy.core.models.core import DataType
 from trilogy.core.models.execute import (
     CTE,
     BuildDatasource,
-    CTEConceptPair,
+    ConceptPair,
     Join,
     QueryDatasource,
 )
@@ -124,15 +124,14 @@ def _outer_join(parent_holder: CTE, jointype: JoinType, left: CTE, right: CTE, k
     parent_holder.parent_ctes = [left, right]
     parent_holder.joins = [
         Join(
-            jointype=jointype,
-            right_cte=right,
+            join_type=jointype,
+            right=right,
             modifiers=[Modifier.NULLABLE],
-            joinkey_pairs=[
-                CTEConceptPair(
+            pairs=[
+                ConceptPair(
                     left=key,
                     right=key,
-                    existing_datasource=left.source,
-                    cte=left,
+                    node=left,
                     modifiers=[Modifier.NULLABLE],
                 )
             ],
@@ -157,7 +156,7 @@ def test_twin_rollup_full_join_upgraded_to_inner():
     changed, _ = UpgradeOuterFromKeySetEquivalence().optimize(root, {})
 
     assert changed
-    assert root.joins[0].jointype == JoinType.INNER
+    assert root.joins[0].join_type == JoinType.INNER
     # The null-safe modifier stays — keys themselves are still nullable; this
     # rule only changes the join type, not the equality form.
     assert Modifier.NULLABLE in root.joins[0].modifiers
@@ -184,7 +183,7 @@ def test_parent_child_rollup_upgrades():
     changed, _ = UpgradeOuterFromKeySetEquivalence().optimize(root, {})
 
     assert changed
-    assert root.joins[0].jointype == JoinType.INNER
+    assert root.joins[0].join_type == JoinType.INNER
 
 
 def test_divergent_filter_blocks_upgrade():
@@ -209,7 +208,7 @@ def test_divergent_filter_blocks_upgrade():
     changed, _ = UpgradeOuterFromKeySetEquivalence().optimize(root, {})
 
     assert not changed
-    assert root.joins[0].jointype == JoinType.FULL
+    assert root.joins[0].join_type == JoinType.FULL
 
 
 def test_non_group_side_blocks_upgrade():
@@ -228,7 +227,7 @@ def test_non_group_side_blocks_upgrade():
     changed, _ = UpgradeOuterFromKeySetEquivalence().optimize(root, {})
 
     assert not changed
-    assert root.joins[0].jointype == JoinType.FULL
+    assert root.joins[0].join_type == JoinType.FULL
 
 
 def test_distinct_source_concepts_blocks_upgrade():
@@ -245,15 +244,14 @@ def test_distinct_source_concepts_blocks_upgrade():
     root.parent_ctes = [left, right]
     root.joins = [
         Join(
-            jointype=JoinType.FULL,
-            right_cte=right,
+            join_type=JoinType.FULL,
+            right=right,
             modifiers=[Modifier.NULLABLE],
-            joinkey_pairs=[
-                CTEConceptPair(
+            pairs=[
+                ConceptPair(
                     left=left_key,
                     right=right_key,
-                    existing_datasource=left.source,
-                    cte=left,
+                    node=left,
                     modifiers=[Modifier.NULLABLE],
                 )
             ],
@@ -279,7 +277,7 @@ def test_left_outer_also_upgrades_on_equivalence():
     changed, _ = UpgradeOuterFromKeySetEquivalence().optimize(root, {})
 
     assert changed
-    assert root.joins[0].jointype == JoinType.INNER
+    assert root.joins[0].join_type == JoinType.INNER
 
 
 def test_inner_join_is_left_alone():
@@ -293,7 +291,7 @@ def test_inner_join_is_left_alone():
     changed, _ = UpgradeOuterFromKeySetEquivalence().optimize(root, {})
 
     assert not changed
-    assert root.joins[0].jointype == JoinType.INNER
+    assert root.joins[0].join_type == JoinType.INNER
 
 
 def test_filter_equivalence_uses_mutual_implication():
@@ -366,7 +364,7 @@ def test_partial_concept_blocks_upgrade():
 
     changed, _ = UpgradeOuterFromKeySetEquivalence().optimize(root, {})
     assert not changed
-    assert root.joins[0].jointype == JoinType.FULL
+    assert root.joins[0].join_type == JoinType.FULL
 
 
 def test_full_join_key_veto_blocks_upgrade():
@@ -385,7 +383,7 @@ def test_full_join_key_veto_blocks_upgrade():
     ).optimize(root, {})
 
     assert not changed
-    assert root.joins[0].jointype == JoinType.FULL
+    assert root.joins[0].join_type == JoinType.FULL
 
 
 def _two_concept_outer_join(
@@ -394,15 +392,14 @@ def _two_concept_outer_join(
     parent_holder.parent_ctes = [left, right]
     parent_holder.joins = [
         Join(
-            jointype=jointype,
-            right_cte=right,
+            join_type=jointype,
+            right=right,
             modifiers=[Modifier.NULLABLE],
-            joinkey_pairs=[
-                CTEConceptPair(
+            pairs=[
+                ConceptPair(
                     left=left_key,
                     right=right_key,
-                    existing_datasource=left.source,
-                    cte=left,
+                    node=left,
                     modifiers=[Modifier.NULLABLE],
                 )
             ],
@@ -445,12 +442,12 @@ def test_rule_b_structural_proof_narrows_vetoed_full():
     assert rule.full_join_keys, "the ∦ declaration must land in the veto set"
     changed, _ = rule.optimize(root, {})
     assert changed
-    assert root.joins[0].jointype == JoinType.LEFT_OUTER
+    assert root.joins[0].join_type == JoinType.LEFT_OUTER
     # re-running must not narrow further: no ⊑ proof exists for the other
     # direction, so the superset side's preservation stays
     changed, _ = rule.optimize(root, {})
     assert not changed
-    assert root.joins[0].jointype == JoinType.LEFT_OUTER
+    assert root.joins[0].join_type == JoinType.LEFT_OUTER
 
 
 def test_rule_b_filtered_superset_keeps_veto():
@@ -488,7 +485,7 @@ def test_rule_b_filtered_superset_keeps_veto():
         root, {}
     )
     assert not changed
-    assert root.joins[0].jointype == JoinType.FULL
+    assert root.joins[0].join_type == JoinType.FULL
 
 
 def test_null_extended_chain_member_keeps_preservation():
@@ -507,29 +504,27 @@ def test_null_extended_chain_member_keeps_preservation():
     root.parent_ctes = [stores, orders, products]
     root.joins = [
         Join(
-            jointype=JoinType.LEFT_OUTER,
-            right_cte=orders,
+            join_type=JoinType.LEFT_OUTER,
+            right=orders,
             modifiers=[Modifier.NULLABLE],
-            joinkey_pairs=[
-                CTEConceptPair(
+            pairs=[
+                ConceptPair(
                     left=store,
                     right=store,
-                    existing_datasource=stores.source,
-                    cte=stores,
+                    node=stores,
                     modifiers=[Modifier.NULLABLE],
                 )
             ],
         ),
         Join(
-            jointype=JoinType.FULL,
-            right_cte=products,
+            join_type=JoinType.FULL,
+            right=products,
             modifiers=[Modifier.NULLABLE],
-            joinkey_pairs=[
-                CTEConceptPair(
+            pairs=[
+                ConceptPair(
                     left=product,
                     right=product,
-                    existing_datasource=orders.source,
-                    cte=orders,
+                    node=orders,
                     modifiers=[Modifier.NULLABLE],
                 )
             ],
@@ -538,7 +533,7 @@ def test_null_extended_chain_member_keeps_preservation():
 
     changed, _ = UpgradeOuterFromKeySetEquivalence().optimize(root, {})
     assert not changed
-    assert root.joins[1].jointype == JoinType.FULL
+    assert root.joins[1].join_type == JoinType.FULL
 
 
 def test_genuine_partial_stamp_narrows_same_address_full():
@@ -556,7 +551,7 @@ def test_genuine_partial_stamp_narrows_same_address_full():
 
     changed, _ = UpgradeOuterFromKeySetEquivalence().optimize(root, {})
     assert changed
-    assert root.joins[0].jointype == JoinType.LEFT_OUTER
+    assert root.joins[0].join_type == JoinType.LEFT_OUTER
 
 
 def test_equal_join_key_releases_full_veto():
@@ -575,7 +570,7 @@ def test_equal_join_key_releases_full_veto():
     ).optimize(root, {})
 
     assert changed
-    assert root.joins[0].jointype == JoinType.INNER
+    assert root.joins[0].join_type == JoinType.INNER
 
 
 def test_equal_join_key_still_requires_completeness():
@@ -594,7 +589,7 @@ def test_equal_join_key_still_requires_completeness():
     ).optimize(root, {})
 
     assert not changed
-    assert root.joins[0].jointype == JoinType.FULL
+    assert root.joins[0].join_type == JoinType.FULL
 
 
 def test_narrow_equal_domain_joins_config_gates_plan():

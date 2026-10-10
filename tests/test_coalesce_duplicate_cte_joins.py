@@ -12,7 +12,7 @@ from trilogy.core.models.execute import Join, coalesce_duplicate_joins
 
 def _pair(cte_name: str, left: str, right: str) -> SimpleNamespace:
     return SimpleNamespace(
-        cte=SimpleNamespace(name=cte_name),
+        node=SimpleNamespace(name=cte_name),
         left=SimpleNamespace(address=left),
         right=SimpleNamespace(address=right),
     )
@@ -20,10 +20,10 @@ def _pair(cte_name: str, left: str, right: str) -> SimpleNamespace:
 
 def _join(right: str, pairs, jointype=JoinType.FULL, left=None, modifiers=None):
     return Join(
-        right_cte=SimpleNamespace(name=right),  # type: ignore[arg-type]
-        jointype=jointype,
-        left_cte=SimpleNamespace(name=left) if left else None,  # type: ignore[arg-type]
-        joinkey_pairs=pairs,
+        right=SimpleNamespace(name=right),  # type: ignore[arg-type]
+        join_type=jointype,
+        left=SimpleNamespace(name=left) if left else None,  # type: ignore[arg-type]
+        pairs=pairs,
         modifiers=modifiers or [],
     )
 
@@ -49,10 +49,8 @@ def test_same_target_joins_merge_to_union_of_pairs():
     assert len(merged) == 1
     survivor = merged[0]
     assert isinstance(survivor, Join)
-    assert survivor.joinkey_pairs is not None
-    pair_keys = {
-        (p.cte.name, p.left.address, p.right.address) for p in survivor.joinkey_pairs
-    }
+    assert survivor.pairs is not None
+    pair_keys = {(p.node.name, p.left.address, p.right.address) for p in survivor.pairs}
     assert pair_keys == {
         ("sparkling", "w01.cid", "w02.cid"),
         ("sparkling", "w01.fname", "w01.fname"),
@@ -79,7 +77,7 @@ def test_keyless_and_conditioned_joins_pass_through():
 
 
 def test_merged_join_keeps_either_copys_padding_guard():
-    guard = [["o.order_id is not null"]]
+    guard = (("o.order_id is not null",),)
     a = _join("t", [_pair("l", "k", "k")])
     b = _join("t", [_pair("l", "k", "k")])
     b.guard = guard  # type: ignore[assignment]

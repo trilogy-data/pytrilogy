@@ -24,11 +24,11 @@ from trilogy.core.models.core import (
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import (
     CTE,
-    CTEConceptPair,
-    InstantiatedUnnestJoin,
+    ConceptPair,
     Join,
     QueryDatasource,
     UnionCTE,
+    UnnestJoin,
 )
 from trilogy.core.optimization import (
     PredicatePushdown,
@@ -102,20 +102,19 @@ def test_canonicalize_graph_dedupes_live_references():
         parent_ctes=[stale_parent, stale_parent],
         source_map={a.address: [stale_parent.name]},
     )
-    pair = CTEConceptPair(
+    pair = ConceptPair(
         left=a,
         right=a,
-        existing_datasource=child.source,
-        cte=stale_parent,
+        node=stale_parent,
     )
-    unnest_join = InstantiatedUnnestJoin(object_to_unnest=a)
+    unnest_join = UnnestJoin(concepts=[a], parent=None)  # type: ignore[arg-type]
     child.joins = [
         unnest_join,
         Join(
-            right_cte=stale_parent,
-            left_cte=stale_parent,
-            jointype=JoinType.INNER,
-            joinkey_pairs=[pair],
+            right=stale_parent,
+            left=stale_parent,
+            join_type=JoinType.INNER,
+            pairs=[pair],
         ),
     ]
     short_branch = _simple_cte(
@@ -157,9 +156,9 @@ def test_canonicalize_graph_dedupes_live_references():
 
     assert child.parent_ctes == [live_parent]
     assert child.joins[0] is unnest_join
-    assert child.joins[1].right_cte is live_parent
-    assert child.joins[1].left_cte is live_parent
-    assert pair.cte is live_parent
+    assert child.joins[1].right is live_parent
+    assert child.joins[1].left is live_parent
+    assert pair.node is live_parent
     assert union.internal_ctes == [missing_branch, short_branch, full_branch]
 
 
@@ -260,14 +259,13 @@ def test_parent_nullable_detects_right_outer_join_pair_cte():
     child = _simple_cte("child", [key])
     child.joins = [
         Join(
-            right_cte=right,
-            jointype=JoinType.RIGHT_OUTER,
-            joinkey_pairs=[
-                CTEConceptPair(
+            right=right,
+            join_type=JoinType.RIGHT_OUTER,
+            pairs=[
+                ConceptPair(
                     left=key,
                     right=key,
-                    existing_datasource=child.source,
-                    cte=parent,
+                    node=parent,
                 )
             ],
         )
@@ -585,26 +583,24 @@ property order_id.amount int;
     )
     consumer.joins = [
         Join(
-            right_cte=lookup,
-            jointype=JoinType.INNER,
-            joinkey_pairs=[
-                CTEConceptPair(
+            right=lookup,
+            join_type=JoinType.INNER,
+            pairs=[
+                ConceptPair(
                     left=order_id,
                     right=order_id,
-                    existing_datasource=consumer.source,
-                    cte=base,
+                    node=base,
                 )
             ],
         ),
         Join(
-            right_cte=customers,
-            jointype=JoinType.RIGHT_OUTER,
-            joinkey_pairs=[
-                CTEConceptPair(
+            right=customers,
+            join_type=JoinType.RIGHT_OUTER,
+            pairs=[
+                ConceptPair(
                     left=customer_id,
                     right=customer_id,
-                    existing_datasource=consumer.source,
-                    cte=lookup,
+                    node=lookup,
                 )
             ],
         ),
@@ -655,14 +651,13 @@ auto qty_per_order <- sum(order_id);
     )
     consumer.joins = [
         Join(
-            right_cte=customer_parent,
-            jointype=JoinType.FULL,
-            joinkey_pairs=[
-                CTEConceptPair(
+            right=customer_parent,
+            join_type=JoinType.FULL,
+            pairs=[
+                ConceptPair(
                     left=customer_id,
                     right=customer_id,
-                    existing_datasource=consumer.source,
-                    cte=customer_parent,
+                    node=customer_parent,
                 )
             ],
         )
@@ -1397,29 +1392,25 @@ def test_consumer_outer_joins_union_helper(test_environment, test_environment_gr
     assert _consumer_outer_joins_union(_consumer([]), union) is False
 
     # INNER join referencing the union → still safe.
-    inner = Join(right_cte=union, jointype=JoinType.INNER, left_cte=other_cte)
+    inner = Join(right=union, join_type=JoinType.INNER, left=other_cte)
     assert _consumer_outer_joins_union(_consumer([inner]), union) is False
 
     # Union on RIGHT of LEFT_OUTER → nullable, must bail.
-    left_outer = Join(right_cte=union, jointype=JoinType.LEFT_OUTER, left_cte=other_cte)
+    left_outer = Join(right=union, join_type=JoinType.LEFT_OUTER, left=other_cte)
     assert _consumer_outer_joins_union(_consumer([left_outer]), union) is True
 
     # Union on LEFT of RIGHT_OUTER → nullable, must bail.
-    right_outer = Join(
-        right_cte=other_cte, jointype=JoinType.RIGHT_OUTER, left_cte=union
-    )
+    right_outer = Join(right=other_cte, join_type=JoinType.RIGHT_OUTER, left=union)
     assert _consumer_outer_joins_union(_consumer([right_outer]), union) is True
 
     # FULL on either side → always nullable.
-    full_left = Join(right_cte=other_cte, jointype=JoinType.FULL, left_cte=union)
+    full_left = Join(right=other_cte, join_type=JoinType.FULL, left=union)
     assert _consumer_outer_joins_union(_consumer([full_left]), union) is True
-    full_right = Join(right_cte=union, jointype=JoinType.FULL, left_cte=other_cte)
+    full_right = Join(right=union, join_type=JoinType.FULL, left=other_cte)
     assert _consumer_outer_joins_union(_consumer([full_right]), union) is True
 
     # LEFT_OUTER but the union is on the LEFT side → preserved, safe.
-    left_outer_safe = Join(
-        right_cte=other_cte, jointype=JoinType.LEFT_OUTER, left_cte=union
-    )
+    left_outer_safe = Join(right=other_cte, join_type=JoinType.LEFT_OUTER, left=union)
     assert _consumer_outer_joins_union(_consumer([left_outer_safe]), union) is False
 
     # Non-CTE consumer → conservative bail.
@@ -1518,7 +1509,7 @@ def test_union_branch_pushdown_skips_when_consumer_outer_joins_union(
         },
         existence_source_map={},
         joins=[
-            Join(right_cte=union, jointype=JoinType.LEFT_OUTER, left_cte=sibling),
+            Join(right=union, join_type=JoinType.LEFT_OUTER, left=sibling),
         ],
     )
 
