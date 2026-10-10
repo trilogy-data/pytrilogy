@@ -4,6 +4,7 @@ Oracle is materialization invariance: storing a derivation as a column at its
 grain must never change a query's rows.
 """
 
+from dataclasses import replace
 from functools import cache
 
 import pytest
@@ -24,6 +25,7 @@ from tests.helpers.rows import (
     twin_rows,
     twins,
 )
+from trilogy.core import optimization
 from trilogy.executor import Executor
 
 _twins = cache(twins)
@@ -1095,6 +1097,45 @@ def test_two_facts_under_one_rollup_read_each_row_once(
     model: str, query: str, expected: list[tuple]
 ):
     executor = executor_for(model + _TWO_RETURNS + CUSTOMER_ACTIVITY)
+    assert sorted_rows(executor, query) == expected
+
+
+def _collapse_twice(*args, **kwargs):
+    phases = _original_rule_plan(*args, **kwargs)
+    (collapse,) = [p for p in phases if p.name == "collapse_single_parent"]
+    return phases + [
+        replace(collapse, name="collapse_again", depends_on=(), refires_after=())
+    ]
+
+
+_original_rule_plan = optimization.build_optimization_rule_plan
+
+
+# Collapsing again folds the scalar into the pass's SELECT, where it re-derives
+# the aggregate: it must read the pass's own rewritten one (the first-row read,
+# the named argument), not the lineage the scalar holds.
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "select customer_id, sum(amount) as a, count(return_id) as r, a * 2 as a2 by rollup (customer_id)",
+            [(1, 30, 2, 60), (2, 30, 0, 60), (3, None, 0, None), (None, 60, 2, 120)],
+        ),
+        (
+            "select customer_id, sum(coalesce(amount, 0)) as t, t + 1 as t1 by rollup (customer_id)",
+            [(1, 30, 31), (2, 30, 31), (3, None, None), (None, 60, 61)],
+        ),
+        (
+            "select customer_id, sum(coalesce(amount, 0)) as t, count(status) as n, t * 2 as t2 by rollup (customer_id)",
+            [(1, 30, 2, 60), (2, 30, 1, 60), (3, None, 0, None), (None, 60, 3, 120)],
+        ),
+    ],
+)
+def test_scalar_folded_into_pass_reads_its_rewritten_aggregate(
+    monkeypatch, query: str, expected: list[tuple]
+):
+    monkeypatch.setattr(optimization, "build_optimization_rule_plan", _collapse_twice)
+    executor = executor_for(CUSTOMERS_DERIVED + _TWO_RETURNS + CUSTOMER_ACTIVITY)
     assert sorted_rows(executor, query) == expected
 
 

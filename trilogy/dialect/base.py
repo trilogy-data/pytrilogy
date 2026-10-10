@@ -272,6 +272,21 @@ def _aggregate_over_collapsed_filter(
     return any(cte.filter_collapses_to_grain(x) for x in agg.function.concept_arguments)
 
 
+def _own_aggregate_definition(cte: "CTE | UnionCTE", c: BuildConcept) -> BuildConcept:
+    """The CTE's own column for an aggregate it computes. Its lineage may be a
+    rewritten copy (a first-row read, a region-named argument, a moved filter);
+    a consumer folded beside it re-derives the aggregate from that, never from
+    the lineage it holds, so one SELECT renders the aggregate one way."""
+    if not isinstance(cte, CTE):
+        return c
+    for column in cte.output_columns:
+        if column.address == c.address and isinstance(
+            column.lineage, BuildAggregateWrapper
+        ):
+            return column
+    return c
+
+
 def _aggregate_operator(cte: "CTE | UnionCTE", c: BuildConcept) -> FunctionType:
     """A COUNT this CTE computes over a stream repeating its counted key
     renders DISTINCT (`QueryDatasource.distinct_counts`)."""
@@ -1491,6 +1506,8 @@ class BaseDialect:
                 # precedence reason as BuildComparison above.
                 rval = f"({self.render_expr(c.lineage, cte=cte, raise_invalid=raise_invalid)})"
             elif isinstance(c.lineage, AGGREGATE_ITEMS):
+                c = _own_aggregate_definition(cte, c)
+                assert isinstance(c.lineage, BuildAggregateWrapper)
                 args = [self.render_expr(v, cte) for v in c.lineage.function.arguments]
                 operator = _aggregate_operator(cte, c)
                 if cte.group_to_grain:

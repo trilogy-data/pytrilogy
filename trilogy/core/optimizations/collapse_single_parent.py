@@ -1,4 +1,4 @@
-from collections.abc import Collection, Mapping
+from collections.abc import Collection
 from enum import Enum
 from typing import TYPE_CHECKING
 
@@ -320,12 +320,6 @@ def basic_fold_into_group_is_safe(parent: CTE, cte: CTE) -> bool:
     cannot ride in the parent's GROUP BY select. The same column kinds merely
     passed through from the parent are already computed there and are fine."""
     parent_outputs = parent.output_lcl
-    rendered = {
-        c.address: c.lineage
-        for c in parent.output_columns
-        if not parent.source_map.get(c.address)
-        and isinstance(c.lineage, BuildAggregateWrapper)
-    }
     for column in cte.output_columns:
         if column.address in parent_outputs:
             continue
@@ -336,25 +330,7 @@ def basic_fold_into_group_is_safe(parent: CTE, cte: CTE) -> bool:
             return False
         if isinstance(column.lineage, (BuildAggregateWrapper, BuildWindowItem)):
             return False
-        if _reads_aggregate_differently(column, rendered):
-            return False
     return True
-
-
-def _reads_aggregate_differently(
-    concept: BuildConcept, rendered: Mapping[str, object]
-) -> bool:
-    """After the fold `concept` renders from lineage beside the parent's own
-    aggregates, re-deriving any it reads. An aggregate the parent renders from
-    a rewritten copy of its lineage (a first-row read over a repeating stream,
-    a region-named argument) would then render two ways in one SELECT."""
-    for arg in concept.concept_arguments:
-        lineage = rendered.get(arg.address)
-        if lineage is not None and lineage != arg.lineage:
-            return True
-        if arg.address not in rendered and _reads_aggregate_differently(arg, rendered):
-            return True
-    return False
 
 
 def child_has_merge_blockers(cte: CTE, merge_mode: MergeMode) -> bool:

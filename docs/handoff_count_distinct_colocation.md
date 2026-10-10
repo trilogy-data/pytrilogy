@@ -20,24 +20,20 @@
   covering union: ncaa `game_tall`, TPC-DS unified sales) still folds.
   Filtered counts and NULL keys are sound (DISTINCT over a CASE drops the
   same rows COUNT does).
-- **Still open:** the first-row read (`_read_first_rows`), region-named
-  arguments (`_name_inline_arguments`) and
-  `filtered_aggregate._remove_filter` still copy a concept under its
-  address with another lineage. The first two fire on no corpus statement;
-  `_reads_aggregate_differently` in collapse still guards them. Risk if a
-  consumer re-derives the original lineage in the same CTE:
-  - `_remove_filter`: `count(case when c then x end)` under the moved
-    `WHERE c` is the same value. Tidiness only.
-  - `_read_first_rows`: drops the first-row marker, so over-counts on the
-    repeated stream. Wrong rows.
-  - `_name_inline_arguments`: renders the argument inline instead of the
-    named column computed on the solid rows; differs on padded rows. Wrong
-    rows.
-  The `distinct_counts` pattern does not carry over directly: these two
-  rewrites READ new columns (the marker, the named argument), and rules
-  such as `hide_unused_concepts` derive a CTE's reads from its output
-  lineages, so a render-only override would let them prune those columns.
-  Fixing them means the CTE declaring those extra reads.
+- **Remaining copies closed.** The first-row read (`_read_first_rows`),
+  region-named arguments (`_name_inline_arguments`) and
+  `filtered_aggregate._remove_filter` still rewrite a copy under the
+  aggregate's address, but the copy is the CTE's own output column, and the
+  renderer re-derives an aggregate the CTE computes from that column
+  (`dialect/base.py::_own_aggregate_definition`), never from the lineage a
+  consumer holds. A scalar folded into the pass reads the first-row marker
+  and the named argument the pass reads, and since a CTE's reads are what it
+  renders (`render_cte_used_map`), `hide_unused_concepts` keeps those
+  columns. Collapse's `_reads_aggregate_differently` guard is gone.
+  Before the change, with the guard removed and collapse run twice,
+  `a * 2` over a first-row `sum(amount)` gave 120 for 60 and a named
+  argument failed to bind:
+  `tests/engine/test_derived_key_domain.py::test_scalar_folded_into_pass_reads_its_rewritten_aggregate`.
 
 ## The problem
 
@@ -92,6 +88,9 @@ wrong.
   same-address/different-lineage exposure.
 
 ## What is in place now
+
+(Historical: the guard below was removed once the renderer read a CTE's own
+aggregate definition; see Resolution.)
 
 `3adac04e6` added a guard, not a fix: `collapse_single_parent`
 (`basic_fold_into_group_is_safe` -> `_reads_aggregate_differently`) refuses to
