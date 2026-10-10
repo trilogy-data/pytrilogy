@@ -66,7 +66,7 @@ def canonicalize_graph(input: list[CTE]) -> None:
     single live instance keyed by name:
 
     - ``parent_ctes``: dedupe to the live object.
-    - join endpoints (``right_cte``/``left_cte``/``joinkey_pairs[].cte``):
+    - join endpoints (``right``/``left``/``pairs[].node``):
       resolve to the live emitted CTE, or to the consumer's folded
       ``inlined_parents`` instance so the render contract stays in sync.
     """
@@ -101,12 +101,7 @@ def canonicalize_graph(input: list[CTE]) -> None:
         for join in joins:
             if not isinstance(join, Join):
                 continue
-            join.right_cte = resolve(join.right_cte)
-            if join.left_cte is not None:
-                join.left_cte = resolve(join.left_cte)
-            for keyed in join.cte_bindings():
-                if keyed.cte is not None:
-                    keyed.cte = resolve(keyed.cte)
+            join.repoint(resolve)
         if isinstance(cte, UnionCTE):
             new_branches: list[CTE | UnionCTE] = []
             for binding in cte.source_bindings(include_branches=True):
@@ -344,13 +339,13 @@ def build_optimization_rule_plan(
     if opts.upgrade_condition_joins:
         plan.append(
             OptimizationRulePlan(
-                name="upgrade_join_on_guards.base_join_only",
-                rule_factory=lambda: UpgradeJoinOnGuards(base_join_only=True),
+                name="upgrade_join_on_guards.early",
+                rule_factory=lambda: UpgradeJoinOnGuards(left_only=True),
                 depends_on=_enabled_dependencies(
                     ("predicate_pushdown.initial", opts.predicate_pushdown)
                 ),
                 reason=(
-                    "makes guarded dim BaseJoins INNER before union dim pushdown "
+                    "makes guarded dim joins INNER before union dim pushdown "
                     "tries to match them"
                 ),
             )
@@ -363,7 +358,7 @@ def build_optimization_rule_plan(
                 depends_on=_enabled_dependencies(
                     ("predicate_pushdown.initial", opts.predicate_pushdown),
                     (
-                        "upgrade_join_on_guards.base_join_only",
+                        "upgrade_join_on_guards.early",
                         opts.upgrade_condition_joins,
                     ),
                 ),

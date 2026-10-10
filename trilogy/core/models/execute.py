@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field, replace
-from typing import TypeVar
+from typing import Generic, TypeVar
 
 from trilogy.constants import (
     CONFIG,
@@ -143,7 +143,7 @@ class CTE:
     # (pushdown, dedup, nullability refinement) that reason about author intent.
     semi_join_filters: list[SemiJoinFilter] = field(default_factory=list)
     parent_ctes: list[CTE | UnionCTE] = field(default_factory=list)
-    joins: list[Join | InstantiatedUnnestJoin] = field(default_factory=list)
+    joins: list[Join | UnnestJoin] = field(default_factory=list)
     condition: BoolExpr | None = None
     partial_concepts: list[BuildConcept] = field(default_factory=list)
     rollup_concepts: list[BuildConcept] = field(default_factory=list)
@@ -456,13 +456,13 @@ class CTE:
         (coalesced across members)."""
         adjacent: dict[str, set[str]] = defaultdict(set)
         for join in self.joins:
-            if not isinstance(join, Join) or join.jointype not in (
+            if not isinstance(join, Join) or join.join_type not in (
                 JoinType.LEFT_OUTER,
                 JoinType.RIGHT_OUTER,
                 JoinType.FULL,
             ):
                 continue
-            for pair in join.joinkey_pairs or []:
+            for pair in join.pairs or []:
                 left = pair.left.address
                 right = pair.right.address
                 if left == right:
@@ -493,15 +493,15 @@ class CTE:
         spellings = {address} | (set(concept.pseudonyms) if concept else set())
         out: set[str] = set()
         for join in self.joins:
-            if not isinstance(join, Join) or join.jointype is not JoinType.INNER:
+            if not isinstance(join, Join) or join.join_type is not JoinType.INNER:
                 continue
             for group in coalesced_key_groups(
                 pair
-                for pair in join.joinkey_pairs or []
+                for pair in join.pairs or []
                 if _spells(pair.left, spellings) and _spells(pair.right, spellings)
             ):
-                out.add(join.right_cte.name)
-                names = {pair.cte.name for pair in group}
+                out.add(join.right.name)
+                names = {pair.node.name for pair in group}
                 if len(names) == 1:
                     out |= names
         return out
@@ -998,13 +998,11 @@ class CTE:
         for join in self.joins:
             if not isinstance(join, Join):
                 continue
-            if join.left_cte and join.left_cte.safe_identifier == old.safe_identifier:
-                join.left_cte = new
-            for keyed in join.cte_bindings():
-                if keyed.cte and keyed.cte.safe_identifier == old.safe_identifier:
-                    keyed.cte = new
-            if join.right_cte.safe_identifier == old.safe_identifier:
-                join.right_cte = new
+            join.repoint(
+                lambda node: (
+                    new if node.safe_identifier == old.safe_identifier else node
+                )
+            )
 
     def inlined_parent_for_source(self, source: str) -> DatasourceCTE | None:
         for p in self.inlined_parents:
@@ -1032,76 +1030,80 @@ class CTE:
         return concept.safe_address
 
 
+NodeT = TypeVar("NodeT")
+OtherNodeT = TypeVar("OtherNodeT")
+
+
+def _node_name(node: object) -> str:
+    if isinstance(node, (BuildDatasource, QueryDatasource, CTE, UnionCTE)):
+        return node.name
+    return str(node)
+
+
+def _node_key(node: object) -> object:
+    """Identity for the self-join check; CTE joins are never checked."""
+    if isinstance(node, (BuildDatasource, QueryDatasource)):
+        return node.identifier
+    if isinstance(node, (CTE, UnionCTE)):
+        return None
+    return id(node)
+
+
+def _bind_guard(
+    guard: JoinGuard[NodeT], node_for: Callable[[NodeT], OtherNodeT]
+) -> JoinGuard[OtherNodeT]:
+    return tuple(
+        tuple(
+            GuardTerm(concept=t.concept, node=node_for(t.node), present=t.present)
+            for t in clause
+        )
+        for clause in guard
+    )
+
+
 @dataclass
-class BaseConceptPair:
+class ConceptPair(Generic[NodeT]):
+    """`left`, read off `node`, equals `right` on the join's right side."""
+
     left: BuildConcept
     right: BuildConcept
-    existing_datasource: BuildDatasource | QueryDatasource
+    node: NodeT
+    modifiers: list[Modifier] = field(default_factory=list)
+
+    @property
+    def is_partial(self):
+        return Modifier.PARTIAL in self.modifiers
+
+    @property
+    def is_nullable(self):
+        return Modifier.NULLABLE in self.modifiers
 
 
 @dataclass(frozen=True)
-class GuardTerm:
+class GuardTerm(Generic[NodeT]):
     """`concept` read off one side of a join, NOT NULL when `present`."""
 
     concept: BuildConcept
-    datasource: BuildDatasource | QueryDatasource
+    node: NodeT
     present: bool
 
     def __str__(self) -> str:
         test = "is not null" if self.present else "is null"
-        return f"{self.datasource.name}.{self.concept.address} {test}"
-
-
-@dataclass
-class CTEGuardTerm:
-    concept: BuildConcept
-    cte: CTE | UnionCTE
-    present: bool
-
-    def __str__(self) -> str:
-        test = "is not null" if self.present else "is null"
-        return f"{self.cte.name}.{self.concept.address} {test}"
+        return f"{_node_name(self.node)}.{self.concept.address} {test}"
 
 
 # A conjunction of disjunctions of side-bound NULL tests; empty is no guard.
-JoinGuard = tuple[tuple[GuardTerm, ...], ...]
+JoinGuard = tuple[tuple[GuardTerm[NodeT], ...], ...]
 
 
-def guard_text(guard: Sequence[Sequence[GuardTerm | CTEGuardTerm]]) -> str:
+def guard_text(guard: Sequence[Sequence[GuardTerm]]) -> str:
     return "".join(
         f" and ({' or '.join(str(term) for term in clause)})" for clause in guard
     )
 
 
-@dataclass
-class ConceptPair(BaseConceptPair):
-    modifiers: list[Modifier] = field(default_factory=list)
-
-    @property
-    def is_partial(self):
-        return Modifier.PARTIAL in self.modifiers
-
-    @property
-    def is_nullable(self):
-        return Modifier.NULLABLE in self.modifiers
-
-
-@dataclass
-class CTEConceptPair(BaseConceptPair):
-    cte: CTE | UnionCTE
-    modifiers: list[Modifier] = field(default_factory=list)
-
-    @property
-    def is_partial(self):
-        return Modifier.PARTIAL in self.modifiers
-
-    @property
-    def is_nullable(self):
-        return Modifier.NULLABLE in self.modifiers
-
-
 def pair_modifiers(
-    pair: ConceptPair | CTEConceptPair, join_modifiers: list[Modifier] | None = None
+    pair: ConceptPair, join_modifiers: list[Modifier] | None = None
 ) -> list[Modifier]:
     """Every modifier the rendered comparison of `pair` honours: the pair's,
     each side concept's and the join's."""
@@ -1114,14 +1116,14 @@ def pair_modifiers(
 
 
 def pair_matches_nulls(
-    pair: ConceptPair | CTEConceptPair, join_modifiers: list[Modifier] | None = None
+    pair: ConceptPair, join_modifiers: list[Modifier] | None = None
 ) -> bool:
     """`pair` renders null-safe: a NULL on one side can pair with one on the
     other."""
     return Modifier.NULLABLE in pair_modifiers(pair, join_modifiers)
 
 
-PairT = TypeVar("PairT", bound=BaseConceptPair)
+PairT = TypeVar("PairT", bound=ConceptPair)
 
 
 def coalesced_key_groups(pairs: Iterable[PairT]) -> list[list[PairT]]:
@@ -1149,12 +1151,6 @@ def preserved_key_pairs(
 
 
 @dataclass
-class InstantiatedUnnestJoin:
-    object_to_unnest: BuildConcept | BuildParamaterizedConceptReference | BuildFunction
-    alias: str = "unnest"
-
-
-@dataclass
 class UnnestJoin:
     concepts: list[BuildConcept]
     parent: BuildFunction
@@ -1172,135 +1168,212 @@ class UnnestJoin:
     def safe_identifier(self) -> str:
         return self.alias + "".join([str(s.address) for s in self.concepts])
 
-
-def raise_helpful_join_validation_error(
-    concepts: list[BuildConcept],
-    left_datasource: BuildDatasource | QueryDatasource | None,
-    right_datasource: BuildDatasource | QueryDatasource | None,
-):
-
-    if not left_datasource or not right_datasource:
-        raise InvalidSyntaxException(
-            "No mutual keys found, and not two valid datasources"
-        )
-    left_keys = [c.address for c in left_datasource.output_concepts]
-    right_keys = [c.address for c in right_datasource.output_concepts]
-    match_concepts = [c.address for c in concepts]
-    assert left_datasource
-    assert right_datasource
-    raise InvalidSyntaxException(
-        "No mutual join keys found between"
-        f" {left_datasource.identifier} and"
-        f" {right_datasource.identifier}, left_keys {left_keys},"
-        f" right_keys {right_keys},"
-        f" provided join concepts {match_concepts}"
-    )
+    @property
+    def object_to_unnest(
+        self,
+    ) -> BuildConcept | BuildParamaterizedConceptReference | BuildFunction:
+        target = self.parent.arguments[0]
+        if not isinstance(
+            target,
+            (BuildConcept | BuildParamaterizedConceptReference | BuildFunction),
+        ):
+            raise TypeError(f"Unnest join must be a concept; got {target}")
+        return target
 
 
 @dataclass
-class BaseJoin:
-    right_datasource: BuildDatasource | QueryDatasource
+class Join(Generic[NodeT]):
+    """One join, whatever it joins: strategy nodes while planning, datasources
+    once resolved, CTEs once built. `bind` carries it from one to the next."""
+
+    right: NodeT
     join_type: JoinType
+    left: NodeT | None = None
+    pairs: list[ConceptPair[NodeT]] = field(default_factory=list)
+    # Keyed on concepts both sides carry, read off `left`, in place of pairs.
+    # Planning reads it apart from pairs (a member with no pairing to read);
+    # `bound_keys` folds it into pairs for the CTE.
     concepts: list[BuildConcept] | None = None
-    left_datasource: BuildDatasource | QueryDatasource | None = None
-    concept_pairs: list[ConceptPair] | None = None
     modifiers: list[Modifier] = field(default_factory=list)
     # beside the key pairs: a padded row whose key is NULL by absence never
     # pairs with a value-NULL group (`join_resolution._padding_guard`)
-    guard: JoinGuard = ()
+    guard: JoinGuard[NodeT] = ()
+    # CTE joins only. `condition` decides matches beside the key pairs;
+    # `left_local` is the rendering CTE's own base datasource its LHS keys
+    # are read off (no parent alias), set when a rule moves a join into it.
+    condition: BoolExpr | None = None
+    left_local: BuildDatasource | QueryDatasource | None = None
 
     def __post_init__(self):
-        if (
-            self.left_datasource
-            and self.left_datasource.identifier == self.right_datasource.identifier
-        ):
+        key = _node_key(self.right)
+        if self.left is not None and key is not None and _node_key(self.left) == key:
             raise SyntaxError(
-                f"Cannot join a dataself to itself, joining {self.left_datasource} and"
-                f" {self.right_datasource}"
+                f"Cannot join a node to itself, joining {_node_name(self.left)}"
             )
-        if self.concept_pairs or self.concepts == []:
+        if self.pairs or not self.concepts:
             return
-
-        final_concepts = []
-        for concept in self.concepts or []:
-            include = True
-            for ds in [self.left_datasource, self.right_datasource]:
-                synonyms = []
-                if not ds:
-                    continue
-                for c in ds.output_concepts:
-                    synonyms += list(c.pseudonyms)
-                if (
-                    concept.address not in ds.output_concepts
-                    and concept.address not in synonyms
-                ):
+        for side in (self.left, self.right):
+            if not isinstance(side, (BuildDatasource, QueryDatasource)):
+                continue
+            available = {c.address for c in side.output_concepts} | {
+                p for c in side.output_concepts for p in c.pseudonyms
+            }
+            for concept in self.concepts:
+                if concept.address not in available:
                     raise InvalidSyntaxException(
-                        f"Invalid join, missing {concept} on {ds.name}, have"
-                        f" {[c.address for c in ds.output_concepts]}"
+                        f"Invalid join, missing {concept} on {side.name}, have"
+                        f" {[c.address for c in side.output_concepts]}"
                     )
-            if include:
-                final_concepts.append(concept)
 
-        if not final_concepts and self.concepts:
-            raise_helpful_join_validation_error(
-                self.concepts,
-                self.left_datasource,
-                self.right_datasource,
-            )
+    def bind(self, node_for: Callable[[NodeT], OtherNodeT]) -> Join[OtherNodeT]:
+        return Join(
+            right=node_for(self.right),
+            join_type=self.join_type,
+            left=node_for(self.left) if self.left is not None else None,
+            pairs=[
+                ConceptPair(
+                    left=pair.left,
+                    right=pair.right,
+                    node=node_for(pair.node),
+                    modifiers=pair.modifiers,
+                )
+                for pair in self.pairs
+            ],
+            concepts=self.concepts,
+            modifiers=self.modifiers,
+            guard=_bind_guard(self.guard, node_for),
+            condition=self.condition,
+        )
 
-        self.concepts = final_concepts
+    def repoint(self, node_for: Callable[[NodeT], NodeT]) -> None:
+        """Rebind every node this join names, in place."""
+        self.right = node_for(self.right)
+        if self.left is not None:
+            self.left = node_for(self.left)
+        for pair in self.pairs:
+            pair.node = node_for(pair.node)
+        self.guard = _bind_guard(self.guard, node_for)
+
+    def bound_keys(self) -> Join[NodeT]:
+        """The join with a concept key folded into pairs read off `left`."""
+        if self.pairs or not self.concepts or self.left is None:
+            return replace(self, concepts=None)
+        left = self.left
+        return replace(
+            self,
+            concepts=None,
+            pairs=[ConceptPair(left=c, right=c, node=left) for c in self.concepts],
+        )
+
+    def participants(self) -> list[NodeT]:
+        """Every node this join names: its right, its left, its key sources."""
+        out = [self.right]
+        if self.left is not None:
+            out.append(self.left)
+        out.extend(pair.node for pair in self.pairs)
+        out.extend(term.node for term in self.guard_terms())
+        return out
+
+    def guard_terms(self) -> list[GuardTerm[NodeT]]:
+        return [term for clause in self.guard for term in clause]
+
+    @property
+    def has_predicate(self) -> bool:
+        """Something beside the key pairs decides which rows match."""
+        return self.condition is not None or bool(self.guard)
+
+    @property
+    def input_concepts(self) -> list[BuildConcept]:
+        keys = [concept for pair in self.pairs for concept in (pair.left, pair.right)]
+        if not self.pairs:
+            keys = list(self.concepts or [])
+        return keys + [term.concept for term in self.guard_terms()]
+
+    @property
+    def right_name(self) -> str:
+        return _node_name(self.right)
 
     @property
     def unique_id(self) -> str:
         # Order-independent: the SQL renderer AND-joins keys after sorting, so
-        # two BaseJoins with the same pairs in different order produce identical
-        # SQL. Dedupe on the sorted form so set-iteration nondeterminism in
-        # upstream pair construction cannot slip a duplicate past `unique()`.
-        # INNER is additionally orientation-independent: `a JOIN b ON x=y` and
-        # `b JOIN a ON y=x` are one join, and two independently-built merges
-        # over the same parents can pick opposite bases; keeping both joins the
-        # same partner twice (duplicate alias).
+        # two joins with the same pairs in different order produce identical
+        # SQL. INNER is additionally orientation-independent: `a JOIN b ON
+        # x=y` and `b JOIN a ON y=x` are one join, and two independently-built
+        # merges over the same parents can pick opposite bases; keeping both
+        # joins the same partner twice (duplicate alias).
         guard = guard_text(self.guard)
-        if self.concept_pairs:
-            if self.join_type == JoinType.INNER:
-                partners = sorted(
-                    {p.existing_datasource.name for p in self.concept_pairs}
-                    | {self.right_datasource.name}
-                )
-                pair_keys = sorted(
-                    "=".join(sorted((str(p.left), str(p.right))))
-                    + f"[{','.join(sorted(m.value for m in p.modifiers))}]"
-                    for p in self.concept_pairs
-                )
-                return f"{self.join_type.value} {'&'.join(partners)} on {','.join(pair_keys)}{guard}"
-            pair_keys = sorted(
-                f"{p.existing_datasource.name}.{p.left}={p.right}"
-                for p in self.concept_pairs
+        if self.join_type == JoinType.INNER and self.pairs:
+            partners = sorted(
+                {_node_name(p.node) for p in self.pairs} | {self.right_name}
             )
-            return f"{self.join_type.value} {self.right_datasource.name} on {','.join(pair_keys)}{guard}"
-        return str(self) + guard
-
-    @property
-    def input_concepts(self) -> list[BuildConcept]:
-        base = []
-        if self.concept_pairs:
-            for pair in self.concept_pairs:
-                base += [pair.left, pair.right]
-        elif self.concepts:
-            base += self.concepts
-        base += [term.concept for clause in self.guard for term in clause]
-        return base
+            pair_keys = sorted(
+                "=".join(sorted((p.left.address, p.right.address)))
+                + f"[{','.join(sorted(m.value for m in p.modifiers))}]"
+                for p in self.pairs
+            )
+            return f"{self.join_type.value} join {'&'.join(partners)} on {','.join(pair_keys)}{guard}"
+        if not self.pairs:
+            return str(self) + guard
+        pair_keys = sorted(
+            f"{_node_name(p.node)}.{p.left.address}={p.right.address}"
+            for p in self.pairs
+        )
+        return f"{self.join_type.value} join {self.right_name} on {','.join(pair_keys)}{guard}"
 
     def __str__(self):
-        if self.concept_pairs:
-            return (
-                f"{self.join_type.value} {self.right_datasource.name} on"
-                f" {','.join([str(k.existing_datasource.name) + '.'+ str(k.left)+'='+str(k.right) for k in self.concept_pairs])}"
-            )
-        return (
-            f"{self.join_type.value} {self.right_datasource.name} on"
-            f" {','.join([str(k) for k in self.concepts])}"
-        )
+        keys = ",".join(
+            f"{_node_name(p.node)}.{p.left.address}={p.right.address}"
+            for p in self.pairs
+        ) or ",".join(c.address for c in self.concepts or [])
+        return f"{self.join_type.value} join {self.right_name} on {keys}"
+
+    @staticmethod
+    def authoritative(consumer: CTE | UnionCTE, node: CTE | UnionCTE) -> CTE | UnionCTE:
+        """The consumer's own parent instance for ``node``.
+
+        Joins keep their own node references, which are *not* the same
+        objects inline moved into ``consumer.inlined_parents``. Resolve back
+        to the consumer's own instance so inlined state is read from a single
+        source of truth."""
+        if isinstance(consumer, CTE):
+            for binding in consumer.source_bindings(include_inlined=True):
+                if binding.node is not None and binding.node.name == node.name:
+                    return binding.node
+        return node
+
+    @staticmethod
+    def _resolve_alias(consumer: CTE | UnionCTE, node: CTE | UnionCTE) -> str:
+        if (
+            isinstance(consumer, CTE)
+            and isinstance(node, DatasourceCTE)
+            and consumer.renders_inline(node)
+        ):
+            return consumer.source_key_for(node)
+        if isinstance(consumer, CTE):
+            return consumer.source_key_for(node.name)
+        return node.name
+
+    def name_for(self, consumer: CTE | UnionCTE, node: CTE | UnionCTE) -> str:
+        """Alias token a consumer references ``node``'s columns by."""
+        return self._resolve_alias(consumer, node)
+
+    def reference_for(
+        self, consumer: CTE | UnionCTE, node: CTE | UnionCTE, quote_character: str
+    ) -> str:
+        """FROM/JOIN source text for ``node`` as seen from ``consumer``.
+
+        A normal CTE is referenced by name; an inlined ``DatasourceCTE``
+        renders its raw table directly under the resolved alias."""
+        node = self.authoritative(consumer, node)
+        q = quote_character
+        alias = f"{q}{self._resolve_alias(consumer, node)}{q}"
+        if (
+            isinstance(consumer, CTE)
+            and isinstance(node, DatasourceCTE)
+            and consumer.renders_inline(node)
+        ):
+            return f"{safe_quote(node.datasource.safe_location, q)} as {alias}"
+        return alias
 
 
 @dataclass
@@ -1310,7 +1383,7 @@ class QueryDatasource:
     datasources: list[BuildDatasource | QueryDatasource]
     source_map: dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]]
     grain: BuildGrain
-    joins: list[BaseJoin | UnnestJoin]
+    joins: list[SourceJoin | UnnestJoin]
     limit: int | None = None
     condition: BoolExpr | None = None
     source_type: SourceType = field(default=SourceType.SELECT)
@@ -1369,7 +1442,7 @@ class QueryDatasource:
             self.datasources = sorted(self.datasources, key=lambda ds: ds.identifier)
         unique_pairs: set[str] = set()
         for join in self.joins:
-            if not isinstance(join, BaseJoin):
+            if not isinstance(join, Join):
                 continue
             pairing = join.unique_id
             if pairing in unique_pairs:
@@ -1669,7 +1742,7 @@ class QueryDatasource:
             sorted(
                 f"{join.join_type.value}:{join.unique_id}"
                 for join in self.joins
-                if isinstance(join, BaseJoin)
+                if isinstance(join, Join)
             )
         )
         children = tuple(
@@ -1766,7 +1839,7 @@ class QueryDatasource:
         outer = sorted(
             side
             for join in self.joins
-            if isinstance(join, BaseJoin)
+            if isinstance(join, Join)
             for side in _null_extended_sides(join)
         )
         if outer:
@@ -1970,15 +2043,14 @@ class RecursiveCTE(CTE):
             parent_ctes=top_cte_array + parent_ctes,
             joins=[
                 Join(
-                    right_cte=loop_input_cte,
-                    jointype=JoinType.INNER,
-                    joinkey_pairs=[
-                        CTEConceptPair(
+                    right=loop_input_cte,
+                    join_type=JoinType.INNER,
+                    pairs=[
+                        ConceptPair(
                             left=recursive_derived,
                             right=left_recurse_concept,
-                            existing_datasource=loop_input_cte.source,
                             modifiers=[],
-                            cte=top,
+                            node=top,
                         )
                     ],
                     condition=BuildComparison(
@@ -2208,141 +2280,16 @@ class UnionCTE:
         return self
 
 
-@dataclass
-class Join:
-    right_cte: CTE | UnionCTE
-    jointype: JoinType
-    left_cte: CTE | UnionCTE | None = None
-    joinkey_pairs: list[CTEConceptPair] | None = None
-    condition: BoolExpr | None = None
-    guard: list[list[CTEGuardTerm]] = field(default_factory=list)
-    modifiers: list[Modifier] = field(default_factory=list)
-    # Set by union_dim_pushdown when LHS join keys are local to the rendering
-    # CTE rather than read from a parent alias.
-    left_is_local: bool = False
-
-    def participants(self) -> list[CTE | UnionCTE]:
-        """Every CTE this join names: its right, its left, its key sources."""
-        out = [self.right_cte]
-        if self.left_cte is not None:
-            out.append(self.left_cte)
-        out.extend(pair.cte for pair in self.joinkey_pairs or [])
-        out.extend(term.cte for term in self.guard_terms())
-        return out
-
-    def guard_terms(self) -> list[CTEGuardTerm]:
-        return [term for clause in self.guard for term in clause]
-
-    def cte_bindings(self) -> list[CTEConceptPair | CTEGuardTerm]:
-        """Everything naming a CTE by reference: a rewrite repoints each."""
-        return [*(self.joinkey_pairs or []), *self.guard_terms()]
-
-    @property
-    def has_predicate(self) -> bool:
-        """Something beside the key pairs decides which rows match."""
-        return self.condition is not None or bool(self.guard)
-
-    @staticmethod
-    def authoritative(consumer: CTE | UnionCTE, node: CTE | UnionCTE) -> CTE | UnionCTE:
-        """The consumer's own parent instance for ``node``.
-
-        Joins keep their own node references, which are *not* the same
-        objects inline moved into ``consumer.inlined_parents``. Resolve back
-        to the consumer's own instance so inlined state is read from a single
-        source of truth."""
-        if isinstance(consumer, CTE):
-            for binding in consumer.source_bindings(include_inlined=True):
-                if binding.node is not None and binding.node.name == node.name:
-                    return binding.node
-        return node
-
-    @staticmethod
-    def _resolve_alias(consumer: CTE | UnionCTE, node: CTE | UnionCTE) -> str:
-        if (
-            isinstance(consumer, CTE)
-            and isinstance(node, DatasourceCTE)
-            and consumer.renders_inline(node)
-        ):
-            return consumer.source_key_for(node)
-        if isinstance(consumer, CTE):
-            return consumer.source_key_for(node.name)
-        return node.name
-
-    def name_for(self, consumer: CTE | UnionCTE, node: CTE | UnionCTE) -> str:
-        """Alias token a consumer references ``node``'s columns by."""
-        return self._resolve_alias(consumer, node)
-
-    def reference_for(
-        self, consumer: CTE | UnionCTE, node: CTE | UnionCTE, quote_character: str
-    ) -> str:
-        """FROM/JOIN source text for ``node`` as seen from ``consumer``.
-
-        A normal CTE is referenced by name; an inlined ``DatasourceCTE``
-        renders its raw table directly under the resolved alias."""
-        node = self.authoritative(consumer, node)
-        q = quote_character
-        alias = f"{q}{self._resolve_alias(consumer, node)}{q}"
-        if (
-            isinstance(consumer, CTE)
-            and isinstance(node, DatasourceCTE)
-            and consumer.renders_inline(node)
-        ):
-            return f"{safe_quote(node.datasource.safe_location, q)} as {alias}"
-        return alias
-
-    @property
-    def right_name(self) -> str:
-        # Stable identity token for __str__ / unique_id / dedup only.
-        return self.right_cte.name
-
-    @property
-    def unique_id(self) -> str:
-        # Order- and (for INNER) orientation-independent; see
-        # BaseJoin.unique_id for rationale.
-        if self.joinkey_pairs:
-            if self.jointype == JoinType.INNER:
-                partners = sorted(
-                    {k.cte.name for k in self.joinkey_pairs} | {self.right_name}
-                )
-                pair_keys = sorted(
-                    "=".join(sorted((k.left.address, k.right.address)))
-                    + f"[{','.join(sorted(m.value for m in k.modifiers))}]"
-                    for k in self.joinkey_pairs
-                )
-                return f"{self.jointype.value} join {'&'.join(partners)} on {','.join(pair_keys)}{guard_text(self.guard)}"
-            pair_keys = sorted(
-                f"{k.cte.name}.{k.left.address}={k.right.address}"
-                for k in self.joinkey_pairs
-            )
-            return f"{self.jointype.value} join {self.right_name} on {','.join(pair_keys)}{guard_text(self.guard)}"
-        return str(self)
-
-    def __str__(self):
-        pairs = self.joinkey_pairs or []
-        if self.joinkey_pairs:
-            return (
-                f"{self.jointype.value} join"
-                f" {self.right_name} on"
-                f" {','.join([k.cte.name + '.'+str(k.left.address)+'='+str(k.right.address) for k in pairs])}"
-            )
-        elif self.left_cte:
-            return (
-                f"{self.jointype.value} JOIN {self.left_cte.name} and"
-                f" {self.right_name} on {','.join([str(k) for k in pairs])}"
-            )
-        return f"{self.jointype.value} JOIN  {self.right_name} on {','.join([str(k) for k in pairs])}"
-
-
-def _null_extended_sides(join: BaseJoin) -> list[str]:
+def _null_extended_sides(join: SourceJoin) -> list[str]:
     """The members a join may NULL-extend, whichever way it is written:
     `a LEFT JOIN b` and `b RIGHT JOIN a` are one relation."""
-    right = [join.right_datasource.identifier]
+    right = [join.right.identifier]
     left = sorted(
         {
             ds.identifier
             for ds in (
-                join.left_datasource,
-                *(pair.existing_datasource for pair in join.concept_pairs or []),
+                join.left,
+                *(pair.node for pair in join.pairs or []),
             )
             if ds is not None
         }
@@ -2357,8 +2304,8 @@ def _null_extended_sides(join: BaseJoin) -> list[str]:
 
 
 def coalesce_duplicate_joins(
-    joins: list[Join | InstantiatedUnnestJoin],
-) -> list[Join | InstantiatedUnnestJoin]:
+    joins: list[Join | UnnestJoin],
+) -> list[Join | UnnestJoin]:
     """Coalesce keyed Joins sharing (type, left, right) into one join carrying
     the union of their key pairs. CTE-level joins have no aliasing, so a second
     join to the same right CTE re-joins the very same rows (never a self-join),
@@ -2376,51 +2323,42 @@ def coalesce_duplicate_joins(
     # conjunction of `=` with `is not distinct from` is `=`.
     inner_merged: dict[frozenset[str], Join] = {}
 
-    def _pair_norm(right_name: str, p: CTEConceptPair) -> frozenset[tuple[str, str]]:
-        return frozenset({(p.cte.name, p.left.address), (right_name, p.right.address)})
+    def _pair_norm(right_name: str, p: ConceptPair) -> frozenset[tuple[str, str]]:
+        return frozenset({(p.node.name, p.left.address), (right_name, p.right.address)})
 
-    out: list[Join | InstantiatedUnnestJoin] = []
+    out: list[Join | UnnestJoin] = []
     for join in joins:
-        if (
-            not isinstance(join, Join)
-            or join.condition is not None
-            or not join.joinkey_pairs
-        ):
+        if not isinstance(join, Join) or join.condition is not None or not join.pairs:
             out.append(join)
             continue
-        if join.jointype == JoinType.INNER:
-            partners = frozenset(
-                {join.right_cte.name} | {p.cte.name for p in join.joinkey_pairs}
-            )
+        if join.join_type == JoinType.INNER:
+            partners = frozenset({join.right.name} | {p.node.name for p in join.pairs})
             inner_existing = inner_merged.get(partners)
             if inner_existing is None:
                 inner_merged[partners] = join
                 out.append(join)
                 continue
-            assert inner_existing.joinkey_pairs is not None
-            existing_right = inner_existing.right_cte.name
-            by_norm = {
-                _pair_norm(existing_right, p): p for p in inner_existing.joinkey_pairs
-            }
-            additions: list[CTEConceptPair] = []
+            assert inner_existing.pairs is not None
+            existing_right = inner_existing.right.name
+            by_norm = {_pair_norm(existing_right, p): p for p in inner_existing.pairs}
+            additions: list[ConceptPair] = []
             mergeable = True
-            for pair in join.joinkey_pairs:
-                norm = _pair_norm(join.right_cte.name, pair)
+            for pair in join.pairs:
+                norm = _pair_norm(join.right.name, pair)
                 match = by_norm.get(norm)
                 if match is not None:
                     continue
                 # A new pair must orient against the surviving join's right CTE.
-                if pair.cte.name == existing_right:
+                if pair.node.name == existing_right:
                     additions.append(
-                        CTEConceptPair(
+                        ConceptPair(
                             left=pair.right,
                             right=pair.left,
-                            existing_datasource=join.right_cte.source,
                             modifiers=pair.modifiers,
-                            cte=join.right_cte,
+                            node=join.right,
                         )
                     )
-                elif join.right_cte.name == existing_right:
+                elif join.right.name == existing_right:
                     additions.append(pair)
                 else:
                     mergeable = False
@@ -2428,36 +2366,33 @@ def coalesce_duplicate_joins(
             if not mergeable:
                 out.append(join)
                 continue
-            for pair in join.joinkey_pairs:
-                match = by_norm.get(_pair_norm(join.right_cte.name, pair))
+            for pair in join.pairs:
+                match = by_norm.get(_pair_norm(join.right.name, pair))
                 if match is not None:
                     match.modifiers = [
                         m for m in match.modifiers if m in pair.modifiers
                     ]
             for addition in additions:
-                inner_existing.joinkey_pairs.append(addition)
+                inner_existing.pairs.append(addition)
                 by_norm[_pair_norm(existing_right, addition)] = addition
             _absorb_join(inner_existing, join)
             continue
         key = (
-            join.jointype,
-            join.left_cte.name if join.left_cte else None,
-            join.right_cte.name,
+            join.join_type,
+            join.left.name if join.left else None,
+            join.right.name,
         )
         existing = merged.get(key)
         if existing is None:
             merged[key] = join
             out.append(join)
             continue
-        assert existing.joinkey_pairs is not None
-        seen = {
-            (p.cte.name, p.left.address, p.right.address)
-            for p in existing.joinkey_pairs
-        }
-        for pair in join.joinkey_pairs:
-            pair_key = (pair.cte.name, pair.left.address, pair.right.address)
+        assert existing.pairs is not None
+        seen = {(p.node.name, p.left.address, p.right.address) for p in existing.pairs}
+        for pair in join.pairs:
+            pair_key = (pair.node.name, pair.left.address, pair.right.address)
             if pair_key not in seen:
-                existing.joinkey_pairs.append(pair)
+                existing.pairs.append(pair)
                 seen.add(pair_key)
         _absorb_join(existing, join)
     return out
@@ -2470,9 +2405,9 @@ def _absorb_join(existing: Join, join: Join) -> None:
         if modifier not in existing.modifiers:
             existing.modifiers.append(modifier)
     held = {tuple(map(str, clause)) for clause in existing.guard}
-    for clause in join.guard:
-        if tuple(map(str, clause)) not in held:
-            existing.guard.append(clause)
+    existing.guard = existing.guard + tuple(
+        clause for clause in join.guard if tuple(map(str, clause)) not in held
+    )
 
 
 def merge_ctes(ctes: list[CTE | UnionCTE]) -> list[CTE | UnionCTE]:
@@ -2523,3 +2458,7 @@ def collect_source_addresses(ctes: Sequence[CTE | UnionCTE]) -> list[Address]:
 class CompiledCTE:
     name: str
     statement: str
+
+
+SourceJoin = Join[BuildDatasource | QueryDatasource]
+CTEJoin = Join[CTE | UnionCTE]

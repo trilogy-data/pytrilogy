@@ -24,7 +24,11 @@ from trilogy.core.models.build import (
     BuildDatasource,
     get_grouped_aggregate_wrapper,
 )
-from trilogy.core.models.execute import BaseJoin, QueryDatasource
+from trilogy.core.models.execute import (
+    Join,
+    QueryDatasource,
+    SourceJoin,
+)
 from trilogy.core.processing.utility import (
     PADS_LEFT_JOIN_TYPES,
     PADS_RIGHT_JOIN_TYPES,
@@ -143,28 +147,28 @@ def _no_leaf_addresses(datasource: BuildDatasource) -> set[str]:
     return set()
 
 
-def _value_null_driven(join: BaseJoin, memo: ProvenanceMemo) -> bool:
+def _value_null_driven(join: SourceJoin, memo: ProvenanceMemo) -> bool:
     driven = memo.driven.get(id(join))
     if driven is None:
         driven = memo.driven[id(join)] = any(
-            memo.of(pair.existing_datasource).values(pair.left)
-            or memo.of(join.right_datasource).values(pair.right)
-            for pair in join.concept_pairs or []
+            memo.of(pair.node).values(pair.left)
+            or memo.of(join.right).values(pair.right)
+            for pair in join.pairs or []
         )
     return driven
 
 
-def _span_keyed(join: BaseJoin, spans: frozenset[str]) -> bool:
+def _span_keyed(join: SourceJoin, spans: frozenset[str]) -> bool:
     return any(
         pair.left.address in spans or pair.right.address in spans
-        for pair in join.concept_pairs or []
+        for pair in join.pairs or []
     ) or any(concept.address in spans for concept in join.concepts or [])
 
 
 def _padded_addresses(
     datasource: DataSource,
     leaf_addresses: Callable[[BuildDatasource], set[str]],
-    join_extends: Callable[[BaseJoin], bool],
+    join_extends: Callable[[SourceJoin], bool],
     memo: dict[int, frozenset[str]] | None = None,
     chain: bool = False,
 ) -> frozenset[str]:
@@ -189,25 +193,20 @@ def _padded_addresses(
         )
         for child in datasource.datasources
     }
-    right_ids = {
-        j.right_datasource.identifier
-        for j in datasource.joins
-        if isinstance(j, BaseJoin)
-    }
+    right_ids = {j.right.identifier for j in datasource.joins if isinstance(j, Join)}
     extended: set[str] = set()
     out: set[str] = set()
     base_ids = [i for i in child_padded if i not in right_ids]
     for join, accumulated in left_deep_joins(datasource.joins, base_ids):
-        right_id = join.right_datasource.identifier
-        pairs = join.concept_pairs or []
+        right_id = join.right.identifier
+        pairs = join.pairs or []
         extends = join_extends(join)
         # a lookup keyed on a column already padded on its preserved side pads
         # for the same rows (a guest order's customer, then that customer's
         # address)
         left_padded = chain and any(
-            pair.existing_datasource.identifier in extended
-            or pair.left.address
-            in child_padded.get(pair.existing_datasource.identifier, frozenset())
+            pair.node.identifier in extended
+            or pair.left.address in child_padded.get(pair.node.identifier, frozenset())
             for pair in pairs
         )
         right_padded = chain and any(

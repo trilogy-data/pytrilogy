@@ -14,7 +14,11 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import DataType
-from trilogy.core.models.execute import BaseJoin, ConceptPair, QueryDatasource
+from trilogy.core.models.execute import (
+    ConceptPair,
+    Join,
+    QueryDatasource,
+)
 from trilogy.core.processing.join_resolution import (
     JoinFacts,
     SideFacts,
@@ -179,15 +183,11 @@ def _extended_for(span: str) -> QueryDatasource:
     merged = _qds([span, ORDER], [ORDER], parents=[users, orders])
     merged.source_map = {span: {users}, ORDER: {orders}}
     merged.joins = [
-        BaseJoin(
-            left_datasource=users,
-            right_datasource=orders,
+        Join(
+            left=users,
+            right=orders,
             join_type=JoinType.LEFT_OUTER,
-            concept_pairs=[
-                ConceptPair(
-                    left=_concept(span), right=_concept(span), existing_datasource=users
-                )
-            ],
+            pairs=[ConceptPair(left=_concept(span), right=_concept(span), node=users)],
         )
     ]
     return merged
@@ -350,15 +350,15 @@ def test_complete_key_domain_is_an_unfiltered_scan_kept_whole():
     orders = _scan("orders", [USER, ORDER], partial=[USER])
     merged = _qds([USER, ORDER], [], parents=[orders, items])
     merged.joins = [
-        BaseJoin(
-            left_datasource=orders,
-            right_datasource=items,
+        Join(
+            left=orders,
+            right=items,
             join_type=JoinType.LEFT_OUTER,
-            concept_pairs=[
+            pairs=[
                 ConceptPair(
                     left=_concept(USER),
                     right=_concept(USER),
-                    existing_datasource=orders,
+                    node=orders,
                 )
             ],
         )
@@ -410,15 +410,15 @@ def test_guest_padded_addresses_walks_a_value_null_join_without_leaves():
     merged = _qds([USER, ORDER, attr], [USER, attr], parents=[sales, items])
     merged.source_map = {USER: {sales}, ORDER: {sales}, attr: {items}}
     merged.joins = [
-        BaseJoin(
-            left_datasource=sales,
-            right_datasource=items,
+        Join(
+            left=sales,
+            right=items,
             join_type=JoinType.LEFT_OUTER,
-            concept_pairs=[
+            pairs=[
                 ConceptPair(
                     left=_concept(USER),
                     right=_concept(USER),
-                    existing_datasource=sales,
+                    node=sales,
                 )
             ],
         )
@@ -444,25 +444,17 @@ def test_a_right_join_keyed_on_guest_padding_pads_no_left_input():
     )
     merged.source_map = {USER: {sales}, ORDER: {sales}, attr: {items, lookup}}
     merged.joins = [
-        BaseJoin(
-            left_datasource=sales,
-            right_datasource=items,
+        Join(
+            left=sales,
+            right=items,
             join_type=JoinType.LEFT_OUTER,
-            concept_pairs=[
-                ConceptPair(
-                    left=_concept(USER), right=_concept(USER), existing_datasource=sales
-                )
-            ],
+            pairs=[ConceptPair(left=_concept(USER), right=_concept(USER), node=sales)],
         ),
-        BaseJoin(
-            left_datasource=items,
-            right_datasource=lookup,
+        Join(
+            left=items,
+            right=lookup,
             join_type=JoinType.RIGHT_OUTER,
-            concept_pairs=[
-                ConceptPair(
-                    left=_concept(attr), right=_concept(attr), existing_datasource=items
-                )
-            ],
+            pairs=[ConceptPair(left=_concept(attr), right=_concept(attr), node=items)],
         ),
     ]
     assert guest_padded_addresses(merged) == set()

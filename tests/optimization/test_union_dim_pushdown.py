@@ -12,9 +12,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import (
     CTE,
-    BaseJoin,
     ConceptPair,
-    CTEConceptPair,
     Join,
     QueryDatasource,
     UnionCTE,
@@ -82,16 +80,10 @@ def _dim_consumer(
     dim_value: BuildConcept,
     condition: BuildComparison | None = None,
 ) -> CTE:
-    pair = ConceptPair(
+    cte_pair = ConceptPair(
         left=left_key,
         right=right_key,
-        existing_datasource=union.source,
-    )
-    cte_pair = CTEConceptPair(
-        left=left_key,
-        right=right_key,
-        existing_datasource=union.source,
-        cte=union,
+        node=union,
     )
     return CTE(
         name="consumer",
@@ -100,13 +92,7 @@ def _dim_consumer(
             output_concepts=[left_key, dim_value],
             datasources=[union.source, dim.source],
             grain=BuildGrain(),
-            joins=[
-                BaseJoin(
-                    right_datasource=dim.source,
-                    join_type=JoinType.INNER,
-                    concept_pairs=[pair],
-                )
-            ],
+            joins=[],
             source_map={
                 left_key.address: {union.source},
                 right_key.address: {union.source, dim.source},
@@ -125,10 +111,10 @@ def _dim_consumer(
         existence_source_map={},
         joins=[
             Join(
-                right_cte=dim,
-                jointype=JoinType.INNER,
-                left_cte=union,
-                joinkey_pairs=[cte_pair],
+                right=dim,
+                join_type=JoinType.INNER,
+                left=union,
+                pairs=[cte_pair],
             )
         ],
     )
@@ -162,7 +148,7 @@ def test_union_dim_pushdown_preflights_all_branches_before_mutating(
             ConceptPair(
                 left=category_id,
                 right=category_id,
-                existing_datasource=valid.source,
+                node=valid.source,
             )
         ],
         dim_concepts=[category_id, category_name],
@@ -171,7 +157,6 @@ def test_union_dim_pushdown_preflights_all_branches_before_mutating(
     )
 
     assert UnionDimPushdown()._apply(union, [consumer], descriptor) is False
-    assert valid.source.joins == []
     assert valid.joins == []
     assert valid.condition is None
     assert category_name.address not in valid.source_map
@@ -200,11 +185,10 @@ def test_union_dim_pushdown_strips_direct_consumer_when_safe(test_environment):
     optimized, _ = UnionDimPushdown().optimize(union, {union.name: [consumer]})
 
     assert optimized is True
-    assert all(branch.source.joins for branch in [branch1, branch2])
+    assert all(branch.joins for branch in [branch1, branch2])
     assert all(branch.condition == atom for branch in [branch1, branch2])
     assert category_name.address in {c.address for c in union.output_columns}
     assert consumer.condition is None
-    assert consumer.source.joins == []
     assert consumer.joins == []
 
 
@@ -235,7 +219,7 @@ def test_union_dim_pushdown_plain_target_moves_dim_and_strips(test_environment):
             ConceptPair(
                 left=category_id,
                 right=category_id,
-                existing_datasource=target.source,
+                node=target.source,
             )
         ],
         dim_concepts=[category_id, category_name],
@@ -244,10 +228,9 @@ def test_union_dim_pushdown_plain_target_moves_dim_and_strips(test_environment):
     )
 
     assert UnionDimPushdown()._apply_plain(target, [consumer], descriptor) is True
-    assert target.source.joins
+    assert target.joins
     assert target.condition == atom
     assert category_name.address in {c.address for c in target.output_columns}
-    assert consumer.source.joins == []
     assert consumer.joins == []
     assert consumer.condition is None
 
@@ -273,7 +256,7 @@ def test_union_dim_pushdown_plain_target_requires_strippable_filter(test_environ
             ConceptPair(
                 left=category_id,
                 right=category_id,
-                existing_datasource=target.source,
+                node=target.source,
             )
         ],
         dim_concepts=[category_id, category_name],
@@ -282,7 +265,7 @@ def test_union_dim_pushdown_plain_target_requires_strippable_filter(test_environ
     )
 
     assert UnionDimPushdown()._apply_plain(target, [consumer], descriptor) is False
-    assert target.source.joins == []
+    assert target.joins == []
 
 
 def test_union_dim_pushdown_coarsens_dead_fk_grain(test_environment):
@@ -312,7 +295,7 @@ def test_union_dim_pushdown_coarsens_dead_fk_grain(test_environment):
             ConceptPair(
                 left=category_id,
                 right=category_id,
-                existing_datasource=target.source,
+                node=target.source,
             )
         ],
         dim_concepts=[category_id, category_name],
@@ -348,7 +331,7 @@ def test_union_dim_pushdown_coarsen_keeps_fk_when_consumer_reads_it(test_environ
             ConceptPair(
                 left=category_id,
                 right=category_id,
-                existing_datasource=target.source,
+                node=target.source,
             )
         ],
         dim_concepts=[category_id, category_name],
@@ -381,7 +364,7 @@ def test_union_dim_pushdown_filter_only_requires_a_filter(test_environment):
             ConceptPair(
                 left=category_id,
                 right=category_id,
-                existing_datasource=branch1.source,
+                node=branch1.source,
             )
         ],
         dim_concepts=[category_id, category_name],
@@ -390,8 +373,8 @@ def test_union_dim_pushdown_filter_only_requires_a_filter(test_environment):
     )
 
     assert UnionDimPushdown()._apply(union, [consumer], descriptor) is False
-    assert branch1.source.joins == []
-    assert branch2.source.joins == []
+    assert branch1.joins == []
+    assert branch2.joins == []
 
 
 def test_union_dim_pushdown_uses_branch_binding_key_for_dim_source(
@@ -414,7 +397,7 @@ def test_union_dim_pushdown_uses_branch_binding_key_for_dim_source(
             ConceptPair(
                 left=category_id,
                 right=category_id,
-                existing_datasource=branch.source,
+                node=branch.source,
             )
         ],
         dim_concepts=[category_id, category_name],
@@ -450,7 +433,7 @@ def test_union_dim_pushdown_uses_inlined_binding_key_for_dim_source(
             ConceptPair(
                 left=category_id,
                 right=category_id,
-                existing_datasource=branch.source,
+                node=branch.source,
             )
         ],
         dim_concepts=[category_id, category_name],
@@ -531,15 +514,14 @@ def test_union_dim_pushdown_rejects_ambiguous_raw_datasource_binding(
     consumer.inlined_parents = [first_dim, second_dim]
     consumer.joins.append(
         Join(
-            right_cte=second_dim,
-            jointype=JoinType.INNER,
-            left_cte=union,
-            joinkey_pairs=[
-                CTEConceptPair(
+            right=second_dim,
+            join_type=JoinType.INNER,
+            left=union,
+            pairs=[
+                ConceptPair(
                     left=category_id,
                     right=category_id,
-                    existing_datasource=union.source,
-                    cte=union,
+                    node=union,
                 )
             ],
         )
@@ -646,7 +628,7 @@ def test_dim_cte_exposes_rejects_filter_derivative_of_dim(test_environment):
             ConceptPair(
                 left=category_id,
                 right=category_id,
-                existing_datasource=category,
+                node=category,
             )
         ],
         dim_concepts=[category_id, category_name],
@@ -735,7 +717,7 @@ def test_union_dim_pushdown_plain_refuses_dim_derived_from_the_target(
             ConceptPair(
                 left=category_id,
                 right=category_id,
-                existing_datasource=target.source,
+                node=target.source,
             )
         ],
         dim_concepts=[category_id],
@@ -744,7 +726,7 @@ def test_union_dim_pushdown_plain_refuses_dim_derived_from_the_target(
     )
 
     assert UnionDimPushdown()._apply_plain(target, [consumer], descriptor) is False
-    assert target.source.joins == []
+    assert target.joins == []
     assert target.parent_ctes == []
 
 
@@ -850,18 +832,17 @@ def _consumer_with_trailing_full(env, atom: BuildComparison) -> CTE:
     consumer = _dim_consumer(
         union, dim, category_id, category_id, env.concepts["category_name"], atom
     )
-    pair = CTEConceptPair(
+    pair = ConceptPair(
         left=category_id,
         right=category_id,
-        existing_datasource=union.source,
-        cte=union,
+        node=union,
     )
     consumer.joins.append(
         Join(
-            right_cte=other,
-            jointype=JoinType.FULL,
-            left_cte=union,
-            joinkey_pairs=[pair],
+            right=other,
+            join_type=JoinType.FULL,
+            left=union,
+            pairs=[pair],
         )
     )
     return consumer
@@ -878,7 +859,7 @@ def test_union_dim_pushdown_narrows_later_join_when_atoms_reject_null(
     )
     consumer = _consumer_with_trailing_full(env, atom)
     _narrow_null_extending_joins(consumer, "unioned", "category_dim", [atom])
-    assert consumer.joins[1].jointype == JoinType.LEFT_OUTER
+    assert consumer.joins[1].join_type == JoinType.LEFT_OUTER
 
 
 def test_union_dim_pushdown_keeps_later_join_when_atoms_accept_null(
@@ -892,9 +873,9 @@ def test_union_dim_pushdown_keeps_later_join_when_atoms_accept_null(
     )
     consumer = _consumer_with_trailing_full(env, atom)
     _narrow_null_extending_joins(consumer, "unioned", "category_dim", [atom])
-    assert consumer.joins[1].jointype == JoinType.FULL
+    assert consumer.joins[1].join_type == JoinType.FULL
     _narrow_null_extending_joins(consumer, "unioned", "category_dim", [])
-    assert consumer.joins[1].jointype == JoinType.FULL
+    assert consumer.joins[1].join_type == JoinType.FULL
     consumer.joins.reverse()
     _narrow_null_extending_joins(consumer, "unioned", "category_dim", [atom])
-    assert consumer.joins[0].jointype == JoinType.LEFT_OUTER
+    assert consumer.joins[0].join_type == JoinType.LEFT_OUTER

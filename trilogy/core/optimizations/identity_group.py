@@ -61,9 +61,9 @@ def _closure(keys: set[str], joins: list[Join]) -> set[str]:
     while changed:
         changed = False
         for join in joins:
-            if join.jointype != JoinType.INNER:
+            if join.join_type != JoinType.INNER:
                 continue
-            for pair in join.joinkey_pairs or []:
+            for pair in join.pairs or []:
                 ends = {pair.left.address, pair.right.address}
                 if ends & out and not ends <= out:
                     out |= ends
@@ -78,7 +78,7 @@ def rows_unique_at_group(cte: CTE) -> bool:
     if len(joins) != len(cte.joins):
         return False
     nodes = {b.node.name: b.node for b in cte.source_bindings() if b.node is not None}
-    rights = {j.right_cte.name for j in joins}
+    rights = {j.right.name for j in joins}
     bases = [node for name, node in nodes.items() if name not in rights]
     if len(bases) != 1 or len(rights) != len(joins):
         return False
@@ -87,12 +87,12 @@ def rows_unique_at_group(cte: CTE) -> bool:
     if base_key is None or not base_key <= keys:
         return False
     for join in joins:
-        if join.jointype not in _PRESERVING:
+        if join.join_type not in _PRESERVING:
             return False
-        right_key = unique_key(join.right_cte)
+        right_key = unique_key(join.right)
         if right_key is None:
             return False
-        joined_on = {pair.right.address for pair in join.joinkey_pairs or []}
+        joined_on = {pair.right.address for pair in join.pairs or []}
         if not (right_key <= joined_on or right_key <= keys):
             return False
     return True

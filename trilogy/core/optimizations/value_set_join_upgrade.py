@@ -276,13 +276,13 @@ def _null_extended_before(cte: CTE, target: Join, member: str) -> bool:
             break
         if not isinstance(j, Join):
             continue
-        left_names = {p.cte.name for p in j.joinkey_pairs or [] if p.cte is not None}
-        right_name = j.right_cte.name if j.right_cte is not None else None
-        if j.jointype is JoinType.LEFT_OUTER and right_name:
+        left_names = {p.node.name for p in j.pairs or [] if p.node is not None}
+        right_name = j.right.name if j.right is not None else None
+        if j.join_type is JoinType.LEFT_OUTER and right_name:
             extended.add(right_name)
-        elif j.jointype is JoinType.RIGHT_OUTER:
+        elif j.join_type is JoinType.RIGHT_OUTER:
             extended |= joined | left_names
-        elif j.jointype is JoinType.FULL:
+        elif j.join_type is JoinType.FULL:
             extended |= joined | left_names
             if right_name:
                 extended.add(right_name)
@@ -336,7 +336,7 @@ def _unshared_join_padding(pair, right_cte: CTE | UnionCTE) -> bool:
     ROLLUP grouping key) do not subset the non-null values and stay with the
     null-safe machinery."""
     padded = False
-    for concept, side in ((pair.left, pair.cte), (pair.right, right_cte)):
+    for concept, side in ((pair.left, pair.node), (pair.right, right_cte)):
         if (
             isinstance(side, CTE)
             and _key_nullable(concept, side)
@@ -347,8 +347,8 @@ def _unshared_join_padding(pair, right_cte: CTE | UnionCTE) -> bool:
         return False
     keys = pair.left.all_spellings | pair.right.all_spellings
     left_pad = (
-        padding_sources(pair.cte.source, keys, _identity)
-        if isinstance(pair.cte, CTE)
+        padding_sources(pair.node.source, keys, _identity)
+        if isinstance(pair.node, CTE)
         else set()
     )
     right_pad = (
@@ -703,42 +703,38 @@ def _provider_joins_preserve_rows(
         )
 
     for join in cte.joins:
-        if not isinstance(join, Join) or join.jointype != JoinType.INNER:
+        if not isinstance(join, Join) or join.join_type != JoinType.INNER:
             return False
-        if not join.joinkey_pairs:
+        if not join.pairs:
             return False
         if not all(
             (
-                _cte_contains_datasource(pair.cte, source)
+                _cte_contains_datasource(pair.node, source)
                 and _pair_side_fully_matches(
                     pair.left,
-                    pair.cte,
+                    pair.node,
                     pair.right,
-                    join.right_cte,
+                    join.right,
                     graph,
                     subset_join_map,
                     scoped_canonical,
                 )
-                or _cte_contains_datasource(pair.cte, source)
-                and complete_domain_match(
-                    pair.left, pair.cte, pair.right, join.right_cte
-                )
-                or _cte_contains_datasource(join.right_cte, source)
+                or _cte_contains_datasource(pair.node, source)
+                and complete_domain_match(pair.left, pair.node, pair.right, join.right)
+                or _cte_contains_datasource(join.right, source)
                 and _pair_side_fully_matches(
                     pair.right,
-                    join.right_cte,
+                    join.right,
                     pair.left,
-                    pair.cte,
+                    pair.node,
                     graph,
                     subset_join_map,
                     scoped_canonical,
                 )
-                or _cte_contains_datasource(join.right_cte, source)
-                and complete_domain_match(
-                    pair.right, join.right_cte, pair.left, pair.cte
-                )
+                or _cte_contains_datasource(join.right, source)
+                and complete_domain_match(pair.right, join.right, pair.left, pair.node)
             )
-            for pair in join.joinkey_pairs
+            for pair in join.pairs
             for source in provider_ids
         ):
             return False
@@ -780,15 +776,15 @@ def _relative_key_subset(
         return False
     return any(
         isinstance(join, Join)
-        and join.jointype == JoinType.INNER
+        and join.join_type == JoinType.INNER
         and any(
             pair.left.all_spellings & sub_concept.all_spellings
             and pair.right.all_spellings & sup_concept.all_spellings
             and (
-                _cte_contains_datasource(pair.cte, source)
-                or _cte_contains_datasource(join.right_cte, source)
+                _cte_contains_datasource(pair.node, source)
+                or _cte_contains_datasource(join.right, source)
             )
-            for pair in join.joinkey_pairs or []
+            for pair in join.pairs or []
             for source in provider_ids
         )
         for join in sub_cte.joins
@@ -877,11 +873,11 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
         for join in cte.joins or []:
             if not isinstance(join, Join):
                 continue
-            if join.jointype not in OUTER_JOIN_TYPES:
+            if join.join_type not in OUTER_JOIN_TYPES:
                 continue
-            if not join.joinkey_pairs:
+            if not join.pairs:
                 continue
-            right_cte = join.right_cte
+            right_cte = join.right
             # A grouping-set side's NULL subtotal keys are not in the other
             # side's value set, so no equivalence or subset proof about the
             # underlying rows licenses dropping them.
@@ -890,7 +886,7 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
             if self.full_join_keys and any(
                 pair.left.all_spellings & self.full_join_keys
                 or pair.right.all_spellings & self.full_join_keys
-                for pair in join.joinkey_pairs
+                for pair in join.pairs
             ):
                 # Rule B: the veto blocks the equivalence upgrade and the
                 # stamp heuristics, but a graph-proven subset direction still
@@ -917,13 +913,13 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
     def _upgrade_to_inner(
         self, cte: CTE, join: Join, right_cte: CTE | UnionCTE
     ) -> bool:
-        assert join.joinkey_pairs
+        assert join.pairs
 
         def pair_equal(pair) -> bool:
             equal_declared = self._pair_equal_declared(pair)
             if _pair_key_sets_equivalent(
                 pair.left,
-                pair.cte,
+                pair.node,
                 pair.right,
                 right_cte,
                 # Authoritative-scan completeness is only trusted for keys
@@ -938,30 +934,27 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                 return False
             graph = self.domain_graph
             return (
-                _complete_values(pair.left, pair.cte, graph)
+                _complete_values(pair.left, pair.node, graph)
                 and _complete_values(pair.right, right_cte, graph)
                 and _filters_equivalent(
-                    _accumulate_filter(pair.cte),
+                    _accumulate_filter(pair.node),
                     _accumulate_filter(right_cte),
                 )
             )
 
-        if not all(pair_equal(pair) for pair in join.joinkey_pairs):
+        if not all(pair_equal(pair) for pair in join.pairs):
             return False
         # A chain member null-extended by an earlier outer join carries rows
         # where its key is absent; equality never matches them, so this join's
         # preservation is load-bearing regardless of value-set equivalence.
-        if any(
-            _null_extended_before(cte, join, pair.cte.name)
-            for pair in join.joinkey_pairs
-        ):
+        if any(_null_extended_before(cte, join, pair.node.name) for pair in join.pairs):
             return False
         # A key nullable on a side but joined with plain ``=`` carries NULL
         # rows the equality never matches (a ROLLUP subtotal key); INNER
         # would silently drop them. A null-safe pair matches NULLs and is
         # safe. For an EQUAL-declared key both sides name one value space, so
         # the pair is made null-safe rather than refusing the upgrade.
-        for pair in join.joinkey_pairs:
+        for pair in join.pairs:
             # Null-safety pairs the NULL groups but says nothing about the
             # non-null values: a join-padded side carries a key image that
             # subsets the value space, so unless the padding shares
@@ -973,16 +966,16 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                 return False
             if pair.is_nullable:
                 continue
-            if _key_nullable(pair.left, pair.cte) or _key_nullable(
+            if _key_nullable(pair.left, pair.node) or _key_nullable(
                 pair.right, right_cte
             ):
                 if self._pair_equal_declared(pair):
                     pair.modifiers = list(pair.modifiers) + [Modifier.NULLABLE]
                 else:
                     return False
-        original = join.jointype
-        join.jointype = JoinType.INNER
-        left_name = join.joinkey_pairs[0].cte.name
+        original = join.join_type
+        join.join_type = JoinType.INNER
+        left_name = join.pairs[0].node.name
         self.log(
             f"{cte.name}: {original.value} → INNER on key-set equivalence "
             f"between {left_name} and {right_cte.name}"
@@ -1012,14 +1005,14 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
         chain carries rows where the sub side is absent, and the target
         join's preservation is load-bearing for exactly those rows
         (``_null_extended_before``)."""
-        assert join.joinkey_pairs
+        assert join.pairs
 
         def relative_right(pair) -> bool:
             return not graph_proof_only and _relative_key_subset(
                 pair.right,
                 right_cte,
                 pair.left,
-                pair.cte,
+                pair.node,
                 self.domain_graph,
                 self.subset_join_map,
                 self.scoped_canonical,
@@ -1028,7 +1021,7 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
         def relative_left(pair) -> bool:
             return not graph_proof_only and _relative_key_subset(
                 pair.left,
-                pair.cte,
+                pair.node,
                 pair.right,
                 right_cte,
                 self.domain_graph,
@@ -1043,7 +1036,7 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                         pair.right,
                         right_cte,
                         pair.left,
-                        pair.cte,
+                        pair.node,
                         self.domain_graph,
                         self.subset_join_map,
                         self.scoped_canonical,
@@ -1054,13 +1047,13 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                 and (
                     pair.is_nullable
                     and not _unpaired_guest_padding(
-                        pair.right, right_cte, pair.left, pair.cte
+                        pair.right, right_cte, pair.left, pair.node
                     )
                     or not _key_nullable(pair.right, right_cte)
                     or relative_right(pair)
-                    and not _key_nullable(pair.left, pair.cte)
+                    and not _key_nullable(pair.left, pair.node)
                 )
-                for pair in join.joinkey_pairs or []
+                for pair in join.pairs or []
             )
 
         def left_matches_right() -> bool:
@@ -1068,7 +1061,7 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                 (
                     _pair_side_fully_matches(
                         pair.left,
-                        pair.cte,
+                        pair.node,
                         pair.right,
                         right_cte,
                         self.domain_graph,
@@ -1081,34 +1074,34 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                 and (
                     pair.is_nullable
                     and not _unpaired_guest_padding(
-                        pair.left, pair.cte, pair.right, right_cte
+                        pair.left, pair.node, pair.right, right_cte
                     )
-                    or not _key_nullable(pair.left, pair.cte)
+                    or not _key_nullable(pair.left, pair.node)
                     or relative_left(pair)
                     and not _key_nullable(pair.right, right_cte)
                 )
-                and not _null_extended_before(cte, join, pair.cte.name)
-                for pair in join.joinkey_pairs or []
+                and not _null_extended_before(cte, join, pair.node.name)
+                for pair in join.pairs or []
             )
 
-        original = join.jointype
+        original = join.join_type
         target: JoinType | None = None
-        if join.jointype == JoinType.FULL:
+        if join.join_type == JoinType.FULL:
             if right_matches_left():
                 target = JoinType.LEFT_OUTER
             elif left_matches_right():
                 target = JoinType.RIGHT_OUTER
         elif (
-            join.jointype == JoinType.LEFT_OUTER
+            join.join_type == JoinType.LEFT_OUTER
             and left_matches_right()
-            or join.jointype == JoinType.RIGHT_OUTER
+            or join.join_type == JoinType.RIGHT_OUTER
             and right_matches_left()
         ):
             target = JoinType.INNER
         if target is None:
             return False
-        join.jointype = target
-        left_name = join.joinkey_pairs[0].cte.name
+        join.join_type = target
+        left_name = join.pairs[0].node.name
         self.log(
             f"{cte.name}: {original.value} → {target.value} on declared-subset "
             f"full-match between {left_name} and {right_cte.name}"

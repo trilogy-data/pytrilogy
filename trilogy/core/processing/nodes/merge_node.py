@@ -17,7 +17,12 @@ from trilogy.core.models.build import (
     nonstandard_grouping_lineage,
 )
 from trilogy.core.models.build_environment import BuildEnvironment, SpanScope
-from trilogy.core.models.execute import BaseJoin, QueryDatasource, UnnestJoin
+from trilogy.core.models.execute import (
+    Join,
+    QueryDatasource,
+    SourceJoin,
+    UnnestJoin,
+)
 from trilogy.core.processing.condition_utility import (
     condition_proves_non_null,
     decompose_condition,
@@ -76,7 +81,7 @@ def _has_applied_condition(source: QueryDatasource | BuildDatasource) -> bool:
 
 def _join_padded_addresses(
     source_map: dict[str, set[BuildDatasource | QueryDatasource | UnnestJoin]],
-    joins: list[BaseJoin | UnnestJoin],
+    joins: list[SourceJoin | UnnestJoin],
 ) -> frozenset[str]:
     """Addresses an outer join here leaves NULL on some row: every source of
     the address is padded, and no FULL join coalesces it as its key."""
@@ -85,7 +90,7 @@ def _join_padded_addresses(
     for join, left in left_deep_joins(joins):
         padded_ids |= padded_by(join, left)
         if join.join_type == JoinType.FULL:
-            for pair in join.concept_pairs or []:
+            for pair in join.pairs or []:
                 full_keys |= {pair.left.address, pair.right.address}
     if not padded_ids:
         return frozenset()
@@ -198,10 +203,17 @@ def deduplicate_nodes_and_joins(
             joins = [
                 j
                 for j in joins
-                if j.left_node.resolve().identifier not in removed
-                and j.right_node.resolve().identifier not in removed
+                if all(
+                    side.resolve().identifier not in removed
+                    for side in (j.left, j.right)
+                    if side is not None
+                )
             ]
     return joins, merged
+
+
+def _resolve_node(node: StrategyNode) -> BuildDatasource | QueryDatasource:
+    return node.resolve()
 
 
 class MergeNode(StrategyNode):
@@ -268,41 +280,33 @@ class MergeNode(StrategyNode):
         final_joins: list[NodeJoin] = []
         if self.node_joins is not None:
             for join in self.node_joins:
-                if join.left_node.resolve().name == join.right_node.resolve().name:
+                if (
+                    join.left is not None
+                    and join.left.resolve().name == join.right.resolve().name
+                ):
                     continue
                 final_joins.append(join)
             self.node_joins = final_joins
 
-    def translate_node_joins(self, node_joins: list[NodeJoin]) -> list[BaseJoin]:
-        joins = []
+    def translate_node_joins(self, node_joins: list[NodeJoin]) -> list[SourceJoin]:
+        joins: list[SourceJoin] = []
         for join in node_joins:
-            left = join.left_node.resolve()
-            right = join.right_node.resolve()
-            if left.identifier == right.identifier:
-                raise SyntaxError(f"Cannot join node {left.identifier} to itself")
+            bound = join.bind(_resolve_node)
             # generator-authored joins carry no null-safety analysis; compute it
             # here as inferred joins do, else a nullable join key drops its NULL
             # matches through the plain equality
-            modifiers = list(join.modifiers)
+            left, right = bound.left, bound.right
             if (
-                Modifier.NULLABLE not in modifiers
-                and join.concepts
+                Modifier.NULLABLE not in bound.modifiers
+                and bound.concepts
+                and left is not None
                 and all(
                     side_nullable(concept, left) and side_nullable(concept, right)
-                    for concept in join.concepts
+                    for concept in bound.concepts
                 )
             ):
-                modifiers.append(Modifier.NULLABLE)
-            joins.append(
-                BaseJoin(
-                    left_datasource=left,
-                    right_datasource=right,
-                    join_type=join.join_type,
-                    concepts=join.concepts,
-                    concept_pairs=join.concept_pairs,
-                    modifiers=modifiers,
-                )
-            )
+                bound.modifiers = [*bound.modifiers, Modifier.NULLABLE]
+            joins.append(bound)
         return joins
 
     def create_full_joins(self, dataset_list: list[QueryDatasource | BuildDatasource]):
@@ -315,9 +319,9 @@ class MergeNode(StrategyNode):
                 if left_value.identifier in seen and right_value.identifier in seen:
                     continue
                 joins.append(
-                    BaseJoin(
-                        left_datasource=left_value,
-                        right_datasource=right_value,
+                    Join(
+                        left=left_value,
+                        right=right_value,
                         join_type=JoinType.FULL,
                         concepts=[],
                     )
@@ -333,7 +337,7 @@ class MergeNode(StrategyNode):
         pregrain: BuildGrain,
         grain: BuildGrain,
         environment: BuildEnvironment,
-    ) -> list[BaseJoin | UnnestJoin]:
+    ) -> list[SourceJoin | UnnestJoin]:
         dataset_list: list[QueryDatasource | BuildDatasource] = sorted(
             final_datasets,
             key=lambda x: (-len(x.grain.components), x.identifier),
@@ -413,7 +417,7 @@ class MergeNode(StrategyNode):
             return []
         if self.force_join_type is not None:
             for j in joins:
-                if isinstance(j, BaseJoin):
+                if isinstance(j, Join):
                     j.join_type = self.force_join_type
         return joins
 
@@ -548,7 +552,7 @@ class MergeNode(StrategyNode):
         pregrain: BuildGrain,
         grain: BuildGrain,
         join_candidates: list[QueryDatasource | BuildDatasource],
-        joins: list[BaseJoin | UnnestJoin],
+        joins: list[SourceJoin | UnnestJoin],
         final_datasets: list[QueryDatasource | BuildDatasource],
     ) -> tuple[bool | None, bool]:
         """Whether the joined rows regroup to `grain` (None: the parents'
@@ -769,7 +773,7 @@ class MergeNode(StrategyNode):
         zero_filled = self._zero_filled_counts()
         join_proofs = self._join_proofs(final_datasets, zero_filled)
         if len(join_candidates) > 1:
-            joins: list[BaseJoin | UnnestJoin] = self.generate_joins(
+            joins: list[SourceJoin | UnnestJoin] = self.generate_joins(
                 join_candidates, final_joins, raw_pregrain, grain, self.environment
             )
         else:
@@ -792,7 +796,7 @@ class MergeNode(StrategyNode):
         # ordering above suffices.
         full_join_concepts = []
         for join in joins:
-            if isinstance(join, BaseJoin) and join.join_type == JoinType.FULL:
+            if isinstance(join, Join) and join.join_type == JoinType.FULL:
                 full_join_concepts += join.input_concepts
         joined = calculate_joined_pregrain(
             join_candidates, joins, grain, self.environment
@@ -813,7 +817,7 @@ class MergeNode(StrategyNode):
             pregrain, grain, join_candidates, joins, final_datasets
         )
 
-        qd_joins: list[BaseJoin | UnnestJoin] = [*joins]
+        qd_joins: list[SourceJoin | UnnestJoin] = [*joins]
 
         # Preserved sides first: first-wins inside ``resolve_concept_map`` then
         # picks the non-NULL source for a shared concept. Existence-only sources
@@ -850,10 +854,10 @@ class MergeNode(StrategyNode):
         outer_pairs: list[tuple[str, str]] = [
             (pair.left.address, pair.right.address)
             for join in joins
-            if isinstance(join, BaseJoin)
+            if isinstance(join, Join)
             and join.join_type
             in (JoinType.LEFT_OUTER, JoinType.RIGHT_OUTER, JoinType.FULL)
-            for pair in join.concept_pairs or []
+            for pair in join.pairs or []
             if pair.left.address != pair.right.address
         ]
         # A chained authored group (a=b=c) can reach this node with one pairing

@@ -57,7 +57,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment, SpanScope
 from trilogy.core.models.core import arg_to_datatype
-from trilogy.core.models.execute import BaseJoin
+from trilogy.core.models.execute import Join
 from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing import plan_trace
 from trilogy.core.processing.aggregate_rollup import _is_additive_aggregate
@@ -1707,12 +1707,7 @@ def _elide_passthrough_tree(
     if isinstance(node, MergeNode) and node.node_joins:
         swap = {id(old): new for old, new in zip(original, node.parents)}
         node.node_joins = [
-            dc_replace(
-                join,
-                left_node=swap.get(id(join.left_node), join.left_node),
-                right_node=swap.get(id(join.right_node), join.right_node),
-            )
-            for join in node.node_joins
+            join.bind(lambda n: swap.get(id(n), n)) for join in node.node_joins
         ]
     # a resolution stays valid while every parent is the same, still-resolved node
     if any(
@@ -2132,15 +2127,15 @@ def _subtree_pinned_addresses(
         # side as extended (a superset of the true accumulation: safe).
         implicit_left_rights: list[str] = []
         for join in node.resolve().joins:
-            if not isinstance(join, BaseJoin):
+            if not isinstance(join, Join):
                 continue
             if join.join_type in (JoinType.LEFT_OUTER, JoinType.FULL):
-                extended.add(join.right_datasource.identifier)
+                extended.add(join.right.identifier)
             if join.join_type in (JoinType.RIGHT_OUTER, JoinType.FULL):
-                if join.left_datasource is None:
-                    implicit_left_rights.append(join.right_datasource.identifier)
+                if join.left is None:
+                    implicit_left_rights.append(join.right.identifier)
                 else:
-                    extended.add(join.left_datasource.identifier)
+                    extended.add(join.left.identifier)
         child_pins: list[set[str]] = []
         child_outputs: list[set[str]] = []
         for parent in node.parents:
@@ -4174,7 +4169,11 @@ def _with_null_members(
                     left=key, right=MagicConstants.NULL, operator=ComparisonOperator.IS
                 ),
             )
-            joins.append(NodeJoin(node, member, [key], JoinType.FULL))
+            joins.append(
+                NodeJoin(
+                    right=member, join_type=JoinType.FULL, left=node, concepts=[key]
+                )
+            )
             parents.append(member)
     if len(parents) == 1:
         return node
@@ -5214,6 +5213,20 @@ def _apply_final_conditions(
     )
 
 
+def _gate_key_row_stream(
+    key: BuildConcept, attrs: dict[str, GroupAttrs], built: dict[str, StrategyNode]
+) -> str | None:
+    """The row stream computing a gate's derived key: a BASIC group, never the
+    gate's own feeder (which carries the key too). The select phase's first."""
+    hosts = sorted(
+        (gid.startswith("grp:[@"), gid)
+        for gid, node in built.items()
+        if attrs[gid].derivation == Derivation.BASIC
+        and any(o.address == key.address for o in node.output_concepts)
+    )
+    return hosts[0][1] if hosts else None
+
+
 def _assemble_final_node(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -5551,6 +5564,19 @@ def _assemble_final_node(
         and (c := _concept_at(environment, span)) is not None
     ]
     outputs = unique(outputs + axis_mates + region_keys, "address")
+    # A gate keyed by a column no contributor projects (`count(id) by genus`,
+    # genus derived from a scanned column) pairs on that key, as in
+    # `_apply_final_conditions`: carried hidden, or the merge joins on nothing.
+    if arg_nodes and (gate_keys := _gate_grain_keys(arg_concepts) - available):
+        _widen_merge_join_keys([*parents, *arg_nodes], environment, gate_keys)
+        # one no contributor can render (a key pinned to columns its rows
+        # lack) is joined in from the row stream computing it
+        carried = {o.address for p in parents for o in p.output_concepts}
+        for address in sorted(gate_keys - carried):
+            key = _concept_at(environment, address)
+            host = key and _gate_key_row_stream(key, attrs, built)
+            if host and built[host] not in parents:
+                parents = parents + [built[host]]
     parents = parents + arg_nodes
     merge_inputs = unique(
         [c for c in outputs if c.address not in pseudonym_only]

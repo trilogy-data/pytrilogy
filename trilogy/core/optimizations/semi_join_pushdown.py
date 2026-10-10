@@ -196,18 +196,18 @@ class PushSemiJoinIntoAggregate(OptimizationRule):
         changed = False
         inlined = {p.name for p in cte.inlined_parents}
         for join in cte.joins:
-            if not isinstance(join, Join) or join.jointype != JoinType.INNER:
+            if not isinstance(join, Join) or join.join_type != JoinType.INNER:
                 continue
-            if not join.joinkey_pairs or join.has_predicate:
+            if not join.pairs or join.has_predicate:
                 continue
-            if join.left_is_local:
+            if join.left_local is not None:
                 continue
             # Each pair names the node its LEFT key reads from; a feeder has to
             # be one relation, and one this consumer actually renders as a CTE.
-            sources = {pair.cte.name for pair in join.joinkey_pairs}
+            sources = {pair.node.name for pair in join.pairs}
             if len(sources) != 1:
                 continue
-            restrictor = join.joinkey_pairs[0].cte
+            restrictor = join.pairs[0].node
             if restrictor.name in inlined or restrictor.name == cte.name:
                 # An inlined datasource has no CTE to select from; the feeder
                 # would have to be synthesized as a subquery over the raw table
@@ -215,7 +215,7 @@ class PushSemiJoinIntoAggregate(OptimizationRule):
                 continue
             if not any(p.name == restrictor.name for p in cte.dependency_nodes()):
                 continue
-            if self._apply(cte, join.right_cte, restrictor, join, inverse_map):
+            if self._apply(cte, join.right, restrictor, join, inverse_map):
                 changed = True
         return changed, None
 
@@ -250,7 +250,7 @@ class PushSemiJoinIntoAggregate(OptimizationRule):
 
         keys: list[BuildConcept] = []
         members: list[BuildConcept] = []
-        for pair in join.joinkey_pairs or []:
+        for pair in join.pairs or []:
             # Pair sides are (left=restrictor, right=aggregate) by construction,
             # but both must be genuinely exposed to render.
             local = exposed_key(aggregate, pair.right)

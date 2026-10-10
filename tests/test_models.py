@@ -31,8 +31,7 @@ from trilogy.core.models.datasource import Address
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import (
     CTE,
-    BaseJoin,
-    CTEConceptPair,
+    ConceptPair,
     Join,
     QueryDatasource,
 )
@@ -186,9 +185,9 @@ def test_base_join(test_environment: Environment):
     exc: SyntaxError | None = None
     test_environment = test_environment.materialize_for_select()
     try:
-        BaseJoin(
-            left_datasource=test_environment.datasources["revenue"],
-            right_datasource=test_environment.datasources["revenue"],
+        Join(
+            left=test_environment.datasources["revenue"],
+            right=test_environment.datasources["revenue"],
             concepts=[test_environment.concepts["product_id"]],
             join_type=JoinType.RIGHT_OUTER,
         )
@@ -196,9 +195,9 @@ def test_base_join(test_environment: Environment):
         exc = exc2
     assert isinstance(exc, SyntaxError)
 
-    x = BaseJoin(
-        left_datasource=test_environment.datasources["revenue"],
-        right_datasource=test_environment.datasources["products"],
+    x = Join(
+        left=test_environment.datasources["revenue"],
+        right=test_environment.datasources["products"],
         concepts=[
             test_environment.concepts["product_id"],
             # test_environment.concepts["category_name"],
@@ -270,13 +269,10 @@ def test_join(test_environment: Environment):
         source_map={c.address: [datasource.identifier] for c in outputs},
     )
     test = Join(
-        left_cte=a,
-        right_cte=b,
-        joinkey_pairs=[
-            CTEConceptPair(left=x, right=x, existing_datasource=a.source, cte=a)
-            for x in outputs
-        ],
-        jointype=JoinType.RIGHT_OUTER,
+        left=a,
+        right=b,
+        pairs=[ConceptPair(left=x, right=x, node=a) for x in outputs],
+        join_type=JoinType.RIGHT_OUTER,
     )
 
     assert (

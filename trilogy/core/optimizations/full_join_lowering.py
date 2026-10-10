@@ -38,12 +38,12 @@ from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.build import BuildConcept, BuildGrain
 from trilogy.core.models.execute import (
     CTE,
-    CTEConceptPair,
+    ConceptPair,
     DatasourceCTE,
-    InstantiatedUnnestJoin,
     Join,
     QueryDatasource,
     UnionCTE,
+    UnnestJoin,
 )
 from trilogy.core.optimizations.base_optimization import optimization_log
 from trilogy.core.optimizations.null_safe_join import proven_non_null
@@ -91,13 +91,13 @@ def _full_joins(cte: CTE) -> list[Join]:
     return [
         join
         for join in cte.joins
-        if isinstance(join, Join) and join.jointype == JoinType.FULL
+        if isinstance(join, Join) and join.join_type == JoinType.FULL
     ]
 
 
 def _slots(join: Join) -> list[BuildConcept]:
     """The spine's key columns, taken from the first FULL join's left concepts."""
-    return [pair.left for pair in join.joinkey_pairs or []]
+    return [pair.left for pair in join.pairs or []]
 
 
 def _refuse_repeated_keys(lefts: list[BuildConcept], cte_name: str) -> None:
@@ -117,11 +117,11 @@ def _refuse_repeated_keys(lefts: list[BuildConcept], cte_name: str) -> None:
 
 def _pairs_by_slot(
     join: Join, slots: list[BuildConcept], cte_name: str
-) -> list[CTEConceptPair]:
+) -> list[ConceptPair]:
     """Order ``join``'s key pairs to line up with ``slots``, keyed on the left
     concept address. Every FULL join in a CTE must cover exactly the same left
     key addresses for one shared spine to serve them all."""
-    pairs = join.joinkey_pairs or []
+    pairs = join.pairs or []
     _refuse_repeated_keys([pair.left for pair in pairs], cte_name)
     by_address = {pair.left.address: pair for pair in pairs}
     if set(by_address) != {s.address for s in slots}:
@@ -138,10 +138,10 @@ def _pairs_by_slot(
 
 def _validate(cte: CTE, joins: list[Join]) -> None:
     for join in joins:
-        if not join.joinkey_pairs:
+        if not join.pairs:
             raise _unsupported(
                 f"Cannot lower the keyless FULL JOIN between {cte.base_alias} and "
-                f"{join.right_cte.name} in {cte.name}: with no join key there is "
+                f"{join.right.name} in {cte.name}: with no join key there is "
                 "no spine to build, and neither side is a single-row aggregate "
                 "that would make it a plain cross join.",
                 "give the two sides a shared key to join on, or aggregate one of "
@@ -149,7 +149,7 @@ def _validate(cte: CTE, joins: list[Join]) -> None:
             )
         if join.guard:
             raise _unsupported(
-                f"Cannot lower the FULL JOIN to {join.right_cte.name} in "
+                f"Cannot lower the FULL JOIN to {join.right.name} in "
                 f"{cte.name}: a row padded for a `~` region has a NULL key "
                 "there by absence, and the join keeps it from pairing with a "
                 "NULL group that is a value. A key spine folds both NULLs into "
@@ -159,7 +159,7 @@ def _validate(cte: CTE, joins: list[Join]) -> None:
             )
         if join.condition is not None:
             raise _unsupported(
-                f"Cannot lower the FULL JOIN to {join.right_cte.name} in "
+                f"Cannot lower the FULL JOIN to {join.right.name} in "
                 f"{cte.name}: it carries an extra ON predicate, which changes "
                 "which rows match and cannot be reproduced by a key spine.",
                 "move the extra predicate into a `where` so the join matches on "
@@ -205,10 +205,10 @@ def _spine_participants(
 
     for join in joins:
         ordered = _pairs_by_slot(join, slots, cte.name)
-        left_nodes = {pair.cte.name for pair in ordered}
+        left_nodes = {pair.node.name for pair in ordered}
         if len(left_nodes) != 1:
             raise _unsupported(
-                f"Cannot lower the FULL JOIN to {join.right_cte.name} in "
+                f"Cannot lower the FULL JOIN to {join.right.name} in "
                 f"{cte.name}: its key pairs read the left side from more than "
                 f"one relation ({sorted(left_nodes)}), so there is no single "
                 "relation for the spine to replace.",
@@ -218,10 +218,10 @@ def _spine_participants(
         # Resolve to the consumer's own instance: a folded parent lives on
         # ``inlined_parents``, and only that instance carries the datasource
         # the spine arm has to read from.
-        record(Join.authoritative(cte, ordered[0].cte), [pair.left for pair in ordered])
         record(
-            Join.authoritative(cte, join.right_cte), [pair.right for pair in ordered]
+            Join.authoritative(cte, ordered[0].node), [pair.left for pair in ordered]
         )
+        record(Join.authoritative(cte, join.right), [pair.right for pair in ordered])
 
     if not any(
         render_alias(cte, node) == cte.base_alias for node, _ in providers.values()
@@ -412,15 +412,14 @@ def _lower_cte(cte: CTE, index: int) -> UnionCTE | None:
     spine = _build_spine(f"_spine_{index}_{cte.name}", slots, participants, inlined)
     spine_joins: list[Join] = [
         Join(
-            right_cte=node,
-            jointype=JoinType.LEFT_OUTER,
-            left_cte=spine,
-            joinkey_pairs=[
-                CTEConceptPair(
+            right=node,
+            join_type=JoinType.LEFT_OUTER,
+            left=spine,
+            pairs=[
+                ConceptPair(
                     left=slot,
                     right=concept,
-                    existing_datasource=node.source,
-                    cte=spine,
+                    node=spine,
                     modifiers=[Modifier.NULLABLE] if is_nullable else [],
                 )
                 for slot, concept, is_nullable in zip(slots, concepts, nullable)
@@ -431,7 +430,7 @@ def _lower_cte(cte: CTE, index: int) -> UnionCTE | None:
 
     # Spine joins lead: every other join in the chain reads a participant's
     # alias, which now only exists once that participant has been joined on.
-    remaining: list[Join | InstantiatedUnnestJoin] = [
+    remaining: list[Join | UnnestJoin] = [
         join for join in cte.joins if join not in joins
     ]
     cte.joins = [*spine_joins, *remaining]

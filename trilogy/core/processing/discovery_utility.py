@@ -86,9 +86,9 @@ def calculate_effective_parent_grain(
             if isinstance(join, UnnestJoin):
                 grain += BuildGrain(components={x.address for x in join.concepts})
                 continue
-            pairs = join.concept_pairs or []
+            pairs = join.pairs or []
             for key in pairs:
-                left = key.existing_datasource
+                left = key.node
                 logger.debug(f"adding left grain {left.grain} for join key {key.left}")
                 grain += left.grain
                 seen.add(left.name)
@@ -97,16 +97,16 @@ def calculate_effective_parent_grain(
             # a FULL/RIGHT keeps the right side's unmatched rows, so its grain
             # is part of the stream's even when the join is keyed on it
             if (
-                join_grain == join.right_datasource.grain
+                join_grain == join.right.grain
                 and join.join_type not in PADS_LEFT_JOIN_TYPES
             ):
                 logger.debug(f"irrelevant right join {join}, does not change grain")
             else:
                 logger.debug(
-                    f"join changes grain, adding {join.right_datasource.grain} to {grain}"
+                    f"join changes grain, adding {join.right.grain} to {grain}"
                 )
-                grain += join.right_datasource.grain
-            seen.add(join.right_datasource.name)
+                grain += join.right.grain
+            seen.add(join.right.name)
         for x in qds.datasources:
             # an unjoined source still contributes grain unless it is used only
             # in a subselect; the existence check is a proxy for that

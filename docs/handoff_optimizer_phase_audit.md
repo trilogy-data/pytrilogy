@@ -23,8 +23,7 @@ condition was tested for scalarity without the parent's materialized
 columns, so it read as non-scalar and blocked the rest. It is parent-relative
 now, like the candidate check; q04 settles on pass 2.
 
-Guarded by `tests/optimization/test_optimizer_fixpoint.py`. The
-Join/BaseJoin item below is still open.
+Guarded by `tests/optimization/test_optimizer_fixpoint.py`.
 
 Why: the existence fold (`optimizations/existence_having_fold.py`) needed three
 re-fires wired by hand (`predicate_pushdown`, `union_dim_pushdown`,
@@ -91,34 +90,15 @@ list), `test_thirty_one` is the q31 size budget above, and
 3. Keep the audit as a CI check instead of a fix: the second-pass corpus diff
    takes 30s and names the phase.
 
-## Join vs BaseJoin
+## Open: the CTE's FROM model lives on its QueryDatasource
 
-Each CTE carries its joins twice: `cte.joins` (`Join`, rendered) and
-`cte.source.joins` (`BaseJoin`, from the QueryDatasource). After CTE build,
-the dialects read only `Join`. `BaseJoin` is still read by `join_hoist`,
-`join_upgrade` (its `base_join_only` pass), `merge_irrelevant_group_by`,
-`predicate_pushdown` (outer-join check), `union_dim_pushdown` and
-`reuse_parent_lookup`, and written by `join_hoist`, `join_upgrade`,
-`union_dim_pushdown`, `reuse_parent_lookup` and the existence fold.
-
-Measured over the corpus after optimization: of 614 `Join`s, 52 disagree in
-type with their `BaseJoin`, and **all 52 have the BaseJoin wider** (FULL/RIGHT
-where the render is INNER/LEFT): Join-level upgrades never update the
-BaseJoin. That direction only makes BaseJoin readers more cautious (missed
-optimizations, never wrong rows); the existence fold's union pushdown was one
-such miss. Narrowing every stale BaseJoin to INNER whenever its Join is INNER,
-before every phase, fired on 10 BaseJoins over four TPC-DS queries and moved
-**0** corpus plans: no current cost.
-
-Rationalizing, cheapest first:
-
-- Have the BaseJoin readers ask the rendered `Join` for the type (one helper,
-  "join type of this CTE onto datasource X"), so a stale copy cannot be read.
-  Six call sites; the matching is by datasource identifier through the
-  QueryDatasource's `base_datasource`, as in `existence_having_fold`.
-- Or drop `source.joins` after CTE build. `join_hoist` and
-  `union_dim_pushdown` construct BaseJoins to then derive Joins, so this is a
-  real refactor, not a cleanup.
-
-Not done: the matching heuristic above is loose (29 Joins with no BaseJoin, 28
-BaseJoins with no Join, mostly CTE-to-CTE joins that never had one).
+Optimizer rules write `cte.source.datasources` / `source_map` /
+`input_concepts`. Deleting those writes in `join_hoist` breaks q35 and q69
+with `INVALID_ALIAS`: after build, the QueryDatasource is the CTE's FROM
+model. `base_datasource` picks the FROM table (`source_address`,
+`base_alias`, `quote_address`), `CTE.get_alias` falls back to
+`self.source.get_alias` for a raw or inlined table's columns, and
+`inline_parent_datasource` rewrites it deliberately so later rules see a
+direct scan. Removing it means giving the CTE its own FROM model
+(base table + inlined tables + parents as bindings) and moving the render
+lookup onto it: a redesign of the render path, not a cleanup.

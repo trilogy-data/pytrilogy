@@ -31,8 +31,8 @@ def test_same_join_fails(test_environment: Environment, test_environment_graph):
             parents=[],
             node_joins=[
                 NodeJoin(
-                    left_node=x,
-                    right_node=x,
+                    left=x,
+                    right=x,
                     concepts=[test_environment.concepts["constant_one"]],
                     join_type=JoinType.INNER,
                 )

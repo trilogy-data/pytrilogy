@@ -160,8 +160,8 @@ class SimplifyNullSafeJoins(OptimizationRule):
         for join in cte.joins or []:
             if (
                 not isinstance(join, Join)
-                or join.jointype != JoinType.INNER
-                or not join.joinkey_pairs
+                or join.join_type != JoinType.INNER
+                or not join.pairs
             ):
                 continue
             if local_proofs is None:
@@ -171,12 +171,12 @@ class SimplifyNullSafeJoins(OptimizationRule):
                     else set()
                 )
             all_pairs_safe = True
-            for pair in join.joinkey_pairs:
+            for pair in join.pairs:
                 safe = (
                     not pair.left.equivalent_addresses.isdisjoint(local_proofs)
                     or not pair.right.equivalent_addresses.isdisjoint(local_proofs)
-                    or proven_non_null(pair.left, pair.cte)
-                    or proven_non_null(pair.right, join.right_cte)
+                    or proven_non_null(pair.left, pair.node)
+                    or proven_non_null(pair.right, join.right)
                 )
                 all_pairs_safe = all_pairs_safe and safe
                 if safe and Modifier.NULLABLE in pair.modifiers:
@@ -188,7 +188,7 @@ class SimplifyNullSafeJoins(OptimizationRule):
                 join.modifiers = [m for m in join.modifiers if m != Modifier.NULLABLE]
                 changed = True
                 self.log(
-                    f"{cte.name}: join with {join.right_cte.name} keys provably "
+                    f"{cte.name}: join with {join.right.name} keys provably "
                     "non-null; using = instead of IS NOT DISTINCT FROM"
                 )
         return changed, None

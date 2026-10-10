@@ -74,16 +74,16 @@ def extra_align_joins(
                     ConceptPair(
                         left=c,
                         right=c,
-                        existing_datasource=prior.resolve(),
+                        node=prior,
                         modifiers=[Modifier.NULLABLE],
                     )
                 )
         output.append(
             NodeJoin(
-                left_node=anchor,
-                right_node=right,
+                left=anchor,
+                right=right,
                 concepts=right_concepts,
-                concept_pairs=concept_pairs or None,
+                pairs=concept_pairs,
                 join_type=JoinType.FULL,
                 modifiers=[Modifier.NULLABLE],
             )

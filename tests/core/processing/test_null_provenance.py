@@ -3,7 +3,11 @@
 
 from tests.core.processing.test_join_padding_provenance import _concept, _qds
 from trilogy.core.enums import JoinType
-from trilogy.core.models.execute import BaseJoin, ConceptPair, QueryDatasource
+from trilogy.core.models.execute import (
+    ConceptPair,
+    Join,
+    QueryDatasource,
+)
 from trilogy.core.processing import null_provenance
 from trilogy.core.processing.null_provenance import (
     ProvenanceMemo,
@@ -23,15 +27,11 @@ def _padded_merge() -> QueryDatasource:
     merged = _qds([KEY, VALUE], [KEY, VALUE], parents=[left, right])
     merged.source_map = {KEY: {left, right}, VALUE: {right}}
     merged.joins = [
-        BaseJoin(
-            left_datasource=left,
-            right_datasource=right,
+        Join(
+            left=left,
+            right=right,
             join_type=JoinType.LEFT_OUTER,
-            concept_pairs=[
-                ConceptPair(
-                    left=_concept(KEY), right=_concept(KEY), existing_datasource=left
-                )
-            ],
+            pairs=[ConceptPair(left=_concept(KEY), right=_concept(KEY), node=left)],
         )
     ]
     return merged

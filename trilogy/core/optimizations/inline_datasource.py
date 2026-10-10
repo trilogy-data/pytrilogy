@@ -8,10 +8,10 @@ from trilogy.core.models.datasource import RawColumnExpr
 from trilogy.core.models.execute import (
     CTE,
     DatasourceCTE,
-    InstantiatedUnnestJoin,
     Join,
     RecursiveCTE,
     UnionCTE,
+    UnnestJoin,
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import (
@@ -94,11 +94,7 @@ def _consumer_scope_names(cte: CTE, parent: DatasourceCTE) -> set[str]:
                 for c in source.datasource.columns
                 if isinstance(c.alias, str)
             }
-    names |= {
-        join.alias.lower()
-        for join in cte.joins
-        if isinstance(join, InstantiatedUnnestJoin)
-    }
+    names |= {join.alias.lower() for join in cte.joins if isinstance(join, UnnestJoin)}
     return names
 
 
@@ -137,15 +133,15 @@ def _raw_columns_inline_safely(
             return False
     joins = [join for join in cte.joins if isinstance(join, Join)]
     if len(joins) != len(cte.joins) or any(
-        join.jointype in (JoinType.FULL, JoinType.RIGHT_OUTER) for join in joins
+        join.join_type in (JoinType.FULL, JoinType.RIGHT_OUTER) for join in joins
     ):
         return False
     if cte.base_name == parent.name:
         return True
     return all(
-        join.jointype == JoinType.INNER
+        join.join_type == JoinType.INNER
         for join in joins
-        if join.right_cte.name == parent.name
+        if join.right.name == parent.name
     )
 
 
@@ -165,7 +161,8 @@ def _can_inline_filtered_parent(
     if any(c.address not in columns for c in parent.condition.row_arguments):
         return False
     return all(
-        isinstance(join, Join) and join.jointype == JoinType.INNER for join in cte.joins
+        isinstance(join, Join) and join.join_type == JoinType.INNER
+        for join in cte.joins
     )
 
 
@@ -226,18 +223,18 @@ def _rename_fold_plan(
 def _join_key_demand(cte: CTE, parent_name: str) -> set[str]:
     """Addresses the consumer renders from ``parent_name`` as a join key.
 
-    Join legs resolve their column through ``CTEConceptPair.cte`` /
-    ``Join.right_cte``, never through ``source_map``, so a key can be demanded
+    Join legs resolve their column through ``ConceptPair.node`` /
+    ``Join.right``, never through ``source_map``, so a key can be demanded
     from a parent the source_map does not attribute it to (the synthesized
     ``__preql_internal.all_rows`` broadcast constant is the common case)."""
     demand: set[str] = set()
     for join in cte.joins:
         if not isinstance(join, Join):
             continue
-        for pair in join.joinkey_pairs or []:
-            if pair.cte is not None and pair.cte.name == parent_name:
+        for pair in join.pairs or []:
+            if pair.node is not None and pair.node.name == parent_name:
                 demand.add(pair.left.address)
-            if join.right_cte.name == parent_name:
+            if join.right.name == parent_name:
                 demand.add(pair.right.address)
     return demand
 

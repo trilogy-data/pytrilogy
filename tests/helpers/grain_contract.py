@@ -96,12 +96,12 @@ def cte_true_grain(
     # A joined side that is already unique per its keys contributes no
     # multiplicity, so it does not widen what this CTE emits.
     for join in cte.joins or []:
-        if not isinstance(join, Join) or not join.joinkey_pairs:
+        if not isinstance(join, Join) or not join.pairs:
             continue
-        right = join.right_cte
+        right = join.right
         if not isinstance(right, (CTE, UnionCTE)) or right.name == base.name:
             continue
-        keys = {pair.right.address for pair in join.joinkey_pairs}
+        keys = {pair.right.address for pair in join.pairs}
         right_grain = cte_true_grain(right, environment, seen)
         if not unique_per(right_grain, keys, environment):
             emitted |= right_grain
@@ -135,14 +135,14 @@ def find_fanout_joins(
             continue
         base = _driving(cte)
         for join in cte.joins or []:
-            if not isinstance(join, Join) or not join.joinkey_pairs:
+            if not isinstance(join, Join) or not join.pairs:
                 continue
-            right = join.right_cte
+            right = join.right
             if not isinstance(right, (CTE, UnionCTE)):
                 continue
             if base is not None and right.name == base.name:
                 continue
-            keys = {pair.right.address for pair in join.joinkey_pairs}
+            keys = {pair.right.address for pair in join.pairs}
             true_grain = cte_true_grain(right, environment)
             if true_grain and not unique_per(true_grain, keys, environment):
                 violations.append(

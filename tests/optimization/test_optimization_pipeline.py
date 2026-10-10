@@ -115,7 +115,7 @@ def test_pipeline_marks_predicate_refire_dependency_on_union_dim_pushdown():
     by_name = {phase.name: phase for phase in plan}
     assert list(by_name) == [
         "predicate_pushdown.initial",
-        "upgrade_join_on_guards.base_join_only",
+        "upgrade_join_on_guards.early",
         "union_dim_pushdown",
         "predicate_pushdown.after_union_dim",
         "predicate_pushdown.remove",
@@ -127,7 +127,7 @@ def test_pipeline_marks_predicate_refire_dependency_on_union_dim_pushdown():
     ]
     assert by_name["union_dim_pushdown"].depends_on == (
         "predicate_pushdown.initial",
-        "upgrade_join_on_guards.base_join_only",
+        "upgrade_join_on_guards.early",
     )
     assert by_name["predicate_pushdown.after_union_dim"].refires_after == (
         "union_dim_pushdown",

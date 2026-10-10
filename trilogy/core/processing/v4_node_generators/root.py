@@ -88,9 +88,10 @@ def _with_condition_source_join_keys(
     outputs: list[BuildConcept],
     conditions: BuildWhereClause,
     environment: BuildEnvironment,
-) -> list[BuildConcept]:
+) -> tuple[list[BuildConcept], list[BuildConcept]]:
     """Widen the row scan by the grain of every aggregate gate ROOT must
-    re-source as a feeder.
+    re-source as a feeder, and return the keys the scan cannot bind but a
+    projection over it computes.
 
     The feeder is a standalone plan merged back onto this node on whatever the
     two share, so a gate keyed by a dimension the outputs never demand
@@ -98,6 +99,10 @@ def _with_condition_source_join_keys(
     to a cross join and the gate stops filtering rows altogether. The keys come
     back hidden, so this only adds join columns, never projected ones. A `by *`
     gate has no grain and is genuinely keyless; it stays a cross join.
+
+    A row-level derived key (`count(id) by genus`, `genus <- case ...
+    raw_species`) is no scan column: the scan carries its row inputs and
+    `_derive_join_keys` computes it on top.
     """
     produced = {concept.address for concept in outputs}
     row_args = [
@@ -106,18 +111,55 @@ def _with_condition_source_join_keys(
         if concept.address not in produced
     ]
     if not _condition_source_uses_aggregate_contract(row_args):
-        return outputs
-    keys = {
-        address
-        for concept in row_args
-        if concept.grain is not None
-        for address in concept.grain.components
-    } - produced
-    return outputs + [
+        return outputs, []
+    keys = [
         environment.concepts[address]
-        for address in sorted(keys)
+        for address in sorted(
+            {
+                address
+                for concept in row_args
+                if concept.grain is not None
+                for address in concept.grain.components
+            }
+            - produced
+        )
         if address in environment.concepts
     ]
+    derived = [k for k in keys if k.derivation == Derivation.BASIC and k.lineage]
+    scanned = [k for k in keys if k not in derived]
+    scan_addresses = produced | {k.address for k in scanned}
+    for key in derived:
+        for arg in _row_inputs(key):
+            if arg.address not in scan_addresses:
+                scan_addresses.add(arg.address)
+                scanned.append(arg)
+    return outputs + scanned, derived
+
+
+def _row_inputs(concept: BuildConcept) -> list[BuildConcept]:
+    """The non-BASIC concepts a BASIC derivation reads, through nested BASICs."""
+    assert concept.lineage is not None
+    out: list[BuildConcept] = []
+    for arg in concept.lineage.concept_arguments:
+        if arg.derivation == Derivation.BASIC and arg.lineage:
+            out.extend(_row_inputs(arg))
+        else:
+            out.append(arg)
+    return out
+
+
+def _derive_join_keys(
+    node: StrategyNode, keys: list[BuildConcept], environment: BuildEnvironment
+) -> StrategyNode:
+    if not keys:
+        return node
+    return SelectNode(
+        input_concepts=list(node.output_concepts),
+        output_concepts=list(node.output_concepts) + keys,
+        environment=environment,
+        parents=[node],
+        partial_concepts=list(node.partial_concepts),
+    )
 
 
 def _staged_precondition_clauses(
@@ -424,7 +466,7 @@ def gen_root(
         row_atoms, gates = _split_aggregate_gates(row_conditions)
         node = None
         if row_atoms is not None and gates is not None:
-            fallback_outputs = _with_condition_source_join_keys(
+            fallback_outputs, derived = _with_condition_source_join_keys(
                 grain_outputs, gates, environment
             )
             node = plan_source(
@@ -441,8 +483,10 @@ def gen_root(
             )
             if node is not None:
                 conditions = _conjoin(gates, existence_conditions)
+                node = _derive_join_keys(node, derived, environment)
+                fallback_outputs = fallback_outputs + derived
         if node is None:
-            fallback_outputs = _with_condition_source_join_keys(
+            fallback_outputs, derived = _with_condition_source_join_keys(
                 grain_outputs, conditions, environment
             )
             node = plan_source(
@@ -457,6 +501,9 @@ def gen_root(
                     arm_local=arm_local,
                 )
             )
+            if node is not None:
+                node = _derive_join_keys(node, derived, environment)
+                fallback_outputs = fallback_outputs + derived
         if node is None:
             return None
         sources = _resolve_root_condition_sources(
