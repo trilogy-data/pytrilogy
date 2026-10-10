@@ -428,6 +428,55 @@ def _read_through_rows(
     return True
 
 
+def _join_dimension_directly(consumer: CTE, rows: CTE, dimension: Join) -> None:
+    """An INNER dimension holds exactly the keys the consumer's join keeps, and
+    the consumer reads only its columns off `rows`: the consumer joins the
+    dimension's own datasource CTE in `rows`' place, which datasource inlining
+    then folds into the consumer."""
+    lookup = dimension.right_cte
+    for join in consumer.joins:
+        if not isinstance(join, Join):
+            continue
+        if join.right_cte is rows:
+            join.right_cte = lookup
+        if join.left_cte is rows:
+            join.left_cte = lookup
+        join.joinkey_pairs = [
+            (
+                replace(pair, cte=lookup, existing_datasource=lookup.source)
+                if pair.cte is rows
+                else pair
+            )
+            for pair in join.joinkey_pairs or []
+        ]
+    consumer.parent_ctes = [lookup if p is rows else p for p in consumer.parent_ctes]
+    consumer.source_map = {
+        a: [lookup.name if name == rows.name else name for name in sources]
+        for a, sources in consumer.source_map.items()
+    }
+    source = consumer.source
+    source.datasources = [
+        lookup.source if d is rows.source else d for d in source.datasources
+    ]
+    source.source_map = {
+        a: {lookup.source if d is rows.source else d for d in sources}
+        for a, sources in source.source_map.items()
+    }
+    for base_join in source.joins:
+        if not isinstance(base_join, BaseJoin):
+            continue
+        if base_join.right_datasource is rows.source:
+            base_join.right_datasource = lookup.source
+        if base_join.left_datasource is rows.source:
+            base_join.left_datasource = lookup.source
+    if source.base_datasource is rows.source:
+        source.base_datasource = lookup.source
+    if consumer.base_name_override == rows.name:
+        consumer.base_name_override = lookup.name
+    if consumer.base_alias_override == rows.name:
+        consumer.base_alias_override = lookup.name
+
+
 class FoldExistenceIntoAggregate(OptimizationRule):
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
@@ -511,7 +560,9 @@ class FoldExistenceIntoAggregate(OptimizationRule):
             aggregate.condition = append_condition(
                 aggregate.condition, _existence_term(condition)
             )
+        if dimension.jointype == JoinType.INNER:
+            _join_dimension_directly(consumer, rows, dimension)
+            return True
         _rebase_on_dimension(rows, dimension, r_key, aggregate)
-        if dimension.jointype == JoinType.LEFT_OUTER:
-            _read_through_rows(consumer, join, aggregate, rows, r_key)
+        _read_through_rows(consumer, join, aggregate, rows, r_key)
         return True

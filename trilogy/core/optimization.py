@@ -609,6 +609,19 @@ def build_optimization_rule_plan(
                 ),
             )
         )
+        if opts.datasource_inlining:
+            plan.append(
+                OptimizationRulePlan(
+                    name="inline_datasource.after_existence_fold",
+                    rule_factory=InlineDatasource,
+                    depends_on=("fold_existence_into_aggregate",),
+                    refires_after=("fold_existence_into_aggregate",),
+                    reason=(
+                        "the fold hands a consumer the dimension's datasource "
+                        "CTE in place of the existence scan; inline it there"
+                    ),
+                )
+            )
         if opts.union_dim_pushdown:
             plan.append(
                 OptimizationRulePlan(

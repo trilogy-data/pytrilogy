@@ -1,5 +1,5 @@
 query_id = "74"
-gen_length = 3647
+gen_length = 3257
 preql_size = 1416
 comp_size = 2151
 generated_sql = """
@@ -45,26 +45,18 @@ GROUP BY
 HAVING
     \"store_first_year\" > 0 and \"web_first_year\" > 0
 ),
-cooperative as (
-SELECT
-    \"sales_billing_customer_customers\".\"C_CUSTOMER_ID\" as \"sales_billing_customer_id\",
-    \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
-    \"sales_billing_customer_customers\".\"C_FIRST_NAME\" as \"sales_billing_customer_first_name\",
-    \"sales_billing_customer_customers\".\"C_LAST_NAME\" as \"sales_billing_customer_last_name\"
-FROM
-    \"memory\".\"customer\" as \"sales_billing_customer_customers\"),
 juicy as (
 SELECT
-    \"cooperative\".\"sales_billing_customer_first_name\" as \"sales_billing_customer_first_name\",
-    \"cooperative\".\"sales_billing_customer_id\" as \"sales_billing_customer_id\",
-    \"cooperative\".\"sales_billing_customer_last_name\" as \"sales_billing_customer_last_name\",
+    \"sales_billing_customer_customers\".\"C_CUSTOMER_ID\" as \"sales_billing_customer_id\",
+    \"sales_billing_customer_customers\".\"C_FIRST_NAME\" as \"sales_billing_customer_first_name\",
+    \"sales_billing_customer_customers\".\"C_LAST_NAME\" as \"sales_billing_customer_last_name\",
     \"uneven\".\"store_first_year\" as \"store_first_year\",
     \"uneven\".\"store_second_year\" as \"store_second_year\",
     \"uneven\".\"web_first_year\" as \"web_first_year\",
     \"uneven\".\"web_second_year\" as \"web_second_year\"
 FROM
     \"uneven\"
-    INNER JOIN \"cooperative\" on \"uneven\".\"sales_billing_customer_sk\" = \"cooperative\".\"sales_billing_customer_sk\")
+    INNER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"uneven\".\"sales_billing_customer_sk\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\")
 SELECT
     \"juicy\".\"sales_billing_customer_id\" as \"customer_id\",
     \"juicy\".\"sales_billing_customer_first_name\" as \"customer_first_name\",

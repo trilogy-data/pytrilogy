@@ -1,5 +1,5 @@
 query_id = "11"
-gen_length = 5004
+gen_length = 4500
 preql_size = 1867
 comp_size = 3006
 generated_sql = """
@@ -49,32 +49,23 @@ HAVING
 	WHEN sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"thoughtful\".\"sales_sale_date_year\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) > 0 THEN (sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"thoughtful\".\"sales_sale_date_year\" = 2002 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END) * 1.0) / sum(\"thoughtful\".\"sales_ext_list_price\" - CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"thoughtful\".\"sales_sale_date_year\" = 2001 THEN \"thoughtful\".\"sales_ext_discount_amount\" ELSE NULL END)
 	ELSE cast(0.0 as numeric)
 	END )
-),
-questionable as (
+)
 SELECT
     \"sales_billing_customer_customers\".\"C_CUSTOMER_ID\" as \"sales_billing_customer_id\",
-    \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
     \"sales_billing_customer_customers\".\"C_FIRST_NAME\" as \"sales_billing_customer_first_name\",
     \"sales_billing_customer_customers\".\"C_LAST_NAME\" as \"sales_billing_customer_last_name\",
     \"sales_billing_customer_customers\".\"C_PREFERRED_CUST_FLAG\" as \"sales_billing_customer_preferred_cust_flag\"
 FROM
-    \"memory\".\"customer\" as \"sales_billing_customer_customers\")
-SELECT
-    \"questionable\".\"sales_billing_customer_id\" as \"sales_billing_customer_id\",
-    \"questionable\".\"sales_billing_customer_first_name\" as \"sales_billing_customer_first_name\",
-    \"questionable\".\"sales_billing_customer_last_name\" as \"sales_billing_customer_last_name\",
-    \"questionable\".\"sales_billing_customer_preferred_cust_flag\" as \"sales_billing_customer_preferred_cust_flag\"
-FROM
-    \"questionable\"
-    INNER JOIN \"abundant\" on \"questionable\".\"sales_billing_customer_sk\" = \"abundant\".\"sales_billing_customer_sk\"
+    \"memory\".\"customer\" as \"sales_billing_customer_customers\"
+    INNER JOIN \"abundant\" on \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\" = \"abundant\".\"sales_billing_customer_sk\"
 GROUP BY
     1,
     2,
     3,
     4
 ORDER BY 
-    \"questionable\".\"sales_billing_customer_id\" asc nulls first,
-    \"questionable\".\"sales_billing_customer_first_name\" asc nulls first,
-    \"questionable\".\"sales_billing_customer_last_name\" asc nulls first,
-    \"questionable\".\"sales_billing_customer_preferred_cust_flag\" asc nulls first
+    \"sales_billing_customer_customers\".\"C_CUSTOMER_ID\" asc nulls first,
+    \"sales_billing_customer_customers\".\"C_FIRST_NAME\" asc nulls first,
+    \"sales_billing_customer_customers\".\"C_LAST_NAME\" asc nulls first,
+    \"sales_billing_customer_customers\".\"C_PREFERRED_CUST_FLAG\" asc nulls first
 LIMIT (100)"""

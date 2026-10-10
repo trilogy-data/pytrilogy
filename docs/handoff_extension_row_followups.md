@@ -26,11 +26,6 @@ two-region (`tests/engine/test_padded_null_pairing.py::TWO_REGIONS`) and
 
 ## Open: plan cost (no wrong rows)
 
-- **q74 reads `customer` in a CTE of its own.** After
-  `FoldExistenceIntoAggregate` the existence scan is just the dimension, and
-  the consumer INNER-joins it to the aggregate: 4 CTEs where 830387ff9 had 3
-  (3,280 -> 3,653 chars, exec unchanged). Inlining that dimension read into
-  the consumer's join would restore the old shape.
 - **A `union join` axis kept under a WHERE that already makes it one-sided.**
   `where year = 2001 select ticket, r_filtered.return_quantity $J` over
   `_ANCHOR_WHERE_FIXTURE` (`tests/engine/test_duckdb_rowset.py`) plans the FULL
