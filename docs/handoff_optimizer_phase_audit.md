@@ -23,8 +23,7 @@ condition was tested for scalarity without the parent's materialized
 columns, so it read as non-scalar and blocked the rest. It is parent-relative
 now, like the candidate check; q04 settles on pass 2.
 
-Guarded by `tests/optimization/test_optimizer_fixpoint.py`. The
-Join/BaseJoin item below is resolved too.
+Guarded by `tests/optimization/test_optimizer_fixpoint.py`.
 
 Why: the existence fold (`optimizations/existence_having_fold.py`) needed three
 re-fires wired by hand (`predicate_pushdown`, `union_dim_pushdown`,
@@ -91,62 +90,9 @@ list), `test_thirty_one` is the q31 size budget above, and
 3. Keep the audit as a CI check instead of a fix: the second-pass corpus diff
    takes 30s and names the phase.
 
-## Join vs BaseJoin (resolved 2026-10-10)
+## Open: the CTE's FROM model lives on its QueryDatasource
 
-Each CTE used to carry its joins twice, `cte.joins` (`Join`, rendered) and
-`cte.source.joins` (`BaseJoin`, from the QueryDatasource), and six rules read
-or wrote the BaseJoin copy. Join-level upgrades never reached it, so 52 of 614
-corpus BaseJoins were wider than the join that rendered.
-
-Now no optimizer rule reads or writes `cte.source.joins`; `BaseJoin` is the
-plan-time join over datasources and `Join` is the only join after CTE build.
-
-- `join_upgrade`: the early pass (`upgrade_join_on_guards.early`, was
-  `.base_join_only`) narrows LEFT `Join`s to INNER on the CTE's own WHERE.
-  The datasource-level proof path (`_downgrade_base_join`, datasource keys)
-  is gone. Its 12 corpus firings were all on joins the later pass narrows
-  anyway: syncing the Join in that pass moved 0 plans.
-- `union_dim_pushdown`, `join_hoist`: match dims through
-  `join.right_cte.source` and build only the `Join`.
-- `merge_irrelevant_group_by`: `join_preserves_left_rows` takes a `Join`.
-- `predicate_pushdown`, `reuse_parent_lookup`, the existence fold: dropped
-  their BaseJoin reads and writes.
-
-One plan moved: q83 (and `_q83_with_sales_measure`). Its date dim joined
-FULL in the stale BaseJoin while the Join rendered INNER, which blocked union
-dim pushdown. The dim and its week filter now sit inside each union branch:
-same rows, 120ms -> 72ms at sf=1, +350 chars.
-
-Then unified into one class: `Join[Node]` carries a join at every tier.
-`NodeJoin` (strategy nodes), `BaseJoin` (datasources) and the CTE `Join` were
-three copies of one shape; `ConceptPair`/`CTEConceptPair`,
-`GuardTerm`/`CTEGuardTerm` and `UnnestJoin`/`InstantiatedUnnestJoin` the
-same. `bind(node_for)` carries a join to the next tier's nodes
-(`MergeNode.translate_node_joins` resolves, `base_join_to_join` maps
-datasources to CTEs) and `repoint(node_for)` rewrites one in place
-(`replace_dependency`, union dim pushdown, graph canonicalization). The
-aliases `SourceJoin` / `CTEJoin` / `NodeJoin` name the tiers in annotations.
-0 corpus plans move.
-
-A concept-keyed join (`concepts=`, no pairs) keeps its concepts while
-planning: planning reads it apart from pairs
-(`grain_utility._joins_a_coalescing_relation` treats it as a member with no
-pairing to read), so folding it into pairs early would not be a refactor.
-`bound_keys()` folds it when the join is bound onto CTEs, as before.
-
-`QueryDatasource.joins` is now plan-time only: nothing reads it after CTE
-build. Its last reader, `strip_redundant_not_null`, walked the whole QDS tree
-to the leaf tables to get "could be NULL before this CTE's WHERE". That walk
-discarded every parent's real filters and trusted the stale join copy. The
-rule now reads one level: the parents' `nullable_concepts` (narrowed only by
-filters that ran), its own tables (an inlined parent's raw table, since its
-WHERE may have folded into this CTE) and its own outer joins' padding. q64
-drops one more guard (`C_CURRENT_ADDR_SK is not null` beside an INNER
-customer join, declared non-null; same rows).
-
-### The rest of the QDS is NOT a mirror
-
-The rules also write `cte.source.datasources` / `source_map` /
+Optimizer rules write `cte.source.datasources` / `source_map` /
 `input_concepts`. Deleting those writes in `join_hoist` breaks q35 and q69
 with `INVALID_ALIAS`: after build, the QueryDatasource is the CTE's FROM
 model. `base_datasource` picks the FROM table (`source_address`,
