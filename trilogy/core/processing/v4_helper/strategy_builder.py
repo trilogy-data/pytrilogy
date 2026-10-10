@@ -5743,6 +5743,35 @@ class _GroupBuild:
     unbuilt: dict[str, list[BuildConcept]]
 
 
+def _merge_origin_intermediates(
+    outputs: list[BuildConcept],
+    primary_addrs: set[str],
+    environment: BuildEnvironment,
+) -> list[BuildConcept]:
+    """Merge origins this group computes only for its own outputs' lineage.
+
+    A lineage arg spelled by a merge-demoted key (`upper(source_label)` after
+    `merge label into source_label`) has no lineage of its own; the graph puts
+    its origin in this group, but the origin renders only as a column, so it
+    has to be projected for the consumer to read it."""
+    emitted = {c.address for c in outputs}
+    found: list[BuildConcept] = []
+    stack = [c for c in outputs if c.address in primary_addrs and c.lineage]
+    while stack:
+        concept = stack.pop()
+        assert concept.lineage is not None
+        for arg in concept.lineage.concept_arguments:
+            if arg.lineage is not None:
+                stack.append(arg)
+                continue
+            for origin in environment.merge_origins(arg):
+                if origin.address in primary_addrs and origin.address not in emitted:
+                    emitted.add(origin.address)
+                    found.append(origin)
+                    stack.append(origin)
+    return found
+
+
 def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     """Build one group of the plan with explicit parent nodes, under the
     group's span scope. None when it builds nothing (`ctx.unbuilt` says what
@@ -5787,6 +5816,8 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
         ctx.unbuilt[gid] = outputs
         return None
     primary_addrs = set(a.primary_members)
+    if derivation not in _AGGREGATING_DERIVATIONS:
+        outputs += _merge_origin_intermediates(outputs, primary_addrs, environment)
     twin_reused: dict[str, bool] = (
         {
             c.address: _aggregate_reused_from_twin(c.address, gid, attrs, built)
