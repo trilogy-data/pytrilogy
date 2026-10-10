@@ -24,7 +24,7 @@ columns, so it read as non-scalar and blocked the rest. It is parent-relative
 now, like the candidate check; q04 settles on pass 2.
 
 Guarded by `tests/optimization/test_optimizer_fixpoint.py`. The
-Join/BaseJoin item below is still open.
+Join/BaseJoin item below is resolved too.
 
 Why: the existence fold (`optimizations/existence_having_fold.py`) needed three
 re-fires wired by hand (`predicate_pushdown`, `union_dim_pushdown`,
@@ -91,34 +91,39 @@ list), `test_thirty_one` is the q31 size budget above, and
 3. Keep the audit as a CI check instead of a fix: the second-pass corpus diff
    takes 30s and names the phase.
 
-## Join vs BaseJoin
+## Join vs BaseJoin (resolved 2026-10-10)
 
-Each CTE carries its joins twice: `cte.joins` (`Join`, rendered) and
-`cte.source.joins` (`BaseJoin`, from the QueryDatasource). After CTE build,
-the dialects read only `Join`. `BaseJoin` is still read by `join_hoist`,
-`join_upgrade` (its `base_join_only` pass), `merge_irrelevant_group_by`,
-`predicate_pushdown` (outer-join check), `union_dim_pushdown` and
-`reuse_parent_lookup`, and written by `join_hoist`, `join_upgrade`,
-`union_dim_pushdown`, `reuse_parent_lookup` and the existence fold.
+Each CTE used to carry its joins twice, `cte.joins` (`Join`, rendered) and
+`cte.source.joins` (`BaseJoin`, from the QueryDatasource), and six rules read
+or wrote the BaseJoin copy. Join-level upgrades never reached it, so 52 of 614
+corpus BaseJoins were wider than the join that rendered.
 
-Measured over the corpus after optimization: of 614 `Join`s, 52 disagree in
-type with their `BaseJoin`, and **all 52 have the BaseJoin wider** (FULL/RIGHT
-where the render is INNER/LEFT): Join-level upgrades never update the
-BaseJoin. That direction only makes BaseJoin readers more cautious (missed
-optimizations, never wrong rows); the existence fold's union pushdown was one
-such miss. Narrowing every stale BaseJoin to INNER whenever its Join is INNER,
-before every phase, fired on 10 BaseJoins over four TPC-DS queries and moved
-**0** corpus plans: no current cost.
+Now no optimizer rule reads or writes `cte.source.joins`; `BaseJoin` is the
+plan-time join over datasources and `Join` is the only join after CTE build.
 
-Rationalizing, cheapest first:
+- `join_upgrade`: the early pass (`upgrade_join_on_guards.early`, was
+  `.base_join_only`) narrows LEFT `Join`s to INNER on the CTE's own WHERE.
+  The datasource-level proof path (`_downgrade_base_join`, datasource keys)
+  is gone. Its 12 corpus firings were all on joins the later pass narrows
+  anyway: syncing the Join in that pass moved 0 plans.
+- `union_dim_pushdown`, `join_hoist`: match dims through
+  `join.right_cte.source` and build only the `Join`.
+- `merge_irrelevant_group_by`: `join_preserves_left_rows` takes a `Join`.
+- `predicate_pushdown`, `reuse_parent_lookup`, the existence fold: dropped
+  their BaseJoin reads and writes.
 
-- Have the BaseJoin readers ask the rendered `Join` for the type (one helper,
-  "join type of this CTE onto datasource X"), so a stale copy cannot be read.
-  Six call sites; the matching is by datasource identifier through the
-  QueryDatasource's `base_datasource`, as in `existence_having_fold`.
-- Or drop `source.joins` after CTE build. `join_hoist` and
-  `union_dim_pushdown` construct BaseJoins to then derive Joins, so this is a
-  real refactor, not a cleanup.
+One plan moved: q83 (and `_q83_with_sales_measure`). Its date dim joined
+FULL in the stale BaseJoin while the Join rendered INNER, which blocked union
+dim pushdown. The dim and its week filter now sit inside each union branch:
+same rows, 120ms -> 72ms at sf=1, +350 chars.
 
-Not done: the matching heuristic above is loose (29 Joins with no BaseJoin, 28
-BaseJoins with no Join, mostly CTE-to-CTE joins that never had one).
+Not unified into one class: `BaseJoin` names datasources and `Join` names
+CTEs, which only exist after build. `QueryDatasource.joins` stays as the
+plan-time record. `strip_redundant_not_null` still walks it on purpose, as an
+over-approximate "could be NULL" ground truth. A stale or missing outer join
+there only keeps a guard.
+
+The rest of the QDS mirror is still maintained by hand: `join_hoist` and
+`union_dim_pushdown` still append the dim to `source.datasources`,
+`source_map` and `input_concepts`. Dropping that is the next step if the
+mirror is to go.
