@@ -1,5 +1,6 @@
 from trilogy.core.enums import (
     BooleanOperator,
+    Derivation,
     JoinType,
     SetOperator,
     SourceType,
@@ -21,11 +22,13 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import (
+    ROW_RESHAPING_SOURCE_TYPES,
     append_condition,
     condition_contains_atom,
     null_padded_nodes,
     propagate_existence_sources,
     strip_condition_atom,
+    zero_filled_reads,
 )
 from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
@@ -66,33 +69,13 @@ def _predicate_safe_past_null_extension(
     the parent it reads real rows instead and inverts meaning. Only
     null-rejecting predicates commute with a null-extending join: rows they
     keep must have real parent values, so pre- and post-join filtering agree."""
-    if not isinstance(cte, CTE):
+    # `null_padded_nodes` also names the implicit left of a RIGHT/FULL join:
+    # the FROM base and every side joined before it.
+    if not isinstance(cte, CTE) or not _parent_nullable_in_cte(cte, parent_cte.name):
         return True
-    null_extended = False
-    for join in cte.joins:
-        if not isinstance(join, Join):
-            continue
-        sides: list[str] = [join.right_cte.name]
-        if join.left_cte is not None:
-            sides.append(join.left_cte.name)
-        if parent_cte.name not in sides:
-            continue
-        if (
-            join.jointype is JoinType.FULL
-            or (
-                join.jointype is JoinType.LEFT_OUTER
-                and join.right_cte.name == parent_cte.name
-            )
-            or (
-                join.jointype is JoinType.RIGHT_OUTER
-                and join.left_cte is not None
-                and join.left_cte.name == parent_cte.name
-            )
-        ):
-            null_extended = True
-    if not null_extended:
-        return True
-    proven = condition_proves_non_null(candidate)
+    # a COUNT this CTE coalesces to 0 (`zero_fills_count`) is accepted by
+    # `count = 0` on the very rows the join padded
+    proven = condition_proves_non_null(candidate) - zero_filled_reads(cte, candidate)
     return {x.address for x in candidate.row_arguments} <= proven
 
 
@@ -181,6 +164,20 @@ def _parent_covers_condition(parent: CTE | UnionCTE, condition) -> bool:
     )
 
 
+def _parent_holds_the_same_concepts(candidate: BuildConceptArgs, parent: CTE) -> bool:
+    """Every concept the predicate reads is the parent's concept of that
+    address, not only a namesake: a select-pinned value is not the column
+    persisting it at its own grain (`grain_pin`)."""
+    held = {c.address: c.canonical_address for c in parent.output_columns}
+    if parent.is_root_datasource and parent.source.base_datasource is not None:
+        for c in parent.source.base_datasource.output_concepts:
+            held.setdefault(c.address, c.canonical_address)
+    return all(
+        held.get(x.address, x.canonical_address) == x.canonical_address
+        for x in candidate.row_arguments
+    )
+
+
 def _parent_materialized_addrs(parent: CTE | UnionCTE) -> set[str]:
     """Addresses a parent CTE exposes as plain output columns: a non-empty
     ``source_map`` entry means the concept is pulled from upstream rather than
@@ -198,6 +195,25 @@ def _parent_nullable_in_cte(cte: CTE, parent_name: str) -> bool:
     filter column is NULL slip through a removed predicate but would have
     failed the original WHERE."""
     return any(node.name == parent_name for node in null_padded_nodes(cte))
+
+
+def _passes_padding_a_child_adds(
+    candidate: BuildConditional | BuildComparison | BuildParenthetical,
+    parent: CTE | UnionCTE,
+    children: list[CTE | UnionCTE],
+) -> bool:
+    """A child that outer-joins the parent tests the atom on rows the join
+    padded too. One the all-NULL row passes (`cost is null`) keeps those
+    rows, so filtering the parent first changes which rows the child pads:
+    a product the WHERE drops comes back as a padded NULL cost."""
+    if set(condition_proves_non_null(candidate)) & {
+        c.address for c in candidate.row_arguments
+    }:
+        return False
+    return any(
+        isinstance(child, CTE) and _parent_nullable_in_cte(child, parent.name)
+        for child in children
+    )
 
 
 def _consumer_may_emit_without_parent(cte: CTE, parent_name: str) -> bool:
@@ -360,6 +376,8 @@ class PredicatePushdown(OptimizationRule):
             if any(isinstance(x.lineage, BuildWindowItem) for x in concrete):
                 return False
             if not _predicate_safe_past_grouping(candidate, branch):
+                return False
+            if not _parent_holds_the_same_concepts(candidate, branch):
                 return False
             join_derived_addrs = {x.address for x in branch.join_derived_concepts}
             if row_conditions & join_derived_addrs:
@@ -532,10 +550,29 @@ class PredicatePushdown(OptimizationRule):
                 f"and {candidate} is not null-rejecting; not pushing"
             )
             return False
+        if not _parent_holds_the_same_concepts(candidate, parent_cte):
+            return False
         materialized = {k for k, v in parent_cte.source_map.items() if v != []}
 
         if not row_conditions or not materialized:
             return False
+        # A row scalar the parent computes itself (a BASIC over its own row,
+        # `is_returned <- return_id is not null`) is a column of the row the
+        # WHERE tests; the renderer inlines its expression there as the SELECT
+        # does. Only in a plain projection: a recursive member, group, window,
+        # unnest, subselect or union computes it over rows the WHERE would
+        # change. Aggregates and windows are not row scalars and stay above.
+        if parent_cte.source.source_type not in ROW_RESHAPING_SOURCE_TYPES and (
+            is_scalar_condition(candidate, materialized=materialized)
+        ):
+            materialized |= {
+                column.address
+                for column in parent_cte.output_columns
+                if column.address in row_conditions
+                and column.derivation == Derivation.BASIC
+                and column.address not in materialized
+                and not gather_windows(column.lineage, materialized)
+            }
         output_addresses = {x.address for x in parent_cte.output_columns}
         # An existence concept the parent itself produces cannot be its own
         # external IN target.
@@ -562,7 +599,7 @@ class PredicatePushdown(OptimizationRule):
             if all(
                 condition_contains_atom(candidate, child.condition)
                 for child in children
-            ):
+            ) and not _passes_padding_a_child_adds(candidate, parent_cte, children):
                 # Existence sources to promote onto the parent, computed before
                 # any mutation so the cycle guard can veto the whole push. The
                 # consumer may source an existence concept from a dependency
@@ -631,8 +668,11 @@ class PredicatePushdown(OptimizationRule):
                 self.log(
                     f"All concepts [{row_conditions}] and existence conditions [{existence_conditions}] not block pushup of [{output_addresses}]found on {parent_cte.name} with existing {parent_cte.condition} and all it's {len(children)} children include same filter; pushing up {candidate}"
                 )
+                # parent-relative, as for the candidate: an atom pushed here
+                # earlier over a column the parent materializes is a WHERE
                 if parent_cte.condition and not is_scalar_condition(
-                    parent_cte.condition
+                    parent_cte.condition,
+                    materialized=_parent_materialized_addrs(parent_cte),
                 ):
                     self.log("Parent condition is not scalar, not safe to push up")
                     return False
@@ -667,7 +707,6 @@ class PredicatePushdown(OptimizationRule):
 
     def _push_having_into_group_parent(
         self,
-        cte: CTE | UnionCTE,
         parent_cte: CTE | UnionCTE,
         candidate: BuildConditional | BuildComparison | BuildParenthetical | None,
         inverse_map: dict[str, list[CTE | UnionCTE]],
@@ -719,6 +758,10 @@ class PredicatePushdown(OptimizationRule):
             if not condition_contains_atom(candidate, child.condition):
                 return False
             if _parent_nullable_in_cte(child, parent_cte.name):
+                return False
+            # the consumer coalesces a padded COUNT to 0 (`zero_fills_count`):
+            # its `count = 0` accepts rows the group has no row for
+            if zero_filled_reads(child, candidate):
                 return False
             # The relocated predicate applies before any window the consumer
             # computes over the parent's rows, changing lead/lag/rank results
@@ -823,7 +866,6 @@ class PredicatePushdown(OptimizationRule):
                     # Non-scalar even for this parent; only a group parent can
                     # carry it as HAVING.
                     local = self._push_having_into_group_parent(
-                        cte=cte,
                         parent_cte=parent_cte,
                         candidate=candidate,
                         inverse_map=inverse_map,

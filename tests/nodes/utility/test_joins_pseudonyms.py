@@ -10,7 +10,6 @@ import dataclasses
 from trilogy import Environment, parse
 from trilogy.core.enums import JoinType, Modifier
 from trilogy.core.processing.join_resolution import (
-    build_canonical_address_map,
     get_modifiers,
     get_node_joins,
 )
@@ -33,18 +32,16 @@ query '''select 1 uid, 'a' uname''';
     return base.materialize_for_select()
 
 
-# --- build_canonical_address_map -------------------------------------------
+# --- BuildEnvironment.address_roots ----------------------------------------
 
 
-def test_canonical_map_collapses_merge_pseudonyms():
+def test_address_roots_collapse_merge_pseudonyms():
     build = _merged_env()
-    dses = [build.datasources["p1.people"], build.datasources["p2.people"]]
-    canonical = build_canonical_address_map(dses, build)
-    # p1.uname and p2.uname are the same column -> one canonical representative.
-    assert canonical["p1.uname"] == canonical["p2.uname"]
+    roots = build.address_roots({"p1.uname", "p2.uname"})
+    assert roots["p1.uname"] == roots["p2.uname"]
 
 
-def test_canonical_map_collapses_one_way_alias():
+def test_address_roots_collapse_one_way_alias():
     """A one-directional pseudonym (rowset rename, q14-style) must still collapse
     via transitive closure even though only one side declares the link."""
     env, _ = parse("""
@@ -54,15 +51,27 @@ datasource base (channel:channel) grain(channel) address base;
 datasource alt (alt_channel:alt_channel) grain(alt_channel) address alt;
 """)
     build = env.materialize_for_select()
-    base_c = build.datasources["base"]
-    alt_c = build.datasources["alt"]
-    # Inject a one-way pseudonym: alt_channel declares channel as an alias.
-    alt_concept = next(
-        c for c in alt_c.output_concepts if c.address == "local.alt_channel"
-    )
-    alt_concept.pseudonyms.add("local.channel")
-    canonical = build_canonical_address_map([base_c, alt_c], build)
-    assert canonical["local.alt_channel"] == canonical["local.channel"]
+    build.concepts["local.alt_channel"].pseudonyms.add("local.channel")
+    roots = build.address_roots()
+    assert roots["local.alt_channel"] == roots["local.channel"]
+
+
+def test_address_roots_name_a_class_within_scope():
+    """A consumer reads its roots back as concepts, so the name must be one the
+    scope holds even when a better-ranked spelling exists outside it."""
+    env, _ = parse("""
+key id int;
+property id.name string;
+auto label <- name;
+datasource people (id:id, name:name) grain(id) address people;
+""")
+    build = env.materialize_for_select()
+    build.concepts["local.label"].pseudonyms.add("local.name")
+    assert build.address_roots()["local.name"] == "local.label"
+    assert build.address_roots({"local.name"}) == {
+        "local.label": "local.name",
+        "local.name": "local.name",
+    }
 
 
 # --- get_node_joins: pseudonym equivalence ---------------------------------

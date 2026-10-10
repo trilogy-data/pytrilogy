@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Collection, Iterable, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
@@ -100,6 +100,75 @@ def get_disconnected_components(
     return len(sub_graphs), sub_graphs
 
 
+def join_left_sources(join: BaseJoin) -> list[BuildDatasource | QueryDatasource]:
+    """Every source the join reads on its left: the declared left side and
+    each key pair's source (the ON clause can reach past the declared side)."""
+    sources: dict[str, BuildDatasource | QueryDatasource] = {}
+    if join.left_datasource is not None:
+        sources[join.left_datasource.identifier] = join.left_datasource
+    for pair in join.concept_pairs or []:
+        sources.setdefault(
+            pair.existing_datasource.identifier, pair.existing_datasource
+        )
+    return list(sources.values())
+
+
+def _descend_all(concept: BuildConcept) -> bool:
+    return True
+
+
+def _as_is(concept: BuildConcept) -> BuildConcept:
+    return concept
+
+
+def walk_lineage(
+    starts: Iterable[BuildConcept],
+    descend: Callable[[BuildConcept], bool] = _descend_all,
+    resolve: Callable[[BuildConcept], BuildConcept] = _as_is,
+) -> list[BuildConcept]:
+    """Every concept reachable from `starts` through the lineage arguments of
+    those `descend` accepts, `starts` included, each once, in visit order.
+    `resolve` maps each argument before it is visited."""
+    out: dict[str, BuildConcept] = {}
+    stack = list(starts)
+    while stack:
+        concept = stack.pop()
+        if concept.address in out:
+            continue
+        out[concept.address] = concept
+        if concept.lineage is not None and descend(concept):
+            stack.extend(resolve(arg) for arg in concept.lineage.concept_arguments)
+    return list(out.values())
+
+
+PADS_RIGHT_JOIN_TYPES = (JoinType.LEFT_OUTER, JoinType.FULL)
+PADS_LEFT_JOIN_TYPES = (JoinType.RIGHT_OUTER, JoinType.FULL)
+
+
+def left_deep_joins(
+    joins: list[BaseJoin | UnnestJoin], base_ids: Collection[str] = ()
+) -> list[tuple[BaseJoin, frozenset[str]]]:
+    """Each base join with everything joined before it: joins are left-deep,
+    so a RIGHT/FULL pads that whole accumulated input, not just its operand."""
+    joined = set(base_ids)
+    out: list[tuple[BaseJoin, frozenset[str]]] = []
+    for join in joins:
+        if not isinstance(join, BaseJoin):
+            continue
+        joined |= {source.identifier for source in join_left_sources(join)}
+        out.append((join, frozenset(joined)))
+        joined.add(join.right_datasource.identifier)
+    return out
+
+
+def padded_by(join: BaseJoin, left: frozenset[str]) -> set[str]:
+    """The sources `join` NULL-pads, `left` as from `left_deep_joins`."""
+    padded = set(left) if join.join_type in PADS_LEFT_JOIN_TYPES else set()
+    if join.join_type in PADS_RIGHT_JOIN_TYPES:
+        padded.add(join.right_datasource.identifier)
+    return padded
+
+
 _EMPTY_ADDRS: frozenset[str] = frozenset()
 
 
@@ -140,30 +209,19 @@ def find_nullable_concepts(
     output_addrs: dict[str, set[str]] = {
         i: {c.address for c in x.output_concepts} for x, i in typed_idents
     }
-    # Joins are left-deep: each entry adds its ``right`` datasource to a growing
-    # left input (``left_datasource`` None). A FULL or RIGHT join null-extends the
-    # ENTIRE accumulated left input, not just the immediate operand. Seed the
-    # accumulator with the anchors (never a ``right``) and grow it in join order.
-    base_joins = [j for j in joins if isinstance(j, BaseJoin)]
-    right_ids = {j.right_datasource.identifier for j in base_joins}
-    accumulated_left: set[str] = {i for _, i in typed_idents if i not in right_ids}
-    for join in joins:
+    right_ids = {
+        j.right_datasource.identifier for j in joins if isinstance(j, BaseJoin)
+    }
+    base_ids = [i for _, i in typed_idents if i not in right_ids]
+    for join, accumulated in left_deep_joins(joins, base_ids):
         is_on_nullable_condition = False
-        if not isinstance(join, BaseJoin):
-            continue
         right_id = join.right_datasource.identifier
         # Outer joins make the extended side nullable regardless of the source's
         # own nullability.
-        if join.join_type in (JoinType.LEFT_OUTER, JoinType.FULL):
-            right_ds = datasource_map.get(right_id)
-            if right_ds is not None:
-                nullable_datasources.add(right_ds)
-        if join.join_type in (JoinType.RIGHT_OUTER, JoinType.FULL):
-            for left_id_acc in accumulated_left:
-                left_ds = datasource_map.get(left_id_acc)
-                if left_ds is not None:
-                    nullable_datasources.add(left_ds)
-        accumulated_left.add(right_id)
+        for padded in padded_by(join, accumulated):
+            padded_ds = datasource_map.get(padded)
+            if padded_ds is not None:
+                nullable_datasources.add(padded_ds)
         if not join.concept_pairs:
             continue
         # left_datasource is constant across the pair loop; identifier never

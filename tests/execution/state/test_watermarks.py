@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -1521,9 +1521,9 @@ def test_get_stale_assets_probe_skipped_for_root():
 
 def test_compare_watermark_values_tz_mismatch():
     """Comparing offset-naive and offset-aware datetimes raises TypeError with clear message."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    aware = datetime(2024, 1, 20, 12, 0, 0, tzinfo=timezone.utc)
+    aware = datetime(2024, 1, 20, 12, 0, 0, tzinfo=UTC)
     naive = datetime(2024, 1, 10, 12, 0, 0)
 
     with pytest.raises(TypeError, match="offset-naive and offset-aware datetimes"):
@@ -1535,7 +1535,7 @@ def test_compare_watermark_values_tz_mismatch():
 
 def test_get_stale_assets_timezone_mismatch_incremental():
     """get_stale_assets raises TypeError with field and datasource when tz types are mixed."""
-    from datetime import datetime, timezone
+    from datetime import datetime
     from unittest.mock import MagicMock, patch
 
     from trilogy.execution.state.watermarks import DatasourceWatermark
@@ -1547,7 +1547,7 @@ def test_get_stale_assets_timezone_mismatch_incremental():
                 "synced_at": UpdateKey(
                     concept_name="synced_at",
                     type=UpdateKeyType.INCREMENTAL_KEY,
-                    value=datetime(2024, 1, 20, 12, 0, 0, tzinfo=timezone.utc),
+                    value=datetime(2024, 1, 20, 12, 0, 0, tzinfo=UTC),
                 )
             }
         ),

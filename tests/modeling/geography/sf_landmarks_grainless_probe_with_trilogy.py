@@ -5,7 +5,7 @@
 # ///
 
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pyarrow as pa
 
@@ -16,7 +16,7 @@ def main() -> pa.Table:
     table = pa.table(
         {
             "data_updated_through": pa.array(
-                [datetime(2024, 1, 1, tzinfo=timezone.utc)],
+                [datetime(2024, 1, 1, tzinfo=UTC)],
                 type=pa.timestamp("us", tz="UTC"),
             )
         }

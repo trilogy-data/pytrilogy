@@ -16,15 +16,18 @@ search it feeds.
 
 from __future__ import annotations
 
-from trilogy.core.enums import Derivation, Granularity, Purpose
+from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
 from trilogy.core.graph_models import (
     ReferenceGraph,
     datasource_has_filter_sensitive_aggregate,
 )
 from trilogy.core.models.build import (
+    BuildCaseElse,
     BuildConcept,
     BuildDatasource,
+    BuildFunction,
     BuildGrain,
+    BuildParenthetical,
     BuildUnionDatasource,
     BuildWhereClause,
 )
@@ -35,7 +38,6 @@ from trilogy.core.processing.aggregate_rollup import (
 )
 from trilogy.core.processing.condition_utility import (
     condition_implies,
-    merge_conditions,
 )
 from trilogy.core.processing.node_generators.common import (
     relevant_authored_join_pairs,
@@ -45,15 +47,14 @@ from trilogy.core.processing.node_generators.presence_probe import (
     member_binding_datasources,
     probe_member_address,
 )
-from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
-    get_union_sources,
-    union_derived_concepts,
-)
+from trilogy.core.processing.scan_partials import scan_partial_addresses
 from trilogy.core.processing.v4_helper.network_coalescing import (
     axis_families,
     downgrade_axis_bindings,
+    drop_axis_scalar_bindings,
     pin_unoffered_probes,
     probe_owners,
+    requested_axis_groups,
 )
 from trilogy.core.processing.v4_helper.network_model import (
     CONNECTOR_NODE_PREFIX,
@@ -64,66 +65,8 @@ from trilogy.core.processing.v4_helper.network_model import (
     SourceCandidate,
     SourceNetwork,
     datasource_identifiers,
-    find,
     node_address,
-    union,
 )
-
-
-def _equivalence_map(
-    environment: BuildEnvironment,
-    addresses: set[str],
-    pseudonym_pairs: frozenset[tuple[str, str]] = frozenset(),
-) -> dict[str, str]:
-    """Collapse pseudonym twins onto one representative so a merged key counts as
-    one join axis. Only addresses reachable in this request participate.
-
-    `environment.concepts` alone cannot see a derived merge key's twins: after
-    `merge ka into kb` both real addresses carry the surviving side's lineage,
-    while each side's own variant lives in the graph under its canonical
-    (`_virt_*`) address, the a-side's under `alias_origin_lookup`'s entry. The
-    graph's pseudonym edges relate those canonical nodes, so they are passed in
-    as extra union pairs; without them the two scans' bindings share no class
-    and the sources disconnect."""
-    parent: dict[str, str] = {}
-    for address in addresses:
-        parent.setdefault(address, address)
-        concept = environment.concepts.get(address)
-        if concept is None:
-            continue
-        # A concept's own canonical (`_virt_*`) address is the SAME concept in
-        # the graph's spelling: a request asks for the authored address while
-        # the scan's edge emits its `_virt_comp_*` form. Presence probes are
-        # the deliberate exception: the `_virt_presence_*` identity pins side
-        # membership and must never collapse onto the `_virt_func_*` class
-        # every member binds.
-        canonical = concept.canonical_address
-        if (
-            canonical
-            and canonical != address
-            and canonical in addresses
-            and not is_presence_probe(address)
-            and not is_presence_probe(canonical)
-        ):
-            parent.setdefault(canonical, canonical)
-            union(parent, address, canonical)
-        for pseudonym in concept.pseudonyms:
-            if pseudonym in addresses:
-                parent.setdefault(pseudonym, pseudonym)
-                union(parent, address, pseudonym)
-    for left, right in pseudonym_pairs:
-        parent.setdefault(left, left)
-        parent.setdefault(right, right)
-        union(parent, left, right)
-    return {address: find(parent, address) for address in parent}
-
-
-def _graph_pseudonym_pairs(graph: ReferenceGraph) -> frozenset[tuple[str, str]]:
-    return frozenset(
-        (node_address(left), node_address(right))
-        for left, right in graph.pseudonyms
-        if left.startswith("c~") and right.startswith("c~")
-    )
 
 
 def _condition_fit(
@@ -172,11 +115,7 @@ def rollup_concepts_by_node(
     the scan / merge nodes apply the GROUP BY."""
     if not any(concept.is_aggregate for concept in terminals):
         return {}
-    datasources = [
-        datasource
-        for datasource in environment.datasources.values()
-        if isinstance(datasource, BuildDatasource)
-    ]
+    datasources = graph.scope.datasources
     target_grain = BuildGrain.from_concepts(terminals)
     # A filter FINER than the target grain splits the groups the roll would sum,
     # so the summary has to be filtered before it is aggregated. A binding says
@@ -248,11 +187,22 @@ def _candidate(
     stored: set[str],
     conditions: BuildWhereClause | None,
     equivalence: dict[str, str],
+    environment: BuildEnvironment,
+    promoted: frozenset[str] = frozenset(),
 ) -> SourceCandidate:
     """Label one scan. The only thing a caller decides is which addresses the
     scan emits and which of those are STORED columns rather than inline
-    derivations; everything else follows from the datasource."""
-    partial = {concept.address for concept in datasource.partial_concepts}
+    derivations; everything else follows from the datasource. `promoted`: `~`
+    keys whose members this request need not complete (a region domain does,
+    above it), so the fact's own column binds them as fully as the request
+    needs. What the scan binds partially is `scan_partial_addresses`, the
+    rule the scan node stamps by too."""
+    partial = scan_partial_addresses(
+        datasource,
+        [c for c in (_concept(a, environment) for a in emitted) if c is not None],
+        stored,
+        exempt=promoted,
+    )
     return SourceCandidate(
         node=node,
         datasource=datasource,
@@ -270,7 +220,9 @@ def _candidate_for(
     conditions: BuildWhereClause | None,
     equivalence: dict[str, str],
     owners: dict[str, frozenset[str]],
+    environment: BuildEnvironment,
     rolled: frozenset[str] = frozenset(),
+    promoted: frozenset[str] = frozenset(),
 ) -> SourceCandidate | None:
     emitted = {
         address for address in node_emitted if _may_bind(datasource, address, owners)
@@ -287,6 +239,8 @@ def _candidate_for(
         stored={column.concept.address for column in datasource.columns} - rolled,
         conditions=conditions,
         equivalence=equivalence,
+        environment=environment,
+        promoted=promoted,
     )
 
 
@@ -324,58 +278,6 @@ def _bindings_for(
         )
         for address in sorted(emitted)
     }
-
-
-def _union_candidates(
-    terminals: list[BuildConcept],
-    environment: BuildEnvironment,
-    conditions: BuildWhereClause | None,
-    equivalence: dict[str, str],
-) -> dict[str, SourceCandidate]:
-    """A partition family read as one source. Each arm binds the discriminator
-    only for its own partition, so only the union binds it fully; without this
-    candidate the search would answer a whole-population request from one arm.
-    Like a single scan, it also emits the derivations every arm computes
-    inline, so a lookup keyed on one (`cell <- f(lat, lon)`) can join it."""
-    datasources = [
-        datasource
-        for datasource in environment.datasources.values()
-        if isinstance(datasource, BuildDatasource)
-    ]
-    out: dict[str, SourceCandidate] = {}
-    excluded = environment.excluded_enum_values
-    for group in get_union_sources(datasources, terminals, excluded):
-        merged = merge_conditions(
-            [
-                child.non_partial_for.conditional
-                for child in group
-                if child.non_partial_for is not None
-            ],
-            excluded,
-        )
-        union_datasource = BuildUnionDatasource(
-            children=group,
-            non_partial_for=(
-                BuildWhereClause(conditional=merged) if merged is not None else None
-            ),
-        )
-        stored = {column.concept.address for column in union_datasource.columns}
-        if not stored:
-            continue
-        derived = {
-            concept.canonical_address
-            for concept in union_derived_concepts(group, environment)
-        }
-        node = "ds~" + "-".join(child.name for child in group)
-        out[node] = _candidate(
-            node,
-            union_datasource,
-            stored | derived,
-            stored=stored,
-            conditions=conditions,
-            equivalence=equivalence,
-        )
-    return out
 
 
 def _drop_dominated_arms(
@@ -471,6 +373,35 @@ def terminal_addresses(terminals: list[BuildConcept]) -> list[str]:
     )
 
 
+def _concept(address: str, environment: BuildEnvironment) -> BuildConcept | None:
+    return environment.concepts.get(address) or environment.canonical_concepts.get(
+        address
+    )
+
+
+def absorbs_null(concept: BuildConcept | None) -> bool:
+    """A BASIC row value that takes a value where its inputs are NULL: a
+    COALESCE or a CASE with an ELSE in its lineage."""
+    if concept is None or concept.derivation is not Derivation.BASIC:
+        return False
+    return _expr_absorbs_null(concept.lineage)
+
+
+def _expr_absorbs_null(expr: object) -> bool:
+    if isinstance(expr, BuildConcept):
+        return absorbs_null(expr)
+    if isinstance(expr, BuildParenthetical):
+        return _expr_absorbs_null(expr.content)
+    if not isinstance(expr, BuildFunction):
+        return False
+    if expr.operator == FunctionType.COALESCE or (
+        expr.operator == FunctionType.CASE
+        and any(isinstance(arg, BuildCaseElse) for arg in expr.arguments)
+    ):
+        return True
+    return any(_expr_absorbs_null(arg) for arg in expr.arguments)
+
+
 def _decomposable(
     address: str,
     environment: BuildEnvironment,
@@ -498,7 +429,7 @@ def _decomposable(
         # won, which is the exact collapse the probe exists to prevent. It is
         # pinned to its own side by `_datasource_renders_probe`.
         return False
-    concept = environment.concepts.get(address)
+    concept = _concept(address, environment)
     if concept is None or concept.derivation is not Derivation.BASIC:
         return False
     lineage = concept.lineage
@@ -530,7 +461,7 @@ def connector_join_keys(alias: str, origin: BuildConcept) -> set[str]:
     `keys` is where parse put the input axis, and it survives the canonical
     rewrite the grain did not. Empty for a keyless spine (`unnest([1,2,3])`),
     which has no axis to offer and needs none."""
-    provided = {alias, origin.address, origin.canonical_address} | origin.pseudonyms
+    provided = {alias} | origin.all_spellings
     if set(origin.grain.components) - provided:
         return set()
     return set(origin.keys or ()) - provided
@@ -555,7 +486,7 @@ def _connector_candidates(
     for alias, origin in sorted(environment.alias_origin_lookup.items()):
         if origin.lineage is None or origin.derivation is Derivation.BASIC:
             continue
-        provided = {alias, origin.address, origin.canonical_address}
+        provided = {alias} | origin.spellings
         input_keys = connector_join_keys(alias, origin)
         grain = frozenset(
             equivalence.get(component, component)
@@ -638,9 +569,9 @@ def _relevant_nodes(
     Computed before labeling, because a candidate's binding keys are exactly
     its canonicalized emitted addresses (minus probe-ownership removals), so
     address-reachability over this bipartite graph over-approximates every
-    join any cover could make. `extra_sets` carries the union/connector
-    candidates' binding keys, since a derived connector can bridge scans that
-    share no address. Presence-probe carriers are seeded by node: their binding
+    join any cover could make. `extra_sets` carries the connector candidates'
+    binding keys, since a derived connector can bridge scans that share no
+    address. Presence-probe carriers are seeded by node: their binding
     is INJECTED by `pin_unoffered_probes`, never emitted by the graph."""
     canonical: dict[str, set[str]] = {
         node: {equivalence.get(a, a) for a in emitted}
@@ -658,7 +589,8 @@ def _relevant_nodes(
         if member is None:
             continue
         carrier_ids.update(
-            c.identifier for c in member_binding_datasources(member, environment)
+            c.identifier
+            for c in member_binding_datasources(member, graph.scope.datasources)
         )
     stack: list[str] = [
         node
@@ -693,12 +625,42 @@ def _relevant_nodes(
     return included
 
 
+def _searched_terminals(
+    requested: list[str],
+    candidates: dict[str, SourceCandidate],
+    environment: BuildEnvironment,
+    equivalence: dict[str, str],
+) -> list[str]:
+    bound = {address for c in candidates.values() for address in c.bindings}
+    full = {
+        address
+        for c in candidates.values()
+        for address, binding in c.bindings.items()
+        if binding.strength is BindingStrength.FULL
+    }
+    sourced = {address for address in requested if address in bound}
+    # a NULL-absorbing derivation a scan computes over only part of the rows
+    # is wrong on the rest (`coalesce(ret, 0)` is NULL there, not 0): it is
+    # computed over the joined rows instead, from its inputs
+    return [
+        address
+        for address in requested
+        if (
+            address in sourced
+            and (address in full or not absorbs_null(_concept(address, environment)))
+        )
+        or not _decomposable(address, environment, sourced - {address}, equivalence)
+    ]
+
+
 def build_source_network(
     terminals: list[BuildConcept],
     environment: BuildEnvironment,
     graph: ReferenceGraph,
     conditions: BuildWhereClause | None = None,
     deferred_conditions: BuildWhereClause | None = None,
+    arm_local: bool = False,
+    partial_ok: frozenset[str] = frozenset(),
 ) -> SourceNetwork:
     addresses = terminal_addresses(terminals)
     all_addresses = set(addresses)
@@ -715,11 +677,10 @@ def build_source_network(
                 concept.address for concept in rollups.get(node, [])
             }
             all_addresses |= emitted_by_node[node]
-    equivalence = _equivalence_map(
-        environment, all_addresses, _graph_pseudonym_pairs(graph)
-    )
+    equivalence = environment.address_roots(all_addresses, spellings=True)
     owners = probe_owners(
         environment,
+        graph.scope.datasources,
         all_addresses,
         _probe_offers(graph, emitted_by_node),
         {
@@ -729,13 +690,6 @@ def build_source_network(
             for identifier in datasource_identifiers(datasource)
         },
     )
-    union_candidates = {
-        node: union_candidate
-        for node, union_candidate in _union_candidates(
-            terminals, environment, conditions, equivalence
-        ).items()
-        if not union_candidate.condition.disqualifying
-    }
     connector_candidates = _connector_candidates(environment, equivalence)
     relevant = _relevant_nodes(
         graph,
@@ -743,11 +697,7 @@ def build_source_network(
         addresses,
         environment,
         equivalence,
-        [
-            frozenset(candidate.bindings)
-            for table in (union_candidates, connector_candidates)
-            for candidate in table.values()
-        ],
+        [frozenset(candidate.bindings) for candidate in connector_candidates.values()],
     )
     candidates: dict[str, SourceCandidate] = {}
     for node, datasource in sorted(graph.datasources.items()):
@@ -760,29 +710,42 @@ def build_source_network(
             conditions,
             equivalence,
             owners,
+            environment,
             frozenset(concept.address for concept in rollups.get(node, [])),
+            # the spans this group is built not to extend: its region domain
+            # completes them, so the fact's `~` column is a full binding here
+            promoted=environment.span_scope.extent_free,
         )
         if candidate is not None and not candidate.condition.disqualifying:
             candidates[node] = candidate
-    for node, union_candidate in union_candidates.items():
-        candidates.setdefault(node, union_candidate)
     for node, connector in connector_candidates.items():
         candidates.setdefault(node, connector)
     requested = [equivalence.get(a, a) for a in addresses]
     candidates = _drop_dominated_arms(candidates, requested)
-    candidates = pin_unoffered_probes(addresses, candidates, environment, equivalence)
-    bound = {address for c in candidates.values() for address in c.bindings}
-    sourced = {address for address in requested if address in bound}
-    searched = [
-        address
-        for address in requested
-        if address in sourced
-        or not _decomposable(address, environment, sourced, equivalence)
-    ]
+    candidates = pin_unoffered_probes(
+        addresses, candidates, environment, graph.scope.datasources, equivalence
+    )
+    searched = _searched_terminals(requested, candidates, environment, equivalence)
     address_grain = _address_grains(environment, all_addresses, equivalence)
     families = axis_families(
-        searched, candidates, environment, equivalence, address_grain, conditions
+        searched,
+        candidates,
+        environment,
+        graph.scope.datasources,
+        equivalence,
+        address_grain,
+        conditions,
+        arm_local,
     )
+    unbound = drop_axis_scalar_bindings(
+        set(requested_axis_groups(searched, environment, equivalence)),
+        candidates,
+        environment,
+        equivalence,
+    )
+    if unbound != candidates:
+        candidates = unbound
+        searched = _searched_terminals(requested, candidates, environment, equivalence)
     candidates = downgrade_axis_bindings(families, candidates)
     return SourceNetwork(
         terminals=tuple(searched),
@@ -792,4 +755,5 @@ def build_source_network(
         join_requirements=_join_requirements(terminals, environment, equivalence),
         axis_families=families,
         subsumed_arms=_subsumed_arms(candidates),
+        partial_ok=frozenset(equivalence.get(a, a) for a in partial_ok),
     )

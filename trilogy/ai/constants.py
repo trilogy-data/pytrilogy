@@ -18,7 +18,7 @@ parameter NAME TYPE [default <literal>]; — a runtime value supplied via `--par
 | Goal | Use |
 |---|---|
 | Typical query | no merge, no join: access all fields through dot-paths |
-| Blend two models on shared keys inside one query | scoped `subset\|union join` |
+| Blend two models on shared keys inside one query | scoped `subset\|union\|equal join` |
 | Make a connection universal to a whole file | `merge` |
 | Stack subsets/channels as rows | `union(...)` |
 | Rows in A but never in B (set difference) | `except(...)` |
@@ -26,7 +26,7 @@ parameter NAME TYPE [default <literal>]; — a runtime value supplied via `--par
 
 ### Query-scoped join
 
-A typical fact already has its dimensions merged in, so no join is needed. Blending fact models or rowset outputs takes a scoped join, placed right after the select list, which DECLARES how the key domains relate: `subset join a = b` (a's values are contained in b's, a ⊆ b; b authoritative for the key) or `union join a = b` (neither contains the other; the key is the coalesce of both sides and unmatched rows from BOTH sides are kept).
+A typical fact already has its dimensions merged in, so no join is needed. Blending fact models or rowset outputs takes a scoped join, placed right after the select list, which DECLARES how the key domains relate: `subset join a = b` (a's values are contained in b's, a ⊆ b; b authoritative for the key), `union join a = b` (neither contains the other; the key is the coalesce of both sides and unmatched rows from BOTH sides are kept) or `equal join a = b` (ONE domain: a is an alias of b, every value on either side is on the other; the join renders inner).
 
 Two rules decide whether the numbers are right, so apply them before reaching for the example:
 
@@ -35,7 +35,7 @@ Two rules decide whether the numbers are right, so apply them before reaching fo
 
 Chaining, expression keys, union/subset mixing, multi-key and self-pair shapes: trilogy agent-info syntax example scoped-join.
 
-merge <a> into ~<b>; is the persistent (whole-file) equivalent of `subset join a = b`; plain `merge a into b;` declares EXACT domain equivalence. Standalone statements; prefer a scoped join unless the connection is universal.
+merge <a> into ~<b>; is the persistent (whole-file) equivalent of `subset join a = b`; plain `merge a into b;` is the persistent equivalent of `equal join a = b`. Standalone statements; prefer a scoped join unless the connection is universal.
 
 ### union / except / intersect (row set operations)
 
@@ -51,14 +51,14 @@ with <name> as                     # optional: name the select as a reusable row
 where   <row condition>            # 1. filters INPUT rows, BEFORE aggregation
 select  <col>, <agg> as name,      # 2. projection — grouping is AUTOMATIC by the
                                    #    non-aggregated columns; never write GROUP BY
-  subset|union join a = b (= c)?   # 3. blend models; one clause per key, right after the select list
+  subset|union|equal join a = b (= c)?   # 3. blend models; one clause per key, right after the select list
 by rollup|cube|grouping sets (...) # 4. optional multi-level grouping for the whole select
 having  <result condition>         # 5. filters aggregated/joined RESULTS
 order by <col> asc|desc            # 6. sort
 limit   <n>;                       # 7. cap rows
 ```
 
-A rowset (`with <name> as where ... select ...;`) is a standalone statement, evaluated in isolation — it does NOT respond to the consuming query's context. All its outputs are namespaced: output `abc.def` of rowset `foo` is referenced as `foo.abc.def`, and joined back like any concept (`subset join foo.key = other.key`). Alias every reused expression with `as`.
+A rowset (`with <name> as where ... select ...;`) is a standalone statement, evaluated in isolation — it does NOT respond to the consuming query's context. All its outputs are namespaced: output `abc.def` of rowset `foo` is referenced as `foo.abc.def`. Pairing an output with a concept outside the rowset REQUIRES a declared join on the rowset's key (`subset join foo.key = key`); without one the query is disconnected. Alternatively project the concept inside the rowset and filter or select it through the handle (`where foo.cat = 'a'`). Alias every reused expression with `as`.
 
 Full annotated example: trilogy agent-info syntax example query-structure.
 
@@ -71,7 +71,7 @@ Full annotated example: trilogy agent-info syntax example query-structure.
 - **Count a COMPOSITE grain with `grain(...)`.** `count(grain(order_id, item.id))` counts order+item combinations; `grain(...)` is NEVER NULL. Never count one column of a multi-key grain — a coarser key counts its own distinct values and undercounts. `count_distinct(a, b)` is accepted as sugar for `count(grain(a, b))` (distinct combinations, NULL members included).
 - **An aggregate over a group with no qualifying rows is NULL, never 0.** `sum(x ? cond) by k` yields NULL for groups where nothing matches, so `= 0` matches nothing. Test emptiness with `count(key ? cond) by k = 0` or wrap: `coalesce(sum(x ? cond), 0)`.
 - **`count(1)` is invalid** — a constant does not identify rows. Use the row key, `count(grain(...))`, or `sum(1) by <grain>`.
-- **One-column expression subqueries only.** `(select ...)` is allowed where a scalar or membership set is expected (exactly one projected column) — never as a SQL-style FROM-subquery. For related-entity filters prefer the dot-path: `where enrollments.student.state = 'TN'`, not a subselect.
+- **One-column expression subqueries only.** `(select ...)` is allowed where a scalar or membership set is expected (exactly one projected column; a scalar must also be one row: an aggregate with no `by`, or `limit 1`) — never as a SQL-style FROM-subquery. For related-entity filters prefer the dot-path: `where enrollments.student.state = 'TN'`, not a subselect.
 - **`--` is a HIDDEN-field prefix, not a comment** (it still changes query structure). Comments use `#` only.
 - **Aliases**: always use the full dot-path (`enroll.student.id`); alias every new expression with `as`; a select alias is usable in `having`/`order by` but NOT inside other select expressions or `where`, and must not rename a field back to an existing concept name.
 

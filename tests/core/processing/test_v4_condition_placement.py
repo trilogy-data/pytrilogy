@@ -11,6 +11,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import DataType
+from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing.v4_helper.condition_placement import (
     PlacementReason,
     plan_condition_placements,
@@ -60,7 +61,6 @@ def _bucket(
     derivation: Derivation,
     primary: list[str],
     *,
-    secondary: list[str] | None = None,
     depth: DepthLabel = DepthLabel.STAR,
     grain: set[str] | None = None,
 ) -> GroupBucket:
@@ -69,7 +69,6 @@ def _bucket(
         derivation=derivation,
         grain_components=frozenset(grain or ()),
         primary_members=primary,
-        secondary_members=secondary or [],
     )
 
 
@@ -91,7 +90,13 @@ def test_root_condition_lands_on_upstream_root(
     add_edge(graph, edges, "basic", FINAL_NODE_ID, EdgeKind.MERGE)
 
     placements = plan_condition_placements(
-        graph, edges, buckets, [_where("x")], [_concept("y")], empty_environment
+        graph,
+        edges,
+        buckets,
+        [_where("x")],
+        [_concept("y")],
+        empty_environment,
+        Keyspace(),
     )
 
     assert len(placements) == 1
@@ -108,7 +113,6 @@ def test_window_output_condition_lands_on_downstream_consumer(
         "window": _bucket(
             Derivation.WINDOW,
             [_addr("ranked")],
-            secondary=[_addr("x")],
             depth=DepthLabel.D0,
             grain={_addr("x")},
         ),
@@ -121,7 +125,13 @@ def test_window_output_condition_lands_on_downstream_consumer(
         add_edge(graph, edges, gid, FINAL_NODE_ID, EdgeKind.MERGE)
 
     placements = plan_condition_placements(
-        graph, edges, buckets, [_where("ranked")], [_concept("out")], empty_environment
+        graph,
+        edges,
+        buckets,
+        [_where("ranked")],
+        [_concept("out")],
+        empty_environment,
+        Keyspace(),
     )
 
     assert len(placements) == 1
@@ -165,7 +175,13 @@ def test_cross_grain_aggregate_comparison_defers_to_final(
     )
 
     placements = plan_condition_placements(
-        graph, edges, buckets, [condition], [_concept("out")], empty_environment
+        graph,
+        edges,
+        buckets,
+        [condition],
+        [_concept("out")],
+        empty_environment,
+        Keyspace(),
     )
 
     assert len(placements) == 1
@@ -219,7 +235,6 @@ def _filter_scope_graph(
         "agg": _bucket(
             Derivation.AGGREGATE,
             [_addr("min_cost")],
-            secondary=[_addr("id")],
             depth=DepthLabel.D1,
             grain=aggregate_grain,
         ),
@@ -247,6 +262,7 @@ def test_atom_a_filter_scope_cannot_propagate_lands_outside_the_scope() -> None:
         [_where("region")],
         [_concept("out")],
         _filter_environment("region"),
+        Keyspace(),
     )
 
     assert len(placements) == 1
@@ -265,6 +281,7 @@ def test_atom_the_scope_keys_its_value_by_stays_in_the_scope() -> None:
         [_where("region")],
         [_concept("out")],
         _filter_environment("region"),
+        Keyspace(),
     )
 
     assert len(placements) == 1

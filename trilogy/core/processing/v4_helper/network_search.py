@@ -192,7 +192,7 @@ def _bound_level(network: SourceNetwork, sources: frozenset[str], address: str) 
     elif network.full_binders(address) & sources:
         return 2
     if any(network.candidates[node].binds(address) for node in sources):
-        return 1
+        return 2 if address in network.partial_ok else 1
     return 0
 
 

@@ -4,7 +4,7 @@
 # dependencies = ["pyarrow", "requests", "pytrilogy"]
 # ///
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pyarrow as pa
 import requests
@@ -28,7 +28,7 @@ def fetch_rows_updated_at() -> pa.Table:
         {
             "city": pa.array(["USNYC"], type=pa.string()),
             "data_updated_through": pa.array(
-                [datetime.fromtimestamp(ts, tz=timezone.utc)],
+                [datetime.fromtimestamp(ts, tz=UTC)],
                 type=pa.timestamp("us", tz="UTC"),
             ),
         }

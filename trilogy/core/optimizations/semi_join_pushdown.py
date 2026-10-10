@@ -198,7 +198,7 @@ class PushSemiJoinIntoAggregate(OptimizationRule):
         for join in cte.joins:
             if not isinstance(join, Join) or join.jointype != JoinType.INNER:
                 continue
-            if not join.joinkey_pairs or join.condition is not None:
+            if not join.joinkey_pairs or join.has_predicate:
                 continue
             if join.left_is_local:
                 continue

@@ -692,6 +692,8 @@ class RowsetDerivationStatement(HasUUID):
     name: str
     select: SelectStatement | MultiSelectStatement
     namespace: str
+    # an inline `(select ...)` in expression position: one row by construct
+    scalar: bool = False
 
     def __repr__(self):
         return f"RowsetDerivation<{self.select!s}>"

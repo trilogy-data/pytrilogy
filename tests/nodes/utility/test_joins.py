@@ -14,6 +14,8 @@ from trilogy.core.models.execute import (
     QueryDatasource,
 )
 from trilogy.core.processing.join_resolution import (
+    JoinFacts,
+    SideFacts,
     compute_outer_null_status,
     get_join_type,
     prune_outer_join_pairs,
@@ -409,6 +411,20 @@ def test_reduce_concept_pairs_fd_mutual_keeps_one():
     assert len(reduced) == 1, reduced
 
 
+def _facts(
+    partials: dict[str, list[str]], nullables: dict[str, list[str]]
+) -> JoinFacts:
+    return JoinFacts(
+        sides={
+            node: SideFacts(
+                partials=frozenset(partials.get(node, ())),
+                nullables=frozenset(nullables.get(node, ())),
+            )
+            for node in {*partials, *nullables}
+        }
+    )
+
+
 @pytest.mark.parametrize(
     "left_partial,left_nullable,right_partial,right_nullable,expected",
     [
@@ -454,7 +470,9 @@ def test_get_join_type_all_combinations(
     if right_nullable:
         nullables[right] = ["key1"]
 
-    result = get_join_type(left, right, partials, nullables, all_connecting_keys)
+    result = get_join_type(
+        left, right, all_connecting_keys, _facts(partials, nullables)
+    )
     assert result == expected
 
 
@@ -466,7 +484,9 @@ def test_get_join_type_no_matching_keys():
     nullables = {"table_a": ["different_key"]}
     all_connecting_keys = {"key1", "key2"}
 
-    result = get_join_type(left, right, partials, nullables, all_connecting_keys)
+    result = get_join_type(
+        left, right, all_connecting_keys, _facts(partials, nullables)
+    )
     assert result == JoinType.INNER
 
 
@@ -478,7 +498,9 @@ def test_get_join_type_empty_connecting_keys():
     nullables = {"table_a": ["key3"]}
     all_connecting_keys = set()
 
-    result = get_join_type(left, right, partials, nullables, all_connecting_keys)
+    result = get_join_type(
+        left, right, all_connecting_keys, _facts(partials, nullables)
+    )
     assert result == JoinType.INNER
 
 
@@ -491,7 +513,9 @@ def test_get_join_type_multiple_connecting_keys():
     nullables = {}
     all_connecting_keys = {"key1", "key2", "key3"}
 
-    result = get_join_type(left, right, partials, nullables, all_connecting_keys)
+    result = get_join_type(
+        left, right, all_connecting_keys, _facts(partials, nullables)
+    )
     assert result == JoinType.FULL
 
 
@@ -810,7 +834,7 @@ datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_tabl
     joins = [upstream_join, multi_left_join]
     null_status = compute_outer_null_status(joins)
     assert null_status[ds_f2.identifier] == 1
-    prune_outer_join_pairs(joins, null_status)
+    prune_outer_join_pairs(joins)
     # Only the preserved (f1) pair survives.
     assert len(multi_left_join.concept_pairs) == 1
     assert (
@@ -829,7 +853,7 @@ datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_tabl
             ConceptPair(left=shared, right=shared, existing_datasource=ds_f2),
         ],
     )
-    prune_outer_join_pairs([full_join], null_status)
+    prune_outer_join_pairs([full_join])
     assert len(full_join.concept_pairs) == 2
 
     # Distinct (right, left_addr) groups are independent: pruning one doesn't
@@ -853,7 +877,7 @@ datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_tabl
             ),
         ],
     )
-    prune_outer_join_pairs([upstream_join, multi_left_with_distinct], null_status)
+    prune_outer_join_pairs([upstream_join, multi_left_with_distinct])
     # shared/shared group → 1 pair (preserved). Distinct-left groups → unchanged.
     addresses = sorted(
         (p.left.address, p.existing_datasource.identifier)
@@ -863,3 +887,42 @@ datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_tabl
     assert (shared.address, ds_f2.identifier) not in addresses
     assert (other_concept.address, ds_f1.identifier) in addresses
     assert (other_concept_f2_alias.address, ds_f2.identifier) in addresses
+
+
+def test_prune_outer_join_pairs_keeps_every_padded_side():
+    env, _ = parse("""
+key shared_id int;
+key fact1_id int;
+key fact2_id int;
+
+datasource dim (id:shared_id) grain(shared_id) address dim_table;
+datasource fact1 (id:fact1_id, sid:shared_id) grain(fact1_id) address fact1_table;
+datasource fact2 (id:fact2_id, sid:shared_id) grain(fact2_id) address fact2_table;
+    """)
+    env = env.materialize_for_select()
+    shared = env.concepts["shared_id"]
+    ds_dim = env.datasources["dim"]
+    ds_f1 = env.datasources["fact1"]
+    ds_f2 = env.datasources["fact2"]
+    upstream_full = BaseJoin(
+        left_datasource=None,
+        right_datasource=ds_f2,
+        join_type=JoinType.FULL,
+        concept_pairs=[
+            ConceptPair(left=shared, right=shared, existing_datasource=ds_f1)
+        ],
+    )
+    right_join = BaseJoin(
+        left_datasource=None,
+        right_datasource=ds_dim,
+        join_type=JoinType.RIGHT_OUTER,
+        concept_pairs=[
+            ConceptPair(left=shared, right=shared, existing_datasource=ds_f1),
+            ConceptPair(left=shared, right=shared, existing_datasource=ds_f2),
+        ],
+    )
+    joins = [upstream_full, right_join]
+    status = compute_outer_null_status(joins)
+    assert status[ds_f1.identifier] == 2
+    prune_outer_join_pairs(joins)
+    assert len(right_join.concept_pairs) == 2

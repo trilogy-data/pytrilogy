@@ -2,6 +2,7 @@ import html
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC
 from email.utils import parsedate_to_datetime
 from typing import Any, TypeVar
 
@@ -37,6 +38,8 @@ class RetryOptions:
     )
     on_retry: Callable[[int, int, Exception], None] | None = None
     retry_after_padding_ms: int = 500
+    # A server asking for a longer wait (e.g. an exhausted daily quota) fails fast
+    max_suggested_delay_ms: int = 120_000
     # Optional: parse a suggested retry delay (ms) from the error body
     extract_retry_delay_fn: Callable[[Exception], int | None] | None = None
 
@@ -48,10 +51,10 @@ def _parse_retry_after_ms(value: str) -> int | None:
     except ValueError:
         pass
     try:
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         dt = parsedate_to_datetime(value)
-        delta_ms = int((dt - datetime.now(timezone.utc)).total_seconds() * 1000)
+        delta_ms = int((dt - datetime.now(UTC)).total_seconds() * 1000)
         return max(0, delta_ms)
     except Exception:
         return None
@@ -99,6 +102,11 @@ def fetch_with_retry(fetch_fn: Callable[[], T], options: RetryOptions) -> T:
                 should_retry = True
 
             if not should_retry or attempt >= options.max_retries:
+                raise
+            if (
+                suggested_ms is not None
+                and suggested_ms > options.max_suggested_delay_ms
+            ):
                 raise
 
             if suggested_ms is not None:

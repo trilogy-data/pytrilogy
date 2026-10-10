@@ -16,7 +16,7 @@ from typing import (
 )
 
 from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants
-from trilogy.core.constants import ALL_ROWS_CONCEPT
+from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.enums import (
     NAVIGATION_WINDOW_TYPES,
     NUMBERING_WINDOW_TYPES,
@@ -206,11 +206,11 @@ class UndefinedConcept(ConceptRef):
 
 
 def address_with_namespace(address: str, namespace: str) -> str:
+    if address == ALL_ROWS_ADDRESS:
+        return address
     existing_ns, sep, existing_name = address.partition(".")
     if not sep:
         existing_name = address
-    if existing_name == ALL_ROWS_CONCEPT:
-        return address
     if existing_ns == DEFAULT_NAMESPACE:
         return f"{namespace}.{existing_name}"
     return f"{namespace}.{address}"
@@ -585,7 +585,7 @@ class Grain(Namespaced):
 
     def _gen_abstract(self) -> bool:
         return not self.components or all(
-            c.endswith(ALL_ROWS_CONCEPT) for c in self.components
+            c == ALL_ROWS_ADDRESS for c in self.components
         )
 
     @property
@@ -1432,8 +1432,16 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
                     _, _, parent_keys = x.get_select_grain_and_keys(grain, environment)
                     if parent_keys:
                         pkeys.update(parent_keys)
-                # deduplicate
-                final_grain = Grain.from_concepts(pkeys, environment)
+                # already reduced: re-reducing would drop a grouping spec's
+                # select-local flags, the only row identity rollup subtotals have
+                final_grain = (
+                    Grain(
+                        components=set(grain.components),
+                        component_order=list(grain.component_order),
+                    )
+                    if pkeys == grain.components
+                    else Grain.from_concepts(pkeys, environment)
+                )
                 keys = final_grain.components
         return new_lineage, final_grain, keys
 
@@ -1645,12 +1653,22 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
 
     @classmethod
     def calculate_granularity(cls, derivation: Derivation, grain: Grain, lineage):
-        from trilogy.core.models.build import BuildFilterItem, BuildFunction
+        from trilogy.core.models.build import (
+            BuildFilterItem,
+            BuildFunction,
+            BuildRowsetItem,
+        )
 
         if derivation == Derivation.CONSTANT:
             return Granularity.SINGLE_ROW
+        elif (
+            isinstance(lineage, (RowsetItem, BuildRowsetItem)) and lineage.rowset.scalar
+        ):
+            # an inline `(select ...)` scalar subquery is one row by construct,
+            # whatever its body's grain: it cross-joins beside anything
+            return Granularity.SINGLE_ROW
         elif derivation == Derivation.AGGREGATE:
-            if all(x.endswith(ALL_ROWS_CONCEPT) for x in grain.components):
+            if all(x == ALL_ROWS_ADDRESS for x in grain.components):
                 return Granularity.SINGLE_ROW
         elif derivation == Derivation.FILTER and isinstance(lineage, BuildFilterItem):
             # Filtering rows never changes single-row-ness; inherit the filtered
@@ -2917,6 +2935,7 @@ class RowsetLineage(Namespaced, ReferenceReplaceable):
     name: str
     derived_concepts: list[ConceptRef]
     select: SelectLineage | MultiSelectLineage
+    scalar: bool = False
 
     def with_namespace(self, namespace: str):
         return RowsetLineage(
@@ -2925,6 +2944,7 @@ class RowsetLineage(Namespaced, ReferenceReplaceable):
                 x.with_namespace(namespace) for x in self.derived_concepts
             ],
             select=self.select.with_namespace(namespace),
+            scalar=self.scalar,
         )
 
 

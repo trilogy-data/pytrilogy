@@ -137,6 +137,17 @@ def test_concept_covers_grain_multiselect_keys_branch():
     assert not _concept_covers_grain(no_overlap, BuildGrain(components={"test.a"}))
 
 
+def test_concept_covers_grain_needs_the_whole_grain():
+    """A key that is one of several grain components admits many right rows
+    per key value; only a grain that IS the key (under any spelling) is
+    covered."""
+    key = _concept("a")
+    assert _concept_covers_grain(key, BuildGrain(components={key.address}))
+    assert not _concept_covers_grain(
+        key, BuildGrain(components={key.address, "test.q"})
+    )
+
+
 def test_join_right_preserves_cardinality_unnest_join_returns_false():
     """Type-narrowing guard: UnnestJoin can't preserve right cardinality."""
     assert (
@@ -313,4 +324,42 @@ def test_identity_group_rejects_union_stack_and_aggregates(
             [datasource], [], datasource.grain, None, columns + [total], []
         )
         is False
+    )
+
+
+def test_grain_satisfied_by_pregrain_rowset_aggregate_handle_covers_its_grain():
+    """A rowset handle over an aggregate anchors rows at the handle's grain
+    exactly as the aggregate would: selecting `rs.total` (by `rs.k`) beside
+    rows keyed `rs.k` needs no regroup even with `rs.k` unprojected."""
+    from typing import cast
+
+    from trilogy.core.models.author import SelectLineage
+    from trilogy.core.models.build import BuildRowsetItem, BuildRowsetLineage
+    from trilogy.core.processing.grain_utility import grain_satisfied_by_pregrain
+
+    key = _concept("rs.k")
+    body_total = _concept(
+        "total", purpose=Purpose.METRIC, derivation=Derivation.AGGREGATE
+    )
+    body_total.build_is_aggregate = True
+    handle = _concept("rs.total", purpose=Purpose.METRIC, derivation=Derivation.ROWSET)
+    handle.grain = BuildGrain(components={key.address})
+    handle.lineage = BuildRowsetItem(
+        content=body_total,
+        rowset=BuildRowsetLineage(
+            name="rs",
+            derived_concepts=[handle.address],
+            select=cast(SelectLineage, None),
+        ),
+    )
+    env = BuildEnvironment()
+    for c in (key, body_total, handle):
+        env.concepts[c.address] = c
+    pregrain = BuildGrain(components={key.address})
+    assert grain_satisfied_by_pregrain(
+        pregrain, BuildGrain(components={handle.address}), env
+    )
+    handle.lineage = None
+    assert not grain_satisfied_by_pregrain(
+        pregrain, BuildGrain(components={handle.address}), env
     )

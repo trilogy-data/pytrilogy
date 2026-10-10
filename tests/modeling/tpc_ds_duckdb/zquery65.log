@@ -1,5 +1,5 @@
 query_id = "65"
-gen_length = 1913
+gen_length = 1908
 preql_size = 650
 comp_size = 1062
 generated_sql = """
@@ -38,8 +38,8 @@ SELECT
 FROM
     \"cheerful\"
     INNER JOIN \"memory\".\"item\" as \"store_sales_item_items\" on \"cheerful\".\"store_sales_item_sk\" = \"store_sales_item_items\".\"I_ITEM_SK\"
+    INNER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"cheerful\".\"store_sales_store_sk\" = \"store_sales_store_store\".\"S_STORE_SK\"
     INNER JOIN \"questionable\" on \"cheerful\".\"store_sales_store_sk\" = \"questionable\".\"store_sales_store_sk\"
-    LEFT OUTER JOIN \"memory\".\"store\" as \"store_sales_store_store\" on \"cheerful\".\"store_sales_store_sk\" = \"store_sales_store_store\".\"S_STORE_SK\"
 WHERE
     \"cheerful\".\"revenue\" <= 0.1 * \"questionable\".\"store_avg_revenue\"
 

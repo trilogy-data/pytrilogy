@@ -2,10 +2,20 @@ from networkx import Graph
 
 from trilogy.core.enums import JoinType
 from trilogy.core.processing.join_resolution import (
+    JoinFacts,
     JoinOrderOutput,
+    SideFacts,
     ensure_content_preservation,
     resolve_join_order_v2,
 )
+
+
+def _facts(partials: dict[str, list[str]]) -> JoinFacts:
+    return JoinFacts(
+        sides={
+            node: SideFacts(partials=frozenset(keys)) for node, keys in partials.items()
+        }
+    )
 
 
 def test_resolve_join_order_v2():
@@ -27,7 +37,7 @@ def test_resolve_join_order_v2():
         "ds~customer_address": ["c~customer_id"],
     }
 
-    output = resolve_join_order_v2(g, partials, {})
+    output = resolve_join_order_v2(g, _facts(partials))
 
     # every join here binds a partial (subset-declared) key, so all render
     # preserving — the optimizer narrows later when the superset side proves
@@ -115,8 +125,9 @@ def test_prior_left_outer_promotes_to_left_outer():
     assert join2.type == JoinType.LEFT_OUTER
 
 
-def test_prior_right_outer_promotes_to_right_outer():
-    """Test that a prior RIGHT_OUTER join promotes current join to RIGHT_OUTER."""
+def test_prior_right_outer_promotes_to_left_outer():
+    """A prior RIGHT_OUTER padded table_a into the accumulated stream; a join
+    keyed off table_a preserves that stream (its left), not table_c."""
     join1 = JoinOrderOutput(
         right="table_b", type=JoinType.RIGHT_OUTER, keys={"table_a": {"id"}}
     )
@@ -128,14 +139,27 @@ def test_prior_right_outer_promotes_to_right_outer():
     joins = [join1, join2]
     ensure_content_preservation(joins)
     assert join1.type == JoinType.RIGHT_OUTER
-    assert join2.type == JoinType.RIGHT_OUTER
+    assert join2.type == JoinType.LEFT_OUTER
+
+
+def test_prior_right_outer_keyed_on_its_preserved_side_unchanged():
+    join1 = JoinOrderOutput(
+        right="table_b", type=JoinType.RIGHT_OUTER, keys={"table_a": {"id"}}
+    )
+    join2 = JoinOrderOutput(
+        right="table_c", type=JoinType.INNER, keys={"table_b": {"id"}}
+    )
+    joins = [join1, join2]
+    ensure_content_preservation(joins)
+    assert join2.type == JoinType.INNER
 
 
 def test_prior_full_join_promotes_to_full():
     """A prior FULL join null-extends BOTH its sides and is symmetric
     (``A FULL B`` == ``B FULL A``), so a join building on either side is upgraded
-    to FULL. Anything weaker would depend on which side the ordering recorded as
-    the FULL's left/right, making the plan order-dependent."""
+    to FULL when it is keyed on the FULL's spine and that key is a demanded
+    domain. Anything weaker would depend on which side the ordering recorded
+    as the FULL's left/right, making the plan order-dependent."""
     join1 = JoinOrderOutput(
         right="table_b", type=JoinType.FULL, keys={"table_a": {"id"}}
     )
@@ -143,9 +167,22 @@ def test_prior_full_join_promotes_to_full():
         right="table_c", type=JoinType.INNER, keys={"table_b": {"id"}}
     )
     joins = [join1, join2]
-    ensure_content_preservation(joins)
+    ensure_content_preservation(joins, demanded_domains=frozenset({"id"}))
     assert join1.type == JoinType.FULL
     assert join2.type == JoinType.FULL
+
+
+def test_prior_full_join_undemanded_spine_preserves_the_stream_only():
+    """Two facts partial on a key pivot through its complete dimension: with
+    the key undemanded, the dimension's unmatched rows are nobody's."""
+    join1 = JoinOrderOutput(
+        right="table_b", type=JoinType.FULL, keys={"table_a": {"id"}}
+    )
+    join2 = JoinOrderOutput(
+        right="table_c", type=JoinType.INNER, keys={"table_b": {"id"}}
+    )
+    ensure_content_preservation([join1, join2])
+    assert join2.type == JoinType.LEFT_OUTER
 
 
 def test_prior_full_join_order_invariant():
@@ -157,12 +194,13 @@ def test_prior_full_join_order_invariant():
             right="table_c", type=JoinType.INNER, keys={"table_b": {"id"}}
         )
         joins = [j1, j2]
-        ensure_content_preservation(joins)
+        ensure_content_preservation(joins, demanded_domains=frozenset({"id"}))
         assert j2.type == JoinType.FULL, (left, right)
 
 
-def test_both_prior_conditions_promote_to_full():
-    """Test that both prior left and right conditions promote to FULL join."""
+def test_both_prior_paddings_preserve_the_stream():
+    """A LEFT padded table_b and a RIGHT padded table_d, both into the
+    accumulated stream; a join keyed off both preserves that stream."""
     join1 = JoinOrderOutput(
         right="table_b", type=JoinType.LEFT_OUTER, keys={"table_a": {"id"}}
     )
@@ -178,7 +216,7 @@ def test_both_prior_conditions_promote_to_full():
     ensure_content_preservation(joins)
     assert join1.type == JoinType.LEFT_OUTER
     assert join2.type == JoinType.RIGHT_OUTER
-    assert join3.type == JoinType.FULL
+    assert join3.type == JoinType.LEFT_OUTER
 
 
 def test_complex_chain_with_multiple_promotions():
@@ -321,7 +359,7 @@ def test_resolve_join_order_v2_multi_partial():
         "ds~fact2": ["c~shared_id"],
     }
 
-    output = resolve_join_order_v2(g, partials, {})
+    output = resolve_join_order_v2(g, _facts(partials))
 
     # Both fact tables should join to dim; fact tables join first
     # because multi_partial scoring boosts them.

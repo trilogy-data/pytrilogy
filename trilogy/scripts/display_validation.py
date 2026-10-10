@@ -2,10 +2,9 @@
 
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Self
 
 from click import echo, style
-from typing_extensions import Self
 
 import trilogy.scripts.display_core as _core
 from trilogy.scripts.display_core import _FdStderrCapture

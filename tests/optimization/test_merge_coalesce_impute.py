@@ -1,8 +1,10 @@
 """Replication case for coalesce+aggregate imputation merged into a property,
 with a WHERE filter on city — mirrors the Boston tree reporting query shape."""
 
+from tests.helpers.planning import Spy
 from trilogy import Dialects, parse
 from trilogy.core.models.build import concept_is_relevant
+from trilogy.core.processing.nodes import merge_node
 
 _UNION_IMPUTE_QUERY = """
 key tree_id int;
@@ -125,3 +127,21 @@ select
     rows = executor.execute_text(query)[-1].fetchall()
     latitudes = {r[3] for r in rows}
     assert latitudes, "expected non-empty results with latitude values"
+
+
+def _host_grain(result, *args, host_grain=None, **kwargs):
+    return host_grain
+
+
+def test_host_grain_ignores_a_span_the_plan_has_no_region_for(monkeypatch):
+    """`~city` is the partition discriminator: the union heals it, no source
+    holds a city the partitions lack, so nothing hosts its extension rows."""
+    capture = Spy(merge_node.get_node_joins, _host_grain)
+    monkeypatch.setattr(merge_node, "get_node_joins", capture)
+    Dialects.DUCK_DB.default_executor().generate_sql(
+        _UNION_IMPUTE_QUERY
+        + "select tree_id, city, diameter_at_breast_height, latitude, longitude;"
+    )
+    grains = [set(grain) for grain in capture.seen if grain]
+    assert grains
+    assert all(grain == {"local.tree_id"} for grain in grains)

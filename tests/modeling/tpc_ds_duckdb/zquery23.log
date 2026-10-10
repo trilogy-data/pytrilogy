@@ -1,5 +1,5 @@
 query_id = "23"
-gen_length = 7006
+gen_length = 6514
 preql_size = 1595
 comp_size = 2441
 generated_sql = """
@@ -49,9 +49,7 @@ FROM
     INNER JOIN \"sweltering\" on 1=1
 WHERE
     \"macho\".\"customer_total_overall\" > 0.5 * \"sweltering\".\"max_total_cmax\"
-
-GROUP BY
-    1),
+),
 abundant as (
 SELECT
     \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_sk\"
@@ -78,7 +76,6 @@ thoughtful as (
 SELECT
     \"sales_catalog_sales_unified\".\"CS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
      'CATALOG'  as \"sales_channel\",
-    \"sales_catalog_sales_unified\".\"CS_ITEM_SK\" as \"sales_item_sk\",
     \"sales_catalog_sales_unified\".\"CS_LIST_PRICE\" as \"sales_list_price\",
     \"sales_catalog_sales_unified\".\"CS_QUANTITY\" as \"sales_quantity\"
 FROM
@@ -92,7 +89,6 @@ UNION ALL
 SELECT
     \"sales_store_sales_unified\".\"SS_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
      'STORE'  as \"sales_channel\",
-    \"sales_store_sales_unified\".\"SS_ITEM_SK\" as \"sales_item_sk\",
     \"sales_store_sales_unified\".\"SS_LIST_PRICE\" as \"sales_list_price\",
     \"sales_store_sales_unified\".\"SS_QUANTITY\" as \"sales_quantity\"
 FROM
@@ -106,7 +102,6 @@ UNION ALL
 SELECT
     \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" as \"sales_billing_customer_sk\",
      'WEB'  as \"sales_channel\",
-    \"sales_web_sales_unified\".\"WS_ITEM_SK\" as \"sales_item_sk\",
     \"sales_web_sales_unified\".\"WS_LIST_PRICE\" as \"sales_list_price\",
     \"sales_web_sales_unified\".\"WS_QUANTITY\" as \"sales_quantity\"
 FROM
@@ -125,10 +120,7 @@ SELECT
     \"thoughtful\".\"sales_quantity\" as \"sales_quantity\"
 FROM
     \"thoughtful\"
-    INNER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"thoughtful\".\"sales_billing_customer_sk\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
-WHERE
-    exists (select 1 from yummy where yummy.\"frequent_items_frequent_item_id\" is not distinct from \"thoughtful\".\"sales_item_sk\") and exists (select 1 from friendly where friendly.\"best_customers_best_customer_id\" is not distinct from \"thoughtful\".\"sales_billing_customer_sk\")
-)
+    INNER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"thoughtful\".\"sales_billing_customer_sk\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\")
 SELECT
     \"questionable\".\"sales_billing_customer_last_name\" as \"c_last_name\",
     \"questionable\".\"sales_billing_customer_first_name\" as \"c_first_name\",

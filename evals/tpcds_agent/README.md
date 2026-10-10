@@ -137,6 +137,13 @@ engine work and one question/harness item.
   answer. Correctness is gated; this is deferred optimization with the measured
   alternatives and two incorrect-but-smaller spellings recorded.
 
+## Recurring agent trap (2026-10-01 run; doc candidate)
+
+A `union join` on a key is null-safe by design (`docs/subset_union_join_design.md`), so it
+keeps a NULL-key group an inner join drops, and `count(<merged key>) > 0` never tests
+existence (q50, q59, q64). The scoped-join agent docs should say: add `key is not null` to
+intersect, and count a non-key column of the other side to test existence.
+
 ## Known-open elsewhere
 
 `evals/tpch_agent/bug_inline_aggregate_alias_before_by_cryptic_error.md` - ranks between

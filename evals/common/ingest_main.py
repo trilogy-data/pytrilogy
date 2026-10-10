@@ -8,7 +8,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from . import agent_runner, archive, db, prompts, scoring
@@ -96,7 +96,7 @@ def run(spec: BenchmarkSpec) -> int:
         )
         return 2
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     run_dir = args.output_dir or (spec.eval_dir / "results_ingest" / timestamp)
     workspace = run_dir / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)

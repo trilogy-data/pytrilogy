@@ -17,7 +17,6 @@ from trilogy.core.models.build import (
     BuildWhereClause,
     CanonicalBuildConceptList,
     nonstandard_grouping_lineage,
-    union_unhealed_partial_addresses,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.aggregate_rollup import get_additive_rollup_concepts
@@ -42,6 +41,7 @@ from trilogy.core.processing.nodes import (
     StrategyNode,
 )
 from trilogy.core.processing.nodes.select_node_v2 import scan_stamps
+from trilogy.core.processing.scan_partials import scan_partial_addresses
 from trilogy.core.processing.utility import padding
 from trilogy.utility import unique
 
@@ -205,6 +205,7 @@ def create_select_node_candidate(
             datasource,
             all_concepts,
             environment,
+            g.scope.datasources,
             depth,
             conditions=conditions,
         )
@@ -225,6 +226,7 @@ def create_select_node_candidate(
             datasource,
             all_concepts,
             environment,
+            g.scope.datasources,
             depth,
             conditions=conditions,
         )
@@ -268,6 +270,7 @@ def create_datasource_node(
     datasource: BuildDatasource,
     all_concepts: list[BuildConcept],
     environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
     depth: int,
     conditions: BuildWhereClause | None = None,
     injected_conditions: BoolExpr | None = None,
@@ -300,11 +303,7 @@ def create_datasource_node(
             datasource=datasource,
             requested_concepts=all_concepts,
             concepts_by_address=environment.concepts,
-            datasources=[
-                ds
-                for ds in environment.datasources.values()
-                if isinstance(ds, BuildDatasource)
-            ],
+            datasources=datasources,
             target_grain=target_grain,
             conditions=conditions,
         )
@@ -346,9 +345,7 @@ def create_datasource_node(
     membership_complete = (
         set()
         if partial_is_full
-        else membership_complete_grain_keys(
-            datasource, environment.datasources.values(), conditions
-        )
+        else membership_complete_grain_keys(datasource, datasources, conditions)
     )
 
     routed_conditions = datasource_conditions(
@@ -424,6 +421,7 @@ def create_union_datasource_candidate(
     datasource: BuildUnionDatasource,
     all_concepts: list[BuildConcept],
     environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
     depth: int,
     conditions: BuildWhereClause | None = None,
 ) -> tuple["UnionNode", bool, int]:
@@ -472,6 +470,7 @@ def create_union_datasource_candidate(
             child,
             all_concepts,
             environment,
+            datasources,
             depth + 1,
             injected_conditions=injected_cond,
         )
@@ -479,17 +478,21 @@ def create_union_datasource_candidate(
         force_group = force_group or fg
         if fg:
             group_source_count = max(group_source_count, 1)
-    # Computed over the condition-filtered branches, not the full child list:
+    # Stamped over the condition-filtered branches, not the full child list:
     # a dropped branch can't contribute (or heal) partiality.
-    intrinsic_addrs = union_unhealed_partial_addresses(child for child, _ in effective)
+    effective_union = BuildUnionDatasource(
+        children=[child for child, _ in effective],
+        non_partial_for=datasource.non_partial_for,
+    )
+    partial = scan_partial_addresses(
+        effective_union,
+        all_concepts,
+        {c.concept.address for c in effective_union.columns},
+    )
     union_preexisting = (
         strip_atoms(conditions.conditional, unclaimed) if conditions else None
     )
-    union_partials: list[BuildConcept] = (
-        [c for c in all_concepts if c.address in intrinsic_addrs]
-        if intrinsic_addrs
-        else []
-    )
+    union_partials = [c for c in all_concepts if c.address in partial]
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} returning union node with {len(parents)} branch(es)"
     )

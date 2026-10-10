@@ -33,7 +33,6 @@ from trilogy.core.optimizations.join_upgrade import (
     UpgradeJoinOnGuards,
     _accumulated_left_addresses,
     _blocked_partials,
-    _cte_addresses,
     _seed_addresses,
     _source_datasources,
 )
@@ -100,19 +99,21 @@ def test_full_unchanged_without_guard():
 
 
 def _block_pin_heal(executor):
-    """A sibling source carrying `region` inside a larger grain: it anchors the
-    `~region` binding, so `heal_pinned_partials` leaves the FULL join in place
-    for the optimizer passes under test (otherwise the WHERE proof heals the
-    partial pre-discovery and no join is ever emitted). It also carries
-    `amount`: an anchor whose rows the WHERE proof (`amount > 5`) can never
-    kill is not dispensable, which is what keeps the anchor blocking."""
+    """A sibling source carrying `region` complete inside a larger grain: it
+    anchors the `~region` binding, so `decide_heal` leaves the FULL
+    join in place for the optimizer passes under test (otherwise the WHERE
+    proof heals the partial pre-discovery and no join is ever emitted). It
+    also carries `amount`: an anchor whose rows the WHERE proof (`amount > 5`)
+    can never kill is not dispensable, which is what keeps the anchor
+    blocking. A sibling itself `~` on `region` would anchor nothing: two
+    partial bindings have no defined relationship."""
     executor.execute_text("""
         key rm_id int;
         property <rm_id, region>.rm_note string;
 
         datasource region_notes (
             rm_id: rm_id,
-            region: ~region,
+            region: region,
             rm_note: rm_note,
             amount: amount,
         )
@@ -160,17 +161,16 @@ def test_full_to_one_sided_outer_when_only_one_side_proven():
 
 
 def test_full_kept_when_only_coalesced_key_proven():
-    """`region IS NOT NULL` on the merged join-key concept materializes as
-    `coalesce(left.region, right.region) IS NOT NULL`; coalesce is null-
-    opaque, so we can't prove either side individually → leave FULL."""
+    """`region IS NOT NULL` on the merged join-key concept proves neither side
+    alone, so no join may be downgraded on it. The region domain is read off
+    `region_dim` alone (no coalesced key to prove) and the region the fact
+    lacks survives."""
     executor = Dialects.DUCK_DB.default_executor()
     _persist_setup(executor)
 
     text = "WHERE region is not null SELECT region, sum(amount) as total;"
     sql = executor.generate_sql(executor.parse_text(text)[-1])[0]
-    # The coalesce form keeps left-unmatched and right-unmatched rows alike,
-    # so a downgrade would lose data — verify we don't emit the wrong shape.
-    assert "FULL JOIN" in sql, sql
+    assert "INNER JOIN" not in sql, sql
     assert _rows(executor, text) == {("NA", 10), ("EU", 20), ("AS", None)}
 
 
@@ -572,11 +572,6 @@ def test_proves_non_null_coalesce_default_rejection():
         )
         == set()
     )
-
-
-def test_cte_addresses_none_returns_empty():
-    """Defensive guard: a None CTE has no addresses."""
-    assert _cte_addresses(None) == set()
 
 
 def test_left_address_helpers_skip_non_join_entries():
@@ -1053,11 +1048,12 @@ def test_source_datasources_normalizes_to_safe_identifier_tokens():
 
 
 def test_source_datasources_cte_returns_source_map_tokens():
-    """A CTE/UnionCTE source_map already holds string tokens — returned as-is."""
+    """A CTE/UnionCTE is named by its own CTE name in a consumer's source_map,
+    and by its physical tables once a leaf scan is inlined."""
     key = _build_concept("KEY")
     cte = _build_cte("c", [key])
     cte.source_map = {key.address: ["test_c", "other_src"]}
-    assert _source_datasources(cte) == {"test_c", "other_src"}
+    assert _source_datasources(cte) == {"c", "test_c", "other_src"}
 
 
 def test_blocked_partials_intersects_operand_tokens():

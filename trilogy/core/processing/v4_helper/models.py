@@ -1,17 +1,21 @@
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 
 from trilogy.core import graph as nx
+from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.enums import (
     AggregateGroupingMode,
     Derivation,
+    FunctionType,
     Granularity,
     Purpose,
 )
 from trilogy.core.models.build import BoolExpr
+from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing.nodes import StrategyNode
 
-from .constants import DepthLabel
+from .constants import GROUPING_DERIVATIONS, DepthLabel
 from .edges import EdgeMap
 
 
@@ -25,6 +29,30 @@ def nulls_grouping_keys(mode: AggregateGroupingMode | None) -> bool:
     silently drops the subtotals. This is the single question the planner
     should ask, never "what does the group id string look like"."""
     return mode is not None and mode.nulls_grouping_keys
+
+
+class RootReason(Enum):
+    """Why a set of root columns is sourced as one scan: the reader it is for.
+
+    `root_partition.partition_root_demand` splits a scope's root demand by
+    these, and every ROOT group carries the one that made it."""
+
+    # the scope's row stream: what its derivations read together
+    ROW_STREAM = "row_stream"
+    # a row stream of its own: nothing it feeds meets the others below FINAL
+    COMPONENT = "component"
+    # single-row values, cross joined onto the keyed plan
+    SINGLE_ROW = "single_row"
+    # the definition of a semijoin set, read through the side channel only
+    EXISTENCE = "existence"
+    # attributes of one entity, joined back on its key
+    ENTITY = "entity"
+    # an extension region's own rows, joined back on its spans
+    REGION = "region"
+    # a condition stage's population, free of the SELECT side's filters
+    CONDITION = "condition"
+    # what one BASIC reads, all of it a function of the BASIC's grain
+    BASIC_INPUT = "basic_input"
 
 
 @dataclass
@@ -65,10 +93,16 @@ class ExtentOwnership:
     may pad on the way there, and every other group joins on solid keys.
     """
 
-    spans: frozenset[str] = frozenset()
     owner_by_span: dict[str, str] = field(default_factory=dict)
     # gid -> spans that group may extend (it owns them, or an owner is downstream)
     permitted: dict[str, frozenset[str]] = field(default_factory=dict)
+    # address -> the region domain group carrying it: on an extension row only
+    # that group has the member's value
+    carried: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def spans(self) -> frozenset[str]:
+        return frozenset(self.owner_by_span)
 
     def permitted_for(self, gid: str) -> frozenset[str]:
         return self.permitted.get(gid, frozenset())
@@ -76,8 +110,22 @@ class ExtentOwnership:
     def suppressed_for(self, gid: str) -> frozenset[str]:
         return self.spans - self.permitted_for(gid)
 
+    def suppressed_carried_for(self, gid: str) -> dict[str, frozenset[str]]:
+        """address -> the spans `gid` may not extend whose domain carries it."""
+        suppressed = self.suppressed_for(gid)
+        out: dict[str, frozenset[str]] = {}
+        for address, domain in self.carried.items():
+            spans = frozenset(
+                span
+                for span, owner in self.owner_by_span.items()
+                if owner == domain and span in suppressed
+            )
+            if spans and domain != gid:
+                out[address] = spans
+        return out
+
     def owner_of(self, address: str) -> str | None:
-        return self.owner_by_span.get(address)
+        return self.owner_by_span.get(address) or self.carried.get(address)
 
 
 @dataclass
@@ -97,8 +145,45 @@ class FinalAssemblyContract:
     deduplicate_to_grain: bool = True
 
 
+class _HeldKeys:
+    """The keys a group holds, read the same way off a bucket and its attrs."""
+
+    derivation: Derivation | None
+    grain_components: frozenset[str]
+    primary_members: Sequence[str]
+    carried_spans: Sequence[str]
+    grouping_mode: AggregateGroupingMode
+    dim_keys: frozenset[str]
+    reason: "RootReason | None"
+
+    @property
+    def anchor_keys(self) -> frozenset[str]:
+        """An entity peel's key, a column of its own: the axis the peel joins
+        back on, and the grain a scalar reading the peel alone is evaluated
+        at (`_anchor_scalars_to_dim_peel_key`)."""
+        return self.dim_keys if self.reason is RootReason.ENTITY else frozenset()
+
+    @property
+    def carried_keys(self) -> tuple[str, ...]:
+        """The keys a group holds without computing them, each read off the
+        field that says why: the entity key a peel's scalars are anchored to,
+        the spans of the regions its rows pair with, and its grain when it
+        groups."""
+        grain = (
+            sorted(g for g in self.grain_components if g != ALL_ROWS_ADDRESS)
+            if self.derivation in GROUPING_DERIVATIONS
+            else []
+        )
+        keys = dict.fromkeys([*sorted(self.anchor_keys), *self.carried_spans, *grain])
+        return tuple(k for k in keys if k not in self.primary_members)
+
+    @property
+    def nulls_grouping_keys(self) -> bool:
+        return nulls_grouping_keys(self.grouping_mode)
+
+
 @dataclass
-class GroupAttrs:
+class GroupAttrs(_HeldKeys):
     """Strongly-typed per-group state. Lives in a side dict
     (``dict[str, GroupAttrs]``) keyed by group id rather than on the
     nx.DiGraph node attributes: the graph stays as topology + edge metadata
@@ -112,9 +197,9 @@ class GroupAttrs:
     derivation: Derivation | None = None
     grain_components: frozenset[str] = frozenset()
     label: str = ""
-    members: tuple[str, ...] = ()
     primary_members: tuple[str, ...] = ()
-    secondary_members: tuple[str, ...] = ()
+    # See `GroupBucket.carried_spans`.
+    carried_spans: tuple[str, ...] = ()
     member_depths: dict[str, DepthLabel] = field(default_factory=dict)
     # For an aggregate group, the row grain its inputs must be normalized to
     # before aggregation. This is the grouping grain plus the natural grain of
@@ -124,6 +209,8 @@ class GroupAttrs:
     # (count-of-a-key over a finer row stream): render COUNT(DISTINCT ...)
     # instead of dedup-then-COUNT.
     aggregate_distinct_addrs: frozenset[str] = frozenset()
+    # See `GroupBucket.aggregate_first_row_grains`.
+    aggregate_first_row_grains: dict[str, frozenset[str]] = field(default_factory=dict)
     # Atoms (BoolExpr) applied AT this group. A clause like
     # `state='TN' AND year=2000` is decomposed and each atom finds its own
     # highest-allowed group independently, so a single clause may live at
@@ -146,12 +233,45 @@ class GroupAttrs:
     # physically satisfies or prunes, and the statement's extent routing.
     final_contract: FinalAssemblyContract | None = None
     extent_ownership: ExtentOwnership | None = None
+    # Set on a ROOT group that exists only to carry one extension region's own
+    # rows (`region_domains.decide_region_domains`): the region's spans.
+    extent_spans: frozenset[str] = frozenset()
+    # Of `extent_spans`, the ones bound `?` by some source whose NULL member
+    # the domain holds (`region_domains._takes_a_value_on_a_null_member`).
+    null_member_spans: frozenset[str] = frozenset()
+    # Set on a single-entity dimension ROOT group: the entity's key(s).
+    dim_keys: frozenset[str] = frozenset()
+    # Set on a ROOT group, and on a rowset boundary's region domain.
+    reason: RootReason | None = None
     # Populated for non-FINAL groups after `_compute_concept_sets`.
     input_contracts: tuple[GroupInputContract, ...] = ()
+    # Members of the row-preserving input groups this aggregate computes
+    # inline: every reader did, so those groups were never built.
+    inlined_members: tuple[str, ...] = ()
+
+    @classmethod
+    def from_bucket(cls, bucket: "GroupBucket") -> "GroupAttrs":
+        return cls(
+            depth_label=bucket.depth_label,
+            derivation=bucket.derivation,
+            grain_components=bucket.grain_components,
+            label=bucket.label,
+            primary_members=tuple(bucket.primary_members),
+            carried_spans=tuple(bucket.carried_spans),
+            member_depths=dict(bucket.member_depths),
+            aggregate_input_grain=bucket.aggregate_input_grain,
+            aggregate_distinct_addrs=frozenset(bucket.aggregate_distinct_addrs),
+            aggregate_first_row_grains=dict(bucket.aggregate_first_row_grains),
+            grouping_mode=bucket.grouping_mode,
+            extent_spans=bucket.extent_spans,
+            null_member_spans=bucket.null_member_spans,
+            dim_keys=bucket.dim_keys,
+            reason=bucket.reason,
+        )
 
     @property
-    def nulls_grouping_keys(self) -> bool:
-        return nulls_grouping_keys(self.grouping_mode)
+    def members(self) -> tuple[str, ...]:
+        return (*self.primary_members, *self.carried_keys)
 
 
 @dataclass
@@ -184,6 +304,13 @@ class ConceptAttrs:
     # key). Such a count may share a finer-grain sibling input stream by
     # rendering COUNT(DISTINCT ...) instead of dedup-then-COUNT.
     aggregate_distinct_rewritable: bool = False
+    # Keys a datasource feeding this aggregate's inputs binds partially: a
+    # rewritable count of one cannot share this aggregate's stream.
+    aggregate_partial_keys: frozenset[str] = frozenset()
+    # the key a COUNT counts (`count(order_id)`), whatever its input grain
+    counted_key: str | None = None
+    # the aggregate's function, None for any other concept
+    aggregate_operator: FunctionType | None = None
     keys: frozenset[str] = frozenset()
     # For a ROOT whose declared keys the query never names: the KEY roots that
     # jointly determine it through the environment's FD closure (a dimension
@@ -208,6 +335,9 @@ class ConceptAttrs:
     # (semijoin RHS) and never as a row arg; `partition_roots` places such a
     # node in its own scan bucket (side-channel subselect source).
     existence_only: bool = False
+    # Added only to carry a statement join onto a rowset handle (a mate the
+    # statement never names): a join key, not a row the statement demands.
+    relation_only: bool = False
 
     @property
     def keys_are_conditional_fd(self) -> bool:
@@ -237,6 +367,9 @@ class BuildInfo:
     concept_edges: EdgeMap = field(default_factory=dict)
     group_edges: EdgeMap = field(default_factory=dict)
     strategy_node: StrategyNode | None = None
+    keyspace: Keyspace = field(default_factory=Keyspace)
+    # Why the plan failed, when a group built nothing that something needed.
+    unbuilt_reason: str | None = None
 
     def copy(self) -> "BuildInfo":
         """Only the strategy node is mutated downstream; the graphs and
@@ -249,11 +382,13 @@ class BuildInfo:
             concept_edges=self.concept_edges,
             group_edges=self.group_edges,
             strategy_node=self.strategy_node.copy() if self.strategy_node else None,
+            keyspace=self.keyspace,
+            unbuilt_reason=self.unbuilt_reason,
         )
 
 
 @dataclass
-class GroupBucket:
+class GroupBucket(_HeldKeys):
     """In-flight working state for one group while we're assembling
     `group_graph`. Once all groups are populated, fields are unpacked onto the
     final nx node as attributes.
@@ -267,13 +402,16 @@ class GroupBucket:
     depth_label: DepthLabel
     derivation: Derivation
     grain_components: frozenset[str]
-    # primary/secondary members are concept ADDRESSES, which is what downstream
+    # primary members and carried spans are concept ADDRESSES, which is what downstream
     # strategy assembly cares about. primary_node_ids holds the matching
     # concept-graph node ids (which differ from addresses for any non-blank
     # phase/label), keyed parallel to primary_members.
     primary_members: list[str] = field(default_factory=list)
     primary_node_ids: list[str] = field(default_factory=list)
-    secondary_members: list[str] = field(default_factory=list)
+    # Spans of the extension regions this scan's rows pair with, riding it as
+    # join columns: a region's domain and the scans beside it
+    # (`region_domains.carry_region_spans`).
+    carried_spans: list[str] = field(default_factory=list)
     member_depths: dict[str, DepthLabel] = field(default_factory=dict)
     label: str = ""
     # Optional disambiguator for rules that produce multiple buckets sharing
@@ -286,11 +424,49 @@ class GroupBucket:
     # Member addresses to render COUNT(DISTINCT ...), merged in from a
     # coarser-input-grain sibling whose dedup folds into the aggregate.
     aggregate_distinct_addrs: set[str] = field(default_factory=set)
+    # Members of a ROLLUP/CUBE/GROUPING SETS pass whose input stream repeats
+    # their rows (two facts joined below the one pass), mapped to the grain
+    # whose first row each reads.
+    aggregate_first_row_grains: dict[str, frozenset[str]] = field(default_factory=dict)
     # SEMANTICS of this group's GROUP BY, as opposed to `discriminator`, which
     # only exists to keep distinct buckets at distinct group ids. Ask
     # `nulls_grouping_keys`, never the id string.
     grouping_mode: AggregateGroupingMode = AggregateGroupingMode.STANDARD
+    extent_spans: frozenset[str] = frozenset()
+    null_member_spans: frozenset[str] = frozenset()
+    dim_keys: frozenset[str] = frozenset()
+    reason: RootReason | None = None
+    # What the demand pass has the group emit (`_compute_concept_sets`), hidden
+    # pass-through columns included. Empty until it has run.
+    output_concepts: tuple[str, ...] = ()
+
+    def add_member(self, address: str, node_id: str, depth: DepthLabel) -> None:
+        self.primary_members.append(address)
+        self.primary_node_ids.append(node_id)
+        self.member_depths[address] = depth
+
+    def drop_members(self, indices: Collection[int]) -> None:
+        """Drop the members at `indices`; their depths stay readable."""
+        if not indices:
+            return
+        kept = [i for i in range(len(self.primary_members)) if i not in indices]
+        self.primary_members = [self.primary_members[i] for i in kept]
+        self.primary_node_ids = [self.primary_node_ids[i] for i in kept]
 
     @property
-    def nulls_grouping_keys(self) -> bool:
-        return nulls_grouping_keys(self.grouping_mode)
+    def carried(self) -> set[str]:
+        """What the group holds that it does not compute: what the demand pass
+        has it emit once that has run, and before it its keys."""
+        if self.output_concepts:
+            return set(self.output_concepts) - set(self.primary_members)
+        return set(self.carried_keys)
+
+    @property
+    def group_id(self) -> str:
+        grain_key = "|".join(sorted(self.grain_components)) or "∅"
+        label_prefix = f"[{self.label}]" if self.label else ""
+        suffix = f":{self.discriminator}" if self.discriminator else ""
+        return (
+            f"grp:{label_prefix}{self.derivation.value}:{self.depth_label.value}:"
+            f"{grain_key}{suffix}"
+        )

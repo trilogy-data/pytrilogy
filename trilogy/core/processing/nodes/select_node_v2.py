@@ -19,6 +19,7 @@ from trilogy.core.processing.nodes.base_node import (
     resolve_concept_map,
     resolve_existence_map,
 )
+from trilogy.core.processing.scan_partials import scan_partial_addresses
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - SELECT NODE]"
@@ -32,31 +33,21 @@ def scan_stamps(
     non_null_proofs: set[str],
 ) -> tuple[list[BuildConcept], list[BuildConcept]]:
     """Partial and nullable outputs of a scan: the datasource's column flags
-    over the projected outputs, narrowed by the scan's proofs. An address also
-    bound complete on the same datasource is fully providable, and a BASIC
-    computed here over a nullable column is NULL wherever that column is."""
-    complete = {c.concept.address for c in datasource.columns if c.is_complete}
-    partial_lcl = CanonicalBuildConceptList(
-        concepts=[
-            c.concept
-            for c in datasource.columns
-            if not c.is_complete and c.concept.address not in complete
-        ]
+    over the projected outputs, narrowed by the scan's proofs. Partiality is
+    `scan_partial_addresses`, the rule the network candidate binds by; a
+    BASIC computed here over a nullable column is NULL wherever that column
+    is."""
+    partial = scan_partial_addresses(
+        datasource,
+        outputs,
+        {c.concept.address for c in datasource.columns},
+        exempt=complete_proofs,
+        partial_is_full=partial_is_full,
     )
+    partials = [c for c in outputs if c.address in partial]
     nullable_lcl = CanonicalBuildConceptList(
         concepts=[c.concept for c in datasource.columns if c.is_nullable]
     )
-    # A satisfied partition pin completes the table-level stamp and any ~ the
-    # partition heals; a ~ it does not heal is an extension license and keeps
-    # its join preservation.
-    structural = datasource.pinned_partial_addresses
-    partials = [
-        c
-        for c in outputs
-        if c in partial_lcl
-        and c.canonical_address not in complete_proofs
-        and (not partial_is_full or c.address in structural)
-    ]
     nullables = [
         c
         for c in outputs
@@ -67,9 +58,7 @@ def scan_stamps(
                 and any(arg in nullable_lcl for arg in c.concept_arguments)
             )
         )
-        and not non_null_proofs.intersection(
-            {c.address, c.canonical_address, *c.pseudonyms}
-        )
+        and not non_null_proofs.intersection(c.all_spellings)
     ]
     return partials, nullables
 
@@ -204,9 +193,7 @@ class SelectNode(StrategyNode):
                 + [
                     c
                     for c in self.nullable_concepts
-                    if not non_null_proofs.intersection(
-                        {c.address, c.canonical_address, *c.pseudonyms}
-                    )
+                    if not non_null_proofs.intersection(c.all_spellings)
                 ],
                 "address",
             ),
@@ -321,15 +308,17 @@ class SelectNode(StrategyNode):
             non_null_proofs=set(self.non_null_proofs),
         )
         node.limit = self.limit
-        return node
+        return self.with_marks(node)
 
 
 class RowsetNode(SelectNode):
     """The boundary projection over a rowset body: re-exposes the body's
     columns under the outer rowset handle addresses, 1:1 with the body's
-    rows. A distinct type so the boundary is recognizable by `isinstance`;
-    it adds no behavior of its own (a merge above it keeps the body's rows
-    through the rowset-output check in `MergeNode._resolve`)."""
+    rows. Its only behavior is `region_boundary`: `region_reads` stops here,
+    since what the body read is the body's (a merge above it keeps the body's
+    rows through the rowset-output check in `MergeNode._resolve`)."""
+
+    region_boundary = True
 
 
 class ConstantNode(SelectNode):
@@ -337,7 +326,7 @@ class ConstantNode(SelectNode):
     """Represents a constant value."""
 
     def copy(self) -> "ConstantNode":
-        return ConstantNode(
+        node = ConstantNode(
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
@@ -349,6 +338,7 @@ class ConstantNode(SelectNode):
             hidden_concepts=self.hidden_concepts,
             ordering=self.ordering,
         )
+        return self.with_marks(node)
 
     def _resolve(self) -> QueryDatasource:
         return self.resolve_from_constant_datasources()

@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from enum import Enum
 from logging import Logger
 from typing import cast
@@ -5,19 +6,19 @@ from typing import cast
 from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
 from trilogy.core.graph import DiGraph
 from trilogy.core.models.build import (
+    ADDITIVE_ROLLUP_FUNCTIONS,
     BuildConcept,
     BuildDatasource,
     BuildUnionDatasource,
     BuildWhereClause,
 )
 from trilogy.core.processing.condition_utility import (
+    ExcludedEnumValues,
     condition_implies,
     condition_implies_with_extras,
     decompose_condition,
     is_scalar_condition,
 )
-
-ADDITIVE_ROLLUP_FUNCTIONS = {FunctionType.COUNT, FunctionType.SUM}
 
 
 def _aggregate_signature(
@@ -533,12 +534,52 @@ def datasource_to_node(input: BuildDatasource) -> str:
     return f"ds~{input.identifier}"
 
 
+def union_to_node(input: BuildUnionDatasource) -> str:
+    # identifiers, not names: one model imported under two aliases has a
+    # partition family per namespace, and the two unions are distinct nodes
+    return "ds~" + "-".join(child.identifier for child in input.children)
+
+
+class ScopeDatasources:
+    """The bindings a scope's graph was generated over: pin-healed and
+    partition-excluded for its statement (`statement_scope`), or the
+    environment's as authored. One object per scope, shared by every copy and
+    subgraph of its graph, where `ReferenceGraph.datasources` (node -> source)
+    follows the nodes kept, including the covering unions minted when the
+    graph is generated (`union_sources`). The
+    binding facts a plan's keyspace reads are cached per object
+    (`keyspace.scope_facts`), so a heal that changes nothing hands its
+    authored bindings, facts and all, to the plan. ``excluded_enum_values``
+    is the discriminator domain the statement's row gate rules out
+    (`partial_bridging.gate_excluded_enum_values`): partition-family proofs
+    (union coverage, `merge_conditions`) run over what remains, so hiding a
+    contradicted arm never breaks the proof the other arms need."""
+
+    __slots__ = ("__weakref__", "datasources", "excluded_enum_values")
+
+    def __init__(self, datasources: Iterable[BuildDatasource]) -> None:
+        self.datasources: tuple[BuildDatasource, ...] = tuple(datasources)
+        self.excluded_enum_values: ExcludedEnumValues = {}
+
+
 class ReferenceGraph(DiGraph):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.concepts: dict[str, BuildConcept] = {}
         self.datasources: dict[str, BuildDatasource | BuildUnionDatasource] = {}
         self.pseudonyms: set[tuple[str, str]] = set()
+        self._scope: ScopeDatasources | None = None
+
+    @property
+    def scope(self) -> ScopeDatasources:
+        # unset reads as "no datasources" to every reader; refuse it instead
+        if self._scope is None:
+            raise ValueError("ReferenceGraph has no scope; generate it with one")
+        return self._scope
+
+    @scope.setter
+    def scope(self, scope: ScopeDatasources) -> None:
+        self._scope = scope
 
     def copy(self) -> "ReferenceGraph":
         g = ReferenceGraph()
@@ -546,6 +587,7 @@ class ReferenceGraph(DiGraph):
         g.concepts = self.concepts.copy()
         g.datasources = self.datasources.copy()
         g.pseudonyms = self.pseudonyms.copy()
+        g._scope = self._scope
         return g
 
     def subgraph(self, nodes) -> "ReferenceGraph":
@@ -562,6 +604,7 @@ class ReferenceGraph(DiGraph):
         g.pseudonyms = {
             edge for edge in self.pseudonyms if edge[0] in keep and edge[1] in keep
         }
+        g._scope = self._scope
         return g
 
     def remove_node(self, n) -> None:

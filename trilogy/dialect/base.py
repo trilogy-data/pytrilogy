@@ -28,7 +28,7 @@ from trilogy.constants import (
     Rendering,
     logger,
 )
-from trilogy.core.constants import ALL_ROWS_CONCEPT, UNNEST_NAME
+from trilogy.core.constants import ALL_ROWS_ADDRESS, UNNEST_NAME
 from trilogy.core.enums import (
     AddressType,
     AggregateGroupingMode,
@@ -253,7 +253,7 @@ def _aggregate_collapse_safe(cte: "CTE | UnionCTE", agg: BuildAggregateWrapper) 
     by-grain listing properties functionally determined by the CTE's keys
     reduces to the CTE grain, and authored scoped-join keys legitimately
     extend a keyed aggregate's partition."""
-    agg_by_abstract = all(p.address.endswith(ALL_ROWS_CONCEPT) for p in agg.by)
+    agg_by_abstract = all(p.address == ALL_ROWS_ADDRESS for p in agg.by)
     return not agg_by_abstract or cte.grain.abstract
 
 
@@ -270,6 +270,44 @@ def _aggregate_over_collapsed_filter(
     if not isinstance(cte, CTE):
         return False
     return any(cte.filter_collapses_to_grain(x) for x in agg.function.concept_arguments)
+
+
+def _own_aggregate_definition(cte: "CTE | UnionCTE", c: BuildConcept) -> BuildConcept:
+    """The CTE's own column for an aggregate it computes. Its lineage may be a
+    rewritten copy (a first-row read, a region-named argument, a moved filter);
+    a consumer folded beside it re-derives the aggregate from that, never from
+    the lineage it holds, so one SELECT renders the aggregate one way."""
+    if not isinstance(cte, CTE):
+        return c
+    for column in cte.output_columns:
+        if column.address == c.address and isinstance(
+            column.lineage, BuildAggregateWrapper
+        ):
+            return column
+    return c
+
+
+def _aggregate_operator(cte: "CTE | UnionCTE", c: BuildConcept) -> FunctionType:
+    """A COUNT this CTE computes over a stream repeating its counted key
+    renders DISTINCT (`QueryDatasource.distinct_counts`)."""
+    assert isinstance(c.lineage, BuildAggregateWrapper)
+    operator = c.lineage.function.operator
+    if (
+        operator == FunctionType.COUNT
+        and isinstance(cte, CTE)
+        and c.address in cte.distinct_counts
+    ):
+        return FunctionType.COUNT_DISTINCT
+    return operator
+
+
+def _existence_alias(target: str, cte: "CTE | UnionCTE | None") -> str:
+    """The name a membership subselect reads its set under. Reusing an alias
+    the outer FROM already binds would shadow it, so the probe would read the
+    subselect's own rows instead of the outer row."""
+    if isinstance(cte, CTE) and target in cte.from_scope_aliases():
+        return f"{target}_set"
+    return target
 
 
 def _is_build_row_tuple(x: Any) -> bool:
@@ -575,6 +613,7 @@ FUNCTION_MAP = {
     # generic types
     FunctionType.ALIAS: lambda x, types: f"{x[0]}",
     FunctionType.GROUP: lambda x, types: f"{x[0]}",
+    FunctionType.GRAIN_PIN: lambda x, types: f"({x[0]})",
     FunctionType.CONSTANT: lambda x, types: f"{x[0]}",
     FunctionType.TYPED_CONSTANT: lambda x, types: f"{x[0]}",
     FunctionType.COALESCE: lambda x, types: f"coalesce({','.join(x)})",
@@ -649,7 +688,11 @@ FUNCTION_MAP = {
     FunctionType.GROUPING: lambda x, types: f"grouping({','.join(x)})",
     FunctionType.GROUPING_ID: lambda x, types: f"grouping_id({','.join(x)})",
     FunctionType.SUM: lambda x, types: f"sum({x[0]})",
-    FunctionType.ARRAY_AGG: lambda x, types: f"array_agg({x[0]})",
+    # `array_agg` collects present values: a NULL element is dropped on every
+    # dialect, and a group of only NULLs is NULL like an empty group.
+    FunctionType.ARRAY_AGG: lambda x, types: (
+        f"array_agg({x[0]}) FILTER (WHERE {x[0]} IS NOT NULL)"
+    ),
     FunctionType.LENGTH: lambda x, types: f"length({x[0]})",
     FunctionType.AVG: lambda x, types: f"avg({x[0]})",
     FunctionType.STDDEV: lambda x, types: f"stddev_samp({x[0]})",
@@ -720,7 +763,8 @@ FUNCTION_MAP = {
 # through to its real FUNCTION_MAP rendering and emits an invalid ungrouped
 # aggregate. `sum/avg/max/min/any/bool_*` reduce to the value itself; `count`
 # to a 0/1 presence flag; sample `stddev/variance` of one value are NULL;
-# `array_agg` is a singleton array; `grouping`/`grouping_id` off a rollup are 0.
+# `array_agg` is a singleton array, NULL for a NULL value (it collects present
+# values only); `grouping`/`grouping_id` off a rollup are 0.
 # The formulas are portable SQL, so dialects share this map (layered after their
 # own FUNCTION_MAP so it is never shadowed by a dialect aggregate override).
 AGGREGATE_GRAIN_MATCH_MAP = {
@@ -733,7 +777,9 @@ AGGREGATE_GRAIN_MATCH_MAP = {
     FunctionType.ANY: lambda args, types: f"{args[0]}",
     FunctionType.STDDEV: lambda args, types: "NULL",
     FunctionType.VARIANCE: lambda args, types: "NULL",
-    FunctionType.ARRAY_AGG: lambda args, types: f"[{args[0]}]",
+    FunctionType.ARRAY_AGG: lambda args, types: (
+        f"CASE WHEN {args[0]} IS NOT NULL THEN [{args[0]}] ELSE NULL END"
+    ),
     FunctionType.BOOL_OR: lambda args, types: f"{args[0]}",
     FunctionType.BOOL_AND: lambda args, types: f"{args[0]}",
     FunctionType.GROUPING: lambda args, types: "0",
@@ -1165,33 +1211,45 @@ class BaseDialect:
                 siblings.append(other)
         return siblings
 
-    def _filter_guaranteed_by_sole_parent(
+    def _filter_guaranteed_by_parents(
         self, lineage: BuildFilterItem, cte: CTE | UnionCTE
     ) -> bool:
-        """A filter-item's per-row CASE is redundant when the CTE's SOLE parent
-        already guarantees the filter's predicate, e.g. when predicate pushdown
-        places the filter's aggregate condition in a group parent's HAVING. A
-        single-parent (no join) projection cannot NULL-pad rows, so every
-        surviving row satisfies the where; rendering the content bare also lets
-        CollapseSingleParent fold this passthrough into the group parent.
+        """A filter-item's per-row CASE is redundant when the parents already
+        guarantee the filter's predicate, e.g. when predicate pushdown places
+        the filter's aggregate condition in a group parent's HAVING, or the
+        filter's own predicate in every scan it reads. Rendering the content
+        bare also lets CollapseSingleParent fold a passthrough into its parent.
 
-        Gated to a single plain-CTE parent whose condition implies the where and
-        which supplies every column the filter references, so no row that fails
-        the predicate can reach this projection."""
-        if len(cte.parent_ctes) != 1:
+        Gated to plain-CTE parents whose condition implies the where, supplying
+        every column the filter references between them, under no join that
+        could NULL-pad a row (INNER only): then every row of this CTE is built
+        from parent rows that each satisfy the predicate."""
+        if not cte.parent_ctes:
             return False
-        parent = cte.parent_ctes[0]
-        if not isinstance(parent, CTE) or parent.condition is None:
+        if isinstance(cte, CTE) and any(
+            not isinstance(join, Join) or join.jointype != JoinType.INNER
+            for join in cte.joins
+        ):
             return False
         where_cond = lineage.where.conditional
-        if not (
-            where_cond == parent.condition
-            or condition_implies(parent.condition, where_cond)
-        ):
+        guaranteeing = {
+            parent.name
+            for parent in cte.parent_ctes
+            if isinstance(parent, CTE)
+            and parent.condition is not None
+            and (
+                where_cond == parent.condition
+                or condition_implies(parent.condition, where_cond)
+            )
+        }
+        if not guaranteeing:
             return False
         refs = {a.address for a in lineage.content_concept_arguments}
         refs |= {a.address for a in lineage.where.row_arguments}
-        return all(parent.name in (cte.source_map.get(r) or []) for r in refs)
+        return all(
+            (sources := cte.source_map.get(r)) and set(sources) <= guaranteeing
+            for r in refs
+        )
 
     def safe_get_cte_value(
         self, cte: CTE | UnionCTE, c: BuildConcept, raise_invalid: bool = False
@@ -1241,6 +1299,10 @@ class BaseDialect:
             # source_map; prefer FROM-scope providers whenever any exist.
             if in_scope:
                 sources = in_scope
+            # Sources an INNER join equates on this very key carry one value
+            # per row; no side is padded, so the first spells the coalesce.
+            if len(sources) > 1 and cte.inner_join_key_sources(address) >= set(sources):
+                sources = sorted(sources)[:1]
         for x in sources:
             self.used_map[x].add(c.address)
         if len(sources) == 1:
@@ -1344,7 +1406,13 @@ class BaseDialect:
                 rolled = INVALID_REFERENCE_STRING(
                     f"Missing rollup source reference to {c.address}"
                 )
-            return self.FUNCTION_MAP[FunctionType.SUM]([rolled], [])
+            summed = self.FUNCTION_MAP[FunctionType.SUM]([rolled], [])
+            # a pre-aggregated COUNT rolled up through a join that padded it
+            # (a sparse summary table beside its dimension): the group of one
+            # padded row counts nothing, 0, as the granular path says
+            if isinstance(cte, CTE) and cte.zero_fills_count(c, rolled_up=True):
+                return self.FUNCTION_MAP[FunctionType.COALESCE]([summed, "0"], [])
+            return summed
 
         # not sourced directly -> render from lineage. A pseudonym twin that IS
         # sourced is not consulted here: render_concept_sql probes it as a
@@ -1387,8 +1455,8 @@ class BaseDialect:
                     )
             elif isinstance(c.lineage, FILTER_ITEMS):
                 # The per-row CASE WHEN is redundant when the CTE's WHERE implies
-                # the filter's predicate, or when its sole parent guarantees it
-                # (_filter_guaranteed_by_sole_parent): emit just the content.
+                # the filter's predicate, or when its parents guarantee it
+                # (_filter_guaranteed_by_parents): emit just the content.
                 where_cond = c.lineage.where.conditional
                 if (
                     cte.condition is not None
@@ -1396,7 +1464,7 @@ class BaseDialect:
                         cte.condition == where_cond
                         or condition_implies(cte.condition, where_cond)
                     )
-                ) or self._filter_guaranteed_by_sole_parent(c.lineage, cte):
+                ) or self._filter_guaranteed_by_parents(c.lineage, cte):
                     rval = self.render_expr(
                         c.lineage.content, cte=cte, raise_invalid=raise_invalid
                     )
@@ -1438,18 +1506,19 @@ class BaseDialect:
                 # precedence reason as BuildComparison above.
                 rval = f"({self.render_expr(c.lineage, cte=cte, raise_invalid=raise_invalid)})"
             elif isinstance(c.lineage, AGGREGATE_ITEMS):
+                c = _own_aggregate_definition(cte, c)
+                assert isinstance(c.lineage, BuildAggregateWrapper)
                 args = [self.render_expr(v, cte) for v in c.lineage.function.arguments]
+                operator = _aggregate_operator(cte, c)
                 if cte.group_to_grain:
                     if _aggregate_over_collapsed_filter(cte, c.lineage):
-                        rval = self.FUNCTION_GRAIN_MATCH_MAP[
-                            c.lineage.function.operator
-                        ](args, [])
+                        rval = self.FUNCTION_GRAIN_MATCH_MAP[operator](args, [])
                     else:
-                        rval = self.FUNCTION_MAP[c.lineage.function.operator](args, [])
+                        rval = self.FUNCTION_MAP[operator](args, [])
                 elif _aggregate_collapse_safe(cte, c.lineage):
                     # at (or beyond) the aggregate's grain: agg(x) == x (the
                     # single-row collapse formula per operator).
-                    rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.function.operator](args, [])}"
+                    rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[operator](args, [])}"
                 else:
                     # A global (`by *`) aggregate in a keyed, non-grouping CTE:
                     # the collapse would silently turn it into each row's own
@@ -1528,25 +1597,15 @@ class BaseDialect:
                     rval = INVALID_REFERENCE_STRING(
                         f"Missing source reference to {c.address}"
                     )
-        # A pre-aggregated COUNT sourced from a sparse materialization leaks
-        # NULL through a LEFT/FULL JOIN when a dim row has no matching fact
-        # row, while the granular `count(...)` path returns 0 there. Coalesce
-        # to keep the two paths result-equivalent. SUM is left alone: SUM over
-        # an empty group is NULL in both paths.
-        if (
-            isinstance(c.lineage, BuildAggregateWrapper)
-            and c.lineage.function.operator == FunctionType.COUNT
-            and not cte.group_to_grain
-            and isinstance(cte, CTE)
-            and any(n.address == c.address for n in cte.nullable_concepts)
-            # A multiselect-align merge CTE is the exception: a NULL count there
-            # means "this entity is absent from this arm", not "0 facts", and
-            # must stay NULL so a cross-arm comparison excludes single-arm rows.
-            and not any(
-                isinstance(o.lineage, BuildMultiSelectLineage)
-                for o in cte.output_columns
-            )
-        ):
+        # A COUNT padded onto a region's rows by this merge (`cte.zero_filled`)
+        # counts an empty group: 0. Otherwise, a pre-aggregated COUNT sourced
+        # from a sparse materialization leaks NULL through a LEFT/FULL JOIN
+        # when a dim row has no matching fact row, while the granular
+        # `count(...)` path returns 0 there. Coalesce to keep the two paths
+        # result-equivalent. SUM is left alone: SUM over an empty group is NULL
+        # in both paths. The second case applies where no region domain
+        # stamps the padding.
+        if isinstance(cte, CTE) and cte.zero_fills_count(c):
             rval = self.FUNCTION_MAP[FunctionType.COALESCE]([rval, "0"], [])
         assert rval is not None
         return rval
@@ -1811,20 +1870,21 @@ class BaseDialect:
             assert isinstance(cte, CTE)
             target = cte.source_key_for(target)
             self.used_map[target].add(rc.address)
-            new_base = inlined_parent.datasource.safe_location
+            alias = _existence_alias(target, cte)
             phys = inlined_parent.consumer_column(rc)
             if isinstance(phys, str):
-                col_ref = f"{target}.{self.QUOTE_CHARACTER}{phys}{self.QUOTE_CHARACTER}"
+                col_ref = f"{alias}.{self.QUOTE_CHARACTER}{phys}{self.QUOTE_CHARACTER}"
             elif isinstance(phys, RawColumnExpr):
                 col_ref = phys.text
             else:
                 col_ref = self.render_expr(phys, cte=cte, raise_invalid=raise_invalid)
-            return f"{new_base} as {target}", col_ref
+            return f"{inlined_parent.datasource.safe_location} as {alias}", col_ref
         self.used_map[target].add(rc.address)
+        alias = _existence_alias(target, cte)
         col_ref = (
-            f"{target}.{self.QUOTE_CHARACTER}{rc.safe_address}{self.QUOTE_CHARACTER}"
+            f"{alias}.{self.QUOTE_CHARACTER}{rc.safe_address}{self.QUOTE_CHARACTER}"
         )
-        return target, col_ref
+        return (target if alias == target else f"{target} as {alias}"), col_ref
 
     def render_composite_membership(
         self,
@@ -2745,9 +2805,18 @@ class BaseDialect:
             # reference the SELECT alias rather than re-inlining the aggregate.
             # Only valid at the top of the HAVING tree: dialects resolve
             # aliases against the projection only at the outermost comparison
-            # operands, not inside nested functions/aggregates/case/etc.
+            # operands, not inside nested functions/aggregates/case/etc. A
+            # column passed through from a parent keeps its qualified source:
+            # its bare alias is also that parent's column name, and ambiguous
+            # beside a second parent holding it.
             rendered_having: str | None = self.render_expr(
-                having, cte, materialized_addresses=set(select_columns.keys())
+                having,
+                cte,
+                materialized_addresses={
+                    address
+                    for address in select_columns
+                    if not cte.source_map.get(address)
+                },
             )
         else:
             rendered_having = self.render_expr(having, cte) if having else None

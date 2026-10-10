@@ -84,8 +84,6 @@ _preql_import_resolver/
 
 pglite_test.py
 
-# PERFORMANCE_ANALYSIS.md
-
 scratch.txt
 
 uv.lock
@@ -105,17 +103,16 @@ evals/tpcds_agent/diag*md
 evals/tpcds_agent/*.err
 evals/tpcds_agent/*.log
 
-# local_scripts: regenerable harness output. The tools and the checked-in
-# baselines (v4_sql_golden/, v4_compare/, v4_evals/) stay tracked.
+# local_scripts: regenerable harness output. The tools and v4_evals/ stay tracked.
 local_scripts/*.log
 local_scripts/*.err
 local_scripts/*.tsv
-local_scripts/v4_sql_drift/
-local_scripts/v4_size_sql/
-local_scripts/v4_diagnostics/
-local_scripts/v4_sweep/
 local_scripts/city_scale_runs/
 
 # scratch dirs from local test/diagnostic runs; some are created with
 # restrictive ACLs that make git/black fail while recursing into them
 .tmp_*/
+
+# plan debugger traces (trace_query.py writes them beside the traced file)
+*.trace.json
+*.trace.html

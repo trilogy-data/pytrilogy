@@ -13,6 +13,7 @@ from trilogy.core.constants import (
     INTERNAL_NAMESPACE,
     SUBQUERY_NAMESPACE_PREFIX,
     WORKING_PATH_CONCEPT,
+    rowset_alias_prefix,
 )
 from trilogy.core.enums import (
     ConceptSource,
@@ -210,7 +211,7 @@ class Renderer:
 
     @contextmanager
     def _rowset_scope(self, rowset_name: str):
-        prefix = f"_{rowset_name}_"
+        prefix = rowset_alias_prefix(rowset_name)
         self._rowset_prefix_stack.append(prefix)
         try:
             yield
@@ -1144,6 +1145,7 @@ class Renderer:
             JoinType.FULL: "full",
             JoinType.SUBSET: "subset",
             JoinType.UNION: "union",
+            JoinType.EQUAL: "equal",
         }
         joins = []
         for j in arg.join_clauses:
@@ -1525,6 +1527,8 @@ class Renderer:
             # Composite-membership row constructor: render as the `(a, b)` tuple
             # the grammar accepts, not the internal `row_tuple(...)` function name.
             return f"({', '.join(args)})"
+        if arg.operator == FunctionType.ARRAY:
+            return f"[{', '.join(args)}]"
         if arg.operator == FunctionType.GROUP:
             arg_string = ", ".join(args[1:])
             if len(args) == 1:

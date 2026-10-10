@@ -12,7 +12,6 @@ from trilogy.core.processing.v4_helper.source_planning import (
     SourceRequest,
     _datasource_grain_concept_nodes,
     _datasource_nodes_for_bridge,
-    _inject_union_datasources,
     _network_source,
     _original_datasource_concept_nodes,
     _search_concepts_for_bridge,
@@ -299,11 +298,9 @@ class TestBridgeSourcePlanning:
         assert catalog_customer in bridge_graph
         assert bridge_graph.has_edge("ds~catalog_sales", catalog_customer)
 
-    def test_inject_union_datasources_adds_enum_partition_union(self):
+    def test_generated_graph_carries_the_enum_partition_union(self):
         _, benv = _build_partial_union()
         graph = generate_graph(benv)
-
-        _inject_union_datasources(graph, _source_outputs(benv), benv)
 
         union = graph.datasources["ds~web_sales-catalog_sales"]
         assert isinstance(union, BuildUnionDatasource)
@@ -315,6 +312,26 @@ class TestBridgeSourcePlanning:
             "ds~web_sales-catalog_sales",
             "c~local.ext_sales_price@Grain<local.item_id,local.order_id,local.sales_channel>",
         ) in graph.edges()
+
+    def test_a_model_imported_twice_has_a_union_per_namespace(self, tmp_path):
+        """Each alias is its own partition family; the unions must not share a
+        node, or one namespace's requests render through the other's arms."""
+        (tmp_path / "partial.preql").write_text(PARTIAL_UNION_MODEL)
+        env = Environment(working_path=tmp_path)
+        env.parse("import partial as a; import partial as b;")
+        graph = generate_graph(env.materialize_for_select())
+
+        unions = {
+            node: ds
+            for node, ds in graph.datasources.items()
+            if isinstance(ds, BuildUnionDatasource)
+        }
+        assert set(unions) == {
+            "ds~a.web_sales-a.catalog_sales",
+            "ds~b.web_sales-b.catalog_sales",
+        }
+        for node, union in unions.items():
+            assert {child.namespace for child in union.children} == {node[3]}
 
     def test_bridge_search_includes_requested_grain_keys(self):
         env, benv = _build_channel_dim()
@@ -376,11 +393,6 @@ class TestBridgeSourcePlanning:
     def test_component_source_exposes_selected_graph_node_grain_keys(self):
         _, benv = _build_partitioned_channel_dim()
         graph = generate_graph(benv)
-        _inject_union_datasources(
-            graph,
-            [benv.concepts["local.channel_dim_text_id"]],
-            benv,
-        )
         ds_node = "ds~web_dim-catalog_dim"
         selected = [
             "c~local.channel_dim_text_id@Grain<local.channel_dim_id,local.sales_channel>"

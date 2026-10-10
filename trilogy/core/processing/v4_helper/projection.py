@@ -3,17 +3,25 @@
 from collections.abc import Iterable
 
 from trilogy.core.enums import Derivation
+from trilogy.core.models.author import SelectLineage
 from trilogy.core.models.build import (
+    BoolExpr,
     BuildConcept,
     BuildConceptArgs,
     BuildFilterItem,
     BuildRowsetItem,
+    BuildWhereClause,
+    get_grouped_aggregate_wrapper,
+    nonstandard_grouping_lineage,
 )
 from trilogy.core.models.build_environment import (
     BuildEnvironment,
-    resolve_rowset_content_address,
 )
+from trilogy.core.processing.condition_utility import is_scalar_condition
 from trilogy.core.processing.nodes import SelectNode, StrategyNode, UnionNode
+
+from .constants import ROW_STREAM_DERIVATIONS
+from .functional_dependency import build_fd_determines
 
 
 def parent_output_addresses(node: StrategyNode) -> set[str]:
@@ -43,22 +51,32 @@ def renderable_addresses(node: StrategyNode) -> set[str]:
     return available
 
 
-def lineage_existence_only(concept: BuildConcept) -> set[str]:
-    """Addresses that appear ONLY as existence args in the concept's lineage (a
-    semijoin RHS like `zips in substring(p_cust_zip,1,5)`). These feed a
-    side-channel subselect, not the concept's row stream. Two shapes: a FILTER's
-    where, and a membership comparison authored as a derived/projected boolean
-    (`auto flag <- a in b`, `(20, 1) in (pairs.val, pairs.cat) as present`)
-    whose lineage IS (or propagates from) the SubselectComparison."""
+def lineage_existence_parts(concept: BuildConcept) -> tuple[set[str], set[str]]:
+    """The existence args of the concept's lineage, and the addresses its row
+    reads. Two shapes: a FILTER (its where, plus the filtered content), and a
+    membership comparison authored as a derived/projected boolean (`auto flag
+    <- a in b`, `(20, 1) in (pairs.val, pairs.cat) as present`) whose lineage
+    IS (or propagates from) the SubselectComparison."""
     args: BuildConceptArgs
+    row_read: set[str] = set()
     if isinstance(concept.lineage, BuildFilterItem):
         args = concept.lineage.where
+        row_read = {c.address for c in concept.lineage.content_concept_arguments}
     elif isinstance(concept.lineage, BuildConceptArgs):
         args = concept.lineage
     else:
-        return set()
+        return set(), set()
     existence = {ec.address for grp in (args.existence_arguments or []) for ec in grp}
-    return existence - {r.address for r in args.row_arguments}
+    return existence, row_read | {r.address for r in args.row_arguments}
+
+
+def lineage_existence_only(concept: BuildConcept) -> set[str]:
+    """Addresses that appear ONLY as existence args in the concept's lineage (a
+    semijoin RHS like `zips in substring(p_cust_zip,1,5)`). These feed a
+    side-channel subselect, not the concept's row stream; one the row also
+    reads (`dx ? x in dx`) is both."""
+    existence, row_read = lineage_existence_parts(concept)
+    return existence - row_read
 
 
 def row_lineage_arguments(concept: BuildConcept) -> list[BuildConcept]:
@@ -69,6 +87,20 @@ def row_lineage_arguments(concept: BuildConcept) -> list[BuildConcept]:
     if not existence:
         return args
     return [arg for arg in args if arg.address not in existence]
+
+
+def reads_rows_only(concept: BuildConcept) -> bool:
+    """A row-stream derivation whose lineage never crosses an aggregate. One
+    over an aggregate is evaluated on a ``~`` extension row (`count(...) > 0`
+    is false there, not NULL); one over rows alone is NULL there. Windows and
+    filters count: unlike `region_domains._null_propagating`, this asks what an
+    extension row lacks, not what a row keyed on a NULL member computes."""
+    if concept.derivation not in ROW_STREAM_DERIVATIONS or concept.lineage is None:
+        return False
+    return all(
+        arg.derivation in (Derivation.ROOT, Derivation.CONSTANT) or reads_rows_only(arg)
+        for arg in concept.lineage.concept_arguments
+    )
 
 
 def concept_satisfiable(
@@ -219,21 +251,140 @@ def widen_projection(
     return changed
 
 
-def output_rowset_base_keys(
-    mandatory_list: list[BuildConcept], environment: BuildEnvironment
-) -> set[str]:
-    """Base addresses the grain keys of the output rowset boundaries unwrap to.
-
-    A boundary over `select oid, amt` is grained on `rs.oid`, which unwraps to
-    `local.oid`. The boundary can expose that base column beneath its handle, so
-    a scan keyed by it pairs with the boundary on a real key instead of
-    cross-joining."""
+def output_rowset_grain_keys(mandatory_list: list[BuildConcept]) -> set[str]:
+    """Grain keys of the output rowset boundaries. A declared relation (`subset
+    join rs.oid = oid`) spells the handle's grain at the base address, so a
+    scan keyed by it pairs with the boundary on that key."""
     keys: set[str] = set()
     for concept in mandatory_list:
-        if not isinstance(concept.lineage, BuildRowsetItem) or concept.grain is None:
-            continue
-        for component in concept.grain.components:
-            resolved = resolve_rowset_content_address(component, environment)
-            if resolved != component:
-                keys.add(resolved)
+        if isinstance(concept.lineage, BuildRowsetItem) and concept.grain is not None:
+            keys |= set(concept.grain.components)
     return keys
+
+
+def decided_at_output_grain(
+    address: str, outputs: Iterable[BuildConcept], environment: BuildEnvironment
+) -> bool:
+    """Whether a WHERE reading `address` can be applied to the statement's
+    final rows: every output that crosses an aggregate is grouped at a grain
+    determining it, so the rows it rejects above the aggregate are the rows
+    the aggregate's input would have lost. A launch-day filter under a
+    per-month count is not: the count must see the filter. A ROOT column
+    crosses no aggregate, whatever entity it is keyed on (`city`)."""
+    for concept in outputs:
+        if concept.derivation == Derivation.ROOT or reads_rows_only(concept):
+            continue
+        grain = frozenset(concept.grain.components) if concept.grain else frozenset()
+        if not grain or not build_fd_determines(environment, grain, address):
+            return False
+    return True
+
+
+def _has_concept_existence(where: BuildWhereClause) -> bool:
+    """True only for a REAL subselect arg (`x in <other column/select>`), one
+    whose existence side carries concepts. A literal IN-list (`month in (1,2,3,4)`)
+    is also modeled as a subselect comparison but has no existence concepts, so it
+    is a plain scalar predicate safe to push into a WHERE."""
+    return any(arg for tup in (where.existence_arguments or ()) for arg in tup)
+
+
+def shared_filter_predicate(concepts: list[BuildConcept]) -> BuildWhereClause | None:
+    """The one predicate every filter concept among `concepts` is gated on, or
+    None. Distinct predicates are fused conditional columns (`price ? channel =
+    'STORE'`, `price ? channel = 'WEB'`), each its own CASE over the shared
+    scan: AND-ing them into one WHERE would null out every row. A predicate
+    with an existence arg needs its subselect source wired as a side parent,
+    which no WHERE push does."""
+    distinct: dict[str, BuildWhereClause] = {}
+    for c in concepts:
+        if isinstance(c.lineage, BuildFilterItem):
+            distinct.setdefault(str(c.lineage.where.conditional), c.lineage.where)
+    if len(distinct) != 1:
+        return None
+    where = next(iter(distinct.values()))
+    return None if _has_concept_existence(where) else where
+
+
+def filter_row_predicate(
+    outputs: list[BuildConcept],
+    parents: list[StrategyNode],
+    may_narrow: bool,
+) -> BoolExpr | None:
+    """The predicate a filter group's node takes into its WHERE, when its rows
+    may narrow: scalar, or over aggregates its parents already emit."""
+    where = shared_filter_predicate(outputs) if may_narrow else None
+    if where is None:
+        return None
+    parent_outputs = {c.address for p in parents for c in p.output_concepts}
+    agg_args = [r for r in where.row_arguments if r.derivation == Derivation.AGGREGATE]
+    if is_scalar_condition(where.conditional) or (
+        agg_args and all(r.address in parent_outputs for r in where.row_arguments)
+    ):
+        return where.conditional
+    return None
+
+
+def statement_filter_population(
+    mandatory_list: list[BuildConcept],
+    hidden: set[str] | None,
+) -> BuildWhereClause | None:
+    """When every output a statement shows is a filter value over one
+    predicate, a NULL row is one nothing would keep: `gen_filter` pushes the
+    predicate into its WHERE, and the keyspace and pin-heal read it as the
+    statement's own, so a region those rows are absent on is emptied and the
+    `~` it would pad for is healed, never padded back. A hidden output (a
+    HAVING's aggregate promoted to the projection) is not shown: it is
+    evaluated over the rows the shown values keep."""
+    shown = [c for c in mandatory_list if not hidden or c.address not in hidden]
+    if not all(isinstance(c.lineage, BuildFilterItem) for c in shown):
+        return None
+    return shared_filter_predicate(shown)
+
+
+def rollup_padded_keys(environment: BuildEnvironment) -> frozenset[str]:
+    """Grouping keys of every ROLLUP/CUBE/GROUPING SETS aggregate in scope.
+    The subtotal rows NULL these, so they are not a row identity and must never
+    be volunteered as a join axis: pairing on one drops every subtotal row (a
+    rolled-up NULL matches nothing). The join resolver applies the same rule
+    per-datasource via `rollup_padded_addresses`; this is the environment-wide
+    view the demand pass needs before any datasource exists."""
+    padded: set[str] = set()
+    for concept in (
+        *environment.concepts.values(),
+        *environment.alias_origin_lookup.values(),
+    ):
+        wrapper = get_grouped_aggregate_wrapper(concept)
+        if wrapper is not None and wrapper.grouping.nulls_grouping_keys:
+            padded |= {c.address for c in wrapper.by}
+        # A rowset carries the spec on the SELECT it wraps, not on the
+        # aggregate: at demand time the members are still plain STANDARD
+        # aggregates and only `select.grouping` says the pass NULL-pads.
+        if isinstance(concept.lineage, BuildRowsetItem):
+            select = concept.lineage.rowset.select
+            if isinstance(select, SelectLineage):
+                grouping = select.grouping
+                if grouping is not None and grouping.mode.nulls_grouping_keys:
+                    padded |= {ref.address for ref in grouping.by}
+    return frozenset(padded)
+
+
+def reads_a_rollup(address: str, environment: BuildEnvironment) -> bool:
+    """Whether the concept at `address` is computed on the rows of a
+    ROLLUP/CUBE/GROUPING SETS pass: it reads one of the pass's aggregates,
+    directly or through scalars. Those rows are subtotals of whatever entered
+    below the pass, so no region is absent on them."""
+    seen: set[str] = set()
+    stack = [address]
+    while stack:
+        current = stack.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        concept = environment.concepts.get(current)
+        if concept is None or concept.lineage is None:
+            continue
+        for arg in concept.lineage.concept_arguments:
+            if nonstandard_grouping_lineage(arg) is not None:
+                return True
+            stack.append(arg.address)
+    return False

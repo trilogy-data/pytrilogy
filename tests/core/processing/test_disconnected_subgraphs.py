@@ -84,7 +84,7 @@ def test_disconnected_query_raises_typed_exception():
     assert frozenset({"local.sb"}) in groups
 
 
-_DISCONNECTED_CROSS_CTE_AGG = """
+_TWO_MODELS = """
 key a_id int;
 property a_id.av int;
 datasource a (id: a_id, v: av) grain (a_id)
@@ -94,7 +94,43 @@ key b_id int;
 property b_id.bv int;
 datasource b (id: b_id, v: bv) grain (b_id)
 query '''select 1 id, 100 v union all select 2 id, 200 v''';
+"""
 
+
+@pytest.mark.parametrize(
+    "query, a_read",
+    [
+        ("select a_id, av + bv as x;", "local.av"),
+        ("select av + bv as x;", "local.av"),
+        # `y` is read off datasource a as `av` is, so the split names it
+        ("auto y <- av * 2;\nselect a_id, y + bv as z;", "local.y"),
+    ],
+)
+def test_a_derivation_over_two_models_is_not_a_join_path(query: str, a_read: str):
+    """`av + bv` relates nothing: a derivation is producible only where every
+    input is, and its node once joined the unrelated a and b models (the plan
+    cross-joined them). The error names the reads no relation connects."""
+    eng = Dialects.DUCK_DB.default_executor(environment=Environment())
+    with pytest.raises(DisconnectedConceptsException) as exc:
+        eng.generate_sql(_TWO_MODELS + query)
+    groups = {frozenset(g) for g in exc.value.subgraphs}
+    assert any(a_read in g and "local.bv" not in g for g in groups)
+    assert any("local.bv" in g for g in groups)
+
+
+@pytest.mark.parametrize(
+    "query, expected",
+    [
+        ("select a_id, av * 2 as x;", [(1, 20), (2, 40)]),
+        ("auto y <- av * 2;\nselect a_id, y + av as z;", [(1, 30), (2, 60)]),
+    ],
+)
+def test_a_derivation_over_one_model_plans(query: str, expected: list[tuple]):
+    eng = Dialects.DUCK_DB.default_executor(environment=Environment())
+    assert sorted(eng.execute_text(_TWO_MODELS + query)[-1].fetchall()) == expected
+
+
+_DISCONNECTED_CROSS_CTE_AGG = _TWO_MODELS + """
 with a_agg as select a_id, sum(av) as sa;
 with b_agg as select b_id, sum(bv) as sb;
 with combined as
@@ -179,7 +215,7 @@ def test_filter_over_scoped_join_rowset_measure_not_islanded():
     assert filters, "expected _virt_filter concepts over the rowset measures"
     # Each filter must be co-located with a rowset measure, never its own island.
     measures = [be.concepts["cur.total"], be.concepts["nxt.total2"]]
-    groups = disconnected_components(be, filters + measures, island_rowsets=True)
+    groups = disconnected_components(be, filters + measures)
     singletons = [g for g in groups if len(g) == 1]
     assert not singletons, [sorted(c.address for c in g) for g in groups]
 

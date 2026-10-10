@@ -1,4 +1,3 @@
-from trilogy.core.enums import Derivation
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
@@ -9,14 +8,11 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import GroupNode, StrategyNode
+from trilogy.core.processing.v4_helper.constants import (
+    ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS,
+)
 
 from .common import parent_outputs_needed
-
-_ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS = {
-    Derivation.ROOT,
-    Derivation.BASIC,
-    Derivation.FILTER,
-}
 
 
 def _add_render_inputs(
@@ -167,7 +163,7 @@ def gen_aggregate(
         for arg in output.lineage.function.arguments:
             if (
                 isinstance(arg, BuildConcept)
-                and arg.derivation in _ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS
+                and arg.derivation in ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS
             ):
                 _add_render_inputs(
                     arg, input_concepts, input_addresses, available_by_address

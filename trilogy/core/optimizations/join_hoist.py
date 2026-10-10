@@ -219,7 +219,7 @@ class JoinHoist(OptimizationRule):
                 continue
             if not j.joinkey_pairs:
                 continue
-            if j.condition is not None:
+            if j.has_predicate:
                 continue
             join: Join = j
             join_keys_left = {p.left.address for p in join.joinkey_pairs or []}

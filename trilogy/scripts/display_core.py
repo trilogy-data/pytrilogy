@@ -7,10 +7,9 @@ import sys
 import threading
 from collections.abc import Callable
 from types import TracebackType
-from typing import Any
+from typing import Any, Self
 
 from click import echo, style
-from typing_extensions import Self
 
 
 def _needs_safe_wrapping(encoding: "str | None") -> bool:

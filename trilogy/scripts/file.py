@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
+import os
+import signal
+import socket
 import sys
+import threading
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from functools import partial
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -506,14 +513,113 @@ def _run_written_file(
 
     run_command = root_cli.get_command(ctx, "run")
     assert run_command is not None
+    cleanup = _RunOnce(partial(_delete_after_run, backend, path))
     try:
-        ctx.invoke(run_command, input=path, param=param, timeout=timeout)
+        with _exit_on_termination(cleanup if delete_after else None):
+            ctx.invoke(run_command, input=path, param=param, timeout=timeout)
     finally:
         if delete_after:
+            cleanup()
+
+
+def _delete_after_run(backend: FileBackend, path: str) -> None:
+    try:
+        backend.delete(path)
+    except Exception as exc:
+        print_warning(f"Failed to delete {path} after run: {exc}")
+
+
+# How long a terminated run may take to unwind before the watchdog cleans up
+# and exits for it.
+TERMINATION_GRACE_SECONDS = 5.0
+
+
+def _raise_exit(signum: int, frame: object) -> None:
+    raise SystemExit(128 + signum)
+
+
+class _RunOnce:
+    """A cleanup the watchdog and the unwinding run may both reach; the second
+    caller waits for the first to finish rather than repeating it."""
+
+    def __init__(self, action: Callable[[], None]) -> None:
+        self._action = action
+        self._lock = threading.Lock()
+        self._done = False
+
+    def __call__(self) -> None:
+        with self._lock:
+            if self._done:
+                return
+            self._done = True
+            self._action()
+
+
+def _armed_signal(reader: socket.socket, armed: frozenset[int]) -> int | None:
+    """The first armed signal the wakeup socket reports, or None at EOF. The
+    wakeup fd hears every signal with a Python handler, SIGINT included; a run
+    may catch KeyboardInterrupt and carry on, so only termination arms."""
+    with reader:
+        while True:
             try:
-                backend.delete(path)
-            except Exception as exc:
-                print_warning(f"Failed to delete {path} after run: {exc}")
+                received = reader.recv(1)
+            except OSError:
+                return None
+            if not received:
+                return None
+            if received[0] in armed:
+                return received[0]
+
+
+def _watch_termination(
+    reader: socket.socket,
+    cleanup: Callable[[], None],
+    unwound: threading.Event,
+    armed: frozenset[int],
+) -> None:
+    """A Python signal handler runs only between bytecodes, so a run hung in C
+    (a DuckDB query) never reaches `_raise_exit`. The C-level handler still
+    writes the signal number to the wakeup socket: if the run has not unwound
+    by the end of the grace period, clean up from here and exit."""
+    signum = _armed_signal(reader, armed)
+    if signum is None or unwound.wait(TERMINATION_GRACE_SECONDS):
+        return
+    cleanup()
+    os._exit(128 + signum)
+
+
+@contextmanager
+def _exit_on_termination(cleanup: Callable[[], None] | None) -> Iterator[None]:
+    """Turn SIGTERM (SIGBREAK on Windows) into SystemExit for the run, so a caller
+    that terminates a hung probe still gets the ``--run-and-delete`` cleanup. A
+    hard kill can't be caught; the caller has to sweep for that."""
+    if cleanup is None or threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    signums = [signal.SIGTERM]
+    sigbreak = signal.Signals.__members__.get("SIGBREAK")
+    if sigbreak is not None:
+        signums.append(sigbreak)
+    reader, writer = socket.socketpair()
+    writer.setblocking(False)
+    previous_fd = signal.set_wakeup_fd(writer.fileno(), warn_on_full_buffer=False)
+    previous = {s: signal.signal(s, _raise_exit) for s in signums}
+    unwound = threading.Event()
+    threading.Thread(
+        target=_watch_termination,
+        args=(reader, cleanup, unwound, frozenset(signums)),
+        daemon=True,
+    ).start()
+    try:
+        yield
+    finally:
+        unwound.set()
+        for s, handler in previous.items():
+            # None: installed from C, which Python cannot reinstall
+            signal.signal(s, signal.SIG_DFL if handler is None else handler)
+        signal.set_wakeup_fd(previous_fd)
+        # EOF on the reader releases the watchdog
+        writer.close()
 
 
 def _emit_write_success(path: str, byte_count: int, last_sql: str | None) -> None:

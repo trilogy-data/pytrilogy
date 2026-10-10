@@ -41,7 +41,7 @@ from trilogy.core.optimizations.predicate_pushdown import (
     _parent_covers_condition,
     _parent_nullable_in_cte,
 )
-from trilogy.core.optimizations.utils import condition_contains_atom
+from trilogy.core.optimizations.utils import condition_contains_atom, null_padded_nodes
 from trilogy.core.processing.condition_utility import decompose_condition
 
 
@@ -520,7 +520,6 @@ auto sale_count <- count(sale_id);
         condition=None,
         group_to_grain=True,
     )
-    consumer = _simple_cte("consumer", [sale_count], condition=condition)
     plain_parent = _simple_cte(
         "plain",
         [sale_count],
@@ -528,12 +527,9 @@ auto sale_count <- count(sale_id);
         group_to_grain=False,
     )
 
+    assert not rule._push_having_into_group_parent(plain_parent, condition, {})
+    assert not rule._push_having_into_group_parent(group_parent, None, {})
     assert not rule._push_having_into_group_parent(
-        consumer, plain_parent, condition, {}
-    )
-    assert not rule._push_having_into_group_parent(consumer, group_parent, None, {})
-    assert not rule._push_having_into_group_parent(
-        consumer,
         group_parent,
         BuildSubselectComparison(
             left=sale_count,
@@ -543,21 +539,16 @@ auto sale_count <- count(sale_id);
         {},
     )
     assert not rule._push_having_into_group_parent(
-        consumer,
         group_parent,
         BuildComparison(left=1, right=2, operator=ComparisonOperator.EQ),
         {},
     )
     group_parent.condition = condition
-    assert not rule._push_having_into_group_parent(
-        consumer, group_parent, condition, {}
-    )
+    assert not rule._push_having_into_group_parent(group_parent, condition, {})
     group_parent.condition = None
+    assert not rule._push_having_into_group_parent(group_parent, condition, {})
     assert not rule._push_having_into_group_parent(
-        consumer, group_parent, condition, {}
-    )
-    assert not rule._push_having_into_group_parent(
-        consumer, group_parent, condition, {group_parent.name: [object()]}
+        group_parent, condition, {group_parent.name: [object()]}
     )
     unfiltered_child = _simple_cte(
         "unfiltered_child",
@@ -566,11 +557,67 @@ auto sale_count <- count(sale_id);
         source_map={sale_count.address: [group_parent.name]},
     )
     assert not rule._push_having_into_group_parent(
-        consumer, group_parent, condition, {group_parent.name: [unfiltered_child]}
+        group_parent, condition, {group_parent.name: [unfiltered_child]}
     )
 
 
-def test_having_pushup_keeps_consumer_filter_across_full_join():
+def test_null_padded_nodes_names_the_accumulated_left_of_a_right_join():
+    env = Environment()
+    env.parse(
+        """
+key order_id int;
+key customer_id int;
+property order_id.amount int;
+""",
+        persist=True,
+    )
+    build_env = env.materialize_for_select()
+    order_id = build_env.concepts["order_id"]
+    customer_id = build_env.concepts["customer_id"]
+    amount = build_env.concepts["amount"]
+    base = _simple_cte("orders", [order_id, customer_id, amount])
+    lookup = _simple_cte("amounts", [order_id, amount])
+    customers = _simple_cte("customers", [customer_id])
+    consumer = _simple_cte(
+        "consumer",
+        [order_id, customer_id, amount],
+        parent_ctes=[base, lookup, customers],
+    )
+    consumer.joins = [
+        Join(
+            right_cte=lookup,
+            jointype=JoinType.INNER,
+            joinkey_pairs=[
+                CTEConceptPair(
+                    left=order_id,
+                    right=order_id,
+                    existing_datasource=consumer.source,
+                    cte=base,
+                )
+            ],
+        ),
+        Join(
+            right_cte=customers,
+            jointype=JoinType.RIGHT_OUTER,
+            joinkey_pairs=[
+                CTEConceptPair(
+                    left=customer_id,
+                    right=customer_id,
+                    existing_datasource=consumer.source,
+                    cte=lookup,
+                )
+            ],
+        ),
+    ]
+    # the RIGHT join pads the FROM base and the side INNER-joined before it,
+    # not only the side its ON clause names
+    assert {node.name for node in null_padded_nodes(consumer)} == {
+        "orders",
+        "amounts",
+    }
+
+
+def test_having_pushup_blocked_while_a_full_join_pads_the_group():
     env = Environment()
     env.parse(
         """
@@ -621,13 +668,14 @@ auto qty_per_order <- sum(order_id);
         )
     ]
 
-    assert rule._push_having_into_group_parent(
-        consumer,
+    # the group is the FROM base of a FULL join, so the consumer's padded rows
+    # would bypass a filter moved into it: the push waits for the join upgrade
+    assert not rule._push_having_into_group_parent(
         group_parent,
         condition,
         {group_parent.name: [consumer]},
     )
-    assert condition_contains_atom(condition, group_parent.condition)
+    assert group_parent.condition is None
     assert condition_contains_atom(condition, consumer.condition)
 
 

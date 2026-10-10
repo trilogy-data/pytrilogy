@@ -1,10 +1,12 @@
 import difflib
-from collections.abc import ItemsView, ValuesView
+from collections.abc import Callable, ItemsView, Iterable, Iterator, ValuesView
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
+from functools import cached_property
 from pathlib import Path
 from typing import Never
 
-from trilogy.constants import DEFAULT_NAMESPACE
+from trilogy.constants import DEFAULT_NAMESPACE, PRESENCE_PROBE_PREFIX
 from trilogy.core.domain_graph import DomainGraph
 from trilogy.core.enums import Derivation
 from trilogy.core.exceptions import (
@@ -14,9 +16,32 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
     BuildFunction,
-    BuildRowsetItem,
 )
 from trilogy.core.models.core import DataType
+from trilogy.core.models.keyspace import Keyspace
+
+
+def _find(parent: dict[str, str], node: str) -> str:
+    while (up := parent.setdefault(node, node)) != node:
+        parent[node] = node = parent.setdefault(up, up)
+    return node
+
+
+def _ranked_classes(
+    edges: Iterable[tuple[str, str]],
+    rank: Callable[[str], tuple[bool, bool, str]] | None = None,
+) -> dict[str, tuple[str, ...]]:
+    parent: dict[str, str] = {}
+    for left, right in edges:
+        parent[_find(parent, right)] = _find(parent, left)
+    classes: dict[str, list[str]] = {}
+    for address in parent:
+        classes.setdefault(_find(parent, address), []).append(address)
+    out: dict[str, tuple[str, ...]] = {}
+    for members in classes.values():
+        ranked = tuple(sorted(members, key=rank))
+        out.update(dict.fromkeys(ranked, ranked))
+    return out
 
 
 class BuildEnvironmentConceptDict(dict):
@@ -96,6 +121,43 @@ class BuildEnvironmentDatasourceDict(dict):
         return super().items()
 
 
+@dataclass(frozen=True)
+class SpanScope:
+    """The `~` routing every merge built under it captures at construction, so
+    the decision is fixed before the node resolves (a rowset body's merge can
+    resolve after the outer plan's scope is restored)."""
+
+    # plan: its row universe (spans it can pad for, families, witnessed
+    # spellings)
+    keyspace: Keyspace = field(default_factory=Keyspace)
+    # plan: spans whose extension rows the READING plan holds; no group of
+    # this plan extends them
+    owned: frozenset[str] = frozenset()
+    # plan: spans of regions nothing in the statement demands; join typing
+    # only, bindings on them stay `~` for source planning
+    unextended: frozenset[str] = frozenset()
+    # group: spans this group may NOT extend (another group or the plan
+    # above owns those extension members)
+    extent_free: frozenset[str] = frozenset()
+    # group: address -> the extent-free spans whose region domain carries it
+    extent_free_carried: dict[str, frozenset[str]] = field(default_factory=dict)
+
+    @property
+    def extendable(self) -> frozenset[str]:
+        """Spans a merge under this scope may pad extension rows for. A
+        merge reads it three ways: hosting takes it whole; a region domain
+        also drops `unextended` (nothing demands the region, join typing
+        only); the coalesced-key proof keeps only the spans whose extension
+        rows carry an output (`Keyspace.output_demanded_spans`)."""
+        return self.keyspace.in_play_spans - self.extent_free
+
+    def held_on(self, address: str, spans: set[str] | frozenset[str]) -> bool:
+        """`address` is one of `spans`, or a region domain of one carries it."""
+        return address in spans or bool(
+            self.extent_free_carried.get(address, frozenset()) & spans
+        )
+
+
 @dataclass
 class BuildEnvironment:
     concepts: BuildEnvironmentConceptDict = field(
@@ -123,16 +185,11 @@ class BuildEnvironment:
     # instead). Composite of graph facts and author derivations; dissolves once
     # join typing consults per-side origin nodes directly.
     scoped_partial_derived: set[str] = field(default_factory=set)
-    # Discriminator address -> enum values this statement's row gate rules out
-    # (`partial_bridging.drop_excluded_partials`). Partition-family proofs
-    # (union coverage, `merge_conditions`) run over the remaining domain, so
-    # hiding a contradicted arm never breaks the proof the other arms need.
-    excluded_enum_values: dict[str, frozenset[str]] = field(default_factory=dict)
     # Members of each build-scoped join key equivalence group, keyed by the
     # group's canonical address: exactly the authored relation endpoints (union
     # of the scoped merge map's source->canonical entries), NOT the transitive
     # pseudonym closure — a rowset key's body/parent pseudonyms are not join
-    # operands. Consumed via `distinct_scoped_join_group_members`.
+    # operands. Consumed via `_distinct_scoped_join_groups`.
     scoped_join_key_groups: dict[str, set[str]] = field(default_factory=dict)
     # The full concept domain graph for this build: declared edges (global
     # merges + this build's scoped-join overlay) plus structural, binding and
@@ -145,19 +202,19 @@ class BuildEnvironment:
     # and their lineage) — computed on the author statement, BEFORE scoped-join
     # canonical substitution, and deliberately excluding the scoped-join
     # declarations themselves. None means unknown (conservative consumers
-    # treat every member as referenced). Set by `get_query_node`.
+    # treat every member as referenced). Set by `generate_scope_graph`.
     statement_authored_addresses: set[str] | None = None
     # Same closure restricted to the SELECT outputs (WHERE excluded): a rowset
     # referenced only in a condition is population-scope (d1) demand, not a
-    # row-stream contributor. Set by `get_query_node`.
+    # row-stream contributor. Set by `generate_scope_graph`.
     statement_output_addresses: set[str] | None = None
-    # Build-loop scope: the `~` spans the group currently being built may NOT
-    # extend, because another group was elected to carry those extension rows
-    # (v4_helper/extent_ownership.py). Every merge constructed while this is set
-    # captures it, so the decision is fixed before the node ever resolves:
-    # re-deciding after resolution would leave the padding's nullable marks
-    # behind. `build_strategy_node` sets and clears it around each group.
-    extent_free_spans: frozenset[str] = frozenset()
+    # Outputs the statement carries but does not show (a HAVING's aggregate
+    # promoted to the projection, an ORDER BY carry); what it SHOWS decides
+    # whether a filter value's NULL rows are rows nobody would keep.
+    statement_hidden_addresses: set[str] | None = None
+    # Set around each plan (`_build_from_graph`) and each group
+    # (`build_strategy_node`); merges capture it.
+    span_scope: SpanScope = field(default_factory=SpanScope)
 
     def _distinct_scoped_join_groups(self) -> list[tuple[str, list[str]]]:
         """Per scoped-join key group, its canonical plus the members that keep
@@ -178,35 +235,23 @@ class BuildEnvironment:
                 out.append((canonical, distinct))
         return out
 
+    def scoped_join_relations(self) -> list[frozenset[str]]:
+        """Each scoped-join key group as one set: its canonical and members."""
+        return [
+            frozenset({canonical, *members})
+            for canonical, members in self.scoped_join_key_groups.items()
+        ]
+
     def all_scoped_join_group_members(self) -> frozenset[str]:
         """Every address participating in a scoped-join key group — each
         group's canonical plus all its members, with no identity filter.
 
         The authored keys ARE the join axis for these, so passes that
         volunteer extra equalities (rowset-grain resolution, lineage grain
-        pinning) must skip them or they silently narrow the authored fan-out
-        (q59 shape). Contrast `distinct_scoped_join_group_members`, which asks
+        pinning) must skip them or they silently narrow the authored fan-out.
+        Contrast `distinct_scoped_join_group_mates`, which asks
         the narrower question of who must MATERIALIZE a column."""
-        return frozenset(
-            addr
-            for canonical, members in self.scoped_join_key_groups.items()
-            for addr in (canonical, *members)
-        )
-
-    def distinct_scoped_join_group_members(self) -> set[str]:
-        """Addresses of scoped-join key-group members that keep their own
-        physical identity, for groups with two or more such members.
-
-        Only these carry an exposure obligation: a root-keyed merge member is
-        substituted onto the group canonical (one physical column — nothing to
-        expose separately), while rowset and derived-expression keys stay
-        distinct columns that each joined side must materialize. A member of
-        such a group is never satisfied through a group-mate pseudonym: the
-        join between the sides needs each side's own column (TPC-DS q59)."""
-        out: set[str] = set()
-        for _, distinct in self._distinct_scoped_join_groups():
-            out.update(distinct)
-        return out
+        return frozenset().union(*self.scoped_join_relations())
 
     def distinct_scoped_join_group_mates(self) -> dict[str, set[str]]:
         """Map each distinct-identity group member to its distinct group-mates,
@@ -306,6 +351,69 @@ class BuildEnvironment:
         }
         return [origins[address] for address in sorted(origins)]
 
+    def _value_edges(self) -> Iterator[tuple[str, str]]:
+        for key, concept in self.concepts.items():
+            yield key, concept.address
+            for pseudonym in concept.pseudonyms:
+                yield concept.address, pseudonym
+        for key, origin in self.alias_origin_lookup.items():
+            yield key, origin.address
+
+    def _spelling_edges(self) -> Iterator[tuple[str, str]]:
+        yield from self._value_edges()
+        for origin in self.alias_origin_lookup.values():
+            for pseudonym in origin.pseudonyms:
+                yield origin.address, pseudonym
+        for concept in [*self.concepts.values(), *self.alias_origin_lookup.values()]:
+            if not any(
+                PRESENCE_PROBE_PREFIX in a
+                for a in (concept.address, concept.canonical_address)
+            ):
+                yield concept.address, concept.canonical_address
+
+    @cached_property
+    def value_classes(self) -> dict[str, tuple[str, ...]]:
+        """Every name of one value -> all of its names, an authored concept
+        address first: a concept's key, address and pseudonyms, and a
+        merge-demoted alias's origin. A surviving merge target outranks the
+        alias it demoted."""
+        return _ranked_classes(
+            self._value_edges(),
+            lambda a: (a in self.alias_origin_lookup, a not in self.concepts, a),
+        )
+
+    @cached_property
+    def spelling_classes(self) -> dict[str, tuple[str, ...]]:
+        """`value_classes` widened to the reference graph's spellings, each
+        concept's and alias origin's canonical (`_virt_*`) address, which is
+        how a scan's edge names what a request asks for by address. Wider than
+        a value: a union join's member and a projection of the same expression
+        share a canonical but not their NULLs. A presence probe keeps its own
+        canonical, which pins side membership.
+
+        Named by the smallest spelling. Source planning reads these names back
+        as concepts and its plans depend on which one it gets: an authored
+        name loses the merge variant a scan renders, and a canonical-first one
+        grows TPC-DS plans."""
+        return _ranked_classes(self._spelling_edges())
+
+    def address_roots(
+        self, scope: AbstractSet[str] | None = None, spellings: bool = False
+    ) -> dict[str, str]:
+        """Each name -> the first name of its class (`spelling_classes` when
+        `spellings`) that `scope` holds, any when unscoped. A consumer that
+        reads its roots back as concepts scopes them to what it can read."""
+        classes = self.spelling_classes if spellings else self.value_classes
+        if scope is None:
+            return {address: names[0] for address, names in classes.items()}
+        out: dict[str, str] = {}
+        for address in scope:
+            names = classes.get(address)
+            if names is not None and address not in out:
+                root = next(n for n in names if n in scope)
+                out.update(dict.fromkeys(names, root))
+        return out
+
     def gen_concept_list_caches(self) -> None:
         concrete_concepts: list[BuildConcept] = []
         non_partial_concrete_concepts: list[BuildConcept] = []
@@ -341,26 +449,3 @@ class BuildEnvironment:
                 self.non_partial_materialized_canonical_concepts.add(
                     c.canonical_address
                 )
-
-
-def resolve_rowset_content_address(
-    addr: str, environment: BuildEnvironment | None
-) -> str:
-    """A rowset namespaces its grain key (`buyers_a.id` is a ROWSET concept
-    wrapping `local.id`). Sibling rowsets / the outer query expose the unwrapped
-    base key, so resolve through the `BuildRowsetItem` content to the address
-    they actually share; return `addr` unchanged when it isn't a rowset key.
-
-    Shared by the group graph (which compares sibling grains across rowset
-    boundaries) and join resolution (which tests whether two sources share a
-    join axis) — one boundary rule, so the two passes cannot drift on what
-    "the same key" means.
-    """
-    if environment is None:
-        return addr
-    concept = environment.concepts.get(addr) or environment.alias_origin_lookup.get(
-        addr
-    )
-    if concept is not None and isinstance(concept.lineage, BuildRowsetItem):
-        return concept.lineage.content.address
-    return addr

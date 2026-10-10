@@ -50,3 +50,35 @@ def test_kill_process_tree_falls_back_when_taskkill_fails(monkeypatch):
     agent_runner._kill_process_tree(proc)
 
     proc.kill.assert_called_once_with()
+
+
+def _seeded_workspace(tmp_path):
+    src = tmp_path / "workspace"
+    (src / "raw").mkdir(parents=True)
+    (src / "raw" / "store_sales.preql").write_text("key x int;")
+    (src / "warehouse.duckdb").write_bytes(b"db")
+    (src / "trilogy.toml").write_text("[engine]")
+    (src / "schema.md").write_text("# schema")
+    return src
+
+
+def test_reset_worker_workspace_drops_a_previous_agents_files(tmp_path):
+    src = _seeded_workspace(tmp_path)
+    worker = agent_runner.prepare_worker_workspace(src, 0, "warehouse.duckdb")
+    (worker / "probe_rowset.preql").write_text("select 1 -> x;")
+    (worker / "scratch").mkdir()
+    (worker / "raw" / "probe.preql").write_text("select 1 -> x;")
+    (worker / "raw" / "store_sales.preql").write_text("edited")
+    (worker / "warehouse.duckdb").write_bytes(b"db+writes")
+
+    agent_runner.reset_worker_workspace(src, worker, "warehouse.duckdb")
+
+    assert sorted(p.name for p in worker.iterdir()) == [
+        "raw",
+        "schema.md",
+        "trilogy.toml",
+        "warehouse.duckdb",
+    ]
+    assert [p.name for p in (worker / "raw").iterdir()] == ["store_sales.preql"]
+    assert (worker / "raw" / "store_sales.preql").read_text() == "key x int;"
+    assert (worker / "warehouse.duckdb").read_bytes() == b"db+writes"

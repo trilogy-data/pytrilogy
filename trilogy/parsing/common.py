@@ -3,7 +3,7 @@ from datetime import date, datetime
 from typing import Any
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
-from trilogy.core.constants import ALL_ROWS_CONCEPT
+from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.enums import (
     ComparisonOperator,
     Derivation,
@@ -1118,7 +1118,7 @@ def function_to_concept(
         if (
             grain
             and grain.components
-            and all(x.endswith(ALL_ROWS_CONCEPT) for x in grain.components)
+            and all(x == ALL_ROWS_ADDRESS for x in grain.components)
         ):
             granularity = Granularity.SINGLE_ROW
         else:

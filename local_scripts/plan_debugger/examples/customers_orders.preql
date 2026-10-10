@@ -1,0 +1,39 @@
+# The oracle model from tests/engine/test_derived_key_domain.py: customers
+# with and without orders. `orders.customer_id` is bound `~`, so a statement
+# naming the customer has two regions: {customer, order} and {customer}.
+
+key customer_id int;
+property customer_id.name string;
+key order_id int;
+property order_id.delivery_date date?;
+property order_id.amount int;
+
+root datasource customers (customer_id: customer_id, name: name)
+grain (customer_id)
+query '''
+select 1 as customer_id, 'ann' as name union all
+select 2, 'bob' union all
+select 3, 'cat'
+''';
+
+root datasource orders (
+    order_id: order_id, customer_id: ~customer_id,
+    delivery_date: delivery_date, amount: amount,
+)
+grain (order_id)
+query '''
+select 100 as order_id, 1 as customer_id, date '2026-01-01' as delivery_date, 10 as amount union all
+select 101, 1, null, 20 union all
+select 102, 2, date '2026-01-02', 30
+''';
+
+auto status <- case when delivery_date is not null then 'delivered' else 'in-transit' end;
+auto label <- concat(name, '-', status);
+
+# cat has no order: she is a row of the {customer} region, `status` is absent
+# there (NULL, not a value) and her count is 0.
+select
+    name,
+    status,
+    count(order_id) as order_count
+order by name asc, status asc nulls last;

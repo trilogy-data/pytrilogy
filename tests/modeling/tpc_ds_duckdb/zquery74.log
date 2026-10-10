@@ -1,5 +1,5 @@
 query_id = "74"
-gen_length = 3274
+gen_length = 2838
 preql_size = 1416
 comp_size = 2151
 generated_sql = """
@@ -27,51 +27,30 @@ FROM
 WHERE
     \"sales_web_sales_unified\".\"WS_BILL_CUSTOMER_SK\" is not null
 ),
-questionable as (
+uneven as (
 SELECT
-    \"thoughtful\".\"sales_billing_customer_sk\" as \"sales_billing_customer_sk\",
-    sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) as \"store_first_year\",
-    sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2002 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) as \"store_second_year\",
-    sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) as \"web_first_year\",
-    sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_YEAR\" = 2002 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) as \"web_second_year\"
+    \"thoughtful\".\"sales_billing_customer_sk\" as \"sales_billing_customer_sk\"
 FROM
     \"thoughtful\"
     LEFT OUTER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"thoughtful\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
-WHERE
-    \"thoughtful\".\"sales_billing_customer_sk\" is not null and (\"thoughtful\".\"sales_channel\" is not null and \"thoughtful\".\"sales_channel\" in ('STORE','WEB'))
-
 GROUP BY
     1
 HAVING
-    \"store_first_year\" > 0
-),
-yummy as (
-SELECT
-    \"questionable\".\"store_first_year\" as \"store_first_year\",
-    \"questionable\".\"store_second_year\" as \"store_second_year\",
-    \"questionable\".\"web_first_year\" as \"web_first_year\",
-    \"questionable\".\"web_second_year\" as \"web_second_year\",
-    \"sales_billing_customer_customers\".\"C_CUSTOMER_ID\" as \"sales_billing_customer_id\",
-    \"sales_billing_customer_customers\".\"C_FIRST_NAME\" as \"sales_billing_customer_first_name\",
-    \"sales_billing_customer_customers\".\"C_LAST_NAME\" as \"sales_billing_customer_last_name\"
-FROM
-    \"questionable\"
-    INNER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"questionable\".\"sales_billing_customer_sk\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\")
-SELECT
-    \"yummy\".\"sales_billing_customer_id\" as \"customer_id\",
-    \"yummy\".\"sales_billing_customer_first_name\" as \"customer_first_name\",
-    \"yummy\".\"sales_billing_customer_last_name\" as \"customer_last_name\"
-FROM
-    \"yummy\"
-WHERE
-    \"yummy\".\"web_first_year\" > 0 and ( CASE
-	WHEN \"yummy\".\"web_first_year\" > 0 THEN \"yummy\".\"web_second_year\" / \"yummy\".\"web_first_year\"
+    sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 and sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 and ( CASE
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_YEAR\" = 2002 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'WEB' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END)
 	ELSE null
 	END ) > ( CASE
-	WHEN \"yummy\".\"store_first_year\" > 0 THEN \"yummy\".\"store_second_year\" / \"yummy\".\"store_first_year\"
+	WHEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) > 0 THEN sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2002 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END) / sum(CASE WHEN \"thoughtful\".\"sales_channel\" = 'STORE' and \"sales_sale_date_date\".\"D_YEAR\" = 2001 THEN \"thoughtful\".\"sales_net_paid\" ELSE NULL END)
 	ELSE null
 	END )
-
+)
+SELECT
+    \"sales_billing_customer_customers\".\"C_CUSTOMER_ID\" as \"customer_id\",
+    \"sales_billing_customer_customers\".\"C_FIRST_NAME\" as \"customer_first_name\",
+    \"sales_billing_customer_customers\".\"C_LAST_NAME\" as \"customer_last_name\"
+FROM
+    \"uneven\"
+    INNER JOIN \"memory\".\"customer\" as \"sales_billing_customer_customers\" on \"uneven\".\"sales_billing_customer_sk\" = \"sales_billing_customer_customers\".\"C_CUSTOMER_SK\"
 ORDER BY 
     \"customer_id\" asc nulls first
 LIMIT (100)"""

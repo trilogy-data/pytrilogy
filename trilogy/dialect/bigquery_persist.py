@@ -41,7 +41,7 @@ from __future__ import annotations
 from collections.abc import Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -230,7 +230,7 @@ def _render_staging_create(target: SwapTarget, staging: str) -> str:
     The expiry is set in the same statement rather than by a follow-up
     ``update_table``: it is the backstop for a process killed before the drop,
     so it must not itself have a window in which the table exists without it."""
-    expires = datetime.now(timezone.utc) + STAGING_TTL
+    expires = datetime.now(UTC) + STAGING_TTL
     return (
         f"CREATE TABLE {target.name.quoted(staging)}"
         f" LIKE {target.name.quoted()}"

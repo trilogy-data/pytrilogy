@@ -479,21 +479,21 @@ class TupleWrapper(tuple, Generic[VT]):
         return cls(v, type=arg_to_datatype(v[0]))
 
 
+def literal_element_datatype(args: Sequence[Any]) -> tuple[CONCRETE_TYPES, bool]:
+    """The one element-type rule for list, tuple and array literals."""
+    try:
+        return reduce_tuple_element_datatypes([arg_to_datatype(arg) for arg in args])
+    except ValueError as e:
+        raise SyntaxError(str(e))
+
+
 def list_to_wrapper(args):
-    rtypes = [arg_to_datatype(arg) for arg in args]
-    types = [arg for arg in rtypes if arg != DataType.NULL]
-    if not len(set(types)) == 1:
-        raise SyntaxError(f"Cannot create a list with this set of types: {set(types)}")
-    return ListWrapper(args, type=types[0], nullable=DataType.NULL in rtypes)
+    dtype, nullable = literal_element_datatype(args)
+    return ListWrapper(args, type=dtype, nullable=nullable)
 
 
 def tuple_to_wrapper(args):
-    try:
-        dtype, nullable = reduce_tuple_element_datatypes(
-            [arg_to_datatype(arg) for arg in args]
-        )
-    except ValueError as e:
-        raise SyntaxError(str(e))
+    dtype, nullable = literal_element_datatype(args)
     return TupleWrapper(args, type=dtype, nullable=nullable)
 
 
@@ -714,8 +714,8 @@ def constant_domain_violation(
 def reduce_tuple_element_datatypes(
     datatypes: list[CONCRETE_TYPES],
 ) -> tuple[CONCRETE_TYPES, bool]:
-    """Collapse a literal tuple's element datatypes to a single representative
-    type. Elements need only be pairwise-compatible (numeric family, enum-over-
+    """Collapse a literal list/tuple/array's element datatypes to a single
+    representative type. Elements need only be pairwise-compatible (numeric family, enum-over-
     base, trait-wrapped), not identical. Raises ValueError naming the offending
     pair when two elements are genuinely incompatible. Returns (type, nullable)."""
     nullable = any(d == DataType.NULL for d in datatypes)
@@ -725,9 +725,7 @@ def reduce_tuple_element_datatypes(
     merged: CONCRETE_TYPES = non_null[0]
     for nxt in non_null[1:]:
         if not is_compatible_datatype(merged, nxt):
-            raise ValueError(
-                f"Tuple elements have incompatible types {merged} and {nxt}"
-            )
+            raise ValueError(f"Elements have incompatible types {merged} and {nxt}")
         merged = merge_datatypes([merged, nxt])
     return merged, nullable
 

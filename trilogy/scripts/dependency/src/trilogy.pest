@@ -902,7 +902,7 @@ FILE_PATH   = @{ "`" ~ (!("." ~ FILE_EXT ~ "`") ~ !"`" ~ ANY)+ ~ "." ~ FILE_EXT 
 F_FILE_PATH = @{ "f`" ~ (!("." ~ FILE_EXT ~ "`") ~ !"`" ~ ANY)+ ~ "." ~ FILE_EXT ~ "`" }
 
 SHORTHAND_MODIFIER = @{ "~" | "?" }
-JOIN_TYPE = @{ ^"left" | ^"inner" | ^"full" | ^"right" | ^"cross" | ^"subset" | ^"union" }
+JOIN_TYPE = @{ ^"left" | ^"inner" | ^"full" | ^"right" | ^"cross" | ^"subset" | ^"union" | ^"equal" }
 
 // =============================================================================
 // PURPOSE / KEYWORDS (order matters: priority-like)

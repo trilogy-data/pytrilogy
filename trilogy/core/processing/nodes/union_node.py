@@ -77,7 +77,7 @@ class UnionNode(StrategyNode):
         super().add_output_concepts(concepts, rebuild, unhide)
 
     def copy(self) -> "UnionNode":
-        return UnionNode(
+        node = UnionNode(
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
@@ -89,3 +89,4 @@ class UnionNode(StrategyNode):
             set_operator=self.set_operator,
             hidden_concepts=set(self.hidden_concepts),
         )
+        return self.with_marks(node)

@@ -5,8 +5,10 @@ from trilogy.core.exceptions import ModelValidationError
 from trilogy.core.models.build import BuildUnionDatasource
 from trilogy.core.models.core import EnumType
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
+    describe_incomplete_partitions,
     get_union_sources,
 )
+from trilogy.core.processing.statement_scope import authored_datasources
 from trilogy.core.validation.environment import validate_environment
 
 PREQL = """
@@ -255,9 +257,7 @@ def test_overlapping_sources_picks_pair():
     executor.execute_text(PREQL_OVERLAPPING)
 
     env = executor.environment.materialize_for_select()
-    unions = get_union_sources(
-        list(env.datasources.values()), [env.concepts["category"]]
-    )
+    unions = get_union_sources(list(env.datasources.values()))
 
     assert len(unions) == 1, f"Expected 1 union group, got {len(unions)}"
     assert len(unions[0]) == 2, f"Expected pair of 2, got {len(unions[0])}"
@@ -389,9 +389,7 @@ def test_no_shared_data_fields_not_combined():
     executor.execute_text(PREQL_NO_OVERLAP)
 
     env = executor.environment.materialize_for_select()
-    unions = get_union_sources(
-        list(env.datasources.values()), [env.concepts["category"]]
-    )
+    unions = get_union_sources(list(env.datasources.values()))
 
     assert (
         len(unions) == 0
@@ -760,10 +758,7 @@ def test_union_sources_mixed_family_stays_partial():
     # binds, so it can never outrank the pure sales union for key requests.
     executor = _partial_key_executor(_NAMES_RETURNS_FIRST)
     env = executor.environment.materialize_for_select()
-    unions = get_union_sources(
-        list(env.datasources.values()),
-        [env.concepts["chan"], env.concepts["order_id"], env.concepts["site_id"]],
-    )
+    unions = get_union_sources(list(env.datasources.values()))
     families = {frozenset(ds.name for ds in group): group for group in unions}
     assert frozenset({"sale_a", "sale_b"}) in families
     assert frozenset({"ret_a", "ret_b"}) in families
@@ -847,3 +842,32 @@ def test_union_coarse_property_projection_does_not_fan_out():
 
     assert len(rows) == 5, f"expected one row per tree, got {len(rows)}: {rows}"
     assert sorted(r[0] for r in rows) == ["a1", "a2", "a3", "b1", "b2"]
+
+
+DIAGNOSTIC_PREQL = """
+key id string;
+key region string;
+property id.amount int;
+property id.cost int;
+
+datasource x_one (id, region, amount, cost: ~cost)
+grain (id) complete where region = 'x1' address x_one;
+datasource x_two (id, region, amount, cost: ~cost)
+grain (id) complete where region = 'x2' address x_two;
+datasource y_one (id, region, amount: ~amount)
+grain (id) complete where region = 'y1' address y_one;
+datasource y_two (id, region, amount: ~amount)
+grain (id) complete where region = 'y2' address y_two;
+"""
+
+
+def test_incomplete_partition_diagnostic_names_only_arms_leaving_request_partial():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(DIAGNOSTIC_PREQL)
+    environment = executor.environment.materialize_for_select()
+    detail = describe_incomplete_partitions(
+        authored_datasources(environment), [environment.concepts["local.amount"]]
+    )
+    assert detail is not None
+    assert "y_one, y_two" in detail
+    assert "x_one" not in detail

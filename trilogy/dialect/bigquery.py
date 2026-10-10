@@ -124,6 +124,8 @@ def null_wrapper(
 FUNCTION_MAP = {
     FunctionType.LENGTH: lambda x, types: handle_length(x, types),
     FunctionType.IS_NULL: lambda x, types: f"{x[0]} IS NULL",
+    # no FILTER clause; ARRAY_AGG raises on a NULL element without this
+    FunctionType.ARRAY_AGG: lambda x, types: f"ARRAY_AGG({x[0]} IGNORE NULLS)",
     **SQL_STANDARD_EXTRACT,
     # BigQuery's DAYOFWEEK returns 1 for Sunday, so it does not take the
     # shared entry.

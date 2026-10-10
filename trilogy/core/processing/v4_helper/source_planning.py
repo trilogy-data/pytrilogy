@@ -10,6 +10,7 @@ lineage-related cross product, the unconditioned retry), never a re-search.
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import cast
 
@@ -24,6 +25,7 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing import plan_trace
 from trilogy.core.processing.aggregate_rollup import (
     _is_additive_aggregate,
     filter_finer_row_args,
@@ -33,7 +35,6 @@ from trilogy.core.processing.aggregate_rollup import (
 from trilogy.core.processing.condition_utility import (
     and_optional,
     condition_implies,
-    merge_conditions,
 )
 from trilogy.core.processing.model_ambiguity import validate_relation_paths
 from trilogy.core.processing.node_generators.common import (
@@ -45,10 +46,6 @@ from trilogy.core.processing.node_generators.presence_probe import (
     is_presence_probe,
     member_binding_datasources,
     probe_member_address,
-)
-from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
-    get_union_sources,
-    union_derived_concepts,
 )
 from trilogy.core.processing.node_generators.select_helpers.datasource_nodes import (
     create_select_node,
@@ -65,6 +62,7 @@ from trilogy.core.processing.v4_helper.constants import ROW_SHAPE_BARRIER_DERIVA
 from trilogy.core.processing.v4_helper.functional_dependency import build_fd_closure
 from trilogy.core.processing.v4_helper.history import V4History
 from trilogy.core.processing.v4_helper.network_build import (
+    absorbs_null,
     build_source_network,
     connector_join_keys,
     rollup_concepts_by_node,
@@ -105,6 +103,10 @@ class SourceRequest:
     # a pre-aggregated summary is not a legal source for an aggregate that a
     # later step will filter to a subset of the rows it already summed.
     deferred_conditions: BuildWhereClause | None = None
+    # A read at one coalescing arm's row grain may stay arm-local: the rows
+    # are an aggregate's input, which its consumer reassembles, or a sibling
+    # contributor brings every other arm (see `_axis_arm_pinned`).
+    arm_local: bool = False
 
 
 @dataclass(frozen=True)
@@ -132,6 +134,9 @@ class BridgePlan:
     # looks covered, yet the two scans share no column and only the connector's
     # subplan (e.g. a merged-unnest bridge) can relate them.
     connector_aliases: tuple[str, ...] = ()
+    # The cover assembles a coalescing axis from every member arm: an arm whose
+    # columns another arm also carries is still that axis's own domain.
+    assembles_axis: bool = False
 
 
 def _graph_neighbors(graph: ReferenceGraph, node: str) -> set[str]:
@@ -178,7 +183,9 @@ def _deferred_conditions(request: SourceRequest) -> BuildWhereClause | None:
     )
 
 
-def _single_source_covers(requested: set[str], environment: BuildEnvironment) -> bool:
+def _single_source_covers(
+    requested: set[str], datasources: Sequence[BuildDatasource]
+) -> bool:
     """Some datasource binds every requested address by itself, COMPLETELY.
 
     Completeness is the whole condition: a `partial`/`complete where` source
@@ -186,9 +193,7 @@ def _single_source_covers(requested: set[str], environment: BuildEnvironment) ->
     keys are what carry the other arms in. A partial binding of a single column
     is the same story at column scope.
     """
-    for datasource in environment.datasources.values():
-        if not isinstance(datasource, BuildDatasource):
-            continue
+    for datasource in datasources:
         if datasource.non_partial_for is not None:
             continue
         if requested & {c.address for c in datasource.partial_concepts}:
@@ -201,6 +206,7 @@ def _single_source_covers(requested: set[str], environment: BuildEnvironment) ->
 def _concepts_with_grain_keys(
     concepts: list[BuildConcept],
     environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
 ) -> list[BuildConcept]:
     expanded: list[BuildConcept] = []
     requested_addresses = {concept.address for concept in concepts}
@@ -211,7 +217,7 @@ def _concepts_with_grain_keys(
     # nothing reads. Whenever a join IS in play the key stays a terminal:
     # dropping it there does not degrade to a connector, it re-picks the
     # source and pairs on properties instead.
-    keys_are_affordances = _single_source_covers(requested_addresses, environment)
+    keys_are_affordances = _single_source_covers(requested_addresses, datasources)
     # A requested aggregate pins the population at its own grain: its axis
     # members join BY THEMSELVES, so their authored host-row keys are not
     # requirements of the request. Expanding them would demand the finer key
@@ -301,6 +307,7 @@ def _search_concepts_for_bridge(request: SourceRequest) -> list[BuildConcept]:
             request.environment,
         ),
         request.environment,
+        request.graph.scope.datasources,
     )
     # Static model-path validation, BEFORE any source search: an ambiguous
     # relation is a model/request defect the search must never arbitrate.
@@ -308,51 +315,18 @@ def _search_concepts_for_bridge(request: SourceRequest) -> list[BuildConcept]:
     return concepts
 
 
-def _inject_union_datasources(
-    graph: ReferenceGraph,
-    concepts: list[BuildConcept],
-    environment: BuildEnvironment,
-) -> None:
-    datasources = [
-        datasource
-        for datasource in environment.datasources.values()
-        if isinstance(datasource, BuildDatasource)
-    ]
-    union_edges: list[tuple[str, str]] = []
-    excluded = environment.excluded_enum_values
-    for datasource_group in get_union_sources(datasources, concepts, excluded):
-        union_node = "ds~" + "-".join(
-            [datasource.name for datasource in datasource_group]
-        )
-        if union_node in graph.datasources:
-            continue
-        merged_condition = merge_conditions(
-            [
-                datasource.non_partial_for.conditional
-                for datasource in datasource_group
-                if datasource.non_partial_for is not None
-            ],
-            excluded,
-        )
-        non_partial_for = (
-            BuildWhereClause(conditional=merged_condition)
-            if merged_condition is not None
-            else None
-        )
-        graph.datasources[union_node] = BuildUnionDatasource(
-            children=datasource_group,
-            non_partial_for=non_partial_for,
-        )
-        common_outputs = set(datasource_group[0].output_concepts)
-        for datasource in datasource_group[1:]:
-            common_outputs &= set(datasource.output_concepts)
-        derived = union_derived_concepts(datasource_group, environment)
-        for concept in [*common_outputs, *derived]:
-            concept_node = concept_to_node(concept)
-            graph.concepts.setdefault(concept_node, concept)
-            union_edges.append((union_node, concept_node))
-            union_edges.append((concept_node, union_node))
-    graph.add_edges_from(union_edges)
+def _undemanded_reach_keys(
+    request: SourceRequest, concepts: list[BuildConcept]
+) -> frozenset[str]:
+    """Search terminals on a span no region of the statement demands: the
+    fact's own `~` column joins as well as the complete dimension's, and reads
+    as well (a WHERE restricts the output range and never expands it), while
+    the dimension's extra members would be rows nothing reads."""
+    return frozenset(
+        c.address
+        for c in concepts
+        if c.address in request.environment.span_scope.unextended
+    )
 
 
 def _inject_rollup_edges(
@@ -438,13 +412,21 @@ def _network_source(
     `_complete_partial_requested` render it without knowing who chose.
     """
     concepts = _search_concepts_for_bridge(request)
+    partial_ok = _undemanded_reach_keys(request, concepts)
     v4_history = request.history if isinstance(request.history, V4History) else None
-    verdict_key: tuple[str, str, bool] | None = None
+    arm_local = request.arm_local
+    verdict_key: (
+        tuple[str, str, bool, tuple[str, ...], bool, tuple[str, ...]] | None
+    ) = None
     if v4_history is not None:
         verdict_key = (
             "-".join(sorted(c.address for c in concepts)),
             f"{request.conditions}|{request.deferred_conditions}",
             defer_single_scan,
+            # the promoted `~` keys change which scans bind fully
+            tuple(sorted(request.environment.span_scope.extent_free)),
+            arm_local,
+            tuple(sorted(partial_ok)),
         )
         cached_verdict = v4_history.network_verdicts.get(verdict_key)
         if cached_verdict == "none":
@@ -457,8 +439,12 @@ def _network_source(
         request.graph,
         request.conditions,
         request.deferred_conditions,
+        arm_local,
+        partial_ok=partial_ok,
     )
     result = _memoized_search(network, request.history)
+    if plan_trace.active():
+        _trace_search(network, result)
     if result.truncated:
         _report_truncation(network, result)
     if result.split:
@@ -484,6 +470,7 @@ def _network_source(
                 result.solution.sources[0]
             ].bindings.values()
         )
+        and not _binds_undemanded_span_partially(network, result.solution.sources[0])
     ):
         # A one-scan solution is `_direct_source`'s job: it is the renderer for
         # a single assignment and knows the grain-aware scoring and the
@@ -498,9 +485,6 @@ def _network_source(
             v4_history.network_verdicts[verdict_key] = "defer"
         return NetworkDecision(bridge=None)
     graph = request.graph.copy()
-    # The network mints union candidates itself and names them with the same
-    # convention, so injecting here makes its chosen node addresses resolvable.
-    _inject_union_datasources(graph, concepts, request.environment)
     chosen = set(result.solution.sources)
     rollup_nodes = _inject_rollup_edges(graph, concepts, request, chosen)
     # A derived-connector choice (`connector~<alias>`) is not a scan: its alias
@@ -606,7 +590,20 @@ def _network_source(
             concepts=bridge_concepts,
             graph=graph,
             connector_aliases=tuple(connector_aliases),
+            assembles_axis=bool(network.axis_families),
         )
+    )
+
+
+def _binds_undemanded_span_partially(network: SourceNetwork, source: str) -> bool:
+    """The scan reads a span no region demands off its own `~` column
+    (`partial_ok`). `_direct_source` would complete it against the dimension
+    and add the members nothing demands; the bridge emitter keeps the scan's
+    own rows."""
+    bindings = network.candidates[source].bindings
+    return any(
+        address in bindings and bindings[address].partial
+        for address in network.partial_ok
     )
 
 
@@ -682,7 +679,6 @@ def _datasource_nodes_for_bridge(
             if ds_node in plan.graph.datasources:
                 continue
             source_ds = request.graph.datasources.get(ds_node)
-            # Union sources are injected separately (`_inject_union_datasources`).
             if not isinstance(source_ds, BuildDatasource):
                 continue
             # Only fill a genuine gap: register the missing source iff it provides
@@ -951,6 +947,7 @@ def _datasource_rolls_up_to(
     datasource: BuildDatasource | BuildUnionDatasource | None,
     concept: BuildConcept,
     environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
 ) -> bool:
     """`datasource` binds an additive aggregate that SUM-rolls up to `concept` at
     `concept`'s own grain: the anonymous-alias analogue of binding it outright.
@@ -968,11 +965,7 @@ def _datasource_rolls_up_to(
             datasource=datasource,
             requested_concepts=[concept],
             concepts_by_address=environment.concepts,
-            datasources=[
-                ds
-                for ds in environment.datasources.values()
-                if isinstance(ds, BuildDatasource)
-            ],
+            datasources=datasources,
             target_grain=concept.grain,
         )
     )
@@ -1011,6 +1004,7 @@ def _datasource_renders_probe(
     datasource: BuildDatasource | BuildUnionDatasource | None,
     address: str,
     environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
 ) -> bool:
     """A presence probe pins side identity: post-substitution every key-group
     member's binding shares the canonical address, so lineage-based checks pass
@@ -1033,7 +1027,7 @@ def _datasource_renders_probe(
     if member is None:
         return True
     return datasource.name in {
-        ds.name for ds in member_binding_datasources(member, environment)
+        ds.name for ds in member_binding_datasources(member, datasources)
     }
 
 
@@ -1054,7 +1048,9 @@ def _original_datasource_concept_nodes(
         address = node_address(neighbor)
         if address not in bridge_addresses or address not in environment.concepts:
             continue
-        if not _datasource_renders_probe(ds_obj, address, environment):
+        if not _datasource_renders_probe(
+            ds_obj, address, environment, source_graph.scope.datasources
+        ):
             continue
         if neighbor not in bridge_graph:
             bridge_graph.add_node(neighbor)
@@ -1158,7 +1154,9 @@ def _local_concept_nodes_for_datasource(
                     _datasource_binds_canonical(datasource, canonical)
                     # ...or it binds a finer additive aggregate that rolls up to
                     # it, which is how an anonymous alias reaches a summary table.
-                    or _datasource_rolls_up_to(datasource, canonical, environment)
+                    or _datasource_rolls_up_to(
+                        datasource, canonical, environment, graph.scope.datasources
+                    )
                 )
             )
             if (
@@ -1168,7 +1166,9 @@ def _local_concept_nodes_for_datasource(
                     or renders_derived_key
                     or renders_materialized_canonical
                 )
-                and _datasource_renders_probe(datasource, address, environment)
+                and _datasource_renders_probe(
+                    datasource, address, environment, graph.scope.datasources
+                )
             ):
                 concepts.setdefault(address, neighbor)
             queue.append(neighbor)
@@ -1179,6 +1179,7 @@ def _merge_component_sources(
     request: SourceRequest,
     parents: list[StrategyNode],
     output_concepts: list[BuildConcept] | None = None,
+    preserve_parents: bool = False,
 ) -> StrategyNode | None:
     if not parents:
         return None
@@ -1227,6 +1228,7 @@ def _merge_component_sources(
         ),
         force_group=True if rollup else None,
         rollup_concepts=rollup or None,
+        preserve_parents=preserve_parents,
     )
 
 
@@ -1244,7 +1246,24 @@ def _complete_partial_requested(
     guard.
     """
     requested = {c.address for c in _requested_concepts(request)}
-    partial_requested = [c for c in node.partial_concepts if c.address in requested]
+    # a span this group is built not to extend is completed by its region
+    # domain, above: the fact's own column is the solid stream's key. A
+    # derivation a scan computes over its own rows (`scan_stamps`) has no
+    # dimension to complete against: only a column storing it elsewhere binds
+    # the rows the scan lacks, and the search prefers that column already.
+    stored = {
+        column.concept.address
+        for datasource in request.graph.scope.datasources
+        for column in datasource.columns
+    }
+    partial_requested = [
+        c
+        for c in node.partial_concepts
+        if c.address in requested
+        and c.address not in request.environment.span_scope.extent_free
+        and c.address not in request.environment.span_scope.unextended
+        and (c.derivation != Derivation.BASIC or c.address in stored)
+    ]
     if not partial_requested:
         return node
     partial_addresses = {c.address for c in partial_requested}
@@ -1324,11 +1343,8 @@ def _finer_filter_rollup_source(request: SourceRequest) -> BuildDatasource | Non
     if not finer:
         return None
     finer_canonicals = {c.canonical_address for c in finer}
-    datasources = [
-        ds for ds in environment.datasources.values() if isinstance(ds, BuildDatasource)
-    ]
     matches: list[BuildDatasource] = []
-    for ds in datasources:
+    for ds in request.graph.scope.datasources:
         ds_canonicals = {c.canonical_address for c in ds.output_concepts}
         ds_addresses = {c.address for c in ds.output_concepts}
         if not finer_canonicals.issubset(ds_canonicals):
@@ -1339,7 +1355,7 @@ def _finer_filter_rollup_source(request: SourceRequest) -> BuildDatasource | Non
             datasource=ds,
             requested_concepts=list(outputs),
             concepts_by_address=environment.concepts,
-            datasources=datasources,
+            datasources=request.graph.scope.datasources,
             target_grain=target_grain,
             conditions=conditions,
         )
@@ -1389,8 +1405,8 @@ def _plan_complete_where_source(request: SourceRequest) -> StrategyNode | None:
         if c.granularity != Granularity.SINGLE_ROW
     }
     matches: list[BuildDatasource] = []
-    for ds in environment.datasources.values():
-        if not isinstance(ds, BuildDatasource) or ds.non_partial_for is None:
+    for ds in request.graph.scope.datasources:
+        if ds.non_partial_for is None:
             continue
         # Only datasources exposed as a standalone scan in this graph are
         # addressable here. A union *member* lives in the environment but the
@@ -1590,8 +1606,7 @@ def _lineage_connected(graph: ReferenceGraph, outputs: list[BuildConcept]) -> bo
         matches = {
             node
             for node in graph.nodes
-            if node.startswith("c~")
-            and node_address(node) in (concept.address, concept.canonical_address)
+            if node.startswith("c~") and node_address(node) in concept.spellings
         }
         if not matches:
             return False
@@ -1681,6 +1696,7 @@ def _cross_component_source(request: SourceRequest) -> StrategyNode | None:
                 depth=request.depth + 1,
                 require_full=request.require_full,
                 complete_partials=request.complete_partials,
+                arm_local=request.arm_local,
             )
         )
         if component is None:
@@ -1689,13 +1705,27 @@ def _cross_component_source(request: SourceRequest) -> StrategyNode | None:
     return _merge_component_sources(request, parents)
 
 
+def _filters_a_partial_derivation(request: SourceRequest, node: StrategyNode) -> bool:
+    """The WHERE reads a NULL-absorbing derivation `node` computed over a
+    partial scan's rows alone: on a row that scan lacks it is NULL, not its
+    value there (`coalesce(ret, 0)` is 0), so a filter above the join tests
+    the wrong one."""
+    assert request.conditions is not None
+    args = {
+        c.address for c in condition_row_args(request.conditions) if absorbs_null(c)
+    }
+    return any(c.address in args for c in node.partial_concepts)
+
+
 def _emit_bridge(request: SourceRequest, bridge: BridgePlan) -> StrategyNode | None:
     # The search already priced partiality, so there is no escalation to do:
     # render at the request's own permissiveness and let the solution speak.
     parents = _datasource_nodes_for_bridge(request, bridge, not request.require_full)
     if parents is None:
         return None
-    merged = _merge_component_sources(request, parents, bridge.concepts)
+    merged = _merge_component_sources(
+        request, parents, bridge.concepts, bridge.assembles_axis
+    )
     if merged is not None and request.complete_partials:
         merged = _complete_partial_requested(request, merged)
     return merged
@@ -1708,6 +1738,82 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
     are split but the graph can prove connector concepts, source each expanded
     component directly and merge them under a v4 node.
     """
+    if not plan_trace.active():
+        return _plan_source(request)
+    node = _plan_source(request)
+    plan_trace.note_sourced(node)
+    plan_trace.record(
+        f"source: {', '.join(c.address for c in request.outputs)}",
+        plan_trace.SourceStep(
+            request=plan_trace.SourceRequestTrace(
+                outputs=plan_trace.addresses(request.outputs),
+                conditions=plan_trace.expression(request.conditions),
+                deferred_conditions=plan_trace.expression(request.deferred_conditions),
+                require_full=request.require_full,
+                complete_partials=request.complete_partials,
+                depth=request.depth,
+            ),
+            span_scope=plan_trace.span_scope(request.environment.span_scope),
+            node=plan_trace.strategy_node(node),
+        ),
+    )
+    return node
+
+
+@plan_trace.off_clock
+def _trace_search(network: SourceNetwork, result: SearchResult) -> None:
+    solution = result.solution
+    plan_trace.record(
+        f"network search: {', '.join(network.terminals)}",
+        plan_trace.SearchStep(
+            terminals=list(network.terminals),
+            candidates={
+                name: plan_trace.CandidateTrace(
+                    datasource=(
+                        c.datasource.identifier
+                        if isinstance(c.datasource, BuildDatasource)
+                        else None
+                    ),
+                    condition=c.condition.value,
+                    is_union=c.is_union,
+                    grain=sorted(c.grain),
+                    bindings={
+                        address: plan_trace.BindingTrace(
+                            strength=b.strength.value,
+                            stored=b.stored,
+                            injected=b.injected,
+                        )
+                        for address, b in sorted(c.bindings.items())
+                    },
+                )
+                for name, c in sorted(network.candidates.items())
+            },
+            solution=(
+                plan_trace.SolutionTrace(
+                    sources=list(solution.sources),
+                    assignments={
+                        k: sorted(v) for k, v in sorted(solution.assignments.items())
+                    },
+                    join_keys={
+                        f"{left} ~ {right}": sorted(keys)
+                        for (left, right), keys in sorted(solution.join_keys.items())
+                    },
+                    partial_terminals=sorted(solution.partial_terminals),
+                    completions=sorted(solution.completions),
+                    connectors=sorted(solution.connectors),
+                    cost=plan_trace.jsonable(solution.cost),
+                )
+                if solution is not None
+                else None
+            ),
+            unreachable=sorted(result.unreachable),
+            split=sorted(result.split),
+            limit=result.limit.value if result.limit else None,
+        ),
+    )
+
+
+def _plan_source(request: SourceRequest) -> StrategyNode | None:
     axis = _plan_coalescing_axis(request)
     if axis is not None:
         return axis
@@ -1752,29 +1858,29 @@ def plan_source(request: SourceRequest) -> StrategyNode | None:
             if merged is not None:
                 return merged
     if request.conditions is None:
-        crossed = _cross_component_source(request)
-        if crossed is not None:
-            return crossed
-    if request.conditions is not None:
-        outputs = _requested_concepts(request)
-        unfiltered = plan_source(
-            SourceRequest(
-                outputs=outputs,
-                environment=request.environment,
-                graph=request.graph,
-                history=request.history,
-                conditions=None,
-                deferred_conditions=_deferred_conditions(request),
-                depth=request.depth,
-                require_full=request.require_full,
-            )
+        return _cross_component_source(request)
+    outputs = _requested_concepts(request)
+    unfiltered = plan_source(
+        SourceRequest(
+            outputs=outputs,
+            environment=request.environment,
+            graph=request.graph,
+            history=request.history,
+            conditions=None,
+            deferred_conditions=_deferred_conditions(request),
+            depth=request.depth,
+            require_full=request.require_full,
+            arm_local=request.arm_local,
         )
-        if unfiltered is not None:
-            return SelectNode(
-                output_concepts=request.outputs,
-                input_concepts=unfiltered.output_concepts,
-                environment=request.environment,
-                parents=[unfiltered],
-                conditions=request.conditions.conditional,
-            )
+    )
+    if unfiltered is not None and not _filters_a_partial_derivation(
+        request, unfiltered
+    ):
+        return SelectNode(
+            output_concepts=request.outputs,
+            input_concepts=unfiltered.output_concepts,
+            environment=request.environment,
+            parents=[unfiltered],
+            conditions=request.conditions.conditional,
+        )
     return None

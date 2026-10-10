@@ -20,6 +20,7 @@ from trilogy.core.models.author import (
     SubselectComparison,
     UndefinedConcept,
 )
+from trilogy.core.models.core import ArrayType, DataType
 from trilogy.core.models.environment import (
     DictImportResolver,
     Environment,
@@ -27,6 +28,7 @@ from trilogy.core.models.environment import (
 )
 from trilogy.parsing.common import _numbering_window_to_concept
 from trilogy.parsing.parse_engine_v2 import SyntaxNode, parse_syntax, parse_text
+from trilogy.parsing.render import Renderer
 from trilogy.parsing.v2.syntax import SyntaxElement, SyntaxNodeKind, SyntaxTokenKind
 
 
@@ -764,6 +766,109 @@ by rollup ();
             sql = Dialects.DUCK_DB.default_executor().generate_sql(query)[-1]
         assert "ROLLUP" in sql
         assert "rank() over" in sql
+
+
+ARRAY_MODEL = """
+key order_id int;
+property order_id.amount int;
+root datasource orders (order_id: order_id, amount: amount)
+grain (order_id)
+query '''select 100 as order_id, 5 as amount union all select 101, 7''';
+auto arr <- [amount, amount * 2, 0];
+auto consts <- [1, 2, 3];
+"""
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.PEST, ParserBackend.LARK])
+def test_array_literal_over_a_column_is_built_row_by_row(
+    backend: ParserBackend,
+) -> None:
+    # `[amount]` is an ARRAY function of the row; `[1, 2, 3]` stays a value
+    with _using_backend(backend):
+        executor = Dialects.DUCK_DB.default_executor()
+        executor.execute_text(ARRAY_MODEL)
+        rows = executor.execute_text(
+            "select order_id, arr, arr[1] as first, consts order by order_id asc;"
+        )[-1].fetchall()
+        with pytest.raises(InvalidSyntaxException, match="incompatible types"):
+            executor.execute_text("auto bad <- [amount, 'a'];")
+    assert [tuple(r) for r in rows] == [
+        (100, [5, 10, 0], 5, [1, 2, 3]),
+        (101, [7, 14, 0], 7, [1, 2, 3]),
+    ]
+    assert executor.environment.concepts["local.consts"].derivation.value == "constant"
+    assert executor.environment.concepts["local.arr"].derivation.value == "basic"
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.PEST, ParserBackend.LARK])
+def test_array_value_and_row_literals_share_one_element_type_rule(
+    backend: ParserBackend,
+) -> None:
+    with _using_backend(backend):
+        executor = Dialects.DUCK_DB.default_executor()
+        executor.execute_text(
+            ARRAY_MODEL
+            + "auto nulls <- [null]; auto mixed <- [amount, 1.5, null];"
+            + "auto mixed_const <- [1, 1.5, null];"
+        )
+        for bad in ("auto b1 <- [1, 'a'];", "auto b2 <- [amount, 'a'];"):
+            with pytest.raises(InvalidSyntaxException, match="incompatible types"):
+                executor.execute_text(bad)
+        rows = executor.execute_text(
+            "select order_id, mixed, mixed_const order by order_id asc;"
+        )[-1].fetchall()
+    concepts = executor.environment.concepts
+    assert concepts["local.nulls"].datatype == ArrayType(type=DataType.NULL)
+    assert concepts["local.mixed"].datatype == ArrayType(type=DataType.FLOAT)
+    assert concepts["local.mixed_const"].datatype == ArrayType(type=DataType.FLOAT)
+    assert [tuple(r) for r in rows] == [
+        (100, [5.0, 1.5, None], [1.0, 1.5, None]),
+        (101, [7.0, 1.5, None], [1.0, 1.5, None]),
+    ]
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.PEST, ParserBackend.LARK])
+@pytest.mark.parametrize(
+    "name", ["equal", "left", "inner", "full", "right", "cross", "subset", "union"]
+)
+def test_join_type_is_an_identifier_unless_before_join(
+    backend: ParserBackend, name: str
+) -> None:
+    with _using_backend(backend):
+        executor = Dialects.DUCK_DB.default_executor()
+        executor.execute_text(ARRAY_MODEL + f"auto {name} <- amount * 2;")
+        rows = executor.execute_text(f"select order_id, {name} order by order_id asc;")[
+            -1
+        ].fetchall()
+    assert [tuple(r) for r in rows] == [(100, 10), (101, 14)]
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.PEST, ParserBackend.LARK])
+@pytest.mark.parametrize(
+    "expr,expected",
+    [
+        ("[amount, 0]", [[5, 0], [7, 0]]),
+        ("[(amount + 1), 0]", [[6, 0], [8, 0]]),
+        ("[sum(amount), 0]", [[5, 0], [7, 0]]),
+        ("[amount ? amount > 5, 0]", [[None, 0], [7, 0]]),
+        ("[row_number() over (order by amount desc), 0]", [[2, 0], [1, 0]]),
+    ],
+)
+def test_array_literal_of_any_row_expression_executes_and_round_trips(
+    backend: ParserBackend, expr: str, expected: list
+) -> None:
+    query = f"select order_id, {expr} -> x order by order_id asc;"
+    with _using_backend(backend):
+        executor = Dialects.DUCK_DB.default_executor()
+        executor.execute_text(ARRAY_MODEL)
+        rows = executor.execute_text(query)[-1].fetchall()
+        _, parsed = executor.environment.parse(query)
+        rendered = Renderer(environment=executor.environment).to_string(parsed[-1])
+        reparsed = Dialects.DUCK_DB.default_executor()
+        reparsed.execute_text(ARRAY_MODEL)
+        round_trip = reparsed.execute_text(rendered)[-1].fetchall()
+    assert [r[1] for r in rows] == expected
+    assert round_trip == rows
 
 
 def test_numbering_window_returns_undefined_for_undefined_anchor() -> None:

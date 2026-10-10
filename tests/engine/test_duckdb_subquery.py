@@ -75,6 +75,44 @@ def test_multi_output_subquery_rejected(backend):
     assert meta is not None and meta.line is not None
 
 
+@pytest.mark.parametrize(
+    "query",
+    [
+        "select id where val > (select val);",
+        "select id where val > (select min(val) by id -> m);",
+        "select id where val >= (select val where id = cat);",
+    ],
+)
+def test_scalar_subquery_of_several_rows_rejected(backend, query: str):
+    with pytest.raises(HydrationError, match="must return one row"):
+        _engine().generate_sql(query)
+
+
+def test_scalar_subquery_column_equality_is_not_one_row(backend):
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.execute_text(
+        _MODEL.replace(
+            "union all select 2, 20, 1", "union all select 2, 20, 2"
+        ).replace("union all select 3, 30, 2", "union all select 3, 30, 3")
+    )
+    query = "select id where val >= (select val where id = cat) order by id asc;"
+    with pytest.raises(HydrationError, match="must return one row"):
+        engine.execute_text(query)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "select id where val >= (select val order by val desc limit 1);",
+        "select id where val >= (select val where id = 3);",
+        "select id where val >= (select val where 3 = id);",
+        "const target <- 3; select id where val >= (select val where id = target);",
+    ],
+)
+def test_scalar_subquery_of_one_row(backend, query: str):
+    assert _engine().execute_text(query)[-1].fetchall() == [(3,)]
+
+
 def test_scalar_subquery_round_trips(backend):
     query = "select sum(val) -> total having total > (select max(val) -> mx);"
     engine = _engine()

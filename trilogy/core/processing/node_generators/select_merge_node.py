@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.core.enums import (
@@ -18,7 +20,6 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
     BuildGrain,
-    BuildUnionDatasource,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -32,7 +33,6 @@ from trilogy.core.processing.condition_utility import (
     condition_required_addresses,
     decompose_condition,
     is_scalar_condition,
-    merge_conditions,
 )
 from trilogy.core.processing.discovery_validation import (
     ValidationResult,
@@ -45,10 +45,8 @@ from trilogy.core.processing.node_generators.presence_probe import (
     coalescing_axis_group,
 )
 from trilogy.core.processing.node_generators.select_helpers.condition_routing import (
+    absence_atoms,
     covered_conditions,
-)
-from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
-    get_union_sources,
 )
 from trilogy.core.processing.node_generators.select_helpers.datasource_nodes import (
     SourceNodeCandidate,
@@ -69,6 +67,7 @@ from trilogy.core.processing.node_generators.select_helpers.source_scoring impor
 from trilogy.core.processing.nodes import (
     ConstantNode,
     MergeNode,
+    SelectNode,
     StrategyNode,
 )
 from trilogy.core.processing.utility import padding
@@ -93,15 +92,13 @@ def create_pruned_concept_graph(
     all_concepts: list[BuildConcept],
     datasources: list[BuildDatasource],
     criteria: SearchCriteria,
-    environment: BuildEnvironment | None = None,
+    environment: BuildEnvironment,
     conditions: BuildWhereClause | None = None,
     depth: int = 0,
     allow_intersection: bool = False,
 ) -> ReferenceGraph | None:
     orig_g = g
     g = g.copy()
-    excluded = environment.excluded_enum_values if environment is not None else None
-    union_options = get_union_sources(datasources, all_concepts, excluded)
     concepts_by_address = {c.address: c for c in orig_g.concepts.values()}
     target_grain = BuildGrain.from_concepts(all_concepts)
     rollup_edges: list[tuple[str, str]] = []
@@ -122,36 +119,6 @@ def create_pruned_concept_graph(
             rollup_edges.append((cnode, node_address))
     g.add_edges_from(rollup_edges)
 
-    union_edges: list[tuple[str, str]] = []
-    for ds_list in union_options:
-        node_address = "ds~" + "-".join([x.name for x in ds_list])
-        _merged = merge_conditions(
-            [
-                x.non_partial_for.conditional
-                for x in ds_list
-                if x.non_partial_for is not None
-            ],
-            excluded,
-        )
-        reduced_non_partial_for = (
-            BuildWhereClause(conditional=_merged) if _merged is not None else None
-        )
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX} injecting potentially relevant union datasource {node_address} with non_partial_for {reduced_non_partial_for} from children {[x.name for x in ds_list]}"
-        )
-        common: set[BuildConcept] = set.intersection(
-            *[set(x.output_concepts) for x in ds_list]
-        )
-        g.datasources[node_address] = BuildUnionDatasource(
-            children=ds_list, non_partial_for=reduced_non_partial_for
-        )
-        for c in common:
-            cnode = concept_to_node(c)
-            g.concepts.setdefault(cnode, c)
-            union_edges.append((node_address, cnode))
-            union_edges.append((cnode, node_address))
-    g.add_edges_from(union_edges)
-
     prune_sources_for_conditions(
         g,
         criteria,
@@ -170,7 +137,10 @@ def create_pruned_concept_graph(
         if (x := concepts.get(n, None)) and x.canonical_address in target_addresses
     }
     relevant_concepts: list[str] = list(relevant_concepts_pre.keys())
-    partial = get_graph_partial_nodes(g, conditions)
+    # a span this group is built not to extend is completed by its region
+    # domain above: the fact's own `~` column is as full as this scan needs
+    promoted = environment.span_scope.extent_free
+    partial = get_graph_partial_nodes(g, conditions, excluding=promoted)
     if criteria == SearchCriteria.FULL_ONLY:
         datasource_map = orig_g.datasources
         to_remove = [
@@ -251,7 +221,9 @@ def _source_concepts_via_graph(
     """
     orig_concepts = list(concepts)
     sourceable_condition_atoms = (
-        _sourceable_condition_atoms(conditions, environment) if conditions else []
+        _sourceable_condition_atoms(conditions, g.scope.datasources)
+        if conditions
+        else []
     )
     concept_attempts = [orig_concepts]
     if sourceable_condition_atoms:
@@ -275,7 +247,9 @@ def _source_concepts_via_graph(
         defer_conditions_to_merge = (
             filter_conditions is None
             and conditions is not None
-            and _conditions_can_be_sourced_by_components(conditions, environment)
+            and _conditions_can_be_sourced_by_components(
+                conditions, g.scope.datasources
+            )
         )
         select_conditions = (
             filter_conditions if filter_conditions is not None else conditions
@@ -289,7 +263,7 @@ def _source_concepts_via_graph(
                 criteria=attempt,
                 environment=environment,
                 conditions=conditions,
-                datasources=list(environment.datasources.values()),
+                datasources=list(g.scope.datasources),
                 depth=depth,
                 allow_intersection=allow_intersection,
             )
@@ -301,6 +275,7 @@ def _source_concepts_via_graph(
                 criteria=attempt,
                 conditions=select_conditions,
                 depth=depth,
+                excluding=environment.span_scope.extent_free,
             )
             break
         if not pruned:
@@ -441,32 +416,31 @@ def _source_concepts_via_graph(
 
 def _conditions_can_be_sourced_by_components(
     conditions: BuildWhereClause,
-    environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
 ) -> bool:
     """Whether every WHERE atom is coverable by a complete, non-aggregate
     source, so the WHERE can be merged-then-reapplied rather than pushed per
     source. Only the early routing check: the caller still builds
     conditionless trial candidates and only accepts deferral for flat scans."""
-    return len(_sourceable_condition_atoms(conditions, environment)) == len(
+    return len(_sourceable_condition_atoms(conditions, datasources)) == len(
         decompose_condition(conditions.conditional)
     )
 
 
 def _sourceable_condition_atoms(
     conditions: BuildWhereClause,
-    environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
 ) -> list[BoolExpr]:
-    datasources = [
+    complete = [
         ds
-        for ds in environment.datasources.values()
-        if isinstance(ds, BuildDatasource)
-        and not ds.non_partial_for
+        for ds in datasources
+        if not ds.non_partial_for
         and not any(c.is_aggregate for c in ds.output_concepts)
     ]
-    if not datasources:
+    if not complete:
         return []
     available: set[str] = set()
-    for ds in datasources:
+    for ds in complete:
         partial = {c.canonical_address for c in ds.partial_concepts}
         available.update(
             c.canonical_address
@@ -594,6 +568,16 @@ def _condition_remaining_after_parents(
             if atom not in parent_atoms
         ]
     )
+
+
+def _lone_scan(node: StrategyNode) -> SelectNode | None:
+    """The datasource scan under a chain of sole-parent wrappers (a
+    force-grouped scan), or None when the node is not one scan."""
+    while not isinstance(node, SelectNode):
+        if len(node.parents) != 1:
+            return None
+        node = node.parents[0]
+    return node
 
 
 def _merge_condition_routing(
@@ -758,7 +742,9 @@ def gen_select_merge_node(
         if (
             not parents
             and conditions
-            and _conditions_can_be_sourced_by_components(conditions, environment)
+            and _conditions_can_be_sourced_by_components(
+                conditions, g.scope.datasources
+            )
         ):
             augmented = unique(
                 normals
@@ -785,7 +771,7 @@ def gen_select_merge_node(
             # guaranteed to apply them, so foreign datasources survive via the
             # intersection check. The full conditions still go through as
             # filter_conditions so per-datasource WHERE clauses are preserved.
-            covered = covered_conditions(conditions, environment)
+            covered = covered_conditions(conditions, g.scope.datasources)
             if covered:
                 parents = _source_concepts_via_graph(
                     normals,
@@ -812,7 +798,21 @@ def gen_select_merge_node(
             return None
         parents.extend(abstract_nodes)
 
-    if len(parents) == 1 and not constants:
+    # a lone scan that routed an absence atom off its rows (`status is null`
+    # on a scan bound `~`, a merge-level test: `absence_atoms`) was not
+    # extended here, so nothing above re-applies it; the merge over it
+    # carries the remainder as the multi-parent path does. A tautology the
+    # scan dropped, or an atom over what it does not hold, is not that.
+    scan = _lone_scan(parents[0]) if len(parents) == 1 else None
+    unapplied = (
+        conditions is not None
+        and scan is not None
+        and scan.datasource is not None
+        and (remaining := _condition_remaining_after_parents(parents, conditions))
+        is not None
+        and bool(absence_atoms(scan.datasource, remaining))
+    )
+    if len(parents) == 1 and not constants and not unapplied:
         candidate: StrategyNode = parents[0]
     else:
         logger.info(

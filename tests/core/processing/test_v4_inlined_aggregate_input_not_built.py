@@ -1,0 +1,188 @@
+"""A row-preserving input every reader computes inline is folded out of the
+group graph before it is built."""
+
+from pytest import raises
+
+from tests.helpers.models import LINE_ITEMS
+from tests.helpers.planning import built_groups, recorded
+from tests.helpers.rows import executor_for, fetch_rows
+from trilogy import Environment
+from trilogy.core import graph as nx
+from trilogy.core.enums import Derivation
+from trilogy.core.env_processor import generate_graph
+from trilogy.core.processing import plan_trace
+from trilogy.core.processing.nodes import History
+from trilogy.core.processing.v4_helper.constants import (
+    FINAL_NODE_ID,
+    DepthLabel,
+    EdgeKind,
+)
+from trilogy.core.processing.v4_helper.edges import EdgeMap, add_edge
+from trilogy.core.processing.v4_helper.models import (
+    FinalAssemblyContract,
+    FinalContributorContract,
+    GroupAttrs,
+    GroupInputContract,
+)
+from trilogy.core.processing.v4_helper.strategy_builder import (
+    _fold_into_readers,
+    _parent_nodes_for,
+)
+
+
+def _final_graph_groups(trace: plan_trace.PlanTrace) -> set[str]:
+    graphs = [s for s in trace.steps if s.phase == "group_graph"]
+    return set(graphs[-1].data.graph.nodes)
+
+
+def test_inlined_basic_is_not_built():
+    executor = executor_for(LINE_ITEMS)
+    query = "select order_id, sum(item_margin) as margin order by order_id asc;"
+    trace = recorded(executor, query)
+    assert not built_groups(trace, "basic")
+    assert not [g for g in _final_graph_groups(trace) if g.startswith("grp:basic")]
+    rows = fetch_rows(executor, query)
+    assert rows == [(10, 9.0), (11, 2.0)]
+
+
+def test_basic_the_final_reads_is_built():
+    executor = executor_for(LINE_ITEMS)
+    query = """select line_id, item_margin, sum(item_margin) by order_id as margin
+order by line_id asc;"""
+    trace = recorded(executor, query)
+    assert built_groups(trace, "basic")
+    rows = fetch_rows(executor, query)
+    assert rows == [(1, 4.0, 9.0), (2, 5.0, 9.0), (3, 2.0, 2.0)]
+
+
+def test_input_behind_an_inlined_filter_is_not_built():
+    executor = executor_for(LINE_ITEMS)
+    query = """select order_id, sum(item_margin ? item_margin > 3) as big_margin
+order by order_id asc;"""
+    trace = recorded(executor, query)
+    assert not built_groups(trace, "basic") and not built_groups(trace, "filter")
+    rows = fetch_rows(executor, query)
+    assert rows == [(10, 9.0), (11, None)]
+
+
+def test_condition_phase_twins_are_not_built():
+    executor = executor_for(LINE_ITEMS)
+    query = """auto ca_avg <- avg(sale_price ? user_id = 1) by order_id;
+where order_id in (10, 11) and ca_avg > 1
+select line_id, rank(order_id) over (order by ca_avg asc) as rnk
+order by line_id asc;"""
+    trace = recorded(executor, query)
+    assert not built_groups(trace, "filter")
+    rows = fetch_rows(executor, query)
+    assert rows == [(1, 1), (2, 1)]
+
+
+def test_reader_holding_folded_members_is_never_built():
+    env, _ = Environment().parse(LINE_ITEMS)
+    build_env = env.materialize_for_select()
+    graph = nx.DiGraph()
+    graph.add_node("filter")
+    attrs = {
+        "filter": GroupAttrs(
+            depth_label=DepthLabel.D0,
+            derivation=Derivation.FILTER,
+            inlined_members=("local.item_margin",),
+        )
+    }
+    with raises(ValueError, match="planned to be computed inline"):
+        _parent_nodes_for(
+            graph,
+            {},
+            attrs,
+            {},
+            "filter",
+            build_env,
+            generate_graph(build_env),
+            History(base_environment=env),
+            needed=set(),
+            root_requests={},
+            mandatory_list=[],
+        )
+
+
+def test_fold_puts_the_parents_in_the_folded_groups_place():
+    graph = nx.DiGraph()
+    edges: EdgeMap = {}
+    for parent, child, kind in [
+        ("root", "agg", EdgeKind.LINEAGE),
+        ("dim", "basic", EdgeKind.LINEAGE),
+        ("root", "basic", EdgeKind.LINEAGE),
+        ("basic", "agg", EdgeKind.LINEAGE),
+        ("other", "agg", EdgeKind.CONSTRAINT),
+        ("basic", FINAL_NODE_ID, EdgeKind.MERGE),
+        ("agg", FINAL_NODE_ID, EdgeKind.MERGE),
+    ]:
+        add_edge(graph, edges, parent, child, kind)
+    attrs = {
+        gid: GroupAttrs(depth_label=DepthLabel.D0, derivation=derivation)
+        for gid, derivation in [
+            ("root", Derivation.ROOT),
+            ("dim", Derivation.ROOT),
+            ("other", Derivation.ROOT),
+            ("basic", Derivation.BASIC),
+            ("agg", Derivation.AGGREGATE),
+            (FINAL_NODE_ID, None),
+        ]
+    }
+    attrs["basic"].primary_members = ("local.item_margin",)
+    attrs["basic"].inlined_members = ("local.cost_basis",)
+    attrs["agg"].input_contracts = tuple(
+        GroupInputContract(parent_group_id=parent, consumer_group_id="agg")
+        for parent in ("root", "basic", "other")
+    )
+    attrs[FINAL_NODE_ID].final_contract = FinalAssemblyContract(
+        contributor_contracts=tuple(
+            FinalContributorContract(group_id=gid) for gid in ("agg", "basic")
+        )
+    )
+
+    _fold_into_readers(graph, edges, attrs, "basic")
+
+    assert list(graph.predecessors("agg")) == ["root", "dim", "other"]
+    assert edges[("dim", "agg")].kind == EdgeKind.LINEAGE
+    assert edges[("other", "agg")].kind == EdgeKind.CONSTRAINT
+    assert "basic" not in graph and "basic" not in attrs
+    assert not [edge for edge in edges if "basic" in edge]
+    assert attrs["agg"].inlined_members == ("local.cost_basis", "local.item_margin")
+    assert [c.parent_group_id for c in attrs["agg"].input_contracts] == [
+        "root",
+        "other",
+    ]
+    contract = attrs[FINAL_NODE_ID].final_contract
+    assert contract is not None
+    assert [c.group_id for c in contract.contributor_contracts] == ["agg"]
+
+
+def test_fold_turns_a_side_channel_from_a_row_parent_into_a_row_edge():
+    """`select g, m where m in fx` with `dy <- fx + 0` folded into `m`: the
+    aggregate read `fx`'s group as a set, and now computes `dy` off its rows."""
+    graph = nx.DiGraph()
+    edges: EdgeMap = {}
+    for parent, child, kind in [
+        ("fx", "dy", EdgeKind.LINEAGE),
+        ("fx", "agg", EdgeKind.EXISTENCE),
+        ("dy", "agg", EdgeKind.LINEAGE),
+        ("agg", FINAL_NODE_ID, EdgeKind.MERGE),
+    ]:
+        add_edge(graph, edges, parent, child, kind)
+    attrs = {
+        gid: GroupAttrs(depth_label=DepthLabel.D0, derivation=derivation)
+        for gid, derivation in [
+            ("fx", Derivation.FILTER),
+            ("dy", Derivation.BASIC),
+            ("agg", Derivation.AGGREGATE),
+            (FINAL_NODE_ID, None),
+        ]
+    }
+    attrs[FINAL_NODE_ID].final_contract = FinalAssemblyContract(
+        contributor_contracts=(FinalContributorContract(group_id="agg"),)
+    )
+
+    _fold_into_readers(graph, edges, attrs, "dy")
+
+    assert edges[("fx", "agg")].kind == EdgeKind.LINEAGE

@@ -10,6 +10,7 @@ from trilogy import Environment
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.concept_strategies_v4 import V4History, search_concepts
+from trilogy.core.processing.statement_scope import authored_datasources
 from trilogy.core.processing.v4_helper.concept_graph import (
     _derivable_pseudonym_origins,
     _resolve_pseudonym_origin,
@@ -138,6 +139,9 @@ def test_no_alternative_edges_survive_resolution():
     env.parse(CORRELATED_MODEL)
     benv = env.materialize_for_select()
     _, _, edges = build_concept_graph(
-        [benv.concepts["local.a"], benv.concepts["local.b"]], benv, []
+        [benv.concepts["local.a"], benv.concepts["local.b"]],
+        benv,
+        [],
+        datasources=authored_datasources(benv),
     )
     assert all(a.alt_group is None for a in edges.values())

@@ -1,6 +1,6 @@
 """Unit coverage for v4 materialized-source selection (stage 1).
 
-Exercises `_materialized_root_addresses` (which demanded concepts get sourced
+Exercises `materialized_root_addresses` (which demanded concepts get sourced
 directly from a precomputed / summary datasource instead of re-derived) and its
 `combine_where_clauses` helper, plus the `materialized_roots` branch of
 `build_concept_graph`, against small inline models — no SQL execution.
@@ -21,10 +21,11 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.concept_strategies_v4 import (
     _datasource_materializes,
-    _materialized_root_addresses,
     _scan_rows_at_grain,
+    materialized_root_addresses,
 )
 from trilogy.core.processing.condition_utility import combine_where_clauses
+from trilogy.core.processing.statement_scope import authored_datasources
 from trilogy.core.processing.v4_helper.concept_graph import build_concept_graph
 from trilogy.parser import parse
 
@@ -252,15 +253,17 @@ def _build(
 
 def _roots(select: str, model: str = MODEL) -> set[str]:
     be, mandatory, conditions = _build(select, model)
-    return set(_materialized_root_addresses(mandatory, be, conditions))
+    return set(
+        materialized_root_addresses(mandatory, be, conditions, authored_datasources(be))
+    )
 
 
-# ---------- _materialized_root_addresses ----------
+# ---------- materialized_root_addresses ----------
 
 
 def test_empty_mandatory_list():
     env = Environment().materialize_for_select()
-    assert _materialized_root_addresses([], env, []) == frozenset()
+    assert materialized_root_addresses([], env, [], []) == frozenset()
 
 
 def test_exact_aggregate_uses_summary_table():
@@ -527,7 +530,9 @@ def test_concept_graph_materialized_root_is_leaf():
     be, mandatory, _ = _build("SELECT customer_id, order_count;")
     roots = frozenset({"local.order_count"})
 
-    _, attrs, _edges = build_concept_graph(mandatory, be, [], roots)
+    _, attrs, _edges = build_concept_graph(
+        mandatory, be, [], roots, datasources=authored_datasources(be)
+    )
     assert attrs["local.order_count"].derivation == Derivation.ROOT
     # A materialized root stops the lineage walk: order_id (count's argument) is
     # never added as an upstream node.
@@ -535,7 +540,9 @@ def test_concept_graph_materialized_root_is_leaf():
 
     # Without the materialized hint the same concept is a derived AGGREGATE whose
     # argument is walked in.
-    _, plain_attrs, _ = build_concept_graph(mandatory, be, [])
+    _, plain_attrs, _ = build_concept_graph(
+        mandatory, be, [], datasources=authored_datasources(be)
+    )
     assert plain_attrs["local.order_count"].derivation == Derivation.AGGREGATE
     assert "local.order_id" in plain_attrs
 

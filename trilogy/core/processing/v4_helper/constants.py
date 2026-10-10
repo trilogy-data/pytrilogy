@@ -2,6 +2,10 @@ from enum import Enum
 
 from trilogy.core.enums import Derivation
 
+# `V4History.witness_floor` when no live rowset-witness placeholder was read:
+# deeper than any witness depth
+NO_WITNESS_FLOOR = 1 << 30
+
 
 class DepthLabel(Enum):
     """Placement role of a concept (or group) in the v4 plan."""
@@ -60,6 +64,26 @@ GROUPING_DERIVATIONS: set[Derivation] = {
     Derivation.AGGREGATE,
     Derivation.WINDOW,
     Derivation.GROUP_TO,
+}
+
+# Derivations evaluated against their input row stream as it stands: per row,
+# or (WINDOW) one row ranked against the others. A row padded for a ``~``
+# extension is an input like any other, so it gets a value, or takes a rank, it
+# has no entity to own. An aggregate is not one: it is evaluated OVER the
+# extended rows (`count(order_id)` is 0 for a customer with no order).
+ROW_STREAM_DERIVATIONS: set[Derivation] = {
+    Derivation.BASIC,
+    Derivation.FILTER,
+    Derivation.WINDOW,
+}
+
+# An aggregate's argument that emits one value per input row, so the aggregate
+# reads the rows its input node already carries rather than needing a source of
+# its own.
+ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS: set[Derivation] = {
+    Derivation.ROOT,
+    Derivation.BASIC,
+    Derivation.FILTER,
 }
 
 FINAL_NODE_ID = "__final__"

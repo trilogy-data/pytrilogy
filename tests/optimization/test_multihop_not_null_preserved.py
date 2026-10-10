@@ -153,3 +153,38 @@ order by id;
     sql = exec.generate_sql(body)[-1]
     assert "is not null" in sql.lower(), sql
     assert exec.execute_query(body).fetchall() == [(1,)]
+
+
+INNER_KEY_MODEL = """
+key customer_id int;
+property customer_id.name string;
+key order_id int;
+property order_id.is_late bool;
+datasource customers ( customer_id: customer_id, name: name, )
+grain (customer_id)
+address customers;
+datasource orders ( order_id: order_id, customer_id: ?customer_id, is_late: is_late, )
+grain (order_id)
+address orders;
+"""
+
+
+def test_inner_join_key_not_null_beside_a_boolean_atom_is_dropped():
+    exec = _exec(INNER_KEY_MODEL)
+    exec.execute_raw_sql(
+        "create table customers as select 1 as customer_id, 'a' as name "
+        "union all select 2, 'b'"
+    )
+    exec.execute_raw_sql(
+        "create table orders as select 10 as order_id, 1 as customer_id, true as "
+        "is_late union all select 11, null, true union all select 12, 2, false"
+    )
+    body = """
+where is_late and customer_id is not null
+select order_id, name
+order by order_id;
+"""
+    sql = exec.generate_sql(body)[-1]
+    assert "INNER JOIN" in sql, sql
+    assert "is not null" not in sql.lower(), sql
+    assert exec.execute_query(body).fetchall() == [(10, "a")]

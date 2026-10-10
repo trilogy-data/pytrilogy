@@ -12,7 +12,7 @@ import os
 import textwrap
 from collections.abc import Callable
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -377,7 +377,7 @@ ARG_PREVIEW_LIMIT = 80
 def _log_event(log_path: Path | None, event: dict[str, Any]) -> None:
     if log_path is None:
         return
-    event = {"ts": datetime.now(timezone.utc).isoformat(), **event}
+    event = {"ts": datetime.now(UTC).isoformat(), **event}
     with log_path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(event, default=str) + "\n")
 

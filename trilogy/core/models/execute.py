@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field, replace
+from typing import TypeVar
 
 from trilogy.constants import (
     CONFIG,
@@ -123,6 +124,10 @@ class ConditionPlacement:
     qualify: BoolExpr | None = None
 
 
+def _spells(side: BuildConcept, spellings: set[str]) -> bool:
+    return bool(({side.address} | set(side.pseudonyms)) & spellings)
+
+
 @dataclass
 class CTE:
     name: str
@@ -145,6 +150,10 @@ class CTE:
     nullable_concepts: list[BuildConcept] = field(default_factory=list)
     join_derived_concepts: list[BuildConcept] = field(default_factory=list)
     hidden_concepts: set[str] = field(default_factory=set)
+    # COUNT outputs padded here on a region's rows: rendered coalesced to 0
+    zero_filled: frozenset[str] = frozenset()
+    # See `QueryDatasource.distinct_counts`.
+    distinct_counts: frozenset[str] = frozenset()
     order_by: BuildOrderBy | None = None
     limit: int | None = None
     base_name_override: Address | str | None = None
@@ -347,6 +356,8 @@ class CTE:
         self.nullable_concepts = unique(
             self.nullable_concepts + other.nullable_concepts, "address"
         )
+        self.zero_filled = self.zero_filled | other.zero_filled
+        self.distinct_counts = self.distinct_counts | other.distinct_counts
         self.hidden_concepts = mutually_hidden
         self.existence_source_map = {
             **self.existence_source_map,
@@ -474,6 +485,27 @@ class CTE:
             pending.extend(adjacent[current] - seen)
         return concepts
 
+    def inner_join_key_sources(self, address: str) -> set[str]:
+        """Sources this CTE's INNER joins equate on ``address`` (or a
+        pseudonym of it, a merged key spelled at its own side): on every
+        surviving row the sides agree, so any one of them renders the key."""
+        concept = self.get_concept(address)
+        spellings = {address} | (set(concept.pseudonyms) if concept else set())
+        out: set[str] = set()
+        for join in self.joins:
+            if not isinstance(join, Join) or join.jointype is not JoinType.INNER:
+                continue
+            for group in coalesced_key_groups(
+                pair
+                for pair in join.joinkey_pairs or []
+                if _spells(pair.left, spellings) and _spells(pair.right, spellings)
+            ):
+                out.add(join.right_cte.name)
+                names = {pair.cte.name for pair in group}
+                if len(names) == 1:
+                    out |= names
+        return out
+
     def from_scope_aliases(self) -> set[str]:
         """Alias tokens referenceable in this CTE's rendered FROM clause: the
         base plus every join participant. A parent wired in only through an
@@ -483,11 +515,7 @@ class CTE:
         for join in self.joins:
             if not isinstance(join, Join):
                 continue
-            scope.add(join.name_for(self, join.right_cte))
-            if join.left_cte is not None:
-                scope.add(join.name_for(self, join.left_cte))
-            for pair in join.joinkey_pairs or []:
-                scope.add(join.name_for(self, pair.cte))
+            scope.update(join.name_for(self, c) for c in join.participants())
         return scope
 
     def get_alias(
@@ -556,6 +584,52 @@ class CTE:
             return self.source.get_alias(concept, source=source)
         except ValueError as e:
             return f"INVALID_ALIAS: {e!s}"
+
+    def zero_fills_count(self, c: BuildConcept, rolled_up: bool = False) -> bool:
+        """A COUNT this CTE renders coalesced to 0: one a merge padded onto a
+        region's rows (``zero_filled``), or a pre-aggregated one a join here
+        left NULL (`rolled_up`: the same, summed through this GROUP BY). A
+        multiselect-align merge vetoes both: a NULL count there means the
+        entity is absent from that arm, not 0 facts. A predicate over such a
+        count accepts the padded rows, so it proves nothing about the side
+        that padded them."""
+        return (
+            c.zero_on_empty
+            and not self._aligns_multiselect()
+            and self._fills_with_zero(
+                c.address,
+                rolled_up,
+                {n.address for n in self.nullable_concepts},
+            )
+        )
+
+    def zero_filled_counts(self, concepts: Iterable[BuildConcept]) -> set[str]:
+        if self._aligns_multiselect():
+            return set()
+        rolled = (
+            {r.address for r in self.rollup_concepts} if self.group_to_grain else set()
+        )
+        nullable = {n.address for n in self.nullable_concepts}
+        return {
+            c.address
+            for c in concepts
+            if c.zero_on_empty
+            and self._fills_with_zero(c.address, c.address in rolled, nullable)
+        }
+
+    def _aligns_multiselect(self) -> bool:
+        return any(
+            isinstance(o.lineage, BuildMultiSelectLineage) for o in self.output_columns
+        )
+
+    def _fills_with_zero(
+        self, address: str, rolled_up: bool, nullable: set[str]
+    ) -> bool:
+        if address in self.zero_filled:
+            return True
+        if self.group_to_grain and not rolled_up:
+            return False
+        return address in nullable
 
     def filter_collapses_to_grain(self, c: BuildConcept) -> bool:
         """A locally-computed filter virtual whose keys are covered by this
@@ -926,10 +1000,9 @@ class CTE:
                 continue
             if join.left_cte and join.left_cte.safe_identifier == old.safe_identifier:
                 join.left_cte = new
-            if join.joinkey_pairs:
-                for pair in join.joinkey_pairs:
-                    if pair.cte and pair.cte.safe_identifier == old.safe_identifier:
-                        pair.cte = new
+            for keyed in join.cte_bindings():
+                if keyed.cte and keyed.cte.safe_identifier == old.safe_identifier:
+                    keyed.cte = new
             if join.right_cte.safe_identifier == old.safe_identifier:
                 join.right_cte = new
 
@@ -966,6 +1039,40 @@ class BaseConceptPair:
     existing_datasource: BuildDatasource | QueryDatasource
 
 
+@dataclass(frozen=True)
+class GuardTerm:
+    """`concept` read off one side of a join, NOT NULL when `present`."""
+
+    concept: BuildConcept
+    datasource: BuildDatasource | QueryDatasource
+    present: bool
+
+    def __str__(self) -> str:
+        test = "is not null" if self.present else "is null"
+        return f"{self.datasource.name}.{self.concept.address} {test}"
+
+
+@dataclass
+class CTEGuardTerm:
+    concept: BuildConcept
+    cte: CTE | UnionCTE
+    present: bool
+
+    def __str__(self) -> str:
+        test = "is not null" if self.present else "is null"
+        return f"{self.cte.name}.{self.concept.address} {test}"
+
+
+# A conjunction of disjunctions of side-bound NULL tests; empty is no guard.
+JoinGuard = tuple[tuple[GuardTerm, ...], ...]
+
+
+def guard_text(guard: Sequence[Sequence[GuardTerm | CTEGuardTerm]]) -> str:
+    return "".join(
+        f" and ({' or '.join(str(term) for term in clause)})" for clause in guard
+    )
+
+
 @dataclass
 class ConceptPair(BaseConceptPair):
     modifiers: list[Modifier] = field(default_factory=list)
@@ -991,6 +1098,54 @@ class CTEConceptPair(BaseConceptPair):
     @property
     def is_nullable(self):
         return Modifier.NULLABLE in self.modifiers
+
+
+def pair_modifiers(
+    pair: ConceptPair | CTEConceptPair, join_modifiers: list[Modifier] | None = None
+) -> list[Modifier]:
+    """Every modifier the rendered comparison of `pair` honours: the pair's,
+    each side concept's and the join's."""
+    return (
+        pair.modifiers
+        + (pair.left.modifiers or [])
+        + (pair.right.modifiers or [])
+        + (join_modifiers or [])
+    )
+
+
+def pair_matches_nulls(
+    pair: ConceptPair | CTEConceptPair, join_modifiers: list[Modifier] | None = None
+) -> bool:
+    """`pair` renders null-safe: a NULL on one side can pair with one on the
+    other."""
+    return Modifier.NULLABLE in pair_modifiers(pair, join_modifiers)
+
+
+PairT = TypeVar("PairT", bound=BaseConceptPair)
+
+
+def coalesced_key_groups(pairs: Iterable[PairT]) -> list[list[PairT]]:
+    """Pairs by the key they equate: several left sides of one key render
+    `coalesce(a.k, b.k) = c.k`, any one of which may be the padded NULL."""
+    groups: dict[tuple[str, str], list[PairT]] = {}
+    for pair in pairs:
+        groups.setdefault((pair.right.address, pair.left.address), []).append(pair)
+    return list(groups.values())
+
+
+def preserved_key_pairs(
+    pairs: Iterable[PairT], padded: set[str], source: Callable[[PairT], str]
+) -> list[PairT]:
+    """Each coalesced key read off one side no earlier join pads, which equals
+    the key on every row; with every side padded the coalesce IS the key."""
+    out: list[PairT] = []
+    for group in coalesced_key_groups(pairs):
+        preserved = [pair for pair in group if source(pair) not in padded]
+        if len(group) == 1 or not preserved:
+            out.extend(group)
+            continue
+        out.append(min(preserved, key=source))
+    return out
 
 
 @dataclass
@@ -1050,6 +1205,9 @@ class BaseJoin:
     left_datasource: BuildDatasource | QueryDatasource | None = None
     concept_pairs: list[ConceptPair] | None = None
     modifiers: list[Modifier] = field(default_factory=list)
+    # beside the key pairs: a padded row whose key is NULL by absence never
+    # pairs with a value-NULL group (`join_resolution._padding_guard`)
+    guard: JoinGuard = ()
 
     def __post_init__(self):
         if (
@@ -1102,6 +1260,7 @@ class BaseJoin:
         # `b JOIN a ON y=x` are one join, and two independently-built merges
         # over the same parents can pick opposite bases; keeping both joins the
         # same partner twice (duplicate alias).
+        guard = guard_text(self.guard)
         if self.concept_pairs:
             if self.join_type == JoinType.INNER:
                 partners = sorted(
@@ -1113,13 +1272,13 @@ class BaseJoin:
                     + f"[{','.join(sorted(m.value for m in p.modifiers))}]"
                     for p in self.concept_pairs
                 )
-                return f"{self.join_type.value} {'&'.join(partners)} on {','.join(pair_keys)}"
+                return f"{self.join_type.value} {'&'.join(partners)} on {','.join(pair_keys)}{guard}"
             pair_keys = sorted(
                 f"{p.existing_datasource.name}.{p.left}={p.right}"
                 for p in self.concept_pairs
             )
-            return f"{self.join_type.value} {self.right_datasource.name} on {','.join(pair_keys)}"
-        return str(self)
+            return f"{self.join_type.value} {self.right_datasource.name} on {','.join(pair_keys)}{guard}"
+        return str(self) + guard
 
     @property
     def input_concepts(self) -> list[BuildConcept]:
@@ -1129,6 +1288,7 @@ class BaseJoin:
                 base += [pair.left, pair.right]
         elif self.concepts:
             base += self.concepts
+        base += [term.concept for clause in self.guard for term in clause]
         return base
 
     def __str__(self):
@@ -1179,6 +1339,30 @@ class QueryDatasource:
     # them are different relations, and merging the two under one CTE name
     # concatenates their join lists.
     extent_free_spans: frozenset[str] = frozenset()
+    # What those spans' region domains carry, held here for the members the
+    # scan's facts bound only (the names of customers WITH an order). Not
+    # identity: it follows from `extent_free_spans` and the model.
+    extent_free_carried: frozenset[str] = frozenset()
+    # COUNT outputs this merge pads on a region's rows (a side holding the
+    # region's rows joined to one that was evaluated on the solid rows only):
+    # a count over an empty group is 0, so they render coalesced. Not identity.
+    zero_filled: frozenset[str] = frozenset()
+    # COUNT outputs this source computes over a stream that repeats the
+    # counted key (a pass shared with a finer sibling): rendered
+    # COUNT(DISTINCT). A render choice for this stream, not the concept's, so
+    # the concept is never rewritten and a consumer re-deriving it here renders
+    # it the same way. Not identity.
+    distinct_counts: frozenset[str] = frozenset()
+    # The region domains under this source (`nodes.base_node.region_reads`):
+    # the spans whose extension rows are rows of it. A join between a side
+    # holding a region's rows and one that does not preserves the holder.
+    # Stamped by `StrategyNode.resolve`; not identity.
+    region_spans: frozenset[str] = frozenset()
+    # A constant the CTE projects beside the outputs, NULL only where a join
+    # padded this side: a consumer's padding guard reads it when the side has
+    # no column NULL exactly there (`join_resolution._presence_marker`). Not
+    # an output, so planning never sees it; not identity.
+    presence_marker: BuildConcept | None = None
 
     def __post_init__(self) -> None:
         if self.set_operator is SetOperator.UNION_ALL:
@@ -1207,9 +1391,7 @@ class QueryDatasource:
             intrinsic_nullable = [
                 c
                 for c in intrinsic_nullable
-                if not proven.intersection(
-                    {c.address, c.canonical_address, *c.pseudonyms}
-                )
+                if not proven.intersection(c.all_spellings)
             ]
         if intrinsic_nullable:
             self.nullable_concepts = unique(
@@ -1449,6 +1631,16 @@ class QueryDatasource:
             # only same-identifier QDSs merge, so limits agree; keep it
             limit=self.limit if self.limit is not None else other.limit,
             base_datasource=merged_base,
+            # the LHS is the key the merge folded `other` under, and the joins
+            # carried above reference the sides by that identity
+            extent_free_spans=self.extent_free_spans,
+            # follows `extent_free_spans`: same-identifier QDSs can disagree
+            # on spans that do not reach the outputs, and a union would claim
+            # an address carried by a span this merge no longer routes
+            extent_free_carried=self.extent_free_carried,
+            zero_filled=self.zero_filled | other.zero_filled,
+            distinct_counts=self.distinct_counts | other.distinct_counts,
+            region_spans=self.region_spans | other.region_spans,
         )
         logger.debug(
             f"[Query Datasource] merged with {[c.address for c in qds.output_concepts]} concepts"
@@ -1566,6 +1758,19 @@ class QueryDatasource:
                 extent_free = "_extent_free_" + "_".join(
                     sorted(a.replace(".", "_") for a in live_spans)
                 )
+        # A preserving join is identity: two merges of the same members that
+        # type a join differently (one consumer's scan projects a `~` key the
+        # other's does not) are different row sets, and merging their CTEs
+        # keeps BOTH joins onto one alias.
+        preserving = ""
+        outer = sorted(
+            side
+            for join in self.joins
+            if isinstance(join, BaseJoin)
+            for side in _null_extended_sides(join)
+        )
+        if outer:
+            preserving = f"_preserving_{string_to_hash('|'.join(outer))}"
         return (
             "_join_".join(
                 sorted(
@@ -1578,6 +1783,7 @@ class QueryDatasource:
             + limited
             + unnested
             + extent_free
+            + preserving
         )
 
     def get_alias(self, concept: BuildConcept, source: str | None = None):
@@ -2009,10 +2215,32 @@ class Join:
     left_cte: CTE | UnionCTE | None = None
     joinkey_pairs: list[CTEConceptPair] | None = None
     condition: BoolExpr | None = None
+    guard: list[list[CTEGuardTerm]] = field(default_factory=list)
     modifiers: list[Modifier] = field(default_factory=list)
     # Set by union_dim_pushdown when LHS join keys are local to the rendering
     # CTE rather than read from a parent alias.
     left_is_local: bool = False
+
+    def participants(self) -> list[CTE | UnionCTE]:
+        """Every CTE this join names: its right, its left, its key sources."""
+        out = [self.right_cte]
+        if self.left_cte is not None:
+            out.append(self.left_cte)
+        out.extend(pair.cte for pair in self.joinkey_pairs or [])
+        out.extend(term.cte for term in self.guard_terms())
+        return out
+
+    def guard_terms(self) -> list[CTEGuardTerm]:
+        return [term for clause in self.guard for term in clause]
+
+    def cte_bindings(self) -> list[CTEConceptPair | CTEGuardTerm]:
+        """Everything naming a CTE by reference: a rewrite repoints each."""
+        return [*(self.joinkey_pairs or []), *self.guard_terms()]
+
+    @property
+    def has_predicate(self) -> bool:
+        """Something beside the key pairs decides which rows match."""
+        return self.condition is not None or bool(self.guard)
 
     @staticmethod
     def authoritative(consumer: CTE | UnionCTE, node: CTE | UnionCTE) -> CTE | UnionCTE:
@@ -2081,14 +2309,12 @@ class Join:
                     + f"[{','.join(sorted(m.value for m in k.modifiers))}]"
                     for k in self.joinkey_pairs
                 )
-                return f"{self.jointype.value} join {'&'.join(partners)} on {','.join(pair_keys)}"
+                return f"{self.jointype.value} join {'&'.join(partners)} on {','.join(pair_keys)}{guard_text(self.guard)}"
             pair_keys = sorted(
                 f"{k.cte.name}.{k.left.address}={k.right.address}"
                 for k in self.joinkey_pairs
             )
-            return (
-                f"{self.jointype.value} join {self.right_name} on {','.join(pair_keys)}"
-            )
+            return f"{self.jointype.value} join {self.right_name} on {','.join(pair_keys)}{guard_text(self.guard)}"
         return str(self)
 
     def __str__(self):
@@ -2105,6 +2331,29 @@ class Join:
                 f" {self.right_name} on {','.join([str(k) for k in pairs])}"
             )
         return f"{self.jointype.value} JOIN  {self.right_name} on {','.join([str(k) for k in pairs])}"
+
+
+def _null_extended_sides(join: BaseJoin) -> list[str]:
+    """The members a join may NULL-extend, whichever way it is written:
+    `a LEFT JOIN b` and `b RIGHT JOIN a` are one relation."""
+    right = [join.right_datasource.identifier]
+    left = sorted(
+        {
+            ds.identifier
+            for ds in (
+                join.left_datasource,
+                *(pair.existing_datasource for pair in join.concept_pairs or []),
+            )
+            if ds is not None
+        }
+    )
+    if join.join_type == JoinType.LEFT_OUTER:
+        return right
+    if join.join_type == JoinType.RIGHT_OUTER:
+        return left
+    if join.join_type == JoinType.FULL:
+        return left + right
+    return []
 
 
 def coalesce_duplicate_joins(
@@ -2188,9 +2437,7 @@ def coalesce_duplicate_joins(
             for addition in additions:
                 inner_existing.joinkey_pairs.append(addition)
                 by_norm[_pair_norm(existing_right, addition)] = addition
-            for modifier in join.modifiers:
-                if modifier not in inner_existing.modifiers:
-                    inner_existing.modifiers.append(modifier)
+            _absorb_join(inner_existing, join)
             continue
         key = (
             join.jointype,
@@ -2212,10 +2459,20 @@ def coalesce_duplicate_joins(
             if pair_key not in seen:
                 existing.joinkey_pairs.append(pair)
                 seen.add(pair_key)
-        for modifier in join.modifiers:
-            if modifier not in existing.modifiers:
-                existing.modifiers.append(modifier)
+        _absorb_join(existing, join)
     return out
+
+
+def _absorb_join(existing: Join, join: Join) -> None:
+    """The coalesced join's rows satisfy both copies: their modifiers and
+    their padding guards both hold."""
+    for modifier in join.modifiers:
+        if modifier not in existing.modifiers:
+            existing.modifiers.append(modifier)
+    held = {tuple(map(str, clause)) for clause in existing.guard}
+    for clause in join.guard:
+        if tuple(map(str, clause)) not in held:
+            existing.guard.append(clause)
 
 
 def merge_ctes(ctes: list[CTE | UnionCTE]) -> list[CTE | UnionCTE]:

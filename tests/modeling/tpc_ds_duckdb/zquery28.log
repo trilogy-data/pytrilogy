@@ -1,5 +1,5 @@
 query_id = "28"
-gen_length = 10989
+gen_length = 9018
 preql_size = 2694
 comp_size = 2056
 generated_sql = """
@@ -90,50 +90,27 @@ GROUP BY
     1),
 cheerful as (
 SELECT
-    \"quizzical\".\"bucket_id\" as \"bucket_id\",
     CASE WHEN \"quizzical\".\"bucket_id\" = 1 THEN \"wakeful\".\"lp_avg\" ELSE NULL END as \"_virt_filter_lp_avg_9807684414024497\",
+    CASE WHEN \"quizzical\".\"bucket_id\" = 1 THEN \"wakeful\".\"lp_cnt\" ELSE NULL END as \"_virt_filter_lp_cnt_2224516900884374\",
     CASE WHEN \"quizzical\".\"bucket_id\" = 1 THEN \"wakeful\".\"lp_cntd\" ELSE NULL END as \"_virt_filter_lp_cntd_5327557161933280\",
-    CASE WHEN \"quizzical\".\"bucket_id\" = 1 THEN coalesce(\"wakeful\".\"lp_cnt\",0) ELSE NULL END as \"_virt_filter_lp_cnt_2224516900884374\",
     CASE WHEN \"quizzical\".\"bucket_id\" = 2 THEN \"wakeful\".\"lp_avg\" ELSE NULL END as \"_virt_filter_lp_avg_2861588206160358\",
+    CASE WHEN \"quizzical\".\"bucket_id\" = 2 THEN \"wakeful\".\"lp_cnt\" ELSE NULL END as \"_virt_filter_lp_cnt_6858115141264011\",
     CASE WHEN \"quizzical\".\"bucket_id\" = 2 THEN \"wakeful\".\"lp_cntd\" ELSE NULL END as \"_virt_filter_lp_cntd_7846943073851735\",
-    CASE WHEN \"quizzical\".\"bucket_id\" = 2 THEN coalesce(\"wakeful\".\"lp_cnt\",0) ELSE NULL END as \"_virt_filter_lp_cnt_6858115141264011\",
     CASE WHEN \"quizzical\".\"bucket_id\" = 3 THEN \"wakeful\".\"lp_avg\" ELSE NULL END as \"_virt_filter_lp_avg_2850673729313768\",
+    CASE WHEN \"quizzical\".\"bucket_id\" = 3 THEN \"wakeful\".\"lp_cnt\" ELSE NULL END as \"_virt_filter_lp_cnt_894357222675893\",
     CASE WHEN \"quizzical\".\"bucket_id\" = 3 THEN \"wakeful\".\"lp_cntd\" ELSE NULL END as \"_virt_filter_lp_cntd_5736325163174944\",
-    CASE WHEN \"quizzical\".\"bucket_id\" = 3 THEN coalesce(\"wakeful\".\"lp_cnt\",0) ELSE NULL END as \"_virt_filter_lp_cnt_894357222675893\",
     CASE WHEN \"quizzical\".\"bucket_id\" = 4 THEN \"wakeful\".\"lp_avg\" ELSE NULL END as \"_virt_filter_lp_avg_4880359626544039\",
+    CASE WHEN \"quizzical\".\"bucket_id\" = 4 THEN \"wakeful\".\"lp_cnt\" ELSE NULL END as \"_virt_filter_lp_cnt_3577078747089769\",
     CASE WHEN \"quizzical\".\"bucket_id\" = 4 THEN \"wakeful\".\"lp_cntd\" ELSE NULL END as \"_virt_filter_lp_cntd_7690745280661633\",
-    CASE WHEN \"quizzical\".\"bucket_id\" = 4 THEN coalesce(\"wakeful\".\"lp_cnt\",0) ELSE NULL END as \"_virt_filter_lp_cnt_3577078747089769\",
     CASE WHEN \"quizzical\".\"bucket_id\" = 5 THEN \"wakeful\".\"lp_avg\" ELSE NULL END as \"_virt_filter_lp_avg_284549201004209\",
+    CASE WHEN \"quizzical\".\"bucket_id\" = 5 THEN \"wakeful\".\"lp_cnt\" ELSE NULL END as \"_virt_filter_lp_cnt_1394773238248231\",
     CASE WHEN \"quizzical\".\"bucket_id\" = 5 THEN \"wakeful\".\"lp_cntd\" ELSE NULL END as \"_virt_filter_lp_cntd_3739216114026085\",
-    CASE WHEN \"quizzical\".\"bucket_id\" = 5 THEN coalesce(\"wakeful\".\"lp_cnt\",0) ELSE NULL END as \"_virt_filter_lp_cnt_1394773238248231\",
     CASE WHEN \"quizzical\".\"bucket_id\" = 6 THEN \"wakeful\".\"lp_avg\" ELSE NULL END as \"_virt_filter_lp_avg_9446332470240154\",
-    CASE WHEN \"quizzical\".\"bucket_id\" = 6 THEN \"wakeful\".\"lp_cntd\" ELSE NULL END as \"_virt_filter_lp_cntd_3811294399709285\",
-    CASE WHEN \"quizzical\".\"bucket_id\" = 6 THEN coalesce(\"wakeful\".\"lp_cnt\",0) ELSE NULL END as \"_virt_filter_lp_cnt_8966209673081292\"
+    CASE WHEN \"quizzical\".\"bucket_id\" = 6 THEN \"wakeful\".\"lp_cnt\" ELSE NULL END as \"_virt_filter_lp_cnt_8966209673081292\",
+    CASE WHEN \"quizzical\".\"bucket_id\" = 6 THEN \"wakeful\".\"lp_cntd\" ELSE NULL END as \"_virt_filter_lp_cntd_3811294399709285\"
 FROM
     \"quizzical\"
-    INNER JOIN \"wakeful\" on \"quizzical\".\"bucket_id\" is not distinct from \"wakeful\".\"bucket_id\"),
-cooperative as (
-SELECT
-    \"cheerful\".\"_virt_filter_lp_avg_284549201004209\" as \"_virt_filter_lp_avg_284549201004209\",
-    \"cheerful\".\"_virt_filter_lp_avg_2850673729313768\" as \"_virt_filter_lp_avg_2850673729313768\",
-    \"cheerful\".\"_virt_filter_lp_avg_2861588206160358\" as \"_virt_filter_lp_avg_2861588206160358\",
-    \"cheerful\".\"_virt_filter_lp_avg_4880359626544039\" as \"_virt_filter_lp_avg_4880359626544039\",
-    \"cheerful\".\"_virt_filter_lp_avg_9446332470240154\" as \"_virt_filter_lp_avg_9446332470240154\",
-    \"cheerful\".\"_virt_filter_lp_avg_9807684414024497\" as \"_virt_filter_lp_avg_9807684414024497\",
-    \"cheerful\".\"_virt_filter_lp_cnt_1394773238248231\" as \"_virt_filter_lp_cnt_1394773238248231\",
-    \"cheerful\".\"_virt_filter_lp_cnt_2224516900884374\" as \"_virt_filter_lp_cnt_2224516900884374\",
-    \"cheerful\".\"_virt_filter_lp_cnt_3577078747089769\" as \"_virt_filter_lp_cnt_3577078747089769\",
-    \"cheerful\".\"_virt_filter_lp_cnt_6858115141264011\" as \"_virt_filter_lp_cnt_6858115141264011\",
-    \"cheerful\".\"_virt_filter_lp_cnt_894357222675893\" as \"_virt_filter_lp_cnt_894357222675893\",
-    \"cheerful\".\"_virt_filter_lp_cnt_8966209673081292\" as \"_virt_filter_lp_cnt_8966209673081292\",
-    \"cheerful\".\"_virt_filter_lp_cntd_3739216114026085\" as \"_virt_filter_lp_cntd_3739216114026085\",
-    \"cheerful\".\"_virt_filter_lp_cntd_3811294399709285\" as \"_virt_filter_lp_cntd_3811294399709285\",
-    \"cheerful\".\"_virt_filter_lp_cntd_5327557161933280\" as \"_virt_filter_lp_cntd_5327557161933280\",
-    \"cheerful\".\"_virt_filter_lp_cntd_5736325163174944\" as \"_virt_filter_lp_cntd_5736325163174944\",
-    \"cheerful\".\"_virt_filter_lp_cntd_7690745280661633\" as \"_virt_filter_lp_cntd_7690745280661633\",
-    \"cheerful\".\"_virt_filter_lp_cntd_7846943073851735\" as \"_virt_filter_lp_cntd_7846943073851735\"
-FROM
-    \"cheerful\"
+    INNER JOIN \"wakeful\" on \"quizzical\".\"bucket_id\" is not distinct from \"wakeful\".\"bucket_id\"
 GROUP BY
     1,
     2,
@@ -153,26 +130,26 @@ GROUP BY
     16,
     17,
     18,
-    \"cheerful\".\"bucket_id\")
+    \"quizzical\".\"bucket_id\")
 SELECT
-    max(\"cooperative\".\"_virt_filter_lp_avg_9807684414024497\") as \"B1_LP\",
-    max(\"cooperative\".\"_virt_filter_lp_cnt_2224516900884374\") as \"B1_CNT\",
-    max(\"cooperative\".\"_virt_filter_lp_cntd_5327557161933280\") as \"B1_CNTD\",
-    max(\"cooperative\".\"_virt_filter_lp_avg_2861588206160358\") as \"B2_LP\",
-    max(\"cooperative\".\"_virt_filter_lp_cnt_6858115141264011\") as \"B2_CNT\",
-    max(\"cooperative\".\"_virt_filter_lp_cntd_7846943073851735\") as \"B2_CNTD\",
-    max(\"cooperative\".\"_virt_filter_lp_avg_2850673729313768\") as \"B3_LP\",
-    max(\"cooperative\".\"_virt_filter_lp_cnt_894357222675893\") as \"B3_CNT\",
-    max(\"cooperative\".\"_virt_filter_lp_cntd_5736325163174944\") as \"B3_CNTD\",
-    max(\"cooperative\".\"_virt_filter_lp_avg_4880359626544039\") as \"B4_LP\",
-    max(\"cooperative\".\"_virt_filter_lp_cnt_3577078747089769\") as \"B4_CNT\",
-    max(\"cooperative\".\"_virt_filter_lp_cntd_7690745280661633\") as \"B4_CNTD\",
-    max(\"cooperative\".\"_virt_filter_lp_avg_284549201004209\") as \"B5_LP\",
-    max(\"cooperative\".\"_virt_filter_lp_cnt_1394773238248231\") as \"B5_CNT\",
-    max(\"cooperative\".\"_virt_filter_lp_cntd_3739216114026085\") as \"B5_CNTD\",
-    max(\"cooperative\".\"_virt_filter_lp_avg_9446332470240154\") as \"B6_LP\",
-    max(\"cooperative\".\"_virt_filter_lp_cnt_8966209673081292\") as \"B6_CNT\",
-    max(\"cooperative\".\"_virt_filter_lp_cntd_3811294399709285\") as \"B6_CNTD\"
+    max(\"cheerful\".\"_virt_filter_lp_avg_9807684414024497\") as \"B1_LP\",
+    max(\"cheerful\".\"_virt_filter_lp_cnt_2224516900884374\") as \"B1_CNT\",
+    max(\"cheerful\".\"_virt_filter_lp_cntd_5327557161933280\") as \"B1_CNTD\",
+    max(\"cheerful\".\"_virt_filter_lp_avg_2861588206160358\") as \"B2_LP\",
+    max(\"cheerful\".\"_virt_filter_lp_cnt_6858115141264011\") as \"B2_CNT\",
+    max(\"cheerful\".\"_virt_filter_lp_cntd_7846943073851735\") as \"B2_CNTD\",
+    max(\"cheerful\".\"_virt_filter_lp_avg_2850673729313768\") as \"B3_LP\",
+    max(\"cheerful\".\"_virt_filter_lp_cnt_894357222675893\") as \"B3_CNT\",
+    max(\"cheerful\".\"_virt_filter_lp_cntd_5736325163174944\") as \"B3_CNTD\",
+    max(\"cheerful\".\"_virt_filter_lp_avg_4880359626544039\") as \"B4_LP\",
+    max(\"cheerful\".\"_virt_filter_lp_cnt_3577078747089769\") as \"B4_CNT\",
+    max(\"cheerful\".\"_virt_filter_lp_cntd_7690745280661633\") as \"B4_CNTD\",
+    max(\"cheerful\".\"_virt_filter_lp_avg_284549201004209\") as \"B5_LP\",
+    max(\"cheerful\".\"_virt_filter_lp_cnt_1394773238248231\") as \"B5_CNT\",
+    max(\"cheerful\".\"_virt_filter_lp_cntd_3739216114026085\") as \"B5_CNTD\",
+    max(\"cheerful\".\"_virt_filter_lp_avg_9446332470240154\") as \"B6_LP\",
+    max(\"cheerful\".\"_virt_filter_lp_cnt_8966209673081292\") as \"B6_CNT\",
+    max(\"cheerful\".\"_virt_filter_lp_cntd_3811294399709285\") as \"B6_CNTD\"
 FROM
-    \"cooperative\"
+    \"cheerful\"
 LIMIT (100)"""

@@ -5,7 +5,7 @@ from typing import Any
 
 from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants
 from trilogy.core.constants import (
-    ALL_ROWS_CONCEPT,
+    ALL_ROWS_ADDRESS,
     GRAIN_NULL_SENTINEL,
     GRAIN_SEPARATOR,
 )
@@ -17,7 +17,6 @@ from trilogy.core.enums import (
     Ordering,
     WindowType,
 )
-from trilogy.core.internal import INTERNAL_NAMESPACE
 from trilogy.core.models.author import (
     AggregateGrouping,
     AggregateWrapper,
@@ -393,7 +392,7 @@ def aggregate_all(
 ) -> list[ConceptRef]:
     return [
         ConceptRef(
-            address=f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}",
+            address=ALL_ROWS_ADDRESS,
             datatype=DataType.INTEGER,
         )
     ]

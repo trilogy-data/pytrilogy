@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import heapq
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -28,12 +30,20 @@ from trilogy.core.optimizations import (
 from trilogy.core.optimizations.collapse_single_parent import (
     grouped_unbound_passthrough_should_wait,
 )
+from trilogy.core.optimizations.existence_having_fold import (
+    FoldExistenceIntoAggregate,
+)
 from trilogy.core.optimizations.full_join_lowering import lower_full_joins
+from trilogy.core.optimizations.identity_group import DropIdentityGroup
+from trilogy.core.optimizations.join_upgrade import PrunePreservedJoinKeys
+from trilogy.core.optimizations.reuse_parent_lookup import ReuseParentLookup
+from trilogy.core.processing import plan_trace
 from trilogy.core.processing.utility import sort_select_output_processed
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 from trilogy.utility import unique
 
 MAX_OPTIMIZATION_LOOPS = 10
+MAX_OPTIMIZATION_PASSES = 10
 
 
 @dataclass(frozen=True)
@@ -94,9 +104,9 @@ def canonicalize_graph(input: list[CTE]) -> None:
             join.right_cte = resolve(join.right_cte)
             if join.left_cte is not None:
                 join.left_cte = resolve(join.left_cte)
-            for pair in join.joinkey_pairs or []:
-                if pair.cte is not None:
-                    pair.cte = resolve(pair.cte)
+            for keyed in join.cte_bindings():
+                if keyed.cte is not None:
+                    keyed.cte = resolve(keyed.cte)
         if isinstance(cte, UnionCTE):
             new_branches: list[CTE | UnionCTE] = []
             for binding in cte.source_bindings(include_branches=True):
@@ -274,6 +284,10 @@ def build_optimization_rule_plan(
     domain_graph: DomainGraph | None = None,
 ) -> list[OptimizationRulePlan]:
     opts = CONFIG.optimizations
+    join_upgrades = _enabled_dependencies(
+        ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
+        ("upgrade_outer_key_set_equivalence", opts.upgrade_outer_key_set_equivalence),
+    )
     plan: list[OptimizationRulePlan] = []
 
     if opts.merge_aggregate:
@@ -497,20 +511,8 @@ def build_optimization_rule_plan(
             OptimizationRulePlan(
                 name="inline_datasource.after_join_upgrades",
                 rule_factory=lambda: InlineDatasource(raw_scope_only=True),
-                depends_on=_enabled_dependencies(
-                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
-                    (
-                        "upgrade_outer_key_set_equivalence",
-                        opts.upgrade_outer_key_set_equivalence,
-                    ),
-                ),
-                refires_after=_enabled_dependencies(
-                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
-                    (
-                        "upgrade_outer_key_set_equivalence",
-                        opts.upgrade_outer_key_set_equivalence,
-                    ),
-                ),
+                depends_on=join_upgrades,
+                refires_after=join_upgrades,
                 reason=(
                     "a raw() scan folds only where every result row carries one "
                     "of its rows, which the initial pass has to read off "
@@ -523,13 +525,7 @@ def build_optimization_rule_plan(
             OptimizationRulePlan(
                 name="push_filtered_count_into_join",
                 rule_factory=PushFilteredCountIntoJoin,
-                depends_on=_enabled_dependencies(
-                    (
-                        "upgrade_outer_key_set_equivalence",
-                        opts.upgrade_outer_key_set_equivalence,
-                    ),
-                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
-                ),
+                depends_on=join_upgrades,
                 reason=(
                     "runs after join types settle; a sole filtered COUNT over a "
                     "left-joined side can move its filter into the join predicate"
@@ -541,13 +537,7 @@ def build_optimization_rule_plan(
             OptimizationRulePlan(
                 name="push_filtered_aggregate_input",
                 rule_factory=PushFilteredAggregateInput,
-                depends_on=_enabled_dependencies(
-                    (
-                        "upgrade_outer_key_set_equivalence",
-                        opts.upgrade_outer_key_set_equivalence,
-                    ),
-                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
-                ),
+                depends_on=join_upgrades,
                 reason=(
                     "runs after consumers settle; filtered aggregate input can "
                     "move before grouping when all consumers reject empty groups"
@@ -559,13 +549,7 @@ def build_optimization_rule_plan(
             OptimizationRulePlan(
                 name="simplify_null_safe_joins",
                 rule_factory=SimplifyNullSafeJoins,
-                depends_on=_enabled_dependencies(
-                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
-                    (
-                        "upgrade_outer_key_set_equivalence",
-                        opts.upgrade_outer_key_set_equivalence,
-                    ),
-                ),
+                depends_on=join_upgrades,
                 reason=(
                     "join types and CTE nullability are settled, so redundant "
                     "null-safe join keys can be downgraded to ="
@@ -588,6 +572,84 @@ def build_optimization_rule_plan(
                 ),
             )
         )
+    if opts.drop_identity_group:
+        plan.append(
+            OptimizationRulePlan(
+                name="drop_identity_group",
+                rule_factory=DropIdentityGroup,
+                depends_on=join_upgrades,
+                reason=(
+                    "a GROUP BY a plan-time outer join required is a no-op DISTINCT "
+                    "once the joins are upgraded, so it runs after join types settle"
+                ),
+            )
+        )
+    if opts.reuse_parent_lookup:
+        plan.append(
+            OptimizationRulePlan(
+                name="reuse_parent_lookup",
+                rule_factory=ReuseParentLookup,
+                depends_on=join_upgrades,
+                reason=(
+                    "it reads join types and the holder's grouping, so it runs "
+                    "once both are settled and before output pruning hides the "
+                    "columns it carries"
+                ),
+            )
+        )
+    if opts.fold_existence_into_aggregate:
+        plan.append(
+            OptimizationRulePlan(
+                name="fold_existence_into_aggregate",
+                rule_factory=FoldExistenceIntoAggregate,
+                depends_on=join_upgrades,
+                reason=(
+                    "it reads settled INNER joins and the aggregate's final "
+                    "WHERE, and runs before output pruning hides the dimension "
+                    "columns the rebased scan keeps"
+                ),
+            )
+        )
+        if opts.datasource_inlining:
+            plan.append(
+                OptimizationRulePlan(
+                    name="inline_datasource.after_existence_fold",
+                    rule_factory=InlineDatasource,
+                    depends_on=("fold_existence_into_aggregate",),
+                    refires_after=("fold_existence_into_aggregate",),
+                    reason=(
+                        "the fold hands a consumer the dimension's datasource "
+                        "CTE in place of the existence scan; inline it there"
+                    ),
+                )
+            )
+        if opts.union_dim_pushdown:
+            plan.append(
+                OptimizationRulePlan(
+                    name="union_dim_pushdown.after_existence_fold",
+                    rule_factory=UnionDimPushdown,
+                    depends_on=("fold_existence_into_aggregate",),
+                    refires_after=("fold_existence_into_aggregate",),
+                    reason=(
+                        "a dimension filter the fold moved onto an aggregate "
+                        "over a union, behind a join it made INNER, sinks into "
+                        "the union's branches"
+                    ),
+                )
+            )
+        if opts.predicate_pushdown:
+            plan.append(
+                OptimizationRulePlan(
+                    name="predicate_pushdown.after_existence_fold",
+                    rule_factory=lambda: PredicatePushdown(having_alias=having_alias),
+                    depends_on=("fold_existence_into_aggregate",),
+                    refires_after=("fold_existence_into_aggregate",),
+                    reason=(
+                        "a WHERE the fold moved onto an aggregate sinks into "
+                        "the scan below it"
+                    ),
+                )
+            )
     if opts.hide_unused_concepts:
         plan.append(
             OptimizationRulePlan(
@@ -601,13 +663,9 @@ def build_optimization_rule_plan(
                 name="push_semi_join_into_aggregate",
                 rule_factory=PushSemiJoinIntoAggregate,
                 depends_on=_enabled_dependencies(
-                    ("hide_unused_concepts", opts.hide_unused_concepts),
-                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
-                    (
-                        "upgrade_outer_key_set_equivalence",
-                        opts.upgrade_outer_key_set_equivalence,
-                    ),
-                ),
+                    ("hide_unused_concepts", opts.hide_unused_concepts)
+                )
+                + join_upgrades,
                 reason=(
                     "the mirror is only sound for a settled INNER join, and it "
                     "reads the feeder's visible outputs, so it runs after join "
@@ -616,18 +674,25 @@ def build_optimization_rule_plan(
                 ),
             )
         )
+    if opts.upgrade_condition_joins or opts.upgrade_outer_key_set_equivalence:
+        plan.append(
+            OptimizationRulePlan(
+                name="prune_preserved_join_keys",
+                rule_factory=PrunePreservedJoinKeys,
+                depends_on=join_upgrades,
+                reason=(
+                    "a narrowed outer join preserves a side the planner had to "
+                    "coalesce, so it runs once join types are final, and before the "
+                    "INNER reorder the dropped pairs would pin"
+                ),
+            )
+        )
     if opts.order_inner_joins_first:
         plan.append(
             OptimizationRulePlan(
                 name="order_inner_joins_first",
                 rule_factory=OrderInnerJoinsFirst,
-                depends_on=_enabled_dependencies(
-                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
-                    (
-                        "upgrade_outer_key_set_equivalence",
-                        opts.upgrade_outer_key_set_equivalence,
-                    ),
-                ),
+                depends_on=join_upgrades,
                 reason=(
                     "runs last so join types are final (INNER<->OUTER upgrades have "
                     "settled) before INNER joins are bubbled ahead of LEFT joins"
@@ -695,81 +760,168 @@ def optimize_ctes(
     # carried, non-selected root columns appear live to their parent CTEs.
     sort_select_output_processed(root_cte, select)
 
-    cte_lookup: dict[str, CTE | UnionCTE] = {c.name: c for c in input}
-    cte_lookup[root_cte.name] = root_cte
-
-    phase_actions: dict[str, bool] = {}
+    state = _PlanState(input, root_cte)
     rule_plan = build_optimization_rule_plan(
         having_alias=having_alias,
         domain_graph=domain_graph,
     )
     log_optimization_rule_plan(rule_plan)
-    for phase in rule_plan:
-        if phase.refires_after and not any(
-            phase_actions.get(name, False) for name in phase.refires_after
-        ):
-            logger.info(
-                optimization_log(
-                    "Driver",
-                    f"Skipping {phase.name}; refire triggers "
-                    f"{list(phase.refires_after)} made no changes",
-                )
-            )
-            phase_actions[phase.name] = False
-            continue
-        rule = phase.make_rule()
-        loops = 0
-        complete = False
-        phase_changed = False
-        while not complete and (loops <= MAX_OPTIMIZATION_LOOPS):
-            actions_taken = False
-            look_at = unique([root_cte, *reversed(input)], property="name")
-            look_at = _optimization_visit_order(rule, look_at)
-            inverse_map = gen_inverse_map(look_at)
-            for cte in look_at:
-                opt, merged = rule.optimize(cte, inverse_map)
-                actions_taken = actions_taken or opt
-                if merged:
-                    cte_lookup.update({c.name: c for c in input})
-                    cte_lookup[root_cte.name] = root_cte
-                    if root_cte.name in merged:
-                        new_root_name = merged[root_cte.name]
-
-                        if new_root_name in cte_lookup:
-                            parent = cte_lookup[new_root_name]
-                            carry_root_contract(root_cte, parent)
-                            root_cte = parent
-                            logger.info(
-                                optimization_log(
-                                    "Driver",
-                                    f"Remapped root_cte to {new_root_name}",
-                                )
-                            )
-                    input = [c for c in input if c.name not in merged]
-            complete = not actions_taken
-            phase_changed = phase_changed or actions_taken
-            loops += 1
-        if not complete:
-            logger.warning(
-                optimization_log(
-                    "Driver",
-                    f"{phase.name} hit MAX_OPTIMIZATION_LOOPS={MAX_OPTIMIZATION_LOOPS} "
-                    "without converging",
-                )
-            )
-        input = reorder_ctes(filter_irrelevant_ctes(input, root_cte))
-        phase_actions[phase.name] = phase_changed
-        logger.info(
+    # A later phase can leave work for an earlier one (a column pruned, a
+    # WHERE moved), so the plan repeats until a pass changes nothing. Each
+    # phase already loops to its own fixpoint, so on a later pass it reruns
+    # only if some phase changed the plan since it last ran.
+    changes = 0
+    last_run: dict[str, int] = {}
+    for pass_index in range(1, MAX_OPTIMIZATION_PASSES + 1):
+        pass_changed: dict[str, bool] = {}
+        for phase in rule_plan:
+            if _phase_settled(
+                phase, pass_index, pass_changed, last_run.get(phase.name), changes
+            ):
+                pass_changed[phase.name] = False
+                continue
+            name = phase.name if pass_index == 1 else f"{phase.name}#pass{pass_index}"
+            changed = _run_phase(phase, name, state)
+            changes += changed
+            last_run[phase.name] = changes
+            pass_changed[phase.name] = changed
+        if not any(pass_changed.values()):
+            break
+    else:
+        logger.warning(
             optimization_log(
                 "Driver",
-                f"Finished {phase.name} ({type(rule).__name__}) "
-                f"after {loops} loop(s); changed={phase_changed}",
+                f"plan still changing after MAX_OPTIMIZATION_PASSES="
+                f"{MAX_OPTIMIZATION_PASSES}",
             )
         )
 
+    input, root_cte = state.input, state.root_cte
+    before = plan_trace.cte_snapshot([*input, root_cte])
     if not supports_full_join:
         # The rewrite adds CTEs and repoints FROM bases, so every join-type
         # and placement decision must already be final.
         input = lower_full_joins(input, root_cte)
 
-    return reorder_ctes(filter_irrelevant_ctes(input, root_cte))
+    final = reorder_ctes(filter_irrelevant_ctes(input, root_cte))
+    _trace_phase(
+        "final sweep", "filter_irrelevant_ctes", 1, before, final, root_cte, {}
+    )
+    return final
+
+
+@dataclass
+class _PlanState:
+    input: list[CTE | UnionCTE]
+    root_cte: CTE | UnionCTE
+    normalized: bool = False
+
+
+def _phase_settled(
+    phase: OptimizationRulePlan,
+    pass_index: int,
+    pass_changed: dict[str, bool],
+    last_run: int | None,
+    changes: int,
+) -> bool:
+    """A phase nothing has changed since it last ran has nothing new to act
+    on. On the first pass a refire also waits for its triggers; a later pass
+    sweeps up whatever any phase left, so a refire reruns there like any
+    other phase."""
+    if (
+        pass_index == 1
+        and phase.refires_after
+        and not any(pass_changed.get(name, False) for name in phase.refires_after)
+    ):
+        logger.info(
+            optimization_log(
+                "Driver",
+                f"Skipping {phase.name}; refire triggers "
+                f"{list(phase.refires_after)} made no changes",
+            )
+        )
+        return True
+    return last_run == changes
+
+
+def _run_phase(phase: OptimizationRulePlan, name: str, state: _PlanState) -> bool:
+    rule = phase.make_rule()
+    before = plan_trace.cte_snapshot([*state.input, state.root_cte])
+    phase_merged: dict[str, str] = {}
+    loops = 0
+    complete = False
+    phase_changed = False
+    while not complete and (loops <= MAX_OPTIMIZATION_LOOPS):
+        actions_taken = False
+        look_at = unique([state.root_cte, *reversed(state.input)], property="name")
+        look_at = _optimization_visit_order(rule, look_at)
+        inverse_map = gen_inverse_map(look_at)
+        for cte in look_at:
+            opt, merged = rule.optimize(cte, inverse_map)
+            actions_taken = actions_taken or opt
+            if merged:
+                phase_merged.update(merged)
+                _remap_root(state, merged)
+                state.input = [c for c in state.input if c.name not in merged]
+        complete = not actions_taken
+        phase_changed = phase_changed or actions_taken
+        loops += 1
+    if not complete:
+        logger.warning(
+            optimization_log(
+                "Driver",
+                f"{name} hit MAX_OPTIMIZATION_LOOPS={MAX_OPTIMIZATION_LOOPS} "
+                "without converging",
+            )
+        )
+    # an unchanged phase leaves an already-normalized list as it was
+    if phase_changed or not state.normalized:
+        state.input = reorder_ctes(filter_irrelevant_ctes(state.input, state.root_cte))
+        state.normalized = True
+    _trace_phase(
+        name,
+        type(rule).__name__,
+        loops,
+        before,
+        state.input,
+        state.root_cte,
+        phase_merged,
+    )
+    logger.info(
+        optimization_log(
+            "Driver",
+            f"Finished {name} ({type(rule).__name__}) "
+            f"after {loops} loop(s); changed={phase_changed}",
+        )
+    )
+    return phase_changed
+
+
+def _remap_root(state: _PlanState, merged: dict[str, str]) -> None:
+    new_root_name = merged.get(state.root_cte.name)
+    if new_root_name is None:
+        return
+    parent = next((c for c in state.input if c.name == new_root_name), None)
+    if parent is None:
+        return
+    carry_root_contract(state.root_cte, parent)
+    state.root_cte = parent
+    logger.info(optimization_log("Driver", f"Remapped root_cte to {new_root_name}"))
+
+
+def _trace_phase(
+    phase: str,
+    rule: str,
+    loops: int,
+    before: dict[str, plan_trace.CteTrace],
+    after: list[CTE | UnionCTE],
+    root_cte: CTE | UnionCTE,
+    merged: dict[str, str],
+) -> None:
+    if not plan_trace.active():
+        return
+    step = plan_trace.optimizer_step(
+        phase, rule, loops, before, plan_trace.cte_snapshot([*after, root_cte]), merged
+    )
+    plan_trace.note_removed_ctes(phase, rule, {t.name for t in step.removed}, merged)
+    plan_trace.record(f"{phase} ({rule})", step)

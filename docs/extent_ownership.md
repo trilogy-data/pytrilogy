@@ -13,8 +13,8 @@ to anchor on and either reunited the rest null-safely or read them through a
 plain equality that threw them away. A plan containing a join whose rows the
 same plan discards is a logical-plan defect, and the only layer that could see
 it was the CTE optimizer, which is why the first fix lived there
-(`PruneInvisibleOuterJoins`, `docs/handoff_field_report_residual_stitch.md`;
-since deleted, the planner no longer builds these joins).
+(`PruneInvisibleOuterJoins`; since deleted, the planner no longer builds these
+joins).
 
 Extent routing is now a decision, taken once, before any node is built.
 
@@ -23,12 +23,16 @@ Extent routing is now a decision, taken once, before any node is built.
 `trilogy/core/processing/v4_helper/extent_ownership.py`, called at the end of
 `build_group_graph` once the FINAL contract is known.
 
-1. **Which spans are in play.** A licensed key qualifies when the statement
-   projects it, or projects something it functionally determines, because an
-   extension row exists to carry one dimension member's own attributes. A `~` FK
-   that only shows up as a join axis licenses nothing, so the election returns
-   empty and the whole mechanism is inert (that is the common case: TPC-DS and
-   TPC-H never demand one).
+1. **Which spans are in play.** The election does not decide this; it is handed
+   `Keyspace.output_demanded_spans` (`trilogy/core/models/keyspace.py`). A span is in play when the statement's row
+   universe has a live region that span keeps apart (unmatched dimension
+   members, or a needed source holding only part of a region beside one holding
+   all of it), and some output is a function of what the span alone reaches,
+   because an extension row exists to carry one dimension member's own
+   attributes. A `~` FK that only shows up as a join axis, or a `~` on a source
+   the statement never needs, puts nothing in play, so the election returns
+   empty and the whole mechanism is inert (the common case: TPC-DS and TPC-H
+   rarely demand one).
 2. **Who owns each span.** Among the groups that expose the key, the most
    downstream wins: its rows have already absorbed everything upstream, so
    routing extent there keeps one copy instead of one per branch. Ties break
@@ -60,19 +64,23 @@ marks behind. Three things follow, all in
   dropping either side's is a chasm rather than an extension, so their typing
   stands whoever owns the extent.
 - **Inherited padding is absence, not content.** A shared ancestor may
-  legitimately pad on the way to the owner (`extension_padded_addresses` finds
-  exactly the addresses it padded, and only for span-keyed joins). Downstream of
+  legitimately pad on the way to the owner (`span_padded_addresses` finds
+  exactly the addresses it padded: span-keyed joins and lookups chained off a
+  key they padded). Downstream of
   the owner's branch those NULLs are somebody else's rows, so they do not make a
   key nullable here and do not drive preservation or null-safe pairing.
 - **No host, no reunion.** A suppressed span is not a licensed key for hosting
-  or for the `family_anchored` exemption, so an extent-free merge gets neither.
+  (`SideFacts.hosts`, `_sole_host` in `join_resolution.py`), and
+  `_extent_free_join` grants its `~` mark no row intent, so an extent-free
+  merge neither hosts extension rows nor preserves to reunite them.
 
 Declining to extend narrows the branch, and it has to say so: the merge marks
 every suppressed span it holds a `~` binding for as PARTIAL
 (`MergeNode._extent_free_partials`). That is what makes the assembly above
 preserve the owner instead of INNER-joining it against a branch that no longer
 pads itself to the full domain, and it is why
-`_tighten_joins_for_filtered_branches` stops treating such a branch as the
+`_is_filter_population` (`grain_utility.py`, read by
+`tighten_join_for_filtered_branch`) stops treating such a branch as the
 population: a row missing from it is a member its facts never bound, not a row
 the WHERE rejected.
 
@@ -107,8 +115,12 @@ That net had a hole: it paired any two padded keys null-safely, assuming the
 padding shared provenance. Two sides padded for *different* spans (a product
 never sold, a user who never ordered) name different members, and pairing them
 invents a row. `join_resolution._span_padded_addresses` attributes padding to
-the span that caused it; disjoint attributions join FULL on plain equality
-(`docs/handoff_aggregate_grain_fd_canonicalization.md`). The group graph also
+the span that caused it; disjoint attributions join FULL on plain equality.
+The spans it looks for
+are the ones the keyspace has a region for, not every `~` address in the model;
+a rowset body pads for its own regions under its own spelling, and its witness
+names each by the handle the plan reads (`Keyspace.witnessed`); the host grain
+reads the plan's own spans. The group graph also
 keeps such families together where it can
 (`group_graph._keep_extension_families_together`), so rule 3 above has a joint
 owner to elect.
@@ -117,7 +129,6 @@ owner to elect.
 changed two statements outside the tpc corpus (gcat's aggregate query, thelook
 `adhoc04`), and in both the dead join was keyed on something that is not a `~`
 span at all: invisible CONTRIBUTORS, a separate defect class. Both are now
-fixed at the planner (`docs/handoff_invisible_contributor_joins.md`,
-`docs/handoff_contributor_reachability.md`), and
+fixed at the planner (`group_graph._fold_covered_contributors`), and
 `tests/optimization/test_no_invisible_contributor_joins.py` asserts the field
 report's plan joins nothing it does not read.

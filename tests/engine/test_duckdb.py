@@ -1552,7 +1552,8 @@ auto w <- rank x order by x asc;
 
 rowset my_rowset <- select x, max(z)->max_rank;
 
-select x, w, my_rowset.max_rank;"""
+select x, w, my_rowset.max_rank
+subset join my_rowset.x = x;"""
     _, _parsed_0 = parse_text(test, duckdb_engine.environment)
     z = duckdb_engine.environment.concepts["z"]
     x = duckdb_engine.environment.concepts["x"]
@@ -3582,3 +3583,19 @@ order by channel asc, sid asc nulls first;"""
     rows = executor.execute_text(text)[0].fetchall()
     assert all(r.channel == "store" for r in rows)
     assert [r.sid for r in rows] == sorted(r.sid for r in rows)
+
+
+def test_constant_case_folds_to_inline_scalar():
+    executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    executor.execute_text("""
+key id int;
+datasource t (id: id) grain (id) query '''select 1 as id''';
+auto folded_str <- case when 1 = 2 then 'x' else 'y' end;
+auto folded_null <- case when 1 = 1 then null else 'y' end;
+auto folded_num <- case when 1 = 1 then 7 else 8 end;
+auto folded_date <- case when 1 = 1 then '2020-01-01'::date else '2021-01-01'::date end;
+""")
+    rows = executor.execute_text(
+        "select id, folded_str, folded_null, folded_num, folded_date where folded_str = 'y';"
+    )[0].fetchall()
+    assert [tuple(r) for r in rows] == [(1, "y", None, 7, date(2020, 1, 1))]

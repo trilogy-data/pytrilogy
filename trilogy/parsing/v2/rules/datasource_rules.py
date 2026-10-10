@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from trilogy.constants import DEFAULT_NAMESPACE, REMOTE_PREFIXES
-from trilogy.core.constants import ALL_ROWS_CONCEPT
+from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.enums import (
     AddressType,
     DatasourceState,
@@ -15,7 +15,6 @@ from trilogy.core.enums import (
     Modifier,
     Purpose,
 )
-from trilogy.core.internal import INTERNAL_NAMESPACE
 from trilogy.core.models.author import (
     Comment,
     Concept,
@@ -170,8 +169,7 @@ def properties_declaration(
     # dimension (e.g. `<date_dim.date_sk, amount>`) must still expose them
     # locally so the datasource binding can resolve them.
     namespace = context.environment.namespace or DEFAULT_NAMESPACE
-    all_rows_addr = f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"
-    is_abstract_grain = grain_components == {all_rows_addr}
+    is_abstract_grain = grain_components == {ALL_ROWS_ADDRESS}
 
     concepts: list[Concept] = []
     for prop_args in inline_props:

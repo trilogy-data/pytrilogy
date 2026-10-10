@@ -69,3 +69,12 @@ def test_aggregate_restricted_by_member_null_test(tmp_path: Path):
 def test_membership_idiom_parity(tmp_path: Path):
     query = "where l_key in web_cust.cust_sk select sum(l_val) as total;"
     assert _rows(tmp_path, query) == [(7,)]
+
+
+def test_projecting_member_value_keeps_unmatched_anchor(tmp_path: Path):
+    query = (
+        "with web_vals as where r_val < 800 select r_key as cust_sk, r_val as v;\n"
+        "select l_key, count(web_vals.v) as n "
+        "subset join web_vals.cust_sk = l_key;"
+    )
+    assert _rows(tmp_path, query) == [(1, 1), (2, 2), (3, 0)]

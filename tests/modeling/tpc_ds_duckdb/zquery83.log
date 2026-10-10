@@ -1,5 +1,5 @@
 query_id = "83"
-gen_length = 4900
+gen_length = 4927
 preql_size = 1541
 comp_size = 2195
 generated_sql = """
@@ -69,7 +69,7 @@ FROM
 GROUP BY
     1
 HAVING
-    count(CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_order_id\" ELSE NULL END) > 0 and count(CASE WHEN \"yummy\".\"sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_order_id\" ELSE NULL END) > 0 and count(CASE WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN \"yummy\".\"sales_order_id\" ELSE NULL END) > 0
+    count(distinct CASE WHEN \"yummy\".\"sales_channel\" = 'STORE' THEN \"yummy\".\"sales_order_id\" ELSE NULL END) > 0 and count(distinct CASE WHEN \"yummy\".\"sales_channel\" = 'CATALOG' THEN \"yummy\".\"sales_order_id\" ELSE NULL END) > 0 and count(distinct CASE WHEN \"yummy\".\"sales_channel\" = 'WEB' THEN \"yummy\".\"sales_order_id\" ELSE NULL END) > 0
 
 ORDER BY 
     \"item_id\" asc nulls first,

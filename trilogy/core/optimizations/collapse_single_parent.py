@@ -1,3 +1,4 @@
+from collections.abc import Collection
 from enum import Enum
 from typing import TYPE_CHECKING
 
@@ -20,6 +21,7 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import (
+    ROW_RESHAPING_SOURCE_TYPES,
     SENSITIVE_DERIVATIONS,
     append_condition,
     carry_child_state,
@@ -49,20 +51,10 @@ class MergeMode(Enum):
     PASSTHROUGH = "passthrough"
 
 
-_NON_PROJECTION_SOURCE_TYPES = (
-    SourceType.GROUP,
-    SourceType.WINDOW,
-    SourceType.UNNEST,
-    SourceType.RECURSIVE,
-    SourceType.SUBSELECT,
-    SourceType.UNION,
-)
-
-
 def is_projection_shape(cte: CTE) -> bool:
     if cte.group_to_grain or cte.joins:
         return False
-    if cte.source.source_type in _NON_PROJECTION_SOURCE_TYPES:
+    if cte.source.source_type in ROW_RESHAPING_SOURCE_TYPES:
         return False
     # A column with a non-empty source_map entry is pulled from upstream as a
     # plain column, safe to pass through whatever its derivation. Only a
@@ -156,6 +148,28 @@ def has_basic_derivation(cte: CTE) -> bool:
     return any(concept.derivation == Derivation.BASIC for concept in cte.output_columns)
 
 
+def renders_grain_matched_aggregate(cte: CTE) -> bool:
+    """An aggregate rendered by a CTE that does not group is a scalar row
+    projection: the dialect uses the single-row forms
+    (`AGGREGATE_GRAIN_MATCH_MAP`, `sum(x) -> x`) unless `group_to_grain`.
+    ROLLUP / GROUPING SETS are excluded: they render off the CTE's own
+    grouping mode, which a fold relocates."""
+    if cte.group_to_grain or cte.source.source_type == SourceType.GROUP:
+        return False
+    aggregates = [
+        concept
+        for concept in cte.output_columns
+        if not cte.source_map.get(concept.address)
+        and (
+            concept.derivation == Derivation.AGGREGATE
+            or isinstance(concept.lineage, BuildAggregateWrapper)
+        )
+    ]
+    return bool(aggregates) and not any(
+        has_nonstandard_aggregate_grouping(concept) for concept in aggregates
+    )
+
+
 def produces_unbound_rowset(cte: CTE, domain_graph: "DomainGraph | None") -> bool:
     """True if `cte` is a rowset node whose rename output backs an unbound
     merge/scoped canonical key: a key with no datasource binding, renderable
@@ -221,19 +235,27 @@ def get_merge_mode(cte: CTE) -> MergeMode | None:
         return MergeMode.AGGREGATE
     if cte.source.source_type == SourceType.WINDOW:
         return MergeMode.WINDOW
-    if has_basic_derivation(cte):
+    if has_basic_derivation(cte) or renders_grain_matched_aggregate(cte):
         return MergeMode.BASIC
     if is_projection_shape(cte):
         return MergeMode.PASSTHROUGH
     return None
 
 
-def lineage_contains_aggregate(concept: BuildConcept, seen: set[str]) -> bool:
-    """True if `concept`'s lineage tree contains an aggregate anywhere, directly
-    or wrapped in a filter/function/rowset (`sum(x) ? cond`,
+def lineage_contains_aggregate(
+    concept: BuildConcept, seen: set[str], materialized: Collection[str] = ()
+) -> bool:
+    """True if `concept`'s lineage tree contains an aggregate the CTE renders
+    ITSELF, directly or wrapped in a filter/function/rowset (`sum(x) ? cond`,
     `coalesce(sum(x), 0)`). Folding such a column into an AGGREGATE child's
-    `sum(...)` would nest aggregates."""
-    if concept.address in seen:
+    `sum(...)` would nest aggregates.
+
+    `materialized` are the addresses the CTE pulls from upstream as plain
+    columns; the walk stops at one, because it renders as a column reference
+    and nests nothing. Without that bound a projection over a precomputed
+    aggregate (`zip_p_count > 10 ? zip`, reading the count out of its parent)
+    reads as inline aggregation and blocks a sound fold."""
+    if concept.address in seen or concept.address in materialized:
         return False
     seen.add(concept.address)
     lineage = concept.lineage
@@ -241,7 +263,8 @@ def lineage_contains_aggregate(concept: BuildConcept, seen: set[str]) -> bool:
         return True
     if isinstance(lineage, BuildConceptArgs):
         return any(
-            lineage_contains_aggregate(arg, seen) for arg in lineage.concept_arguments
+            lineage_contains_aggregate(arg, seen, materialized)
+            for arg in lineage.concept_arguments
         )
     return False
 
@@ -335,6 +358,12 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
             if consumed is not None:
                 column = rebind_rename_to_consumed(column, consumed)
             parent.output_columns.append(column)
+            # The child derives this column over the parent's rows. A column
+            # of the same address the parent's own inputs expose is the value
+            # BELOW the parent (a rename of a ROLLUP key computed before the
+            # pass), so the folded column keeps rendering from its lineage.
+            if merge_mode == MergeMode.BASIC and not cte.source_map.get(column.address):
+                parent.source_map[column.address] = []
 
     carry_child_state(parent, cte)
 
@@ -435,6 +464,11 @@ class CollapseSingleParent(OptimizationRule):
 
         merge_mode = get_merge_mode(cte)
         if merge_mode is None:
+            self.debug(
+                f"CTE {cte.name} matches no merge mode "
+                f"(source {cte.source.source_type}, group_to_grain "
+                f"{cte.group_to_grain}), skipping"
+            )
             return False, None
 
         if self.passthrough_only and (
@@ -597,12 +631,15 @@ class CollapseSingleParent(OptimizationRule):
                 return False, None
         if merge_mode == MergeMode.AGGREGATE:
             # A parent column rendered inline (no source_map entry) whose
-            # lineage contains an aggregate would fold inside the child's
-            # `sum(...)`, producing illegal nested aggregates.
+            # lineage contains an aggregate the parent also renders itself
+            # would fold inside the child's `sum(...)`, producing illegal
+            # nested aggregates. An aggregate the parent reads from its own
+            # parent renders as a column reference and nests nothing.
+            materialized = {
+                address for address, sources in parent.source_map.items() if sources
+            }
             for x in parent.output_columns:
-                if not parent.source_map.get(x.address) and lineage_contains_aggregate(
-                    x, set()
-                ):
+                if lineage_contains_aggregate(x, set(), materialized):
                     self.log(
                         f"Parent {parent.name} renders inline aggregate {x.address}, skipping"
                     )

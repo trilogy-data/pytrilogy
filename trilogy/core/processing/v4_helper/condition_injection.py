@@ -14,8 +14,11 @@ from trilogy.core.processing.condition_utility import (
     and_optional,
     combine_condition_atoms,
     decompose_condition,
+    gather_non_null_proofs,
+    gather_or_groups,
 )
 from trilogy.core.processing.nodes import MergeNode, SelectNode, StrategyNode
+from trilogy.core.processing.nodes.base_node import region_reads
 from trilogy.utility import unique
 
 
@@ -61,6 +64,40 @@ def condition_row_args(conditions: BuildWhereClause | None) -> list[BuildConcept
     return unique(list(conditions.row_arguments), "address")
 
 
+def rejects_absent_feeders(
+    condition: BoolExpr, node: StrategyNode, feeders: list[StrategyNode]
+) -> bool:
+    """Whether `condition` is false on a row any feeder has no match for: it
+    null-rejects something only that feeder supplies. A COUNT counts 0 there,
+    not NULL, so it rejects nothing."""
+    held = {o.address for o in node.output_concepts}
+    proofs = gather_non_null_proofs(condition)
+    or_groups = gather_or_groups(condition)
+    for feeder in feeders:
+        own = {
+            o.address
+            for o in feeder.output_concepts
+            if o.address not in held and not o.zero_on_empty
+        }
+        if not own & proofs and not any(
+            all(disjunct & own for disjunct in group) for group in or_groups
+        ):
+            return False
+    return True
+
+
+def pairs_on_outer_relation(
+    node: StrategyNode, feeders: list[StrategyNode], environment: BuildEnvironment
+) -> bool:
+    """Whether a feeder meets `node` on a `union join` axis: it is that
+    relation's other side, whose rows are rows of the statement, not a filter
+    input. The WHERE is then a post-join predicate over the preserved pair."""
+    outer = environment.domain_graph.outer_relation_keys()
+    if not outer & {o.address for o in node.output_concepts}:
+        return False
+    return any(outer & {o.address for o in f.output_concepts} for f in feeders)
+
+
 def inject_condition_at_node(
     node: StrategyNode,
     condition: BuildWhereClause,
@@ -78,6 +115,14 @@ def inject_condition_at_node(
     if condition_on_merge:
         combined = and_optional(
             node.conditions if combine_existing else None, condition.conditional
+        )
+        # A node holding a region's rows beside a feeder evaluated on the
+        # solid rows (`count(order_id) by customer_id = 0`): the feeder's
+        # missing row IS the aggregate's value there (a COUNT the merge
+        # zero-fills, a NULL sum), and the WHERE must test it, so the holder
+        # stays preserved and join typing decides (the region rule).
+        holds_region = bool(region_reads(node)) and any(
+            not region_reads(parent) for parent in sources.row_parents
         )
         return MergeNode(
             input_concepts=unique(
@@ -98,8 +143,19 @@ def inject_condition_at_node(
             # feeder with nullable keys (two gates on different keys are
             # cross-joined by a keyless FULL) as an enrichment to LEFT-join.
             # Genuinely nullable keys are unaffected: both sides nullable
-            # already infers INNER, paired null-safely by `get_modifiers`.
-            force_join_type=JoinType.INNER,
+            # already infers INNER, paired null-safely by `get_modifiers`. A
+            # WHERE true where a feeder has no match (`sum(amount) by status >
+            # 15 or status is null` on a padded row) keeps the row: join
+            # typing decides.
+            force_join_type=(
+                JoinType.INNER
+                if not holds_region
+                and not pairs_on_outer_relation(node, sources.row_parents, environment)
+                and rejects_absent_feeders(
+                    condition.conditional, node, sources.row_parents
+                )
+                else None
+            ),
             partial_concepts=(
                 partial_concepts
                 if partial_concepts is not None

@@ -17,8 +17,7 @@ Snapshot (2026-09-16, sf=1, `amd64-...-16`; `exec` and `comp` from
 | Query | Trilogy | Reference | Ratio | Root cause (measured, not guessed) |
 | --- | ---: | ---: | ---: | --- |
 | q05 | 0.87s | 0.08s | 10.8x | 5M-row FULL JOIN chain at line grain before the date filter; model-inherent (see 1) |
-| q83 | 0.26s | 0.05s | 5.6x | FIXED: dead sibling stitch to the sales union under a returns-only pin (see 2) |
-| q78 | 0.62s | 0.43s | 1.4x | one 9-CASE GROUP BY over the 3-channel union vs three narrow per-channel aggregates (see 3) |
+| q78 | 0.62s | 0.43s | 1.4x | one 9-CASE GROUP BY over the 3-channel union vs three narrow per-channel aggregates (see 2) |
 | q75 | 0.23s | 0.10s | 2.2x | DuckDB join order inside the shared union CTE; no planner lever found |
 | q23 | 0.63s | 0.42s | 1.5x | inside run-to-run noise when interleaved (min 0.32s vs 0.24s) |
 
@@ -52,27 +51,7 @@ sale's entity to the return's entity. Two smaller, real inefficiencies remain:
 Rewriting the query as a `union`-first shape is the only route to the
 reference's cost.
 
-### 2. q83: a pin only the partial fact can satisfy heals its `~` keys (landed)
-
-`where sales.return_date.week_seq in (...)` can only be true on a returns
-row, yet the plan FULL-joined the 3.4M-row sales union to the returns union to
-"complete" the returns' `~order_id`/`~item.sk`, then dropped every sales-only
-row at the date join. The sibling-anchor guard in `heal_pinned_partials`
-blocked healing whenever any sibling carried the key in a larger grain.
-
-The guard is now conditional (`_anchors_dispensable`): an anchor is
-dispensable when (a) some proven-non-null concept is outside what the anchor's
-rows can carry by keyed lookup (`_lookup_supply`, which stops at `~`
-bindings - the FD closure is the wrong tool because a same-grain sibling puts
-its columns in the closure), and (b) everything the statement references in
-the fact's component is reachable from the fact without an anchor.
-Partition-disjoint `complete where` siblings never anchor and never count as
-suppliers. q83: 0.45s -> 0.11s, planning 0.99s -> 0.14s, rows unchanged.
-
-Not healed on purpose: q78 (`sale_date.year = 2000` is suppliable by the
-sales anchor) and any q83 variant selecting a sales measure (guard (b)).
-
-### 3. q78: per-channel filtered aggregates over a partitioned union
+### 2. q78: per-channel filtered aggregates over a partitioned union
 
 All nine measures are `sum(metric ? sales.channel = C) by keys`. Each
 `channel = C` filter implies exactly one `complete where channel = C` arm,
@@ -88,16 +67,6 @@ predicate, plan its parent with that condition as the row bound so the arm
 qualifies alone and its siblings are excluded; a same-grain aggregate over the
 filtered concept then becomes a per-arm aggregate and the existing by-key merge
 joins the channels. Gate on the group keys being bound on every arm.
-
-### 4. Filtered aggregate expansion (q09/q28) - resolved
-
-The wide `CASE WHEN ... THEN value` scan is now within noise of the reference
-(q09 +0.03s, q28 +0.10s). Keep as the fuzz shape for pattern 3.
-
-The same heal also fires on q01 (`ss.return_date.year = 2000`) and q91
-(`cs.return_date.year = ...`): the sales-fact INNER join that only served to
-"complete" the returns' `~` keys is gone (q01 0.047s -> 0.019s, now under the
-0.027s reference).
 
 ## Retained Patterns (no longer measured regressions)
 
@@ -118,8 +87,8 @@ time on this corpus. Keep them as watch items, not work items.
 
 ## Suggested Implementation Order
 
-1. Per-arm filtered aggregates over a partitioned union (pattern 3; q78 first,
-   q09/q28 as the fuzz shape).
+1. Per-arm filtered aggregates over a partitioned union (pattern 2; q78 first,
+   q09/q28 — the wide `CASE WHEN` scan, now within noise — as the fuzz shape).
 2. Same-source union arm merging for q05's `young`/`vacuous` pair.
 3. Null-rejection outer-to-inner join simplification (retained pattern).
 4. Report-only no-op GROUP BY detector, then selective cleanup.
@@ -130,7 +99,7 @@ time on this corpus. Keep them as watch items, not work items.
 (strict xfail): a `~`-keyed fact row with no anchor row (a return whose sale is
 absent) is dropped when the pin sits beside an anchor-only measure, because the
 anchor merge renders INNER. Not exercised by TPC-DS data (every return has a
-sale) and unchanged by the q83 heal, which never fires in that shape.
+sale); the pin heal (`_anchors_dispensable`) never fires in that shape.
 
 ## Query Size Minimization
 

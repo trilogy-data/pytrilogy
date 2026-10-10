@@ -20,6 +20,10 @@ VIRTUAL_CONCEPT_PREFIX = "_virt"
 # datasource-bound ROOT members, by source_planning's
 # `_datasource_renders_probe` pinning.
 PRESENCE_PROBE_PREFIX = f"{VIRTUAL_CONCEPT_PREFIX}_presence_"
+# A constant a join side with no solid key projects so a later join's padding
+# guard can tell its rows from the rows an earlier join padded it on
+# (`join_resolution._presence_marker`).
+PRESENCE_MARKER_PREFIX = f"{VIRTUAL_CONCEPT_PREFIX}_row_present_"
 
 # Magic rowset name for an inline `from union(...) -> (...)` TVF; its outputs are
 # exposed as bare select-local bindings, so the name never collides.
@@ -70,6 +74,9 @@ class Optimizations:
     narrow_equal_domain_joins: bool = True
     simplify_null_safe_joins: bool = True
     strip_redundant_not_null: bool = True
+    drop_identity_group: bool = True
+    reuse_parent_lookup: bool = True
+    fold_existence_into_aggregate: bool = True
     join_hoist: bool = True
     union_dim_pushdown: bool = True
     order_inner_joins_first: bool = True

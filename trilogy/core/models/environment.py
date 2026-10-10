@@ -22,6 +22,7 @@ from trilogy.constants import DEFAULT_NAMESPACE, ENV_CACHE_NAME, logger
 from trilogy.core.constants import (
     INTERNAL_NAMESPACE,
     WORKING_PATH_CONCEPT,
+    rowset_alias_prefix,
 )
 from trilogy.core.enums import (
     ConceptSource,
@@ -43,6 +44,7 @@ from trilogy.core.models.author import (
     CustomFunctionFactory,
     CustomType,
     Function,
+    RowsetItem,
     SelectLineage,
     UndefinedConcept,
     UndefinedConceptFull,
@@ -1101,8 +1103,36 @@ class Environment:
         return factory.build_environment_delta(self, baseline)
 
     def add_rowset(self, name: str, lineage: SelectLineage):
+        if name in self.named_statements:
+            self.retire_rowset(name)
         self.named_statements[name] = lineage
         self.concepts.rowset_namespaces.add(name)
+
+    def retire_rowset(self, name: str) -> None:
+        """A redefinition replaces the prior rowset: its outputs, their
+        pseudonym mirrors and the hidden aliases its body minted
+        (`local._s_c` for `customer_id as c`) are no longer concepts here, so
+        no later statement reads the old rows, and no planner spelling of a
+        shared value resolves to a column no body declares. The new
+        definition's concepts are pending at this point, not durable."""
+        prefix = rowset_alias_prefix(name)
+        retired: set[str] = set()
+        with self.concepts.without_overlays():
+            for address, concept in self.concepts.all_items():
+                lineage = concept.lineage
+                if not isinstance(lineage, RowsetItem) or lineage.rowset.name != name:
+                    continue
+                retired |= {address, *concept.pseudonyms}
+                content = self.concepts.data.get(lineage.content.address)
+                if content is not None and content.name.startswith(prefix):
+                    retired.add(content.address)
+            for address in retired:
+                if address in self.concepts.data:
+                    self.remove_concept(address)
+                self.alias_origin_lookup.pop(address, None)
+                self.concepts.rowset_alias_outputs.discard(address)
+                self.concepts.rowset_join_key_leaks.discard(address)
+        self.named_statements.pop(name, None)
 
     @staticmethod
     def merge_to_join(
@@ -1150,6 +1180,7 @@ class Environment:
             EdgeScope,
             declared_edge_from_join,
             structural_domain_edge,
+            tag_scoped_joins,
         )
 
         edge = declared_edge_from_join(*pair, scope=EdgeScope.GLOBAL)
@@ -1157,9 +1188,7 @@ class Environment:
             return
         cached = self._merge_lint_graph
         if cached is None or cached[0] != len(self.merges):
-            graph = DomainGraph.from_scoped_joins(
-                [(merge, EdgeScope.GLOBAL) for merge in self.merges]
-            )
+            graph = DomainGraph.from_scoped_joins(tag_scoped_joins(merges=self.merges))
         else:
             graph = cached[1]
         probe = graph.with_overlay(

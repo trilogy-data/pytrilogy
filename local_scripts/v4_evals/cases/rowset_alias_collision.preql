@@ -15,8 +15,9 @@ union all select 3, 102, 202
 ''';
 
 # Two rowsets aliasing DIFFERENT source columns to the SAME output name
-# (`cust_id`) share the `id` key. The unfiltered rowsets must INNER-join on `id`
-# so each surviving row pairs bill->a_cust with ship->b_cust at the same id.
+# (`cust_id`) share the `id` key, declared with a subset join each. The
+# unfiltered rowsets must INNER-join on `id` so each surviving row pairs
+# bill->a_cust with ship->b_cust at the same id.
 # v4 regression (FIXED): the boundary dropped the shared `id` key and the FINAL
 # merge cross-joined `FULL JOIN ... on 1=1`, producing a 3x3x3 cartesian (27 rows)
 # instead of 3. Expected rows: (1,100,200), (2,101,201), (3,102,202).
@@ -36,6 +37,7 @@ SELECT
     id,
     buyers_a.cust_id as a_cust,
     buyers_b.cust_id as b_cust,
+subset join buyers_a.id = id and buyers_b.id = id
 order by
     id asc
 ;

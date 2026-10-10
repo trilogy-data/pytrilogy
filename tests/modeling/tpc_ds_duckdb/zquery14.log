@@ -1,5 +1,5 @@
 query_id = "14"
-gen_length = 5158
+gen_length = 5112
 preql_size = 1753
 comp_size = 4229
 generated_sql = """
@@ -35,7 +35,7 @@ SELECT
      1  as \"sales_sale_line_item_counter\"
 FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"),
-sweltering as (
+late as (
 SELECT
     avg(\"cheerful\".\"sales_quantity\" * \"cheerful\".\"sales_list_price\") as \"avg_sales_average_sales\"
 FROM
@@ -76,7 +76,7 @@ GROUP BY
 HAVING
     count(distinct \"questionable\".\"sales_channel\") = 3
 ),
-concerned as (
+young as (
 SELECT
     \"sales_item_items\".\"I_BRAND_ID\" as \"_l0_filtered_brand_l0\",
     \"sales_item_items\".\"I_CATEGORY_ID\" as \"_l0_filtered_category_l0\",
@@ -96,29 +96,29 @@ GROUP BY
     2,
     3,
     4),
-scrawny as (
+friendly as (
 SELECT
-    \"concerned\".\"_l0_filtered_brand_l0\" as \"l0_filtered_brand_l0\",
-    \"concerned\".\"_l0_filtered_bucket_count_l0\" as \"l0_filtered_bucket_count_l0\",
-    \"concerned\".\"_l0_filtered_bucket_sum_l0\" as \"l0_filtered_bucket_sum_l0\",
-    \"concerned\".\"_l0_filtered_category_l0\" as \"l0_filtered_category_l0\",
-    \"concerned\".\"_l0_filtered_channel_l0\" as \"l0_filtered_channel_l0\",
-    \"concerned\".\"_l0_filtered_class_l0\" as \"l0_filtered_class_l0\"
+    \"young\".\"_l0_filtered_brand_l0\" as \"l0_filtered_brand_l0\",
+    \"young\".\"_l0_filtered_bucket_count_l0\" as \"l0_filtered_bucket_count_l0\",
+    \"young\".\"_l0_filtered_bucket_sum_l0\" as \"l0_filtered_bucket_sum_l0\",
+    \"young\".\"_l0_filtered_category_l0\" as \"l0_filtered_category_l0\",
+    \"young\".\"_l0_filtered_channel_l0\" as \"l0_filtered_channel_l0\",
+    \"young\".\"_l0_filtered_class_l0\" as \"l0_filtered_class_l0\"
 FROM
-    \"sweltering\"
-    INNER JOIN \"concerned\" on 1=1
+    \"late\"
+    INNER JOIN \"young\" on 1=1
 WHERE
-    \"concerned\".\"_l0_filtered_bucket_sum_l0\" > \"sweltering\".\"avg_sales_average_sales\"
+    \"young\".\"_l0_filtered_bucket_sum_l0\" > \"late\".\"avg_sales_average_sales\"
 )
 SELECT
-    \"scrawny\".\"l0_filtered_channel_l0\" as \"channel\",
-    \"scrawny\".\"l0_filtered_brand_l0\" as \"i_brand_id\",
-    \"scrawny\".\"l0_filtered_class_l0\" as \"i_class_id\",
-    \"scrawny\".\"l0_filtered_category_l0\" as \"i_category_id\",
-    sum(\"scrawny\".\"l0_filtered_bucket_sum_l0\") as \"sum_sales\",
-    sum(\"scrawny\".\"l0_filtered_bucket_count_l0\") as \"sum_number_sales\"
+    \"friendly\".\"l0_filtered_channel_l0\" as \"channel\",
+    \"friendly\".\"l0_filtered_brand_l0\" as \"i_brand_id\",
+    \"friendly\".\"l0_filtered_class_l0\" as \"i_class_id\",
+    \"friendly\".\"l0_filtered_category_l0\" as \"i_category_id\",
+    sum(\"friendly\".\"l0_filtered_bucket_sum_l0\") as \"sum_sales\",
+    sum(\"friendly\".\"l0_filtered_bucket_count_l0\") as \"sum_number_sales\"
 FROM
-    \"scrawny\"
+    \"friendly\"
 GROUP BY
     ROLLUP (1, 2, 3, 4)
 ORDER BY 

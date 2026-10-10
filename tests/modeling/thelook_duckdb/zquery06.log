@@ -1,25 +1,24 @@
 query_id = "06"
-gen_length = 557
+gen_length = 425
 preql_size = 94
 comp_size = 175
 generated_sql = """
 
 WITH 
-wakeful as (
+quizzical as (
 SELECT
-    coalesce(\"order_items\".\"user_id\",\"user_users\".\"id\") as \"user_id\",
+    \"order_items\".\"user_id\" as \"user_id\",
     sum(\"order_items\".\"sale_price\") as \"revenue\"
 FROM
-    \"users\" as \"user_users\"
-    LEFT OUTER JOIN \"order_items\" as \"order_items\" on \"user_users\".\"id\" = \"order_items\".\"user_id\"
+    \"order_items\"
 GROUP BY
     1)
 SELECT
-    \"wakeful\".\"user_id\" as \"user_id\",
+    \"user_users\".\"id\" as \"user_id\",
     \"user_users\".\"state\" as \"user_state\",
-    \"wakeful\".\"revenue\" as \"revenue\"
+    \"quizzical\".\"revenue\" as \"revenue\"
 FROM
-    \"wakeful\"
-    LEFT OUTER JOIN \"users\" as \"user_users\" on \"wakeful\".\"user_id\" = \"user_users\".\"id\"
+    \"users\" as \"user_users\"
+    LEFT OUTER JOIN \"quizzical\" on \"user_users\".\"id\" = \"quizzical\".\"user_id\"
 ORDER BY 
-    \"wakeful\".\"user_id\" asc"""
+    \"user_users\".\"id\" asc"""

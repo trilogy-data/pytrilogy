@@ -138,9 +138,7 @@ class GroupNode(StrategyNode):
             x
             for x in self.output_concepts
             if (x.address in nullable_addresses or x.address in node_nullable)
-            and not proven_non_null.intersection(
-                {x.address, x.canonical_address, *x.pseudonyms}
-            )
+            and not proven_non_null.intersection(x.all_spellings)
         ]
         # ROLLUP/CUBE/GROUPING SETS inject NULLs into grouping-key dims on the
         # subtotal rows. Mark those dims, and any dim derived from them,
@@ -205,11 +203,12 @@ class GroupNode(StrategyNode):
             hidden_concepts=self.hidden_concepts,
             condition=self.conditions,
             ordering=self.ordering,
+            distinct_counts=self.distinct_counts,
         )
         return base
 
     def copy(self) -> "GroupNode":
-        return GroupNode(
+        node = GroupNode(
             input_concepts=list(self.input_concepts),
             output_concepts=list(self.output_concepts),
             environment=self.environment,
@@ -225,3 +224,4 @@ class GroupNode(StrategyNode):
             hidden_concepts=set(self.hidden_concepts),
             ordering=self.ordering,
         )
+        return self.with_marks(node)

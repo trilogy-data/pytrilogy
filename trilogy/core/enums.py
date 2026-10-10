@@ -164,12 +164,15 @@ class JoinType(Enum):
     RIGHT_OUTER = "right outer"
     CROSS = "cross"
     # Relation DECLARATIONS (docs/subset_union_join_design.md): domain knowledge,
-    # not row intent. Parse-level only — the join-clause hydrator normalizes
-    # SUBSET(a ⊆ b) to the superset-anchored LEFT_OUTER relation (`merge a into
-    # ~b`) and UNION (disjoint-capable domains) to FULL; neither may reach SQL
-    # rendering.
+    # not row intent. SUBSET and UNION are parse-level only — the join-clause
+    # hydrator normalizes SUBSET(a ⊆ b) to the superset-anchored LEFT_OUTER
+    # relation (`merge a into ~b`) and UNION (disjoint-capable domains) to
+    # FULL. EQUAL (`equal join a = b`, one domain: `merge a into b` scoped to
+    # the query) is carried as itself, since a statement-scoped FULL tuple
+    # declares INCOMPARABLE. None of the three may reach SQL rendering.
     SUBSET = "subset"
     UNION = "union"
+    EQUAL = "equal"
 
     @property
     def merge_modifiers(self) -> list[Modifier]:
@@ -179,6 +182,11 @@ class JoinType(Enum):
         # (outer_relation_keys) at join-resolution time. (Query-scoped INNER is
         # not supported.)
         return [Modifier.PARTIAL] if self is JoinType.LEFT_OUTER else []
+
+
+# Scoped relations with no anchor side: the key is complete, coalesced over
+# both ends (FULL), or the ends are one domain (EQUAL).
+SYMMETRIC_JOIN_TYPES = frozenset({JoinType.FULL, JoinType.EQUAL})
 
 
 class Ordering(Enum):
@@ -317,6 +325,8 @@ class FunctionType(Enum):
     ## group is not a real aggregate - it just means group by this + some other set of fields
     ## but is here as syntax is identical
     GROUP = "group"
+    # internal: `expr` evaluated on a row of the select, keyed on the anchors
+    GRAIN_PIN = "grain_pin"
 
     COUNT = "count"
     COUNT_DISTINCT = "count_distinct"
@@ -425,6 +435,17 @@ class FunctionClass(Enum):
     ONE_TO_MANY = [FunctionType.UNNEST, FunctionType.DATE_SPINE]  # noqa: RUF012
 
     RECURSIVE = [FunctionType.RECURSE_EDGE]  # noqa: RUF012
+
+
+# How each aggregate answers a group that is one NULL-padded row rather than no
+# rows at all. Most agree either way (`sum`/`min`/`max`/`avg`/`stddev`/
+# `variance`/`any_value`/`bool_or`/`bool_and` are NULL both times), so a join
+# that pads needs no repair for them. Those whose empty-group value is a
+# non-NULL constant do not: a padded row left NULL by the join must be
+# coalesced back to it.
+ZERO_ON_EMPTY_AGGREGATES: frozenset[FunctionType] = frozenset(
+    {FunctionType.COUNT, FunctionType.COUNT_DISTINCT}
+)
 
 
 class Boolean(Enum):

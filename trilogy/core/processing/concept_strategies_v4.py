@@ -22,9 +22,14 @@ TVF) live in `v4_node_generators/`. This file is just the public API, the
 materialized-root pre-pass, and the History cache wiring.
 """
 
+import logging
+from collections.abc import Sequence
+from contextlib import nullcontext
+
 from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation
+from trilogy.core.exceptions import UnbuiltGroupException
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
     BuildConcept,
@@ -35,7 +40,8 @@ from trilogy.core.models.build import (
     BuildUnionSelectLineage,
     BuildWhereClause,
 )
-from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.build_environment import BuildEnvironment, SpanScope
+from trilogy.core.processing import plan_trace
 from trilogy.core.processing.aggregate_rollup import (
     _conditions_supported,
     _datasource_has_matching_additive_aggregate,
@@ -53,6 +59,7 @@ from trilogy.core.processing.discovery_utility import (
 )
 from trilogy.core.processing.node_generators.select_node import root_is_unsourced
 from trilogy.core.processing.nodes import History, StrategyNode
+from trilogy.core.processing.utility import walk_lineage
 from trilogy.core.processing.v4_helper import (
     FINAL_NODE_ID,
     ROW_SHAPE_BARRIER_DERIVATIONS,
@@ -65,7 +72,12 @@ from trilogy.core.processing.v4_helper import (
 from trilogy.core.processing.v4_helper.functional_dependency import (
     build_fd_determines,
 )
+from trilogy.core.processing.v4_helper.region_domains import undemanded_spans
+from trilogy.core.processing.v4_helper.strategy_builder import under_span_scope
 from trilogy.core.processing.v4_node_generators.multiselect import gen_multiselect
+from trilogy.core.processing.v4_node_generators.rowset_witness import (
+    statement_keyspace,
+)
 from trilogy.core.processing.v4_node_generators.union_select import gen_union_select
 
 __all__ = [
@@ -245,19 +257,9 @@ def _lineage_sourceable(
 def _lineage_closure(
     concept: BuildConcept, environment: BuildEnvironment
 ) -> list[BuildConcept]:
-    out: dict[str, BuildConcept] = {}
-    stack = [concept]
-    while stack:
-        current = stack.pop()
-        if current.address in out:
-            continue
-        out[current.address] = current
-        if current.lineage is not None:
-            stack.extend(
-                environment.concepts.get(arg.address) or arg
-                for arg in current.lineage.concept_arguments
-            )
-    return list(out.values())
+    return walk_lineage(
+        [concept], resolve=lambda arg: environment.concepts.get(arg.address) or arg
+    )
 
 
 # Derivations a stored column reproduces row for row. The rest (FILTER/UNNEST/
@@ -303,7 +305,7 @@ def _lineage_derivations(
 def _column_reproduces(
     concept: BuildConcept,
     environment: BuildEnvironment,
-    datasources: list[BuildDatasource],
+    datasources: Sequence[BuildDatasource],
     where: BuildWhereClause | None,
 ) -> bool:
     derivations = _lineage_derivations(concept, environment)
@@ -321,7 +323,7 @@ def _column_reproduces(
 def _binding_only_roots(
     candidates: list[BuildConcept],
     environment: BuildEnvironment,
-    datasources: list[BuildDatasource],
+    datasources: Sequence[BuildDatasource],
     where: BuildWhereClause | None,
 ) -> set[str]:
     """Bound derived concepts, anywhere in the candidates' lineage, that cannot
@@ -359,10 +361,11 @@ def _binding_only_roots(
     return out
 
 
-def _materialized_root_addresses(
+def materialized_root_addresses(
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     conditions: list[BuildWhereClause],
+    datasources: Sequence[BuildDatasource],
 ) -> frozenset[str]:
     """Demanded derived concepts that a datasource materializes directly: a
     precomputed / pre-aggregated summary table or a persisted derived column.
@@ -397,9 +400,6 @@ def _materialized_root_addresses(
         return frozenset()
     target_grain = BuildGrain.from_concepts(mandatory_list)
     where = combine_where_clauses(conditions)
-    datasources = [
-        ds for ds in environment.datasources.values() if isinstance(ds, BuildDatasource)
-    ]
     mandatory_addresses = {c.address for c in mandatory_list}
     condition_args_by_address: dict[str, BuildConcept] = {}
     for clause in conditions:
@@ -519,46 +519,129 @@ def _build_from_graph(
     staged_conditions: list[BuildWhereClause] | None = None,
     depth: int = 0,
 ) -> BuildInfo:
+    with (
+        plan_trace.plan_scope(
+            f"plan: {', '.join(c.address for c in mandatory_list)}",
+            depth,
+            outputs=plan_trace.addresses(mandatory_list),
+            conditions=[plan_trace.expression(c) for c in conditions],
+        )
+        if plan_trace.active()
+        else nullcontext()
+    ):
+        return _build_from_graph_traced(
+            mandatory_list,
+            environment,
+            g,
+            history,
+            conditions,
+            materialized_roots,
+            complete_partials,
+            staged_conditions,
+            depth,
+        )
+
+
+# named in `plan_trace._ORIGIN_ROOTS`: rename both together
+def _build_from_graph_traced(
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
+    g: ReferenceGraph,
+    history: V4History,
+    conditions: list[BuildWhereClause],
+    materialized_roots: frozenset[str],
+    complete_partials: bool,
+    staged_conditions: list[BuildWhereClause] | None,
+    depth: int,
+) -> BuildInfo:
+    if plan_trace.active():
+        plan_trace.record(
+            "requested concepts",
+            plan_trace.RequestStep(
+                concepts=[plan_trace.concept(c) for c in mandatory_list],
+                conditions=[plan_trace.expression(c) for c in conditions],
+                staged_conditions=[
+                    plan_trace.expression(c) for c in staged_conditions or []
+                ],
+                materialized_roots=sorted(materialized_roots),
+                complete_partials=complete_partials,
+                span_scope=plan_trace.span_scope(environment.span_scope),
+                environment=plan_trace.environment(environment, g.scope.datasources),
+            ),
+        )
     concept_graph, concept_attrs, concept_edges = build_concept_graph(
         mandatory_list,
         environment,
         conditions,
         materialized_roots,
         staged_conditions=staged_conditions,
+        datasources=g.scope.datasources,
     )
-    datasource_columns = [
-        frozenset(c.address for c in ds.output_concepts)
-        for ds in environment.datasources.values()
-    ]
+    if plan_trace.active():
+        plan_trace.record(
+            "concept graph",
+            plan_trace.ConceptGraphStep(
+                graph=plan_trace.graph(concept_graph, concept_edges, concept_attrs),
+                concepts=plan_trace.graph_concepts(environment, concept_attrs),
+            ),
+        )
+    keyspace = statement_keyspace(
+        concept_attrs, mandatory_list, environment, conditions, history, g.scope
+    )
+    if len(keyspace.regions) > 1 and logger.isEnabledFor(logging.INFO):
+        logger.info(
+            "%s%s keyspace: %s",
+            depth_to_prefix(depth),
+            LOGGER_PREFIX,
+            keyspace.describe(),
+        )
+    if plan_trace.active():
+        plan_trace.record(
+            "keyspace", plan_trace.KeyspaceStep(keyspace=plan_trace.keyspace(keyspace))
+        )
     group_graph, group_edges, group_attrs = build_group_graph(
         concept_graph,
         concept_edges,
         concept_attrs,
         conditions,
         mandatory_list,
-        datasource_columns,
         environment=environment,
+        datasources=g.scope.datasources,
         staged_conditions=staged_conditions,
+        keyspace=keyspace,
     )
-    # `build_strategy_node` scopes each group's extent routing on the shared
-    # environment; a rowset body planned mid-build recurses through here, so
-    # restore whatever the outer plan had rather than leaving it cleared.
-    outer_extent_free = environment.extent_free_spans
+    # a region nothing demands is not a row of the statement: no join of
+    # this plan extends its spans
+    scope = SpanScope(
+        keyspace=keyspace,
+        owned=history.owned_spans,
+        unextended=undemanded_spans(keyspace, concept_attrs, environment),
+    )
+    strategy_node: StrategyNode | None = None
+    unbuilt_reason: str | None = None
+    # a rowset body planned mid-build recurses through here, so the outer
+    # plan's scope is restored rather than cleared
     try:
-        strategy_node = build_strategy_node(
-            group_graph,
-            group_edges,
-            group_attrs,
-            mandatory_list,
-            environment,
-            g,
-            history,
-            complete_partials=complete_partials,
-            staged_conditions=staged_conditions,
-            depth=depth,
+        with under_span_scope(environment, scope):
+            strategy_node = build_strategy_node(
+                group_graph,
+                group_edges,
+                group_attrs,
+                mandatory_list,
+                environment,
+                g,
+                history,
+                complete_partials=complete_partials,
+                staged_conditions=staged_conditions,
+                depth=depth,
+            )
+    except UnbuiltGroupException as exc:
+        unbuilt_reason = str(exc)
+    if plan_trace.active():
+        plan_trace.record(
+            "strategy node",
+            plan_trace.StrategyStep(node=plan_trace.strategy_node(strategy_node)),
         )
-    finally:
-        environment.extent_free_spans = outer_extent_free
     return BuildInfo(
         concept_graph=concept_graph,
         group_graph=group_graph,
@@ -567,6 +650,8 @@ def _build_from_graph(
         concept_edges=concept_edges,
         group_edges=group_edges,
         strategy_node=strategy_node,
+        keyspace=keyspace,
+        unbuilt_reason=unbuilt_reason,
     )
 
 
@@ -647,8 +732,8 @@ def _search_concepts(
     # materializes at grain. If treating those as roots can't be sourced (the
     # summary doesn't combine with the rest of the query), fall back to the
     # derive-from-base plan: try the direct source first.
-    materialized_roots = _materialized_root_addresses(
-        mandatory_list, environment, conditions
+    materialized_roots = materialized_root_addresses(
+        mandatory_list, environment, conditions, g.scope.datasources
     )
     info = _build_from_graph(
         mandatory_list,
@@ -710,6 +795,15 @@ def search_concepts(
             f"{[c.address for c in mandatory_list]}"
         )
         assert isinstance(hist, BuildInfo)
+        if plan_trace.active():
+            plan_trace.record(
+                "returned from history",
+                plan_trace.HistoryHitStep(
+                    concepts=plan_trace.addresses(mandatory_list),
+                    conditions=[plan_trace.expression(c) for c in conditions],
+                    exists=hist.strategy_node is not None,
+                ),
+            )
         return hist
 
     result = _search_concepts(

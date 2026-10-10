@@ -1,5 +1,5 @@
 query_id = "78"
-gen_length = 6768
+gen_length = 6713
 preql_size = 2560
 comp_size = 2512
 generated_sql = """
@@ -95,7 +95,7 @@ FROM
     \"abundant\"
     LEFT OUTER JOIN \"cheerful\" on \"abundant\".\"sales_channel\" = \"cheerful\".\"sales_channel\" AND \"abundant\".\"sales_item_sk\" = \"cheerful\".\"sales_item_sk\" AND \"abundant\".\"sales_order_id\" = \"cheerful\".\"sales_order_id\"
 WHERE
-    \"cheerful\".\"sales_is_returned\" is null and \"abundant\".\"sales_billing_customer_sk\" is not null
+    \"cheerful\".\"sales_is_returned\" is null
 
 GROUP BY
     1,

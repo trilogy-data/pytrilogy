@@ -112,6 +112,27 @@ by rollup (g1, g2)
         id="inline_composite_expression_q67_shape",
     ),
     pytest.param(
+        """
+select g1, g2, total as total_q,
+    rank(g1, g2) over (partition by g1 order by total desc) as r
+by rollup (g1, g2)
+order by g1 nulls first, g2 nulls first, total_q nulls first, r nulls first;
+""",
+        _oracle_sql("sum(v)", "rollup (g1, g2)"),
+        id="aliased_measure",
+    ),
+    pytest.param(
+        f"""
+auto ctotal <- coalesce(sum(v), 0);
+select g1, g2, ctotal as total,
+    rank(g1, g2) over (partition by g1 order by ctotal desc) as r
+by rollup (g1, g2)
+{ORDER};
+""",
+        _oracle_sql("sum(v)", "rollup (g1, g2)"),
+        id="window_over_scalar_of_measure",
+    ),
+    pytest.param(
         f"""
 select g1, g2, total,
     rank(g1, g2) over (partition by g1 order by sum(v) desc) as r

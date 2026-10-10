@@ -1,5 +1,5 @@
 query_id = "80"
-gen_length = 7992
+gen_length = 7937
 preql_size = 1137
 comp_size = 3674
 generated_sql = """
@@ -143,7 +143,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"sales_item_items\" on \"vacuous\".\"sales_item_sk\" = \"sales_item_items\".\"I_ITEM_SK\"
     LEFT OUTER JOIN \"abundant\" on \"vacuous\".\"sales_channel\" = \"abundant\".\"sales_channel\" AND \"vacuous\".\"sales_item_sk\" = \"abundant\".\"sales_item_sk\" AND \"vacuous\".\"sales_order_id\" = \"abundant\".\"sales_order_id\"
 WHERE
-    cast(\"sales_sale_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_sale_date_date\".\"D_DATE\" as date) <= date '2000-09-22' and \"sales_item_items\".\"I_CURRENT_PRICE\" > 50 and \"cheerful\".\"sales_channel_dim_text_id\" is not null
+    cast(\"sales_sale_date_date\".\"D_DATE\" as date) >= date '2000-08-23' and cast(\"sales_sale_date_date\".\"D_DATE\" as date) <= date '2000-09-22' and \"sales_item_items\".\"I_CURRENT_PRICE\" > 50
 )
 SELECT
     \"abhorrent\".\"channel_label\" as \"channel\",

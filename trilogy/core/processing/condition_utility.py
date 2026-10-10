@@ -97,6 +97,11 @@ NULL_OPAQUE_FUNCTIONS: tuple[FunctionType, ...] = (
     FunctionType.CASE,
     FunctionType.COUNT,  # COUNT(NULL) = 0, not NULL
     FunctionType.COUNT_DISTINCT,
+    # skip NULL arguments on DuckDB and Postgres: greatest(NULL, 0) = 0
+    FunctionType.GREATEST,
+    FunctionType.LEAST,
+    # a non-null array proves SOME element was non-null, not the row's own value
+    FunctionType.ARRAY_AGG,
 )
 
 _T = TypeVar("_T", int, float, date, datetime)
@@ -1085,15 +1090,25 @@ def condition_proves_non_null(
 
     Unlike ``non_null_proofs`` (merge stage; ignores ``IS NOT NULL`` because a
     merged join key may materialize as ``COALESCE(left, right)``), this honors
-    ``IS NOT NULL`` too. Safe only for
-    a caller asking about a single datasource's own columns under that scan's
-    own applied WHERE, where no cross-source COALESCE of the key exists.
+    ``IS NOT NULL`` too. Safe only for a node's own output columns under the
+    WHERE that node itself applies, rendered through the same source map, so
+    the condition reads each column exactly as the output does.
     """
     return {
         addr
         for atom in decompose_condition(condition)
         for addr in _atom_proves_non_null(atom)
     }
+
+
+def drop_proven_non_null(
+    concepts: list[BuildConcept], condition: BoolExpr | None
+) -> list[BuildConcept]:
+    """``concepts`` minus those ``condition`` forces non-null."""
+    if not condition or not concepts:
+        return concepts
+    proven = condition_proves_non_null(condition)
+    return [c for c in concepts if c.address not in proven]
 
 
 def _join_atom_proves_non_null(atom: BoolExpr) -> set[str]:

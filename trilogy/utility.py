@@ -1,7 +1,7 @@
 import hashlib
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from functools import partial
 from functools import singledispatchmethod as _stdlib_singledispatchmethod
 from os import PathLike
@@ -15,7 +15,7 @@ INT_HASH_SIZE = 16
 def utc_now_iso() -> str:
     """Current UTC time, ISO-8601. The emitting process's own clock — fine for
     display, never for ordering events across machines."""
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 @contextmanager
@@ -78,7 +78,11 @@ class singledispatchmethod(_stdlib_singledispatchmethod):
 
     On CPython 3.12.8 and 3.13.0-3.13.1 that cache is a WeakKeyDictionary whose
     values close over their own key, so every instance that ever called the
-    method is kept alive for the life of the process (gh-127750)."""
+    method is kept alive for the life of the process (gh-127750).
+
+    The bound method is a bare partial, without the `register`/`__name__`/
+    `__doc__` the stdlib's sets: nothing reads them, and setting them on every
+    access slows each dispatch by half (it is on the renderer's hot path)."""
 
     def __get__(self, obj, cls=None):
         return partial(_dispatch_bound, self.dispatcher.dispatch, obj, cls)

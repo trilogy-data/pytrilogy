@@ -15,7 +15,7 @@ import threading
 import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from . import agent_runner, analyze_run, archive, cleanup, db, prompts, scoring
@@ -411,7 +411,7 @@ def _run_categories(
     for key in category_keys:
         get_category(key, spec)  # validate early
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     script = Path(sys.argv[0]).resolve()
     common_argv = _filter_both_modes_argv(raw_argv)
     args = _build_argparser(spec).parse_args(raw_argv)
@@ -553,7 +553,7 @@ def run(spec: BenchmarkSpec) -> int:
         )
         return 2
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     # Absolute: agent subprocesses run with cwd set to their per-worker workspace
     # copy, so a relative run dir would resolve to a path that doesn't exist there.
     default_run_dir = spec.results_dir / run_artifact_slug(
@@ -744,6 +744,7 @@ def run(spec: BenchmarkSpec) -> int:
         qid = entry["id"]
         worker = acquire_worker()
         try:
+            agent_runner.reset_worker_workspace(workspace, worker, spec.db_filename)
             log_path = run_dir / f"agent_log.q{qid:02d}.jsonl"
             task = category.build_task(spec, entry, include_docs=bool(leg_docs))
             (run_dir / f"task.q{qid:02d}.txt").write_text(task, encoding="utf-8")

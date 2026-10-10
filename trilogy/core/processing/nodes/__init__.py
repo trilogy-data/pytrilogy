@@ -82,11 +82,18 @@ class History:
         search: list[BuildConcept],
         accept_partial: bool,
         conditions: BuildWhereClause | None = None,
+        promoted: frozenset[str] = frozenset(),
     ) -> str:
         base = sorted([c.address for c in search])
+        key = "-".join(base) + str(accept_partial)
         if conditions:
-            return "-".join(base) + str(accept_partial) + str(conditions)
-        return "-".join(base) + str(accept_partial)
+            key += str(conditions)
+        # a `~` key promoted to a full binding (`SpanScope.extent_free`) picks a
+        # different scan for the same outputs: the solid stream of a region
+        # reads the partial fact, its domain must read the complete one
+        if promoted:
+            key += f"|promoted={sorted(promoted)}"
+        return key
 
     def gen_select_node(
         self,
@@ -104,6 +111,7 @@ class History:
             concepts,
             accept_partial,
             conditions=conditions,
+            promoted=environment.span_scope.extent_free,
         )
         if fingerprint in self.select_history:
             rval = self.select_history[fingerprint]

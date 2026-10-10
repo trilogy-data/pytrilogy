@@ -213,6 +213,12 @@ def test_keys_only(simple):
     ]
 
 
+def test_keys_only_needs_no_group(simple):
+    query = "select order_id, item_id, product_id, user_id;"
+    assert "GROUP BY" not in simple.generate_sql(query)[-1]
+    assert "GROUP BY" not in simple.generate_sql(_PIN + query)[-1]
+
+
 def test_keys_without_fact_anchor(simple):
     """The pair grain WITHOUT the fact's own row key: fact pairs projected to
     the pair grain, plus one extension row per unmatched member of each `~`
@@ -347,8 +353,8 @@ def test_forked_with_brand_only(forked):
 
 def test_forked_with_status(forked):
     """`order_status` reads the order's `amount`. An extension row has no
-    order, so it is NULL there like everything outside the span's closure; the
-    CASE's ELSE does not fire on padding."""
+    order, but the select's other keys pin the CASE to the row, so its ELSE
+    fires on padding while the plain aggregates stay NULL."""
     assert (
         _rows(
             forked,
@@ -360,8 +366,8 @@ def test_forked_with_status(forked):
             (1001, 100, 20, 1, "FIRST", 7, 150),
             (1002, 101, 10, 2, "FIRST", 11, 120),
             (1003, 102, 20, 1, "LATER", 13, 210),
-            (None, None, 30, None, None, None, None),
-            (None, None, None, 3, None, None, None),
+            (None, None, 30, None, "LATER", None, None),
+            (None, None, None, 3, "LATER", None, None),
         ]
     )
 
@@ -384,26 +390,25 @@ def test_forked_with_status_pinned(forked):
 
 
 def test_forked_full_column_set(forked):
-    assert (
-        _rows(
-            forked,
-            """select item_id, order_id, product_id, user_id, state, brand, order_status, total_qty, total_pair_cost
-        order by item_id asc nulls last, user_id asc nulls last, product_id asc nulls last;""",
-        )
-        == [
-            (1000, 100, 10, 1, "CA", "A", "FIRST", 5, 100),
-            (1001, 100, 20, 1, "CA", "B", "FIRST", 7, 150),
-            (1002, 101, 10, 2, "NY", "A", "FIRST", 11, 120),
-            (1003, 102, 20, 1, "CA", "B", "LATER", 13, 210),
-            (None, None, None, 3, "TX", None, None, None, None),
-            (None, None, 30, None, None, "C", None, None, None),
-        ]
-    )
+    query = """select item_id, order_id, product_id, user_id, state, brand, order_status, total_qty, total_pair_cost
+        order by item_id asc nulls last, user_id asc nulls last, product_id asc nulls last;"""
+    sql = forked.generate_sql(query)[-1]
+    # order_status is evaluated on the select's row: the pinned CASE rides the
+    # item-grain aggregate's padded stream (its (item, order) grain is the
+    # item's rows) instead of rebuilding the two region joins, and the user
+    # region seeds the join tree with its feeders LEFT off it
+    assert sql.count("JOIN") == 6, sql
+    assert _rows(forked, query) == [
+        (1000, 100, 10, 1, "CA", "A", "FIRST", 5, 100),
+        (1001, 100, 20, 1, "CA", "B", "FIRST", 7, 150),
+        (1002, 101, 10, 2, "NY", "A", "FIRST", 11, 120),
+        (1003, 102, 20, 1, "CA", "B", "LATER", 13, 210),
+        (None, None, None, 3, "TX", None, "LATER", None, None),
+        (None, None, 30, None, None, "C", "LATER", None, None),
+    ]
 
 
-# sales anchors returns' `~` grain keys (the store_sales / store_returns
-# shape); return 9 has no sale, return date is a nullable key on returns only.
-_ANCHORED = """
+_SALES_RETURNS_DECLARATIONS = """
 key order_id int;
 key item_id int;
 key date_id int;
@@ -413,9 +418,91 @@ properties <order_id, item_id> (
     refund int?,
 );
 
+root datasource dates (
+    date_id: date_id,
+    week: week,
+)
+grain (date_id)
+query '''
+select 5 as date_id, 1 as week union all
+select 6, 2
+''';
+"""
+
+# sales anchors returns' `~` grain keys (the store_sales / store_returns
+# shape): sales is complete, so every return has its sale. Return date is a
+# nullable key on returns only.
+_ANCHORED = _SALES_RETURNS_DECLARATIONS + """
 root datasource sales (
     order_id: order_id,
     item_id: item_id,
+    amount: amount,
+)
+grain (order_id, item_id)
+query '''
+select 1 as order_id, 10 as item_id, 50 as amount union all
+select 1, 20, 60 union all
+select 2, 10, 70 union all
+select 3, 10, 80
+''';
+
+root datasource returns (
+    order_id: ~order_id,
+    item_id: ~item_id,
+    date_id: ?date_id,
+    refund: refund,
+)
+grain (order_id, item_id)
+query '''
+select 1 as order_id, 10 as item_id, 5 as date_id, 5 as refund union all
+select 2, 10, 6, 7 union all
+select 3, 10, 5, 9
+''';
+"""
+
+
+@pytest.fixture(scope="module")
+def anchored():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_ANCHORED)
+    return executor
+
+
+def test_anchor_exclusive_pin_heals(anchored):
+    """A pin on a concept only the `~` fact can supply (its return date) kills
+    every sales-only row, so the returns keys heal for the statement: no
+    sibling stitch, no sales scan."""
+    query = "where week = 1 select order_id, sum(refund) as total_refund order by order_id asc;"
+    sql = anchored.generate_sql(query)[-1]
+    assert "FULL JOIN" not in sql, sql
+    assert "50 as amount" not in sql, sql
+    assert _rows(anchored, query) == [(1, 5), (3, 9)]
+
+
+_ANCHOR_NEEDED = "where week = 1 select order_id, sum(refund) as total_refund, sum(amount) as total_amount order by order_id asc;"
+
+
+def test_anchor_read_beside_pin_heals(anchored):
+    """The same pin beside a sales-only measure still heals: sales is complete,
+    so every return has its sale and the merge is INNER."""
+    sql = anchored.generate_sql(_ANCHOR_NEEDED)[-1]
+    assert "50 as amount" in sql, sql
+    assert "OUTER JOIN" not in sql and "FULL JOIN" not in sql, sql
+    assert _rows(anchored, _ANCHOR_NEEDED) == [(1, 5, 50), (3, 9, 80)]
+
+
+# Both facts `~` over complete key tables: return 9 has no sale, which only a
+# partial sales binding allows.
+_CO_PARTIAL = _SALES_RETURNS_DECLARATIONS + """
+root datasource orders (order_id: order_id) grain (order_id)
+query '''select 1 as order_id union all select 2 union all select 9''';
+
+root datasource items (item_id: item_id) grain (item_id)
+query '''select 10 as item_id union all select 20''';
+
+root datasource sales (
+    order_id: ~order_id,
+    item_id: ~item_id,
     amount: amount,
 )
 grain (order_id, item_id)
@@ -437,56 +524,164 @@ select 1 as order_id, 10 as item_id, 5 as date_id, 5 as refund union all
 select 2, 10, 6, 7 union all
 select 9, 10, 5, 9
 ''';
-
-root datasource dates (
-    date_id: date_id,
-    week: week,
-)
-grain (date_id)
-query '''
-select 5 as date_id, 1 as week union all
-select 6, 2
-''';
 """
 
 
 @pytest.fixture(scope="module")
-def anchored():
+def co_partial():
     executor = Dialects.DUCK_DB.default_executor()
-    executor.execute_text(_ANCHORED)
+    executor.execute_text(_CO_PARTIAL)
     return executor
 
 
-def test_anchor_exclusive_pin_heals(anchored):
-    """A pin on a concept only the `~` fact can supply (its return date) kills
-    every sales-only row, so the returns keys heal for the statement: no
-    sibling stitch, no sales scan, and the saleless return is a plain fact row."""
-    query = "where week = 1 select order_id, sum(refund) as total_refund order by order_id asc;"
-    sql = anchored.generate_sql(query)[-1]
-    assert "FULL JOIN" not in sql, sql
-    assert "50 as amount" not in sql, sql
-    assert _rows(anchored, query) == [(1, 5), (9, 9)]
+def test_co_partial_unpinned_keeps_saleless_return(co_partial):
+    query = "select order_id, sum(refund) as total_refund, sum(amount) as total_amount order by order_id asc;"
+    assert _rows(co_partial, query) == [(1, 5, 110), (2, 7, 70), (9, 9, None)]
 
 
-_ANCHOR_NEEDED = "where week = 1 select order_id, sum(refund) as total_refund, sum(amount) as total_amount order by order_id asc;"
+def test_co_partial_pin_keeps_saleless_return(co_partial):
+    """The pin kills sales' extensions but not returns' rows, which carry the
+    week: sales stays `~` and joins LEFT onto the healed returns."""
+    sql = co_partial.generate_sql(_ANCHOR_NEEDED)[-1]
+    assert "LEFT OUTER JOIN" in sql, sql
+    assert _rows(co_partial, _ANCHOR_NEEDED) == [(1, 5, 50), (9, 9, None)]
 
 
-def test_anchor_needed_stays_partial(anchored):
-    """The same pin beside a sales-only measure: the anchor is not dispensable,
-    so the keys stay `~` and sales is still merged in."""
-    sql = anchored.generate_sql(_ANCHOR_NEEDED)[-1]
-    assert "50 as amount" in sql, sql
-    assert _rows(anchored, _ANCHOR_NEEDED)[0] == (1, 5, 50)
+# A `~` rollup binds the ROOT customer that complete orders also supplies, and
+# carries the pinned week: the plan may read it, so returns must not heal.
+_ROLLUP_ROOT = _SALES_RETURNS_DECLARATIONS + """
+property order_id.customer string;
 
+root datasource orders (order_id: order_id, customer: customer) grain (order_id)
+query '''select 1 as order_id, 'a' as customer union all select 2, 'b' union all select 4, 'd' union all select 9, 'z' ''';
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="pre-existing: the anchor merge renders INNER under the pin, dropping the saleless return",
+root datasource items (item_id: item_id) grain (item_id)
+query '''select 10 as item_id union all select 20''';
+
+root datasource returns (
+    order_id: ~order_id,
+    item_id: ~item_id,
+    date_id: ?date_id,
+    refund: refund,
 )
-def test_anchor_needed_keeps_saleless_return(anchored):
-    """A return with no sale is a fact row of the `~` binding and must survive
-    the pin with a NULL amount."""
-    assert _rows(anchored, _ANCHOR_NEEDED) == [(1, 5, 50), (9, 9, None)]
+grain (order_id, item_id)
+query '''
+select 1 as order_id, 10 as item_id, 5 as date_id, 5 as refund union all
+select 2, 10, 6, 7 union all
+select 9, 10, 5, 9
+''';
+
+root datasource order_day (
+    order_id: ~order_id,
+    date_id: ?date_id,
+    customer: customer,
+)
+grain (order_id, date_id)
+query '''
+select 1 as order_id, 5 as date_id, 'a' as customer union all
+select 2, 6, 'b' union all
+select 4, 5, 'd'
+''';
+"""
+
+
+@pytest.mark.parametrize(
+    "select, expected",
+    [
+        ("order_id, item_id, customer", [(1, 10, "a"), (9, 10, "z")]),
+        ("item_id, customer", [(10, "a"), (10, "z")]),
+    ],
+)
+def test_partial_rollup_binding_a_root_blocks_the_heal(select, expected):
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_ROLLUP_ROOT)
+    pinned = f"where week = 1 select {select} order by customer asc;"
+    assert _rows(executor, pinned) == expected
+
+
+# Two `~` facts, each dated by its own key: a sale's date is not its return's.
+_SEPARATELY_DATED = """
+key order_id int;
+key item_id int;
+key date_id int;
+key return_date_id int;
+property date_id.week int;
+property return_date_id.return_week int;
+property order_id.customer string;
+properties <order_id, item_id> (
+    amount int?,
+    refund int?,
+);
+
+root datasource dates (date_id: date_id, week: week) grain (date_id)
+query '''select 5 as date_id, 1 as week union all select 6, 2''';
+
+root datasource return_dates (return_date_id: return_date_id, return_week: return_week)
+grain (return_date_id)
+query '''select 5 as return_date_id, 1 as return_week union all select 6, 2''';
+
+root datasource items (item_id: item_id) grain (item_id)
+query '''select 10 as item_id union all select 20''';
+
+root datasource orders (order_id: order_id) grain (order_id)
+query '''select 1 as order_id union all select 2 union all select 4 union all select 9''';
+
+root datasource sales (
+    order_id: ~order_id,
+    item_id: ~item_id,
+    date_id: ?date_id,
+    customer: customer,
+    amount: amount,
+)
+grain (order_id, item_id)
+query '''
+select 1 as order_id, 10 as item_id, 5 as date_id, 'a' as customer, 50 as amount union all
+select 1, 20, 5, 'a', 60 union all
+select 2, 10, 6, 'b', 70 union all
+select 4, 10, 5, 'd', 80
+''';
+
+root datasource returns (
+    order_id: ~order_id,
+    item_id: ~item_id,
+    return_date_id: ?return_date_id,
+    refund: refund,
+)
+grain (order_id, item_id)
+query '''
+select 1 as order_id, 10 as item_id, 5 as return_date_id, 5 as refund union all
+select 2, 10, 6, 7 union all
+select 9, 10, 5, 9
+''';
+"""
+
+
+@pytest.mark.parametrize(
+    "query, expected",
+    [
+        (
+            "where week = 1 select order_id, customer order by order_id asc;",
+            [(1, "a"), (4, "d")],
+        ),
+        (
+            "where return_week = 1 select order_id, customer order by order_id asc;",
+            [(1, "a"), (9, None)],
+        ),
+        (
+            (
+                "where week = 1 select order_id, sum(refund) as r, "
+                "sum(amount) as a order by order_id asc;"
+            ),
+            [(1, 5, 110), (4, None, 80)],
+        ),
+    ],
+)
+def test_each_pin_reads_the_fact_it_dates(query, expected):
+    """With a date key per fact, a pin's rows are the rows of the fact it
+    dates, whichever binding the plan reads the order through."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_SEPARATELY_DATED)
+    assert _rows(executor, query) == expected
 
 
 # returns binds `returned` as a raw literal: the flag is true on a returns row
@@ -676,11 +871,6 @@ def test_composite_grain_families_with_by_span_aggregate():
     ]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="without an aggregate the CASE is evaluated over the padded row and "
-    "its ELSE fires ('LATER'); owed NULL, as the aggregate spelling returns",
-)
 def test_status_on_extension_rows_is_null_without_an_aggregate(forked):
     query = """select order_id, user_id, order_status
         order by order_id asc nulls last, user_id asc nulls last;"""
@@ -689,4 +879,23 @@ def test_status_on_extension_rows_is_null_without_an_aggregate(forked):
         (101, 2, "FIRST"),
         (102, 1, "LATER"),
         (None, 3, None),
+    ]
+
+
+def test_padded_extension_rows_are_one_row_per_output():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(
+        _FORKED.replace(
+            "select 3, 'TX'\n", "select 3, 'TX' union all\nselect 4, 'TX'\n"
+        )
+    )
+    query = """select item_id, order_id, state, brand, qty, qty - cost -> margin
+        order by item_id asc nulls last, state asc nulls last;"""
+    assert _rows(executor, query) == [
+        (1000, 100, "CA", "A", 5, 3),
+        (1001, 100, "CA", "B", 7, 4),
+        (1002, 101, "NY", "A", 11, 9),
+        (1003, 102, "CA", "B", 13, 10),
+        (None, None, "TX", None, None, None),
+        (None, None, None, "C", None, None),
     ]

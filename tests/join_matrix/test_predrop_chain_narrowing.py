@@ -1,5 +1,4 @@
-"""Pre-drop chain-context pins (handoff_narrowing_soundness_residuals task 1,
-closed 2026-07-03 as unreachable).
+"""Pre-drop chain-context pins (closed 2026-07-03 as unreachable).
 
 Geometry: an EARLIER dropping join in a FROM chain (a WHERE-forced INNER /
 directional upgrade, incl. cross-CTE null-rejection) precedes a join that

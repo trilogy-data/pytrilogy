@@ -65,7 +65,7 @@ import threading
 import uuid
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -105,7 +105,7 @@ class ReportSink:
             with self._lock:
                 self._seq += 1
                 record: dict[str, Any] = {
-                    "ts": datetime.now(timezone.utc).isoformat(),
+                    "ts": datetime.now(UTC).isoformat(),
                     "type": record_type,
                     "schema_version": REPORT_SCHEMA_VERSION,
                     "run_id": self.run_id,

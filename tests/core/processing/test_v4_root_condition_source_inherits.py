@@ -19,8 +19,11 @@ row-level guard; these pin the plumbing that produces it, without a database.
 
 import inspect
 from pathlib import Path
+from unittest.mock import Mock
 
 from trilogy import Dialects, Environment
+from trilogy.constants import CONFIG
+from trilogy.core.models.execute import CTE, UnionCTE
 from trilogy.core.processing import concept_strategies_v4
 from trilogy.core.processing.v4_node_generators import root as root_generator
 
@@ -52,45 +55,50 @@ def test_dimension_join_is_not_left_outer():
 def test_condition_source_subsearch_receives_the_inherited_atoms(monkeypatch):
     """The plumbing itself: `gen_root`'s re-plan of the derived condition arg is
     handed the ancestor atoms rather than an empty condition list."""
-    seen: list[list] = []
-    original = concept_strategies_v4.search_concepts
-
-    def spy(*args, **kwargs):
-        seen.append(list(kwargs.get("conditions") or []))
-        return original(*args, **kwargs)
-
-    monkeypatch.setattr(concept_strategies_v4, "search_concepts", spy)
+    spy = Mock(wraps=concept_strategies_v4.search_concepts)
     # `gen_root` imports it inside the function body, so patching the defining
     # module is what takes effect.
+    monkeypatch.setattr(concept_strategies_v4, "search_concepts", spy)
     _generate()
 
-    inherited = [str(clause.conditional) for call in seen for clause in call]
+    inherited = [
+        str(clause.conditional)
+        for call in spy.call_args_list
+        for clause in call.kwargs.get("conditions") or []
+    ]
     assert any(
         "is not" in rendered for rendered in inherited
     ), f"no inherited not-null reached a condition-source sub-search: {inherited}"
 
 
-def test_only_atoms_expressible_on_the_request_are_inherited():
+def test_only_atoms_expressible_on_the_request_are_inherited(monkeypatch):
     """The boundary, read off q11 itself. Its `billing_customer.sk is not null`
     is a grain key of the aggregates being re-planned, so it comes along and
     renders once per union arm. Its `sale_date.year in (...)` is not — applying
     it would narrow the aggregates' INPUT, which the population/select
     dual-scope split forbids (`test_where_select_dual_scope`), so the year stays
-    on the outer group and date_dim is still joined above the union."""
+    on the outer group and date_dim is still joined above the union. Read with
+    the existence fold off: it later moves the year onto the aggregate's input
+    when every aggregate's own filter implies it, which is not inheritance."""
+    monkeypatch.setattr(CONFIG.optimizations, "fold_existence_into_aggregate", False)
     env = Environment(working_path=_WORKING)
-    sql = Dialects.DUCK_DB.default_executor(environment=env).generate_sql(
+    query = Dialects.DUCK_DB.default_executor(environment=env).parse_text(
         (_WORKING / "query11.preql").read_text()
     )[-1]
-    # Three arm-level guards (catalog/store/web) plus one re-check on the union
-    # output. That fourth is redundant -- every arm already null-rejects the
-    # column -- but proving it needs an "all arms enforce this" implication that
-    # StripRedundantNotNull deliberately lacks: the column IS nullable at the
-    # base tables, and its ground-truth-nullability gate is what keeps an
-    # authored NOT NULL on a nullable FK from vanishing (q78). Assert what the
-    # planner emits; the arm count is the part this test is about.
-    assert sql.count("is not null") == 4, sql
-    # Pushing the year into the arms would give each its own date_dim join.
-    assert sql.count("date_dim") == 1, sql
+    (union,) = [cte for cte in query.ctes if isinstance(cte, UnionCTE)]
+    assert [
+        {c.address for c in arm.condition.concept_arguments}
+        for arm in union.internal_ctes
+    ] == [{"sales.billing_customer.sk"}] * 3
+    # One date_dim read for the aggregates' year CASEs, one for the outer
+    # WHERE's year; pushing the year into the arms would give each its own.
+    date_reads = [
+        cte
+        for cte in query.ctes
+        if isinstance(cte, CTE)
+        and "sales.sale_date.date" in [d.identifier for d in cte.source.datasources]
+    ]
+    assert len(date_reads) == 2
 
 
 def test_gen_root_accepts_preexisting_conditions():

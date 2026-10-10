@@ -53,5 +53,5 @@ def test_aggregate_condition_feeder_keeps_only_value_and_grain_contract():
 
     assert [tuple(row) for row in rows] == [(1, "eu-low")]
     assert len(re.findall(r"\bWITH\b|,\s*\w+\s+as\s*\(", sql, re.IGNORECASE)) == 5
-    assert sql.count("'EUROPE'") == 4
+    assert sql.count("'EUROPE'") == 3
     assert sql.count("min_europe_cost") == 2

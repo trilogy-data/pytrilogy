@@ -429,6 +429,7 @@ address items_table;
         datasource=ds,
         all_concepts=[build_env.concepts["sale_id"], build_env.concepts["item_id"]],
         environment=build_env,
+        datasources=list(build_env.datasources.values()),
         depth=0,
         conditions=full_conditions,
     )

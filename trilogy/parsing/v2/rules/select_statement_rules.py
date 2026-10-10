@@ -215,12 +215,12 @@ def join_clause(
 ) -> list[SelectJoin]:
     args = hydrated_children(node, hydrate)
     join_type = next(a for a in args if isinstance(a, JoinType))
-    if join_type not in (JoinType.SUBSET, JoinType.UNION):
+    if join_type not in (JoinType.SUBSET, JoinType.UNION, JoinType.EQUAL):
         hint = _JOIN_MIGRATION_HINT.get(join_type, "use `subset` or `union`")
         raise fail(
             node,
             f"`{join_type.value}` join is not supported in query-scoped joins; "
-            f"{hint}. Only `subset` and `union` joins are supported "
+            f"{hint}. Only `subset`, `union` and `equal` joins are supported "
             "(docs/subset_union_join_design.md).",
         )
     # Each `join_group` is one `=`-chained equivalence group. Multiple groups
@@ -286,14 +286,12 @@ def _resolve_join_group(
 
 
 def _normalize_select_join(join_type: JoinType, la: str, ra: str) -> SelectJoin:
-    """Normalize relation DECLARATIONS onto the two landed relation mechanisms
-    (docs/subset_union_join_design.md). `subset join a = b` declares a ⊆ b: the
-    superset `b` is the complete anchor and `a` is partial against it — exactly
-    `merge a into ~b` scoped to this query, so it maps to that relation's
-    superset-anchored LEFT_OUTER tuple. `union join a = b` declares neither
-    domain contains the other — the coalescing FULL relation. The authored form
-    is kept for round-trip rendering and optimizer metadata (a UNION key must
-    never narrow to INNER; an EQUAL/merge key may)."""
+    """Normalize relation DECLARATIONS onto join tuples
+    (docs/subset_union_join_design.md): `subset join a = b` (a ⊆ b) is the
+    query-scoped `merge a into ~b`, a LEFT_OUTER anchored on `b`; `union join`
+    (neither contains the other) is the coalescing FULL; `equal join` (one
+    domain) stays EQUAL. The authored form is kept for round-trip rendering
+    and optimizer metadata."""
     if join_type is JoinType.SUBSET:
         return SelectJoin(
             join_type=JoinType.LEFT_OUTER,

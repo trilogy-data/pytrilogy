@@ -8,10 +8,9 @@ so its importers are unaffected.
 
 from __future__ import annotations
 
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-
-import tomllib
 
 TRILOGY_CONFIG_NAME = "trilogy.toml"
 

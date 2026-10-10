@@ -95,7 +95,7 @@ are a modeling error the planner cannot detect: it is entitled to assume the
 column is non-null, so `is not null` pins may be dropped as tautological and
 NULL-keyed fact rows may be silently lost or kept depending on plan shape.
 
-## Pin-healing (`heal_pinned_partials`)
+## Pin-healing (`decide_heal`)
 
 An extension row for key `k` is NULL at every concept outside `k`'s FD
 closure. So if the statement WHERE proves non-null
@@ -112,23 +112,29 @@ Guards, each load-bearing:
   (`partial datasource ... complete where`) is a row-subset contract the union
   machinery completes across siblings; healing it breaks that assembly
   (`test_partial_key_union_matrix`).
-- **Sibling anchor blocks unless dispensable.** If another row-source carries
-  the key inside a LARGER grain (store_sales anchoring store_returns' `~`
-  grain keys), a pin that kills dimension extensions does not by itself
+- **A sibling anchor blocks when its rows survive.** If another row-source
+  carries the key inside a LARGER grain (store_sales anchoring store_returns'
+  `~` grain keys), a pin that kills dimension extensions does not by itself
   shrink the population to this datasource's rows: anchor-only rows carry the
-  anchor's own values, not manufactured NULLs. The key still heals when the
-  anchor is dispensable (`_anchors_dispensable`): (a) some killer lies
-  outside what the anchor's rows can carry by keyed lookup
-  (`_lookup_supply`, which walks complete lookups and stops at `~` bindings;
+  anchor's own values, not manufactured NULLs. The key still heals when some
+  killer lies outside what the anchor's rows can carry by keyed lookup
+  (`ModelFacts.lookup_supply`, the keyspace's walk over complete lookups,
+  which stops at `~` bindings;
   the FD closure is the wrong tool because a same-grain sibling's columns are
-  in it), and (b) every statement reference in the fact's component is
-  reachable from the fact without an anchor. (b) is load-bearing: with an
-  anchor-only measure selected, the healed key would license an INNER merge
-  that drops the fact's own unmatched rows. Partition-disjoint `complete
-  where` siblings never anchor and never count as suppliers. This is what
-  lets `where sales.return_date.week_seq in (...)` (TPC-DS q83, q01, q91)
-  plan the returns partitions alone instead of stitching the sales union in
-  and filtering it away.
+  in it). Reading the anchor beside the heal (a sales measure) is fine: the
+  anchor is complete, so every fact row has its anchor row and the healed
+  merge may be INNER. Partition-disjoint `complete where` siblings never
+  anchor and never count as suppliers. This is what lets `where
+  sales.return_date.week_seq in (...)` (TPC-DS q83, q01, q91, and q17, q24,
+  q25, q29, q50, q84 beside sales measures) plan without a FULL stitch of the
+  sales union.
+- **A `~` sibling the statement reads blocks when its rows survive.** Two
+  `~` bindings never anchor each other, but when the statement reads a ROOT
+  concept only a `~` sibling supplies (returns' `refund` beside a `~` sales)
+  and that sibling's rows carry every killer, its kept rows hold members `ds`
+  may lack: healing `ds` would claim it complete and INNER them away
+  (`_read_partials`). A sibling serving only derived values (a pair-grain
+  rollup's `revenue`, thelook q16) is a materialization the plan skips.
 - **Killers must be bound and component-local.** A derived tautology
   (`coalesce(x, 5) is not null`) or a concept from a disconnected subgraph
   (attached via a cross-join gate) is non-null on extension rows too and
@@ -154,10 +160,10 @@ generates the table above.
 
 ## Known residual
 
-A `~`-keyed fact row with no anchor row (a return whose sale is absent) is
-dropped when a pin on the fact's own concept sits beside an anchor-only
-measure: the anchor merge renders INNER. Pinned as a strict xfail
-(`test_anchor_needed_keeps_saleless_return`); TPC-DS data never exercises it.
+A return whose sale is absent is valid data only when sales binds its keys
+`~` as well: a complete sales binding declares every order present, so such a
+return is a modeling error the plan may drop (it does, pinned or not). With
+both `~`, the pin keeps it (`test_co_partial_pin_keeps_saleless_return`).
 
 The by-key-aggregate shape (`min(amount) by user_id` compared against a
 row value, selected beside additional keys and metrics) — a pre-existing
@@ -168,5 +174,4 @@ FINAL row-spine merge and computes over the extension-bearing stream, so
 extension rows take the CASE's ELSE value ('LATER'), not a join NULL. The
 former xfail pins (`test_forked_with_status`, `test_forked_with_status_pinned`,
 `test_forked_full_column_set`, `test_partial_grain_with_by_key_aggregate`) are
-promoted to plain row asserts. See
-`docs/handoff_partial_bridge_residuals.md` for the fix's gates.
+promoted to plain row asserts (6bdb4d7b4, #650).

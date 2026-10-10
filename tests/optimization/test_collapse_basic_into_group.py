@@ -25,11 +25,13 @@ from trilogy.core.optimizations.collapse_single_parent import (
 
 
 def _col(address: str, derivation: Derivation, lineage=None) -> SimpleNamespace:
-    return SimpleNamespace(address=address, derivation=derivation, lineage=lineage)
+    return SimpleNamespace(
+        address=address, derivation=derivation, lineage=lineage, concept_arguments=[]
+    )
 
 
 def _parent(output_lcl: set[str]) -> SimpleNamespace:
-    return SimpleNamespace(output_lcl=output_lcl)
+    return SimpleNamespace(output_lcl=output_lcl, output_columns=[], source_map={})
 
 
 def _child(*columns: SimpleNamespace) -> SimpleNamespace:
@@ -284,3 +286,30 @@ select
     # The division folds into the grouped SELECT -- no trailing projection CTE.
     assert sql.count("GROUP BY") == 1, sql
     assert "/ " in sql or "/" in sql
+
+
+def test_fold_never_renders_a_rewritten_count_two_ways(monkeypatch):
+    """`count(id ? home)` counts over a stream that repeats ids, so the planner
+    renders it COUNT(DISTINCT). A ratio over it folded into the same SELECT
+    re-derives the count there, and must render it DISTINCT too."""
+    from dataclasses import replace
+    from pathlib import Path
+
+    from trilogy.core import optimization
+
+    original = optimization.build_optimization_rule_plan
+
+    def plan(*args, **kwargs):
+        phases = original(*args, **kwargs)
+        (collapse,) = [p for p in phases if p.name == "collapse_single_parent"]
+        return phases + [
+            replace(collapse, name="collapse_again", depends_on=(), refires_after=())
+        ]
+
+    monkeypatch.setattr(optimization, "build_optimization_rule_plan", plan)
+    ncaa = Path(__file__).parent.parent / "modeling" / "ncaa"
+    sql = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=ncaa)
+    ).generate_sql((ncaa / "adhoc03.preql").read_text())[-1]
+    assert "count(distinct" in sql.lower()
+    assert "/ count(CASE" not in sql

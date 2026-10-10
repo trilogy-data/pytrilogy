@@ -18,7 +18,7 @@ import statistics
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -95,7 +95,7 @@ def run(runs: int, output: Path, label: str | None) -> dict:
     total_best = sum(f["best_ms"] for f in files)
     total_statements = sum(f["statements"] for f in files)
     record = {
-        "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
         "git_sha": _git("rev-parse", "--short", "HEAD"),
         "git_branch": _git("rev-parse", "--abbrev-ref", "HEAD"),
         "parser": "v2",

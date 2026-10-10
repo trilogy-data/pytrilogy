@@ -11,9 +11,15 @@ stops branching the moment one arm binds the class.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import replace
 
-from trilogy.core.models.build import BuildWhereClause
+from trilogy.core.enums import Derivation
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildDatasource,
+    BuildWhereClause,
+)
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.node_generators.presence_probe import (
     coalescing_axis_group,
@@ -31,6 +37,7 @@ from trilogy.core.processing.v4_helper.network_model import (
 
 def probe_owners(
     environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
     addresses: set[str],
     offered_by: dict[str, set[str]],
     datasource_ids: set[str],
@@ -53,7 +60,7 @@ def probe_owners(
             continue
         # `member_binding_datasources` orders best-presence-population first and
         # the probe node takes candidates[0]; anything else is a different scan.
-        carriers = member_binding_datasources(member, environment)
+        carriers = member_binding_datasources(member, datasources)
         carrier_ids = {c.identifier for c in carriers[:1]}
         pinned = carrier_ids & offered_by.get(address, set())
         if not pinned:
@@ -76,6 +83,7 @@ def pin_unoffered_probes(
     addresses: list[str],
     candidates: dict[str, SourceCandidate],
     environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
     equivalence: dict[str, str],
 ) -> dict[str, SourceCandidate]:
     """Bind a requested presence probe the graph offers off NO candidate to its
@@ -102,7 +110,7 @@ def pin_unoffered_probes(
         member = probe_member_address(address, environment)
         if member is None:
             continue
-        carriers = member_binding_datasources(member, environment)
+        carriers = member_binding_datasources(member, datasources)
         if not carriers:
             continue
         carrier_ids = {carriers[0].identifier}
@@ -117,7 +125,7 @@ def pin_unoffered_probes(
             if concept is not None and concept.lineage is not None
             else []
         ):
-            spellings = {argument.address, argument.canonical_address}
+            spellings = argument.spellings
             argument_concept = environment.concepts.get(argument.address)
             if argument_concept is not None:
                 spellings.add(argument_concept.canonical_address)
@@ -177,13 +185,84 @@ def _axis_arm_pinned(
     return False
 
 
+def requested_axis_groups(
+    terminals: list[str], environment: BuildEnvironment, equivalence: dict[str, str]
+) -> dict[str, set[str]]:
+    """Requested coalescing axis classes, mapped to their member addresses."""
+    groups: dict[str, set[str]] = {}
+    for address in terminals:
+        found = coalescing_axis_group(address, environment)
+        if found is None:
+            continue
+        canonical, members = found
+        groups[equivalence.get(canonical, canonical)] = set(members)
+    return groups
+
+
+def _row_lineage(concepts: Sequence[BuildConcept], axis: set[str]) -> set[str]:
+    """Addresses the outputs read per row of the axis: an aggregate not grouped
+    by the axis (a grand total) reads its inputs without their keys."""
+    seen: set[str] = set()
+    stack = list(concepts)
+    while stack:
+        concept = stack.pop()
+        if concept.address in seen:
+            continue
+        seen.add(concept.address)
+        if concept.lineage is None:
+            continue
+        if concept.derivation == Derivation.AGGREGATE and not (
+            concept.grain.components & axis
+        ):
+            continue
+        stack.extend(concept.lineage.concept_arguments)
+    return seen
+
+
+def axis_arms_delivered(
+    outputs: Sequence[BuildConcept],
+    environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
+) -> bool:
+    """Every arm of each projected coalescing axis is some output's own: the
+    statement reads (directly or under an aggregate) a column only that arm's
+    carriers bind. The contributor reading it brings the arm's keys, so each
+    request may read the axis off its own arm (`_axis_arm_pinned`) and the
+    assembly coalesces them. An arm no output reads is delivered only by
+    assembling the axis where it is requested."""
+    groups = requested_axis_groups([c.address for c in outputs], environment, {})
+    if not groups:
+        return True
+    axis = {a for canonical, members in groups.items() for a in {canonical, *members}}
+    read = _row_lineage(outputs, axis) - axis
+    for members in groups.values():
+        bound = {
+            member: set().union(
+                *(
+                    carrier.bound_spellings
+                    for carrier in member_binding_datasources(member, datasources)
+                )
+            )
+            for member in members
+        }
+        for member, addresses in bound.items():
+            if not addresses:
+                continue
+            others = set().union(*(v for k, v in bound.items() if k != member))
+            if not (addresses - others) & read:
+                return False
+    return True
+
+
 def axis_families(
     terminals: list[str],
     candidates: dict[str, SourceCandidate],
     environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
     equivalence: dict[str, str],
     address_grain: dict[str, frozenset[str]],
     conditions: BuildWhereClause | None,
+    arm_local: bool = False,
 ) -> dict[str, tuple[tuple[str, ...], ...]]:
     """Requested coalescing axis classes that must be family-assembled, mapped
     to per-member carrier candidates.
@@ -198,15 +277,12 @@ def axis_families(
 
     A group with a member no candidate carries (a rowset member) is left out:
     the search cannot complete it, and the rowset machinery that owns those
-    members already assembles the axis downstream. Arm-pinned requests are
-    likewise left out (see `_axis_arm_pinned`)."""
-    groups: dict[str, set[str]] = {}
-    for address in terminals:
-        found = coalescing_axis_group(address, environment)
-        if found is None:
-            continue
-        canonical, members = found
-        groups[equivalence.get(canonical, canonical)] = set(members)
+    members already assembles the axis downstream. When the request is
+    `arm_local` (an aggregate's input, which the aggregate's consumer
+    reassembles), arm-pinned requests are likewise left out (see
+    `_axis_arm_pinned`); a statement's own rows never are, since nothing above
+    them coalesces the other arms."""
+    groups = requested_axis_groups(terminals, environment, equivalence)
     if not groups:
         return {}
     axis_classes = {
@@ -225,7 +301,7 @@ def axis_families(
         for member in sorted(members):
             identifiers = {
                 carrier.identifier
-                for carrier in member_binding_datasources(member, environment)
+                for carrier in member_binding_datasources(member, datasources)
             }
             nodes = tuple(
                 node
@@ -245,7 +321,7 @@ def axis_families(
             for node in nodes
             if candidates[node].grain
         ]
-        if _axis_arm_pinned(
+        if arm_local and _axis_arm_pinned(
             terminals, axis_classes, condition_classes, carrier_grains, address_grain
         ):
             continue
@@ -270,5 +346,56 @@ def downgrade_axis_bindings(
             bindings[representative] = replace(
                 binding, strength=BindingStrength.PARTIAL
             )
+            out[node] = replace(candidate, bindings=bindings)
+    return out
+
+
+def _reads_only_axis(
+    address: str,
+    environment: BuildEnvironment,
+    axes: set[str],
+    equivalence: dict[str, str],
+) -> bool:
+    # a probe asks "did THIS arm match?": arm-local by design
+    if is_presence_probe(address):
+        return False
+    concept = environment.concepts.get(address) or environment.canonical_concepts.get(
+        address
+    )
+    if concept is None or concept.derivation is not Derivation.BASIC:
+        return False
+    if concept.lineage is None or not concept.lineage.concept_arguments:
+        return False
+    for argument in concept.lineage.concept_arguments:
+        representative = equivalence.get(argument.address, argument.address)
+        if representative in axes:
+            continue
+        if not _reads_only_axis(argument.address, environment, axes, equivalence):
+            return False
+    return True
+
+
+def drop_axis_scalar_bindings(
+    axes: set[str],
+    candidates: dict[str, SourceCandidate],
+    environment: BuildEnvironment,
+    equivalence: dict[str, str],
+) -> dict[str, SourceCandidate]:
+    """A scalar of a requested coalescing axis alone is a function of the
+    COALESCED key: one arm's scan computing it inline leaves it NULL on the
+    other arms' rows. Unbind it, so it is computed above the arms' merge."""
+    if not axes:
+        return candidates
+    out = dict(candidates)
+    for node, candidate in candidates.items():
+        dropped = [
+            representative
+            for representative, binding in candidate.bindings.items()
+            if not binding.stored
+            and representative not in axes
+            and _reads_only_axis(binding.address, environment, axes, equivalence)
+        ]
+        if dropped:
+            bindings = {k: v for k, v in candidate.bindings.items() if k not in dropped}
             out[node] = replace(candidate, bindings=bindings)
     return out

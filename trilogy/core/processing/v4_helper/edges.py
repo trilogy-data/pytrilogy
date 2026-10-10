@@ -63,6 +63,22 @@ def edge_kind(edges: EdgeMap, u: str, v: str) -> EdgeKind | None:
     return attrs.kind if attrs is not None else None
 
 
+def lineage_predecessors(graph: nx.DiGraph, edges: EdgeMap, node: str) -> list[str]:
+    return [
+        pred
+        for pred in graph.predecessors(node)
+        if edge_kind(edges, pred, node) == EdgeKind.LINEAGE
+    ]
+
+
+def lineage_successors(graph: nx.DiGraph, edges: EdgeMap, node: str) -> list[str]:
+    return [
+        succ
+        for succ in graph.successors(node)
+        if edge_kind(edges, node, succ) == EdgeKind.LINEAGE
+    ]
+
+
 def edges_of_kind(edges: EdgeMap, *kinds: EdgeKind) -> list[Edge]:
     wanted = set(kinds)
     return [edge for edge, a in edges.items() if a.kind in wanted]
@@ -96,10 +112,3 @@ def subgraph_of_kinds(
     graph: nx.DiGraph, edges: EdgeMap, *kinds: EdgeKind
 ) -> nx.DiGraph:
     return _subgraph(graph, edges_of_kind(edges, *kinds))
-
-
-def copy_edges(edges: EdgeMap) -> EdgeMap:
-    return {
-        edge: EdgeAttrs(kind=a.kind, phase=a.phase, alt_group=a.alt_group)
-        for edge, a in edges.items()
-    }

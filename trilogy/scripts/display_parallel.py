@@ -1,9 +1,7 @@
 """Display helpers for parallel execution output."""
 
 import threading
-from typing import TYPE_CHECKING, Any
-
-from typing_extensions import Self
+from typing import TYPE_CHECKING, Any, Self
 
 import trilogy.scripts.display_core as _core
 from trilogy.scripts.display_core import _FdStderrCapture, emit_event, is_json_mode

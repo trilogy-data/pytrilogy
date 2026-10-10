@@ -1095,10 +1095,24 @@ def _captured_network_requests(monkeypatch, model: str, query: str):
     captured = []
 
     def capturing_build(
-        concepts, environment, graph, conditions=None, deferred_conditions=None
+        concepts,
+        environment,
+        graph,
+        conditions=None,
+        deferred_conditions=None,
+        arm_local=False,
+        partial_ok=frozenset(),
     ):
         captured.append((concepts, environment, graph, conditions, deferred_conditions))
-        return real_build(concepts, environment, graph, conditions, deferred_conditions)
+        return real_build(
+            concepts,
+            environment,
+            graph,
+            conditions,
+            deferred_conditions,
+            arm_local,
+            partial_ok=partial_ok,
+        )
 
     monkeypatch.setattr(sp, "build_source_network", capturing_build)
     env = Environment()
@@ -1186,7 +1200,7 @@ class TestCoalescingAxisFamilies:
         pinned = [
             network
             for network, _ in captured
-            if {"local.sid", "local.cid"} & set(network.terminals)
+            if len({"local.sid", "local.cid"} & set(network.terminals)) == 1
         ]
         assert pinned, "no arm-scoped parent request was searched"
         for network in pinned:

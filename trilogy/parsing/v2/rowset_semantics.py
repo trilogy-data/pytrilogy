@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from dataclasses import replace as dc_replace
 from typing import TYPE_CHECKING
 
+from trilogy.core.constants import rowset_alias_prefix
 from trilogy.core.enums import ConceptSource, Derivation, Granularity
 from trilogy.core.models.author import (
     AggregateWrapper,
@@ -68,7 +69,7 @@ def _unmangle_alias_name(name: str, rowset_name: str) -> str:
     ``_buyers_a_cust_id``). ``rowset_name`` is exact here, so stripping
     the precise prefix is unambiguous even when names contain underscores.
     """
-    prefix = f"_{rowset_name}_"
+    prefix = rowset_alias_prefix(rowset_name)
     if name.startswith(prefix):
         return name[len(prefix) :]
     return name
@@ -186,8 +187,15 @@ def rowset_to_concepts_v2(
                 name=rowset.name,
                 derived_concepts=[y.reference for y in pre_output],
                 select=select_lineage,
+                scalar=rowset.scalar,
             ),
         )
+    if rowset.scalar:
+        for x in pre_output:
+            x.grain = Grain()
+            x.keys = set()
+            x.granularity = Granularity.SINGLE_ROW
+        return RowsetConceptResult(concepts=pre_output, alias_updates=alias_updates)
     default_grain = Grain.from_concepts([*pre_output])
     # The rowset's grain in its own (namespaced) output space — the select
     # grain remapped through `orig`, exactly as the dimension columns below

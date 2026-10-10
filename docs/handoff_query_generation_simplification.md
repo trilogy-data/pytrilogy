@@ -2,7 +2,7 @@
 
 What is left of the 2026-08 simplification audit. Everything that landed has
 been removed from this file; the git history is the record of that. Three items
-remain, plus a set of verdicts that exist to stop them being re-opened.
+remain (2.3(b), 2.1 step 4, 2.7), plus a set of verdicts that exist to stop them being re-opened.
 
 Pipeline stages as used below:
 
@@ -24,9 +24,10 @@ on inspection or coverage alone.
 Every item below is gated the same way: render SQL only (no DB) for every
 `query*.preql` under `tpc_ds_duckdb`, `tpc_ds_duckdb/aggregates` (working_path
 stays `tpc_ds_duckdb`) and `tpc_h`, and diff per statement against a
-same-process control leg. The ~80-line harness is described in
-`docs/handoff_invisible_contributor_joins.md` ("Reproduce"). Run the control
-leg from a cwd outside the repo with `PYTHONPATH=<worktree>`. A corpus-only
+base worktree with `local_scripts/sql_ab` (`corpus_sql.py` + `sqldiff.py`; see
+its README). Glob `tpc_ds_duckdb/aggregates` too: they are the
+`partial ... complete where` summary-table shapes a source-selection change
+re-routes first, and a per-directory glob skips them. A corpus-only
 gate is not sufficient on its own: it missed two keyless-join-guard raises in
 this stack that the full suite caught, so run `-m "not adventureworks_execution"`
 before landing anything here.
@@ -38,46 +39,7 @@ this stack shipped a silent cross join through a byte-identical corpus and a
 green suite. Any change to what a group's consumers see as their parent needs
 this gate.
 
-## 1. 3.6 One truth for partial/nullable (LANDED)
-
-Decision taken: a node's partial and nullable stamps are its empirical inputs
-(datasource columns, or the resolved parents' stamps) narrowed by its own
-proofs, computed at resolve so a widened projection is restamped; the
-QueryDatasource takes the stamp verbatim and nothing unions raw column flags
-back in. Non-projected columns are not join-typing input.
-
-- `select_node_v2.scan_stamps` is the scan rule (columns over projected
-  outputs, minus `partial_is_full` / membership-complete / condition non-null
-  proofs stored on the SelectNode); construction and resolve both call it.
-- `StrategyNode._resolve` and `GroupNode` inherit partials from the resolved
-  parents by address. `UnionNode` keeps only column-level `~` bindings (a
-  covering union completes table-level partiality).
-- `MergeNode` stamps outputs by `join_resolution.merge_partial_addresses`:
-  a fully preserved side (`preserved_sources`, left-deep over the resolved
-  join types) binding the address complete makes it complete; otherwise any
-  partial side keeps it partial.
-- `_collect_deep_partial_addresses` is deleted; join typing and the merge's
-  branch proofs read the sides' own stamps.
-
-Three consumers relied on the stale (empty) merge stamps and were tightened
-to their real requirement: `deduplicate_nodes` (a redundant parent needs
-every address it exposes bound by the survivor, complete ones complete, not
-"no partial anywhere"); the merge folds sibling parents whose `shape`
-(extent-agnostic identity plus resolved joins, recursively) matches, since
-extent ownership that changed no join is not a distinct relation; and
-`_is_filter_population` only defers to an extent-free branch's partner when
-that partner binds the axis complete. Do NOT sync merge-level partials back
-onto the node (discovery reads the node stamp for source completeness and
-starts refusing complete sources).
-
-Pins: `tests/core/processing/test_partial_nullable_stamps.py`,
-`tests/join_matrix`, `tests/engine/test_duckdb_return_only_anchor_elision.py`,
-`tests/modeling/test_nullability.py`, the modeling row suites. Corpus: 7
-statements change, all row-verified (FULL/RIGHT narrowed to LEFT where the
-fact side already carries every dimension member, a redundant order_items
-self-join dropped in thelook adhoc04, a join-order flip, CTE renames).
-
-## 2. 2.3(b) Filter-virtual wrapping (NOT LANDED)
+## 1. 2.3(b) Filter-virtual wrapping (NOT LANDED)
 
 RENDER decision that should be a planner decision. 2.3(a), the ORDER BY
 `min(leaf)` wrapping, landed; the planner emits it now and
@@ -107,32 +69,31 @@ rows, `tests/test_filtered_count_at_regroup_grain.py`,
 `tests/test_filter_cte_grouped_metric_projection.py`. Risk MEDIUM-HIGH
 (semantics), confidence MEDIUM.
 
-## 3. 2.1 step 4: the residual optimizer LEFT/RIGHT to INNER branches (decision)
+## 2. 2.1 step 4: the residual optimizer LEFT/RIGHT to INNER branches (decision)
 
 Steps 1-3 landed: the proof harvest is shared and
-`grain_utility.downgrade_join_for_proofs:462` narrows LEFT/RIGHT from the
+`grain_utility.downgrade_join_for_proofs` narrows LEFT/RIGHT from the
 planner's own proofs. Optimizer flips fell from 436 to 45, and the statements
 depending on the rule from 110 to 55.
 
 The remaining 45 all rest on proofs that only exist after planning: conditions
 the optimizer itself pushed, and cross-CTE consumer proofs
-(`_external_forced_map`, `join_upgrade.py:607`). So `_downgrade_base_join`
-(`join_upgrade.py:419`), the LEFT/RIGHT arms of `_downgrade`
-(`join_upgrade.py:325`) and the BaseJoin loop in `UpgradeJoinOnGuards.optimize`
-(`join_upgrade.py:759`, `:839`) stay unless pushed conditions become visible to
+(`join_upgrade._external_forced_map`). So `_downgrade_base_join`, the
+LEFT/RIGHT arms of `_downgrade` and the BaseJoin loop in
+`UpgradeJoinOnGuards.optimize` (all `join_upgrade.py`) stay unless pushed conditions become visible to
 the planner. That visibility is the decision; it is the same prerequisite as
 2.6's remaining sites.
 
-`SimplifyNullSafeJoins` (`null_safe_join.py:189`) exists only because join types
+`SimplifyNullSafeJoins` (`null_safe_join.py`) exists only because join types
 change after planning and leave stale NULLABLE modifiers. Re-measure it if the
 above ever moves; delete if it reaches 0.
 
-## 4. 2.7 symmetric coverage (optional, 0 firings today)
+## 3. 2.7 symmetric coverage (optional, 0 firings today)
 
-`outputs_with_scoped_join_mates` (`v4_node_generators/aggregate.py:102`) is
-generator-agnostic but wired only into `gen_aggregate` (`:155`). Wire it into
-`gen_basic` / `gen_filter` / `gen_window` only if a test shape needs it. Nothing
-fires today.
+`outputs_with_scoped_join_mates` (`v4_node_generators/aggregate.py`) is
+generator-agnostic and wired into `gen_aggregate` and the ROOT generator
+(`v4_node_generators/root.py`). Wire it into `gen_basic` / `gen_filter` /
+`gen_window` only if a test shape needs it. Nothing fires today.
 
 ## Closed: do not re-chase
 
@@ -195,8 +156,8 @@ them.
 - **Wrong stage but live**, for the record: outer-join key COALESCE
   (`dialect/base.py`), multi-source COALESCE, join-key COALESCE
   (`dialect/common.py`), COUNT to `coalesce(..., 0)`. The natural owner of the
-  last one is nullability stamping in `merge_node.py`, which is item 1's
-  territory.
+  last one is nullability stamping in `merge_node.py`
+  (`join_resolution.merge_partial_addresses` and the resolve-time stamps).
 - **Design-level note, not a handoff**: 448 planner FULLs "because partial" are
   narrowed by `_narrow_directionally` in 59 statements. That is the documented
   preserving-render contract (`docs/subset_union_join_design.md`) and conflicts

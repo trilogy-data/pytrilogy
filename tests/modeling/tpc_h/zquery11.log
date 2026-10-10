@@ -1,5 +1,5 @@
 query_id = "11"
-gen_length = 1313
+gen_length = 1254
 preql_size = 285
 comp_size = 581
 generated_sql = """
@@ -41,7 +41,6 @@ WHERE
     \"cooperative\".\"_virt_agg_sum_2511670338294675_wscope\" > \"thoughtful\".\"total_value\" * 0.0001
 
 GROUP BY
-    1,
-    \"cooperative\".\"_virt_agg_sum_2511670338294675_wscope\"
+    1
 ORDER BY 
     \"part_value\" desc"""

@@ -1,6 +1,6 @@
 """Dimension extent of a two-fact select under nullable fact FKs.
 
-See docs/handoff_multi_fact_nullable_fk_extent.md. The settled contract:
+The settled contract:
 
 - A required FK is an EQUAL-domain claim, so the merge of the two fact
   aggregates narrows to INNER: only members both facts cover survive.

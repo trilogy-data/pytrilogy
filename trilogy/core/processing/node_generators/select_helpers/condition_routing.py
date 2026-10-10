@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from enum import Enum, auto
 
 from trilogy.core.enums import ComparisonOperator
@@ -8,7 +9,6 @@ from trilogy.core.models.build import (
     BuildDatasource,
     BuildWhereClause,
 )
-from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
     condition_implies,
@@ -47,12 +47,9 @@ def datasource_condition_atom_state(
         address
         for column in datasource.columns
         if not column.is_nullable
-        for address in (column.concept.address, column.concept.canonical_address)
+        for address in column.concept.spellings
     }
-    if (
-        concept.address not in non_nullable
-        and concept.canonical_address not in non_nullable
-    ):
+    if concept.spellings.isdisjoint(non_nullable):
         return DatasourceConditionAtomState.KEEP
     if atom.operator == ComparisonOperator.IS_NOT:
         return DatasourceConditionAtomState.ALWAYS_TRUE
@@ -84,17 +81,11 @@ def absence_atoms(datasource: BuildDatasource, condition: BoolExpr) -> list[Bool
     """
     if not datasource.column_level_partial_addresses:
         return []
-    bound = {
-        address
-        for column in datasource.columns
-        for address in (column.concept.address, column.concept.canonical_address)
-    }
+    bound = datasource.bound_spellings
     out: list[BoolExpr] = []
     for atom in decompose_condition(condition):
         concept = _is_null_test(atom)
-        if concept is not None and (
-            concept.address in bound or concept.canonical_address in bound
-        ):
+        if concept is not None and concept.spellings & bound:
             out.append(atom)
     return out
 
@@ -176,7 +167,7 @@ def preexisting_conditions(
 
 
 def covered_conditions(
-    conditions: BuildWhereClause, environment: BuildEnvironment
+    conditions: BuildWhereClause, datasources: Iterable[BuildDatasource]
 ) -> BuildWhereClause | None:
     """Return condition atoms covered by a datasource's complete_where."""
     query_condition = flatten_conditions(conditions.conditional)
@@ -184,8 +175,8 @@ def covered_conditions(
     atom_str_map = {str(a): a for a in atoms}
     preserved = []
     seen: set[str] = set()
-    for ds in environment.datasources.values():
-        if not isinstance(ds, BuildDatasource) or not ds.non_partial_for:
+    for ds in datasources:
+        if not ds.non_partial_for:
             continue
         if not condition_implies(query_condition, ds.non_partial_for.conditional):
             continue
