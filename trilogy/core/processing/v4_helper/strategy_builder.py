@@ -5213,6 +5213,20 @@ def _apply_final_conditions(
     )
 
 
+def _gate_key_row_stream(
+    key: BuildConcept, attrs: dict[str, GroupAttrs], built: dict[str, StrategyNode]
+) -> str | None:
+    """The row stream computing a gate's derived key: a BASIC group, never the
+    gate's own feeder (which carries the key too). The select phase's first."""
+    hosts = sorted(
+        (gid.startswith("grp:[@"), gid)
+        for gid, node in built.items()
+        if attrs[gid].derivation == Derivation.BASIC
+        and any(o.address == key.address for o in node.output_concepts)
+    )
+    return hosts[0][1] if hosts else None
+
+
 def _assemble_final_node(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -5550,6 +5564,19 @@ def _assemble_final_node(
         and (c := _concept_at(environment, span)) is not None
     ]
     outputs = unique(outputs + axis_mates + region_keys, "address")
+    # A gate keyed by a column no contributor projects (`count(id) by genus`,
+    # genus derived from a scanned column) pairs on that key, as in
+    # `_apply_final_conditions`: carried hidden, or the merge joins on nothing.
+    if arg_nodes and (gate_keys := _gate_grain_keys(arg_concepts) - available):
+        _widen_merge_join_keys([*parents, *arg_nodes], environment, gate_keys)
+        # one no contributor can render (a key pinned to columns its rows
+        # lack) is joined in from the row stream computing it
+        carried = {o.address for p in parents for o in p.output_concepts}
+        for address in sorted(gate_keys - carried):
+            key = _concept_at(environment, address)
+            host = key and _gate_key_row_stream(key, attrs, built)
+            if host and built[host] not in parents:
+                parents = parents + [built[host]]
     parents = parents + arg_nodes
     merge_inputs = unique(
         [c for c in outputs if c.address not in pseudonym_only]

@@ -4,8 +4,9 @@
 `raw_species`, joins the gate's feeder back onto the rows on `genus`, a column
 no scan binds. A ROOT host widened its scan by the key and planned to nothing
 ("Could not resolve connections"); with a grouped output beside it the FINAL
-merge elected no contributor carrying `genus` and joined the feeder keyless.
-The `by raw_species` control always planned.
+merge never widened its row stream by `genus` and joined the feeder keyless;
+beside a keyless update column the select pins `genus`, so only the row
+stream computing it can carry it. The `by raw_species` control always planned.
 """
 
 from pathlib import Path
@@ -30,6 +31,14 @@ auto x_genus <- count(tree_id) by genus;
 auto x_species <- count(tree_id) by raw_species;
 auto cell <- cast(floor(raw_lat / 0.001) as bigint);
 auto anchor <- min(tree_id) by cell;
+
+property <*>.a_updated datetime;
+property <*>.b_updated datetime;
+auto updated_through <- greatest(a_updated, b_updated);
+datasource a_time (updated: a_updated)
+query '''SELECT TIMESTAMP '2026-01-01' AS updated''';
+datasource b_time (updated: b_updated)
+query '''SELECT TIMESTAMP '2026-01-02' AS updated''';
 
 root partial datasource part_a (
     tree_id: tree_id, city: city, data_source: xx_source, sp: ?raw_species, lat: ?raw_lat
@@ -76,6 +85,7 @@ where {gate};
     [
         "tree_id, city, data_source: xx_source, raw_species",
         "tree_id, city, data_source: xx_source, raw_species, anchor",
+        "tree_id, city, data_source: xx_source, raw_species, anchor, updated_through",
     ],
 )
 @pytest.mark.parametrize(
