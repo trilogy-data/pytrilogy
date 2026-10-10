@@ -43,6 +43,7 @@ from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
 from trilogy.utility import unique
 
 MAX_OPTIMIZATION_LOOPS = 10
+MAX_OPTIMIZATION_PASSES = 10
 
 
 @dataclass(frozen=True)
@@ -759,94 +760,43 @@ def optimize_ctes(
     # carried, non-selected root columns appear live to their parent CTEs.
     sort_select_output_processed(root_cte, select)
 
-    cte_lookup: dict[str, CTE | UnionCTE] = {c.name: c for c in input}
-    cte_lookup[root_cte.name] = root_cte
-
-    phase_actions: dict[str, bool] = {}
-    normalized = False
+    state = _PlanState(input, root_cte)
     rule_plan = build_optimization_rule_plan(
         having_alias=having_alias,
         domain_graph=domain_graph,
     )
     log_optimization_rule_plan(rule_plan)
-    for phase in rule_plan:
-        if phase.refires_after and not any(
-            phase_actions.get(name, False) for name in phase.refires_after
-        ):
-            logger.info(
-                optimization_log(
-                    "Driver",
-                    f"Skipping {phase.name}; refire triggers "
-                    f"{list(phase.refires_after)} made no changes",
-                )
-            )
-            phase_actions[phase.name] = False
-            continue
-        rule = phase.make_rule()
-        before = plan_trace.cte_snapshot([*input, root_cte])
-        phase_merged: dict[str, str] = {}
-        loops = 0
-        complete = False
-        phase_changed = False
-        while not complete and (loops <= MAX_OPTIMIZATION_LOOPS):
-            actions_taken = False
-            look_at = unique([root_cte, *reversed(input)], property="name")
-            look_at = _optimization_visit_order(rule, look_at)
-            inverse_map = gen_inverse_map(look_at)
-            for cte in look_at:
-                opt, merged = rule.optimize(cte, inverse_map)
-                actions_taken = actions_taken or opt
-                if merged:
-                    phase_merged.update(merged)
-                    cte_lookup.update({c.name: c for c in input})
-                    cte_lookup[root_cte.name] = root_cte
-                    if root_cte.name in merged:
-                        new_root_name = merged[root_cte.name]
-
-                        if new_root_name in cte_lookup:
-                            parent = cte_lookup[new_root_name]
-                            carry_root_contract(root_cte, parent)
-                            root_cte = parent
-                            logger.info(
-                                optimization_log(
-                                    "Driver",
-                                    f"Remapped root_cte to {new_root_name}",
-                                )
-                            )
-                    input = [c for c in input if c.name not in merged]
-            complete = not actions_taken
-            phase_changed = phase_changed or actions_taken
-            loops += 1
-        if not complete:
-            logger.warning(
-                optimization_log(
-                    "Driver",
-                    f"{phase.name} hit MAX_OPTIMIZATION_LOOPS={MAX_OPTIMIZATION_LOOPS} "
-                    "without converging",
-                )
-            )
-        # an unchanged phase leaves an already-normalized list as it was
-        if phase_changed or not normalized:
-            input = reorder_ctes(filter_irrelevant_ctes(input, root_cte))
-            normalized = True
-        _trace_phase(
-            phase.name,
-            type(rule).__name__,
-            loops,
-            before,
-            input,
-            root_cte,
-            phase_merged,
-        )
-        phase_actions[phase.name] = phase_changed
-        logger.info(
+    # A later phase can leave work for an earlier one (a column pruned, a
+    # WHERE moved), so the plan repeats until a pass changes nothing. Each
+    # phase already loops to its own fixpoint, so on a later pass it reruns
+    # only if some phase changed the plan since it last ran.
+    changes = 0
+    last_run: dict[str, int] = {}
+    for pass_index in range(1, MAX_OPTIMIZATION_PASSES + 1):
+        pass_changed: dict[str, bool] = {}
+        for phase in rule_plan:
+            if _phase_settled(
+                phase, pass_index, pass_changed, last_run.get(phase.name), changes
+            ):
+                pass_changed[phase.name] = False
+                continue
+            name = phase.name if pass_index == 1 else f"{phase.name}#pass{pass_index}"
+            changed = _run_phase(phase, name, state)
+            changes += changed
+            last_run[phase.name] = changes
+            pass_changed[phase.name] = changed
+        if not any(pass_changed.values()):
+            break
+    else:
+        logger.warning(
             optimization_log(
                 "Driver",
-                f"Finished {phase.name} ({type(rule).__name__}) "
-                f"after {loops} loop(s); changed={phase_changed}",
+                f"plan still changing after MAX_OPTIMIZATION_PASSES="
+                f"{MAX_OPTIMIZATION_PASSES}",
             )
         )
 
+    input, root_cte = state.input, state.root_cte
     before = plan_trace.cte_snapshot([*input, root_cte])
     if not supports_full_join:
         # The rewrite adds CTEs and repoints FROM bases, so every join-type
@@ -858,6 +808,105 @@ def optimize_ctes(
         "final sweep", "filter_irrelevant_ctes", 1, before, final, root_cte, {}
     )
     return final
+
+
+@dataclass
+class _PlanState:
+    input: list[CTE | UnionCTE]
+    root_cte: CTE | UnionCTE
+    normalized: bool = False
+
+
+def _phase_settled(
+    phase: OptimizationRulePlan,
+    pass_index: int,
+    pass_changed: dict[str, bool],
+    last_run: int | None,
+    changes: int,
+) -> bool:
+    """A phase nothing has changed since it last ran has nothing new to act
+    on. On the first pass a refire also waits for its triggers; a later pass
+    sweeps up whatever any phase left, so a refire reruns there like any
+    other phase."""
+    if (
+        pass_index == 1
+        and phase.refires_after
+        and not any(pass_changed.get(name, False) for name in phase.refires_after)
+    ):
+        logger.info(
+            optimization_log(
+                "Driver",
+                f"Skipping {phase.name}; refire triggers "
+                f"{list(phase.refires_after)} made no changes",
+            )
+        )
+        return True
+    return last_run == changes
+
+
+def _run_phase(phase: OptimizationRulePlan, name: str, state: _PlanState) -> bool:
+    rule = phase.make_rule()
+    before = plan_trace.cte_snapshot([*state.input, state.root_cte])
+    phase_merged: dict[str, str] = {}
+    loops = 0
+    complete = False
+    phase_changed = False
+    while not complete and (loops <= MAX_OPTIMIZATION_LOOPS):
+        actions_taken = False
+        look_at = unique([state.root_cte, *reversed(state.input)], property="name")
+        look_at = _optimization_visit_order(rule, look_at)
+        inverse_map = gen_inverse_map(look_at)
+        for cte in look_at:
+            opt, merged = rule.optimize(cte, inverse_map)
+            actions_taken = actions_taken or opt
+            if merged:
+                phase_merged.update(merged)
+                _remap_root(state, merged)
+                state.input = [c for c in state.input if c.name not in merged]
+        complete = not actions_taken
+        phase_changed = phase_changed or actions_taken
+        loops += 1
+    if not complete:
+        logger.warning(
+            optimization_log(
+                "Driver",
+                f"{name} hit MAX_OPTIMIZATION_LOOPS={MAX_OPTIMIZATION_LOOPS} "
+                "without converging",
+            )
+        )
+    # an unchanged phase leaves an already-normalized list as it was
+    if phase_changed or not state.normalized:
+        state.input = reorder_ctes(filter_irrelevant_ctes(state.input, state.root_cte))
+        state.normalized = True
+    _trace_phase(
+        name,
+        type(rule).__name__,
+        loops,
+        before,
+        state.input,
+        state.root_cte,
+        phase_merged,
+    )
+    logger.info(
+        optimization_log(
+            "Driver",
+            f"Finished {name} ({type(rule).__name__}) "
+            f"after {loops} loop(s); changed={phase_changed}",
+        )
+    )
+    return phase_changed
+
+
+def _remap_root(state: _PlanState, merged: dict[str, str]) -> None:
+    new_root_name = merged.get(state.root_cte.name)
+    if new_root_name is None:
+        return
+    parent = next((c for c in state.input if c.name == new_root_name), None)
+    if parent is None:
+        return
+    carry_root_contract(state.root_cte, parent)
+    state.root_cte = parent
+    logger.info(optimization_log("Driver", f"Remapped root_cte to {new_root_name}"))
 
 
 def _trace_phase(

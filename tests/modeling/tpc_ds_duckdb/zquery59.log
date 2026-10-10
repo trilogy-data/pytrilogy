@@ -1,5 +1,5 @@
 query_id = "59"
-gen_length = 6473
+gen_length = 6514
 preql_size = 2263
 comp_size = 2234
 generated_sql = """
@@ -105,7 +105,7 @@ SELECT
 FROM
     \"abundant\"
 WHERE
-    \"abundant\".\"year_flag\" = 1
+    \"abundant\".\"year_flag\" = 1 and \"abundant\".\"sun_sales\" / \"abundant\".\"_virt_window_lead_6256435185087398\" is not null
 )
 SELECT
     \"ss_store_store\".\"S_STORE_NAME\" as \"s_store_name1\",
@@ -121,9 +121,6 @@ SELECT
 FROM
     \"yummy\"
     INNER JOIN \"memory\".\"store\" as \"ss_store_store\" on \"yummy\".\"ss_store_sk\" = \"ss_store_store\".\"S_STORE_SK\"
-WHERE
-    \"yummy\".\"sun_sales_ratio\" is not null
-
 ORDER BY 
     \"s_store_name1\" asc nulls first,
     \"s_store_id1\" asc nulls first,

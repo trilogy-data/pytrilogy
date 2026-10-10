@@ -1,5 +1,5 @@
 query_id = "16"
-gen_length = 2266
+gen_length = 2178
 preql_size = 633
 comp_size = 821
 generated_sql = """
@@ -16,7 +16,7 @@ GROUP BY
     2),
 uneven as (
 SELECT
-    \"abundant\".\"cs_order_number\" as \"cs_order_number\"
+    \"abundant\".\"cs_order_number\" as \"multi_warehouse_sales\"
 FROM
     \"abundant\"
 GROUP BY
@@ -24,11 +24,6 @@ GROUP BY
 HAVING
     count(\"abundant\".\"cs_warehouse_sk\") > 1
 ),
-yummy as (
-SELECT
-    \"uneven\".\"cs_order_number\" as \"multi_warehouse_sales\"
-FROM
-    \"uneven\"),
 cheerful as (
 SELECT
     coalesce(\"cs_catalog_returns\".\"CR_ORDER_NUMBER\",\"cs_catalog_sales\".\"CS_ORDER_NUMBER\") as \"returned_orders\"
@@ -50,7 +45,7 @@ FROM
     INNER JOIN \"memory\".\"call_center\" as \"cs_call_center_call_center\" on \"cs_catalog_sales\".\"CS_CALL_CENTER_SK\" = \"cs_call_center_call_center\".\"CC_CALL_CENTER_SK\"
     INNER JOIN \"memory\".\"customer_address\" as \"cs_pos_ship_address_customer_address\" on \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" = \"cs_pos_ship_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
-    cast(\"cs_ship_date_date\".\"D_DATE\" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and \"cs_pos_ship_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and not exists (select 1 from cheerful where cheerful.\"returned_orders\" is not distinct from \"cs_catalog_sales\".\"CS_ORDER_NUMBER\") and exists (select 1 from yummy where yummy.\"multi_warehouse_sales\" is not distinct from \"cs_catalog_sales\".\"CS_ORDER_NUMBER\")
+    cast(\"cs_ship_date_date\".\"D_DATE\" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and \"cs_pos_ship_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and not exists (select 1 from cheerful where cheerful.\"returned_orders\" is not distinct from \"cs_catalog_sales\".\"CS_ORDER_NUMBER\") and exists (select 1 from uneven where uneven.\"multi_warehouse_sales\" is not distinct from \"cs_catalog_sales\".\"CS_ORDER_NUMBER\")
 
 ORDER BY 
     \"order_count\" desc

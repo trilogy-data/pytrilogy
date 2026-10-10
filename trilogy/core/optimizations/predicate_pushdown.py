@@ -668,8 +668,11 @@ class PredicatePushdown(OptimizationRule):
                 self.log(
                     f"All concepts [{row_conditions}] and existence conditions [{existence_conditions}] not block pushup of [{output_addresses}]found on {parent_cte.name} with existing {parent_cte.condition} and all it's {len(children)} children include same filter; pushing up {candidate}"
                 )
+                # parent-relative, as for the candidate: an atom pushed here
+                # earlier over a column the parent materializes is a WHERE
                 if parent_cte.condition and not is_scalar_condition(
-                    parent_cte.condition
+                    parent_cte.condition,
+                    materialized=_parent_materialized_addrs(parent_cte),
                 ):
                     self.log("Parent condition is not scalar, not safe to push up")
                     return False

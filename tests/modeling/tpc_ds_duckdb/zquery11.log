@@ -1,5 +1,5 @@
 query_id = "11"
-gen_length = 4500
+gen_length = 4338
 preql_size = 1867
 comp_size = 3006
 generated_sql = """
@@ -36,9 +36,6 @@ SELECT
     \"thoughtful\".\"sales_billing_customer_sk\" as \"sales_billing_customer_sk\"
 FROM
     \"thoughtful\"
-WHERE
-    \"thoughtful\".\"sales_billing_customer_sk\" is not null and (\"thoughtful\".\"sales_channel\" is not null and \"thoughtful\".\"sales_channel\" in ('STORE','WEB'))
-
 GROUP BY
     1
 HAVING
