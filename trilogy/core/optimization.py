@@ -344,13 +344,13 @@ def build_optimization_rule_plan(
     if opts.upgrade_condition_joins:
         plan.append(
             OptimizationRulePlan(
-                name="upgrade_join_on_guards.base_join_only",
-                rule_factory=lambda: UpgradeJoinOnGuards(base_join_only=True),
+                name="upgrade_join_on_guards.early",
+                rule_factory=lambda: UpgradeJoinOnGuards(left_only=True),
                 depends_on=_enabled_dependencies(
                     ("predicate_pushdown.initial", opts.predicate_pushdown)
                 ),
                 reason=(
-                    "makes guarded dim BaseJoins INNER before union dim pushdown "
+                    "makes guarded dim joins INNER before union dim pushdown "
                     "tries to match them"
                 ),
             )
@@ -363,7 +363,7 @@ def build_optimization_rule_plan(
                 depends_on=_enabled_dependencies(
                     ("predicate_pushdown.initial", opts.predicate_pushdown),
                     (
-                        "upgrade_join_on_guards.base_join_only",
+                        "upgrade_join_on_guards.early",
                         opts.upgrade_condition_joins,
                     ),
                 ),

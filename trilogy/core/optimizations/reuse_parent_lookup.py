@@ -23,7 +23,6 @@ from trilogy.core.enums import JoinType, Modifier
 from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.execute import (
     CTE,
-    BaseJoin,
     DatasourceCTE,
     InstantiatedUnnestJoin,
     Join,
@@ -119,14 +118,6 @@ def _carry(holder: CTE, lookup: CTE, addresses: list[str]) -> None:
 
 def _drop_lookup(consumer: CTE, join: Join, lookup: CTE, holder: CTE) -> None:
     consumer.joins = [j for j in consumer.joins if j is not join]
-    consumer.source.joins = [
-        bj
-        for bj in consumer.source.joins
-        if not (
-            isinstance(bj, BaseJoin)
-            and bj.right_datasource.identifier == lookup.source.identifier
-        )
-    ]
     consumer.source.datasources = [
         ds
         for ds in consumer.source.datasources

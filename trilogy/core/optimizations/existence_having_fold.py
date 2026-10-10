@@ -51,10 +51,8 @@ from trilogy.core.models.build import (
 from trilogy.core.models.core import DataType
 from trilogy.core.models.execute import (
     CTE,
-    BaseJoin,
     DatasourceCTE,
     Join,
-    QueryDatasource,
     UnionCTE,
     pair_matches_nulls,
 )
@@ -322,7 +320,6 @@ def _rebase_on_dimension(
     rows.condition = None
     rows.source.condition = None
     rows.inlined_parents = [dimension.right_cte]  # type: ignore[list-item]
-    rows.source.joins = []
     if padded:
         pair = (dimension.joinkey_pairs or [])[0]
         rows.joins = [
@@ -367,15 +364,6 @@ def _tighten_rejected_padding(aggregate: CTE, condition: BoolExpr) -> None:
         if raw is None or not _reads_from(aggregate, raw.safe_identifier) & proven:
             continue
         join.jointype = JoinType.INNER
-        for base_join in aggregate.source.joins:
-            if not isinstance(base_join, BaseJoin):
-                continue
-            right = base_join.right_datasource
-            underlying = (
-                right.base_datasource if isinstance(right, QueryDatasource) else right
-            )
-            if underlying is not None and underlying.identifier == raw.identifier:
-                base_join.join_type = JoinType.INNER
 
 
 def _read_through_rows(
@@ -411,7 +399,6 @@ def _read_through_rows(
             rows.source.source_map[column.address] = {aggregate.source}
             rows.hidden_concepts.discard(column.address)
     consumer.joins = []
-    consumer.source.joins = []
     consumer.parent_ctes = [rows]
     consumer.source.datasources = [rows.source]
     consumer.source.base_datasource = None
@@ -462,13 +449,6 @@ def _join_dimension_directly(consumer: CTE, rows: CTE, dimension: Join) -> None:
         a: {lookup.source if d is rows.source else d for d in sources}
         for a, sources in source.source_map.items()
     }
-    for base_join in source.joins:
-        if not isinstance(base_join, BaseJoin):
-            continue
-        if base_join.right_datasource is rows.source:
-            base_join.right_datasource = lookup.source
-        if base_join.left_datasource is rows.source:
-            base_join.left_datasource = lookup.source
     if source.base_datasource is rows.source:
         source.base_datasource = lookup.source
     if consumer.base_name_override == rows.name:

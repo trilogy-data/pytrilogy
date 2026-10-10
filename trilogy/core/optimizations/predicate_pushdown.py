@@ -15,7 +15,6 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import (
     CTE,
-    BaseJoin,
     DatasourceCTE,
     Join,
     UnionCTE,
@@ -935,9 +934,6 @@ class PredicatePushdownRemove(OptimizationRule):
         return any(
             isinstance(join, Join) and join.jointype in OUTER_JOIN_TYPES
             for join in cte.joins or []
-        ) or any(
-            isinstance(join, BaseJoin) and join.join_type in OUTER_JOIN_TYPES
-            for join in cte.source.joins or []
         )
 
     def optimize(

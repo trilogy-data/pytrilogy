@@ -38,8 +38,6 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import (
     CTE,
-    BaseJoin,
-    ConceptPair,
     Join,
     QueryDatasource,
     UnionCTE,
@@ -51,7 +49,6 @@ from trilogy.core.optimizations.base_optimization import MergedCTEMap, Optimizat
 from trilogy.core.optimizations.utils import (
     SENSITIVE_DERIVATIONS,
     accumulated_left_ctes,
-    base_datasource,
     cte_source_keys,
     join_padded_ctes,
     output_addresses,
@@ -71,7 +68,6 @@ from trilogy.core.processing.join_resolution import OUTER_JOIN_TYPES
 class _ProofState:
     direct: set[str]
     cte_keys: set[tuple[str, str]] = field(default_factory=set)
-    datasource_keys: set[tuple[str, str]] = field(default_factory=set)
     or_groups: list[list[set[str]]] = field(default_factory=list)
 
     def direct_intersects(self, addresses: set[str]) -> bool:
@@ -90,41 +86,14 @@ class _ProofState:
     def proves_cte_key(self, cte: CTE | UnionCTE, address: str) -> bool:
         return address in self.direct or (cte.name, address) in self.cte_keys
 
-    def proves_datasource_key(
-        self, datasource: BuildDatasource | QueryDatasource, address: str
-    ) -> bool:
-        return (
-            address in self.direct
-            or (datasource.identifier, address) in self.datasource_keys
-        )
-
     def proves_cte_present(self, cte: CTE | UnionCTE, addresses: set[str]) -> bool:
         return any((cte.name, address) in self.cte_keys for address in addresses)
-
-    def proves_datasource_present(
-        self,
-        datasource: BuildDatasource | QueryDatasource,
-        addresses: set[str],
-    ) -> bool:
-        return any(
-            (datasource.identifier, address) in self.datasource_keys
-            for address in addresses
-        )
 
     def add_cte_key(self, cte: CTE | UnionCTE, address: str) -> bool:
         key = (cte.name, address)
         if key in self.cte_keys:
             return False
         self.cte_keys.add(key)
-        return True
-
-    def add_datasource_key(
-        self, datasource: BuildDatasource | QueryDatasource, address: str
-    ) -> bool:
-        key = (datasource.identifier, address)
-        if key in self.datasource_keys:
-            return False
-        self.datasource_keys.add(key)
         return True
 
 
@@ -318,74 +287,6 @@ def _downgrade(
     return None
 
 
-def _downgrade_base_join(
-    cte: CTE,
-    base_join: BaseJoin,
-    proofs: _ProofState,
-) -> JoinType | None:
-    """Mirror of ``_downgrade`` for BaseJoins on ``cte.source.joins``,
-    restricted to LEFT_OUTER to INNER. ``left_all`` (everything other than the
-    right) over-includes inline-joined dims not really on this join's left,
-    which is fine for proving the right side but would risk a false
-    ``left_forced`` on the FULL path.
-
-    ``BaseJoin.right_datasource`` is typically a QDS wrapper whose underlying
-    BD is also registered on ``cte.source.datasources``; both count as the
-    right side so the BD's attributes do not leak into ``left_all`` and erase
-    ``right_only``.
-    """
-    current = base_join.join_type
-    if current != JoinType.LEFT_OUTER:
-        return None
-
-    right_ds = base_join.right_datasource
-    right_base = base_datasource(right_ds)
-    right_all = {c.address for c in right_ds.output_concepts}
-    if right_base is not None:
-        right_all |= {c.address for c in right_base.output_concepts}
-    left_all: set[str] = set()
-    for ds in cte.source.datasources:
-        if ds is right_ds or ds is right_base:
-            continue
-        left_all |= {c.address for c in ds.output_concepts}
-    right_only = right_all - left_all
-
-    pairs = base_join.concept_pairs or []
-    # Partials only block promotion when they render from a complete copy off
-    # the right datasource (see _blocked_partials).
-    right_partial = partial_addresses(right_ds)
-    if right_base is not None:
-        right_partial |= partial_addresses(right_base)
-    right_operand_ds = _source_datasources(right_ds, cte)
-    if right_base is not None:
-        right_operand_ds |= _source_datasources(right_base, cte)
-    right_block = _blocked_partials(cte, right_partial, right_operand_ds)
-    right_only = right_only - right_block
-    # Structurally non-null (CASE/raw) bindings do not force the side present.
-    right_only = right_only - opaque_binding_addresses(right_ds)
-    if right_base is not None:
-        right_only = right_only - opaque_binding_addresses(right_base)
-
-    def proves_key(address: str) -> bool:
-        if address in right_block:
-            return (right_ds.identifier, address) in proofs.datasource_keys
-        return proofs.proves_datasource_key(right_ds, address)
-
-    right_forced = (
-        proofs.direct_intersects(right_only)
-        or proofs.side_forced_by_or(right_only)
-        or proofs.proves_datasource_present(right_ds, right_all)
-        or (
-            right_base is not None
-            and proofs.proves_datasource_present(right_base, right_all)
-        )
-        or (bool(pairs) and all(proves_key(p.right.address) for p in pairs))
-    )
-    if right_forced:
-        return JoinType.INNER
-    return None
-
-
 def _add_inner_join_key_proofs(join: Join, proofs: _ProofState) -> bool:
     """Propagate only key non-nullness proven by rendered INNER predicates."""
     changed = False
@@ -404,40 +305,6 @@ def _add_inner_join_key_proofs(join: Join, proofs: _ProofState) -> bool:
             continue
         changed = proofs.add_cte_key(pair.cte, pair.left.address) or changed
         changed = proofs.add_cte_key(join.right_cte, pair.right.address) or changed
-    return changed
-
-
-def _add_inner_base_join_key_proofs(
-    base_join: BaseJoin,
-    proofs: _ProofState,
-) -> bool:
-    changed = False
-    groups: dict[tuple[str, str], list[ConceptPair]] = {}
-    for pair in base_join.concept_pairs or []:
-        groups.setdefault((pair.right.address, pair.left.address), []).append(pair)
-
-    for pairs in groups.values():
-        left_sources = {p.existing_datasource.identifier for p in pairs}
-        if len(left_sources) > 1:
-            changed = (
-                proofs.add_datasource_key(
-                    base_join.right_datasource, pairs[0].right.address
-                )
-                or changed
-            )
-            continue
-
-        pair = pairs[0]
-        if pair_matches_nulls(pair, base_join.modifiers):
-            continue
-        changed = (
-            proofs.add_datasource_key(pair.existing_datasource, pair.left.address)
-            or changed
-        )
-        changed = (
-            proofs.add_datasource_key(base_join.right_datasource, pair.right.address)
-            or changed
-        )
     return changed
 
 
@@ -595,14 +462,14 @@ class UpgradeJoinOnGuards(OptimizationRule):
     """Upgrade FULL/LEFT_OUTER/RIGHT_OUTER joins to a stricter form when the
     enclosing WHERE rejects the unmatched rows the OUTER join was preserving.
 
-    ``base_join_only=True`` restricts the rule to BaseJoins on
-    ``cte.source.joins`` for an early pass before UnionDimPushdown, so dim
-    joins become INNER without disturbing CTE-to-CTE joins.
+    ``left_only=True`` is the early pass before UnionDimPushdown: it only
+    makes LEFT joins INNER, on the CTE's own WHERE, so the dim joins that
+    rule matches are INNER.
     """
 
-    def __init__(self, base_join_only: bool = False) -> None:
+    def __init__(self, left_only: bool = False) -> None:
         super().__init__()
-        self.base_join_only = base_join_only
+        self.left_only = left_only
         self._forced_key: int | None = None
         self._forced: dict[str, set[str]] = {}
 
@@ -616,7 +483,7 @@ class UpgradeJoinOnGuards(OptimizationRule):
         group holds exactly the padded rows). Computed once per optimizer
         sweep; the sweep loops to fixpoint, so upgrades this pass enables feed
         the next."""
-        if self.base_join_only:
+        if self.left_only:
             return set()
         # A consumer's rejection applies post-limit; using it to drop rows
         # inside a row-limited CTE changes which rows fill the limit. The
@@ -645,15 +512,10 @@ class UpgradeJoinOnGuards(OptimizationRule):
     ) -> tuple[bool, MergedCTEMap | None]:
         if not isinstance(cte, CTE):
             return False, None
-        has_outer_cte_join = not self.base_join_only and any(
-            isinstance(j, Join) and j.jointype in OUTER_JOIN_TYPES
-            for j in (cte.joins or [])
-        )
-        has_outer_base_join = any(
-            isinstance(j, BaseJoin) and j.join_type in OUTER_JOIN_TYPES
-            for j in (cte.source.joins or [])
-        )
-        if not has_outer_cte_join and not has_outer_base_join:
+        upgradable = {JoinType.LEFT_OUTER} if self.left_only else set(OUTER_JOIN_TYPES)
+        if not any(
+            isinstance(j, Join) and j.jointype in upgradable for j in cte.joins or []
+        ):
             return False, None
 
         direct_proofs = (
@@ -679,55 +541,17 @@ class UpgradeJoinOnGuards(OptimizationRule):
         while True:
             proof_changed = False
             join_changed = False
-            if not self.base_join_only:
-                for join in cte.joins or []:
-                    if isinstance(join, Join) and join.jointype == JoinType.INNER:
-                        proof_changed = (
-                            _add_inner_join_key_proofs(join, proofs) or proof_changed
-                        )
-            for base_join in cte.source.joins or []:
-                if (
-                    isinstance(base_join, BaseJoin)
-                    and base_join.join_type == JoinType.INNER
-                ):
+            for join in cte.joins or []:
+                if isinstance(join, Join) and join.jointype == JoinType.INNER:
                     proof_changed = (
-                        _add_inner_base_join_key_proofs(base_join, proofs)
-                        or proof_changed
+                        _add_inner_join_key_proofs(join, proofs) or proof_changed
                     )
 
-            if not self.base_join_only:
-                for idx, join in enumerate(cte.joins or []):
-                    if (
-                        not isinstance(join, Join)
-                        or join.jointype not in OUTER_JOIN_TYPES
-                    ):
-                        continue
-                    target = _downgrade(cte, idx, join, proofs)
-                    if target is None or target == join.jointype:
-                        continue
-                    dropped = {
-                        JoinType.INNER: "unmatched",
-                        JoinType.LEFT_OUTER: "right-unmatched",
-                        JoinType.RIGHT_OUTER: "left-unmatched",
-                    }[target]
-                    self.log(
-                        f"{join.jointype.value}→{target.value} on {cte.name} for join with"
-                        f" {join.right_cte.name}: WHERE filters out"
-                        f" {dropped} rows that the OUTER join was preserving"
-                    )
-                    join.jointype = target
-                    if target == JoinType.INNER:
-                        _add_inner_join_key_proofs(join, proofs)
-                    join_changed = True
-
-            for base_join in cte.source.joins or []:
-                if (
-                    not isinstance(base_join, BaseJoin)
-                    or base_join.join_type not in OUTER_JOIN_TYPES
-                ):
+            for idx, join in enumerate(cte.joins or []):
+                if not isinstance(join, Join) or join.jointype not in upgradable:
                     continue
-                target = _downgrade_base_join(cte, base_join, proofs)
-                if target is None or target == base_join.join_type:
+                target = _downgrade(cte, idx, join, proofs)
+                if target is None or target == join.jointype:
                     continue
                 dropped = {
                     JoinType.INNER: "unmatched",
@@ -735,13 +559,13 @@ class UpgradeJoinOnGuards(OptimizationRule):
                     JoinType.RIGHT_OUTER: "left-unmatched",
                 }[target]
                 self.log(
-                    f"{base_join.join_type.value}→{target.value} on {cte.name} for "
-                    f"base join with {base_join.right_datasource.identifier}: WHERE "
-                    f"filters out {dropped} rows that the OUTER join was preserving"
+                    f"{join.jointype.value}→{target.value} on {cte.name} for join with"
+                    f" {join.right_cte.name}: WHERE filters out"
+                    f" {dropped} rows that the OUTER join was preserving"
                 )
-                base_join.join_type = target
+                join.jointype = target
                 if target == JoinType.INNER:
-                    _add_inner_base_join_key_proofs(base_join, proofs)
+                    _add_inner_join_key_proofs(join, proofs)
                 join_changed = True
 
             if not proof_changed and not join_changed:

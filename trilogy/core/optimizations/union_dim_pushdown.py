@@ -47,10 +47,10 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import (
     CTE,
-    BaseJoin,
     ConceptPair,
     CTEConceptPair,
     DatasourceCTE,
+    InstantiatedUnnestJoin,
     Join,
     QueryDatasource,
     SourceBinding,
@@ -83,6 +83,14 @@ def _datasource_wraps(
     target: BuildDatasource | QueryDatasource,
 ) -> bool:
     return base_datasource(datasource) is target
+
+
+def _joins_dim(
+    join: Join | InstantiatedUnnestJoin, dim_qds: BuildDatasource | QueryDatasource
+) -> bool:
+    return isinstance(join, Join) and _datasource_matches_dim(
+        join.right_cte.source, dim_qds
+    )
 
 
 def _datasource_matches_dim(
@@ -129,12 +137,12 @@ def _add_render_dependencies(
 
 
 def _find_dim_cte_for_qds(consumer: CTE, join_qds_id: str) -> CTE | UnionCTE | None:
-    """Locate the CTE the consumer's BaseJoin actually targets.
+    """Locate the consumer's own CTE for the dim a join targets.
 
-    Prefer exact binding identifiers. After ``InlineDatasource`` a consumer's
-    ``BaseJoin`` can render against the raw ``BuildDatasource`` while the graph
-    still holds a ``DatasourceCTE`` wrapper over that datasource. In that case,
-    fall back through ``base_datasource`` only when the match is unambiguous.
+    Prefer exact binding identifiers. After ``InlineDatasource`` a consumer
+    can render the raw ``BuildDatasource`` while the graph still holds a
+    ``DatasourceCTE`` wrapper over that datasource. In that case, fall back
+    through ``base_datasource`` only when the match is unambiguous.
     """
     binding_base_matches: list[CTE | UnionCTE] = []
     join_base_matches: list[CTE | UnionCTE] = []
@@ -250,7 +258,7 @@ def _narrow_null_extending_joins(
 
 def _joins_dim_through_container(
     consumer: CTE,
-    join: BaseJoin,
+    join: Join,
     dim_aliases: set[str],
     container_names: set[str],
 ) -> bool:
@@ -259,7 +267,7 @@ def _joins_dim_through_container(
     container does not own: pushing the dim into the container's branches
     would filter one side of the consumer while the others pass. A FK the
     consumer reads off the dim itself is read off the join's left side."""
-    for pair in join.concept_pairs or []:
+    for pair in join.joinkey_pairs or []:
         addr = pair.left.address
         sources = set(consumer.source_map.get(addr, [])) - dim_aliases
         if not sources:
@@ -347,8 +355,6 @@ class UnionDimPushdown(OptimizationRule):
         dedup CTE are orthogonal to a dim being pushed into the branches.
         """
         if cte.joins:
-            return False
-        if any(isinstance(j, BaseJoin) for j in cte.source.joins):
             return False
         return not len(cte.source.datasources) > 1
 
@@ -489,7 +495,7 @@ class UnionDimPushdown(OptimizationRule):
 
         The dim resolves down to its underlying ``BuildDatasource`` because
         ``source.datasources`` and ``source_map`` reference the BD form, while
-        ``BaseJoin.right_datasource`` is often a QDS wrapper with a different
+        the join's right CTE reads a QDS wrapper with a different
         ``safe_identifier``."""
         bd_by_id: dict[str, BuildDatasource] = {
             ds.identifier: ds
@@ -497,14 +503,14 @@ class UnionDimPushdown(OptimizationRule):
             if isinstance(ds, BuildDatasource)
         }
         result: dict[_DimKey, _DimDescriptor] = {}
-        for j in consumer.source.joins:
-            if not isinstance(j, BaseJoin):
+        for j in consumer.joins:
+            if not isinstance(j, Join):
                 continue
-            if j.join_type != JoinType.INNER or j.guard:
+            if j.jointype != JoinType.INNER or j.has_predicate:
                 continue
-            if not j.concept_pairs:
+            if not j.joinkey_pairs:
                 continue
-            join_qds = j.right_datasource
+            join_qds = j.right_cte.source
             if join_qds.identifier == consumer.source.identifier:
                 continue
             # A union-shaped dim pushed into another union's branches mangles
@@ -525,7 +531,7 @@ class UnionDimPushdown(OptimizationRule):
                     # No matching BD on the consumer: the dim is not inlineable
                     # into a flat table ref, so keep the QDS form.
                     dim_ds = join_qds
-            left_addrs = {p.left.address for p in j.concept_pairs}
+            left_addrs = {p.left.address for p in j.joinkey_pairs}
             if not left_addrs.issubset(union_outputs):
                 continue
             dim_aliases = {join_qds.safe_identifier, dim_ds.safe_identifier}
@@ -537,12 +543,12 @@ class UnionDimPushdown(OptimizationRule):
             ):
                 continue
             dim_grain_addrs = set(dim_ds.grain.components) if dim_ds.grain else set()
-            right_addrs = {p.right.address for p in j.concept_pairs}
+            right_addrs = {p.right.address for p in j.joinkey_pairs}
             if dim_grain_addrs and not dim_grain_addrs.issubset(right_addrs):
                 continue
             key = (
                 dim_ds.identifier,
-                frozenset((p.left.address, p.right.address) for p in j.concept_pairs),
+                frozenset((p.left.address, p.right.address) for p in j.joinkey_pairs),
             )
             where_atoms = _dim_local_atoms(consumer, dim_ds)
             consumer_uses = {c.address for c in consumer.source.input_concepts}
@@ -557,8 +563,8 @@ class UnionDimPushdown(OptimizationRule):
             # SELECT/CASE projection cannot be rerouted through the union's
             # output_columns because the render still references the original
             # dim alias; the dim and filter still push for early filtering.
-            fk_addrs = {p.left.address for p in j.concept_pairs} | {
-                p.right.address for p in j.concept_pairs
+            fk_addrs = {p.left.address for p in j.joinkey_pairs} | {
+                p.right.address for p in j.joinkey_pairs
             }
             where_atom_concepts: set[str] = set()
             for atom in where_atoms:
@@ -572,7 +578,7 @@ class UnionDimPushdown(OptimizationRule):
             ]
             # FK keys always ride along so the join condition has both sides.
             present = {c.address for c in dim_concepts}
-            for p in j.concept_pairs:
+            for p in j.joinkey_pairs:
                 if p.right.address not in present:
                     dim_concepts.append(p.right)
                     present.add(p.right.address)
@@ -583,7 +589,7 @@ class UnionDimPushdown(OptimizationRule):
             result[key] = _DimDescriptor(
                 dim_qds=dim_ds,
                 join_qds_id=join_qds.identifier,
-                key_pairs=list(j.concept_pairs),
+                key_pairs=list(j.joinkey_pairs),
                 dim_concepts=dim_concepts,
                 where_atoms=where_atoms,
                 strip_safe=strip_safe,
@@ -661,11 +667,7 @@ class UnionDimPushdown(OptimizationRule):
         return None
 
     def _can_push_into_branch(self, branch: CTE, d: _DimDescriptor) -> bool:
-        if any(
-            isinstance(j, BaseJoin)
-            and j.right_datasource.identifier == d.dim_qds.identifier
-            for j in branch.source.joins
-        ):
+        if any(_joins_dim(j, d.dim_qds) for j in branch.joins):
             return True
         branch_out_addrs = {c.address for c in branch.output_columns}
         return (
@@ -864,11 +866,7 @@ class UnionDimPushdown(OptimizationRule):
         d: _DimDescriptor,
         source_consumer: CTE | None = None,
     ) -> bool:
-        if any(
-            isinstance(j, BaseJoin)
-            and j.right_datasource.identifier == d.dim_qds.identifier
-            for j in branch.source.joins
-        ):
+        if any(_joins_dim(j, d.dim_qds) for j in branch.joins):
             return True
         branch_out_addrs = {c.address for c in branch.output_columns}
         if not d.fk_left_addrs.issubset(branch_out_addrs):
@@ -876,22 +874,6 @@ class UnionDimPushdown(OptimizationRule):
         left_ds = self._branch_left_datasource(branch, d.fk_left_addrs)
         if left_ds is None:
             return False
-        new_pairs = [
-            ConceptPair(
-                left=p.left,
-                right=p.right,
-                existing_datasource=left_ds,
-                modifiers=p.modifiers,
-            )
-            for p in d.key_pairs
-        ]
-        branch.source.joins.append(
-            BaseJoin(
-                right_datasource=d.dim_qds,
-                join_type=JoinType.INNER,
-                concept_pairs=new_pairs,
-            )
-        )
         add_datasource_sorted(branch, d.dim_qds)
         existing_input = {c.address for c in branch.source.input_concepts}
         existing_qds_out = {c.address for c in branch.source.output_concepts}
@@ -999,24 +981,10 @@ class UnionDimPushdown(OptimizationRule):
         # Source-map entries can carry the dim identifier as the dim CTE name,
         # the dim BD's safe_identifier, or the QDS wrapper's safe_identifier.
         dim_aliases = {dim_cte.name, d.dim_qds.safe_identifier}
-        for j in consumer.source.joins:
-            if isinstance(j, BaseJoin) and _datasource_wraps(
-                j.right_datasource, d.dim_qds
-            ):
-                dim_aliases.add(j.right_datasource.safe_identifier)
-
-        # j.right_datasource may be a QDS wrapper over the tracked BD form.
-        def _is_dim_basejoin(j) -> bool:
-            if not isinstance(j, BaseJoin):
-                return False
-            rd = j.right_datasource
-            if rd.identifier == d.dim_qds.identifier:
-                return True
-            return _datasource_wraps(rd, d.dim_qds)
-
-        consumer.source.joins = [
-            j for j in consumer.source.joins if not _is_dim_basejoin(j)
-        ]
+        for j in consumer.joins:
+            if _joins_dim(j, d.dim_qds):
+                assert isinstance(j, Join)
+                dim_aliases.add(j.right_cte.source.safe_identifier)
         consumer.joins = [
             j
             for j in consumer.joins
@@ -1037,16 +1005,14 @@ class UnionDimPushdown(OptimizationRule):
             for keyed in join.cte_bindings():
                 if keyed.cte.name == dim_cte.name:
                     keyed.cte = union
-        still_used = any(_is_dim_basejoin(j) for j in consumer.source.joins)
-        if not still_used:
-            consumer.source.datasources = [
-                ds
-                for ds in consumer.source.datasources
-                if not _datasource_matches_dim(ds, d.dim_qds)
-            ]
-            consumer.parent_ctes = [
-                p for p in consumer.dependency_nodes() if p.name != dim_cte.name
-            ]
+        consumer.source.datasources = [
+            ds
+            for ds in consumer.source.datasources
+            if not _datasource_matches_dim(ds, d.dim_qds)
+        ]
+        consumer.parent_ctes = [
+            p for p in consumer.dependency_nodes() if p.name != dim_cte.name
+        ]
         # Dim concepts now resolve via the union CTE.
         union_outputs_now = {c.address for c in union.output_columns}
         for c in d.dim_concepts:
