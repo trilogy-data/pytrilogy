@@ -241,7 +241,9 @@ def _fold_distinct_rewritable_buckets(
     GROUP BY key beside the finer-grain rows). Deliberately NOT an FD closure:
     `post_id` FD-determines `user_id`, but a count of `user_id` beside
     post-grain sums must still count over the USER population, not the users
-    reachable through posts."""
+    reachable through posts. Nor onto a stream that binds a counted key
+    partially (a `~order_id` shipments fact): it carries only a subset of the
+    key's values."""
     distinct_by_key: dict[AggKey, set[str]] = defaultdict(set)
     changed = True
     while changed:
@@ -263,6 +265,12 @@ def _fold_distinct_rewritable_buckets(
                 if not target_grain or target_grain == target[2]:
                     continue
                 if not (set(input_grain) <= set(target_grain) | set(target[2])):
+                    continue
+                if any(
+                    d.counted_key in t.aggregate_partial_keys
+                    for _, d in members
+                    for _, t in entries[target]
+                ):
                     continue
                 entries[target].extend(members)
                 distinct_by_key[target] |= {d.address for _, d in members}

@@ -95,8 +95,11 @@ def carry_child_state(parent: CTE, cte: CTE) -> None:
     Partiality: a dropped partial mark lets UpgradeJoinOnGuards read a proof
     on a key the merged CTE binds partially (a region domain's span on the
     solid stream) as forcing it present, and INNER-narrow the join that pads
-    it. LIMIT is the last logical operation of a SELECT, so the child's limit
-    and ORDER BY apply unchanged to the merged CTE."""
+    it. DISTINCT counts: the child's aggregates now render over the parent's
+    rows, the stream that repeats their counted keys. LIMIT is the last
+    logical operation of a SELECT, so the child's limit and ORDER BY apply
+    unchanged to the merged CTE."""
+    parent.distinct_counts = parent.distinct_counts | cte.distinct_counts
     nullable_addresses = {c.address for c in parent.nullable_concepts}
     for column in cte.nullable_concepts:
         if column.address not in nullable_addresses:

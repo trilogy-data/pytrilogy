@@ -304,6 +304,9 @@ class ConceptAttrs:
     # key). Such a count may share a finer-grain sibling input stream by
     # rendering COUNT(DISTINCT ...) instead of dedup-then-COUNT.
     aggregate_distinct_rewritable: bool = False
+    # Keys a datasource feeding this aggregate's inputs binds partially: a
+    # rewritable count of one cannot share this aggregate's stream.
+    aggregate_partial_keys: frozenset[str] = frozenset()
     # the key a COUNT counts (`count(order_id)`), whatever its input grain
     counted_key: str | None = None
     # the aggregate's function, None for any other concept

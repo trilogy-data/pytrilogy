@@ -203,6 +203,7 @@ class GroupNode(StrategyNode):
             hidden_concepts=self.hidden_concepts,
             condition=self.conditions,
             ordering=self.ordering,
+            distinct_counts=self.distinct_counts,
         )
         return base
 

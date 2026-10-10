@@ -346,8 +346,8 @@ def _reads_aggregate_differently(
 ) -> bool:
     """After the fold `concept` renders from lineage beside the parent's own
     aggregates, re-deriving any it reads. An aggregate the parent renders from
-    a rewritten lineage (COUNT made COUNT(DISTINCT) for a finer input stream)
-    would then render two ways in one SELECT."""
+    a rewritten copy of its lineage (a first-row read over a repeating stream,
+    a region-named argument) would then render two ways in one SELECT."""
     for arg in concept.concept_arguments:
         lineage = rendered.get(arg.address)
         if lineage is not None and lineage != arg.lineage:

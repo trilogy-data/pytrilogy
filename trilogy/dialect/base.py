@@ -272,6 +272,20 @@ def _aggregate_over_collapsed_filter(
     return any(cte.filter_collapses_to_grain(x) for x in agg.function.concept_arguments)
 
 
+def _aggregate_operator(cte: "CTE | UnionCTE", c: BuildConcept) -> FunctionType:
+    """A COUNT this CTE computes over a stream repeating its counted key
+    renders DISTINCT (`QueryDatasource.distinct_counts`)."""
+    assert isinstance(c.lineage, BuildAggregateWrapper)
+    operator = c.lineage.function.operator
+    if (
+        operator == FunctionType.COUNT
+        and isinstance(cte, CTE)
+        and c.address in cte.distinct_counts
+    ):
+        return FunctionType.COUNT_DISTINCT
+    return operator
+
+
 def _existence_alias(target: str, cte: "CTE | UnionCTE | None") -> str:
     """The name a membership subselect reads its set under. Reusing an alias
     the outer FROM already binds would shadow it, so the probe would read the
@@ -1478,17 +1492,16 @@ class BaseDialect:
                 rval = f"({self.render_expr(c.lineage, cte=cte, raise_invalid=raise_invalid)})"
             elif isinstance(c.lineage, AGGREGATE_ITEMS):
                 args = [self.render_expr(v, cte) for v in c.lineage.function.arguments]
+                operator = _aggregate_operator(cte, c)
                 if cte.group_to_grain:
                     if _aggregate_over_collapsed_filter(cte, c.lineage):
-                        rval = self.FUNCTION_GRAIN_MATCH_MAP[
-                            c.lineage.function.operator
-                        ](args, [])
+                        rval = self.FUNCTION_GRAIN_MATCH_MAP[operator](args, [])
                     else:
-                        rval = self.FUNCTION_MAP[c.lineage.function.operator](args, [])
+                        rval = self.FUNCTION_MAP[operator](args, [])
                 elif _aggregate_collapse_safe(cte, c.lineage):
                     # at (or beyond) the aggregate's grain: agg(x) == x (the
                     # single-row collapse formula per operator).
-                    rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[c.lineage.function.operator](args, [])}"
+                    rval = f"{self.FUNCTION_GRAIN_MATCH_MAP[operator](args, [])}"
                 else:
                     # A global (`by *`) aggregate in a keyed, non-grouping CTE:
                     # the collapse would silently turn it into each row's own

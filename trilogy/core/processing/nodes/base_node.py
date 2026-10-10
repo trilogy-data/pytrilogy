@@ -216,6 +216,9 @@ class StrategyNode:
     # The group-graph group whose build produced this node; copies keep it.
     # Read by the plan trace only.
     origin_group: str | None = None
+    # COUNT outputs an aggregate node renders DISTINCT
+    # (`QueryDatasource.distinct_counts`); copies keep it.
+    distinct_counts: frozenset[str] = frozenset()
 
     def __init__(
         self,
@@ -582,6 +585,7 @@ class StrategyNode:
         """Carry the marks a copy keeps that no constructor takes."""
         node.region_spans = self.region_spans
         node.origin_group = self.origin_group
+        node.distinct_counts = self.distinct_counts
         return node
 
 

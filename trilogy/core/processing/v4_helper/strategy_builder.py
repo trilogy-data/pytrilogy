@@ -5630,28 +5630,6 @@ def _assemble_final_node(
     )
 
 
-def _apply_count_distinct_rewrites(
-    outputs: list[BuildConcept], distinct_addrs: frozenset[str]
-) -> list[BuildConcept]:
-    """Render flagged COUNT members as COUNT(DISTINCT ...). These were folded
-    onto a finer-grain sibling input stream (`aggregate_distinct_addrs`): the
-    dedup their own key-grain input stream would have performed is exactly
-    DISTINCT on the counted key value."""
-    rewritten: list[BuildConcept] = []
-    for concept in outputs:
-        if concept.address in distinct_addrs and isinstance(
-            concept.lineage, BuildAggregateWrapper
-        ):
-            function = dc_replace(
-                concept.lineage.function, operator=FunctionType.COUNT_DISTINCT
-            )
-            concept = dc_replace(
-                concept, lineage=dc_replace(concept.lineage, function=function)
-            )
-        rewritten.append(concept)
-    return rewritten
-
-
 def _first_row_marker(partition: list[BuildConcept]) -> BuildConcept:
     """`row_number() over (partition by <partition>)`: 1 on one row per tuple."""
     lineage = BuildNumberingWindowItem(
@@ -5808,8 +5786,6 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     if not outputs:
         ctx.unbuilt[gid] = outputs
         return None
-    if derivation == Derivation.AGGREGATE and a.aggregate_distinct_addrs:
-        outputs = _apply_count_distinct_rewrites(outputs, a.aggregate_distinct_addrs)
     primary_addrs = set(a.primary_members)
     twin_reused: dict[str, bool] = (
         {
@@ -6211,6 +6187,8 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
             depth=depth,
             arm_local=arm_local,
         )
+        if node is not None and derivation == Derivation.AGGREGATE:
+            node.distinct_counts = frozenset(a.aggregate_distinct_addrs)
     # a generator may hand back a parent's node; that one keeps its group
     if node is not None and node.origin_group is None:
         node.origin_group = gid

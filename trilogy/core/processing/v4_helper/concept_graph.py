@@ -39,6 +39,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import decompose_condition
+from trilogy.core.processing.discovery_utility import get_upstream_concepts
 from trilogy.core.processing.node_generators.presence_probe import (
     is_presence_probe,
     member_binding_datasources,
@@ -1282,7 +1283,8 @@ def _aggregate_distinct_rewritable(
     never rewritable: its count population is that table's full key set, while
     a sibling fact stream only carries the key values present in the fact
     (`count(user_id)` beside post-fact sums must still count post-less
-    users)."""
+    users). A sibling whose stream binds the key partially is refused at the
+    fold (`ConceptAttrs.aggregate_partial_keys`)."""
     content = _counted_key(concept)
     if content is None:
         return False
@@ -1293,6 +1295,22 @@ def _aggregate_distinct_rewritable(
         set(datasource.grain.components) <= content_identities
         and datasource.grain.components
         for datasource in datasources
+    )
+
+
+def _aggregate_partial_keys(
+    concept: BuildConcept, datasources: Sequence[BuildDatasource]
+) -> frozenset[str]:
+    """Keys a datasource binding one of `concept`'s inputs marks `~`: a row
+    stream read for it may carry only a subset of their values. A partition's
+    `complete where` partiality is not one; the covering union heals it."""
+    upstream = get_upstream_concepts(concept)
+    return frozenset(
+        address
+        for datasource in datasources
+        if upstream & {c.address for c in datasource.output_concepts}
+        for partial in datasource.column_level_partial_concepts
+        for address in (partial.address, *partial.pseudonyms)
     )
 
 
@@ -1531,6 +1549,11 @@ def _add_concept(
             and _aggregate_distinct_rewritable(
                 concept, datasources, aggregate_input_grain, out_grain
             )
+        ),
+        aggregate_partial_keys=(
+            _aggregate_partial_keys(concept, datasources)
+            if aggregate_input_grain
+            else frozenset()
         ),
         counted_key=counted.address if (counted := _counted_key(concept)) else None,
         aggregate_operator=(

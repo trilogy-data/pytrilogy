@@ -291,7 +291,7 @@ select
 def test_fold_never_renders_a_rewritten_count_two_ways(monkeypatch):
     """`count(id ? home)` counts over a stream that repeats ids, so the planner
     renders it COUNT(DISTINCT). A ratio over it folded into the same SELECT
-    would re-derive the count from its own lineage, without DISTINCT."""
+    re-derives the count there, and must render it DISTINCT too."""
     from dataclasses import replace
     from pathlib import Path
 
