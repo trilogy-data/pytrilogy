@@ -6,3 +6,9 @@ reason = "the user region's domain LEFT-joins one CTE of order_items INNER order
 
 ["tpc_ds_duckdb/zquery11.log"]
 reason = "applies the outer row WHERE (channel, year) that main dropped; the extra scan is the cost of a correct plan"
+
+["tpc_ds_duckdb/zquery04.log"]
+reason = "the fixpoint collapses the year-total and customer CTEs into the final SELECT (two fewer CTEs); the WHERE can no longer alias the aggregates so it re-renders them; same rows"
+
+["tpc_ds_duckdb/zquery31.log"]
+reason = "the fixpoint collapses the quarterly-sums CTE into the final SELECT (one fewer CTE); HAVING and the ratios re-render the sums they can no longer alias; the dropped channel WHERE was implied by the two union arms; same rows"
