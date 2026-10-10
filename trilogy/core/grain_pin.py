@@ -248,9 +248,16 @@ def _restates_outputs(concept: Concept, outputs: set[str]) -> bool:
     )
 
 
-def _reads(address: str, target: str, environment: Environment) -> bool:
+def _reads(
+    address: str, target: str, environment: Environment, merged: Mapping[str, str]
+) -> bool:
     """`address` is derived from `target`: a select key computed from the
-    pinned value cannot be one of its inputs."""
+    pinned value cannot be one of its inputs. A merged key is read through
+    every member of its merge (`merge merged_species into species` leaves
+    `species` lineage-less, its value computed from `merged_species`)."""
+    members: dict[str, set[str]] = {}
+    for member, canonical in merged.items():
+        members.setdefault(canonical, {canonical}).add(member)
     seen: set[str] = set()
     stack = [address]
     while stack:
@@ -258,6 +265,7 @@ def _reads(address: str, target: str, environment: Environment) -> bool:
         if current in seen:
             continue
         seen.add(current)
+        stack.extend(members.get(merged.get(current, current), ()))
         concept = _lookup(current, {}, environment)
         if concept is None or concept.lineage is None:
             continue
@@ -355,7 +363,7 @@ def pin_keys(
             # a table holding the output column carries the reads beside it
             if address != owner and not _held_beside(reads, address, graph, bound)
             for k in ks
-            if k != owner and not (owner and _reads(k, owner, environment))
+            if k != owner and not (owner and _reads(k, owner, environment, merged))
         }
         own = {merged.get(k, k) for k in _own_keys(expr, environment, keys)}
         uncovered = {k for k in keys - own if not _always_beside(own, k, graph, bound)}
