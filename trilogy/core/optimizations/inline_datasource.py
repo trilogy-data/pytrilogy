@@ -156,6 +156,14 @@ def _can_inline_filtered_parent(
 ) -> bool:
     if not parent.condition or not is_sole_consumer(cte, parent, inverse_map):
         return False
+    # the WHERE moves onto the consumer, which binds only the raw columns; a
+    # concept the scan computes (a presence probe) would render as no column
+    root = parent.source.base_datasource
+    if not isinstance(root, BuildDatasource):
+        return False
+    columns = {c.address for c in root.output_concepts}
+    if any(c.address not in columns for c in parent.condition.row_arguments):
+        return False
     return all(
         isinstance(join, Join) and join.jointype == JoinType.INNER for join in cte.joins
     )
