@@ -117,13 +117,36 @@ FULL in the stale BaseJoin while the Join rendered INNER, which blocked union
 dim pushdown. The dim and its week filter now sit inside each union branch:
 same rows, 120ms -> 72ms at sf=1, +350 chars.
 
-Not unified into one class: `BaseJoin` names datasources and `Join` names
-CTEs, which only exist after build. `QueryDatasource.joins` stays as the
-plan-time record. `strip_redundant_not_null` still walks it on purpose, as an
-over-approximate "could be NULL" ground truth. A stale or missing outer join
-there only keeps a guard.
+Then unified into one class: `Join[Node]` carries a join at every tier.
+`NodeJoin` (strategy nodes), `BaseJoin` (datasources) and the CTE `Join` were
+three copies of one shape; `ConceptPair`/`CTEConceptPair`,
+`GuardTerm`/`CTEGuardTerm` and `UnnestJoin`/`InstantiatedUnnestJoin` the
+same. `bind(node_for)` carries a join to the next tier's nodes
+(`MergeNode.translate_node_joins` resolves, `base_join_to_join` maps
+datasources to CTEs) and `repoint(node_for)` rewrites one in place
+(`replace_dependency`, union dim pushdown, graph canonicalization). The
+aliases `SourceJoin` / `CTEJoin` / `NodeJoin` name the tiers in annotations.
+0 corpus plans move.
 
-The rest of the QDS mirror is still maintained by hand: `join_hoist` and
-`union_dim_pushdown` still append the dim to `source.datasources`,
-`source_map` and `input_concepts`. Dropping that is the next step if the
-mirror is to go.
+A concept-keyed join (`concepts=`, no pairs) keeps its concepts while
+planning: planning reads it apart from pairs
+(`grain_utility._joins_a_coalescing_relation` treats it as a member with no
+pairing to read), so folding it into pairs early would not be a refactor.
+`bound_keys()` folds it when the join is bound onto CTEs, as before.
+
+`QueryDatasource.joins` stays as the plan-time record. `strip_redundant_not_null`
+still walks it on purpose, as an over-approximate "could be NULL" ground
+truth; a stale or missing outer join there only keeps a guard.
+
+### The rest of the QDS is NOT a mirror
+
+The rules also write `cte.source.datasources` / `source_map` /
+`input_concepts`. Deleting those writes in `join_hoist` breaks q35 and q69
+with `INVALID_ALIAS`: after build, the QueryDatasource is the CTE's FROM
+model. `base_datasource` picks the FROM table (`source_address`,
+`base_alias`, `quote_address`), `CTE.get_alias` falls back to
+`self.source.get_alias` for a raw or inlined table's columns, and
+`inline_parent_datasource` rewrites it deliberately so later rules see a
+direct scan. Removing it means giving the CTE its own FROM model
+(base table + inlined tables + parents as bindings) and moving the render
+lookup onto it: a redesign of the render path, not a cleanup.
