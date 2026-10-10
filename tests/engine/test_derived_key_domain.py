@@ -5,7 +5,6 @@ grain must never change a query's rows.
 """
 
 from dataclasses import replace
-from functools import cache
 
 import pytest
 
@@ -19,6 +18,7 @@ from tests.helpers.models import (
     PARTIAL_PROPERTY_SOURCE,
 )
 from tests.helpers.rows import (
+    ExecutorCache,
     customer_twins,
     executor_for,
     sorted_rows,
@@ -28,8 +28,15 @@ from tests.helpers.rows import (
 from trilogy.core import optimization
 from trilogy.executor import Executor
 
-_twins = cache(twins)
-_customer_twins = cache(customer_twins)
+_twins = ExecutorCache(twins)
+_customer_twins = ExecutorCache(customer_twins)
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _release_executors():
+    yield
+    _twins.close()
+    _customer_twins.close()
 
 
 def _labelled(label: str, *queries: str) -> list:

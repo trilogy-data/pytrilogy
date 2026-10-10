@@ -10,14 +10,12 @@ value, and `targets` has a row for it. Bucket `z` has no order: the bucket
 region."""
 
 from decimal import Decimal as D
-from functools import cache
 
 import pytest
 
 from tests.helpers.models import LINE_ITEMS
-from tests.helpers.rows import executor_for, sorted_rows
+from tests.helpers.rows import ExecutorCache, executor_for, sorted_rows
 from trilogy import Dialects
-from trilogy.executor import Executor
 
 _BASE = """
 key customer_id int;
@@ -137,9 +135,13 @@ select 102, 2, 30, 'b', 'web', 2022
 )
 
 
-@cache
-def _executor(model: str) -> Executor:
-    return executor_for(model)
+_executor = ExecutorCache(executor_for)
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _release_executors():
+    yield
+    _executor.close()
 
 
 @pytest.mark.parametrize(

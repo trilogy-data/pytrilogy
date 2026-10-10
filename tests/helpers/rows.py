@@ -10,6 +10,30 @@ def executor_for(model: str) -> Executor:
     return executor
 
 
+class ExecutorCache:
+    """`functools.cache` for an executor factory, with a way to let go.
+
+    A cached Executor holds a live DuckDB database (and its worker threads)
+    until the cache dies, and a module-level `functools.cache` dies with the
+    process -- so every module that memoized its twins kept them for the rest
+    of the suite. Call `close()` from a module-scoped fixture instead."""
+
+    def __init__(self, factory):
+        self._factory = factory
+        self._made: dict[tuple, Executor | tuple[Executor, ...]] = {}
+
+    def __call__(self, *args):
+        if args not in self._made:
+            self._made[args] = self._factory(*args)
+        return self._made[args]
+
+    def close(self) -> None:
+        for made in self._made.values():
+            for executor in made if isinstance(made, tuple) else (made,):
+                executor.close()
+        self._made.clear()
+
+
 def twins(derived: str, materialized: str) -> tuple[Executor, Executor]:
     return executor_for(derived), executor_for(materialized)
 

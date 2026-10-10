@@ -5,6 +5,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from itertools import combinations
+from math import prod
 from pathlib import Path as PathlibPath
 
 from click import UNPROCESSED, Choice, Path, argument, option, pass_context
@@ -199,26 +200,40 @@ def _hashable_cell(value: object) -> object:
     return value
 
 
+def _hashable_columns(sample_rows: list[tuple]) -> list[tuple]:
+    """The sample transposed to one hashable tuple per column, canonicalized
+    once -- key detection tests hundreds of column combinations over the same
+    rows, and per-combination canonicalization was most of ingest's time. A
+    column of plain scalars is hashable as it comes; only one holding a
+    LIST/STRUCT cell pays for the recursive walk."""
+    columns: list[tuple] = []
+    for column in zip(*sample_rows):
+        try:
+            hash(column)
+        except TypeError:
+            column = tuple(_hashable_cell(v) for v in column)
+        columns.append(column)
+    return columns
+
+
+def _columns_unique(indices: list[int], columns: list[tuple], row_count: int) -> bool:
+    if len(indices) == 1:
+        return len(set(columns[indices[0]])) == row_count
+    seen: set = set()
+    add = seen.add
+    for key in zip(*(columns[i] for i in indices)):
+        if key in seen:
+            return False
+        add(key)
+    return True
+
+
 def _check_column_combination_uniqueness(
     indices: list[int], sample_rows: list[tuple]
 ) -> bool:
     if not sample_rows:
         return False
-
-    values = set()
-    for row in sample_rows:
-        # For single column, use scalar value; for multiple columns, use tuple
-        if len(indices) == 1:
-            value = _hashable_cell(row[indices[0]])
-        else:
-            value = tuple(_hashable_cell(row[idx]) for idx in indices)
-
-        if value in values:
-            return False
-        values.add(value)
-
-    # Verify we have as many unique values as rows
-    return len(values) == len(sample_rows)
+    return _columns_unique(indices, _hashable_columns(sample_rows), len(sample_rows))
 
 
 # Decimal/float types are measures; their sample uniqueness is a coincidence.
@@ -319,12 +334,11 @@ def detect_unique_key_combinations(
     penalties = penalties or {}
     exclude = exclude or set()
     eligible = [(i, n) for i, n in enumerate(column_names) if n not in exclude]
+    columns = _hashable_columns(sample_rows)
+    row_count = len(sample_rows)
+    distinct = [len(set(column)) for column in columns]
 
-    single = [
-        [name]
-        for i, name in eligible
-        if _check_column_combination_uniqueness([i], sample_rows)
-    ]
+    single = [[name] for i, name in eligible if distinct[i] == row_count]
     if single:
         return _rank_key_candidates(single, column_order, penalties)
 
@@ -332,8 +346,12 @@ def detect_unique_key_combinations(
         sized: list[list[str]] = []
         for col_combination in combinations(eligible, size):
             indices = [idx for idx, _ in col_combination]
+            # A combination has at most the product of its columns' distinct
+            # counts; one that cannot reach the row count is not a key.
+            if prod(distinct[i] for i in indices) < row_count:
+                continue
             col_names = [name for _, name in col_combination]
-            if _check_column_combination_uniqueness(indices, sample_rows):
+            if _columns_unique(indices, columns, row_count):
                 sized.append(col_names)
         if sized:
             return _rank_key_candidates(sized, column_order, penalties)
@@ -529,18 +547,20 @@ def _process_column(
     if enum_type is not None:
         rich_values: list = list(enum_type.values)
     else:
-        # Dedupe via _hashable_cell so LIST/STRUCT sample cells don't blow up
-        # the set; keep the original values for rich-type validation.
-        seen: set = set()
-        rich_values = []
-        for row in sample_rows:
-            cell = row[idx]
-            if cell is None:
-                continue
-            hashed = _hashable_cell(cell)
-            if hashed not in seen:
-                seen.add(hashed)
-                rich_values.append(cell)
+        # Dedupe keeping first-seen order and the original values for rich-type
+        # validation. Scalar cells dedupe in one C-level pass; a LIST/STRUCT
+        # column (unhashable cells) goes through _hashable_cell instead.
+        cells = [row[idx] for row in sample_rows if row[idx] is not None]
+        try:
+            rich_values = list(dict.fromkeys(cells))
+        except TypeError:
+            seen: set = set()
+            rich_values = []
+            for cell in cells:
+                hashed = _hashable_cell(cell)
+                if hashed not in seen:
+                    seen.add(hashed)
+                    rich_values.append(cell)
     trait_import, trait_type_name = detect_rich_type(
         concept_name, trilogy_type, rich_values
     )

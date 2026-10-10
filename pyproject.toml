@@ -24,6 +24,13 @@ markers = [
     "cloud_live: marks tests as hitting a real trilogy-cloud API and triggering real job runs (env vars TRILOGY_CLOUD_TOKEN + TRILOGY_CLOUD_API)",
 ]
 
+[tool.coverage.run]
+# sys.monitoring (PEP 669) instead of the C tracer: on this suite the tracer
+# adds ~150% to a CPU-bound run, sysmon ~60%, for the same line coverage. On
+# an interpreter without it (3.11) coverage warns once and uses the default
+# core, so the setting is safe across the CI matrix.
+core = "sysmon"
+
 [tool.ruff]
 # Allow lines to be as long as 200 characters.
 line-length = 200
