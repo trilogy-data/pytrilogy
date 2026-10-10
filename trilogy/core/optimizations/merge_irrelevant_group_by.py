@@ -19,6 +19,7 @@ from trilogy.core.optimizations.utils import (
     existence_linked,
     is_grouped_cte,
     is_sole_consumer,
+    prune_strands_pseudonym_twin,
     render_cte_used_map,
     repoint_consumers,
 )
@@ -202,6 +203,13 @@ class MergeIrrelevantGroupBy(OptimizationRule):
                 return False, None
             if concept.derivation == Derivation.AGGREGATE:
                 parent_has_aggregate = True
+
+        if prune_strands_pseudonym_twin(parent, cte.output_columns):
+            self.debug(
+                f"Merging {cte.name} would prune a pseudonym twin {parent.name} "
+                "renders a kept column through, skipping"
+            )
+            return False, None
 
         if not parent_has_aggregate and _drops_dedup_measure(cte, parent):
             self.debug(

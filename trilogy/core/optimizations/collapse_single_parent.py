@@ -29,6 +29,7 @@ from trilogy.core.optimizations.utils import (
     existence_linked,
     is_grouped_cte,
     is_sole_consumer,
+    prune_strands_pseudonym_twin,
     rebind_rename_to_consumed,
     rename_reference,
     repoint_consumers,
@@ -521,6 +522,14 @@ class CollapseSingleParent(OptimizationRule):
         if parent_is_ineligible(parent, merge_mode):
             self.debug(
                 f"Parent {parent.name} is ineligible type {parent.source.source_type}, skipping"
+            )
+            return False, None
+        if merge_mode == MergeMode.AGGREGATE and prune_strands_pseudonym_twin(
+            parent, cte.output_columns
+        ):
+            self.debug(
+                f"AGGREGATE fold of {cte.name} would prune a pseudonym twin "
+                f"{parent.name} renders a kept column through, skipping"
             )
             return False, None
         if (

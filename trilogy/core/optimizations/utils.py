@@ -221,6 +221,29 @@ def null_padded_nodes(cte: CTE) -> list[CTE | UnionCTE]:
     return [node for _, padded in join_padded_ctes(cte) for node in padded]
 
 
+def prune_strands_pseudonym_twin(parent: CTE, kept: list[BuildConcept]) -> bool:
+    """Whether narrowing `parent` to the `kept` columns drops a column a kept one
+    renders through. A lineage arg spelled by a lineage-less merge key (`upper(label)`
+    after `merge xx_label into label`) has no expression of its own; the
+    renderer reads it off the CTE's pseudonym-twin column."""
+    dropped = {c.address for c in parent.output_columns} - {c.address for c in kept}
+    stack = list(kept)
+    seen: set[str] = set()
+    while stack:
+        concept = stack.pop()
+        if concept.address in seen or concept.lineage is None:
+            continue
+        seen.add(concept.address)
+        for arg in concept.lineage.concept_arguments:
+            if arg.lineage is not None:
+                stack.append(arg)
+            elif not parent.source_map.get(arg.address) and any(
+                p in dropped for p in arg.pseudonyms
+            ):
+                return True
+    return False
+
+
 def is_grouped_cte(cte: CTE) -> bool:
     return cte.group_to_grain or cte.source.source_type == SourceType.GROUP
 
