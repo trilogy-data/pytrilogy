@@ -23,10 +23,9 @@ from trilogy.core.models.datasource import RawColumnExpr
 from trilogy.core.models.execute import (
     CTE,
     ConceptPair,
-    CTEConceptPair,
-    InstantiatedUnnestJoin,
     Join,
     QueryDatasource,
+    UnnestJoin,
 )
 from trilogy.core.optimizations.join_upgrade import (
     UpgradeJoinOnGuards,
@@ -596,7 +595,7 @@ def test_left_address_helpers_skip_non_join_entries():
     )
     cte = CTE.from_datasource(ds)
 
-    unnest = InstantiatedUnnestJoin(object_to_unnest=concept, alias="u")
+    unnest = UnnestJoin(concepts=[concept], parent=None, alias="u")  # type: ignore[arg-type]
 
     # First "join" slot is an UnnestJoin → no seed can be derived from it.
     cte.joins = [unnest]
@@ -660,26 +659,24 @@ def test_inner_join_key_proofs_are_source_bound():
     cte.condition = _condition_for(a_marker, dim_attr)
     cte.joins = [
         Join(
-            jointype=JoinType.FULL,
-            right_cte=b_cte,
-            joinkey_pairs=[
-                CTEConceptPair(
+            join_type=JoinType.FULL,
+            right=b_cte,
+            pairs=[
+                ConceptPair(
                     left=key,
                     right=key,
-                    existing_datasource=a_cte.source,
-                    cte=a_cte,
+                    node=a_cte,
                 )
             ],
         ),
         Join(
-            jointype=JoinType.LEFT_OUTER,
-            right_cte=dim_cte,
-            joinkey_pairs=[
-                CTEConceptPair(
+            join_type=JoinType.LEFT_OUTER,
+            right=dim_cte,
+            pairs=[
+                ConceptPair(
                     left=key,
                     right=key,
-                    existing_datasource=b_cte.source,
-                    cte=b_cte,
+                    node=b_cte,
                 )
             ],
         ),
@@ -688,8 +685,8 @@ def test_inner_join_key_proofs_are_source_bound():
     changed, _ = UpgradeJoinOnGuards().optimize(cte, {})
 
     assert changed
-    assert cte.joins[0].jointype == JoinType.INNER
-    assert cte.joins[1].jointype == JoinType.INNER
+    assert cte.joins[0].join_type == JoinType.INNER
+    assert cte.joins[1].join_type == JoinType.INNER
 
 
 def test_coalesced_left_key_does_not_prove_each_branch():
@@ -706,32 +703,29 @@ def test_coalesced_left_key_does_not_prove_each_branch():
     cte.condition = _condition_for(a_marker, dim_attr)
     cte.joins = [
         Join(
-            jointype=JoinType.FULL,
-            right_cte=b_cte,
-            joinkey_pairs=[
-                CTEConceptPair(
+            join_type=JoinType.FULL,
+            right=b_cte,
+            pairs=[
+                ConceptPair(
                     left=key,
                     right=key,
-                    existing_datasource=a_cte.source,
-                    cte=a_cte,
+                    node=a_cte,
                 )
             ],
         ),
         Join(
-            jointype=JoinType.FULL,
-            right_cte=dim_cte,
-            joinkey_pairs=[
-                CTEConceptPair(
+            join_type=JoinType.FULL,
+            right=dim_cte,
+            pairs=[
+                ConceptPair(
                     left=key,
                     right=key,
-                    existing_datasource=a_cte.source,
-                    cte=a_cte,
+                    node=a_cte,
                 ),
-                CTEConceptPair(
+                ConceptPair(
                     left=key,
                     right=key,
-                    existing_datasource=b_cte.source,
-                    cte=b_cte,
+                    node=b_cte,
                 ),
             ],
         ),
@@ -740,8 +734,8 @@ def test_coalesced_left_key_does_not_prove_each_branch():
     changed, _ = UpgradeJoinOnGuards().optimize(cte, {})
 
     assert changed
-    assert cte.joins[0].jointype == JoinType.LEFT_OUTER
-    assert cte.joins[1].jointype == JoinType.INNER
+    assert cte.joins[0].join_type == JoinType.LEFT_OUTER
+    assert cte.joins[1].join_type == JoinType.INNER
 
 
 def test_nullable_inner_join_key_does_not_prove_non_null():
@@ -758,26 +752,24 @@ def test_nullable_inner_join_key_does_not_prove_non_null():
     cte.condition = _condition_for(a_marker, dim_attr)
     cte.joins = [
         Join(
-            jointype=JoinType.FULL,
-            right_cte=b_cte,
-            joinkey_pairs=[
-                CTEConceptPair(
+            join_type=JoinType.FULL,
+            right=b_cte,
+            pairs=[
+                ConceptPair(
                     left=key,
                     right=key,
-                    existing_datasource=a_cte.source,
-                    cte=a_cte,
+                    node=a_cte,
                 )
             ],
         ),
         Join(
-            jointype=JoinType.LEFT_OUTER,
-            right_cte=dim_cte,
-            joinkey_pairs=[
-                CTEConceptPair(
+            join_type=JoinType.LEFT_OUTER,
+            right=dim_cte,
+            pairs=[
+                ConceptPair(
                     left=key,
                     right=key,
-                    existing_datasource=b_cte.source,
-                    cte=b_cte,
+                    node=b_cte,
                     modifiers=[Modifier.NULLABLE],
                 )
             ],
@@ -787,8 +779,8 @@ def test_nullable_inner_join_key_does_not_prove_non_null():
     changed, _ = UpgradeJoinOnGuards().optimize(cte, {})
 
     assert changed
-    assert cte.joins[0].jointype == JoinType.LEFT_OUTER
-    assert cte.joins[1].jointype == JoinType.INNER
+    assert cte.joins[0].join_type == JoinType.LEFT_OUTER
+    assert cte.joins[1].join_type == JoinType.INNER
 
 
 def test_existing_inner_join_proves_nullable_source_present():
@@ -808,27 +800,25 @@ def test_existing_inner_join_proves_nullable_source_present():
     root.parent_ctes = [fact_cte, returns_cte, reason_cte]
     root.joins = [
         Join(
-            jointype=JoinType.LEFT_OUTER,
-            right_cte=returns_cte,
-            joinkey_pairs=[
-                CTEConceptPair(
+            join_type=JoinType.LEFT_OUTER,
+            right=returns_cte,
+            pairs=[
+                ConceptPair(
                     left=c,
                     right=c,
-                    existing_datasource=fact_cte.source,
-                    cte=fact_cte,
+                    node=fact_cte,
                 )
                 for c in (fact_item, fact_ticket)
             ],
         ),
         Join(
-            jointype=JoinType.INNER,
-            right_cte=reason_cte,
-            joinkey_pairs=[
-                CTEConceptPair(
+            join_type=JoinType.INNER,
+            right=reason_cte,
+            pairs=[
+                ConceptPair(
                     left=return_reason,
                     right=return_reason,
-                    existing_datasource=returns_cte.source,
-                    cte=returns_cte,
+                    node=returns_cte,
                 )
             ],
         ),
@@ -837,14 +827,14 @@ def test_existing_inner_join_proves_nullable_source_present():
     changed, _ = UpgradeJoinOnGuards(left_only=True).optimize(root, {})
 
     assert changed
-    assert root.joins[0].jointype == JoinType.INNER
-    assert root.joins[1].jointype == JoinType.INNER
+    assert root.joins[0].join_type == JoinType.INNER
+    assert root.joins[1].join_type == JoinType.INNER
 
 
 def test_seed_addresses_inlined_left_via_joinkey_pair():
     """When a join's left side has been inlined (no explicit ``left_cte``,
     no parent CTE), ``_seed_addresses`` must recover it from the ``cte``
-    field on a ``CTEConceptPair`` — the "left" CTE is attached to the
+    field on a ``ConceptPair`` — the "left" CTE is attached to the
     join-key pair instead of the join itself."""
     left_concept = _build_concept("L_KEY")
     right_concept = _build_concept("R_KEY")
@@ -855,15 +845,14 @@ def test_seed_addresses_inlined_left_via_joinkey_pair():
     seed_cte.parent_ctes = []
     seed_cte.joins = [
         Join(
-            jointype=JoinType.LEFT_OUTER,
-            left_cte=None,
-            right_cte=right_cte,
-            joinkey_pairs=[
-                CTEConceptPair(
+            join_type=JoinType.LEFT_OUTER,
+            left=None,
+            right=right_cte,
+            pairs=[
+                ConceptPair(
                     left=left_concept,
                     right=right_concept,
-                    existing_datasource=left_cte.source,
-                    cte=left_cte,
+                    node=left_cte,
                 )
             ],
         )
@@ -873,8 +862,7 @@ def test_seed_addresses_inlined_left_via_joinkey_pair():
 
 
 def test_seed_addresses_base_datasource_fallback():
-    """When neither ``left_cte``, parent CTEs, nor a CTE-bearing
-    joinkey_pair are available, ``_seed_addresses`` falls back to
+    """When neither ``left``, parent CTEs, nor key pairs are available, ``_seed_addresses`` falls back to
     ``cte.source.base_datasource`` — the literal FROM-clause table.
     Without this branch, ``FROM table LEFT JOIN dim …`` chains never get
     a left side and the rule silently skips ``idx == 0``."""
@@ -887,18 +875,9 @@ def test_seed_addresses_base_datasource_fallback():
 
     base_cte.joins = [
         Join(
-            jointype=JoinType.LEFT_OUTER,
-            left_cte=None,
-            right_cte=right_cte,
-            joinkey_pairs=[
-                # ConceptPair (no `cte` field) — the inlined-left branch
-                # must skip it and fall through to base_datasource.
-                ConceptPair(
-                    left=base_concept,
-                    right=right_concept,
-                    existing_datasource=base_cte.source.base_datasource,
-                )
-            ],
+            join_type=JoinType.LEFT_OUTER,
+            left=None,
+            right=right_cte,
         )
     ]
 
@@ -907,7 +886,7 @@ def test_seed_addresses_base_datasource_fallback():
 
 def test_seed_addresses_returns_empty_when_no_fallback_resolves():
     """All four resolution paths fail: no explicit left, no eligible parent,
-    no CTE-bearing joinkey_pair, no base datasource. Must return an empty
+    no key pairs, no base datasource. Must return an empty
     set rather than raise — caller treats empty seed as "no left forced"."""
     right_concept = _build_concept("R_KEY")
     right_cte = _build_cte("right", [right_concept])
@@ -916,16 +895,9 @@ def test_seed_addresses_returns_empty_when_no_fallback_resolves():
     cte.source.base_datasource = None  # strip the only remaining fallback
     cte.joins = [
         Join(
-            jointype=JoinType.LEFT_OUTER,
-            left_cte=None,
-            right_cte=right_cte,
-            joinkey_pairs=[
-                ConceptPair(
-                    left=right_concept,
-                    right=right_concept,
-                    existing_datasource=right_cte.source,
-                )
-            ],
+            join_type=JoinType.LEFT_OUTER,
+            left=None,
+            right=right_cte,
         )
     ]
 
@@ -970,21 +942,20 @@ def _build_flag_scenario(flag_alias):
     root.parent_ctes = [fact_cte, returns_cte]
     root.joins = [
         Join(
-            jointype=JoinType.LEFT_OUTER,
-            right_cte=returns_cte,
-            joinkey_pairs=[
-                CTEConceptPair(
+            join_type=JoinType.LEFT_OUTER,
+            right=returns_cte,
+            pairs=[
+                ConceptPair(
                     left=key,
                     right=key,
-                    existing_datasource=fact_cte.source,
-                    cte=fact_cte,
+                    node=fact_cte,
                 )
             ],
         )
     ]
 
     UpgradeJoinOnGuards(left_only=True).optimize(root, {})
-    return root.joins[0].jointype
+    return root.joins[0].join_type
 
 
 def test_raw_derived_flag_eq_false_keeps_left_outer():
@@ -1075,14 +1046,13 @@ def _join_producer(base, agg, key, measure):
     }
     producer.joins = [
         Join(
-            jointype=JoinType.LEFT_OUTER,
-            right_cte=agg,
-            joinkey_pairs=[
-                CTEConceptPair(
+            join_type=JoinType.LEFT_OUTER,
+            right=agg,
+            pairs=[
+                ConceptPair(
                     left=key,
                     right=key,
-                    existing_datasource=base.source,
-                    cte=base,
+                    node=base,
                 )
             ],
         )
@@ -1115,7 +1085,7 @@ def test_cross_cte_null_rejection_upgrades_producer_join():
     inverse_map = {producer.name: [consumer]}
     changed, _ = rule.optimize(producer, inverse_map)
     assert changed, "expected cross-CTE proof to upgrade the join"
-    assert producer.joins[0].jointype == JoinType.INNER
+    assert producer.joins[0].join_type == JoinType.INNER
 
 
 def test_cross_cte_null_rejection_propagates_through_passthrough():
@@ -1135,7 +1105,7 @@ def test_cross_cte_null_rejection_propagates_through_passthrough():
     inverse_map = {producer.name: [middle], middle.name: [final]}
     changed, _ = rule.optimize(producer, inverse_map)
     assert changed, "expected transitive cross-CTE proof to upgrade the join"
-    assert producer.joins[0].jointype == JoinType.INNER
+    assert producer.joins[0].join_type == JoinType.INNER
 
 
 def test_cross_cte_null_rejection_requires_every_consumer():
@@ -1155,7 +1125,7 @@ def test_cross_cte_null_rejection_requires_every_consumer():
     inverse_map = {producer.name: [filtering, reading]}
     changed, _ = rule.optimize(producer, inverse_map)
     assert not changed
-    assert producer.joins[0].jointype == JoinType.LEFT_OUTER
+    assert producer.joins[0].join_type == JoinType.LEFT_OUTER
 
 
 def test_cross_cte_null_rejection_blocked_by_existence_read():
@@ -1175,7 +1145,7 @@ def test_cross_cte_null_rejection_blocked_by_existence_read():
     inverse_map = {producer.name: [consumer]}
     changed, _ = rule.optimize(producer, inverse_map)
     assert not changed
-    assert producer.joins[0].jointype == JoinType.LEFT_OUTER
+    assert producer.joins[0].join_type == JoinType.LEFT_OUTER
 
 
 def test_cross_cte_null_rejection_blocked_by_coalesced_projection():
@@ -1197,4 +1167,4 @@ def test_cross_cte_null_rejection_blocked_by_coalesced_projection():
     inverse_map = {producer.name: [consumer]}
     changed, _ = rule.optimize(producer, inverse_map)
     assert not changed
-    assert producer.joins[0].jointype == JoinType.LEFT_OUTER
+    assert producer.joins[0].join_type == JoinType.LEFT_OUTER

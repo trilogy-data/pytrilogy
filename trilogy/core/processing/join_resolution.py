@@ -35,11 +35,12 @@ from trilogy.core.models.build_environment import (
 )
 from trilogy.core.models.core import DataType
 from trilogy.core.models.execute import (
-    BaseJoin,
     ConceptPair,
     GuardTerm,
+    Join,
     JoinGuard,
     QueryDatasource,
+    SourceJoin,
     UnnestJoin,
     preserved_key_pairs,
 )
@@ -91,7 +92,7 @@ def held_region_spans(source: DataSource) -> frozenset[str]:
 
 
 def compute_outer_null_status(
-    joins: list[BaseJoin | UnnestJoin],
+    joins: list[SourceJoin | UnnestJoin],
 ) -> dict[str, int]:
     """Score how often each datasource is null-extended by outer joins."""
     score: dict[str, int] = defaultdict(int)
@@ -101,22 +102,20 @@ def compute_outer_null_status(
     return score
 
 
-def prune_outer_join_pairs(joins: list[BaseJoin | UnnestJoin]) -> None:
+def prune_outer_join_pairs(joins: list[SourceJoin | UnnestJoin]) -> None:
     """Drop redundant duplicate-key pairs from directional outer joins: a
     left side no earlier join pads equals the key on every row, so the
     others' pairs only bloat the coalesce. With every left side padded the
     coalesce IS the key, and all pairs stay."""
     padded: set[str] = set()
     for join, left in left_deep_joins(joins):
-        if join.concept_pairs and join.join_type in DIRECTIONAL_OUTER_JOIN_TYPES:
-            join.concept_pairs = preserved_key_pairs(
-                join.concept_pairs, padded, _pair_source
-            )
+        if join.pairs and join.join_type in DIRECTIONAL_OUTER_JOIN_TYPES:
+            join.pairs = preserved_key_pairs(join.pairs, padded, _pair_source)
         padded |= padded_by(join, left)
 
 
 def _pair_source(pair: ConceptPair) -> str:
-    return pair.existing_datasource.identifier
+    return pair.node.identifier
 
 
 def find_all_connecting_concepts(g: nx.Graph, ds1: str, ds2: str) -> set[str]:
@@ -980,29 +979,27 @@ def get_modifiers(
 
 
 def preserved_sources(
-    datasets: list[DataSource], joins: list[BaseJoin | UnnestJoin]
+    datasets: list[DataSource], joins: list[SourceJoin | UnnestJoin]
 ) -> set[str]:
     """Identifiers of the sources whose every row survives the join tree.
     Joins are left-deep: a join that does not preserve its left side drops
     rows of everything joined so far, and an UNNEST can drop rows too."""
-    right_ids = {
-        join.right_datasource.identifier for join in joins if isinstance(join, BaseJoin)
-    }
+    right_ids = {join.right.identifier for join in joins if isinstance(join, Join)}
     alive = {ds.identifier for ds in datasets if ds.identifier not in right_ids}
     for join in joins:
-        if not isinstance(join, BaseJoin):
+        if not isinstance(join, Join):
             alive = set()
             continue
         if join.join_type not in PADS_RIGHT_JOIN_TYPES:
             alive = set()
         if join.join_type in PADS_LEFT_JOIN_TYPES:
-            alive.add(join.right_datasource.identifier)
+            alive.add(join.right.identifier)
     return alive
 
 
 def merge_partial_addresses(
     datasets: list[DataSource],
-    joins: list[BaseJoin | UnnestJoin],
+    joins: list[SourceJoin | UnnestJoin],
     outputs: list[BuildConcept],
 ) -> set[str]:
     """Output addresses a merge binds partially, from its sides' own stamps
@@ -1178,7 +1175,7 @@ def reduce_concept_pairs(
     is_outer = join_type in OUTER_JOIN_TYPES
     right_left_seen: dict[tuple[str, str], bool] = {}
     for index, pair in enumerate(pairs):
-        dedup_key = (pair.right.address, pair.existing_datasource.identifier)
+        dedup_key = (pair.right.address, pair.node.identifier)
         if dedup_key in seen:
             continue
         rl_key = (pair.right.address, pair.left.address)
@@ -1252,7 +1249,7 @@ def _row_independent(ds: DataSource) -> bool:
     # An UNNEST source here is the standalone literal flavor (`unnest([1,2,3])
     # as value` beside an unrelated scan): its fan-out is authored by the
     # query, not a lost join key. A row-correlated unnest rides an UnnestJoin,
-    # never a keyless BaseJoin.
+    # never a keyless SourceJoin.
     if isinstance(ds, QueryDatasource) and ds.source_type == SourceType.UNNEST:
         return True
     outputs = ds.output_concepts
@@ -1440,7 +1437,7 @@ def single_row_source(ds: DataSource) -> bool:
     return is_scalar_condition(ds.condition, materialized=materialized)
 
 
-def narrow_keyless_joins(joins: list[BaseJoin | UnnestJoin]) -> None:
+def narrow_keyless_joins(joins: list[SourceJoin | UnnestJoin]) -> None:
     """A keyless outer join (``ON 1=1``) pairs every row with every row, so it
     only differs from INNER when a side is EMPTY. A side that provably holds
     one row pairs with every row of the other, and when the other is empty
@@ -1456,17 +1453,17 @@ def narrow_keyless_joins(joins: list[BaseJoin | UnnestJoin]) -> None:
     keyed_seen = False
     for join in joins:
         if (
-            not isinstance(join, BaseJoin)
+            not isinstance(join, Join)
             or join.join_type not in OUTER_JOIN_TYPES
-            or join.concept_pairs
+            or join.pairs
             or join.concepts
         ):
             left_has_rows = False
             keyed_seen = True
             continue
-        if join.left_datasource is not None and not keyed_seen:
-            left_has_rows = left_has_rows or single_row_source(join.left_datasource)
-        right_has_rows = single_row_source(join.right_datasource)
+        if join.left is not None and not keyed_seen:
+            left_has_rows = left_has_rows or single_row_source(join.left)
+        right_has_rows = single_row_source(join.right)
         if left_has_rows or right_has_rows:
             join.join_type = JoinType.INNER
         left_has_rows = left_has_rows or right_has_rows
@@ -1747,7 +1744,7 @@ def _absent_key_groups(
     return [
         group
         for group in groups.values()
-        if all(f"ds~{p.existing_datasource.identifier}" in absent for p in group)
+        if all(f"ds~{p.node.identifier}" in absent for p in group)
     ]
 
 
@@ -1851,7 +1848,7 @@ def _presence_after(
 
 def _padding_guards(
     joins: list[JoinOrderOutput],
-    base_joins: list[BaseJoin],
+    base_joins: list[SourceJoin],
     paddings: list[list[_MergePadding]],
     facts: JoinFacts,
     ds_node_map: dict[str, DataSource],
@@ -1875,7 +1872,7 @@ def _padding_guards(
                 canon_node,
                 memo,
                 earlier,
-                base.concept_pairs or [],
+                base.pairs or [],
                 presence,
                 ds_concept_map,
             )
@@ -1902,7 +1899,7 @@ def get_node_joins(
     demanded_domains: Collection[str] = frozenset(),
     extent_free_spans: frozenset[str] = frozenset(),
     keyspace: Keyspace | None = None,
-) -> list[BaseJoin]:
+) -> list[SourceJoin]:
     """`keyspace` is the plan's, for the spans it can pad for, the spellings a
     rowset body pads them under and its region partition."""
     keyspace = keyspace or Keyspace()
@@ -2088,17 +2085,17 @@ def get_node_joins(
         environment,
     )
     base_joins = [
-        BaseJoin(
-            left_datasource=ds_node_map[j.left] if j.left else None,
-            right_datasource=ds_node_map[j.right],
+        Join(
+            left=ds_node_map[j.left] if j.left else None,
+            right=ds_node_map[j.right],
             join_type=j.type,
             concepts=[] if not j.keys else None,
-            concept_pairs=reduce_concept_pairs(
+            pairs=reduce_concept_pairs(
                 [
                     ConceptPair(
                         left=ds_concept_map[(k, concept)],
                         right=ds_concept_map[(j.right, concept)],
-                        existing_datasource=ds_node_map[k],
+                        node=ds_node_map[k],
                         modifiers=(
                             []
                             if _pads_for_different_members(

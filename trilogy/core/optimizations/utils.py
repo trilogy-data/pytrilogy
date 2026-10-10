@@ -19,7 +19,6 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import (
     CTE,
-    CTEConceptPair,
     Join,
     QueryDatasource,
     UnionCTE,
@@ -127,8 +126,8 @@ def cte_source_keys(cte: CTE | UnionCTE) -> set[str]:
 def seed_ctes(cte: CTE | UnionCTE) -> list[CTE | UnionCTE]:
     """The CTE supplying the FROM clause: the LEFT side of the chain's first
     join, resolved in priority order:
-      - ``joins[0].left_cte`` (explicit).
-      - The ``joinkey_pair.cte``\\s of the first join, which by construction
+      - ``joins[0].left`` (explicit).
+      - The ``pair.node``\\s of the first join, which by construction
         supply its left values and so name the FROM directly. This must beat
         the parent scan: a parent consumed only through an existence subselect
         never reaches the join chain, and seeding from it makes the real FROM
@@ -136,26 +135,22 @@ def seed_ctes(cte: CTE | UnionCTE) -> list[CTE | UnionCTE]:
         would falsely promote the join.
       - A ``parent_cte`` that is not consumed as any join's right side,
         skipping existence-only parents.
-      - A ``joinkey_pair.cte`` on any later join, covering a chain whose left
-        is an inlined CTE with no ``parent_cte`` and no explicit ``left_cte``."""
+      - A ``pair.node`` on any later join, covering a chain whose left
+        is an inlined CTE with no ``parent_cte`` and no explicit ``left``."""
     if not isinstance(cte, CTE) or not cte.joins:
         return []
     first = cte.joins[0]
     if not isinstance(first, Join):
         return []
-    if first.left_cte is not None:
-        return [first.left_cte]
-    right_names = {j.right_cte.name for j in cte.joins if isinstance(j, Join)}
+    if first.left is not None:
+        return [first.left]
+    right_names = {j.right.name for j in cte.joins if isinstance(j, Join)}
     first_pair_seeds: list[CTE | UnionCTE] = []
     seen_pair_names: set[str] = set()
-    for pair in first.joinkey_pairs or []:
-        if (
-            isinstance(pair, CTEConceptPair)
-            and pair.cte.name not in right_names
-            and pair.cte.name not in seen_pair_names
-        ):
-            seen_pair_names.add(pair.cte.name)
-            first_pair_seeds.append(pair.cte)
+    for pair in first.pairs or []:
+        if pair.node.name not in right_names and pair.node.name not in seen_pair_names:
+            seen_pair_names.add(pair.node.name)
+            first_pair_seeds.append(pair.node)
     if first_pair_seeds:
         return first_pair_seeds
     existence = {s for vals in cte.existence_source_map.values() for s in vals}
@@ -169,9 +164,9 @@ def seed_ctes(cte: CTE | UnionCTE) -> list[CTE | UnionCTE]:
     for j in cte.joins:
         if not isinstance(j, Join):
             continue
-        for pair in j.joinkey_pairs or []:
-            if isinstance(pair, CTEConceptPair) and pair.cte.name not in right_names:
-                return [pair.cte]
+        for pair in j.pairs or []:
+            if pair.node.name not in right_names:
+                return [pair.node]
     return []
 
 
@@ -182,10 +177,10 @@ def accumulated_left_ctes(cte: CTE | UnionCTE, idx: int) -> list[CTE | UnionCTE]
         return []
     join = cte.joins[idx] if idx < len(cte.joins) else None
     left: list[CTE | UnionCTE] = []
-    if isinstance(join, Join) and join.left_cte is not None:
-        left.append(join.left_cte)
+    if isinstance(join, Join) and join.left is not None:
+        left.append(join.left)
     left.extend(seed_ctes(cte))
-    left.extend(prior.right_cte for prior in cte.joins[:idx] if isinstance(prior, Join))
+    left.extend(prior.right for prior in cte.joins[:idx] if isinstance(prior, Join))
     return unique(left, "name")
 
 
@@ -200,18 +195,18 @@ def zero_filled_reads(cte: CTE, condition: BoolExpr | None) -> set[str]:
 
 def join_padded_ctes(cte: CTE) -> list[tuple[Join, list[CTE | UnionCTE]]]:
     """Each of ``cte``'s joins with the sides it NULL-pads: the right of a
-    LEFT/FULL, and everything on its left (plus its joinkey sources) of a
+    LEFT/FULL, and everything on its left (plus its key sources) of a
     RIGHT/FULL."""
     out: list[tuple[Join, list[CTE | UnionCTE]]] = []
     for idx, join in enumerate(cte.joins or []):
         if not isinstance(join, Join):
             continue
         padded: list[CTE | UnionCTE] = []
-        if join.jointype in PADS_RIGHT_JOIN_TYPES:
-            padded.append(join.right_cte)
-        if join.jointype in PADS_LEFT_JOIN_TYPES:
+        if join.join_type in PADS_RIGHT_JOIN_TYPES:
+            padded.append(join.right)
+        if join.join_type in PADS_LEFT_JOIN_TYPES:
             padded.extend(accumulated_left_ctes(cte, idx))
-            padded.extend(pair.cte for pair in join.joinkey_pairs or [])
+            padded.extend(pair.node for pair in join.pairs or [])
         out.append((join, padded))
     return out
 

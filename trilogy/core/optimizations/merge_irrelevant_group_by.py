@@ -79,7 +79,7 @@ def _identity_group_single_use_aggregate(cte: CTE, parent: CTE) -> bool:
         source.identifier
         for join in parent.joins
         if isinstance(join, Join)
-        for source in (join.right_cte.source, join.right_cte.source.base_datasource)
+        for source in (join.right.source, join.right.source.base_datasource)
         if source is not None
     }
     roots = [

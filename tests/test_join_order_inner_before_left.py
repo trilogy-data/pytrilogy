@@ -16,16 +16,16 @@ from trilogy.core.optimizations.order_inner_joins import order_inner_joins_befor
 
 
 def _join(right: str, jointype: JoinType, lefts: list[str]) -> Join:
-    pairs = [SimpleNamespace(cte=SimpleNamespace(name=n)) for n in lefts]
+    pairs = [SimpleNamespace(node=SimpleNamespace(name=n)) for n in lefts]
     return Join(
-        right_cte=SimpleNamespace(name=right),  # type: ignore[arg-type]
-        jointype=jointype,
-        joinkey_pairs=pairs,  # type: ignore[arg-type]
+        right=SimpleNamespace(name=right),  # type: ignore[arg-type]
+        join_type=jointype,
+        pairs=pairs,  # type: ignore[arg-type]
     )
 
 
 def _order(joins: list[Join], base: str) -> list[str]:
-    return [j.right_cte.name for j in order_inner_joins_before_left(joins, base)]
+    return [j.right.name for j in order_inner_joins_before_left(joins, base)]
 
 
 def test_inner_bubbles_ahead_of_left():

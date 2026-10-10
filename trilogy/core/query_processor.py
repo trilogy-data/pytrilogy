@@ -47,7 +47,6 @@ from trilogy.core.models.build import (
     BuildMultiSelectLineage,
     BuildOrderBy,
     BuildOrderItem,
-    BuildParamaterizedConceptReference,
     BuildParenthetical,
     BuildRowsetItem,
     BuildSelectLineage,
@@ -61,14 +60,12 @@ from trilogy.core.models.datasource import Address, Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import (
     CTE,
-    BaseJoin,
-    CTEConceptPair,
-    CTEGuardTerm,
+    CTEJoin,
     DatasourceCTE,
-    InstantiatedUnnestJoin,
     Join,
     QueryDatasource,
     RecursiveCTE,
+    SourceJoin,
     UnionCTE,
     UnnestJoin,
 )
@@ -142,20 +139,11 @@ def _extract_params(*concept_dicts) -> dict:
 
 
 def base_join_to_join(
-    base_join: BaseJoin | UnnestJoin, ctes: list[CTE | UnionCTE]
-) -> Join | InstantiatedUnnestJoin:
-    """Convert a datasource-level join into a CTE-level join."""
+    base_join: SourceJoin | UnnestJoin, ctes: list[CTE | UnionCTE]
+) -> CTEJoin | UnnestJoin:
+    """Bind a datasource-level join onto the CTEs built for its datasources."""
     if isinstance(base_join, UnnestJoin):
-        object_to_unnest = base_join.parent.arguments[0]
-        if not isinstance(
-            object_to_unnest,
-            (BuildConcept | BuildParamaterizedConceptReference | BuildFunction),
-        ):
-            raise TypeError(f"Unnest join must be a concept; got {object_to_unnest}")
-        return InstantiatedUnnestJoin(
-            object_to_unnest=object_to_unnest,
-            alias=base_join.alias,
-        )
+        return base_join
 
     def get_datasource_cte(
         datasource: BuildDatasource | QueryDatasource,
@@ -175,56 +163,7 @@ def base_join_to_join(
             f"Could not find CTE for datasource {datasource.identifier}; have {eligible}"
         )
 
-    if base_join.left_datasource is not None:
-        left_cte = get_datasource_cte(base_join.left_datasource)
-    else:
-        # multiple left ctes
-        left_cte = None
-    right_cte = get_datasource_cte(base_join.right_datasource)
-    if base_join.concept_pairs:
-        final_pairs = [
-            CTEConceptPair(
-                left=pair.left,
-                right=pair.right,
-                existing_datasource=pair.existing_datasource,
-                modifiers=pair.modifiers,
-                cte=get_datasource_cte(pair.existing_datasource),
-            )
-            for pair in base_join.concept_pairs
-        ]
-    elif base_join.concepts and base_join.left_datasource:
-        final_pairs = [
-            CTEConceptPair(
-                left=concept,
-                right=concept,
-                existing_datasource=base_join.left_datasource,
-                modifiers=[],
-                cte=get_datasource_cte(
-                    base_join.left_datasource,
-                ),
-            )
-            for concept in base_join.concepts
-        ]
-    else:
-        final_pairs = []
-    return Join(
-        left_cte=left_cte,
-        right_cte=right_cte,
-        jointype=base_join.join_type,
-        joinkey_pairs=final_pairs,
-        guard=[
-            [
-                CTEGuardTerm(
-                    concept=term.concept,
-                    cte=get_datasource_cte(term.datasource),
-                    present=term.present,
-                )
-                for term in clause
-            ]
-            for clause in base_join.guard
-        ],
-        modifiers=base_join.modifiers,
-    )
+    return base_join.bound_keys().bind(get_datasource_cte)
 
 
 def _pseudonym_closure(address: str, ctes: list[CTE | UnionCTE]) -> set[str]:
@@ -366,7 +305,7 @@ def resolve_cte_base_name_and_alias_v2(
     name: str,
     source: QueryDatasource,
     source_map: dict[str, list[str]],
-    raw_joins: list[Join | InstantiatedUnnestJoin],
+    raw_joins: list[Join | UnnestJoin],
 ) -> tuple[Address | str | None, str | None]:
     if not source.datasources:
         return None, None
@@ -376,11 +315,11 @@ def resolve_cte_base_name_and_alias_v2(
 
     joins: list[Join] = [join for join in raw_joins if isinstance(join, Join)]
     if joins:
-        candidates = [x.left_cte.name for x in joins if x.left_cte]
+        candidates = [x.left.name for x in joins if x.left]
         for join in joins:
-            if join.joinkey_pairs:
-                candidates += [x.cte.name for x in join.joinkey_pairs if x.cte]
-        disallowed = [x.right_cte.name for x in joins]
+            if join.pairs:
+                candidates += [x.node.name for x in join.pairs if x.node]
+        disallowed = [x.right.name for x in joins]
         cte = next((y for y in candidates if y not in disallowed), None)
         if cte is None:
             raise SyntaxError(
@@ -407,7 +346,7 @@ def _referenced_parents(
     base: BuildDatasource | QueryDatasource | None,
     source_map: dict[str, list[str]],
     existence_map: dict[str, list[str]],
-    joins: list[Join | InstantiatedUnnestJoin],
+    joins: list[Join | UnnestJoin],
 ) -> list[CTE | UnionCTE]:
     """A raw base datasource renders inline in FROM, so the sub-CTE minted
     for it is read only through a join or a source-map entry; one nothing

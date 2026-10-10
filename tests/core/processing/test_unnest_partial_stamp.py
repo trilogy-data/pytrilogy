@@ -7,7 +7,11 @@ import pytest
 
 from trilogy import Dialects
 from trilogy.core.enums import JoinType, SourceType
-from trilogy.core.models.execute import BaseJoin, QueryDatasource
+from trilogy.core.models.execute import (
+    Join,
+    QueryDatasource,
+    SourceJoin,
+)
 from trilogy.core.query_processor import get_query_datasources
 from trilogy.parser import parse_text
 
@@ -96,11 +100,11 @@ def _nodes(qds: QueryDatasource) -> list[QueryDatasource]:
     return out
 
 
-def _tree_join(qds: QueryDatasource) -> BaseJoin:
+def _tree_join(qds: QueryDatasource) -> SourceJoin:
     for node in _nodes(qds):
         for join in node.joins:
-            if isinstance(join, BaseJoin) and any(
-                pair.right.address == "local.species" for pair in join.concept_pairs
+            if isinstance(join, Join) and any(
+                pair.right.address == "local.species" for pair in join.pairs
             ):
                 return join
     raise AssertionError("no join on species")
@@ -118,7 +122,7 @@ def test_unnested_dimension_join_preserves_trees(extra: str):
     assert "local.tree_eco_region" not in {c.address for c in unnest.partial_concepts}
 
     join = _tree_join(final)
-    trees = join.right_datasource.identifier
+    trees = join.right.identifier
     assert trees.startswith(("city_trees", "all_trees")), trees
     assert join.join_type in (JoinType.RIGHT_OUTER, JoinType.FULL)
 

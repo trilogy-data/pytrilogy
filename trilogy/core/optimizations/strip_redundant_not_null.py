@@ -98,18 +98,18 @@ def _inner_join_rejected(cte: CTE) -> set[tuple[str, str]]:
     for idx, join in enumerate(cte.joins):
         if (
             not isinstance(join, Join)
-            or join.jointype != JoinType.INNER
+            or join.join_type != JoinType.INNER
             or Modifier.NULLABLE in join.modifiers
             or any(
-                isinstance(later, Join) and later.jointype in PADS_LEFT_JOIN_TYPES
+                isinstance(later, Join) and later.join_type in PADS_LEFT_JOIN_TYPES
                 for later in cte.joins[idx + 1 :]
             )
         ):
             continue
-        for pair in join.joinkey_pairs or []:
+        for pair in join.pairs or []:
             if pair_matches_nulls(pair):
                 continue
-            for node, concept in ((pair.cte, pair.left), (join.right_cte, pair.right)):
+            for node, concept in ((pair.node, pair.left), (join.right, pair.right)):
                 alias = join.name_for(cte, join.authoritative(cte, node))
                 out.update((alias, a) for a in concept.equivalent_addresses)
     return out

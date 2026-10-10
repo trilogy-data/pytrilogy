@@ -11,70 +11,40 @@ from trilogy.core.models.execute import (
     BuildConcept,
     BuildDatasource,
     BuildGrain,
-    CTEConceptPair,
+    ConceptPair,
     DatasourceCTE,
     DataType,
-    InstantiatedUnnestJoin,
     Join,
     Purpose,
     QueryDatasource,
     UnionCTE,
-    raise_helpful_join_validation_error,
+    UnnestJoin,
 )
 from trilogy.dialect.base import BaseDialect
 
 
-def test_raise_helpful_join_validation_error():
+def test_join_rejects_a_concept_key_missing_from_a_side():
+    concept = BuildConcept(
+        name="test_concept",
+        canonical_name="test_concept",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.KEY,
+        build_is_aggregate=False,
+        grain=BuildGrain(),
+    )
+    with raises(InvalidSyntaxException):
+        Join(
+            left=BuildDatasource(name="left_ds", columns=[], address="a"),
+            right=BuildDatasource(name="right_ds", columns=[], address="b"),
+            join_type=JoinType.INNER,
+            concepts=[concept],
+        )
 
-    with raises(InvalidSyntaxException):
-        raise_helpful_join_validation_error(
-            concepts=[
-                BuildConcept(
-                    name="test_concept",
-                    canonical_name="test_concept",
-                    datatype=DataType.INTEGER,
-                    purpose=Purpose.KEY,
-                    build_is_aggregate=False,
-                    grain=BuildGrain(),
-                )
-            ],
-            left_datasource=BuildDatasource(name="left_ds", columns=[], address="agsg"),
-            right_datasource=BuildDatasource(
-                name="right_ds", columns=[], address="agsg"
-            ),
-        )
-    with raises(InvalidSyntaxException):
-        raise_helpful_join_validation_error(
-            concepts=[
-                BuildConcept(
-                    name="test_concept",
-                    canonical_name="test_concept",
-                    datatype=DataType.INTEGER,
-                    purpose=Purpose.KEY,
-                    build_is_aggregate=False,
-                    grain=BuildGrain(),
-                )
-            ],
-            left_datasource=None,
-            right_datasource=BuildDatasource(
-                name="right_ds", columns=[], address="agsg"
-            ),
-        )
-    with raises(InvalidSyntaxException):
-        raise_helpful_join_validation_error(
-            concepts=[
-                BuildConcept(
-                    name="test_concept",
-                    canonical_name="test_concept",
-                    datatype=DataType.INTEGER,
-                    purpose=Purpose.KEY,
-                    build_is_aggregate=False,
-                    grain=BuildGrain(),
-                )
-            ],
-            left_datasource=BuildDatasource(name="left_ds", columns=[], address="agsg"),
-            right_datasource=None,
-        )
+
+def test_join_rejects_a_self_join():
+    ds = BuildDatasource(name="ds", columns=[], address="a")
+    with raises(SyntaxError):
+        Join(left=ds, right=ds, join_type=JoinType.INNER, concepts=[])
 
 
 def test_build_datasource_source_resolution():
@@ -255,7 +225,7 @@ def test_join_reference_for_inlined_datasource_renders_raw_table():
         source_map={key.address: [dim.name]},
         existence_source_map={},
     )
-    join = Join(right_cte=dim, jointype=JoinType.INNER)
+    join = Join(right=dim, join_type=JoinType.INNER)
 
     # normal parent: referenced by CTE name
     assert consumer.renders_inline(dim) is False
@@ -299,7 +269,7 @@ def test_join_reference_for_emitted_datasource_ignores_scanned_raw_source():
         source_map={key.address: [dim.name]},
         existence_source_map={},
     )
-    join = Join(right_cte=dim, jointype=JoinType.INNER)
+    join = Join(right=dim, join_type=JoinType.INNER)
 
     assert consumer.renders_inline(dim) is False
     assert join.name_for(consumer, dim) == dim.name
@@ -324,7 +294,7 @@ def test_join_reference_for_union_consumer_uses_node_name():
         output_columns=[key],
         grain=BuildGrain(),
     )
-    join = Join(right_cte=branch, jointype=JoinType.INNER)
+    join = Join(right=branch, join_type=JoinType.INNER)
 
     assert union.identifier == union.name
     assert union.safe_identifier == union.name
@@ -339,16 +309,15 @@ def test_join_unique_id_includes_sorted_join_key_pairs():
     left = _key_concept("left_id")
     right = _key_concept("right_id")
     cte = _query_cte("source", left)
-    pair = CTEConceptPair(
+    pair = ConceptPair(
         left=left,
         right=right,
-        existing_datasource=cte.source,
-        cte=cte,
+        node=cte,
     )
     join = Join(
-        right_cte=cte,
-        jointype=JoinType.INNER,
-        joinkey_pairs=[pair],
+        right=cte,
+        join_type=JoinType.INNER,
+        pairs=[pair],
     )
 
     # INNER unique_id is orientation-normalized (no per-side source prefix, so
@@ -360,7 +329,7 @@ def test_join_unique_id_includes_sorted_join_key_pairs():
 def test_join_unique_id_without_pairs_uses_string_form():
     key = _key_concept("k")
     cte = _query_cte("source", key)
-    join = Join(right_cte=cte, jointype=JoinType.INNER)
+    join = Join(right=cte, join_type=JoinType.INNER)
 
     assert join.unique_id == str(join)
 
@@ -422,17 +391,16 @@ def test_replace_dependency_updates_cte_references_and_source_tokens():
     consumer.existence_source_map = {key.address: [old.datasource.safe_identifier]}
     consumer.base_alias_override = old.safe_identifier
     consumer.base_name_override = old.safe_identifier
-    pair = CTEConceptPair(
+    pair = ConceptPair(
         left=key,
         right=key,
-        existing_datasource=old.source,
-        cte=old,
+        node=old,
     )
     join = Join(
-        right_cte=old,
-        left_cte=old,
-        jointype=JoinType.INNER,
-        joinkey_pairs=[pair],
+        right=old,
+        left=old,
+        join_type=JoinType.INNER,
+        pairs=[pair],
     )
     consumer.joins = [join]
 
@@ -446,9 +414,9 @@ def test_replace_dependency_updates_cte_references_and_source_tokens():
     ]
     assert consumer.base_alias_override == new.safe_identifier
     assert consumer.base_name_override == new.safe_identifier
-    assert join.right_cte is new
-    assert join.left_cte is new
-    assert pair.cte is new
+    assert join.right is new
+    assert join.left is new
+    assert pair.node is new
 
 
 def test_union_dependency_helpers_keep_branches_separate_from_parents():
@@ -707,7 +675,7 @@ def test_replace_dependency_ignores_unnest_joins():
     old = _datasource_cte("old_ds", key)
     new = _datasource_cte("new_ds", key)
     consumer = _query_cte("consumer", key, [old])
-    unnest = InstantiatedUnnestJoin(object_to_unnest=key)
+    unnest = UnnestJoin(concepts=[key], parent=None)  # type: ignore[arg-type]
     consumer.joins = [unnest]
 
     consumer.replace_dependency(old, new)
@@ -955,11 +923,9 @@ def test_group_concepts_dedups_outer_join_key_class():
     a = _datasource_cte("a", left)
     b = _datasource_cte("b", right)
     join = Join(
-        right_cte=b,
-        jointype=JoinType.LEFT_OUTER,
-        joinkey_pairs=[
-            CTEConceptPair(left=left, right=right, existing_datasource=b.source, cte=b)
-        ],
+        right=b,
+        join_type=JoinType.LEFT_OUTER,
+        pairs=[ConceptPair(left=left, right=right, node=b)],
     )
     cte = _consumer_cte(
         "cte", [left, right], {left.address: [a], right.address: [b]}, joins=[join]

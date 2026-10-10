@@ -939,7 +939,7 @@ def strategy_node(node: StrategyNode | None) -> NodeTrace | None:
 
 def _pairs(pairs: Any, right: str) -> list[str]:
     return [
-        f"{p.existing_datasource.identifier}.{p.left.address} = {right}.{p.right.address}"
+        f"{p.node.identifier}.{p.left.address} = {right}.{p.right.address}"
         for p in pairs or []
     ]
 
@@ -992,13 +992,12 @@ def _node(node: StrategyNode, seen: dict[int, str]) -> NodeTrace | NodeRef:
             span_scope=span_scope(node.span_scope),
             joins=[
                 JoinTrace(
-                    left=_node_label(j.left_node),
-                    right=_node_label(j.right_node),
+                    left=_node_label(j.left) if j.left is not None else "",
+                    right=_node_label(j.right),
                     type=j.join_type.value,
-                    concepts=addresses(j.concepts),
+                    concepts=addresses(j.concepts or []),
                     pairs=[
-                        f"{p.left.address} = {p.right.address}"
-                        for p in j.concept_pairs or []
+                        f"{p.left.address} = {p.right.address}" for p in j.pairs or []
                     ],
                     modifiers=[m.value for m in j.modifiers],
                 )
@@ -1032,7 +1031,7 @@ def query_datasource(qds: QueryDatasource, root: StrategyNode) -> QdsTrace:
 
 def _qds(source: Any, seen: dict[int, str]) -> QdsTrace | QdsRef | TableRef:
     from trilogy.core.models.build import BuildDatasource
-    from trilogy.core.models.execute import BaseJoin
+    from trilogy.core.models.execute import Join
 
     if isinstance(source, BuildDatasource):
         return TableRef(source.identifier)
@@ -1044,14 +1043,14 @@ def _qds(source: Any, seen: dict[int, str]) -> QdsTrace | QdsRef | TableRef:
     joins: list[JoinTrace | UnnestTrace] = [
         (
             JoinTrace(
-                left=j.left_datasource.identifier if j.left_datasource else None,
-                right=j.right_datasource.identifier,
+                left=j.left.identifier if j.left else None,
+                right=j.right.identifier,
                 type=j.join_type.value,
                 concepts=addresses(j.concepts or []),
-                pairs=_pairs(j.concept_pairs, j.right_datasource.identifier),
+                pairs=_pairs(j.pairs, j.right.identifier),
                 modifiers=[m.value for m in j.modifiers],
             )
-            if isinstance(j, BaseJoin)
+            if isinstance(j, Join)
             else UnnestTrace(addresses(j.concepts), j.alias)
         )
         for j in source.joins
@@ -1095,9 +1094,9 @@ def _cte_ref(consumer: CTE, join: Join, node: CTE | UnionCTE) -> str:
 def _cte_join_left(consumer: CTE, join: Join) -> str | None:
     """A join names its left side only when it has one; otherwise its key
     pairs do, one CTE per pair."""
-    if join.left_cte is not None:
-        return _cte_ref(consumer, join, join.left_cte)
-    sides = sorted({_cte_ref(consumer, join, k.cte) for k in join.joinkey_pairs or []})
+    if join.left is not None:
+        return _cte_ref(consumer, join, join.left)
+    sides = sorted({_cte_ref(consumer, join, k.node) for k in join.pairs or []})
     return ", ".join(sides) or None
 
 
@@ -1133,12 +1132,12 @@ def cte(c: CTE | UnionCTE) -> CteTrace:
             (
                 JoinTrace(
                     left=_cte_join_left(c, j),
-                    right=_cte_ref(c, j, j.right_cte),
-                    type=j.jointype.value,
+                    right=_cte_ref(c, j, j.right),
+                    type=j.join_type.value,
                     pairs=[
-                        f"{j.name_for(c, k.cte)}.{k.left.address}"
-                        f" = {j.name_for(c, j.right_cte)}.{k.right.address}"
-                        for k in j.joinkey_pairs or []
+                        f"{j.name_for(c, k.node)}.{k.left.address}"
+                        f" = {j.name_for(c, j.right)}.{k.right.address}"
+                        for k in j.pairs or []
                     ],
                     condition=expression(j.condition),
                     modifiers=[m.value for m in j.modifiers],

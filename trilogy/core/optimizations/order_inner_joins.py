@@ -24,9 +24,9 @@ from __future__ import annotations
 from trilogy.core.enums import JoinType
 from trilogy.core.models.execute import (
     CTE,
-    InstantiatedUnnestJoin,
     Join,
     UnionCTE,
+    UnnestJoin,
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 
@@ -34,34 +34,34 @@ from trilogy.core.optimizations.base_optimization import MergedCTEMap, Optimizat
 def _join_left_sources(join: Join) -> set[str]:
     """CTE names a join's ON clause reads from (its left/anchor sources)."""
     deps: set[str] = set()
-    for pair in join.joinkey_pairs or []:
-        if pair.cte is not None:
-            deps.add(pair.cte.name)
-    if join.left_cte is not None:
-        deps.add(join.left_cte.name)
+    for pair in join.pairs or []:
+        if pair.node is not None:
+            deps.add(pair.node.name)
+    if join.left is not None:
+        deps.add(join.left.name)
     return deps
 
 
 def order_inner_joins_before_left(
-    joins: list[Join | InstantiatedUnnestJoin],
+    joins: list[Join | UnnestJoin],
     base_name: str | None,
-) -> list[Join | InstantiatedUnnestJoin]:
+) -> list[Join | UnnestJoin]:
     if len(joins) < 2:
         return joins
 
     real = [j for j in joins if isinstance(j, Join)]
-    produced = {j.right_cte.name for j in real}
+    produced = {j.right.name for j in real}
     available: set[str] = {s for j in real for s in _join_left_sources(j)} - produced
     if base_name:
         available.add(base_name)
 
-    result: list[Join | InstantiatedUnnestJoin] = []
+    result: list[Join | UnnestJoin] = []
     deferred: list[Join] = []
 
     def flush() -> None:
         for d in deferred:
             result.append(d)
-            available.add(d.right_cte.name)
+            available.add(d.right.name)
         deferred.clear()
 
     for join in joins:
@@ -69,17 +69,17 @@ def order_inner_joins_before_left(
             flush()
             result.append(join)
             continue
-        if join.jointype == JoinType.LEFT_OUTER:
+        if join.join_type == JoinType.LEFT_OUTER:
             deferred.append(join)
-        elif join.jointype == JoinType.INNER:
+        elif join.join_type == JoinType.INNER:
             if not _join_left_sources(join) <= available:
                 flush()
             result.append(join)
-            available.add(join.right_cte.name)
+            available.add(join.right.name)
         else:
             flush()
             result.append(join)
-            available.add(join.right_cte.name)
+            available.add(join.right.name)
     flush()
     return result
 

@@ -88,8 +88,8 @@ def test_get_node_joins_merge_joins_on_canonical_key():
     assert len(joins) == 1
     join = joins[0]
     # Real join key (not an empty/cross-product join).
-    assert join.concept_pairs
-    pair = join.concept_pairs[0]
+    assert join.pairs
+    pair = join.pairs[0]
     # Left and right resolve to each datasource's own instance of the column.
     assert pair.left.address in {"p1.uname", "p2.uname"}
     assert pair.right.address in {"p1.uname", "p2.uname"}
@@ -187,7 +187,7 @@ merge a_id.a_name into b_id.b_name;
         JoinType.RIGHT_OUTER,
         JoinType.FULL,
     )
-    assert join.concept_pairs
+    assert join.pairs
 
 
 def test_get_node_joins_merge_nullable_drives_outer_join():
@@ -212,7 +212,7 @@ merge a_id.a_name into b_id.b_name;
     )
     assert len(joins) == 1
     join = joins[0]
-    assert join.concept_pairs
+    assert join.pairs
     assert join.join_type in (
         JoinType.LEFT_OUTER,
         JoinType.RIGHT_OUTER,

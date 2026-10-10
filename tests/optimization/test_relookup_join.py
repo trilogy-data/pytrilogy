@@ -60,8 +60,8 @@ def test_no_cte_joins_a_relation_its_own_base_derives_from():
             continue
         ancestry = _ancestors(base)
         for join in cte.joins:
-            if isinstance(join, Join) and join.right_cte.name in ancestry:
-                offenders.append((cte.name, join.right_cte.name))
+            if isinstance(join, Join) and join.right.name in ancestry:
+                offenders.append((cte.name, join.right.name))
     assert not offenders, f"row-identity re-lookup joins remain: {offenders}"
 
 

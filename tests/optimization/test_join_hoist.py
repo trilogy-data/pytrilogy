@@ -10,7 +10,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import (
     CTE,
-    CTEConceptPair,
+    ConceptPair,
     Join,
     QueryDatasource,
 )
@@ -165,15 +165,14 @@ def _category_filter_child(
         existence_source_map={},
         joins=[
             Join(
-                right_cte=dim,
-                jointype=JoinType.LEFT_OUTER,
-                left_cte=parent,
-                joinkey_pairs=[
-                    CTEConceptPair(
+                right=dim,
+                join_type=JoinType.LEFT_OUTER,
+                left=parent,
+                pairs=[
+                    ConceptPair(
                         left=category_id,
                         right=category_id,
-                        existing_datasource=parent.source,
-                        cte=parent,
+                        node=parent,
                     )
                 ],
             )
@@ -239,7 +238,7 @@ def test_join_hoist_pushes_guarded_left_join_into_base_parent(test_environment):
     assert child.joins == []
     assert parent.condition == condition
     assert len(parent.joins) == 1
-    assert parent.joins[0].jointype == JoinType.INNER
+    assert parent.joins[0].join_type == JoinType.INNER
 
 
 def test_join_hoist_preserves_inlined_dim_on_parent(test_environment):
@@ -327,15 +326,14 @@ def test_join_hoist_skips_existence_only_parent(test_environment):
         existence_source_map={},
         joins=[
             Join(
-                right_cte=dim,
-                jointype=JoinType.INNER,
-                left_cte=parent,
-                joinkey_pairs=[
-                    CTEConceptPair(
+                right=dim,
+                join_type=JoinType.INNER,
+                left=parent,
+                pairs=[
+                    ConceptPair(
                         left=category_id,
                         right=category_id,
-                        existing_datasource=parent.source,
-                        cte=parent,
+                        node=parent,
                     )
                 ],
             )

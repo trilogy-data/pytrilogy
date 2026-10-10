@@ -66,7 +66,7 @@ def canonicalize_graph(input: list[CTE]) -> None:
     single live instance keyed by name:
 
     - ``parent_ctes``: dedupe to the live object.
-    - join endpoints (``right_cte``/``left_cte``/``joinkey_pairs[].cte``):
+    - join endpoints (``right``/``left``/``pairs[].node``):
       resolve to the live emitted CTE, or to the consumer's folded
       ``inlined_parents`` instance so the render contract stays in sync.
     """
@@ -101,12 +101,7 @@ def canonicalize_graph(input: list[CTE]) -> None:
         for join in joins:
             if not isinstance(join, Join):
                 continue
-            join.right_cte = resolve(join.right_cte)
-            if join.left_cte is not None:
-                join.left_cte = resolve(join.left_cte)
-            for keyed in join.cte_bindings():
-                if keyed.cte is not None:
-                    keyed.cte = resolve(keyed.cte)
+            join.repoint(resolve)
         if isinstance(cte, UnionCTE):
             new_branches: list[CTE | UnionCTE] = []
             for binding in cte.source_bindings(include_branches=True):

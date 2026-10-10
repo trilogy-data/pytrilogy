@@ -9,7 +9,7 @@ from trilogy.core.optimizations.join_upgrade import prune_preserved_join_keys
 def _prune(base: str, joins: list[Join]) -> list[list[str]]:
     cte = SimpleNamespace(name="c", base_name=base, joins=joins)
     prune_preserved_join_keys(cte)  # type: ignore[arg-type]
-    return [[p.cte.name for p in j.joinkey_pairs] for j in joins]
+    return [[p.node.name for p in j.pairs] for j in joins]
 
 
 def test_narrowed_full_reads_key_off_base():

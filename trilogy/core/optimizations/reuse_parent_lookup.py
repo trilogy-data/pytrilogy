@@ -24,9 +24,9 @@ from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.execute import (
     CTE,
     DatasourceCTE,
-    InstantiatedUnnestJoin,
     Join,
     UnionCTE,
+    UnnestJoin,
     pair_matches_nulls,
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
@@ -37,7 +37,7 @@ def _plain(join: Join) -> bool:
     return (
         not join.has_predicate
         and Modifier.NULLABLE not in join.modifiers
-        and not any(pair_matches_nulls(pair) for pair in join.joinkey_pairs or [])
+        and not any(pair_matches_nulls(pair) for pair in join.pairs or [])
     )
 
 
@@ -62,14 +62,14 @@ def _key_anchored_on(holder: CTE, lookup: CTE, key: BuildConcept) -> bool:
     if lookup.name not in sources:
         return False
     for join in holder.joins:
-        if not (isinstance(join, Join) and join.right_cte.name == lookup.name):
+        if not (isinstance(join, Join) and join.right.name == lookup.name):
             continue
-        pairs = join.joinkey_pairs or []
+        pairs = join.pairs or []
         return (
             _plain(join)
             and len(pairs) == 1
             and bool(pairs[0].right.equivalent_addresses & key.equivalent_addresses)
-            and set(sources) == {lookup.name, pairs[0].cte.name}
+            and set(sources) == {lookup.name, pairs[0].node.name}
         )
     return False
 
@@ -91,11 +91,11 @@ def _referenced_elsewhere(consumer: CTE, join: Join, lookup: CTE) -> bool:
     for other in consumer.joins:
         if other is join or not isinstance(other, Join):
             continue
-        if other.right_cte.name == lookup.name or (
-            other.left_cte is not None and other.left_cte.name == lookup.name
+        if other.right.name == lookup.name or (
+            other.left is not None and other.left.name == lookup.name
         ):
             return True
-        if any(pair.cte.name == lookup.name for pair in other.joinkey_pairs or []):
+        if any(pair.node.name == lookup.name for pair in other.pairs or []):
             return True
     return lookup.name in {
         s for sources in consumer.existence_source_map.values() for s in sources
@@ -141,17 +141,17 @@ class ReuseParentLookup(OptimizationRule):
                 return True, None
         return False, None
 
-    def _reuse(self, cte: CTE, join: Join | InstantiatedUnnestJoin) -> bool:
+    def _reuse(self, cte: CTE, join: Join | UnnestJoin) -> bool:
         if not (
             isinstance(join, Join)
-            and join.jointype == JoinType.LEFT_OUTER
+            and join.join_type == JoinType.LEFT_OUTER
             and _plain(join)
-            and len(join.joinkey_pairs or []) == 1
+            and len(join.pairs or []) == 1
         ):
             return False
-        pair = (join.joinkey_pairs or [])[0]
-        lookup = _regular_parent(cte, join.right_cte.name)
-        holder = _regular_parent(cte, pair.cte.name)
+        pair = (join.pairs or [])[0]
+        lookup = _regular_parent(cte, join.right.name)
+        holder = _regular_parent(cte, pair.node.name)
         if lookup is None or holder is None or holder.name == lookup.name:
             return False
         if (
