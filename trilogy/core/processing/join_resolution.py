@@ -49,6 +49,7 @@ from trilogy.core.processing import plan_trace
 from trilogy.core.processing.condition_utility import (
     is_scalar_condition,
 )
+from trilogy.core.processing.join_key_groups import axis_member_keys
 from trilogy.core.processing.null_provenance import (
     ProvenanceMemo,
     active_memo,
@@ -192,6 +193,8 @@ class JoinFacts:
     # domains the node emits: a `~` key outside this set licenses no extension
     # rows here, so empty means none of them do
     demanded_domains: frozenset[str] = frozenset()
+    # an arm key of a merged attribute -> the attribute it reaches
+    span_families: Mapping[str, str] = field(default_factory=dict)
 
     def side(self, node: str) -> SideFacts:
         return self.sides.get(node) or _NO_FACTS
@@ -219,20 +222,30 @@ class JoinFacts:
 
 
 def _pads_for_different_members(
-    left: SideFacts, right: SideFacts, keys: set[str]
+    left: SideFacts,
+    right: SideFacts,
+    keys: set[str],
+    families: Mapping[str, str] | None = None,
 ) -> bool:
     """Both sides NULL the connecting keys to carry extension members, and of
     different ``~`` spans: a product never sold beside a user who never
     ordered. Those NULLs name nothing in common, so pairing them invents a
-    (product, user) row; each side's padding has to survive on its own."""
+    (product, user) row; each side's padding has to survive on its own.
+
+    `families` spells the arm keys of one merged attribute as the attribute:
+    each arm's undated rows are its NULL group, which the arms share."""
     if not (left.span_padding and right.span_padding):
         return False
-    left_spans: frozenset[str] = frozenset().union(
-        *(left.span_padding.get(key, frozenset()) for key in keys)
-    )
-    right_spans: frozenset[str] = frozenset().union(
-        *(right.span_padding.get(key, frozenset()) for key in keys)
-    )
+    families = families or {}
+
+    def spans(side: SideFacts) -> frozenset[str]:
+        return frozenset(
+            families.get(span, span)
+            for key in keys
+            for span in side.span_padding.get(key, frozenset())
+        )
+
+    left_spans, right_spans = spans(left), spans(right)
     return bool(left_spans and right_spans and left_spans.isdisjoint(right_spans))
 
 
@@ -475,7 +488,9 @@ def _nullable_join(
             return JoinType.LEFT_OUTER if left_values else JoinType.RIGHT_OUTER
         # Padding for different spans never pairs (`get_node_joins` drops the
         # null-safe equality), so INNER would shed both extension families.
-        if _pads_for_different_members(left_facts, right_facts, keys):
+        if _pads_for_different_members(
+            left_facts, right_facts, keys, facts.span_families
+        ):
             return JoinType.FULL
         # Grain-aligned sides both weakened their EQUAL-domain claims on the
         # merge axis itself, so INNER would drop each side's exclusive members;
@@ -1951,8 +1966,14 @@ def get_node_joins(
         provenance = memo.of(datasource)
         nullable_nodes = {canon_node(c.address) for c in datasource.nullable_concepts}
         if extent_free_spans:
+            # a `?` binding's NULL is a value (an undated sale), not padding
+            value_null = {
+                c.address for c in datasource.output_concepts if provenance.values(c)
+            }
             nullable_nodes -= {
-                canon_node(a) for a in provenance.padded_by(extent_free_spans)
+                canon_node(a)
+                for a in provenance.padded_by(extent_free_spans)
+                if a not in value_null
             }
         padded_nodes = {canon_node(a) for a in provenance.rollup}
         partial_keys: set[str] = set()
@@ -2043,12 +2064,33 @@ def get_node_joins(
     from trilogy.core.processing.node_generators.common import (
         authored_join_pair_candidates,
     )
+    from trilogy.core.processing.node_generators.presence_probe import (
+        axis_scalar_reads,
+        is_coalescing_axis,
+    )
 
+    full_join_keys = {
+        canon_node(a) for a in environment.domain_graph.outer_relation_keys()
+    }
+    if full_join_keys:
+        # a scalar of a coalescing axis pairs its arms as the axis does
+        full_join_keys |= {
+            canon_node(c.address)
+            for datasource in datasources
+            for c in datasource.output_concepts
+            if any(
+                is_coalescing_axis(axis, environment)
+                for axis in axis_scalar_reads(c, environment)
+            )
+        }
+    span_families = {
+        canon_node(key): canon_node(axis)
+        for axis in environment.scoped_join_key_groups
+        for key in axis_member_keys(axis, environment)
+    }
     facts = JoinFacts(
         sides=sides,
-        full_join_keys=frozenset(
-            canon_node(a) for a in environment.domain_graph.outer_relation_keys()
-        ),
+        full_join_keys=frozenset(full_join_keys),
         scoped_keys=frozenset(canon_node(a) for a in environment.scoped_partial_derived)
         | frozenset(canon_node(a) for a in environment.all_scoped_join_group_members()),
         # the join tree bases on the complete source providing an anchor key so
@@ -2069,6 +2111,7 @@ def get_node_joins(
             frozenset(canon_node(span) for span in spans) for spans in keyspace.families
         ),
         demanded_domains=frozenset(canon_node(a) for a in demanded_domains),
+        span_families=span_families,
     )
     joins = resolve_join_order_v2(graph, facts)
     paddings = _merge_paddings(joins, facts)
@@ -2099,7 +2142,10 @@ def get_node_joins(
                         modifiers=(
                             []
                             if _pads_for_different_members(
-                                facts.side(k), facts.side(j.right), v
+                                facts.side(k),
+                                facts.side(j.right),
+                                v,
+                                facts.span_families,
                             )
                             else (
                                 [Modifier.NULLABLE]

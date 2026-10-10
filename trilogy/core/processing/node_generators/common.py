@@ -15,6 +15,7 @@ from trilogy.core.models.build import (
     BuildGrain,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.join_key_groups import is_join_key_group
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[COMMON]"
@@ -206,6 +207,10 @@ def inject_authored_join_key_terminals(
     wanted: list[BuildConcept] = []
     for pair in pairs:
         wanted.append(pair.canonical)
+        # each arm of a merged attribute is reached through its own key by
+        # the keyspace; pinning both keys here joins the arms row by row
+        if is_join_key_group(pair.canonical.address, environment):
+            continue
         for member in (pair.left, pair.right):
             for key_addr in sorted(member.keys or ()):
                 key_concept = environment.concepts.get(key_addr)

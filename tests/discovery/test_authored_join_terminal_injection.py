@@ -120,13 +120,9 @@ def test_gate_fires_for_cross_fact_fk_carriers():
         assert len(relevant) == 1
         injected = inject_authored_join_key_terminals(list(request), build_env)
         added = {c.address for c in injected} - {c.address for c in request}
-        # the merged key plus each side's FK carrier: neither member is bound
-        # on a request datasource, so both hops are pinned as mandatory
-        assert added == {
-            relevant[0].canonical.address,
-            "local.a_cust_sk",
-            "local.b_cust_sk",
-        }
+        # the merged key alone: each arm's FK hop is keyed by the keyspace,
+        # and pinning both keys here would join the arms row by row (#715)
+        assert added == {relevant[0].canonical.address}
 
 
 def test_gate_silent_for_one_sided_request():
@@ -153,21 +149,21 @@ def test_gate_silent_for_canary_request():
     assert relevant_authored_join_pairs(request, build_env) == []
 
 
-def test_member_projected_still_pins_hops():
+def test_member_projected_plans_each_hop():
     # projecting the merged key pulls both dim scans into the request's
-    # datasource set, but the facts remain FK carriers that need their hops —
-    # members being bound on the dims alone must NOT read as "natural shared
-    # join key" (that reading left both side-paths as alternative resolutions
-    # and raised AmbiguousRelationshipResolution on the projected rollup)
-    build_env = _build(TWO_FACT_MODEL, scoped_joins=SUBSET_JOIN)
-    request = [
-        build_env.concepts["local.a_amount"],
-        build_env.concepts["local.b_amount"],
-        build_env.concepts["local.a_cust_id"],
-    ]
-    injected = inject_authored_join_key_terminals(list(request), build_env)
-    added = {c.address for c in injected} - {c.address for c in request}
-    assert added == {"local.a_cust_sk", "local.b_cust_sk"}
+    # datasource set, but the facts remain FK carriers that need their hops;
+    # the keyspace keys the merged attribute on both arms' keys, so each fact
+    # reaches it through its own dimension without ambiguity
+    for joins in (SUBSET_JOIN, UNION_JOIN):
+        env = Environment()
+        executor = Dialects.DUCK_DB.default_executor(environment=env)
+        executor.parse_text(TWO_FACT_MODEL)
+        relation = "subset" if joins is SUBSET_JOIN else "union"
+        sql = executor.generate_sql(
+            f"{relation} join b_cust_id = a_cust_id "
+            "select a_cust_id, sum(a_amount) as a, sum(b_amount) as b;"
+        )[-1]
+        assert '"a_facts"' in sql and '"b_facts"' in sql, sql
 
 
 def test_gate_silent_for_directly_bound_members():

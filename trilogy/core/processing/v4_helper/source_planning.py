@@ -36,6 +36,7 @@ from trilogy.core.processing.condition_utility import (
     and_optional,
     condition_implies,
 )
+from trilogy.core.processing.join_key_groups import is_join_key_group
 from trilogy.core.processing.model_ambiguity import validate_relation_paths
 from trilogy.core.processing.node_generators.common import (
     inject_authored_join_key_terminals,
@@ -229,13 +230,12 @@ def _concepts_with_grain_keys(
             aggregate_axes.update(concept.grain.components)
     for concept in concepts:
         expanded.append(concept)
-        # A coalescing (`full`/`union` join) axis canonical inherits the
-        # SURVIVING arm's grain, but the unified axis spans every arm's domain:
-        # expanding that grain would drag the surviving arm's row key into an
-        # arm-scoped request and force the other arm into its cover (a second
-        # assembly axis where the final merge already coalesces the arms).
-        axis = coalescing_axis_group(concept.address, environment)
-        if axis is not None and axis[0] == concept.address:
+        # A merged attribute (`union`/`subset join`, `merge`) canonical inherits
+        # the SURVIVING arm's grain, but the value spans every arm: expanding
+        # that grain would drag the surviving arm's row key into an arm-scoped
+        # request and force the other arm into its cover (a second assembly
+        # axis where the final merge already pairs the arms).
+        if is_join_key_group(concept.address, environment):
             continue
         if concept.address in aggregate_axes:
             continue
@@ -898,8 +898,12 @@ def _datasource_grain_concept_nodes(
             grain_addresses.update(_concept_node_grain_addresses(node))
     for address in selected_addresses:
         concept = environment.concepts.get(address)
-        if concept is not None:
-            grain_addresses.update(concept.grain.components)
+        if concept is None:
+            continue
+        # a merged attribute is read as itself, not at either arm's key
+        if is_join_key_group(address, environment):
+            continue
+        grain_addresses.update(concept.grain.components)
     if not grain_addresses or ds_node not in graph:
         return []
     nodes = [

@@ -25,6 +25,7 @@ from trilogy.core.processing.condition_utility import (
     condition_proves_non_null,
     filter_union_children,
 )
+from trilogy.core.processing.join_key_groups import is_join_key_group
 from trilogy.core.processing.node_generators.select_helpers.condition_routing import (
     absence_atoms,
     datasource_conditions,
@@ -266,6 +267,28 @@ def create_select_node(
     return finalize_select_node(candidate, environment, depth, defer_group)
 
 
+def _scan_target_grain(
+    concepts: list[BuildConcept], environment: BuildEnvironment
+) -> BuildGrain:
+    """A merged attribute read without its own key is the grain itself: a
+    scan of it is joined on the value, so its rows must be distinct values."""
+    grain = BuildGrain.from_concepts(concepts, environment=environment)
+    addresses = {c.address for c in concepts}
+    merged = {
+        c.address
+        for c in concepts
+        if is_join_key_group(c.address, environment)
+        and not (c.keys or set()) & addresses
+    }
+    if not merged:
+        return grain
+    rest = [c for c in concepts if c.address not in merged]
+    return BuildGrain(
+        components=BuildGrain.from_concepts(rest, environment=environment).components
+        | merged
+    )
+
+
 def create_datasource_node(
     datasource: BuildDatasource,
     all_concepts: list[BuildConcept],
@@ -275,7 +298,7 @@ def create_datasource_node(
     conditions: BuildWhereClause | None = None,
     injected_conditions: BoolExpr | None = None,
 ) -> tuple[StrategyNode, bool]:
-    target_grain = BuildGrain.from_concepts(all_concepts, environment=environment)
+    target_grain = _scan_target_grain(all_concepts, environment)
     datasource_grain = BuildGrain.from_concepts(
         datasource.grain.components, environment=environment
     )

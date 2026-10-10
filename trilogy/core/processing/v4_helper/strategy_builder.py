@@ -68,7 +68,10 @@ from trilogy.core.processing.condition_utility import (
 )
 from trilogy.core.processing.discovery_utility import raise_if_disconnected_for
 from trilogy.core.processing.grain_utility import non_null_proofs
-from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
+from trilogy.core.processing.node_generators.presence_probe import (
+    axis_scalar_reads,
+    is_presence_probe,
+)
 from trilogy.core.processing.nodes import (
     FilterNode,
     GroupNode,
@@ -1147,7 +1150,7 @@ def _valued_on_another_fact(
     pads each fact's keys on the other's rows. It is computed on a slice of its
     own fact, before that padding."""
     keyspace = environment.span_scope.keyspace
-    if not keyspace.families or keyspace.regions[0].witnesses:
+    if not keyspace.rows_pair_facts:
         return False
     return any(
         takes_a_value_on_padding(
@@ -1158,6 +1161,31 @@ def _valued_on_another_fact(
         )
         for m in members
     )
+
+
+def _reads_only_merged_attributes(
+    members: Sequence[str], environment: BuildEnvironment
+) -> bool:
+    """A row derivation of merged attributes alone (`s_year + 1` under `union
+    join w_year = s_year`) is a value of the attribute: computed on a slice of
+    it, never on the rows that pair the arms."""
+    concepts = [environment.concepts.get(m) for m in members]
+    return bool(concepts) and all(
+        c is not None and axis_scalar_reads(c, environment) for c in concepts
+    )
+
+
+def _one_entity_beside_paired_facts(
+    members: Sequence[str], environment: BuildEnvironment
+) -> bool:
+    """A row derivation of one entity's attributes (`year + 1`, keyed on the
+    date) under a plan whose rows pair two facts: computed on that entity's
+    slice, never on the row stream joining the facts through it."""
+    keyspace = environment.span_scope.keyspace
+    if not keyspace.rows_pair_facts:
+        return False
+    keys = {keyspace.keys_of(m) for m in members}
+    return len(keys) == 1 and len(next(iter(keys))) == 1
 
 
 def _parent_nodes_for(
@@ -1242,8 +1270,11 @@ def _parent_nodes_for(
         return {o.address for o in node.output_concepts} & needed
 
     consumer = attrs[gid]
-    slices_roots = consumer.derivation in GROUPING_DERIVATIONS or (
-        _valued_on_another_fact(consumer.primary_members, environment)
+    slices_roots = (
+        consumer.derivation in GROUPING_DERIVATIONS
+        or _valued_on_another_fact(consumer.primary_members, environment)
+        or _reads_only_merged_attributes(consumer.primary_members, environment)
+        or _one_entity_beside_paired_facts(consumer.primary_members, environment)
     )
 
     def parent_for_consumer(pgid: str, node: StrategyNode) -> StrategyNode:
@@ -5919,9 +5950,13 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     # the group's grain/outputs) so a grouping key (e.g. a `by rollup`
     # dimension) is never re-added to `needed` and forced into the SELECT
     # outside its GROUP BY.
+    # a row derivation sliced off paired facts joins back on its own grain
+    keeps_grain = derivation not in GROUPING_DERIVATIONS and (
+        _one_entity_beside_paired_facts(a.primary_members, environment)
+    )
     needed |= (
         set(_input_contract_join_keys(a))
-        - set(a.grain_components)
+        - (set() if keeps_grain else set(a.grain_components))
         - set(a.output_concepts)
     )
     parent_builds = _parent_nodes_for(
