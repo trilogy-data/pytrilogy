@@ -134,9 +134,15 @@ planning: planning reads it apart from pairs
 pairing to read), so folding it into pairs early would not be a refactor.
 `bound_keys()` folds it when the join is bound onto CTEs, as before.
 
-`QueryDatasource.joins` stays as the plan-time record. `strip_redundant_not_null`
-still walks it on purpose, as an over-approximate "could be NULL" ground
-truth; a stale or missing outer join there only keeps a guard.
+`QueryDatasource.joins` is now plan-time only: nothing reads it after CTE
+build. Its last reader, `strip_redundant_not_null`, walked the whole QDS tree
+to the leaf tables to get "could be NULL before this CTE's WHERE". That walk
+discarded every parent's real filters and trusted the stale join copy. The
+rule now reads one level: the parents' `nullable_concepts` (narrowed only by
+filters that ran), its own tables (an inlined parent's raw table, since its
+WHERE may have folded into this CTE) and its own outer joins' padding. q64
+drops one more guard (`C_CURRENT_ADDR_SK is not null` beside an INNER
+customer join, declared non-null; same rows).
 
 ### The rest of the QDS is NOT a mirror
 

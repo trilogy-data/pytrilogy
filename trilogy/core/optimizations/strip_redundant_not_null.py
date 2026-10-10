@@ -5,13 +5,12 @@ path: a column non-null at its source and not padded by any outer join feeding t
 CTE can never be NULL there. Before join planning only model nullability is known,
 which would force a global over-conservative guess.
 
-Absence from ``nullable_concepts`` is not sufficient on its own: build-time
-refinement removes a concept from the nullable set when the node's own WHERE
-null-rejects it, so judging that very condition by the refined set is circular and
-would strip the only thing keeping the column non-null. A drop additionally
-requires the concept to be non-nullable at ground truth: never bound nullable at a
-base table and never outer-join padded anywhere in the CTE's source tree
-(``_unfiltered_nullable_addresses``).
+The CTE's own ``nullable_concepts`` cannot decide it: build-time refinement
+removes a concept from that set when the CTE's own WHERE null-rejects it, so
+judging that very condition by it is circular and would strip the only thing
+keeping the column non-null. The rule reads one level down instead
+(``_nullable_before_own_filter``): the parents' sets, which only filters that
+really ran have narrowed, plus the CTE's own tables and outer-join padding.
 
 The concept must also be a tracked, non-derived output of the CTE:
 
@@ -30,16 +29,15 @@ or FULL join can pad that side back (`ss.customer.sk is not null` beside
 from __future__ import annotations
 
 from trilogy.core.enums import BooleanOperator, Derivation, JoinType, Modifier
-from trilogy.core.models.build import BuildConditional, BuildDatasource
+from trilogy.core.models.build import BuildConcept, BuildConditional, BuildDatasource
 from trilogy.core.models.execute import (
     CTE,
     Join,
-    QueryDatasource,
     UnionCTE,
     pair_matches_nulls,
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
-from trilogy.core.optimizations.utils import equivalent_addresses
+from trilogy.core.optimizations.utils import equivalent_addresses, null_padded_nodes
 from trilogy.core.processing.condition_utility import (
     _not_null_concept,
     combine_condition_atoms,
@@ -47,38 +45,35 @@ from trilogy.core.processing.condition_utility import (
 )
 from trilogy.core.processing.utility import (
     PADS_LEFT_JOIN_TYPES,
-    find_nullable_concepts,
 )
 
 
-def _unfiltered_nullable_addresses(source: QueryDatasource) -> set[str]:
-    """Addresses that could be NULL anywhere in ``source``'s tree absent all
-    WHERE filtering: base-table nullability plus outer-join padding at every
-    level. Intermediate ``nullable_concepts`` lists are condition-refined, so
-    the walk goes to the ``BuildDatasource`` leaves. Over-approximate on
-    purpose: a false positive only keeps a redundant guard.
-    """
-    out: set[str] = set()
-    stack: list[QueryDatasource] = [source]
-    seen: set[int] = set()
-    while stack:
-        qds = stack.pop()
-        if id(qds) in seen:
-            continue
-        seen.add(id(qds))
-        out.update(find_nullable_concepts(qds.source_map, qds.datasources, qds.joins))
-        for c in qds.output_concepts:
-            if c.is_nullable:
-                out.add(c.address)
-                out.update(c.pseudonyms)
-        for ds in qds.datasources:
-            if isinstance(ds, QueryDatasource):
-                stack.append(ds)
-            elif isinstance(ds, BuildDatasource):
-                for c in ds.nullable_concepts:
-                    out.add(c.address)
-                    out.update(c.pseudonyms)
-    return out
+def _node_nullable(node: CTE | UnionCTE) -> list[BuildConcept]:
+    """What a parent hands its consumer as possibly NULL. A union's arms are
+    not tracked one by one, so every column it emits counts."""
+    if isinstance(node, UnionCTE):
+        return node.output_columns
+    return node.nullable_concepts
+
+
+def _nullable_before_own_filter(cte: CTE) -> set[str]:
+    """Addresses `cte` could hold NULL before its own WHERE runs: what its
+    parents hand it, its raw tables' nullable columns, and every column its
+    own outer joins pad. Its own ``nullable_concepts`` is narrowed by that
+    WHERE, so judging the WHERE by it would be circular; the parents' lists
+    are narrowed only by filters that really ran."""
+    base = cte.source.base_datasource
+    nullable = [c for c in cte.output_columns if c.is_nullable]
+    if isinstance(base, BuildDatasource):
+        nullable += base.nullable_concepts
+    for node in cte.dependency_nodes():
+        nullable += _node_nullable(node)
+    # an inlined parent's WHERE may now be this CTE's own: read its table
+    for inlined in cte.inlined_parents:
+        nullable += inlined.datasource.nullable_concepts
+    for node in null_padded_nodes(cte):
+        nullable += node.output_columns
+    return equivalent_addresses(nullable)
 
 
 def _and_atoms(condition: object) -> list:
@@ -128,12 +123,11 @@ class StripRedundantNotNull(OptimizationRule):
     ) -> tuple[bool, MergedCTEMap | None]:
         if not isinstance(cte, CTE) or cte.condition is None:
             return False, None
-        nullable = equivalent_addresses(cte.nullable_concepts)
+        nullable = _nullable_before_own_filter(cte)
         output = equivalent_addresses(cte.output_columns)
         atoms = _and_atoms(cte.condition)
         survivors: list = []
         dropped = False
-        unfiltered_nullable: set[str] | None = None
         rejected = _inner_join_rejected(cte)
         for atom in atoms:
             concept = _not_null_concept(atom)
@@ -152,14 +146,11 @@ class StripRedundantNotNull(OptimizationRule):
                 and not concept.equivalent_addresses.isdisjoint(output)
                 and concept.equivalent_addresses.isdisjoint(nullable)
             ):
-                if unfiltered_nullable is None:
-                    unfiltered_nullable = _unfiltered_nullable_addresses(cte.source)
-                if concept.equivalent_addresses.isdisjoint(unfiltered_nullable):
-                    dropped = True
-                    self.log(
-                        f"{cte.name}: dropping tautological {concept.address} IS NOT NULL"
-                    )
-                    continue
+                dropped = True
+                self.log(
+                    f"{cte.name}: dropping tautological {concept.address} IS NOT NULL"
+                )
+                continue
             survivors.append(atom)
         if not dropped:
             return False, None
