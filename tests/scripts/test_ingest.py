@@ -971,6 +971,27 @@ class TestCheckColumnCombinationUniqueness:
         # Second column has duplicates (two None values)
         assert _check_column_combination_uniqueness([1], sample_rows) is False
 
+    def test_list_and_struct_cells(self):
+        """LIST/STRUCT cells arrive as python lists/dicts, which cannot sit in
+        a set as they are; they are canonicalized, and equal contents count
+        as duplicates."""
+        sample_rows = [([1, 2], {"k": [1]}), ([1, 2], {"k": [2]}), ([3], {"k": [1]})]
+        assert _check_column_combination_uniqueness([0], sample_rows) is False
+        assert _check_column_combination_uniqueness([1], sample_rows) is False
+        assert _check_column_combination_uniqueness([0, 1], sample_rows) is True
+        assert detect_unique_key_combinations(["a", "b"], sample_rows) == [["a", "b"]]
+
+    def test_pruned_combination_is_not_a_key(self):
+        """Two columns with two distinct values each cannot key five rows; a
+        pair that could is still checked row by row."""
+        sample_rows = [(1, "a", i) for i in range(5)]
+        sample_rows[2] = (2, "b", 2)
+        assert detect_unique_key_combinations(["x", "y", "z"], sample_rows) == [["z"]]
+        no_single = [(1, "a"), (1, "b"), (2, "a"), (2, "b")]
+        assert detect_unique_key_combinations(["x", "y"], no_single) == [["x", "y"]]
+        no_key = [(1, "a"), (1, "a"), (2, "b"), (2, "b")]
+        assert detect_unique_key_combinations(["x", "y"], no_key) == []
+
 
 class TestDetectUniqueKeyCombinations:
     """Test detection of unique key combinations from sample data."""
@@ -1549,6 +1570,20 @@ def _make_concept_mapping(col_names: list[str]) -> dict[str, str]:
 
 class TestProcessColumn:
     """Test the _process_column helper function."""
+
+    def test_list_cells_dedupe_for_rich_type_detection(self):
+        """A LIST column's sample cells are unhashable; they still dedupe by
+        contents on the way to rich-type detection instead of raising."""
+        col = _DIALECT.make_table_column("tags", "INTEGER[]", True)
+        sample_rows = [([1, 2],), ([1, 2],), (None,), ([3],)]
+        concept_mapping = _make_concept_mapping(["tags"])
+
+        concept, _column_assignment, rich_import = _process_column(
+            0, col, [], sample_rows, concept_mapping
+        )
+
+        assert concept.name == "tags"
+        assert rich_import is None
 
     def test_basic_column_processing(self):
         """Test basic column processing with simple types."""

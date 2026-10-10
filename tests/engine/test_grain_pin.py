@@ -3,12 +3,10 @@ select's row: the select keys its reads do not cover are its inputs, as a bare
 aggregate's `by` is the select's grain. A column persisting it at its reads'
 own grain answers only a select at that grain."""
 
-from functools import cache
-
 import pytest
 
 from tests.helpers.models import CUSTOMERS_DERIVED
-from tests.helpers.rows import executor_for, sorted_rows
+from tests.helpers.rows import ExecutorCache, executor_for, sorted_rows
 from trilogy.core.exceptions import NoDatasourceException
 from trilogy.core.grain_pin import _co_held_only_beside
 from trilogy.executor import Executor
@@ -25,9 +23,17 @@ select 102, -30, 'CACHED'
 """
 
 
-@cache
-def _executor() -> Executor:
+def _build_executor() -> Executor:
     return executor_for(CUSTOMERS_DERIVED + _ORDER_CACHE)
+
+
+_executor = ExecutorCache(_build_executor)
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _release_executors():
+    yield
+    _executor.close()
 
 
 @pytest.mark.parametrize(

@@ -28,14 +28,18 @@ def localized_setup_sql(setup_sql: Path, data_dir: Path) -> str:
     return sql.replace("INSTALL httpfs;", "").replace("LOAD httpfs;", "")
 
 
-@fixture(scope="session")
+@fixture(scope="package")
 def gcat_env_base():
+    """Package-scoped and closed on the way out: the loaded tables are a few
+    hundred MB of in-memory DuckDB, which a session fixture would carry
+    through every later package."""
     env = Environment(
         working_path=Path(__file__).parent,
     )
     base = Dialects.DUCK_DB.default_executor(environment=env)
     base.execute_raw_sql(localized_setup_sql(ROOT / "setup.sql", DATA_DIR))
     yield base
+    base.close()
 
 
 @fixture(scope="function")

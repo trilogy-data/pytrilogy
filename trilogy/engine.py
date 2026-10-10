@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
@@ -19,35 +20,31 @@ from trilogy.core.models.environment import Environment
 LITERAL_COLON_ESCAPE = "\\:"
 
 
+# A single-quoted literal: ordinary characters, doubled quotes, or a backslash
+# pair (escape-char dialects such as BigQuery/Snowflake emit \' and \\). One
+# left unterminated runs to the end of the statement.
+_STRING_LITERAL = re.compile(r"'(?:[^'\\]|''|\\.)*(?:'|\\?$)", re.DOTALL)
+# Inside one: a backslash pair is kept as is, so an already-escaped colon (or a
+# colon behind an escaped backslash) is never touched; a bare colon is escaped.
+_LITERAL_COLON = re.compile(r"\\.|:", re.DOTALL)
+
+
+def _escape_colons_in_literal(match: re.Match[str]) -> str:
+    return _LITERAL_COLON.sub(
+        lambda m: LITERAL_COLON_ESCAPE if m.group(0) == ":" else m.group(0),
+        match.group(0),
+    )
+
+
 def escape_literal_colons(sql: str) -> str:
     """Escape `:` as LITERAL_COLON_ESCAPE inside single-quoted string literals.
 
-    Colons outside literals are left alone and still bind as parameters."""
-    out: list[str] = []
-    in_string = False
-    i = 0
-    while i < len(sql):
-        ch = sql[i]
-        if not in_string:
-            if ch == "'":
-                in_string = True
-            out.append(ch)
-        elif ch == "'" and sql[i + 1 : i + 2] == "'":
-            out.append("''")
-            i += 1
-        elif ch == "'":
-            in_string = False
-            out.append(ch)
-        elif ch == "\\" and i + 1 < len(sql):
-            # escape-char dialects (BigQuery/Snowflake) emit \' and \\ pairs
-            out.append(sql[i : i + 2])
-            i += 1
-        elif ch == ":":
-            out.append(LITERAL_COLON_ESCAPE)
-        else:
-            out.append(ch)
-        i += 1
-    return "".join(out)
+    Colons outside literals are left alone and still bind as parameters. This
+    runs on every statement, so it is a regex pass rather than a character
+    loop, and a statement with no colon (or no literal) returns untouched."""
+    if ":" not in sql or "'" not in sql:
+        return sql
+    return _STRING_LITERAL.sub(_escape_colons_in_literal, sql)
 
 
 def unescape_literal_colons(sql: str) -> str:

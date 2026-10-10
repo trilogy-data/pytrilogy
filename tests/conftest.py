@@ -2,6 +2,7 @@ import copy
 import os
 from pathlib import Path
 
+import pytest
 from pytest import fixture
 
 from trilogy.constants import CONFIG, logger
@@ -46,6 +47,27 @@ _AMBIENT_CONSOLE_ENV = (
 
 #: Whether rich was importable, read once before any test can toggle it.
 _RICH_AVAILABLE = display_core.RICH_AVAILABLE
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_makereport(item, call):
+    """Drop captured stdout/stderr/log from the report of a passing phase.
+
+    pytest keeps every TestReport for the whole session (the terminal
+    reporter's stats), and each one carries the text its phase printed or
+    logged. For a failure that text is the diagnosis; for a pass it is never
+    read, but with the planner logging at INFO under a DebuggingHook it is
+    hundreds of KB per test, held until the run ends. Kept when the run asks
+    to see passed output (`-rP` / `-rA`)."""
+    report = yield
+    if report.passed and not _SHOW_PASSED_OUTPUT.intersection(
+        item.config.getoption("reportchars", "")
+    ):
+        report.sections = []
+    return report
+
+
+_SHOW_PASSED_OUTPUT = frozenset("PAa")
 
 
 @fixture(autouse=True)
