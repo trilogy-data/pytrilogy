@@ -24,7 +24,20 @@
   arguments (`_name_inline_arguments`) and
   `filtered_aggregate._remove_filter` still copy a concept under its
   address with another lineage. The first two fire on no corpus statement;
-  `_reads_aggregate_differently` in collapse still guards them.
+  `_reads_aggregate_differently` in collapse still guards them. Risk if a
+  consumer re-derives the original lineage in the same CTE:
+  - `_remove_filter`: `count(case when c then x end)` under the moved
+    `WHERE c` is the same value. Tidiness only.
+  - `_read_first_rows`: drops the first-row marker, so over-counts on the
+    repeated stream. Wrong rows.
+  - `_name_inline_arguments`: renders the argument inline instead of the
+    named column computed on the solid rows; differs on padded rows. Wrong
+    rows.
+  The `distinct_counts` pattern does not carry over directly: these two
+  rewrites READ new columns (the marker, the named argument), and rules
+  such as `hide_unused_concepts` derive a CTE's reads from its output
+  lineages, so a render-only override would let them prune those columns.
+  Fixing them means the CTE declaring those extra reads.
 
 ## The problem
 
