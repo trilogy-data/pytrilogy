@@ -100,3 +100,25 @@ def test_derivation_over_demoted_key_projects(engine, query, expected):
 )
 def test_grouped_derivation_over_demoted_key_keeps_origin(engine, query, expected):
     assert engine.execute_text(query)[-1].fetchall() == expected
+
+
+FULL_SOURCE = """
+key tree_id string;
+key raw_source string;
+auto source <- concat(raw_source, '');
+property tree_id.label string;
+merge source into label;
+auto by_upper <- upper(source);
+
+datasource trees (tree_id: tree_id, data_source: raw_source)
+grain (tree_id)
+query '''SELECT 'a1' AS tree_id, 'a' AS data_source UNION ALL SELECT 'b1', 'b' ''';
+"""
+
+
+def test_grouped_projection_keeps_origin_over_full_source():
+    env = Environment()
+    env.parse(FULL_SOURCE)
+    engine = Dialects.DUCK_DB.default_executor(environment=env)
+    rows = engine.execute_text("select by_upper order by by_upper asc;")[-1]
+    assert rows.fetchall() == [("A",), ("B",)]
