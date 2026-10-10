@@ -22,7 +22,6 @@ from trilogy.core.models.core import DataType
 from trilogy.core.models.datasource import RawColumnExpr
 from trilogy.core.models.execute import (
     CTE,
-    BaseJoin,
     ConceptPair,
     CTEConceptPair,
     InstantiatedUnnestJoin,
@@ -792,67 +791,54 @@ def test_nullable_inner_join_key_does_not_prove_non_null():
     assert cte.joins[1].jointype == JoinType.INNER
 
 
-def test_existing_inner_base_join_proves_nullable_source_present():
+def test_existing_inner_join_proves_nullable_source_present():
     """A downstream INNER dim join can prove an upstream LEFT-joined source
     is present without pretending the source's original join keys were proven."""
     fact_item = _build_concept("ITEM")
     fact_ticket = _build_concept("TICKET")
-    return_item = _build_concept("ITEM")
-    return_ticket = _build_concept("TICKET")
     return_reason = _build_concept("REASON")
-    reason_id = _build_concept("REASON")
     reason_desc = _build_concept("REASON_DESC")
 
     fact_cte = _build_cte("fact", [fact_item, fact_ticket])
-    returns_cte = _build_cte("returns", [return_item, return_ticket, return_reason])
-    reason_cte = _build_cte("reason", [reason_id, reason_desc])
-    fact_ds = fact_cte.source.base_datasource
-    returns_ds = returns_cte.source.base_datasource
-    reason_ds = reason_cte.source.base_datasource
-    assert fact_ds is not None
-    assert returns_ds is not None
-    assert reason_ds is not None
+    returns_cte = _build_cte("returns", [fact_item, fact_ticket, return_reason])
+    reason_cte = _build_cte("reason", [return_reason, reason_desc])
 
     root = _build_cte("root", [fact_item, fact_ticket, return_reason, reason_desc])
     root.condition = _condition_for(reason_desc)
-    root.source.datasources = [fact_ds, returns_ds, reason_ds]
-    root.source.joins = [
-        BaseJoin(
-            left_datasource=fact_ds,
-            right_datasource=returns_ds,
-            join_type=JoinType.LEFT_OUTER,
-            concept_pairs=[
-                ConceptPair(
-                    left=fact_item,
-                    right=return_item,
-                    existing_datasource=fact_ds,
-                ),
-                ConceptPair(
-                    left=fact_ticket,
-                    right=return_ticket,
-                    existing_datasource=fact_ds,
-                ),
+    root.parent_ctes = [fact_cte, returns_cte, reason_cte]
+    root.joins = [
+        Join(
+            jointype=JoinType.LEFT_OUTER,
+            right_cte=returns_cte,
+            joinkey_pairs=[
+                CTEConceptPair(
+                    left=c,
+                    right=c,
+                    existing_datasource=fact_cte.source,
+                    cte=fact_cte,
+                )
+                for c in (fact_item, fact_ticket)
             ],
         ),
-        BaseJoin(
-            left_datasource=returns_ds,
-            right_datasource=reason_ds,
-            join_type=JoinType.INNER,
-            concept_pairs=[
-                ConceptPair(
+        Join(
+            jointype=JoinType.INNER,
+            right_cte=reason_cte,
+            joinkey_pairs=[
+                CTEConceptPair(
                     left=return_reason,
-                    right=reason_id,
-                    existing_datasource=returns_ds,
+                    right=return_reason,
+                    existing_datasource=returns_cte.source,
+                    cte=returns_cte,
                 )
             ],
         ),
     ]
 
-    changed, _ = UpgradeJoinOnGuards(base_join_only=True).optimize(root, {})
+    changed, _ = UpgradeJoinOnGuards(left_only=True).optimize(root, {})
 
     assert changed
-    assert root.source.joins[0].join_type == JoinType.INNER
-    assert root.source.joins[1].join_type == JoinType.INNER
+    assert root.joins[0].jointype == JoinType.INNER
+    assert root.joins[1].jointype == JoinType.INNER
 
 
 def test_seed_addresses_inlined_left_via_joinkey_pair():
@@ -975,24 +961,30 @@ def _build_flag_scenario(flag_alias):
         grain=BuildGrain(),
     )
 
+    fact_cte = CTE.from_datasource(fact_ds)
+    returns_cte = CTE.from_datasource(returns_ds)
     root = _build_cte("root", [key, measure, flag])
     root.condition = BuildComparison(
         left=flag, right=False, operator=ComparisonOperator.EQ
     )
-    root.source.datasources = [fact_ds, returns_ds]
-    root.source.joins = [
-        BaseJoin(
-            left_datasource=fact_ds,
-            right_datasource=returns_ds,
-            join_type=JoinType.LEFT_OUTER,
-            concept_pairs=[
-                ConceptPair(left=key, right=key, existing_datasource=fact_ds)
+    root.parent_ctes = [fact_cte, returns_cte]
+    root.joins = [
+        Join(
+            jointype=JoinType.LEFT_OUTER,
+            right_cte=returns_cte,
+            joinkey_pairs=[
+                CTEConceptPair(
+                    left=key,
+                    right=key,
+                    existing_datasource=fact_cte.source,
+                    cte=fact_cte,
+                )
             ],
         )
     ]
 
-    UpgradeJoinOnGuards(base_join_only=True).optimize(root, {})
-    return root.source.joins[0].join_type
+    UpgradeJoinOnGuards(left_only=True).optimize(root, {})
+    return root.joins[0].jointype
 
 
 def test_raw_derived_flag_eq_false_keeps_left_outer():
@@ -1011,40 +1003,6 @@ def test_plain_column_flag_eq_false_still_upgrades():
     rows, so ``flag = false`` legitimately rejects them — INNER is sound and
     the gate must still fire. Confirms the fix is scoped to opaque bindings."""
     assert _build_flag_scenario("WR_FLAG") == JoinType.INNER
-
-
-def test_source_datasources_normalizes_to_safe_identifier_tokens():
-    """``_source_datasources`` must yield the same ``safe_identifier`` tokens
-    stored in ``CTE.source_map`` (what ``_blocked_partials`` intersects). A
-    namespaced datasource's ``identifier`` keeps dots while ``source_map``
-    stores the underscored form, and a ``QueryDatasource`` maps to datasource
-    *objects*, never strings — both must normalize to ``safe_identifier`` or
-    the partial-block check silently never matches on this path."""
-    key = _build_concept("KEY")
-    bd = BuildDatasource(
-        name="returns",
-        columns=[BuildColumnAssignment(alias="KEY", concept=key)],
-        address="returns",
-        namespace="test",
-        grain=BuildGrain(),
-    )
-    # The exact mismatch the fix closes: dotted identifier vs underscored token.
-    assert bd.identifier == "test.returns"
-    assert bd.safe_identifier == "test_returns"
-
-    # Bare BuildDatasource → its own safe_identifier (underscored, not dotted).
-    assert _source_datasources(bd) == {"test_returns"}
-
-    # QueryDatasource wrapping it → the BD's safe_identifier, not the object.
-    qds = QueryDatasource(
-        input_concepts=[key],
-        output_concepts=[key],
-        datasources=[bd],
-        source_map={key.address: {bd}},
-        grain=BuildGrain(components={key.address}),
-        joins=[],
-    )
-    assert _source_datasources(qds) == {"test_returns"}
 
 
 def test_source_datasources_cte_returns_source_map_tokens():

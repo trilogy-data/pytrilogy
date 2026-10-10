@@ -24,7 +24,7 @@ from trilogy.core.models.build import (
     BuildRowsetItem,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.models.execute import BaseJoin, QueryDatasource, UnnestJoin
+from trilogy.core.models.execute import BaseJoin, Join, QueryDatasource, UnnestJoin
 from trilogy.core.processing.condition_utility import (
     NULL_PROPAGATING_OPS,
     concepts_implied_non_null,
@@ -760,19 +760,25 @@ GROUP_COMPUTED_DERIVATIONS = frozenset(
 )
 
 
-def join_preserves_left_rows(join: BaseJoin) -> bool:
+def join_preserves_left_rows(join: BaseJoin | Join) -> bool:
     """A lookup join: INNER/LEFT onto a side whose whole grain the join keys
     cover adds no rows to the left stream."""
-    if join.join_type not in (JoinType.INNER, JoinType.LEFT_OUTER):
+    if isinstance(join, Join):
+        join_type = join.jointype
+        right: BuildDatasource | QueryDatasource = join.right_cte.source
+        right_keys = [pair.right for pair in join.joinkey_pairs or []]
+    else:
+        join_type, right = join.join_type, join.right_datasource
+        right_keys = (
+            [pair.right for pair in join.concept_pairs]
+            if join.concept_pairs
+            else join.concepts or []
+        )
+    if join_type not in (JoinType.INNER, JoinType.LEFT_OUTER):
         return False
-    right_grain = set(join.right_datasource.grain.components)
+    right_grain = set(right.grain.components)
     if not right_grain:
         return True
-    right_keys = (
-        [pair.right for pair in join.concept_pairs]
-        if join.concept_pairs
-        else join.concepts or []
-    )
     coverage = {address for key in right_keys for address in key.equivalent_addresses}
     return right_grain <= coverage
 

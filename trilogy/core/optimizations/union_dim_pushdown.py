@@ -321,7 +321,7 @@ class _DimDescriptor:
     # Original join right_datasource identifier, disambiguating sibling dim
     # CTEs that share one base BD (an unfiltered and a filtered variant).
     join_qds_id: str
-    key_pairs: list[ConceptPair]
+    key_pairs: list[ConceptPair | CTEConceptPair]
     dim_concepts: list[BuildConcept]
     where_atoms: list[BoolExpr]
     # True when every non-FK dim concept the consumer references appears in a

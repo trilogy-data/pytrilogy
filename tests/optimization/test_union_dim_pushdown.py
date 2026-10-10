@@ -12,7 +12,6 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import (
     CTE,
-    BaseJoin,
     ConceptPair,
     CTEConceptPair,
     Join,
@@ -82,11 +81,6 @@ def _dim_consumer(
     dim_value: BuildConcept,
     condition: BuildComparison | None = None,
 ) -> CTE:
-    pair = ConceptPair(
-        left=left_key,
-        right=right_key,
-        existing_datasource=union.source,
-    )
     cte_pair = CTEConceptPair(
         left=left_key,
         right=right_key,
@@ -100,13 +94,7 @@ def _dim_consumer(
             output_concepts=[left_key, dim_value],
             datasources=[union.source, dim.source],
             grain=BuildGrain(),
-            joins=[
-                BaseJoin(
-                    right_datasource=dim.source,
-                    join_type=JoinType.INNER,
-                    concept_pairs=[pair],
-                )
-            ],
+            joins=[],
             source_map={
                 left_key.address: {union.source},
                 right_key.address: {union.source, dim.source},
@@ -171,7 +159,6 @@ def test_union_dim_pushdown_preflights_all_branches_before_mutating(
     )
 
     assert UnionDimPushdown()._apply(union, [consumer], descriptor) is False
-    assert valid.source.joins == []
     assert valid.joins == []
     assert valid.condition is None
     assert category_name.address not in valid.source_map
@@ -200,11 +187,10 @@ def test_union_dim_pushdown_strips_direct_consumer_when_safe(test_environment):
     optimized, _ = UnionDimPushdown().optimize(union, {union.name: [consumer]})
 
     assert optimized is True
-    assert all(branch.source.joins for branch in [branch1, branch2])
+    assert all(branch.joins for branch in [branch1, branch2])
     assert all(branch.condition == atom for branch in [branch1, branch2])
     assert category_name.address in {c.address for c in union.output_columns}
     assert consumer.condition is None
-    assert consumer.source.joins == []
     assert consumer.joins == []
 
 
@@ -244,10 +230,9 @@ def test_union_dim_pushdown_plain_target_moves_dim_and_strips(test_environment):
     )
 
     assert UnionDimPushdown()._apply_plain(target, [consumer], descriptor) is True
-    assert target.source.joins
+    assert target.joins
     assert target.condition == atom
     assert category_name.address in {c.address for c in target.output_columns}
-    assert consumer.source.joins == []
     assert consumer.joins == []
     assert consumer.condition is None
 
@@ -282,7 +267,7 @@ def test_union_dim_pushdown_plain_target_requires_strippable_filter(test_environ
     )
 
     assert UnionDimPushdown()._apply_plain(target, [consumer], descriptor) is False
-    assert target.source.joins == []
+    assert target.joins == []
 
 
 def test_union_dim_pushdown_coarsens_dead_fk_grain(test_environment):
@@ -390,8 +375,8 @@ def test_union_dim_pushdown_filter_only_requires_a_filter(test_environment):
     )
 
     assert UnionDimPushdown()._apply(union, [consumer], descriptor) is False
-    assert branch1.source.joins == []
-    assert branch2.source.joins == []
+    assert branch1.joins == []
+    assert branch2.joins == []
 
 
 def test_union_dim_pushdown_uses_branch_binding_key_for_dim_source(
@@ -744,7 +729,7 @@ def test_union_dim_pushdown_plain_refuses_dim_derived_from_the_target(
     )
 
     assert UnionDimPushdown()._apply_plain(target, [consumer], descriptor) is False
-    assert target.source.joins == []
+    assert target.joins == []
     assert target.parent_ctes == []
 
 

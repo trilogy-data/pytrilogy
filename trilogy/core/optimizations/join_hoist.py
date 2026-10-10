@@ -32,10 +32,9 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import (
     CTE,
-    BaseJoin,
-    ConceptPair,
     CTEConceptPair,
     DatasourceCTE,
+    InstantiatedUnnestJoin,
     Join,
     QueryDatasource,
     UnionCTE,
@@ -77,6 +76,14 @@ def _datasource_matches(
     return left_base is not None and left_base is right_base
 
 
+def _joins_datasource(
+    join: Join | InstantiatedUnnestJoin, datasource: QueryDatasource | BuildDatasource
+) -> bool:
+    return isinstance(join, Join) and _datasource_matches(
+        join.right_cte.source, datasource
+    )
+
+
 class JoinHoist(OptimizationRule):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -97,7 +104,7 @@ class JoinHoist(OptimizationRule):
         self, parent_cte: CTE, fk_addresses: set[str]
     ) -> QueryDatasource | BuildDatasource | None:
         """Find which datasource on parent_cte.source provides the FK columns
-        (used as ConceptPair.existing_datasource for the new BaseJoin)."""
+        (used as the new join's key pairs' existing_datasource)."""
         for ds in parent_cte.source.datasources:
             ds_outputs = {c.address for c in ds.output_concepts}
             if fk_addresses.issubset(ds_outputs):
@@ -279,11 +286,7 @@ class JoinHoist(OptimizationRule):
     def _parent_already_joins_dim(
         self, parent_cte: CTE, dim_qds: QueryDatasource | BuildDatasource
     ) -> bool:
-        return any(
-            isinstance(bj, BaseJoin)
-            and _datasource_matches(bj.right_datasource, dim_qds)
-            for bj in parent_cte.source.joins
-        )
+        return any(_joins_datasource(j, dim_qds) for j in parent_cte.joins)
 
     def _join_type_after_hoist(self, join: Join, bundled: list) -> JoinType | None:
         if join.jointype == JoinType.INNER:
@@ -303,7 +306,7 @@ class JoinHoist(OptimizationRule):
         join: Join,
         join_type: JoinType,
     ) -> bool:
-        """Construct fresh BaseJoin + Join state on parent_cte for `join`, and
+        """Construct a fresh Join on parent_cte for `join`, and
         strip the original from cte. If parent_cte already joins the same dim
         (a sibling hoisted it earlier), only strip from cte. Returns True on
         success."""
@@ -319,14 +322,6 @@ class JoinHoist(OptimizationRule):
         # token occurs so nothing references a table no longer in the FROM.
         dim_render_token = cte.source_key_for(dim_cte)
         dim_tokens = {dim_cte.name, dim_render_token}
-
-        cte_base_join: BaseJoin | None = None
-        for bj in cte.source.joins:
-            if isinstance(bj, BaseJoin) and _datasource_matches(
-                bj.right_datasource, dim_qds
-            ):
-                cte_base_join = bj
-                break
 
         if not self._parent_already_joins_dim(parent_cte, dim_qds):
             fk_addresses = {p.left.address for p in (join.joinkey_pairs or [])}
@@ -353,22 +348,6 @@ class JoinHoist(OptimizationRule):
                 )
                 return False
 
-            new_concept_pairs = [
-                ConceptPair(
-                    left=p.left,
-                    right=p.right,
-                    existing_datasource=left_base_ds,
-                    modifiers=p.modifiers,
-                )
-                for p in (join.joinkey_pairs or [])
-            ]
-            new_base_join = BaseJoin(
-                right_datasource=dim_qds,
-                join_type=join_type,
-                concept_pairs=new_concept_pairs,
-                modifiers=list(join.modifiers),
-            )
-            parent_cte.source.joins.append(new_base_join)
             add_datasource_sorted(parent_cte, dim_qds)
             existing_input_addrs = {c.address for c in parent_cte.source.input_concepts}
             for c in dim_cte.output_columns:
@@ -410,19 +389,13 @@ class JoinHoist(OptimizationRule):
                     parent_cte.source_map[c.address].append(dim_source_key)
 
         cte.joins.remove(join)
-        if cte_base_join is not None and cte_base_join in cte.source.joins:
-            cte.source.joins.remove(cte_base_join)
         # Filter-only concepts the dim brought in go away entirely; join keys
         # remain because cte may still need them from the FK side.
         join_keys_right = {p.right.address for p in (join.joinkey_pairs or [])}
         dim_filter_addresses = {
             c.address for c in dim_cte.output_columns
         } - join_keys_right
-        still_referenced = any(
-            isinstance(bj, BaseJoin)
-            and _datasource_matches(bj.right_datasource, dim_qds)
-            for bj in cte.source.joins
-        )
+        still_referenced = any(_joins_datasource(j, dim_qds) for j in cte.joins)
         if not still_referenced and dim_qds in cte.source.datasources:
             cte.source.datasources = [
                 d for d in cte.source.datasources if d.identifier != dim_qds.identifier

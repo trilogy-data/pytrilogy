@@ -10,7 +10,6 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import (
     CTE,
-    BaseJoin,
     CTEConceptPair,
     Join,
     QueryDatasource,
@@ -241,9 +240,6 @@ def test_join_hoist_pushes_guarded_left_join_into_base_parent(test_environment):
     assert parent.condition == condition
     assert len(parent.joins) == 1
     assert parent.joins[0].jointype == JoinType.INNER
-    assert len(parent.source.joins) == 1
-    assert isinstance(parent.source.joins[0], BaseJoin)
-    assert parent.source.joins[0].join_type == JoinType.INNER
 
 
 def test_join_hoist_preserves_inlined_dim_on_parent(test_environment):

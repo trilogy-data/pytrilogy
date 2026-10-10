@@ -8,7 +8,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import (
     CTE,
-    BaseJoin,
+    Join,
     RecursiveCTE,
     UnionCTE,
 )
@@ -76,9 +76,11 @@ def _identity_group_single_use_aggregate(cte: CTE, parent: CTE) -> bool:
     if not parent.source.datasources:
         return False
     right_ids = {
-        join.right_datasource.identifier
-        for join in parent.source.joins
-        if isinstance(join, BaseJoin)
+        source.identifier
+        for join in parent.joins
+        if isinstance(join, Join)
+        for source in (join.right_cte.source, join.right_cte.source.base_datasource)
+        if source is not None
     }
     roots = [
         source
@@ -94,8 +96,8 @@ def _identity_group_single_use_aggregate(cte: CTE, parent: CTE) -> bool:
     if not set(roots[0].grain.components) <= set(parent.grain.components):
         return False
     if any(
-        not isinstance(join, BaseJoin) or not join_preserves_left_rows(join)
-        for join in parent.source.joins
+        not isinstance(join, Join) or not join_preserves_left_rows(join)
+        for join in parent.joins
     ):
         return False
     parent_outputs = {concept.address for concept in parent.output_columns}
