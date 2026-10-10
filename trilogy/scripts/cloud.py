@@ -112,6 +112,7 @@ import os
 import secrets as pysecrets
 import threading
 import time
+import tomllib
 import webbrowser
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
@@ -127,7 +128,6 @@ from urllib.parse import parse_qs, quote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 import click
-import tomllib
 from pydantic import BaseModel, ValidationError
 
 from trilogy.scripts.click_utils import dry_run_option

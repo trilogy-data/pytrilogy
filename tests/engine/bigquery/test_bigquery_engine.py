@@ -88,7 +88,7 @@ def test_parameter_type_covers_runtime_values():
     assert parameter_type(datetime.date(2024, 1, 1)) == "DATE"
     assert parameter_type(datetime.datetime(2024, 1, 1)) == "DATETIME"
     assert (
-        parameter_type(datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc))
+        parameter_type(datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC))
         == "TIMESTAMP"
     )
 

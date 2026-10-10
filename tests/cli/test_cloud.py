@@ -7,7 +7,7 @@ headers, status handling, model validation, and rendering, rather than only the
 command body."""
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import ClassVar
 
@@ -596,7 +596,7 @@ class TestFormatters:
     def test_missing_timestamps_render_as_the_fallback(self):
         assert _ts(None) == "-"
         assert _ts(None, "never") == "never"
-        assert _ts(datetime(2026, 7, 28, 12, 0, tzinfo=timezone.utc)).startswith(
+        assert _ts(datetime(2026, 7, 28, 12, 0, tzinfo=UTC)).startswith(
             "2026-07-28 12:00:00"
         )
 

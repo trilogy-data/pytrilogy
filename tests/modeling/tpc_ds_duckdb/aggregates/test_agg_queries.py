@@ -1,11 +1,11 @@
 import os
 import platform
+import tomllib
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
 import tomli_w
-import tomllib
 
 from tests.modeling._benchmark_artifacts import check_query_size
 from trilogy import Executor

@@ -7,7 +7,7 @@ accepts the jobs — that is what
 every choice this module makes on the way there.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -313,7 +313,7 @@ def test_staging_is_dropped_and_expires_on_its_own():
     create = _sql_containing(client, "CREATE TABLE")
     assert "OPTIONS(expiration_timestamp = TIMESTAMP '" in create
     expires = datetime.fromisoformat(create.split("TIMESTAMP '")[1].split("'")[0])
-    assert timedelta(hours=5) < expires - datetime.now(timezone.utc) <= STAGING_TTL
+    assert timedelta(hours=5) < expires - datetime.now(UTC) <= STAGING_TTL
     assert client.updated == []
 
 

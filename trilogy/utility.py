@@ -1,7 +1,7 @@
 import hashlib
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from functools import partial
 from functools import singledispatchmethod as _stdlib_singledispatchmethod
 from os import PathLike
@@ -15,7 +15,7 @@ INT_HASH_SIZE = 16
 def utc_now_iso() -> str:
     """Current UTC time, ISO-8601. The emitting process's own clock — fine for
     display, never for ordering events across machines."""
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 @contextmanager

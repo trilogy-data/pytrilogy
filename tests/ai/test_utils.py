@@ -1,6 +1,6 @@
 import json
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
 from unittest.mock import Mock, call
 
@@ -25,7 +25,7 @@ class TestParseRetryAfterMs:
     def test_http_date_future(self):
         # HTTP-date format has only second-level precision, so add a buffer
         # large enough to survive sub-second truncation plus CI scheduling jitter.
-        future = datetime.now(timezone.utc) + timedelta(seconds=3)
+        future = datetime.now(UTC) + timedelta(seconds=3)
         value = format_datetime(future, usegmt=True)
         result = _parse_retry_after_ms(value)
         assert result is not None

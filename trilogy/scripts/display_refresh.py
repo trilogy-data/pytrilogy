@@ -1,9 +1,8 @@
 """Display helpers for refresh/watermark pipeline output."""
 
-from typing import Any
+from typing import Any, Self
 
 from click import echo, style
-from typing_extensions import Self
 
 import trilogy.scripts.display_core as _core
 from trilogy.scripts.display_core import _FdStderrCapture, print_info

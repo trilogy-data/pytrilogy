@@ -24,7 +24,7 @@ import sys
 import threading
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -106,7 +106,7 @@ def main() -> int:
         return 2
 
     category = get_category(args.category)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    ts = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     qid = args.query_id
     # Resolve to absolute: the agent subprocess runs with cwd=worker, so a
     # relative --output-dir would make the --log-file path resolve under the

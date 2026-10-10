@@ -16,10 +16,10 @@ from __future__ import annotations
 import os
 import platform
 import re
+import tomllib
 from pathlib import Path
 
 import tomli_w
-import tomllib
 
 
 def fingerprint() -> str:

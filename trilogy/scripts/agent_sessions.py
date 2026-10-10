@@ -14,7 +14,7 @@ import os
 import re
 import uuid
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from trilogy.ai.models import LLMMessage
@@ -45,7 +45,7 @@ def project_dir(cwd: Path) -> Path:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 @dataclass

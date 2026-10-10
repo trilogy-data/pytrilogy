@@ -3,9 +3,8 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
-
 from tomllib import loads
+from typing import Any
 
 from trilogy.ai.enums import Provider
 from trilogy.constants import REMOTE_PREFIXES, logger

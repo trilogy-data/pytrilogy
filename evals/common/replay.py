@@ -26,7 +26,7 @@ import shutil
 import threading
 from collections import Counter
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from . import agent_runner, analyze_run, cleanup, db, prompts, scoring
@@ -528,7 +528,7 @@ def replay_query(
         report.setdefault("replays", []).append(
             {
                 "id": qid,
-                "timestamp": datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S"),
+                "timestamp": datetime.now(UTC).strftime("%Y%m%d-%H%M%S"),
                 "prev_status": prev_status,
                 "status": score.status,
                 "trilogy_version": meta.get("trilogy_version"),

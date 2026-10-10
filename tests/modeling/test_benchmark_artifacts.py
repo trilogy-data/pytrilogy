@@ -1,4 +1,5 @@
 import tomllib
+
 from pytest import raises
 
 from tests.modeling._benchmark_artifacts import (

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tomllib
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from os import environ
@@ -20,7 +21,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import tomllib
 from matplotlib.ticker import StrMethodFormatter
 
 from tests.modeling._benchmark_artifacts import fingerprint

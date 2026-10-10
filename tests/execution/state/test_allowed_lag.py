@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from sqlalchemy import create_engine
@@ -42,12 +42,11 @@ class TestWatermarkDistance:
         assert _watermark_distance(current, expected) is None
 
     def test_mixed_awareness_raises(self) -> None:
-        from datetime import timezone
 
         with pytest.raises(TypeError):
             _watermark_distance(
                 datetime(2024, 1, 1, 12, 0),
-                datetime(2024, 1, 1, 12, 5, tzinfo=timezone.utc),
+                datetime(2024, 1, 1, 12, 5, tzinfo=UTC),
             )
 
 

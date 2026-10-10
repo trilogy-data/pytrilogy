@@ -2,6 +2,7 @@ import html
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC
 from email.utils import parsedate_to_datetime
 from typing import Any, TypeVar
 
@@ -50,10 +51,10 @@ def _parse_retry_after_ms(value: str) -> int | None:
     except ValueError:
         pass
     try:
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         dt = parsedate_to_datetime(value)
-        delta_ms = int((dt - datetime.now(timezone.utc)).total_seconds() * 1000)
+        delta_ms = int((dt - datetime.now(UTC)).total_seconds() * 1000)
         return max(0, delta_ms)
     except Exception:
         return None

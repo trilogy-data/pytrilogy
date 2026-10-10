@@ -8,7 +8,7 @@ import random
 import sys
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
-from datetime import date, datetime, time, timezone
+from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from pathlib import Path
 from time import perf_counter
@@ -265,7 +265,7 @@ def select_cases(cases: list[FuzzCase], args: argparse.Namespace) -> list[FuzzCa
 def report_directory(args: argparse.Namespace) -> Path:
     if args.report_dir:
         return args.report_dir
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     return ROOT / "runs" / f"{stamp}_seed{args.seed}"
 
 

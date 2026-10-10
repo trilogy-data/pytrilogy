@@ -26,7 +26,7 @@ import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from trilogy.core.models.datasource import Address, AddressType, Datasource
@@ -237,7 +237,7 @@ class EnvironmentManager:
     def _write_new(self, env_name: str) -> EnvMeta:
         validate_env_name(env_name)
         self._env_dir(env_name).mkdir(parents=True, exist_ok=True)
-        meta = EnvMeta(name=env_name, created_at=datetime.now(timezone.utc).isoformat())
+        meta = EnvMeta(name=env_name, created_at=datetime.now(UTC).isoformat())
         self._save_meta(meta)
         return meta
 

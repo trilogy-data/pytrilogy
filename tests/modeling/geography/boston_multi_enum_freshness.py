@@ -4,7 +4,7 @@
 # dependencies = ["pyarrow"]
 # ///
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pyarrow as pa
 
@@ -12,7 +12,7 @@ if __name__ == "__main__":
     table = pa.table(
         {
             "data_updated_through": pa.array(
-                [datetime.now(tz=timezone.utc)], type=pa.timestamp("us", tz="UTC")
+                [datetime.now(tz=UTC)], type=pa.timestamp("us", tz="UTC")
             ),
         }
     )
