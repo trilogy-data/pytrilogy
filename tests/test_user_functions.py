@@ -4,8 +4,9 @@ import pytest
 from pytest import raises
 
 from trilogy import Dialects, Environment
-from trilogy.core.enums import Derivation, Purpose
+from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.exceptions import FunctionArgumentException, InvalidSyntaxException
+from trilogy.core.models.core import DataType
 
 
 def test_user_function_def():
@@ -441,3 +442,53 @@ def test_def_body_valid_types_still_run():
         .fetchall()
     )
     assert rows[0].out == "5"
+
+
+FREE_REFERENCE_MODEL = """
+key pid int;
+property pid.name string;
+property pid.hr int;
+property pid.team int;
+"""
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "min(name) by g",
+        "max(hr) by g",
+        "sum(hr) by g",
+        "max(name ? hr > 1) by g",
+        "coalesce(name, 'x')",
+    ],
+)
+def test_def_body_free_reference_types_like_inline(body):
+    """A def body hydrates before the file's concepts, so a concept it reads by
+    name rather than as a parameter was an untyped placeholder: `min(name) by
+    g` typed UNKNOWN through the macro and STRING inline."""
+    env = Environment()
+    env.parse(
+        FREE_REFERENCE_MODEL
+        + f"def f(g) -> {body};\n"
+        + "auto via_def <- @f(team);\n"
+        + f"auto inline <- {body.replace(' g', ' team')};"
+    )
+    via_def = env.concepts["local.via_def"]
+    inline = env.concepts["local.inline"]
+    assert via_def.datatype == inline.datatype != DataType.UNKNOWN
+    assert via_def.grain == inline.grain
+
+
+def test_def_aggregate_keeps_by_grain_downstream():
+    """An UNKNOWN-typed macro aggregate dropped out of every grain built over
+    it, so `max(name) by cluster` resolved to a grand total."""
+    env = Environment()
+    env.parse(
+        FREE_REFERENCE_MODEL
+        + "def anchor_of(g) -> min(pid) by g;\n"
+        + "auto cluster <- coalesce(@anchor_of(team), pid);\n"
+        + "auto merged <- substring((max(name) by cluster), 1, 10);"
+    )
+    merged = env.concepts["local.merged"]
+    assert merged.grain.components == {"local.cluster"}
+    assert merged.granularity == Granularity.MULTI_ROW

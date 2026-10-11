@@ -3361,7 +3361,6 @@ class Factory:
             self.environment,
             assemble_full_graph(self.environment, self.domain_graph),
             self._named_pin_keys,
-            self.domain_graph.canonical_map(),
         )
 
     def _named_pin_keys(self, address: str) -> frozenset[str]:
@@ -3421,7 +3420,6 @@ class Factory:
             [b for b in base.by if isinstance(b, ConceptRef)],
             self.environment,
             assemble_full_graph(self.environment, self.domain_graph),
-            self.domain_graph.canonical_map(),
         )
         self._by_scoped = True
         try:
@@ -4503,7 +4501,6 @@ class Factory:
             base,
             self.environment,
             assemble_full_graph(self.environment, self.domain_graph),
-            self.domain_graph.canonical_map(),
         )
 
         materialized: dict[str, BuildConcept] = {}

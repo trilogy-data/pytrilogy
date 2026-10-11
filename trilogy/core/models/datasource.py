@@ -24,10 +24,10 @@ from trilogy.core.models.author import (
     Function,
     Grain,
     HasUUID,
+    HavingClause,
     LooseConceptList,
     Namespaced,
     WhereClause,
-    combine_staged_wheres,
 )
 
 LOGGER_PREFIX = "[MODELS_DATASOURCE]"
@@ -475,21 +475,38 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         # can never be written even when source-selection is wrong. Blocked on first
         # fixing source-selection to prefer the exact-matching partial source automatically.
 
-        # The datasource's own `where` is a row contract: every read of it is
-        # filtered by it, so a build that skipped it would write rows the
-        # datasource then denies. AND it into the build gate alongside any
-        # incremental filter.
-        where = combine_staged_wheres([w for w in (self.where, where) if w])
+        # The datasource's own `where` is applied to every read of it, so the
+        # build writes only the rows a read keeps: a filter on the finished
+        # rows (HAVING), never a WHERE that would recompute the columns'
+        # aggregates over the surviving rows. Incremental keys scope the build.
+        # The `where` reads only stored columns and row-level derivations of
+        # them (validated at parse), so a derived gate rides along hidden
+        # without changing the build's grain.
+        having = (
+            HavingClause(conditional=self.where.conditional) if self.where else None
+        )
+        stored = [col.concept.address for col in self.columns]
+        derived = list(
+            dict.fromkeys(
+                ref.address
+                for ref in (having.concept_arguments if having else [])
+                if ref.address not in stored
+            )
+        )
         return SelectStatement.from_inputs(
             environment=environment,
             selection=[
+                SelectItem(content=ConceptRef(address=address), modifiers=[])
+                for address in stored
+            ]
+            + [
                 SelectItem(
-                    content=ConceptRef(address=col.concept.address),
-                    modifiers=[],
+                    content=ConceptRef(address=address), modifiers=[Modifier.HIDDEN]
                 )
-                for col in self.columns
+                for address in derived
             ],
             where_clause=where,
+            having_clause=having,
             meta=Metadata(line_number=line_no) if line_no else None,
         )
 

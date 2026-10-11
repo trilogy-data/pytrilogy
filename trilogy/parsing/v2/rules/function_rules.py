@@ -26,14 +26,18 @@ from trilogy.core.models.author import (
     CaseWhen,
     Comparison,
     Concept,
+    ConceptArgs,
     ConceptRef,
     FilterItem,
     Function,
     FunctionCallWrapper,
     NavigationWindowItem,
     NumberingWindowItem,
+    ReferenceReplaceable,
     SubselectItem,
     TraitDataType,
+    UndefinedConcept,
+    UndefinedConceptFull,
     WhereClause,
     WindowItem,
     WindowItemOrder,
@@ -1071,6 +1075,25 @@ def farray_lambda(
     )
 
 
+def _bind_forward_references(expr: Any, context: RuleContext) -> Any:
+    """A `def` body hydrates before the file's concept declarations, so a
+    concept it reads by name rather than as a parameter is an UNKNOWN-typed
+    placeholder there; bind each to the concept declared by now, or
+    `min(tree_id) by cell` types as UNKNOWN and drops out of every grain."""
+    if not isinstance(expr, ReferenceReplaceable) or not isinstance(expr, ConceptArgs):
+        return expr
+    replacements = [
+        (ref.address, found.reference)
+        for ref in expr.concept_arguments
+        if isinstance(ref, UndefinedConcept)
+        and (found := context.concepts.get(ref.address)) is not None
+        and not isinstance(found, (UndefinedConcept, UndefinedConceptFull))
+    ]
+    if not replacements:
+        return expr
+    return expr.with_reference_replacement(replacements)
+
+
 def custom_function(
     node: SyntaxNode,
     context: RuleContext,
@@ -1082,7 +1105,7 @@ def custom_function(
     if name not in context.functions:
         raise fail(node, f"Unknown function @{name}")
     factory = context.functions[name]
-    expanded = factory(*fn_args)
+    expanded = _bind_forward_references(factory(*fn_args), context)
     # The body was typed at declaration against unbound parameters, so every
     # type-dependent check passed vacuously; re-derive now that the arguments
     # are bound (see FunctionFactory.retype_expression).

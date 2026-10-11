@@ -189,6 +189,19 @@ def _parent_materialized_addrs(parent: CTE | UnionCTE) -> set[str]:
     return {addr for addr, sources in parent.source_map.items() if sources}
 
 
+def _rendered_source_columns(parent: CTE) -> set[str]:
+    """Addresses `parent` reads from an upstream CTE that renders them. A
+    column its source hides (`hide_unused_concepts`) is no column to filter
+    on: pushing onto it renders a WHERE over a missing column, and the pass
+    that drops the pushed copy re-arms the push, so the plan never settles."""
+    hidden = {p.name: p.hidden_concepts for p in parent.parent_ctes}
+    return {
+        address
+        for address, sources in parent.source_map.items()
+        if sources and not all(address in hidden.get(s, ()) for s in sources)
+    }
+
+
 def _parent_nullable_in_cte(cte: CTE, parent_name: str) -> bool:
     """True if ``parent_name`` is on the nullable side of any outer join on
     ``cte``. A nullable parent can be NULL-padded by the join, so rows whose
@@ -552,7 +565,7 @@ class PredicatePushdown(OptimizationRule):
             return False
         if not _parent_holds_the_same_concepts(candidate, parent_cte):
             return False
-        materialized = {k for k, v in parent_cte.source_map.items() if v != []}
+        materialized = _rendered_source_columns(parent_cte)
 
         if not row_conditions or not materialized:
             return False

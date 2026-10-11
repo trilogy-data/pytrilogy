@@ -192,6 +192,7 @@ class DomainGraph:
         self._binding_keys: set[tuple] = set()
         self._fd_keys: set[tuple] = set()
         self._canonical: dict[str, str] | None = None
+        self._join_key_groups: dict[str, set[str]] | None = None
         self._eq_classes: dict[str, str] | None = None
         self._declared_equal_classes: frozenset[str] | None = None
         self._authored_join_members: frozenset[str] | None = None
@@ -234,6 +235,7 @@ class DomainGraph:
         self._edge_keys.add(key)
         self.edges.append(edge)
         self._canonical = None
+        self._join_key_groups = None
         self._eq_classes = None
         self._declared_equal_classes = None
         self._authored_join_members = None
@@ -480,10 +482,12 @@ class DomainGraph:
 
     def join_key_groups(self) -> dict[str, set[str]]:
         """Authored join-key equivalence groups, canonical -> all members."""
-        groups: dict[str, set[str]] = {}
-        for source, target in self.canonical_map().items():
-            groups.setdefault(target, {target}).add(source)
-        return groups
+        if self._join_key_groups is None:
+            groups: dict[str, set[str]] = {}
+            for source, target in self.canonical_map().items():
+                groups.setdefault(target, {target}).add(source)
+            self._join_key_groups = groups
+        return self._join_key_groups
 
     def binding_sources(self, address: str) -> set[str]:
         """Identifiers of datasources natively binding `address`."""
