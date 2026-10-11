@@ -75,6 +75,8 @@ def _build_rows(anchor: str) -> list[tuple]:
     executor = Dialects.DUCK_DB.default_executor(environment=env)
     sql = executor.update_datasource(env.datasources["published"], dry_run=True)
     assert sql is not None
+    # a `<*>` constant is beside every row: nothing pins to it
+    assert "__preql_internal_all_rows" not in sql
     query = re.sub(r'^.*?INSERT INTO "[^"]*"\s*', "", sql, count=1, flags=re.DOTALL)
     cursor = duckdb.connect().execute(query)
     columns = [d[0] for d in cursor.description]

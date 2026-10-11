@@ -117,9 +117,10 @@ def main_lineage_groups(
 
     These are the groups whose primary members produce a mandatory concept,
     plus all their lineage-edge ancestors. Used to bias condition placement
-    away from existence-only side channels.
+    away from existence-only side channels. A merged key is produced under its
+    origin's name (`merge m into label` computes `label` as `m`).
     """
-    mandatory_addrs = {c.address for c in mandatory_list}
+    mandatory_addrs = {a for c in mandatory_list for a in (c.address, *c.pseudonyms)}
     seeds = {
         gid for gid, b in buckets.items() if mandatory_addrs & set(b.primary_members)
     }

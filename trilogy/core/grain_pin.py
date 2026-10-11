@@ -21,7 +21,7 @@ from typing import Any, TypeGuard
 
 from trilogy.core.constants import GRAIN_NULL_SENTINEL
 from trilogy.core.domain_graph import DomainGraph
-from trilogy.core.enums import Derivation, FunctionType, Purpose
+from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
 from trilogy.core.having_normalization import _child_exprs
 from trilogy.core.models.author import (
     AggregateWrapper,
@@ -162,7 +162,10 @@ def _entity_keys(
     (`keyspace._entity_keys`): a key is its own entity unless derived (`c` of
     `customer_id as c`, or a key a merge computes), and a derived grouping
     value (`count(..) by status`) stands for the rows it is keyed on, never as
-    an input another pinned value could be derived beside."""
+    an input another pinned value could be derived beside. A single-row value
+    (a `<*>` constant) sits beside every row and is no row identity."""
+    if concept.granularity == Granularity.SINGLE_ROW:
+        return set()
     seen = seen | {concept.address}
     if concept.purpose == Purpose.KEY and concept.derivation != Derivation.BASIC:
         origins = [
