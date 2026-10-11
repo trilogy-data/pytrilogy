@@ -134,18 +134,17 @@ def _merge_origins(
     concept: Concept,
     local: Mapping[str, Concept],
     environment: Environment,
-    merged: Mapping[str, str],
+    graph: DomainGraph,
 ) -> list[Concept]:
-    """The derivations a merge demoted `concept` to a bare key over: `merge
-    merged_species into species` leaves `species` lineage-less, its value
-    computed only by `merged_species`. Empty for a key no merge computes."""
+    """The derivations computing a lineage-less key through its join group:
+    `merge merged_species into species` gives `species` the value of
+    `merged_species`. Empty for a key no member of its group derives."""
     if concept.lineage is not None:
         return []
-    canonical = merged.get(concept.address, concept.address)
+    group = graph.join_key_groups().get(graph.canonical(concept.address), set())
     return [
         origin
-        for member, target in merged.items()
-        if target == canonical and member != concept.address
+        for member in sorted(group - {concept.address})
         if (origin := _lookup(member, local, environment)) is not None
         and origin.lineage is not None
     ]
@@ -155,7 +154,7 @@ def _entity_keys(
     concept: Concept,
     local: Mapping[str, Concept],
     environment: Environment,
-    merged: Mapping[str, str],
+    graph: DomainGraph,
     seen: frozenset[str] = frozenset(),
 ) -> set[str]:
     """The entities `concept` is a function of, as the keyspace reads them
@@ -170,23 +169,23 @@ def _entity_keys(
     if concept.purpose == Purpose.KEY and concept.derivation != Derivation.BASIC:
         origins = [
             o
-            for o in _merge_origins(concept, local, environment, merged)
+            for o in _merge_origins(concept, local, environment, graph)
             if o.address not in seen
         ]
         if not origins:
             return {concept.address}
         out: set[str] = set()
         for origin in origins:
-            out |= _entity_keys(origin, local, environment, merged, seen)
+            out |= _entity_keys(origin, local, environment, graph, seen)
         return out
     if concept.derivation == Derivation.BASIC and concept.lineage is not None:
-        out = _expr_entities(concept.lineage, local, environment, merged, seen, set())
+        out = _expr_entities(concept.lineage, local, environment, graph, seen, set())
     else:
         out = set()
         for address in _row_keys(concept) - seen:
             read = _lookup(address, local, environment)
             if read is not None:
-                out |= _entity_keys(read, local, environment, merged, seen)
+                out |= _entity_keys(read, local, environment, graph, seen)
     # a stored or rowset column with no key is its own row identity; a keyless
     # aggregate, metric or derived value has none to anchor on (an abstract
     # count resolves its grain through the very select it would anchor)
@@ -203,7 +202,7 @@ def _expr_entities(
     expr: Any,
     local: Mapping[str, Concept],
     environment: Environment,
-    merged: Mapping[str, str],
+    graph: DomainGraph,
     seen: frozenset[str],
     bare: set[str],
 ) -> set[str]:
@@ -214,38 +213,37 @@ def _expr_entities(
         if expr.address in seen:
             return set()
         read = _lookup(expr.address, local, environment)
-        return _entity_keys(read, local, environment, merged, seen) if read else set()
+        return _entity_keys(read, local, environment, graph, seen) if read else set()
     if isinstance(expr, AggregateWrapper):
         if not expr.by:
             return set(bare)
         out: set[str] = set()
         for b in expr.by:
-            out |= _expr_entities(b, local, environment, merged, seen, bare)
+            out |= _expr_entities(b, local, environment, graph, seen, bare)
         return out
     out = set()
     for child in _child_exprs(expr):
-        out |= _expr_entities(child, local, environment, merged, seen, bare)
+        out |= _expr_entities(child, local, environment, graph, seen, bare)
     return out
 
 
 def _own_keys(
-    expr: Any, environment: Environment, anchors: set[str], merged: Mapping[str, str]
+    expr: Any, environment: Environment, anchors: set[str], graph: DomainGraph
 ) -> set[str]:
-    return _expr_entities(expr, {}, environment, merged, frozenset(), anchors)
+    return _expr_entities(expr, {}, environment, graph, frozenset(), anchors)
 
 
 def select_anchors(
     base: SelectLineage,
     environment: Environment,
     graph: DomainGraph,
-    merged: Mapping[str, str],
 ) -> dict[str, frozenset[str]] | None:
     """Each output's own row identity, or None when nothing is pinned: every
     output of a ROLLUP/CUBE select is a grouping key, evaluated on the rows the
     pass groups and never on its subtotal rows, and a statement nothing pads
     has no row lacking what another holds (`_may_pad`). FD-reduced per output, so a
     window's partition key (determined by the row it numbers) is not a row of
-    the select. `merged` folds a statement join's source key into its target."""
+    the select."""
     if base.grouping is not None or not _may_pad(graph):
         return None
     out: dict[str, frozenset[str]] = {}
@@ -255,8 +253,8 @@ def select_anchors(
         if concept is None or _restates_outputs(concept, outputs):
             continue
         # a declared join's two keys are one select key
-        keys = _entity_keys(concept, base.local_concepts, environment, merged)
-        out[concept.address] = graph.fd_minimal(merged.get(k, k) for k in keys)
+        keys = _entity_keys(concept, base.local_concepts, environment, graph)
+        out[concept.address] = graph.fd_minimal(graph.canonical(k) for k in keys)
     return out
 
 
@@ -264,7 +262,6 @@ def by_anchors(
     by: list[ConceptRef],
     environment: Environment,
     graph: DomainGraph,
-    merged: Mapping[str, str],
 ) -> dict[str, frozenset[str]]:
     """An aggregate's `by` as anchors: its input rowset is keyed on them, not
     on the outer select's rows."""
@@ -272,8 +269,8 @@ def by_anchors(
     for ref in by:
         concept = _lookup(ref.address, {}, environment)
         if concept is not None:
-            keys = _entity_keys(concept, {}, environment, merged)
-            out[concept.address] = graph.fd_minimal(merged.get(k, k) for k in keys)
+            keys = _entity_keys(concept, {}, environment, graph)
+            out[concept.address] = graph.fd_minimal(graph.canonical(k) for k in keys)
     return out
 
 
@@ -287,15 +284,13 @@ def _restates_outputs(concept: Concept, outputs: set[str]) -> bool:
 
 
 def _reads(
-    address: str, target: str, environment: Environment, merged: Mapping[str, str]
+    address: str, target: str, environment: Environment, graph: DomainGraph
 ) -> bool:
     """`address` is derived from `target`: a select key computed from the
-    pinned value cannot be one of its inputs. A merged key is read through
-    every member of its merge (`merge merged_species into species` leaves
-    `species` lineage-less, its value computed from `merged_species`)."""
-    members: dict[str, set[str]] = {}
-    for member, canonical in merged.items():
-        members.setdefault(canonical, {canonical}).add(member)
+    pinned value cannot be one of its inputs. A joined key is read through
+    every member of its join group (`merge merged_species into species`
+    computes `species` as `merged_species`)."""
+    members = graph.join_key_groups()
     seen: set[str] = set()
     stack = [address]
     while stack:
@@ -303,7 +298,7 @@ def _reads(
         if current in seen:
             continue
         seen.add(current)
-        stack.extend(members.get(merged.get(current, current), ()))
+        stack.extend(members.get(graph.canonical(current), ()))
         concept = _lookup(current, {}, environment)
         if concept is None or concept.lineage is None:
             continue
@@ -359,7 +354,6 @@ def pin_keys(
     environment: Environment,
     graph: DomainGraph,
     named: Callable[[str], frozenset[str]],
-    merged: Mapping[str, str],
 ) -> frozenset[str]:
     """The select keys `expr` must take as inputs: for each NULL-absorbing
     expression in it, the keys (but `owner`'s own) the rows it reads do not
@@ -375,7 +369,7 @@ def pin_keys(
         return frozenset()
     out: set[str] = set()
     for child in _child_exprs(expr):
-        out |= pin_keys(child, owner, anchors, environment, graph, named, merged)
+        out |= pin_keys(child, owner, anchors, environment, graph, named)
     if is_null_absorbing(expr):
         reads = {r.address for r in expr.concept_arguments}
         bound = graph.bound_by_datasource()
@@ -385,9 +379,9 @@ def pin_keys(
             # a table holding the output column carries the reads beside it
             if address != owner and not _held_beside(reads, address, graph)
             for k in ks
-            if k != owner and not (owner and _reads(k, owner, environment, merged))
+            if k != owner and not (owner and _reads(k, owner, environment, graph))
         }
-        own = {merged.get(k, k) for k in _own_keys(expr, environment, keys, merged)}
+        own = {graph.canonical(k) for k in _own_keys(expr, environment, keys, graph)}
         uncovered = {k for k in keys - own if not _always_beside(own, k, graph)}
         if not _co_held_only_beside(own, uncovered, bound):
             out |= uncovered
