@@ -1,9 +1,11 @@
 from collections.abc import Iterable, Sequence
 
 from trilogy.constants import PRESENCE_PROBE_PREFIX, logger
+from trilogy.core.enums import Derivation
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import BuildConcept, BuildDatasource
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.processing.join_key_groups import is_join_key_group
 from trilogy.core.processing.node_generators.select_helpers.datasource_nodes import (
     create_datasource_node,
 )
@@ -95,6 +97,34 @@ def coalescing_axis_group(
         if address in members and members & coalescing:
             return canonical, members
     return None
+
+
+def is_coalescing_axis(address: str, environment: BuildEnvironment) -> bool:
+    """`address` is the canonical of a coalescing key group: the unified axis,
+    whose domain is no single member's."""
+    found = coalescing_axis_group(address, environment)
+    return found is not None and found[0] == address
+
+
+def axis_scalar_reads(
+    concept: BuildConcept, environment: BuildEnvironment
+) -> frozenset[str]:
+    """The merged attributes a BASIC reads when it reads nothing else
+    (`coalesce(a.year, b.year)` under `union join a.year = b.year`), else
+    empty. Such a scalar is a value of the merged attribute, so that is its
+    grain."""
+    if concept.derivation != Derivation.BASIC or concept.lineage is None:
+        return frozenset()
+    axes: set[str] = set()
+    for argument in concept.lineage.concept_arguments:
+        if is_join_key_group(argument.address, environment):
+            axes.add(argument.address)
+            continue
+        nested = axis_scalar_reads(argument, environment)
+        if not nested:
+            return frozenset()
+        axes |= nested
+    return frozenset(axes)
 
 
 def _pinned_member_node(

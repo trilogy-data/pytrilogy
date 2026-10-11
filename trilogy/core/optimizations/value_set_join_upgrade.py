@@ -59,6 +59,17 @@ def _source_address(concept: BuildConcept) -> str:
     return concept.canonical_address
 
 
+def _on_keys(concept: BuildConcept, keys: set[str]) -> bool:
+    """`concept` is one of `keys`, or a scalar reading only them: a function of
+    a FULL key pairs as the key does."""
+    if concept.all_spellings & keys:
+        return True
+    if concept.derivation != Derivation.BASIC or concept.lineage is None:
+        return False
+    args = concept.lineage.concept_arguments
+    return bool(args) and all(_on_keys(arg, keys) for arg in args)
+
+
 def _row_limited(
     side_cte: CTE | UnionCTE, _visited: frozenset[str] = frozenset()
 ) -> bool:
@@ -884,8 +895,8 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
             if _emits_grouping_set_rows(cte) or _emits_grouping_set_rows(right_cte):
                 continue
             if self.full_join_keys and any(
-                pair.left.all_spellings & self.full_join_keys
-                or pair.right.all_spellings & self.full_join_keys
+                _on_keys(pair.left, self.full_join_keys)
+                or _on_keys(pair.right, self.full_join_keys)
                 for pair in join.pairs
             ):
                 # Rule B: the veto blocks the equivalence upgrade and the

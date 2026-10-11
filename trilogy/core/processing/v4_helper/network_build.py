@@ -39,6 +39,7 @@ from trilogy.core.processing.aggregate_rollup import (
 from trilogy.core.processing.condition_utility import (
     condition_implies,
 )
+from trilogy.core.processing.join_key_groups import is_join_key_group
 from trilogy.core.processing.node_generators.common import (
     relevant_authored_join_pairs,
 )
@@ -738,7 +739,12 @@ def build_source_network(
         arm_local,
     )
     unbound = drop_axis_scalar_bindings(
-        set(requested_axis_groups(searched, environment, equivalence)),
+        set(requested_axis_groups(searched, environment, equivalence))
+        | {
+            equivalence.get(group, group)
+            for group in environment.scoped_join_key_groups
+            if is_join_key_group(group, environment)
+        },
         candidates,
         environment,
         equivalence,

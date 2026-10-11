@@ -41,6 +41,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.condition_utility import decompose_condition
 from trilogy.core.processing.discovery_utility import get_upstream_concepts
 from trilogy.core.processing.node_generators.presence_probe import (
+    axis_scalar_reads,
     is_presence_probe,
     member_binding_datasources,
     probe_member_address,
@@ -1486,6 +1487,8 @@ def _add_concept(
         and concept.lineage.operator == FunctionType.ALIAS
     )
     out_grain = frozenset(concept.grain.components) if concept.grain else frozenset()
+    if not is_materialized_root:
+        out_grain = axis_scalar_reads(concept, environment) or out_grain
     if (
         not is_materialized_root
         and concept.derivation == Derivation.AGGREGATE

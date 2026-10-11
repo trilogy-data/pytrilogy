@@ -225,7 +225,11 @@ def undemanded_spans(
 
 
 def _mixes_region(bucket: GroupBucket, region: Region, keyspace: Keyspace) -> bool:
-    held = [keyspace.carried_on(m, region) for m in bucket.primary_members]
+    held = [
+        keyspace.carried_on(m, region)
+        for m in bucket.primary_members
+        if not keyspace.foreign_to(m, region)
+    ]
     return any(held) and not all(held)
 
 

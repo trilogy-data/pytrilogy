@@ -37,6 +37,7 @@ from trilogy.core.models.build_environment import (
 )
 from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing import plan_trace
+from trilogy.core.processing.join_key_groups import is_join_key_group
 from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
 
 from .concept_graph import (
@@ -961,6 +962,7 @@ def _consumer_required_input_grain(
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     gid: str,
+    rows_pair_facts: bool = False,
 ) -> frozenset[str]:
     # A UNION stacks its arms; its grain names every arm's key and no arm can
     # carry another's, so it requires no input grain of them.
@@ -973,9 +975,18 @@ def _consumer_required_input_grain(
     grain: set[str] = set(attrs[gid].grain_components) - set(attrs[gid].primary_members)
     row_preds = row_parents(group_graph, group_edges, gid)
     for pred in row_preds:
+        # beside paired facts, a row derivation on its own slice joins the
+        # rest on its grain, as an aggregate parent does
+        sliced_row_derivation = (
+            rows_pair_facts
+            and attrs[pred].derivation == Derivation.BASIC
+            and len(row_preds) > 1
+            and bool(attrs[pred].grain_components)
+        )
         if (
             attrs[pred].derivation in GROUPING_DERIVATIONS
             or attrs[pred].derivation == Derivation.ROWSET
+            or sliced_row_derivation
         ):
             # A pred whose row stream reaches this consumer through a GROUPING
             # descendant pred that grouped the axis away has no such axis at
@@ -1032,6 +1043,7 @@ def _shared_row_parent_join_keys(
     gid: str,
     key_addresses: frozenset[str],
     lineage_parents: dict[str, set[str]],
+    axes: frozenset[str] = frozenset(),
 ) -> frozenset[str]:
     """Keys carried by >=2 row-stream parents of `gid` that bridge a fixed-grain
     dimension CTE to the fact scan: the join key their merge must use. A
@@ -1047,7 +1059,11 @@ def _shared_row_parent_join_keys(
     canonical dimension at the key and folds with the others, and a key
     unrelated to the grouping grain is co-carried by plain projections of a
     common scan; declaring either as a preserve_key over-constrains
-    sourcing."""
+    sourcing.
+
+    A merged attribute (`axes`) is the exception: a scalar of it
+    (`coalesce(a.year, b.year)`) is grained on the attribute itself, and that
+    is the only column it shares with the row stream."""
     if attrs[gid].derivation not in _ROW_JOIN_CONSUMER_DERIVATIONS:
         return frozenset()
     rows = row_parents(group_graph, group_edges, gid)
@@ -1061,7 +1077,10 @@ def _shared_row_parent_join_keys(
     counts: dict[str, int] = defaultdict(int)
     grain_owners: set[str] = set()
     for pred in rows:
-        for addr in set(attrs[pred].output_concepts):
+        carried = set(attrs[pred].output_concepts) | (
+            set(attrs[pred].grain_components) & axes
+        )
+        for addr in carried:
             counts[addr] += 1
             if addr in attrs[pred].grain_components:
                 grain_owners.add(addr)
@@ -1069,9 +1088,8 @@ def _shared_row_parent_join_keys(
         addr
         for addr, n in counts.items()
         if n >= 2
-        and addr in key_addresses
         and addr in grain_ancestors
-        and addr not in grain_owners
+        and (addr in axes or (addr in key_addresses and addr not in grain_owners))
     )
 
 
@@ -1128,19 +1146,25 @@ def _refresh_input_contracts(
     concept_attrs: dict[str, ConceptAttrs],
     concept_edges: EdgeMap,
     environment: BuildEnvironment,
+    rows_pair_facts: bool = False,
 ) -> None:
     key_addresses = frozenset(
         a.address for a in concept_attrs.values() if a.purpose == Purpose.KEY
+    )
+    axes = frozenset(
+        a.address
+        for a in concept_attrs.values()
+        if is_join_key_group(a.address, environment)
     )
     lineage_parents = _lineage_parents_by_address(concept_edges, concept_attrs)
     for gid in group_graph.nodes:
         if gid == FINAL_NODE_ID or gid not in attrs:
             continue
         required_grain = _consumer_required_input_grain(
-            group_graph, group_edges, attrs, gid
+            group_graph, group_edges, attrs, gid, rows_pair_facts
         )
         bridge_keys = _shared_row_parent_join_keys(
-            group_graph, group_edges, attrs, gid, key_addresses, lineage_parents
+            group_graph, group_edges, attrs, gid, key_addresses, lineage_parents, axes
         )
         rows = row_parents(group_graph, group_edges, gid)
         # A non-grouping consumer pairing a GROUPING row parent (a population
@@ -2351,7 +2375,13 @@ def build_group_graph(
         relation_edge_members=relation_edge_members,
     )
     _refresh_input_contracts(
-        group_graph, group_edges, attrs, concept_attrs, concept_edges, environment
+        group_graph,
+        group_edges,
+        attrs,
+        concept_attrs,
+        concept_edges,
+        environment,
+        keyspace.rows_pair_facts,
     )
     _refresh_final_contract(
         group_graph,

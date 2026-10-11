@@ -107,6 +107,9 @@ class Keyspace:
     # spans some source binds `?`: a NULL key is a member of its own there,
     # one no dimension row holds, so a fact row keyed on it pairs with nothing
     value_null_spans: frozenset[str] = frozenset()
+    # per merged attribute (`union join a.year = b.year`, `merge`), the key
+    # each arm reaches it through: one value on whichever arm a row is of
+    axis_arms: tuple[frozenset[str], ...] = ()
     # (address, region, id(environment)) -> `extent_ownership.null_on_padding`
     padding_nulls: dict[tuple[str, Region, int], bool] = field(
         default_factory=dict, compare=False, repr=False
@@ -115,6 +118,13 @@ class Keyspace:
     @cached_property
     def live_regions(self) -> tuple[Region, ...]:
         return tuple(r for r in self.regions if not r.is_empty)
+
+    @cached_property
+    def rows_pair_facts(self) -> bool:
+        """No single source witnesses the base rows: only a join of
+        independent facts holds them, so the shared row stream pairs each
+        fact's rows with the other's on whatever they share."""
+        return bool(self.families) and not self.regions[0].witnesses
 
     @cached_property
     def families(self) -> tuple[frozenset[str], ...]:
@@ -194,8 +204,32 @@ class Keyspace:
         """Does an extension row of ``region`` hold a value for ``address``: it
         is keyed on what a lookup from the region's spans reaches. An entity
         merely cross-joined onto the region is present, but not carried."""
-        keys = self.keys_of(address)
+        keys = self._arm_keys(self.keys_of(address), region)
         return bool(keys) and keys <= region.reach
+
+    def foreign_to(self, address: str, region: Region) -> bool:
+        """``address`` lives on another arm of a merged attribute ``region``
+        is one arm of: the attribute is all that relates the two, so the
+        region's rows neither carry nor lack it."""
+        keys = self.keys_of(address)
+        if not keys or keys & region.reach:
+            return False
+        return any(
+            other is not region
+            and other.spans & (arms - region.reach)
+            and keys <= other.reach
+            for arms in self.axis_arms
+            if arms & region.reach
+            for other in self.live_regions
+        )
+
+    def _arm_keys(self, keys: frozenset[str], region: Region) -> frozenset[str]:
+        """`keys` without the other arms' keys of a merged attribute `region`
+        reaches through one arm."""
+        for arms in self.axis_arms:
+            if arms & region.reach:
+                keys = keys - (arms - region.reach)
+        return keys
 
     def describe(self) -> str:
         return " | ".join(r.describe() for r in self.regions)

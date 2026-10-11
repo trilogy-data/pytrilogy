@@ -69,6 +69,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.keyspace import Completion, Keyspace, Region, spans_in_play
 from trilogy.core.processing.condition_utility import gather_non_null_proofs
+from trilogy.core.processing.join_key_groups import axis_member_keys
 
 from .functional_dependency import minimize_build_grain
 from .group_rules import overlap_components
@@ -518,6 +519,7 @@ def _entity_keys(
         # `group(status) by customer_id` pairs the customer's domain with the
         # statuses it has: a row of the customer, NULL-valued where it has none
         keys = _group_to_addresses(address, environment) or keys
+    keys = frozenset(keys) | axis_member_keys(address, environment)
     seen = seen | {address}
     return frozenset().union(
         *(
@@ -854,6 +856,16 @@ def build_keyspace(
         unread_spans=unread,
         value_null_spans=_value_null_spans(scope.datasources, canonical)
         & spans_in_play(regions),
+        axis_arms=tuple(
+            arms
+            for address in sorted(declared)
+            if len(
+                arms := frozenset(
+                    canonical.get(k, k) for k in axis_member_keys(address, environment)
+                )
+            )
+            > 1
+        ),
     )
 
 
