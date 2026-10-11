@@ -65,6 +65,7 @@ from trilogy.core.optimizations.utils import (
     add_datasource_sorted,
     append_condition,
     base_datasource,
+    output_addresses,
     propagate_existence_sources,
     strip_condition_atom,
 )
@@ -552,7 +553,7 @@ class UnionDimPushdown(OptimizationRule):
             )
             where_atoms = _dim_local_atoms(consumer, dim_ds)
             consumer_uses = {c.address for c in consumer.source.input_concepts}
-            consumer_uses |= {c.address for c in consumer.output_columns}
+            consumer_uses |= output_addresses(consumer)
             if consumer.condition is not None:
                 for atom in decompose_condition(consumer.condition):
                     if hasattr(atom, "concept_arguments"):
@@ -602,7 +603,7 @@ class UnionDimPushdown(OptimizationRule):
         consumers: list[CTE],
         pass_through_names: Collection[str] = frozenset(),
     ) -> list[_DimDescriptor]:
-        union_outputs = {x.address for x in container.output_columns}
+        union_outputs = output_addresses(container)
         container_names = {container.name, *pass_through_names}
         per_consumer = [
             self._consumer_dim_map(c, union_outputs, container_names) for c in consumers
@@ -642,7 +643,7 @@ class UnionDimPushdown(OptimizationRule):
         fallback matches any CTE whose base datasource is the dim, including
         a filtered/aggregated derivative that exposes only a derived column;
         joining that as the dim renders columns it does not have."""
-        out = {c.address for c in dim_cte.output_columns}
+        out = output_addresses(dim_cte)
         needed = {c.address for c in d.dim_concepts}
         needed |= {p.right.address for p in d.key_pairs}
         return needed.issubset(out)
@@ -669,7 +670,7 @@ class UnionDimPushdown(OptimizationRule):
     def _can_push_into_branch(self, branch: CTE, d: _DimDescriptor) -> bool:
         if any(_joins_dim(j, d.dim_qds) for j in branch.joins):
             return True
-        branch_out_addrs = {c.address for c in branch.output_columns}
+        branch_out_addrs = output_addresses(branch)
         return (
             d.fk_left_addrs.issubset(branch_out_addrs)
             and self._branch_left_datasource(branch, d.fk_left_addrs) is not None
@@ -706,7 +707,7 @@ class UnionDimPushdown(OptimizationRule):
         if d.strip_safe:
             # Consumers resolve the dim concepts through the union after the
             # strip.
-            existing = {col.address for col in union.output_columns}
+            existing = output_addresses(union)
             for concept in d.dim_concepts:
                 if concept.address not in existing:
                     union.output_columns.append(concept)
@@ -763,7 +764,7 @@ class UnionDimPushdown(OptimizationRule):
             target, context.dim_cte, d, context.source_consumer
         ):
             return False
-        existing = {col.address for col in target.output_columns}
+        existing = output_addresses(target)
         for concept in d.dim_concepts:
             if concept.address not in existing:
                 target.output_columns.append(concept)
@@ -823,7 +824,7 @@ class UnionDimPushdown(OptimizationRule):
         droppable = fk_addrs & set(target.grain.components)
         if not droppable:
             return False
-        target_out = {c.address for c in target.output_columns}
+        target_out = output_addresses(target)
         exposed = ({c.address for c in d.dim_concepts} - fk_addrs) & target_out
         if not exposed:
             return False
@@ -844,7 +845,7 @@ class UnionDimPushdown(OptimizationRule):
             x for x in target.output_columns if x.address not in droppable
         ]
         target.grain = BuildGrain(
-            components={x.address for x in target.output_columns},
+            components=output_addresses(target),
             where_clause=target.grain.where_clause,
         )
         for addr in droppable:
@@ -868,7 +869,7 @@ class UnionDimPushdown(OptimizationRule):
     ) -> bool:
         if any(_joins_dim(j, d.dim_qds) for j in branch.joins):
             return True
-        branch_out_addrs = {c.address for c in branch.output_columns}
+        branch_out_addrs = output_addresses(branch)
         if not d.fk_left_addrs.issubset(branch_out_addrs):
             return False
         left_ds = self._branch_left_datasource(branch, d.fk_left_addrs)
@@ -926,7 +927,7 @@ class UnionDimPushdown(OptimizationRule):
             branch.add_dependency(dim_cte)
             dim_source_key = branch.source_key_for(dim_cte)
         branch.joins.append(new_join)
-        existing_out = {c.address for c in branch.output_columns}
+        existing_out = output_addresses(branch)
         # FK concepts already resolve via the branch's fact ds; a dim
         # source_map entry for them too would make render_expr coalesce two
         # sources.
@@ -1013,7 +1014,7 @@ class UnionDimPushdown(OptimizationRule):
             p for p in consumer.dependency_nodes() if p.name != dim_cte.name
         ]
         # Dim concepts now resolve via the union CTE.
-        union_outputs_now = {c.address for c in union.output_columns}
+        union_outputs_now = output_addresses(union)
         for c in d.dim_concepts:
             addr = c.address
             if addr in consumer.source.source_map:

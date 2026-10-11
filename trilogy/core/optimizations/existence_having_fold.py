@@ -57,7 +57,11 @@ from trilogy.core.models.execute import (
     pair_matches_nulls,
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
-from trilogy.core.optimizations.utils import append_condition, is_sole_consumer
+from trilogy.core.optimizations.utils import (
+    append_condition,
+    is_sole_consumer,
+    output_addresses,
+)
 from trilogy.core.processing.condition_utility import (
     condition_proves_non_null,
     decompose_condition,
@@ -84,7 +88,7 @@ def _reads_from(cte: CTE, name: str) -> set[str]:
 def _consumed_from(consumer: CTE, name: str, key: BuildConcept) -> set[str]:
     """What `consumer` actually reads off `name`: its outputs and condition
     (its source map still lists columns pruning has not hidden yet)."""
-    read = {c.address for c in consumer.output_columns}
+    read = output_addresses(consumer)
     if consumer.condition is not None:
         read |= {c.address for c in consumer.condition.row_arguments}
     return (_reads_from(consumer, name) & read) | {key.address}
@@ -388,7 +392,7 @@ def _read_through_rows(
     carried = {
         a for a, sources in consumer.source_map.items() if aggregate.name in sources
     }
-    present = {c.address for c in rows.output_columns}
+    present = output_addresses(rows)
     for column in aggregate.output_columns:
         if column.address in carried and column.address not in present:
             rows.output_columns.append(column)

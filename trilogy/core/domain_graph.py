@@ -202,6 +202,10 @@ class DomainGraph:
             list[tuple[frozenset[str], str, str | None, bool]] | None
         ) = None
         self._fd_closures: dict[tuple[frozenset[str], str | None], frozenset[str]] = {}
+        self._covering_fd_edges: list[tuple[frozenset[str], str]] | None = None
+        self._covering_closures: dict[frozenset[str], frozenset[str]] = {}
+        self._bound: dict[str, set[str]] | None = None
+        self._whole_domain_holders: dict[str, list[str]] | None = None
         for e in edges or []:
             self.add_edge(e)
         for b in binding_edges or []:
@@ -260,6 +264,29 @@ class DomainGraph:
         self._fd_minimal.clear()
         self._canonical_fds = None
         self._fd_closures.clear()
+        self._covering_fd_edges = None
+        self._covering_closures.clear()
+        self._bound = None
+        self._whole_domain_holders = None
+
+    def bound_by_datasource(self) -> dict[str, set[str]]:
+        """Concepts each datasource binds, as authored (not canonicalized)."""
+        if self._bound is None:
+            self._bound = {}
+            for b in self.binding_edges:
+                self._bound.setdefault(b.datasource, set()).add(b.concept)
+        return self._bound
+
+    def whole_domain_holders(self, concept: str) -> list[str]:
+        """Datasources binding `concept` completely and unconditionally."""
+        if self._whole_domain_holders is None:
+            self._whole_domain_holders = {}
+            for b in self.binding_edges:
+                if b.complete and b.condition is None:
+                    self._whole_domain_holders.setdefault(b.concept, []).append(
+                        b.datasource
+                    )
+        return self._whole_domain_holders.get(concept, [])
 
     def with_overlay(self, edges: Iterable[DomainEdge] | None = None) -> "DomainGraph":
         """Copy-on-write view: a new graph with this graph's edges plus the
@@ -738,43 +765,50 @@ class DomainGraph:
         dependent some table binds partially beside the determinants is not
         walked, and nothing reached only through it is covered."""
         rep = self._equivalence_classes()
+        seed = frozenset(rep.get(a, a) for a in determinants)
+        cached = self._covering_closures.get(seed)
+        if cached is None:
+            closure = set(seed)
+            fds = self._covering_fds()
+            changed = True
+            while changed:
+                changed = False
+                for dets, dep in fds:
+                    if dep not in closure and dets <= closure:
+                        closure.add(dep)
+                        changed = True
+            cached = self._covering_closures[seed] = frozenset(closure)
+        return rep.get(dependent, dependent) in cached
 
-        def canon(x: str) -> str:
-            return rep.get(x, x)
-
+    def _covering_fds(self) -> list[tuple[frozenset[str], str]]:
+        """Canonical FDs `covers` may walk: those whose dependent no table
+        binds partially beside the determinants."""
+        if self._covering_fd_edges is not None:
+            return self._covering_fd_edges
+        rep = self._equivalence_classes()
         bound: dict[str, set[str]] = {}
         partial: dict[str, set[str]] = {}
         for b in self.binding_edges:
-            bound.setdefault(b.datasource, set()).add(canon(b.concept))
+            concept = rep.get(b.concept, b.concept)
+            bound.setdefault(b.datasource, set()).add(concept)
             if not b.complete:
-                partial.setdefault(b.datasource, set()).add(canon(b.concept))
-
-        def extends_domain(fd: FDEdge, determinants: set[str], dep: str) -> bool:
+                partial.setdefault(b.datasource, set()).add(concept)
+        walkable: list[tuple[frozenset[str], str]] = []
+        for fd in self.fd_edges:
+            dets = frozenset(rep.get(a, a) for a in fd.determinants)
+            dep = rep.get(fd.dependent, fd.dependent)
             witnesses = (
                 partial.items()
                 if fd.scope is None
                 else [(fd.scope, partial.get(fd.scope, set()))]
             )
-            return any(
-                dep in concepts and determinants <= bound.get(datasource, set())
+            if not any(
+                dep in concepts and dets <= bound.get(datasource, set())
                 for datasource, concepts in witnesses
-            )
-
-        closure = {canon(a) for a in determinants}
-        goal = canon(dependent)
-        changed = True
-        while changed and goal not in closure:
-            changed = False
-            for fd in self.fd_edges:
-                dep = canon(fd.dependent)
-                fd_determinants = {canon(a) for a in fd.determinants}
-                if dep in closure or not fd_determinants <= closure:
-                    continue
-                if extends_domain(fd, fd_determinants, dep):
-                    continue
-                closure.add(dep)
-                changed = True
-        return goal in closure
+            ):
+                walkable.append((dets, dep))
+        self._covering_fd_edges = walkable
+        return walkable
 
     def fd_minimal(self, addresses: Iterable[str]) -> frozenset[str]:
         """`addresses` less every member the rest determine globally:

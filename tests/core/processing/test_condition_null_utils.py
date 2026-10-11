@@ -222,4 +222,4 @@ def test_atom_proves_non_null_and_branch():
     cond = BuildConditional(
         left=_is_not_null(x), right=_is_not_null(y), operator=BooleanOperator.AND
     )
-    assert _atom_proves_non_null(cond) == {x.address, y.address}
+    assert _atom_proves_non_null(cond, between=False) == {x.address, y.address}

@@ -3,7 +3,7 @@ from typing import ClassVar
 
 from jinja2 import Template
 
-from trilogy.core.enums import ComparisonOperator, FunctionType
+from trilogy.core.enums import FunctionType
 from trilogy.core.models.core import DataType
 from trilogy.dialect.base import BaseDialect, TableColumn
 
@@ -185,37 +185,8 @@ class SQLiteDialect(BaseDialect):
     SUPPORTS_ARRAYS = False
     TABLE_NOT_FOUND_PATTERN = "no such table"
     COLUMN_NOT_FOUND_PATTERN = "no such column"
-
-    def render_comparison(
-        self,
-        left,
-        right,
-        operator,
-        cte=None,
-        raise_invalid=False,
-        materialized_addresses: set[str] | None = None,
-    ):
-        # SQLite has no native ``ILIKE``; emulate via case-folded LIKE.
-        if operator in (ComparisonOperator.ILIKE, ComparisonOperator.NOT_ILIKE):
-            return self.render_ilike_as_lower_like(
-                left,
-                right,
-                operator,
-                cte=cte,
-                raise_invalid=raise_invalid,
-                materialized_addresses=materialized_addresses,
-                lower="lower",
-                like="like",
-                negate="not ",
-            )
-        return super().render_comparison(
-            left,
-            right,
-            operator,
-            cte=cte,
-            raise_invalid=raise_invalid,
-            materialized_addresses=materialized_addresses,
-        )
+    # no native ILIKE; emulate via case-folded LIKE
+    ILIKE_AS_LOWER_LIKE = ("lower", "like", "not ")
 
     def compile_create_table_statements(self, target, create_mode) -> list[str]:
         statements = super().compile_create_table_statements(target, create_mode)

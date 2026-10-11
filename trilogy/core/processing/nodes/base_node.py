@@ -575,11 +575,17 @@ class StrategyNode:
             existence_concepts=list(self.existence_concepts),
             ordering=self.ordering,
         )
-        node.limit = self.limit
         return self.with_marks(node)
 
     def with_marks(self, node: StrategyNodeT) -> StrategyNodeT:
-        """Carry the marks a copy keeps that no constructor takes."""
+        """Carry the state a copy keeps that a subclass constructor may not
+        take, or that the planner set after construction."""
+        node.limit = self.limit
+        node.grain = self.grain
+        node.ordering = self.ordering
+        node.hidden_concepts = set(self.hidden_concepts)
+        node.nullable_concepts = list(self.nullable_concepts)
+        node.rollup_concepts = list(self.rollup_concepts)
         node.region_spans = self.region_spans
         node.origin_group = self.origin_group
         node.distinct_counts = self.distinct_counts

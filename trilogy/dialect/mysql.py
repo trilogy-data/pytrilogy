@@ -2,7 +2,6 @@ from collections.abc import Callable
 from typing import Any, ClassVar
 
 from trilogy.core.enums import (
-    ComparisonOperator,
     CreateMode,
     DatePart,
     FunctionType,
@@ -11,7 +10,6 @@ from trilogy.core.enums import (
     Ordering,
 )
 from trilogy.core.models.core import DataType
-from trilogy.core.models.execute import CTE, UnionCTE
 from trilogy.core.statements.execute import CreateTableInfo
 from trilogy.dialect.base import BaseDialect, TableColumn
 from trilogy.dialect.common import CONCAT_COALESCE_UPPER
@@ -123,6 +121,7 @@ DATATYPE_MAP = {
 
 
 class MySQLDialect(BaseDialect):
+    ILIKE_AS_LOWER_LIKE = ("LOWER", "LIKE", "NOT ")
     FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
         **BaseDialect.FUNCTION_MAP,
         **FUNCTION_MAP,
@@ -177,36 +176,6 @@ class MySQLDialect(BaseDialect):
                 ],
             ]
         return statements
-
-    def render_comparison(
-        self,
-        left,
-        right,
-        operator: ComparisonOperator,
-        cte: CTE | UnionCTE | None = None,
-        raise_invalid: bool = False,
-        materialized_addresses: set[str] | None = None,
-    ) -> str:
-        if operator in (ComparisonOperator.ILIKE, ComparisonOperator.NOT_ILIKE):
-            return self.render_ilike_as_lower_like(
-                left,
-                right,
-                operator,
-                cte=cte,
-                raise_invalid=raise_invalid,
-                materialized_addresses=materialized_addresses,
-                lower="LOWER",
-                like="LIKE",
-                negate="NOT ",
-            )
-        return super().render_comparison(
-            left,
-            right,
-            operator,
-            cte=cte,
-            raise_invalid=raise_invalid,
-            materialized_addresses=materialized_addresses,
-        )
 
     def get_table_schema(
         self, executor: Any, table_name: str, schema: str | None = None

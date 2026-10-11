@@ -392,6 +392,15 @@ class Executor:
             return False
         return any(row[0] and marker in row[0] for row in rows)
 
+    def _duckdb_in_memory(self) -> bool:
+        from sqlalchemy.engine import Engine
+
+        return isinstance(self.engine, Engine) and self.engine.url.database in (
+            None,
+            "",
+            ":memory:",
+        )
+
     def _setup_duckdb_python_datasources(self) -> None:
         """Setup DuckDB macro for Python script datasources."""
         import sys
@@ -417,8 +426,11 @@ class Executor:
         # on-disk warehouse normally never contend for the catalog at all.
         # The enabled form cannot take this shortcut — it must LOAD extensions
         # and SET the per-instance temp dir variable in every new session.
-        if not enabled and self._duckdb_macro_exists(
-            "uv_run", PYTHON_DATASOURCE_GUARD_MARKER
+        # A fresh in-memory catalog cannot hold the macro yet, so skip the lookup.
+        if (
+            not enabled
+            and not self._duckdb_in_memory()
+            and self._duckdb_macro_exists("uv_run", PYTHON_DATASOURCE_GUARD_MARKER)
         ):
             return
         is_windows = sys.platform == "win32"

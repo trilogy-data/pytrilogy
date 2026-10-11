@@ -217,28 +217,19 @@ def generate_source_map(
             multi_source = len(qdv) > 1
             closure = _pseudonym_closure(qdk, matches) if multi_source else {qdk}
             for cte in matches:
-                output_address = [
-                    x.address
-                    for x in cte.output_columns
-                    if x.address not in [z.address for z in cte.partial_concepts]
-                ]
+                outputs = {x.address for x in cte.output_columns}
+                full = qdk in outputs and (
+                    multi_source or qdk not in {z.address for z in cte.partial_concepts}
+                )
                 # A derived-key FULL join sources the canonical key from a side
                 # that outputs it under a pseudonym column; accept that side so
                 # the renderer coalesces both physical columns.
-                provides_pseudonym = multi_source and any(
-                    x.address != qdk and x.address in closure
-                    for x in cte.output_columns
-                )
-                if (
-                    qdk in output_address
-                    or (multi_source and qdk in [x.address for x in cte.output_columns])
-                    or provides_pseudonym
-                ):
+                pseudonym = multi_source and not closure.isdisjoint(outputs - {qdk})
+                if full or pseudonym:
                     source_map[qdk].append(cte.safe_identifier)
-            # now do a pass that accepts partials
-            for cte in matches:
-                if qdk not in source_map:
-                    source_map[qdk] = [cte.safe_identifier]
+            # otherwise accept a partial source
+            if qdk not in source_map:
+                source_map[qdk] = [matches[0].safe_identifier]
         if qdk not in source_map:
             if not qdv:
                 source_map[qdk] = []

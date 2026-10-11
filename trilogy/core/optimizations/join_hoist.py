@@ -48,6 +48,7 @@ from trilogy.core.optimizations.utils import (
     append_condition,
     condition_contains_atom,
     is_grouped_cte,
+    output_addresses,
     render_cte_used_map,
     strip_condition_atom,
 )
@@ -93,7 +94,7 @@ class JoinHoist(OptimizationRule):
         """Find which dependency provides the FK columns for the hoisted join."""
         for p in parent_cte.dependency_nodes(include_inlined=True):
             if isinstance(p, (CTE, UnionCTE)) and fk_addresses.issubset(
-                {c.address for c in p.output_columns}
+                output_addresses(p)
             ):
                 return p
         return None
@@ -231,7 +232,7 @@ class JoinHoist(OptimizationRule):
             dim_grain = set(join.right.grain.components)
             if dim_grain and not dim_grain.issubset(join_keys_right):
                 continue
-            join_brings = {c.address for c in join.right.output_columns}
+            join_brings = output_addresses(join.right)
             filter_concepts = join_brings - join_keys_right
             # to_push: not yet on parent.condition, AND-extend the parent.
             # to_strip_only: already on parent.condition (hoisted via a
@@ -288,7 +289,7 @@ class JoinHoist(OptimizationRule):
             return JoinType.INNER
         if join.join_type != JoinType.LEFT_OUTER:
             return None
-        right_addresses = {c.address for c in join.right.output_columns}
+        right_addresses = output_addresses(join.right)
         forced = {addr for cand in bundled for addr in gather_non_null_proofs(cand)}
         if forced & right_addresses:
             return JoinType.INNER

@@ -768,15 +768,6 @@ class SyntaxNode:
             return tokens
         return [child for child in tokens if child.kind == kind]
 
-    def only_child_node(self, kind: SyntaxNodeKind | None = None) -> SyntaxNode:
-        nodes = self.child_nodes(kind)
-        if len(nodes) != 1:
-            expected = kind.value if kind else "node"
-            raise _syntax_error(
-                self, f"Expected one child '{expected}' node, found {len(nodes)}"
-            )
-        return nodes[0]
-
     def first_child_node(self, kind: SyntaxNodeKind | None = None) -> SyntaxNode:
         nodes = self.child_nodes(kind)
         if not nodes:

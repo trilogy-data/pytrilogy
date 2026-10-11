@@ -202,14 +202,14 @@ def test_default_engine_type_error_names_expected_config():
             PostgresConfig(
                 host="h", port=5432, username="u", password="p", database="db"
             ),
-            "postgresql://u:p@h:5432",
+            "postgresql://u:p@h:5432/db",
         ),
         (
             Dialects.SQL_SERVER,
             SQLServerConfig(
                 host="h", port=1433, username="u", password="p", database="db"
             ),
-            "sqlserver//u:p@h:1433",
+            "mssql+pyodbc://u:p@h:1433/db?driver=ODBC+Driver+18+for+SQL+Server",
         ),
         (
             Dialects.SNOWFLAKE,

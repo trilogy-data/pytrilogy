@@ -940,24 +940,15 @@ class Environment:
         datasource_build_cache: dict | None = None,
         scoped_joins: list[tuple[str, str, JoinType]] | None = None,
     ) -> BuildEnvironment:
-        """helper method"""
-        from trilogy.core.models.build import Factory
-
-        build_scoped_joins = list(scoped_joins or [])
-        build_scoped_joins.extend(
-            merge for merge in self.merges if merge not in build_scoped_joins
-        )
-        factory: Factory = Factory(
-            self,
-            local_concepts=local_concepts,
-            build_cache=build_cache,
-            pseudonym_map=pseudonym_map,
-            grain_build_cache=grain_build_cache,
-            canonical_build_cache=canonical_build_cache,
-            datasource_build_cache=datasource_build_cache,
-            scoped_joins=build_scoped_joins,
-        )
-        return factory.build(self)
+        return self._materialize_factory(
+            local_concepts,
+            build_cache,
+            pseudonym_map,
+            grain_build_cache,
+            canonical_build_cache,
+            datasource_build_cache,
+            scoped_joins,
+        ).build(self)
 
     def materialize_join_key(
         self, scoped_joins: list[tuple[str, str, JoinType]] | None
@@ -966,7 +957,11 @@ class Environment:
         merges folded in, as `_materialize_factory` does) — the cache key for
         `EnvBaseline` reuse across the statement and its nested arms."""
         folded = list(scoped_joins or [])
-        folded.extend(merge for merge in self.merges if merge not in folded)
+        seen = set(folded)
+        for merge in self.merges:
+            if merge not in seen:
+                seen.add(merge)
+                folded.append(merge)
         return tuple(folded)
 
     def _materialize_factory(
@@ -984,10 +979,6 @@ class Environment:
         delta materializations so the three cannot diverge."""
         from trilogy.core.models.build import Factory
 
-        build_scoped_joins = list(scoped_joins or [])
-        build_scoped_joins.extend(
-            merge for merge in self.merges if merge not in build_scoped_joins
-        )
         return Factory(
             self,
             local_concepts=local_concepts,
@@ -996,7 +987,7 @@ class Environment:
             grain_build_cache=grain_build_cache,
             canonical_build_cache=canonical_build_cache,
             datasource_build_cache=datasource_build_cache,
-            scoped_joins=build_scoped_joins,
+            scoped_joins=list(self.materialize_join_key(scoped_joins)),
         )
 
     def materialize_baseline(
