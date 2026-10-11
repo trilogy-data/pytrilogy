@@ -914,6 +914,8 @@ class BaseDialect:
     TABLE_NOT_FOUND_PATTERN: str | None = None
     HTTP_NOT_FOUND_PATTERN: str | None = None  # HTTP 404 errors (e.g., GCS)
     COLUMN_NOT_FOUND_PATTERN: str | None = None
+    # (lower, like, not) spellings for dialects without native ILIKE
+    ILIKE_AS_LOWER_LIKE: tuple[str, str, str] | None = None
     # A source that exists but cannot be parsed - a truncated or half-uploaded
     # object, the usual shape of a publish that died mid-write. Distinct from
     # not-found: the state probes report it loudly and treat the asset as
@@ -1761,7 +1763,14 @@ class BaseDialect:
         materialized_addresses: set[str] | None = None,
     ) -> str:
         """Default rendering for a binary comparison. Dialects override when an
-        operator needs translation (e.g. SQLite ``ILIKE``)."""
+        operator needs translation."""
+        if self.ILIKE_AS_LOWER_LIKE and operator in (
+            ComparisonOperator.ILIKE,
+            ComparisonOperator.NOT_ILIKE,
+        ):
+            return self.render_ilike_as_lower_like(
+                left, right, operator, cte, raise_invalid, materialized_addresses
+            )
         return f"{self.render_expr(left, cte=cte, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)} {operator.value} {self.render_expr(right, cte=cte, raise_invalid=raise_invalid, materialized_addresses=materialized_addresses)}"
 
     def render_ilike_as_lower_like(
@@ -1772,12 +1781,11 @@ class BaseDialect:
         cte: CTE | UnionCTE | None,
         raise_invalid: bool,
         materialized_addresses: set[str] | None,
-        lower: str,
-        like: str,
-        negate: str,
     ) -> str:
         """Emulate ``ILIKE`` on dialects without it via case-folded ``LIKE``;
         the keyword spellings are the dialect's."""
+        assert self.ILIKE_AS_LOWER_LIKE is not None
+        lower, like, negate = self.ILIKE_AS_LOWER_LIKE
         left_sql = self.render_expr(
             left,
             cte=cte,

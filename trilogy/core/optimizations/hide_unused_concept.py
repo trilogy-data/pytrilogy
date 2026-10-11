@@ -4,7 +4,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.execute import CTE, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
-from trilogy.core.optimizations.utils import render_cte_used_map
+from trilogy.core.optimizations.utils import output_addresses, render_cte_used_map
 
 
 class HideUnusedConcepts(OptimizationRule):
@@ -54,7 +54,7 @@ class HideUnusedConcepts(OptimizationRule):
         filter-only mode creates these, adding a dim's concepts to each branch
         so the WHERE atom renders while consumers keep their own dim join.
         """
-        union_addrs = {c.address for c in cte.output_columns}
+        union_addrs = output_addresses(cte)
         changed = False
         for branch in cte.internal_ctes:
             if not isinstance(branch, CTE):
@@ -156,7 +156,7 @@ class HideUnusedConcepts(OptimizationRule):
             for branch in cte.internal_ctes:
                 if not isinstance(branch, CTE):
                     continue
-                branch_outputs = {c.address for c in branch.output_columns}
+                branch_outputs = output_addresses(branch)
                 to_hide = {
                     addr for addr in candidates if addr in branch_outputs
                 } - branch.hidden_concepts

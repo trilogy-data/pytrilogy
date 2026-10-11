@@ -29,6 +29,7 @@ from trilogy.core.optimizations.utils import (
     existence_linked,
     is_grouped_cte,
     is_sole_consumer,
+    output_addresses,
     prune_strands_pseudonym_twin,
     rebind_rename_to_consumed,
     rename_reference,
@@ -126,7 +127,7 @@ def renders_off_parent_output(
 
 def passthrough_renders_from_parent(cte: CTE, parent: CTE) -> bool:
     """Every output the parent doesn't already expose is a rename of one it does."""
-    parent_outputs = {c.address for c in parent.output_columns}
+    parent_outputs = output_addresses(parent)
     for column in cte.output_columns:
         if column.address in parent_outputs:
             continue

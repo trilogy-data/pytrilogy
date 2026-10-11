@@ -221,7 +221,7 @@ def prune_strands_pseudonym_twin(parent: CTE, kept: list[BuildConcept]) -> bool:
     renders through. A lineage arg spelled by a lineage-less merge key (`upper(label)`
     after `merge xx_label into label`) has no expression of its own; the
     renderer reads it off the CTE's pseudonym-twin column."""
-    dropped = {c.address for c in parent.output_columns} - {c.address for c in kept}
+    dropped = output_addresses(parent) - {c.address for c in kept}
     stack = list(kept)
     seen: set[str] = set()
     while stack:

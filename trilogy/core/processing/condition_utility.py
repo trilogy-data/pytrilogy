@@ -1063,24 +1063,41 @@ def comparison_proves_non_null(
     return set()
 
 
-def _atom_proves_non_null(
-    atom: BoolExpr,
-) -> set[str]:
+def _atom_proves_non_null(atom: BoolExpr, between: bool) -> set[str]:
     if isinstance(atom, BuildParenthetical):
-        return _atom_proves_non_null(atom.content)  # type: ignore[arg-type]
+        return _atom_proves_non_null(atom.content, between)  # type: ignore[arg-type]
     if isinstance(atom, BuildConditional) and atom.operator == BooleanOperator.OR:
         # A surviving row satisfies at least one unknown disjunct; only concepts
         # non-null under every disjunct are proven.
-        sets = [condition_proves_non_null(d) for d in _non_null_or_disjuncts(atom)]
+        sets = [_proves_non_null(d, between) for d in _non_null_or_disjuncts(atom)]
         return set.intersection(*sets) if sets else set()
     if isinstance(atom, BuildConditional) and atom.operator == BooleanOperator.AND:
         # ``decompose_condition`` returns the whole AND as one chunk when a
         # child isn't in ``CONDITION_TYPES`` (a bare ``BuildFunction``); walk
         # both sides so proofs beside the opaque child still contribute.
-        return _atom_proves_non_null(atom.left) | _atom_proves_non_null(atom.right)  # type: ignore[arg-type]
+        return _atom_proves_non_null(
+            atom.left, between  # type: ignore[arg-type]
+        ) | _atom_proves_non_null(
+            atom.right, between  # type: ignore[arg-type]
+        )
+    if between and isinstance(atom, BuildBetween):
+        # all three operands must be non-null for the row to survive
+        return (
+            concepts_implied_non_null(atom.left)
+            | concepts_implied_non_null(atom.low)
+            | concepts_implied_non_null(atom.high)
+        )
     if not isinstance(atom, BuildComparison):
         return set()
     return comparison_proves_non_null(atom)
+
+
+def _proves_non_null(condition: BoolExpr, between: bool) -> set[str]:
+    return {
+        addr
+        for atom in decompose_condition(condition)
+        for addr in _atom_proves_non_null(atom, between)
+    }
 
 
 def condition_proves_non_null(
@@ -1094,11 +1111,7 @@ def condition_proves_non_null(
     WHERE that node itself applies, rendered through the same source map, so
     the condition reads each column exactly as the output does.
     """
-    return {
-        addr
-        for atom in decompose_condition(condition)
-        for addr in _atom_proves_non_null(atom)
-    }
+    return _proves_non_null(condition, between=False)
 
 
 def drop_proven_non_null(
@@ -1111,40 +1124,13 @@ def drop_proven_non_null(
     return [c for c in concepts if c.address not in proven]
 
 
-def _join_atom_proves_non_null(atom: BoolExpr) -> set[str]:
-    """``_atom_proves_non_null`` plus ``BETWEEN``: all three operands must be
-    non-null for the row to survive."""
-    if isinstance(atom, BuildParenthetical):
-        return _join_atom_proves_non_null(atom.content)  # type: ignore[arg-type]
-    if isinstance(atom, BuildConditional) and atom.operator == BooleanOperator.OR:
-        sets = [gather_non_null_proofs(d) for d in _non_null_or_disjuncts(atom)]
-        return set.intersection(*sets) if sets else set()
-    if isinstance(atom, BuildConditional) and atom.operator == BooleanOperator.AND:
-        return _join_atom_proves_non_null(atom.left) | _join_atom_proves_non_null(  # type: ignore[arg-type]
-            atom.right  # type: ignore[arg-type]
-        )
-    if isinstance(atom, BuildBetween):
-        return (
-            concepts_implied_non_null(atom.left)
-            | concepts_implied_non_null(atom.low)
-            | concepts_implied_non_null(atom.high)
-        )
-    if not isinstance(atom, BuildComparison):
-        return set()
-    return comparison_proves_non_null(atom)
-
-
 def gather_non_null_proofs(cond: BoolExpr) -> set[str]:
     """Concept addresses a condition forces non-null in surviving rows, in
     the form join narrowing consumes: ``IS NOT NULL``, ``BETWEEN`` and
     OR-of-ANDs all count. Sound for a join whose sides are materialized
     relations (a CTE, or one datasource of a merge), never for a merged key
     that will render as a cross-source COALESCE."""
-    return {
-        addr
-        for atom in decompose_condition(cond)
-        for addr in _join_atom_proves_non_null(atom)
-    }
+    return _proves_non_null(cond, between=True)
 
 
 def gather_or_groups(cond: BoolExpr) -> list[list[set[str]]]:

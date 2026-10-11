@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 
 from trilogy.core.exceptions import InvalidSyntaxException
 
@@ -968,3 +969,47 @@ def create_generic_syntax_error(
         + "\nLocation:\n"
         + inject_context_maker(pos, _one_line(text), DEFAULT_ERROR_SPAN)
     )
+
+
+_BY_KEYWORD_RE = re.compile(r"\bby\b", re.IGNORECASE)
+
+
+def detect_unparenthesized_by_expr(
+    text: str, pos: int, parses: Callable[[str], bool]
+) -> int | None:
+    """Return the position of the preceding `by` keyword if wrapping the
+    BY expression in parens would make the source parse — i.e. the user
+    wrote `by f(x)` and the parser choked because the bare expression form
+    isn't accepted in BY. `parses` is the backend's reparse probe.
+
+    Probes by inserting `(`...`)` around plausible end positions (the error
+    site and the next clause boundary). One backward scan, ≤2 reparses.
+    """
+    head = text[:pos]
+    last_by = None
+    for m in _BY_KEYWORD_RE.finditer(head):
+        last_by = m
+    if last_by is None:
+        return None
+    by_end = last_by.end()
+    if not text[by_end:pos].strip():
+        return None
+    # Candidate end positions: the error site, and the next select-list / clause
+    # boundary keyword after the error (so `by f(x) as alias` and
+    # `by f(x) select ...` are both diagnosable).
+    candidates = [pos]
+    tail = text[pos:]
+    boundary = re.search(
+        r"\b(as|select|where|having|order|group|limit)\b|;",
+        tail,
+        re.IGNORECASE,
+    )
+    if boundary is not None:
+        end = pos + boundary.start()
+        if end > pos:
+            candidates.append(end)
+    for end in candidates:
+        probe = text[:by_end] + " (" + text[by_end:end].rstrip() + ")" + text[end:]
+        if parses(probe):
+            return last_by.start()
+    return None

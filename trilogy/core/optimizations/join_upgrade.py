@@ -362,7 +362,7 @@ def _external_forced_map(
         if not isinstance(producer, CTE):
             continue
         producer_keys = cte_source_keys(producer)
-        outputs = {c.address for c in producer.output_columns}
+        outputs = output_addresses(producer)
         for consumer in inverse_map.get(producer.name, []):
             key = (consumer.name, producer.name)
             if not isinstance(consumer, CTE):
@@ -396,7 +396,7 @@ def _external_forced_map(
             if not consumers:
                 continue
             producer_keys = cte_source_keys(producer)
-            outputs = {c.address for c in producer.output_columns}
+            outputs = output_addresses(producer)
             new: set[str] | None = None
             for consumer in consumers:
                 entry = static.get((consumer.name, producer.name))

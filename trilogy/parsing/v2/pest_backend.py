@@ -24,6 +24,7 @@ from trilogy.parsing.v2.errors import (
     detect_select_distinct,
     detect_star_argument,
     detect_subselect,
+    detect_unparenthesized_by_expr,
     detect_unquoted_path_target,
     misplaced_join_candidate,
 )
@@ -219,48 +220,6 @@ def _pest_parses(text: str) -> bool:
         return False
 
 
-_BY_KEYWORD_RE = re.compile(r"\bby\b", re.IGNORECASE)
-
-
-def _detect_unparenthesized_by_expr(text: str, pos: int) -> int | None:
-    """Return the position of the preceding `by` keyword if wrapping the
-    BY expression in parens would make the source parse — i.e. the user
-    wrote `by f(x)` and the parser choked because the bare expression form
-    isn't accepted in BY.
-
-    Probes by inserting `(`...`)` around plausible end positions (the error
-    site and the next clause boundary). One backward scan, ≤2 reparses.
-    """
-    head = text[:pos]
-    last_by = None
-    for m in _BY_KEYWORD_RE.finditer(head):
-        last_by = m
-    if last_by is None:
-        return None
-    by_end = last_by.end()
-    if not text[by_end:pos].strip():
-        return None
-    # Candidate end positions: the error site, and the next select-list / clause
-    # boundary keyword after the error (so `by f(x) as alias` and
-    # `by f(x) select ...` are both diagnosable).
-    candidates = [pos]
-    tail = text[pos:]
-    boundary = re.search(
-        r"\b(as|select|where|having|order|group|limit)\b|;",
-        tail,
-        re.IGNORECASE,
-    )
-    if boundary is not None:
-        end = pos + boundary.start()
-        if end > pos:
-            candidates.append(end)
-    for end in candidates:
-        probe = text[:by_end] + " (" + text[by_end:end].rstrip() + ")" + text[end:]
-        if _pest_parses(probe):
-            return last_by.start()
-    return None
-
-
 def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
     # Replicates lark's rich error codes via source-level fixup probes.
     # Pest has no interactive-parser recovery, so instead of feeding synthetic
@@ -288,7 +247,7 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
 
     # 211: BY clause with an unparenthesized expression (e.g. `by substring(x,1,2)`).
     # Detect by probing with parens around the run after `by`.
-    by_pos = _detect_unparenthesized_by_expr(text, pos)
+    by_pos = detect_unparenthesized_by_expr(text, pos, _pest_parses)
     if by_pos is not None:
         return create_syntax_error(211, by_pos, text)
 

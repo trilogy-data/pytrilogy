@@ -30,7 +30,7 @@ from trilogy.core.models.execute import (
     pair_matches_nulls,
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
-from trilogy.core.optimizations.utils import is_grouped_cte
+from trilogy.core.optimizations.utils import is_grouped_cte, output_addresses
 
 
 def _plain(join: Join) -> bool:
@@ -103,7 +103,7 @@ def _referenced_elsewhere(consumer: CTE, join: Join, lookup: CTE) -> bool:
 
 
 def _carry(holder: CTE, lookup: CTE, addresses: list[str]) -> None:
-    present = {c.address for c in holder.output_columns}
+    present = output_addresses(holder)
     for column in lookup.output_columns:
         if column.address not in addresses or column.address in present:
             continue

@@ -48,11 +48,9 @@ def _datasource_materializes_aggregate(
             if _aggregate_signature(output) == signature:
                 return True
         return False
-    # `with_materialized_source` strips the lineage off an aggregate concept
-    # once the discovery loop decides it can be served directly from a
-    # precomputed source — at that point `_aggregate_signature` returns None,
-    # so fall back to canonical-address match. The canonical address is
-    # derived from the original lineage, so equivalent aggregates share it.
+    # An aggregate without lineage has no signature, so fall back to
+    # canonical-address match. The canonical address is derived from the
+    # original lineage, so equivalent aggregates share it.
     if not concept.is_aggregate:
         return False
     canonical = concept.canonical_address

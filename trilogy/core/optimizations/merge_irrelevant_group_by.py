@@ -19,6 +19,7 @@ from trilogy.core.optimizations.utils import (
     existence_linked,
     is_grouped_cte,
     is_sole_consumer,
+    output_addresses,
     prune_strands_pseudonym_twin,
     render_cte_used_map,
     repoint_consumers,
@@ -100,7 +101,7 @@ def _identity_group_single_use_aggregate(cte: CTE, parent: CTE) -> bool:
         for join in parent.joins
     ):
         return False
-    parent_outputs = {concept.address for concept in parent.output_columns}
+    parent_outputs = output_addresses(parent)
     input_counts: Counter[str] = Counter()
     for concept in cte.output_columns:
         if concept.derivation != Derivation.AGGREGATE:
@@ -234,7 +235,7 @@ class MergeIrrelevantGroupBy(OptimizationRule):
         self.log(f"Merging  group-by {cte.name} into irrelevant parent {parent.name}")
         # An empty source_map entry makes the renderer compute the expression
         # from concept lineage.
-        parent_output_addresses = {x.address for x in parent.output_columns}
+        parent_output_addresses = output_addresses(parent)
         for x in cte.output_columns:
             if x.address not in parent_output_addresses:
                 parent.output_columns.append(x)
@@ -245,7 +246,7 @@ class MergeIrrelevantGroupBy(OptimizationRule):
 
         # The child's output_columns already carry the hidden group-by keys,
         # so the GROUP BY survives the swap.
-        cte_output_addresses = {x.address for x in cte.output_columns}
+        cte_output_addresses = output_addresses(cte)
         parent.output_columns = [
             x for x in parent.output_columns if x.address in cte_output_addresses
         ]

@@ -307,7 +307,6 @@ class SelectNode(StrategyNode):
             complete_proofs=set(self.complete_proofs),
             non_null_proofs=set(self.non_null_proofs),
         )
-        node.limit = self.limit
         return self.with_marks(node)
 
 

@@ -284,25 +284,11 @@ def _may_pad(graph: DomainGraph) -> bool:
     )
 
 
-def _bound_by_datasource(graph: DomainGraph) -> dict[str, set[str]]:
-    bound: dict[str, set[str]] = {}
-    for b in graph.binding_edges:
-        bound.setdefault(b.datasource, set()).add(b.concept)
-    return bound
-
-
-def _held_beside(
-    reads: set[str], key: str, graph: DomainGraph, bound: dict[str, set[str]]
-) -> bool:
+def _held_beside(reads: set[str], key: str, graph: DomainGraph) -> bool:
     """A table holding `key`'s whole domain carries `reads` on each of its
     rows: no row of `key` lacks them."""
-    return any(
-        b.concept == key
-        and b.complete
-        and b.condition is None
-        and reads <= bound[b.datasource]
-        for b in graph.binding_edges
-    )
+    bound = graph.bound_by_datasource()
+    return any(reads <= bound[ds] for ds in graph.whole_domain_holders(key))
 
 
 def _co_held_only_beside(
@@ -317,16 +303,14 @@ def _co_held_only_beside(
     return bool(holders) and all(own <= concepts for concepts in holders)
 
 
-def _always_beside(
-    own: set[str], key: str, graph: DomainGraph, bound: dict[str, set[str]]
-) -> bool:
+def _always_beside(own: set[str], key: str, graph: DomainGraph) -> bool:
     """No select row holds `key` without the rows `expr` reads: those rows
     hold every `key` (`covers`), every `key` row carries them (an order
     carries its customer), or a table holding `key`'s whole domain does."""
     return (
         graph.covers(own, key)
         or all(graph.determines({key}, o) for o in own)
-        or _held_beside(own, key, graph, bound)
+        or _held_beside(own, key, graph)
     )
 
 
@@ -356,17 +340,17 @@ def pin_keys(
         out |= pin_keys(child, owner, anchors, environment, graph, named, merged)
     if is_null_absorbing(expr):
         reads = {r.address for r in expr.concept_arguments}
-        bound = _bound_by_datasource(graph)
+        bound = graph.bound_by_datasource()
         keys = {
             k
             for address, ks in anchors.items()
             # a table holding the output column carries the reads beside it
-            if address != owner and not _held_beside(reads, address, graph, bound)
+            if address != owner and not _held_beside(reads, address, graph)
             for k in ks
             if k != owner and not (owner and _reads(k, owner, environment, merged))
         }
         own = {merged.get(k, k) for k in _own_keys(expr, environment, keys)}
-        uncovered = {k for k in keys - own if not _always_beside(own, k, graph, bound)}
+        uncovered = {k for k in keys - own if not _always_beside(own, k, graph)}
         if not _co_held_only_beside(own, uncovered, bound):
             out |= uncovered
     return frozenset(out)

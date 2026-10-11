@@ -25,6 +25,7 @@ from trilogy.core.optimizations.utils import (
     append_condition,
     condition_contains_atom,
     null_padded_nodes,
+    output_addresses,
     propagate_existence_sources,
     strip_condition_atom,
     zero_filled_reads,
@@ -184,7 +185,7 @@ def _parent_materialized_addrs(parent: CTE | UnionCTE) -> set[str]:
     concept already materialized in the parent counts as scalar there.
     """
     if isinstance(parent, UnionCTE):
-        return {c.address for c in parent.output_columns}
+        return output_addresses(parent)
     return {addr for addr, sources in parent.source_map.items() if sources}
 
 
@@ -322,7 +323,7 @@ class PredicatePushdown(OptimizationRule):
 
         # Each branch's ``source_map`` often carries concepts beyond the
         # union's ``output_columns`` that the rendered UNION ALL still emits.
-        union_reachable = {x.address for x in parent_cte.output_columns}
+        union_reachable = output_addresses(parent_cte)
         for b in parent_cte.internal_ctes:
             union_reachable |= set(b.source_map.keys())
         if not row_conditions.issubset(union_reachable):
@@ -458,7 +459,7 @@ class PredicatePushdown(OptimizationRule):
         row_conditions = {x.address for x in candidate.row_arguments}
         if not row_conditions:
             return False
-        union_outputs = {x.address for x in parent_cte.output_columns}
+        union_outputs = output_addresses(parent_cte)
         if not row_conditions.issubset(union_outputs):
             return False
 
@@ -572,10 +573,10 @@ class PredicatePushdown(OptimizationRule):
                 and column.address not in materialized
                 and not gather_windows(column.lineage, materialized)
             }
-        output_addresses = {x.address for x in parent_cte.output_columns}
+        outputs = output_addresses(parent_cte)
         # An existence concept the parent itself produces cannot be its own
         # external IN target.
-        if existence_conditions and existence_conditions.intersection(output_addresses):
+        if existence_conditions and existence_conditions.intersection(outputs):
             return False
         if existence_conditions:
             self.log(
@@ -665,7 +666,7 @@ class PredicatePushdown(OptimizationRule):
                     )
                     return False
                 self.log(
-                    f"All concepts [{row_conditions}] and existence conditions [{existence_conditions}] not block pushup of [{output_addresses}]found on {parent_cte.name} with existing {parent_cte.condition} and all it's {len(children)} children include same filter; pushing up {candidate}"
+                    f"All concepts [{row_conditions}] and existence conditions [{existence_conditions}] not block pushup of [{outputs}]found on {parent_cte.name} with existing {parent_cte.condition} and all it's {len(children)} children include same filter; pushing up {candidate}"
                 )
                 # parent-relative, as for the candidate: an atom pushed here
                 # earlier over a column the parent materializes is a WHERE
@@ -740,8 +741,8 @@ class PredicatePushdown(OptimizationRule):
             return False
         # The filtered columns must be produced by this group so HAVING can
         # reference them and no row filter is pushed past the group.
-        output_addresses = {x.address for x in parent_cte.output_columns}
-        if not row_conditions.issubset(output_addresses):
+        outputs = output_addresses(parent_cte)
+        if not row_conditions.issubset(outputs):
             return False
         if condition_contains_atom(candidate, parent_cte.condition):
             return False
@@ -913,8 +914,7 @@ class PredicatePushdownRemove(OptimizationRule):
         relevant_parents = [
             p
             for p in cte.dependency_nodes()
-            if p.name not in existence_only
-            and atom_args.issubset({x.address for x in p.output_columns})
+            if p.name not in existence_only and atom_args.issubset(output_addresses(p))
         ]
         if not relevant_parents:
             return False

@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from trilogy.constants import REMOTE_PREFIXES
 
@@ -239,7 +239,10 @@ class SQLiteConfig(DialectConfig):
         return {}
 
 
-class PostgresConfig(DialectConfig):
+class _ServerConfig(DialectConfig):
+    DRIVERNAME: ClassVar[str]
+    QUERY: ClassVar[dict[str, str]] = {}
+
     def __init__(
         self,
         host: str,
@@ -257,7 +260,21 @@ class PostgresConfig(DialectConfig):
         self.database = database
 
     def connection_string(self) -> str:
-        return f"postgresql://{self.username}:{self.password}@{self.host}:{self.port}"
+        from sqlalchemy import URL
+
+        return URL.create(
+            self.DRIVERNAME,
+            username=self.username,
+            password=self.password,
+            host=self.host,
+            port=self.port,
+            database=self.database,
+            query=self.QUERY,
+        ).render_as_string(hide_password=False)
+
+
+class PostgresConfig(_ServerConfig):
+    DRIVERNAME = "postgresql"
 
 
 class MySQLConfig(DialectConfig):
@@ -293,25 +310,9 @@ class MySQLConfig(DialectConfig):
         ).render_as_string(hide_password=False)
 
 
-class SQLServerConfig(DialectConfig):
-    def __init__(
-        self,
-        host: str,
-        port: int,
-        username: str,
-        password: str,
-        database: str,
-        retry_config: RetryConfig | None = None,
-    ):
-        super().__init__(retry_config=retry_config)
-        self.host = host
-        self.port = port
-        self.username = username
-        self.password = password
-        self.database = database
-
-    def connection_string(self) -> str:
-        return f"sqlserver//{self.username}:{self.password}@{self.host}:{self.port}"
+class SQLServerConfig(_ServerConfig):
+    DRIVERNAME = "mssql+pyodbc"
+    QUERY: ClassVar[dict[str, str]] = {"driver": "ODBC Driver 18 for SQL Server"}
 
 
 class SnowflakeConfig(DialectConfig):

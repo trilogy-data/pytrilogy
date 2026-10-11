@@ -35,7 +35,7 @@ from trilogy.core.optimizations.join_upgrade import (
     _source_datasources,
 )
 from trilogy.core.processing.condition_utility import (
-    _join_atom_proves_non_null,
+    _atom_proves_non_null,
     concepts_implied_non_null,
     gather_non_null_proofs,
     partial_addresses,
@@ -279,17 +279,21 @@ def test_flag_is_true_lineage_proofs():
     flag = build_env.concepts["local.flag"]
     ret = build_env.concepts["local.ret"]
 
-    assert ret.address in _join_atom_proves_non_null(
-        BuildComparison(left=flag, right=True, operator=ComparisonOperator.IS)
+    assert ret.address in _atom_proves_non_null(
+        BuildComparison(left=flag, right=True, operator=ComparisonOperator.IS),
+        between=True,
     )
-    assert ret.address in _join_atom_proves_non_null(
-        BuildComparison(left=True, right=flag, operator=ComparisonOperator.EQ)
+    assert ret.address in _atom_proves_non_null(
+        BuildComparison(left=True, right=flag, operator=ComparisonOperator.EQ),
+        between=True,
     )
-    assert ret.address not in _join_atom_proves_non_null(
-        BuildComparison(left=flag, right=False, operator=ComparisonOperator.IS)
+    assert ret.address not in _atom_proves_non_null(
+        BuildComparison(left=flag, right=False, operator=ComparisonOperator.IS),
+        between=True,
     )
-    assert ret.address not in _join_atom_proves_non_null(
-        BuildComparison(left=flag, right=False, operator=ComparisonOperator.EQ)
+    assert ret.address not in _atom_proves_non_null(
+        BuildComparison(left=flag, right=False, operator=ComparisonOperator.EQ),
+        between=True,
     )
 
 
@@ -318,30 +322,32 @@ def test_proves_non_null_helpers():
     y = build_env.concepts["local.y"]
 
     # x IS NOT NULL → {x.address}
-    assert _join_atom_proves_non_null(
+    assert _atom_proves_non_null(
         BuildComparison(
             left=x, right=MagicConstants.NULL, operator=ComparisonOperator.IS_NOT
-        )
+        ),
+        between=True,
     ) == {x.address}
 
     # x IS NULL → empty (we want non-nulls, not nulls)
     assert (
-        _join_atom_proves_non_null(
+        _atom_proves_non_null(
             BuildComparison(
                 left=x, right=MagicConstants.NULL, operator=ComparisonOperator.IS
-            )
+            ),
+            between=True,
         )
         == set()
     )
 
     # x = 1 → {x.address}; literal side ignored
-    assert _join_atom_proves_non_null(
-        BuildComparison(left=x, right=1, operator=ComparisonOperator.EQ)
+    assert _atom_proves_non_null(
+        BuildComparison(left=x, right=1, operator=ComparisonOperator.EQ), between=True
     ) == {x.address}
 
     # x = y → both
-    assert _join_atom_proves_non_null(
-        BuildComparison(left=x, right=y, operator=ComparisonOperator.EQ)
+    assert _atom_proves_non_null(
+        BuildComparison(left=x, right=y, operator=ComparisonOperator.EQ), between=True
     ) == {x.address, y.address}
 
     # x > 1.2 * y inside a comparison → both (multiply is not null-opaque)
@@ -352,8 +358,9 @@ def test_proves_non_null_helpers():
         output_purpose=Purpose.PROPERTY,
         arg_count=2,
     )
-    assert _join_atom_proves_non_null(
-        BuildComparison(left=x, right=multiply, operator=ComparisonOperator.GT)
+    assert _atom_proves_non_null(
+        BuildComparison(left=x, right=multiply, operator=ComparisonOperator.GT),
+        between=True,
     ) == {x.address, y.address}
 
     # coalesce(x, y) IS NOT NULL → empty (null-opaque function)
@@ -365,12 +372,13 @@ def test_proves_non_null_helpers():
         arg_count=2,
     )
     assert (
-        _join_atom_proves_non_null(
+        _atom_proves_non_null(
             BuildComparison(
                 left=coalesce,
                 right=MagicConstants.NULL,
                 operator=ComparisonOperator.IS_NOT,
-            )
+            ),
+            between=True,
         )
         == set()
     )
@@ -390,16 +398,18 @@ def test_proves_non_null_helpers():
     assert gather_non_null_proofs(cond) == {x.address, y.address}
 
     # NULL IS NOT x → mirror form, same result as x IS NOT NULL
-    assert _join_atom_proves_non_null(
+    assert _atom_proves_non_null(
         BuildComparison(
             left=MagicConstants.NULL, right=x, operator=ComparisonOperator.IS_NOT
-        )
+        ),
+        between=True,
     ) == {x.address}
 
     # x IS NOT y (neither side a NULL literal) → empty
     assert (
-        _join_atom_proves_non_null(
-            BuildComparison(left=x, right=y, operator=ComparisonOperator.IS_NOT)
+        _atom_proves_non_null(
+            BuildComparison(left=x, right=y, operator=ComparisonOperator.IS_NOT),
+            between=True,
         )
         == set()
     )
@@ -419,8 +429,9 @@ def test_proves_non_null_helpers():
     # Operators outside IS/IS_NOT/NULL_PROPAGATING_OPS (e.g. ELSE) fall through
     # to the empty-set guard.
     assert (
-        _join_atom_proves_non_null(
-            BuildComparison(left=x, right=y, operator=ComparisonOperator.ELSE)
+        _atom_proves_non_null(
+            BuildComparison(left=x, right=y, operator=ComparisonOperator.ELSE),
+            between=True,
         )
         == set()
     )
@@ -428,10 +439,12 @@ def test_proves_non_null_helpers():
     # BETWEEN proves every concept inside left/low/high non-null.
     from trilogy.core.models.build import BuildBetween
 
-    assert _join_atom_proves_non_null(BuildBetween(left=x, low=1, high=10)) == {
-        x.address
-    }
-    assert _join_atom_proves_non_null(BuildBetween(left=x, low=y, high=10)) == {
+    assert _atom_proves_non_null(
+        BuildBetween(left=x, low=1, high=10), between=True
+    ) == {x.address}
+    assert _atom_proves_non_null(
+        BuildBetween(left=x, low=y, high=10), between=True
+    ) == {
         x.address,
         y.address,
     }
@@ -451,7 +464,7 @@ def test_proves_non_null_comparison_shaped_like():
 
     like = BuildComparison(left=s, right="Unknown%", operator=ComparisonOperator.LIKE)
 
-    assert _join_atom_proves_non_null(like) == {s.address}
+    assert _atom_proves_non_null(like, between=True) == {s.address}
     assert gather_non_null_proofs(like) == {s.address}
 
     cond = BuildConditional(
@@ -486,26 +499,29 @@ def test_proves_non_null_coalesce_default_rejection():
         )
 
     # coalesce(x, 0) > 0 — 0 > 0 is FALSE, so x must be non-null.
-    assert _join_atom_proves_non_null(
-        BuildComparison(left=coalesce(x, 0), right=0, operator=ComparisonOperator.GT)
+    assert _atom_proves_non_null(
+        BuildComparison(left=coalesce(x, 0), right=0, operator=ComparisonOperator.GT),
+        between=True,
     ) == {x.address}
 
     # coalesce(x, 0) >= 0 — 0 >= 0 is TRUE, so x-null rows survive: no proof.
     assert (
-        _join_atom_proves_non_null(
+        _atom_proves_non_null(
             BuildComparison(
                 left=coalesce(x, 0), right=0, operator=ComparisonOperator.GTE
-            )
+            ),
+            between=True,
         )
         == set()
     )
 
     # coalesce(x, 100) > 0 — 100 > 0 is TRUE, so x-null rows survive: no proof.
     assert (
-        _join_atom_proves_non_null(
+        _atom_proves_non_null(
             BuildComparison(
                 left=coalesce(x, 100), right=0, operator=ComparisonOperator.GT
-            )
+            ),
+            between=True,
         )
         == set()
     )
@@ -514,59 +530,66 @@ def test_proves_non_null_coalesce_default_rejection():
     # non-null default) — must NOT claim x non-null. This goes through the
     # IS_NOT branch, not the null-propagating one, so it stays opaque.
     assert (
-        _join_atom_proves_non_null(
+        _atom_proves_non_null(
             BuildComparison(
                 left=coalesce(x, 0),
                 right=MagicConstants.NULL,
                 operator=ComparisonOperator.IS_NOT,
-            )
+            ),
+            between=True,
         )
         == set()
     )
 
     # coalesce(x, y) > 0 — non-literal default; can't fold, no proof.
     assert (
-        _join_atom_proves_non_null(
+        _atom_proves_non_null(
             BuildComparison(
                 left=coalesce(x, y), right=0, operator=ComparisonOperator.GT
-            )
+            ),
+            between=True,
         )
         == set()
     )
 
     # Mirror form: 0 < coalesce(x, 0) — same proof via the flipped operator.
-    assert _join_atom_proves_non_null(
-        BuildComparison(left=0, right=coalesce(x, 0), operator=ComparisonOperator.LT)
+    assert _atom_proves_non_null(
+        BuildComparison(left=0, right=coalesce(x, 0), operator=ComparisonOperator.LT),
+        between=True,
     ) == {x.address}
 
     # Multiple defaults, all literals, all failing: still proves PRIMARY.
-    assert _join_atom_proves_non_null(
+    assert _atom_proves_non_null(
         BuildComparison(
             left=coalesce(x, 0, -1), right=0, operator=ComparisonOperator.GT
-        )
+        ),
+        between=True,
     ) == {x.address}
 
     # Multiple defaults, one of them satisfies the comparison → no proof.
     assert (
-        _join_atom_proves_non_null(
+        _atom_proves_non_null(
             BuildComparison(
                 left=coalesce(x, 0, 5), right=0, operator=ComparisonOperator.GT
-            )
+            ),
+            between=True,
         )
         == set()
     )
 
     # Equality: coalesce(x, 0) = 5 — 0 = 5 is FALSE, so proves x non-null.
-    assert _join_atom_proves_non_null(
-        BuildComparison(left=coalesce(x, 0), right=5, operator=ComparisonOperator.EQ)
+    assert _atom_proves_non_null(
+        BuildComparison(left=coalesce(x, 0), right=5, operator=ComparisonOperator.EQ),
+        between=True,
     ) == {x.address}
 
     # Equality where default matches: coalesce(x, 5) = 5 — 5 = 5 TRUE, no proof.
     assert (
-        _join_atom_proves_non_null(
+        _atom_proves_non_null(
             BuildComparison(
                 left=coalesce(x, 5), right=5, operator=ComparisonOperator.EQ
-            )
+            ),
+            between=True,
         )
         == set()
     )
