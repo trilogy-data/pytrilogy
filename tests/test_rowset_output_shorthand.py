@@ -215,7 +215,7 @@ def test_self_join_rowset_phantom_join_key_not_ambiguous(tmp_path):
     [
         "def pv(d) -> sum(joined.amt ? joined.dw = d) by joined.wk;\nselect joined.wk, @pv(0) as v;",
         "def pE() -> sum(joined.amt ? joined.dw = 0) by joined.wk;\nselect joined.wk, @pE() as v;",
-        "def pF(d) -> joined.dw + d;\nselect joined.wk, @pF(0) as v;",
+        "def pF(d) -> concat(joined.dw, d);\nselect joined.wk, @pF('x') as v;",
         "def pG(d) -> sum(joined.amt) by joined.dw;\nselect joined.dw, @pG(0) as v;",
     ],
 )
