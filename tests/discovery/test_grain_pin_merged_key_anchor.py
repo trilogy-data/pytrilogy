@@ -70,8 +70,8 @@ freshness by published_through;
 
 
 COLUMNS = {
-    "stored_gate": "tree_id, city, species, cluster_id, published_through",
-    "gate_not_stored": "tree_id, species, published_through",
+    "with_city": "tree_id, city, species, cluster_id, published_through",
+    "without_city": "tree_id, species, cluster_id, published_through",
 }
 
 

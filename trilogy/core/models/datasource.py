@@ -479,12 +479,14 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         # build writes only the rows a read keeps: a filter on the finished
         # rows (HAVING), never a WHERE that would recompute the columns'
         # aggregates over the surviving rows. Incremental keys scope the build.
-        # A gate concept the datasource does not store rides along hidden.
+        # The `where` reads only stored columns and row-level derivations of
+        # them (validated at parse), so a derived gate rides along hidden
+        # without changing the build's grain.
         having = (
             HavingClause(conditional=self.where.conditional) if self.where else None
         )
         stored = [col.concept.address for col in self.columns]
-        gated = list(
+        derived = list(
             dict.fromkeys(
                 ref.address
                 for ref in (having.concept_arguments if having else [])
@@ -501,7 +503,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
                 SelectItem(
                     content=ConceptRef(address=address), modifiers=[Modifier.HIDDEN]
                 )
-                for address in gated
+                for address in derived
             ],
             where_clause=where,
             having_clause=having,

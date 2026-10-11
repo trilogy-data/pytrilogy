@@ -63,10 +63,10 @@ ACER = [("a1", "Acer rubrum"), ("b1", "Acer saccharum")]
 ALL = ACER + [("b2", "Quercus")]
 
 
-def _refresh(tmp_path: Path, columns: str, gate: str) -> list[tuple]:
+def _refresh(tmp_path: Path, columns: str, gate: str, gated: str) -> list[tuple]:
     env = Environment(working_path=tmp_path)
     env.parse(SOURCES + f"""
-partial datasource target ({columns})
+partial datasource target ({columns}, {gated})
 grain (tree_id)
 complete where city = 'X'
 file `./target.parquet`
@@ -89,7 +89,10 @@ where {gate};
     ],
 )
 @pytest.mark.parametrize(
-    "gate, expected", [("x_genus > 1", ACER), ("x_species > 0", ALL)]
+    "gated, gate, expected",
+    [("x_genus", "x_genus > 1", ACER), ("x_species", "x_species > 0", ALL)],
 )
-def test_gate_on_aggregate_by_derived_key(tmp_path: Path, columns, gate, expected):
-    assert _refresh(tmp_path, columns, gate) == expected
+def test_gate_on_aggregate_by_derived_key(
+    tmp_path: Path, columns, gated, gate, expected
+):
+    assert _refresh(tmp_path, columns, gate, gated) == expected

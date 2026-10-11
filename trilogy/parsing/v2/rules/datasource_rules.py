@@ -10,6 +10,7 @@ from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.enums import (
     AddressType,
     DatasourceState,
+    Derivation,
     FunctionType,
     Granularity,
     Modifier,
@@ -500,6 +501,49 @@ NUMERIC_LAG_TYPES = {
 }
 
 
+def _resolves_from(address: str, stored: set[str], context: RuleContext) -> bool:
+    """`address` is a stored column, a constant, or a row-level derivation of
+    those. A concept that does not resolve yet is left to runtime."""
+    if address in stored:
+        return True
+    concept = context.concepts.get(address)
+    if concept is None or concept.derivation == Derivation.CONSTANT:
+        return True
+    if concept.derivation != Derivation.BASIC or concept.lineage is None:
+        return False
+    return all(
+        _resolves_from(ref.address, stored, context)
+        for ref in concept.lineage.concept_arguments
+    )
+
+
+def _validate_where_against_columns(
+    node: SyntaxNode,
+    context: RuleContext,
+    name: str,
+    where: WhereClause,
+    columns: list[ColumnAssignment],
+) -> None:
+    """A datasource's `where` filters the rows read out of it, so it can only
+    read what those rows hold."""
+    stored = {col.concept.address for col in columns}
+    unresolved = sorted(
+        {
+            ref.address
+            for ref in where.concept_arguments
+            if not _resolves_from(ref.address, stored, context)
+        }
+    )
+    if unresolved:
+        raise fail(
+            node,
+            f"Datasource '{name}' `where` reads {', '.join(repr(a) for a in unresolved)},"
+            " which its columns neither store nor derive row by row. The `where`"
+            " filters the rows read out of the datasource: add the column to the"
+            " datasource.",
+        )
+
+
 def _validate_lag_against_columns(
     node: SyntaxNode,
     context: RuleContext,
@@ -699,6 +743,9 @@ def datasource_node(
                 node,
                 "`refresh` is not supported for query-backed datasources; the refreshable-root mechanism is for data outside trilogy's reach",
             )
+
+    if where is not None:
+        _validate_where_against_columns(node, context, name, where, columns)
 
     if addr.is_file and not addr.exists:
         ds_status = DatasourceState.UNPOPULATED
