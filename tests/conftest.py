@@ -34,6 +34,10 @@ from trilogy.scripts import display_core
 # numpy is first imported lazily during collection, after this runs.
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 
+# A full gc per executor close costs ~160ms on the suite's heap; the
+# interpreter's own collections reclaim the same cycles here.
+CONFIG.collect_on_close = False
+
 #: Ambient terminal state the rich consoles read. `COLUMNS`/`LINES` size them,
 #: `FORCE_COLOR`/`CLICOLOR_FORCE` make them emit ANSI, and
 #: `TRILOGY_OUTPUT_FORMAT` swaps rendering for JSON events.
