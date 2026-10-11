@@ -892,6 +892,8 @@ class Executor:
         quote = self.generator.QUOTE_CHARACTER
         alias_clauses = []
         for col in query.output_columns:
+            if col.address in query.hidden_columns:
+                continue
             target_name = query.column_aliases.get(col.address)
             if target_name:
                 alias_clauses.append(

@@ -60,7 +60,7 @@ complete where src = 'SAT'
 query '''SELECT * FROM (VALUES ('s-1', 'X', 'SAT', 1, 'Zelkova'), ('s-2', 'X', 'SAT', 2, 'Pinus'))
 AS t(tree_id, city, src, pos, species)''';
 
-partial datasource published (tree_id, city, species, cluster_id, published_through)
+partial datasource published ({columns})
 grain (tree_id)
 complete where city = 'X'
 address published_trees
@@ -69,9 +69,15 @@ freshness by published_through;
 """
 
 
-def _build_rows(anchor: str) -> list[tuple]:
+COLUMNS = {
+    "stored_gate": "tree_id, city, species, cluster_id, published_through",
+    "gate_not_stored": "tree_id, species, published_through",
+}
+
+
+def _build_rows(anchor: str, columns: str) -> list[tuple]:
     env = Environment()
-    env.parse(MODEL.format(anchor=ANCHOR[anchor]))
+    env.parse(MODEL.format(anchor=ANCHOR[anchor], columns=COLUMNS[columns]))
     executor = Dialects.DUCK_DB.default_executor(environment=env)
     sql = executor.update_datasource(env.datasources["published"], dry_run=True)
     assert sql is not None
@@ -81,11 +87,18 @@ def _build_rows(anchor: str) -> list[tuple]:
     cursor = duckdb.connect().execute(query)
     columns = [d[0] for d in cursor.description]
     return sorted(
-        (row["tree_id"], row["cluster_id"])
+        (row["tree_id"], row["species"])
         for row in (dict(zip(columns, r)) for r in cursor.fetchall())
     )
 
 
+@pytest.mark.parametrize("columns", sorted(COLUMNS))
 @pytest.mark.parametrize("anchor", sorted(ANCHOR))
-def test_pruned_target_keeps_every_cluster_anchor(anchor: str):
-    assert _build_rows(anchor) == [("m-1", "m-1"), ("m-2", "m-2"), ("s-2", "s-2")]
+def test_pruned_target_keeps_every_cluster_anchor(anchor: str, columns: str):
+    # `m-1` absorbs `s-1`: the datasource `where` only chooses which rows are
+    # written, so the persisted species is the whole cluster's
+    assert _build_rows(anchor, columns) == [
+        ("m-1", "Zelkova"),
+        ("m-2", "Quercus"),
+        ("s-2", "Pinus"),
+    ]

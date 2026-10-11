@@ -1,7 +1,8 @@
-"""A datasource's own `where` is a row contract: every read of the datasource is
-filtered by it, so a build that skipped it would write rows the datasource then
-denies. The build select must AND it in, beside the incremental key filter and
-a partial target's `complete where`.
+"""A datasource's own `where` is applied to every read of it, so a build must
+write only the rows a read keeps. It gates the build's finished rows as a
+HAVING, never a WHERE, so the columns keep the values the concepts have: an
+aggregate column is not recomputed over the surviving rows. The incremental
+key filter and a partial target's `complete where` still scope it as WHERE.
 """
 
 from trilogy import Dialects, Environment
@@ -39,14 +40,16 @@ def _env() -> Environment:
     return env
 
 
-def test_build_select_carries_the_datasource_where():
+def test_build_select_gates_on_the_datasource_where():
     env = _env()
     kept = env.datasources["kept"]
     statement = kept.create_update_statement(env, None, line_no=None)
-    assert str(statement.where_clause) == str(kept.where)
+    assert statement.where_clause is None
+    assert statement.having_clause is not None
+    assert str(statement.having_clause.conditional) == str(kept.where)
 
 
-def test_build_select_ands_the_datasource_where_with_the_incremental_filter():
+def test_build_select_scopes_by_the_incremental_filter_and_gates_on_the_where():
     env = _env()
     kept = env.datasources["kept"]
     incremental = env.parse("select id where id > 1;")[-1][-1]
@@ -54,9 +57,9 @@ def test_build_select_ands_the_datasource_where_with_the_incremental_filter():
     statement = kept.create_update_statement(
         env, incremental.where_clause, line_no=None
     )
-    rendered = str(statement.where_clause)
-    assert str(kept.where) in rendered
-    assert str(incremental.where_clause) in rendered
+    assert str(statement.where_clause) == str(incremental.where_clause)
+    assert statement.having_clause is not None
+    assert str(statement.having_clause.conditional) == str(kept.where)
 
 
 def test_refresh_writes_only_rows_the_datasource_admits():
