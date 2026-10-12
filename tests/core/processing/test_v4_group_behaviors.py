@@ -29,7 +29,6 @@ from trilogy.core.models.environment import Environment
 from trilogy.core.processing.nodes import (
     FilterNode,
     GroupNode,
-    History,
     MergeNode,
     SelectNode,
     StrategyNode,
@@ -62,6 +61,7 @@ from trilogy.core.processing.v4_helper.group_rules import (
     partition_constants,
     partition_roots,
 )
+from trilogy.core.processing.v4_helper.history import V4History
 from trilogy.core.processing.v4_helper.models import (
     ConceptAttrs,
     FinalAssemblyContract,
@@ -1542,7 +1542,7 @@ def test_conditioned_filter_does_not_cover_unfiltered_parent_outputs():
         "agg",
         env,
         ReferenceGraph(),
-        History(base_environment=Environment()),
+        V4History(base_environment=Environment()),
         needed={supplier_id.address, order_id.address, filtered_supplier.address},
         root_requests={},
         mandatory_list=[],

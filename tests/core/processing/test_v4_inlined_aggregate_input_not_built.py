@@ -11,13 +11,13 @@ from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.processing import plan_trace
-from trilogy.core.processing.nodes import History
 from trilogy.core.processing.v4_helper.constants import (
     FINAL_NODE_ID,
     DepthLabel,
     EdgeKind,
 )
 from trilogy.core.processing.v4_helper.edges import EdgeMap, add_edge
+from trilogy.core.processing.v4_helper.history import V4History
 from trilogy.core.processing.v4_helper.models import (
     FinalAssemblyContract,
     FinalContributorContract,
@@ -98,7 +98,7 @@ def test_reader_holding_folded_members_is_never_built():
             "filter",
             build_env,
             generate_graph(build_env),
-            History(base_environment=env),
+            V4History(base_environment=env),
             needed=set(),
             root_requests={},
             mandatory_list=[],

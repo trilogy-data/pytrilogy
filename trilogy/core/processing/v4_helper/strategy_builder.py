@@ -75,7 +75,6 @@ from trilogy.core.processing.node_generators.presence_probe import (
 from trilogy.core.processing.nodes import (
     FilterNode,
     GroupNode,
-    History,
     MergeNode,
     RowsetNode,
     SelectNode,
@@ -333,7 +332,7 @@ class _CleanFeederCache:
         self,
         environment: BuildEnvironment,
         g: ReferenceGraph,
-        history: History,
+        history: V4History,
     ) -> None:
         self._environment = environment
         self._g = g
@@ -351,7 +350,7 @@ class _CleanFeederCache:
         # Imported lazily: `concept_strategies_v4` imports this module's package.
         from trilogy.core.processing.concept_strategies_v4 import search_concepts
 
-        v4_history = cast(V4History, self._history)
+        v4_history = self._history
         addresses = {concept.address for concept in group}
         if len(group) == 1 and not isinstance(group[0].lineage, BuildFilterItem):
             # A single-column set can be widened to its keys: the extra columns
@@ -1196,7 +1195,7 @@ def _parent_nodes_for(
     gid: str,
     environment: BuildEnvironment,
     graph: ReferenceGraph,
-    history: History,
+    history: V4History,
     *,
     needed: set[str],
     root_requests: dict[str, RootRequest],
@@ -4061,7 +4060,7 @@ def _fresh_final_root_projection(
     projected: list[BuildConcept],
     environment: BuildEnvironment,
     graph: ReferenceGraph,
-    history: History,
+    history: V4History,
     conditions: BuildWhereClause | None,
     arm_local: bool,
 ) -> StrategyNode | None:
@@ -4901,7 +4900,7 @@ def _resourced_root_contributor(
     ownership: ExtentOwnership,
     root_request: RootRequest,
     graph: ReferenceGraph,
-    history: History,
+    history: V4History,
     arms_delivered: bool,
     grouping_sibling: bool,
 ) -> list[StrategyNode]:
@@ -5266,7 +5265,7 @@ def _assemble_final_node(
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     graph: ReferenceGraph,
-    history: History,
+    history: V4History,
     root_requests: dict[str, RootRequest],
     feeder_cache: "_CleanFeederCache | None" = None,
     arms_delivered: bool = False,
@@ -5789,7 +5788,7 @@ class _GroupBuild:
     mandatory_list: list[BuildConcept]
     environment: BuildEnvironment
     g: ReferenceGraph
-    history: History
+    history: V4History
     complete_partials: bool
     staged_conditions: list[BuildWhereClause] | None
     depth: int
@@ -6364,7 +6363,7 @@ def build_strategy_node(
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     g: ReferenceGraph,
-    history: History,
+    history: V4History,
     complete_partials: bool = True,
     staged_conditions: list[BuildWhereClause] | None = None,
     depth: int = 0,
