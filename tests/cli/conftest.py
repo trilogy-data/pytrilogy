@@ -59,6 +59,11 @@ class Failure:
 
 
 @dataclass
+class Hang:
+    """A route that never answers inside the client's timeout."""
+
+
+@dataclass
 class Raw:
     """A route that answers with bytes verbatim, bypassing JSON encoding."""
 
@@ -92,6 +97,8 @@ class RecordedCall:
     #: Parsed query string, so a test can assert a filter was sent server-side
     #: rather than applied after the fact.
     query: dict[str, list[str]] = field(default_factory=dict)
+    #: The per-request timeout the client asked the transport for.
+    timeout: float | None = None
 
 
 _MISSING = object()
@@ -211,6 +218,8 @@ class FakeCloudAPI:
     routes: dict[tuple[str, str], Any] = field(default_factory=dict)
     calls: list[RecordedCall] = field(default_factory=list)
     offline: bool = False
+    #: Every backoff pause a retry asked for, in seconds, oldest first.
+    pauses: list[float] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.seed()
@@ -328,6 +337,16 @@ class FakeCloudAPI:
         """Answer a route with each payload in turn, repeating the last."""
         self.routes[(method, path)] = Steps(list(payloads))
 
+    @staticmethod
+    def failure(status: int, detail: str = "") -> Failure:
+        """An error answer, for a ``set_steps`` sequence."""
+        return Failure(status, detail)
+
+    @staticmethod
+    def hang() -> Hang:
+        """An answer that never comes: the client's request times out."""
+        return Hang()
+
     def fail(self, method: str, path: str, status: int, detail: str = "") -> None:
         self.routes[(method, path)] = Failure(status, detail)
 
@@ -382,6 +401,7 @@ class FakeCloudAPI:
                 {k.lower(): v for k, v in req.header_items()},
                 req.data,
                 parse_qs(query),
+                timeout,
             )
         )
         payload = self._lookup(req.get_method(), path)
@@ -389,6 +409,8 @@ class FakeCloudAPI:
             payload = payload.take()
         if payload is _MISSING:
             payload = Failure(404, f"no route for {req.get_method()} {path}")
+        if isinstance(payload, Hang):
+            raise TimeoutError("timed out")
         if isinstance(payload, Failure):
             raise HTTPError(
                 req.full_url,
@@ -412,6 +434,9 @@ def cloud_api(tmp_path, monkeypatch) -> FakeCloudAPI:
     """
     api = FakeCloudAPI()
     monkeypatch.setattr(cloud_mod, "urlopen", api.urlopen)
+    # Retries back off for real time; the tests count them instead.
+    monkeypatch.setattr(cloud_mod, "_sleep", api.pauses.append)
+    monkeypatch.delenv(cloud_mod.ENV_REQUEST_TIMEOUT, raising=False)
     monkeypatch.setattr(cloud_mod, "CREDENTIALS_PATH", tmp_path / "creds.json")
     monkeypatch.setenv(cloud_mod.ENV_API_URL, api.url)
     monkeypatch.delenv(cloud_mod.ENV_TOKEN, raising=False)
