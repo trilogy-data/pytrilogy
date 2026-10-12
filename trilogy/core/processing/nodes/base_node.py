@@ -123,17 +123,46 @@ def resolve_existence_map(
     }
 
 
+def _partial_via_subset_member(
+    c: BuildConcept,
+    parents: list["StrategyNode"],
+    subset_anchors: dict[str, set[str]],
+) -> bool:
+    """`c` no parent emits by its own address, read off a member declared a
+    subset of it (`subset join b.id = k` emits k from b's b.id): k is only as
+    complete as every parent binding that member."""
+    providers = [
+        (p, member)
+        for member in c.pseudonyms
+        if c.address in subset_anchors.get(member, ())
+        for p in parents
+        if member in p.output_lcl
+    ]
+    return bool(providers) and all(member in p.partial_lcl for p, member in providers)
+
+
 def get_all_parent_partial(
-    all_concepts: list[BuildConcept], parents: list["StrategyNode"]
+    all_concepts: list[BuildConcept],
+    parents: list["StrategyNode"],
+    environment: BuildEnvironment,
 ) -> list[BuildConcept]:
     partial_addrs = [{x.address for x in p.partial_concepts} for p in parents]
+    subset_anchors = environment.domain_graph.declared_subset_anchors()
     return unique(
         [
             c
             for c in all_concepts
-            if any(c.address in addrs for addrs in partial_addrs)
-            and all(
-                c.address in p.partial_lcl for p in parents if c.address in p.output_lcl
+            if (
+                any(c.address in addrs for addrs in partial_addrs)
+                and all(
+                    c.address in p.partial_lcl
+                    for p in parents
+                    if c.address in p.output_lcl
+                )
+            )
+            or (
+                not any(c.address in p.output_lcl for p in parents)
+                and _partial_via_subset_member(c, parents, subset_anchors)
             )
         ],
         "address",
@@ -341,7 +370,9 @@ class StrategyNode:
 
         # TODO: make this accurate
         if self.parents and partial_concepts is None:
-            partials = get_all_parent_partial(self.output_concepts, self.parents)
+            partials = get_all_parent_partial(
+                self.output_concepts, self.parents, self.environment
+            )
         elif partial_concepts is None:
             partials = []
         else:
