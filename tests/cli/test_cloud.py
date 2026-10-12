@@ -10,6 +10,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import ClassVar
+from urllib.error import URLError
 
 import click
 import pytest
@@ -2316,6 +2317,32 @@ class TestRunLogs:
         result = run_cloud("runs", "logs", "run-1")
         assert result.exit_code != 0
         assert "Downloading the artifact failed: 403" in result.output
+
+    def test_an_unreachable_download_is_an_error(
+        self, logged_in, run_cloud, monkeypatch
+    ):
+        _grant_artifact(logged_in, "stderr", b"boom")
+        api_urlopen = logged_in.urlopen
+
+        def flaky(req, timeout=None):
+            if "/signed/" in req.full_url:
+                raise URLError("connection reset")
+            return api_urlopen(req, timeout)
+
+        monkeypatch.setattr(cloud_mod, "urlopen", flaky)
+        result = run_cloud("runs", "logs", "run-1")
+        assert result.exit_code != 0
+        assert "Could not download the artifact" in result.output
+
+    def test_json_with_output_reports_the_path(
+        self, logged_in, run_cloud, json_mode, tmp_path
+    ):
+        _grant_artifact(logged_in, "stderr", b"boom")
+        target = tmp_path / "err.log"
+        payload = json.loads(
+            run_cloud("runs", "logs", "run-1", "-o", str(target)).output
+        )
+        assert payload["path"] == str(target) and "log" not in payload
 
     def test_emits_a_json_event(self, logged_in, run_cloud, json_mode):
         _grant_artifact(logged_in, "stderr", b"boom")
