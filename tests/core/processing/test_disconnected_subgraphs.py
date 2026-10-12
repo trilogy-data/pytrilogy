@@ -199,8 +199,8 @@ def test_filter_over_scoped_join_rowset_measure_not_islanded():
     # downstream consumers of declared outputs to the rowset hub keeps each filter
     # in its rowset's component; the only legitimate split here is cur vs nxt
     # (the cross-rowset relationship is the scoped join, not graph reachability).
-    from trilogy.core.models.build import BuildFilterItem
     from trilogy.core.env_processor import generate_graph
+    from trilogy.core.models.build import BuildFilterItem
     from trilogy.core.processing.discovery_utility import disconnected_components
 
     env = Environment()
