@@ -933,7 +933,6 @@ class Environment:
     def materialize_for_select(
         self,
         local_concepts: dict[str, BuildConcept] | None = None,
-        build_cache: dict | None = None,
         pseudonym_map: dict[str, set[str]] | None = None,
         grain_build_cache: dict | None = None,
         canonical_build_cache: dict | None = None,
@@ -942,7 +941,6 @@ class Environment:
     ) -> BuildEnvironment:
         return self._materialize_factory(
             local_concepts,
-            build_cache,
             pseudonym_map,
             grain_build_cache,
             canonical_build_cache,
@@ -967,7 +965,6 @@ class Environment:
     def _materialize_factory(
         self,
         local_concepts: dict | None,
-        build_cache: dict | None,
         pseudonym_map: dict[str, set[str]] | None,
         grain_build_cache: dict | None,
         canonical_build_cache: dict | None,
@@ -982,7 +979,6 @@ class Environment:
         return Factory(
             self,
             local_concepts=local_concepts,
-            build_cache=build_cache,
             pseudonym_map=pseudonym_map,
             grain_build_cache=grain_build_cache,
             canonical_build_cache=canonical_build_cache,
@@ -992,7 +988,6 @@ class Environment:
 
     def materialize_baseline(
         self,
-        build_cache: dict | None = None,
         pseudonym_map: dict[str, set[str]] | None = None,
         grain_build_cache: dict | None = None,
         canonical_build_cache: dict | None = None,
@@ -1004,7 +999,6 @@ class Environment:
         scoped-join set. Pair with `materialize_delta`."""
         factory = self._materialize_factory(
             {},
-            build_cache,
             pseudonym_map,
             grain_build_cache,
             canonical_build_cache,
@@ -1016,7 +1010,6 @@ class Environment:
     def shared_baseline(
         self,
         store: dict,
-        build_cache: dict | None = None,
         pseudonym_map: dict[str, set[str]] | None = None,
         grain_build_cache: dict | None = None,
         canonical_build_cache: dict | None = None,
@@ -1027,7 +1020,6 @@ class Environment:
         and brought up to date on every later one. One spelling for the
         statement and for the nested arms that share its store."""
         caches = (
-            build_cache,
             pseudonym_map,
             grain_build_cache,
             canonical_build_cache,
@@ -1044,7 +1036,6 @@ class Environment:
     def ensure_baseline(
         self,
         baseline,
-        build_cache: dict | None = None,
         pseudonym_map: dict[str, set[str]] | None = None,
         grain_build_cache: dict | None = None,
         canonical_build_cache: dict | None = None,
@@ -1059,7 +1050,6 @@ class Environment:
             return baseline
         factory = self._materialize_factory(
             baseline.end_locals,
-            build_cache,
             pseudonym_map,
             grain_build_cache,
             canonical_build_cache,
@@ -1072,7 +1062,6 @@ class Environment:
         self,
         baseline,
         local_concepts: dict,
-        build_cache: dict | None = None,
         pseudonym_map: dict[str, set[str]] | None = None,
         grain_build_cache: dict | None = None,
         canonical_build_cache: dict | None = None,
@@ -1084,7 +1073,6 @@ class Environment:
         the soundness argument); the full spelling remains the reference."""
         factory = self._materialize_factory(
             local_concepts,
-            build_cache,
             pseudonym_map,
             grain_build_cache,
             canonical_build_cache,

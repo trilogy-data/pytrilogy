@@ -176,7 +176,6 @@ def build_nested_select(
         caches = replace(caches, datasource_build_cache={}, scoped_joins=scoped_joins)
     factory = Factory(
         environment=author_env,
-        build_cache=caches.build_cache,
         canonical_build_cache=caches.canonical_build_cache,
         grain_build_cache=caches.grain_build_cache,
         pseudonym_map=caches.pseudonym_map,
@@ -190,7 +189,6 @@ def build_nested_select(
     # spelling the delta must stay byte-equivalent to.
     baseline = author_env.shared_baseline(
         caches.env_baselines,
-        build_cache=caches.build_cache,
         pseudonym_map=factory.pseudonym_map,
         grain_build_cache=caches.grain_build_cache,
         canonical_build_cache=caches.canonical_build_cache,
@@ -200,7 +198,6 @@ def build_nested_select(
     build_env = author_env.materialize_delta(
         baseline,
         built.local_concepts,
-        build_cache=caches.build_cache,
         pseudonym_map=factory.pseudonym_map,
         grain_build_cache=caches.grain_build_cache,
         canonical_build_cache=caches.canonical_build_cache,

@@ -1,9 +1,7 @@
 # Handoff: planning perf + simplification audit (2026-10-11)
 
-Open items from the audit that landed the GC pause (PR #720). The
-2026-10-12 follow-up landed items 5, 7, 8 (three of four) and most of 9;
-item 1 landed once multiselect/union outputs got stable canonical names
-(`_gen_msl_name` had hashed a growing repr); item 8c is closed below. Percentages are of corpus planning CPU.
+Open items from the audit that landed the GC pause (PR #720). Percentages
+are of corpus planning CPU.
 
 ## Gate recipe (every item)
 
@@ -46,7 +44,7 @@ is shareable.
 
 `_stamped` is memoized on content (`keyspace.py`; `_carried` calls
 17,486 -> 7,197). Still open: `scope_facts` caches per `ScopeDatasources`
-object (`keyspace.py` ~305), but every plan seam builds a fresh holder
+object (`v4_helper/keyspace.py` ~308), but every plan seam builds a fresh holder
 (`statement_scope.py` ~102), so 48 of 312 `_compute_facts` calls repeat
 identical datasources + canonical map. Reuse the parent's holder when
 bindings are the same objects and heal/exclusion changed nothing. Facts also
@@ -72,7 +70,7 @@ silently mis-prunes: land with a debug recompute-and-assert mode.
 
 ## 8. `rebuild_cache()` twice on ordered statements
 
-`query_processor.py` (~949): one top-node `_resolve` saved per ordered
+`query_processor.py` (~953): one top-node `_resolve` saved per ordered
 statement. Not a plain skip: the second resolve bakes `ordering` into the
 QDS, whose cached identifier hashes it under a limit, and MergeNode hands
 parent QDS objects through.
@@ -91,44 +89,6 @@ Open:
   `lark` dependency) survives as a test parity oracle and a no-wheel
   fallback.
 
-## Hazard found (correctness, not perf)
-
-`Factory.__init__` does `self.build_cache = build_cache or {}`
-(`build.py` ~3023), so an EMPTY shared cache is silently replaced by a
-private one (2,102 factories). Forcing sharing moves `tpc_ds_duckdb/query23#0`
-and `query64#0`: cache hits return concepts built in another context, so the
-key (namespace.address.canonical_name.grain + grouping token, ~3644) is
-missing context (pin anchors, scope salt, join scope candidates). The same
-hazard is live wherever sharing does happen (nested selects). Decide whether
-the cache is shared; if so complete the key, using q23/q64 as the oracle.
-This also blocks checking the cache before building lineage (21k calls build
-a lineage, then hit).
-
-## Hazard: where-less grain cache masks a subset-join wrong-rows bug
-
-`Factory._build_grain` caches a where-less grain whole under
-`(frozenset(components), id(None))`, but `_normalize_grain_components` reads
-the calling factory's `scoped_merge_map` (and `environment.concepts`). A grain
-first built without a scoped merge comes back unnormalized under one
-(`tpc_ds_duckdb/query84`: `ss.return_customer_demographic.sk` where a fresh
-build gives `customer.current_demographics.sk`).
-
-Normalizing per call (cache only the built where) was tried and reverted:
-- `tests/core/processing/test_v4_fd_dimension_merge_grain.py` goes WRONG
-  ROWS. `subset join cust_id = bought.sale_cust` maps `local.cust_id ->
-  bought.sale_cust`; customer properties then grain on the rowset handle and
-  the final join becomes `RIGHT OUTER` from customers, keeping `bob` (no
-  sales) with a NULL total. The stale cache hid this.
-- `tpc_ds_duckdb/query29` grows 6 -> 9 CTEs (rows still match): `per_pair`
-  grains on `store_sales.customer/item.sk` instead of the `subset join`'s
-  `catalog_customer_item.cat_*`, and `item.desc`/`item.id` come through an
-  extra `store_sales` distinct scan.
-
-Open question first: which side should a subset join's scoped merge make
-canonical, and does the planner honour subset containment when a base
-concept's grain is spelled with a rowset handle. Fix that, then stop caching
-components.
-
 ## Closed: do not re-chase
 
 - Lazy / demand-driven environment build: 89% of each environment's concepts
@@ -144,6 +104,9 @@ components.
 - Undirected copy in the connectivity gate: `to_undirected` is ~0.5%;
   `_detach_bridging_derivations` needs whole-graph components.
 - GC: paused during `process_query` (PR #720). Parse gains nothing from it.
+- Sharing `Factory.build_cache` across factories: its key omits the build
+  context (scoped joins, anchors, scope salt); forced sharing moves q23/q64,
+  and no sharing costs no corpus CPU. Each factory keeps a private memo.
 - Reusing the baseline's concept-list caches in `_env_finish` (item 8):
   `gen_concept_list_caches` is ~0.9% of corpus CPU and only 13 of 456
   materializations qualify (no replay, no changed address).

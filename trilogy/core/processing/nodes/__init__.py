@@ -24,7 +24,6 @@ class BuildCaches:
     resolution. All are keyed on grain/lineage/address identity, so reuse
     is correct across sub-selects sharing the same base environment."""
 
-    build_cache: dict = field(default_factory=dict)
     canonical_build_cache: dict = field(default_factory=dict)
     grain_build_cache: dict = field(default_factory=dict)
     datasource_build_cache: dict = field(default_factory=dict)

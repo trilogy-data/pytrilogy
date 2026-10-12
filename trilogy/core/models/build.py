@@ -2900,9 +2900,8 @@ class Factory:
         local_concepts: dict[str, BuildConcept] | None = None,
         grain: Grain | None = None,
         pseudonym_map: dict[str, set[str]] | None = None,
-        build_cache: dict[str, BuildConcept] | None = None,
         grain_build_cache: (
-            dict[tuple, tuple[WhereClause | None, BuildGrain]] | None
+            dict[int, tuple[WhereClause, BuildWhereClause]] | None
         ) = None,
         canonical_build_cache: dict[str, BuildConcept] | None = None,
         datasource_build_cache: dict[str, BuildDatasource] | None = None,
@@ -3005,13 +3004,14 @@ class Factory:
         # `_env_footprint` and every write name to `_env_writes`.
         self._env_footprint: set[str] | None = None
         self._env_writes: set[str] | None = None
-        self.build_cache = build_cache or {}
-        # Cross-factory cache for BuildGrain keyed on (frozenset(components),
-        # id(where_clause)), valued (where_clause, BuildGrain); see
-        # `_build_grain`. Same lifecycle as build_cache — propagated to
-        # sub-factories that share build_cache so all factories in a parse
-        # reuse the same normalized grains.
-        self.grain_build_cache: dict[tuple, tuple[WhereClause | None, BuildGrain]] = (
+        # Private: its key (address, canonical name, grain) omits the build
+        # context (scoped joins, anchors, scope salt), so sharing it across
+        # factories hands one context's concepts to another.
+        self.build_cache: dict[str, BuildConcept] = {}
+        # Cross-factory cache of built grain wheres keyed on id(where_clause),
+        # valued (where_clause, BuildWhereClause); see `_build_grain`. Same
+        # lifecycle as the other caches — propagated to sub-factories.
+        self.grain_build_cache: dict[int, tuple[WhereClause, BuildWhereClause]] = (
             {} if grain_build_cache is None else grain_build_cache
         )
         # Cache of BuildConcepts for "grain-stable" base concepts (no lineage
@@ -3618,10 +3618,6 @@ class Factory:
         cache_address = (
             f"{base.namespace}.{base.address}.{canonical_name}.{final_grain!s}"
         )
-        if self.select_grouping is not None:
-            # build_cache persists across statements; a spec-stamped build of a
-            # concept must not be served to (or from) a spec-less statement
-            cache_address += f".{self._select_grouping_token()}"
         if cache_address in self.build_cache:
             return self.build_cache[cache_address]
 
@@ -3694,16 +3690,6 @@ class Factory:
         # this is a global cache that can be reused across Factory instances
         self.build_cache[cache_address] = rval
         return rval
-
-    def _select_grouping_token(self) -> str:
-        spec = self.select_grouping
-        assert spec is not None
-        by = ",".join(str(x.address) for x in spec.by)
-        sets = "|".join(
-            ",".join(str(x.address) for x in grouping_set)
-            for grouping_set in spec.grouping_sets
-        )
-        return f"{spec.mode.value}:{by}:{sets}"
 
     def _apply_select_grouping_to_resolved(
         self, base: Concept, new_lineage: Any
@@ -4238,7 +4224,6 @@ class Factory:
             local_concepts={},
             grain=rowset.select.grain,
             pseudonym_map=self.pseudonym_map,
-            build_cache=self.build_cache,
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
         )
@@ -4284,34 +4269,29 @@ class Factory:
         return self._build_grain(base)
 
     def _build_grain(self, base: Grain) -> BuildGrain:
-        # Cached across factories sharing build_cache. Where-less grains cache
-        # whole; a where grain caches only its built where (a function of the
-        # where object and environment) and re-normalizes its components,
-        # which depend on this factory's scoped merges. The entry holds the
-        # source where alive, so its id cannot be reused.
-        where = base.where_clause if base.where_clause else None
-        cache_key = (frozenset(base.components), id(where))
-        cached = self.grain_build_cache.get(cache_key)
-        if cached is None:
-            built_where = self._build_grain_where(where) if where else None
-            rval = BuildGrain(
-                components=self._normalize_grain_components(base.components),
-                where_clause=built_where,
-            )
-            self.grain_build_cache[cache_key] = (where, rval)
-            return rval
-        if where is None:
-            return cached[1]
+        # Only the built where is cached across factories sharing this cache
+        # (a function of the where object and environment); components depend
+        # on this factory's scoped merges, so they normalize per call. The
+        # entry holds the source where alive, so its id cannot be reused.
+        where = base.where_clause
+        built_where = None
+        if where:
+            cached = self.grain_build_cache.get(id(where))
+            if cached is None:
+                cached = self.grain_build_cache[id(where)] = (
+                    where,
+                    self._build_grain_where(where),
+                )
+            built_where = cached[1]
         return BuildGrain(
             components=self._normalize_grain_components(base.components),
-            where_clause=cached[1].where_clause,
+            where_clause=built_where,
         )
 
     def _build_grain_where(self, where: WhereClause) -> BuildWhereClause:
         return Factory(
             environment=self.environment,
             pseudonym_map=self.pseudonym_map,
-            build_cache=self.build_cache,
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
         )._build_where_clause(where)
@@ -4432,7 +4412,6 @@ class Factory:
             environment=self.environment,
             local_concepts=materialized,
             pseudonym_map=self.pseudonym_map,
-            build_cache=self.build_cache,
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
             scoped_joins=self.scoped_joins,
@@ -4470,7 +4449,6 @@ class Factory:
             environment=self.environment,
             local_concepts={},
             pseudonym_map=self.pseudonym_map,
-            build_cache=self.build_cache,
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
             scoped_joins=self.scoped_joins,
@@ -4621,7 +4599,6 @@ class Factory:
             environment=self.environment,
             local_concepts=local_build_cache,
             pseudonym_map=self.pseudonym_map,
-            build_cache=self.build_cache,
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
             scoped_joins=env_scoped_joins,
@@ -4629,7 +4606,6 @@ class Factory:
         where_factory = Factory(
             environment=self.environment,
             pseudonym_map=self.pseudonym_map,
-            build_cache=self.build_cache,
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
             scoped_joins=env_scoped_joins,
@@ -4954,10 +4930,6 @@ class Factory:
             environment=self.environment,
             local_concepts=local_cache,
             pseudonym_map=self.pseudonym_map,
-            # build_cache = self.build_cache,
-            build_cache=(
-                self.build_cache if CONFIG.generation.datasource_build_cache else None
-            ),
             grain_build_cache=(
                 self.grain_build_cache
                 if CONFIG.generation.datasource_build_cache

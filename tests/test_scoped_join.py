@@ -1474,3 +1474,23 @@ select e1.name, e2.name -> manager_name;
         ("bob", "carol"),
         ("carol", "dan"),
     }, rows
+
+
+def test_shared_grain_cache_normalizes_per_scoped_join():
+    from trilogy.core.models.author import Grain
+    from trilogy.core.models.build import Factory
+    from trilogy.parser import parse
+
+    env, _ = parse("""key aid int;
+key bid int;
+""")
+    grain = Grain(components={"local.bid"})
+    shared: dict = {}
+    plain = Factory(environment=env, grain_build_cache=shared).build(grain)
+    joined = Factory(
+        environment=env,
+        grain_build_cache=shared,
+        scoped_joins=[("local.aid", "local.bid", JoinType.LEFT_OUTER)],
+    ).build(grain)
+    assert plain.components == {"local.bid"}
+    assert joined.components == {"local.aid"}
