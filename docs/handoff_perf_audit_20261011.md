@@ -18,24 +18,11 @@ independent; take one per PR. Percentages are of corpus planning CPU.
   Python-heavy functions (a `_carried` rewrite looked like 2s under cProfile
   and was 0.2s real).
 
-## 1. Cache grains that carry a `where` (largest, low risk)
+## 1. One scope factory per rowset (small)
 
-`Factory._build_grain` (`trilogy/core/models/build.py` ~4344) caches only
-where-less grains; the comment near `build.py:3025` claims a
-`(components, id(where))` key that the code never uses. A grain with a where
-builds a fresh `Factory` plus the whole where clause on every call, mostly
-from `_build_rowset_item` (`Factory(grain=rowset.select.grain)` builds it in
-`__init__`). Measured: 5,914 builds, 93% repeats of the same
-(cache, components, where object).
-
-Change: cache under `(frozenset(components), id(where))`, store the where on
-the entry and check `is` on hit (id reuse). Prototyped in scratch: `Factory`
-constructions -35%, `__build_concept` -17%, `_build_function` -43%, corpus
-SQL identical. Estimated 5-10% of planning.
-
-Follow-on, same file: `_build_rowset_item` makes one scope factory per
-column (4,028 of 4,336 calls are for a rowset already seen); one factory per
-rowset object is tidier, small gain.
+`_build_rowset_item` (`build.py`) makes one scope factory per column (4,028
+of 4,336 calls are for a rowset already seen). Sharing one per rowset object
+also shares its `local_concepts`, so gate it like a cache.
 
 ## 2. Share the heal's concept graph / keyspace with the plan (medium risk)
 
@@ -192,6 +179,18 @@ hazard is live wherever sharing does happen (nested selects). Decide whether
 the cache is shared; if so complete the key, using q23/q64 as the oracle.
 This also blocks checking the cache before building lineage (21k calls build
 a lineage, then hit).
+
+## Hazard: where-less grain cache ignores scoped merges (correctness)
+
+`Factory._build_grain` caches a where-less grain whole under
+`(frozenset(components), None)`, but `_normalize_grain_components` reads the
+calling factory's `scoped_merge_map` (and `environment.concepts`). A grain
+first built by a factory without a scoped merge comes back unnormalized in
+one that has it: on `tpc_ds_duckdb/query84` the hit returns
+`ss.return_customer_demographic.sk` where a fresh build gives
+`customer.current_demographics.sk`; a recompute-on-hit assert fires on 14
+TPC-DS files. Where grains already re-normalize per call. Fixing this
+(normalize per call, or key on the merge map) moves plans: check rows.
 
 ## Closed: do not re-chase
 
