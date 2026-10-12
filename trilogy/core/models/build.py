@@ -2918,7 +2918,9 @@ class Factory:
         grain: Grain | None = None,
         pseudonym_map: dict[str, set[str]] | None = None,
         build_cache: dict[str, BuildConcept] | None = None,
-        grain_build_cache: dict[tuple, BuildGrain] | None = None,
+        grain_build_cache: (
+            dict[tuple, tuple[WhereClause | None, BuildGrain]] | None
+        ) = None,
         canonical_build_cache: dict[str, BuildConcept] | None = None,
         datasource_build_cache: dict[str, BuildDatasource] | None = None,
         scoped_joins: list[tuple[str, str, JoinType]] | None = None,
@@ -3022,10 +3024,11 @@ class Factory:
         self._env_writes: set[str] | None = None
         self.build_cache = build_cache or {}
         # Cross-factory cache for BuildGrain keyed on (frozenset(components),
-        # id(where_clause)). Same lifecycle as build_cache — propagated to
+        # id(where_clause)), valued (where_clause, BuildGrain); see
+        # `_build_grain`. Same lifecycle as build_cache — propagated to
         # sub-factories that share build_cache so all factories in a parse
         # reuse the same normalized grains.
-        self.grain_build_cache: dict[tuple, BuildGrain] = (
+        self.grain_build_cache: dict[tuple, tuple[WhereClause | None, BuildGrain]] = (
             {} if grain_build_cache is None else grain_build_cache
         )
         # Cache of BuildConcepts for "grain-stable" base concepts (no lineage
@@ -4342,32 +4345,37 @@ class Factory:
         return self._build_grain(base)
 
     def _build_grain(self, base: Grain) -> BuildGrain:
-        # 99.9% of _build_grain calls have no where_clause; the normalized
-        # output is a pure function of (base.components, environment). Cache
-        # by frozenset(components) across factories sharing build_cache.
-        if not base.where_clause:
-            cache_key: tuple = (frozenset(base.components), None)
-            cached = self.grain_build_cache.get(cache_key)
-            if cached is not None:
-                return cached
+        # Cached across factories sharing build_cache. Where-less grains cache
+        # whole; a where grain caches only its built where (a function of the
+        # where object and environment) and re-normalizes its components,
+        # which depend on this factory's scoped merges. The entry holds the
+        # source where alive, so its id cannot be reused.
+        where = base.where_clause if base.where_clause else None
+        cache_key = (frozenset(base.components), id(where))
+        cached = self.grain_build_cache.get(cache_key)
+        if cached is None:
+            built_where = self._build_grain_where(where) if where else None
             rval = BuildGrain(
                 components=self._normalize_grain_components(base.components),
-                where_clause=None,
+                where_clause=built_where,
             )
-            self.grain_build_cache[cache_key] = rval
+            self.grain_build_cache[cache_key] = (where, rval)
             return rval
-        factory = Factory(
+        if where is None:
+            return cached[1]
+        return BuildGrain(
+            components=self._normalize_grain_components(base.components),
+            where_clause=cached[1].where_clause,
+        )
+
+    def _build_grain_where(self, where: WhereClause) -> BuildWhereClause:
+        return Factory(
             environment=self.environment,
             pseudonym_map=self.pseudonym_map,
             build_cache=self.build_cache,
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
-        )
-        where = factory._build_where_clause(base.where_clause)
-        return BuildGrain(
-            components=self._normalize_grain_components(base.components),
-            where_clause=where,
-        )
+        )._build_where_clause(where)
 
     def _normalize_grain_components(self, components) -> set[str]:
         # Collapse any merged-away source grain key to its canonical target
