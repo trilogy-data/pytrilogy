@@ -68,7 +68,25 @@ from trilogy.core.statements.author import SelectStatement
 from trilogy.parsing.helpers import Meta
 from trilogy.utility import string_to_hash, unique
 
-ARBITRARY_INPUTS = FuncArgs | SubselectItem | SubqueryItem
+ARBITRARY_INPUTS = (
+    AggregateWrapper
+    | FunctionCallWrapper
+    | WindowItem
+    | FilterItem
+    | SubselectItem
+    | Function
+    | Parenthetical
+    | ListWrapper
+    | MapWrapper
+    | Comparison
+    | int
+    | float
+    | str
+    | date
+    | bool
+)
+# what the concept builders accept: their fallthrough wraps any constant
+ArbitraryInput = FuncArgs | SubselectItem | SubqueryItem
 
 Expr = (
     Function
@@ -83,7 +101,7 @@ Expr = (
 
 
 def unwrap_transformation(
-    input: ARBITRARY_INPUTS,
+    input: ArbitraryInput,
     environment: Environment,
 ) -> (
     Function
@@ -1764,7 +1782,7 @@ def union_item_to_concept(
 
 
 def derive_item_to_concept(
-    parent: ARBITRARY_INPUTS,
+    parent: ArbitraryInput,
     name: str,
     lineage: MultiSelectLineage,
     namespace: str | None = None,
@@ -1790,7 +1808,7 @@ def derive_item_to_concept(
 
 
 def generate_concept_name(
-    parent: ARBITRARY_INPUTS,
+    parent: ArbitraryInput,
 ) -> str:
     """Generate a name for a concept based on its parent type and content."""
     if isinstance(parent, AggregateWrapper):
@@ -1968,7 +1986,7 @@ def comparison_to_concept(
 
 
 def arbitrary_to_concept(
-    parent: ARBITRARY_INPUTS,
+    parent: ArbitraryInput,
     environment: Environment,
     namespace: str | None = None,
     name: str | None = None,
