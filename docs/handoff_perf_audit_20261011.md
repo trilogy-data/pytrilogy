@@ -45,19 +45,14 @@ is shareable.
 
 ## 3. Scope facts recomputed for identical inputs (low risk)
 
-`scope_facts` caches per `ScopeDatasources` object (`keyspace.py` ~305), but
-every plan seam builds a fresh holder (`statement_scope.py` ~102), so 48 of
-312 `_compute_facts` calls repeat identical datasources + canonical map
-(38% of facts time). `_stamped` (`keyspace.py` ~441) is a pure function of
-its sources: 221 of 361 inputs are duplicates across the corpus (82 within a
-file, still 46% of stamping time, the big TPC-DS scopes); all duplicates
-verified identical.
-
-Change: memo `_stamped` on `(identifier, grain, grain_is_partial, sorted
-bound)` per source, or reuse the parent's holder when bindings are the same
-objects and heal/exclusion changed nothing. Facts also read `env.concepts`
-(`_generated_domains`) and FD minimization: an overlay adding a generated
-KEY or an FD must miss. 1.5-3%.
+`_stamped` is memoized on content (`keyspace.py`; `_carried` calls
+17,486 -> 7,197). Still open: `scope_facts` caches per `ScopeDatasources`
+object (`keyspace.py` ~305), but every plan seam builds a fresh holder
+(`statement_scope.py` ~102), so 48 of 312 `_compute_facts` calls repeat
+identical datasources + canonical map. Reuse the parent's holder when
+bindings are the same objects and heal/exclusion changed nothing. Facts also
+read `env.concepts` (`_generated_domains`) and FD minimization: an overlay
+adding a generated KEY or an FD must miss.
 
 ## 5. Delta environments inherit `value_classes` (medium risk)
 
@@ -111,7 +106,9 @@ mostly for the shorter plan. Count "still changing" warnings in the suite.
 - `_env_finish` -> `gen_concept_list_caches` reruns on a delta that replayed
   nothing: reuse the baseline's.
 - `query_processor.py` ~949: `rebuild_cache()` runs twice on ordered
-  statements; one top-node `_resolve` saved.
+  statements; one top-node `_resolve` saved. Not a plain skip: the second
+  resolve bakes `ordering` into the QDS, whose cached identifier hashes it
+  under a limit, and MergeNode hands parent QDS objects through.
 
 ## 9. Simplification (lines, behaviour-neutral)
 
