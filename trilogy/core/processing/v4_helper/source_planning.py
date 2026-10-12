@@ -519,6 +519,12 @@ def _network_source(
     ]
     for address in sorted(keep_addresses):
         named = any(concept.address == address for concept in bridge_concepts)
+        # An already-named address is revisited only when it is a DEMOTED merge
+        # key, which no scan can emit off its own columns.
+        if named and not _is_demoted_merge_key(
+            request.environment.concepts.get(address), request.environment
+        ):
+            continue
         # A class address is only a label: the representative may spell any
         # member (the `_virt_` canonical, the authored key, a merged key's raw
         # origin), and which one follows from naming, not semantics. Carry, per
@@ -651,6 +657,19 @@ def _binds_undemanded_span_partially(network: SourceNetwork, source: str) -> boo
         address in bindings and bindings[address].partial
         for address in network.partial_ok
     )
+
+
+def _is_demoted_merge_key(
+    concept: BuildConcept | None, environment: BuildEnvironment
+) -> bool:
+    """`concept` is a merge key the merge DEMOTED: a lineage-less ROOT whose
+    only value source is a pseudonym origin's derivation (`merge first_org into
+    org.code` leaves `org.code` bare while `first_org` keeps the split). No scan
+    can emit it off its own columns, so the origin has to be carried explicitly.
+    """
+    if concept is None or concept.derivation != Derivation.ROOT or concept.lineage:
+        return False
+    return bool(environment.merge_origins(concept))
 
 
 def _concept_has_non_basic_merge_origin(
