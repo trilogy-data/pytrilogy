@@ -665,7 +665,7 @@ def _detach_bridging_derivations(
 
 def _component_map(
     environment: BuildEnvironment,
-    g: "ReferenceGraph | None" = None,
+    g: "ReferenceGraph",
     excluded_addresses: frozenset[str] = frozenset(),
     grain_only: dict[str, set[str]] | None = None,
     bound: set[str] | None = None,
@@ -681,9 +681,6 @@ def _component_map(
     unrelated models look joined). Dropped from the undirected COPY only:
     surviving concepts still name these addresses as pseudonyms, so narrowing
     the environment is not an option."""
-    from trilogy.core.env_processor import generate_graph
-
-    g = g if g is not None else generate_graph(environment)
     if grain_only is None:
         grain_only = _aggregate_grain_only_parents(environment)
 
@@ -727,7 +724,7 @@ def connectivity_map(
 def disconnected_components(
     environment: BuildEnvironment,
     concepts: list[BuildConcept],
-    g: "ReferenceGraph | None" = None,
+    g: "ReferenceGraph",
     excluded_addresses: frozenset[str] = frozenset(),
     grain_only: dict[str, set[str]] | None = None,
     bound: set[str] | None = None,
@@ -753,9 +750,6 @@ def disconnected_components(
 
     See ``_component_map`` for ``excluded_addresses``.
     """
-    from trilogy.core.env_processor import generate_graph
-
-    g = g if g is not None else generate_graph(environment)
     if grain_only is None:
         grain_only = _aggregate_grain_only_parents(environment)
     if bound is None:
@@ -888,7 +882,7 @@ def _spell_subset_join(left: BuildConcept, right: BuildConcept) -> str:
 def rowset_relation_hints(
     subgraphs: list[list[BuildConcept]],
     environment: BuildEnvironment,
-    g: "ReferenceGraph | None" = None,
+    g: "ReferenceGraph",
     excluded_addresses: frozenset[str] = frozenset(),
 ) -> list[str]:
     """The declared relations that would connect a rowset read in one subgraph
@@ -1002,7 +996,7 @@ def membership_span_note(
     conditions: "BuildWhereClause | None",
     subgraphs: list[list[BuildConcept]],
     environment: BuildEnvironment,
-    g: "ReferenceGraph | None" = None,
+    g: "ReferenceGraph",
 ) -> str | None:
     """Name membership/existence predicates in the WHERE whose left side sits in
     one reported subgraph while the right side derives from another. A
@@ -1106,7 +1100,7 @@ def raise_if_disconnected_for(
     outputs: list[BuildConcept],
     conditions: "BuildWhereClause | None",
     environment: BuildEnvironment,
-    g: "ReferenceGraph | None" = None,
+    g: "ReferenceGraph",
     line_number: int | None = None,
     excluded_addresses: frozenset[str] = frozenset(),
     scope: "BuildRowsetLineage | None" = None,
@@ -1135,9 +1129,6 @@ def raise_if_disconnected_for(
                 outputs_rootless = False
                 output_addresses |= {c.address for c in handles}
                 concepts = unique(concepts + handles, "address")
-    from trilogy.core.env_processor import generate_graph
-
-    g = g if g is not None else generate_graph(environment)
     grain_only = _aggregate_grain_only_parents(environment)
     bound = _bound_addresses(g)
     subgraphs = disconnected_components(
@@ -1195,7 +1186,7 @@ def _physical_tables_by_concept(
 def connected_equivalent_suggestions(
     environment: BuildEnvironment,
     subgraphs: list[list[BuildConcept]],
-    g: "ReferenceGraph | None" = None,
+    g: "ReferenceGraph",
     excluded_addresses: frozenset[str] = frozenset(),
 ) -> list[tuple[str, str]]:
     """Detect the separate-import mistake: a model imported a second time as a
@@ -1336,7 +1327,7 @@ def format_disconnected_subgraphs_error(
 
     suggestions = (
         connected_equivalent_suggestions(environment, subgraphs, g, excluded_addresses)
-        if environment is not None
+        if environment is not None and g is not None
         else []
     )
     if suggestions:
@@ -1429,7 +1420,7 @@ def raise_if_where_population_split(
     outputs: list[BuildConcept],
     conditions: "BuildWhereClause | None",
     environment: BuildEnvironment,
-    g: "ReferenceGraph | None" = None,
+    g: "ReferenceGraph",
     line_number: int | None = None,
 ) -> None:
     """Post-failure refiner: a top-level WHERE defines ONE row population, so every
@@ -1480,7 +1471,7 @@ def raise_if_where_population_split(
 def raise_if_filter_disconnected(
     output_concepts: list[BuildConcept],
     environment: BuildEnvironment,
-    g: "ReferenceGraph | None" = None,
+    g: "ReferenceGraph",
     extra_required: list[BuildConcept] | None = None,
     comp_of: dict[str, int] | None = None,
 ) -> None:
