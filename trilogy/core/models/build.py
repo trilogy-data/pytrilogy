@@ -636,7 +636,7 @@ class BuildParamaterizedConceptReference(DataTyped):
 class BuildGrain:
     components: set[str] = field(default_factory=set)
     where_clause: BuildWhereClause | None = None
-    _str: str | None = None
+    _str: str | None = field(default=None, repr=False)
     _str_no_condition: str = field(init=False)
     abstract: bool = field(init=False)
 
