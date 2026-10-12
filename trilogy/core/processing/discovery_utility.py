@@ -608,8 +608,6 @@ def _bound_addresses(g: "ReferenceGraph") -> set[str]:
     concepts = g.concepts
     out: set[str] = set()
     for ds in g.datasources:
-        if ds not in g:
-            continue
         for node in (*g.successors(ds), *g.predecessors(ds)):
             concept = concepts.get(node)
             if concept is not None:

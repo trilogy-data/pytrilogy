@@ -397,13 +397,10 @@ class BuildEnvironment:
             if len(mine) != len(theirs):
                 return False
             for (key, concept), (seen_key, seen_concept) in zip(mine.items(), theirs):
-                if concept is seen_concept:
-                    if key != seen_key:
-                        return False
-                    continue
-                if (
-                    key != seen_key
-                    or concept.address != seen_concept.address
+                if key != seen_key:
+                    return False
+                if concept is not seen_concept and (
+                    concept.address != seen_concept.address
                     or tuple(concept.pseudonyms) != tuple(seen_concept.pseudonyms)
                     or (
                         spellings

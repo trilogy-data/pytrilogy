@@ -14,6 +14,7 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildConditional,
     BuildGrain,
+    BuildOperandArgs,
     BuildParenthetical,
 )
 from trilogy.core.models.core import DataType
@@ -283,3 +284,8 @@ def test_build_between_factory_all_constant_folds():
     select: SelectStatement = parsed[-1]
     # Builds without error; the folded-true predicate keeps every row.
     BaseDialect().compile_statement(process_query(env, select))
+
+
+def test_operand_args_requires_operands():
+    with pytest.raises(NotImplementedError):
+        _ = BuildOperandArgs().operands

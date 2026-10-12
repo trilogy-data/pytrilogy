@@ -1,13 +1,14 @@
 from pathlib import Path
 
-from trilogy import Dialects, parse
+from trilogy import Dialects, Environment, parse
 from trilogy.core.enums import BooleanOperator, ComparisonOperator, Purpose
 from trilogy.core.models.build import (
     BuildComparison,
     BuildConditional,
     BuildSubselectComparison,
 )
-from trilogy.core.optimizations.utils import condition_contains_atom
+from trilogy.core.models.execute import UnionCTE
+from trilogy.core.optimizations.utils import condition_contains_atom, reaches
 from trilogy.core.processing.condition_utility import decompose_condition
 
 
@@ -152,3 +153,15 @@ def test_self_referential_membership_filter():
         results = executor.execute_query(query)
     assert results is not None
     assert sorted(row[0] for row in results.fetchall()) == [1, 2]
+
+
+def test_reaches_walks_union_arms_only_when_asked():
+    working = Path(__file__).parent.parent / "modeling" / "tpc_ds_duckdb"
+    query = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=working)
+    ).parse_text((working / "query11.preql").read_text())[-1]
+    (union,) = [cte for cte in query.ctes if isinstance(cte, UnionCTE)]
+    arm = union.internal_ctes[0]
+    assert reaches(union, union.name)
+    assert reaches(union, arm.name, internal_ctes=True)
+    assert not reaches(union, arm.name)
