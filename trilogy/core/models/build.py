@@ -1374,33 +1374,42 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
             and self.namespace == other.namespace
         )
 
-    @property
-    def _with_default_grain(self) -> Self:
+    def _default_grain_components(self) -> set[str] | None:
+        """Components of the default grain, or None when it is the concept's
+        own (or the metric default)."""
         if self.purpose == Purpose.KEY:
-            # we need to make this abstract
-            grain = BuildGrain(components={self.address})
-        elif self.purpose == Purpose.PROPERTY:
-            components = []
-            if self.keys:
-                components = [*self.keys]
+            return {self.address}
+        if self.purpose == Purpose.PROPERTY:
+            components = set(self.keys or ())
             if self.lineage:
                 for item in self.lineage.concept_arguments:
-                    components += [x.address for x in item.sources]
-            # TODO: set synonyms
-            grain = BuildGrain(
-                components={x for x in components},
-            )  # synonym_set=generate_BuildConcept_synonyms(components))
-        elif self.purpose == Purpose.METRIC:
+                    components.update(x.address for x in item.sources)
+            return components
+        if self.purpose == Purpose.CONSTANT and self.derivation != Derivation.CONSTANT:
+            return {self.address}
+        return None
+
+    @property
+    def _with_default_grain(self) -> Self:
+        # Built grains are compared by components, abstract grains all equal:
+        # decide on the components so the common no-op builds no BuildGrain.
+        if self.purpose == Purpose.METRIC:
             grain = DEFAULT_GRAIN
-        elif self.purpose == Purpose.CONSTANT:
-            if self.derivation != Derivation.CONSTANT:
-                grain = BuildGrain(components={self.address})
-            else:
-                grain = self.grain
+            if grain == self.grain:
+                return self
         else:
-            grain = self.grain
-        if grain == self.grain:
-            return self
+            components = self._default_grain_components()
+            if components is None:
+                return self
+            if self.grain is not None and (
+                components == self.grain.components
+                or (
+                    self.grain.abstract
+                    and all(c == ALL_ROWS_ADDRESS for c in components)
+                )
+            ):
+                return self
+            grain = BuildGrain(components=components)
         return self.__class__(
             name=self.name,
             canonical_name=self.canonical_name,
