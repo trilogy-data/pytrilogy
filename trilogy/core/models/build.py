@@ -4300,16 +4300,14 @@ class Factory:
         # Collapse any merged-away source grain key to its canonical target
         # (the build-time equivalent of a global merge rewriting the grain), so
         # dependents of a scoped-merge source group on the single canonical key.
-        # A base key never collapses onto a rowset handle: its dependents would
-        # detach from their own source (`subset join a.aid = rs.k` keying
-        # `a.aw` by `rs.k`).
+        # A bound (ROOT) key never collapses onto a rowset handle: its
+        # dependents would detach from their own source (`subset join a.aid =
+        # rs.k` keying `a.aw` by `rs.k`).
         normalized: set[str] = set()
         env_concepts = self.environment.concepts
         for c in components:
             target = self.scoped_merge_map.get(c)
-            if target is not None and (
-                self._is_rowset_key(c) or not self._is_rowset_key(target)
-            ):
+            if target is not None and not self._binding_onto_rowset(c, target):
                 normalized.add(target)
             elif c in env_concepts:
                 normalized.add(env_concepts[c].address)
@@ -4317,9 +4315,14 @@ class Factory:
                 normalized.add(c)
         return normalized
 
-    def _is_rowset_key(self, address: str) -> bool:
-        concept = self.environment.concepts.get(address)
-        return concept is not None and concept.derivation == Derivation.ROWSET
+    def _binding_onto_rowset(self, source: str, target: str) -> bool:
+        concepts = self.environment.concepts
+        return (
+            source in concepts
+            and target in concepts
+            and concepts[source].derivation == Derivation.ROOT
+            and concepts[target].derivation == Derivation.ROWSET
+        )
 
     @_build_dispatch.register
     def _(self, base: TupleWrapper) -> TupleWrapper:
