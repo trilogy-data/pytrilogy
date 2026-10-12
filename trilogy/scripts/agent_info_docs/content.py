@@ -533,7 +533,7 @@ sql = ["init.sql"]
 provider = "anthropic"
 
 # Default model for the chosen provider
-model = "claude-sonnet-4-6"
+model = "claude-sonnet-5-5"
 
 [report]
 # Default visual theme for `trilogy render` and chart `copy into` output
