@@ -13,7 +13,7 @@ from .base import (
 )
 from .utils import RetryOptions, fetch_with_retry
 
-DEFAULT_MAX_TOKENS = 10000
+DEFAULT_MAX_TOKENS = 16000
 
 
 def _to_anthropic_messages(history: list[LLMMessage]) -> list[dict]:
