@@ -10,12 +10,25 @@ class sorts first, and however the dimension is reached.
 
 import pytest
 
-from trilogy import Dialects
+from trilogy import Dialects, Environment
+from trilogy.core.env_processor import generate_graph
+from trilogy.core.processing.concept_strategies_v4 import V4History
+from trilogy.core.processing.nodes import SelectNode, StrategyNode
+from trilogy.core.processing.v4_helper.concept_graph import (
+    computed_origin_relation_members,
+)
+from trilogy.core.processing.v4_helper.source_planning import (
+    SourceRequest,
+    _network_source,
+    plan_source,
+)
 
 ORIGINS = {
     "alias": "{raw}",
     "scalar": "trim({raw})",
+    "aggregate": "max({raw}) by cluster_id",
     "aggregate_in_scalar": "substring((max({raw}) by cluster_id), 1, 200)",
+    "aggregate_over_unbound": "max(coalesce(modified_species, {raw})) by cluster_id",
     # `modified_species` has no datasource: entering the derivation is fatal
     "unbound_root": "coalesce(modified_species, {raw})",
 }
@@ -110,3 +123,78 @@ def test_stored_key_read_over_merged_pseudonym(
     sql = executor.generate_sql(query)[-1]
     assert "raw_a" not in sql, sql
     assert executor.execute_text(query)[-1].fetchall() == QUERIES[query]
+
+
+def source_request(
+    origin: str, raw: str, dimension: str, outputs: list[str]
+) -> SourceRequest:
+    env = Environment()
+    env.parse(model(origin, True, raw, dimension))
+    build_env = env.materialize_for_select()
+    return SourceRequest(
+        outputs=[build_env.concepts[f"local.{name}"] for name in outputs],
+        environment=build_env,
+        graph=generate_graph(build_env),
+        history=V4History(base_environment=env),
+    )
+
+
+def scanned(node: StrategyNode) -> tuple[set[str], set[str]]:
+    datasources: set[str] = set()
+    outputs: set[str] = set()
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        stack.extend(current.parents)
+        outputs |= {concept.address for concept in current.output_concepts}
+        if isinstance(current, SelectNode):
+            datasources.add(current.datasource.name)
+    return datasources, outputs
+
+
+@pytest.mark.parametrize("raw", ["raw_species", "zraw_species"])
+@pytest.mark.parametrize(
+    "dimension, outputs",
+    [
+        ("direct", ["native", "species", "tree_id"]),
+        ("unnest_connector", ["biome", "ecoregion_id", "tree_id"]),
+    ],
+)
+def test_bridge_never_carries_the_class_representative_spelling(
+    raw: str, dimension: str, outputs: list[str]
+):
+    decision = _network_source(source_request("alias", raw, dimension, outputs))
+    assert decision is not None and decision.bridge is not None
+    carried = {concept.address for concept in decision.bridge.concepts}
+    assert f"local.{raw}" not in carried
+    assert "local.species" in carried
+
+
+@pytest.mark.parametrize(
+    "origin",
+    ["aggregate", "aggregate_in_scalar", "aggregate_over_unbound", "unbound_root"],
+)
+def test_derived_connector_skips_merge_origin_of_a_scanned_key(origin: str):
+    node = plan_source(
+        source_request(
+            origin,
+            "raw_species",
+            "unnest_connector",
+            ["biome", "ecoregion_id", "tree_id"],
+        )
+    )
+    assert node is not None
+    datasources, outputs = scanned(node)
+    assert datasources == {"ecoregions", "enrichment", "published"}
+    assert "local.merged_species" not in outputs
+
+
+@pytest.mark.parametrize("partial", [True, False], ids=["partial", "full"])
+@pytest.mark.parametrize("origin", ["aggregate", "aggregate_over_unbound"])
+def test_stored_aggregate_merge_is_not_a_relation_axis(origin: str, partial: bool):
+    env = Environment()
+    env.parse(model(origin, partial, "raw_species", "unnest_connector"))
+    members = computed_origin_relation_members(env.materialize_for_select())
+    assert "local.merged_species" not in members
+    # the unnest relates species to ecoregion_id, which no table stores
+    assert {"local.ecoregion_id", "local.tree_eco_region"} <= members
