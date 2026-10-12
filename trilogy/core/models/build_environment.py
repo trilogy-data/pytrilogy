@@ -22,6 +22,9 @@ from trilogy.core.models.core import DataType
 from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.union_find import find
 
+# (concept items, alias origin items) a build's classes were computed over
+_NamesSnapshot = tuple[list[tuple[str, BuildConcept]], list[tuple[str, BuildConcept]]]
+
 
 def _ranked_classes(
     edges: Iterable[tuple[str, str]],
@@ -214,6 +217,17 @@ class BuildEnvironment:
     # Set around each plan (`_build_from_graph`) and each group
     # (`build_strategy_node`); merges capture it.
     span_scope: SpanScope = field(default_factory=SpanScope)
+    # A delta materialization's baseline (`Factory.build_environment_delta`):
+    # its classes carry over while every name matches the baseline's.
+    class_baseline: "BuildEnvironment | None" = field(
+        default=None, repr=False, compare=False
+    )
+    _unscoped_roots: dict[bool, dict[str, str]] = field(
+        default_factory=dict, repr=False, compare=False
+    )
+    _classes_seen: dict[bool, _NamesSnapshot] = field(
+        default_factory=dict, repr=False, compare=False
+    )
 
     def _distinct_scoped_join_groups(self) -> list[tuple[str, list[str]]]:
         """Per scoped-join key group, its canonical plus the members that keep
@@ -370,16 +384,64 @@ class BuildEnvironment:
             ):
                 yield concept.address, concept.canonical_address
 
+    def _names_snapshot(self) -> _NamesSnapshot:
+        return list(self.concepts.items()), list(self.alias_origin_lookup.items())
+
+    def _matches_names(self, seen: _NamesSnapshot, spellings: bool) -> bool:
+        """Every concept and alias origin, in order, names what `seen` does:
+        the edges `_value_edges` (`_spelling_edges`) read agree. A built
+        concept's names are fixed at construction, so a shared object agrees."""
+        for mine, theirs in zip(
+            (self.concepts, self.alias_origin_lookup), seen, strict=True
+        ):
+            if len(mine) != len(theirs):
+                return False
+            for (key, concept), (seen_key, seen_concept) in zip(mine.items(), theirs):
+                if concept is seen_concept:
+                    if key != seen_key:
+                        return False
+                    continue
+                if (
+                    key != seen_key
+                    or concept.address != seen_concept.address
+                    or tuple(concept.pseudonyms) != tuple(seen_concept.pseudonyms)
+                    or (
+                        spellings
+                        and concept.canonical_address != seen_concept.canonical_address
+                    )
+                ):
+                    return False
+        return True
+
+    def _classes(self, spellings: bool) -> dict[str, tuple[str, ...]]:
+        """A delta build inherits its baseline's classes when its names match
+        what the baseline's were computed over (the baseline may have grown
+        since)."""
+        base = self.class_baseline
+        if base is not None:
+            inherited = base.spelling_classes if spellings else base.value_classes
+            seen = base._classes_seen.get(spellings)
+            if seen is not None and self._matches_names(seen, spellings):
+                return inherited
+        out = self._compute_classes(spellings)
+        self._classes_seen[spellings] = self._names_snapshot()
+        return out
+
+    def _compute_classes(self, spellings: bool) -> dict[str, tuple[str, ...]]:
+        if spellings:
+            return _ranked_classes(self._spelling_edges())
+        return _ranked_classes(
+            self._value_edges(),
+            lambda a: (a in self.alias_origin_lookup, a not in self.concepts, a),
+        )
+
     @cached_property
     def value_classes(self) -> dict[str, tuple[str, ...]]:
         """Every name of one value -> all of its names, an authored concept
         address first: a concept's key, address and pseudonyms, and a
         merge-demoted alias's origin. A surviving merge target outranks the
         alias it demoted."""
-        return _ranked_classes(
-            self._value_edges(),
-            lambda a: (a in self.alias_origin_lookup, a not in self.concepts, a),
-        )
+        return self._classes(spellings=False)
 
     @cached_property
     def spelling_classes(self) -> dict[str, tuple[str, ...]]:
@@ -394,7 +456,7 @@ class BuildEnvironment:
         as concepts and its plans depend on which one it gets: an authored
         name loses the merge variant a scan renders, and a canonical-first one
         grows TPC-DS plans."""
-        return _ranked_classes(self._spelling_edges())
+        return self._classes(spellings=True)
 
     def address_roots(
         self, scope: AbstractSet[str] | None = None, spellings: bool = False
@@ -404,7 +466,17 @@ class BuildEnvironment:
         reads its roots back as concepts scopes them to what it can read."""
         classes = self.spelling_classes if spellings else self.value_classes
         if scope is None:
-            return {address: names[0] for address, names in classes.items()}
+            roots = self._unscoped_roots.get(spellings)
+            if roots is None:
+                base = self.class_baseline
+                if base is not None and classes is (
+                    base.spelling_classes if spellings else base.value_classes
+                ):
+                    roots = base.address_roots(spellings=spellings)
+                else:
+                    roots = {address: names[0] for address, names in classes.items()}
+                self._unscoped_roots[spellings] = roots
+            return roots
         out: dict[str, str] = {}
         for address in scope:
             names = classes.get(address)

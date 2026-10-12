@@ -4827,6 +4827,7 @@ class Factory:
             scoped_partial_derived=b_env.scoped_partial_derived,
             scoped_join_key_groups=b_env.scoped_join_key_groups,
             domain_graph=b_env.domain_graph,
+            class_baseline=b_env,
         )
         for unit in baseline.units:
             if changed and not unit.footprint.isdisjoint(changed):
