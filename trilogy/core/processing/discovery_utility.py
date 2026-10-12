@@ -722,6 +722,14 @@ def _component_map(
     return comp_of, g
 
 
+def connectivity_map(
+    environment: BuildEnvironment, g: "ReferenceGraph"
+) -> dict[str, int]:
+    """`_component_map` over `g` with nothing excluded, for callers running
+    several gates over one graph."""
+    return _component_map(environment, g)[0]
+
+
 def disconnected_components(
     environment: BuildEnvironment,
     concepts: list[BuildConcept],
@@ -729,6 +737,7 @@ def disconnected_components(
     excluded_addresses: frozenset[str] = frozenset(),
     grain_only: dict[str, set[str]] | None = None,
     bound: set[str] | None = None,
+    comp_of: dict[str, int] | None = None,
 ) -> list[list[BuildConcept]]:
     """Partition concepts by true join reachability: two concepts share a group
     iff their reference-graph nodes are in the same weakly-connected component.
@@ -757,7 +766,10 @@ def disconnected_components(
         grain_only = _aggregate_grain_only_parents(environment)
     if bound is None:
         bound = _bound_addresses(g)
-    comp_of, g = _component_map(environment, g, excluded_addresses, grain_only, bound)
+    if comp_of is None:
+        comp_of, g = _component_map(
+            environment, g, excluded_addresses, grain_only, bound
+        )
 
     # concept -> the component id it resolves into; a concept whose nodes are
     # absent from the graph gets a synthetic per-address component so it surfaces
@@ -1104,6 +1116,7 @@ def raise_if_disconnected_for(
     line_number: int | None = None,
     excluded_addresses: frozenset[str] = frozenset(),
     scope: "BuildRowsetLineage | None" = None,
+    comp_of: dict[str, int] | None = None,
 ) -> None:
     """Connectivity gate for a select's required concepts (outputs plus WHERE
     row args): raise the typed subgraph error when they span unconnected
@@ -1140,6 +1153,7 @@ def raise_if_disconnected_for(
         excluded_addresses=excluded_addresses,
         grain_only=grain_only,
         bound=bound,
+        comp_of=comp_of,
     )
     # what an output reads is the output's own demand, never a WHERE gate
     required = output_addresses | {
@@ -1474,6 +1488,7 @@ def raise_if_filter_disconnected(
     environment: BuildEnvironment,
     g: "ReferenceGraph | None" = None,
     extra_required: list[BuildConcept] | None = None,
+    comp_of: dict[str, int] | None = None,
 ) -> None:
     """Re-run the reachability check with FILTER outputs' hidden condition
     concepts surfaced (see ``_filter_hidden_concepts``). When that splits the
@@ -1492,7 +1507,7 @@ def raise_if_filter_disconnected(
         + _filter_hidden_concepts(output_concepts),
         "address",
     )
-    groups = disconnected_components(environment, required, g)
+    groups = disconnected_components(environment, required, g, comp_of=comp_of)
     if len(groups) > 1:
         raise DisconnectedConceptsException(
             format_disconnected_subgraphs_error(groups, environment, g)

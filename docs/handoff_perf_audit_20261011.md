@@ -100,9 +100,6 @@ mostly for the shorter plan. Count "still changing" warnings in the suite.
 - `_bound_addresses` (`discovery_utility.py` ~597) walks every node through
   the Rust boundary per gate call; it equalled the set derivable from the
   graph's datasource edges 311/311. Record it in `generate_graph`.
-- `_raise_if_disconnected` and `raise_if_filter_disconnected` compute the
-  same `_component_map` twice on 52 of 315 calls: compute once, pass down
-  (`excluded_addresses` stays in the key).
 - `_env_finish` -> `gen_concept_list_caches` reruns on a delta that replayed
   nothing: reuse the baseline's.
 - `query_processor.py` ~949: `rebuild_cache()` runs twice on ordered
