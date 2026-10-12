@@ -473,13 +473,17 @@ def concepts_to_build_grain_concepts(
 
 
 @dataclass(slots=True)
-class LooseBuildConceptList:
+class _BuildConceptSet:
     concepts: Sequence[BuildConcept]
     addresses: set[str] = field(init=False)
     sorted_addresses: list[str] = field(init=False)
 
+    @staticmethod
+    def _key(concept: BuildConcept) -> str:
+        return concept.address
+
     def __post_init__(self):
-        self.addresses = {s.address for s in self.concepts}
+        self.addresses = {self._key(s) for s in self.concepts}
         self.sorted_addresses = sorted(self.addresses)
 
     def __str__(self) -> str:
@@ -489,12 +493,12 @@ class LooseBuildConceptList:
         return iter(self.concepts)
 
     def __eq__(self, other):
-        if not isinstance(other, LooseBuildConceptList):
+        if not isinstance(other, type(self)):
             return False
         return self.addresses == other.addresses
 
     def issubset(self, other):
-        if not isinstance(other, LooseBuildConceptList):
+        if not isinstance(other, type(self)):
             return False
         return self.addresses.issubset(other.addresses)
 
@@ -503,61 +507,54 @@ class LooseBuildConceptList:
             return other in self.addresses
         if not isinstance(other, BuildConcept):
             return False
-        return other.address in self.addresses
+        return self._key(other) in self.addresses
 
     def difference(self, other):
-        if not isinstance(other, LooseBuildConceptList):
+        if not isinstance(other, type(self)):
             return False
         return self.addresses.difference(other.addresses)
 
     def isdisjoint(self, other):
-        if not isinstance(other, LooseBuildConceptList):
+        if not isinstance(other, type(self)):
             return False
         return self.addresses.isdisjoint(other.addresses)
 
 
-@dataclass(slots=True)
-class CanonicalBuildConceptList:
-    concepts: Sequence[BuildConcept]
-    addresses: set[str] = field(init=False)
-    sorted_addresses: list[str] = field(init=False)
+class LooseBuildConceptList(_BuildConceptSet):
+    __slots__ = ()
 
-    def __post_init__(self):
-        self.addresses = {s.canonical_address for s in self.concepts}
-        self.sorted_addresses = sorted(self.addresses)
 
-    def __str__(self) -> str:
-        return f"lcl{self.sorted_addresses!s}"
+class CanonicalBuildConceptList(_BuildConceptSet):
+    __slots__ = ()
 
-    def __iter__(self):
-        return iter(self.concepts)
+    @staticmethod
+    def _key(concept: BuildConcept) -> str:
+        return concept.canonical_address
 
-    def __eq__(self, other):
-        if not isinstance(other, CanonicalBuildConceptList):
-            return False
-        return self.addresses == other.addresses
 
-    def issubset(self, other):
-        if not isinstance(other, CanonicalBuildConceptList):
-            return False
-        return self.addresses.issubset(other.addresses)
+class BuildOperandArgs(BuildConceptArgs):
+    """A predicate whose arguments are its operands', in operand order."""
 
-    def __contains__(self, other):
-        if isinstance(other, str):
-            return other in self.addresses
-        if not isinstance(other, BuildConcept):
-            return False
-        return other.canonical_address in self.addresses
+    @property
+    def operands(self) -> tuple:
+        raise NotImplementedError
 
-    def difference(self, other):
-        if not isinstance(other, CanonicalBuildConceptList):
-            return False
-        return self.addresses.difference(other.addresses)
+    @cached_property
+    def concept_arguments(self) -> list[BuildConcept]:
+        return [c for o in self.operands for c in get_concept_arguments(o)]
 
-    def isdisjoint(self, other):
-        if not isinstance(other, CanonicalBuildConceptList):
-            return False
-        return self.addresses.isdisjoint(other.addresses)
+    @property
+    def row_arguments(self) -> list[BuildConcept]:
+        return [c for o in self.operands for c in get_concept_row_arguments(o)]
+
+    @property
+    def existence_arguments(self) -> list[tuple[BuildConcept, ...]]:
+        return [
+            e
+            for o in self.operands
+            if isinstance(o, BuildConceptArgs)
+            for e in o.existence_arguments
+        ]
 
 
 class ConstantInlineable:
@@ -799,7 +796,7 @@ class BuildParenthetical(DataTyped, ConstantInlineable, BuildConceptArgs):
 
 
 @dataclass(slots=True)
-class BuildConditional(DataTyped, BuildConceptArgs, ConstantInlineable):
+class BuildConditional(DataTyped, BuildOperandArgs, ConstantInlineable):
     left: (
         int
         | str
@@ -893,29 +890,9 @@ class BuildConditional(DataTyped, BuildConceptArgs, ConstantInlineable):
             operator=self.operator,
         )
 
-    @cached_property
-    def concept_arguments(self) -> list[BuildConcept]:
-        """Return BuildConcepts directly referenced in where clause"""
-        output = []
-        output += get_concept_arguments(self.left)
-        output += get_concept_arguments(self.right)
-        return output
-
     @property
-    def row_arguments(self) -> list[BuildConcept]:
-        output = []
-        output += get_concept_row_arguments(self.left)
-        output += get_concept_row_arguments(self.right)
-        return output
-
-    @property
-    def existence_arguments(self) -> list[tuple[BuildConcept, ...]]:
-        output: list[tuple[BuildConcept, ...]] = []
-        if isinstance(self.left, BuildConceptArgs):
-            output += self.left.existence_arguments
-        if isinstance(self.right, BuildConceptArgs):
-            output += self.right.existence_arguments
-        return output
+    def operands(self) -> tuple:
+        return (self.left, self.right)
 
     def decompose(self):
         chunks = []
@@ -973,7 +950,7 @@ class BuildHavingClause(BuildWhereClause):
 
 
 @dataclass(slots=True)
-class BuildComparison(DataTyped, BuildConceptArgs, ConstantInlineable):
+class BuildComparison(DataTyped, BuildOperandArgs, ConstantInlineable):
 
     left: (
         int
@@ -1080,30 +1057,9 @@ class BuildComparison(DataTyped, BuildConceptArgs, ConstantInlineable):
             right=new_right,
         )
 
-    @cached_property
-    def concept_arguments(self) -> list[BuildConcept]:
-        """Return BuildConcepts directly referenced in where clause"""
-        output = []
-        output += get_concept_arguments(self.left)
-        output += get_concept_arguments(self.right)
-        return output
-
     @property
-    def row_arguments(self) -> list[BuildConcept]:
-        output = []
-        output += get_concept_row_arguments(self.left)
-        output += get_concept_row_arguments(self.right)
-        return output
-
-    @property
-    def existence_arguments(self) -> list[tuple[BuildConcept, ...]]:
-        """Return BuildConcepts directly referenced in where clause"""
-        output: list[tuple[BuildConcept, ...]] = []
-        if isinstance(self.left, BuildConceptArgs):
-            output += self.left.existence_arguments
-        if isinstance(self.right, BuildConceptArgs):
-            output += self.right.existence_arguments
-        return output
+    def operands(self) -> tuple:
+        return (self.left, self.right)
 
     @property
     def output_datatype(self):
@@ -1133,7 +1089,7 @@ class BuildSubselectComparison(BuildComparison):
 
 
 @dataclass(slots=True)
-class BuildBetween(DataTyped, BuildConceptArgs, ConstantInlineable):
+class BuildBetween(DataTyped, BuildOperandArgs, ConstantInlineable):
     left: (
         int
         | str
@@ -1228,29 +1184,9 @@ class BuildBetween(DataTyped, BuildConceptArgs, ConstantInlineable):
             high=_replace(self.high),
         )
 
-    @cached_property
-    def concept_arguments(self) -> list[BuildConcept]:
-        return (
-            get_concept_arguments(self.left)
-            + get_concept_arguments(self.low)
-            + get_concept_arguments(self.high)
-        )
-
     @property
-    def row_arguments(self) -> list[BuildConcept]:
-        return (
-            get_concept_row_arguments(self.left)
-            + get_concept_row_arguments(self.low)
-            + get_concept_row_arguments(self.high)
-        )
-
-    @property
-    def existence_arguments(self) -> list[tuple[BuildConcept, ...]]:
-        output: list[tuple[BuildConcept, ...]] = []
-        for child in (self.left, self.low, self.high):
-            if isinstance(child, BuildConceptArgs):
-                output += child.existence_arguments
-        return output
+    def operands(self) -> tuple:
+        return (self.left, self.low, self.high)
 
     @property
     def output_datatype(self):
