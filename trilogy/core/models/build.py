@@ -3017,6 +3017,9 @@ class Factory:
         # Per-grain column-build scopes shared by the datasources this factory
         # builds (see `_datasource_local_scope`).
         self._datasource_scopes: dict[tuple, dict[str, BuildConcept]] = {}
+        # One scope factory per rowset whose columns this factory builds; the
+        # entry holds the rowset alive, so its id cannot be reused.
+        self._rowset_factories: dict[int, tuple[RowsetLineage, Factory]] = {}
         self.build_grain = self.build(self.grain) if self.grain else None
         # Addresses currently mid-build, in dependency order. Used to expand a
         # self-referential metric out of an abstract aggregate's resolution
@@ -4201,18 +4204,27 @@ class Factory:
 
     @_build_dispatch.register
     def _(self, base: RowsetItem) -> BuildRowsetItem:
-        factory = Factory(
+        entry = self._rowset_factories.get(id(base.rowset))
+        if entry is None:
+            entry = self._rowset_factories[id(base.rowset)] = (
+                base.rowset,
+                self._rowset_factory(base.rowset),
+            )
+        factory = entry[1]
+        return BuildRowsetItem(
+            content=factory._build_concept_ref(base.content),
+            rowset=factory._build_rowset_lineage(base.rowset),
+        )
+
+    def _rowset_factory(self, rowset: RowsetLineage) -> Factory:
+        return Factory(
             environment=self.environment,
             local_concepts={},
-            grain=base.rowset.select.grain,
+            grain=rowset.select.grain,
             pseudonym_map=self.pseudonym_map,
             build_cache=self.build_cache,
             grain_build_cache=self.grain_build_cache,
             canonical_build_cache=self.canonical_build_cache,
-        )
-        return BuildRowsetItem(
-            content=factory._build_concept_ref(base.content),
-            rowset=factory._build_rowset_lineage(base.rowset),
         )
 
     @_build_dispatch.register

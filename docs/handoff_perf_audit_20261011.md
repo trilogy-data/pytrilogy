@@ -2,7 +2,8 @@
 
 Open items from the audit that landed the GC pause (PR #720). The
 2026-10-12 follow-up landed items 5, 7, 8 (three of four) and most of 9;
-items 1 and 8c are closed below. Percentages are of corpus planning CPU.
+item 1 landed once multiselect/union outputs got stable canonical names
+(`_gen_msl_name` had hashed a growing repr); item 8c is closed below. Percentages are of corpus planning CPU.
 
 ## Gate recipe (every item)
 
@@ -143,9 +144,6 @@ components.
 - Undirected copy in the connectivity gate: `to_undirected` is ~0.5%;
   `_detach_bridging_derivations` needs whole-graph components.
 - GC: paused during `process_query` (PR #720). Parse gains nothing from it.
-- One scope factory per rowset (item 1): not behaviour-neutral. Sharing the
-  factory shares `local_concepts`, and tpc_ds query77's union lineage then
-  gets a different canonical name. Factory init is ~40us, ~0.1s/corpus.
 - Reusing the baseline's concept-list caches in `_env_finish` (item 8):
   `gen_concept_list_caches` is ~0.9% of corpus CPU and only 13 of 456
   materializations qualify (no replay, no changed address).
