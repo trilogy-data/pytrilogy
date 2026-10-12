@@ -12,6 +12,7 @@ import pytest
 
 from trilogy import Dialects, Environment
 from trilogy.core.env_processor import generate_graph
+from trilogy.core.exceptions import DisconnectedConceptsException
 from trilogy.core.processing.concept_strategies_v4 import V4History
 from trilogy.core.processing.nodes import SelectNode, StrategyNode
 from trilogy.core.processing.v4_helper.concept_graph import (
@@ -67,9 +68,30 @@ union all select 'b' as tree_id, 'A' as city, 'Quercus alba' as species
 union all select 'c' as tree_id, 'B' as city, 'Acer rubrum' as species"""
 
 
-def model(origin: str, partial: bool, raw: str, dimension: str) -> str:
+# how `published` stores the key: completely, for city A only, or not at all
+STORED = {
+    "complete": f"""datasource published (tree_id: tree_id, city: city, species: species)
+grain (tree_id)
+query '''{TREES}''';""",
+    "partial": f"""partial datasource published (tree_id: tree_id, city: city, species: species)
+grain (tree_id)
+complete where city = 'A'
+query '''select * from ({TREES}) where city = 'A' ''';""",
+    "none": "",
+}
+
+
+def model(
+    origin: str,
+    partial: bool,
+    raw: str,
+    dimension: str,
+    stored: str = "complete",
+    raw_name: str = "raw_a",
+) -> str:
     raw_kind = "root partial datasource" if partial else "root datasource"
     complete = "complete where city = 'A'" if partial else ""
+    raw_filter = "where city = 'A'" if partial else ""
     return f"""
 key tree_id string;
 key species string;
@@ -78,14 +100,12 @@ property tree_id.{raw} string;
 property tree_id.cluster_id string;
 property tree_id.modified_species string;
 
-datasource published (tree_id: tree_id, city: city, species: species)
-grain (tree_id)
-query '''{TREES}''';
+{STORED[stored]}
 
-{raw_kind} raw_a (tree_id: tree_id, city: city, species: {raw}, cluster_id: cluster_id)
+{raw_kind} {raw_name} (tree_id: tree_id, city: city, species: {raw}, cluster_id: cluster_id)
 grain (tree_id)
 {complete}
-query '''select tree_id, city, species, tree_id as cluster_id from ({TREES}) where city = 'A' ''';
+query '''select tree_id, city, species, tree_id as cluster_id from ({TREES}) {raw_filter} ''';
 
 {DIMENSIONS[dimension]}
 auto merged_species <- {ORIGINS[origin].format(raw=raw)};
@@ -198,3 +218,125 @@ def test_stored_aggregate_merge_is_not_a_relation_axis(origin: str, partial: boo
     assert "local.merged_species" not in members
     # the unnest relates species to ecoregion_id, which no table stores
     assert {"local.ecoregion_id", "local.tree_eco_region"} <= members
+
+
+def rows(text: str, query: str, forbid: str | None = "raw_a") -> list[tuple]:
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(text)
+    sql = executor.generate_sql(query)[-1]
+    if forbid is not None:
+        assert forbid not in sql, sql
+    return executor.execute_text(query)[-1].fetchall()
+
+
+DERIVABLE = ["alias", "scalar", "aggregate", "aggregate_in_scalar"]
+UNBOUND = ["aggregate_over_unbound", "unbound_root"]
+
+
+# `published` holds city A only and `raw_a` every city: the key for city B
+# rows comes from the derivation, never from a null-extended `published`.
+@pytest.mark.parametrize("origin", DERIVABLE)
+@pytest.mark.parametrize(
+    "query, expected",
+    [
+        (
+            "select species, count(tree_id) -> n order by species asc;",
+            [("Acer rubrum", 2), ("Quercus alba", 1)],
+        ),
+        (
+            "select bucket, count(tree_id) -> n order by bucket asc;",
+            [("native", 2), ("other", 1)],
+        ),
+        (
+            "select species, count(tree_id) -> n where city = 'A' order by species asc;",
+            [("Acer rubrum", 1), ("Quercus alba", 1)],
+        ),
+    ],
+)
+def test_partial_stored_key_completes_from_the_derivation(
+    origin: str, query: str, expected: list[tuple]
+):
+    text = model(origin, False, "raw_species", "direct", stored="partial")
+    assert rows(text, query, forbid=None) == expected
+
+
+# nothing stores the key: the derivation is the only source
+@pytest.mark.parametrize("origin", DERIVABLE)
+@pytest.mark.parametrize(
+    "query, expected",
+    [
+        (
+            "select species, count(tree_id) -> n order by species asc;",
+            [("Acer rubrum", 2), ("Quercus alba", 1)],
+        ),
+        (
+            "select bucket, count(tree_id) -> n order by bucket asc;",
+            [("native", 2), ("other", 1)],
+        ),
+    ],
+)
+def test_unstored_key_derives(origin: str, query: str, expected: list[tuple]):
+    text = model(origin, False, "raw_species", "direct", stored="none")
+    assert rows(text, query, forbid=None) == expected
+
+
+@pytest.mark.parametrize("origin", UNBOUND)
+def test_unstored_key_over_an_unbound_root_is_unresolvable(origin: str):
+    text = model(origin, False, "raw_species", "direct", stored="none")
+    with pytest.raises(DisconnectedConceptsException):
+        rows(text, "select species, count(tree_id) -> n;", forbid=None)
+
+
+# the stored key under its other names and beside the raw column it derives
+# from: still read from `published`, and the raw partition joins on `tree_id`
+@pytest.mark.parametrize("partial", [True, False], ids=["partial", "full"])
+@pytest.mark.parametrize("origin", sorted(ORIGINS))
+@pytest.mark.parametrize(
+    "query, expected, reads_raw",
+    [
+        (
+            "select merged_species, count(tree_id) -> n order by merged_species asc;",
+            [("Acer rubrum", 2), ("Quercus alba", 1)],
+            False,
+        ),
+        (
+            "select tree_id where merged_species = 'Acer rubrum' order by tree_id asc;",
+            [("a",), ("c",)],
+            False,
+        ),
+        (
+            "select tree_id, raw_species, species where city = 'A' order by tree_id asc;",
+            [
+                ("a", "Acer rubrum", "Acer rubrum"),
+                ("b", "Quercus alba", "Quercus alba"),
+            ],
+            True,
+        ),
+        (
+            "select cluster_id, species where city = 'A' order by cluster_id asc;",
+            [("a", "Acer rubrum"), ("b", "Quercus alba")],
+            True,
+        ),
+    ],
+)
+def test_stored_key_by_other_names_and_beside_its_raw_column(
+    partial: bool, origin: str, query: str, expected: list[tuple], reads_raw: bool
+):
+    text = model(origin, partial, "raw_species", "direct")
+    # a bare rename makes the raw column itself a spelling of the key, so a
+    # complete raw partition is as good a source as `published`
+    forbid = None if reads_raw or (origin == "alias" and not partial) else "raw_a"
+    assert rows(text, query, forbid=forbid) == expected
+
+
+# the raw partition sorts before `published`: the stored column still wins
+@pytest.mark.parametrize("origin", ["scalar", "aggregate_in_scalar"])
+def test_stored_column_beats_an_earlier_sorting_derivation(origin: str):
+    text = model(origin, False, "raw_species", "direct", raw_name="a_raw")
+    assert rows(
+        text, "select tree_id, species order by tree_id asc;", forbid="a_raw"
+    ) == [
+        ("a", "Acer rubrum"),
+        ("b", "Quercus alba"),
+        ("c", "Acer rubrum"),
+    ]

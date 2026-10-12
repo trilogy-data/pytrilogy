@@ -63,6 +63,7 @@ from .models import ConceptAttrs
 from .projection import (
     concept_satisfiable,
     decided_at_output_grain,
+    lineage_crosses_row_shape_barrier,
     lineage_existence_only,
     lineage_existence_parts,
 )
@@ -1153,7 +1154,7 @@ def computed_origin_relation_members(environment: BuildEnvironment) -> frozenset
                 and resolved.address != member
                 and origin is not None
                 and origin.lineage is not None
-                and origin.derivation in ROW_SHAPE_BARRIER_DERIVATIONS
+                and lineage_crosses_row_shape_barrier(origin)
                 and not _origin_relation_stored(origin, resolved, environment)
             ):
                 out |= relation

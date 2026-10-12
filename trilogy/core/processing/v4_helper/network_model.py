@@ -486,6 +486,13 @@ class SolutionCost:
     blend_joins: int
     fanout_sources: int
     sources: int
+    # Terminals a chosen source computes rather than reads as a stored column:
+    # a merge key rendered through its derived origin, or supplied by a derived
+    # connector's subplan. At equal source count the cover storing the column
+    # wins, over a connector (which reads no relation of its own, so `scans`
+    # alone would prefer re-deriving the key) and over whichever scan sorts
+    # first.
+    derived_terminals: int
     # Physical relations read: a partition-family union is ONE source (no
     # join) but N scans, so at equal source count a single complete table
     # outranks the union of partials that jointly cover the same rows.

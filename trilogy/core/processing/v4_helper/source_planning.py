@@ -73,11 +73,13 @@ from trilogy.core.processing.v4_helper.network_model import (
     CONNECTOR_NODE_PREFIX,
     SearchResult,
     SourceNetwork,
+    SourceSolution,
     find,
     node_address,
     union,
 )
 from trilogy.core.processing.v4_helper.network_search import search_sources
+from trilogy.core.processing.v4_helper.projection import inline_scalar
 from trilogy.utility import unique
 
 
@@ -123,6 +125,10 @@ class NetworkDecision:
     behind a decline it could accept a cover the network judged disconnected."""
 
     bridge: BridgePlan | None
+    # A single-scan answer came from a search (not `_no_join_axis`), and
+    # whether that scan binds some terminal only partially.
+    searched: bool = False
+    partial_terminals: bool = False
 
 
 @dataclass(frozen=True)
@@ -425,7 +431,9 @@ def _network_source(
     if cached_verdict == "none":
         return None
     if cached_verdict == "defer":
-        return NetworkDecision(bridge=None)
+        return NetworkDecision(bridge=None, searched=True)
+    if cached_verdict == "defer_partial":
+        return NetworkDecision(bridge=None, searched=True, partial_terminals=True)
     network = build_source_network(
         concepts,
         request.environment,
@@ -463,6 +471,9 @@ def _network_source(
             ].bindings.values()
         )
         and not _binds_undemanded_span_partially(network, result.solution.sources[0])
+        and not _renders_merged_key_inline(
+            network, result.solution, request.environment
+        )
     ):
         # A one-scan solution is `_direct_source`'s job: it is the renderer for
         # a single assignment and knows the grain-aware scoring and the
@@ -472,9 +483,16 @@ def _network_source(
         # render one. A solution leaning on an INJECTED binding (a pinned probe
         # the graph never offered) is the exception: `_direct_source`'s
         # graph-scored select cannot see it, only the bridge emitter's
-        # `_datasource_renders_probe` path renders it.
-        request.history.network_verdicts[verdict_key] = "defer"
-        return NetworkDecision(bridge=None)
+        # `_datasource_renders_probe` path renders it. Likewise a scan that
+        # computes a merged key through the key's derived origin instead of
+        # reading a stored column: only the emitter's `renders_derived_key`
+        # path renders that, and `_direct_source` would re-source the key
+        # from a stored (possibly partial) column instead.
+        partial = bool(result.solution.partial_terminals)
+        request.history.network_verdicts[verdict_key] = (
+            "defer_partial" if partial else "defer"
+        )
+        return NetworkDecision(bridge=None, searched=True, partial_terminals=partial)
     graph = request.graph.copy()
     chosen = set(result.solution.sources)
     rollup_nodes = _inject_rollup_edges(graph, concepts, request, chosen)
@@ -501,21 +519,17 @@ def _network_source(
     ]
     for address in sorted(keep_addresses):
         named = any(concept.address == address for concept in bridge_concepts)
-        # An already-named address is revisited only when it is a DEMOTED merge
-        # key, which no scan can emit off its own columns.
-        if named and not _is_demoted_merge_key(
-            request.environment.concepts.get(address), request.environment
-        ):
-            continue
         # A class address is only a label: the representative may spell any
         # member (the `_virt_` canonical, the authored key, a merged key's raw
         # origin), and which one follows from naming, not semantics. Carry, per
         # CHOSEN source, the concept behind the binding that source actually
         # reads (its own side's variant), so each scan materializes its side and
         # the merge joins them on the pseudonym equivalence (the
-        # `renders_derived_key` contract downstream). Never the whole class, nor
-        # the representative's own concept: an unread member would hand a scan
-        # an output it cannot emit, or the join a column the authored FK
+        # `renders_derived_key` contract downstream). Even for a requested
+        # name: a scan chosen beside the table storing the key still renders
+        # the key only through its own derived origin. Never the whole class,
+        # nor the representative's own concept: an unread member would hand a
+        # scan an output it cannot emit, or the join a column the authored FK
         # already provides.
         carried = _chosen_source_concepts(
             request.environment, network, result.solution.sources, address
@@ -603,6 +617,30 @@ def _chosen_source_concepts(
     return list(out.values())
 
 
+def _renders_merged_key_inline(
+    network: SourceNetwork, solution: SourceSolution, environment: BuildEnvironment
+) -> bool:
+    """The chosen scan computes a merged key (`merge trim(raw) into species`)
+    off its own columns instead of reading a stored column for it."""
+    groups = environment.scoped_join_key_groups
+    if not groups:
+        return False
+    # the search labels a class by its representative, which may be the
+    # origin's `_virt_` canonical rather than any authored member
+    merged = {
+        network.equivalence.get(member, member)
+        for canonical, members in groups.items()
+        for member in (canonical, *members)
+    }
+    for node, addresses in solution.assignments.items():
+        bindings = network.candidates[node].bindings
+        for address in addresses:
+            binding = bindings.get(address)
+            if binding is not None and not binding.stored and address in merged:
+                return True
+    return False
+
+
 def _binds_undemanded_span_partially(network: SourceNetwork, source: str) -> bool:
     """The scan reads a span no region demands off its own `~` column
     (`partial_ok`). `_direct_source` would complete it against the dimension
@@ -615,19 +653,6 @@ def _binds_undemanded_span_partially(network: SourceNetwork, source: str) -> boo
     )
 
 
-def _is_demoted_merge_key(
-    concept: BuildConcept | None, environment: BuildEnvironment
-) -> bool:
-    """`concept` is a merge key the merge DEMOTED: a lineage-less ROOT whose
-    only value source is a pseudonym origin's derivation (`merge first_org into
-    org.code` leaves `org.code` bare while `first_org` keeps the split). No scan
-    can emit it off its own columns, so the origin has to be carried explicitly.
-    """
-    if concept is None or concept.derivation != Derivation.ROOT or concept.lineage:
-        return False
-    return bool(environment.merge_origins(concept))
-
-
 def _concept_has_non_basic_merge_origin(
     concept: BuildConcept, environment: BuildEnvironment
 ) -> bool:
@@ -638,8 +663,7 @@ def _concept_has_non_basic_merge_origin(
     never a raw scan. A BASIC merge origin (`p_last <- split(p_name)`) computes
     inline on the scan, so it is excluded."""
     return any(
-        origin.derivation != Derivation.BASIC
-        for origin in environment.merge_origins(concept)
+        not inline_scalar(origin) for origin in environment.merge_origins(concept)
     )
 
 
@@ -1145,7 +1169,16 @@ def _local_concept_nodes_for_datasource(
                 canonical is not None
                 and canonical.derivation == Derivation.BASIC
                 and canonical.address in bridge_addresses
-                and _datasource_renders_derived(datasource, canonical)
+                and (
+                    (
+                        datasource is not None
+                        and _datasource_can_output(datasource, canonical.address)
+                    )
+                    or (
+                        inline_scalar(canonical)
+                        and _datasource_renders_derived(datasource, canonical)
+                    )
+                )
             )
             # A datasource-materialized aggregate/window (`customer_order_count`
             # in a summary table) is requested by its `.address` but reaches this
@@ -1187,10 +1220,37 @@ def _local_concept_nodes_for_datasource(
                 and _datasource_renders_probe(
                     datasource, address, environment, graph.scope.datasources
                 )
+                and _scan_renders_root(
+                    datasource, canonical, bridge_addresses, environment
+                )
             ):
                 concepts.setdefault(address, neighbor)
             queue.append(neighbor)
     return sorted(concepts.values())
+
+
+def _scan_renders_root(
+    datasource: BuildDatasource | BuildUnionDatasource | None,
+    concept: BuildConcept,
+    bridge_addresses: set[str],
+    environment: BuildEnvironment,
+) -> bool:
+    """A lineage-less key is reachable from a scan through a merge partner's
+    lineage without the scan holding it: `raw_a` reaches `species` through
+    `trim(raw_species)` when the bridge chose `published` for `species`. The
+    scan renders the key only off a column spelling it or through a carried
+    origin it computes inline; otherwise the key is another scan's."""
+    if datasource is None or concept.lineage is not None:
+        return True
+    spellings = environment.value_classes.get(concept.address, (concept.address,))
+    if any(_datasource_can_output(datasource, spelling) for spelling in spellings):
+        return True
+    return any(
+        origin.address in bridge_addresses
+        and inline_scalar(origin)
+        and _datasource_renders_derived(datasource, origin)
+        for origin in environment.merge_origins(concept)
+    )
 
 
 def _merge_component_sources(
@@ -1861,8 +1921,14 @@ def _plan_source(request: SourceRequest) -> StrategyNode | None:
     else:
         # The search answered with a single scan; `_direct_source` is that
         # solution's renderer. The escalation is only "may this read accept a
-        # partial binding"; it is not a re-search.
-        for accept_partial in (False,) if request.require_full else (False, True):
+        # partial binding"; it is not a re-search, and it is withheld when the
+        # search's scan binds every terminal fully: a partial read then is
+        # not that solution's rendering but a worse answer than the bridge
+        # re-ask below (a key the scan stores under a merged spelling).
+        escalate = not request.require_full and (
+            decision.partial_terminals or not decision.searched
+        )
+        for accept_partial in (False, True) if escalate else (False,):
             direct = _direct_source(request, accept_partial)
             if direct is not None:
                 return direct

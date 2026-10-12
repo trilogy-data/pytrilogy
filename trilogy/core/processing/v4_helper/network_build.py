@@ -68,6 +68,7 @@ from trilogy.core.processing.v4_helper.network_model import (
     datasource_identifiers,
     node_address,
 )
+from trilogy.core.processing.v4_helper.projection import inline_scalar
 
 
 def _condition_fit(
@@ -485,7 +486,7 @@ def _connector_candidates(
     up, and the emitter already knows how to render the choice."""
     out: dict[str, SourceCandidate] = {}
     for alias, origin in sorted(environment.alias_origin_lookup.items()):
-        if origin.lineage is None or origin.derivation is Derivation.BASIC:
+        if origin.lineage is None or inline_scalar(origin):
             continue
         provided = {alias} | origin.spellings
         input_keys = connector_join_keys(alias, origin)

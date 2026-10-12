@@ -333,6 +333,12 @@ def _solution_for(
             if network.fans_out(node, assignments[node] or joined_on[node])
         ),
         sources=len(sources),
+        derived_terminals=sum(
+            1
+            for node, addresses in assignments.items()
+            for address in addresses
+            if not _stored_key(network.candidates[node], address)
+        ),
         scans=sum(_scan_count(network.candidates[node]) for node in sources),
         connectors=len(connectors),
         derived_joins=derived_joins,
