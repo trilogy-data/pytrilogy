@@ -67,6 +67,7 @@ from trilogy.core.optimizations.utils import (
     base_datasource,
     output_addresses,
     propagate_existence_sources,
+    reaches,
     strip_condition_atom,
 )
 from trilogy.core.processing.condition_utility import (
@@ -199,23 +200,6 @@ def _datasource_matches_raw_id(
         return True
     base = base_datasource(datasource)
     return isinstance(base, BuildDatasource) and base.identifier == source_id
-
-
-def _derives_from(node: CTE | UnionCTE, container_name: str) -> bool:
-    """``node`` IS ``container_name`` or reads from it, at any depth."""
-    seen: set[str] = set()
-    stack: list[CTE | UnionCTE] = [node]
-    while stack:
-        current = stack.pop()
-        if current.name == container_name:
-            return True
-        if current.name in seen:
-            continue
-        seen.add(current.name)
-        stack.extend(current.dependency_nodes())
-        if isinstance(current, UnionCTE):
-            stack.extend(current.internal_ctes)
-    return False
 
 
 def _rejects_null(atoms: list[BoolExpr]) -> bool:
@@ -658,7 +642,7 @@ class UnionDimPushdown(OptimizationRule):
             # A dim carved out of the container (a single-key projection of the
             # union) cannot be computed before it; pushing it in would make the
             # branches depend on a CTE that depends on the container.
-            if _derives_from(found, container.name):
+            if reaches(found, container.name, internal_ctes=True):
                 self.log(
                     f"Skipping dim {d.dim_qds.identifier}: its CTE {found.name} "
                     f"is derived from {container.name}"

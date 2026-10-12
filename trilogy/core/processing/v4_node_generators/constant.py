@@ -6,6 +6,7 @@ from trilogy.core.processing.nodes import (
     GroupNode,
     StrategyNode,
 )
+from trilogy.utility import unique
 
 
 def gen_constant(
@@ -34,12 +35,7 @@ def gen_constant(
             if r.address in parent_addresses
         ]
         if gate_inputs:
-            seen: set[str] = set()
-            passthrough: list[BuildConcept] = []
-            for o in parent_outputs:
-                if o.address not in seen:
-                    seen.add(o.address)
-                    passthrough.append(o)
+            passthrough = unique(parent_outputs, "address")
             gate = FilterNode(
                 input_concepts=passthrough,
                 output_concepts=passthrough,

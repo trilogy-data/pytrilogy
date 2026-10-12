@@ -47,7 +47,7 @@ from trilogy.core.models.execute import (
     UnionCTE,
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
-from trilogy.core.optimizations.utils import is_grouped_cte, is_sole_consumer
+from trilogy.core.optimizations.utils import is_grouped_cte, is_sole_consumer, reaches
 
 # A restriction may only ride below these; anything that reorders, pads or
 # truncates rows changes which groups exist independently of the key.
@@ -101,20 +101,6 @@ def nullable_in(cte: CTE | UnionCTE, key: BuildConcept) -> bool:
     if not isinstance(cte, CTE):
         return True
     return any(c.address == key.address for c in cte.nullable_concepts)
-
-
-def reaches(node: CTE | UnionCTE, target: str) -> bool:
-    seen: set[str] = set()
-    stack: list[CTE | UnionCTE] = [node]
-    while stack:
-        current = stack.pop()
-        if current.name == target:
-            return True
-        if current.name in seen:
-            continue
-        seen.add(current.name)
-        stack.extend(current.dependency_nodes())
-    return False
 
 
 def exposed_key(cte: CTE | UnionCTE, key: BuildConcept) -> BuildConcept | None:
