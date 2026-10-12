@@ -54,11 +54,16 @@ from .constants import (
     EdgeKind,
 )
 from .edges import EdgeMap, add_edge, edge_kind, lineage_subgraph
-from .functional_dependency import build_fd_determines, minimize_build_grain
+from .functional_dependency import (
+    build_fd_determines,
+    minimize_build_grain,
+    origin_relation_stored,
+)
 from .models import ConceptAttrs
 from .projection import (
     concept_satisfiable,
     decided_at_output_grain,
+    lineage_crosses_row_shape_barrier,
     lineage_existence_only,
     lineage_existence_parts,
 )
@@ -1109,7 +1114,10 @@ def computed_origin_relation_members(environment: BuildEnvironment) -> frozenset
     scalar-derived origin (`merge ka into kb` with `ka <- a.l_key + 1`): each
     side renders its own variant inline on its scan through the derived
     merge-key rail (`_datasource_renders_derived`), and routing it through the
-    relation axis instead loses the preserving FULL's null-extended rows."""
+    relation axis instead loses the preserving FULL's null-extended rows. So
+    does an origin whose relation a datasource already stores (see
+    `origin_relation_stored`): the computation is then a redundant second
+    lineage for a column a scan reads, not the join."""
     if not environment.scoped_join_key_groups:
         return frozenset()
     out: set[str] = set()
@@ -1122,7 +1130,8 @@ def computed_origin_relation_members(environment: BuildEnvironment) -> frozenset
                 and resolved.address != member
                 and origin is not None
                 and origin.lineage is not None
-                and origin.derivation in ROW_SHAPE_BARRIER_DERIVATIONS
+                and lineage_crosses_row_shape_barrier(origin)
+                and not origin_relation_stored(origin, resolved, environment)
             ):
                 out |= relation
                 break

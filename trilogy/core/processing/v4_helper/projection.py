@@ -1,6 +1,6 @@
 """Shared v4 helpers for projection widening and lineage satisfiability."""
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 
 from trilogy.core.enums import Derivation
 from trilogy.core.models.author import SelectLineage
@@ -20,7 +20,7 @@ from trilogy.core.models.build_environment import (
 from trilogy.core.processing.condition_utility import is_scalar_condition
 from trilogy.core.processing.nodes import SelectNode, StrategyNode, UnionNode
 
-from .constants import ROW_STREAM_DERIVATIONS
+from .constants import ROW_SHAPE_BARRIER_DERIVATIONS, ROW_STREAM_DERIVATIONS
 from .functional_dependency import build_fd_determines
 
 
@@ -87,6 +87,35 @@ def row_lineage_arguments(concept: BuildConcept) -> list[BuildConcept]:
     if not existence:
         return args
     return [arg for arg in args if arg.address not in existence]
+
+
+def iter_row_lineage(concept: BuildConcept) -> Iterator[BuildConcept]:
+    """`concept` and its row-lineage ancestors, each address visited once."""
+    seen: set[str] = set()
+    stack = [concept]
+    while stack:
+        current = stack.pop()
+        if current.address in seen:
+            continue
+        seen.add(current.address)
+        yield current
+        stack.extend(row_lineage_arguments(current))
+
+
+def lineage_crosses_row_shape_barrier(concept: BuildConcept) -> bool:
+    return any(
+        c.derivation in ROW_SHAPE_BARRIER_DERIVATIONS for c in iter_row_lineage(concept)
+    )
+
+
+def inline_scalar(concept: BuildConcept) -> bool:
+    """A per-row expression a scan computes off its own columns: BASIC all the
+    way down. A BASIC wrapping a barrier (`substring((max(x) by k), 1, 200)`)
+    is not; it takes the barrier's shape and has to be materialized like one."""
+    return (
+        concept.derivation == Derivation.BASIC
+        and not lineage_crosses_row_shape_barrier(concept)
+    )
 
 
 def reads_rows_only(concept: BuildConcept) -> bool:

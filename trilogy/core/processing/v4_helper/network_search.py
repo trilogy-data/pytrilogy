@@ -334,6 +334,12 @@ def _solution_for(
         ),
         sources=len(sources),
         scans=sum(_scan_count(network.candidates[node]) for node in sources),
+        derived_terminals=sum(
+            1
+            for node, addresses in assignments.items()
+            for address in addresses
+            if not _stored_key(network.candidates[node], address)
+        ),
         connectors=len(connectors),
         derived_joins=derived_joins,
     )

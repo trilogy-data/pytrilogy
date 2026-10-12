@@ -275,13 +275,19 @@ def axis_families(
     binds the class), so the family is recorded here as a requirement shape and
     the `axis` obligation asks for the missing arms explicitly.
 
-    A group with a member no candidate carries (a rowset member) is left out:
-    the search cannot complete it, and the rowset machinery that owns those
+    A rowset member has no datasource; its carrier is the connector candidate
+    that provides it (the rowset handle), so the declaration still obliges the
+    cover to read that side rather than a dimension that happens to bind the
+    class. A group with a member no candidate carries at all is left out: the
+    search cannot complete it, and the rowset machinery that owns those
     members already assembles the axis downstream. When the request is
     `arm_local` (an aggregate's input, which the aggregate's consumer
     reassembles), arm-pinned requests are likewise left out (see
-    `_axis_arm_pinned`); a statement's own rows never are, since nothing above
-    them coalesces the other arms."""
+    `_axis_arm_pinned`), unless an arm is a rowset handle: the declared
+    pairing with a rowset is row-wise inside the group (an arm row crosses
+    every handle row it pairs with), which no assembly above re-creates. A
+    statement's own rows are never left out, since nothing above them
+    coalesces the other arms."""
     groups = requested_axis_groups(terminals, environment, equivalence)
     if not groups:
         return {}
@@ -298,6 +304,7 @@ def axis_families(
     out: dict[str, tuple[tuple[str, ...], ...]] = {}
     for representative, members in sorted(groups.items()):
         family: list[tuple[str, ...]] = []
+        handle_arm = False
         for member in sorted(members):
             identifiers = {
                 carrier.identifier
@@ -310,6 +317,17 @@ def axis_families(
                 and datasource_identifiers(candidate.datasource) & identifiers
             )
             if not nodes:
+                nodes = tuple(
+                    node
+                    for node, candidate in sorted(candidates.items())
+                    if candidate.datasource is None
+                    and any(
+                        binding.address == member
+                        for binding in candidate.bindings.values()
+                    )
+                )
+                handle_arm = bool(nodes)
+            if not nodes:
                 family = []
                 break
             family.append(nodes)
@@ -321,8 +339,16 @@ def axis_families(
             for node in nodes
             if candidates[node].grain
         ]
-        if arm_local and _axis_arm_pinned(
-            terminals, axis_classes, condition_classes, carrier_grains, address_grain
+        if (
+            arm_local
+            and not handle_arm
+            and _axis_arm_pinned(
+                terminals,
+                axis_classes,
+                condition_classes,
+                carrier_grains,
+                address_grain,
+            )
         ):
             continue
         out[representative] = tuple(family)

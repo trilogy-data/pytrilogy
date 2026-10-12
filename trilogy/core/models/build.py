@@ -2487,6 +2487,17 @@ BuildExpr = (
 )
 
 
+def _rename_source(concept: Concept | None) -> str | None:
+    lineage = concept.lineage if concept is not None else None
+    if (
+        isinstance(lineage, Function)
+        and lineage.operator == FunctionType.ALIAS
+        and len(lineage.concept_arguments) == 1
+    ):
+        return lineage.concept_arguments[0].address
+    return None
+
+
 def get_canonical_pseudonyms(environment: Environment) -> dict[str, set[str]]:
     roots: dict[str, set[str]] = defaultdict(set)
     for k, v in environment.concepts.items():
@@ -2782,6 +2793,11 @@ class JoinScope:
             for source in scoped_pseudonym_sources:
                 canonical_addr = self.scoped_merge_map[source]
                 groups[canonical_addr].update((source, canonical_addr))
+                # a bare rename (`auto a <- b`) merged into a key names what
+                # it renames: a scan storing `b` stores the key
+                renamed = _rename_source(environment.concepts.get(source))
+                if renamed is not None:
+                    groups[canonical_addr].add(renamed)
             chained: set[str] = set()
             for s, t, _ in self.scoped_joins:
                 root = self.scoped_merge_map.get(s, self.scoped_merge_map.get(t))
