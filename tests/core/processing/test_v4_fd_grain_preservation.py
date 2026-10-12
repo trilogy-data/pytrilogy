@@ -146,7 +146,6 @@ def _scoped_join_build_info():
     history.build_caches.pseudonym_map = get_canonical_pseudonyms(env)
     factory = Factory(
         environment=env,
-        build_cache=history.build_caches.build_cache,
         canonical_build_cache=history.build_caches.canonical_build_cache,
         grain_build_cache=history.build_caches.grain_build_cache,
         pseudonym_map=history.build_caches.pseudonym_map,
@@ -155,7 +154,6 @@ def _scoped_join_build_info():
     built = factory.build(statement.as_lineage(env))
     build_env = env.materialize_for_select(
         built.local_concepts,
-        build_cache=history.build_caches.build_cache,
         pseudonym_map=factory.pseudonym_map,
         grain_build_cache=factory.grain_build_cache,
         canonical_build_cache=history.build_caches.canonical_build_cache,

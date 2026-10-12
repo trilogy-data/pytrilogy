@@ -438,3 +438,16 @@ select a.aid, count(a.av) as sa
 select rs.a.aid, rs.sa order by rs.a.aid;
 """).fetchall()]
     assert boundary == single
+
+
+def test_subset_side_does_not_source_rowset_superset_key(models: Path):
+    eng = _matrix_engine(models)
+    rows = [tuple(r) for r in eng.execute_query("""
+import a as a;
+import b as b;
+with rs as select a.aid as k, sum(a.av) as sa;
+select rs.k, b.bv
+subset join b.bid = rs.k
+order by rs.k;
+""").fetchall()]
+    assert rows == [(1, 100.0), (2, 200.0), (3, None)]

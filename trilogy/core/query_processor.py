@@ -1076,7 +1076,6 @@ def get_query_node(
 
     base_factory = Factory(
         environment=environment,
-        build_cache=caches.build_cache,
         canonical_build_cache=caches.canonical_build_cache,
         grain_build_cache=caches.grain_build_cache,
         pseudonym_map=caches.pseudonym_map,
@@ -1093,7 +1092,6 @@ def get_query_node(
     # nested arms under the same scoped joins then reuse.
     baseline = environment.shared_baseline(
         caches.env_baselines,
-        build_cache=caches.build_cache,
         pseudonym_map=base_factory.pseudonym_map,
         grain_build_cache=base_factory.grain_build_cache,
         canonical_build_cache=caches.canonical_build_cache,
@@ -1103,7 +1101,6 @@ def get_query_node(
     build_environment = environment.materialize_delta(
         baseline,
         build_statement.local_concepts,
-        build_cache=caches.build_cache,
         pseudonym_map=base_factory.pseudonym_map,
         grain_build_cache=base_factory.grain_build_cache,
         canonical_build_cache=caches.canonical_build_cache,

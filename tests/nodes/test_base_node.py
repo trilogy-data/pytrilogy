@@ -53,7 +53,7 @@ property product_id.price float;
         partial_concepts=[],
     )
 
-    partial = get_all_parent_partial([env.concepts["order_id"]], [x, y])
+    partial = get_all_parent_partial([env.concepts["order_id"]], [x, y], env)
 
     assert len(partial) == 1
 
@@ -66,6 +66,6 @@ property product_id.price float;
         partial_concepts=[],
     )
 
-    partial = get_all_parent_partial([env.concepts["order_id"]], [x, z])
+    partial = get_all_parent_partial([env.concepts["order_id"]], [x, z], env)
 
     assert len(partial) == 0

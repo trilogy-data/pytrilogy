@@ -52,7 +52,8 @@ grain (sale_id)
 query '''
 select 10 sid, 1 scust, 5.0 amt union all
 select 11 sid, 1 scust, 7.0 amt union all
-select 12 sid, 3 scust, 9.0 amt
+select 12 sid, 3 scust, 9.0 amt union all
+select 13 sid, 2 scust, 4.0 amt
 ''';
 
 rowset bought <- select sale_cust, sum(amt) as total;
@@ -75,5 +76,6 @@ def test_fd_dimension_rides_rowset_grain_no_cross_join():
     assert " on 1=1" not in sql, sql
     assert [tuple(r) for r in rows] == [
         ("alice", "springfield", 12.0),
+        ("bob", "springfield", 4.0),
         ("carol", "shelbyville", 9.0),
     ]

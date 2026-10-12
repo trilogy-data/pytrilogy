@@ -696,13 +696,13 @@ def _finer_filter_grains(
     (a partsupp measure at ``{part.id, supplier.id}``). An entity whose key
     sits inside such a grain must NOT be peeled: its rows are needed at the
     finer grain to evaluate the filter, and a standalone single-key dim scan
-    can't serve it (the condition becomes unplaceable). Aggregate args are
-    excluded; they are their own grouping contributor."""
+    can't serve it (the condition becomes unplaceable). Aggregate and rowset
+    args are excluded; they are their own grouping contributor."""
     return frozenset(
         frozenset(arg.grain.components)
         for clause in conditions
         for arg in clause.row_arguments
-        if arg.derivation != Derivation.AGGREGATE
+        if arg.derivation not in (Derivation.AGGREGATE, Derivation.ROWSET)
         and arg.grain is not None
         and len(arg.grain.components) > 1
     )
