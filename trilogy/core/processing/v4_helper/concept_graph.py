@@ -56,8 +56,8 @@ from .constants import (
 from .edges import EdgeMap, add_edge, edge_kind, lineage_subgraph
 from .functional_dependency import (
     build_fd_determines,
-    build_fd_determines_all,
     minimize_build_grain,
+    origin_relation_stored,
 )
 from .models import ConceptAttrs
 from .projection import (
@@ -1101,30 +1101,6 @@ def _unsourced_relation_mates(
     return [out[addr] for addr in sorted(out)]
 
 
-def _origin_relation_stored(
-    origin: BuildConcept, canonical: BuildConcept, environment: BuildEnvironment
-) -> bool:
-    """A complete datasource binds `canonical` at a grain that determines the
-    keys `origin` is computed over (`merge (max(raw) by cluster_id) into
-    species` beside a `(tree_id, species)` table with `tree_id -> cluster_id`).
-    The origin then relates nothing a scan cannot: every row that could carry
-    its value already carries the canonical's. A recursion or an unnest into a
-    dimension key relates keys no table pairs (nothing binds `ecoregion_id`
-    beside `species`), so it stays the join."""
-    relating = (set(origin.keys or ()) | set(origin.grain.components)) - {
-        origin.address,
-        canonical.address,
-    }
-    if not relating:
-        return False
-    return any(
-        canonical.address in datasource.full_concepts
-        and build_fd_determines_all(environment, datasource.full_concepts, relating)
-        for datasource in environment.datasources.values()
-        if isinstance(datasource, BuildDatasource)
-    )
-
-
 def computed_origin_relation_members(environment: BuildEnvironment) -> frozenset[str]:
     """Members of relations (ANY scope) whose collapse left a ROW-SHAPE
     computed origin in `alias_origin_lookup` (`merge recursive_parent into
@@ -1140,7 +1116,7 @@ def computed_origin_relation_members(environment: BuildEnvironment) -> frozenset
     merge-key rail (`_datasource_renders_derived`), and routing it through the
     relation axis instead loses the preserving FULL's null-extended rows. So
     does an origin whose relation a datasource already stores (see
-    `_origin_relation_stored`): the computation is then a redundant second
+    `origin_relation_stored`): the computation is then a redundant second
     lineage for a column a scan reads, not the join."""
     if not environment.scoped_join_key_groups:
         return frozenset()
@@ -1155,7 +1131,7 @@ def computed_origin_relation_members(environment: BuildEnvironment) -> frozenset
                 and origin is not None
                 and origin.lineage is not None
                 and lineage_crosses_row_shape_barrier(origin)
-                and not _origin_relation_stored(origin, resolved, environment)
+                and not origin_relation_stored(origin, resolved, environment)
             ):
                 out |= relation
                 break

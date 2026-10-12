@@ -49,6 +49,9 @@ from trilogy.core.processing.node_generators.presence_probe import (
     probe_member_address,
 )
 from trilogy.core.processing.scan_partials import scan_partial_addresses
+from trilogy.core.processing.v4_helper.functional_dependency import (
+    origin_relation_stored,
+)
 from trilogy.core.processing.v4_helper.network_coalescing import (
     axis_families,
     downgrade_axis_bindings,
@@ -487,6 +490,18 @@ def _connector_candidates(
     out: dict[str, SourceCandidate] = {}
     for alias, origin in sorted(environment.alias_origin_lookup.items()):
         if origin.lineage is None or inline_scalar(origin):
+            continue
+        # A merge origin whose relation a complete table already stores
+        # (`merge (max(raw) by cluster_id) into species` beside a `(tree_id,
+        # species)` table) relates nothing a scan cannot; as a candidate it
+        # reads no relation of its own, so the search would re-derive the key
+        # through it instead of reading the stored column.
+        canonical = environment.concepts.get(alias)
+        if (
+            canonical is not None
+            and canonical.address != alias
+            and origin_relation_stored(origin, canonical, environment)
+        ):
             continue
         provided = {alias} | origin.spellings
         input_keys = connector_join_keys(alias, origin)

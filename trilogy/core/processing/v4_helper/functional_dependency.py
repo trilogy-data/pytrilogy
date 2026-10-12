@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 
-from trilogy.core.models.build import BuildConcept
+from trilogy.core.models.build import BuildConcept, BuildDatasource
 from trilogy.core.models.build_environment import BuildEnvironment, EnvCache
 
 from .models import ConceptAttrs
@@ -266,3 +266,27 @@ def _minimize_build_grain(
                 changed = True
                 break
     return frozenset(minimized)
+
+
+def origin_relation_stored(
+    origin: BuildConcept, canonical: BuildConcept, environment: BuildEnvironment
+) -> bool:
+    """A complete datasource binds `canonical` at a grain that determines the
+    keys `origin` is computed over (`merge (max(raw) by cluster_id) into
+    species` beside a `(tree_id, species)` table with `tree_id -> cluster_id`).
+    The origin then relates nothing a scan cannot: every row that could carry
+    its value already carries the canonical's. A recursion or an unnest into a
+    dimension key relates keys no table pairs (nothing binds `ecoregion_id`
+    beside `species`), so it stays the join."""
+    relating = (set(origin.keys or ()) | set(origin.grain.components)) - {
+        origin.address,
+        canonical.address,
+    }
+    if not relating:
+        return False
+    return any(
+        canonical.address in datasource.full_concepts
+        and build_fd_determines_all(environment, datasource.full_concepts, relating)
+        for datasource in environment.datasources.values()
+        if isinstance(datasource, BuildDatasource)
+    )
