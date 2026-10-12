@@ -2,7 +2,7 @@
 
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any, Self
+from typing import Self
 
 from click import echo, style
 
@@ -93,9 +93,6 @@ class ValidationProgressContext:
 
     def advance(self) -> None:
         self._inner.advance()
-
-    def register_capture_context(self, get_ctx: Any) -> None:
-        self._inner._stderr_cap.get_context = get_ctx
 
 
 def show_validation_failures(

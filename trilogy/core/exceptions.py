@@ -74,11 +74,6 @@ class MissingParameterException(InvalidSyntaxException):
     pass
 
 
-class InvalidComparison(InvalidSyntaxException):
-    """A comparison/filter that can never produce a meaningful result, e.g. a
-    predicate against an enum field that is tautologically true or false."""
-
-
 class NothingExecutedException(Exception):
     """A script parsed cleanly but produced no output-producing statement, so the
     run did nothing. Raised only in agent mode, where a zero-statement success is

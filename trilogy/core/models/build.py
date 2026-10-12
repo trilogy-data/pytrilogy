@@ -1643,12 +1643,6 @@ class BuildCaseSimpleWhen(DataTyped, BuildConceptArgs):
         return get_concept_arguments(self.value_expr) + get_concept_arguments(self.expr)
 
     @property
-    def concept_row_arguments(self):
-        return get_concept_row_arguments(self.value_expr) + get_concept_row_arguments(
-            self.expr
-        )
-
-    @property
     def output_datatype(self):
         return arg_to_datatype(self.expr)
 
@@ -1669,12 +1663,6 @@ class BuildCaseWhen(DataTyped, BuildConceptArgs):
     @cached_property
     def concept_arguments(self):
         return get_concept_arguments(self.comparison) + get_concept_arguments(self.expr)
-
-    @property
-    def concept_row_arguments(self):
-        return get_concept_row_arguments(self.comparison) + get_concept_row_arguments(
-            self.expr
-        )
 
     @property
     def output_datatype(self):

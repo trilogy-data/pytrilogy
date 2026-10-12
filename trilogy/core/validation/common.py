@@ -47,11 +47,6 @@ class ValidationTest:
     ran: bool = True
 
 
-class ValidationType(Enum):
-    DATASOURCES = "datasources"
-    CONCEPTS = "concepts"
-
-
 def build_order_args(concepts: list[BuildConcept]) -> list[BuildFunction]:
     order_args = []
     for concept in concepts:
