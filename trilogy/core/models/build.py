@@ -2647,6 +2647,9 @@ class JoinScope:
             scope_tagged_joins(self.scoped_joins, environment)
         )
         self.scoped_merge_map = dict(self.domain_graph.canonical_map())
+        # what a build's grain normalization reads; keys caches shared across
+        # join sets
+        self.merge_token = frozenset(self.scoped_merge_map.items())
         self.scoped_partial_sources = self.domain_graph.subset_sources()
         # A global `merge` IS a scoped join persisted on the environment (FULL
         # non-partial / LEFT partial). It resolves identically to the equivalent
@@ -2903,7 +2906,7 @@ class Factory:
         grain_build_cache: (
             dict[int, tuple[WhereClause, BuildWhereClause]] | None
         ) = None,
-        canonical_build_cache: dict[str, BuildConcept] | None = None,
+        canonical_build_cache: dict[tuple[str, frozenset], BuildConcept] | None = None,
         datasource_build_cache: dict[str, BuildDatasource] | None = None,
         scoped_joins: list[tuple[str, str, JoinType]] | None = None,
         aggregate_grain: Grain | None = None,
@@ -2986,6 +2989,7 @@ class Factory:
         self.scoped_joins = join_scope.scoped_joins
         self.domain_graph = join_scope.domain_graph
         self.scoped_merge_map = join_scope.scoped_merge_map
+        self._merge_token = join_scope.merge_token
         self.scoped_partial_sources = join_scope.scoped_partial_sources
         self.scoped_merge_sources_by_target = join_scope.scoped_merge_sources_by_target
         self.scoped_rowset_outer_sources = join_scope.scoped_rowset_outer_sources
@@ -3018,9 +3022,10 @@ class Factory:
         # + explicit grain). Their BuildConcept is determined entirely by the
         # source Concept + env state and so is identical across every factory
         # in the call tree, regardless of the factory's grain context. Keyed
-        # by base.address. Lifetime is one get_query_node call — created by
+        # by (base.address, merge token): the grain normalizes through the
+        # scoped merges. Lifetime is one get_query_node call — created by
         # the caller and threaded through.
-        self.canonical_build_cache: dict[str, BuildConcept] = (
+        self.canonical_build_cache: dict[tuple[str, frozenset], BuildConcept] = (
             {} if canonical_build_cache is None else canonical_build_cache
         )
         # Cache of fully-built BuildDatasources. A datasource builds with its
@@ -3497,7 +3502,8 @@ class Factory:
         # entry — there are typically O(thousands) of these across O(hundreds)
         # of datasource factories.
         if base.lineage is None and base.grain.components:
-            cached = self.canonical_build_cache.get(base.address)
+            canonical_key = (base.address, self._merge_token)
+            cached = self.canonical_build_cache.get(canonical_key)
             if cached is not None:
                 self.local_concepts[base.address] = cached
                 return cached
@@ -3541,7 +3547,7 @@ class Factory:
             self.local_concepts[base.address] = rval
             if self._env_writes is not None:
                 self._env_writes.add(base.address)
-            self.canonical_build_cache[base.address] = rval
+            self.canonical_build_cache[canonical_key] = rval
             return rval
         base = self._grain_pinned(base)
         resolution_grain = (
@@ -4300,31 +4306,16 @@ class Factory:
         # Collapse any merged-away source grain key to its canonical target
         # (the build-time equivalent of a global merge rewriting the grain), so
         # dependents of a scoped-merge source group on the single canonical key.
-        # A bound (ROOT) key subset-joined onto a rowset handle keeps its own
-        # grain: its dependents would detach from their own source (`subset
-        # join a.aid = rs.k` keying `a.aw` by `rs.k`). A union join coalesces
-        # both sides and still collapses.
         normalized: set[str] = set()
         env_concepts = self.environment.concepts
         for c in components:
-            target = self.scoped_merge_map.get(c)
-            if target is not None and not self._binding_onto_rowset(c, target):
-                normalized.add(target)
+            if c in self.scoped_merge_map:
+                normalized.add(self.scoped_merge_map[c])
             elif c in env_concepts:
                 normalized.add(env_concepts[c].address)
             else:
                 normalized.add(c)
         return normalized
-
-    def _binding_onto_rowset(self, source: str, target: str) -> bool:
-        concepts = self.environment.concepts
-        return (
-            source in self.scoped_rowset_outer_targets
-            and source in concepts
-            and target in concepts
-            and concepts[source].derivation == Derivation.ROOT
-            and concepts[target].derivation == Derivation.ROWSET
-        )
 
     @_build_dispatch.register
     def _(self, base: TupleWrapper) -> TupleWrapper:
