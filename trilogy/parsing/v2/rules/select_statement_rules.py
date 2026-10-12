@@ -31,6 +31,7 @@ from trilogy.core.statements.author import (
     SelectJoin,
     SelectStatement,
 )
+from trilogy.core.union_find import find
 from trilogy.parsing.common import (
     arbitrary_to_concept,
     unwrap_transformation,
@@ -139,20 +140,15 @@ def _validate_join_groups(node: SyntaxNode, joins: list[SelectJoin]) -> None:
     Distinct (disjoint-key) groups may use any types."""
     parent: dict[str, str] = {}
 
-    def find(x: str) -> str:
-        parent.setdefault(x, x)
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
-
     for j in joins:
-        rs, rt = find(j.source_address), find(j.target_address)
+        rs, rt = find(parent, j.source_address), find(parent, j.target_address)
         if rs != rt:
             parent[rs] = rt
     types_by_group: dict[str, set[JoinType]] = {}
     for j in joins:
-        types_by_group.setdefault(find(j.source_address), set()).add(j.join_type)
+        types_by_group.setdefault(find(parent, j.source_address), set()).add(
+            j.join_type
+        )
     for types in types_by_group.values():
         if JoinType.FULL in types and len(types) > 1:
             names = ", ".join(sorted(t.value for t in types))

@@ -42,6 +42,7 @@ from trilogy.core.processing.utility import (
     PADS_LEFT_JOIN_TYPES,
     GroupRequiredResponse,
 )
+from trilogy.core.union_find import find
 from trilogy.utility import unique
 
 if TYPE_CHECKING:
@@ -615,13 +616,6 @@ def _bound_addresses(g: "ReferenceGraph") -> set[str]:
     }
 
 
-def _find(parent: dict[int, int], i: int) -> int:
-    while parent[i] != i:
-        parent[i] = parent[parent[i]]
-        i = parent[i]
-    return i
-
-
 def _detach_bridging_derivations(
     g: "ReferenceGraph", cg, grain_only: dict[str, set[str]], bound: set[str]
 ) -> None:
@@ -660,10 +654,10 @@ def _detach_bridging_derivations(
     while detached and restored:
         restored = False
         for node, inputs in list(detached.items()):
-            roots = {_find(parent, component[i]) for i in inputs if i in component}
+            roots = {find(parent, component[i]) for i in inputs if i in component}
             if len(roots) != 1:
                 continue
-            parent[_find(parent, component[node])] = roots.pop()
+            parent[find(parent, component[node])] = roots.pop()
             cg.add_edges_from([(node, i) for i in inputs])
             del detached[node]
             restored = True

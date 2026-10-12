@@ -37,6 +37,7 @@ from trilogy.core.models.core import (
 from trilogy.core.models.datasource import Address, ColumnAssignment, Datasource
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.execute import ProcessedMockStatement
+from trilogy.core.union_find import find
 from trilogy.dialect.mock_pattern import mock_pattern
 from trilogy.dialect.results import MockResult
 
@@ -597,16 +598,8 @@ def partial_pool(pool: list[Any]) -> list[Any]:
     return pool[: max(1, min(len(pool) - 1, int(len(pool) * PARTIAL_COVERAGE)))]
 
 
-def _find(parent: dict[str, str], address: str) -> str:
-    parent.setdefault(address, address)
-    while parent[address] != address:
-        parent[address] = parent[parent[address]]
-        address = parent[address]
-    return address
-
-
 def _union(parent: dict[str, str], left: str, right: str) -> None:
-    roots = sorted({_find(parent, left), _find(parent, right)})
+    roots = sorted({find(parent, left), find(parent, right)})
     if len(roots) == 2:
         parent[roots[1]] = roots[0]
 
@@ -632,7 +625,7 @@ def canonical_column_map(environment: Environment) -> dict[str, str]:
     for members in groups.values():
         for member in members[1:]:
             _union(parent, members[0], member)
-    return {address: _find(parent, address) for address in list(parent)}
+    return {address: find(parent, address) for address in list(parent)}
 
 
 def covers_pool(values: Iterable[Any], pool: list[Any]) -> bool:

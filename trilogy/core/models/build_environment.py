@@ -20,12 +20,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.core import DataType
 from trilogy.core.models.keyspace import Keyspace
-
-
-def _find(parent: dict[str, str], node: str) -> str:
-    while (up := parent.setdefault(node, node)) != node:
-        parent[node] = node = parent.setdefault(up, up)
-    return node
+from trilogy.core.union_find import find
 
 
 def _ranked_classes(
@@ -34,10 +29,10 @@ def _ranked_classes(
 ) -> dict[str, tuple[str, ...]]:
     parent: dict[str, str] = {}
     for left, right in edges:
-        parent[_find(parent, right)] = _find(parent, left)
+        parent[find(parent, right)] = find(parent, left)
     classes: dict[str, list[str]] = {}
     for address in parent:
-        classes.setdefault(_find(parent, address), []).append(address)
+        classes.setdefault(find(parent, address), []).append(address)
     out: dict[str, tuple[str, ...]] = {}
     for members in classes.values():
         ranked = tuple(sorted(members, key=rank))

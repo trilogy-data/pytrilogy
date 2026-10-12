@@ -59,6 +59,7 @@ from trilogy.core.models.environment import (
     validate_concepts,
 )
 from trilogy.core.statements.common import SelectTypeMixin
+from trilogy.core.union_find import find
 from trilogy.utility import unique
 
 
@@ -364,26 +365,23 @@ class SelectStatement(HasUUID, SelectTypeMixin):
         concept grain the build derives from it."""
         parent: dict[str, str] = {}
 
-        def find(x: str) -> str:
-            parent.setdefault(x, x)
-            while parent[x] != x:
-                parent[x] = parent[parent[x]]
-                x = parent[x]
-            return x
-
         for join in self.join_clauses:
-            rs, rt = find(join.source_address), find(join.target_address)
+            rs, rt = find(parent, join.source_address), find(
+                parent, join.target_address
+            )
             if rs != rt:
                 parent[rs] = rt
         new_order: list[str] = []
         seen: set[str] = set()
         for c in grain.component_order:
-            rc = find(c) if c in parent else c
+            rc = find(parent, c) if c in parent else c
             if rc not in seen:
                 seen.add(rc)
                 new_order.append(rc)
         return Grain(
-            components={find(c) if c in parent else c for c in grain.components},
+            components={
+                find(parent, c) if c in parent else c for c in grain.components
+            },
             where_clause=grain.where_clause,
             component_order=new_order,
         )
