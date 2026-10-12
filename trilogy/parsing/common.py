@@ -31,6 +31,7 @@ from trilogy.core.models.author import (
     ConceptRef,
     Conditional,
     FilterItem,
+    FuncArgs,
     Function,
     FunctionCallWrapper,
     Grain,
@@ -67,23 +68,7 @@ from trilogy.core.statements.author import SelectStatement
 from trilogy.parsing.helpers import Meta
 from trilogy.utility import string_to_hash, unique
 
-ARBITRARY_INPUTS = (
-    AggregateWrapper
-    | FunctionCallWrapper
-    | WindowItem
-    | FilterItem
-    | SubselectItem
-    | Function
-    | Parenthetical
-    | ListWrapper
-    | MapWrapper
-    | Comparison
-    | int
-    | float
-    | str
-    | date
-    | bool
-)
+ARBITRARY_INPUTS = FuncArgs | SubselectItem | SubqueryItem
 
 Expr = (
     Function
@@ -98,7 +83,7 @@ Expr = (
 
 
 def unwrap_transformation(
-    input: Expr,
+    input: ARBITRARY_INPUTS,
     environment: Environment,
 ) -> (
     Function
@@ -138,7 +123,7 @@ def unwrap_transformation(
             operator=FunctionType.ALIAS,
             output_datatype=concept.datatype,
             output_purpose=concept.purpose,
-            arguments=[input],
+            arguments=[input],  # type: ignore[list-item]
         )
     elif isinstance(input, Comparison):
         # A comparison / membership (`x > 5`, `x in other`) references real
@@ -2056,4 +2041,4 @@ def arbitrary_to_concept(
     elif isinstance(parent, (Comparison, Conditional, Between)):
         return comparison_to_concept(parent, name, namespace, environment, metadata)
     else:
-        return constant_to_concept(parent, name, namespace, metadata)
+        return constant_to_concept(parent, name, namespace, metadata)  # type: ignore[arg-type]

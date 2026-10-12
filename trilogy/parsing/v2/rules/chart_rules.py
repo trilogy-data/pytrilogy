@@ -14,9 +14,9 @@ from trilogy.core.statements.author import (
     SelectItem,
     SelectStatement,
 )
-from trilogy.parsing.v2.concept_factory import (
-    arbitrary_to_concept_v2,
-    unwrap_transformation_v2,
+from trilogy.parsing.common import (
+    arbitrary_to_concept,
+    unwrap_transformation,
 )
 from trilogy.parsing.v2.rules.concept_rules import (
     metadata_from_meta,
@@ -92,13 +92,13 @@ def _binding_to_select_item(
     context: RuleContext,
 ) -> SelectItem:
     if binding.alias is not None:
-        transformation = unwrap_transformation_v2(binding.expr, context)
+        transformation = unwrap_transformation(binding.expr, context.environment)
         _, namespace, name, _ = parse_concept_reference(
             binding.alias, context.environment
         )
-        concept = arbitrary_to_concept_v2(
+        concept = arbitrary_to_concept(
             transformation,
-            context=context,
+            environment=context.environment,
             namespace=namespace,
             name=name,
             metadata=metadata_from_meta(

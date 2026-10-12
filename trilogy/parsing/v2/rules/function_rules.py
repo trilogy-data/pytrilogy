@@ -44,7 +44,7 @@ from trilogy.core.models.author import (
     WindowItemOver,
 )
 from trilogy.core.models.core import ArrayType, DataType, MapType, arg_to_datatype
-from trilogy.parsing.v2.concept_factory import arbitrary_to_concept_v2
+from trilogy.parsing.common import arbitrary_to_concept
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
     NodeHydrator,
@@ -315,7 +315,7 @@ def _materialize_grouping_keys(
         elif isinstance(item, str):
             refs.append(context.concepts.require(item).reference)
         else:
-            virt = arbitrary_to_concept_v2(item, context=context)
+            virt = arbitrary_to_concept(item, environment=context.environment)
             context.add_virtual_concept(virt, meta=core_meta(node.meta))
             refs.append(virt.reference)
     return refs
@@ -481,7 +481,7 @@ def aggregate_paren_by(
         elif isinstance(item, str):
             refs.append(context.concepts.require(item).reference)
         else:
-            virt = arbitrary_to_concept_v2(item, context=context)
+            virt = arbitrary_to_concept(item, environment=context.environment)
             context.add_virtual_concept(virt, meta=core_meta(node.meta))
             refs.append(virt.reference)
     return refs
@@ -853,7 +853,7 @@ def _parse_window_args(
         elif isinstance(item, WindowType):
             wtype = item
         else:
-            virt = arbitrary_to_concept_v2(item, context=context)
+            virt = arbitrary_to_concept(item, environment=context.environment)
             context.add_virtual_concept(virt, meta=core_meta(None))
             field_args.append(virt)
     return wtype, field_args, offset, order_by, over
@@ -914,7 +914,7 @@ def window_item_sql_aggregate(
     elif isinstance(content_arg, ConceptRef):
         content_arg = context.concepts.require(content_arg.address).reference
     elif not isinstance(content_arg, Concept):
-        virt = arbitrary_to_concept_v2(content_arg, context=context)
+        virt = arbitrary_to_concept(content_arg, environment=context.environment)
         context.add_virtual_concept(virt, meta=core_meta(None))
         content_arg = virt.reference
     else:

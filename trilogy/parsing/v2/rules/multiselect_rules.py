@@ -16,9 +16,9 @@ from trilogy.core.models.author import (
     WindowItem,
 )
 from trilogy.core.statements.author import MultiSelectStatement, SelectStatement
-from trilogy.parsing.v2.concept_factory import (
-    align_item_to_concept_v2,
-    derive_item_to_concept_v2,
+from trilogy.parsing.common import (
+    align_item_to_concept,
+    derive_item_to_concept,
 )
 from trilogy.parsing.v2.rules.concept_rules import metadata_from_meta
 from trilogy.parsing.v2.rules_context import (
@@ -167,14 +167,14 @@ def multi_select_statement(
 
     derived_concepts: list = []
     for x in align_c.items:
-        concept = align_item_to_concept_v2(
+        concept = align_item_to_concept(
             x,
             align_c,
             selects,
             where=None,
             having=None,
             limit=limit_val,
-            context=context,
+            environment=context.environment,
         )
         derived_concepts.append(concept)
         context.add_multiselect_concept(concept, meta=core_meta(node.meta))
@@ -218,8 +218,8 @@ def multi_select_statement(
                     f"Invalid derive expression {derivation}, must be a function, "
                     "comparison, or window expression.",
                 )
-            concept = derive_item_to_concept_v2(
-                derivation, name, lineage, context=context
+            concept = derive_item_to_concept(
+                derivation, name, lineage, namespace=context.environment.namespace
             )
             derived_concepts.append(concept)
             context.add_multiselect_concept(concept, meta=core_meta(node.meta))
