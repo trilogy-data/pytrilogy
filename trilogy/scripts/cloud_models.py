@@ -341,6 +341,14 @@ class JobRunExt(JobRun):
     files: list[JobStep] = []
 
 
+class RunArtifactDownload(BaseModel):
+    """``routes/jobs.rs::ArtifactDownload`` — a short-lived signed GET URL for
+    one of a run's stored artifacts. The URL carries its own authorization."""
+
+    url: str
+    expires_at: str
+
+
 class Schedule(BaseModel):
     """``models/job.rs::Schedule``."""
 

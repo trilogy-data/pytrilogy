@@ -61,6 +61,15 @@ means "accepted", not "succeeded". ``--wait`` (and ``runs wait <id>``) blocks
 until the server stamps the run finished and then exits non-zero unless it
 ended ``completed``.
 
+**A run's logs are an excerpt until you ask for the file.** ``runs show`` and a
+failed ``--wait`` print the tail of the stdout/stderr the run row carries,
+which the worker has already cut to a head and tail. A long statement echo can
+fill that tail before the error appears. ``runs logs <id>`` fetches the
+complete stream the worker uploaded: ``--stream`` chooses stderr (the default),
+stdout or the execution log, ``--attempt`` an earlier try of a retried run, and
+``-o`` a file to write it to. The API answers with a short-lived signed URL,
+which the CLI downloads without sending your token.
+
 **Getting a repository onto the cloud is one command.** ``cloud bootstrap
 [ROOT]``, run from a checkout, does the whole first-time setup: it syncs the
 tree to production under your own credentials (so the workspace, jobs and
@@ -142,6 +151,7 @@ from trilogy.scripts.cloud_models import (
     JobVersion,
     Me,
     OrgSummary,
+    RunArtifactDownload,
     Schedule,
     ScheduleExt,
     SecretMeta,
@@ -188,8 +198,11 @@ DEFAULT_EXCLUDE = (
 
 LOGIN_TIMEOUT_SECONDS = 300
 # How much of a run's stdout/stderr to echo. Full logs are an artifact
-# download, not a terminal dump.
+# download (`runs logs`), not a terminal dump.
 RUN_LOG_TAIL_CHARS = 4000
+#: The run artifacts that are logs; `state` is an artifact too, but not one.
+RUN_LOG_STREAMS = ("stderr", "stdout", "exec_log")
+ARTIFACT_DOWNLOAD_TIMEOUT_SECONDS = 300.0
 
 #: A run is over when the server stamps ``finished_at``. The status set is a
 #: belt-and-braces second signal, so a terminal state that somehow carries no
@@ -2703,11 +2716,28 @@ def _wait_for_run(
 
 
 def _print_run_logs(run: JobRunExt) -> None:
+    printed = False
     for stream, body in (("stdout", run.stdout), ("stderr", run.stderr)):
         text = (body or "").strip()
         if text:
             print_info(f"--- {stream} (tail) ---")
             click.echo(text[-RUN_LOG_TAIL_CHARS:])
+            printed = True
+    if printed:
+        print_info(f"Full logs: trilogy cloud runs logs {run.id}")
+
+
+def _download_signed(url: str) -> bytes:
+    """Fetch a signed artifact URL. No bearer token: the URL is its own
+    credential, and object storage rejects a second one."""
+    req = Request(url, headers={"User-Agent": "trilogy-cli"})
+    try:
+        with urlopen(req, timeout=ARTIFACT_DOWNLOAD_TIMEOUT_SECONDS) as resp:
+            return resp.read()
+    except HTTPError as exc:
+        raise CloudError(f"Downloading the artifact failed: {exc.code}") from exc
+    except (URLError, TimeoutError) as exc:
+        raise CloudError(f"Could not download the artifact: {exc}") from exc
 
 
 def _report_finished_run(org: str, run: JobRunExt, logs: bool = False) -> None:
@@ -2796,6 +2826,69 @@ def runs_show(ctx: click.Context, run_id: str) -> None:
         for step in run.files:
             print_info(f"  {step.status}: {step.name}")
     _print_run_logs(run)
+
+
+@runs.command("logs")
+@click.argument("run_id")
+@click.option(
+    "--stream",
+    type=click.Choice(RUN_LOG_STREAMS),
+    default="stderr",
+    show_default=True,
+    help="Which log: the job's stderr or stdout, or the per-statement "
+    "execution log (exec_log, JSON lines).",
+)
+@click.option(
+    "--attempt",
+    type=int,
+    default=None,
+    help="A retried run's earlier attempt, by its sequence number in "
+    "`runs show --json` (default: the current attempt).",
+)
+@click.option(
+    "--output",
+    "-o",
+    "output_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Write the log to this file instead of printing it.",
+)
+@click.pass_context
+def runs_logs(
+    ctx: click.Context,
+    run_id: str,
+    stream: str,
+    attempt: int | None,
+    output_path: Path | None,
+) -> None:
+    """A run's full log, as the worker uploaded it.
+
+    `runs show` prints only a tail of an excerpt, which a long statement echo
+    can fill before the error is reached; this is the whole stream.
+    """
+    client, org = _org_client(ctx)
+    path = f"/orgs/{org}/jobs/runs/{quote(run_id)}/artifacts/{stream}"
+    if attempt is not None:
+        path += f"?{urlencode({'attempt': str(attempt)})}"
+    grant = client.get_one(path, RunArtifactDownload)
+    body = _download_signed(grant.url)
+    if output_path is not None:
+        output_path.write_bytes(body)
+    if is_json_mode():
+        fields: dict[str, Any] = {
+            "run_id": run_id,
+            "stream": stream,
+            "bytes": len(body),
+        }
+        if output_path is not None:
+            fields["path"] = str(output_path)
+        else:
+            fields["log"] = body.decode("utf-8", errors="replace")
+        emit_event("run_log", org=org, **fields)
+    elif output_path is not None:
+        print_success(f"Wrote {len(body)} bytes of {stream} to {output_path}")
+    else:
+        click.echo(body.decode("utf-8", errors="replace"), nl=False)
 
 
 @cloud.group()

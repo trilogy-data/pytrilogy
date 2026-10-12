@@ -2245,6 +2245,84 @@ class TestRunCommands:
         payload = json.loads(run_cloud("runs", "show", "run-1").output)
         assert payload["event"] == "run" and payload["run"]["id"] == "run-1"
 
+    def test_show_points_at_the_full_logs(self, logged_in, run_cloud):
+        output = run_cloud("runs", "show", "run-1").output
+        assert "trilogy cloud runs logs run-1" in output
+
+
+def _grant_artifact(api, stream: str, body: bytes) -> None:
+    api.set(
+        "GET",
+        f"/orgs/{api.org}/jobs/runs/*/artifacts/{stream}",
+        {"url": f"{api.url}/signed/{stream}", "expires_at": TS},
+    )
+    api.set_raw("GET", f"/signed/{stream}", body)
+
+
+class TestRunLogs:
+    def test_prints_the_whole_stderr_by_default(self, logged_in, run_cloud):
+        _grant_artifact(logged_in, "stderr", b"HEAD error\n" + b"x" * 10_000 + b"\nEND")
+        result = run_cloud("runs", "logs", "run-1")
+        assert result.exit_code == 0, result.output
+        assert result.output.startswith("HEAD error") and result.output.endswith("END")
+
+    def test_the_signed_download_carries_no_bearer_token(self, logged_in, run_cloud):
+        _grant_artifact(logged_in, "stderr", b"boom")
+        run_cloud("runs", "logs", "run-1")
+        grant = logged_in.call_for(
+            "GET", f"/orgs/{logged_in.org}/jobs/runs/run-1/artifacts/stderr"
+        )
+        assert grant.headers["authorization"] == "Bearer tri_stored"
+        assert (
+            "authorization" not in logged_in.call_for("GET", "/signed/stderr").headers
+        )
+
+    def test_stream_and_attempt_are_forwarded(self, logged_in, run_cloud):
+        _grant_artifact(logged_in, "exec_log", b"{}\n")
+        run_cloud("runs", "logs", "run-1", "--stream", "exec_log", "--attempt", "2")
+        call = logged_in.call_for(
+            "GET", f"/orgs/{logged_in.org}/jobs/runs/run-1/artifacts/exec_log"
+        )
+        assert call.query == {"attempt": ["2"]}
+
+    def test_output_writes_the_file(self, logged_in, run_cloud, tmp_path):
+        _grant_artifact(logged_in, "stdout", b"\xffbinary-safe")
+        target = tmp_path / "out.log"
+        result = run_cloud(
+            "runs", "logs", "run-1", "--stream", "stdout", "-o", str(target)
+        )
+        assert result.exit_code == 0, result.output
+        assert target.read_bytes() == b"\xffbinary-safe"
+        assert "Wrote 12 bytes of stdout" in result.output
+
+    def test_a_run_without_the_artifact_names_it(self, logged_in, run_cloud):
+        logged_in.fail(
+            "GET",
+            f"/orgs/{logged_in.org}/jobs/runs/*/artifacts/stderr",
+            404,
+            'run has no "stderr" artifact',
+        )
+        result = run_cloud("runs", "logs", "run-1")
+        assert result.exit_code != 0
+        assert 'run has no "stderr" artifact' in result.output
+
+    def test_a_failed_download_is_an_error(self, logged_in, run_cloud):
+        logged_in.set(
+            "GET",
+            f"/orgs/{logged_in.org}/jobs/runs/*/artifacts/stderr",
+            {"url": f"{logged_in.url}/signed/stderr", "expires_at": TS},
+        )
+        logged_in.fail("GET", "/signed/stderr", 403, "expired")
+        result = run_cloud("runs", "logs", "run-1")
+        assert result.exit_code != 0
+        assert "Downloading the artifact failed: 403" in result.output
+
+    def test_emits_a_json_event(self, logged_in, run_cloud, json_mode):
+        _grant_artifact(logged_in, "stderr", b"boom")
+        payload = json.loads(run_cloud("runs", "logs", "run-1").output)
+        assert payload["event"] == "run_log"
+        assert payload["log"] == "boom" and payload["bytes"] == 4
+
 
 class TestScheduleCommands:
     def test_list_renders_a_row_per_schedule(self, logged_in, run_cloud):
