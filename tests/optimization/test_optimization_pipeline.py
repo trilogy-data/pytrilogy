@@ -104,7 +104,7 @@ def test_pipeline_runs_datasource_inlining_before_join_hoist():
     )
 
 
-def test_pipeline_marks_predicate_refire_dependency_on_union_dim_pushdown():
+def test_pipeline_orders_union_dim_pushdown_after_initial_pushdown():
     with _optimization_flags(
         predicate_pushdown=True,
         upgrade_condition_joins=True,
@@ -117,7 +117,6 @@ def test_pipeline_marks_predicate_refire_dependency_on_union_dim_pushdown():
         "predicate_pushdown.initial",
         "upgrade_join_on_guards.early",
         "union_dim_pushdown",
-        "predicate_pushdown.after_union_dim",
         "predicate_pushdown.remove",
         "collapse_single_parent.passthrough_after_pushdown",
         "upgrade_join_on_guards.final",
@@ -129,11 +128,8 @@ def test_pipeline_marks_predicate_refire_dependency_on_union_dim_pushdown():
         "predicate_pushdown.initial",
         "upgrade_join_on_guards.early",
     )
-    assert by_name["predicate_pushdown.after_union_dim"].refires_after == (
-        "union_dim_pushdown",
-    )
     assert by_name["predicate_pushdown.remove"].depends_on == (
-        "predicate_pushdown.after_union_dim",
+        "predicate_pushdown.initial",
     )
     assert by_name["predicate_pushdown.after_final_upgrade"].depends_on == (
         "upgrade_join_on_guards.final",
@@ -143,7 +139,7 @@ def test_pipeline_marks_predicate_refire_dependency_on_union_dim_pushdown():
     )
 
 
-def test_pipeline_refires_group_merge_after_shape_cleanup():
+def test_pipeline_merges_group_by_once_before_pushdown():
     with _optimization_flags(
         merge_irrelevant_group_by=True,
         join_hoist=True,
@@ -157,12 +153,8 @@ def test_pipeline_refires_group_merge_after_shape_cleanup():
         "join_hoist",
         "predicate_pushdown.initial",
         "predicate_pushdown.remove",
-        "merge_irrelevant_group_by.after_predicate_remove",
         "collapse_single_parent.passthrough_after_pushdown",
     ]
-    assert by_name[
-        "merge_irrelevant_group_by.after_predicate_remove"
-    ].refires_after == ("predicate_pushdown.remove",)
 
 
 def test_pipeline_orders_inner_joins_last_after_join_type_upgrades():
