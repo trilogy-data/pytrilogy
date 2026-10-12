@@ -168,6 +168,7 @@ persist into user_export from select user_id, display_name;
     results = exec.parse_text(text)
     for z in results:
         exec.execute_query(z)
+    exec.close()
     assert target.exists(), "parquet file was not created"
     table = pq.read_table(target)
     assert table.num_rows == 1

@@ -114,9 +114,11 @@ def _identity_group_single_use_aggregate(cte: CTE, parent: CTE) -> bool:
 
 
 def _active_parent_ctes(cte: CTE) -> list[CTE | UnionCTE]:
-    used_map = render_cte_used_map(cte)
-    referenced = set(used_map)
     parents = cte.dependency_nodes()
+    # Every path below falls back to `parents`; skip the render.
+    if len(parents) < 2:
+        return parents
+    referenced = set(render_cte_used_map(cte))
     active = [parent for parent in parents if parent.name in referenced]
     if active:
         return active

@@ -157,7 +157,6 @@ class DuckDBConfig(DialectConfig):
         self._enable_spatial = enable_spatial
         self._gcs_cache_bust = gcs_cache_bust
         self.read_only = read_only
-        self.guid = id(self)
 
     @property
     def enable_python_datasources(self) -> bool:

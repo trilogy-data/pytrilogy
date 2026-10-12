@@ -79,11 +79,6 @@ class TableFKInfo:
         """The sole single-column key, if the table has exactly one."""
         return self.key_raw_columns[0] if len(self.key_raw_columns) == 1 else None
 
-    @property
-    def single_key_canonical(self) -> str | None:
-        key = self.single_key_raw
-        return self.raw_to_canonical.get(key) if key is not None else None
-
 
 @dataclass
 class FKCandidate:

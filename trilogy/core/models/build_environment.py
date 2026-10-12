@@ -2,9 +2,10 @@ import difflib
 from collections.abc import Callable, ItemsView, Iterable, Iterator, ValuesView
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
-from functools import cached_property
+from functools import cached_property, partial
 from pathlib import Path
-from typing import Never
+from typing import Generic, Never, TypeVar
+from weakref import ReferenceType, ref
 
 from trilogy.constants import DEFAULT_NAMESPACE, PRESENCE_PROBE_PREFIX
 from trilogy.core.domain_graph import DomainGraph
@@ -52,6 +53,9 @@ class BuildEnvironmentConceptDict(dict):
         return super().values()
 
     def get(self, key: str, default: BuildConcept | None = None) -> BuildConcept | None:  # type: ignore
+        found = super().get(key)
+        if found is not None:
+            return found
         try:
             return self.__getitem__(key)
         except UndefinedConceptException:
@@ -449,3 +453,29 @@ class BuildEnvironment:
                 self.non_partial_materialized_canonical_concepts.add(
                     c.canonical_address
                 )
+
+
+T = TypeVar("T")
+
+
+class EnvCache(dict[int, tuple[ReferenceType[BuildEnvironment], T]], Generic[T]):
+    """id(environment) -> (weak handle, value). A BuildEnvironment's concepts
+    and datasources are fixed at construction (later writes go to the
+    ReferenceGraph, the authored Environment or a StrategyNode), so a value
+    can never go stale, only be discarded with its environment. The weak
+    handle makes the identity check exact: a recycled id cannot false-hit,
+    because a dead referent is never the live environment."""
+
+    def lookup(self, environment: BuildEnvironment) -> T | None:
+        cached = self.get(id(environment))
+        if cached is not None and cached[0]() is environment:
+            return cached[1]
+        return None
+
+    def store(self, environment: BuildEnvironment, value: T) -> T:
+        key = id(environment)
+        self[key] = (ref(environment, partial(self._evict, key)), value)
+        return value
+
+    def _evict(self, key: int, _dead: ReferenceType) -> None:
+        self.pop(key, None)

@@ -438,7 +438,27 @@ def _respelled(source: _SourceFacts, canonical: dict[str, str]) -> _SourceFacts:
     )
 
 
+# Stamping is a pure function of the sources' content; plan seams rebuild
+# identical scopes (a fresh holder each), so memo on content, bounded FIFO.
+_STAMPED: dict[tuple, tuple[_SourceFacts, ...]] = {}
+_STAMPED_SIZE = 256
+
+
 def _stamped(sources: tuple[_SourceFacts, ...]) -> tuple[_SourceFacts, ...]:
+    key = tuple(
+        (s.identifier, s.grain, s.grain_is_partial, tuple(s.bound.items()))
+        for s in sources
+    )
+    cached = _STAMPED.get(key)
+    if cached is not None:
+        return cached
+    if len(_STAMPED) >= _STAMPED_SIZE:
+        del _STAMPED[next(iter(_STAMPED))]
+    result = _STAMPED[key] = _stamp(sources)
+    return result
+
+
+def _stamp(sources: tuple[_SourceFacts, ...]) -> tuple[_SourceFacts, ...]:
     return tuple(dataclasses.replace(s, carried=_carried(s, sources)) for s in sources)
 
 

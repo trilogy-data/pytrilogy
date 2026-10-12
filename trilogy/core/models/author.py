@@ -1991,12 +1991,6 @@ class CaseSimpleWhen(Namespaced, ConceptArgs, DataTyped, ReferenceReplaceable):
     def concept_arguments(self):
         return get_concept_arguments(self.value_expr) + get_concept_arguments(self.expr)
 
-    @property
-    def concept_row_arguments(self):
-        return get_concept_row_arguments(self.value_expr) + get_concept_row_arguments(
-            self.expr
-        )
-
     def with_namespace(self, namespace: str) -> CaseSimpleWhen:
         return CaseSimpleWhen(
             value_expr=(
@@ -2051,12 +2045,6 @@ class CaseWhen(Namespaced, DataTyped, ConceptArgs, ReferenceReplaceable):
     @property
     def concept_arguments(self):
         return get_concept_arguments(self.comparison) + get_concept_arguments(self.expr)
-
-    @property
-    def concept_row_arguments(self):
-        return get_concept_row_arguments(self.comparison) + get_concept_row_arguments(
-            self.expr
-        )
 
     def with_namespace(self, namespace: str) -> CaseWhen:
         return CaseWhen(

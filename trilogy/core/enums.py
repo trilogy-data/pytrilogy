@@ -54,10 +54,6 @@ class ConceptSource(Enum):
     AUTO_DERIVED = "auto_derived"
 
 
-class StatementType(Enum):
-    QUERY = "query"
-
-
 class Purpose(Enum):
     CONSTANT = "const"
     KEY = "key"

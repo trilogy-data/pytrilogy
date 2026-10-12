@@ -357,13 +357,6 @@ class _GraphBase:
             _raise_missing(node)
         return [(pred, node) for pred in self._core.predecessors(node)]
 
-    def out_edges(self, node: str | None = None) -> list[tuple[str, str]]:
-        if node is None:
-            return self._ordered_edges()
-        if node not in self:
-            _raise_missing(node)
-        return [(node, succ) for succ in self._core.successors(node)]
-
     def remove_edge(self, u: str, v: str) -> None:
         if not self._core.has_edge(u, v):
             raise NetworkXError(f"The edge {u}-{v} is not in the graph.")

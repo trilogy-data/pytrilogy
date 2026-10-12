@@ -238,7 +238,6 @@ class StrategyNode:
         self.input_concepts: list[BuildConcept] = (
             unique(input_concepts, "address") if input_concepts else []
         )
-        self.input_lcl = LooseBuildConceptList(concepts=self.input_concepts)
         self.output_concepts: list[BuildConcept] = unique(output_concepts, "address")
         self.output_lcl = LooseBuildConceptList(concepts=self.output_concepts)
 
