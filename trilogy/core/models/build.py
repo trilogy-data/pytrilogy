@@ -164,8 +164,15 @@ def _gen_comp_name(parent: BuildComparison) -> str:
     return f"{VIRTUAL_CONCEPT_PREFIX}_comp_{string_to_hash(_canonical_str_for_hash(parent))}"
 
 
-def _gen_msl_name(parent: BuildMultiSelectLineage) -> str:
-    return f"{VIRTUAL_CONCEPT_PREFIX}_msl_{string_to_hash(str(parent))}"
+def _gen_msl_name(parent: BuildMultiSelectLineage, output: str | None = None) -> str:
+    """Named by the construct's authored outputs and which one this is. The
+    lineage's repr is not an identity: it embeds build-local state (its
+    `local_concepts`, the arms' author scopes) that grows as columns build,
+    and every output of one construct shares it."""
+    identity = "|".join(
+        [type(parent).__name__, *sorted(parent.derived_concepts), f">{output}"]
+    )
+    return f"{VIRTUAL_CONCEPT_PREFIX}_msl_{string_to_hash(identity)}"
 
 
 def _gen_default_name(parent: Any) -> str:
@@ -177,10 +184,16 @@ _CONCEPT_NAME_GENERATORS: dict[type, Callable[[Any], str]] = {}
 
 
 def generate_concept_name(
-    parent: Any, merge_concepts: Iterable[str] | None = None
+    parent: Any,
+    merge_concepts: Iterable[str] | None = None,
+    output: str | None = None,
 ) -> str:
+    """`output`: the address of the concept named, for a lineage several
+    outputs share (a multiselect / union)."""
     generator = _CONCEPT_NAME_GENERATORS.get(type(parent))
-    if generator:
+    if isinstance(parent, BuildMultiSelectLineage):
+        canonical_name = _gen_msl_name(parent, output)
+    elif generator:
         canonical_name = generator(parent)
     else:
         canonical_name = _gen_default_name(parent)
@@ -3577,6 +3590,7 @@ class Factory:
                 generate_concept_name(
                     build_lineage,
                     self.scoped_merge_sources_by_target.get(base.address),
+                    output=base.address,
                 )
                 if build_lineage
                 else base.name
@@ -5051,7 +5065,5 @@ _CONCEPT_NAME_GENERATORS.update(
         BuildFunction: _gen_function_name,
         BuildParenthetical: _gen_paren_name,
         BuildComparison: _gen_comp_name,
-        BuildMultiSelectLineage: _gen_msl_name,
-        BuildUnionSelectLineage: _gen_msl_name,
     }
 )
