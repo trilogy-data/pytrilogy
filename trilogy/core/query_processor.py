@@ -121,7 +121,7 @@ from trilogy.core.statements.execute import (
     ProcessedQueryPersist,
 )
 from trilogy.hooks.base_hook import BaseHook
-from trilogy.utility import unique
+from trilogy.utility import gc_paused, unique
 
 LOGGER_PREFIX = "[QUERY BUILD]"
 
@@ -1509,14 +1509,16 @@ def process_query(
     # owns the file instead).
     trace_path = plan_trace.env_output_path()
     if trace_path is None or plan_trace.active():
-        return _process_query(
-            environment, statement, hooks, having_alias, supports_full_join
-        )
+        with gc_paused():
+            return _process_query(
+                environment, statement, hooks, having_alias, supports_full_join
+            )
     plan_trace.start(str(statement))
     try:
-        return _process_query(
-            environment, statement, hooks, having_alias, supports_full_join
-        )
+        with gc_paused():
+            return _process_query(
+                environment, statement, hooks, having_alias, supports_full_join
+            )
     finally:
         trace = plan_trace.stop()
         if trace is not None:
