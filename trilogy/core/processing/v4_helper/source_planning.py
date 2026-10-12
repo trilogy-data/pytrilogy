@@ -10,7 +10,7 @@ lineage-related cross product, the unconditioned retry), never a re-search.
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import cast
 
@@ -501,43 +501,40 @@ def _network_source(
     ]
     for address in sorted(keep_addresses):
         named = any(concept.address == address for concept in bridge_concepts)
-        if not named:
-            connector = request.environment.concepts.get(address)
-            if connector is not None:
-                bridge_concepts.append(connector)
-                named = True
-        # A connector labeled by a canonical (`_virt_*`) address is a derived
-        # merge key: each side of the declared equality owns one variant, known
-        # only to `canonical_concepts` (the demoted side's real lineage lives in
-        # `alias_origin_lookup`). Carry, per CHOSEN source, the concept behind
-        # the binding that source actually reads (its own side's variant), so
-        # each scan materializes its side and the merge joins them on the
-        # pseudonym equivalence (the `renders_derived_key` contract downstream).
-        # Never the whole equivalence class: an unread member (a second
-        # declared alias for the same key) would hand the join a column the
-        # authored FK already provides, changing the join.
-        #
         # An already-named address is revisited only when it is a DEMOTED merge
-        # key, which no scan can emit off its own columns. The representative is
-        # the class's lexicographic minimum, so whether it spells the authored
-        # address or the `_virt_` canonical follows from the namespace the model
-        # happens to be imported under; without the revisit the origin reaches
-        # the scan only under the second spelling and the key is unsourced.
+        # key, which no scan can emit off its own columns.
         if named and not _is_demoted_merge_key(
             request.environment.concepts.get(address), request.environment
         ):
             continue
-        for node in result.solution.sources:
-            binding = network.candidates[node].bindings.get(address)
-            if binding is None:
-                continue
-            resolved = request.environment.concepts.get(
-                binding.address
-            ) or request.environment.canonical_concepts.get(binding.address)
-            if resolved is not None and not any(
+        # A class address is only a label: the representative may spell any
+        # member (the `_virt_` canonical, the authored key, a merged key's raw
+        # origin), and which one follows from naming, not semantics. Carry, per
+        # CHOSEN source, the concept behind the binding that source actually
+        # reads (its own side's variant), so each scan materializes its side and
+        # the merge joins them on the pseudonym equivalence (the
+        # `renders_derived_key` contract downstream). Never the whole class, nor
+        # the representative's own concept: an unread member would hand a scan
+        # an output it cannot emit, or the join a column the authored FK
+        # already provides.
+        carried = _chosen_source_concepts(
+            request.environment, network, result.solution.sources, address
+        )
+        for resolved in carried:
+            if not any(
                 concept.address == resolved.address for concept in bridge_concepts
             ):
                 bridge_concepts.append(resolved)
+        if named or carried:
+            continue
+        # No chosen scan binds the class (a derived connector's alias): carry
+        # the address itself, unless a bridge concept already stands for it.
+        connector = request.environment.concepts.get(address)
+        if connector is not None and not any(
+            network.equivalence.get(concept.address, concept.address) == address
+            for concept in bridge_concepts
+        ):
+            bridge_concepts.append(connector)
     for alias in connector_aliases:
         concept = request.environment.concepts.get(alias)
         if concept is not None and not any(
@@ -583,6 +580,27 @@ def _network_source(
             assembles_axis=bool(network.axis_families),
         )
     )
+
+
+def _chosen_source_concepts(
+    environment: BuildEnvironment,
+    network: SourceNetwork,
+    sources: Iterable[str],
+    address: str,
+) -> list[BuildConcept]:
+    """The concepts the chosen sources read for one equivalence class, one per
+    distinct binding."""
+    out: dict[str, BuildConcept] = {}
+    for node in sources:
+        binding = network.candidates[node].bindings.get(address)
+        if binding is None:
+            continue
+        resolved = environment.concepts.get(
+            binding.address
+        ) or environment.canonical_concepts.get(binding.address)
+        if resolved is not None:
+            out.setdefault(resolved.address, resolved)
+    return list(out.values())
 
 
 def _binds_undemanded_span_partially(network: SourceNetwork, source: str) -> bool:
@@ -800,18 +818,24 @@ def _derived_connector_nodes(
     planned: set[str] = set()
     connectors: list[StrategyNode] = []
     for concept in plan.concepts:
+        concept_covered = concept.address in covered
         for alias in (concept.address, *concept.pseudonyms):
             origin = env.alias_origin_lookup.get(alias)
-            # Skip non-derived origins, anything a datasource already sources,
-            # and any connector currently mid-plan. The last is the re-entry
-            # guard: planning a connector recurses to source its own inputs,
-            # whose bridge re-routes through the same connector; without the
-            # guard that re-injects forever.
+            # Skip non-derived origins, anything a datasource already sources
+            # (the concept itself or its origin: a merge key a scan stores never
+            # needs its merge partner derived), unless the search chose that
+            # origin as a connector, and any connector currently mid-plan. The
+            # last is the re-entry guard: planning a connector recurses to source
+            # its own inputs, whose bridge re-routes through the same connector;
+            # without the guard that re-injects forever.
             if (
                 origin is None
                 or origin.lineage is None
                 or origin.address in planned
-                or (origin.address in covered and alias not in forced)
+                or (
+                    (concept_covered or origin.address in covered)
+                    and alias not in forced
+                )
                 or origin.address in history.connectors_in_progress
             ):
                 continue
