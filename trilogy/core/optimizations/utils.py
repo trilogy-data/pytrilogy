@@ -419,6 +419,24 @@ def rebind_rename_to_consumed(
     return column
 
 
+def reaches(node: CTE | UnionCTE, target: str, internal_ctes: bool = False) -> bool:
+    """``node`` IS ``target`` or reads from it, at any depth; ``internal_ctes``
+    also walks into a union's arms."""
+    seen: set[str] = set()
+    stack: list[CTE | UnionCTE] = [node]
+    while stack:
+        current = stack.pop()
+        if current.name == target:
+            return True
+        if current.name in seen:
+            continue
+        seen.add(current.name)
+        stack.extend(current.dependency_nodes())
+        if internal_ctes and isinstance(current, UnionCTE):
+            stack.extend(current.internal_ctes)
+    return False
+
+
 def is_sole_consumer(
     cte: CTE,
     parent: CTE,

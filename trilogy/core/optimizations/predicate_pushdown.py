@@ -27,6 +27,7 @@ from trilogy.core.optimizations.utils import (
     null_padded_nodes,
     output_addresses,
     propagate_existence_sources,
+    reaches,
     strip_condition_atom,
     zero_filled_reads,
 )
@@ -40,21 +41,6 @@ from trilogy.core.processing.condition_utility import (
 )
 from trilogy.core.processing.join_resolution import OUTER_JOIN_TYPES
 from trilogy.utility import unique
-
-
-def _transitively_depends_on(node: CTE | UnionCTE, target_name: str) -> bool:
-    """True if ``node`` reaches ``target_name`` through its dependency chain."""
-    seen: set[str] = set()
-    stack: list[CTE | UnionCTE] = list(node.dependency_nodes())
-    while stack:
-        dep = stack.pop()
-        if dep.name == target_name:
-            return True
-        if dep.name in seen:
-            continue
-        seen.add(dep.name)
-        stack.extend(dep.dependency_nodes())
-    return False
 
 
 def _predicate_safe_past_null_extension(
@@ -89,10 +75,7 @@ def _promotion_would_cycle(
     same concept pushing into each other's producers), the new edge makes the
     CTE graph cyclic and ``reorder_ctes`` cannot sort it.
     """
-    return any(
-        s.name == target.name or _transitively_depends_on(s, target.name)
-        for s in sources
-    )
+    return any(reaches(s, target.name) for s in sources)
 
 
 def _consumer_outer_joins_union(consumer: CTE | UnionCTE, union: UnionCTE) -> bool:

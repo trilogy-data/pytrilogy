@@ -19,7 +19,7 @@
 The stage implementations live in `v4_helper/`; the per-derivation node
 builders (including the nested-select constructs: rowset, multiselect, union
 TVF) live in `v4_node_generators/`. This file is just the public API, the
-materialized-root pre-pass, and the History cache wiring.
+materialized-root pre-pass, and the V4History cache wiring.
 """
 
 import logging
@@ -58,7 +58,7 @@ from trilogy.core.processing.discovery_utility import (
     raise_if_filter_disconnected,
 )
 from trilogy.core.processing.node_generators.select_node import root_is_unsourced
-from trilogy.core.processing.nodes import History, StrategyNode
+from trilogy.core.processing.nodes import StrategyNode
 from trilogy.core.processing.utility import walk_lineage
 from trilogy.core.processing.v4_helper import (
     FINAL_NODE_ID,
@@ -84,7 +84,6 @@ __all__ = [
     "FINAL_NODE_ID",
     "ROW_SHAPE_BARRIER_DERIVATIONS",
     "BuildInfo",
-    "History",
     "V4History",
     "append_existence_check",
     "search_concepts",

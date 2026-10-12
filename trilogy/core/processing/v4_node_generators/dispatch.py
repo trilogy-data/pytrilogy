@@ -8,7 +8,8 @@ from trilogy.core.enums import Derivation
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import BuildConcept, BuildWhereClause
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.nodes import History, StrategyNode
+from trilogy.core.processing.nodes import StrategyNode
+from trilogy.core.processing.v4_helper.history import V4History
 
 from .aggregate import gen_aggregate
 from .basic import gen_basic
@@ -60,7 +61,7 @@ def build_node(
     existence_source: bool = False,
     collapse_to_grain: bool = True,
     complete_partials: bool = True,
-    history: History,
+    history: V4History,
     g: ReferenceGraph,
     staged_conditions: list[BuildWhereClause] | None = None,
     depth: int = 0,

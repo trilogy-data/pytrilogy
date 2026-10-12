@@ -90,10 +90,9 @@ TRILOGY_QUERY_TOOL = LLMToolDefinition(
 
 
 def create_query_request_options() -> LLMRequestOptions:
-    return LLMRequestOptions(
-        tools=[TRILOGY_CREATE_QUERY_TOOL, TRILOGY_QUERY_TOOL],
-        require_tool=True,
-    )
+    # tool_choice auto: current Claude models reject a forced tool choice, and
+    # generate_query re-prompts a turn that calls no tool
+    return LLMRequestOptions(tools=[TRILOGY_CREATE_QUERY_TOOL, TRILOGY_QUERY_TOOL])
 
 
 TRILOGY_LEAD_IN = get_trilogy_prompt(

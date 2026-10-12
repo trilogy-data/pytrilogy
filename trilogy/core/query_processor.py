@@ -90,7 +90,6 @@ from trilogy.core.processing.node_generators.select_helpers.datasource_injection
 )
 from trilogy.core.processing.nodes import (
     BuildCaches,
-    History,
     SelectNode,
     StrategyNode,
 )
@@ -830,7 +829,7 @@ def _plan_query_node(
     build_environment: BuildEnvironment,
     graph: ReferenceGraph,
     conditions: BuildWhereClause | None,
-    history: History,
+    history: V4History,
     carried: set[str],
     staged_conditions: list[BuildWhereClause] | None = None,
 ) -> StrategyNode:
@@ -1050,7 +1049,7 @@ def _session_build_caches(
 def get_query_node(
     environment: Environment,
     statement: SelectLineage | MultiSelectLineage,
-    history: History | None = None,
+    history: V4History | None = None,
     scoped_joins: list[tuple[str, str, JoinType]] | None = None,
     build_lineage_sink: (
         list[BuildSelectLineage | BuildMultiSelectLineage] | None
@@ -1058,7 +1057,7 @@ def get_query_node(
 ) -> StrategyNode:
     if not statement.output_components:
         raise ValueError(f"Statement has no output components {statement}")
-    history = history or History(
+    history = history or V4History(
         base_environment=environment,
         build_caches=_session_build_caches(environment, scoped_joins),
     )

@@ -16,6 +16,7 @@ from enum import Enum
 from typing import Any
 
 from trilogy.core.models.build import BuildDatasource, BuildUnionDatasource
+from trilogy.core.union_find import find
 
 # Bounds the cover enumeration. A truncated search is reported, never silent.
 COVER_LIMIT = 4096
@@ -590,13 +591,6 @@ class Obligation:
 
 def node_address(node: str) -> str:
     return node.split("~", maxsplit=1)[1].split("@", maxsplit=1)[0]
-
-
-def find(parent: dict[str, str], node: str) -> str:
-    while parent.get(node, node) != node:
-        parent[node] = parent.get(parent[node], parent[node])
-        node = parent[node]
-    return node
 
 
 def union(parent: dict[str, str], left: str, right: str) -> bool:

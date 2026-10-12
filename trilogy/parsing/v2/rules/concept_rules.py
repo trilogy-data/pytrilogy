@@ -60,10 +60,10 @@ from trilogy.core.statements.author import (
     PropertiesDeclarationStatement,
     ShowStatement,
 )
-from trilogy.parsing.common import constant_to_concept
-from trilogy.parsing.v2.concept_factory import (
-    arbitrary_to_concept_v2,
-    unwrap_transformation_v2,
+from trilogy.parsing.common import (
+    arbitrary_to_concept,
+    constant_to_concept,
+    unwrap_transformation,
 )
 from trilogy.parsing.v2.concept_syntax import (
     ConceptDeclarationSyntax,
@@ -293,7 +293,7 @@ def concept_derivation(
     if isinstance(source_value, SubqueryItem):
         # `auto x <- (select ...)` aliases the subquery's rowset output; share
         # the select-output lowering so both placements behave identically.
-        source_value = unwrap_transformation_v2(source_value, context)
+        source_value = unwrap_transformation(source_value, context.environment)
     if isinstance(
         source_value,
         (
@@ -308,11 +308,11 @@ def concept_derivation(
             SubselectItem,
         ),
     ):
-        concept_value = arbitrary_to_concept_v2(
+        concept_value = arbitrary_to_concept(
             source_value,
             name=name,
             namespace=namespace,
-            context=context,
+            environment=context.environment,
             metadata=metadata,
         )
         if purpose == Purpose.KEY and concept_value.purpose != Purpose.KEY:
@@ -344,7 +344,7 @@ def concept_derivation(
             metadata=metadata,
         )
     elif isinstance(source_value, ConceptRef):
-        concept_value = arbitrary_to_concept_v2(
+        concept_value = arbitrary_to_concept(
             context.function_factory.create_function(
                 [source_value],
                 FunctionType.ALIAS,
@@ -352,7 +352,7 @@ def concept_derivation(
             ),
             name=name,
             namespace=namespace,
-            context=context,
+            environment=context.environment,
             metadata=metadata,
         )
     else:

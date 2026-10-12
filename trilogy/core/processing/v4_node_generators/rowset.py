@@ -18,7 +18,7 @@ from trilogy.core.processing.node_generators.presence_probe import (
     is_presence_probe,
     probe_member_address,
 )
-from trilogy.core.processing.nodes import History, RowsetNode, StrategyNode
+from trilogy.core.processing.nodes import RowsetNode, StrategyNode
 from trilogy.core.processing.v4_helper.history import V4History
 
 from .condition_sources import inject_condition_at_node, resolve_row_sources
@@ -31,7 +31,7 @@ def gen_rowset(
     environment: BuildEnvironment,
     conditions: BuildWhereClause | None = None,
     *,
-    history: History,
+    history: V4History,
     depth: int = 0,
 ) -> StrategyNode | None:
     """Boundary node for a rowset reference. The rowset's inner select is a
@@ -41,7 +41,7 @@ def gen_rowset(
     parent (a non-handle concept bucketed alongside the handles) is logged
     rather than silently dropped. Enrichment joins back to the outer query are
     handled by the outer group graph / FINAL merge, not here."""
-    if not outputs or not isinstance(history, V4History):
+    if not outputs:
         return None
     if parents:
         logger.info(

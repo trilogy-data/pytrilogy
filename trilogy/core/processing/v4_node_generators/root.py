@@ -15,7 +15,7 @@ from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
     decompose_condition,
 )
-from trilogy.core.processing.nodes import History, SelectNode, StrategyNode
+from trilogy.core.processing.nodes import SelectNode, StrategyNode
 from trilogy.core.processing.v4_helper.condition_injection import (
     ConditionSources,
     condition_row_args,
@@ -235,7 +235,7 @@ def _resolve_root_condition_sources(
     conditions: BuildWhereClause,
     environment: BuildEnvironment,
     g,
-    history: History,
+    history: V4History,
     preexisting_conditions: BuildWhereClause | None = None,
     staged_conditions: list[BuildWhereClause] | None = None,
 ) -> ConditionSources:
@@ -417,7 +417,7 @@ def gen_root(
     *,
     preexisting_conditions: BuildWhereClause | None = None,
     complete_partials: bool = True,
-    history: History,
+    history: V4History,
     g,
     staged_conditions: list[BuildWhereClause] | None = None,
     arm_local: bool = False,

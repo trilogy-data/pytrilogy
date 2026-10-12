@@ -134,7 +134,7 @@ def test_datatype_to_field_prompt():
 def test_query_request_options():
     options = create_query_request_options()
 
-    assert options.require_tool is True
+    assert options.require_tool is False
     assert options.tool_choice is None
     assert len(options.tools) == 2
     assert options.tools[0] == TRILOGY_CREATE_QUERY_TOOL

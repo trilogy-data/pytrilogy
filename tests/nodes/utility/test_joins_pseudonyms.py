@@ -9,6 +9,10 @@ import dataclasses
 
 from trilogy import Environment, parse
 from trilogy.core.enums import JoinType, Modifier
+from trilogy.core.models.build_environment import (
+    BuildEnvironment,
+    BuildEnvironmentConceptDict,
+)
 from trilogy.core.processing.join_resolution import (
     get_modifiers,
     get_node_joins,
@@ -72,6 +76,51 @@ datasource people (id:id, name:name) grain(id) address people;
         "local.label": "local.name",
         "local.name": "local.name",
     }
+
+
+# --- BuildEnvironment class inheritance ------------------------------------
+
+
+def _delta(baseline, concepts=None):
+    built = BuildEnvironmentConceptDict()
+    built.update(baseline.concepts if concepts is None else concepts)
+    return BuildEnvironment(
+        concepts=built,
+        alias_origin_lookup=dict(baseline.alias_origin_lookup),
+        class_baseline=baseline,
+    )
+
+
+def test_delta_inherits_baseline_classes_when_names_match():
+    baseline = _merged_env()
+    delta = _delta(baseline)
+    assert delta.value_classes is baseline.value_classes
+    assert delta.spelling_classes is baseline.spelling_classes
+    assert delta.address_roots() is baseline.address_roots()
+
+
+def test_delta_with_reordered_names_computes_its_own_classes():
+    baseline = _merged_env()
+    delta = _delta(baseline, dict(reversed(list(baseline.concepts.items()))))
+    assert delta.value_classes is not baseline.value_classes
+    assert dict(delta.value_classes) == dict(baseline.value_classes)
+
+
+def test_delta_with_a_new_pseudonym_computes_its_own_classes():
+    baseline = _merged_env()
+    assert baseline.value_classes
+    concepts = dict(baseline.concepts)
+    concepts["p1.uid"] = dataclasses.replace(concepts["p1.uid"], pseudonyms={"p2.uid"})
+    delta = _delta(baseline, concepts)
+    assert delta.value_classes is not baseline.value_classes
+    assert "p2.uid" in delta.value_classes["p1.uid"]
+
+
+def test_delta_of_a_baseline_grown_since_its_classes_computes_its_own():
+    baseline = _merged_env()
+    assert baseline.value_classes
+    baseline.concepts["local.extra"] = baseline.concepts["p1.uid"]
+    assert _delta(baseline).value_classes is not baseline.value_classes
 
 
 # --- get_node_joins: pseudonym equivalence ---------------------------------

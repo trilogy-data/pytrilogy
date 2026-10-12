@@ -10,7 +10,6 @@ from trilogy.core.processing.concept_strategies_v4 import V4History
 from trilogy.core.processing.concept_strategies_v4 import (
     search_concepts as search_concepts_v4,
 )
-from trilogy.core.processing.nodes import History
 from trilogy.core.processing.v4_helper.models import BuildInfo
 from trilogy.executor import Executor
 from trilogy.parser import parse_text
@@ -22,7 +21,7 @@ def plan(model: str, query: str) -> tuple[BuildInfo, BuildEnvironment]:
     env, _ = env.parse(model)
     _, parsed = parse_text(query, env)
     statement = parsed[-1]
-    history = History(base_environment=env)
+    history = V4History(base_environment=env)
     history.build_caches.pseudonym_map = get_canonical_pseudonyms(env)
     factory = Factory(
         environment=env,

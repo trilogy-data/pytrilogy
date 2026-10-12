@@ -37,6 +37,7 @@ from typing import Any
 from weakref import ReferenceType, ref
 
 from trilogy.core.enums import JoinType
+from trilogy.core.union_find import find
 
 
 class DomainRelation(Enum):
@@ -310,27 +311,22 @@ class DomainGraph:
             return self._canonical
         parent: dict[str, str] = {}
 
-        def find(x: str) -> str:
-            parent.setdefault(x, x)
-            while parent[x] != x:
-                parent[x] = parent[parent[x]]
-                x = parent[x]
-            return x
-
         for edge in self.edges:
             if edge.provenance is not EdgeProvenance.DECLARED:
                 continue
             if edge.relation is DomainRelation.SUBSET:
                 # preserve historical find() call order: anchor (superset)
                 # first, then the subset side, rooting on the anchor.
-                anchor, other = find(edge.target), find(edge.source)
+                anchor, other = find(parent, edge.target), find(parent, edge.source)
                 if anchor != other:
                     parent[other] = anchor
             else:
-                source_root, target_root = find(edge.source), find(edge.target)
+                source_root, target_root = find(parent, edge.source), find(
+                    parent, edge.target
+                )
                 if source_root != target_root:
                     parent[source_root] = target_root
-        self._canonical = {a: find(a) for a in parent if find(a) != a}
+        self._canonical = {a: find(parent, a) for a in parent if find(parent, a) != a}
         return self._canonical
 
     def canonical(self, address: str) -> str:
@@ -525,19 +521,14 @@ class DomainGraph:
             return self._eq_classes
         parent: dict[str, str] = {}
 
-        def find(x: str) -> str:
-            parent.setdefault(x, x)
-            while parent[x] != x:
-                parent[x] = parent[parent[x]]
-                x = parent[x]
-            return x
-
         for edge in self.edges:
             if edge.relation is DomainRelation.EQUAL and edge.condition is None:
-                left_root, right_root = find(edge.source), find(edge.target)
+                left_root, right_root = find(parent, edge.source), find(
+                    parent, edge.target
+                )
                 if left_root != right_root:
                     parent[left_root] = right_root
-        self._eq_classes = {a: find(a) for a in parent}
+        self._eq_classes = {a: find(parent, a) for a in parent}
         return self._eq_classes
 
     def _subset_reachable(self, start: str, goal: str, rep: dict[str, str]) -> bool:
@@ -617,23 +608,18 @@ class DomainGraph:
         independent of any declaration."""
         parent: dict[str, str] = {}
 
-        def find(x: str) -> str:
-            parent.setdefault(x, x)
-            while parent[x] != x:
-                parent[x] = parent[parent[x]]
-                x = parent[x]
-            return x
-
         for edge in self.edges:
             if (
                 edge.relation is DomainRelation.EQUAL
                 and edge.provenance is EdgeProvenance.STRUCTURAL
                 and edge.condition is None
             ):
-                left_root, right_root = find(edge.source), find(edge.target)
+                left_root, right_root = find(parent, edge.source), find(
+                    parent, edge.target
+                )
                 if left_root != right_root:
                     parent[left_root] = right_root
-        return find(left) == find(right) and left != right
+        return find(parent, left) == find(parent, right) and left != right
 
     def relation(
         self,

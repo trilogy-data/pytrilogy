@@ -31,6 +31,7 @@ from trilogy.core.models.author import (
     ConceptRef,
     Conditional,
     FilterItem,
+    FuncArgs,
     Function,
     FunctionCallWrapper,
     Grain,
@@ -84,6 +85,8 @@ ARBITRARY_INPUTS = (
     | date
     | bool
 )
+# what the concept builders accept: their fallthrough wraps any constant
+ArbitraryInput = FuncArgs | SubselectItem | SubqueryItem
 
 Expr = (
     Function
@@ -98,7 +101,7 @@ Expr = (
 
 
 def unwrap_transformation(
-    input: Expr,
+    input: ArbitraryInput,
     environment: Environment,
 ) -> (
     Function
@@ -138,7 +141,7 @@ def unwrap_transformation(
             operator=FunctionType.ALIAS,
             output_datatype=concept.datatype,
             output_purpose=concept.purpose,
-            arguments=[input],
+            arguments=[input],  # type: ignore[list-item]
         )
     elif isinstance(input, Comparison):
         # A comparison / membership (`x > 5`, `x in other`) references real
@@ -1779,7 +1782,7 @@ def union_item_to_concept(
 
 
 def derive_item_to_concept(
-    parent: ARBITRARY_INPUTS,
+    parent: ArbitraryInput,
     name: str,
     lineage: MultiSelectLineage,
     namespace: str | None = None,
@@ -1805,7 +1808,7 @@ def derive_item_to_concept(
 
 
 def generate_concept_name(
-    parent: ARBITRARY_INPUTS,
+    parent: ArbitraryInput,
 ) -> str:
     """Generate a name for a concept based on its parent type and content."""
     if isinstance(parent, AggregateWrapper):
@@ -1983,7 +1986,7 @@ def comparison_to_concept(
 
 
 def arbitrary_to_concept(
-    parent: ARBITRARY_INPUTS,
+    parent: ArbitraryInput,
     environment: Environment,
     namespace: str | None = None,
     name: str | None = None,
@@ -2056,4 +2059,4 @@ def arbitrary_to_concept(
     elif isinstance(parent, (Comparison, Conditional, Between)):
         return comparison_to_concept(parent, name, namespace, environment, metadata)
     else:
-        return constant_to_concept(parent, name, namespace, metadata)
+        return constant_to_concept(parent, name, namespace, metadata)  # type: ignore[arg-type]

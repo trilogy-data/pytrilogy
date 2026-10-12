@@ -66,6 +66,7 @@ from trilogy.core.processing.utility import (
     left_deep_joins,
     padded_by,
 )
+from trilogy.core.union_find import find
 from trilogy.utility import unique
 
 LOGGER_PREFIX = "[CONCEPT DETAIL - MERGE NODE]"
@@ -112,19 +113,12 @@ def _key_equivalence_classes(pairs: list[tuple[str, str]]) -> list[set[str]]:
     so a chain (`a=b`, `c=b`) yields the single class {a, b, c}."""
     parent: dict[str, str] = {}
 
-    def find(x: str) -> str:
-        parent.setdefault(x, x)
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
-
     for a, b in pairs:
-        parent[find(a)] = find(b)
+        parent[find(parent, a)] = find(parent, b)
 
     classes: dict[str, set[str]] = {}
     for addr in parent:
-        classes.setdefault(find(addr), set()).add(addr)
+        classes.setdefault(find(parent, addr), set()).add(addr)
     return list(classes.values())
 
 

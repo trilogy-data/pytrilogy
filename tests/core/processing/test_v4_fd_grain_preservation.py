@@ -9,7 +9,6 @@ from trilogy.core.processing.concept_strategies_v4 import (
 from trilogy.core.processing.concept_strategies_v4 import (
     search_concepts as search_concepts_v4,
 )
-from trilogy.core.processing.nodes import History
 from trilogy.parser import parse_text
 
 _MODEL = """
@@ -142,7 +141,7 @@ def _scoped_join_build_info():
         (join.source_address, join.target_address, join.join_type)
         for join in statement.join_clauses
     ]
-    history = History(base_environment=env)
+    history = V4History(base_environment=env)
     history.build_caches.scoped_joins = scoped_joins
     history.build_caches.pseudonym_map = get_canonical_pseudonyms(env)
     factory = Factory(

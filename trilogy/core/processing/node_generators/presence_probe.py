@@ -1,4 +1,5 @@
 from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING
 
 from trilogy.constants import PRESENCE_PROBE_PREFIX, logger
 from trilogy.core.enums import Derivation
@@ -9,8 +10,11 @@ from trilogy.core.processing.join_key_groups import is_join_key_group
 from trilogy.core.processing.node_generators.select_helpers.datasource_nodes import (
     create_datasource_node,
 )
-from trilogy.core.processing.nodes import GroupNode, History, MergeNode, StrategyNode
+from trilogy.core.processing.nodes import GroupNode, MergeNode, StrategyNode
 from trilogy.utility import string_to_hash, unique
+
+if TYPE_CHECKING:
+    from trilogy.core.processing.v4_helper.history import V4History
 
 LOGGER_PREFIX = "[GEN_PRESENCE_PROBE_NODE]"
 
@@ -172,7 +176,7 @@ def gen_coalescing_axis_node(
     depth: int,
     g: ReferenceGraph,
     source_concepts=None,
-    history: History | None = None,
+    history: "V4History | None" = None,
 ) -> StrategyNode | None:
     """Materialize a coalescing (`full`/`union`) axis as the mandatory
     coalesce of EVERY group member's own side.

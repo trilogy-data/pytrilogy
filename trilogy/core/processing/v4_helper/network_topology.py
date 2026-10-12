@@ -11,7 +11,8 @@ from __future__ import annotations
 
 from itertools import combinations
 
-from trilogy.core.processing.v4_helper.network_model import SourceNetwork, find, union
+from trilogy.core.processing.v4_helper.network_model import SourceNetwork, union
+from trilogy.core.union_find import find
 
 
 def carries(network: SourceNetwork, node: str, keys: frozenset[str]) -> bool:

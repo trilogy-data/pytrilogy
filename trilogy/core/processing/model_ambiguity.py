@@ -29,21 +29,15 @@ from trilogy.core.enums import Purpose
 from trilogy.core.exceptions import AmbiguousRelationshipResolutionException
 from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.union_find import find
 
 # Alternatives tracked per node during shortest-path traversal; a pair with
 # more is reported from the first cap-full set (already ambiguous).
 SET_CAP = 8
 
 
-def _find(parent: dict[str, str], node: str) -> str:
-    while parent.get(node, node) != node:
-        parent[node] = parent.get(parent[node], parent[node])
-        node = parent[node]
-    return node
-
-
 def _union(parent: dict[str, str], left: str, right: str) -> None:
-    a, b = _find(parent, left), _find(parent, right)
+    a, b = find(parent, left), find(parent, right)
     if a == b:
         return
     lo, hi = sorted((a, b))
@@ -81,7 +75,7 @@ def build_key_graph(benv: BuildEnvironment) -> KeyGraph:
         for pseudonym in concept.pseudonyms:
             if pseudonym in parent:
                 _union(parent, address, pseudonym)
-    rep = {a: _find(parent, a) for a in key_addresses}
+    rep = {a: find(parent, a) for a in key_addresses}
     binders: dict[str, frozenset[str]] = {}
     by_class: dict[str, set[str]] = {}
     # Datasources binding the same key classes are one node: the graph reads

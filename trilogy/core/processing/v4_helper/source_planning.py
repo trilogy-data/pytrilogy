@@ -57,7 +57,7 @@ from trilogy.core.processing.node_generators.select_helpers.datasource_nodes imp
 from trilogy.core.processing.node_generators.select_node import (
     validate_query_is_resolvable,
 )
-from trilogy.core.processing.nodes import History, MergeNode, SelectNode, StrategyNode
+from trilogy.core.processing.nodes import MergeNode, SelectNode, StrategyNode
 from trilogy.core.processing.v4_helper.condition_injection import condition_row_args
 from trilogy.core.processing.v4_helper.constants import ROW_SHAPE_BARRIER_DERIVATIONS
 from trilogy.core.processing.v4_helper.functional_dependency import build_fd_closure
@@ -86,7 +86,7 @@ class SourceRequest:
     outputs: list[BuildConcept]
     environment: BuildEnvironment
     graph: ReferenceGraph
-    history: History
+    history: V4History
     conditions: BuildWhereClause | None = None
     depth: int = 0
     # This request's answer must bind every requested output FULLY. Set only
@@ -361,15 +361,13 @@ def _inject_rollup_edges(
     return drawn
 
 
-def _memoized_search(network: SourceNetwork, history: History) -> SearchResult:
+def _memoized_search(network: SourceNetwork, history: V4History) -> SearchResult:
     """The search, memoized for this build request on the network's structural
     signature. The ROOT planner re-asks the same question several times per
     query (the same terminals reached through the condition retry, the
     partial-completion sub-call and the single-scan re-ask), and the search is
     the dominant cost of v4 generation. Nothing build-scoped is stored: the key
     is addresses and node names, the value node names and integers."""
-    if not isinstance(history, V4History):
-        return search_sources(network)
     key = network.signature()
     cached = history.search_cache.get(key)
     if cached is None:
@@ -413,26 +411,21 @@ def _network_source(
     """
     concepts = _search_concepts_for_bridge(request)
     partial_ok = _undemanded_reach_keys(request, concepts)
-    v4_history = request.history if isinstance(request.history, V4History) else None
     arm_local = request.arm_local
-    verdict_key: (
-        tuple[str, str, bool, tuple[str, ...], bool, tuple[str, ...]] | None
-    ) = None
-    if v4_history is not None:
-        verdict_key = (
-            "-".join(sorted(c.address for c in concepts)),
-            f"{request.conditions}|{request.deferred_conditions}",
-            defer_single_scan,
-            # the promoted `~` keys change which scans bind fully
-            tuple(sorted(request.environment.span_scope.extent_free)),
-            arm_local,
-            tuple(sorted(partial_ok)),
-        )
-        cached_verdict = v4_history.network_verdicts.get(verdict_key)
-        if cached_verdict == "none":
-            return None
-        if cached_verdict == "defer":
-            return NetworkDecision(bridge=None)
+    verdict_key = (
+        "-".join(sorted(c.address for c in concepts)),
+        f"{request.conditions}|{request.deferred_conditions}",
+        defer_single_scan,
+        # the promoted `~` keys change which scans bind fully
+        tuple(sorted(request.environment.span_scope.extent_free)),
+        arm_local,
+        tuple(sorted(partial_ok)),
+    )
+    cached_verdict = request.history.network_verdicts.get(verdict_key)
+    if cached_verdict == "none":
+        return None
+    if cached_verdict == "defer":
+        return NetworkDecision(bridge=None)
     network = build_source_network(
         concepts,
         request.environment,
@@ -457,8 +450,7 @@ def _network_source(
             ",".join(sorted(result.split)),
         )
     if result.solution is None:
-        if v4_history is not None and verdict_key is not None:
-            v4_history.network_verdicts[verdict_key] = "none"
+        request.history.network_verdicts[verdict_key] = "none"
         return None
     if (
         defer_single_scan
@@ -481,8 +473,7 @@ def _network_source(
         # the graph never offered) is the exception: `_direct_source`'s
         # graph-scored select cannot see it, only the bridge emitter's
         # `_datasource_renders_probe` path renders it.
-        if v4_history is not None and verdict_key is not None:
-            v4_history.network_verdicts[verdict_key] = "defer"
+        request.history.network_verdicts[verdict_key] = "defer"
         return NetworkDecision(bridge=None)
     graph = request.graph.copy()
     chosen = set(result.solution.sources)
@@ -498,8 +489,7 @@ def _network_source(
     )
     chosen -= {f"{CONNECTOR_NODE_PREFIX}{alias}" for alias in connector_aliases}
     if not chosen <= set(graph.datasources):
-        if v4_history is not None and verdict_key is not None:
-            v4_history.network_verdicts[verdict_key] = "none"
+        request.history.network_verdicts[verdict_key] = "none"
         return None
     for node in [n for n in graph.datasources if n not in chosen]:
         del graph.datasources[node]
@@ -1542,7 +1532,7 @@ def _plan_coalescing_axis(request: SourceRequest) -> StrategyNode | None:
         environment: BuildEnvironment,
         g: ReferenceGraph,
         depth: int,
-        history: History,
+        history: V4History,
         conditions: BuildWhereClause | None = None,
     ) -> StrategyNode | None:
         info = search_concepts(

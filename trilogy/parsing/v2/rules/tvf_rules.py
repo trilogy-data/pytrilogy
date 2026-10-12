@@ -22,7 +22,7 @@ from trilogy.core.models.core import (
     ValidatedType,
 )
 from trilogy.core.statements.author import SelectStatement, UnionSelectStatement
-from trilogy.parsing.v2.concept_factory import union_item_to_concept_v2
+from trilogy.parsing.common import union_item_to_concept
 from trilogy.parsing.v2.rules.concept_rules import metadata_from_meta
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
@@ -195,11 +195,11 @@ def _lower_set_op(
 
     derived_concepts = []
     for pos, out in enumerate(outputs):
-        concept = union_item_to_concept_v2(
+        concept = union_item_to_concept(
             align_items[pos],
             align_c,
             arms,
-            context,
+            context.environment,
             purpose=out.purpose,
             datatype=out.datatype,
             nullable=out.nullable,

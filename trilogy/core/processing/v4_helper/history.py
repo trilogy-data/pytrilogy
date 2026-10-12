@@ -17,7 +17,8 @@ from trilogy.core.models.build import (
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.nodes import History
+from trilogy.core.models.environment import Environment
+from trilogy.core.processing.nodes import BuildCaches, StrategyNode
 
 from .constants import NO_WITNESS_FLOOR
 from .keyspace import RowsetWitness
@@ -36,12 +37,18 @@ NestedBuildKey = tuple[int, tuple[str, ...], tuple[tuple[str, str, JoinType], ..
 
 
 @dataclass
-class V4History(History):
-    """History fork for discovery. The inherited StrategyNode cache still serves
-    the datasource-selection sub-searches dispatched into; this fork adds a
-    parallel, correctly-typed cache for the BuildInfo bundles the planner
+class V4History:
+    """Per-request discovery caches: the StrategyNode cache serving the
+    datasource-selection sub-searches, and the BuildInfo bundles the planner
     returns."""
 
+    base_environment: Environment
+    select_history: dict[str, StrategyNode | None] = field(default_factory=dict)
+    # Coalescing axes whose all-member assembly is mid-flight: sourcing a
+    # member SIDE re-enters discovery for that member, which must resolve the
+    # side alone rather than re-assembling the axis (balanced add/discard).
+    coalescing_axis_in_progress: set[str] = field(default_factory=set)
+    build_caches: BuildCaches = field(default_factory=BuildCaches)
     build_history: dict[str, BuildInfo | None] = field(default_factory=dict)
     # Derived-connector origin addresses currently mid-plan, used by the root
     # source planner to break the self-referential bridge recursion (a merged
@@ -137,3 +144,59 @@ class V4History(History):
         if depth is not None:
             self.witness_floor = min(self.witness_floor, depth)
         return self.rowset_witnesses.get(name)
+
+    def _concepts_to_lookup(
+        self,
+        search: list[BuildConcept],
+        accept_partial: bool,
+        conditions: BuildWhereClause | None = None,
+        promoted: frozenset[str] = frozenset(),
+    ) -> str:
+        base = sorted([c.address for c in search])
+        key = "-".join(base) + str(accept_partial)
+        if conditions:
+            key += str(conditions)
+        # a `~` key promoted to a full binding (`SpanScope.extent_free`) picks a
+        # different scan for the same outputs: the solid stream of a region
+        # reads the partial fact, its domain must read the complete one
+        if promoted:
+            key += f"|promoted={sorted(promoted)}"
+        return key
+
+    def gen_select_node(
+        self,
+        concepts: list[BuildConcept],
+        environment: BuildEnvironment,
+        g,
+        depth: int,
+        fail_if_not_found: bool = False,
+        accept_partial: bool = False,
+        conditions: BuildWhereClause | None = None,
+    ) -> StrategyNode | None:
+        from trilogy.core.processing.node_generators.select_node import gen_select_node
+
+        fingerprint = self._concepts_to_lookup(
+            concepts,
+            accept_partial,
+            conditions=conditions,
+            promoted=environment.span_scope.extent_free,
+        )
+        if fingerprint in self.select_history:
+            rval = self.select_history[fingerprint]
+            if rval:
+                # all nodes must be copied before returning
+                return rval.copy()
+            return rval
+        gen = gen_select_node(
+            concepts,
+            environment,
+            g,
+            depth + 1,
+            fail_if_not_found=fail_if_not_found,
+            accept_partial=accept_partial,
+            conditions=conditions,
+        )
+        self.select_history[fingerprint] = gen
+        if gen:
+            return gen.copy()
+        return gen

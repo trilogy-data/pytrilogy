@@ -6,6 +6,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import MergeNode, SelectNode, StrategyNode
 from trilogy.core.processing.v4_helper.condition_injection import condition_row_args
 from trilogy.core.processing.v4_helper.history import V4History
+from trilogy.utility import unique
 
 
 def collapse_conditions(
@@ -73,14 +74,15 @@ def parent_outputs_needed(
     for arg in condition_row_args(conditions):
         referenced.add(arg.address)
 
-    result: list[BuildConcept] = []
-    seen: set[str] = set()
-    for parent in parents:
-        for output in parent.output_concepts:
-            if output.address in referenced and output.address not in seen:
-                seen.add(output.address)
-                result.append(output)
-    return result
+    return unique(
+        [
+            output
+            for parent in parents
+            for output in parent.output_concepts
+            if output.address in referenced
+        ],
+        "address",
+    )
 
 
 def outputs_with_parent_grain_keys(

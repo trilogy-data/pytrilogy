@@ -31,9 +31,10 @@ from trilogy.core.statements.author import (
     SelectJoin,
     SelectStatement,
 )
-from trilogy.parsing.v2.concept_factory import (
-    arbitrary_to_concept_v2,
-    unwrap_transformation_v2,
+from trilogy.core.union_find import find
+from trilogy.parsing.common import (
+    arbitrary_to_concept,
+    unwrap_transformation,
 )
 from trilogy.parsing.v2.errors import create_syntax_error, suggest_select_alias
 from trilogy.parsing.v2.rules.concept_rules import (
@@ -139,20 +140,15 @@ def _validate_join_groups(node: SyntaxNode, joins: list[SelectJoin]) -> None:
     Distinct (disjoint-key) groups may use any types."""
     parent: dict[str, str] = {}
 
-    def find(x: str) -> str:
-        parent.setdefault(x, x)
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
-
     for j in joins:
-        rs, rt = find(j.source_address), find(j.target_address)
+        rs, rt = find(parent, j.source_address), find(parent, j.target_address)
         if rs != rt:
             parent[rs] = rt
     types_by_group: dict[str, set[JoinType]] = {}
     for j in joins:
-        types_by_group.setdefault(find(j.source_address), set()).add(j.join_type)
+        types_by_group.setdefault(find(parent, j.source_address), set()).add(
+            j.join_type
+        )
     for types in types_by_group.values():
         if JoinType.FULL in types and len(types) > 1:
             names = ", ".join(sorted(t.value for t in types))
@@ -335,7 +331,7 @@ def _resolve_join_key(
             # named-statement outputs feed the suggestions.
             context.concepts._raise_undefined(key.address)
         return concept.address, key.address
-    anon = arbitrary_to_concept_v2(key, context=context)
+    anon = arbitrary_to_concept(key, environment=context.environment)
     context.add_virtual_concept(anon, meta=core_meta(node.meta))
     return anon.address, str(key)
 
@@ -394,7 +390,7 @@ def _anonymous_select_transform(
     virtual concept named from the expression text (`count(x)` -> `x_count`).
     A name collision with a differently-derived concept falls back to a
     content-hashed suffix, so auto-names can never shadow or be shadowed."""
-    transformation = unwrap_transformation_v2(expr_val, context)
+    transformation = unwrap_transformation(expr_val, context.environment)
     meta = metadata_from_meta(node.meta, concept_source=ConceptSource.SELECT)
     text = (
         context.source_text[node.start_pos : node.end_pos].strip()
@@ -423,8 +419,8 @@ def _anonymous_select_transform(
     rowset_name = context.semantic_state.current_rowset_name
     if rowset_name is not None:
         name = context.semantic_state.mangle_rowset_alias(rowset_name, name)
-    concept = arbitrary_to_concept_v2(
-        transformation, context=context, name=name, metadata=meta
+    concept = arbitrary_to_concept(
+        transformation, environment=context.environment, name=name, metadata=meta
     )
     existing = _existing_select_definition_target(context, concept.address)
     if (
@@ -433,8 +429,8 @@ def _anonymous_select_transform(
         and existing.lineage != concept.lineage
     ):
         name = f"{name}_{string_to_hash(str(transformation))}"
-        concept = arbitrary_to_concept_v2(
-            transformation, context=context, name=name, metadata=meta
+        concept = arbitrary_to_concept(
+            transformation, environment=context.environment, name=name, metadata=meta
         )
     context.add_virtual_concept(concept, meta=core_meta(node.meta))
     return ConceptTransform(function=transformation, output=concept)
@@ -457,7 +453,7 @@ def select_transform(
         return _anonymous_select_transform(node, context, expr_val)
     output_name: str = content_args[1]
     metadata: Metadata | None = content_args[2] if len(content_args) > 2 else None
-    transformation = unwrap_transformation_v2(expr_val, context)
+    transformation = unwrap_transformation(expr_val, context.environment)
     _, namespace, output_name, _ = parse_concept_reference(
         output_name, context.environment
     )
@@ -477,9 +473,9 @@ def select_transform(
     meta = metadata_from_meta(node.meta, concept_source=ConceptSource.SELECT)
     if metadata:
         meta = metadata
-    concept = arbitrary_to_concept_v2(
+    concept = arbitrary_to_concept(
         transformation,
-        context=context,
+        environment=context.environment,
         namespace=namespace,
         name=output_name,
         metadata=meta,

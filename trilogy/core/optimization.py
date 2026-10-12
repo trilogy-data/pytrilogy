@@ -3,8 +3,9 @@ from __future__ import annotations
 import heapq
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 
-from trilogy.constants import CONFIG, logger
+from trilogy.constants import CONFIG, Optimizations, logger
 from trilogy.core.domain_graph import DomainGraph
 from trilogy.core.models.execute import CTE, Join, UnionCTE
 from trilogy.core.optimizations import (
@@ -270,430 +271,319 @@ def carry_root_contract(old_root: CTE | UnionCTE, new_root: CTE | UnionCTE) -> N
     new_root.hidden_concepts = new_root.hidden_concepts | old_root.hidden_concepts
 
 
-def _enabled_dependencies(*names: tuple[str, bool]) -> tuple[str, ...]:
-    return tuple(name for name, enabled in names if enabled)
+@dataclass(frozen=True)
+class _PlanContext:
+    opts: Optimizations
+    having_alias: bool
+    domain_graph: DomainGraph | None
+
+
+@dataclass(frozen=True)
+class _Phase:
+    name: str
+    enabled: Callable[[Optimizations], bool]
+    rule: Callable[[_PlanContext], OptimizationRule]
+    # Phases this one must follow; a disabled one drops out.
+    depends_on: tuple[str, ...] = ()
+    refires_after: tuple[str, ...] = ()
+    reason: str = ""
+
+
+JOIN_UPGRADES = ("upgrade_join_on_guards.final", "upgrade_outer_key_set_equivalence")
+
+
+def _pushdown(c: _PlanContext) -> OptimizationRule:
+    return PredicatePushdown(having_alias=c.having_alias)
+
+
+_PHASES: tuple[_Phase, ...] = (
+    _Phase(
+        "collapse_single_parent",
+        lambda o: o.merge_aggregate,
+        lambda c: CollapseSingleParent(domain_graph=c.domain_graph),
+    ),
+    _Phase(
+        "merge_irrelevant_group_by",
+        lambda o: o.merge_irrelevant_group_by,
+        lambda c: MergeIrrelevantGroupBy(),
+    ),
+    _Phase(
+        "inline_datasource",
+        lambda o: o.datasource_inlining,
+        lambda c: InlineDatasource(),
+    ),
+    _Phase(
+        "join_hoist",
+        lambda o: o.join_hoist,
+        lambda c: JoinHoist(),
+        depends_on=("inline_datasource",),
+        reason=(
+            "runs after datasource inlining so joins that target folded "
+            "datasources stay folded when hoisted"
+        ),
+    ),
+    _Phase(
+        "predicate_pushdown.initial",
+        lambda o: o.predicate_pushdown,
+        _pushdown,
+        depends_on=("inline_datasource", "join_hoist"),
+        reason=(
+            "runs after datasource inlining and join hoist so filters "
+            "on folded raw sources stay local instead of requiring "
+            "BuildDatasource pushdown"
+        ),
+    ),
+    _Phase(
+        "upgrade_join_on_guards.early",
+        lambda o: o.upgrade_condition_joins,
+        lambda c: UpgradeJoinOnGuards(left_only=True),
+        depends_on=("predicate_pushdown.initial",),
+        reason=(
+            "makes guarded dim joins INNER before union dim pushdown "
+            "tries to match them"
+        ),
+    ),
+    _Phase(
+        "union_dim_pushdown",
+        lambda o: o.union_dim_pushdown,
+        lambda c: UnionDimPushdown(),
+        depends_on=("predicate_pushdown.initial", "upgrade_join_on_guards.early"),
+        reason="matches settled consumer predicates and INNER dim joins",
+    ),
+    _Phase(
+        "predicate_pushdown.remove",
+        lambda o: o.predicate_pushdown,
+        lambda c: PredicatePushdownRemove(),
+        depends_on=("predicate_pushdown.initial",),
+    ),
+    _Phase(
+        "collapse_single_parent.after_pushdown",
+        lambda o: o.merge_aggregate and o.predicate_pushdown,
+        # Without the domain graph `produces_unbound_rowset` treats every
+        # aliased rowset output as unbound and this phase collapses nothing
+        # across a rowset boundary.
+        lambda c: CollapseSingleParent(domain_graph=c.domain_graph),
+        depends_on=("predicate_pushdown.remove",),
+        refires_after=("predicate_pushdown.remove",),
+        reason=(
+            "a per-contributor projection becomes a bare passthrough once "
+            "predicate pushdown relocates its WHERE onto the parent scan, "
+            "so re-collapse it then; a later pass is too late, the plan "
+            "builds around the passthrough first"
+        ),
+    ),
+    # A bare passthrough is pure noise unrelated to aggregate merging, so it
+    # collapses even with merge_aggregate off. No refires_after: this path has
+    # no initial collapse phase, so this sole phase must sweep passthroughs
+    # left by planning or by any earlier phase, not only pushdown-created ones.
+    _Phase(
+        "collapse_single_parent.passthrough_after_pushdown",
+        lambda o: not o.merge_aggregate and o.predicate_pushdown,
+        lambda c: CollapseSingleParent(
+            domain_graph=c.domain_graph, passthrough_only=True
+        ),
+        depends_on=("predicate_pushdown.remove",),
+        reason=(
+            "collapse bare passthroughs (pushdown residue or otherwise) "
+            "when aggregate merging is disabled; sole collapse phase in "
+            "this path, so it runs unconditionally"
+        ),
+    ),
+    _Phase(
+        "upgrade_join_on_guards.final",
+        lambda o: o.upgrade_condition_joins,
+        lambda c: UpgradeJoinOnGuards(),
+        depends_on=("predicate_pushdown.remove",),
+        reason="uses guards moved onto joining CTEs by predicate pushdown",
+    ),
+    _Phase(
+        "predicate_pushdown.after_final_upgrade",
+        lambda o: o.predicate_pushdown and o.upgrade_condition_joins,
+        _pushdown,
+        depends_on=("upgrade_join_on_guards.final",),
+        refires_after=("upgrade_join_on_guards.final",),
+        reason=(
+            "HAVING-into-group push is blocked while a consumer "
+            "outer-joins the group (nullable parent); rerun once the "
+            "final pass has upgraded CTE-to-CTE outer joins to INNER "
+            "so the relocation can fire"
+        ),
+    ),
+    _Phase(
+        "predicate_pushdown.remove.after_join_upgrades",
+        lambda o: o.predicate_pushdown and o.upgrade_condition_joins,
+        lambda c: PredicatePushdownRemove(after_join_upgrades=True),
+        depends_on=("predicate_pushdown.after_final_upgrade",),
+        refires_after=("predicate_pushdown.after_final_upgrade",),
+        reason=(
+            "the earlier remove pass runs before the final join "
+            "upgrade, so predicates relocated by "
+            "predicate_pushdown.after_final_upgrade keep a redundant "
+            "copy at their origin; strip those too"
+        ),
+    ),
+    _Phase(
+        "upgrade_outer_key_set_equivalence",
+        lambda o: o.upgrade_outer_key_set_equivalence,
+        lambda c: UpgradeOuterFromKeySetEquivalence(
+            domain_graph=c.domain_graph,
+            narrow_equal_domain_joins=c.opts.narrow_equal_domain_joins,
+        ),
+        depends_on=("upgrade_join_on_guards.final",),
+        reason=(
+            "needs upstream filters in their final position so the "
+            "accumulated-filter signatures on each side are stable"
+        ),
+    ),
+    _Phase(
+        "inline_datasource.after_join_upgrades",
+        lambda o: o.datasource_inlining
+        and (o.upgrade_condition_joins or o.upgrade_outer_key_set_equivalence),
+        lambda c: InlineDatasource(raw_scope_only=True),
+        depends_on=JOIN_UPGRADES,
+        refires_after=JOIN_UPGRADES,
+        reason=(
+            "a raw() scan folds only where every result row carries one "
+            "of its rows, which the initial pass has to read off "
+            "provisional outer joins; retry once join types are final"
+        ),
+    ),
+    _Phase(
+        "push_filtered_count_into_join",
+        lambda o: o.push_filtered_count_into_join,
+        lambda c: PushFilteredCountIntoJoin(),
+        depends_on=JOIN_UPGRADES,
+        reason=(
+            "runs after join types settle; a sole filtered COUNT over a "
+            "left-joined side can move its filter into the join predicate"
+        ),
+    ),
+    _Phase(
+        "push_filtered_aggregate_input",
+        lambda o: o.push_filtered_aggregate_input,
+        lambda c: PushFilteredAggregateInput(),
+        depends_on=JOIN_UPGRADES,
+        reason=(
+            "runs after consumers settle; filtered aggregate input can "
+            "move before grouping when all consumers reject empty groups"
+        ),
+    ),
+    _Phase(
+        "simplify_null_safe_joins",
+        lambda o: o.simplify_null_safe_joins,
+        lambda c: SimplifyNullSafeJoins(),
+        depends_on=JOIN_UPGRADES,
+        reason=(
+            "join types and CTE nullability are settled, so redundant "
+            "null-safe join keys can be downgraded to ="
+        ),
+    ),
+    _Phase(
+        "strip_redundant_not_null",
+        lambda o: o.strip_redundant_not_null,
+        lambda c: StripRedundantNotNull(),
+        depends_on=("simplify_null_safe_joins",),
+        reason=(
+            "join types and CTE nullability are settled, so an IS NOT "
+            "NULL on a column that no outer join can pad is tautological; "
+            "runs after null-safe-join simplification, which consumes "
+            "those predicates as non-null proofs"
+        ),
+    ),
+    _Phase(
+        "drop_identity_group",
+        lambda o: o.drop_identity_group,
+        lambda c: DropIdentityGroup(),
+        depends_on=JOIN_UPGRADES,
+        reason=(
+            "a GROUP BY a plan-time outer join required is a no-op DISTINCT "
+            "once the joins are upgraded, so it runs after join types settle"
+        ),
+    ),
+    _Phase(
+        "reuse_parent_lookup",
+        lambda o: o.reuse_parent_lookup,
+        lambda c: ReuseParentLookup(),
+        depends_on=JOIN_UPGRADES,
+        reason=(
+            "it reads join types and the holder's grouping, so it runs "
+            "once both are settled and before output pruning hides the "
+            "columns it carries"
+        ),
+    ),
+    _Phase(
+        "fold_existence_into_aggregate",
+        lambda o: o.fold_existence_into_aggregate,
+        lambda c: FoldExistenceIntoAggregate(),
+        depends_on=JOIN_UPGRADES,
+        reason=(
+            "it reads settled INNER joins and the aggregate's final "
+            "WHERE, and runs before output pruning hides the dimension "
+            "columns the rebased scan keeps"
+        ),
+    ),
+    _Phase(
+        "hide_unused_concepts",
+        lambda o: o.hide_unused_concepts,
+        lambda c: HideUnusedConcepts(),
+    ),
+    _Phase(
+        "push_semi_join_into_aggregate",
+        lambda o: o.push_semi_join_into_aggregate,
+        lambda c: PushSemiJoinIntoAggregate(),
+        depends_on=("hide_unused_concepts", *JOIN_UPGRADES),
+        reason=(
+            "the mirror is only sound for a settled INNER join, and it "
+            "reads the feeder's visible outputs, so it runs after join "
+            "types and output pruning are final. Adds no CTE and rewrites "
+            "no condition, so nothing downstream needs to re-fire"
+        ),
+    ),
+    _Phase(
+        "prune_preserved_join_keys",
+        lambda o: o.upgrade_condition_joins or o.upgrade_outer_key_set_equivalence,
+        lambda c: PrunePreservedJoinKeys(),
+        depends_on=JOIN_UPGRADES,
+        reason=(
+            "a narrowed outer join preserves a side the planner had to "
+            "coalesce, so it runs once join types are final, and before the "
+            "INNER reorder the dropped pairs would pin"
+        ),
+    ),
+    _Phase(
+        "order_inner_joins_first",
+        lambda o: o.order_inner_joins_first,
+        lambda c: OrderInnerJoinsFirst(),
+        depends_on=JOIN_UPGRADES,
+        reason=(
+            "runs last so join types are final (INNER<->OUTER upgrades have "
+            "settled) before INNER joins are bubbled ahead of LEFT joins"
+        ),
+    ),
+)
 
 
 def build_optimization_rule_plan(
     having_alias: bool = False,
     domain_graph: DomainGraph | None = None,
 ) -> list[OptimizationRulePlan]:
+    """The enabled phases in order. The plan repeats to a fixpoint, so a rule
+    that an earlier phase ran sweeps up later phases' leftovers on the next
+    pass without a re-fire phase of its own."""
     opts = CONFIG.optimizations
-    join_upgrades = _enabled_dependencies(
-        ("upgrade_join_on_guards.final", opts.upgrade_condition_joins),
-        ("upgrade_outer_key_set_equivalence", opts.upgrade_outer_key_set_equivalence),
-    )
-    plan: list[OptimizationRulePlan] = []
-
-    if opts.merge_aggregate:
-        plan.append(
-            OptimizationRulePlan(
-                name="collapse_single_parent",
-                rule_factory=lambda: CollapseSingleParent(domain_graph=domain_graph),
-            )
+    context = _PlanContext(opts, having_alias, domain_graph)
+    phases = [p for p in _PHASES if p.enabled(opts)]
+    names = {p.name for p in phases}
+    plan = [
+        OptimizationRulePlan(
+            name=p.name,
+            rule_factory=partial(p.rule, context),
+            depends_on=tuple(d for d in p.depends_on if d in names),
+            refires_after=tuple(d for d in p.refires_after if d in names),
+            reason=p.reason,
         )
-    if opts.merge_irrelevant_group_by:
-        plan.append(
-            OptimizationRulePlan(
-                name="merge_irrelevant_group_by",
-                rule_factory=MergeIrrelevantGroupBy,
-            )
-        )
-    if opts.datasource_inlining:
-        plan.append(
-            OptimizationRulePlan(
-                name="inline_datasource",
-                rule_factory=InlineDatasource,
-            )
-        )
-    if opts.join_hoist:
-        plan.append(
-            OptimizationRulePlan(
-                name="join_hoist",
-                rule_factory=JoinHoist,
-                depends_on=_enabled_dependencies(
-                    ("inline_datasource", opts.datasource_inlining),
-                ),
-                reason=(
-                    "runs after datasource inlining so joins that target folded "
-                    "datasources stay folded when hoisted"
-                ),
-            )
-        )
-    if opts.predicate_pushdown:
-        plan.append(
-            OptimizationRulePlan(
-                name="predicate_pushdown.initial",
-                rule_factory=lambda: PredicatePushdown(having_alias=having_alias),
-                depends_on=_enabled_dependencies(
-                    ("inline_datasource", opts.datasource_inlining),
-                    ("join_hoist", opts.join_hoist),
-                ),
-                reason=(
-                    "runs after datasource inlining and join hoist so filters "
-                    "on folded raw sources stay local instead of requiring "
-                    "BuildDatasource pushdown"
-                ),
-            )
-        )
-    if opts.upgrade_condition_joins:
-        plan.append(
-            OptimizationRulePlan(
-                name="upgrade_join_on_guards.early",
-                rule_factory=lambda: UpgradeJoinOnGuards(left_only=True),
-                depends_on=_enabled_dependencies(
-                    ("predicate_pushdown.initial", opts.predicate_pushdown)
-                ),
-                reason=(
-                    "makes guarded dim joins INNER before union dim pushdown "
-                    "tries to match them"
-                ),
-            )
-        )
-    if opts.union_dim_pushdown:
-        plan.append(
-            OptimizationRulePlan(
-                name="union_dim_pushdown",
-                rule_factory=UnionDimPushdown,
-                depends_on=_enabled_dependencies(
-                    ("predicate_pushdown.initial", opts.predicate_pushdown),
-                    (
-                        "upgrade_join_on_guards.early",
-                        opts.upgrade_condition_joins,
-                    ),
-                ),
-                reason="matches settled consumer predicates and INNER dim joins",
-            )
-        )
-    if opts.predicate_pushdown and opts.union_dim_pushdown:
-        plan.append(
-            OptimizationRulePlan(
-                name="predicate_pushdown.after_union_dim",
-                rule_factory=lambda: PredicatePushdown(having_alias=having_alias),
-                depends_on=("union_dim_pushdown",),
-                refires_after=("union_dim_pushdown",),
-                reason=(
-                    "only refires when union_dim_pushdown adds branch-visible "
-                    "dim concepts"
-                ),
-            )
-        )
-    if opts.predicate_pushdown:
-        plan.append(
-            OptimizationRulePlan(
-                name="predicate_pushdown.remove",
-                rule_factory=PredicatePushdownRemove,
-                depends_on=_enabled_dependencies(
-                    (
-                        "predicate_pushdown.after_union_dim",
-                        opts.union_dim_pushdown,
-                    ),
-                    (
-                        "predicate_pushdown.initial",
-                        not opts.union_dim_pushdown,
-                    ),
-                ),
-            )
-        )
-    if opts.merge_irrelevant_group_by and opts.predicate_pushdown:
-        plan.append(
-            OptimizationRulePlan(
-                name="merge_irrelevant_group_by.after_predicate_remove",
-                rule_factory=MergeIrrelevantGroupBy,
-                depends_on=("predicate_pushdown.remove",),
-                refires_after=("predicate_pushdown.remove",),
-                reason="uses redundant predicates removed from grouped children",
-            )
-        )
-    if opts.merge_aggregate and opts.predicate_pushdown:
-        plan.append(
-            OptimizationRulePlan(
-                name="collapse_single_parent.after_pushdown",
-                # Without the domain graph `produces_unbound_rowset` treats
-                # every aliased rowset output as unbound and this phase
-                # collapses nothing across a rowset boundary.
-                rule_factory=lambda: CollapseSingleParent(domain_graph=domain_graph),
-                depends_on=("predicate_pushdown.remove",),
-                refires_after=("predicate_pushdown.remove",),
-                reason=(
-                    "a per-contributor projection becomes a bare passthrough once "
-                    "predicate pushdown relocates its WHERE onto the parent scan, "
-                    "so re-collapse it then"
-                ),
-            )
-        )
-    elif not opts.merge_aggregate and opts.predicate_pushdown:
-        # A bare passthrough is pure noise unrelated to aggregate merging, so
-        # it collapses even with merge_aggregate off. Deliberately no
-        # refires_after: this path has no initial collapse phase, so this sole
-        # phase must sweep passthroughs left by planning or by any earlier
-        # phase, not only pushdown-created ones.
-        plan.append(
-            OptimizationRulePlan(
-                name="collapse_single_parent.passthrough_after_pushdown",
-                rule_factory=lambda: CollapseSingleParent(
-                    domain_graph=domain_graph, passthrough_only=True
-                ),
-                depends_on=("predicate_pushdown.remove",),
-                reason=(
-                    "collapse bare passthroughs (pushdown residue or otherwise) "
-                    "when aggregate merging is disabled; sole collapse phase in "
-                    "this path, so it runs unconditionally"
-                ),
-            )
-        )
-    if opts.upgrade_condition_joins:
-        plan.append(
-            OptimizationRulePlan(
-                name="upgrade_join_on_guards.final",
-                rule_factory=UpgradeJoinOnGuards,
-                depends_on=_enabled_dependencies(
-                    ("predicate_pushdown.remove", opts.predicate_pushdown)
-                ),
-                reason="uses guards moved onto joining CTEs by predicate pushdown",
-            )
-        )
-    if opts.predicate_pushdown and opts.upgrade_condition_joins:
-        plan.append(
-            OptimizationRulePlan(
-                name="predicate_pushdown.after_final_upgrade",
-                rule_factory=lambda: PredicatePushdown(having_alias=having_alias),
-                depends_on=("upgrade_join_on_guards.final",),
-                refires_after=("upgrade_join_on_guards.final",),
-                reason=(
-                    "HAVING-into-group push is blocked while a consumer "
-                    "outer-joins the group (nullable parent); rerun once the "
-                    "final pass has upgraded CTE-to-CTE outer joins to INNER "
-                    "so the relocation can fire"
-                ),
-            )
-        )
-        plan.append(
-            OptimizationRulePlan(
-                name="predicate_pushdown.remove.after_join_upgrades",
-                rule_factory=lambda: PredicatePushdownRemove(after_join_upgrades=True),
-                depends_on=("predicate_pushdown.after_final_upgrade",),
-                refires_after=("predicate_pushdown.after_final_upgrade",),
-                reason=(
-                    "the earlier remove pass runs before the final join "
-                    "upgrade, so predicates relocated by "
-                    "predicate_pushdown.after_final_upgrade keep a redundant "
-                    "copy at their origin; strip those too"
-                ),
-            )
-        )
-    if opts.upgrade_outer_key_set_equivalence:
-        plan.append(
-            OptimizationRulePlan(
-                name="upgrade_outer_key_set_equivalence",
-                rule_factory=lambda: UpgradeOuterFromKeySetEquivalence(
-                    domain_graph=domain_graph,
-                    narrow_equal_domain_joins=opts.narrow_equal_domain_joins,
-                ),
-                depends_on=_enabled_dependencies(
-                    ("upgrade_join_on_guards.final", opts.upgrade_condition_joins)
-                ),
-                reason=(
-                    "needs upstream filters in their final position so the "
-                    "accumulated-filter signatures on each side are stable"
-                ),
-            )
-        )
-    if opts.datasource_inlining and (
-        opts.upgrade_condition_joins or opts.upgrade_outer_key_set_equivalence
-    ):
-        plan.append(
-            OptimizationRulePlan(
-                name="inline_datasource.after_join_upgrades",
-                rule_factory=lambda: InlineDatasource(raw_scope_only=True),
-                depends_on=join_upgrades,
-                refires_after=join_upgrades,
-                reason=(
-                    "a raw() scan folds only where every result row carries one "
-                    "of its rows, which the initial pass has to read off "
-                    "provisional outer joins; retry once join types are final"
-                ),
-            )
-        )
-    if opts.push_filtered_count_into_join:
-        plan.append(
-            OptimizationRulePlan(
-                name="push_filtered_count_into_join",
-                rule_factory=PushFilteredCountIntoJoin,
-                depends_on=join_upgrades,
-                reason=(
-                    "runs after join types settle; a sole filtered COUNT over a "
-                    "left-joined side can move its filter into the join predicate"
-                ),
-            )
-        )
-    if opts.push_filtered_aggregate_input:
-        plan.append(
-            OptimizationRulePlan(
-                name="push_filtered_aggregate_input",
-                rule_factory=PushFilteredAggregateInput,
-                depends_on=join_upgrades,
-                reason=(
-                    "runs after consumers settle; filtered aggregate input can "
-                    "move before grouping when all consumers reject empty groups"
-                ),
-            )
-        )
-    if opts.simplify_null_safe_joins:
-        plan.append(
-            OptimizationRulePlan(
-                name="simplify_null_safe_joins",
-                rule_factory=SimplifyNullSafeJoins,
-                depends_on=join_upgrades,
-                reason=(
-                    "join types and CTE nullability are settled, so redundant "
-                    "null-safe join keys can be downgraded to ="
-                ),
-            )
-        )
-    if opts.strip_redundant_not_null:
-        plan.append(
-            OptimizationRulePlan(
-                name="strip_redundant_not_null",
-                rule_factory=StripRedundantNotNull,
-                depends_on=_enabled_dependencies(
-                    ("simplify_null_safe_joins", opts.simplify_null_safe_joins),
-                ),
-                reason=(
-                    "join types and CTE nullability are settled, so an IS NOT "
-                    "NULL on a column that no outer join can pad is tautological; "
-                    "runs after null-safe-join simplification, which consumes "
-                    "those predicates as non-null proofs"
-                ),
-            )
-        )
-    if opts.drop_identity_group:
-        plan.append(
-            OptimizationRulePlan(
-                name="drop_identity_group",
-                rule_factory=DropIdentityGroup,
-                depends_on=join_upgrades,
-                reason=(
-                    "a GROUP BY a plan-time outer join required is a no-op DISTINCT "
-                    "once the joins are upgraded, so it runs after join types settle"
-                ),
-            )
-        )
-    if opts.reuse_parent_lookup:
-        plan.append(
-            OptimizationRulePlan(
-                name="reuse_parent_lookup",
-                rule_factory=ReuseParentLookup,
-                depends_on=join_upgrades,
-                reason=(
-                    "it reads join types and the holder's grouping, so it runs "
-                    "once both are settled and before output pruning hides the "
-                    "columns it carries"
-                ),
-            )
-        )
-    if opts.fold_existence_into_aggregate:
-        plan.append(
-            OptimizationRulePlan(
-                name="fold_existence_into_aggregate",
-                rule_factory=FoldExistenceIntoAggregate,
-                depends_on=join_upgrades,
-                reason=(
-                    "it reads settled INNER joins and the aggregate's final "
-                    "WHERE, and runs before output pruning hides the dimension "
-                    "columns the rebased scan keeps"
-                ),
-            )
-        )
-        if opts.datasource_inlining:
-            plan.append(
-                OptimizationRulePlan(
-                    name="inline_datasource.after_existence_fold",
-                    rule_factory=InlineDatasource,
-                    depends_on=("fold_existence_into_aggregate",),
-                    refires_after=("fold_existence_into_aggregate",),
-                    reason=(
-                        "the fold hands a consumer the dimension's datasource "
-                        "CTE in place of the existence scan; inline it there"
-                    ),
-                )
-            )
-        if opts.union_dim_pushdown:
-            plan.append(
-                OptimizationRulePlan(
-                    name="union_dim_pushdown.after_existence_fold",
-                    rule_factory=UnionDimPushdown,
-                    depends_on=("fold_existence_into_aggregate",),
-                    refires_after=("fold_existence_into_aggregate",),
-                    reason=(
-                        "a dimension filter the fold moved onto an aggregate "
-                        "over a union, behind a join it made INNER, sinks into "
-                        "the union's branches"
-                    ),
-                )
-            )
-        if opts.predicate_pushdown:
-            plan.append(
-                OptimizationRulePlan(
-                    name="predicate_pushdown.after_existence_fold",
-                    rule_factory=lambda: PredicatePushdown(having_alias=having_alias),
-                    depends_on=("fold_existence_into_aggregate",),
-                    refires_after=("fold_existence_into_aggregate",),
-                    reason=(
-                        "a WHERE the fold moved onto an aggregate sinks into "
-                        "the scan below it"
-                    ),
-                )
-            )
-    if opts.hide_unused_concepts:
-        plan.append(
-            OptimizationRulePlan(
-                name="hide_unused_concepts",
-                rule_factory=HideUnusedConcepts,
-            )
-        )
-    if opts.push_semi_join_into_aggregate:
-        plan.append(
-            OptimizationRulePlan(
-                name="push_semi_join_into_aggregate",
-                rule_factory=PushSemiJoinIntoAggregate,
-                depends_on=_enabled_dependencies(
-                    ("hide_unused_concepts", opts.hide_unused_concepts)
-                )
-                + join_upgrades,
-                reason=(
-                    "the mirror is only sound for a settled INNER join, and it "
-                    "reads the feeder's visible outputs, so it runs after join "
-                    "types and output pruning are final. Adds no CTE and rewrites "
-                    "no condition, so nothing downstream needs to re-fire"
-                ),
-            )
-        )
-    if opts.upgrade_condition_joins or opts.upgrade_outer_key_set_equivalence:
-        plan.append(
-            OptimizationRulePlan(
-                name="prune_preserved_join_keys",
-                rule_factory=PrunePreservedJoinKeys,
-                depends_on=join_upgrades,
-                reason=(
-                    "a narrowed outer join preserves a side the planner had to "
-                    "coalesce, so it runs once join types are final, and before the "
-                    "INNER reorder the dropped pairs would pin"
-                ),
-            )
-        )
-    if opts.order_inner_joins_first:
-        plan.append(
-            OptimizationRulePlan(
-                name="order_inner_joins_first",
-                rule_factory=OrderInnerJoinsFirst,
-                depends_on=join_upgrades,
-                reason=(
-                    "runs last so join types are final (INNER<->OUTER upgrades have "
-                    "settled) before INNER joins are bubbled ahead of LEFT joins"
-                ),
-            )
-        )
+        for p in phases
+    ]
     validate_optimization_rule_plan(plan)
     return plan
 
