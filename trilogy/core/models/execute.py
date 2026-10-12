@@ -62,7 +62,7 @@ def _datasource_column_for_concept(
     for column in datasource.columns:
         if (
             column.concept == concept
-            or column.concept.with_grain(concept.grain) == concept
+            or column.concept.equals_at_grain_of(concept)
             or concept.address in column.concept.pseudonyms
             or column.concept.address in concept.pseudonyms
         ):

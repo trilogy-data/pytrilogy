@@ -102,8 +102,6 @@ mostly for the shorter plan. Count "still changing" warnings in the suite.
   NOT a plain cache: `lineage` is assigned after construction
   (`_build_multi_select_lineage` sets `local_build_cache[k].lineage`) and the
   PROPERTY branch reads it. Short-circuit the cheap cases instead.
-- `with_grain` copies made only for `==` (`execute.py` ~65: 64,710;
-  `build.py` ~2369: 9,494): a grain-free equality helper.
 - `_bound_addresses` (`discovery_utility.py` ~597) walks every node through
   the Rust boundary per gate call; it equalled the set derivable from the
   graph's datasource edges 311/311. Record it in `generate_graph`.

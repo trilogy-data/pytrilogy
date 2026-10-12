@@ -1427,6 +1427,17 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
             build_is_aggregate=self.build_is_aggregate,
         )
 
+    def equals_at_grain_of(self, other: BuildConcept) -> bool:
+        # `self.with_grain(other.grain) == other` without building the copy.
+        return (
+            other.grain is not None
+            and type(other) is BuildConcept
+            and self.name == other.name
+            and self.datatype == other.datatype
+            and self.purpose == other.purpose
+            and self.namespace == other.namespace
+        )
+
     @property
     def _with_default_grain(self) -> Self:
         if self.purpose == Purpose.KEY:
@@ -2365,9 +2376,7 @@ class BuildDatasource:
         exact_match = None
         canonical_match = None
         for x in self.columns:
-            is_exact = (
-                x.concept == concept or x.concept.with_grain(concept.grain) == concept
-            )
+            is_exact = x.concept == concept or x.concept.equals_at_grain_of(concept)
             if is_exact or (
                 concept.address in x.concept.pseudonyms
                 or x.concept.address in concept.pseudonyms
