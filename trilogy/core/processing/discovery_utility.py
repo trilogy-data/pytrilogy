@@ -602,18 +602,19 @@ def _graph_inputs(
     ]
 
 
-def _is_bound(g: "ReferenceGraph", node: str) -> bool:
-    """A concept node a datasource binds, or serves as an additive rollup."""
-    return any(
-        neighbor.startswith("ds~")
-        for neighbor in (*g.successors(node), *g.predecessors(node))
-    )
-
-
 def _bound_addresses(g: "ReferenceGraph") -> set[str]:
-    return {
-        concept.address for node, concept in g.concepts.items() if _is_bound(g, node)
-    }
+    """Addresses of the concept nodes adjacent to a datasource node, read off
+    the datasource nodes rather than every concept's neighbourhood."""
+    concepts = g.concepts
+    out: set[str] = set()
+    for ds in g.datasources:
+        if ds not in g:
+            continue
+        for node in (*g.successors(ds), *g.predecessors(ds)):
+            concept = concepts.get(node)
+            if concept is not None:
+                out.add(concept.address)
+    return out
 
 
 def _detach_bridging_derivations(
