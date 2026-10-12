@@ -149,3 +149,7 @@ components.
 - Reusing the baseline's concept-list caches in `_env_finish` (item 8):
   `gen_concept_list_caches` is ~0.9% of corpus CPU and only 13 of 456
   materializations qualify (no replay, no changed address).
+- Dropping `collapse_single_parent.after_pushdown` (item 7): the corpus does
+  not see it, but ten suite membership plans gain a CTE; the passthrough has
+  to collapse before later phases build around it. The other five re-fires
+  went.
