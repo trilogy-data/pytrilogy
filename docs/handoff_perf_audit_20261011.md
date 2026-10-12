@@ -79,16 +79,13 @@ item 3 a cheap identity key. Ranking reads `alias_origin_lookup` and
 ## 6. Optimizer: used-map renders
 
 `render_cte_used_map` (`core/optimizations/utils.py` ~261) fully renders a
-CTE; ~38% of optimizer time, 596 of 1,282 calls re-render the same CTE to
-identical SQL.
+CTE; 771 calls per corpus after the single-parent skip landed. Measured with
+`process_time` around the call it is ~0.4s of ~15s corpus CPU (the earlier
+"38% of optimizer time" was a cProfile reading), so this is worth <3%.
 
-- (a) `MergeIrrelevantGroupBy._active_parent_ctes`
-  (`merge_irrelevant_group_by.py` ~116) renders before its cheap checks; with
-  one dependency node (349 of 456 calls) the result ignores the render. Skip
-  it there and order the cheap checks first. Identical by construction.
-- (b) A cross-phase used-map cache keyed by a per-CTE mutation counter
-  (`HideUnusedConcepts` rebuilds its cache every run). Missing a writer
-  silently mis-prunes: land with a debug recompute-and-assert mode.
+A cross-phase used-map cache keyed by a per-CTE mutation counter
+(`HideUnusedConcepts` rebuilds its cache every run). Missing a writer
+silently mis-prunes: land with a debug recompute-and-assert mode.
 
 ## 7. Optimizer: duplicate re-fire phases (suite-oracle)
 
