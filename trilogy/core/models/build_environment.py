@@ -52,6 +52,9 @@ class BuildEnvironmentConceptDict(dict):
         return super().values()
 
     def get(self, key: str, default: BuildConcept | None = None) -> BuildConcept | None:  # type: ignore
+        found = super().get(key)
+        if found is not None:
+            return found
         try:
             return self.__getitem__(key)
         except UndefinedConceptException:
