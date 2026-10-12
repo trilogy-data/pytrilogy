@@ -1,7 +1,8 @@
 # Handoff: planning perf + simplification audit (2026-10-11)
 
-Open items from the audit that landed the GC pause (PR #720). Each item is
-independent; take one per PR. Percentages are of corpus planning CPU.
+Open items from the audit that landed the GC pause (PR #720). The
+2026-10-12 follow-up landed items 5, 7, 8 (three of four) and most of 9;
+items 1 and 8c are closed below. Percentages are of corpus planning CPU.
 
 ## Gate recipe (every item)
 
@@ -18,19 +19,16 @@ independent; take one per PR. Percentages are of corpus planning CPU.
   Python-heavy functions (a `_carried` rewrite looked like 2s under cProfile
   and was 0.2s real).
 
-## 1. One scope factory per rowset (small)
-
-`_build_rowset_item` (`build.py`) makes one scope factory per column (4,028
-of 4,336 calls are for a rowset already seen). Sharing one per rowset object
-also shares its `local_concepts`, so gate it like a cache.
-
 ## 2. Share the heal's concept graph / keyspace with the plan (medium risk)
 
 `decide_heal` (`partial_bridging.py`), the rowset witness
 (`rowset_witness._witness`) and the plan (`_build_from_graph_traced`) build
 the same concept graph and keyspace for the same request: 148 of 433
 `build_concept_graph` calls repeat an earlier one in the statement (heal ->
-plan 98, witness -> plan 24, heal -> witness 26). 3-4%.
+plan 98, witness -> plan 24, heal -> witness 26). Re-measured 2026-10-12: concept graphs
+~1.1s and keyspaces ~1.2s of ~21s corpus CPU; requests repeating an
+earlier one exactly (ordered outputs, conditions, roots, staged, span
+scope, datasource objects) cost ~0.16s of the graphs, so ~2% in all.
 
 Change: dedupe at the caller (record the heal's request + answer on the
 `ScopeDatasources` it ran over; reuse only when the later request compares
@@ -54,16 +52,11 @@ bindings are the same objects and heal/exclusion changed nothing. Facts also
 read `env.concepts` (`_generated_domains`) and FD minimization: an overlay
 adding a generated KEY or an FD must miss.
 
-## 5. Delta environments inherit `value_classes` (medium risk)
-
-243 of 263 `build_environment_delta` results have `value_classes` identical
-to the baseline's (`spelling_classes` 104/263). `_ranked_classes` is ~2.4s
-profiled per corpus; the unscoped `address_roots()` dict (141k entries) is
-rebuilt on every `_compute_facts`. Inherit when the replaced/added concepts'
-`(key, address, pseudonyms)` and the `alias_origin_lookup` entries match the
-baseline; cache the unscoped roots dict. A stable canonical map also gives
-item 3 a cheap identity key. Ranking reads `alias_origin_lookup` and
-`concepts` membership: verify both.
+Re-measured 2026-10-12: `_compute_facts` is ~0.9s over 312 calls; every
+repeat comes with a different (delta) environment object, so the key needs
+environment content. Item 5 landed: an inheriting delta now returns the
+baseline's `address_roots()` dict object, a cheap identity for the
+`canonical` input. ~0.14s to win.
 
 ## 6. Optimizer: used-map renders
 
@@ -76,69 +69,17 @@ A cross-phase used-map cache keyed by a per-CTE mutation counter
 (`HideUnusedConcepts` rebuilds its cache every run). Missing a writer
 silently mis-prunes: land with a debug recompute-and-assert mode.
 
-## 7. Optimizer: duplicate re-fire phases (suite-oracle)
+## 8. `rebuild_cache()` twice on ordered statements
 
-Seven phases repeat an earlier phase's rule and arguments, and the fixpoint
-already sweeps their leftovers: `merge_irrelevant_group_by.after_predicate_remove`,
-`collapse_single_parent.after_pushdown`, `predicate_pushdown.after_final_upgrade`,
-`predicate_pushdown.after_union_dim`, `inline_datasource.after_existence_fold`,
-`union_dim_pushdown.after_existence_fold`, `predicate_pushdown.after_existence_fold`.
-Dropping all seven: phase runs -15%, corpus SQL identical; fails the two
-plan-name assertions in `test_optimization_pipeline.py` (expected) and
-`test_optimizer_fixpoint.py::test_every_where_atom_moves_into_having_in_one_pushdown`
-(q04 needs >3 passes; keep `predicate_pushdown.after_final_upgrade` for it).
-Real time saved is ~0.3s/corpus since work moves into later passes; worth it
-mostly for the shorter plan. Count "still changing" warnings in the suite.
-
-## 8. Small, safe, measured (~0.5-1.5% each)
-
-- `BuildConcept._with_default_grain` (`build.py` ~1430) is an uncached
-  property: 117k calls, 97% return `self` after building a `BuildGrain`.
-  NOT a plain cache: `lineage` is assigned after construction
-  (`_build_multi_select_lineage` sets `local_build_cache[k].lineage`) and the
-  PROPERTY branch reads it. Short-circuit the cheap cases instead.
-- `_bound_addresses` (`discovery_utility.py` ~597) walks every node through
-  the Rust boundary per gate call; it equalled the set derivable from the
-  graph's datasource edges 311/311. Record it in `generate_graph`.
-- `_env_finish` -> `gen_concept_list_caches` reruns on a delta that replayed
-  nothing: reuse the baseline's.
-- `query_processor.py` ~949: `rebuild_cache()` runs twice on ordered
-  statements; one top-node `_resolve` saved. Not a plain skip: the second
-  resolve bakes `ordering` into the QDS, whose cached identifier hashes it
-  under a limit, and MergeNode hands parent QDS objects through.
+`query_processor.py` (~949): one top-node `_resolve` saved per ordered
+statement. Not a plain skip: the second resolve bakes `ordering` into the
+QDS, whose cached identifier hashes it under a limit, and MergeNode hands
+parent QDS objects through.
 
 ## 9. Simplification (lines, behaviour-neutral)
 
-Verified reachable-only-as-described; corpus + suite gate each.
+Open:
 
-- `parsing/v2/concept_factory.py`: five `*_v2` wrappers that only swap
-  `context` for `context.environment`; call `parsing/common.py` directly,
-  delete the file (~110 lines, 28 call sites).
-- `optimization.py` ~277-700: 31 `if opts.X: plan.append(...)` blocks to a
-  table (~130 lines; drops `_enabled_dependencies`). Preserve the multi-flag
-  guards and the order `test_optimization_pipeline.py` asserts.
-- `build.py`: ~30 `@_build_dispatch.register def _` stubs whose
-  `_build_x` has no other caller: fold the body into the stub (~120 lines);
-  eight identity handlers (`build.py` ~4968-5020) collapse into one union
-  registration. Keep `_build_concept`, `_build_grain`, `_build_function`.
-- `LooseBuildConceptList` / `CanonicalBuildConceptList` differ by one
-  attribute; `concept_arguments`/`row_arguments`/`existence_arguments` are
-  triplicated across `BuildConditional`, `BuildComparison`, `BuildBetween`
-  (~70 lines).
-- Union-find: `model_ambiguity.py` ~38 and `dialect/mock.py` ~600 copy
-  `network_model.py` ~595; six nested `def find` closures elsewhere. One
-  `trilogy/core/union_find.py` for `find`; keep each caller's `union`
-  (which root wins differs and matters, e.g. `domain_graph.py` roots on the
-  anchor).
-- `predicate_pushdown._transitively_depends_on` and
-  `union_dim_pushdown._derives_from` reduce to `semi_join_pushdown.reaches`
-  (+ an `internal_ctes` flag); hand-rolled `unique(..., "address")` in
-  `v4_node_generators/constant.py` and `common.py`.
-- `History` exists only to be rewrapped as `V4History`
-  (`query_processor.py` ~1056/849): one class.
-- `g=None` fallbacks that rebuild the graph in `discovery_utility.py`
-  (~677, 740, 1118) never fire in production; only
-  `tests/core/processing/test_disconnected_subgraphs.py` uses them.
 - *suite-oracle*, high risk, ~200-350 lines: `gen_select_merge_node`'s
   multi-parent MergeNode branch, `_merge_condition_routing` and its retries
   (`select_merge_node.py` ~327-381, 583-631, 677-724, 749-845) never run on
@@ -202,3 +143,9 @@ components.
 - Undirected copy in the connectivity gate: `to_undirected` is ~0.5%;
   `_detach_bridging_derivations` needs whole-graph components.
 - GC: paused during `process_query` (PR #720). Parse gains nothing from it.
+- One scope factory per rowset (item 1): not behaviour-neutral. Sharing the
+  factory shares `local_concepts`, and tpc_ds query77's union lineage then
+  gets a different canonical name. Factory init is ~40us, ~0.1s/corpus.
+- Reusing the baseline's concept-list caches in `_env_finish` (item 8):
+  `gen_concept_list_caches` is ~0.9% of corpus CPU and only 13 of 456
+  materializations qualify (no replay, no changed address).
