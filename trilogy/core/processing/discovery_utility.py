@@ -28,7 +28,7 @@ from trilogy.core.models.build import (
     get_concept_arguments,
     get_concept_row_arguments,
 )
-from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.build_environment import BuildEnvironment, EnvCache
 from trilogy.core.models.datasource import Address
 from trilogy.core.models.execute import QueryDatasource, UnnestJoin
 from trilogy.core.processing.constants import ROOT_DERIVATIONS
@@ -431,6 +431,9 @@ def _anchor_nodes(concept: BuildConcept) -> list[str]:
     return nodes
 
 
+_GRAIN_ONLY_CACHE: EnvCache[dict[str, set[str]]] = EnvCache()
+
+
 def _aggregate_grain_only_parents(
     environment: BuildEnvironment,
 ) -> dict[str, set[str]]:
@@ -445,6 +448,18 @@ def _aggregate_grain_only_parents(
     ``b`` subgraphs. Mirrors the "aggregate up to an arbitrary grain can be
     joined in later" rule in ``calculate_graph_relevance``.
     """
+    # Callers only read the map.
+    cached = _GRAIN_ONLY_CACHE.lookup(environment)
+    if cached is not None:
+        return cached
+    return _GRAIN_ONLY_CACHE.store(
+        environment, _compute_grain_only_parents(environment)
+    )
+
+
+def _compute_grain_only_parents(
+    environment: BuildEnvironment,
+) -> dict[str, set[str]]:
     out: dict[str, set[str]] = {}
     for c in environment.concepts.values():
         if not isinstance(c, BuildConcept):

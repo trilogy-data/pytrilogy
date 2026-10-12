@@ -2,39 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
-from functools import partial
-from typing import Generic, TypeVar
-from weakref import ReferenceType, ref
 
 from trilogy.core.models.build import BuildConcept
-from trilogy.core.models.build_environment import BuildEnvironment
+from trilogy.core.models.build_environment import BuildEnvironment, EnvCache
 
 from .models import ConceptAttrs
-
-T = TypeVar("T")
-
-
-class EnvCache(dict[int, tuple[ReferenceType[BuildEnvironment], T]], Generic[T]):
-    """id(environment) -> (weak handle, value). A BuildEnvironment's concepts
-    and datasources are fixed at construction (later writes go to the
-    ReferenceGraph, the authored Environment or a StrategyNode), so a value
-    can never go stale, only be discarded with its environment. The weak
-    handle makes the identity check exact: a recycled id cannot false-hit,
-    because a dead referent is never the live environment."""
-
-    def lookup(self, environment: BuildEnvironment) -> T | None:
-        cached = self.get(id(environment))
-        if cached is not None and cached[0]() is environment:
-            return cached[1]
-        return None
-
-    def store(self, environment: BuildEnvironment, value: T) -> T:
-        key = id(environment)
-        self[key] = (ref(environment, partial(self._evict, key)), value)
-        return value
-
-    def _evict(self, key: int, _dead: ReferenceType) -> None:
-        self.pop(key, None)
 
 
 def _attrs_for_address(
