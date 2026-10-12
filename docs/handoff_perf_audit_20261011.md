@@ -59,12 +59,6 @@ objects and heal/exclusion changed nothing. Facts also read `env.concepts`
 (`_generated_domains`) and FD minimization: an overlay adding a generated
 KEY or an FD must miss. 1.5-3%.
 
-## 4. Memoize `minimize_build_grain` per environment (low risk)
-
-`functional_dependency.py` ~260: 881 of 1,189 calls repeat a grain already
-minimized in the same environment (closure memo hits, the outer loop does
-not). Cache on `_FDFacts` beside `closures`. ~1%.
-
 ## 5. Delta environments inherit `value_classes` (medium risk)
 
 243 of 263 `build_environment_delta` results have `value_classes` identical
