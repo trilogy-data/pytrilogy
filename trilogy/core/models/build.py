@@ -4300,9 +4300,10 @@ class Factory:
         # Collapse any merged-away source grain key to its canonical target
         # (the build-time equivalent of a global merge rewriting the grain), so
         # dependents of a scoped-merge source group on the single canonical key.
-        # A bound (ROOT) key never collapses onto a rowset handle: its
-        # dependents would detach from their own source (`subset join a.aid =
-        # rs.k` keying `a.aw` by `rs.k`).
+        # A bound (ROOT) key subset-joined onto a rowset handle keeps its own
+        # grain: its dependents would detach from their own source (`subset
+        # join a.aid = rs.k` keying `a.aw` by `rs.k`). A union join coalesces
+        # both sides and still collapses.
         normalized: set[str] = set()
         env_concepts = self.environment.concepts
         for c in components:
@@ -4318,7 +4319,8 @@ class Factory:
     def _binding_onto_rowset(self, source: str, target: str) -> bool:
         concepts = self.environment.concepts
         return (
-            source in concepts
+            source in self.scoped_rowset_outer_targets
+            and source in concepts
             and target in concepts
             and concepts[source].derivation == Derivation.ROOT
             and concepts[target].derivation == Derivation.ROWSET
