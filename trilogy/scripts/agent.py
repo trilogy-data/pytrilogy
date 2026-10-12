@@ -62,7 +62,7 @@ from trilogy.scripts.display_core import (
 from trilogy.scripts.environment import parse_env_vars
 
 DEFAULT_PROVIDER = Provider.ANTHROPIC
-DEFAULT_MODEL = "claude-opus-4-7"
+DEFAULT_MODEL = "claude-opus-5-5"
 
 PROVIDER_DEFAULT_ENV: dict[Provider, str] = {
     Provider.ANTHROPIC: "ANTHROPIC_API_KEY",
