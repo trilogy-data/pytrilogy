@@ -535,6 +535,100 @@ class TestHttpClient:
         with pytest.raises(CloudError, match="Could not reach https://api.test"):
             CloudClient(cloud_api.url, "t").get("/auth/me")
 
+    def test_a_gateway_error_on_a_read_is_retried(self, cloud_api):
+        cloud_api.set_steps(
+            "GET",
+            "/auth/me",
+            [
+                cloud_api.failure(502, "bad gateway"),
+                cloud_api.failure(503),
+                {"email": "x"},
+            ],
+        )
+        assert CloudClient(cloud_api.url, "t").get("/auth/me") == {"email": "x"}
+        assert len(cloud_api.requests_for("GET", "/auth/me")) == 3
+        assert cloud_api.pauses == [2.0, 4.0]
+
+    def test_a_retry_honours_retry_after(self, cloud_api, monkeypatch):
+        cloud_api.set_steps("GET", "/auth/me", [cloud_api.failure(429), {"email": "x"}])
+        monkeypatch.setattr(
+            cloud_mod, "_retry_after", lambda exc: 7.0 if exc.code == 429 else None
+        )
+        CloudClient(cloud_api.url, "t").get("/auth/me")
+        assert cloud_api.pauses == [7.0]
+
+    def test_a_content_put_is_retried(self, cloud_api):
+        cloud_api.set_steps(
+            "PUT", "/orgs/acme/jobs/j1", [cloud_api.failure(504), {"id": "j1"}]
+        )
+        CloudClient(cloud_api.url, "t").put("/orgs/acme/jobs/j1", {"name": "n"})
+        assert len(cloud_api.requests_for("PUT", "/orgs/acme/jobs/j1")) == 2
+
+    def test_a_create_is_never_retried(self, cloud_api):
+        # A create whose answer was lost may have landed; a retry would make
+        # a second job.
+        cloud_api.set_steps(
+            "POST", "/orgs/acme/jobs", [cloud_api.failure(502), {"id": "j"}]
+        )
+        with pytest.raises(CloudError, match="502"):
+            CloudClient(cloud_api.url, "t").post("/orgs/acme/jobs", {"name": "n"})
+        assert len(cloud_api.requests_for("POST", "/orgs/acme/jobs")) == 1
+
+    def test_a_client_error_is_not_retried(self, cloud_api):
+        cloud_api.fail("GET", "/auth/me", 400, "bad")
+        with pytest.raises(CloudError, match="400 bad"):
+            CloudClient(cloud_api.url, "t").get("/auth/me")
+        assert len(cloud_api.requests_for("GET", "/auth/me")) == 1
+
+    def test_retries_give_up_and_say_how_often(self, cloud_api):
+        cloud_api.fail("GET", "/auth/me", 502, "bad gateway")
+        with pytest.raises(CloudError, match="after 4 attempts: 502 bad gateway"):
+            CloudClient(cloud_api.url, "t").get("/auth/me")
+        assert len(cloud_api.pauses) == 3
+
+    def test_a_delete_whose_first_attempt_landed_is_done(self, cloud_api):
+        cloud_api.set_steps(
+            "DELETE",
+            "/orgs/acme/schedules/s1",
+            [cloud_api.failure(502), cloud_api.failure(404, "Schedule not found")],
+        )
+        CloudClient(cloud_api.url, "t").delete("/orgs/acme/schedules/s1")
+
+    def test_a_first_attempt_404_on_delete_is_still_an_error(self, cloud_api):
+        cloud_api.fail("DELETE", "/orgs/acme/schedules/s1", 404, "not found")
+        with pytest.raises(CloudError, match="404"):
+            CloudClient(cloud_api.url, "t").delete("/orgs/acme/schedules/s1")
+
+    def test_a_timeout_is_retried_then_names_the_knob(self, cloud_api):
+        cloud_api.set("PUT", "/orgs/acme/jobs/j1", cloud_api.hang())
+        with pytest.raises(CloudError) as caught:
+            CloudClient(cloud_api.url, "t", timeout=9).put(
+                "/orgs/acme/jobs/j1", {"name": "n"}
+            )
+        message = str(caught.value)
+        assert "no answer within 9s after 4 attempts" in message
+        assert "--request-timeout" in message
+        assert cloud_api.call_for("PUT", "/orgs/acme/jobs/j1").timeout == 9
+
+    def test_the_timeout_defaults_and_reads_the_env(self, cloud_api, monkeypatch):
+        CloudClient(cloud_api.url, "t").get("/auth/me")
+        default = cloud_mod.DEFAULT_REQUEST_TIMEOUT_SECONDS
+        assert cloud_api.call_for("GET", "/auth/me").timeout == default
+        monkeypatch.setenv(cloud_mod.ENV_REQUEST_TIMEOUT, "45")
+        CloudClient(cloud_api.url, "t").get("/auth/me")
+        assert cloud_api.call_for("GET", "/auth/me").timeout == 45
+
+    def test_a_bad_timeout_env_is_refused(self, monkeypatch):
+        monkeypatch.setenv(cloud_mod.ENV_REQUEST_TIMEOUT, "soon")
+        with pytest.raises(CloudError, match="TRILOGY_CLOUD_TIMEOUT"):
+            cloud_mod.resolve_request_timeout(None)
+
+    def test_the_flag_beats_the_env(self, logged_in, run_cloud, monkeypatch):
+        monkeypatch.setenv(cloud_mod.ENV_REQUEST_TIMEOUT, "45")
+        result = run_cloud("--request-timeout", "600", "whoami")
+        assert result.exit_code == 0, result.output
+        assert logged_in.call_for("GET", "/auth/me").timeout == 600
+
     def test_an_empty_body_decodes_to_none(self, cloud_api):
         cloud_api.set_raw("GET", "/auth/me", b"")
         assert CloudClient(cloud_api.url, "t").get("/auth/me") is None
