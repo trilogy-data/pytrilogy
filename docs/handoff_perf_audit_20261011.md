@@ -99,18 +99,17 @@ mostly for the shorter plan. Count "still changing" warnings in the suite.
 
 - `BuildConcept._with_default_grain` (`build.py` ~1430) is an uncached
   property: 117k calls, 97% return `self` after building a `BuildGrain`.
-  Cache it (requires no post-construction field mutation).
+  NOT a plain cache: `lineage` is assigned after construction
+  (`_build_multi_select_lineage` sets `local_build_cache[k].lineage`) and the
+  PROPERTY branch reads it. Short-circuit the cheap cases instead.
 - `with_grain` copies made only for `==` (`execute.py` ~65: 64,710;
   `build.py` ~2369: 9,494): a grain-free equality helper.
-- `BuildEnvironmentConceptDict.get` goes through `__getitem__` + try/except
-  (521k calls): `dict.get` first, then the namespace fallback.
 - `_bound_addresses` (`discovery_utility.py` ~597) walks every node through
   the Rust boundary per gate call; it equalled the set derivable from the
   graph's datasource edges 311/311. Record it in `generate_graph`.
 - `_raise_if_disconnected` and `raise_if_filter_disconnected` compute the
   same `_component_map` twice on 52 of 315 calls: compute once, pass down
   (`excluded_addresses` stays in the key).
-- `_aggregate_grain_only_parents` depends only on the environment: cache.
 - `_env_finish` -> `gen_concept_list_caches` reruns on a delta that replayed
   nothing: reuse the baseline's.
 - `query_processor.py` ~949: `rebuild_cache()` runs twice on ordered
