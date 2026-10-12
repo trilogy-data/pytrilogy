@@ -356,6 +356,22 @@ _PHASES: tuple[_Phase, ...] = (
         lambda c: PredicatePushdownRemove(),
         depends_on=("predicate_pushdown.initial",),
     ),
+    _Phase(
+        "collapse_single_parent.after_pushdown",
+        lambda o: o.merge_aggregate and o.predicate_pushdown,
+        # Without the domain graph `produces_unbound_rowset` treats every
+        # aliased rowset output as unbound and this phase collapses nothing
+        # across a rowset boundary.
+        lambda c: CollapseSingleParent(domain_graph=c.domain_graph),
+        depends_on=("predicate_pushdown.remove",),
+        refires_after=("predicate_pushdown.remove",),
+        reason=(
+            "a per-contributor projection becomes a bare passthrough once "
+            "predicate pushdown relocates its WHERE onto the parent scan, "
+            "so re-collapse it then; a later pass is too late, the plan "
+            "builds around the passthrough first"
+        ),
+    ),
     # A bare passthrough is pure noise unrelated to aggregate merging, so it
     # collapses even with merge_aggregate off. No refires_after: this path has
     # no initial collapse phase, so this sole phase must sweep passthroughs
