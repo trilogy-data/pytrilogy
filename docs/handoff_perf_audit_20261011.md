@@ -162,17 +162,30 @@ the cache is shared; if so complete the key, using q23/q64 as the oracle.
 This also blocks checking the cache before building lineage (21k calls build
 a lineage, then hit).
 
-## Hazard: where-less grain cache ignores scoped merges (correctness)
+## Hazard: where-less grain cache masks a subset-join wrong-rows bug
 
 `Factory._build_grain` caches a where-less grain whole under
-`(frozenset(components), None)`, but `_normalize_grain_components` reads the
-calling factory's `scoped_merge_map` (and `environment.concepts`). A grain
-first built by a factory without a scoped merge comes back unnormalized in
-one that has it: on `tpc_ds_duckdb/query84` the hit returns
-`ss.return_customer_demographic.sk` where a fresh build gives
-`customer.current_demographics.sk`; a recompute-on-hit assert fires on 14
-TPC-DS files. Where grains already re-normalize per call. Fixing this
-(normalize per call, or key on the merge map) moves plans: check rows.
+`(frozenset(components), id(None))`, but `_normalize_grain_components` reads
+the calling factory's `scoped_merge_map` (and `environment.concepts`). A grain
+first built without a scoped merge comes back unnormalized under one
+(`tpc_ds_duckdb/query84`: `ss.return_customer_demographic.sk` where a fresh
+build gives `customer.current_demographics.sk`).
+
+Normalizing per call (cache only the built where) was tried and reverted:
+- `tests/core/processing/test_v4_fd_dimension_merge_grain.py` goes WRONG
+  ROWS. `subset join cust_id = bought.sale_cust` maps `local.cust_id ->
+  bought.sale_cust`; customer properties then grain on the rowset handle and
+  the final join becomes `RIGHT OUTER` from customers, keeping `bob` (no
+  sales) with a NULL total. The stale cache hid this.
+- `tpc_ds_duckdb/query29` grows 6 -> 9 CTEs (rows still match): `per_pair`
+  grains on `store_sales.customer/item.sk` instead of the `subset join`'s
+  `catalog_customer_item.cat_*`, and `item.desc`/`item.id` come through an
+  extra `store_sales` distinct scan.
+
+Open question first: which side should a subset join's scoped merge make
+canonical, and does the planner honour subset containment when a base
+concept's grain is spelled with a rowset handle. Fix that, then stop caching
+components.
 
 ## Closed: do not re-chase
 
