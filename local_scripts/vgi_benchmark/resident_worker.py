@@ -3,7 +3,7 @@
 # dependencies = ["pyarrow", "vgi-python"]
 # ///
 from dataclasses import dataclass
-from typing import Annotated, ClassVar
+from typing import Annotated
 
 import pyarrow as pa
 from vgi import Arg, Worker
@@ -21,7 +21,11 @@ from vgi_rpc import ArrowSerializableDataclass
 BATCH = 65536
 ids = pa.array(range(BATCH), pa.int64())
 FULL = pa.RecordBatch.from_arrays(
-    [ids, pa.array([i * 0.5 for i in range(BATCH)]), pa.array([f"label_{i % 1000}" for i in range(BATCH)])],
+    [
+        ids,
+        pa.array([i * 0.5 for i in range(BATCH)]),
+        pa.array([f"label_{i % 1000}" for i in range(BATCH)]),
+    ],
     names=["id", "value", "label"],
 )
 
@@ -57,12 +61,21 @@ class Src(TableFunctionGenerator[SrcArgs, SrcState]):
             return
         n = min(state.left, BATCH)
         batch = FULL.slice(0, n)
-        out.emit(pa.RecordBatch.from_arrays([batch.column(c) for c in params.output_schema.names], schema=params.output_schema))
+        out.emit(
+            pa.RecordBatch.from_arrays(
+                [batch.column(c) for c in params.output_schema.names],
+                schema=params.output_schema,
+            )
+        )
         state.left -= n
 
 
 class ResidentWorker(Worker):
-    catalog = Catalog(name="resident", default_schema="main", schemas=[Schema(path=["main"], functions=[Src])])
+    catalog = Catalog(
+        name="resident",
+        default_schema="main",
+        schemas=[Schema(path=["main"], functions=[Src])],
+    )
 
 
 if __name__ == "__main__":

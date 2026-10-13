@@ -1,5 +1,9 @@
-import json, statistics, sys, time
+import json
+import statistics
+import sys
+import time
 from pathlib import Path
+
 import haybarn
 
 worker = Path(sys.argv[1]).as_posix()
@@ -8,7 +12,9 @@ sizes = [int(x) for x in sys.argv[3:]]
 con = haybarn.connect()
 t = time.perf_counter()
 con.execute("LOAD vgi")
-con.execute(f"ATTACH 'resident' (TYPE vgi, LOCATION 'uv run --no-project --quiet {worker}')")
+con.execute(
+    f"ATTACH 'resident' (TYPE vgi, LOCATION 'uv run --no-project --quiet {worker}')"
+)
 setup = time.perf_counter() - t
 out = []
 for rows in sizes:
@@ -22,6 +28,10 @@ for rows in sizes:
             t = time.perf_counter()
             con.execute(sql).fetchall()
             timings.append(time.perf_counter() - t)
-        case[name] = {"first_s": timings[0], "warm_median_s": statistics.median(timings[1:]), "warm_min_s": min(timings[1:])}
+        case[name] = {
+            "first_s": timings[0],
+            "warm_median_s": statistics.median(timings[1:]),
+            "warm_min_s": min(timings[1:]),
+        }
     print(json.dumps(case), flush=True)
     out.append(case)
