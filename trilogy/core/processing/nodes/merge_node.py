@@ -2,7 +2,6 @@ from collections.abc import Iterable
 
 from trilogy.constants import logger
 from trilogy.core.enums import (
-    Derivation,
     JoinType,
     Modifier,
     SourceType,
@@ -45,7 +44,6 @@ from trilogy.core.processing.grain_utility import (
 )
 from trilogy.core.processing.join_resolution import (
     compute_outer_null_status,
-    deep_extent_free_spans,
     get_node_joins,
     held_region_spans,
     merge_partial_addresses,
@@ -478,13 +476,6 @@ class MergeNode(StrategyNode):
             partial_addresses |= source_outputs & source_partial
         branch_proofs &= output_addresses
         branch_proofs -= complete_addresses & partial_addresses
-        # A `~` key a branch was built not to extend is partial there
-        # whatever the other branches expose (a region domain projected down
-        # to what it carries): its filter proves nothing about the rows the
-        # domain adds back.
-        branch_proofs -= partial_addresses & frozenset().union(
-            *(deep_extent_free_spans(source) for source in final_datasets)
-        )
         # The same for this merge's own WHERE over a `~` key it pads for whose
         # extension rows the plan returns: the extension row carries the
         # dimension's key, so `customer_id in (2, 3)` keeps the customer with
@@ -558,28 +549,7 @@ class MergeNode(StrategyNode):
         grain_forced = False
 
         if self.force_group is True:
-            # A node producing rowset outputs at a grain its parents satisfy
-            # must not regroup. TVF_UNION counts too: a UNION ALL stack defines
-            # its own no-dedup row semantics, so a wrapper at the stack grain
-            # must never collapse duplicate rows. The grain tested is the one
-            # the OUTPUTS carry: a FINAL dedup narrows the outputs to the
-            # requested columns while `self.grain` still claims the merge's
-            # row grain (`{s.d, s.o}` over `select s.d, band`), which the
-            # parents satisfy trivially.
-            rowset_output = any(
-                concept.derivation in (Derivation.ROWSET, Derivation.TVF_UNION)
-                for concept in self.output_concepts
-            )
-            force_group = condition_key_requires_group or not (
-                rowset_output
-                and grain_satisfied_by_pregrain(
-                    pregrain,
-                    BuildGrain.from_concepts(
-                        self.output_concepts, environment=self.environment
-                    ),
-                    self.environment,
-                )
-            )
+            force_group = True
         elif self.whole_grain:
             force_group = False
         elif condition_key_requires_group:

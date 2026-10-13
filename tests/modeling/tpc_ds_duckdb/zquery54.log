@@ -67,8 +67,8 @@ SELECT
     \"scrawny\".\"num_customers\" as \"num_customers\",
     \"abhorrent\".\"segment_base\" as \"segment_base\"
 FROM
-    \"scrawny\"
-    INNER JOIN \"abhorrent\" on \"scrawny\".\"segment\" = \"abhorrent\".\"segment\"
+    \"abhorrent\"
+    INNER JOIN \"scrawny\" on \"abhorrent\".\"segment\" = \"scrawny\".\"segment\"
 GROUP BY
     1,
     2,

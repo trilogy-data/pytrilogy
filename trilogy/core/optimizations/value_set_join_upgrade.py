@@ -7,10 +7,10 @@ the rule is stable under inlining, renaming, hoisting and repartitioning):
   needs preservation only for key values the other side lacks, or for
   NULL-key rows with no null-safe partner. When the domain graph proves one
   side a subset of a complete, filter-free superset side (a declared ``?``
-  relation, a rowset/filter lineage path, or a ``_relative_key_subset``
-  proof), preserving the subset side is a no-op: FULL narrows to the
-  directional join preserving the superset side, and a directional join
-  whose preserved side fully matches narrows to INNER.
+  relation or a rowset/filter lineage path), preserving the subset side is
+  a no-op: FULL narrows to the directional join preserving the superset
+  side, and a directional join whose preserved side fully matches narrows
+  to INNER.
 
 * Equivalence upgrade (``_upgrade_to_inner``), the narrow case: every join
   key pair carries the same value set on both sides, so no row is ever
@@ -90,10 +90,8 @@ def _row_limited(
 
 def _authoritative_scan(side_cte: CTE | UnionCTE) -> bool:
     """A direct, unfiltered scan of a single datasource carries its bindings'
-    full value sets (a partial binding is rejected by the caller like any
-    other partial). Only consulted for EQUAL-declared keys: for undeclared
-    keys a non-partial binding is a weaker claim than an author declaration,
-    since fact FKs are routinely complete-in-schema but value-subsets in data."""
+    full value sets: a binding without `~` declares the key's whole domain
+    (a partial binding is rejected by the caller like any other partial)."""
     if not isinstance(side_cte, CTE):
         return False
     if side_cte.condition is not None or side_cte.limit is not None:
@@ -109,13 +107,13 @@ def _authoritative_scan(side_cte: CTE | UnionCTE) -> bool:
 def _complete_distinct(
     concept: BuildConcept,
     side_cte: CTE | UnionCTE,
-    allow_scan_evidence: bool = False,
 ) -> bool:
     """True when ``side_cte`` projects every distinct value of ``concept``
     for the concept's full value space:
 
-    1. The concept lives on a GROUP BY grain key here, so the side carries
-       exactly the source's distinct values modulo the accumulated filter.
+    1. The concept lives on a GROUP BY grain key here, or on the grain of an
+       authoritative scan, so the side carries exactly the source's distinct
+       values modulo the accumulated filter.
     2. The side does not mark the concept partial. A partial concept is a
        subset projection, distinct within that subset but not the full value
        space; ``partial_concepts`` propagates that signal uniformly whatever
@@ -134,9 +132,7 @@ def _complete_distinct(
         partial_addrs |= partial.all_spellings
     if partial_addrs & keys:
         return False
-    if side_cte.group_to_grain or (
-        allow_scan_evidence and _authoritative_scan(side_cte)
-    ):
+    if side_cte.group_to_grain or _authoritative_scan(side_cte):
         grain_addrs = set(side_cte.grain.components) if side_cte.grain else set()
         return bool(grain_addrs & keys)
     return False
@@ -145,10 +141,7 @@ def _complete_distinct(
 def _extent_free(concept: BuildConcept, side_cte: CTE) -> bool:
     """The side was planned not to extend the concept's span: a region domain
     elsewhere holds the rows it lacks, so it carries only part of the key."""
-    keys = concept.all_spellings
-    if isinstance(concept.lineage, BuildRowsetItem):
-        keys.add(concept.lineage.content.address)
-    return bool(keys & side_cte.source.extent_free_spans)
+    return bool(concept.all_spellings & side_cte.source.extent_free_spans)
 
 
 def _own_coverage_partial(
@@ -375,13 +368,12 @@ def _pair_key_sets_equivalent(
     left_cte: CTE | UnionCTE,
     right_concept: BuildConcept,
     right_cte: CTE | UnionCTE,
-    allow_scan_evidence: bool = False,
 ) -> bool:
     if _source_address(left_concept) != _source_address(right_concept):
         return False
-    if not _complete_distinct(left_concept, left_cte, allow_scan_evidence):
+    if not _complete_distinct(left_concept, left_cte):
         return False
-    if not _complete_distinct(right_concept, right_cte, allow_scan_evidence):
+    if not _complete_distinct(right_concept, right_cte):
         return False
     return _filters_equivalent(
         _accumulate_filter(left_cte),
@@ -549,20 +541,17 @@ def _genuine_partial_stamp(
 ) -> bool:
     """A coverage-speaking partial stamp on the sub side that the sup side
     lacks. Stamps at declared-relation subset endpoints speak to the relation
-    and smear symmetrically across a canonical group, and a stamp on a ROWSET
-    handle is the planner's own relation-driven marking, never an authored
-    fact. Any other stamp is an authored coverage fact (a `~` binding), so its
-    one-sided presence proves the subset direction: the author declared both
-    sides' relations to the domain (`~` on the sub, a complete binding on the
-    sup, verified by ``_complete_values`` after)."""
+    and smear symmetrically across a canonical group. Any other stamp is an
+    authored coverage fact (a `~` binding), so its one-sided presence proves
+    the subset direction: the author declared both sides' relations to the
+    domain (`~` on the sub, a complete binding on the sup, verified by
+    ``_complete_values`` after)."""
     keys = sub_concept.all_spellings
     subset_endpoints = graph.subset_sources()
     genuine = {
         p.address
         for p in sub_cte.partial_concepts
-        if p.address not in subset_endpoints
-        and p.derivation != Derivation.ROWSET
-        and p.all_spellings & keys
+        if p.address not in subset_endpoints and p.all_spellings & keys
     }
     if not genuine:
         return False
@@ -580,8 +569,6 @@ def _pair_side_fully_matches(
     sup_concept: BuildConcept,
     sup_cte: CTE | UnionCTE,
     domain_graph: DomainGraph,
-    subset_join_map: dict[str, str],
-    scoped_canonical: dict[str, str],
     graph_proof_only: bool = False,
 ) -> bool:
     """Every row of the subset side finds a partner on the superset side, so a
@@ -627,18 +614,19 @@ def _pair_side_fully_matches(
             isinstance(sub_cte, CTE)
             and _genuine_partial_stamp(sub_concept, sub_cte, sup_cte, domain_graph)
         ):
-            if not subset_join_map:
+            subset_sources = domain_graph.subset_join_map()
+            if not subset_sources:
                 return False
-            pair_canon = scoped_canonical.get(sub_concept.address, sub_concept.address)
+            pair_canon = domain_graph.canonical(sub_concept.address)
             group = sub_concept.all_spellings | {pair_canon}
             sub_origins = _side_origins(sub_cte, group)
             sup_origins = _side_origins(sup_cte, group)
             if not any(
                 s != sub_concept.address
-                and scoped_canonical.get(s, s) == pair_canon
+                and domain_graph.canonical(s) == pair_canon
                 and s in sub_origins
                 and s not in sup_origins
-                for s in subset_join_map
+                for s in subset_sources
             ):
                 return False
     # A ROWSET superset anchor at its own rename boundary is complete by
@@ -646,21 +634,17 @@ def _pair_side_fully_matches(
     # subset side fully matches it. An external filter on the rowset output
     # fails the boundary test and falls through below.
     #
-    # Gated on a strict directional subset between the two own addresses, or
-    # an authored identity (`equal join`: one domain, so the other side is a
-    # subset of it however it is filtered): a scoped-join merge collapses
-    # every anchor-joined key onto one canonical, so two independent rowsets
-    # joined to a common anchor land in each other's pseudonym closure and
-    # `_proven_subset_of` would falsely read one sibling as the superset of
-    # the other. The own-address relation is UNKNOWN for such siblings and
-    # SUBSET only toward the genuine anchor. A resolved EQUAL that nobody
-    # declared (a `subset join a = rs.k` opposed by the filtered body's own
-    # `rs.k ⊑ a`) is a lying declaration, and stays preserving.
-    if _rowset_definition_boundary(sup_concept, sup_cte) and (
-        domain_graph.relation(sub_concept.address, sup_concept.address)
-        is ResolvedRelation.SUBSET
-        or domain_graph.declared_equal(sub_concept.address, sup_concept.address)
-    ):
+    # Gated on a strict directional subset or a resolved identity between the
+    # two own addresses (one domain, so the other side is a subset of it
+    # however it is filtered; declared or structural, the model is trusted):
+    # a scoped-join merge collapses every anchor-joined key onto one
+    # canonical, so two independent rowsets joined to a common anchor land in
+    # each other's pseudonym closure and `_proven_subset_of` would falsely
+    # read one sibling as the superset of the other. The own-address relation is UNKNOWN for such siblings and
+    # SUBSET only toward the genuine anchor.
+    if _rowset_definition_boundary(sup_concept, sup_cte) and domain_graph.relation(
+        sub_concept.address, sup_concept.address
+    ) in (ResolvedRelation.SUBSET, ResolvedRelation.EQUAL):
         return True
     if not _complete_values(sup_concept, sup_cte, domain_graph):
         return False
@@ -671,135 +655,6 @@ def _emits_null(concept: BuildConcept, cte: CTE | UnionCTE) -> bool:
     return isinstance(cte, CTE) and concept.address in {
         c.address for c in cte.nullable_concepts
     }
-
-
-def _datasource_ids_for_key(cte: CTE, concept: BuildConcept) -> set[str]:
-    providers = set(cte.source_map.get(concept.address, ()))
-    return {
-        datasource.identifier
-        for datasource in cte.source.datasources
-        if isinstance(datasource, BuildDatasource)
-        and datasource.safe_identifier in providers
-        and set(datasource.grain.components) & concept.all_spellings
-    }
-
-
-def _cte_contains_datasource(cte: CTE | UnionCTE, identifier: str) -> bool:
-    return isinstance(cte, CTE) and any(
-        isinstance(datasource, BuildDatasource) and datasource.identifier == identifier
-        for datasource in cte.source.datasources
-    )
-
-
-def _provider_joins_preserve_rows(
-    cte: CTE,
-    provider_ids: set[str],
-    graph: DomainGraph,
-    subset_join_map: dict[str, str],
-    scoped_canonical: dict[str, str],
-) -> bool:
-    def complete_domain_match(
-        sub_concept: BuildConcept,
-        sub_cte: CTE | UnionCTE,
-        sup_concept: BuildConcept,
-        sup_cte: CTE | UnionCTE,
-    ) -> bool:
-        return (
-            isinstance(sup_cte, CTE)
-            and _source_address(sub_concept) == _source_address(sup_concept)
-            and bool(set(sup_cte.grain.components) & sup_concept.all_spellings)
-            and _complete_values(sub_concept, sub_cte, graph)
-            and _complete_values(sup_concept, sup_cte, graph)
-            and _accumulate_filter(sup_cte) is None
-        )
-
-    for join in cte.joins:
-        if not isinstance(join, Join) or join.join_type != JoinType.INNER:
-            return False
-        if not join.pairs:
-            return False
-        if not all(
-            (
-                _cte_contains_datasource(pair.node, source)
-                and _pair_side_fully_matches(
-                    pair.left,
-                    pair.node,
-                    pair.right,
-                    join.right,
-                    graph,
-                    subset_join_map,
-                    scoped_canonical,
-                )
-                or _cte_contains_datasource(pair.node, source)
-                and complete_domain_match(pair.left, pair.node, pair.right, join.right)
-                or _cte_contains_datasource(join.right, source)
-                and _pair_side_fully_matches(
-                    pair.right,
-                    join.right,
-                    pair.left,
-                    pair.node,
-                    graph,
-                    subset_join_map,
-                    scoped_canonical,
-                )
-                or _cte_contains_datasource(join.right, source)
-                and complete_domain_match(pair.right, join.right, pair.left, pair.node)
-            )
-            for pair in join.pairs
-            for source in provider_ids
-        ):
-            return False
-    return bool(provider_ids)
-
-
-def _relative_key_subset(
-    sub_concept: BuildConcept,
-    sub_cte: CTE | UnionCTE,
-    sup_concept: BuildConcept,
-    sup_cte: CTE | UnionCTE,
-    graph: DomainGraph,
-    subset_join_map: dict[str, str],
-    scoped_canonical: dict[str, str],
-) -> bool:
-    """Whether `sub_cte`'s keys are covered by a filtered key provider."""
-    if not isinstance(sub_cte, CTE) or not isinstance(sup_cte, CTE):
-        return False
-    if _source_address(sub_concept) != _source_address(sup_concept):
-        return False
-    if not set(sup_cte.grain.components) & sup_concept.all_spellings:
-        return False
-    sub_filter = _accumulate_filter(sub_cte)
-    sup_filter = _accumulate_filter(sup_cte)
-    if sup_filter is not None and (
-        sub_filter is None or not condition_implies(sub_filter, sup_filter)
-    ):
-        return False
-    provider_ids = _datasource_ids_for_key(sup_cte, sup_concept)
-    if not _provider_joins_preserve_rows(
-        sup_cte,
-        provider_ids,
-        graph,
-        subset_join_map,
-        scoped_canonical,
-    ):
-        return False
-    if not any(_cte_contains_datasource(sub_cte, source) for source in provider_ids):
-        return False
-    return any(
-        isinstance(join, Join)
-        and join.join_type == JoinType.INNER
-        and any(
-            pair.left.all_spellings & sub_concept.all_spellings
-            and pair.right.all_spellings & sup_concept.all_spellings
-            and (
-                _cte_contains_datasource(pair.node, source)
-                or _cte_contains_datasource(join.right, source)
-            )
-            for pair in join.pairs or []
-            for source in provider_ids
-        )
-        for join in sub_cte.joins
-    )
 
 
 def _emits_grouping_set_rows(cte: CTE | UnionCTE) -> bool:
@@ -868,12 +723,6 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
         # must never upgrade to INNER (FULL's key stays complete, so the
         # partial-driven checks cannot protect it).
         self.full_join_keys = graph.outer_relation_keys() - self.equal_join_keys
-        # Subset side (exact, side-specific address) -> superset counterpart
-        # for every SUBSET-declared relation; feeds directional narrowing.
-        self.subset_join_map = graph.subset_join_map()
-        # Full member -> canonical-group-root map for scoped relations; maps
-        # a rendered same-address pair back to its relation group.
-        self.scoped_canonical = dict(graph.canonical_map())
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
@@ -928,15 +777,7 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
 
         def pair_equal(pair) -> bool:
             equal_declared = self._pair_equal_declared(pair)
-            if _pair_key_sets_equivalent(
-                pair.left,
-                pair.node,
-                pair.right,
-                right_cte,
-                # Authoritative-scan completeness is only trusted for keys
-                # the author declared equal-domain; see _authoritative_scan.
-                allow_scan_evidence=equal_declared,
-            ):
+            if _pair_key_sets_equivalent(pair.left, pair.node, pair.right, right_cte):
                 return True
             # An EQUAL declaration collapses two concepts into one value
             # space, so both sides carrying every value plus equivalent
@@ -1018,42 +859,15 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
         (``_null_extended_before``)."""
         assert join.pairs
 
-        def relative_right(pair) -> bool:
-            return not graph_proof_only and _relative_key_subset(
-                pair.right,
-                right_cte,
-                pair.left,
-                pair.node,
-                self.domain_graph,
-                self.subset_join_map,
-                self.scoped_canonical,
-            )
-
-        def relative_left(pair) -> bool:
-            return not graph_proof_only and _relative_key_subset(
-                pair.left,
-                pair.node,
-                pair.right,
-                right_cte,
-                self.domain_graph,
-                self.subset_join_map,
-                self.scoped_canonical,
-            )
-
         def right_matches_left() -> bool:
             return all(
-                (
-                    _pair_side_fully_matches(
-                        pair.right,
-                        right_cte,
-                        pair.left,
-                        pair.node,
-                        self.domain_graph,
-                        self.subset_join_map,
-                        self.scoped_canonical,
-                        graph_proof_only=graph_proof_only,
-                    )
-                    or relative_right(pair)
+                _pair_side_fully_matches(
+                    pair.right,
+                    right_cte,
+                    pair.left,
+                    pair.node,
+                    self.domain_graph,
+                    graph_proof_only=graph_proof_only,
                 )
                 and (
                     pair.is_nullable
@@ -1061,26 +875,19 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                         pair.right, right_cte, pair.left, pair.node
                     )
                     or not _key_nullable(pair.right, right_cte)
-                    or relative_right(pair)
-                    and not _key_nullable(pair.left, pair.node)
                 )
                 for pair in join.pairs or []
             )
 
         def left_matches_right() -> bool:
             return all(
-                (
-                    _pair_side_fully_matches(
-                        pair.left,
-                        pair.node,
-                        pair.right,
-                        right_cte,
-                        self.domain_graph,
-                        self.subset_join_map,
-                        self.scoped_canonical,
-                        graph_proof_only=graph_proof_only,
-                    )
-                    or relative_left(pair)
+                _pair_side_fully_matches(
+                    pair.left,
+                    pair.node,
+                    pair.right,
+                    right_cte,
+                    self.domain_graph,
+                    graph_proof_only=graph_proof_only,
                 )
                 and (
                     pair.is_nullable
@@ -1088,8 +895,6 @@ class UpgradeOuterFromKeySetEquivalence(OptimizationRule):
                         pair.left, pair.node, pair.right, right_cte
                     )
                     or not _key_nullable(pair.left, pair.node)
-                    or relative_left(pair)
-                    and not _key_nullable(pair.right, right_cte)
                 )
                 and not _null_extended_before(cte, join, pair.node.name)
                 for pair in join.pairs or []

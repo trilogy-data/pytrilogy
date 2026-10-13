@@ -39,7 +39,6 @@ from .models import ExtentOwnership, GroupAttrs
 def elect_extent_owners(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
-    environment: BuildEnvironment,
     keyspace: Keyspace,
     relation_only: frozenset[str] = frozenset(),
 ) -> ExtentOwnership:
@@ -123,15 +122,12 @@ def elect_extent_owners(
     permitted: dict[str, frozenset[str]] = {}
     for span, owner in owner_by_span.items():
         _permit(permitted, span, {owner} | nx.ancestors(group_graph, owner))
-    # The domain holds the members; whatever reads it extends, except the row
-    # streams that must never see an extension row.
-    readers = {
-        owner: ({owner} | nx.descendants(group_graph, owner))
-        - solid_groups(group_graph, attrs, domains[owner], keyspace, environment)
-        for owner in set(domain_of_span.values())
-    }
+    # The domain holds the members; whatever reads it extends. A row stream
+    # that must never see an extension row is never wired to read the domain
+    # (`region_domains.feed_region_domains_to_present_scalars`), so it is not
+    # among the descendants.
     for span, owner in domain_of_span.items():
-        _permit(permitted, span, readers[owner])
+        _permit(permitted, span, {owner} | nx.descendants(group_graph, owner))
     owner_by_span.update(domain_of_span)
     carried = {
         address: gid for gid in domains for address in attrs[gid].primary_members

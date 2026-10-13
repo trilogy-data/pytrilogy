@@ -1,5 +1,5 @@
 query_id = "57"
-gen_length = 5491
+gen_length = 5472
 preql_size = 2135
 comp_size = 2122
 generated_sql = """
@@ -66,7 +66,7 @@ SELECT
     \"questionable\".\"sum_sales\" as \"sum_sales\"
 FROM
     \"questionable\"
-    INNER JOIN \"abundant\" on \"questionable\".\"catalog_sales_call_center_name\" is not distinct from \"abundant\".\"catalog_sales_call_center_name\" AND \"questionable\".\"catalog_sales_item_brand_name\" is not distinct from \"abundant\".\"catalog_sales_item_brand_name\" AND \"questionable\".\"catalog_sales_item_category\" is not distinct from \"abundant\".\"catalog_sales_item_category\" AND \"questionable\".\"catalog_sales_sale_date_year\" = \"abundant\".\"catalog_sales_sale_date_year\")
+    INNER JOIN \"abundant\" on \"questionable\".\"catalog_sales_call_center_name\" = \"abundant\".\"catalog_sales_call_center_name\" AND \"questionable\".\"catalog_sales_item_brand_name\" is not distinct from \"abundant\".\"catalog_sales_item_brand_name\" AND \"questionable\".\"catalog_sales_item_category\" is not distinct from \"abundant\".\"catalog_sales_item_category\" AND \"questionable\".\"catalog_sales_sale_date_year\" = \"abundant\".\"catalog_sales_sale_date_year\")
 SELECT
     \"uneven\".\"catalog_sales_item_category\" as \"catalog_sales_item_category\",
     \"uneven\".\"catalog_sales_item_brand_name\" as \"catalog_sales_item_brand_name\",

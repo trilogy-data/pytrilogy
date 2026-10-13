@@ -415,12 +415,13 @@ def _relation_mates(address: str, environment: BuildEnvironment) -> set[str]:
     return mates
 
 
-def _relation_crosses_rowset_boundary(
+def _relation_crosses_row_shape_barrier(
     address: str, environment: BuildEnvironment
 ) -> bool:
-    """Whether a scoped-join relation member is paired with a ROWSET handle.
+    """Whether a scoped-join relation member is paired with a row-shape
+    barrier (a ROWSET handle, an aggregate).
 
-    Only then is the coalesced axis exclusively post-merge: the rowset is an
+    Only then is the coalesced axis exclusively post-merge: the barrier is an
     opaque body whose row identity exists no earlier than its boundary, so an
     aggregate riding the relation must sit above the join. When every member is
     a plain concept the axis is a native column of each side's own fact, and
@@ -434,8 +435,9 @@ def _relation_crosses_rowset_boundary(
     """
     for member in {address, *_relation_mates(address, environment)}:
         member_concept = environment.concepts.get(member)
-        if member_concept is not None and isinstance(
-            member_concept.lineage, BuildRowsetItem
+        if (
+            member_concept is not None
+            and member_concept.derivation in ROW_SHAPE_BARRIER_DERIVATIONS
         ):
             return True
     return False
@@ -751,7 +753,7 @@ def _aggregate_relation_members(
     return frozenset(
         addr
         for addr in candidates & _statement_scoped_relation_members(environment)
-        if _relation_crosses_rowset_boundary(addr, environment)
+        if _relation_crosses_row_shape_barrier(addr, environment)
         and addr not in own_anchor_args
         and addr not in row_identity
     )
@@ -1138,24 +1140,6 @@ def computed_origin_relation_members(environment: BuildEnvironment) -> frozenset
     return frozenset(out)
 
 
-def _scoped_group_sides(
-    members: set[str], environment: BuildEnvironment
-) -> frozenset[str]:
-    """Identity of the endpoints a scoped join-key group pairs: the rowset (or
-    namespace) each member belongs to. Two key groups with the same sides are
-    legs of ONE composite relation (`union join a.x = b.x and a.y = b.y`, or
-    two clauses over the same pair; both render as one FULL JOIN on all
-    legs)."""
-    sides: set[str] = set()
-    for addr in members:
-        member = environment.concepts.get(addr)
-        if member is not None and isinstance(member.lineage, BuildRowsetItem):
-            sides.add(f"rowset:{member.lineage.rowset.name}")
-        else:
-            sides.add(f"ns:{addr.rsplit('.', 1)[0]}")
-    return frozenset(sides)
-
-
 def _composite_relation_sibling_axes(
     addresses: frozenset[str], environment: BuildEnvironment
 ) -> frozenset[str]:
@@ -1173,8 +1157,11 @@ def _composite_relation_sibling_axes(
     group_sets = {
         canonical: {canonical, *members} for canonical, members in groups.items()
     }
+    # A group's sides are its members' namespaces (a rowset handle's is its
+    # rowset); two groups with the same sides are legs of ONE composite
+    # relation (`union join a.x = b.x and a.y = b.y`), one FULL JOIN on all legs.
     sides_of = {
-        canonical: _scoped_group_sides(g, environment)
+        canonical: frozenset(addr.rsplit(".", 1)[0] for addr in g)
         for canonical, g in group_sets.items()
     }
     out: set[str] = set()
@@ -1657,7 +1644,7 @@ def _add_concept(
             if (
                 axis is not None
                 and addr not in upstream_addrs
-                and _relation_crosses_rowset_boundary(addr, environment)
+                and _relation_crosses_row_shape_barrier(addr, environment)
             ):
                 upstreams.append(axis)
     # The `union join` axis an aggregate's input pairs on is read from every
@@ -1939,51 +1926,21 @@ def _staged_condition_labels(
     return labels
 
 
-def _lineage_ancestor_rowsets(
-    graph: nx.DiGraph, attrs: dict[str, ConceptAttrs], src: str
-) -> set[str]:
-    out: set[str] = set()
-    for a in nx.ancestors(graph, src):
-        name = attrs[a].rowset_name
-        if name:
-            out.add(name)
-    return out
-
-
 def _constraint_crosses_rowset(
-    attrs: dict[str, ConceptAttrs],
-    src: str,
-    dst: str,
-    src_ancestor_rowsets: set[str],
+    attrs: dict[str, ConceptAttrs], src: str, dst: str
 ) -> bool:
-    """Whether a src→dst CONSTRAINT edge would cross a rowset boundary it must
-    not. Two ways it can.
+    """Whether a src->dst CONSTRAINT edge would land on a rowset boundary the
+    condition does not belong to.
 
-    A condition concept derived from a ROWSET (a WINDOW `eldest` computed over a
-    rowset, then filtered `eldest = 1`; or a bare aggregate over a rowset handle)
-    already sits above that rowset, and its value cannot exist until the
-    rowset's rows do. A rowset is one indivisible group, so constraining the
-    condition back onto ANY of its handles forms a cycle -- rowset to window by
-    lineage, window back to rowset by constraint -- that kills the topological
-    concept-set pass. Deriving from one handle puts `src` above the whole
-    rowset, including handles it never reads directly (the window reads
-    `id`/`last_name`/`age` while its filter sits above `name`/`survived` from
-    the same rowset).
-
-    A rowset-scoped condition value is computed inside ITS own rowset's boundary
-    and its test only applies above the completion merge (FINAL). Constraining
-    it onto ANOTHER rowset's boundary forces that independent scope to consume a
-    value it cannot see, polluting its output contract -- the b-side boundary
-    "outputs" the a-side's value and loses its own handles. Two forms: a
-    rowset-member presence probe, and a plain rowset handle in a post-merge
-    filter (`where a.amt is not null and b.amt is not null` over two independent
-    rowsets, where each null test lands at FINAL and a mutual constraint would
-    2-cycle the two rowset groups)."""
-    if attrs[dst].rowset_name and attrs[dst].rowset_name in src_ancestor_rowsets:
-        return True
-    # A rowset's body is planned apart, so a condition of the reading
-    # statement filters nothing inside it: an edge onto the boundary only
-    # makes the condition's scans look upstream of the rowset's rows.
+    A rowset's body is planned apart, so a condition of the reading statement
+    filters nothing inside it: an edge onto the boundary only makes the
+    condition's scans look upstream of the rowset's rows. A condition derived
+    from the rowset (a WINDOW `eldest` over its handles, filtered `eldest =
+    1`) would even cycle, rowset to window by lineage and window back to
+    rowset by constraint. A condition computed inside ANOTHER rowset's
+    boundary (a member presence probe) must not pollute this one's output
+    contract either. Only the rowset's own WHERE-phase handles constrain its
+    boundary."""
     return (
         attrs[dst].derivation == Derivation.ROWSET
         and attrs[src].rowset_name != attrs[dst].rowset_name
@@ -2128,14 +2085,6 @@ def _lineage_leaves(concepts: list[BuildConcept]) -> list[BuildConcept]:
     return leaves
 
 
-def _rowset_read_grain(
-    attrs: dict[str, ConceptAttrs], rowset_name: str
-) -> frozenset[str]:
-    return frozenset().union(
-        *(a.grain_components for a in attrs.values() if a.rowset_name == rowset_name)
-    )
-
-
 def _add_rowset_handle_relations(
     mandatory_list: list[BuildConcept],
     conditions: list[BuildWhereClause],
@@ -2176,16 +2125,14 @@ def _add_rowset_handle_relations(
             c for addr in sorted(relation) if (c := environment.concepts.get(addr))
         ]
         handles = [
-            (c, c.lineage.rowset.name)
+            c
             for c in concepts
             if isinstance(c.lineage, BuildRowsetItem)
             and c.lineage.rowset.name in rowsets
         ]
         mates = [c for c in concepts if c.derivation == Derivation.ROOT]
-        for handle, rowset_name in handles:
+        for handle in handles:
             handle_nid = node_id("", handle.address)
-            licensed_only = handle_nid not in graph
-            read_grain = _rowset_read_grain(attrs, rowset_name)
             for concept in (handle, *mates):
                 nid = node_id("", concept.address)
                 added = nid not in graph
@@ -2202,12 +2149,6 @@ def _add_rowset_handle_relations(
                 )
                 if added and nid in attrs:
                     attrs[nid].relation_only = True
-            if licensed_only and handle_nid in attrs:
-                # Added only to carry the edge: the boundary keeps the grain of
-                # the rowset outputs the statement reads, not the join's key.
-                attrs[handle_nid].grain_components = (
-                    read_grain or attrs[handle_nid].grain_components
-                )
             for mate in mates:
                 mate_nid = node_id("", mate.address)
                 if (
@@ -2403,18 +2344,6 @@ def build_concept_graph(
                 continue
             origin = environment.alias_origin_lookup.get(member)
             if origin is None or origin.lineage is None:
-                continue
-            # A collapsed ROWSET handle (a composite leg paired through the
-            # anonymous canonical) is not re-injected: its computation lives
-            # behind its rowset boundary, and demanding the handle here
-            # re-enters the rowset's own build with the scoped join still in
-            # scope (self-weld recursion). Same for a computed key OVER rowset
-            # handles (`fut.period + 2 = agg.period + 1`): walking its lineage
-            # re-enters the rowsets one level down, and the rowset-boundary +
-            # inline-render machinery already own those.
-            if isinstance(origin.lineage, BuildRowsetItem) or any(
-                isinstance(source.lineage, BuildRowsetItem) for source in origin.sources
-            ):
                 continue
             canonical = resolved_member
             _add_concept(
@@ -2625,9 +2554,8 @@ def build_concept_graph(
             src_address = attrs[src].address
             if src_address not in row_arg_addresses:
                 continue
-            src_ancestor_rowsets = _lineage_ancestor_rowsets(graph, attrs, src)
             for dst in d0_blank_nodes:
-                if _constraint_crosses_rowset(attrs, src, dst, src_ancestor_rowsets):
+                if _constraint_crosses_rowset(attrs, src, dst):
                     continue
                 # A lineage edge already present src→dst is left as-is; the
                 # constraint ordering it would carry is implied by the lineage.
@@ -2686,11 +2614,10 @@ def build_concept_graph(
             continue
         if any(True for _ in graph.successors(src)):
             continue
-        src_ancestor_rowsets = _lineage_ancestor_rowsets(graph, attrs, src)
         for dst in mandatory_blank_ids:
             if dst not in graph.nodes or graph.has_edge(src, dst):
                 continue
-            if _constraint_crosses_rowset(attrs, src, dst, src_ancestor_rowsets):
+            if _constraint_crosses_rowset(attrs, src, dst):
                 continue
             add_edge(graph, edges, src, dst, EdgeKind.CONSTRAINT)
 

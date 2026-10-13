@@ -29,7 +29,6 @@ def scan_stamps(
     datasource: BuildDatasource,
     outputs: list[BuildConcept],
     partial_is_full: bool,
-    complete_proofs: set[str],
     non_null_proofs: set[str],
 ) -> tuple[list[BuildConcept], list[BuildConcept]]:
     """Partial and nullable outputs of a scan: the datasource's column flags
@@ -41,7 +40,6 @@ def scan_stamps(
         datasource,
         outputs,
         {c.concept.address for c in datasource.columns},
-        exempt=complete_proofs,
         partial_is_full=partial_is_full,
     )
     partials = [c for c in outputs if c.address in partial]
@@ -91,7 +89,6 @@ class SelectNode(StrategyNode):
         ordering: BuildOrderBy | None = None,
         existence_concepts: list[BuildConcept] | None = None,
         partial_is_full: bool = False,
-        complete_proofs: set[str] | None = None,
         non_null_proofs: set[str] | None = None,
     ):
         if datasource and partial_concepts is None:
@@ -101,7 +98,6 @@ class SelectNode(StrategyNode):
         # Proofs the scan's construction established; the stamps are recomputed
         # from them at resolve so a widened projection is stamped the same way.
         self.partial_is_full = partial_is_full
-        self.complete_proofs = complete_proofs or set()
         self.non_null_proofs = non_null_proofs or set()
         super().__init__(
             input_concepts=input_concepts,
@@ -166,11 +162,7 @@ class SelectNode(StrategyNode):
         if self.conditions:
             non_null_proofs |= condition_proves_non_null(self.conditions)
         partials, nullables = scan_stamps(
-            datasource,
-            all_concepts_final,
-            self.partial_is_full,
-            self.complete_proofs,
-            non_null_proofs,
+            datasource, all_concepts_final, self.partial_is_full, non_null_proofs
         )
         # when not grouping, the scan keeps the datasource grain so merges align
         if self.force_group is False:
@@ -304,7 +296,6 @@ class SelectNode(StrategyNode):
             ordering=self.ordering,
             existence_concepts=list(self.existence_concepts),
             partial_is_full=self.partial_is_full,
-            complete_proofs=set(self.complete_proofs),
             non_null_proofs=set(self.non_null_proofs),
         )
         return self.with_marks(node)

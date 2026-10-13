@@ -81,32 +81,6 @@ class ConditionPlacement:
     reason: PlacementReason
 
 
-def _output_rowset_body_condition_addresses(
-    mandatory_list: list[BuildConcept],
-) -> set[str]:
-    """Row-arg addresses of the WHERE/HAVING clauses inside every rowset body
-    reachable from the mandatory outputs. An outer WHERE over one of these is a
-    restatement the rowset scope already consumes, not a missing join."""
-    addrs: set[str] = set()
-    seen: set[str] = set()
-    stack = list(mandatory_list)
-    while stack:
-        concept = stack.pop()
-        if concept.address in seen:
-            continue
-        seen.add(concept.address)
-        lineage = concept.lineage
-        if isinstance(lineage, BuildRowsetItem):
-            select = lineage.rowset.select
-            for clause in (select.where_clause, select.having_clause):
-                if clause is not None:
-                    addrs |= {a.address for a in clause.row_arguments}
-        for arg in concept.concept_arguments:
-            if isinstance(arg, BuildConcept):
-                stack.append(arg)
-    return addrs
-
-
 def main_lineage_groups(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -1196,35 +1170,17 @@ def _group_in_active_relation(gid: str, scope: _PlacementScope) -> bool:
         relation = set(group) | {canonical}
         if not (keys & relation):
             continue
-        # A non-ROWSET group only counts as a preserved SIDE of a
-        # STATEMENT-scoped join: a global `merge` is an identity
-        # declaration (INNER pairing, no null-extension), so pre-filtering
-        # a scan that shares a merged key is sound, and required, or a
-        # rowset body's own WHERE floats above its aggregate. Rowset
-        # boundaries keep the wider criterion (cross-rowset `merge X.a
-        # into Y.b` completion merges are global-scoped yet preserving).
-        if b.derivation != Derivation.ROWSET and not (
-            relation & statement_relation_addresses
-        ):
+        # A group only counts as a preserved SIDE of a STATEMENT-scoped
+        # join: a global `merge` is an identity declaration (INNER pairing,
+        # no null-extension), so pre-filtering a scan that shares a merged
+        # key is sound, and required, or a rowset body's own WHERE floats
+        # above its aggregate.
+        if not (relation & statement_relation_addresses):
             continue
         mates |= relation - keys
     mates -= keys
     if not mates:
         return False
-    # A ROOT mate is often not itself a member of any group: the pairing
-    # scan carries it as an FD attribute of a member's key. Let a ROWSET
-    # boundary locate such a mate through the mate's keys; an undemanded
-    # mate has no ConceptAttrs, so fall back to the environment.
-    if b.derivation == Derivation.ROWSET:
-        for mate in list(mates):
-            mate_attrs = attrs_by_address.get(mate)
-            if mate_attrs is not None:
-                mates |= set(mate_attrs.keys)
-            else:
-                mate_concept = environment.concepts.get(mate)
-                if mate_concept is not None and mate_concept.keys:
-                    mates |= set(mate_concept.keys)
-        mates -= keys
     # An AGGREGATE whose mate is hosted only by its own lineage ancestors
     # already contains the completion merge, so its atoms are pre-merge row
     # predicates: deferring one past the aggregate would filter aggregated
@@ -1502,16 +1458,12 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
     # pruned and the WHERE silently vanishes (`where year = 2001` over
     # rowset outputs that never expose year). No join relates the
     # gate's rows to the outputs; rowset islanding diagnoses the same
-    # shape as disconnected, so raise the same typed error. EXEMPT an
-    # atom the output rowsets' own bodies already filter on: that scope
-    # consumes the concept, so this is a redundant restatement, not a
-    # missing join, and placement proceeds with a harmless drop.
+    # shape as disconnected, so raise the same typed error.
     if (
         mandatory_list
         and candidates
         and not atom.existence_arguments
         and all(gid not in main_lineage for gid in candidates)
-        and not row_inputs <= _output_rowset_body_condition_addresses(mandatory_list)
     ):
         input_addrs = sorted(row_inputs)
         output_addrs = sorted({c.address for c in mandatory_list})

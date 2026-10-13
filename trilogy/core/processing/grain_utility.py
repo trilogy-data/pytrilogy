@@ -150,19 +150,6 @@ def _source_concept_for_address(
     )
 
 
-def _concept_covers_grain(concept: BuildConcept, grain: BuildGrain) -> bool:
-    """The join key IS the right side's whole grain, under any spelling. A key
-    that is only ONE of several grain components admits many right rows per
-    key (`s.d` against a row stream at `(s.d, s.q)`), so it covers nothing."""
-    if grain.components and grain.components <= concept.equivalent_addresses:
-        return True
-    return bool(
-        concept.derivation == Derivation.MULTISELECT
-        and concept.keys
-        and grain.components.issubset(concept.keys)
-    )
-
-
 def _concept_coverage_addresses(
     concept: BuildConcept, include_aggregate_by_keys: bool = True
 ) -> set[str]:
@@ -287,9 +274,7 @@ def _join_right_preserves_cardinality(
     coverage: set[str] = set()
     for key in materialized_keys:
         coverage.update(_concept_coverage_addresses(key))
-    if right_grain.components.issubset(coverage) or any(
-        _concept_covers_grain(key, right_grain) for key in materialized_keys
-    ):
+    if right_grain.components.issubset(coverage):
         return True
     # FD closure (docs/domain_graph_design.md step 4): grain components the
     # join keys functionally determine admit at most one right row per key
@@ -893,12 +878,9 @@ def grain_satisfied_by_pregrain(
     grain: BuildGrain,
     environment: BuildEnvironment,
 ) -> bool:
-    if pregrain.issubset(grain):
-        return True
-    if pregrain.issubset(rowset_source_grain(grain, environment)):
-        return True
-    # Expand grain via coverage so a MULTISELECT align identity covers its
-    # source keys; otherwise a pregrain carrying them looks like extra grain.
+    # The grain, its rowset source grain and their pseudonyms: a MULTISELECT
+    # align identity covers its source keys, else a pregrain carrying them
+    # looks like extra grain.
     coverage = _grain_coverage_addresses(grain, environment)
     if pregrain.components.issubset(coverage):
         return True

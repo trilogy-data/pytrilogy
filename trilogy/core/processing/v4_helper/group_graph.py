@@ -90,7 +90,6 @@ from .models import (
     RootReason,
 )
 from .projection import (
-    output_rowset_grain_keys,
     rollup_padded_keys,
 )
 from .region_domains import (
@@ -709,11 +708,7 @@ def _lineage_pinned_grain(
                 grain |= set(concept.grain.components)
             continue
         if concept.derivation == Derivation.ROWSET:
-            axis = set(concept.keys or set())
-            if not axis and isinstance(concept.lineage, BuildRowsetItem):
-                select_grain = concept.lineage.rowset.select.grain
-                if select_grain:
-                    axis = set(select_grain.components)
+            axis = set(concept.grain.components) if concept.grain else set()
             if not ({concept.address} | axis) & scoped_members:
                 grain |= axis
             continue
@@ -724,16 +719,6 @@ def _lineage_pinned_grain(
     return frozenset(grain | row_grain) if grain else frozenset()
 
 
-def _final_host_count(
-    group_graph: nx.DiGraph, attrs: dict[str, GroupAttrs], address: str
-) -> int:
-    return sum(
-        1
-        for gid in group_graph.predecessors(FINAL_NODE_ID)
-        if gid in attrs and address in attrs[gid].members
-    )
-
-
 def _final_merge_grain(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
@@ -741,8 +726,6 @@ def _final_merge_grain(
     environment: BuildEnvironment,
     relation_edge_members: frozenset[str] = frozenset(),
 ) -> frozenset[str]:
-    mandatory_by_address = {concept.address: concept for concept in mandatory_list}
-    scoped_members = environment.all_scoped_join_group_members()
     grain: set[str] = set()
     for gid in group_graph.predecessors(FINAL_NODE_ID):
         if gid not in attrs:
@@ -751,51 +734,21 @@ def _final_merge_grain(
         # BASIC over aggregates (`customer_status <- case ... min(x) by user`)
         # sits at user grain and its CTE emits that key; without it no ROOT
         # sibling can be given a join key and the merge falls to ON 1=1.
-        # A ROWSET is excluded: its outputs state their own grain in the
-        # mandatory-concept pass below, and an authored relation pins it.
-        if attrs[gid].derivation != Derivation.ROWSET:
-            grain |= set(attrs[gid].grain_components)
+        grain |= set(attrs[gid].grain_components)
         # a region domain's rows are keyed by its spans, and every solid
         # contributor joins them there
         grain |= set(attrs[gid].extent_spans)
+    # A grouping output's grain is the result's row grain; so is a rowset
+    # output's (its `keys` are not: a KEY's are the FK path that determines
+    # it, snapshotted onto the handle, and reading `r.line_id` there waved the
+    # FINAL dedup through at line grain). A keyless, grainless handle (a
+    # global-aggregate scalar body) has no axis and cross-joins.
     for concept in mandatory_list:
-        if concept.derivation in GROUPING_DERIVATIONS and concept.grain:
+        if (
+            concept.derivation in GROUPING_DERIVATIONS
+            or concept.derivation == Derivation.ROWSET
+        ) and concept.grain:
             grain |= set(concept.grain.components)
-        elif concept.derivation == Derivation.ROWSET:
-            # An AUTHORED relation between rowsets pins the merge to exactly
-            # the authored keys: two independently-filtered rowsets related by
-            # `union join ty.code = ny.code` must not also pair on their shared
-            # internal grain (wk pseudonyms, the common base measure); those
-            # extra equalities silently narrow the authored fan-out.
-            raw_keys = set(concept.keys or set())
-            if not raw_keys and concept.grain:
-                raw_keys = set(concept.grain.components)
-            authored = (raw_keys | {concept.address}) & scoped_members
-            if authored:
-                grain |= authored
-                # The pin controls the JOIN AXIS, but the merge grain also
-                # states the result's row grain: with only the authored keys
-                # the merge reads COARSER than its rowset contributor and
-                # force-groups a redundant final dedup. A remaining grain
-                # member that is itself a requested output and hosted by no
-                # other FINAL contributor cannot add an unauthored equality;
-                # keep it so the row grain stays honest.
-                grain |= {
-                    key
-                    for key in (raw_keys - authored) & set(mandatory_by_address)
-                    if _final_host_count(group_graph, attrs, key) <= 1
-                }
-            elif concept.grain:
-                # The output's own grain is the result's row grain. Its `keys`
-                # are not: a KEY's are the FK path that determines it
-                # (`order_items` binding `~user_id` stamps `user_id.keys ==
-                # {line_id}`, snapshotted onto the rowset output), and reading
-                # that put `r.line_id` in the merge grain and waved the FINAL
-                # dedup through at line grain. A keyless, grainless handle (a
-                # global-aggregate scalar body) has no axis and cross-joins.
-                grain |= set(concept.grain.components)
-            else:
-                grain |= set(concept.keys or set())
     if environment.scoped_join_key_groups:
         finals = [
             gid for gid in group_graph.predecessors(FINAL_NODE_ID) if gid in attrs
@@ -1623,45 +1576,6 @@ def _hosted_condition_outputs(
     return {arg.address for atom in atoms for arg in atom.row_arguments} & capability
 
 
-def _final_gate_rowset_base_keys(
-    attrs: dict[str, GroupAttrs],
-    fact: GroupFacts,
-    mandatory_list: list[BuildConcept],
-    environment: BuildEnvironment,
-) -> set[str]:
-    """Base grain keys of the output rowset boundaries that a group must render
-    to pair with them at FINAL, when every one of its members is a row arg of a
-    FINAL-hosted gate and none is a mandatory output: the keys its own grain,
-    or its members' keys, determine (`status` at order grain pairs on the
-    order's `customer_id`)."""
-    if FINAL_NODE_ID not in attrs or not attrs[FINAL_NODE_ID].condition_atoms:
-        return set()
-    members = set(fact.primary)
-    if not members or members & {c.address for c in mandatory_list}:
-        return set()
-    gate_args = {
-        arg.address
-        for atom in attrs[FINAL_NODE_ID].condition_atoms
-        for arg in atom.row_arguments
-    }
-    if not members <= gate_args:
-        return set()
-    base_keys = output_rowset_grain_keys(mandatory_list)
-    if not base_keys:
-        return set()
-    keyed: set[str] = set(fact.grain)
-    for member in members:
-        if member not in environment.concepts:
-            continue
-        keyed |= set(environment.concepts[member].keys or ())
-    return {
-        key
-        for key in base_keys
-        if key in keyed
-        or build_fd_determines(environment, keyed, key, include_empty_grain=False)
-    }
-
-
 @dataclass
 class _InputPass:
     """What `_compute_concept_sets` derives before its reverse pass, read by
@@ -1682,13 +1596,11 @@ class _InputPass:
     lineage_parents: dict[str, set[str]]
     lineage_sub: nx.DiGraph
     mandatory_alias_addresses: set[str]
-    mandatory_list: list[BuildConcept]
     pseudonym_mates: dict[str, frozenset[str]]
     region_join_keys: frozenset[str]
     relation_edge_members: frozenset[str]
     rollup_padded: frozenset[str]
     scoped_axis_mates: dict[str, frozenset[str]] | None
-    scoped_join_member_addresses: frozenset[str]
     solid: set[str]
     source_grain_of: dict[str, frozenset[str]]
 
@@ -1711,13 +1623,11 @@ def _group_inputs(gid: str, ctx: _InputPass) -> None:
     lineage_parents = ctx.lineage_parents
     lineage_sub = ctx.lineage_sub
     mandatory_alias_addresses = ctx.mandatory_alias_addresses
-    mandatory_list = ctx.mandatory_list
     pseudonym_mates = ctx.pseudonym_mates
     region_join_keys = ctx.region_join_keys
     relation_edge_members = ctx.relation_edge_members
     rollup_padded = ctx.rollup_padded
     scoped_axis_mates = ctx.scoped_axis_mates
-    scoped_join_member_addresses = ctx.scoped_join_member_addresses
     solid = ctx.solid
     source_grain_of = ctx.source_grain_of
     if gid == FINAL_NODE_ID:
@@ -1760,19 +1670,6 @@ def _group_inputs(gid: str, ctx: _InputPass) -> None:
             for addr in final_args_here:
                 if is_presence_probe(addr):
                     outs |= lineage_parents.get(addr, set()) & cap_gid
-            # Same shape for a ROWSET boundary feeding a FINAL-deferred
-            # filter (`where return_demos.r_ticket is not null` over a
-            # `union join return_demos.demo_id = c_demo`): the feeder must
-            # join back on the relation axis, so expose the boundary's own
-            # scoped member handles. Not cap-gated: the boundary always
-            # materializes its authored handles from its body.
-            if final_args_here and fact.derivation == Derivation.ROWSET:
-                boundary_namespaces = {addr.rpartition(".")[0] for addr in fact.primary}
-                outs |= {
-                    member
-                    for member in scoped_join_member_addresses
-                    if member.rpartition(".")[0] in boundary_namespaces
-                }
             # A relation carried on the concept graph's RELATION edges (an
             # authored axis whose collapsed side is a first-class computed
             # node) joins its sides at THIS merge: expose the group's own
@@ -1885,13 +1782,6 @@ def _group_inputs(gid: str, ctx: _InputPass) -> None:
                 if mate in cap_gid:
                     outs.add(mate)
                     break
-    # A condition-only ROOT feeding a FINAL-hosted gate that pairs to an
-    # output rowset boundary on its base grain key must RENDER that key:
-    # the group covers no mandatory output, so it never becomes a FINAL
-    # contributor and never picks up the contract's preserve_keys; it
-    # arrives as a hidden feeder built from this demand alone. Without the
-    # key the FINAL merge has no shared column and cross-joins.
-    outs |= _final_gate_rowset_base_keys(attrs, fact, mandatory_list, environment)
     io.outputs[gid] = outs
 
     ins: set[str] = set()
@@ -1947,7 +1837,6 @@ def _compute_concept_sets(
     mandatory_list: list[BuildConcept],
     environment: BuildEnvironment,
     rollup_padded: frozenset[str],
-    scoped_join_member_addresses: frozenset[str] = frozenset(),
     scoped_axis_mates: dict[str, frozenset[str]] | None = None,
     relation_edge_members: frozenset[str] = frozenset(),
 ) -> None:
@@ -2043,13 +1932,6 @@ def _compute_concept_sets(
             and member not in all_primary_members
         ):
             scan_advertisable_members.append(member)
-    # an output rowset's base keys a FINAL gate's feeder pairs on (see
-    # `_final_gate_rowset_base_keys`): a scan offers the ones it can re-source
-    gate_pair_keys = (
-        output_rowset_grain_keys(mandatory_list)
-        if attrs.get(FINAL_NODE_ID) and attrs[FINAL_NODE_ID].condition_atoms
-        else frozenset()
-    )
     for gid in topo:
         if gid == FINAL_NODE_ID:
             continue
@@ -2066,7 +1948,7 @@ def _compute_concept_sets(
             # FINAL merge loses the authored join key. Rowset handles are
             # excluded: a scan that absorbs one would drop the rowset's
             # internal filter.
-            for member in [*scan_advertisable_members, *sorted(gate_pair_keys)]:
+            for member in scan_advertisable_members:
                 if member not in cap and build_fd_determines(
                     environment, cap, member, include_empty_grain=False
                 ):
@@ -2090,10 +1972,6 @@ def _compute_concept_sets(
                 if scoped_axis_mates:
                     grain_mates |= scoped_axis_mates.get(component, frozenset())
                 grain_mates |= pseudonym_mates.get(component, frozenset())
-        # a boundary split for a region carries the span its domain joins
-        # back on, a handle of its own the statement never named
-        if fact.derivation == Derivation.ROWSET:
-            cap |= region_join_keys & set(attrs[gid].carried_spans)
         # a region's span riding HIDDEN on a solid fact scan (one of a ROOT's
         # `carried_spans`, `region_join_keys`) has no concept attributes of
         # its own, so the FD rule below cannot see that the fact binds it at
@@ -2201,13 +2079,11 @@ def _compute_concept_sets(
         lineage_parents=lineage_parents,
         lineage_sub=lineage_sub,
         mandatory_alias_addresses=mandatory_alias_addresses,
-        mandatory_list=mandatory_list,
         pseudonym_mates=pseudonym_mates,
         region_join_keys=region_join_keys,
         relation_edge_members=relation_edge_members,
         rollup_padded=rollup_padded,
         scoped_axis_mates=scoped_axis_mates,
-        scoped_join_member_addresses=scoped_join_member_addresses,
         solid=solid,
         source_grain_of=source_grain_of,
     )
@@ -2370,7 +2246,6 @@ def build_group_graph(
         mandatory_list,
         environment,
         rollup_padded,
-        scoped_join_member_addresses=environment.all_scoped_join_group_members(),
         scoped_axis_mates=_scoped_axis_mates(environment),
         relation_edge_members=relation_edge_members,
     )
@@ -2393,7 +2268,6 @@ def build_group_graph(
     attrs[FINAL_NODE_ID].extent_ownership = elect_extent_owners(
         group_graph,
         attrs,
-        environment,
         keyspace,
         relation_only=frozenset(
             a.address for a in concept_attrs.values() if a.relation_only

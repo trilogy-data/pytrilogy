@@ -48,6 +48,10 @@ class Region:
     witnesses: frozenset[str] = frozenset()
     completions: tuple[Completion, ...] = ()
     reach: frozenset[str] = frozenset()
+    # what the spans PRESENT on these rows reach: an absent span (the customer
+    # an address-only row lacks) groups the rows under its NULL but looks
+    # nothing up, so a value keyed on it is not held here
+    own_reach: frozenset[str] = frozenset()
     # the WHERE reads a value absent here (`name is null` over a bucket no
     # order has): it is tested on these rows, so an aggregate it precedes
     # reads them (`region_reads.filtered_beside`)
@@ -166,6 +170,17 @@ class Keyspace:
             if self._output_within(region.reach):
                 demanded |= region.spans
         return frozenset(demanded)
+
+    def carries_output(self, region: Region) -> bool:
+        """An extension row of ``region`` holds a value for some output."""
+        return self._output_within(region.own_reach)
+
+    def held_on(self, address: str, region: Region) -> bool:
+        """An extension row of ``region`` holds a non-NULL value for
+        ``address``: unlike ``carried_on``, a value keyed on a span absent
+        there is not held."""
+        keys = self.keys_of(address)
+        return bool(keys) and keys <= region.own_reach
 
     def _output_within(self, reach: frozenset[str]) -> bool:
         return any(

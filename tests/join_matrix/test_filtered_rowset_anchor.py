@@ -88,6 +88,18 @@ def test_plain_datasource_anchor_subset_join_narrows(tmp_path: Path):
     assert _rows(tmp_path, query) == DIRECTIONAL
 
 
+def test_self_filtered_rowset_anchor_subset_join_narrows(tmp_path: Path):
+    query = (
+        "rowset members <- select cust as mid where cust < 9;\n"
+        "select cust, sum(amount) as total subset join cust = members.mid;"
+    )
+    # The anchor wraps the subset side's own concept: the declared `cust ⊆
+    # members.mid` and the body's structural `members.mid ⊑ cust` resolve the
+    # pair EQUAL. Both are trusted, so the non-member sale (9) is a declaration
+    # violation and drops exactly as against any other complete anchor.
+    assert _rows(tmp_path, query) == [(1, 10), (2, 20), (3, 30)]
+
+
 def test_union_join_keeps_both_sides(tmp_path: Path):
     query = (
         FILTERED + "select cust, sum(amount) as total union join cust = members.mid;"

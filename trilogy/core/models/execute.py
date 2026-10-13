@@ -1438,6 +1438,48 @@ class QueryDatasource:
     # an output, so planning never sees it; not identity.
     presence_marker: BuildConcept | None = None
 
+    def _fold_inferred_nullables(self) -> None:
+        """A base datasource surfaces nullable columns via
+        ``nullable_concepts``; a derived output (a CASE with no ELSE) has no
+        column, so its intrinsic nullability lives only on its own modifiers,
+        and a null-propagating expression over a nullable output (`k + 1`) is
+        NULL wherever its input is. Fold both in here, minus what the side's
+        own WHERE proves, so join planning and null-safe rendering see them
+        uniformly."""
+        from trilogy.core.functions import propagates_argument_nulls
+        from trilogy.core.processing.condition_utility import (
+            condition_proves_non_null,
+        )
+
+        proven = (
+            condition_proves_non_null(self.condition)
+            if self.condition is not None
+            else set()
+        )
+        known = {c.address for c in self.nullable_concepts}
+        inferred = [
+            c
+            for c in self.output_concepts
+            if c.is_nullable
+            and c.address not in known
+            and not proven.intersection(c.all_spellings)
+        ]
+        nullable: set[str] = set()
+        for concept in self.nullable_concepts + inferred:
+            nullable |= concept.equivalent_addresses
+        inferred += [
+            c
+            for c in self.output_concepts
+            if c.address not in known
+            and propagates_argument_nulls(c)
+            and any(arg.address in nullable for arg in c.concept_arguments)
+            and not proven.intersection(c.all_spellings)
+        ]
+        if inferred:
+            self.nullable_concepts = unique(
+                self.nullable_concepts + inferred, "address"
+            )
+
     def __post_init__(self) -> None:
         if self.set_operator is SetOperator.UNION_ALL:
             self.datasources = sorted(self.datasources, key=lambda ds: ds.identifier)
@@ -1451,26 +1493,7 @@ class QueryDatasource:
             unique_pairs.add(pairing)
         self.input_concepts = unique(self.input_concepts, "address")
         self.output_concepts = unique(self.output_concepts, "address")
-        # A base datasource surfaces nullable columns via ``nullable_concepts``;
-        # a derived output (e.g. a CASE with no ELSE) has no column, so its
-        # intrinsic nullability lives only on its own modifiers. Fold that in
-        # here so join planning and null-safe rendering see it uniformly.
-        intrinsic_nullable = [c for c in self.output_concepts if c.is_nullable]
-        if intrinsic_nullable and self.condition is not None:
-            from trilogy.core.processing.condition_utility import (
-                condition_proves_non_null,
-            )
-
-            proven = condition_proves_non_null(self.condition)
-            intrinsic_nullable = [
-                c
-                for c in intrinsic_nullable
-                if not proven.intersection(c.all_spellings)
-            ]
-        if intrinsic_nullable:
-            self.nullable_concepts = unique(
-                self.nullable_concepts + intrinsic_nullable, "address"
-            )
+        self._fold_inferred_nullables()
         if CONFIG.validate_missing:
             all_concepts = self.input_concepts + self.output_concepts
             mapped_canonical = {
