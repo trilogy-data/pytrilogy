@@ -10,7 +10,7 @@ from trilogy.dialect.python_source import (
     MAX_ATTEMPTS,
     RETRY_DELAYS_SECONDS,
     RETRYABLE_UV_ERROR_MARKERS,
-    build_uv_command,
+    build_script_command,
     is_retryable_uv_error,
     retry_delay,
 )
@@ -35,7 +35,10 @@ def _read_error(path: Path) -> str:
 def _run_uv(script: str, args: str, output_path: Path, error_path: Path) -> int:
     with output_path.open("wb") as output, error_path.open("wb") as error:
         result = subprocess.run(
-            build_uv_command(script, args), stdout=output, stderr=error, check=False
+            build_script_command(script, args),
+            stdout=output,
+            stderr=error,
+            check=False,
         )
     return result.returncode
 

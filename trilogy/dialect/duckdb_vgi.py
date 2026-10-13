@@ -3,8 +3,9 @@
 The opt-in alternative to the ``uv_run`` macro (``python_datasource_transport``
 on ``DuckDBConfig``). DuckDB attaches this module once as a pooled worker and
 renders each script as ``trilogy_io.main.script(path, args)``; the worker runs
-the script exactly as ``uv_run`` does and hands its Arrow batches over the VGI
-pipe, so nothing is staged to disk and no shell pipe is involved.
+the script as ``uv_run`` does (a compiled source runs directly) and hands its
+Arrow batches over the VGI pipe, so nothing is staged to disk and no shell pipe
+is involved.
 
 Requires a DuckDB that can ``LOAD vgi`` (Query.Farm's ``haybarn``) and the
 ``vgi-python`` package in the interpreter DuckDB launches this worker with.
@@ -37,7 +38,7 @@ from vgi_rpc import ArrowSerializableDataclass
 from trilogy.dialect.python_source import (
     MAX_ATTEMPTS,
     VGI_FAILURE_MARKER,
-    build_uv_command,
+    build_script_command,
     is_retryable,
     retry_delay,
 )
@@ -95,7 +96,7 @@ def start(script: str, args: str) -> _Run:
         # Owned by the _Run, which outlives this scope.
         stderr = tempfile.TemporaryFile()  # noqa: SIM115
         process = subprocess.Popen(
-            build_uv_command(script, args),
+            build_script_command(script, args),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=stderr,

@@ -317,18 +317,20 @@ Requirements and caveats:
 - Pushdown args are unchanged, so the same transport-safety limits apply even
   though VGI has no shell layer (see [Planner pushdown](#planner-pushdown)).
 
-Benchmarks are in `local_scripts/vgi_benchmark/`. With 3 columns on Windows,
-warm-query medians were:
+Benchmarks are in `local_scripts/vgi_benchmark/`. Figures are Windows warm
+medians for a full 3-column scan:
 
-| rows | shell | vgi bridge | resident worker (prototype) |
-| --- | --- | --- | --- |
-| 1k | 0.35s | 0.18s | 0.003s |
-| 1M | 0.48s | 0.19s | 0.036s |
-| 10M | 1.97s (289MB staged) | 0.64s | 0.24s |
+| source | rows | current | vgi bridge | vgi resident (prototype) |
+| --- | --- | --- | --- | --- |
+| python | 1M | 0.42s | 0.30s | 0.08s |
+| python | 10M | 1.60s | 0.68s | 0.48s |
+| rust | 1M | 0.30-0.37s | 0.05-0.07s | 0.04s |
+| rust | 10M | 1.31s | 0.29s | 0.28s |
 
-The bridge still pays a `uv run` (~0.2-0.5s) on every scan. The resident row
-is a script that *is* a VGI worker: DuckDB pools it, so a warm query is a
-function call. It is not wired into the engine yet (see below).
+The current transport also stages ~290MB to disk per 10M-row scan on Windows.
+The bridge still spawns the source on every scan; for python that means a
+`uv run` costing ~0.1-0.5s. A resident source *is* a pooled VGI worker, so a
+warm query is a function call. It is not wired into the engine yet (see below).
 
 ## Not done yet
 

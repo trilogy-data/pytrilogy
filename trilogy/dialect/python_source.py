@@ -149,11 +149,11 @@ def build_uv_command(script: str, args: str = "") -> list[str]:
     return [*UV_RUN_PREFIX, script, *shlex.split(args)]
 
 
-def build_script_command(script: str) -> list[str]:
+def build_script_command(script: str, args: str = "") -> list[str]:
     """How to invoke ``script``: uv for python, anything else runs directly."""
     if Path(script).suffix == ".py":
-        return build_uv_command(script)
-    return [script]
+        return build_uv_command(script, args)
+    return [script, *shlex.split(args)]
 
 
 def source_key(location: str, args: str = "") -> str:
