@@ -7,11 +7,16 @@ watermark-fresh file would never be rebuilt and every read of the new column
 would fail at execution.
 """
 
+from unittest.mock import patch
+
 import duckdb
 import pytest
 
 from trilogy import Dialects
+from trilogy.core.enums import AddressType
+from trilogy.core.models.datasource import Address
 from trilogy.core.models.environment import Environment
+from trilogy.dialect.base import BaseDialect
 from trilogy.execution.state.state_store import (
     create_refresh_plan,
     refresh_stale_assets,
@@ -133,3 +138,21 @@ def test_a_missing_file_is_reported_missing_not_mismatched(tmp_path):
     plan = create_refresh_plan(_executor(tmp_path, target.as_posix()))
 
     assert [a.reason for a in plan.stale_assets] == ["file not found"]
+
+
+def test_an_unexpected_describe_error_is_not_absorbed(tmp_path):
+    """Only a missing or corrupt file yields no schema; a broken engine must
+    not be rendered as a clean bill of health."""
+    target = _built(tmp_path, "target.parquet")
+    executor = _executor(tmp_path, target.as_posix())
+
+    with patch.object(
+        type(executor.generator), "get_file_columns", side_effect=RuntimeError("boom")
+    ), pytest.raises(RuntimeError, match="boom"):
+        create_refresh_plan(executor)
+
+
+def test_a_dialect_that_cannot_describe_a_file_declines():
+    address = Address(location="x.parquet", type=AddressType.PARQUET)
+
+    assert BaseDialect().get_file_columns(None, address) is None

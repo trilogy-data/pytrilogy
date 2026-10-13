@@ -501,8 +501,6 @@ class DuckDBDialect(BaseDialect):
         rows = executor.execute_raw_sql(
             f"DESCRIBE SELECT * FROM {self.render_source(address)}"
         ).fetchall()
-        if not rows:
-            return None
         return {row[0].lower(): self.normalize_db_type(row[1]) for row in rows}
 
     # DuckDB information_schema returns type names (e.g. "INTEGER", "VARCHAR") that
