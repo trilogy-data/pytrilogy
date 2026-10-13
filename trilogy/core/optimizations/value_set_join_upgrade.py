@@ -141,10 +141,7 @@ def _complete_distinct(
 def _extent_free(concept: BuildConcept, side_cte: CTE) -> bool:
     """The side was planned not to extend the concept's span: a region domain
     elsewhere holds the rows it lacks, so it carries only part of the key."""
-    keys = concept.all_spellings
-    if isinstance(concept.lineage, BuildRowsetItem):
-        keys.add(concept.lineage.content.address)
-    return bool(keys & side_cte.source.extent_free_spans)
+    return bool(concept.all_spellings & side_cte.source.extent_free_spans)
 
 
 def _own_coverage_partial(
@@ -544,20 +541,17 @@ def _genuine_partial_stamp(
 ) -> bool:
     """A coverage-speaking partial stamp on the sub side that the sup side
     lacks. Stamps at declared-relation subset endpoints speak to the relation
-    and smear symmetrically across a canonical group, and a stamp on a ROWSET
-    handle is the planner's own relation-driven marking, never an authored
-    fact. Any other stamp is an authored coverage fact (a `~` binding), so its
-    one-sided presence proves the subset direction: the author declared both
-    sides' relations to the domain (`~` on the sub, a complete binding on the
-    sup, verified by ``_complete_values`` after)."""
+    and smear symmetrically across a canonical group. Any other stamp is an
+    authored coverage fact (a `~` binding), so its one-sided presence proves
+    the subset direction: the author declared both sides' relations to the
+    domain (`~` on the sub, a complete binding on the sup, verified by
+    ``_complete_values`` after)."""
     keys = sub_concept.all_spellings
     subset_endpoints = graph.subset_sources()
     genuine = {
         p.address
         for p in sub_cte.partial_concepts
-        if p.address not in subset_endpoints
-        and p.derivation != Derivation.ROWSET
-        and p.all_spellings & keys
+        if p.address not in subset_endpoints and p.all_spellings & keys
     }
     if not genuine:
         return False
