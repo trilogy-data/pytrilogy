@@ -229,9 +229,22 @@ ARTIFACT_DOWNLOAD_TIMEOUT_SECONDS = 300.0
 #: belt-and-braces second signal, so a terminal state that somehow carries no
 #: timestamp still ends the wait instead of hanging until the timeout.
 TERMINAL_RUN_STATUSES = frozenset(
-    {"completed", "failed", "cancelled", "canceled", "timed_out", "errored", "error"}
+    {
+        "completed",
+        "up_to_date",
+        "failed",
+        "cancelled",
+        "canceled",
+        "skipped",
+        "blocked",
+        "timed_out",
+        "errored",
+        "error",
+    }
 )
-SUCCESS_RUN_STATUS = "completed"
+#: ``up_to_date`` is a refresh that found nothing stale (``trilogy refresh``
+#: exit 2): a success, which the platform counts as one everywhere.
+SUCCESS_RUN_STATUSES = frozenset({"completed", "up_to_date"})
 WAIT_POLL_SECONDS = 5
 #: Generous by default: a cold executor can take minutes just to claim a run,
 #: and the job's own timeout is the real upper bound on the work itself.
@@ -2886,7 +2899,7 @@ def _report_finished_run(org: str, run: JobRunExt, logs: bool = False) -> None:
 
     A failure prints the log tail whether or not it was asked for.
     """
-    failed = run.status != SUCCESS_RUN_STATUS
+    failed = run.status not in SUCCESS_RUN_STATUSES
     if is_json_mode():
         emit_event("run_finished", org=org, run=run.model_dump(mode="json"))
     else:

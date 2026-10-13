@@ -852,6 +852,37 @@ class TestRunWait:
         assert result.exit_code != 0
         assert "failed" in result.output and "run-1" in result.output
 
+    def test_an_up_to_date_refresh_is_a_success(self, logged_in, run_cloud):
+        self._progress(logged_in, "running", "up_to_date")
+        result = run_cloud("runs", "wait", "run-1", "--poll-seconds", "0")
+        assert result.exit_code == 0
+        assert "up_to_date" in result.output
+
+    def test_jobs_run_wait_accepts_an_up_to_date_refresh(self, logged_in, run_cloud):
+        self._progress(logged_in, "up_to_date", run_id="run-new")
+        result = run_cloud("jobs", "run", "nightly", "--wait", "--poll-seconds", "0")
+        assert result.exit_code == 0
+
+    @pytest.mark.parametrize("status", ["up_to_date", "skipped", "blocked"])
+    def test_every_platform_terminal_status_ends_the_wait_without_a_timestamp(
+        self, logged_in, run_cloud, status
+    ):
+        logged_in.set(
+            "GET",
+            self.ROUTE,
+            {
+                "id": "run-1",
+                "job_id": "job-1",
+                "job_name": "nightly",
+                "created_at": TS,
+                "status": status,
+                "finished_at": None,
+            },
+        )
+        result = run_cloud("runs", "wait", "run-1", "--poll-seconds", "0")
+        assert result.exit_code == (0 if status == "up_to_date" else 1)
+        assert status in result.output
+
     def test_a_terminal_status_without_a_timestamp_still_ends_the_wait(
         self, logged_in, run_cloud
     ):
