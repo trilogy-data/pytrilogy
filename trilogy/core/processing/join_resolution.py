@@ -485,12 +485,6 @@ def _nullable_join(
             keys & right_facts.extent_nullables
         ) and not facts.authored(keys):
             return JoinType.LEFT_OUTER if left_values else JoinType.RIGHT_OUTER
-        # Padding for different spans never pairs (`get_node_joins` drops the
-        # null-safe equality), so INNER would shed both extension families.
-        if _pads_for_different_members(
-            left_facts, right_facts, keys, facts.span_families
-        ):
-            return JoinType.FULL
         # Grain-aligned sides both weakened their EQUAL-domain claims on the
         # merge axis itself, so INNER would drop each side's exclusive members;
         # preserve both and let the null-safe equality pair the NULL groups.
@@ -975,19 +969,9 @@ def get_modifiers(
     right_concept: BuildConcept,
     left: DataSource | None,
     right: DataSource | None,
-    memo: ProvenanceMemo | None = None,
 ) -> list[Modifier]:
-    """Use null-safe equality only when both exposed join keys can be NULL.
-
-    Asymmetric padding is the exception: when one side's NULLs are outer-join
-    extension (absence) and the other's are values, they name nothing in
-    common and null-safe equality cross-joins them. Both sides extended is the
-    ordinary case again: the padding shares provenance, so those rows pair."""
+    """Use null-safe equality only when both exposed join keys can be NULL."""
     if not (side_nullable(left_concept, left) and side_nullable(right_concept, right)):
-        return []
-    assert left is not None and right is not None
-    memo = memo or ProvenanceMemo()
-    if memo.of(left).values(left_concept) != memo.of(right).values(right_concept):
         return []
     return [Modifier.NULLABLE]
 
@@ -1155,10 +1139,9 @@ def reduce_concept_pairs(
     # redundant, since equality on the determinants implies equality here.
     # A property paired beside its own keys is the simplest case (its keys ->
     # property FD is declared); the closure also sees transitive dependencies
-    # and grain FDs carried through complete bindings. Greedy
-    # over a working determinant set so mutually-dependent keys keep exactly
-    # one pair; grain pairs are never pruned (the grain restriction below
-    # relies on them).
+    # and grain FDs carried through complete bindings. Greedy over a working
+    # determinant set so mutually-dependent keys keep exactly one pair; grain
+    # pairs are never pruned (the grain restriction below relies on them).
     # Only a key paired on plain equality vouches for its dependents. A
     # null-safe pair also matches NULL to NULL, and an FD says nothing about
     # rows with no key: two extension families both pad `item_id`, and
@@ -2134,7 +2117,6 @@ def get_node_joins(
                                     ds_concept_map[(j.right, concept)],
                                     ds_node_map[k],
                                     ds_node_map[j.right],
-                                    memo,
                                 )
                             )
                         )

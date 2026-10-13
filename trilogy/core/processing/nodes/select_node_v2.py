@@ -18,7 +18,6 @@ from trilogy.core.processing.nodes.base_node import (
     StrategyNode,
     resolve_concept_map,
     resolve_existence_map,
-    with_propagated_nulls,
 )
 from trilogy.core.processing.scan_partials import scan_partial_addresses
 from trilogy.utility import unique
@@ -181,13 +180,15 @@ class SelectNode(StrategyNode):
             # rowset handle widened onto this scan)
             partial_concepts=unique(partials + list(self.partial_concepts), "address"),
             rollup_concepts=self.rollup_concepts,
-            nullable_concepts=[
-                c
-                for c in with_propagated_nulls(
-                    all_concepts_final, nullables + list(self.nullable_concepts)
-                )
-                if not non_null_proofs.intersection(c.all_spellings)
-            ],
+            nullable_concepts=unique(
+                nullables
+                + [
+                    c
+                    for c in self.nullable_concepts
+                    if not non_null_proofs.intersection(c.all_spellings)
+                ],
+                "address",
+            ),
             source_type=SourceType.DIRECT_SELECT,
             condition=self.conditions,
             force_group=self.force_group,

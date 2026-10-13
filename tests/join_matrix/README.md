@@ -56,9 +56,8 @@ those relations keep their preserving FULL.
   carries only because an outer join extended it is absence, not a key, and
   pairing it against a real NULL group cross-joins the two (q30: 311 padded
   address rows x 20 unknown-customer groups). `nulls_are_values`
-  (`join_resolution.py`) splits the two and `get_modifiers` drops null-safety
-  when exactly one side is extended; both extended stays pairable, since that
-  padding shares provenance.
+  (`null_provenance.py`) splits the two for join typing and padding pairing;
+  `test_outer_padding_null_not_a_value.py` pins the rows.
 
 ## Legacy / adjacent join tests (regression pins, keep)
 

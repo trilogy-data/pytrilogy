@@ -292,12 +292,6 @@ def _upstream_concepts(
         upstream.add(base.address)
     if base.lineage:
         for x in base.lineage.concept_arguments:
-            # A value derived from a rowset has ALL rowset items upstream. The
-            # rowset's derived_concepts are already namespaced; splicing the
-            # rowset name onto the body's addresses would miss real upstreams.
-            if x.derivation == Derivation.ROWSET:
-                assert isinstance(x.lineage, BuildRowsetItem), type(x.lineage)
-                upstream.update(x.lineage.rowset.derived_concepts)
             upstream |= _upstream_concepts(x, True, cache)
     if nested:
         cache[id(base)] = upstream

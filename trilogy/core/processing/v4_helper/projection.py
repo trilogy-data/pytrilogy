@@ -280,17 +280,6 @@ def widen_projection(
     return changed
 
 
-def output_rowset_grain_keys(mandatory_list: list[BuildConcept]) -> set[str]:
-    """Grain keys of the output rowset boundaries. A declared relation (`subset
-    join rs.oid = oid`) spells the handle's grain at the base address, so a
-    scan keyed by it pairs with the boundary on that key."""
-    keys: set[str] = set()
-    for concept in mandatory_list:
-        if isinstance(concept.lineage, BuildRowsetItem) and concept.grain is not None:
-            keys |= set(concept.grain.components)
-    return keys
-
-
 def decided_at_output_grain(
     address: str, outputs: Iterable[BuildConcept], environment: BuildEnvironment
 ) -> bool:

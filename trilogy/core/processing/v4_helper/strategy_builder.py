@@ -2349,8 +2349,8 @@ def _mangled_rowset_content_addresses(environment: BuildEnvironment) -> set[str]
 def _carried_handle_is_partial(
     environment: BuildEnvironment, concept: BuildConcept, available: set[str]
 ) -> bool:
-    """A licensed rowset handle carried onto a non-rowset scan is a PARTIAL
-    binding when the scan's own member of the licensing relation spans only
+    """A rowset handle carried onto a non-rowset scan is a PARTIAL binding
+    when the scan's own member of the handle's scoped relation spans only
     part of the handle's domain: the member is a declared SUBSET side, or the
     relation is coalescing (`union`) so any single arm under-covers the axis.
     The anchor of a subset relation still carries the handle complete. Without
@@ -2378,7 +2378,7 @@ def _carry_needs_grain_change(concept: BuildConcept) -> bool:
 
     A ROWSET handle terminates the walk: its value arrives materialized at the
     rowset boundary rather than being recomputed here, so a derived key over one
-    (`agg.period + 53`) stays carryable under the licensed-handle rules above.
+    (`agg.period + 53`) stays carryable onto a scan its relation binds.
     """
     stack = [concept]
     seen: set[str] = set()
@@ -5506,9 +5506,9 @@ def _assemble_final_node(
     # A hidden axis mate rides sides kept at their own finer row grain, and the
     # merge's claimed grain predates that fan, so grain-satisfaction checks
     # wave the dedup through, same trap as the probe-feeder branch above.
-    # Collapse explicitly
-    # to the coalesced axis. A hidden region join key is the same story: the
-    # in-place narrowing would take it off the merge that hosts by it.
+    # Collapse explicitly to the coalesced axis. A hidden region join key is
+    # the same story: the in-place narrowing would take it off the merge that
+    # hosts by it.
     if (axis_mates or region_keys) and final_contract.deduplicate_to_grain:
         targets = [
             o for o in merged.output_concepts if o.address in mandatory_addresses

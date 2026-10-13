@@ -28,6 +28,7 @@ Two invariants framed the audit:
 | partial bindings and region domains | 8 | +15 / -241 | byte-identical |
 | rowset discovery | 2 | +41 / -231 | q54 INNER JOIN operand order, rows identical |
 | rowset assembly | 5 | +34 / -262 | byte-identical |
+| follow-up review | 12 | +172 / -231 | byte-identical (206 statements incl. tpc_ds aggregates) |
 
 Per-axis detail:
 
@@ -89,6 +90,18 @@ body-WHERE exemption from the disconnected-gate error, the `MergeNode`
 rowset/TVF `force_group` carve-out, the "ROWSET stamps are not genuine" test
 in `_genuine_partial_stamp`, and the handle-content term in `_extent_free`.
 
+**Follow-up review.** Argument-null propagation is folded once in
+`QueryDatasource._fold_inferred_nullables`, beside intrinsic nullability,
+instead of at four node resolve sites. `partition_rowsets`,
+`partition_constants` and `partition_unions` share one scope-keyed rule
+(`_partition_by_scope`; seam 9 below, first half). `_upstream_concepts` no
+longer splices a rowset's `derived_concepts` in: a handle is a leaf. Two
+branches that no longer fire on the corpus, the fuzzer or any engine or join
+matrix test are gone: the `get_modifiers` asymmetric-provenance veto (the
+producer stamps made it unreachable) and the `_pads_for_different_members`
+join-type rule (the join type is always decided before the INNER fallback).
+`output_rowset_grain_keys` lost its last callers in the assembly axis.
+
 ## Not deletable (corpus-silent, unit-pinned)
 
 Check this register before calling anything here dead. Each entry fired in
@@ -108,15 +121,11 @@ Domain graph:
   (graph proves 10 of 69 evidence hits, stamps 59).
 
 Nullability:
-- `get_modifiers` asymmetric-provenance veto: fuzzer-only pin
-  (`derived_join__offset_expression`, 258/260 without it). Worth a join
-  matrix cell.
 - `guest_padded`: `tests/engine/test_duckdb_rowset_null_group_rejoin.py`.
 - `rollup_padded` and the `rollup_padding` join rule: six engine tests in
   `test_duckdb.py`, `test_duckdb_fuzzer_regressions.py`,
   `test_duckdb_rollup_rowset_binding.py`.
-- `span_padding` modifier path: four engine tests. Its type-rule branch has
-  one direct unit pin only (PROBABLE).
+- `span_padding` modifier path: four engine tests.
 - `_pairs_region_padding`: `tests/engine/test_padded_null_pairing.py`.
 - `value_nullables` as a fact distinct from `nullables`: 26 engine tests flip
   LEFT/RIGHT to FULL without it.
@@ -165,11 +174,16 @@ Rowset discovery:
   each; q64 goes from 8 to 16 CTEs without the grain-identity cluster.
 - `RowsetWitness` sources in the keyspace: 24 pins, 0 corpus moves.
 - `island_rowsets_for_connectivity`: q29 reports disconnected without it.
+- `_unsourced_relation_mates` SUBSET-anchor request: 0 corpus firings, but a
+  demanded raw `~` member stays partial without its anchor rowset
+  (`test_filtered_rowset_anchor.py::test_filtered_rowset_anchor_subset_join_narrows`).
+- `_group_final_grain_contribution` returning `merge_grain` for a ROWSET:
+  q44, q46 and q68 gain a redundant `GROUP BY` without it.
 
 Rowset assembly:
 - Two rowset boundaries flowing straight to FINAL defer their WHERE to FINAL
-  (`rowset_final_groups`): fuzzer-only pin (a derived-key union join leaks a
-  row, 258/260 without it).
+  (`rowset_final_groups`): a derived-key union join leaks next-year-only rows
+  (`test_independent_rowset_matrix.py::test_union_join_derived_key_filtered_on_derived_side`).
 - `_synthesizes_handle` (a handle is computable only on its own boundary):
   3 row pins; this is the generic rule the deleted sites restated.
 - The passthrough fold veto for a rowset-bearing side, the partial stamps on
@@ -218,7 +232,10 @@ Ranked by lines a seam would free, across the axes:
    concept_arguments` is `[content]`, so every assembly row-lineage walk sees
    through the handle and each site re-imposes leaf-ness after the fact. A
    handle was judged satisfiable through its content in 46 tests; those are
-   the gate.
+   the gate. A first step (`row_lineage_arguments` returns `[]` for a
+   ROWSET) is corpus byte-identical but disconnects
+   `test_duckdb_rowset.py::test_tvf_union_order_by_grouped_away_column`: a
+   union's hidden ORDER BY key reaches its arms only through handle content.
 4. **Rowset witness from the body plan** (about 335 lines). `_witness`
    rebuilds the body's concept graph separately from `resolve_rowset`; a body
    plan that handed back its keyspace would delete the recomputation and the
@@ -238,8 +255,8 @@ Ranked by lines a seam would free, across the axes:
    BOUNDARY decision is load-bearing, the label is not.
 9. **A boundary scope id** in place of `ConceptAttrs.rowset_name`: the one
    non-derivable fact it carries (a non-handle node that belongs to a
-   boundary) is the same thing a union arm scope is, so `partition_rowsets`,
-   `partition_unions` and `partition_constants` could be one scope-keyed rule.
+   boundary) is the same thing a union arm scope is. The three partition
+   rules are already one scope-keyed rule; the tag itself remains.
 
 ## Gate used
 

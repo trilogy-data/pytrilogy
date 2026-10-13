@@ -8,9 +8,9 @@ the rule is stable under inlining, renaming, hoisting and repartitioning):
   NULL-key rows with no null-safe partner. When the domain graph proves one
   side a subset of a complete, filter-free superset side (a declared ``?``
   relation or a rowset/filter lineage path), preserving the subset side is
-  a no-op: FULL narrows to the
-  directional join preserving the superset side, and a directional join
-  whose preserved side fully matches narrows to INNER.
+  a no-op: FULL narrows to the directional join preserving the superset
+  side, and a directional join whose preserved side fully matches narrows
+  to INNER.
 
 * Equivalence upgrade (``_upgrade_to_inner``), the narrow case: every join
   key pair carries the same value set on both sides, so no row is ever
@@ -634,16 +634,14 @@ def _pair_side_fully_matches(
     # subset side fully matches it. An external filter on the rowset output
     # fails the boundary test and falls through below.
     #
-    # Gated on a strict directional subset between the two own addresses, or
-    # an authored identity (`equal join`: one domain, so the other side is a
-    # subset of it however it is filtered): a scoped-join merge collapses
-    # every anchor-joined key onto one canonical, so two independent rowsets
-    # joined to a common anchor land in each other's pseudonym closure and
-    # `_proven_subset_of` would falsely read one sibling as the superset of
-    # the other. The own-address relation is UNKNOWN for such siblings and
-    # SUBSET only toward the genuine anchor. A resolved EQUAL that nobody
-    # declared (a `subset join a = rs.k` opposed by the filtered body's own
-    # `rs.k ⊑ a`) is a lying declaration, and stays preserving.
+    # Gated on a strict directional subset or a resolved identity between the
+    # two own addresses (one domain, so the other side is a subset of it
+    # however it is filtered; declared or structural, the model is trusted):
+    # a scoped-join merge collapses every anchor-joined key onto one
+    # canonical, so two independent rowsets joined to a common anchor land in
+    # each other's pseudonym closure and `_proven_subset_of` would falsely
+    # read one sibling as the superset of the other. The own-address relation is UNKNOWN for such siblings and
+    # SUBSET only toward the genuine anchor.
     if _rowset_definition_boundary(sup_concept, sup_cte) and domain_graph.relation(
         sub_concept.address, sup_concept.address
     ) in (ResolvedRelation.SUBSET, ResolvedRelation.EQUAL):

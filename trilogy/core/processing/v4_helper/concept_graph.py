@@ -415,7 +415,7 @@ def _relation_mates(address: str, environment: BuildEnvironment) -> set[str]:
     return mates
 
 
-def _relation_crosses_rowset_boundary(
+def _relation_crosses_row_shape_barrier(
     address: str, environment: BuildEnvironment
 ) -> bool:
     """Whether a scoped-join relation member is paired with a row-shape
@@ -753,7 +753,7 @@ def _aggregate_relation_members(
     return frozenset(
         addr
         for addr in candidates & _statement_scoped_relation_members(environment)
-        if _relation_crosses_rowset_boundary(addr, environment)
+        if _relation_crosses_row_shape_barrier(addr, environment)
         and addr not in own_anchor_args
         and addr not in row_identity
     )
@@ -1140,17 +1140,6 @@ def computed_origin_relation_members(environment: BuildEnvironment) -> frozenset
     return frozenset(out)
 
 
-def _scoped_group_sides(
-    members: set[str], environment: BuildEnvironment
-) -> frozenset[str]:
-    """Identity of the endpoints a scoped join-key group pairs: the namespace
-    each member belongs to (a rowset handle's is its rowset). Two key groups
-    with the same sides are legs of ONE composite relation (`union join a.x =
-    b.x and a.y = b.y`, or two clauses over the same pair; both render as one
-    FULL JOIN on all legs)."""
-    return frozenset(addr.rsplit(".", 1)[0] for addr in members)
-
-
 def _composite_relation_sibling_axes(
     addresses: frozenset[str], environment: BuildEnvironment
 ) -> frozenset[str]:
@@ -1168,8 +1157,11 @@ def _composite_relation_sibling_axes(
     group_sets = {
         canonical: {canonical, *members} for canonical, members in groups.items()
     }
+    # A group's sides are its members' namespaces (a rowset handle's is its
+    # rowset); two groups with the same sides are legs of ONE composite
+    # relation (`union join a.x = b.x and a.y = b.y`), one FULL JOIN on all legs.
     sides_of = {
-        canonical: _scoped_group_sides(g, environment)
+        canonical: frozenset(addr.rsplit(".", 1)[0] for addr in g)
         for canonical, g in group_sets.items()
     }
     out: set[str] = set()
@@ -1652,7 +1644,7 @@ def _add_concept(
             if (
                 axis is not None
                 and addr not in upstream_addrs
-                and _relation_crosses_rowset_boundary(addr, environment)
+                and _relation_crosses_row_shape_barrier(addr, environment)
             ):
                 upstreams.append(axis)
     # The `union join` axis an aggregate's input pairs on is read from every

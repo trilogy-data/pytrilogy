@@ -19,7 +19,6 @@ from trilogy.core.processing.nodes.base_node import (
     StrategyNode,
     resolve_concept_map,
     resolve_existence_map,
-    with_propagated_nulls,
 )
 from trilogy.core.processing.utility import find_nullable_concepts
 from trilogy.utility import unique
@@ -137,15 +136,9 @@ class GroupNode(StrategyNode):
         node_nullable = {x.address for x in self.nullable_concepts}
         nullable_concepts = [
             x
-            for x in with_propagated_nulls(
-                self.output_concepts,
-                [
-                    x
-                    for x in self.output_concepts
-                    if x.address in nullable_addresses or x.address in node_nullable
-                ],
-            )
-            if not proven_non_null.intersection(x.all_spellings)
+            for x in self.output_concepts
+            if (x.address in nullable_addresses or x.address in node_nullable)
+            and not proven_non_null.intersection(x.all_spellings)
         ]
         # ROLLUP/CUBE/GROUPING SETS inject NULLs into grouping-key dims on the
         # subtotal rows. Mark those dims, and any dim derived from them,

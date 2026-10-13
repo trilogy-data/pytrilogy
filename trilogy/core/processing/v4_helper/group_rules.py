@@ -13,6 +13,7 @@ One registry per shape concern, lookup by derivation, fallback to a default.
 import hashlib
 from collections import defaultdict
 from collections.abc import Callable, Collection, Iterable, Sequence
+from functools import partial
 
 from trilogy.core import graph as nx
 from trilogy.core.enums import (
@@ -1330,6 +1331,68 @@ def partition_filters_by_signature(
     return buckets
 
 
+def _partition_by_scope(
+    items: list[NodeItem],
+    derivation: Derivation,
+    key_of: Callable[[str, ConceptAttrs], tuple[object, str | None]],
+) -> list[GroupBucket]:
+    """One bucket per `(scope, key_of(...))`, never per depth: the members are
+    one population whichever phase reads them. Keyed on the SCOPE, not the
+    full label, so the `@condition` phase suffix does not split a SELECT read
+    from a WHERE read. The bucket surfaces at its most-downstream member depth
+    so it produces the SELECT output AND carries the WHERE, and its grain is
+    the union of its members' (same rows, so a wider grain only widens
+    ride-through within the one CTE). `key_of` also names the discriminator."""
+    members_by_key: dict[tuple, list[NodeItem]] = defaultdict(list)
+    discriminators: dict[tuple, str | None] = {}
+    for node, data in items:
+        key, discriminator = key_of(node, data)
+        full_key = (_scope_and_phase(data.label)[0], key, data.grouping_mode)
+        members_by_key[full_key].append((node, data))
+        discriminators[full_key] = discriminator
+    buckets: list[GroupBucket] = []
+    for full_key, members in members_by_key.items():
+        scope, _, grouping_mode = full_key
+        depths = {d.depth_label for _, d in members}
+        depth_label = (
+            DepthLabel.STAR
+            if DepthLabel.STAR in depths
+            else DepthLabel.D0 if DepthLabel.D0 in depths else DepthLabel.D1
+        )
+        bucket = _bucket_for(depth_label, derivation, frozenset(), label=scope)
+        if (discriminator := discriminators[full_key]) is not None:
+            bucket.discriminator = discriminator
+        _apply_grouping_mode(bucket, grouping_mode)
+        for node, data in members:
+            bucket.grain_components |= data.grain_components
+            _add_member(bucket, node, data)
+        buckets.append(bucket)
+    return buckets
+
+
+def _rowset_key(node: str, data: ConceptAttrs) -> tuple[object, str | None]:
+    assert data.rowset_name is not None
+    return data.rowset_name, f"rowset:{data.rowset_name}"
+
+
+def _constant_key(node: str, data: ConceptAttrs) -> tuple[object, str | None]:
+    return data.grain_components, None
+
+
+def _union_arms_key(
+    concept_graph: nx.DiGraph,
+    concept_edges: EdgeMap,
+    concept_attrs: dict[str, ConceptAttrs],
+    node: str,
+    data: ConceptAttrs,
+) -> tuple[object, str | None]:
+    arms = frozenset(
+        _scope_and_phase(concept_attrs[pred].label)[0]
+        for pred in lineage_predecessors(concept_graph, concept_edges, node)
+    )
+    return arms, "|".join(sorted(arms))
+
+
 def partition_rowsets(
     items: list[NodeItem],
     concept_graph: nx.DiGraph,
@@ -1343,40 +1406,10 @@ def partition_rowsets(
     sub-query, planned in full by `gen_rowset`), so they all bucket into a
     single boundary group by rowset identity: never per-column grain (which
     the FINAL node would have to rejoin on grain keys, degrading to `1=1` for
-    grain-mismatched contributors) and never per-DEPTH.
-
-    Keyed by `(label, rowset_name)` only, deliberately NOT including depth. A
-    rowset referenced in both the SELECT (d0) and a WHERE (d1) is still one
-    population; splitting d0/d1 strands a consumer's filter from its scan (an
-    arm's `count(...) by dims` reads the d0 dim handles while its per-arm
-    filter sits in a separate d1 handle group, so the filter falls through to
-    FINAL and the aggregate counts unfiltered rows). The bucket depth is d1
-    only if every member is d1 (a pure condition-feeder rowset); any d0 member
-    makes it a d0 boundary that produces SELECT output. Grain is the union of
-    members' grains (same rows, so a wider grain only widens ride-through
-    within the one CTE)."""
-    by_key: dict[tuple[str, str], GroupBucket] = {}
-    members_by_key: dict[tuple[str, str], list[NodeItem]] = defaultdict(list)
-    for node, data in items:
-        assert data.rowset_name is not None
-        # Key on SCOPE, not the full label: the label's "@condition" phase
-        # suffix would otherwise split a rowset's SELECT (blank-phase) handles
-        # from its WHERE (condition-phase) handles into two groups.
-        scope = _scope_and_phase(data.label)[0]
-        members_by_key[(scope, data.rowset_name)].append((node, data))
-    for (scope, rowset_name), members in members_by_key.items():
-        depth_label = (
-            DepthLabel.D1
-            if all(d.depth_label == DepthLabel.D1 for _, d in members)
-            else DepthLabel.D0
-        )
-        bucket = _bucket_for(depth_label, Derivation.ROWSET, frozenset(), label=scope)
-        bucket.discriminator = f"rowset:{rowset_name}"
-        for node, data in members:
-            bucket.grain_components |= data.grain_components
-            _add_member(bucket, node, data)
-        by_key[(scope, rowset_name)] = bucket
-    return list(by_key.values())
+    grain-mismatched contributors) and never per-depth (an arm's `count(...)
+    by dims` reads the d0 dim handles; a split d1 handle group strands its
+    per-arm filter at FINAL and the aggregate counts unfiltered rows)."""
+    return _partition_by_scope(items, Derivation.ROWSET, _rowset_key)
 
 
 def partition_constants(
@@ -1390,38 +1423,12 @@ def partition_constants(
 ) -> list[GroupBucket]:
     """A constant is the same value at every grain and phase, so a constant
     referenced in both the SELECT (d*) and a WHERE (d1) is one population.
-
-    The default rule keys on depth, which splits those into two groups; a
-    constant-only WHERE then strands on the upstream d1 condition-feeder group
-    whose filtered output the downstream SELECT constant simply rebuilds
-    (`gen_constant` ignores parents), dropping the filter entirely
-    (`select today where date_add(current_date(), day, -30) < today`). Key on
-    `(scope, grain, grouping_mode)`, never depth, and on the scope rather than
-    the full label so the `@condition` phase suffix doesn't re-split them, and
-    surface the bucket at its most-downstream member depth so it produces the
-    SELECT output AND carries the WHERE. Mirrors `partition_rowsets`."""
-    ConstantKey = tuple[str, frozenset[str], AggregateGroupingMode | None]
-    by_key: dict[ConstantKey, GroupBucket] = {}
-    members_by_key: dict[ConstantKey, list[NodeItem]] = defaultdict(list)
-    for node, data in items:
-        scope = _scope_and_phase(data.label)[0]
-        members_by_key[(scope, data.grain_components, data.grouping_mode)].append(
-            (node, data)
-        )
-    for key, members in members_by_key.items():
-        scope, grain, grouping_mode = key
-        depths = {d.depth_label for _, d in members}
-        depth_label = (
-            DepthLabel.STAR
-            if DepthLabel.STAR in depths
-            else DepthLabel.D0 if DepthLabel.D0 in depths else DepthLabel.D1
-        )
-        bucket = _bucket_for(depth_label, Derivation.CONSTANT, grain, label=scope)
-        _apply_grouping_mode(bucket, grouping_mode)
-        for node, data in members:
-            _add_member(bucket, node, data)
-        by_key[key] = bucket
-    return list(by_key.values())
+    Split by depth, a constant-only WHERE strands on the upstream d1
+    condition-feeder group whose filtered output the downstream SELECT
+    constant simply rebuilds (`gen_constant` ignores parents), dropping the
+    filter (`select today where date_add(current_date(), day, -30) < today`).
+    Keyed by grain too."""
+    return _partition_by_scope(items, Derivation.CONSTANT, _constant_key)
 
 
 def partition_unions(
@@ -1434,29 +1441,16 @@ def partition_unions(
     output_addresses: frozenset[str] = frozenset(),
 ) -> list[GroupBucket]:
     """Sibling unions over one arm family stack into ONE UnionNode: key on
-    `(scope, arm scopes)`, never grain. The family's members can differ in
-    grain (`union(amt, zero)` is at `k1`, `union(k1, k2)` at `k1|k2`), and a
+    the arm scopes, never grain. The family's members can differ in grain
+    (`union(amt, zero)` is at `k1`, `union(k1, k2)` at `k1|k2`), and a
     per-grain split would hand the FINAL two stacked sources to join on
     nothing. The arm scopes are the labels of the union's lineage parents
-    (see `union_arms`); the bucket grain is the union of its members'."""
-    by_key: dict[tuple[str, frozenset[str]], GroupBucket] = {}
-    for node, data in items:
-        scope = _scope_and_phase(data.label)[0]
-        arms = frozenset(
-            _scope_and_phase(concept_attrs[pred].label)[0]
-            for pred in lineage_predecessors(concept_graph, concept_edges, node)
-        )
-        key = (scope, arms)
-        bucket = by_key.get(key)
-        if bucket is None:
-            bucket = _bucket_for(
-                data.depth_label, Derivation.UNION, frozenset(), label=scope
-            )
-            bucket.discriminator = "|".join(sorted(arms))
-            by_key[key] = bucket
-        bucket.grain_components |= data.grain_components
-        _add_member(bucket, node, data)
-    return list(by_key.values())
+    (see `union_arms`)."""
+    return _partition_by_scope(
+        items,
+        Derivation.UNION,
+        partial(_union_arms_key, concept_graph, concept_edges, concept_attrs),
+    )
 
 
 # Per-derivation registry. Any derivation not in here uses the default rule.

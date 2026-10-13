@@ -200,27 +200,6 @@ def get_all_parent_nullable(
     )
 
 
-def with_propagated_nulls(
-    outputs: list[BuildConcept], nullable: list[BuildConcept]
-) -> list[BuildConcept]:
-    """`nullable` plus every output computed over one of them by a
-    null-propagating expression (`k + 1` is NULL wherever `k` is), under any
-    spelling of the input."""
-    addresses: set[str] = set()
-    for concept in nullable:
-        addresses |= concept.equivalent_addresses
-    return unique(
-        list(nullable)
-        + [
-            c
-            for c in outputs
-            if propagates_argument_nulls(c)
-            and any(arg.address in addresses for arg in c.concept_arguments)
-        ],
-        "address",
-    )
-
-
 def region_reads(node: "StrategyNode") -> frozenset[str]:
     """The region domains under `node`: the spans whose extension rows are
     rows of its stream. Two nodes can stand in for each other's columns only
@@ -535,10 +514,10 @@ class StrategyNode:
         # after that resolve would otherwise plan differently. The node's own
         # condition refinement still applies on top.
         nullable = drop_proven_non_null(
-            with_propagated_nulls(
-                self.output_concepts,
+            unique(
                 self.nullable_concepts
                 + get_all_parent_nullable(self.output_concepts, parent_sources),
+                "address",
             ),
             self.conditions,
         )
