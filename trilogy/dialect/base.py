@@ -94,6 +94,7 @@ from trilogy.core.models.datasource import Address, Datasource, RawColumnExpr
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import (
     CTE,
+    INVALID_ALIAS_PREFIX,
     CompiledCTE,
     DatasourceCTE,
     Join,
@@ -1277,7 +1278,7 @@ class BaseDialect:
                             continue
                         rendered = cte.get_alias(member, source)
                         if isinstance(rendered, str) and rendered.startswith(
-                            "INVALID_ALIAS:"
+                            INVALID_ALIAS_PREFIX
                         ):
                             continue
                         self.used_map[source].add(member.address)
@@ -1334,6 +1335,13 @@ class BaseDialect:
             return rendered.text
         if isinstance(rendered, FUNCTION_ITEMS):
             return self.render_expr(rendered, cte=cte, raise_invalid=raise_invalid)
+        if isinstance(rendered, str) and rendered.startswith(INVALID_ALIAS_PREFIX):
+            if raise_invalid:
+                raise ValueError(rendered)
+            # The strict-mode guard extracts `<reason>`; the message's own
+            # angle brackets (`Grain<...>`) would cut it short.
+            reason = rendered.removeprefix(INVALID_ALIAS_PREFIX).lstrip(": ")
+            return INVALID_REFERENCE_STRING(reason.replace("<", "(").replace(">", ")"))
         # Translate the source_map token to the actual SQL alias: identity for
         # a normal CTE, the raw-table alias for an inlined DatasourceCTE.
         alias = cte.source_key_for(source) if isinstance(cte, CTE) else source

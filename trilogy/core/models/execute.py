@@ -52,6 +52,7 @@ from trilogy.core.utility import safe_quote
 from trilogy.utility import string_to_hash, unique
 
 LOGGER_PREFIX = "[MODELS_EXECUTE]"
+INVALID_ALIAS_PREFIX = "INVALID_ALIAS"
 
 
 def _datasource_column_for_concept(
@@ -583,7 +584,7 @@ class CTE:
         try:
             return self.source.get_alias(concept, source=source)
         except ValueError as e:
-            return f"INVALID_ALIAS: {e!s}"
+            return f"{INVALID_ALIAS_PREFIX}: {e!s}"
 
     def zero_fills_count(self, c: BuildConcept, rolled_up: bool = False) -> bool:
         """A COUNT this CTE renders coalesced to 0: one a merge padded onto a
@@ -2135,7 +2136,7 @@ class UnionCTE:
                 if source and source != cte.name:
                     continue
                 return concept.safe_address
-        return "INVALID_ALIAS"
+        return INVALID_ALIAS_PREFIX
 
     def get_concept(self, address: str) -> BuildConcept | None:
         for cte in self.internal_ctes:
