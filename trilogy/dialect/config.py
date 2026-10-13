@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -139,6 +140,32 @@ class BigQueryConfig(DialectConfig):
         return {"client": self.resolve_client()}
 
 
+def register_haybarn_dialect() -> None:
+    """Make ``haybarn://`` resolve to trilogy's haybarn dialect."""
+    from importlib.util import find_spec
+
+    from sqlalchemy.dialects import registry
+
+    if find_spec("haybarn") is None:
+        raise ImportError(
+            "python_datasource_transport = 'vgi' requires the haybarn and "
+            "vgi-python packages: pip install 'pytrilogy[vgi]'"
+        )
+    registry.register("haybarn", "trilogy.dialect.haybarn_engine", "HaybarnDialect")
+
+
+class PythonDatasourceTransport(Enum):
+    """How DuckDB reads a python datasource script's Arrow stream.
+
+    SHELL pipes (or, on Windows, stages to a temp file) through the ``uv_run``
+    macro. VGI streams it through a pooled ``trilogy.dialect.duckdb_vgi``
+    worker; it needs ``haybarn`` and ``vgi-python`` installed.
+    """
+
+    SHELL = "shell"
+    VGI = "vgi"
+
+
 class DuckDBConfig(DialectConfig):
     def __init__(
         self,
@@ -149,10 +176,16 @@ class DuckDBConfig(DialectConfig):
         gcs_cache_bust: bool | None = None,
         retry_config: RetryConfig | None = None,
         read_only: bool | None = None,
+        python_datasource_transport: str | None = None,
     ):
         super().__init__(retry_config=retry_config)
         self.path = path
         self._enable_python_datasources = enable_python_datasources
+        self._python_datasource_transport = (
+            PythonDatasourceTransport(python_datasource_transport)
+            if python_datasource_transport
+            else None
+        )
         self._enable_gcs = enable_gcs
         self._enable_spatial = enable_spatial
         self._gcs_cache_bust = gcs_cache_bust
@@ -161,6 +194,10 @@ class DuckDBConfig(DialectConfig):
     @property
     def enable_python_datasources(self) -> bool:
         return self._enable_python_datasources or False
+
+    @property
+    def python_datasource_transport(self) -> PythonDatasourceTransport:
+        return self._python_datasource_transport or PythonDatasourceTransport.SHELL
 
     @property
     def enable_gcs(self) -> bool:
@@ -175,9 +212,13 @@ class DuckDBConfig(DialectConfig):
         return self._gcs_cache_bust or False
 
     def connection_string(self) -> str:
+        scheme = "duckdb"
+        if self.python_datasource_transport == PythonDatasourceTransport.VGI:
+            register_haybarn_dialect()
+            scheme = "haybarn"
         if not self.path:
-            return "duckdb:///:memory:"
-        return f"duckdb:///{self.path}"
+            return f"{scheme}:///:memory:"
+        return f"{scheme}:///{self.path}"
 
     def create_connect_args(self) -> dict:
         # read_only lets many processes share one on-disk db (DuckDB allows

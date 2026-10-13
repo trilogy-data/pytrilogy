@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import sys
 from os import environ
@@ -267,6 +268,27 @@ CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
 """
 
 
+VGI_CATALOG = "trilogy_io"
+
+
+def vgi_worker_command(python_executable: str, is_windows: bool) -> str:
+    """The command the vgi extension launches (and pools) as the bridge worker."""
+    command = f'"{python_executable}" -m trilogy.dialect.duckdb_vgi'
+    # cmd.exe /c strips the first and last quote of a line that starts with one,
+    # so the quoted executable needs an outer pair to survive.
+    return f'"{command}"' if is_windows else command
+
+
+def get_vgi_setup_sql(python_executable: str, is_windows: bool) -> str:
+    """Attach the bridge worker that serves python datasources over VGI."""
+    location = vgi_worker_command(python_executable, is_windows).replace("'", "''")
+    return f"""
+INSTALL vgi FROM community;
+LOAD vgi;
+ATTACH IF NOT EXISTS '{VGI_CATALOG}' (TYPE vgi, LOCATION '{location}');
+"""
+
+
 # DuckDB reports a failed shellfs pipe only by its command line; both uv_run
 # forms above embed the script and its stderr sidecar there.
 _PIPE_FAILURE = re.compile(r"Pipe process exited abnormally code=(-?\d+): (.*?) \|")
@@ -274,10 +296,31 @@ _PIPE_SCRIPT = re.compile(r'duckdb_uv "[^"]*" "[^"]*" "([^"]*)"|--quiet (\S+)')
 _PIPE_STDERR = re.compile(r"""["']([^"']+\.err)["']""")
 
 
+def vgi_failure(message: str) -> PythonDatasourceError | None:
+    """The script failure the VGI bridge worker reported, if ``message`` holds one."""
+    from trilogy.dialect.python_source import VGI_FAILURE_MARKER, PythonDatasourceError
+
+    start = message.find(VGI_FAILURE_MARKER)
+    if start == -1:
+        return None
+    try:
+        payload, _ = json.JSONDecoder().raw_decode(
+            message, start + len(VGI_FAILURE_MARKER) + 1
+        )
+    except json.JSONDecodeError:
+        return None
+    return PythonDatasourceError(
+        payload["script"], payload["return_code"], payload["stderr"]
+    )
+
+
 def python_datasource_failure(error: Exception) -> PythonDatasourceError | None:
     """The script failure behind a DuckDB ``uv_run`` pipe error, if it is one."""
     from trilogy.dialect.python_source import PythonDatasourceError
 
+    vgi = vgi_failure(str(error))
+    if vgi is not None:
+        return vgi
     failure = _PIPE_FAILURE.search(str(error))
     if failure is None:
         return None
@@ -465,7 +508,7 @@ class DuckDBDialect(BaseDialect):
         if address.type == AddressType.PARQUET:
             return f"read_parquet({location_arg}{hive})"
         if address.type == AddressType.PYTHON_SCRIPT:
-            from trilogy.dialect.config import DuckDBConfig
+            from trilogy.dialect.config import DuckDBConfig, PythonDatasourceTransport
 
             if not (
                 isinstance(self.config, DuckDBConfig)
@@ -481,6 +524,9 @@ class DuckDBDialect(BaseDialect):
             from trilogy.dialect.source_pushdown import render_args
 
             args = render_args(request)
+            if self.config.python_datasource_transport == PythonDatasourceTransport.VGI:
+                escaped = args.replace("'", "''")
+                return f"{VGI_CATALOG}.main.script('{address.location}', '{escaped}')"
             if not args:
                 return f"uv_run('{address.location}')"
             # Filter tokens are single-quoted for the shell (see

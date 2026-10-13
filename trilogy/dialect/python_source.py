@@ -32,6 +32,7 @@ __all__ = [
     "MAX_ATTEMPTS",
     "RETRYABLE_UV_ERROR_MARKERS",
     "RETRY_DELAYS_SECONDS",
+    "VGI_FAILURE_MARKER",
     "ParquetStreamWriter",
     "PythonDatasourceError",
     "build_uv_command",
@@ -59,6 +60,10 @@ RETRYABLE_UV_ERROR_MARKERS = (
 )
 
 UV_RUN_PREFIX = ("uv", "run", "--no-project", "--quiet")
+
+# Prefixes the one-line JSON failure the VGI worker (``duckdb_vgi``) raises, so
+# the executor can rebuild the PythonDatasourceError from DuckDB's message.
+VGI_FAILURE_MARKER = "trilogy-script-failure"
 
 # Identifier-safe stem for generated staging table names.
 _UNSAFE_IDENTIFIER = re.compile(r"[^A-Za-z0-9_]")

@@ -281,6 +281,55 @@ the ones SQL would have picked. That is SQL's own non-determinism for an
 incomplete ORDER BY, but it does mean pushdown can change *which* equally-valid
 rows come back. Add a unique tiebreaker if that matters.
 
+## DuckDB transports: shell (default) and VGI (opt-in)
+
+By default DuckDB reads a script through the `uv_run` macro: a `shellfs` pipe on
+POSIX, and on Windows a wrapper that stages the stream to a temp `.arrow` file
+before `read_arrow` scans it. Both spawn `uv run` per scan.
+
+`python_datasource_transport = "vgi"` streams it instead through
+[VGI](https://query.farm/vgi/docs/python/), a DuckDB extension that runs table
+functions in external worker processes and speaks Arrow IPC over their stdio:
+
+```toml
+[engine.config]
+enable_python_datasources = true
+python_datasource_transport = "vgi"
+```
+
+At connect, the executor attaches one pooled bridge worker
+(`trilogy/dialect/duckdb_vgi.py`). A script renders as
+`trilogy_io.main.script('/abs/src.py', '<args>')`. The worker still runs
+`uv run src.py <args>`, reads the schema at bind, then hands the batches to
+DuckDB as they arrive. Nothing is staged to disk, DuckDB's projection is applied
+in the worker, and a failure comes back as the same `PythonDatasourceError`.
+
+Requirements and caveats:
+
+- **It needs `haybarn`**, Query.Farm's DuckDB build. The `vgi` extension is not
+  in DuckDB's public community repository, so stock `duckdb` cannot `LOAD` it.
+  The transport switches the SQLAlchemy URL to `haybarn://` (`haybarn_engine.py`,
+  a thin subclass of duckdb_engine's dialect). Install with `pytrilogy[vgi]`,
+  which needs python >= 3.13 for `vgi-python`.
+- **License**: `vgi`, `vgi-python` and the `vgi` crate are under the Query Farm
+  Source-Available License, not OSI open source. That is why this is an optional
+  extra and never a default dependency.
+- Pushdown args are unchanged, so the same transport-safety limits apply even
+  though VGI has no shell layer (see [Planner pushdown](#planner-pushdown)).
+
+Benchmarks are in `local_scripts/vgi_benchmark/`. With 3 columns on Windows,
+warm-query medians were:
+
+| rows | shell | vgi bridge | resident worker (prototype) |
+| --- | --- | --- | --- |
+| 1k | 0.35s | 0.18s | 0.003s |
+| 1M | 0.48s | 0.19s | 0.036s |
+| 10M | 1.97s (289MB staged) | 0.64s | 0.24s |
+
+The bridge still pays a `uv run` (~0.2-0.5s) on every scan. The resident row
+is a script that *is* a VGI worker: DuckDB pools it, so a warm query is a
+function call. It is not wired into the engine yet (see below).
+
 ## Not done yet
 
 **A compiled binary cannot be a datasource address.** `_FILE_TYPE_MAP` in
@@ -291,3 +340,11 @@ means generalizing `build_uv_command` into a runner chosen per address (`.py` â†
 `uv run`, executable â†’ exec directly) and giving the grammar a way to say "this
 address is a program". Until then the crate is usable through `trilogy source`
 and by downstream consumers, but not from a `file` clause.
+
+**Resident VGI sources.** Today the VGI bridge spawns the script on every scan.
+Most of the latency left (see the benchmark above) would go if a `trilogy.io`
+script could serve itself as a pooled VGI worker (`run(fn)` under a `--vgi`
+flag), with the engine attaching one catalog per script. VGI's filter and
+projection pushdown would then map onto `SourceRequest`. That extends the
+cross-language contract, so the rust crate and `test_conformance.py` would
+need to move with it.
