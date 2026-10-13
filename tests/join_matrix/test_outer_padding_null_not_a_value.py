@@ -177,8 +177,10 @@ def test_value_nulls_still_pair_exactly_once(tmp_path: Path):
     "query,expected",
     [
         (
-            "auto total_amt <- sum(amt) by cust_sk;\n"
-            "select addr_sk, cust_sk, total_amt;",
+            (
+                "auto total_amt <- sum(amt) by cust_sk;\n"
+                "select addr_sk, cust_sk, total_amt;"
+            ),
             [
                 (1, 10, 5),
                 (2, None, None),
@@ -189,13 +191,17 @@ def test_value_nulls_still_pair_exactly_once(tmp_path: Path):
             ],
         ),
         (
-            "auto total_amt <- sum(amt) by cust_sk;\n"
-            "select state, cust_sk, total_amt;",
+            (
+                "auto total_amt <- sum(amt) by cust_sk;\n"
+                "select state, cust_sk, total_amt;"
+            ),
             [("CA", 11, 9), ("GA", 10, 5), ("GA", None, None), (None, None, 15)],
         ),
         (
-            "auto cust_amt <- sum(amt) by cust_sk, region;\n"
-            "select addr_sk, cust_sk, region, cust_amt;",
+            (
+                "auto cust_amt <- sum(amt) by cust_sk, region;\n"
+                "select addr_sk, cust_sk, region, cust_amt;"
+            ),
             [
                 (1, 10, "e", 5),
                 (2, None, None, None),
@@ -207,9 +213,11 @@ def test_value_nulls_still_pair_exactly_once(tmp_path: Path):
             ],
         ),
         (
-            "auto cust_amt <- sum(amt) by cust_sk, region;\n"
-            "auto region_avg <- avg(cust_amt) by region;\n"
-            "select state, cust_sk, cust_amt, region_avg;",
+            (
+                "auto cust_amt <- sum(amt) by cust_sk, region;\n"
+                "auto region_avg <- avg(cust_amt) by region;\n"
+                "select state, cust_sk, cust_amt, region_avg;"
+            ),
             [
                 ("CA", 11, 9, 8.5),
                 ("GA", 10, 5, 6.0),
@@ -237,9 +245,11 @@ def test_padded_key_does_not_pair_with_a_value_null_group(
     "query,expected",
     [
         (
-            "auto total_amt <- sum(amt) by cust_sk;\n"
-            "auto total_pay <- sum(pay) by cust_sk;\n"
-            "select addr_sk, cust_sk, total_amt, total_pay;",
+            (
+                "auto total_amt <- sum(amt) by cust_sk;\n"
+                "auto total_pay <- sum(pay) by cust_sk;\n"
+                "select addr_sk, cust_sk, total_amt, total_pay;"
+            ),
             [
                 (1, 10, 5, 100),
                 (2, None, None, None),
@@ -250,22 +260,28 @@ def test_padded_key_does_not_pair_with_a_value_null_group(
             ],
         ),
         (
-            "auto total_amt <- sum(amt) by cust_sk;\n"
-            "where state = 'GA'\n"
-            "select cust_sk, total_amt;",
+            (
+                "auto total_amt <- sum(amt) by cust_sk;\n"
+                "where state = 'GA'\n"
+                "select cust_sk, total_amt;"
+            ),
             [(10, 5)],
         ),
         (
-            "auto total_amt <- sum(amt) by cust_sk;\n"
-            "auto total_pay <- sum(pay) by cust_sk;\n"
-            "where state = 'GA'\n"
-            "select cust_sk, total_amt, total_pay;",
+            (
+                "auto total_amt <- sum(amt) by cust_sk;\n"
+                "auto total_pay <- sum(pay) by cust_sk;\n"
+                "where state = 'GA'\n"
+                "select cust_sk, total_amt, total_pay;"
+            ),
             [(10, 5, 100)],
         ),
         (
-            "auto total_amt <- sum(amt) by cust_sk;\n"
-            "where state = 'GA'\n"
-            "select cust_name, total_amt;",
+            (
+                "auto total_amt <- sum(amt) by cust_sk;\n"
+                "where state = 'GA'\n"
+                "select cust_name, total_amt;"
+            ),
             [("ann", 5)],
         ),
         (
