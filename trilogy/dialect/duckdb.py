@@ -495,6 +495,14 @@ class DuckDBDialect(BaseDialect):
             return f"({sql_content})"
         return super().render_source(address, request)
 
+    def get_file_columns(
+        self, executor, address: Address
+    ) -> dict[str, DataType] | None:
+        rows = executor.execute_raw_sql(
+            f"DESCRIBE SELECT * FROM {self.render_source(address)}"
+        ).fetchall()
+        return {row[0].lower(): self.normalize_db_type(row[1]) for row in rows}
+
     # DuckDB information_schema returns type names (e.g. "INTEGER", "VARCHAR") that
     # differ from the DDL tokens in DATATYPE_MAP (e.g. "int", "string").
     DB_COLUMN_TYPE_MAP: ClassVar[dict[str, DataType]] = {

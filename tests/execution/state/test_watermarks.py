@@ -1584,7 +1584,7 @@ def test_get_stale_assets_timezone_mismatch_incremental():
     mock_env.datasources = {"tz_source": src_ds, "tz_target": tgt_ds}
 
     with patch.object(state_store, "watermark_all_assets"), patch(
-        "trilogy.execution.state.state_store.has_schema_mismatch", return_value=False
+        "trilogy.execution.state.state_store.schema_mismatch", return_value=None
     ), patch(
         "trilogy.execution.state.state_store.is_missing_local_file", return_value=False
     ), pytest.raises(
