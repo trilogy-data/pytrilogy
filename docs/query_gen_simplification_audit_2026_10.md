@@ -27,7 +27,7 @@ Two invariants framed the audit:
 | nullability | 6 | +58 / -63 | 6 tpc_ds statements smaller (5 fewer `is not distinct from`, 2 fewer `coalesce(count, 0)`), rows verified |
 | partial bindings and region domains | 8 | +15 / -241 | byte-identical |
 | rowset discovery | 2 | +41 / -231 | q54 INNER JOIN operand order, rows identical |
-| rowset assembly | see below | | |
+| rowset assembly | 5 | +34 / -262 | byte-identical |
 
 Per-axis detail:
 
@@ -72,6 +72,22 @@ subsumed by the boundary clause. The licensed-only grain override in
 and authored-relation pin in `_final_merge_grain`,
 `_final_gate_rowset_base_keys`, `gate_pair_keys`, the FINAL-deferred rowset
 filter exposure and the rowset carried-spans capability are deleted.
+
+**Rowset assembly.** Three generic facts cover almost every rowset branch in
+assembly: a handle is a leaf whose value exists only on its own boundary; a
+boundary is a row source with its own grain; a rowset-side scoped-join member
+is partial by relation, not by binding. Sites that only restated one of them
+are gone: `_relation_licenses_handle` and the mangled body-local guards in
+`_carry_join_keys` and the FINAL preserve-key carry (`_synthesizes_handle`
+already refuses to compute a handle a scan does not carry),
+`_rowset_base_join_keys` and the FINAL gate widening on rowset base keys,
+`_drop_unadvertised_rowset_handles`, the ROWSET-only filters on completion
+contributors and ROOT preserve keys, the region-domain RowsetNode skip, the
+ROWSET exemption from `satisfiable_outputs`, the ROWSET host deferral under
+a global merge and the ROOT-mate-via-keys lookup in condition placement, the
+body-WHERE exemption from the disconnected-gate error, the `MergeNode`
+rowset/TVF `force_group` carve-out, the "ROWSET stamps are not genuine" test
+in `_genuine_partial_stamp`, and the handle-content term in `_extent_free`.
 
 ## Not deletable (corpus-silent, unit-pinned)
 
@@ -150,6 +166,33 @@ Rowset discovery:
 - `RowsetWitness` sources in the keyspace: 24 pins, 0 corpus moves.
 - `island_rowsets_for_connectivity`: q29 reports disconnected without it.
 
+Rowset assembly:
+- Two rowset boundaries flowing straight to FINAL defer their WHERE to FINAL
+  (`rowset_final_groups`): fuzzer-only pin (a derived-key union join leaks a
+  row, 258/260 without it).
+- `_synthesizes_handle` (a handle is computable only on its own boundary):
+  3 row pins; this is the generic rule the deleted sites restated.
+- The passthrough fold veto for a rowset-bearing side, the partial stamps on
+  keys carried onto a rowset-bearing parent and on a licensed handle over a
+  coalescing scan, rowset islanding and the bridge-rowset diagnosis, the
+  boundary-handles-first ordering, and the region-domain dedup over a
+  boundary: 1 to 13 red pins each.
+- Condition placement: the ROWSET host deferral with a non-FINAL consumer,
+  own-side keys by rowset identity, and the active-relation survival and
+  FINAL routing of ROWSET hosts: q77 moves and 2 to 28 pins go red.
+- Optimizer: the unbound-rowset-rename, subset-anchor-boundary and
+  aggregate-arg re-exposure fold vetoes in `collapse_single_parent`; the
+  rowset-definition-boundary completeness and lineage transfer in
+  `value_set_join_upgrade`: 1 to 20 row pins each.
+- `resolve_rowset` obligations: subset-source and owned-span partial stamps,
+  presence-probe and derived outer-relation member materialization,
+  undemanded pseudonym handles, the multiselect align grain, coalesced
+  content re-exposure and nullability through handle content: 1 to 54 row
+  pins each; dropping the pseudonym handles also raises 5 keyless-join
+  errors.
+- `query_processor`: ORDER BY on a non-projected rowset measure carried as
+  hidden grain (1 pin).
+
 ## Design seams (not built)
 
 Ranked by lines a seam would free, across the axes:
@@ -167,24 +210,33 @@ Ranked by lines a seam would free, across the axes:
    had at `get_join_type` time in 24 of 34 corpus firings; the 10 it could
    not decide are same-address origin arbitrations that need a per-side
    node. This is the seam `docs/domain_graph_design.md` step 5 names.
-3. **Rowset witness from the body plan** (about 335 lines). `_witness`
+3. **A rowset handle as a leaf in `projection.row_lineage_arguments`**
+   (about 170 lines: `_raise_if_rowset_islanded` and the bridge diagnosis,
+   `_mangled_rowset_content_addresses`, `_synthesizes_handle`, the
+   grain-change walk stop, `_crosses_outer_aggregate`). The concept graph
+   already treats a ROWSET concept as a leaf, but `BuildRowsetItem.
+   concept_arguments` is `[content]`, so every assembly row-lineage walk sees
+   through the handle and each site re-imposes leaf-ness after the fact. A
+   handle was judged satisfiable through its content in 46 tests; those are
+   the gate.
+4. **Rowset witness from the body plan** (about 335 lines). `_witness`
    rebuilds the body's concept graph separately from `resolve_rowset`; a body
    plan that handed back its keyspace would delete the recomputation and the
    recursion guard.
-4. **Provenance stamped by the producer** (about 500 lines across
+5. **Provenance stamped by the producer** (about 500 lines across
    `null_provenance.py`, `join_resolution.py` side-fact assembly and the
    `value_set_join_upgrade` padding walks). Corpus evidence says the stamp
    could start as `value | extent`.
-5. **Drop the `narrow_equal_domain_joins` knob** (about 230 lines). Under
+6. **Drop the `narrow_equal_domain_joins` knob** (about 230 lines). Under
    model trust `merge a into b` makes one key; the planner's FULL-for-every-
    EQUAL-key rule plus the optimizer's `_upgrade_to_inner` exist to make that
    trust switchable.
-6. **One padding walk.** Six left-deep "who gets padded" walks over the same
+7. **One padding walk.** Six left-deep "who gets padded" walks over the same
    `left_deep_joins` primitive (about 120 lines).
-7. **`DomainKind` as a trace label.** No behavioural consumer reads
+8. **`DomainKind` as a trace label.** No behavioural consumer reads
    `RegionDomain.kind`; every reader keys on whether a bucket exists. The
    BOUNDARY decision is load-bearing, the label is not.
-8. **A boundary scope id** in place of `ConceptAttrs.rowset_name`: the one
+9. **A boundary scope id** in place of `ConceptAttrs.rowset_name`: the one
    non-derivable fact it carries (a non-handle node that belongs to a
    boundary) is the same thing a union arm scope is, so `partition_rowsets`,
    `partition_unions` and `partition_constants` could be one scope-keyed rule.
