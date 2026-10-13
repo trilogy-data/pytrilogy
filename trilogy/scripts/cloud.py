@@ -2851,7 +2851,8 @@ def _wait_for_run(
         if time.monotonic() >= deadline:
             raise CloudError(
                 f"Run {run_id} was still {run.status!r} after {timeout}s. "
-                f"It is not cancelled — check `trilogy cloud runs show {run_id}`."
+                f"It is still going: `trilogy cloud runs show {run_id}` to "
+                f"look, `trilogy cloud runs cancel {run_id}` to stop it."
             )
         time.sleep(min(poll, max(0, deadline - time.monotonic())))
 
@@ -2935,6 +2936,40 @@ def runs_wait(
     client, org = _org_client(ctx)
     run = _wait_for_run(client, org, run_id, timeout, poll_seconds)
     _report_finished_run(org, run, logs=logs)
+
+
+@runs.command("cancel")
+@click.argument("run_ids", metavar="RUN_ID...", nargs=-1, required=True)
+@click.pass_context
+def runs_cancel(ctx: click.Context, run_ids: tuple[str, ...]) -> None:
+    """Cancel one or more runs.
+
+    A queued run never starts. A running one is stopped where it runs, within
+    about half a minute. A run that already finished cannot be cancelled; that
+    is an error naming how it finished, and the other runs are still cancelled.
+    """
+    client, org = _org_client(ctx)
+    failures: list[str] = []
+    for run_id in dict.fromkeys(run_ids):
+        try:
+            client.post(f"/orgs/{org}/jobs/runs/{quote(run_id)}/cancel")
+        except CloudError as exc:
+            failures.append(run_id)
+            if is_json_mode():
+                emit_event(
+                    "run_cancel_failed", org=org, run_id=run_id, error=exc.message
+                )
+            else:
+                print_warning(exc.message)
+            continue
+        if is_json_mode():
+            emit_event("run_cancelled", org=org, run_id=run_id)
+        else:
+            print_success(f"Cancelled run {run_id}")
+    if failures:
+        raise CloudError(
+            f"Could not cancel {len(failures)} run(s): {', '.join(failures)}"
+        )
 
 
 @runs.command("show")
