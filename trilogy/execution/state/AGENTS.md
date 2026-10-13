@@ -78,6 +78,20 @@ Central class for watermark collection and staleness detection.
 - `run_freshness_probe_cached(path)`: memoized wrapper around `run_freshness_probe`. Same probe path used by N datasources in one refresh invocation = one subprocess call. Memo keyed by path; cleared by `invalidate_address` for any ds whose `freshness_probe` matches.
 - A `threading.Lock` guards cache mutations — managed nodes evaluate in parallel, so reads/writes must serialize.
 
+### Schema drift
+
+`is_stale` compares the asset's physical columns with the ones its datasource
+declares (`schema_mismatch`) and reports the drift by name (`schema changed:
+missing column b`). A table is read through information_schema; a data file
+(csv/tsv/parquet) through the dialect's `get_file_columns` (DuckDB: `DESCRIBE
+SELECT * FROM <file>`), because a watermark cannot see a column added to the
+model — every root stays where it was, so a file lacking the column would read
+fresh until its roots happened to move, and every read of the column would fail
+at execution. Types are compared only where the file stores them (parquet); a
+CSV's are sniffed from the values. Script and SQL-file addresses have no
+declaration to drift from and are not judged. A missing or unreadable file
+yields no schema; those are their own verdicts, reached afterwards.
+
 ### Model-fingerprint staleness
 
 `is_stale` checks the asset's model fingerprint before the schema probe (pure

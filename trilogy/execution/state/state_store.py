@@ -46,11 +46,11 @@ from trilogy.execution.state.watermarks import (
     get_incremental_key_watermarks,
     get_last_update_time_watermarks,
     get_unique_key_hash_watermarks,
-    has_schema_mismatch,
     is_missing_local_file,
     is_missing_table,
     run_freshness_probe,
     run_refresh_script,
+    schema_mismatch,
     within_allowed_lag,
 )
 
@@ -574,10 +574,10 @@ class BaseStateStore:
                 filters=UpdateKeys(),
             )
 
-        if has_schema_mismatch(ds, executor, cache=self._cache):
+        if drift := schema_mismatch(ds, executor, cache=self._cache):
             return StaleAsset(
                 datasource_id=ds_id,
-                reason="schema changed: column mismatch",
+                reason=f"schema changed: {drift}",
                 filters=UpdateKeys(),
             )
 

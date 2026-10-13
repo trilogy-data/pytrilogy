@@ -1087,6 +1087,14 @@ class BaseDialect:
             return None
         return {row.column_name.lower(): row.trilogy_type for row in rows}
 
+    def get_file_columns(
+        self, executor, address: Address
+    ) -> dict[str, DataType] | None:
+        """Name→DataType of a file source, or None where the engine cannot
+        describe one. Only a dialect that reads files answers; the base has no
+        information_schema row for a file, so it declines rather than guess."""
+        return None
+
     def list_tables(self, executor, schema: str | None = None) -> list[tuple[str, str]]:
         """Return (table_name, table_type) for tables and views via
         information_schema. System schemas are excluded unless ``schema`` is

@@ -1,4 +1,5 @@
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from enum import Enum
@@ -6,7 +7,7 @@ from typing import Any
 
 from trilogy import Executor
 from trilogy.constants import logger
-from trilogy.core.enums import Purpose
+from trilogy.core.enums import AddressType, Purpose
 from trilogy.core.models.author import ConceptRef
 from trilogy.core.models.build import Factory
 from trilogy.core.models.core import DataType
@@ -229,17 +230,55 @@ def _is_table_address(datasource: Datasource) -> bool:
     )
 
 
+def _cached_columns(
+    datasource: Datasource,
+    cache: ColumnStatsCache | None,
+    fetch: Callable[[], dict[str, DataType] | None],
+) -> dict[str, DataType] | None:
+    key = datasource.safe_address
+    if cache is None:
+        return fetch()
+    hit, actual = cache.get_columns(key)
+    if not hit:
+        actual = fetch()
+        cache.set_columns(key, actual)
+    return actual
+
+
 def _table_columns(
     datasource: Datasource, executor: Executor, cache: ColumnStatsCache | None
 ) -> dict[str, DataType] | None:
-    table_name = datasource.safe_address
-    if cache is None:
-        return executor.generator.get_table_columns(executor, table_name)
-    hit, actual = cache.get_columns(table_name)
-    if not hit:
-        actual = executor.generator.get_table_columns(executor, table_name)
-        cache.set_columns(table_name, actual)
-    return actual
+    return _cached_columns(
+        datasource,
+        cache,
+        lambda: executor.generator.get_table_columns(executor, datasource.safe_address),
+    )
+
+
+def _describe_file(address: Address, executor: Executor) -> dict[str, DataType] | None:
+    """A missing or unreadable file has no schema to compare; those are their
+    own verdicts, reached after this one. Anything else still raises."""
+    dialect = executor.generator
+    try:
+        return dialect.get_file_columns(executor, address)
+    except Exception as e:
+        if is_missing_source_error(e, dialect) or is_corrupt_source_error(e, dialect):
+            executor.connection.rollback()
+            return None
+        raise
+
+
+def _file_columns(
+    datasource: Datasource, executor: Executor, cache: ColumnStatsCache | None
+) -> dict[str, DataType] | None:
+    address = datasource.address
+    assert isinstance(address, Address)
+    return _cached_columns(datasource, cache, lambda: _describe_file(address, executor))
+
+
+# Files whose columns are the asset's own. A script or SQL file names whatever
+# its code returns, so it has no declaration to drift from.
+DATA_FILE_TYPES = frozenset({AddressType.CSV, AddressType.TSV, AddressType.PARQUET})
 
 
 def is_missing_table(
@@ -267,17 +306,34 @@ def is_missing_table(
     return False
 
 
-def has_schema_mismatch(
+def schema_mismatch(
     datasource: Datasource,
     executor: Executor,
     cache: ColumnStatsCache | None = None,
-) -> bool:
-    """Return True if the existing table's columns (names or types) differ from the definition."""
-    if not _is_table_address(datasource):
-        return False
-    actual = _table_columns(datasource, executor, cache)
+) -> str | None:
+    """How the existing table's columns (names or types) differ from the
+    definition, or None when they agree.
+
+    A data file is judged the same way: a watermark cannot see a column added to
+    the model, so without this a file that lacks one stays "fresh" until its
+    roots happen to move. Its types are compared only where the file stores
+    them (parquet) — a CSV's are sniffed from the values, so a string column of
+    digits reads back as an integer without any schema having changed."""
+    address = datasource.address
+    if _is_table_address(datasource):
+        actual = _table_columns(datasource, executor, cache)
+        compare_types = True
+    elif (
+        isinstance(address, Address)
+        and address.type in DATA_FILE_TYPES
+        and not address.is_missing_locally
+    ):
+        actual = _file_columns(datasource, executor, cache)
+        compare_types = address.type == AddressType.PARQUET
+    else:
+        return None
     if actual is None:
-        return False
+        return None
     expected = {}
     for col in datasource.columns:
         concept = executor.environment.concepts[col.concept.address]
@@ -290,14 +346,16 @@ def has_schema_mismatch(
         # own, so the concept's address stays the best available guess.
         name = col.alias if isinstance(col.alias, str) else concept.safe_address
         expected[name.lower()] = concept.datatype.data_type
-    if set(actual) != set(expected):
-        return True
-    # Check types where the dialect can resolve them (skip UNKNOWN — can't map the type)
-    return any(
-        actual[name] != expected[name]
-        for name in expected
-        if actual.get(name, DataType.UNKNOWN) != DataType.UNKNOWN
-    )
+    drift = [f"missing column {n}" for n in expected if n not in actual]
+    drift += [f"undeclared column {n}" for n in actual if n not in expected]
+    if compare_types and not drift:
+        # Only where the dialect can resolve the type (skip UNKNOWN — can't map it)
+        drift = [
+            f"type of {n} ({actual[n].value} vs {expected[n].value})"
+            for n in expected
+            if actual[n] != DataType.UNKNOWN and actual[n] != expected[n]
+        ]
+    return ", ".join(drift) or None
 
 
 def get_last_update_time_watermarks(
