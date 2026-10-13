@@ -18,6 +18,11 @@ grain (run_date, run_org)
 address daily_run_stats;
 
 auto rwindow_1d <- run_date = date_add(current_date(), day, -1);
+
+key other_org string;
+datasource others (org:other_org)
+grain (other_org)
+address others;
 """
 
 QUERY = """
@@ -27,12 +32,30 @@ select
 """
 
 
-def test_filtered_count_distinct_beside_filtered_sum():
+MEMBERSHIP_QUERY = """
+select
+    sum(runs_total ? rwindow_1d) -> runs_1d,
+    count_distinct(run_org ? rwindow_1d and run_org in other_org) -> known_orgs_1d;
+"""
+
+
+def _executor():
     executor = Dialects.DUCK_DB.default_executor(environment=Environment())
     executor.execute_raw_sql("""create table daily_run_stats as
         select current_date - 1 as run_date, 'a' as org_id, 3 as runs_total
         union all select current_date - 1, 'b', 0
         union all select current_date - 5, 'c', 1""")
+    executor.execute_raw_sql("create table others as select 'a' as org")
+    return executor
+
+
+def test_filtered_count_distinct_beside_filtered_sum():
+    executor = _executor()
     sql = executor.generate_sql(MODEL + QUERY)[-1]
     assert "INVALID" not in sql, sql
     assert executor.execute_text(MODEL + QUERY)[-1].fetchall() == [(3, 1)]
+
+
+def test_merged_membership_keeps_its_folded_feeder():
+    executor = _executor()
+    assert executor.execute_text(MODEL + MEMBERSHIP_QUERY)[-1].fetchall() == [(3, 1)]
