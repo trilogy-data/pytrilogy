@@ -1,9 +1,10 @@
 import re
 from collections import defaultdict
+from collections.abc import Sequence
 
 from trilogy.constants import CONFIG
 from trilogy.core.enums import Derivation, JoinType
-from trilogy.core.models.build import BuildConcept, BuildDatasource
+from trilogy.core.models.build import BuildConcept, BuildDatasource, BuildFilterItem
 from trilogy.core.models.datasource import RawColumnExpr
 from trilogy.core.models.execute import (
     CTE,
@@ -166,14 +167,33 @@ def _can_inline_filtered_parent(
     )
 
 
-def _derivable_from(concept: BuildConcept, columns: set[str]) -> bool:
-    """Whether a row-level scalar renders from `columns` alone."""
-    if concept.derivation != Derivation.BASIC:
-        return False
-    return all(
-        arg.address in columns or _derivable_from(arg, columns)
-        for arg in concept.concept_arguments
-    )
+def _lineage_reads(
+    concepts: Sequence[BuildConcept], columns: set[str]
+) -> set[str] | None:
+    """The derived addresses rendering `concepts` from `columns` alone passes
+    through, or None when a row-level scalar chain cannot reach them."""
+    reads: set[str] = set()
+    for concept in concepts:
+        if concept.address in columns:
+            continue
+        if concept.derivation != Derivation.BASIC:
+            return None
+        inner = _lineage_reads(concept.concept_arguments, columns)
+        if inner is None:
+            return None
+        reads |= {concept.address} | inner
+    return reads
+
+
+def _filter_reads(concept: BuildConcept, columns: set[str]) -> set[str] | None:
+    """A filter renders `CASE WHEN <predicate>` from lineage once folded, so
+    its predicate must compute from `columns` too."""
+    lineage = concept.lineage
+    if not isinstance(lineage, BuildFilterItem):
+        return set()
+    if lineage.where.existence_arguments:
+        return None
+    return _lineage_reads(lineage.where.row_arguments, columns)
 
 
 def _rename_fold_plan(
@@ -181,7 +201,7 @@ def _rename_fold_plan(
     parent: DatasourceCTE,
     missing: set[str],
     root_outputs: set[str],
-) -> list[tuple[int, BuildConcept]] | None:
+) -> tuple[list[tuple[int, BuildConcept]], set[str]] | None:
     """Plan to render consumer outputs that read a parent-scan rename (an
     address the raw datasource cannot supply) from lineage after the fold.
 
@@ -191,11 +211,14 @@ def _rename_fold_plan(
     drop its source_map entry, so the merged CTE renders `<raw column> as
     <name>` exactly as the scan did. Returns None when any missing address is
     not such a rename or a scalar the raw columns compute (which renders from
-    its own lineage post-fold, as it would have in the scan)."""
+    its own lineage post-fold, as it would have in the scan). Also returns the
+    derived addresses those lineage renders pass through: their source_map
+    entries name the parent, which the raw datasource cannot answer for."""
     by_address: dict[str, tuple[int, BuildConcept]] = {}
     for i, col in enumerate(cte.output_columns):
         by_address.setdefault(col.address, (i, col))
     plan: list[tuple[int, BuildConcept]] = []
+    released: set[str] = set()
     for address in missing:
         # An existence subselect resolves through existence_source_map against
         # a named CTE; a lineage render can't satisfy it.
@@ -208,16 +231,23 @@ def _rename_fold_plan(
         consumed = consumed_parent_column(col, cte, parent)
         if consumed is None:
             return None
-        if consumed.address == col.address and _derivable_from(consumed, root_outputs):
-            plan.append((i, consumed))
-            continue
+        if consumed.address == col.address:
+            reads = _lineage_reads([consumed], root_outputs)
+            if reads is not None:
+                plan.append((i, consumed))
+                released |= reads - {consumed.address}
+                continue
         base = rename_reference(consumed)
         if base is None or (
             base.address not in root_outputs and not (base.pseudonyms & root_outputs)
         ):
             return None
+        predicate_reads = _filter_reads(consumed, root_outputs)
+        if predicate_reads is None:
+            return None
         plan.append((i, rebind_rename_to_consumed(col, base)))
-    return plan
+        released |= predicate_reads
+    return plan, released
 
 
 def _join_key_demand(cte: CTE, parent_name: str) -> set[str]:
@@ -243,7 +273,7 @@ def _fold_plan(
     cte: CTE,
     parent: DatasourceCTE,
     base: BuildDatasource,
-) -> tuple[set[str], list[tuple[int, BuildConcept]] | None]:
+) -> tuple[set[str], tuple[list[tuple[int, BuildConcept]], set[str]] | None]:
     """The join keys the raw scan cannot supply, and the rename-fold plan
     covering whatever else the consumer reads through this parent. An empty
     plan means nothing needs folding; None means no fold is provable.
@@ -257,10 +287,10 @@ def _fold_plan(
         root_outputs |= x.pseudonyms
     join_demand = _join_key_demand(cte, parent.name) - root_outputs
     if join_demand:
-        return join_demand, []
+        return join_demand, ([], set())
     inherited = {x for x, v in cte.source_map.items() if v and parent.name in v}
     if inherited.issubset(root_outputs):
-        return set(), []
+        return set(), ([], set())
     # A source_map entry the consumer never renders from this parent is
     # metadata, not a requirement: derived concepts get attached to the scan
     # that could compute them while the consumer computes them from raw columns
@@ -268,7 +298,7 @@ def _fold_plan(
     consumed = render_cte_used_map(cte).get(parent.name, set())
     missing = (inherited & consumed) - root_outputs
     if not missing:
-        return set(), []
+        return set(), ([], set())
     return set(), _rename_fold_plan(cte, parent, missing, root_outputs)
 
 
@@ -406,12 +436,15 @@ class InlineDatasource(OptimizationRule):
                 continue
             result = cte.inline_parent_datasource(replaceable, force_group=False)
             if result:
-                for i, new_col in plan:
+                columns, released = plan
+                for i, new_col in columns:
                     # Render the rename from lineage post-fold; a stale source_map
                     # entry would win over lineage and point at a column the raw
                     # table does not have.
                     cte.output_columns[i] = new_col
                     cte.source_map.pop(new_col.address, None)
+                for address in released:
+                    cte.source_map.pop(address, None)
                 if replaceable.condition is not None:
                     cte.condition = append_condition(
                         cte.condition, replaceable.condition
