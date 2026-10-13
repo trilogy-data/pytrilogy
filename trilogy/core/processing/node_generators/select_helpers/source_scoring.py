@@ -1,5 +1,3 @@
-from collections.abc import Iterable
-
 from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.core.enums import AddressType
@@ -18,7 +16,6 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.processing.condition_utility import (
     condition_implies,
-    condition_proves_non_null,
     condition_required_addresses,
     decompose_condition,
 )
@@ -44,76 +41,14 @@ def _structural_partial_concepts(
     return ds.column_level_partial_concepts or []
 
 
-def membership_complete_grain_keys(
-    ds: "BuildDatasource | BuildUnionDatasource",
-    datasources: "Iterable[BuildDatasource | BuildUnionDatasource]",
-    conditions: BuildWhereClause | None,
-) -> set[str]:
-    """Canonical addresses of ``ds``'s ``~`` GRAIN keys that the query WHERE
-    proves complete for this result.
-
-    A ``~`` grain key covers only a subset of the key's universe, so the planner
-    otherwise keeps a same-grain sibling with complete keys to anchor the full
-    grain. But if the WHERE proves non-null a concept that ``ds`` provides and
-    its same-grain siblings do NOT, every surviving row is a ``ds`` row
-    (implicit ``complete where``), so the keys are non-partial for this query.
-
-    Two call sites share this proof: source selection drops it from the
-    partial map (so the redundant sibling falls out via the subset rule), and
-    the datasource node drops it from ``partial_concepts`` (so the discovery
-    loop does not re-source the key as partial).
-
-    Empty unless BOTH a ``~`` grain key exists AND the membership proof holds.
-    """
-    if conditions is None or not isinstance(ds, BuildDatasource):
-        return set()
-    grain = set(ds.grain.components)
-    grain_keys = {
-        c.canonical_address
-        for c in _structural_partial_concepts(ds)
-        if c.canonical_address in grain
-    }
-    if not grain_keys:
-        return set()
-    # A ~ key is only worth completing if a same-grain sibling supplies it
-    # non-structurally (an anchor that would otherwise be pulled in); with no
-    # such sibling the key is genuinely partial. `sibling_outputs` also gives
-    # the concepts a WHERE proof can key off: one exclusive to `ds` proves the
-    # surviving rows are `ds`'s rows.
-    sibling_outputs: set[str] = set()
-    sibling_completes: set[str] = set()
-    for other in datasources:
-        if (
-            not isinstance(other, BuildDatasource)
-            or other.name == ds.name
-            or set(other.grain.components) != grain
-        ):
-            continue
-        sibling_outputs |= {c.address for c in other.output_concepts}
-        other_structural = {
-            c.canonical_address for c in _structural_partial_concepts(other)
-        }
-        sibling_completes |= {
-            c.canonical_address for c in other.output_concepts
-        } - other_structural
-    grain_keys &= sibling_completes
-    if not grain_keys:
-        return set()
-    exclusive = {c.address for c in ds.output_concepts} - sibling_outputs
-    proven = condition_proves_non_null(conditions.conditional)
-    return grain_keys if proven & exclusive else set()
-
-
 def _graph_partial_concepts(
     g: ReferenceGraph, conditions: BuildWhereClause | None
 ) -> dict[str, list[BuildConcept]]:
     """Per datasource node, the concepts still partial once the query's own
-    condition and membership-complete grain keys are taken into account."""
+    condition is taken into account. A `~` the WHERE completes for the whole
+    plan was already dropped from the binding (`partial_bridging.decide_heal`)."""
     partial: dict[str, list[BuildConcept]] = {}
     for node, ds in g.datasources.items():
-        complete_keys = membership_complete_grain_keys(
-            ds, g.datasources.values(), conditions
-        )
         if (
             ds.non_partial_for
             and conditions
@@ -124,12 +59,9 @@ def _graph_partial_concepts(
             # Condition satisfies the DS's complete-where, so the implicit
             # table-level partial stamp goes away; column-level ~ partials are
             # structural and survive.
-            candidates: list[BuildConcept] = _structural_partial_concepts(ds)
+            partial[node] = _structural_partial_concepts(ds)
         else:
-            candidates = list(ds.partial_concepts)
-        partial[node] = [
-            c for c in candidates if c.canonical_address not in complete_keys
-        ]
+            partial[node] = list(ds.partial_concepts)
     return partial
 
 

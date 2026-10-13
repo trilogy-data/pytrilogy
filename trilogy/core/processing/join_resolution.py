@@ -27,7 +27,6 @@ from trilogy.core.models.build import (
     BuildDatasource,
     BuildFunction,
     BuildGrain,
-    BuildRowsetItem,
     get_grouped_aggregate_wrapper,
 )
 from trilogy.core.models.build_environment import (
@@ -1995,20 +1994,9 @@ def get_node_joins(
             for span in held_region_spans(datasource)
             if span not in extent_free_spans
         }
-        # A rowset handle is bound as its content is: a boundary partial on
-        # `user_id` is partial on `even.user_id` too, or a filtered body
-        # out-hosts the complete dimension scan and the FINAL sheds the rows
-        # the statement's bare key demands.
-        partial_addresses = {c.address for c in datasource.partial_concepts}
         hosts = host_canon is not None and host_canon <= (
             {canon_node(c.address) for c in datasource.output_concepts}
-            - {canon_node(a) for a in partial_addresses}
-            - {
-                canon_node(c.address)
-                for c in datasource.output_concepts
-                if isinstance(c.lineage, BuildRowsetItem)
-                and c.lineage.content.address in partial_addresses
-            }
+            - {canon_node(c.address) for c in datasource.partial_concepts}
         )
         sides[ds_node] = SideFacts(
             partials=frozenset(partial_keys),

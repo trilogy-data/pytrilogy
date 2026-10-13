@@ -2393,7 +2393,6 @@ def build_group_graph(
     attrs[FINAL_NODE_ID].extent_ownership = elect_extent_owners(
         group_graph,
         attrs,
-        environment,
         keyspace,
         relation_only=frozenset(
             a.address for a in concept_attrs.values() if a.relation_only

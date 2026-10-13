@@ -45,7 +45,6 @@ from trilogy.core.processing.grain_utility import (
 )
 from trilogy.core.processing.join_resolution import (
     compute_outer_null_status,
-    deep_extent_free_spans,
     get_node_joins,
     held_region_spans,
     merge_partial_addresses,
@@ -479,13 +478,6 @@ class MergeNode(StrategyNode):
             partial_addresses |= source_outputs & source_partial
         branch_proofs &= output_addresses
         branch_proofs -= complete_addresses & partial_addresses
-        # A `~` key a branch was built not to extend is partial there
-        # whatever the other branches expose (a region domain projected down
-        # to what it carries): its filter proves nothing about the rows the
-        # domain adds back.
-        branch_proofs -= partial_addresses & frozenset().union(
-            *(deep_extent_free_spans(source) for source in final_datasets)
-        )
         # The same for this merge's own WHERE over a `~` key it pads for whose
         # extension rows the plan returns: the extension row carries the
         # dimension's key, so `customer_id in (2, 3)` keeps the customer with
