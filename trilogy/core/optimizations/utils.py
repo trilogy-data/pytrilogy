@@ -110,6 +110,10 @@ def carry_child_state(parent: CTE, cte: CTE) -> None:
     for address, sources in cte.existence_source_map.items():
         if address not in parent.existence_source_map:
             parent.existence_source_map[address] = sources
+        for source in sources:
+            # a folded feeder renders from the raw datasource this records
+            if (inlined := cte.inlined_parent_for_source(source)) is not None:
+                parent.add_inlined_datasource(inlined)
     if cte.limit is not None:
         parent.limit = cte.limit
         parent.order_by = cte.order_by
