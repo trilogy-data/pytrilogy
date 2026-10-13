@@ -945,38 +945,79 @@ class TestRunWait:
 class TestRunCancel:
     ROUTE: ClassVar[str] = "/orgs/acme/jobs/runs/*/cancel"
 
-    def test_it_cancels_each_run_once(self, logged_in, run_cloud):
-        logged_in.set("POST", self.ROUTE, {"id": "x", "status": "cancelled"})
-        result = run_cloud("runs", "cancel", "run-1", "run-2", "run-1")
+    @staticmethod
+    def _cancelled(run_id: str = "run-1", started: bool = True) -> dict:
+        return {
+            "id": run_id,
+            "job_id": "job-1",
+            "created_at": TS,
+            "status": "cancelled",
+            "started_at": TS if started else None,
+            "finished_at": TS,
+        }
+
+    def test_a_running_run_is_reported_as_stopping(self, logged_in, run_cloud):
+        logged_in.set("POST", self.ROUTE, self._cancelled())
+        result = run_cloud("runs", "cancel", "run-1")
         assert result.exit_code == 0, result.output
-        assert "Cancelled run run-1" in result.output
-        assert "Cancelled run run-2" in result.output
+        assert "Cancelled run run-1; it was executing" in result.output
+
+    def test_a_queued_run_is_reported_as_never_started(self, logged_in, run_cloud):
+        logged_in.set("POST", self.ROUTE, self._cancelled(started=False))
+        result = run_cloud("runs", "cancel", "run-1")
+        assert "Cancelled run run-1 before it started." in result.output
+
+    def test_each_run_is_cancelled_once(self, logged_in, run_cloud):
+        logged_in.set("POST", self.ROUTE, self._cancelled())
+        assert run_cloud("runs", "cancel", "run-1", "run-2", "run-1").exit_code == 0
         assert (
             len(logged_in.requests_for("POST", "/orgs/acme/jobs/runs/run-1/cancel"))
             == 1
         )
         assert logged_in.requests_for("POST", "/orgs/acme/jobs/runs/run-2/cancel")
 
-    def test_a_finished_run_fails_without_stopping_the_rest(self, logged_in, run_cloud):
-        logged_in.fail(
-            "POST",
-            "/orgs/acme/jobs/runs/run-done/cancel",
-            409,
-            "Run already finished as completed; there is nothing to cancel.",
+    def test_unknown_and_finished_runs_are_answers_not_crashes(
+        self, logged_in, run_cloud
+    ):
+        logged_in.fail("POST", "/orgs/acme/jobs/runs/run-gone/cancel", 404)
+        logged_in.fail("POST", "/orgs/acme/jobs/runs/run-done/cancel", 409)
+        logged_in.set(
+            "GET",
+            "/orgs/acme/jobs/runs/run-done",
+            {
+                "id": "run-done",
+                "job_id": "job-1",
+                "job_name": "nightly",
+                "created_at": TS,
+                "status": "completed",
+                "finished_at": TS,
+            },
         )
-        logged_in.set("POST", self.ROUTE, {"id": "x", "status": "cancelled"})
-        result = run_cloud("runs", "cancel", "run-done", "run-2")
+        logged_in.set("POST", self.ROUTE, self._cancelled("run-2"))
+        result = run_cloud("runs", "cancel", "run-gone", "run-done", "run-2")
         assert result.exit_code != 0
-        assert "finished as completed" in result.output
+        assert "Run run-gone not found in org 'acme'." in result.output
+        assert "Run run-done of 'nightly' already finished: completed." in result.output
         assert "Cancelled run run-2" in result.output
-        assert "Could not cancel 1 run(s): run-done" in result.output
+        assert "Could not cancel 2 run(s): run-gone, run-done" in result.output
+        assert "failed:" not in result.output
 
-    def test_each_outcome_is_a_json_event(self, logged_in, run_cloud, json_mode):
-        logged_in.set("POST", self.ROUTE, {"id": "run-1", "status": "cancelled"})
-        result = run_cloud("runs", "cancel", "run-1")
-        event = json.loads(result.output)
-        assert event["event"] == "run_cancelled"
-        assert event["run_id"] == "run-1"
+    def test_any_other_error_stops_the_command(self, logged_in, run_cloud):
+        logged_in.fail("POST", self.ROUTE, 403, "Forbidden")
+        result = run_cloud("runs", "cancel", "run-1", "run-2")
+        assert result.exit_code != 0
+        assert "403" in result.output
+        assert not logged_in.requests_for("POST", "/orgs/acme/jobs/runs/run-2/cancel")
+
+    def test_outcomes_are_json_events(self, logged_in, run_cloud, json_mode):
+        logged_in.fail("POST", "/orgs/acme/jobs/runs/run-gone/cancel", 404)
+        logged_in.set("POST", self.ROUTE, self._cancelled())
+        result = run_cloud("runs", "cancel", "run-1", "run-gone")
+        events = _json_stream(result.stdout)
+        assert events[0]["event"] == "run_cancelled"
+        assert events[0]["run"]["status"] == "cancelled"
+        assert events[1]["event"] == "run_not_found"
+        assert events[1]["run_id"] == "run-gone"
 
     def test_a_wait_timeout_points_at_cancel(self, logged_in, run_cloud):
         TestRunWait()._progress(logged_in, "running")
