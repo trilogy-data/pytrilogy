@@ -2089,7 +2089,9 @@ def get_node_joins(
     )
     joins = resolve_join_order_v2(graph, facts)
     paddings = _merge_paddings(joins, facts)
-    region_padded = _region_padded_sides(paddings)
+    # Per join, only what the joins BEFORE it padded: a join's own padding of
+    # the joined sides is absence it introduces, not the region's rows.
+    region_padded = [_region_padded_sides(paddings[:i]) for i in range(len(joins))]
     _raise_if_keyless_row_bearing_join(
         joins,
         ds_node_map,
@@ -2124,7 +2126,7 @@ def get_node_joins(
                             else (
                                 [Modifier.NULLABLE]
                                 if _pairs_region_padding(
-                                    region_padded.get(k, frozenset()),
+                                    region_padded[index].get(k, frozenset()),
                                     facts.side(j.right),
                                     concept,
                                 )
@@ -2154,7 +2156,7 @@ def get_node_joins(
                 domain_graph=environment.domain_graph,
             ),
         )
-        for j in joins
+        for index, j in enumerate(joins)
     ]
     for base, guard in zip(
         base_joins,

@@ -226,3 +226,68 @@ def test_padded_key_does_not_pair_with_a_value_null_group(
 ):
     rows, sql = _run(tmp_path, query)
     assert rows == sort_rows(expected), f"{rows}\n{sql}"
+
+
+# Two value-NULL aggregates FULL-joined, then the padded addresses: the join's
+# own padding of the aggregates is not the address rows, so nothing pairs.
+# A count over the aggregate's NULL customer group stays 2; on an address no
+# customer has it is 0, and a WHERE on state adds no address-only row when no
+# output is read off one.
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "auto total_amt <- sum(amt) by cust_sk;\n"
+            "auto total_pay <- sum(pay) by cust_sk;\n"
+            "select addr_sk, cust_sk, total_amt, total_pay;",
+            [
+                (1, 10, 5, 100),
+                (2, None, None, None),
+                (3, None, None, None),
+                (4, 11, 9, 70),
+                (5, None, None, None),
+                (None, None, 15, 50),
+            ],
+        ),
+        (
+            "auto total_amt <- sum(amt) by cust_sk;\n"
+            "where state = 'GA'\n"
+            "select cust_sk, total_amt;",
+            [(10, 5)],
+        ),
+        (
+            "auto total_amt <- sum(amt) by cust_sk;\n"
+            "auto total_pay <- sum(pay) by cust_sk;\n"
+            "where state = 'GA'\n"
+            "select cust_sk, total_amt, total_pay;",
+            [(10, 5, 100)],
+        ),
+        (
+            "auto total_amt <- sum(amt) by cust_sk;\n"
+            "where state = 'GA'\n"
+            "select cust_name, total_amt;",
+            [("ann", 5)],
+        ),
+        (
+            "auto n <- count(ret_id) by cust_sk;\nselect state, cust_sk, n;",
+            [("CA", 11, 1), ("GA", 10, 1), ("GA", None, 0), (None, None, 2)],
+        ),
+        (
+            "auto c <- count(addr_sk) by cust_sk;\nselect cust_sk, c;",
+            [(10, 1), (11, 1), (None, 3)],
+        ),
+    ],
+    ids=[
+        "two_value_null_aggregates",
+        "where_unprojected_region",
+        "where_unprojected_region_two_facts",
+        "where_unprojected_region_property",
+        "count_on_address_only_rows",
+        "count_of_address_only_rows",
+    ],
+)
+def test_address_only_rows_stay_their_own(
+    tmp_path: Path, query: str, expected: list[tuple]
+):
+    rows, sql = _run(tmp_path, query)
+    assert rows == sort_rows(expected), f"{rows}\n{sql}"

@@ -110,7 +110,8 @@ def evaluated_over_region(
     one_pass: bool = False,
 ) -> bool:
     """Aggregates the region's rows survive: they count what the region holds,
-    or group by something it carries (each extension row its own group) with
+    or group by something it holds (each extension row its own group; a key
+    absent there groups them all under one NULL) with
     no inline argument taking a value on the padding. Grouped by the span key
     alone (`min(amount) by user_id`), the solid rows are the whole input of an
     aggregate that is NULL on the extension row as it is where the FINAL pads
@@ -136,12 +137,12 @@ def evaluated_over_region(
         )
     ):
         return False
-    carried = [g for g in grain if keyspace.carried_on(g, region)]
-    if carried:
+    held = [g for g in grain if keyspace.held_on(g, region)]
+    if held:
         return (
             one_pass
             or filtered_beside(grain, keyspace)
-            or any(g not in region.spans for g in carried)
+            or any(g not in region.spans for g in held)
             or any(
                 (concept := environment.concepts.get(m)) is not None
                 and concept.zero_on_empty

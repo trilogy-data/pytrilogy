@@ -812,6 +812,9 @@ def build_keyspace(
     rejected_roots = frozenset(canonical.get(a, a) for a in rejected)
 
     base_sources = witnesses.get(entities, [])
+    # a coalescing relation's member is valued on every row, from whichever
+    # side the row has
+    coalesced = environment.domain_graph.coalescing_relation_members()
     regions = [
         Region(
             present=entities,
@@ -857,6 +860,16 @@ def build_keyspace(
                     )
                 ),
                 reach=reach,
+                own_reach=_entity_reach(
+                    facts,
+                    canonical,
+                    entities,
+                    frozenset(
+                        s
+                        for s in spans
+                        if canonical.get(s, s) in full or s in coalesced
+                    ),
+                ),
                 filtered=any(
                     not (keys := keys_by_address.get(c.address)) or not keys <= reach
                     for clause in conditions

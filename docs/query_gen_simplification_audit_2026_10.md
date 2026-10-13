@@ -98,6 +98,28 @@ instead of at four node resolve sites. `partition_rowsets`,
 longer splices a rowset's `derived_concepts` in: a handle is a leaf.
 `output_rowset_grain_keys` lost its last callers in the assembly axis.
 
+**Bugs the veto probe found** (all present on `main`; pinned by
+`test_outer_padding_null_not_a_value.py::test_address_only_rows_stay_their_own`,
+corpus byte-identical). Hand-built variants of the q30 shape turned up three
+defects in how an address-only region (an address no customer has) is read:
+
+- `_pairs_region_padding` read every join's padding, including the padding
+  the current join itself adds, so two FULL-joined value-NULL aggregates
+  paired null-safely with the padded addresses (`(2, NULL, 15, 50)`). It now
+  reads only the joins before the one it types.
+- A region's `reach` included spans absent on its rows: the address-only
+  region listed `cust_sk`, so a `cust_sk` output counted as carried there
+  and a WHERE on `state` manufactured `(NULL, NULL)` rows. `Region.own_reach`
+  is the reach of the spans present on the rows (or valued by a coalescing
+  relation); a region is demanded through an output only when its rows hold
+  one (`Keyspace.carries_output`).
+- `evaluated_over_region` let an aggregate grouped by an absent span read the
+  region, so `count(ret_id) by cust_sk` folded the address-only rows into the
+  unknown-customer group. It now asks whether the grouping key is HELD there
+  (`Keyspace.held_on`); `reach` keeps grouping a region's rows under the
+  absent span's NULL for aggregates that do count it (`count(addr_sk) by
+  cust_sk`).
+
 ## Not deletable (corpus-silent, unit-pinned)
 
 Check this register before calling anything here dead. Each entry fired in
