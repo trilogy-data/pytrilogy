@@ -195,7 +195,6 @@ class DomainGraph:
         self._canonical: dict[str, str] | None = None
         self._join_key_groups: dict[str, set[str]] | None = None
         self._eq_classes: dict[str, str] | None = None
-        self._declared_equal_classes: frozenset[str] | None = None
         self._authored_join_members: frozenset[str] | None = None
         self._subset_sources: set[str] | None = None
         self._declared_subset_pairs: list[tuple[str, str]] | None = None
@@ -238,7 +237,6 @@ class DomainGraph:
         self._canonical = None
         self._join_key_groups = None
         self._eq_classes = None
-        self._declared_equal_classes = None
         self._authored_join_members = None
         self._subset_sources = None
         self._declared_subset_pairs = None
@@ -435,28 +433,6 @@ class DomainGraph:
             and e.scope is EdgeScope.STATEMENT
             for addr in (e.source, e.target)
         }
-
-    def declared_equal(self, left: str, right: str) -> bool:
-        """`left` and `right` are one domain by an AUTHORED identity (`merge a
-        into b`, `equal join a = b`), reached through aliases: same ≡-class,
-        and a declared EQUAL edge in it. A class two opposed subset paths
-        close (a declared `a ⊆ rs.k` against a filtered body's `rs.k ⊑ a`)
-        resolves EQUAL too, but nobody declared it."""
-        rep = self._equivalence_classes()
-        cls = rep.get(left, left)
-        return cls == rep.get(right, right) and cls in self._declared_equal_reps()
-
-    def _declared_equal_reps(self) -> frozenset[str]:
-        """The ≡-classes holding a declared EQUAL edge."""
-        if self._declared_equal_classes is None:
-            rep = self._equivalence_classes()
-            self._declared_equal_classes = frozenset(
-                rep.get(e.source, e.source)
-                for e in self.edges
-                if e.relation is DomainRelation.EQUAL
-                and e.provenance is EdgeProvenance.DECLARED
-            )
-        return self._declared_equal_classes
 
     def equal_narrowable_keys(self) -> set[str]:
         """Canonicalized endpoints of EQUAL declarations, minus keys also

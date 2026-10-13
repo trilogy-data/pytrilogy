@@ -4664,7 +4664,6 @@ class Factory:
                 (self.scoped_merge_sources & self.scoped_partial_sources)
                 - self.scoped_outer_identity_sources
             ),
-            scoped_join_key_groups=self.domain_graph.join_key_groups(),
             domain_graph=assemble_full_graph(base, self.domain_graph),
         )
 
@@ -4849,7 +4848,6 @@ class Factory:
             namespace=b_env.namespace,
             cte_name_map=b_env.cte_name_map,
             scoped_partial_derived=b_env.scoped_partial_derived,
-            scoped_join_key_groups=b_env.scoped_join_key_groups,
             domain_graph=b_env.domain_graph,
             class_baseline=b_env,
         )

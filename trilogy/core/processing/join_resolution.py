@@ -1154,8 +1154,9 @@ def reduce_concept_pairs(
     # FD-closure pruning (docs/domain_graph_design.md step 4): a pair both of
     # whose sides are functionally determined by the SURVIVING joined keys is
     # redundant, since equality on the determinants implies equality here.
-    # The closure sees what the local property check below cannot: transitive
-    # dependencies and grain FDs carried through complete bindings. Greedy
+    # A property paired beside its own keys is the simplest case (its keys ->
+    # property FD is declared); the closure also sees transitive dependencies
+    # and grain FDs carried through complete bindings. Greedy
     # over a working determinant set so mutually-dependent keys keep exactly
     # one pair; grain pairs are never pruned (the grain restriction below
     # relies on them).
@@ -1198,20 +1199,6 @@ def reduce_concept_pairs(
             rl_key in right_left_seen
             and not is_outer
             and not (right_left_seen[rl_key] or pair.is_partial)
-        ):
-            continue
-        if (
-            pair.left.purpose == Purpose.PROPERTY
-            and pair.left.keys
-            and pair.left.keys.issubset(left_keys)
-            and not _is_authored_pair(pair, authored_members)
-        ):
-            continue
-        if (
-            pair.right.purpose == Purpose.PROPERTY
-            and pair.right.keys
-            and pair.right.keys.issubset(right_keys)
-            and not _is_authored_pair(pair, authored_members)
         ):
             continue
         if index in fd_pruned:

@@ -187,17 +187,12 @@ class BuildEnvironment:
     # instead). Composite of graph facts and author derivations; dissolves once
     # join typing consults per-side origin nodes directly.
     scoped_partial_derived: set[str] = field(default_factory=set)
-    # Members of each build-scoped join key equivalence group, keyed by the
-    # group's canonical address: exactly the authored relation endpoints (union
-    # of the scoped merge map's source->canonical entries), NOT the transitive
-    # pseudonym closure — a rowset key's body/parent pseudonyms are not join
-    # operands. Consumed via `_distinct_scoped_join_groups`.
-    scoped_join_key_groups: dict[str, set[str]] = field(default_factory=dict)
     # The full concept domain graph for this build: declared edges (global
     # merges + this build's scoped-join overlay) plus structural, binding and
     # FD edges minted from the author model (docs/domain_graph_design.md).
-    # The scoped_* registries above are derivable from it; they remain as
-    # compat shims until consumers migrate to graph queries.
+    # `scoped_partial_derived` above is derivable from it plus author
+    # derivations; it remains a compat shim until join typing consults
+    # per-side origin nodes.
     domain_graph: DomainGraph = field(default_factory=DomainGraph)
     # Transitive closure of AUTHOR-referenced concept addresses for the select
     # this environment was materialized for (outputs, WHERE/HAVING/ORDER BY,
@@ -228,6 +223,15 @@ class BuildEnvironment:
     _classes_seen: dict[bool, _NamesSnapshot] = field(
         default_factory=dict, repr=False, compare=False
     )
+
+    @property
+    def scoped_join_key_groups(self) -> dict[str, set[str]]:
+        """Members of each build-scoped join key equivalence group, keyed by
+        the group's canonical address: exactly the authored relation endpoints
+        (the declared canonical map's source->canonical entries), NOT the
+        transitive pseudonym closure, since a rowset key's body/parent
+        pseudonyms are not join operands."""
+        return self.domain_graph.join_key_groups()
 
     def _distinct_scoped_join_groups(self) -> list[tuple[str, list[str]]]:
         """Per scoped-join key group, its canonical plus the members that keep

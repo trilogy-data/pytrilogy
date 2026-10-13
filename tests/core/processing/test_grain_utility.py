@@ -33,7 +33,6 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.processing.grain_utility import (
     JoinProofs,
-    _concept_covers_grain,
     _join_left_keys_covered_by_grain,
     _join_right_preserves_cardinality,
     _left_join_addresses,
@@ -122,34 +121,50 @@ def _unnest_join() -> UnnestJoin:
     )
 
 
-def test_concept_covers_grain_multiselect_keys_branch():
-    """A multiselect concept whose ``keys`` are a superset of the grain components
-    covers the grain even when the concept's own address isn't in the grain."""
+def test_multiselect_join_key_covers_grain_through_its_keys():
+    """A multiselect join key whose ``keys`` are a superset of the right grain
+    covers it even when the key's own address is not in the grain."""
+    a = _concept("a")
     multiselect_concept = _concept(
         "ms",
+        purpose=Purpose.PROPERTY,
         derivation=Derivation.MULTISELECT,
         keys={"test.a", "test.b"},
     )
-    grain = BuildGrain(components={"test.a"})
-    assert _concept_covers_grain(multiselect_concept, grain)
-
     no_overlap = _concept(
         "ms_other",
+        purpose=Purpose.PROPERTY,
         derivation=Derivation.MULTISELECT,
         keys={"test.x"},
     )
-    assert not _concept_covers_grain(no_overlap, BuildGrain(components={"test.a"}))
-
-
-def test_concept_covers_grain_needs_the_whole_grain():
-    """A key that is one of several grain components admits many right rows
-    per key value; only a grain that IS the key (under any spelling) is
-    covered."""
-    key = _concept("a")
-    assert _concept_covers_grain(key, BuildGrain(components={key.address}))
-    assert not _concept_covers_grain(
-        key, BuildGrain(components={key.address, "test.q"})
+    right = _datasource(
+        "r",
+        [a, multiselect_concept, no_overlap],
+        grain=BuildGrain(components={a.address}),
     )
+    join = Join(
+        right=right, join_type=JoinType.LEFT_OUTER, concepts=[multiselect_concept]
+    )
+    assert _join_right_preserves_cardinality(join, BuildEnvironment()) is True
+
+    join = Join(right=right, join_type=JoinType.LEFT_OUTER, concepts=[no_overlap])
+    assert _join_right_preserves_cardinality(join, BuildEnvironment()) is False
+
+
+def test_join_key_must_cover_the_whole_right_grain():
+    """A key that is one of several grain components admits many right rows
+    per key value; only a grain the keys cover entirely preserves
+    cardinality."""
+    a = _concept("a")
+    q = _concept("q")
+    whole = _datasource("r", [a], grain=BuildGrain(components={a.address}))
+    join = Join(right=whole, join_type=JoinType.LEFT_OUTER, concepts=[a])
+    assert _join_right_preserves_cardinality(join, BuildEnvironment()) is True
+    partial = _datasource(
+        "r2", [a, q], grain=BuildGrain(components={a.address, q.address})
+    )
+    join = Join(right=partial, join_type=JoinType.LEFT_OUTER, concepts=[a])
+    assert _join_right_preserves_cardinality(join, BuildEnvironment()) is False
 
 
 def test_join_right_preserves_cardinality_unnest_join_returns_false():
