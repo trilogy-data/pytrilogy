@@ -95,11 +95,7 @@ in `_genuine_partial_stamp`, and the handle-content term in `_extent_free`.
 instead of at four node resolve sites. `partition_rowsets`,
 `partition_constants` and `partition_unions` share one scope-keyed rule
 (`_partition_by_scope`; seam 9 below, first half). `_upstream_concepts` no
-longer splices a rowset's `derived_concepts` in: a handle is a leaf. Two
-branches that no longer fire on the corpus, the fuzzer or any engine or join
-matrix test are gone: the `get_modifiers` asymmetric-provenance veto (the
-producer stamps made it unreachable) and the `_pads_for_different_members`
-join-type rule (the join type is always decided before the INNER fallback).
+longer splices a rowset's `derived_concepts` in: a handle is a leaf.
 `output_rowset_grain_keys` lost its last callers in the assembly axis.
 
 ## Not deletable (corpus-silent, unit-pinned)
@@ -121,11 +117,20 @@ Domain graph:
   (graph proves 10 of 69 evidence hits, stamps 59).
 
 Nullability:
+- `get_modifiers` asymmetric-provenance veto: zero firings across the
+  corpus, fuzzer and suites once q30's own plan stopped reaching it, yet a
+  padded address beside an unknown-customer NULL group pairs without it
+  (`test_outer_padding_null_not_a_value.py::test_padded_key_does_not_pair_with_a_value_null_group`,
+  4 cells). The clearest case of a corpus gap reading as dead code.
 - `guest_padded`: `tests/engine/test_duckdb_rowset_null_group_rejoin.py`.
 - `rollup_padded` and the `rollup_padding` join rule: six engine tests in
   `test_duckdb.py`, `test_duckdb_fuzzer_regressions.py`,
   `test_duckdb_rollup_rowset_binding.py`.
-- `span_padding` modifier path: four engine tests.
+- `span_padding` modifier path: four engine tests. Its type-rule branch in
+  `_nullable_join` is reached by its unit pin alone (instrumented over 3,044
+  engine, join matrix and processing tests): a side that span-pads a key
+  normally carries it partial and routes to `_partial_domain_join` first.
+  Kept until that is proven, not merely unobserved.
 - `_pairs_region_padding`: `tests/engine/test_padded_null_pairing.py`.
 - `value_nullables` as a fact distinct from `nullables`: 26 engine tests flip
   LEFT/RIGHT to FULL without it.

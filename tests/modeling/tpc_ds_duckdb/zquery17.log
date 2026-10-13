@@ -1,5 +1,5 @@
 query_id = "17"
-gen_length = 6433
+gen_length = 6421
 preql_size = 1365
 comp_size = 1588
 generated_sql = """
@@ -106,7 +106,7 @@ SELECT
     \"young\".\"store_returns_quantityave\" as \"store_returns_quantityave\",
     \"young\".\"store_returns_quantitystdev\" as \"store_returns_quantitystdev\",
     \"young\".\"store_returns_quantitycov\" as \"store_returns_quantitycov\",
-    coalesce(\"juicy\".\"catalog_sales_quantitycount\",0) as \"catalog_sales_quantitycount\",
+    \"juicy\".\"catalog_sales_quantitycount\" as \"catalog_sales_quantitycount\",
     \"juicy\".\"catalog_sales_quantityave\" as \"catalog_sales_quantityave\",
     \"juicy\".\"catalog_sales_quantitystdev\" as \"catalog_sales_quantitystdev\",
     \"juicy\".\"catalog_sales_quantitycov\" as \"catalog_sales_quantitycov\"

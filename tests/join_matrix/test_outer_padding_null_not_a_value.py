@@ -15,6 +15,8 @@ pair their NULL groups exactly once.
 
 from pathlib import Path
 
+import pytest
+
 from tests.join_matrix.harness import sort_rows
 from trilogy import Dialects, Executor
 from trilogy.core.models.environment import Environment
@@ -167,3 +169,60 @@ def test_padding_null_does_not_pair_with_a_real_null_group(tmp_path: Path):
 def test_value_nulls_still_pair_exactly_once(tmp_path: Path):
     rows, sql = _run(tmp_path, VALUE_NULL_QUERY)
     assert rows == _expected_value_null_rows(), f"{rows}\n{sql}"
+
+
+# Addresses 2, 3 and 5 hold no customer: their padded `cust_sk` must stay
+# unpaired, while the unknown-customer returns (15 = 7 + 8) form their own row.
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "auto total_amt <- sum(amt) by cust_sk;\n"
+            "select addr_sk, cust_sk, total_amt;",
+            [
+                (1, 10, 5),
+                (2, None, None),
+                (3, None, None),
+                (4, 11, 9),
+                (5, None, None),
+                (None, None, 15),
+            ],
+        ),
+        (
+            "auto total_amt <- sum(amt) by cust_sk;\n"
+            "select state, cust_sk, total_amt;",
+            [("CA", 11, 9), ("GA", 10, 5), ("GA", None, None), (None, None, 15)],
+        ),
+        (
+            "auto cust_amt <- sum(amt) by cust_sk, region;\n"
+            "select addr_sk, cust_sk, region, cust_amt;",
+            [
+                (1, 10, "e", 5),
+                (2, None, None, None),
+                (3, None, None, None),
+                (4, 11, "w", 9),
+                (5, None, None, None),
+                (None, None, "e", 7),
+                (None, None, "w", 8),
+            ],
+        ),
+        (
+            "auto cust_amt <- sum(amt) by cust_sk, region;\n"
+            "auto region_avg <- avg(cust_amt) by region;\n"
+            "select state, cust_sk, cust_amt, region_avg;",
+            [
+                ("CA", 11, 9, 8.5),
+                ("GA", 10, 5, 6.0),
+                ("GA", None, None, None),
+                (None, None, 7, 6.0),
+                (None, None, 8, 8.5),
+            ],
+        ),
+    ],
+    ids=["address_grain", "state_grain", "region_fan_out", "q30_unfiltered"],
+)
+def test_padded_key_does_not_pair_with_a_value_null_group(
+    tmp_path: Path, query: str, expected: list[tuple]
+):
+    rows, sql = _run(tmp_path, query)
+    assert rows == sort_rows(expected), f"{rows}\n{sql}"

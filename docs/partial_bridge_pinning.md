@@ -29,10 +29,9 @@ They compose: `c_sk: ~?customer.sk` says "subset of customers, and some rows
 have no customer at all". Conflating them is the classic SQL trap; the planner
 keeps them apart end to end:
 
-- `get_modifiers` uses null-safe equality only when BOTH sides can emit
-  NULL; padding never pairs with a value NULL (`nulls_are_values` decides
-  which side's NULLs are values), and padding pairs with padding only within
-  the same extension family.
+- `get_modifiers` uses null-safe equality only when BOTH sides' NULLs are
+  values (`nulls_are_values`); padding never pairs with a value NULL, and
+  padding pairs with padding only within the same extension family.
 - `get_join_type` grants row-preservation (FULL) only under a license: a `~`
   partial on the connecting key, an authored `full join`/`union join`
   declaration, or nullable-key preservation.

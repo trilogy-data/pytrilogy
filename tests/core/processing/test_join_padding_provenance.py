@@ -134,6 +134,7 @@ def test_padding_for_different_spans_never_pairs():
     }
     sides = _sides(span_padding=padding)
     assert _pads_for_different_members(sides[_LEFT], sides[_RIGHT], {_AXIS})
+    assert _typed(padding) == JoinType.FULL
 
 
 def test_padding_for_a_shared_span_still_pairs():

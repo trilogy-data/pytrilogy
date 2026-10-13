@@ -1,5 +1,5 @@
 query_id = "47"
-gen_length = 5861
+gen_length = 5842
 preql_size = 2231
 comp_size = 2473
 generated_sql = """
@@ -72,7 +72,7 @@ SELECT
     \"questionable\".\"sum_sales\" as \"sum_sales\"
 FROM
     \"questionable\"
-    INNER JOIN \"abundant\" on \"questionable\".\"store_sales_item_brand_name\" is not distinct from \"abundant\".\"store_sales_item_brand_name\" AND \"questionable\".\"store_sales_item_category\" is not distinct from \"abundant\".\"store_sales_item_category\" AND \"questionable\".\"store_sales_sale_date_year\" = \"abundant\".\"store_sales_sale_date_year\" AND \"questionable\".\"store_sales_store_company_name\" is not distinct from \"abundant\".\"store_sales_store_company_name\" AND \"questionable\".\"store_sales_store_name\" is not distinct from \"abundant\".\"store_sales_store_name\")
+    INNER JOIN \"abundant\" on \"questionable\".\"store_sales_item_brand_name\" is not distinct from \"abundant\".\"store_sales_item_brand_name\" AND \"questionable\".\"store_sales_item_category\" is not distinct from \"abundant\".\"store_sales_item_category\" AND \"questionable\".\"store_sales_sale_date_year\" = \"abundant\".\"store_sales_sale_date_year\" AND \"questionable\".\"store_sales_store_company_name\" is not distinct from \"abundant\".\"store_sales_store_company_name\" AND \"questionable\".\"store_sales_store_name\" = \"abundant\".\"store_sales_store_name\")
 SELECT
     \"uneven\".\"store_sales_item_category\" as \"store_sales_item_category\",
     \"uneven\".\"store_sales_item_brand_name\" as \"store_sales_item_brand_name\",
