@@ -297,28 +297,13 @@ def span_padded_addresses(
 
 
 def side_nullable(concept: BuildConcept, side: DataSource | None) -> bool:
+    """Whether `side` can emit NULL for `concept`: its stamp, which already
+    folds in intrinsic nullability (`QueryDatasource.__post_init__`) and the
+    side's own WHERE proofs."""
     if side is None:
         return False
-    # Intrinsic nullability: the concept's own definition can yield NULL (a
-    # `?` column, a filtered value or aggregate, a no-else CASE) on any side
-    # that carries it, regardless of that side's join structure.
-    if concept.is_nullable:
-        return True
     equivalent = concept.equivalent_addresses
-    if any(equivalent & nc.equivalent_addresses for nc in side.nullable_concepts):
-        return True
-    # a side that COMPUTES the join key from nullable inputs yields NULL keys
-    # too (`l_key + 1` is NULL wherever `l_key` is) even when the derived key
-    # itself never got flagged
-    if not propagates_argument_nulls(concept):
-        return False
-    args = {a.address for a in concept.concept_arguments}
-    if not args:
-        return False
-    nullable_addrs: set[str] = set()
-    for nc in side.nullable_concepts:
-        nullable_addrs |= nc.equivalent_addresses
-    return bool(args & nullable_addrs)
+    return any(equivalent & nc.equivalent_addresses for nc in side.nullable_concepts)
 
 
 def _side_outputs(concept: BuildConcept, side: DataSource) -> bool:

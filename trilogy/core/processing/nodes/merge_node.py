@@ -59,6 +59,7 @@ from trilogy.core.processing.nodes.base_node import (
     region_reads,
     resolve_concept_map,
     resolve_existence_map,
+    with_propagated_nulls,
 )
 from trilogy.core.processing.null_provenance import side_nullable
 from trilogy.core.processing.utility import (
@@ -949,12 +950,15 @@ class MergeNode(StrategyNode):
             # node-level nullables carry inferred nullability for concepts
             # COMPUTED at this node (e.g. a derived join key over a nullable
             # column) that join analysis cannot see
-            nullable_concepts=[
-                x
-                for x in final_output_concepts
-                if x.address in nullable_concepts
-                or any(x.address == n.address for n in self.nullable_concepts)
-            ],
+            nullable_concepts=with_propagated_nulls(
+                final_output_concepts,
+                [
+                    x
+                    for x in final_output_concepts
+                    if x.address in nullable_concepts
+                    or any(x.address == n.address for n in self.nullable_concepts)
+                ],
+            ),
             partial_concepts=unique(
                 self.partial_concepts
                 + [c for c in final_output_concepts if c.address in joined_partials]
