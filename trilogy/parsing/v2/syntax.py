@@ -356,6 +356,7 @@ class SyntaxTokenKind(str, Enum):
     VALIDATE_SCOPE = "validate_scope"
     COPY_TYPE = "copy_type"
     DATASOURCE_ROOT = "datasource_root"
+    DATASOURCE_TEMPLATE = "datasource_template"
     DATASOURCE_UPDATE_TRIGGER = "datasource_update_trigger"
 
 
@@ -706,6 +707,7 @@ LARK_TOKEN_KIND: dict[str, SyntaxTokenKind] = {
     "VALIDATE_SCOPE": SyntaxTokenKind.VALIDATE_SCOPE,
     "COPY_TYPE": SyntaxTokenKind.COPY_TYPE,
     "DATASOURCE_ROOT": SyntaxTokenKind.DATASOURCE_ROOT,
+    "DATASOURCE_TEMPLATE": SyntaxTokenKind.DATASOURCE_TEMPLATE,
     "DATASOURCE_UPDATE_TRIGGER": SyntaxTokenKind.DATASOURCE_UPDATE_TRIGGER,
 }
 

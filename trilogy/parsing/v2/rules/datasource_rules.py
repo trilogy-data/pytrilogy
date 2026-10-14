@@ -720,11 +720,14 @@ def datasource_node(
 ) -> Datasource | DatasourceTemplate:
     args = hydrated_children(node, hydrate)
     is_root = False
+    is_template = False
     is_partial = False
     filtered: list[Any] = []
     for a in args:
         if isinstance(a, str) and a.lower() == "root":
             is_root = True
+        elif isinstance(a, str) and a.lower() == "template":
+            is_template = True
         elif isinstance(a, Modifier) and a == Modifier.PARTIAL:
             is_partial = True
         else:
@@ -821,13 +824,29 @@ def datasource_node(
             plan_assertion(assertion.condition)
         except AssertionSpecError as exc:
             raise fail(node, f"Datasource '{name}' `assert {assertion}`: {exc}")
-    if composed.address is None:
-        # No location: a template, reusable through `extends` and never read.
+    if is_template:
         if is_root:
-            raise fail(node, f"Datasource '{name}' is `root` but names no address")
+            raise fail(
+                node,
+                f"Datasource '{name}' cannot be both `root` and `template`: a"
+                " template is never read, a root is a source of truth.",
+            )
+        if addr is not None:
+            raise fail(
+                node,
+                f"Template datasource '{name}' names a location; a template is"
+                " only ever extended, never read. Drop `template`, or the"
+                " address, query or file.",
+            )
         if composed.columns:
             _validate_template_columns(node, context, composed)
         return authored
+    if composed.address is None:
+        raise fail(
+            node,
+            f"Datasource '{name}' names no address, query or file. Declare it"
+            " `template datasource` if it is only meant to be extended.",
+        )
 
     columns = [copy.deepcopy(c) for c in composed.columns] if extends else columns
     addr = copy.copy(composed.address)

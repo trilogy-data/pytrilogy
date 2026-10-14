@@ -655,7 +655,7 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: DatasourceTemplate):
-        modifiers = ["partial"] if arg.is_partial else []
+        modifiers = ["template"] + (["partial"] if arg.is_partial else [])
         return (
             self._render_datasource_body(
                 arg.identifier, arg.extends, arg, modifiers, arg.address

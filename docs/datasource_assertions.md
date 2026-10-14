@@ -138,9 +138,11 @@ assert @grouped_drop(tree_id, data_source, 0.75)
 ;
 ```
 
-A datasource declaration with no address, query or file is a **template**:
-it is kept in `Environment.datasource_templates`, never planned over, and
-reused through `datasource child extends a, b (...)`. Every part of the bases
+A `template datasource` declaration names no address, query or file: it is
+kept in `Environment.datasource_templates`, never planned over, and reused
+through `datasource child extends a, b (...)`. The keyword is required, so a
+datasource that merely forgot its location is still an error at its own line
+rather than a silently empty source. Every part of the bases
 is added to the child's own: columns and assertions are unioned (a column the
 child re-binds takes the child's binding), `where` and `complete where` are
 AND-combined, and a single-valued setting (grain, refresh keys, lag, address)
@@ -152,7 +154,7 @@ datasources do, and may themselves extend other templates.
 
 ```trilogy
 # tree_dedup.preql, shared by every city
-datasource guarded_tree (tree_id, data_source)
+template datasource guarded_tree (tree_id, data_source)
 grain (tree_id)
 assert @grouped_drop(tree_id, data_source, 0.75)
 ;

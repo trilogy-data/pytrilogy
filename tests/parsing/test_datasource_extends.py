@@ -23,13 +23,13 @@ property id.amount float;
 def row_drop(key, pct) -> count(key) >= pct * prior(count(key));
 def grouped_drop(key, dim, pct) -> count(key) by dim >= pct * prior(count(key) by dim);
 
-datasource guarded (id, source)
+template datasource guarded (id, source)
 grain (id)
 assert @row_drop(id, 0.75)
 assert @grouped_drop(id, source, 0.75)
 ;
 
-datasource positive (amount)
+template datasource positive (amount)
 assert min(amount) >= 0
 ;
 """
@@ -92,6 +92,7 @@ class TestComposition:
         assert "min(amount)" not in child
         assert "assert count(id ? source = 'A') >= 5" in child
         template = Renderer().to_string(env.datasource_templates["guarded"])
+        assert template.startswith("template datasource guarded (")
         assert "address" not in template
         assert "assert @row_drop(id, 0.75)" in template
         again = Environment()
@@ -104,7 +105,7 @@ class TestComposition:
         env = Environment()
         env.parse(
             SHARED
-            + "datasource both extends guarded, positive ();\n"
+            + "template datasource both extends guarded, positive ();\n"
             + "datasource built extends both () address built;"
         )
         assert len(env.datasources["built"].assertions) == 3
@@ -142,13 +143,15 @@ class TestComposition:
             ("datasource built extends nope () address built;", "not a datasource"),
             (
                 (
-                    "datasource a (id) grain (id);\n"
-                    "datasource b (source) grain (source);\n"
+                    "template datasource a (id) grain (id);\n"
+                    "template datasource b (source) grain (source);\n"
                     "datasource built extends a, b () address built;"
                 ),
                 "`grain` differs",
             ),
-            ("root datasource t (id);", "names no address"),
+            ("datasource forgot (id);", "Declare it `template datasource`"),
+            ("root template datasource t (id);", "both `root` and `template`"),
+            ("template datasource t (id) address t;", "names a location"),
             ("datasource loop extends loop () address x;", "extends itself"),
         ],
     )

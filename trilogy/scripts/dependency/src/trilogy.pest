@@ -83,13 +83,11 @@ prop_ident_wildcard    = { "<" ~ "*" ~ ">" ~ "." ~ IDENTIFIER }
 // =============================================================================
 // DATASOURCE
 // =============================================================================
-// `extends a, b` adds every part of those declarations to this one. A
-// declaration with no address, query or file is a template: reusable through
-// `extends`, never read.
+// `extends a, b` adds every part of those declarations to this one.
 datasource_extends_clause = { ^"extends" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* }
 
 datasource = {
-    DATASOURCE_ROOT? ~ (DATASOURCE_PARTIAL | SHORTHAND_MODIFIER)? ~ ^"datasource" ~ IDENTIFIER
+    DATASOURCE_ROOT? ~ DATASOURCE_TEMPLATE? ~ (DATASOURCE_PARTIAL | SHORTHAND_MODIFIER)? ~ ^"datasource" ~ IDENTIFIER
     ~ datasource_extends_clause?
     ~ "(" ~ column_assignment_list? ~ ")"
     ~ grain_clause?
@@ -105,6 +103,8 @@ datasource = {
 }
 
 DATASOURCE_ROOT    = @{ ^"root" }
+// A declaration with no location, reusable through `extends` and never read.
+DATASOURCE_TEMPLATE = @{ ^"template" }
 DATASOURCE_PARTIAL = @{ ^"partial" }
 
 whole_grain_clause = { ^"complete" ~ where }
