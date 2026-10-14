@@ -26,6 +26,11 @@ jobs:
       contents: 'read'
       id-token: 'write'
     env:
+      # Coverage runs under sys.monitoring on 3.12+ (~60% overhead on this
+      # suite) but needs the C tracer on 3.11 (~150%), which made the 3.11
+      # cells the longest in the matrix by 10 minutes. 3.11 runs the same
+      # tests uncovered; its only unique lines are version-specific branches.
+      PYTEST_COV: ${{ matrix.python-version != '3.11' && '--cov=trilogy' || '' }}
       # Tells tests/io/test_conformance.py that the "Build the conformance
       # binary" step below already produced the rust example, so its fixture
       # references the binary instead of shelling out to cargo. Unset locally,
@@ -169,8 +174,9 @@ jobs:
           python .scripts/check_benchmark_growth.py FETCH_HEAD
       - name: Test with pytest
         if: matrix.run_llm_tests == true
+        shell: bash
         run: |
-          python -m pytest tests/ --cov=trilogy --durations=80 -m "not adventureworks_execution and not cloud_live"
+          python -m pytest tests/ $PYTEST_COV --durations=80 -m "not adventureworks_execution and not cloud_live"
         env:
           GOOGLE_HMAC_SECRET: ${{ secrets.GOOGLE_HMAC_SECRET }}
           GOOGLE_HMAC_KEY: ${{ secrets.GOOGLE_HMAC_KEY }}
@@ -180,8 +186,9 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       - name: Test with pytest (skip LLM provider tests)
         if: matrix.run_llm_tests != true
+        shell: bash
         run: |
-          python -m pytest tests/ --cov=trilogy --durations=80 -m "not adventureworks_execution and not cloud_live" --ignore=tests/ai/test_providers_basic.py
+          python -m pytest tests/ $PYTEST_COV --durations=80 -m "not adventureworks_execution and not cloud_live" --ignore=tests/ai/test_providers_basic.py
         env:
           GOOGLE_HMAC_SECRET: ${{ secrets.GOOGLE_HMAC_SECRET }}
           GOOGLE_HMAC_KEY: ${{ secrets.GOOGLE_HMAC_KEY }}
@@ -194,12 +201,14 @@ jobs:
         run: |
           python -m local_scripts.fuzzer
       - name: Test after installing rich
+        shell: bash
         run: |
           # install rich and rerun CLI tests. One invocation, not three: the -k
           # filters are disjoint but each run re-collected the whole tests/ tree.
           uv pip install --system rich
-          python -m pytest tests/ --cov=trilogy --cov-append --durations=30 -m "not adventureworks_execution" -k "test_trilogy or test_display or test_refresh"
+          python -m pytest tests/ $PYTEST_COV ${PYTEST_COV:+--cov-append} --durations=30 -m "not adventureworks_execution" -k "test_trilogy or test_display or test_refresh"
       - name: Upload coverage to Codecov
+        if: matrix.python-version != '3.11'
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2  # v6.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
