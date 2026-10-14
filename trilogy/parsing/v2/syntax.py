@@ -298,6 +298,7 @@ class SyntaxNodeKind(str, Enum):
     DATASOURCE_REFRESH_CLAUSE = "datasource_refresh_clause"
     DATASOURCE_LAG_CLAUSE = "datasource_lag_clause"
     DATASOURCE_ASSERT_CLAUSE = "datasource_assert_clause"
+    DATASOURCE_EXTENDS_CLAUSE = "datasource_extends_clause"
 
 
 class SyntaxTokenKind(str, Enum):
@@ -355,6 +356,7 @@ class SyntaxTokenKind(str, Enum):
     VALIDATE_SCOPE = "validate_scope"
     COPY_TYPE = "copy_type"
     DATASOURCE_ROOT = "datasource_root"
+    DATASOURCE_TEMPLATE = "datasource_template"
     DATASOURCE_UPDATE_TRIGGER = "datasource_update_trigger"
 
 
@@ -648,6 +650,7 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "datasource_refresh_clause": SyntaxNodeKind.DATASOURCE_REFRESH_CLAUSE,
     "datasource_lag_clause": SyntaxNodeKind.DATASOURCE_LAG_CLAUSE,
     "datasource_assert_clause": SyntaxNodeKind.DATASOURCE_ASSERT_CLAUSE,
+    "datasource_extends_clause": SyntaxNodeKind.DATASOURCE_EXTENDS_CLAUSE,
 }
 
 
@@ -704,6 +707,7 @@ LARK_TOKEN_KIND: dict[str, SyntaxTokenKind] = {
     "VALIDATE_SCOPE": SyntaxTokenKind.VALIDATE_SCOPE,
     "COPY_TYPE": SyntaxTokenKind.COPY_TYPE,
     "DATASOURCE_ROOT": SyntaxTokenKind.DATASOURCE_ROOT,
+    "DATASOURCE_TEMPLATE": SyntaxTokenKind.DATASOURCE_TEMPLATE,
     "DATASOURCE_UPDATE_TRIGGER": SyntaxTokenKind.DATASOURCE_UPDATE_TRIGGER,
 }
 

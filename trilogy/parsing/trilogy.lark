@@ -64,6 +64,8 @@
     // datasource concepts
     DATASOURCE_STATUS: "published"i | "unpublished"i
     DATASOURCE_ROOT: "root"i
+    // A declaration with no location, reusable through `extends` and never read.
+    DATASOURCE_TEMPLATE.2: "template"i
     DATASOURCE_PARTIAL.2: "partial"i
 
     datasource_status_clause: /state/i DATASOURCE_STATUS
@@ -87,7 +89,10 @@
     // is the same expression over the asset being replaced.
     datasource_assert_clause: "assert"i conditional
 
-    datasource: DATASOURCE_ROOT? (DATASOURCE_PARTIAL | SHORTHAND_MODIFIER)? "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? whole_grain_clause? (address | query | file) where? datasource_update_trigger_clause? datasource_lag_clause? datasource_refresh_clause? datasource_partition_clause? datasource_assert_clause* datasource_status_clause?
+    // `extends a, b` adds every part of those declarations to this one.
+    datasource_extends_clause: "extends"i IDENTIFIER ("," IDENTIFIER)*
+
+    datasource: DATASOURCE_ROOT? DATASOURCE_TEMPLATE? (DATASOURCE_PARTIAL | SHORTHAND_MODIFIER)? "datasource" IDENTIFIER datasource_extends_clause? "("  column_assignment_list? ")"  grain_clause? whole_grain_clause? (address | query | file)? where? datasource_update_trigger_clause? datasource_lag_clause? datasource_refresh_clause? datasource_partition_clause? datasource_assert_clause* datasource_status_clause?
    
     whole_grain_clause: "complete" where
 

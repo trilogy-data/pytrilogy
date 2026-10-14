@@ -221,6 +221,10 @@ def PARSE_DATASOURCE_ROOT(token: SyntaxToken, context: RuleContext) -> str:
     return token.value.lower()
 
 
+def PARSE_DATASOURCE_TEMPLATE(token: SyntaxToken, context: RuleContext) -> str:
+    return token.value.lower()
+
+
 def PARSE_DATASOURCE_UPDATE_TRIGGER(token: SyntaxToken, context: RuleContext) -> str:
     return token.value.lower()
 
@@ -267,5 +271,6 @@ TOKEN_HYDRATORS: dict[SyntaxTokenKind, TokenHydrator] = {
     SyntaxTokenKind.VALIDATE_SCOPE: PARSE_VALIDATE_SCOPE,
     SyntaxTokenKind.COPY_TYPE: PARSE_COPY_TYPE,
     SyntaxTokenKind.DATASOURCE_ROOT: PARSE_DATASOURCE_ROOT,
+    SyntaxTokenKind.DATASOURCE_TEMPLATE: PARSE_DATASOURCE_TEMPLATE,
     SyntaxTokenKind.DATASOURCE_UPDATE_TRIGGER: PARSE_DATASOURCE_UPDATE_TRIGGER,
 }

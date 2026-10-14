@@ -76,6 +76,7 @@ from trilogy.core.models.datasource import (
     Address,
     ColumnAssignment,
     Datasource,
+    DatasourceTemplate,
     Query,
     RawColumnExpr,
 )
@@ -635,39 +636,76 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: Datasource):
+        # A composed datasource renders what it declared plus `extends`; the
+        # composed fields would flatten the declaration.
+        parts = arg.authored or arg.as_template()
+        modifiers = []
+        if arg.is_root:
+            modifiers.append("root")
+        if arg.is_partial:
+            modifiers.append("partial")
+        base = self._render_datasource_body(
+            arg.identifier, arg.extends, parts, modifiers, parts.address
+        )
+        # UNPOPULATED is auto-derived by the parser from file non-existence,
+        # not a token in the grammar — only emit states the parser accepts.
+        if arg.status == DatasourceState.UNPUBLISHED:
+            base += f"\nstate {arg.status.value.lower()}"
+        return base + ";"
+
+    @to_string.register
+    def _(self, arg: DatasourceTemplate):
+        modifiers = ["template"] + (["partial"] if arg.is_partial else [])
+        return (
+            self._render_datasource_body(
+                arg.identifier, arg.extends, arg, modifiers, arg.address
+            )
+            + ";"
+        )
+
+    def _render_datasource_body(
+        self,
+        identifier: str,
+        extends: list[str],
+        parts: "DatasourceTemplate",
+        modifiers: list[str],
+        address: "Address | None",
+    ) -> str:
         # When the datasource itself is `partial`, the parser stamps PARTIAL on
         # every column. Only render `~` on columns that were partial at the
         # source level — the rest inherit it implicitly from the keyword.
         explicit_partial = (
-            arg.column_level_partial_addresses if arg.is_partial else None
+            parts.column_level_partial_addresses if parts.is_partial else None
         )
         with self.indented():
             assignments = ",\n".join(
                 self.indent_lines(self._render_column_assignment(c, explicit_partial))
-                for c in arg.columns
+                for c in parts.columns
             )
             # Trailing comma matches Trilogy convention and lets diffs stay
             # one-line-per-binding when columns are added or removed.
             if assignments:
                 assignments += ","
 
-        if arg.non_partial_for:
-            non_partial = f"\ncomplete where {self.to_string(arg.non_partial_for)}"
+        if parts.non_partial_for:
+            non_partial = f"\ncomplete where {self.to_string(parts.non_partial_for)}"
         else:
             non_partial = ""
-        modifiers = []
-        if arg.is_root:
-            modifiers.append("root")
-        if arg.is_partial:
-            modifiers.append("partial")
         entry = " ".join(modifiers + ["datasource"])
-        base = f"""{entry} {arg.identifier} (
-{assignments}
-)
-{self.to_string(arg.grain) if arg.grain.components else ''}{non_partial}
-{self.to_string(arg.address)}"""
-        if arg.where:
-            where_text = self.to_string(arg.where)
+        heading = f"{entry} {identifier}"
+        if extends:
+            heading += f" extends {', '.join(extends)}"
+        grain = (
+            self.to_string(parts.grain)
+            if parts.grain and parts.grain.components
+            else ""
+        )
+        columns = f"(\n{assignments}\n)" if assignments else "()"
+        base = f"{heading} {columns}\n{grain}{non_partial}"
+        if address is not None:
+            base += f"\n{self.to_string(address)}"
+        if parts.where:
+            where_text = self.to_string(parts.where)
             if "\n" in where_text:
                 first, rest = where_text.split("\n", 1)
                 rest = "\n".join(
@@ -676,27 +714,21 @@ class Renderer:
                 where_text = f"{first}\n{rest}"
             base += f"\nwhere {where_text}"
 
-        if arg.incremental_by:
-            base += f"\nincremental by {','.join(self.to_string(x) for x in arg.incremental_by)}"
+        if parts.incremental_by:
+            base += f"\nincremental by {','.join(self.to_string(x) for x in parts.incremental_by)}"
 
-        if arg.partition_by:
-            base += f"\npartition by {','.join(self.to_string(x) for x in arg.partition_by)}"
-        if arg.freshness_by:
-            base += f"\nfreshness by {','.join(self.to_string(x) for x in arg.freshness_by)}"
-        if arg.freshness_probe:
-            base += f"\nfreshness by `{arg.freshness_probe}`"
-        if arg.allowed_lag:
-            base += f"\nwithin {arg.allowed_lag.render()}"
-        if arg.refresh_script:
-            base += f"\nrefresh `{arg.refresh_script}`"
-        for check in arg.assertions:
+        if parts.partition_by:
+            base += f"\npartition by {','.join(self.to_string(x) for x in parts.partition_by)}"
+        if parts.freshness_by:
+            base += f"\nfreshness by {','.join(self.to_string(x) for x in parts.freshness_by)}"
+        if parts.freshness_probe:
+            base += f"\nfreshness by `{parts.freshness_probe}`"
+        if parts.allowed_lag:
+            base += f"\nwithin {parts.allowed_lag.render()}"
+        if parts.refresh_script:
+            base += f"\nrefresh `{parts.refresh_script}`"
+        for check in parts.assertions:
             base += f"\nassert {self.to_string(check.condition)}"
-        # UNPOPULATED is auto-derived by the parser from file non-existence,
-        # not a token in the grammar — only emit states the parser accepts.
-        if arg.status == DatasourceState.UNPUBLISHED:
-            base += f"\nstate {arg.status.value.lower()}"
-
-        base += ";"
         return base
 
     @to_string.register

@@ -164,7 +164,9 @@ pub fn parse_file(content: &str) -> Result<ParsedFile, ParseError> {
                     result.imports.push(extract_import(stmt)?);
                 }
                 Rule::datasource => {
-                    result.datasources.push(extract_datasource(stmt)?);
+                    if let Some(declaration) = extract_datasource(stmt)? {
+                        result.datasources.push(declaration);
+                    }
                 }
                 Rule::persist_statement => {
                     result.persists.push(extract_persist(stmt)?);
@@ -225,21 +227,24 @@ fn extract_import(pair: Pair<Rule>) -> Result<ImportStatement, ParseError> {
     })
 }
 
-// datasource = { DATASOURCE_ROOT? ~ (DATASOURCE_PARTIAL | SHORTHAND_MODIFIER)? ~ "datasource" ~ IDENTIFIER ~ "(" ~ ... }
+// datasource = { DATASOURCE_ROOT? ~ DATASOURCE_TEMPLATE? ~ (DATASOURCE_PARTIAL | SHORTHAND_MODIFIER)? ~ "datasource" ~ IDENTIFIER ~ "(" ~ ... }
 // The first direct IDENTIFIER child is always the datasource name; the
 // backing (address | query | file) and the partition clause are direct
-// children as well.
-fn extract_datasource(pair: Pair<Rule>) -> Result<DatasourceDeclaration, ParseError> {
+// children as well. A `template datasource` has no backing and is not an
+// asset: it yields None.
+fn extract_datasource(pair: Pair<Rule>) -> Result<Option<DatasourceDeclaration>, ParseError> {
     let mut name: Option<String> = None;
     let mut address: Option<String> = None;
     let mut address_kind: Option<AddressKind> = None;
     let mut is_root = false;
+    let mut is_template = false;
     let mut is_partial = false;
     let mut is_partitioned = false;
 
     for child in pair.into_inner() {
         match child.as_rule() {
             Rule::DATASOURCE_ROOT => is_root = true,
+            Rule::DATASOURCE_TEMPLATE => is_template = true,
             Rule::DATASOURCE_PARTIAL => is_partial = true,
             Rule::IDENTIFIER if name.is_none() => name = Some(child.as_str().to_string()),
             // address = { "address" ~ (F_QUOTED_ADDRESS | QUOTED_ADDRESS | ADDRESS) }
@@ -284,15 +289,18 @@ fn extract_datasource(pair: Pair<Rule>) -> Result<DatasourceDeclaration, ParseEr
         }
     }
 
+    if is_template {
+        return Ok(None);
+    }
     match (name, address_kind) {
-        (Some(name), Some(address_kind)) => Ok(DatasourceDeclaration {
+        (Some(name), Some(address_kind)) => Ok(Some(DatasourceDeclaration {
             name,
             address,
             address_kind,
             is_root,
             is_partial,
             is_partitioned,
-        }),
+        })),
         _ => Err(ParseError::InvalidDatasourceStructure),
     }
 }
