@@ -73,12 +73,13 @@ jobs:
           workload_identity_provider: 'projects/734709568634/locations/global/workloadIdentityPools/github/providers/preql-integration'
           project_id: 'preqldata'
       - name: Install dependencies
+        # uv resolves and installs into the job's interpreter several times
+        # faster than pip and shares the cache the step above restores.
+        # sqlalchemy-bigquery is in requirements-test.txt; the separate pip
+        # line with --ignore-requires-python dated from a release that
+        # excluded the Python of the day and has not been needed since.
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install wheel maturin==1.10.2
-          python -m pip install -r requirements.txt
-          python -m pip install -r requirements-test.txt
-          python -m pip install sqlalchemy-bigquery --ignore-requires-python
+          uv pip install --system wheel maturin==1.10.2 -r requirements.txt -r requirements-test.txt
       - name: Run Rust tests
         run: |
           cd trilogy/scripts/dependency
@@ -153,8 +154,6 @@ jobs:
       - name: Test with pytest
         if: matrix.run_llm_tests == true
         run: |
-          python -m pip install pytest
-          python -m pip install pytest-cov
           python -m pytest tests/ --cov=trilogy --durations=80 -m "not adventureworks_execution and not cloud_live"
         env:
           GOOGLE_HMAC_SECRET: ${{ secrets.GOOGLE_HMAC_SECRET }}
@@ -166,8 +165,6 @@ jobs:
       - name: Test with pytest (skip LLM provider tests)
         if: matrix.run_llm_tests != true
         run: |
-          python -m pip install pytest
-          python -m pip install pytest-cov
           python -m pytest tests/ --cov=trilogy --durations=80 -m "not adventureworks_execution and not cloud_live" --ignore=tests/ai/test_providers_basic.py
         env:
           GOOGLE_HMAC_SECRET: ${{ secrets.GOOGLE_HMAC_SECRET }}
@@ -184,7 +181,7 @@ jobs:
         run: |
           # install rich and rerun CLI tests. One invocation, not three: the -k
           # filters are disjoint but each run re-collected the whole tests/ tree.
-          python -m pip install rich
+          uv pip install --system rich
           python -m pytest tests/ --cov=trilogy --cov-append --durations=30 -m "not adventureworks_execution" -k "test_trilogy or test_display or test_refresh"
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2  # v6.0.0
