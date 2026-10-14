@@ -12,7 +12,7 @@ from dataclasses import replace as dc_replace
 from pathlib import Path
 from typing import Any, TypeVar, cast
 
-from trilogy.constants import MagicConstants, Rendering, logger
+from trilogy.constants import CONFIG, MagicConstants, Rendering, logger
 from trilogy.core.enums import (
     AddressType,
     ComparisonOperator,
@@ -512,26 +512,11 @@ class Executor:
             self._flush_transaction()
             self.connection.close()
         self.engine.dispose(close=True)
-        if self._holds_duckdb_file():
-            # A reference cycle can keep the closed connection's database
-            # instance alive, and with it the file lock. Only a file-backed
-            # database has anything to release that waiting for the cyclic
-            # collector would delay; a full collection costs hundreds of ms
-            # against a large heap, once per executor.
+        if self.dialect == Dialects.DUCK_DB and CONFIG.collect_on_close:
             import gc
 
             gc.collect()
         self.connected = False
-
-    def _holds_duckdb_file(self) -> bool:
-        from trilogy.dialect.config import DuckDBConfig
-
-        return (
-            self.dialect == Dialects.DUCK_DB
-            and isinstance(self.config, DuckDBConfig)
-            and self.config.path is not None
-            and self.config.path != ":memory:"
-        )
 
     @contextmanager
     def validation_scope(self) -> Generator[None, None, None]:

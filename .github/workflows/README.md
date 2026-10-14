@@ -58,9 +58,11 @@ its cost is set by how much state the session has accumulated, not by the test:
 
 In the cProfile of four CLI test files `gc.collect` was 25% of the wall time
 with a small heap; after a few thousand tests it dominates. The collection
-existed to release a file lock that a reference cycle could otherwise hold past
-`close()`. It now runs only for a file-backed DuckDB (`DuckDBConfig.path`
-set), which is the only case with a lock to release. Locally,
+exists for a long-lived process cycling engines, so that DuckDB instances held
+by reference cycles are freed promptly; it is not something a test session
+needs, where the interpreter's own collections reclaim the same cycles. It is
+now gated on `CONFIG.collect_on_close` (default on) and turned off in
+`tests/conftest.py`, the same change as the open PR #718. Locally,
 `tests/engine tests/discovery tests/scripts/test_config.py` went from 311 s
 to 197 s with the same pass/fail set, and `tests/scripts` on its own from
 352 s to 118 s, 1521 passed both times.
