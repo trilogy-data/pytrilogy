@@ -17,6 +17,7 @@ from trilogy.core.enums import (
     Modifier,
 )
 from trilogy.core.models.author import (
+    Between,
     Comparison,
     Concept,
     ConceptRef,
@@ -27,6 +28,8 @@ from trilogy.core.models.author import (
     HavingClause,
     LooseConceptList,
     Namespaced,
+    Parenthetical,
+    SubselectComparison,
     WhereClause,
 )
 
@@ -251,6 +254,28 @@ class DatasourceMetadata:
     line_no: int | None = None
 
 
+AssertionCondition = (
+    SubselectComparison | Comparison | Conditional | Parenthetical | Between
+)
+
+
+class DatasourceAssertion(BaseModel):
+    """A boolean over aggregates of a build of the datasource, checked before
+    the build replaces the asset. ``prior(expr)`` inside the condition is the
+    same expression over the asset being replaced."""
+
+    condition: AssertionCondition
+    line_no: int | None = None
+
+    def __str__(self) -> str:
+        return str(self.condition)
+
+    def with_namespace(self, namespace: str) -> "DatasourceAssertion":
+        return DatasourceAssertion(
+            condition=self.condition.with_namespace(namespace), line_no=self.line_no
+        )
+
+
 def safe_grain(v) -> Grain:
     if isinstance(v, dict):
         components = v.get("components", set())
@@ -293,6 +318,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     # Lag this datasource is allowed to run behind its upstream before it
     # counts as stale. Non-roots only — a root's own freshness is never judged.
     allowed_lag: FreshnessLag | None = None
+    assertions: list[DatasourceAssertion] = Field(default_factory=list)
     is_root: bool = False
     is_partial: bool = False
     # Addresses of columns that carried Modifier.PARTIAL *before* the
@@ -453,6 +479,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             freshness_probe=self.freshness_probe,
             refresh_script=self.refresh_script,
             allowed_lag=self.allowed_lag,
+            assertions=[a.with_namespace(namespace) for a in self.assertions],
             is_root=self.is_root,
             is_partial=self.is_partial,
             column_level_partial_addresses={

@@ -610,9 +610,17 @@ def hash_from_args(val, hash_type):
         raise ValueError(f"Unsupported hash type: {hash_type}")
 
 
+def render_prior(args: list[str], types: list[Any]) -> str:
+    raise InvalidSyntaxException(
+        "prior() is only valid inside a datasource `assert` clause, where it"
+        " is evaluated against the asset being replaced; it has no SQL form."
+    )
+
+
 FUNCTION_MAP = {
     # generic types
     FunctionType.ALIAS: lambda x, types: f"{x[0]}",
+    FunctionType.PRIOR: render_prior,
     FunctionType.GROUP: lambda x, types: f"{x[0]}",
     FunctionType.GRAIN_PIN: lambda x, types: f"({x[0]})",
     FunctionType.CONSTANT: lambda x, types: f"{x[0]}",

@@ -689,6 +689,8 @@ class Renderer:
             base += f"\nwithin {arg.allowed_lag.render()}"
         if arg.refresh_script:
             base += f"\nrefresh `{arg.refresh_script}`"
+        for check in arg.assertions:
+            base += f"\nassert {self.to_string(check.condition)}"
         # UNPOPULATED is auto-derived by the parser from file non-existence,
         # not a token in the grammar — only emit states the parser accepts.
         if arg.status == DatasourceState.UNPUBLISHED:

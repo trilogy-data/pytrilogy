@@ -151,6 +151,7 @@ class SyntaxNodeKind(str, Enum):
     FFLOOR = "ffloor"
     FCEIL = "fceil"
     FABS = "fabs"
+    FPRIOR = "fprior"
     FSQRT = "fsqrt"
     FRANDOM = "frandom"
     FDATE = "fdate"
@@ -296,6 +297,7 @@ class SyntaxNodeKind(str, Enum):
     DATASOURCE_UPDATE_TRIGGER_CLAUSE = "datasource_update_trigger_clause"
     DATASOURCE_REFRESH_CLAUSE = "datasource_refresh_clause"
     DATASOURCE_LAG_CLAUSE = "datasource_lag_clause"
+    DATASOURCE_ASSERT_CLAUSE = "datasource_assert_clause"
 
 
 class SyntaxTokenKind(str, Enum):
@@ -500,6 +502,7 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "ffloor": SyntaxNodeKind.FFLOOR,
     "fceil": SyntaxNodeKind.FCEIL,
     "fabs": SyntaxNodeKind.FABS,
+    "fprior": SyntaxNodeKind.FPRIOR,
     "fsqrt": SyntaxNodeKind.FSQRT,
     "frandom": SyntaxNodeKind.FRANDOM,
     "fdate": SyntaxNodeKind.FDATE,
@@ -644,6 +647,7 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "datasource_update_trigger_clause": SyntaxNodeKind.DATASOURCE_UPDATE_TRIGGER_CLAUSE,
     "datasource_refresh_clause": SyntaxNodeKind.DATASOURCE_REFRESH_CLAUSE,
     "datasource_lag_clause": SyntaxNodeKind.DATASOURCE_LAG_CLAUSE,
+    "datasource_assert_clause": SyntaxNodeKind.DATASOURCE_ASSERT_CLAUSE,
 }
 
 

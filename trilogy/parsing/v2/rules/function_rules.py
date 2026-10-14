@@ -89,6 +89,7 @@ SIMPLE_FUNCTION_DISPATCH: dict[SyntaxNodeKind, FunctionType] = {
     SyntaxNodeKind.FFLOOR: FunctionType.FLOOR,
     SyntaxNodeKind.FCEIL: FunctionType.CEIL,
     SyntaxNodeKind.FABS: FunctionType.ABS,
+    SyntaxNodeKind.FPRIOR: FunctionType.PRIOR,
     SyntaxNodeKind.FSQRT: FunctionType.SQRT,
     SyntaxNodeKind.FRANDOM: FunctionType.RANDOM,
     # date

@@ -94,6 +94,7 @@ datasource = {
     ~ datasource_lag_clause?
     ~ datasource_refresh_clause?
     ~ datasource_partition_clause?
+    ~ datasource_assert_clause*
     ~ datasource_status_clause?
 }
 
@@ -119,6 +120,9 @@ datasource_lag_clause = { ^"within" ~ int_lit ~ DURATION_UNIT? }
 datasource_update_trigger_clause = { DATASOURCE_UPDATE_TRIGGER ~ ^"by" ~ (column_list | FILE_PATH) }
 datasource_refresh_clause        = { ^"refresh" ~ FILE_PATH }
 datasource_partition_clause      = { ^"partition" ~ ^"by" ~ column_list }
+// A data-quality check on a build, evaluated against the staged write before
+// it replaces the asset; `prior(expr)` inside it reads the asset being replaced.
+datasource_assert_clause         = { ^"assert" ~ conditional }
 
 concept_assignment = { SHORTHAND_MODIFIER* ~ IDENTIFIER }
 column_assignment  = {
@@ -697,8 +701,9 @@ fnullif      = { ^"nullif" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
 frecurse_edge = { ^"recurse_edge" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
 
 _generic_functions = _{
-    fcast | fcase_simple | fcase | concat_ws | concat | fgrain | fcoalesce | fgreatest | fleast | fnullif | len | fnot | fbool | frecurse_edge
+    fcast | fcase_simple | fcase | concat_ws | concat | fgrain | fcoalesce | fgreatest | fleast | fnullif | len | fnot | fbool | frecurse_edge | fprior
 }
+fprior = { ^"prior" ~ "(" ~ expr ~ ")" }
 
 // =============================================================================
 // CONSTANT FUNCTIONS

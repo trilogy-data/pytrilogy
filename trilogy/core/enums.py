@@ -310,6 +310,9 @@ class FunctionType(Enum):
     MOD = "mod"
     ROUND = "round"
     ABS = "abs"
+    # `prior(expr)` in a datasource `assert`: the same expression over the
+    # asset being replaced. Never rendered to SQL; see core/assertions.py.
+    PRIOR = "prior"
     SQRT = "sqrt"
     RANDOM = "random"
     FLOOR = "floor"
