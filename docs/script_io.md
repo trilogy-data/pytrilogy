@@ -322,8 +322,14 @@ executor's life:
     served answers to their one-shot output.
   - The alias hashes the source's path and mtime, so an edited script or a
     rebuilt binary gets a fresh worker rather than the stale pooled one.
-  - The attach runs on a side cursor. A failure there cannot abort the
-    transaction the query runs in.
+  - Startup is lazy: a source is attached by the first query that reads it,
+    never ahead of time. All of that query's new sources start in parallel, so
+    it waits for the slowest startup rather than the sum.
+  - Each attach runs on its own side cursor. A failure there cannot abort the
+    transaction the query runs in, and the separate cursors are what let the
+    attaches overlap.
+  - `.github/workflows/vgi.yml` installs haybarn and runs these tests on
+    Ubuntu and Windows. Elsewhere they skip.
 - **Bridge.** A source that cannot serve itself falls back to the bridge: a raw
   script, a published pytrilogy without `--vgi`, or a binary built without the
   feature. The bridge is one worker attached at connect

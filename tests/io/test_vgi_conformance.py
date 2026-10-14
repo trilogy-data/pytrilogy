@@ -21,10 +21,11 @@ from tests.io.test_conformance import (
     rows,
     run_python,
 )
+from tests.vgi_support import require_vgi, skip_or_fail
 from trilogy.dialect.duckdb import VGI_SOURCE_CATALOG, vgi_failure, vgi_location
 
-haybarn = pytest.importorskip("haybarn")
-pytest.importorskip("vgi")
+require_vgi()
+import haybarn
 
 IS_WINDOWS = sys.platform == "win32"
 # Unordered requests come back in source order either way; ties are the one
@@ -58,7 +59,7 @@ def python_worker():
 @pytest.fixture(scope="module")
 def rust_worker():
     if shutil.which("cargo") is None:
-        pytest.skip("cargo not available")
+        skip_or_fail("cargo not available")
     build = subprocess.run(
         ["cargo", "build", "--release", "--example", "landmarks", "--features", "vgi"],
         cwd=CRATE,
@@ -66,7 +67,7 @@ def rust_worker():
         check=False,
     )
     if build.returncode != 0:
-        pytest.skip(f"vgi feature build failed: {build.stderr.decode()[-1000:]}")
+        skip_or_fail(f"vgi feature build failed: {build.stderr.decode()[-1000:]}")
     con = attach([str(_binary_path())])
     yield con
     con.close()

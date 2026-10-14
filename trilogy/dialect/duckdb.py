@@ -6,6 +6,8 @@ import re
 import shlex
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from os import environ
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -319,6 +321,32 @@ def resident_alias(location: str) -> str:
     return f"trilogy_src_{digest}"
 
 
+def attach_resident(connection: Any, location: str) -> str | None:
+    """Attach ``location`` as a pooled worker; its alias, or None if it cannot serve.
+
+    Runs on its own side cursor: an attach is database-wide, a failed one must
+    not abort the transaction the query is about to run in, and separate
+    cursors let several sources start at once.
+    """
+    side = duckdb_side_cursor(connection)
+    if side is None:
+        return None
+    alias = resident_alias(location)
+    command = vgi_location(resident_command(location), sys.platform == "win32")
+    escaped = command.replace("'", "''")
+    try:
+        side.execute(
+            f"ATTACH IF NOT EXISTS '{VGI_SOURCE_CATALOG}' AS {alias} "
+            f"(TYPE vgi, LOCATION '{escaped}')"
+        )
+    except Exception as e:
+        logger.info("%s is not resident, using the VGI bridge: %s", location, e)
+        return None
+    finally:
+        side.close()
+    return alias
+
+
 def get_vgi_setup_sql(python_executable: str, is_windows: bool) -> str:
     """Attach the bridge worker that serves script datasources over VGI."""
     location = vgi_worker_command(python_executable, is_windows).replace("'", "''")
@@ -541,39 +569,32 @@ class DuckDBDialect(BaseDialect):
     def prepare_sources(self, addresses: Iterable[Address], executor: Executor) -> None:
         """Start each program source as its own pooled VGI worker, once.
 
-        A source that cannot serve itself (a raw script, a pytrilogy without
-        ``--vgi``, a binary built without the ``vgi`` feature) fails to attach
-        and is read through the bridge instead, which handles any program.
+        Sources are started lazily, by the first query that reads them, and
+        all of a query's new sources start in parallel: the query waits for the
+        slowest startup rather than the sum. A source that cannot serve itself
+        (a raw script, a pytrilogy without ``--vgi``, a binary built without
+        the ``vgi`` feature) fails to attach and is read through the bridge.
         """
-        for address in addresses:
-            location = address.location
-            if (
-                not address.type.is_program
-                or location in self._residents
-                or location in self._not_resident
-            ):
-                continue
-            alias = resident_alias(location)
-            command = vgi_location(
-                resident_command(location), sys.platform == "win32"
-            ).replace("'", "''")
-            # Attached on a side cursor: an attach is database-wide, and a failed
-            # one must not abort the transaction the query is about to run in.
-            side = duckdb_side_cursor(executor.connection)
-            if side is None:
-                return
-            try:
-                side.execute(
-                    f"ATTACH IF NOT EXISTS '{VGI_SOURCE_CATALOG}' AS {alias} "
-                    f"(TYPE vgi, LOCATION '{command}')"
-                )
-            except Exception as e:
-                logger.info("%s is not resident, using the VGI bridge: %s", location, e)
+        pending = list(
+            dict.fromkeys(
+                address.location
+                for address in addresses
+                if address.type.is_program
+                and address.location not in self._residents
+                and address.location not in self._not_resident
+            )
+        )
+        if not pending:
+            return
+        with ThreadPoolExecutor(max_workers=min(len(pending), 8)) as pool:
+            aliases = list(
+                pool.map(partial(attach_resident, executor.connection), pending)
+            )
+        for location, alias in zip(pending, aliases):
+            if alias is None:
                 self._not_resident.add(location)
-                continue
-            finally:
-                side.close()
-            self._residents[location] = alias
+            else:
+                self._residents[location] = alias
 
     def _maybe_bust_gcs_url(self, url: str) -> str:
         if self._gcs_cache_bust_token and url.startswith(self._GCS_PREFIXES):

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.vgi_support import require_vgi, skip_or_fail
 from trilogy import Dialects, Environment
 from trilogy.dialect.config import DuckDBConfig, PythonDatasourceTransport
 from trilogy.dialect.duckdb import (
@@ -17,6 +18,7 @@ from trilogy.dialect.duckdb import (
 from trilogy.dialect.python_source import VGI_FAILURE_MARKER, PythonDatasourceError
 
 SCRIPTS = Path(__file__).parent
+ROOT = SCRIPTS.parents[2].as_posix()
 
 MODEL = """
 key id int;
@@ -119,8 +121,7 @@ def test_vgi_renders_the_bridge_call_with_pushdown_args():
 
 @pytest.fixture
 def vgi_executor():
-    pytest.importorskip("haybarn")
-    pytest.importorskip("vgi")
+    require_vgi()
     executor = Dialects.DUCK_DB.default_executor(
         environment=Environment(working_path=SCRIPTS),
         conf=DuckDBConfig(
@@ -157,7 +158,7 @@ datasource fib (index: index, fibonacci: fibonacci) grain (index) file `./fib.py
 def test_a_rust_source_runs_resident(vgi_executor):
     binary = SCRIPTS.parents[2] / "crates/trilogy-io/target/release/examples/landmarks"
     if not binary.with_suffix(".exe" if sys.platform == "win32" else "").exists():
-        pytest.skip("trilogy-io landmarks example not built")
+        skip_or_fail("trilogy-io landmarks example not built")
     vgi_executor.parse_text(f"""
 key lid int;
 property lid.lname string;
@@ -171,8 +172,31 @@ file `{binary.as_posix()}`;
 
     assert rows == [(97,), (93,)]
     if vgi_executor.generator._not_resident:
-        pytest.skip("landmarks was built without the vgi feature")
+        skip_or_fail("landmarks was built without the vgi feature")
     assert len(vgi_executor.generator._residents) == 1
+
+
+def test_one_query_starts_all_its_new_sources(vgi_executor, tmp_path: Path):
+    """Each copy is its own source, so the query attaches all of them at once."""
+    source = (SCRIPTS / "pushdown_source.py").read_text()
+    copies = []
+    for name in ("a", "b", "c"):
+        copy = tmp_path / f"src_{name}.py"
+        copy.write_text(source.replace('path = "../../../"', f'path = "{ROOT}"'))
+        copies.append(copy)
+    vgi_executor.parse_text(
+        "\n".join(
+            f"key {n}_id int;\n"
+            f"datasource src_{n} (id: {n}_id) grain ({n}_id) file `{copy.as_posix()}`;"
+            for n, copy in zip("abc", copies)
+        )
+    )
+    rows = vgi_executor.execute_text(
+        "select count(a_id) -> a, count(b_id) -> b, count(c_id) -> c;"
+    )[-1].fetchall()
+
+    assert len(set(rows[0])) == 1
+    assert len(vgi_executor.generator._residents) == 3
 
 
 def test_vgi_transport_matches_shell(vgi_executor):
