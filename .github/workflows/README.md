@@ -56,6 +56,12 @@ the serve test and the uv install; the parser cache step came later):
 | windows 3.12   | 26.7 m     | 25.7 m    | 1064 s        |  945 s       |
 | windows 3.13   | 26.5 m     | 24.3 m    | 1007 s        |  893 s       |
 
+A later run of the same branch (38601320049, with the parser cache step on
+its first, cold pass) gave ubuntu 3.11/3.12/3.13 at 22.0 / 14.6 / 13.9 min
+and windows 3.11/3.12/3.13 at 32.0 / 17.7 / 18.9 min: the same code as the
+table on different runners moved windows 3.11 by 7.5 min, which is the size
+of the noise floor for a single cell.
+
 Dependency install went from 30-130 s to 5-26 s on every cell, and the rich
 re-run from 80-100 s to 32-66 s. Runner speed varies a lot between runs (the
 same lint steps took 15 s on one ubuntu cell and 35 s on another in the same
