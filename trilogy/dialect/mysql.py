@@ -140,12 +140,9 @@ class MySQLDialect(BaseDialect):
     # DDL causes an implicit commit.
     TRANSACTIONAL_DDL = False
 
-    def render_table_clone(self, target: str, staged: str) -> list[str]:
+    def render_empty_copy(self, target: str, staged: str) -> list[str]:
         target, staged = self.safe_quote(target), self.safe_quote(staged)
-        return [
-            f"CREATE TABLE {staged} LIKE {target}",
-            f"INSERT INTO {staged} SELECT * FROM {target}",
-        ]
+        return [f"CREATE TABLE {staged} LIKE {target}"]
 
     def render_table_swap(self, target: str, staged: str, replace: bool) -> list[str]:
         """A multi-table ``RENAME TABLE`` is atomic; the old table is moved out

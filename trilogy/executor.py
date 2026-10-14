@@ -103,6 +103,7 @@ from trilogy.engine import (
     EngineConnection,
     ExecutionEngine,
     ResultProtocol,
+    SupportsNativePartitionMerge,
     SupportsNativePersist,
     escape_literal_colons,
 )
@@ -989,26 +990,32 @@ class Executor:
             lambda: self._check_assertions(datasource, query.output_to.address, prior),
         )
 
+    def _staged_address(self, address: Address, suffix: str = "") -> Address:
+        return dc_replace(
+            address,
+            location=self.generator.staged_table_location(
+                address.location, uuid.uuid4().hex[:8] + suffix
+            ),
+        )
+
     def _execute_staged_persist(
         self, query: ProcessedQueryPersist, prior
     ) -> ResultProtocol:
         """Land the build in a staging table beside the target, audit it there,
-        then publish with the dialect's swap. The ordinary write machinery
-        (native partition swap included) runs unchanged against the retargeted
-        statement; only the destination differs. An append is applied to a
-        clone of the target so the audit sees the whole new asset.
+        then publish with the dialect's swap. The ordinary write machinery runs
+        unchanged against the retargeted statement; only the destination
+        differs. An unpartitioned append is applied to a clone of the target
+        so the audit sees the whole new asset; a partitioned one must publish
+        only its own slices, and takes ``_execute_staged_partition_append``.
 
         The staging table is dropped whatever happens; a failed drop is logged
         rather than raised, so it never masks the result of the build."""
+        if query.persist_mode == PersistMode.APPEND and query.partition_by:
+            return self._execute_staged_partition_append(query, prior)
         dialect = self.generator
         datasource = query.datasource
         address = query.output_to.address
-        staged = dc_replace(
-            address,
-            location=dialect.staged_table_location(
-                address.location, uuid.uuid4().hex[:8]
-            ),
-        )
+        staged = self._staged_address(address)
         retargeted = dc_replace(
             query,
             output_to=MaterializedDataset(address=staged),
@@ -1031,6 +1038,48 @@ class Executor:
         finally:
             self._drop_staged_table(staged.location)
         return result
+
+    def _execute_staged_partition_append(
+        self, query: ProcessedQueryPersist, prior
+    ) -> ResultProtocol:
+        """An audited partitioned append: the select lands once in a rows
+        table shaped like the target, is merged into a clone of the target
+        for the audit, and is then merged into the target itself. The publish
+        touches only the slices the select produced, so a slice another writer
+        published between the clone and the merge is kept rather than
+        overwritten by the clone's snapshot of it."""
+        dialect = self.generator
+        datasource = query.datasource
+        address = query.output_to.address
+        rows = self._staged_address(address, "_rows")
+        clone = self._staged_address(address)
+        try:
+            self.execute_write_statements(
+                [
+                    *dialect.render_empty_copy(address.location, rows.location),
+                    dialect.render_insert_into(query, rows.location),
+                ],
+                local_concepts=query.local_concepts,
+            )
+            self.execute_write_statements(
+                dialect.render_table_clone(address.location, clone.location)
+            )
+            self._merge_partitions(rows.location, clone.location, query.partition_by)
+            self._check_assertions(datasource, clone, prior)
+            self._merge_partitions(rows.location, address.location, query.partition_by)
+        finally:
+            self._drop_staged_table(clone.location)
+            self._drop_staged_table(rows.location)
+        return BufferedResult([], [])
+
+    def _merge_partitions(self, rows: str, into: str, partition_by: list[str]) -> None:
+        if isinstance(
+            self.engine, SupportsNativePartitionMerge
+        ) and self.engine.merge_partitions(rows, into, partition_by, self):
+            return
+        self.execute_write_statements(
+            self.generator.render_partition_merge(into, rows, partition_by)
+        )
 
     def _drop_staged_table(self, location: str) -> None:
         try:

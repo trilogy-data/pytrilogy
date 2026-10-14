@@ -197,14 +197,10 @@ class ClickhouseDialect(BaseDialect):
     COLUMN_NOT_FOUND_PATTERN = "Unknown identifier"
     TRANSACTIONAL_DDL = False
 
-    def render_table_clone(self, target: str, staged: str) -> list[str]:
-        """``CREATE TABLE ... AS other`` copies structure and engine only, so the
-        rows are a second statement."""
+    def render_empty_copy(self, target: str, staged: str) -> list[str]:
+        """``CREATE TABLE ... AS other`` copies structure and engine, no rows."""
         target, staged = self.safe_quote(target), self.safe_quote(staged)
-        return [
-            f"CREATE TABLE {staged} AS {target}",
-            f"INSERT INTO {staged} SELECT * FROM {target}",
-        ]
+        return [f"CREATE TABLE {staged} AS {target}"]
 
     def render_table_swap(self, target: str, staged: str, replace: bool) -> list[str]:
         """``EXCHANGE TABLES`` is atomic but needs both sides to exist, so an

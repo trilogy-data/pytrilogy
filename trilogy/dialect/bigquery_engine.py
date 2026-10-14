@@ -218,6 +218,19 @@ class BigQueryEngine(ExecutionEngine):
         connection = self._bigquery_connection()
         return execute_partition_swap(query, executor, connection, self.config.project)
 
+    def merge_partitions(
+        self, rows: str, target: str, partition_by: list[str], executor: Executor
+    ) -> bool:
+        """Satisfies ``SupportsNativePartitionMerge`` with the same per-slice
+        copy jobs the partition swap uses, sourced from an already-staged
+        rows table."""
+        if not self.config.native_partition_swap:
+            return False
+        from trilogy.dialect.bigquery_persist import merge_partitions
+
+        client = self._bigquery_connection().client
+        return merge_partitions(rows, target, partition_by, client, self.config.project)
+
     def setup(self, env: Environment, connection: Any) -> None:
         return None
 

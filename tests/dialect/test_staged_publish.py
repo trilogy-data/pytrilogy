@@ -69,9 +69,8 @@ def test_staging_table_sits_beside_the_target():
 
 def test_bigquery_clones_and_replaces_by_clone():
     renderer = Dialects.BIGQUERY.default_renderer()
-    assert renderer.render_table_clone("p.d.t", "p.d.s") == [
-        "CREATE TABLE `p`.`d`.`s` CLONE `p`.`d`.`t`"
-    ]
+    (clone,) = renderer.render_table_clone("p.d.t", "p.d.s")
+    assert clone.startswith("CREATE TABLE `p`.`d`.`s` CLONE `p`.`d`.`t` ")
     assert renderer.render_table_swap("p.d.t", "p.d.s", replace=True) == [
         "CREATE OR REPLACE TABLE `p`.`d`.`t` CLONE `p`.`d`.`s`"
     ]
@@ -249,3 +248,144 @@ def test_plain_create_still_refuses_an_existing_target(tmp_path: Path):
     assert _tables(executor) == ["built", "raw"]
     (processed,) = executor.parse_text("create datasource built with data;")
     assert processed.create_mode == CreateMode.CREATE
+
+
+def test_empty_copy_keeps_each_engines_shape():
+    """The rows table of an audited partitioned append has to carry the
+    target's physical layout (BigQuery partitioning for decorator copies,
+    Presto connector properties) and outlive the statement that made it."""
+    bigquery = Dialects.BIGQUERY.default_renderer().render_empty_copy("p.d.t", "p.d.r")
+    assert len(bigquery) == 1
+    assert bigquery[0].startswith("CREATE TABLE `p`.`d`.`r` LIKE `p`.`d`.`t` OPTIONS(")
+    assert Dialects.SNOWFLAKE.default_renderer().render_empty_copy("t", "r") == [
+        'CREATE TABLE "r" LIKE "t"'
+    ]
+    assert Dialects.MYSQL.default_renderer().render_empty_copy("t", "r") == [
+        "CREATE TABLE `r` LIKE `t`"
+    ]
+    assert Dialects.CLICKHOUSE.default_renderer().render_empty_copy("t", "r") == [
+        "CREATE TABLE `r` AS `t`"
+    ]
+    assert Dialects.PRESTO.default_renderer().render_empty_copy("t", "r") == [
+        'CREATE TABLE "r" (LIKE "t" INCLUDING PROPERTIES)'
+    ]
+
+
+def test_bigquery_clone_expires_on_its_own():
+    (clone,) = Dialects.BIGQUERY.default_renderer().render_table_clone("p.d.t", "p.d.s")
+    assert clone.startswith("CREATE TABLE `p`.`d`.`s` CLONE `p`.`d`.`t` OPTIONS(")
+    assert "expiration_timestamp" in clone
+
+
+def test_partition_merge_is_the_staged_delete_and_insert():
+    renderer = Dialects.SNOWFLAKE.default_renderer()
+    delete, insert = renderer.render_partition_merge("t", "r", ["day"])
+    assert delete.startswith('DELETE FROM "t" WHERE EXISTS (SELECT 1 FROM "r" WHERE')
+    assert insert == 'INSERT INTO "t" SELECT * FROM "r"'
+    (bigquery,) = Dialects.BIGQUERY.default_renderer().render_partition_merge(
+        "p.d.t", "p.d.r", ["day"]
+    )
+    assert bigquery.startswith("BEGIN TRANSACTION;\nDELETE FROM `p`.`d`.`t`")
+    assert "INSERT INTO `p`.`d`.`t` SELECT * FROM `p`.`d`.`r`" in bigquery
+    assert bigquery.endswith("COMMIT TRANSACTION;")
+    mysql_delete, _ = Dialects.MYSQL.default_renderer().render_partition_merge(
+        "t", "r", ["day"]
+    )
+    assert mysql_delete.startswith("DELETE `t` FROM `t` JOIN `r` ON")
+
+
+PARTITIONED_MODEL = """
+key id int;
+property id.source string;
+property id.day date;
+root datasource raw (id: id, source: source, day: day) grain (id) address raw;
+datasource built (id: id, source: source, day: day)
+grain (id)
+address built
+partition by day
+assert count(id) >= 0.9 * prior(count(id))
+;
+"""
+
+APPEND_ONE_DAY = (
+    "append into built by day from select id, source, day"
+    " where day = '2024-01-02'::date;"
+)
+
+
+def _partitioned_executor(tmp_path: Path) -> Executor:
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=tmp_path)
+    )
+    executor.execute_raw_sql(
+        "CREATE TABLE raw AS SELECT i AS id, 'A' AS source,"
+        " DATE '2024-01-01' + INTERVAL (i % 4) DAY AS day FROM range(1000) t(i)"
+    )
+    executor.parse_text(PARTITIONED_MODEL)
+    executor.generator.TRANSACTIONAL_DDL = False
+    return executor
+
+
+def _by_day(executor: Executor) -> list[tuple]:
+    return [
+        (str(day), n)
+        for day, n in executor.execute_raw_sql(
+            "SELECT day, count(*) FROM built GROUP BY 1 ORDER BY 1"
+        ).fetchall()
+    ]
+
+
+def test_partitioned_append_publishes_only_its_own_slices(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Another writer's slice, published while this build was being audited,
+    survives: the publish merges this build's partitions rather than
+    replacing the target with the clone's snapshot."""
+    executor = _partitioned_executor(tmp_path)
+    executor.update_datasource(executor.environment.datasources["built"])
+    assert _by_day(executor) == [
+        ("2024-01-01", 250),
+        ("2024-01-02", 250),
+        ("2024-01-03", 250),
+        ("2024-01-04", 250),
+    ]
+    executor.execute_raw_sql("DELETE FROM raw WHERE day = DATE '2024-01-02'")
+    executor.execute_raw_sql(
+        "INSERT INTO raw SELECT i, 'B', DATE '2024-01-02' FROM range(2000, 2300) t(i)"
+    )
+
+    original = executor._check_assertions
+
+    def audit_while_another_writer_publishes(datasource, address, prior):
+        executor.execute_raw_sql(
+            "INSERT INTO built VALUES (9999, 'Z', DATE '2024-01-03')"
+        )
+        original(datasource, address, prior)
+
+    monkeypatch.setattr(
+        executor, "_check_assertions", audit_while_another_writer_publishes
+    )
+
+    def never(*args, **kwargs):
+        raise AssertionError("a partitioned append must not swap the whole table")
+
+    monkeypatch.setattr(executor.generator, "render_table_swap", never)
+    executor.execute_text(APPEND_ONE_DAY)
+    assert _by_day(executor) == [
+        ("2024-01-01", 250),
+        ("2024-01-02", 300),
+        ("2024-01-03", 251),
+        ("2024-01-04", 250),
+    ]
+    assert _tables(executor) == ["built", "raw"]
+
+
+def test_partitioned_append_that_fails_its_audit_touches_nothing(tmp_path: Path):
+    executor = _partitioned_executor(tmp_path)
+    executor.update_datasource(executor.environment.datasources["built"])
+    executor.execute_raw_sql("DELETE FROM raw WHERE day = DATE '2024-01-02' AND id > 3")
+    with pytest.raises(DatasourceAssertionError) as info:
+        executor.execute_text(APPEND_ONE_DAY)
+    assert "prior(count(id)) = 1000" in str(info.value)
+    assert _by_day(executor)[1] == ("2024-01-02", 250)
+    assert _tables(executor) == ["built", "raw"]

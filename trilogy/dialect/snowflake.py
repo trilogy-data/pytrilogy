@@ -62,6 +62,10 @@ class SnowflakeDialect(BaseDialect):
         # Snowflake treats backslash as an escape character in string literals.
         return "'" + value.replace("\\", "\\\\").replace("'", "''") + "'"
 
+    def render_empty_copy(self, target: str, staged: str) -> list[str]:
+        target, staged = self.safe_quote(target), self.safe_quote(staged)
+        return [f"CREATE TABLE {staged} LIKE {target}"]
+
     def render_table_clone(self, target: str, staged: str) -> list[str]:
         """Zero-copy clone: the staging table shares the target's micro-partitions
         until the append writes to it."""
