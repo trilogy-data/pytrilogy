@@ -129,7 +129,21 @@ def swap_target(
     client: bigquery.Client,
     default_project: str | None,
 ) -> SwapTarget | None:
-    """The table this module can swap partitions on, or None to decline.
+    """The table this module can swap partitions on, or None to decline."""
+    if query.persist_mode != PersistMode.APPEND:
+        return None
+    return partitioned_target(
+        query.output_to.address.location, query.partition_by, client, default_project
+    )
+
+
+def partitioned_target(
+    location: str,
+    partition_by: list[str],
+    client: bigquery.Client,
+    default_project: str | None,
+) -> SwapTarget | None:
+    """The table whose partitions can be replaced by decorator, or None.
 
     Each check rules out a case where the decorator write would be *wrong*, not
     merely unoptimized: a table that is not physically partitioned has no
@@ -143,9 +157,9 @@ def swap_target(
     """
     from google.api_core.exceptions import NotFound
 
-    if query.persist_mode != PersistMode.APPEND or len(query.partition_by) != 1:
+    if len(partition_by) != 1:
         return None
-    name = parse_table_name(query.output_to.address.location, default_project)
+    name = parse_table_name(location, default_project)
     if name is None:
         return None
     try:
@@ -155,15 +169,36 @@ def swap_target(
         # target; do not pre-empt it with one phrased around partitioning.
         return None
     partitioning = table.time_partitioning
-    if partitioning is None or partitioning.field != query.partition_by[0]:
+    if partitioning is None or partitioning.field != partition_by[0]:
         logger.debug(
             "%s %s is not time-partitioned on %s; using SQL",
             LOGGER_PREFIX,
             name.qualified(),
-            query.partition_by[0],
+            partition_by[0],
         )
         return None
     return SwapTarget(name=name, partitioning=partitioning)
+
+
+def merge_partitions(
+    rows: str,
+    target: str,
+    partition_by: list[str],
+    client: bigquery.Client,
+    default_project: str | None,
+) -> bool:
+    """Replace in ``target`` the slices an already-staged ``rows`` table
+    covers, by copy job. The rows table must sit in the target's dataset: a
+    decorator copy is addressed within one dataset, and that is also where
+    the executor puts it. Declines (False) for anything else."""
+    swap = partitioned_target(target, partition_by, client, default_project)
+    source = parse_table_name(rows, default_project)
+    if swap is None or source is None:
+        return False
+    if (source.project, source.dataset) != (swap.name.project, swap.name.dataset):
+        return False
+    publish_partitions(client, swap, source.table)
+    return True
 
 
 def execute_partition_swap(
@@ -198,24 +233,38 @@ def execute_partition_swap(
     try:
         client.query(_render_staging_create(target, staging)).result()
         client.query(sql, job_config=config).result()
-        ids = _partition_ids(client, target.name, staging)
-        if not ids:
-            # An empty select covers no slices, so it replaces none — the same
-            # guarantee the staged DELETE gives by matching no staged keys.
-            logger.info(
-                "%s %s produced no rows; no partition replaced",
-                LOGGER_PREFIX,
-                target.name.qualified(),
-            )
-        else:
-            decorated = [x for x in ids if x != NULL_PARTITION]
-            if decorated:
-                _copy_partitions(client, target.name, staging, decorated)
-            if NULL_PARTITION in ids:
-                _replace_null_partition(client, target, staging)
+        publish_partitions(client, target, staging)
     finally:
         client.delete_table(staged_table, not_found_ok=True)
     return BufferedResult([], [])
+
+
+def publish_partitions(
+    client: bigquery.Client, target: SwapTarget, staging: str
+) -> None:
+    """Replace in the target every slice the staged table has rows in."""
+    ids = _partition_ids(client, target.name, staging)
+    if not ids:
+        # An empty select covers no slices, so it replaces none — the same
+        # guarantee the staged DELETE gives by matching no staged keys.
+        logger.info(
+            "%s %s produced no rows; no partition replaced",
+            LOGGER_PREFIX,
+            target.name.qualified(),
+        )
+        return
+    decorated = [x for x in ids if x != NULL_PARTITION]
+    if decorated:
+        _copy_partitions(client, target.name, staging, decorated)
+    if NULL_PARTITION in ids:
+        _replace_null_partition(client, target, staging)
+
+
+def expiration_option() -> str:
+    """``OPTIONS(expiration_timestamp = ...)`` for a staging table: the
+    backstop for a process killed before the drop."""
+    expires = datetime.now(UTC) + STAGING_TTL
+    return f"OPTIONS(expiration_timestamp = TIMESTAMP '{expires.isoformat()}')"
 
 
 def _render_staging_create(target: SwapTarget, staging: str) -> str:
@@ -230,11 +279,9 @@ def _render_staging_create(target: SwapTarget, staging: str) -> str:
     The expiry is set in the same statement rather than by a follow-up
     ``update_table``: it is the backstop for a process killed before the drop,
     so it must not itself have a window in which the table exists without it."""
-    expires = datetime.now(UTC) + STAGING_TTL
     return (
         f"CREATE TABLE {target.name.quoted(staging)}"
-        f" LIKE {target.name.quoted()}"
-        f" OPTIONS(expiration_timestamp = TIMESTAMP '{expires.isoformat()}')"
+        f" LIKE {target.name.quoted()} {expiration_option()}"
     )
 
 

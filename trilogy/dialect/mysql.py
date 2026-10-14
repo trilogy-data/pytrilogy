@@ -137,6 +137,25 @@ class MySQLDialect(BaseDialect):
     NULL_WRAPPER = staticmethod(null_safe_join_key)
     TABLE_NOT_FOUND_PATTERN = "doesn't exist"
     COLUMN_NOT_FOUND_PATTERN = "unknown column"
+    # DDL causes an implicit commit.
+    TRANSACTIONAL_DDL = False
+
+    def render_empty_copy(self, target: str, staged: str) -> list[str]:
+        target, staged = self.safe_quote(target), self.safe_quote(staged)
+        return [f"CREATE TABLE {staged} LIKE {target}"]
+
+    def render_table_swap(self, target: str, staged: str, replace: bool) -> list[str]:
+        """A multi-table ``RENAME TABLE`` is atomic; the old table is moved out
+        under a retired name in the same step and dropped afterwards."""
+        retired = self.safe_quote(f"{staged}_old")
+        target, staged = self.safe_quote(target), self.safe_quote(staged)
+        if not replace:
+            return [f"RENAME TABLE {staged} TO {target}"]
+        return [
+            f"CREATE TABLE IF NOT EXISTS {target} LIKE {staged}",
+            f"RENAME TABLE {target} TO {retired}, {staged} TO {target}",
+            f"DROP TABLE {retired}",
+        ]
 
     def partition_key_match(
         self, left: str, right: str, partition_by: list[str]

@@ -28,6 +28,7 @@ from trilogy.dialect.base import (
 )
 from trilogy.dialect.base import null_wrapper as base_null_wrapper
 from trilogy.dialect.bigquery_engine import BigQueryConnection
+from trilogy.dialect.bigquery_persist import expiration_option
 from trilogy.dialect.bigquery_staging import BigQueryPythonStaging
 from trilogy.dialect.common import CONCAT_COALESCE_UPPER, SQL_STANDARD_EXTRACT
 
@@ -231,6 +232,8 @@ class BigqueryDialect(BaseDialect):
     DATATYPE_MAP = DATATYPE_MAP
     SUPPORTS_AGGREGATE_GROUPING_MODES = True
     SUPPORTS_QUALIFY = True
+    # Transactions cannot hold permanent-table DDL.
+    TRANSACTIONAL_DDL = False
     # python datasources have to be staged to GCS before a query can name them
     REQUIRES_SOURCE_PREPARATION = True
     # `404 Not found: Table proj:ds.tbl was not found in location US`
@@ -459,6 +462,37 @@ class BigqueryDialect(BaseDialect):
         """BigQuery spells the modifier ``TEMP``, and a temp table may not be
         qualified — which the shared staging name already satisfies."""
         return f"CREATE TEMP TABLE {staged} AS SELECT * FROM {target} LIMIT 0"
+
+    def render_empty_copy(self, target: str, staged: str) -> list[str]:
+        """``LIKE`` keeps the partitioning, so the staged rows' partition ids
+        are the target's and the native merge can copy them by decorator.
+        The expiry is the backstop for a process killed before the drop."""
+        target, staged = self.safe_quote(target), self.safe_quote(staged)
+        return [f"CREATE TABLE {staged} LIKE {target} {expiration_option()}"]
+
+    def render_table_clone(self, target: str, staged: str) -> list[str]:
+        """A table clone is a metadata operation: no bytes are copied until a
+        side diverges, and the clone keeps the partitioning and clustering
+        the partitioned append relies on."""
+        target, staged = self.safe_quote(target), self.safe_quote(staged)
+        return [f"CREATE TABLE {staged} CLONE {target} {expiration_option()}"]
+
+    def render_partition_merge(
+        self, target: str, rows: str, partition_by: list[str]
+    ) -> list[str]:
+        """The SQL fallback when the native copy-job merge declines: one
+        multi-statement transaction, since BigQuery's DML can be held in one
+        and the executor's implicit transaction cannot."""
+        statements = ";\n".join(
+            super().render_partition_merge(target, rows, partition_by)
+        )
+        return [f"BEGIN TRANSACTION;\n{statements};\nCOMMIT TRANSACTION;"]
+
+    def render_table_swap(self, target: str, staged: str, replace: bool) -> list[str]:
+        """One DDL statement, applied atomically, that makes the audited
+        staging table the target, metadata and all."""
+        mode = "CREATE OR REPLACE TABLE" if replace else "CREATE TABLE"
+        return [f"{mode} {self.safe_quote(target)} CLONE {self.safe_quote(staged)}"]
 
     def generate_partitioned_insert_statements(
         self,

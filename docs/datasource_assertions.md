@@ -45,14 +45,59 @@ Every persist of the datasource, whether from `trilogy refresh`, a
 `persist into` statement, or `Executor.update_datasource`. A dry run never
 reaches it.
 
+Every target follows the same shape, write then audit then publish, with the
+publish step being whatever the storage can do atomically:
+
 - **File targets** are checked on the staged file (`staged_write`) before the
   rename. A failure deletes the staged object and leaves the asset's bytes and
   mtime untouched, local and remote alike. An incremental append stages the
   full new asset (existing rows plus new), so the check sees the whole file.
-- **Table targets** are checked inside the write transaction, after the
-  INSERT and before the commit; a failure rolls the write back on engines with
-  transactional DDL. Engines whose native writer commits on its own (BigQuery
-  via `SupportsNativePersist`) can only report the failure afterwards.
+  A remote target that `staged_write` cannot stage (an object store with no
+  credentials for a server-side copy, or a scheme without one such as
+  `file://`) is built into a local file under the executor's staging
+  directory, audited there, and only then written through to the target by
+  re-reading the audited file. That final write is not atomic, but a build
+  that fails its check never reaches the asset.
+- **Table targets on engines with transactional DDL** (DuckDB, Postgres,
+  SQLite, SQL Server; `BaseDialect.TRANSACTIONAL_DDL`) are checked inside
+  the write transaction, after the INSERT and before the commit; a failure
+  rolls the write back.
+- **Table targets on engines without it** (BigQuery, Snowflake, MySQL,
+  ClickHouse, Presto/Trino) are built into a staging table beside the target
+  (`<table>_trilogy_stage_<token>`), checked there, and published with the
+  engine's own primitive. An overwrite builds the staging table from the
+  datasource's DDL and publishes it whole. An unpartitioned append is applied
+  to a clone of the target, so the audit sees the whole new asset, and is
+  published whole the same way. The staging tables are dropped whether the
+  build passes or fails.
+
+  | Engine | Clone (append only) | Whole-table publish |
+  | --- | --- | --- |
+  | BigQuery | `CREATE TABLE s CLONE t` | `CREATE OR REPLACE TABLE t CLONE s` |
+  | Snowflake | `CREATE TABLE s CLONE t` | `CREATE OR REPLACE TABLE t CLONE s COPY GRANTS` |
+  | ClickHouse | `CREATE TABLE s AS t` + `INSERT` | `EXCHANGE TABLES t AND s` |
+  | MySQL | `CREATE TABLE s LIKE t` + `INSERT` | `RENAME TABLE t TO s_old, s TO t` |
+  | Presto/Trino | `LIKE t INCLUDING PROPERTIES` + `INSERT` | `DROP` then `ALTER TABLE s RENAME TO t` (not atomic) |
+
+  Clones on BigQuery and Snowflake are zero-copy; on the others an audited
+  append copies the target once. A plain `create ... with data` publishes
+  without `OR REPLACE`, so it still refuses an existing target.
+
+  A **partitioned append** must publish only its own slices: a whole-table
+  publish would overwrite a slice another writer published while this build
+  was being audited, and per-slice refreshes are fanned out on purpose. So
+  the select lands once in a rows table shaped like the target
+  (`<stage>_rows`), is merged into a clone of the target for the audit, and
+  is then merged into the target itself. On BigQuery the merge is the same
+  per-partition copy job the unaudited native swap uses, sourced from the
+  rows table (`SupportsNativePartitionMerge`). Everywhere else it is the
+  staged delete-and-insert of the unaudited path (`render_partition_merge`),
+  inside the write transaction where the engine has one (Snowflake, MySQL;
+  BigQuery's SQL fallback wraps it in `BEGIN TRANSACTION`). ClickHouse and
+  Presto/Trino have no transactional DML, so there the two statements run in
+  sequence.
+- An **unaudited** build (no `assert`, or `--skip-validation`) runs as it
+  always did: no staging table, no local round-trip.
 - `prior(...)` terms are read **before** the write, since a table overwrite
   destroys the previous asset in place.
 
@@ -177,3 +222,10 @@ composed result, which is what planning, refresh and fingerprints see.
 - A `--check-assertions` mode that builds to staging and evaluates without
   swapping.
 - A committable one-shot override for cloud jobs, which cannot pass flags.
+- Publishing *unaudited* builds through the staging table on engines without
+  transactional DDL. Today a Snowflake or MySQL OVERWRITE whose INSERT fails
+  still leaves an empty table behind; the swap primitives above would close
+  that, at the cost of a clone per unaudited append on ClickHouse and MySQL.
+- A staging-table expiry on BigQuery for an audited *overwrite* killed between
+  the write and the drop: the clone and rows tables set one, but the
+  overwrite's staging table comes from the datasource's own DDL.

@@ -55,10 +55,31 @@ class SnowflakeDialect(BaseDialect):
     SUPPORTS_QUALIFY = True
     TABLE_NOT_FOUND_PATTERN = "does not exist"
     COLUMN_NOT_FOUND_PATTERN = "invalid identifier"
+    # Every DDL statement commits the transaction it runs in.
+    TRANSACTIONAL_DDL = False
 
     def render_string_literal(self, value: str) -> str:
         # Snowflake treats backslash as an escape character in string literals.
         return "'" + value.replace("\\", "\\\\").replace("'", "''") + "'"
+
+    def render_empty_copy(self, target: str, staged: str) -> list[str]:
+        target, staged = self.safe_quote(target), self.safe_quote(staged)
+        return [f"CREATE TABLE {staged} LIKE {target}"]
+
+    def render_table_clone(self, target: str, staged: str) -> list[str]:
+        """Zero-copy clone: the staging table shares the target's micro-partitions
+        until the append writes to it."""
+        return [
+            f"CREATE TABLE {self.safe_quote(staged)} CLONE {self.safe_quote(target)}"
+        ]
+
+    def render_table_swap(self, target: str, staged: str, replace: bool) -> list[str]:
+        """``COPY GRANTS`` keeps the privileges granted on the published name,
+        which a plain replace would drop along with the old table."""
+        target, staged = self.safe_quote(target), self.safe_quote(staged)
+        if not replace:
+            return [f"CREATE TABLE {target} CLONE {staged}"]
+        return [f"CREATE OR REPLACE TABLE {target} CLONE {staged} COPY GRANTS"]
 
     def render_array_member_source(
         self, array_sql: str, from_clause: str | None, member_type: CONCRETE_TYPES

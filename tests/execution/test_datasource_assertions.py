@@ -1,12 +1,15 @@
 """Datasource `assert` clauses: parsed on both backends, round-tripped by the
 renderer, and enforced between a build's write and its swap into the asset."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import duckdb
 import pytest
 
 from trilogy import Dialects, Executor
+from trilogy import executor as executor_module
 from trilogy.core.assertions import (
     AssertionSpecError,
     map_expression,
@@ -220,6 +223,70 @@ class TestFileTarget:
         assert duckdb.sql(
             f"SELECT source, count(*) FROM '{target.as_posix()}' GROUP BY 1 ORDER BY 1"
         ).fetchall() == [("A", 720), ("B", 100), ("C", 100)]
+
+
+@contextmanager
+def _unstageable(target: str, staging_root: str | None = None) -> Iterator[str]:
+    """What ``staged_write`` does for an object store it cannot stage in."""
+    yield target
+
+
+class TestUnstageableFileTarget:
+    """A target the object store gives nothing to stage into used to be written
+    in place and audited afterwards, so a failed check had already replaced
+    the asset. The build now lands locally, is audited there, and is written
+    through only when it passes."""
+
+    @pytest.mark.parametrize("fmt", ["parquet", "csv"])
+    def test_failed_audit_never_touches_the_target(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fmt: str
+    ) -> None:
+        monkeypatch.setattr("trilogy.executor.staged_write", _unstageable)
+        target = tmp_path / f"built.{fmt}"
+        executor, built = _executor(tmp_path, f"file `{target.as_posix()}`")
+        executor.update_datasource(built)
+        before = target.read_bytes()
+        assert duckdb.sql(f"SELECT count(*) FROM '{target.as_posix()}'").fetchall() == [
+            (1000,)
+        ]
+
+        executor.execute_raw_sql("DELETE FROM raw WHERE id >= 10")
+        with pytest.raises(DatasourceAssertionError):
+            executor.update_datasource(built)
+        assert target.read_bytes() == before
+        staging = Path(executor._local_staging_root())
+        assert not list(staging.glob("built.*.tmp"))
+
+    def test_passing_build_is_written_through_as_audited(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("trilogy.executor.staged_write", _unstageable)
+        target = tmp_path / "built.csv"
+        executor, built = _executor(tmp_path, f"file `{target.as_posix()}`")
+        executor.update_datasource(built)
+        executor.execute_raw_sql("DELETE FROM raw WHERE id > 800 AND source = 'A'")
+        executor.update_datasource(built)
+        assert duckdb.sql(
+            f"SELECT source, count(*) FROM '{target.as_posix()}' GROUP BY 1 ORDER BY 1"
+        ).fetchall() == [("A", 720), ("B", 100)]
+
+    def test_without_an_audit_the_write_is_in_place_as_before(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: list[str] = []
+        original = executor_module._local_stage_reader
+        monkeypatch.setattr("trilogy.executor.staged_write", _unstageable)
+        monkeypatch.setattr(
+            "trilogy.executor._local_stage_reader",
+            lambda t, p: seen.append(p) or original(t, p),
+        )
+        target = tmp_path / "built.parquet"
+        executor, built = _executor(tmp_path, f"file `{target.as_posix()}`")
+        executor.update_datasource(built, check_assertions=False)
+        assert seen == []
+        assert duckdb.sql(f"SELECT count(*) FROM '{target.as_posix()}'").fetchall() == [
+            (1000,)
+        ]
 
 
 class TestTableTarget:

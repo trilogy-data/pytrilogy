@@ -1,5 +1,6 @@
 import datetime
 import json
+import os
 import random
 import subprocess
 import threading
@@ -63,6 +64,7 @@ from trilogy.core.statements.author import (
 )
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
+    MaterializedDataset,
     ProcessedCallStatement,
     ProcessedChartCopyStatement,
     ProcessedChartStatement,
@@ -101,6 +103,7 @@ from trilogy.engine import (
     EngineConnection,
     ExecutionEngine,
     ResultProtocol,
+    SupportsNativePartitionMerge,
     SupportsNativePersist,
     escape_literal_colons,
 )
@@ -215,6 +218,27 @@ _SETUP_CONFLICT_ATTEMPTS = 5
 
 def _is_catalog_write_conflict(error: BaseException) -> bool:
     return _CATALOG_WRITE_CONFLICT in str(error)
+
+
+def _copy_format_options(target_type: IOType) -> str:
+    if target_type == IOType.PARQUET:
+        return "FORMAT PARQUET"
+    if target_type == IOType.CSV:
+        return "FORMAT CSV, HEADER"
+    if target_type == IOType.JSON:
+        return "FORMAT JSON, ARRAY true"
+    raise NotImplementedError(f"Unsupported IO Type {target_type}")
+
+
+def _local_stage_reader(target_type: IOType, path: str) -> str:
+    """Read an audited local file back for the write-through, typed so the
+    published bytes say what the audited ones did: CSV is read as text, since
+    sniffing would turn '001' into 1."""
+    if target_type == IOType.PARQUET:
+        return f"read_parquet('{path}')"
+    if target_type == IOType.CSV:
+        return f"read_csv('{path}', header = true, all_varchar = true)"
+    return f"read_json('{path}', format = 'array')"
 
 
 def _fire_cancel(fired: threading.Event, cancel: Callable[[], None]) -> None:
@@ -897,12 +921,12 @@ class Executor:
                 append_to=addr if appending else None,
             )
             prior = self._collect_prior_values(query.datasource)
-            self._execute_copy(
-                copy_statement,
-                verify=lambda staged: self._check_assertions(
+            verify: Callable[[str], None] | None = None
+            if self._audits(query.datasource):
+                verify = lambda staged: self._check_assertions(
                     query.datasource, Address(location=staged, type=addr.type), prior
-                ),
-            )
+                )
+            self._execute_copy(copy_statement, verify=verify)
             if query.persist_mode == PersistMode.OVERWRITE:
                 self.environment.add_datasource(query.datasource)
             return None
@@ -913,10 +937,13 @@ class Executor:
             self.environment.add_datasource(query.datasource)
         return output
 
+    def _audits(self, datasource: Datasource) -> bool:
+        return bool(datasource.assertions) and not self._assertions_suspended
+
     def _collect_prior_values(self, datasource: Datasource):
         """The ``prior(...)`` side of the datasource's assertions, read before
         the write replaces the asset. None when there is nothing to check."""
-        if not datasource.assertions or self._assertions_suspended:
+        if not self._audits(datasource):
             return None
         from trilogy.execution.assertions import collect_prior_values
 
@@ -925,39 +952,149 @@ class Executor:
     def _check_assertions(
         self, datasource: Datasource, new_address: Address, prior
     ) -> None:
-        if not datasource.assertions or self._assertions_suspended:
+        if not self._audits(datasource):
             return
         from trilogy.execution.assertions import check_assertions
 
         check_assertions(self, datasource, new_address, prior)
 
-    def _execute_persist(self, query: ProcessedQueryPersist) -> ResultProtocol:
+    def _write_persist(self, query: ProcessedQueryPersist, verify) -> ResultProtocol:
         """Offer the write to the engine's own API, then fall back to SQL.
+
+        ``verify`` runs after the rows are written and before the SQL path
+        commits. A native writer has already committed by the time it returns,
+        so there it can only report; it still raises so the run fails."""
+        if isinstance(self.engine, SupportsNativePersist):
+            native = self.engine.execute_persist(query, self)
+            if native is not None:
+                verify()
+                return native
+        return self.execute_write_statements(
+            self.generator.compile_statements(query),
+            local_concepts=query.local_concepts,
+            verify=verify,
+        )
+
+    def _execute_persist(self, query: ProcessedQueryPersist) -> ResultProtocol:
+        """Write, audit, publish.
 
         Source preparation runs first either way — a native writer still reads
         through whatever the dialect had to stage (BigQuery's python datasources
         land in GCS before any job can name them), and it renders its select
         from the same processed statement.
 
-        Assertions on a table build are checked inside the write transaction,
-        so a failure rolls the write back on engines with transactional DDL.
-        A native writer has already committed by the time it returns, so there
-        the check can only report; it still raises so the run fails."""
+        On an engine with transactional DDL an audited build is checked inside
+        the write transaction, so a failure rolls the write back. Elsewhere the
+        build is written to a staging table, checked there, and swapped in
+        (``_execute_staged_persist``); an unaudited build runs as before."""
         datasource = query.datasource
         prior = self._collect_prior_values(datasource)
         self._prepare_query_sources(query)
-        if isinstance(self.engine, SupportsNativePersist):
-            native = self.engine.execute_persist(query, self)
-            if native is not None:
-                self._check_assertions(datasource, query.output_to.address, prior)
-                return native
-        return self.execute_write_statements(
-            self.generator.compile_statements(query),
-            local_concepts=query.local_concepts,
-            verify=lambda: self._check_assertions(
-                datasource, query.output_to.address, prior
+        if self._audits(datasource) and not self.generator.TRANSACTIONAL_DDL:
+            return self._execute_staged_persist(query, prior)
+        return self._write_persist(
+            query,
+            lambda: self._check_assertions(datasource, query.output_to.address, prior),
+        )
+
+    def _staged_address(self, address: Address, suffix: str = "") -> Address:
+        return dc_replace(
+            address,
+            location=self.generator.staged_table_location(
+                address.location, uuid.uuid4().hex[:8] + suffix
             ),
         )
+
+    def _execute_staged_persist(
+        self, query: ProcessedQueryPersist, prior
+    ) -> ResultProtocol:
+        """Land the build in a staging table beside the target, audit it there,
+        then publish with the dialect's swap. The ordinary write machinery runs
+        unchanged against the retargeted statement; only the destination
+        differs. An unpartitioned append is applied to a clone of the target
+        so the audit sees the whole new asset; a partitioned one must publish
+        only its own slices, and takes ``_execute_staged_partition_append``.
+
+        The staging table is dropped whatever happens; a failed drop is logged
+        rather than raised, so it never masks the result of the build."""
+        if query.persist_mode == PersistMode.APPEND and query.partition_by:
+            return self._execute_staged_partition_append(query, prior)
+        dialect = self.generator
+        datasource = query.datasource
+        address = query.output_to.address
+        staged = self._staged_address(address)
+        retargeted = dc_replace(
+            query,
+            output_to=MaterializedDataset(address=staged),
+            datasource=datasource.duplicate().repoint(staged),
+        )
+        try:
+            if query.persist_mode == PersistMode.APPEND:
+                self.execute_write_statements(
+                    dialect.render_table_clone(address.location, staged.location)
+                )
+            result = self._write_persist(retargeted, lambda: None)
+            self._check_assertions(datasource, staged, prior)
+            self.execute_write_statements(
+                dialect.render_table_swap(
+                    address.location,
+                    staged.location,
+                    replace=query.create_mode != CreateMode.CREATE,
+                )
+            )
+        finally:
+            self._drop_staged_table(staged.location)
+        return result
+
+    def _execute_staged_partition_append(
+        self, query: ProcessedQueryPersist, prior
+    ) -> ResultProtocol:
+        """An audited partitioned append: the select lands once in a rows
+        table shaped like the target, is merged into a clone of the target
+        for the audit, and is then merged into the target itself. The publish
+        touches only the slices the select produced, so a slice another writer
+        published between the clone and the merge is kept rather than
+        overwritten by the clone's snapshot of it."""
+        dialect = self.generator
+        datasource = query.datasource
+        address = query.output_to.address
+        rows = self._staged_address(address, "_rows")
+        clone = self._staged_address(address)
+        try:
+            self.execute_write_statements(
+                [
+                    *dialect.render_empty_copy(address.location, rows.location),
+                    dialect.render_insert_into(query, rows.location),
+                ],
+                local_concepts=query.local_concepts,
+            )
+            self.execute_write_statements(
+                dialect.render_table_clone(address.location, clone.location)
+            )
+            self._merge_partitions(rows.location, clone.location, query.partition_by)
+            self._check_assertions(datasource, clone, prior)
+            self._merge_partitions(rows.location, address.location, query.partition_by)
+        finally:
+            self._drop_staged_table(clone.location)
+            self._drop_staged_table(rows.location)
+        return BufferedResult([], [])
+
+    def _merge_partitions(self, rows: str, into: str, partition_by: list[str]) -> None:
+        if isinstance(
+            self.engine, SupportsNativePartitionMerge
+        ) and self.engine.merge_partitions(rows, into, partition_by, self):
+            return
+        self.execute_write_statements(
+            self.generator.render_partition_merge(into, rows, partition_by)
+        )
+
+    def _drop_staged_table(self, location: str) -> None:
+        try:
+            self.execute_write_statements([self.generator.render_drop_table(location)])
+        except Exception as exc:
+            self.logger.warning(
+                "Could not drop staging table %s after the build: %s", location, exc
+            )
 
     def _build_aliased_copy_sql(self, query: ProcessedCopyStatement) -> str:
         """Build SQL with column aliases for file output."""
@@ -1058,26 +1195,25 @@ class Executor:
 
                 check_gcs_write_credentials()
 
-            if query.target_type == IOType.PARQUET:
-                options = "FORMAT PARQUET"
-            elif query.target_type == IOType.CSV:
-                options = "FORMAT CSV, HEADER"
-            elif query.target_type == IOType.JSON:
-                options = "FORMAT JSON, ARRAY true"
-            else:
-                raise NotImplementedError(f"Unsupported IO Type {query.target_type}")
+            format_options = _copy_format_options(query.target_type)
             # The staged path is already the safety copy, so DuckDB's own
             # tmp_-and-rename step (on by default over an existing file) is
             # redundant and would leave its tmp_ file behind on failure.
+            options = format_options
             if not is_remote_target(target):
                 options += ", USE_TMP_FILE false"
             with staged_write(target, self._swap_staging_root()) as staged:
-                self.execute_raw_sql(
-                    f"COPY ({sql}) TO '{staged}' ({options})",
-                    local_concepts=query.local_concepts,
-                )
-                if verify is not None:
-                    verify(staged)
+                if verify is not None and staged == target:
+                    self._copy_through_local_stage(
+                        sql, target, format_options, query, verify
+                    )
+                else:
+                    self.execute_raw_sql(
+                        f"COPY ({sql}) TO '{staged}' ({options})",
+                        local_concepts=query.local_concepts,
+                    )
+                    if verify is not None:
+                        verify(staged)
             self._drop_external_file_cache()
         else:
             raise NotImplementedError(
@@ -1087,6 +1223,46 @@ class Executor:
             [{"query": self.generator.compile_statement(query)}],
             ["query"],
         )
+
+    def _local_staging_root(self) -> str:
+        root = self._swap_staging_root()
+        if not is_remote_target(root):
+            return root
+        from trilogy.staging import StagingConfig
+
+        return StagingConfig().prepare_executor_subdir(self._instance_id)
+
+    def _copy_through_local_stage(
+        self,
+        sql: str,
+        target: str,
+        format_options: str,
+        query: ProcessedCopyStatement,
+        verify: Callable[[str], None],
+    ) -> None:
+        """A target that ``staged_write`` could not stage (an object store with
+        no credentials for a server-side copy, or a scheme without one) would
+        otherwise be written in place, publishing the build before its audit.
+        The build lands in a local file instead, the audit reads that, and
+        only then is it written through to the target: the final write is not
+        atomic, but an asset is never replaced by a build that failed its
+        check. The write-through re-reads the audited file rather than
+        re-running the select, so what is published is what was audited."""
+        name = os.path.basename(target)
+        local = Path(self._local_staging_root()) / f"{name}.{uuid.uuid4().hex[:8]}.tmp"
+        try:
+            self.execute_raw_sql(
+                f"COPY ({sql}) TO '{local.as_posix()}'"
+                f" ({format_options}, USE_TMP_FILE false)",
+                local_concepts=query.local_concepts,
+            )
+            verify(str(local))
+            reader = _local_stage_reader(query.target_type, local.as_posix())
+            self.execute_raw_sql(
+                f"COPY (SELECT * FROM {reader}) TO '{target}' ({format_options})"
+            )
+        finally:
+            local.unlink(missing_ok=True)
 
     @execute_query.register
     def _(self, query: ProcessedCallStatement) -> ResultProtocol | None:

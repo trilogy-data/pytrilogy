@@ -185,3 +185,16 @@ class SupportsNativePersist(Protocol):
     def execute_persist(
         self, query: ProcessedQueryPersist, executor: Executor
     ) -> ResultProtocol | None: ...
+
+
+@runtime_checkable
+class SupportsNativePartitionMerge(Protocol):
+    """An engine that can replace, in ``target``, exactly the partitions the
+    rows table covers, through its own API (BigQuery: one copy job per
+    slice). The publish step of an audited partitioned append. ``rows`` is
+    shaped like ``target`` and sits beside it. Returning False declines, and
+    the executor runs ``BaseDialect.render_partition_merge`` instead."""
+
+    def merge_partitions(
+        self, rows: str, target: str, partition_by: list[str], executor: Executor
+    ) -> bool: ...

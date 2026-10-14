@@ -195,6 +195,24 @@ class ClickhouseDialect(BaseDialect):
     SUPPORTS_AGGREGATE_GROUPING_MODES = True
     TABLE_NOT_FOUND_PATTERN = "Table .* doesn't exist"
     COLUMN_NOT_FOUND_PATTERN = "Unknown identifier"
+    TRANSACTIONAL_DDL = False
+
+    def render_empty_copy(self, target: str, staged: str) -> list[str]:
+        """``CREATE TABLE ... AS other`` copies structure and engine, no rows."""
+        target, staged = self.safe_quote(target), self.safe_quote(staged)
+        return [f"CREATE TABLE {staged} AS {target}"]
+
+    def render_table_swap(self, target: str, staged: str, replace: bool) -> list[str]:
+        """``EXCHANGE TABLES`` is atomic but needs both sides to exist, so an
+        empty target is created first when it may be missing. The old rows end
+        up under the staging name, which the executor drops."""
+        target, staged = self.safe_quote(target), self.safe_quote(staged)
+        if not replace:
+            return [f"RENAME TABLE {staged} TO {target}"]
+        return [
+            f"CREATE TABLE IF NOT EXISTS {target} AS {staged}",
+            f"EXCHANGE TABLES {target} AND {staged}",
+        ]
 
     def render_map_literal(
         self,

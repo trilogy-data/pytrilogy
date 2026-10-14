@@ -350,3 +350,50 @@ def test_staging_is_dropped_when_a_copy_fails():
     with pytest.raises(RuntimeError):
         _swap(client)
     assert client.deleted == [f"proj.my_ds.{_staging_name(client)}"]
+
+
+def test_merge_copies_each_slice_from_an_already_staged_rows_table():
+    """The publish step of an audited partitioned append: the rows were
+    staged and audited by the executor, so only the copy jobs remain, and the
+    executor keeps ownership of the drop."""
+    from trilogy.dialect.bigquery_persist import merge_partitions
+
+    client = FakeClient()
+    rows = "my_ds.my_facts_trilogy_stage_ab12cd34_rows"
+    assert merge_partitions(rows, "my_ds.my_facts", ["created_at"], client, "proj")
+    assert sorted(
+        (source.table_id, destination.table_id)
+        for source, destination, _ in client.copies
+    ) == [
+        ("my_facts_trilogy_stage_ab12cd34_rows$20240101", "my_facts$20240101"),
+        ("my_facts_trilogy_stage_ab12cd34_rows$20240102", "my_facts$20240102"),
+    ]
+    metadata = _sql_containing(client, "INFORMATION_SCHEMA.PARTITIONS")
+    assert "table_name = 'my_facts_trilogy_stage_ab12cd34_rows'" in metadata
+    assert client.deleted == []
+
+
+def test_merge_declines_a_rows_table_outside_the_targets_dataset():
+    """A decorator copy is addressed within one dataset; anything else falls
+    back to the dialect's transactional DML."""
+    from trilogy.dialect.bigquery_persist import merge_partitions
+
+    client = FakeClient()
+    assert not merge_partitions(
+        "other_ds.rows", "my_ds.my_facts", ["created_at"], client, "proj"
+    )
+    assert client.copies == []
+    assert client.queries == []
+
+
+def test_the_engine_merge_honours_the_native_switch():
+    from trilogy.dialect.bigquery_engine import BigQueryEngine
+    from trilogy.dialect.config import BigQueryConfig
+
+    client = FakeClient()
+    off = BigQueryEngine(BigQueryConfig(client=client, native_partition_swap=False))
+    assert not off.merge_partitions("my_ds.r", "my_ds.my_facts", ["created_at"], None)
+    on = BigQueryEngine(BigQueryConfig(client=client, project="proj"))
+    on.connect()
+    assert on.merge_partitions("my_ds.r", "my_ds.my_facts", ["created_at"], None)
+    assert len(client.copies) == 2

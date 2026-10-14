@@ -60,6 +60,15 @@ class PrestoDialect(BaseDialect):
     ALIAS_ORDER_REFERENCING_ALLOWED = (
         False  # some complex presto functions don't support aliasing
     )
+    # No transactional DDL; the publish is the base drop-and-rename.
+    TRANSACTIONAL_DDL = False
+
+    def render_empty_copy(self, target: str, staged: str) -> list[str]:
+        """``LIKE ... INCLUDING PROPERTIES`` carries the connector properties
+        (``partitioned_by`` above all) that a ``CREATE TABLE AS`` would drop,
+        and that the published table has to keep after the rename."""
+        target, staged = self.safe_quote(target), self.safe_quote(staged)
+        return [f"CREATE TABLE {staged} (LIKE {target} INCLUDING PROPERTIES)"]
 
     def get_table_primary_keys(
         self, executor, table_name: str, schema: str | None = None
