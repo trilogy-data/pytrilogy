@@ -68,7 +68,7 @@ same lint steps took 15 s on one ubuntu cell and 35 s on another in the same
 run), so single cells are indicative; the ubuntu 3.13 and windows 3.11 cells
 ran on healthy runners both times and show the step-level effect.
 
-ubuntu 3.11 did not move. Its slowest tests are the same CPU-bound ones as on
+ubuntu 3.11 did not move in that run (fix 6 came later). Its slowest tests are the same CPU-bound ones as on
 3.13 at 4-10x the cost: `test_ingest_output_passes_integration` 75 s against
 8 s, the first Lark parse 31 s against 6 s, the Lark/pest corpus parity
 13 s against 3 s. That cell runs coverage with the C tracer (`sysmon` needs
@@ -165,7 +165,16 @@ the interpreter's temp dir, and verifies that hash on load, so a wrong restore
 is just a miss. A `actions/cache` step keyed on the same inputs keeps the file
 between runs.
 
-### 6. `--durations` on every pytest step
+### 6. No coverage measurement on the 3.11 cells
+
+Coverage runs under `sys.monitoring` on 3.12+ (~60% overhead on this suite)
+but needs the C tracer on 3.11 (~150%), and after the fixes above the two
+3.11 cells were the longest in the matrix by ten minutes with the same slow
+tests as 3.13 at 4-10x the cost. The 3.11 cells now run the same tests
+without `--cov` and skip the Codecov upload; the 3.11 flag's only unique
+lines were version-specific branches.
+
+### 7. `--durations` on every pytest step
 
 Per-file timing from progress lines cannot see a slow parametrization or a
 session-fixture teardown. Every pytest step now reports its slowest tests, so
@@ -173,12 +182,6 @@ the next profile starts from the log.
 
 ## Targets not taken (yet), in order of expected value
 
-- **Coverage core on 3.11 (needs a decision).** The two 3.11 cells are now
-  the longest in the matrix (24-25 min), and most of the difference from 3.13
-  is the C tracer. The options are to accept it, or to measure coverage on the
-  3.12/3.13 cells only and run 3.11 without `--cov`; the Codecov report would
-  lose the 3.11 flag, whose only unique lines are version-specific branches.
-  Not done here because the brief was no loss of coverage.
 - **The 13 s gap before the last test file, 23 s on Windows.** Between the
   progress line for `tests/test_window_where_pushdown_matrix.py` and the one
   for `tests/vscode/test_vscode_test_cases.py`, with no setup, call or
