@@ -125,6 +125,22 @@ jobs:
             echo "== $script"
             uv sync --script "$script" || echo "WARNING: could not pre-warm $script"
           done
+      - name: Locate the Lark parser cache
+        # Lark pickles its LALR tables next to the grammar's hash in the
+        # interpreter's temp dir and rebuilds on a miss. The build is ~6s on
+        # 3.13 and ~30s on 3.11 under the C coverage tracer, paid by the first
+        # test that reaches the Lark backend. The file carries the grammar +
+        # lark-version + python-version hash and is verified on load, so a
+        # stale restore is only a miss. The key names the same inputs.
+        id: lark-cache
+        shell: bash
+        run: |
+          echo "dir=$(python -c 'import tempfile; print(tempfile.gettempdir())')" >> "$GITHUB_OUTPUT"
+          echo "lark=$(python -c 'import lark; print(lark.__version__)')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684  # v4.2.3
+        with:
+          path: ${{ steps.lark-cache.outputs.dir }}/.lark_cache_*
+          key: lark-${{ runner.os }}-py${{ matrix.python-version }}-lark${{ steps.lark-cache.outputs.lark }}-${{ hashFiles('trilogy/parsing/trilogy.lark') }}
       - name: Pre-fetch the gcat parquet fixtures
         # tests/modeling/gcat/setup.sql builds its tables from nine parquet
         # files on GCS. Left to the tests that is ~6.5MB plus an INSTALL httpfs

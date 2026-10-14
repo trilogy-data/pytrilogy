@@ -42,6 +42,34 @@ Running `tests/scripts` alone, locally, takes 352 s for 1521 tests; the same
 tests inside the full session take 537 s on a Linux runner and 726 s on
 Windows. The difference is the mechanism below, not the tests.
 
+## Result
+
+Same workflow, run 38597060869 on this branch (the GC gate, the Lark grammar,
+the serve test and the uv install; the parser cache step came later):
+
+| cell           | job before | job after | pytest before | pytest after |
+|----------------|-----------:|----------:|--------------:|-------------:|
+| ubuntu 3.11    | 24.1 m     | 24.8 m    | 1158 s        | 1154 s       |
+| ubuntu 3.12    | 21.2 m     | 17.1 m    |  939 s        |  709 s       |
+| ubuntu 3.13    | 23.4 m     | 12.6 m    | 1006 s        |  536 s       |
+| windows 3.11   | 42.4 m     | 24.5 m    | 1827 s        | 1056 s       |
+| windows 3.12   | 26.7 m     | 25.7 m    | 1064 s        |  945 s       |
+| windows 3.13   | 26.5 m     | 24.3 m    | 1007 s        |  893 s       |
+
+Dependency install went from 30-130 s to 5-26 s on every cell, and the rich
+re-run from 80-100 s to 32-66 s. Runner speed varies a lot between runs (the
+same lint steps took 15 s on one ubuntu cell and 35 s on another in the same
+run), so single cells are indicative; the ubuntu 3.13 and windows 3.11 cells
+ran on healthy runners both times and show the step-level effect.
+
+ubuntu 3.11 did not move. Its slowest tests are the same CPU-bound ones as on
+3.13 at 4-10x the cost: `test_ingest_output_passes_integration` 75 s against
+8 s, the first Lark parse 31 s against 6 s, the Lark/pest corpus parity
+13 s against 3 s. That cell runs coverage with the C tracer (`sysmon` needs
+3.12+; see `[tool.coverage.run]` in pyproject.toml), which the project
+measured at ~150% overhead on this suite against ~60% for sysmon, on an
+interpreter that is itself slower. See the targets below.
+
 ## Findings and fixes
 
 ### 1. A full garbage collection per DuckDB executor close
@@ -122,7 +150,16 @@ the package is in `requirements-test.txt` and has required only `>=3.10` for
 some time. The per-step `pip install pytest pytest-cov` lines were redundant
 with `requirements-test.txt`.
 
-### 5. `--durations` on every pytest step
+### 5. The Lark parser tables are cached across runs
+
+Even at 6 s (31 s on 3.11), the LALR build is paid by every job for an input
+that changes only when the grammar or the lark version does. Lark writes the
+tables next to a hash of grammar, options, lark version and Python version in
+the interpreter's temp dir, and verifies that hash on load, so a wrong restore
+is just a miss. A `actions/cache` step keyed on the same inputs keeps the file
+between runs.
+
+### 6. `--durations` on every pytest step
 
 Per-file timing from progress lines cannot see a slow parametrization or a
 session-fixture teardown. Every pytest step now reports its slowest tests, so
@@ -130,9 +167,23 @@ the next profile starts from the log.
 
 ## Targets not taken (yet), in order of expected value
 
-- **Session teardown, 14 s on Linux / 23 s on Windows.** Visible as the gap
-  between the last progress line and the summary. The `--durations` output
-  from this branch attributes it; it was not reproducible locally.
+- **Coverage core on 3.11 (needs a decision).** The two 3.11 cells are now
+  the longest in the matrix (24-25 min), and most of the difference from 3.13
+  is the C tracer. The options are to accept it, or to measure coverage on the
+  3.12/3.13 cells only and run 3.11 without `--cov`; the Codecov report would
+  lose the 3.11 flag, whose only unique lines are version-specific branches.
+  Not done here because the brief was no loss of coverage.
+- **The 13 s gap before the last test file, 23 s on Windows.** Between the
+  progress line for `tests/test_window_where_pushdown_matrix.py` and the one
+  for `tests/vscode/test_vscode_test_cases.py`, with no setup, call or
+  teardown phase over 2.3 s in the `--durations` list. Whatever it is runs
+  outside every reported phase, which points at the interpreter (a generation
+  2 collection on a very large heap would look like this) rather than a
+  fixture. Not reproduced locally.
+- **sf=1 TPC-DS generation, 17-25 s per job.** `dsdgen(sf=1)` plus the
+  parquet export runs on every job because the files are gitignored. The set
+  is 385 MB; caching it is possible but would be the largest entry in the
+  repository's 10 GB cache budget for a ~10 s gain.
 - **Live-service tests.** `tests/engine/test_bigquery.py` (11 s), the
   Snowflake tests, `tests/ai/test_providers_basic.py` (13 s, 3.13 cell only),
   `tests/scripts/test_readme_quickstart.py` (13 s, fetches public models) and
