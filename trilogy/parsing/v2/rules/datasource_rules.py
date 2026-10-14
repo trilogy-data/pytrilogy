@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from trilogy.constants import DEFAULT_NAMESPACE, REMOTE_PREFIXES
+from trilogy.core.assertions import AssertionSpecError, plan_assertion
 from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.enums import (
     AddressType,
@@ -31,6 +32,7 @@ from trilogy.core.models.datasource import (
     Address,
     ColumnAssignment,
     Datasource,
+    DatasourceAssertion,
     FreshnessLag,
     RawColumnExpr,
 )
@@ -579,6 +581,53 @@ def _validate_lag_against_columns(
             )
 
 
+def datasource_assert_clause(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> DatasourceAssertion:
+    from trilogy.parsing.v2.rules.function_rules import _expr_to_boolean
+
+    args = hydrated_children(node, hydrate)
+    return DatasourceAssertion(
+        condition=_expr_to_boolean(args[0], context), line_no=node.line
+    )
+
+
+def _validate_assertions(
+    node: SyntaxNode,
+    context: RuleContext,
+    name: str,
+    assertions: list[DatasourceAssertion],
+    columns: list[ColumnAssignment],
+) -> None:
+    """An assertion measures a build of the datasource, so every column it
+    reads must be one the build stores, and its shape must split into the
+    per-side queries that evaluate it (see core/assertions.py)."""
+    stored = {col.concept.address for col in columns}
+    for assertion in assertions:
+        try:
+            plan_assertion(assertion.condition)
+        except AssertionSpecError as exc:
+            raise fail(node, f"Datasource '{name}' `assert {assertion}`: {exc}")
+        unresolved = sorted(
+            {
+                ref.address
+                for ref in assertion.condition.concept_arguments
+                if not _resolves_from(ref.address, stored, context)
+            }
+        )
+        if unresolved:
+            raise fail(
+                node,
+                f"Datasource '{name}' `assert {assertion}` reads"
+                f" {', '.join(repr(a) for a in unresolved)}, which its columns"
+                " neither store nor derive row by row. An assertion checks a"
+                " build of the datasource, so it can only read what the build"
+                " writes: add the column to the datasource.",
+            )
+
+
 def datasource_lag_clause(
     node: SyntaxNode,
     context: RuleContext,
@@ -663,6 +712,7 @@ def datasource_node(
     freshness_probe: str | None = None
     refresh_script: str | None = None
     allowed_lag: FreshnessLag | None = None
+    assertions: list[DatasourceAssertion] = []
     ds_status = DatasourceState.PUBLISHED
 
     for val in filtered[1:]:
@@ -699,6 +749,8 @@ def datasource_node(
             allowed_lag = val
         elif isinstance(val, DatasourcePartitionClause):
             partition_by = val.columns
+        elif isinstance(val, DatasourceAssertion):
+            assertions.append(val)
 
     if not addr:
         raise fail(node, "Datasource missing address or query declaration")
@@ -746,6 +798,8 @@ def datasource_node(
 
     if where is not None:
         _validate_where_against_columns(node, context, name, where, columns)
+    if assertions:
+        _validate_assertions(node, context, name, assertions, columns)
 
     if addr.is_file and not addr.exists:
         ds_status = DatasourceState.UNPOPULATED
@@ -801,6 +855,7 @@ def datasource_node(
         freshness_probe=freshness_probe,
         refresh_script=refresh_script,
         allowed_lag=allowed_lag,
+        assertions=assertions,
         is_root=is_root,
         is_partial=is_partial,
         column_level_partial_addresses=column_level_partial_addresses,
@@ -832,4 +887,5 @@ DATASOURCE_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.DATASOURCE_UPDATE_TRIGGER_CLAUSE: datasource_update_trigger_clause,
     SyntaxNodeKind.DATASOURCE_REFRESH_CLAUSE: datasource_refresh_clause,
     SyntaxNodeKind.DATASOURCE_LAG_CLAUSE: datasource_lag_clause,
+    SyntaxNodeKind.DATASOURCE_ASSERT_CLAUSE: datasource_assert_clause,
 }

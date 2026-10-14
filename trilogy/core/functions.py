@@ -611,6 +611,11 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_type_function=lambda args: get_output_type_at_index(args, 0),
         arg_count=2,
     ),
+    FunctionType.PRIOR: FunctionConfig(
+        output_purpose=Purpose.PROPERTY,
+        output_type_function=lambda args: get_output_type_at_index(args, 0),
+        arg_count=1,
+    ),
     FunctionType.COALESCE: FunctionConfig(
         valid_inputs={*DataType},
         output_purpose=Purpose.PROPERTY,

@@ -856,7 +856,13 @@ class Executor:
                 column_aliases=column_aliases,
                 append_to=addr if appending else None,
             )
-            self.execute_query(copy_statement)
+            prior = self._collect_prior_values(query.datasource)
+            self._execute_copy(
+                copy_statement,
+                verify=lambda staged: self._check_assertions(
+                    query.datasource, Address(location=staged, type=addr.type), prior
+                ),
+            )
             if query.persist_mode == PersistMode.OVERWRITE:
                 self.environment.add_datasource(query.datasource)
             return None
@@ -867,21 +873,50 @@ class Executor:
             self.environment.add_datasource(query.datasource)
         return output
 
+    def _collect_prior_values(self, datasource: Datasource):
+        """The ``prior(...)`` side of the datasource's assertions, read before
+        the write replaces the asset. None when there is nothing to check."""
+        if not datasource.assertions:
+            return None
+        from trilogy.execution.assertions import collect_prior_values
+
+        return collect_prior_values(self, datasource)
+
+    def _check_assertions(
+        self, datasource: Datasource, new_address: Address, prior
+    ) -> None:
+        if not datasource.assertions:
+            return
+        from trilogy.execution.assertions import check_assertions
+
+        check_assertions(self, datasource, new_address, prior)
+
     def _execute_persist(self, query: ProcessedQueryPersist) -> ResultProtocol:
         """Offer the write to the engine's own API, then fall back to SQL.
 
         Source preparation runs first either way — a native writer still reads
         through whatever the dialect had to stage (BigQuery's python datasources
         land in GCS before any job can name them), and it renders its select
-        from the same processed statement."""
+        from the same processed statement.
+
+        Assertions on a table build are checked inside the write transaction,
+        so a failure rolls the write back on engines with transactional DDL.
+        A native writer has already committed by the time it returns, so there
+        the check can only report; it still raises so the run fails."""
+        datasource = query.datasource
+        prior = self._collect_prior_values(datasource)
         self._prepare_query_sources(query)
         if isinstance(self.engine, SupportsNativePersist):
             native = self.engine.execute_persist(query, self)
             if native is not None:
+                self._check_assertions(datasource, query.output_to.address, prior)
                 return native
         return self.execute_write_statements(
             self.generator.compile_statements(query),
             local_concepts=query.local_concepts,
+            verify=lambda: self._check_assertions(
+                datasource, query.output_to.address, prior
+            ),
         )
 
     def _build_aliased_copy_sql(self, query: ProcessedCopyStatement) -> str:
@@ -952,6 +987,15 @@ class Executor:
 
     @execute_query.register
     def _(self, query: ProcessedCopyStatement) -> ResultProtocol | None:
+        return self._execute_copy(query, verify=None)
+
+    def _execute_copy(
+        self,
+        query: ProcessedCopyStatement,
+        verify: Callable[[str], None] | None,
+    ) -> ResultProtocol | None:
+        """Write the copy through a staged path; ``verify`` sees the staged
+        file before it replaces the target, and a raise there discards it."""
         sql = self._build_aliased_copy_sql(query)
         target = self._resolve_copy_target(query.target)
         if query.append_to is not None:
@@ -992,6 +1036,8 @@ class Executor:
                     f"COPY ({sql}) TO '{staged}' ({options})",
                     local_concepts=query.local_concepts,
                 )
+                if verify is not None:
+                    verify(staged)
             self._drop_external_file_cache()
         else:
             raise NotImplementedError(
@@ -1530,13 +1576,15 @@ class Executor:
         self,
         statements: Sequence[str | Path],
         local_concepts: Mapping[str, Concept] | None = None,
+        verify: Callable[[], None] | None = None,
     ) -> ResultProtocol:
         """Run statements that change database state, in order, then commit.
 
         One driver call per statement: sqlite3 rejects a multi-statement execute,
         so a persist's DDL and INSERT cannot be sent together. The last result is
         copied out before committing, which discards an unconsumed cursor on some
-        drivers (duckdb among them)."""
+        drivers (duckdb among them). ``verify`` runs after the statements and
+        before the commit; a raise there rolls the whole write back."""
         buffered = BufferedResult([], [])
         try:
             for statement in statements:
@@ -1547,6 +1595,8 @@ class Executor:
                     )
                 else:
                     buffered = BufferedResult([], [])
+            if verify is not None:
+                verify()
         except Exception:
             self._rollback_transaction()
             raise

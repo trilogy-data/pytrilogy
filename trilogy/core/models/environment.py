@@ -821,6 +821,7 @@ def datasource_structural_signature(datasource: Datasource) -> tuple:
         datasource.freshness_probe,
         datasource.refresh_script,
         str(datasource.allowed_lag) if datasource.allowed_lag else None,
+        tuple(str(a) for a in datasource.assertions),
         datasource.is_root,
         datasource.is_partial,
         frozenset(datasource.column_level_partial_addresses),

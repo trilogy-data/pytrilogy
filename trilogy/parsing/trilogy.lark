@@ -82,7 +82,12 @@
 
     datasource_partition_clause: "partition"i "by"i column_list
 
-    datasource: DATASOURCE_ROOT? (DATASOURCE_PARTIAL | SHORTHAND_MODIFIER)? "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? whole_grain_clause? (address | query | file) where? datasource_update_trigger_clause? datasource_lag_clause? datasource_refresh_clause? datasource_partition_clause?  datasource_status_clause?
+    // A data-quality check on a build of this datasource, evaluated against
+    // the staged write before it replaces the asset. `prior(expr)` inside it
+    // is the same expression over the asset being replaced.
+    datasource_assert_clause: "assert"i conditional
+
+    datasource: DATASOURCE_ROOT? (DATASOURCE_PARTIAL | SHORTHAND_MODIFIER)? "datasource" IDENTIFIER  "("  column_assignment_list ")"  grain_clause? whole_grain_clause? (address | query | file) where? datasource_update_trigger_clause? datasource_lag_clause? datasource_refresh_clause? datasource_partition_clause? datasource_assert_clause* datasource_status_clause?
    
     whole_grain_clause: "complete" where
 
@@ -518,8 +523,10 @@
     fnullif: "nullif"i "(" expr "," expr ")"
     _FRECURSE_EDGE.1: "recurse_edge("i
     frecurse_edge: _FRECURSE_EDGE expr "," expr ")"
+    _PRIOR.1: "prior("i
+    fprior: _PRIOR expr ")"
 
-    _generic_functions: fcast | concat_ws | concat  | fgrain | fcoalesce | fgreatest | fleast | fnullif | fcase | fcase_simple | len | fnot | fbool | frecurse_edge
+    _generic_functions: fcast | concat_ws | concat  | fgrain | fcoalesce | fgreatest | fleast | fnullif | fcase | fcase_simple | len | fnot | fbool | frecurse_edge | fprior
 
     //constant
     CURRENT_DATE.1: /current_date\(\)/
