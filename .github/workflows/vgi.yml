@@ -77,6 +77,7 @@ jobs:
         run: >
           python -m pytest -p no:randomly -rs --cov=trilogy --cov-config=.coveragerc.vgi
           tests/engine/scripts/test_vgi_transport.py
+          tests/engine/scripts/test_vgi_workers.py
           tests/engine/scripts/test_executable_source.py
           tests/io/test_vgi_conformance.py
           tests/io/test_conformance.py

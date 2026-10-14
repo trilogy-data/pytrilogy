@@ -19,6 +19,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from contextlib import redirect_stdout
 from dataclasses import dataclass
+from functools import partial
 from typing import Annotated, Any, ClassVar
 
 import pyarrow as pa
@@ -143,13 +144,17 @@ class SourceWorker(Worker):
     )
 
 
-def serve(fn: Callable, schema: pa.Schema | None = None, watermark: Any = None) -> None:
-    def resolver(args: str) -> pa.RecordBatchReader:
-        try:
-            invocation = parse_args(shlex.split(args))
-        except SystemExit as e:  # argparse already wrote why to stderr
-            raise ValueError(f"invalid source arguments: {args!r}") from e
-        return resolve(fn, invocation, schema, watermark)
+def resolve_args(
+    fn: Callable, schema: pa.Schema | None, watermark: Any, args: str
+) -> pa.RecordBatchReader:
+    """``fn``'s reader for one call's command line, exactly as a one-shot run."""
+    try:
+        invocation = parse_args(shlex.split(args))
+    except SystemExit as e:  # argparse already wrote why to stderr
+        raise ValueError(f"invalid source arguments: {args!r}") from e
+    return resolve(fn, invocation, schema, watermark)
 
-    Source.resolver = staticmethod(resolver)  # type: ignore[assignment]
+
+def serve(fn: Callable, schema: pa.Schema | None = None, watermark: Any = None) -> None:
+    Source.resolver = staticmethod(partial(resolve_args, fn, schema, watermark))  # type: ignore[assignment]
     SourceWorker().run()

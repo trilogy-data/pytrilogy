@@ -11,8 +11,12 @@ from tests.vgi_support import (  # noqa: F401
     skip_or_fail,
 )
 from trilogy import Dialects, Environment
+from trilogy.core.enums import AddressType
+from trilogy.core.models.datasource import Address
+from trilogy.dialect.cancel import duckdb_side_cursor
 from trilogy.dialect.config import DuckDBConfig, PythonDatasourceTransport
 from trilogy.dialect.duckdb import (
+    attach_resident,
     get_vgi_setup_sql,
     python_datasource_failure,
     resident_alias,
@@ -101,6 +105,50 @@ def test_vgi_failure_rebuilds_the_script_error():
     assert str(error) == (
         "Python datasource script '/w/a.py' failed (exit code 65): ValueError: bad"
     )
+
+
+def test_a_truncated_vgi_payload_is_not_a_script_failure():
+    assert python_datasource_failure(Exception(f"{VGI_FAILURE_MARKER} {{oops")) is None
+
+
+def test_haybarn_url_needs_haybarn_installed(monkeypatch):
+    import importlib.util
+
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+    with pytest.raises(ImportError, match=r"pytrilogy\[vgi\]"):
+        DuckDBConfig(python_datasource_transport="vgi").connection_string()
+
+
+def test_vgi_transport_connects_through_haybarn(monkeypatch):
+    import importlib.util
+
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
+    config = DuckDBConfig(path="/w/db.duckdb", python_datasource_transport="vgi")
+    assert config.connection_string() == "haybarn:////w/db.duckdb"
+
+
+def test_resident_attach_needs_a_duckdb_connection():
+    sqlite = Dialects.SQLITE.default_executor(environment=Environment())
+    assert duckdb_side_cursor(sqlite.connection) is None
+    assert attach_resident(sqlite.connection, "/w/bin/landmarks") is None
+
+
+def test_prepare_sources_skips_what_is_already_decided():
+    from trilogy.dialect.duckdb import DuckDBDialect
+
+    dialect = DuckDBDialect(
+        config=DuckDBConfig(
+            enable_python_datasources=True, python_datasource_transport="vgi"
+        )
+    )
+    dialect._not_resident.add("/w/raw.py")
+    addresses = [
+        Address(location="/w/raw.py", type=AddressType.PYTHON_SCRIPT),
+        Address(location="orders", type=AddressType.TABLE),
+    ]
+    # Nothing left to start, so the executor is never touched.
+    dialect.prepare_sources(addresses, executor=None)  # type: ignore[arg-type]
+    assert not dialect._residents
 
 
 def test_vgi_renders_the_bridge_call_with_pushdown_args():

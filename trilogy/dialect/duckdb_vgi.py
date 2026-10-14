@@ -92,7 +92,8 @@ _ORPHAN_SECONDS = 300.0
 
 def start(script: str, args: str) -> _Run:
     """Run the script until its schema arrives; retry transient uv failures."""
-    for attempt in range(1, MAX_ATTEMPTS + 1):
+    attempt = 1
+    while True:
         # Owned by the _Run, which outlives this scope.
         stderr = tempfile.TemporaryFile()  # noqa: SIM115
         process = subprocess.Popen(
@@ -111,9 +112,9 @@ def start(script: str, args: str) -> _Run:
             text = _drain(stderr)
             if attempt < MAX_ATTEMPTS and is_retryable(return_code, text):
                 time.sleep(retry_delay(attempt))
+                attempt += 1
                 continue
             raise _failure(script, return_code, text, e)
-    raise _failure(script, 1, "exhausted retries")
 
 
 def _reap_orphans() -> None:
