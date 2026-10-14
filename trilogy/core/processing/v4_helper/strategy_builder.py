@@ -125,7 +125,6 @@ from .projection import (
     iter_row_lineage,
     lineage_crosses_row_shape_barrier,
     literal_producible,
-    output_rowset_grain_keys,
     parent_output_addresses,
     renderable_addresses,
     row_lineage_arguments,
@@ -2327,34 +2326,13 @@ def _widen_passthrough_group(
         group.rebuild_cache()
 
 
-def _relation_licenses_handle(
-    environment: BuildEnvironment, concept: BuildConcept
-) -> bool:
-    """Whether a declared relation lets a non-rowset scan stand in for a rowset
-    handle. A scoped join (`subset join rs.k = l_key`) or an authored merge makes
-    the handle a substitutable identity of a column the anchor binds; without
-    one, a rowset is opaque: its handle's row lineage alone must not let a scan
-    over the same base re-derive it (a bare shared-key read of a renamed rowset
-    key is Disconnected, never an implicit join)."""
-    if concept.pseudonyms:
-        return True
-    return _scoped_relation_member(environment, concept.address)
-
-
-def _scoped_relation_member(environment: BuildEnvironment, address: str) -> bool:
-    for canonical, members in environment.scoped_join_key_groups.items():
-        if address == canonical or address in members:
-            return True
-    return False
-
-
 def _mangled_rowset_content_addresses(environment: BuildEnvironment) -> set[str]:
     """Addresses of the hidden per-rowset alias concepts a rowset body's renamed
     outputs materialize (`select aid as k` stores `local._rs_k`; see
     ``SemanticState.mangle_rowset_alias``). These are internals of the rowset;
     an un-renamed output's content is the base concept itself and is excluded.
     Their auto-pseudonym back to the authored source is rename plumbing, not a
-    declared relation, so it never licenses synthesis on a foreign scan."""
+    join axis."""
     out: set[str] = set()
     for concept in [
         *environment.concepts.values(),
@@ -2371,8 +2349,8 @@ def _mangled_rowset_content_addresses(environment: BuildEnvironment) -> set[str]
 def _carried_handle_is_partial(
     environment: BuildEnvironment, concept: BuildConcept, available: set[str]
 ) -> bool:
-    """A licensed rowset handle carried onto a non-rowset scan is a PARTIAL
-    binding when the scan's own member of the licensing relation spans only
+    """A rowset handle carried onto a non-rowset scan is a PARTIAL binding
+    when the scan's own member of the handle's scoped relation spans only
     part of the handle's domain: the member is a declared SUBSET side, or the
     relation is coalescing (`union`) so any single arm under-covers the axis.
     The anchor of a subset relation still carries the handle complete. Without
@@ -2400,7 +2378,7 @@ def _carry_needs_grain_change(concept: BuildConcept) -> bool:
 
     A ROWSET handle terminates the walk: its value arrives materialized at the
     rowset boundary rather than being recomputed here, so a derived key over one
-    (`agg.period + 53`) stays carryable under the licensed-handle rules above.
+    (`agg.period + 53`) stays carryable onto a scan its relation binds.
     """
     stack = [concept]
     seen: set[str] = set()
@@ -2474,26 +2452,6 @@ def _unprojected_expression_mates(
     return mates
 
 
-def _rowset_base_join_keys(
-    mandatory_list: list[BuildConcept],
-    node: StrategyNode,
-    feeders: list[StrategyNode],
-) -> frozenset[str]:
-    """Output rowset boundaries' base grain keys that BOTH the assembled
-    contributor and every feeder can render.
-
-    A FINAL-hosted gate whose feeder renders such an address pairs to the
-    boundary on it; without the widening the merge has no shared column and
-    cross-joins, which the keyless-join guard rejects."""
-    base_keys = output_rowset_grain_keys(mandatory_list)
-    if not base_keys:
-        return frozenset()
-    available = renderable_addresses(node)
-    for feeder in feeders:
-        available &= renderable_addresses(feeder)
-    return frozenset(base_keys & available)
-
-
 def _widen_merge_join_keys(
     parents: list[StrategyNode],
     environment: BuildEnvironment,
@@ -2518,18 +2476,7 @@ def _carry_join_keys(
     join_key_concepts: list[BuildConcept],
     environment: BuildEnvironment,
 ) -> None:
-    mangled_contents = _mangled_rowset_content_addresses(environment)
-
     for parent in parents:
-        # A rowset domain joins the rest on its spans, which it emits already:
-        # its boundary can render the body's grain keys, but those are absent
-        # on the region, so carrying one widens the domain past the region's
-        # members. A ROOT domain is a dimension scan and carries a key it
-        # binds.
-        if parent.region_spans and any(
-            isinstance(node, RowsetNode) for node in _iter_strategy_nodes(parent)
-        ):
-            continue
         # A pure dedup GroupNode (every output rides through from its parents;
         # nothing aggregated locally, force_group dedups included) can safely
         # carry a declared join key: the key joins its parents' row stream, and
@@ -2576,33 +2523,14 @@ def _carry_join_keys(
             # under that address: `subset join fut.period + 53 = agg.period` then
             # joins `agg.period = agg.period` off the fut side and pairs every
             # period with itself. A non-rowset parent (a plain scan the relation
-            # substitutes the handle onto) is unaffected.
+            # substitutes the handle onto) is unaffected; `_synthesizes_handle`
+            # below keeps it from computing a handle it does not already carry.
             if (
                 parent_rowsets
                 and isinstance(concept.lineage, BuildRowsetItem)
                 and concept.lineage.rowset.name not in parent_rowsets
             ):
                 continue
-            # A non-rowset parent may substitute a handle only when a declared
-            # relation licenses it (the anchor under `subset join rs.k = l_key`);
-            # unlicensed, the synthesis silently joins a query that is
-            # disconnected. A handle the parent's own inputs emit (a derivation
-            # over the boundary, split from the region's domain) is passed
-            # through, not synthesized. A renamed output's mangled content
-            # (`_rs_k`) is equally internal: the licensed plan joins the
-            # anchor's own column against the boundary's handle, never a
-            # synthesized body-local.
-            if not parent_rowsets:
-                if (
-                    isinstance(concept.lineage, BuildRowsetItem)
-                    and concept.address not in parent_output_addresses(parent)
-                    and not _relation_licenses_handle(environment, concept)
-                ):
-                    continue
-                if concept.address in mangled_contents and not _scoped_relation_member(
-                    environment, concept.address
-                ):
-                    continue
             if not concept_satisfiable(concept, available) or _synthesizes_handle(
                 concept, parent, available
             ):
@@ -3019,37 +2947,6 @@ def _raise_if_rowset_islanded(
                 "not supported. Select a column from the bridge rowset, or "
                 "join the outputs' sources directly."
             )
-
-
-def _drop_unadvertised_rowset_handles(
-    node: StrategyNode, advertised: set[str], environment: BuildEnvironment
-) -> None:
-    """Strip a rowset handle a ROOT scan renders only by pseudonym substitution.
-
-    A `union join quantity = rs.return_quantity` makes the two members
-    pseudonyms, so the fact scan can bind `rs.return_quantity` to its own
-    `quantity` column and the bridge walk picks it up even though the group's
-    concept sets never advertised it. That column is an IMPOSTOR: the handle
-    names a value of the rowset body, and a consumer reading it off the anchor
-    sees the anchor's own row (`count(rs.return_quantity)` counts every sales
-    row instead of the matched returns). The mates the merge genuinely needs as
-    a join axis ARE advertised, so keeping the contract is enough.
-
-    A handle that is the ONLY spelling of an advertised mate stays: the scan
-    answered that mate under the relation's canonical name (`ticket` under
-    `union join ticket = rs.r_ticket` is the FULL-joined axis rendered as
-    `rs.r_ticket`), and stripping it drops the anchor-only rows."""
-    emitted = {o.address for o in node.output_concepts}
-    keep = [
-        o
-        for o in node.output_concepts
-        if o.address in advertised
-        or not isinstance(o.lineage, BuildRowsetItem)
-        or (_scoped_join_mates(environment, o.address) & advertised) - emitted
-    ]
-    if len(keep) == len(node.output_concepts):
-        return
-    node.set_output_concepts(keep)
 
 
 def _final_span_scope(scope: SpanScope) -> SpanScope:
@@ -3780,9 +3677,7 @@ def _add_partial_completion_contributors(
       join the merge even though it covers no mandatory output (bare-member
       projection).
 
-    ROOT mates stay out; a datasource-bound mate completes through the
-    authoritative-datasource machinery, not a boundary merge. Edits
-    `per_group` in place."""
+    Edits `per_group` in place."""
     if not environment.scoped_join_key_groups:
         return
     chosen = set(per_group)
@@ -3819,17 +3714,15 @@ def _add_partial_completion_contributors(
             triggers = relation & covered_partial
         else:
             continue
-        rowset_mates = {
+        mates = {
             addr
             for addr in relation - triggers
-            if (c := environment.concepts.get(addr)) is not None
-            and c.address == addr
-            and c.derivation == Derivation.ROWSET
+            if (c := environment.concepts.get(addr)) is not None and c.address == addr
         }
         exposed: set[str] = set()
         for gid in chosen:
             exposed |= expose(gid)
-        for addr in sorted(rowset_mates - exposed):
+        for addr in sorted(mates - exposed):
             provider = next(
                 (
                     gid
@@ -4587,13 +4480,10 @@ def _relevant_root_preserve_keys(
         # cannot vouch for it (a `unique` business key determines the outputs
         # only through a uniqueness the FD tables don't encode). Dropping it
         # re-loses the authored join key (`subset join cust.cid = id` with
-        # only `id`-determined properties projected). ROWSET handles stay out:
-        # a root scan must never claim a rowset boundary's own member.
-        if key in statement_members:
-            key_concept = environment.concepts.get(key)
-            if key_concept is not None and key_concept.derivation != Derivation.ROWSET:
-                relevant.add(key)
-                continue
+        # only `id`-determined properties projected).
+        if key in statement_members and environment.concepts.get(key) is not None:
+            relevant.add(key)
+            continue
         # A key the ROOT group itself carries as a member is a genuine BRIDGE
         # join key even when it doesn't FD-determine any output: the group put
         # this key beside the output because a shared finer member (the fact's
@@ -5052,9 +4942,8 @@ def _assemble_sole_contributor(
         # The feeder join reads the probe at ITS OWN row grain (the fact
         # side of the relation), fanning the contributor out; the merge's
         # claimed grain predates that join, so grain-satisfaction checks
-        # (including MergeNode's own rowset-output carve-out) wave the
-        # dedup through. Collapse explicitly to the requested outputs
-        # after the filter.
+        # wave the dedup through. Collapse explicitly to the requested
+        # outputs after the filter.
         if conditioned is not sole_node and final_contract.deduplicate_to_grain:
             targets = [
                 o
@@ -5169,9 +5058,6 @@ def _apply_final_conditions(
     # feeder) with the authored members each side can render: a leaf
     # scan picks up the mate it binds, the boundary its member handle.
     # Feeders with no relation stay hidden cross-join inputs.
-    # A gate keyed by a base grain key of an output rowset boundary pairs
-    # to the boundary on that key; widen both sides so the merge joins on
-    # it instead of cross-joining.
     if arg_nodes:
         # A gate keyed by a column the contributor never projects
         # (`sum(amount) by status > 35 or ...` over `select oid`) pairs on
@@ -5179,9 +5065,6 @@ def _apply_final_conditions(
         gate_keys = _gate_grain_keys(arg_concepts) - avail
         if gate_keys:
             _widen_merge_join_keys([node, *arg_nodes], environment, gate_keys)
-        base_keys = _rowset_base_join_keys(mandatory_list, node, arg_nodes)
-        if base_keys:
-            _widen_merge_join_keys([node, *arg_nodes], environment, base_keys)
         # A row-level atom over the facts (`undelivered`) beside a node
         # holding a region joins it on the span: cross-joined, any fact
         # row's value would pass for every member of the region.
@@ -5362,7 +5245,6 @@ def _assemble_final_node(
     final_merge_grain = frozenset().union(
         *(contract.projection_grain for contract in contracts_by_gid.values())
     )
-    mangled_contents = _mangled_rowset_content_addresses(environment)
 
     # A grouping-sets sibling suppresses the FINAL dedup (`_group_to_grain_if_
     # required` passes a subtotal-bearing merge through), so a row-grain leaf
@@ -5431,24 +5313,12 @@ def _assemble_final_node(
         )
         if is_root and preserve_keys:
             seen_group_concepts = {concept.address for concept in group_concepts}
-            # Carry the merge grain's join KEYS onto the root scan, but never a
-            # rowset's own handle outputs: a root that can derive those (it
-            # shares the rowset's base key) would absorb the whole rowset and
-            # drop its internal filter. Those handles aren't join keys; the
-            # rowset stays a separate merge contributor. A renamed output's
-            # mangled content (`_rs_k`) is a rowset internal the same way;
-            # carrying it silently joins a disconnected query, unless a
-            # declared relation licenses it.
+            # Carry the merge grain's join KEYS onto the root scan.
             group_concepts.extend(
                 c
                 for address in sorted(preserve_keys)
                 if (c := _concept_at(environment, address)) is not None
                 and address not in seen_group_concepts
-                and c.derivation != Derivation.ROWSET
-                and (
-                    address not in mangled_contents
-                    or _scoped_relation_member(environment, address)
-                )
             )
         if is_root:
             parents.extend(
@@ -5635,10 +5505,10 @@ def _assemble_final_node(
     _clear_groupmate_completed_partials(merged, environment)
     # A hidden axis mate rides sides kept at their own finer row grain, and the
     # merge's claimed grain predates that fan, so grain-satisfaction checks
-    # (including MergeNode's own rowset-output carve-out) wave the dedup
-    # through, same trap as the probe-feeder branch above. Collapse explicitly
-    # to the coalesced axis. A hidden region join key is the same story: the
-    # in-place narrowing would take it off the merge that hosts by it.
+    # wave the dedup through, same trap as the probe-feeder branch above.
+    # Collapse explicitly to the coalesced axis. A hidden region join key is
+    # the same story: the in-place narrowing would take it off the merge that
+    # hosts by it.
     if (axis_mates or region_keys) and final_contract.deduplicate_to_grain:
         targets = [
             o for o in merged.output_concepts if o.address in mandatory_addresses
@@ -6063,16 +5933,8 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     # row-flow at SQL time (INNER JOIN to apply the filter) but doesn't
     # supply the root's primary scan columns. Pruning by parent outputs
     # there would strip every requested column and the root would never
-    # build. A ROWSET boundary likewise sources from its own
-    # recursively-planned inner select (`gen_rowset` consumes no parents,
-    # permanently: a body is a statement planned in its own scope);
-    # pruning it by a constraint-edge sibling would drop any handle the
-    # sibling happens not to pseudonym-cover.
-    if derivation not in (
-        Derivation.ROOT,
-        Derivation.UNNEST,
-        Derivation.ROWSET,
-    ):
+    # build.
+    if derivation not in (Derivation.ROOT, Derivation.UNNEST):
         wanted = outputs
         outputs = satisfiable_outputs(outputs, parents)
         if not outputs:
@@ -6313,8 +6175,6 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
             )
         # the region contract: this node's rows are the region's own
         node.region_spans = a.extent_spans
-    if derivation == Derivation.ROOT:
-        _drop_unadvertised_rowset_handles(node, set(select_addrs), environment)
     # Elide here, not only in the tree pass: consumers take their own copy
     # of this node, so a passthrough left standing becomes the SHARED
     # parent two single-column consumers each regroup over, and the merge

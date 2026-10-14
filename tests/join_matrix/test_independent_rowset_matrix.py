@@ -185,3 +185,21 @@ def test_union_join_composite_derived_key(tmp_path: Path):
             )
         )
     assert rows == sort_rows(want)
+
+
+def test_union_join_derived_key_filtered_on_derived_side(tmp_path: Path):
+    # Hosted inside this_year's boundary, the WHERE filters nothing the FULL
+    # completion then re-admits as next_year-only rows. `+ 53` leaves next-year
+    # weeks unmatched; at `+ 52` every week pairs and nothing can leak.
+    rows = _run(
+        tmp_path,
+        "where this_year.wk is not null "
+        "select this_year.code, this_year.wk, this_year.total, next_year.total "
+        "union join this_year.wk + 53 = next_year.wk;",
+    )
+    ty, ny = _aggregate(2001), _aggregate(2002)
+    want = []
+    for (code, week), total in ty.items():
+        hits = [n for (_, n_week), n in ny.items() if n_week == week + 53]
+        want.extend((code, week, total, hit) for hit in hits or [None])
+    assert rows == sort_rows(want)

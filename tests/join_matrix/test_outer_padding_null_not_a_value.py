@@ -15,6 +15,8 @@ pair their NULL groups exactly once.
 
 from pathlib import Path
 
+import pytest
+
 from tests.join_matrix.harness import sort_rows
 from trilogy import Dialects, Executor
 from trilogy.core.models.environment import Environment
@@ -167,3 +169,141 @@ def test_padding_null_does_not_pair_with_a_real_null_group(tmp_path: Path):
 def test_value_nulls_still_pair_exactly_once(tmp_path: Path):
     rows, sql = _run(tmp_path, VALUE_NULL_QUERY)
     assert rows == _expected_value_null_rows(), f"{rows}\n{sql}"
+
+
+# Addresses 2, 3 and 5 hold no customer: their padded `cust_sk` must stay
+# unpaired, while the unknown-customer returns (15 = 7 + 8) form their own row.
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            (
+                "auto total_amt <- sum(amt) by cust_sk;\n"
+                "select addr_sk, cust_sk, total_amt;"
+            ),
+            [
+                (1, 10, 5),
+                (2, None, None),
+                (3, None, None),
+                (4, 11, 9),
+                (5, None, None),
+                (None, None, 15),
+            ],
+        ),
+        (
+            (
+                "auto total_amt <- sum(amt) by cust_sk;\n"
+                "select state, cust_sk, total_amt;"
+            ),
+            [("CA", 11, 9), ("GA", 10, 5), ("GA", None, None), (None, None, 15)],
+        ),
+        (
+            (
+                "auto cust_amt <- sum(amt) by cust_sk, region;\n"
+                "select addr_sk, cust_sk, region, cust_amt;"
+            ),
+            [
+                (1, 10, "e", 5),
+                (2, None, None, None),
+                (3, None, None, None),
+                (4, 11, "w", 9),
+                (5, None, None, None),
+                (None, None, "e", 7),
+                (None, None, "w", 8),
+            ],
+        ),
+        (
+            (
+                "auto cust_amt <- sum(amt) by cust_sk, region;\n"
+                "auto region_avg <- avg(cust_amt) by region;\n"
+                "select state, cust_sk, cust_amt, region_avg;"
+            ),
+            [
+                ("CA", 11, 9, 8.5),
+                ("GA", 10, 5, 6.0),
+                ("GA", None, None, None),
+                (None, None, 7, 6.0),
+                (None, None, 8, 8.5),
+            ],
+        ),
+    ],
+    ids=["address_grain", "state_grain", "region_fan_out", "q30_unfiltered"],
+)
+def test_padded_key_does_not_pair_with_a_value_null_group(
+    tmp_path: Path, query: str, expected: list[tuple]
+):
+    rows, sql = _run(tmp_path, query)
+    assert rows == sort_rows(expected), f"{rows}\n{sql}"
+
+
+# Two value-NULL aggregates FULL-joined, then the padded addresses: the join's
+# own padding of the aggregates is not the address rows, so nothing pairs.
+# A count over the aggregate's NULL customer group stays 2; on an address no
+# customer has it is 0, and a WHERE on state adds no address-only row when no
+# output is read off one.
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            (
+                "auto total_amt <- sum(amt) by cust_sk;\n"
+                "auto total_pay <- sum(pay) by cust_sk;\n"
+                "select addr_sk, cust_sk, total_amt, total_pay;"
+            ),
+            [
+                (1, 10, 5, 100),
+                (2, None, None, None),
+                (3, None, None, None),
+                (4, 11, 9, 70),
+                (5, None, None, None),
+                (None, None, 15, 50),
+            ],
+        ),
+        (
+            (
+                "auto total_amt <- sum(amt) by cust_sk;\n"
+                "where state = 'GA'\n"
+                "select cust_sk, total_amt;"
+            ),
+            [(10, 5)],
+        ),
+        (
+            (
+                "auto total_amt <- sum(amt) by cust_sk;\n"
+                "auto total_pay <- sum(pay) by cust_sk;\n"
+                "where state = 'GA'\n"
+                "select cust_sk, total_amt, total_pay;"
+            ),
+            [(10, 5, 100)],
+        ),
+        (
+            (
+                "auto total_amt <- sum(amt) by cust_sk;\n"
+                "where state = 'GA'\n"
+                "select cust_name, total_amt;"
+            ),
+            [("ann", 5)],
+        ),
+        (
+            "auto n <- count(ret_id) by cust_sk;\nselect state, cust_sk, n;",
+            [("CA", 11, 1), ("GA", 10, 1), ("GA", None, 0), (None, None, 2)],
+        ),
+        (
+            "auto c <- count(addr_sk) by cust_sk;\nselect cust_sk, c;",
+            [(10, 1), (11, 1), (None, 3)],
+        ),
+    ],
+    ids=[
+        "two_value_null_aggregates",
+        "where_unprojected_region",
+        "where_unprojected_region_two_facts",
+        "where_unprojected_region_property",
+        "count_on_address_only_rows",
+        "count_of_address_only_rows",
+    ],
+)
+def test_address_only_rows_stay_their_own(
+    tmp_path: Path, query: str, expected: list[tuple]
+):
+    rows, sql = _run(tmp_path, query)
+    assert rows == sort_rows(expected), f"{rows}\n{sql}"

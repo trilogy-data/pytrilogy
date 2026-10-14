@@ -1,5 +1,5 @@
 query_id = "35"
-gen_length = 9038
+gen_length = 8907
 preql_size = 2381
 comp_size = 1745
 generated_sql = """
@@ -124,23 +124,23 @@ SELECT
     \"premium\".\"customer_current_demographics_gender\" as \"customer_current_demographics_gender\",
     \"premium\".\"customer_current_demographics_marital_status\" as \"customer_current_demographics_marital_status\",
     \"premium\".\"customer_current_demographics_dependent_count\" as \"customer_current_demographics_dependent_count\",
-    coalesce(\"premium\".\"cnt1\",0) as \"cnt1\",
+    \"premium\".\"cnt1\" as \"cnt1\",
     \"waggish\".\"min1\" as \"min1\",
     \"waggish\".\"max1\" as \"max1\",
     \"waggish\".\"avg1\" as \"avg1\",
     \"premium\".\"customer_current_demographics_employed_dependent_count\" as \"customer_current_demographics_employed_dependent_count\",
-    coalesce(\"premium\".\"cnt2\",0) as \"cnt2\",
+    \"premium\".\"cnt2\" as \"cnt2\",
     \"waggish\".\"min2\" as \"min2\",
     \"waggish\".\"max2\" as \"max2\",
     \"waggish\".\"avg2\" as \"avg2\",
     \"premium\".\"customer_current_demographics_college_dependent_count\" as \"customer_current_demographics_college_dependent_count\",
-    coalesce(\"premium\".\"cnt3\",0) as \"cnt3\",
+    \"premium\".\"cnt3\" as \"cnt3\",
     \"waggish\".\"min3\" as \"min3\",
     \"waggish\".\"max3\" as \"max3\",
     \"waggish\".\"avg3\" as \"avg3\"
 FROM
     \"waggish\"
-    INNER JOIN \"premium\" on \"waggish\".\"customer_current_address_state\" is not distinct from \"premium\".\"customer_current_address_state\" AND \"waggish\".\"customer_current_demographics_college_dependent_count\" is not distinct from \"premium\".\"customer_current_demographics_college_dependent_count\" AND \"waggish\".\"customer_current_demographics_dependent_count\" is not distinct from \"premium\".\"customer_current_demographics_dependent_count\" AND \"waggish\".\"customer_current_demographics_employed_dependent_count\" is not distinct from \"premium\".\"customer_current_demographics_employed_dependent_count\" AND \"waggish\".\"customer_current_demographics_gender\" is not distinct from \"premium\".\"customer_current_demographics_gender\" AND \"waggish\".\"customer_current_demographics_marital_status\" is not distinct from \"premium\".\"customer_current_demographics_marital_status\"
+    INNER JOIN \"premium\" on \"waggish\".\"customer_current_address_state\" is not distinct from \"premium\".\"customer_current_address_state\" AND \"waggish\".\"customer_current_demographics_college_dependent_count\" = \"premium\".\"customer_current_demographics_college_dependent_count\" AND \"waggish\".\"customer_current_demographics_dependent_count\" = \"premium\".\"customer_current_demographics_dependent_count\" AND \"waggish\".\"customer_current_demographics_employed_dependent_count\" = \"premium\".\"customer_current_demographics_employed_dependent_count\" AND \"waggish\".\"customer_current_demographics_gender\" = \"premium\".\"customer_current_demographics_gender\" AND \"waggish\".\"customer_current_demographics_marital_status\" = \"premium\".\"customer_current_demographics_marital_status\"
 ORDER BY 
     \"premium\".\"customer_current_address_state\" asc nulls first,
     \"premium\".\"customer_current_demographics_gender\" asc nulls first,

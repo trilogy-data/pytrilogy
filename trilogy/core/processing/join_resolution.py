@@ -27,7 +27,6 @@ from trilogy.core.models.build import (
     BuildDatasource,
     BuildFunction,
     BuildGrain,
-    BuildRowsetItem,
     get_grouped_aggregate_wrapper,
 )
 from trilogy.core.models.build_environment import (
@@ -1154,11 +1153,11 @@ def reduce_concept_pairs(
     # FD-closure pruning (docs/domain_graph_design.md step 4): a pair both of
     # whose sides are functionally determined by the SURVIVING joined keys is
     # redundant, since equality on the determinants implies equality here.
-    # The closure sees what the local property check below cannot: transitive
-    # dependencies and grain FDs carried through complete bindings. Greedy
-    # over a working determinant set so mutually-dependent keys keep exactly
-    # one pair; grain pairs are never pruned (the grain restriction below
-    # relies on them).
+    # A property paired beside its own keys is the simplest case (its keys ->
+    # property FD is declared); the closure also sees transitive dependencies
+    # and grain FDs carried through complete bindings. Greedy over a working
+    # determinant set so mutually-dependent keys keep exactly one pair; grain
+    # pairs are never pruned (the grain restriction below relies on them).
     # Only a key paired on plain equality vouches for its dependents. A
     # null-safe pair also matches NULL to NULL, and an FD says nothing about
     # rows with no key: two extension families both pad `item_id`, and
@@ -1198,20 +1197,6 @@ def reduce_concept_pairs(
             rl_key in right_left_seen
             and not is_outer
             and not (right_left_seen[rl_key] or pair.is_partial)
-        ):
-            continue
-        if (
-            pair.left.purpose == Purpose.PROPERTY
-            and pair.left.keys
-            and pair.left.keys.issubset(left_keys)
-            and not _is_authored_pair(pair, authored_members)
-        ):
-            continue
-        if (
-            pair.right.purpose == Purpose.PROPERTY
-            and pair.right.keys
-            and pair.right.keys.issubset(right_keys)
-            and not _is_authored_pair(pair, authored_members)
         ):
             continue
         if index in fd_pruned:
@@ -2008,20 +1993,9 @@ def get_node_joins(
             for span in held_region_spans(datasource)
             if span not in extent_free_spans
         }
-        # A rowset handle is bound as its content is: a boundary partial on
-        # `user_id` is partial on `even.user_id` too, or a filtered body
-        # out-hosts the complete dimension scan and the FINAL sheds the rows
-        # the statement's bare key demands.
-        partial_addresses = {c.address for c in datasource.partial_concepts}
         hosts = host_canon is not None and host_canon <= (
             {canon_node(c.address) for c in datasource.output_concepts}
-            - {canon_node(a) for a in partial_addresses}
-            - {
-                canon_node(c.address)
-                for c in datasource.output_concepts
-                if isinstance(c.lineage, BuildRowsetItem)
-                and c.lineage.content.address in partial_addresses
-            }
+            - {canon_node(c.address) for c in datasource.partial_concepts}
         )
         sides[ds_node] = SideFacts(
             partials=frozenset(partial_keys),
@@ -2115,7 +2089,9 @@ def get_node_joins(
     )
     joins = resolve_join_order_v2(graph, facts)
     paddings = _merge_paddings(joins, facts)
-    region_padded = _region_padded_sides(paddings)
+    # Per join, only what the joins BEFORE it padded: a join's own padding of
+    # the joined sides is absence it introduces, not the region's rows.
+    region_padded = [_region_padded_sides(paddings[:i]) for i in range(len(joins))]
     _raise_if_keyless_row_bearing_join(
         joins,
         ds_node_map,
@@ -2150,7 +2126,7 @@ def get_node_joins(
                             else (
                                 [Modifier.NULLABLE]
                                 if _pairs_region_padding(
-                                    region_padded.get(k, frozenset()),
+                                    region_padded[index].get(k, frozenset()),
                                     facts.side(j.right),
                                     concept,
                                 )
@@ -2180,7 +2156,7 @@ def get_node_joins(
                 domain_graph=environment.domain_graph,
             ),
         )
-        for j in joins
+        for index, j in enumerate(joins)
     ]
     for base, guard in zip(
         base_joins,

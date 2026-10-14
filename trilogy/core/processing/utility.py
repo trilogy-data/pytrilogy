@@ -210,35 +210,14 @@ def find_nullable_concepts(
     }
     right_ids = {j.right.identifier for j in joins if isinstance(j, Join)}
     base_ids = [i for _, i in typed_idents if i not in right_ids]
+    # Only an outer join introduces NULLs: it pads the extended side. A join
+    # keyed on a nullable column leaves the other side's columns as they are,
+    # whether the NULL keys pair (null-safe) or drop (plain equality).
     for join, accumulated in left_deep_joins(joins, base_ids):
-        is_on_nullable_condition = False
-        right_id = join.right.identifier
-        # Outer joins make the extended side nullable regardless of the source's
-        # own nullability.
         for padded in padded_by(join, accumulated):
             padded_ds = datasource_map.get(padded)
             if padded_ds is not None:
                 nullable_datasources.add(padded_ds)
-        if not join.pairs:
-            continue
-        # left_datasource is constant across the pair loop; identifier never
-        # returns None, so a None here means left_datasource itself is None.
-        left_id = join.left.identifier if join.left is not None else None
-        right_nullables = nullable_addrs.get(right_id, _EMPTY_ADDRS)
-        for pair in join.pairs:
-            if pair.right.address in right_nullables:
-                is_on_nullable_condition = True
-                break
-            left_check = left_id if left_id is not None else pair.node.identifier
-            if pair.left.address in nullable_addrs.get(left_check, _EMPTY_ADDRS):
-                is_on_nullable_condition = True
-                break
-        if is_on_nullable_condition:
-            # right_id can be a synthetic self-join-key pseudonym datasource
-            # absent from datasource_map.
-            right_ds = datasource_map.get(right_id)
-            if right_ds is not None:
-                nullable_datasources.add(right_ds)
     final_nullable = set()
 
     for k, v in source_map.items():

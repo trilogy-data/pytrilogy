@@ -1,5 +1,5 @@
 query_id = "51"
-gen_length = 3852
+gen_length = 3833
 preql_size = 1397
 comp_size = 1999
 generated_sql = """
@@ -96,7 +96,7 @@ SELECT
     \"uneven\".\"web_cume\" as \"web_cume\"
 FROM
     \"uneven\"
-    INNER JOIN \"questionable\" on \"uneven\".\"sales_item_sk\" = \"questionable\".\"sales_item_sk\" AND \"uneven\".\"sales_sale_date_date\" is not distinct from \"questionable\".\"sales_sale_date_date\")
+    INNER JOIN \"questionable\" on \"uneven\".\"sales_item_sk\" = \"questionable\".\"sales_item_sk\" AND \"uneven\".\"sales_sale_date_date\" = \"questionable\".\"sales_sale_date_date\")
 SELECT
     \"yummy\".\"sales_item_sk\" as \"item_sk\",
     \"yummy\".\"sales_sale_date_date\" as \"d_date\",

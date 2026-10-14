@@ -251,8 +251,8 @@ def test_region_no_handle_spells(query, expected):
 # `s.d IS NULL`, so a plain and a filtered read of them collide at the output
 # grain. The FINAL merge of the region's domain onto the band stream (keyed
 # `s.d`, one row per SALE) pairs many rows per key, and must still dedup to
-# the selected columns: `_concept_covers_grain` took the key being ONE grain
-# component of the stream for the whole grain and skipped the GROUP BY.
+# the selected columns, since a key that is only ONE grain component of the
+# stream does not cover its grain.
 GUEST_MODEL = UNSOLD_MODEL.replace("i_sk: ~item_sk", "i_sk: ~?item_sk").replace(
     "union all select 4, 30, 3'''",
     "union all select 4, 30, 3 union all select 5, null, 7'''",

@@ -32,9 +32,6 @@ from trilogy.core.processing.node_generators.select_helpers.condition_routing im
     preexisting_conditions,
     strip_atoms,
 )
-from trilogy.core.processing.node_generators.select_helpers.source_scoring import (
-    membership_complete_grain_keys,
-)
 from trilogy.core.processing.nodes import (
     ConstantNode,
     GroupNode,
@@ -361,16 +358,6 @@ def create_datasource_node(
             conditions.conditional, datasource.non_partial_for.conditional
         )
     )
-    # A ~ grain key whose universe is pinned to this datasource by a
-    # membership-proving WHERE is complete for this result even without a
-    # table-level ``complete where``, so the discovery loop must not see it
-    # come back partial and re-source it from a sibling anchor.
-    membership_complete = (
-        set()
-        if partial_is_full
-        else membership_complete_grain_keys(datasource, datasources, conditions)
-    )
-
     routed_conditions = datasource_conditions(
         datasource, conditions, injected_conditions, partial_is_full
     )
@@ -412,11 +399,7 @@ def create_datasource_node(
         f"force_group {force_group}"
     )
     partials, nullables = scan_stamps(
-        datasource,
-        output_concepts,
-        partial_is_full,
-        set(membership_complete),
-        set(proven_non_null),
+        datasource, output_concepts, partial_is_full, set(proven_non_null)
     )
     rval = SelectNode(
         input_concepts=all_inputs,
@@ -428,7 +411,6 @@ def create_datasource_node(
         rollup_concepts=rollup_concepts,
         nullable_concepts=nullables,
         partial_is_full=partial_is_full,
-        complete_proofs=set(membership_complete),
         non_null_proofs=set(proven_non_null),
         datasource=datasource,
         grain=datasource.grain,

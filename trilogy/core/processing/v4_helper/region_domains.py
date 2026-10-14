@@ -185,7 +185,9 @@ def _region_is_demanded(
     environment: BuildEnvironment,
     label: str | None = None,
 ) -> bool:
-    if region.spans & keyspace.output_demanded_spans:
+    if region.spans & keyspace.output_demanded_spans and keyspace.carries_output(
+        region
+    ):
         return True
     # a WHERE filters the statement's rows and never adds one: an aggregate
     # of its own counting the region (`where count(customer_id) by

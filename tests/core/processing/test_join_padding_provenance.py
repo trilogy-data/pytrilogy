@@ -5,6 +5,7 @@ shared padding (one source's rows arriving twice) from unrelated NULLs."""
 from collections.abc import Collection
 from dataclasses import fields
 
+from trilogy.core.domain_graph import DomainGraph, EdgeScope
 from trilogy.core.enums import JoinType, Modifier, Purpose, SourceType
 from trilogy.core.models.build import (
     BuildColumnAssignment,
@@ -210,17 +211,22 @@ def test_a_span_out_of_play_attributes_nothing():
     assert _matrix(USER, {}) == {}
 
 
+def _grouped(canonical: str, member: str) -> BuildEnvironment:
+    """An environment whose one scoped join group roots `member` on
+    `canonical`."""
+    joins = [((canonical, member, JoinType.LEFT_OUTER), EdgeScope.STATEMENT)]
+    return BuildEnvironment(domain_graph=DomainGraph.from_scoped_joins(joins))
+
+
 def test_scoped_join_spelling_names_the_same_span():
-    environment = BuildEnvironment()
-    environment.scoped_join_key_groups = {CANON: {USER}}
+    environment = _grouped(CANON, USER)
     spellings = _span_spellings(frozenset({USER}), environment)
     assert spellings == {USER: CANON, CANON: CANON}
     assert _matrix(CANON, spellings) == {ORDER: frozenset({CANON})}
 
 
 def test_unrelated_scoped_join_adds_no_spelling():
-    environment = BuildEnvironment()
-    environment.scoped_join_key_groups = {CANON: {"local.elsewhere"}}
+    environment = _grouped(CANON, "local.elsewhere")
     assert _span_spellings(frozenset({USER}), environment) == {USER: USER}
 
 
@@ -238,7 +244,7 @@ def test_rowset_body_padding_is_named_by_the_readers_handle():
         USER: HANDLE,
     }
     assert _matrix(USER, {USER: HANDLE}) == {ORDER: frozenset({HANDLE})}
-    environment.scoped_join_key_groups = {CANON: {HANDLE}}
+    environment = _grouped(CANON, HANDLE)
     assert _span_spellings(frozenset({HANDLE}), environment, witnessed) == {
         HANDLE: CANON,
         CANON: CANON,
