@@ -387,7 +387,8 @@ assert count(id ? city = 'X') >= 3;
 
 
 class TestPartialTarget:
-    def test_filtered_assertions_plan_on_the_pinned_asset(self) -> None:
+    @pytest.mark.parametrize("complete", ["complete where city = 'X'\n", ""])
+    def test_filtered_assertions_plan_on_the_pinned_asset(self, complete: str) -> None:
         executor = Dialects.DUCK_DB.default_executor(environment=Environment())
         executor.execute_raw_sql(
             "CREATE TABLE cells AS SELECT 'X' AS city, 2.0 AS scale"
@@ -396,7 +397,9 @@ class TestPartialTarget:
             "CREATE TABLE raw AS SELECT * FROM (VALUES (1, 'X', 'A', 1.0),"
             " (2, 'X', 'A', 2.0), (3, 'X', 'B', 3.0)) t(id, city, source, raw_dbh)"
         )
-        executor.parse_text(PARTIAL_MODEL)
+        executor.parse_text(
+            PARTIAL_MODEL.replace("complete where city = 'X'\n", complete)
+        )
         built = executor.environment.datasources["built"]
         executor.update_datasource(built)
         executor.execute_raw_sql("DELETE FROM raw WHERE id = 1")
