@@ -843,6 +843,10 @@ class RefreshPolicy:
     #: widens it, so a value naming only an imported declaration is rejected up
     #: front rather than silently doing nothing.
     build_scope: frozenset[str] = frozenset()
+    #: Datasources whose ``assert`` clauses this run does not evaluate
+    #: (``--skip-validation``): a legitimate drop that the model's own guard
+    #: would otherwise refuse. Reported loudly, never silent.
+    skip_assertions: frozenset[str] = frozenset()
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -857,6 +861,7 @@ class RefreshPolicy:
                 self.force_sources,
                 tuple(sorted(self.partition_selector.items())),
                 self.build_scope,
+                self.skip_assertions,
             )
         )
 
@@ -881,6 +886,9 @@ class RefreshPlan:
     # reported instead, so "I did not rebuild your stale upstream" is visible
     # rather than silent.
     out_of_scope: list[StaleAsset] = field(default_factory=list)
+    # Datasources built without evaluating their `assert` clauses; see
+    # RefreshPolicy.skip_assertions.
+    skip_assertions: frozenset[str] = frozenset()
 
     @property
     def refresh_assets(self) -> list[StaleAsset]:
@@ -1017,6 +1025,7 @@ def create_refresh_plan(
         root_watermarks=root_watermarks,
         partitions=partitions,
         out_of_scope=out_of_scope,
+        skip_assertions=policy.skip_assertions,
     )
     if policy.partition_selector:
         # ``extra_skip``, not ``all_skip``: a forced source is skipped by
@@ -1111,6 +1120,7 @@ def _execute_one_asset(
     on_refresh: Callable[[str, str], None] | None,
     on_refresh_query: Callable[[str, str], None] | None,
     dry_run: bool,
+    skip_assertions: frozenset[str] = frozenset(),
 ) -> None:
     """Run a single refresh asset, dispatching on kind.
 
@@ -1178,6 +1188,7 @@ def _execute_one_asset(
                 keys=asset.filters,
                 dry_run=dry_run,
                 partitions=asset.partitions or None,
+                check_assertions=asset.datasource_id not in skip_assertions,
             )
         except Exception as e:
             raise RefreshAssetError(asset.datasource_id, asset.reason, e) from e
@@ -1266,6 +1277,7 @@ def execute_refresh_plan(
             on_refresh,
             on_refresh_query,
             dry_run,
+            plan.skip_assertions,
         )
         refreshed += 1
         handled.add(asset.datasource_id)
@@ -1294,6 +1306,7 @@ def execute_refresh_plan(
                 on_refresh,
                 on_refresh_query,
                 dry_run,
+                plan.skip_assertions,
             )
             refreshed += 1
             total_stale += 1

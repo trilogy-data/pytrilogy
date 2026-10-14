@@ -86,6 +86,32 @@ def root_probe_progress(total: int) -> _ProbeProgressContext:
     return _ProbeProgressContext(total, task_label="Probing root watermarks")
 
 
+def show_asset_assertions(
+    datasource: Any, skipped: bool, dry_run: bool, quiet: bool
+) -> None:
+    """Under an asset's "Refreshing" line: the `assert` clauses that gate its
+    swap. A dry run lists them; a skip is called out whatever the mode, since
+    overriding a guard is the kind of thing a reader must not miss."""
+    from trilogy.execution.assertions import render_assertion
+    from trilogy.execution.report import emit_asset_assertions
+    from trilogy.scripts.display_core import print_warning
+
+    if datasource is None or not datasource.assertions:
+        return
+    rendered = [render_assertion(a) for a in datasource.assertions]
+    emit_asset_assertions(datasource.identifier, rendered, skipped, dry_run)
+    if quiet:
+        return
+    if skipped:
+        print_warning(
+            f"    skipping {len(rendered)} assertion(s) on {datasource.identifier}"
+            " (--skip-validation)"
+        )
+    elif dry_run:
+        for line in rendered:
+            print_info(f"    assert {line}")
+
+
 def _common_prefix(strings: list[str]) -> str:
     if not strings:
         return ""

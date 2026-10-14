@@ -14,7 +14,7 @@ from trilogy.core.assertions import (
     substitute,
 )
 from trilogy.core.enums import FunctionType
-from trilogy.core.exceptions import InvalidSyntaxException
+from trilogy.core.exceptions import InvalidSyntaxException, ModelValidationError
 from trilogy.core.models.author import ConceptRef, Function
 from trilogy.core.models.environment import Environment
 from trilogy.execution.assertions import DatasourceAssertionError
@@ -249,3 +249,50 @@ class TestTableTarget:
         executor.execute_raw_sql("DELETE FROM raw WHERE id >= 10")
         with pytest.raises(DatasourceAssertionError):
             executor.execute_text("persist into built from select id, source;")
+
+
+class TestSkipAndValidate:
+    def test_check_assertions_false_builds_past_a_violation(
+        self, tmp_path: Path, caplog
+    ) -> None:
+        target = tmp_path / "built.parquet"
+        executor, built = _executor(tmp_path, f"file `{target.as_posix()}`")
+        executor.update_datasource(built)
+        executor.execute_raw_sql("DELETE FROM raw WHERE id >= 10")
+        with caplog.at_level("WARNING", logger="trilogy"):
+            executor.update_datasource(built, check_assertions=False)
+        assert "Skipping 3 assertion(s) on built" in caplog.text
+        assert duckdb.sql(f"SELECT count(*) FROM '{target.as_posix()}'").fetchall() == [
+            (10,)
+        ]
+        # the next build is checked again, against the new baseline
+        with pytest.raises(DatasourceAssertionError):
+            executor.execute_raw_sql("DELETE FROM raw WHERE id >= 2")
+            executor.update_datasource(built)
+
+    def test_validate_datasource_runs_prior_free_assertions(self) -> None:
+        executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+        query = (
+            "query '''select 1 as id, 'A' as source union all"
+            " select 2, 'A' union all select 3, 'B' '''\n"
+        )
+        executor.parse_text(
+            HEADER
+            + "datasource plain (id: id, source: source) grain (id)\n"
+            + query
+            + "assert count(id ? source = 'A') >= 2\n"
+            + "assert count(id) >= prior(count(id));\n"
+            + "datasource low (id: id, source: source) grain (id)\n"
+            + query
+            + "assert count(id) >= 5;"
+        )
+        rows = executor.execute_text("validate datasources plain;")[0].fetchall()
+        checks = {
+            row["expected"]: row for row in rows if row["check_type"] == "assertion"
+        }
+        passed = checks["count(id ? source = 'A') >= 2"]
+        assert passed["ran"] is True and passed["result"] is None
+        not_run = checks["count(id) >= prior(count(id))"]
+        assert not_run["ran"] is False and not_run["result"] is None
+        with pytest.raises(ModelValidationError, match=r"count\(id\) = 3"):
+            executor.execute_text("validate datasources low;")

@@ -99,12 +99,32 @@ reimplementing them.
 machinery (namespacing, argument validation, rendering); it has no SQL form,
 and rendering it outside an assertion raises.
 
+## Overrides, dry runs and `validate datasource`
+
+- **`trilogy refresh <file> --skip-validation <datasource>`** (repeatable,
+  comma-separated) builds the named datasources without evaluating their
+  assertions, for a drop the model's guard would refuse but you know to be
+  legitimate (a dataset migration that correctly shed 29% of rows). It is
+  carried on `RefreshPolicy.skip_assertions`, the single CLI-to-plan mapping,
+  so it reaches the single-file and directory paths alike. The skip is never
+  silent: a warning line under the asset's "Refreshing" line, an executor log,
+  and an `asset_assertions` record with `skipped: true` in the run report. A
+  name that matches no datasource, or one declaring no `assert`, is rejected
+  up front. The next build's `prior` is the new baseline, so a skip never
+  needs repeating.
+- **`refresh --dry-run`** lists each stale asset's assertions under its
+  "Would refresh" line and emits the same `asset_assertions` record, so a
+  reviewer can see which checks gate a build before running it.
+- **`validate datasource <name>`** runs the datasource's assertions against
+  the asset as published, as `assertion` rows beside the type, grain and
+  domain checks; a failure fails the validation like any other. There is one
+  asset and no previous one, so an assertion that reads `prior(...)` is
+  listed with `ran = false` rather than evaluated.
+
 ## Not yet done
 
-- An override for a legitimate drop (`--skip-assertions`, or a one-shot
-  committable override for cloud jobs).
-- Listing assertions in `refresh --dry-run`, and a `--check-assertions` mode
-  that builds to staging and evaluates without swapping.
+- A `--check-assertions` mode that builds to staging and evaluates without
+  swapping.
+- A committable one-shot override for cloud jobs, which cannot pass flags.
 - Reusable assertions attached from an import (one relative guard shared by
   many city models).
-- Running assertions (without `prior`) from `validate datasource`.

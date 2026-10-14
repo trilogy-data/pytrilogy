@@ -35,6 +35,7 @@ class ExpectationType(Enum):
     LOGICAL = "logical"
     ROWCOUNT = "rowcount"
     DATA_TYPE_LIST = "data_type_list"
+    ASSERTION = "assertion"
 
 
 @dataclass

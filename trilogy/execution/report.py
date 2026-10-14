@@ -231,6 +231,20 @@ def emit_asset_refresh(
     )
 
 
+def emit_asset_assertions(
+    datasource_id: str, assertions: Sequence[str], skipped: bool, dry_run: bool
+) -> None:
+    """The ``assert`` clauses gating one asset's refresh, and whether the
+    caller asked for them to be skipped."""
+    emit_report(
+        "asset_assertions",
+        datasource_id=datasource_id,
+        assertions=list(assertions),
+        skipped=skipped or None,
+        dry_run=dry_run or None,
+    )
+
+
 def emit_asset_refresh_query(datasource_id: str, sql: str, dry_run: bool) -> None:
     emit_report(
         "asset_refresh_query",

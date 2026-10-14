@@ -78,6 +78,7 @@ from trilogy.scripts.display_refresh import (  # noqa: F401
     _ProbeProgressContext,
     probe_progress,
     root_probe_progress,
+    show_asset_assertions,
     show_asset_status_summary,
     show_grouped_refresh_assets,
     show_managed_asset_list,
