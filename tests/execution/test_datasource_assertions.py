@@ -363,3 +363,44 @@ class TestSkipAndValidate:
         assert not_run["ran"] is False and not_run["result"] is None
         with pytest.raises(ModelValidationError, match=r"count\(id\) = 3"):
             executor.execute_text("validate datasources low;")
+
+
+PARTIAL_MODEL = """
+key id int;
+key city string;
+property id.source string;
+property id.raw_dbh float;
+property id.dbh float;
+property city.scale float;
+root datasource cells (city: city, scale: scale) grain (city) address cells;
+root datasource raw (id: id, city: city, source: source, raw_dbh: raw_dbh)
+grain (id) address raw;
+auto merged_dbh <- max(raw_dbh * scale) by id;
+merge merged_dbh into dbh;
+partial datasource built (id: id, city: city, source: source, dbh: dbh)
+grain (id)
+complete where city = 'X'
+address built
+assert count(id ? source = 'A') >= 2
+assert count(id ? city = 'X') >= 3;
+"""
+
+
+class TestPartialTarget:
+    def test_filtered_assertions_plan_on_the_pinned_asset(self) -> None:
+        executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+        executor.execute_raw_sql(
+            "CREATE TABLE cells AS SELECT 'X' AS city, 2.0 AS scale"
+        )
+        executor.execute_raw_sql(
+            "CREATE TABLE raw AS SELECT * FROM (VALUES (1, 'X', 'A', 1.0),"
+            " (2, 'X', 'A', 2.0), (3, 'X', 'B', 3.0)) t(id, city, source, raw_dbh)"
+        )
+        executor.parse_text(PARTIAL_MODEL)
+        built = executor.environment.datasources["built"]
+        executor.update_datasource(built)
+        executor.execute_raw_sql("DELETE FROM raw WHERE id = 1")
+        with pytest.raises(DatasourceAssertionError) as info:
+            executor.update_datasource(built)
+        assert "count(id ? source = 'A') = 1" in str(info.value)
+        assert "count(id ? city = 'X') = 2" in str(info.value)

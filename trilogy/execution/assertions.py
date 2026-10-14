@@ -34,7 +34,7 @@ from trilogy.core.assertions import (
     plan_assertion,
     substitute,
 )
-from trilogy.core.enums import DatasourceState
+from trilogy.core.enums import DatasourceState, Modifier
 from trilogy.core.models.author import ConceptRef
 from trilogy.core.models.datasource import Address, Datasource, DatasourceAssertion
 from trilogy.core.models.environment import Environment
@@ -71,10 +71,20 @@ class DatasourceAssertionError(RuntimeError):
 def pinned_datasource(
     environment: Environment, datasource: Datasource, address: Address
 ) -> Iterator[Datasource]:
-    """Plan against ``datasource`` at ``address`` and nothing else."""
+    """Plan against ``datasource`` at ``address`` and nothing else.
+
+    The pinned copy drops any partial claim: its rows are the whole population
+    the assertion is about. Left partial, the planner looks past it for a
+    complete source and, with the rest hidden, can route through a derivation
+    whose inputs no visible datasource binds.
+    """
     pinned = datasource.duplicate()
     pinned.address = address
     pinned.status = DatasourceState.PUBLISHED
+    pinned.is_partial = False
+    pinned.non_partial_for = None
+    for column in pinned.columns:
+        column.modifiers = [m for m in column.modifiers if m != Modifier.PARTIAL]
     key = datasource.identifier
     others = [k for k in environment.datasources if k != key]
     with hidden_datasources(environment, others):
