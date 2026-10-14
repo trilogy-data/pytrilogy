@@ -122,10 +122,17 @@ class AddressType(Enum):
     TABLE = "table"
     QUERY = "query"
     PYTHON_SCRIPT = "python_script"
+    # A compiled program honoring the same contract (e.g. a trilogy-io binary).
+    EXECUTABLE = "executable"
     CSV = "csv"
     TSV = "tsv"
     PARQUET = "parquet"
     SQL = "sql"
+
+    @property
+    def is_program(self) -> bool:
+        """Run to produce an Arrow stream, rather than read."""
+        return self in (AddressType.PYTHON_SCRIPT, AddressType.EXECUTABLE)
 
 
 class Modifier(Enum):

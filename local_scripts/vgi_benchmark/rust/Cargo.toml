@@ -5,9 +5,10 @@ edition = "2021"
 publish = false
 
 [dependencies]
-# `source`: the current contract (Arrow IPC on stdout) via trilogy-io.
-trilogy-io = { path = "../../../crates/trilogy-io" }
-arrow = { version = "59", features = ["ipc"] }
+# `source`: the current contract (Arrow IPC on stdout) via trilogy-io; with
+# `--vgi` it serves itself (trilogy-io's resident mode).
+trilogy-io = { path = "../../../crates/trilogy-io", features = ["vgi"] }
+arrow = { version = "60", features = ["ipc"] }
 # `resident`: the same rows served by a pooled VGI worker. vgi is Query Farm
 # Source-Available licensed; this crate is a local benchmark only.
 vgi = { version = "0.43", default-features = false }

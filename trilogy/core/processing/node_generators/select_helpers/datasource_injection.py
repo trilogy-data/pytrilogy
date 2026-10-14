@@ -3,7 +3,6 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 from trilogy.core.enums import (
-    AddressType,
     BooleanOperator,
     ComparisonOperator,
     Modifier,
@@ -42,7 +41,7 @@ def _datasource_score(ds: BuildDatasource) -> int:
         return 2
     if ds.address.is_query:
         return 0
-    if ds.address.type == AddressType.PYTHON_SCRIPT:
+    if ds.address.type.is_program:
         return 0
     if ds.address.is_file:
         return 1

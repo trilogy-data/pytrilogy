@@ -14,8 +14,11 @@ directly with the SQL the engine would render:
   ``read_arrow``.
 - ``vgi_bridge``: haybarn + the ``trilogy.dialect.duckdb_vgi`` bridge, which
   runs the binary per scan and streams its stdout.
-- ``vgi_resident``: haybarn + ``resident.exe``, a pooled VGI worker that
-  generates the same rows in-process.
+- ``vgi_resident``: haybarn + ``resident.exe``, a hand-written pooled VGI worker
+  that generates the same rows in-process.
+- ``trilogy_io_resident``: the ``source`` binary itself served with ``--vgi``
+  (trilogy-io's ``vgi`` feature), which is what the engine attaches for a rust
+  datasource under the vgi transport.
 """
 
 from __future__ import annotations
@@ -75,7 +78,25 @@ def vgi_resident(rows: int, staging: Path) -> tuple[object, str]:
     return con, f"resident.main.src({rows})"
 
 
-MODES = {"current": current, "vgi_bridge": vgi_bridge, "vgi_resident": vgi_resident}
+def trilogy_io_resident(rows: int, staging: Path) -> tuple[object, str]:
+    import haybarn
+
+    from trilogy.dialect.duckdb import VGI_SOURCE_CATALOG
+
+    con = haybarn.connect()
+    con.execute("LOAD vgi")
+    con.execute(
+        f"ATTACH '{VGI_SOURCE_CATALOG}' AS src (TYPE vgi, LOCATION '{SOURCE} --vgi')"
+    )
+    return con, f"src.main.source('--limit {rows}')"
+
+
+MODES = {
+    "current": current,
+    "vgi_bridge": vgi_bridge,
+    "vgi_resident": vgi_resident,
+    "trilogy_io_resident": trilogy_io_resident,
+}
 
 
 def run_case(mode: str, rows: int, reps: int) -> dict:

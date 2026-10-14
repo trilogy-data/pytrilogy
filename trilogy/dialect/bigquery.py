@@ -6,7 +6,6 @@ from jinja2 import Template
 
 from trilogy.constants import logger
 from trilogy.core.enums import (
-    AddressType,
     FunctionType,
     JoinType,
     Modifier,
@@ -303,14 +302,14 @@ class BigqueryDialect(BaseDialect):
     def render_source(
         self, address: Address, request: "SourceRequest | None" = None
     ) -> str:
-        if address.type == AddressType.PYTHON_SCRIPT:
+        if address.type.is_program:
             return self.python_staging().table_reference(address)
         return super().render_source(address, request)
 
     def prepare_sources(
         self, addresses: Iterable[Address], executor: "Executor"
     ) -> None:
-        scripts = [a for a in addresses if a.type == AddressType.PYTHON_SCRIPT]
+        scripts = [a for a in addresses if a.type.is_program]
         if not scripts:
             return
         staging = self.python_staging()

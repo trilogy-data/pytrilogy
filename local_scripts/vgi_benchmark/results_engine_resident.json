@@ -1,0 +1,98 @@
+[
+  {
+    "setup_s": 0.6644210000522435,
+    "full_scan": {
+      "first_s": 0.37944409996271133,
+      "warm_median_s": 0.32915739994496107,
+      "warm_min_s": 0.3116436996497214
+    },
+    "one_column": {
+      "first_s": 0.32176190009340644,
+      "warm_median_s": 0.3309121001511812,
+      "warm_min_s": 0.3138848999515176
+    },
+    "staged_arrow_bytes": 29512,
+    "rows": 1000,
+    "transport": "shell"
+  },
+  {
+    "setup_s": 0.9604464001022279,
+    "full_scan": {
+      "first_s": 3.374815800227225,
+      "warm_median_s": 0.009420299902558327,
+      "warm_min_s": 0.007811299990862608
+    },
+    "one_column": {
+      "first_s": 0.01057559996843338,
+      "warm_median_s": 0.007323599886149168,
+      "warm_min_s": 0.00677189975976944
+    },
+    "staged_arrow_bytes": 0,
+    "rows": 1000,
+    "transport": "vgi"
+  },
+  {
+    "setup_s": 0.5862332996912301,
+    "full_scan": {
+      "first_s": 0.39781289966776967,
+      "warm_median_s": 0.3776167002506554,
+      "warm_min_s": 0.36837479984387755
+    },
+    "one_column": {
+      "first_s": 0.3638960001990199,
+      "warm_median_s": 0.3814133000560105,
+      "warm_min_s": 0.37171149998903275
+    },
+    "staged_arrow_bytes": 28893880,
+    "rows": 1000000,
+    "transport": "shell"
+  },
+  {
+    "setup_s": 0.9428396001458168,
+    "full_scan": {
+      "first_s": 1.0520421997644007,
+      "warm_median_s": 0.04235150013118982,
+      "warm_min_s": 0.04089039983227849
+    },
+    "one_column": {
+      "first_s": 0.014776099938899279,
+      "warm_median_s": 0.014006500132381916,
+      "warm_min_s": 0.013604700099676847
+    },
+    "staged_arrow_bytes": 0,
+    "rows": 1000000,
+    "transport": "vgi"
+  },
+  {
+    "setup_s": 0.5869549997150898,
+    "full_scan": {
+      "first_s": 0.940688599832356,
+      "warm_median_s": 1.8911357996985316,
+      "warm_min_s": 0.9461506996303797
+    },
+    "one_column": {
+      "first_s": 0.9131586002185941,
+      "warm_median_s": 0.9231159002520144,
+      "warm_min_s": 0.8952524000778794
+    },
+    "staged_arrow_bytes": 288933544,
+    "rows": 10000000,
+    "transport": "shell"
+  },
+  {
+    "setup_s": 0.9598881001584232,
+    "full_scan": {
+      "first_s": 3.250340700149536,
+      "warm_median_s": 0.2385981003753841,
+      "warm_min_s": 0.2294277003966272
+    },
+    "one_column": {
+      "first_s": 0.06895679980516434,
+      "warm_median_s": 0.06613940000534058,
+      "warm_min_s": 0.06263800011947751
+    },
+    "staged_arrow_bytes": 0,
+    "rows": 10000000,
+    "transport": "vgi"
+  }
+]

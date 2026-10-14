@@ -265,6 +265,7 @@ TOKEN_HYDRATORS: dict[SyntaxTokenKind, TokenHydrator] = {
     SyntaxTokenKind.PERSIST_MODE: PARSE_PERSIST_MODE,
     SyntaxTokenKind.FILE_PATH: PARSE_FILE_PATH,
     SyntaxTokenKind.F_FILE_PATH: PARSE_F_FILE_PATH,
+    SyntaxTokenKind.EXEC_PATH: PARSE_FILE_PATH,
     SyntaxTokenKind.F_QUOTED_ADDRESS: PARSE_F_QUOTED_ADDRESS,
     SyntaxTokenKind.CHART_TYPE: PARSE_CHART_TYPE,
     SyntaxTokenKind.CHART_PLACE_TYPE: PARSE_CHART_PLACE_TYPE,

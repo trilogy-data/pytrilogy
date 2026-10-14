@@ -350,6 +350,7 @@ class SyntaxTokenKind(str, Enum):
     PERSIST_MODE = "persist_mode"
     FILE_PATH = "file_path"
     F_FILE_PATH = "f_file_path"
+    EXEC_PATH = "exec_path"
     F_QUOTED_ADDRESS = "f_quoted_address"
     CHART_TYPE = "chart_type"
     CHART_PLACE_TYPE = "chart_place_type"
@@ -701,6 +702,7 @@ LARK_TOKEN_KIND: dict[str, SyntaxTokenKind] = {
     "PERSIST_MODE": SyntaxTokenKind.PERSIST_MODE,
     "FILE_PATH": SyntaxTokenKind.FILE_PATH,
     "F_FILE_PATH": SyntaxTokenKind.F_FILE_PATH,
+    "EXEC_PATH": SyntaxTokenKind.EXEC_PATH,
     "F_QUOTED_ADDRESS": SyntaxTokenKind.F_QUOTED_ADDRESS,
     "CHART_TYPE": SyntaxTokenKind.CHART_TYPE,
     "CHART_PLACE_TYPE": SyntaxTokenKind.CHART_PLACE_TYPE,

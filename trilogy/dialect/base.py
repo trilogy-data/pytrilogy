@@ -1022,7 +1022,7 @@ class BaseDialect:
         columns. The rendered WHERE is unchanged either way, so returning None
         only costs the optimization.
         """
-        if address.type != AddressType.PYTHON_SCRIPT or not isinstance(cte, CTE):
+        if not address.type.is_program or not isinstance(cte, CTE):
             return None
         if isinstance(cte, DatasourceCTE):
             datasource = cte.datasource

@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any
 
-from trilogy.io.errors import ERROR_PREFIX, SCRIPT_ERROR_EXIT_CODE
+from trilogy.io.errors import ERROR_PREFIX, SCRIPT_ERROR_EXIT_CODE, VGI_FAILURE_MARKER
 from trilogy.io.runner import METADATA_PREFIX
 from trilogy.io.sinks import normalize_object_uri, open_uri_sink
 
@@ -60,10 +60,6 @@ RETRYABLE_UV_ERROR_MARKERS = (
 )
 
 UV_RUN_PREFIX = ("uv", "run", "--no-project", "--quiet")
-
-# Prefixes the one-line JSON failure the VGI worker (``duckdb_vgi``) raises, so
-# the executor can rebuild the PythonDatasourceError from DuckDB's message.
-VGI_FAILURE_MARKER = "trilogy-script-failure"
 
 # Identifier-safe stem for generated staging table names.
 _UNSAFE_IDENTIFIER = re.compile(r"[^A-Za-z0-9_]")
@@ -192,7 +188,7 @@ def _stream_once(
     failure: Exception | None = None
     with tempfile.TemporaryFile() as error_file:
         process = subprocess.Popen(
-            build_uv_command(script, args),
+            build_script_command(script, args),
             stdout=subprocess.PIPE,
             stderr=error_file,
         )

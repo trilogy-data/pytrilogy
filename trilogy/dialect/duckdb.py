@@ -1,24 +1,29 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+import shlex
+import subprocess
 import sys
 from os import environ
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
 
     from trilogy.constants import Rendering
     from trilogy.core.statements.execute import ProcessedQuery
     from trilogy.dialect.config import DialectConfig
     from trilogy.dialect.python_source import PythonDatasourceError
     from trilogy.engine import ResultProtocol
+    from trilogy.executor import Executor
     from trilogy.io.contract import SourceRequest
     from trilogy.staging import StagingConfig
 
 
+from trilogy.constants import logger
 from trilogy.core.enums import (
     AddressType,
     FunctionType,
@@ -30,6 +35,7 @@ from trilogy.core.enums import (
 from trilogy.core.models.core import CONCRETE_TYPES, DataType
 from trilogy.core.models.datasource import Address
 from trilogy.dialect.base import BaseDialect, is_array_arg
+from trilogy.dialect.cancel import duckdb_side_cursor
 from trilogy.utility import safe_open
 
 SENTINAL_AUTO_CAPTURE_GROUP_VALUE = "-1"
@@ -264,23 +270,57 @@ LOAD shellfs;
 LOAD arrow;
 SET VARIABLE __trilogy_uv_temp_dir = '{err_dir}';
 CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
-    SELECT * FROM read_arrow('uv run --no-project --quiet ' || script || ' ' || args || ' 2>''' || getvariable('__trilogy_uv_temp_dir') || md5(script || args) || '.err'' |');
+    SELECT * FROM read_arrow(CASE WHEN suffix(script, '.py') THEN 'uv run --no-project --quiet ' ELSE '' END || script || ' ' || args || ' 2>''' || getvariable('__trilogy_uv_temp_dir') || md5(script || args) || '.err'' |');
 """
 
 
 VGI_CATALOG = "trilogy_io"
+# What a source run with --vgi serves (trilogy.io.vgi / the trilogy-io crate);
+# each is attached under its own alias.
+VGI_SOURCE_CATALOG = "trilogy_source"
+
+
+def vgi_location(argv: list[str], is_windows: bool) -> str:
+    """``argv`` as the shell command the vgi extension launches (and pools)."""
+    if not is_windows:
+        return shlex.join(argv)
+    command = subprocess.list2cmdline(argv)
+    # cmd.exe /c strips the first and last quote of a line that starts with
+    # one, so a quoted executable needs an outer pair to survive.
+    return f'"{command}"' if command.startswith('"') else command
 
 
 def vgi_worker_command(python_executable: str, is_windows: bool) -> str:
-    """The command the vgi extension launches (and pools) as the bridge worker."""
-    command = f'"{python_executable}" -m trilogy.dialect.duckdb_vgi'
-    # cmd.exe /c strips the first and last quote of a line that starts with one,
-    # so the quoted executable needs an outer pair to survive.
-    return f'"{command}"' if is_windows else command
+    """The command that runs the bridge worker."""
+    return vgi_location(
+        [python_executable, "-m", "trilogy.dialect.duckdb_vgi"], is_windows
+    )
+
+
+def resident_command(location: str) -> list[str]:
+    """How to start a source as its own VGI worker (``--vgi``)."""
+    from trilogy.dialect.python_source import UV_RUN_PREFIX
+    from trilogy.io.errors import VGI_FLAG
+
+    if Path(location).suffix == ".py":
+        # The script's own dependencies need not include vgi.
+        return [*UV_RUN_PREFIX, "--with", "vgi-python", location, VGI_FLAG]
+    return [location, VGI_FLAG]
+
+
+def resident_alias(location: str) -> str:
+    """A catalog alias per source *version*: an edited or rebuilt source gets a
+    fresh worker rather than the pooled one still running the old code."""
+    try:
+        mtime = Path(location).stat().st_mtime_ns
+    except OSError:
+        mtime = 0
+    digest = hashlib.md5(f"{location}|{mtime}".encode()).hexdigest()[:12]
+    return f"trilogy_src_{digest}"
 
 
 def get_vgi_setup_sql(python_executable: str, is_windows: bool) -> str:
-    """Attach the bridge worker that serves python datasources over VGI."""
+    """Attach the bridge worker that serves script datasources over VGI."""
     location = vgi_worker_command(python_executable, is_windows).replace("'", "''")
     return f"""
 INSTALL vgi FROM community;
@@ -292,7 +332,9 @@ ATTACH IF NOT EXISTS '{VGI_CATALOG}' (TYPE vgi, LOCATION '{location}');
 # DuckDB reports a failed shellfs pipe only by its command line; both uv_run
 # forms above embed the script and its stderr sidecar there.
 _PIPE_FAILURE = re.compile(r"Pipe process exited abnormally code=(-?\d+): (.*?) \|")
-_PIPE_SCRIPT = re.compile(r'duckdb_uv "[^"]*" "[^"]*" "([^"]*)"|--quiet (\S+)')
+_PIPE_SCRIPT = re.compile(
+    r'duckdb_uv "[^"]*" "[^"]*" "([^"]*)"|--quiet (\S+)|^(?!uv |call )(\S+) .*2>'
+)
 _PIPE_STDERR = re.compile(r"""["']([^"']+\.err)["']""")
 
 
@@ -336,7 +378,7 @@ def python_datasource_failure(error: Exception) -> PythonDatasourceError | None:
         except OSError:
             pass
     return PythonDatasourceError(
-        (script.group(1) or script.group(2)) if script else command,
+        next(g for g in script.groups() if g) if script else command,
         int(failure.group(1)),
         stderr,
     )
@@ -474,8 +516,19 @@ class DuckDBDialect(BaseDialect):
             staging=staging,
             instance_id=instance_id,
         )
-        from trilogy.dialect.config import DuckDBConfig
+        from trilogy.dialect.config import DuckDBConfig, PythonDatasourceTransport
 
+        self._vgi = (
+            isinstance(config, DuckDBConfig)
+            and config.enable_python_datasources
+            and config.python_datasource_transport == PythonDatasourceTransport.VGI
+        )
+        # Sources prepare_sources started as their own pooled worker, by
+        # location -> attached alias. Anything absent renders via the bridge.
+        self._residents: dict[str, str] = {}
+        self._not_resident: set[str] = set()
+        # Resident workers have to be attached before a query references them.
+        self.REQUIRES_SOURCE_PREPARATION = self._vgi
         if isinstance(config, DuckDBConfig) and config.gcs_cache_bust:
             import random
 
@@ -484,6 +537,43 @@ class DuckDBDialect(BaseDialect):
             self._gcs_cache_bust_token = None
 
     _GCS_PREFIXES = ("gcs://", "gs://", "https://storage.googleapis.com")
+
+    def prepare_sources(self, addresses: Iterable[Address], executor: Executor) -> None:
+        """Start each program source as its own pooled VGI worker, once.
+
+        A source that cannot serve itself (a raw script, a pytrilogy without
+        ``--vgi``, a binary built without the ``vgi`` feature) fails to attach
+        and is read through the bridge instead, which handles any program.
+        """
+        for address in addresses:
+            location = address.location
+            if (
+                not address.type.is_program
+                or location in self._residents
+                or location in self._not_resident
+            ):
+                continue
+            alias = resident_alias(location)
+            command = vgi_location(
+                resident_command(location), sys.platform == "win32"
+            ).replace("'", "''")
+            # Attached on a side cursor: an attach is database-wide, and a failed
+            # one must not abort the transaction the query is about to run in.
+            side = duckdb_side_cursor(executor.connection)
+            if side is None:
+                return
+            try:
+                side.execute(
+                    f"ATTACH IF NOT EXISTS '{VGI_SOURCE_CATALOG}' AS {alias} "
+                    f"(TYPE vgi, LOCATION '{command}')"
+                )
+            except Exception as e:
+                logger.info("%s is not resident, using the VGI bridge: %s", location, e)
+                self._not_resident.add(location)
+                continue
+            finally:
+                side.close()
+            self._residents[location] = alias
 
     def _maybe_bust_gcs_url(self, url: str) -> str:
         if self._gcs_cache_bust_token and url.startswith(self._GCS_PREFIXES):
@@ -507,8 +597,8 @@ class DuckDBDialect(BaseDialect):
             return f"read_csv({location_arg}, delim='\\t'{hive})"
         if address.type == AddressType.PARQUET:
             return f"read_parquet({location_arg}{hive})"
-        if address.type == AddressType.PYTHON_SCRIPT:
-            from trilogy.dialect.config import DuckDBConfig, PythonDatasourceTransport
+        if address.type.is_program:
+            from trilogy.dialect.config import DuckDBConfig
 
             if not (
                 isinstance(self.config, DuckDBConfig)
@@ -524,8 +614,11 @@ class DuckDBDialect(BaseDialect):
             from trilogy.dialect.source_pushdown import render_args
 
             args = render_args(request)
-            if self.config.python_datasource_transport == PythonDatasourceTransport.VGI:
+            if self._vgi:
                 escaped = args.replace("'", "''")
+                alias = self._residents.get(address.location)
+                if alias is not None:
+                    return f"{alias}.main.source('{escaped}')"
                 return f"{VGI_CATALOG}.main.script('{address.location}', '{escaped}')"
             if not args:
                 return f"uv_run('{address.location}')"

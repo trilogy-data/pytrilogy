@@ -29,7 +29,7 @@ from trilogy.io.contract import (
     pushdown_parameters,
     request_from_strings,
 )
-from trilogy.io.errors import ERROR_PREFIX, SCRIPT_ERROR_EXIT_CODE
+from trilogy.io.errors import ERROR_PREFIX, SCRIPT_ERROR_EXIT_CODE, VGI_FLAG
 from trilogy.io.sinks import Format, write
 
 METADATA_PREFIX = "trilogy."
@@ -168,6 +168,14 @@ def run(
     (``limit``, ``columns``, ``filters``, ``since``, ``partition``) they are
     bound and it owns them; everything else is enforced on the output stream.
     """
+    args = sys.argv[1:] if argv is None else list(argv)
+    if VGI_FLAG in args:
+        # Imported only here: vgi is an optional dependency, and the default
+        # one-shot path must stay as cheap as it is.
+        from trilogy.io.vgi import serve
+
+        serve(fn, schema=schema, watermark=watermark)
+        return 0
     try:
         invocation = parse_args(argv)
         if invocation.describe:
@@ -196,21 +204,21 @@ def run(
         return SCRIPT_ERROR_EXIT_CODE
 
 
-def _report(error: BaseException) -> None:
+def error_report(error: BaseException) -> str:
     """Machine-readable line first, then the traceback a human needs."""
-    sys.stderr.write(
-        ERROR_PREFIX
-        + json.dumps(
-            {
-                "type": type(error).__name__,
-                "message": str(error),
-                "contract": CONTRACT_VERSION,
-                "retryable": isinstance(error, RETRYABLE_ERRORS),
-            }
-        )
-        + "\n"
+    line = json.dumps(
+        {
+            "type": type(error).__name__,
+            "message": str(error),
+            "contract": CONTRACT_VERSION,
+            "retryable": isinstance(error, RETRYABLE_ERRORS),
+        }
     )
-    traceback.print_exc(file=sys.stderr)
+    return f"{ERROR_PREFIX}{line}\n" + "".join(traceback.format_exception(error))
+
+
+def _report(error: BaseException) -> None:
+    sys.stderr.write(error_report(error))
     sys.stderr.flush()
 
 

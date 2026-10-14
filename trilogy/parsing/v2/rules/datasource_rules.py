@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import sys
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -393,8 +394,15 @@ def _process_file_path(context: RuleContext, ipath: str) -> tuple[str, str, bool
     in_resolver = isinstance(resolver, DictImportResolver) and resolver.has_data_file(
         ipath, base
     )
-    # Globs cannot be stat'd as a single file; trust the caller.
-    exists = is_cloud or is_glob or in_resolver or Path(base).exists()
+    # Globs cannot be stat'd as a single file; trust the caller. An
+    # extensionless program address resolves to its .exe on Windows.
+    exists = (
+        is_cloud
+        or is_glob
+        or in_resolver
+        or Path(base).exists()
+        or (not suffix and sys.platform == "win32" and Path(base + ".exe").exists())
+    )
     return base, suffix, exists
 
 
@@ -404,6 +412,9 @@ _FILE_TYPE_MAP = {
     ".csv": AddressType.CSV,
     ".tsv": AddressType.TSV,
     ".parquet": AddressType.PARQUET,
+    # A program with no extension (or a Windows .exe) is run, like a .py.
+    "": AddressType.EXECUTABLE,
+    ".exe": AddressType.EXECUTABLE,
 }
 
 

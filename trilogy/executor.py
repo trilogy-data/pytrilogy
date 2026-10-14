@@ -526,10 +526,7 @@ class Executor:
             return datasource
 
         address = datasource.address
-        if (
-            not isinstance(address, Address)
-            or address.type != AddressType.PYTHON_SCRIPT
-        ):
+        if not isinstance(address, Address) or not address.type.is_program:
             return datasource
 
         cached = cache.get(datasource.identifier)

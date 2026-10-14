@@ -170,6 +170,7 @@ FILE_ADDRESS_TYPES = frozenset(
         AddressType.PARQUET,
         AddressType.SQL,
         AddressType.PYTHON_SCRIPT,
+        AddressType.EXECUTABLE,
     }
 )
 
@@ -422,7 +423,7 @@ def stable_asset_key(
     if address_type not in FILE_ADDRESS_TYPES or is_remote_address(address):
         return address
     relative = project_relative_path(address, project_root)
-    if address_type == AddressType.PYTHON_SCRIPT:
+    if address_type.is_program:
         return f"{SCRIPT_KEY_SCHEME}{KEY_SCHEME_SEPARATOR}{relative}"
     return relative
 

@@ -42,6 +42,41 @@ with pa.ipc.new_stream(sys.stdout.buffer, batch.schema) as writer:
         left -= BATCH
 """
 
+# The same rows from a trilogy.io source, resolved from this checkout. Under the
+# vgi transport it serves itself as a pooled worker (resident) instead of being
+# bridged per scan.
+TRILOGY_IO_TEMPLATE = """# /// script
+# requires-python = ">=3.11"
+# dependencies = ["pytrilogy"]
+#
+# [tool.uv.sources]
+# pytrilogy = {{ path = "{root}", editable = true }}
+# ///
+import pyarrow as pa
+
+from trilogy.io import run
+
+ROWS = {rows}
+BATCH = 65536
+
+ids = pa.array(range(BATCH), pa.int64())
+batch = pa.RecordBatch.from_arrays(
+    [ids, pa.array([i * 0.5 for i in range(BATCH)]), pa.array([f"label_{{i % 1000}}" for i in range(BATCH)])],
+    names=["id", "value", "label"],
+)
+
+
+def rows():
+    left = ROWS
+    while left > 0:
+        yield batch.slice(0, min(left, BATCH))
+        left -= BATCH
+
+
+if __name__ == "__main__":
+    raise SystemExit(run(rows, schema=batch.schema))
+"""
+
 MODEL = """
 key id int;
 property id.value float;
@@ -55,9 +90,14 @@ QUERIES = {
 }
 
 
-def write_source(directory: Path, rows: int) -> Path:
+def write_source(directory: Path, rows: int, trilogy_io: bool = False) -> Path:
     path = directory / f"src_{rows}.py"
-    path.write_text(SOURCE_TEMPLATE.format(rows=rows), encoding="utf-8")
+    if trilogy_io:
+        root = Path(__file__).resolve().parents[2].as_posix()
+        text = TRILOGY_IO_TEMPLATE.format(rows=rows, root=root)
+    else:
+        text = SOURCE_TEMPLATE.format(rows=rows)
+    path.write_text(text, encoding="utf-8")
     return path
 
 
@@ -108,13 +148,21 @@ def parent(args: argparse.Namespace) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         directory = Path(tmp)
         for rows in args.rows:
-            source = write_source(directory, rows)
+            source = write_source(directory, rows, args.trilogy_io)
             # Prime uv's environment cache so neither transport pays for it.
             subprocess.run(
                 ["uv", "run", "--no-project", "--quiet", str(source)],
                 stdout=subprocess.DEVNULL,
                 check=True,
             )
+            if args.trilogy_io:
+                # ...and the resident one, which adds vgi-python.
+                subprocess.run(
+                    ["uv", "run", "--no-project", "--quiet", "--with", "vgi-python"]
+                    + [str(source), "--describe"],
+                    stdout=subprocess.DEVNULL,
+                    check=True,
+                )
             for transport in args.transports:
                 proc = subprocess.run(
                     [
@@ -161,6 +209,11 @@ def main() -> None:
     )
     parser.add_argument("--transports", nargs="+", default=["shell", "vgi"])
     parser.add_argument("--reps", type=int, default=5)
+    parser.add_argument(
+        "--trilogy-io",
+        action="store_true",
+        help="generate trilogy.io sources, which run resident under vgi",
+    )
     parser.add_argument("--output")
     parser.add_argument("--child", action="store_true")
     parser.add_argument("--transport")
