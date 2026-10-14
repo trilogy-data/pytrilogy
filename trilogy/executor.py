@@ -270,6 +270,9 @@ class Executor:
             dict[str, Datasource | BuildDatasource] | None
         ) = None
         self._validation_temp_tables: list[str] = []
+        # True while a build runs with its datasource's `assert` clauses
+        # deliberately skipped (refresh --skip-validation).
+        self._assertions_suspended = False
         # TODO: make generic
         if self.dialect == Dialects.DATAFRAME:
             self.engine.setup(self.environment, self.connection)
@@ -543,6 +546,7 @@ class Executor:
         keys: UpdateKeys | None = None,
         dry_run: bool = False,
         partitions: list | None = None,
+        check_assertions: bool = True,
     ) -> str | None:
         """Update a datasource with optional filtering based on update keys.
 
@@ -555,22 +559,42 @@ class Executor:
         a range is filled without rebuilding the range. Slice count is chunked
         only to keep the rendered filter within statement-size limits; how wide
         to fan out is the orchestrator's call, not this method's.
+
+        ``check_assertions=False`` builds without evaluating the datasource's
+        ``assert`` clauses (``refresh --skip-validation``); it is logged, since
+        overriding a guard must never be silent.
         """
-        chunks = self._partition_chunks(partitions)
-        if chunks is not None:
-            rendered = [
-                sql
-                for chunk in chunks
-                if (
-                    sql := self._update_datasource_once(
-                        datasource, None, dry_run, chunk
+        if not check_assertions and datasource.assertions and not dry_run:
+            self.logger.warning(
+                "Skipping %d assertion(s) on %s: validation disabled for this build",
+                len(datasource.assertions),
+                datasource.identifier,
+            )
+        with self._assertions_suspended_if(not check_assertions):
+            chunks = self._partition_chunks(partitions)
+            if chunks is not None:
+                rendered = [
+                    sql
+                    for chunk in chunks
+                    if (
+                        sql := self._update_datasource_once(
+                            datasource, None, dry_run, chunk
+                        )
                     )
-                )
-            ]
-            # No chunks means no stale slices, which means nothing to refresh —
-            # never an unfiltered rebuild.
-            return "\n".join(rendered) if rendered else None
-        return self._update_datasource_once(datasource, keys, dry_run, None)
+                ]
+                # No chunks means no stale slices, which means nothing to
+                # refresh — never an unfiltered rebuild.
+                return "\n".join(rendered) if rendered else None
+            return self._update_datasource_once(datasource, keys, dry_run, None)
+
+    @contextmanager
+    def _assertions_suspended_if(self, suspend: bool) -> Generator[None, None, None]:
+        previous = self._assertions_suspended
+        self._assertions_suspended = previous or suspend
+        try:
+            yield
+        finally:
+            self._assertions_suspended = previous
 
     def _partition_chunks(self, partitions: list | None) -> list[list] | None:
         """Split a slice list into statement-sized chunks, or None if unsliced.
@@ -876,7 +900,7 @@ class Executor:
     def _collect_prior_values(self, datasource: Datasource):
         """The ``prior(...)`` side of the datasource's assertions, read before
         the write replaces the asset. None when there is nothing to check."""
-        if not datasource.assertions:
+        if not datasource.assertions or self._assertions_suspended:
             return None
         from trilogy.execution.assertions import collect_prior_values
 
@@ -885,7 +909,7 @@ class Executor:
     def _check_assertions(
         self, datasource: Datasource, new_address: Address, prior
     ) -> None:
-        if not datasource.assertions:
+        if not datasource.assertions or self._assertions_suspended:
             return
         from trilogy.execution.assertions import check_assertions
 

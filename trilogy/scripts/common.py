@@ -138,6 +138,9 @@ class RefreshParams:
     #: not only what it declares. The scope itself is set where the entrypoint
     #: is known (see ``single_execution``); this only records the intent.
     include_imports: bool = False
+    #: ``--skip-validation``: datasources built without evaluating their
+    #: ``assert`` clauses.
+    skip_validation: frozenset[str] = frozenset()
 
     def policy(self, script_path: "PathlibPath | str | None" = None) -> "RefreshPolicy":
         """The planning half of these params — THE CLI-to-plan mapping.
@@ -161,6 +164,7 @@ class RefreshParams:
                 if self.include_imports or script_path is None
                 else build_scope_for(script_path)
             ),
+            skip_assertions=frozenset(self.skip_validation),
         )
 
 
@@ -202,6 +206,44 @@ def validate_force_sources(
     )
     print_error(f"Unknown {noun} passed to --force: {', '.join(missing)}{hint}")
     raise Exit(1)
+
+
+def validate_skip_validation(
+    skipped: frozenset[str],
+    in_scope: Iterable["Datasource"],
+    imported: Iterable["Datasource"],
+) -> None:
+    """Fail fast when --skip-validation names nothing this run would check.
+
+    Skipping a guard is a deliberate override of the model, so a name that
+    matches no datasource, or one that declares no ``assert``, is a mistake
+    worth stopping on rather than a silent no-op.
+    """
+    if not skipped:
+        return
+    declared = {ds.identifier: ds for ds in in_scope}
+    imported_ids = {ds.identifier for ds in imported}
+    missing = sorted(set(skipped) - set(declared))
+    if missing:
+        noun = "datasource" if len(missing) == 1 else "datasources"
+        hint = (
+            ". Declared in an imported file, and this file builds only what it"
+            " declares — pass --include-imports"
+            if set(missing) & imported_ids
+            else ""
+        )
+        print_error(
+            f"Unknown {noun} passed to --skip-validation: {', '.join(missing)}{hint}"
+        )
+        raise Exit(1)
+    unguarded = sorted(name for name in skipped if not declared[name].assertions)
+    if unguarded:
+        print_error(
+            f"--skip-validation names {', '.join(unguarded)}, which"
+            f" {'declares' if len(unguarded) == 1 else 'declare'} no `assert`"
+            " clause; there is nothing to skip."
+        )
+        raise Exit(1)
 
 
 def validate_partition_selector(
@@ -266,6 +308,7 @@ def validate_refresh_policy(policy: "RefreshPolicy", environment: Environment) -
         partition_key_addresses(in_scope),
         partition_key_addresses(imported),
     )
+    validate_skip_validation(policy.skip_assertions, in_scope, imported)
 
 
 def _observed_nothing(watermark: "DatasourceWatermark | None") -> bool:

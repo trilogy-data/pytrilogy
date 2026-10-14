@@ -46,6 +46,7 @@ from trilogy.core.models.core import (
     TupleWrapper,
     ValidatedType,
 )
+from trilogy.core.models.datasource import Address
 from trilogy.core.validation.common import (
     ExpectationType,
     ValidationTest,
@@ -528,6 +529,57 @@ def inferred_type_check(
     return inferred_type == target_type
 
 
+def validate_assertions(
+    datasource: BuildDatasource,
+    env: Environment,
+    exec: Executor | None,
+) -> list[ValidationTest]:
+    """The datasource's ``assert`` clauses against the asset as published.
+
+    A refresh checks them against a staged build; here there is one asset and
+    no previous one, so an assertion that reads ``prior(...)`` is reported but
+    not run.
+    """
+    from trilogy.core.assertions import plan_assertion
+    from trilogy.execution.assertions import evaluate_assertion, render_assertion
+
+    declared = env.datasources.get(datasource.identifier)
+    if declared is None or not declared.assertions:
+        return []
+    results: list[ValidationTest] = []
+    for assertion in declared.assertions:
+        spelled = render_assertion(assertion)
+        if exec is None or plan_assertion(assertion.condition).uses_prior:
+            results.append(
+                ValidationTest(
+                    check_type=ExpectationType.ASSERTION, expected=spelled, ran=False
+                )
+            )
+            continue
+        address = (
+            datasource.address
+            if isinstance(datasource.address, Address)
+            else Address(location=datasource.address)
+        )
+        failures = evaluate_assertion(exec, declared, assertion, address, None)
+        results.append(
+            ValidationTest(
+                check_type=ExpectationType.ASSERTION,
+                expected=spelled,
+                ran=True,
+                result=(
+                    DatasourceModelValidationError(
+                        f"Datasource {datasource.name} failed assertion: "
+                        + "; ".join(failures)
+                    )
+                    if failures
+                    else None
+                ),
+            )
+        )
+    return results
+
+
 def validate_datasource(
     datasource: BuildDatasource,
     env: Environment,
@@ -696,6 +748,7 @@ def validate_datasource(
         build_env,
         exec,
     )
+    results += validate_assertions(validation_datasource, env, exec)
     if not datasource.grain.components:
         return results
 

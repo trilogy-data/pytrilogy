@@ -773,7 +773,7 @@ def _run_refresh_plan(
     dry_run: bool,
     cascade: bool = True,
 ) -> RefreshResult:
-    from trilogy.scripts.display import print_info
+    from trilogy.scripts.display import print_info, show_asset_assertions
 
     def _addr(ds_id: str) -> str | None:
         ds = exec.environment.datasources.get(ds_id)
@@ -781,10 +781,15 @@ def _run_refresh_plan(
 
     def on_refresh(asset_id: str, reason: str) -> None:
         emit_asset_refresh(asset_id, _addr(asset_id), reason, dry_run)
-        if quiet:
-            return
-        label = "Would refresh" if dry_run else "Refreshing"
-        print_info(f"  {label} {asset_id}: {reason}")
+        if not quiet:
+            label = "Would refresh" if dry_run else "Refreshing"
+            print_info(f"  {label} {asset_id}: {reason}")
+        show_asset_assertions(
+            exec.environment.datasources.get(asset_id),
+            asset_id in plan.skip_assertions,
+            dry_run,
+            quiet,
+        )
 
     def on_refresh_query(ds_id: str, sql: str) -> None:
         emit_asset_refresh_query(ds_id, sql, dry_run)
@@ -862,6 +867,7 @@ def execute_managed_node_for_refresh(
         concept_max_watermarks=dict(store.concept_max_watermarks),
         root_assets=0,
         all_assets=len(target_ds_ids),
+        skip_assertions=policy.skip_assertions if policy else frozenset(),
     )
     if policy is not None and policy.partition_selector:
         # Only this node's datasources: the owner script's environment holds
@@ -1040,6 +1046,17 @@ def run_refresh_command(cli_params: CLIRuntimeParams) -> ParallelExecutionSummar
     help="Force rebuild of specific datasources by name (skip staleness detection)",
 )
 @option(
+    "--skip-validation",
+    multiple=True,
+    help=(
+        "Build these datasources (by name, repeatable or comma-separated) without"
+        " evaluating their `assert` clauses, for a drop the model's own guard"
+        " would refuse but you know to be legitimate. The skip is reported in"
+        " the output and the run report; the next build's `prior` is the new"
+        " baseline, so it never needs repeating."
+    ),
+)
+@option(
     "--include-imports",
     is_flag=True,
     default=False,
@@ -1081,6 +1098,7 @@ def refresh(
     partition: tuple[str, ...],
     env,
     force,
+    skip_validation: tuple[str, ...],
     include_imports: bool,
     interactive,
     dry_run,
@@ -1116,6 +1134,7 @@ def refresh(
         dry_run=dry_run,
         partitions=selected_partitions,
         include_imports=include_imports,
+        skip_validation=parse_force_sources(skip_validation),
     )
 
     cli_params = CLIRuntimeParams(

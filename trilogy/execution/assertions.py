@@ -262,6 +262,21 @@ def _check_one(
     return failures
 
 
+def evaluate_assertion(
+    executor: Executor,
+    datasource: Datasource,
+    assertion: DatasourceAssertion,
+    new_address: Address,
+    prior_values: SideValues | None,
+) -> list[str]:
+    """The failures of one assertion against the build at ``new_address``."""
+    plan = plan_assertion(assertion.condition)
+    new_values = _fetch_side(
+        executor, datasource, new_address, plan.group_keys, plan.new_terms
+    )
+    return _check_one(executor, datasource, assertion, plan, new_values, prior_values)
+
+
 def check_assertions(
     executor: Executor,
     datasource: Datasource,
@@ -273,13 +288,15 @@ def check_assertions(
     failure. ``prior`` is what :func:`collect_prior_values` read before the
     write (None when nothing was collected)."""
     failures: list[str] = []
-    for index, (assertion, plan) in enumerate(_plans(datasource)):
-        new_values = _fetch_side(
-            executor, datasource, new_address, plan.group_keys, plan.new_terms
-        )
-        prior_values = (prior or {}).get(index)
+    for index, assertion in enumerate(datasource.assertions):
         failures.extend(
-            _check_one(executor, datasource, assertion, plan, new_values, prior_values)
+            evaluate_assertion(
+                executor, datasource, assertion, new_address, (prior or {}).get(index)
+            )
         )
     if failures:
         raise DatasourceAssertionError(datasource.identifier, failures)
+
+
+def render_assertion(assertion: DatasourceAssertion) -> str:
+    return _render(assertion.condition)

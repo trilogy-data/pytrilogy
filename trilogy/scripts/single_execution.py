@@ -38,6 +38,7 @@ from trilogy.scripts.display import (
     print_results_table,
     print_success,
     print_warning,
+    show_asset_assertions,
     show_asset_status_summary,
     show_compiled_queries,
     show_derived_value_scopes,
@@ -471,10 +472,15 @@ def _plan_and_execute_refresh(
 
         def on_refresh(asset_id: str, reason: str) -> None:
             emit_asset_refresh(asset_id, addr_map.get(asset_id), reason, dry_run)
-            if quiet:
-                return
-            label = "Would refresh" if dry_run else "Refreshing"
-            print_info(f"  {label} {asset_id}: {reason}")
+            if not quiet:
+                label = "Would refresh" if dry_run else "Refreshing"
+                print_info(f"  {label} {asset_id}: {reason}")
+            show_asset_assertions(
+                exec.environment.datasources.get(asset_id),
+                asset_id in plan.skip_assertions,
+                dry_run,
+                quiet,
+            )
 
         def on_refresh_query(ds_id: str, sql: str) -> None:
             emit_asset_refresh_query(ds_id, sql, dry_run)
