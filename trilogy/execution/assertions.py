@@ -42,7 +42,7 @@ from trilogy.execution.state.exceptions import (
     is_missing_source_error,
     is_schema_mismatch_error,
 )
-from trilogy.execution.state.isolation import hidden_datasources
+from trilogy.execution.state.isolation import hidden_datasources, scope_where
 from trilogy.parsing.render import Renderer
 
 if TYPE_CHECKING:
@@ -93,11 +93,11 @@ def _render(expr: Any) -> str:
     return Renderer().to_string(expr)
 
 
-def _side_query(keys: list[ConceptRef], terms: list) -> str:
+def _side_query(datasource: Datasource, keys: list[ConceptRef], terms: list) -> str:
     items = [_render(k) for k in keys] + [
         f"{_render(t.expr)} as {t.placeholder}" for t in terms
     ]
-    return "select " + ", ".join(items) + ";"
+    return "select " + ", ".join(items) + scope_where(datasource) + ";"
 
 
 def _literal(value: Any) -> Any:
@@ -111,7 +111,7 @@ def _fetch_side(
     keys: list[ConceptRef],
     terms: list,
 ) -> SideValues:
-    text = _side_query(keys, terms)
+    text = _side_query(datasource, keys, terms)
     with pinned_datasource(executor.environment, datasource, address):
         result = executor.execute_ephemeral(text)
     rows = result.fetchall() if result is not None else []

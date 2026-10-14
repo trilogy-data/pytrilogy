@@ -25,7 +25,7 @@ from trilogy.execution.state.declaration import (
     rekey_partitions,
     rekey_watermark,
 )
-from trilogy.execution.state.isolation import hidden_datasources
+from trilogy.execution.state.isolation import hidden_datasources, scope_where
 from trilogy.execution.state.partitions import (
     PartitionObservation,
     is_partitioned,
@@ -130,6 +130,9 @@ class BaseStateStore:
     def __init__(self, cache: ColumnStatsCache | None = None) -> None:
         self.watermarks: dict[str, DatasourceWatermark] = {}
         self.concept_max_watermarks: dict[str, UpdateKey] = {}
+        # scope (` where <complete where>`) -> address -> expectation, for the
+        # targets that hold only part of their population.
+        self._scoped_max_watermarks: dict[str, dict[str, UpdateKey]] = {}
         # ds_id -> (observed slices, expected slices) for partitioned assets.
         self.partitions: dict[
             str, tuple[list[PartitionObservation], list[PartitionObservation]]
@@ -195,6 +198,7 @@ class BaseStateStore:
                 self.partitions.pop(spelling, None)
                 self._model_refreshed.add(spelling)
             self.concept_max_watermarks.clear()
+            self._scoped_max_watermarks.clear()
 
     def _note_declaration(self, ds: Datasource) -> None:
         """Under the lock: ``invalidate`` iterates this map, and probes run in
@@ -265,6 +269,7 @@ class BaseStateStore:
             for probe in affected_probes:
                 self._probe_results.pop(probe, None)
             self.concept_max_watermarks.clear()
+            self._scoped_max_watermarks.clear()
 
     def recorded_model_fingerprint(
         self, env: Environment, ds: Datasource
@@ -503,6 +508,34 @@ class BaseStateStore:
 
         self.concept_max_watermarks = concept_max_watermarks
 
+    def _expected_watermarks(
+        self,
+        env: Environment,
+        executor: Executor,
+        ds: Datasource,
+        root_assets: set[str],
+    ) -> dict[str, UpdateKey]:
+        """What each of `ds`'s watermark keys should have reached. A target
+        holding part of its population is judged against the roots inside its
+        `complete where`, not the max over every partition; a key it cannot
+        scope (a table mtime) keeps the global expectation."""
+        self._ensure_concept_max_watermarks(env, executor, root_assets)
+        where = scope_where(ds)
+        observed = self.watermarks.get(ds.identifier)
+        if not where or observed is None:
+            return self.concept_max_watermarks
+        keys = [key for key in observed.keys if env.concepts.get(key) is not None]
+        with self._lock:
+            scoped = self._scoped_max_watermarks.setdefault(where, {})
+            missing = [key for key in keys if key not in scoped]
+        if missing:
+            found = get_concept_max_watermarks_abstract(
+                missing, executor, root_assets, where
+            )
+            with self._lock:
+                scoped.update(found)
+        return {**self.concept_max_watermarks, **{k: scoped[k] for k in keys}}
+
     def is_stale(
         self,
         env: Environment,
@@ -625,8 +658,7 @@ class BaseStateStore:
                     partitions=slices,
                 )
 
-        # Watermark lag — needs concept_max_watermarks for the comparison.
-        self._ensure_concept_max_watermarks(env, executor, root_assets)
+        expected = self._expected_watermarks(env, executor, ds, root_assets)
         watermark = self.watermarks.get(ds_id)
         if watermark:
             for key, val in watermark.keys.items():
@@ -635,7 +667,7 @@ class BaseStateStore:
                     UpdateKeyType.UPDATE_TIME,
                 ):
                     continue
-                max_val = self.concept_max_watermarks.get(key)
+                max_val = expected.get(key)
                 if not max_val or max_val.value is None:
                     continue
                 try:

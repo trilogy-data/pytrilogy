@@ -481,6 +481,7 @@ def _probe_root_max_values(
     concept_addresses: list[str],
     executor: Executor,
     root_assets: set[str],
+    where: str = "",
 ) -> list[Any] | None:
     """One root-only MAX probe statement; None when planning fails.
 
@@ -496,7 +497,7 @@ def _probe_root_max_values(
     )
     with hidden_datasources(executor.environment, non_roots):
         try:
-            result = executor.execute_ephemeral(f"SELECT {selected};")
+            result = executor.execute_ephemeral(f"SELECT {selected}{where};")
             row = result.fetchone() if result else None
         except UNRESOLVABLE_ERRORS as e:
             logger.debug(
@@ -514,6 +515,7 @@ def get_concept_max_watermarks_abstract(
     concept_addresses: list[str],
     executor: Executor,
     root_assets: set[str],
+    where: str = "",
 ) -> dict[str, UpdateKey]:
     """Compute MAX watermarks for derived concepts using only root datasources.
 
@@ -534,12 +536,12 @@ def get_concept_max_watermarks_abstract(
     unique = list(dict.fromkeys(concept_addresses))
     values: dict[str, Any] = {}
     if unique:
-        batched = _probe_root_max_values(unique, executor, root_assets)
+        batched = _probe_root_max_values(unique, executor, root_assets, where)
         if batched is not None:
             values = dict(zip(unique, batched))
         else:
             for address in unique:
-                single = _probe_root_max_values([address], executor, root_assets)
+                single = _probe_root_max_values([address], executor, root_assets, where)
                 values[address] = None if single is None else single[0]
     return {
         address: UpdateKey(
@@ -610,6 +612,8 @@ def run_freshness_probe(probe_path: str) -> bool:
         ["uv", "run", "--no-project", "--quiet", probe_path],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     if result.returncode != 0:
@@ -630,6 +634,8 @@ def run_refresh_script(script_path: str, cwd: str | None = None) -> None:
         ["uv", "run", "--no-project", "--quiet", script_path],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         cwd=cwd,
         check=False,
     )

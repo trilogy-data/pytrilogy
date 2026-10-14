@@ -1579,6 +1579,7 @@ def test_get_stale_assets_timezone_mismatch_incremental():
     tgt_ds.is_managed = True
     tgt_ds.freshness_by = []
     tgt_ds.incremental_by = [MagicMock()]
+    tgt_ds.non_partial_for = None
 
     mock_env = MagicMock()
     mock_env.datasources = {"tz_source": src_ds, "tz_target": tgt_ds}
@@ -1683,6 +1684,47 @@ def test_derived_freshness_up_to_date():
     stale = state_store.get_stale_assets(executor.environment, executor)
 
     assert len(stale) == 0
+
+
+_SCOPED_TS_SETUP = """
+key sc_id int;
+property sc_id.city string;
+property sc_id.ts datetime;
+
+auto ts_late <- greatest(ts, ts);
+
+root partial datasource sc_root_x (sc_id: sc_id, city: city, ts: ts)
+grain (sc_id)
+complete where city = 'X'
+query '''SELECT 1 as sc_id, 'X' as city, TIMESTAMP '2024-01-20 00:00:00' as ts''';
+
+root partial datasource sc_root_y (sc_id: sc_id, city: city, ts: ts)
+grain (sc_id)
+complete where city = 'Y'
+query '''SELECT 2 as sc_id, 'Y' as city, TIMESTAMP '2024-01-25 00:00:00' as ts''';
+
+partial datasource sc_target (sc_id: sc_id, city: city, {key}: {key})
+grain (sc_id)
+complete where city = 'X'
+address sc_target_table
+freshness by {key};
+
+CREATE IF NOT EXISTS DATASOURCE sc_target;
+"""
+
+
+@pytest.mark.parametrize("key", ["ts", "ts_late"])
+@pytest.mark.parametrize("built, stale", [("2024-01-20", False), ("2024-01-10", True)])
+def test_partial_target_is_judged_inside_its_scope(key, built, stale):
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_SCOPED_TS_SETUP.format(key=key))
+    executor.execute_raw_sql(
+        f"INSERT INTO sc_target_table VALUES (1, 'X', TIMESTAMP '{built} 00:00:00')"
+    )
+    found = BaseStateStore().get_stale_assets(executor.environment, executor)
+    assert [a.datasource_id for a in found] == (["sc_target"] if stale else [])
+    if stale:
+        assert "2024-01-20" in found[0].reason
 
 
 def test_is_missing_local_file_nonexistent(tmp_path):

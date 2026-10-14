@@ -1,6 +1,7 @@
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 
+from trilogy.core.models.datasource import Datasource
 from trilogy.core.models.environment import Environment
 
 
@@ -37,3 +38,14 @@ def hidden_datasources(environment: Environment, hide: Iterable[str]) -> Iterato
             datasources.update(hidden)
         if untouched:
             datasources.mutations, datasources.content_version = pre
+
+
+def scope_where(datasource: Datasource) -> str:
+    """` where <complete where>` for a datasource that holds only part of its
+    population: every question about what it should contain (an assertion, an
+    expected watermark or slice) is asked of that part alone."""
+    if datasource.non_partial_for is None:
+        return ""
+    from trilogy.parsing.render import Renderer
+
+    return f" where {Renderer().to_string(datasource.non_partial_for.conditional)}"

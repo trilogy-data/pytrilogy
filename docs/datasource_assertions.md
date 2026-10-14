@@ -126,6 +126,14 @@ built: 2 assertion(s) failed; the asset was not replaced.
   could never roll out.
 - **NULL** never satisfies an assertion on the new side (reported as such).
   A NULL previous value passes with a warning, like a missing one.
+- **Partial targets** are checked inside their `complete where`: both side
+  queries carry it, so the pinned asset is the complete source of exactly the
+  rows it claims. A partial datasource (or one whose whole grain is `~`) with
+  an `assert` but no `complete where` is a parse error, since it names no
+  population to check. Refresh staleness asks the same question the same way
+  (`scope_where` in `execution/state/isolation.py`): a partial target's
+  expected watermark and expected slices come from the roots inside its scope,
+  not the max over every partition.
 
 ## How it is evaluated
 

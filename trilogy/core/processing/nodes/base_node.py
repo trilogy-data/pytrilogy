@@ -9,9 +9,12 @@ from trilogy.core.enums import (
 from trilogy.core.functions import propagates_argument_nulls
 from trilogy.core.models.build import (
     BoolExpr,
+    BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
     BuildGrain,
+    BuildNavigationWindowItem,
+    BuildNumberingWindowItem,
     BuildOrderBy,
     LooseBuildConceptList,
 )
@@ -167,6 +170,57 @@ def get_all_parent_partial(
         ],
         "address",
     )
+
+
+def _parent_partial(address: str, parents: list["StrategyNode"]) -> bool:
+    emitting = [p for p in parents if address in p.output_lcl]
+    return bool(emitting) and all(p.partial_rows(address) for p in emitting)
+
+
+def _value_arguments(c: BuildConcept) -> list[BuildConcept]:
+    # Grouping axes (`by`, `over`) only say which keys the output covers; a key
+    # missing values pads at the join. The values aggregated are what a partial
+    # population makes wrong.
+    lineage = c.lineage
+    if isinstance(lineage, BuildAggregateWrapper):
+        return list(lineage.function.concept_arguments)
+    if isinstance(lineage, (BuildNumberingWindowItem, BuildNavigationWindowItem)):
+        return [
+            arg
+            for arg in lineage.concept_arguments
+            if arg.address not in {o.address for o in lineage.over}
+        ]
+    return list(lineage.concept_arguments) if lineage else []
+
+
+def _reads_partial(
+    c: BuildConcept, parents: list["StrategyNode"], seen: dict[str, bool]
+) -> bool:
+    if c.address in seen:
+        return seen[c.address]
+    seen[c.address] = False
+    if any(c.address in p.output_lcl for p in parents):
+        result = _parent_partial(c.address, parents)
+    else:
+        result = any(_reads_partial(arg, parents, seen) for arg in _value_arguments(c))
+    seen[c.address] = result
+    return result
+
+
+def get_computed_partial(
+    all_concepts: list[BuildConcept], parents: list["StrategyNode"]
+) -> list[BuildConcept]:
+    """A concept this node computes, rather than reads from a parent, is as
+    incomplete as its inputs: an aggregate or function of a partial input
+    covers only the rows that input has."""
+    seen: dict[str, bool] = {}
+    return [
+        c
+        for c in all_concepts
+        if c.lineage
+        and not any(c.address in p.output_lcl for p in parents)
+        and _reads_partial(c, parents, seen)
+    ]
 
 
 def get_all_parent_nullable(
@@ -377,8 +431,21 @@ class StrategyNode:
             partials = []
         else:
             partials = partial_concepts
+        if self.parents:
+            partials = unique(
+                partials + get_computed_partial(self.output_concepts, self.parents),
+                "address",
+            )
         self.partial_lcl = LooseBuildConceptList(concepts=partials)
         return partials
+
+    def partial_rows(self, address: str) -> bool:
+        """`address` is partial here because rows are missing, not because a
+        `~` key column covers only some of its key's values."""
+        if address not in self.partial_lcl:
+            return False
+        sources = [p for p in self.parents if address in p.output_lcl]
+        return not sources or all(p.partial_rows(address) for p in sources)
 
     def add_output_concepts(
         self, concepts: list[BuildConcept], rebuild: bool = True, unhide: bool = True

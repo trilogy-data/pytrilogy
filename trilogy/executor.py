@@ -1315,6 +1315,8 @@ class Executor:
             command,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=str(self.environment.working_path),
             check=False,
         )

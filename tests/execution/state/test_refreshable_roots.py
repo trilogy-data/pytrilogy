@@ -452,6 +452,17 @@ def test_run_refresh_script_nonzero_exit(tmp_path):
         run_refresh_script(str(script))
 
 
+def test_run_refresh_script_logs_utf8_output(tmp_path, caplog):
+    script = tmp_path / "utf8.py"
+    script.write_text(
+        "import sys; sys.stdout.buffer.write('Łódź\\n'.encode('utf-8'))",
+        encoding="utf-8",
+    )
+    with caplog.at_level("INFO", logger="trilogy"):
+        run_refresh_script(str(script))
+    assert "Łódź" in caplog.text
+
+
 def test_run_refresh_script_honors_cwd(tmp_path):
     """cwd is passed through to subprocess so script-relative writes land there."""
     script = tmp_path / "cwd.py"

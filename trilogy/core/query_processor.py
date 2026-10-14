@@ -82,6 +82,7 @@ from trilogy.core.processing.discovery_utility import (
     connectivity_map,
     raise_if_disconnected_for,
     raise_if_filter_disconnected,
+    raise_if_where_outside_partitions,
     raise_if_where_population_split,
 )
 from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
@@ -873,6 +874,9 @@ def _plan_query_node(
     )
     ds = info.strategy_node
     if ds is None:
+        raise_if_where_outside_partitions(
+            list(build_statement.output_components), conditions, build_environment
+        )
         # FILTER outputs hide their condition concepts; re-check reachability with
         # them surfaced so a filter whose condition can't be related to the value it
         # filters reports the standard disconnected-subgraphs error.
