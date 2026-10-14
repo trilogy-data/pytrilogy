@@ -21,7 +21,11 @@ from tests.io.test_conformance import (
     rows,
     run_python,
 )
-from tests.vgi_support import require_vgi, skip_or_fail
+from tests.vgi_support import (  # noqa: F401
+    flush_vgi_workers,
+    require_vgi,
+    skip_or_fail,
+)
 from trilogy.dialect.duckdb import VGI_SOURCE_CATALOG, vgi_failure, vgi_location
 
 require_vgi()

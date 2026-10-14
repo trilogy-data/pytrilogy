@@ -26,3 +26,24 @@ def skip_or_fail(reason: str) -> None:
     if REQUIRED:
         pytest.fail(reason)
     pytest.skip(reason)
+
+
+@pytest.fixture(autouse=True, scope="module")
+def flush_vgi_workers():
+    """Stop the pooled workers once a module is done with them.
+
+    They outlive their connections (the pool is per process), so left alone
+    they would be stopped after pytest-cov has combined its data and their
+    coverage would be lost; see .coveragerc.vgi.
+    """
+    yield
+    try:
+        import haybarn
+    except ImportError:
+        return
+    con = haybarn.connect()
+    try:
+        con.execute("LOAD vgi")
+        con.execute("SELECT * FROM vgi_worker_pool_flush()").fetchall()
+    finally:
+        con.close()

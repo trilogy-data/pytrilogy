@@ -5,7 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from tests.vgi_support import require_vgi, skip_or_fail
+from tests.vgi_support import (  # noqa: F401
+    flush_vgi_workers,
+    require_vgi,
+    skip_or_fail,
+)
 from trilogy import Dialects, Environment
 from trilogy.dialect.config import DuckDBConfig, PythonDatasourceTransport
 from trilogy.dialect.duckdb import (
