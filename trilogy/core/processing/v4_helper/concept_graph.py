@@ -66,6 +66,7 @@ from .projection import (
     lineage_crosses_row_shape_barrier,
     lineage_existence_only,
     lineage_existence_parts,
+    origin_inputs_sourceable,
 )
 from .staged_where import cross_row_stage_args
 from .union_arms import (
@@ -1122,6 +1123,9 @@ def computed_origin_relation_members(environment: BuildEnvironment) -> frozenset
     lineage for a column a scan reads, not the join."""
     if not environment.scoped_join_key_groups:
         return frozenset()
+    bound = {
+        c.address for ds in environment.datasources.values() for c in ds.output_concepts
+    }
     out: set[str] = set()
     for relation in environment.scoped_join_relations():
         for member in relation:
@@ -1134,6 +1138,7 @@ def computed_origin_relation_members(environment: BuildEnvironment) -> frozenset
                 and origin.lineage is not None
                 and lineage_crosses_row_shape_barrier(origin)
                 and not origin_relation_stored(origin, resolved, environment)
+                and origin_inputs_sourceable(origin, bound)
             ):
                 out |= relation
                 break

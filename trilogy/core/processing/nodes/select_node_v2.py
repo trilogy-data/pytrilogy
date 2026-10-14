@@ -9,6 +9,7 @@ from trilogy.core.models.build import (
     BuildFunction,
     BuildGrain,
     BuildOrderBy,
+    BuildRowsetItem,
     CanonicalBuildConceptList,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -121,6 +122,20 @@ class SelectNode(StrategyNode):
     def validate_inputs(self):
         # a select node is a root; nothing to validate against
         return
+
+    def partial_rows(self, address: str) -> bool:
+        if self.datasource is None or self.parents:
+            return super().partial_rows(address)
+        if address not in self.partial_lcl:
+            return False
+        # A `~` column on a complete table only narrows that key's coverage;
+        # rows are missing when the table itself is partial or its whole grain is.
+        datasource = self.datasource
+        if address not in datasource.column_level_partial_addresses:
+            return True
+        grain = datasource.grain.components
+        partial = {c.address for c in datasource.partial_concepts}
+        return not grain or grain <= partial
 
     def resolve_from_provided_datasource(
         self,
@@ -309,6 +324,17 @@ class RowsetNode(SelectNode):
     rows through the rowset-output check in `MergeNode._resolve`)."""
 
     region_boundary = True
+
+    def partial_rows(self, address: str) -> bool:
+        # A handle's own mark (a subset source, a held span) narrows coverage;
+        # rows are missing only where the body's column is missing them.
+        if address not in self.partial_lcl:
+            return False
+        handle = next((c for c in self.output_concepts if c.address == address), None)
+        if handle is None or not isinstance(handle.lineage, BuildRowsetItem):
+            return super().partial_rows(address)
+        content = handle.lineage.content.address
+        return any(p.partial_rows(content) for p in self.parents)
 
 
 class ConstantNode(SelectNode):

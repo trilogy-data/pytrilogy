@@ -71,7 +71,10 @@ from trilogy.core.processing.v4_helper.network_model import (
     datasource_identifiers,
     node_address,
 )
-from trilogy.core.processing.v4_helper.projection import inline_scalar
+from trilogy.core.processing.v4_helper.projection import (
+    inline_scalar,
+    origin_inputs_sourceable,
+)
 
 
 def _condition_fit(
@@ -473,7 +476,7 @@ def connector_join_keys(alias: str, origin: BuildConcept) -> set[str]:
 
 
 def _connector_candidates(
-    environment: BuildEnvironment, equivalence: dict[str, str]
+    environment: BuildEnvironment, equivalence: dict[str, str], emitted: set[str]
 ) -> dict[str, SourceCandidate]:
     """A candidate per derived connector: a merge key whose real lineage is a
     non-BASIC (recursive / aggregate / window) origin in `alias_origin_lookup`,
@@ -490,6 +493,8 @@ def _connector_candidates(
     out: dict[str, SourceCandidate] = {}
     for alias, origin in sorted(environment.alias_origin_lookup.items()):
         if origin.lineage is None or inline_scalar(origin):
+            continue
+        if not origin_inputs_sourceable(origin, emitted):
             continue
         # A merge origin whose relation a complete table already stores
         # (`merge (max(raw) by cluster_id) into species` beside a `(tree_id,
@@ -707,7 +712,8 @@ def build_source_network(
             for identifier in datasource_identifiers(datasource)
         },
     )
-    connector_candidates = _connector_candidates(environment, equivalence)
+    emitted = set().union(*emitted_by_node.values())
+    connector_candidates = _connector_candidates(environment, equivalence, emitted)
     relevant = _relevant_nodes(
         graph,
         emitted_by_node,

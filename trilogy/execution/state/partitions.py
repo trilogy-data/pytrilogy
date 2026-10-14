@@ -57,7 +57,7 @@ from trilogy.execution.state.exceptions import (
     is_missing_source_error,
     is_schema_mismatch_error,
 )
-from trilogy.execution.state.isolation import hidden_datasources
+from trilogy.execution.state.isolation import hidden_datasources, scope_where
 from trilogy.execution.state.watermarks import (
     _compare_watermark_values,
     _resolve_table_ref,
@@ -527,7 +527,9 @@ def probe_expected_partitions(
     ]
     with hidden_datasources(executor.environment, non_roots):
         try:
-            result = executor.execute_ephemeral(f"SELECT {', '.join(selected)};")
+            result = executor.execute_ephemeral(
+                f"SELECT {', '.join(selected)}{scope_where(ds)};"
+            )
             rows = list(result.fetchall()) if result else []
         except UNRESOLVABLE_ERRORS as e:
             # A real answer, not a failure: the partition key may not be

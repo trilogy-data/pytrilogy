@@ -387,8 +387,7 @@ assert count(id ? city = 'X') >= 3;
 
 
 class TestPartialTarget:
-    @pytest.mark.parametrize("complete", ["complete where city = 'X'\n", ""])
-    def test_filtered_assertions_plan_on_the_pinned_asset(self, complete: str) -> None:
+    def test_filtered_assertions_plan_on_the_pinned_asset(self) -> None:
         executor = Dialects.DUCK_DB.default_executor(environment=Environment())
         executor.execute_raw_sql(
             "CREATE TABLE cells AS SELECT 'X' AS city, 2.0 AS scale"
@@ -397,9 +396,7 @@ class TestPartialTarget:
             "CREATE TABLE raw AS SELECT * FROM (VALUES (1, 'X', 'A', 1.0),"
             " (2, 'X', 'A', 2.0), (3, 'X', 'B', 3.0)) t(id, city, source, raw_dbh)"
         )
-        executor.parse_text(
-            PARTIAL_MODEL.replace("complete where city = 'X'\n", complete)
-        )
+        executor.parse_text(PARTIAL_MODEL)
         built = executor.environment.datasources["built"]
         executor.update_datasource(built)
         executor.execute_raw_sql("DELETE FROM raw WHERE id = 1")
@@ -407,3 +404,17 @@ class TestPartialTarget:
             executor.update_datasource(built)
         assert "count(id ? source = 'A') = 1" in str(info.value)
         assert "count(id ? city = 'X') = 2" in str(info.value)
+
+    @pytest.mark.parametrize(
+        "declaration",
+        [
+            "partial datasource built (id: id, city: city) grain (id)",
+            "datasource built (id: ~id, city: city) grain (id)",
+        ],
+    )
+    def test_partial_target_without_scope_is_rejected(self, declaration: str) -> None:
+        with pytest.raises(HydrationError, match="no `complete where`"):
+            Environment().parse(
+                "key id int; property id.city string;\n"
+                f"{declaration} address built assert count(id) >= 1;"
+            )

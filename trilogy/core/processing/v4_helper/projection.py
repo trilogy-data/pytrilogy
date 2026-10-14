@@ -169,6 +169,17 @@ def concept_satisfiable(
     return result
 
 
+def origin_inputs_sourceable(origin: BuildConcept, available: set[str]) -> bool:
+    """A merge origin's inputs render from `available`. The origin itself is in
+    its merged key's class, so a scan of the key would vouch for it; judging the
+    inputs keeps a derivation whose inputs are hidden or dropped out of play."""
+    seen: dict[str, bool] = {}
+    return origin.lineage is not None and all(
+        concept_satisfiable(arg, available, cache=seen)
+        for arg in origin.lineage.concept_arguments
+    )
+
+
 def literal_producible(concept: BuildConcept, _seen: set[str] | None = None) -> bool:
     """Renderable with no row parent at all: a constant, or a value whose whole
     lineage bottoms out in literals (`sum(1)`, a parameter, `unnest([1,2])`).

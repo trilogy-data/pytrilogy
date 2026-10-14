@@ -34,7 +34,7 @@ from trilogy.core.assertions import (
     plan_assertion,
     substitute,
 )
-from trilogy.core.enums import DatasourceState, Modifier
+from trilogy.core.enums import DatasourceState
 from trilogy.core.models.author import ConceptRef
 from trilogy.core.models.datasource import Address, Datasource, DatasourceAssertion
 from trilogy.core.models.environment import Environment
@@ -42,7 +42,7 @@ from trilogy.execution.state.exceptions import (
     is_missing_source_error,
     is_schema_mismatch_error,
 )
-from trilogy.execution.state.isolation import hidden_datasources
+from trilogy.execution.state.isolation import hidden_datasources, scope_where
 from trilogy.parsing.render import Renderer
 
 if TYPE_CHECKING:
@@ -71,20 +71,10 @@ class DatasourceAssertionError(RuntimeError):
 def pinned_datasource(
     environment: Environment, datasource: Datasource, address: Address
 ) -> Iterator[Datasource]:
-    """Plan against ``datasource`` at ``address`` and nothing else.
-
-    The pinned copy drops any partial claim: its rows are the whole population
-    the assertion is about. Left partial, the planner looks past it for a
-    complete source and, with the rest hidden, can route through a derivation
-    whose inputs no visible datasource binds.
-    """
+    """Plan against ``datasource`` at ``address`` and nothing else."""
     pinned = datasource.duplicate()
     pinned.address = address
     pinned.status = DatasourceState.PUBLISHED
-    pinned.is_partial = False
-    pinned.non_partial_for = None
-    for column in pinned.columns:
-        column.modifiers = [m for m in column.modifiers if m != Modifier.PARTIAL]
     key = datasource.identifier
     others = [k for k in environment.datasources if k != key]
     with hidden_datasources(environment, others):
@@ -103,11 +93,11 @@ def _render(expr: Any) -> str:
     return Renderer().to_string(expr)
 
 
-def _side_query(keys: list[ConceptRef], terms: list) -> str:
+def _side_query(datasource: Datasource, keys: list[ConceptRef], terms: list) -> str:
     items = [_render(k) for k in keys] + [
         f"{_render(t.expr)} as {t.placeholder}" for t in terms
     ]
-    return "select " + ", ".join(items) + ";"
+    return "select " + ", ".join(items) + scope_where(datasource) + ";"
 
 
 def _literal(value: Any) -> Any:
@@ -121,7 +111,7 @@ def _fetch_side(
     keys: list[ConceptRef],
     terms: list,
 ) -> SideValues:
-    text = _side_query(keys, terms)
+    text = _side_query(datasource, keys, terms)
     with pinned_datasource(executor.environment, datasource, address):
         result = executor.execute_ephemeral(text)
     rows = result.fetchall() if result is not None else []

@@ -10,7 +10,10 @@ from trilogy.core.enums import (
     Granularity,
     Purpose,
 )
-from trilogy.core.exceptions import DisconnectedConceptsException
+from trilogy.core.exceptions import (
+    DisconnectedConceptsException,
+    UnresolvableQueryException,
+)
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
@@ -1407,6 +1410,47 @@ def _reachable_components(
             if node in comp_of:
                 found.add(comp_of[node])
     return found
+
+
+def raise_if_where_outside_partitions(
+    outputs: list[BuildConcept],
+    conditions: "BuildWhereClause | None",
+    environment: BuildEnvironment,
+) -> None:
+    """Post-failure refiner: every source of some output's root is a partial
+    whose `complete where` the WHERE excludes, so no source holds those rows."""
+    from trilogy.core.processing.condition_utility import (
+        conditions_mutually_exclusive,
+    )
+
+    if conditions is None:
+        return
+    datasources = list(environment.datasources.values())
+    for output in outputs:
+        for address in sorted({output.address} | get_upstream_concepts(output)):
+            binding = [
+                ds
+                for ds in datasources
+                if any(c.address == address for c in ds.output_concepts)
+            ]
+            if binding and all(
+                ds.non_partial_for is not None
+                and any(c.address == address for c in ds.partial_concepts)
+                and conditions_mutually_exclusive(
+                    conditions.conditional, ds.non_partial_for.conditional
+                )
+                for ds in binding
+            ):
+                scopes = "; ".join(
+                    f"{ds.name} (complete where {ds.non_partial_for.conditional})"
+                    for ds in binding
+                    if ds.non_partial_for is not None
+                )
+                raise UnresolvableQueryException(
+                    f"Query is unresolvable: the WHERE ({conditions.conditional})"
+                    f" falls outside every source of"
+                    f" {_strip_default_namespace(address)}: {scopes}."
+                )
 
 
 def raise_if_where_population_split(

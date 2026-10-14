@@ -957,6 +957,17 @@ def datasource_node(
             "clause has no effect. Mark the partial key(s) with `~`, declare it a "
             "`partial datasource`, or remove the `complete where` clause.",
         )
+    grain_keys = set(grain.components) if grain else set()
+    partial_rows = is_partial or (
+        bool(grain_keys) and grain_keys <= column_level_partial_addresses
+    )
+    if assertions and partial_rows and non_partial_for is None:
+        raise fail(
+            node,
+            f"Datasource '{name}' is partial but has no `complete where` clause, so"
+            " its `assert` checks have no population to run over. Add a"
+            " `complete where` clause naming the rows this datasource holds.",
+        )
 
     datasource = Datasource(
         name=name,
