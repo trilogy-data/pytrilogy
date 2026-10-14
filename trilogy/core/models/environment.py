@@ -51,7 +51,11 @@ from trilogy.core.models.author import (
     address_with_namespace,
 )
 from trilogy.core.models.core import DataType, StructType
-from trilogy.core.models.datasource import Datasource, EnvironmentDatasourceDict
+from trilogy.core.models.datasource import (
+    Datasource,
+    DatasourceTemplate,
+    EnvironmentDatasourceDict,
+)
 from trilogy.utility import safe_open
 
 if TYPE_CHECKING:
@@ -126,6 +130,7 @@ class NamespaceProjection:
 
     concepts: list[tuple[str, str, str, Concept, bool]]
     datasources: list[Datasource]
+    datasource_templates: list[DatasourceTemplate]
     alias_origins: list[tuple[str, Concept]]
     merges: list[tuple[str, str, JoinType]]
     functions: list[tuple[str, CustomFunctionFactory]]
@@ -191,6 +196,10 @@ def build_namespace_projection(source: Environment, alias: str) -> NamespaceProj
         # means these iterate a dict the merge is about to write.
         datasources=[
             d.with_namespace(alias) for _, d in list(source.datasources.items())
+        ],
+        datasource_templates=[
+            t.with_namespace(alias)
+            for _, t in list(source.datasource_templates.items())
         ],
         alias_origins=[
             (address_with_namespace(k, alias), v.with_namespace(alias))
@@ -837,6 +846,9 @@ class Environment:
     functions: dict[str, CustomFunctionFactory] = field(default_factory=dict)
     data_types: dict[str, CustomType] = field(default_factory=dict)
     named_statements: dict[str, SelectLineage] = field(default_factory=dict)
+    # Address-less datasource declarations, reusable through `extends`. Never
+    # planned over, which is why they are not in ``datasources``.
+    datasource_templates: dict[str, DatasourceTemplate] = field(default_factory=dict)
     imports: defaultdict[str, list[Import]] = field(
         default_factory=lambda: defaultdict(list)
     )
@@ -1191,6 +1203,7 @@ class Environment:
             concepts=self.concepts.duplicate(),
             functions=dict(self.functions),
             data_types=dict(self.data_types),
+            datasource_templates=dict(self.datasource_templates),
             imports=defaultdict(list, self.imports),
             namespace_source=dict(self.namespace_source),
             imported=self.imported.duplicate(),
@@ -1473,11 +1486,15 @@ class Environment:
             for key, type in list(source.data_types.items()):
                 self.data_types[key] = type
                 self.imported.data_types.add(key)
+            for key, template in list(source.datasource_templates.items()):
+                self.datasource_templates[key] = template
             return self
 
         for datasource in projection.datasources:
             self.add_datasource(datasource, imported=True)
             self.imported.datasources.add(datasource.identifier)
+        for template in projection.datasource_templates:
+            self.datasource_templates[template.identifier] = template
         for key, val in projection.alias_origins:
             self.alias_origin_lookup[key] = val
         for pair in projection.merges:
@@ -1713,6 +1730,33 @@ class Environment:
             del self.alias_origin_lookup[address]
 
         return False
+
+    def add_datasource_template(self, template: DatasourceTemplate) -> None:
+        if self.frozen:
+            raise FrozenEnvironmentException(
+                "Environment is frozen, cannot add datasource template"
+            )
+        self.datasource_templates[template.identifier] = template
+
+    def datasource_base(self, name: str) -> DatasourceTemplate | None:
+        """What `extends <name>` resolves to: a template, else the parts of a
+        concrete datasource. Bare names resolve in the default namespace the
+        way datasource lookups do."""
+        for key in (name, f"{DEFAULT_NAMESPACE}.{name}"):
+            template = self.datasource_templates.get(key)
+            if template is not None:
+                return template
+        if "." in name and name.split(".", 1)[0] == DEFAULT_NAMESPACE:
+            template = self.datasource_templates.get(name.split(".", 1)[1])
+            if template is not None:
+                return template
+        datasource = self.datasources.get(name)
+        if datasource is None:
+            try:
+                datasource = self.datasources[name]
+            except KeyError:
+                return None
+        return datasource.as_template()
 
     def add_datasource(
         self,

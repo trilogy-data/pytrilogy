@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeVar
 
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.models.author import Comment, CustomFunctionFactory
-from trilogy.core.models.datasource import Datasource
+from trilogy.core.models.datasource import Datasource, DatasourceTemplate
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import (
     CallStatement,
@@ -418,19 +418,24 @@ class FunctionDefinitionPlan(StatementPlanBase):
 @dataclass
 class DatasourceStatementPlan(StatementPlanBase):
     syntax: SyntaxNode
-    output: Datasource | None = None
+    output: Datasource | DatasourceTemplate | None = None
 
     def hydrate(self, hydrator: NativeHydrator) -> None:
         self.output = hydrator.hydrate_rule(self.syntax)
 
-    def commit(self, hydrator: NativeHydrator) -> Datasource | None:
+    def commit(
+        self, hydrator: NativeHydrator
+    ) -> Datasource | DatasourceTemplate | None:
         if self.output is None:
             return None
         # Flush staged concepts before add_datasource so validate_concept
         # sees this parse's concept declarations as durable rather than
         # invalidating the just-bound datasource during the final commit.
         hydrator.semantic_state.commit(hydrator.environment)
-        hydrator.environment.add_datasource(self.output)
+        if isinstance(self.output, DatasourceTemplate):
+            hydrator.environment.add_datasource_template(self.output)
+        else:
+            hydrator.environment.add_datasource(self.output)
         return self.output
 
 

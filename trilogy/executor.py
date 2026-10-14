@@ -26,7 +26,12 @@ from trilogy.core.exceptions import ConfigurationException, QueryTimeoutExceptio
 from trilogy.core.models.author import Comment, Comparison, Concept, Function
 from trilogy.core.models.build import BuildDatasource, BuildFunction
 from trilogy.core.models.core import ListWrapper, MapWrapper
-from trilogy.core.models.datasource import Address, Datasource, UpdateKeys
+from trilogy.core.models.datasource import (
+    Address,
+    Datasource,
+    DatasourceTemplate,
+    UpdateKeys,
+)
 from trilogy.core.models.environment import Environment
 from trilogy.core.models.execute import collect_source_addresses
 from trilogy.core.statements.author import (
@@ -711,6 +716,10 @@ class Executor:
     @execute_query.register
     def _(self, query: Datasource) -> ResultProtocol | None:
         return handle_datasource(query)
+
+    @execute_query.register
+    def _(self, query: DatasourceTemplate) -> ResultProtocol | None:
+        return MockResult([{"name": query.name}], ["name"])
 
     @execute_query.register
     def _(self, query: str) -> ResultProtocol | None:

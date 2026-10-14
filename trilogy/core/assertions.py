@@ -30,6 +30,7 @@ from trilogy.core.models.author import (
     Concept,
     ConceptRef,
     Function,
+    FunctionCallWrapper,
 )
 
 NEW_PLACEHOLDER = "__assert_new_"
@@ -201,7 +202,15 @@ def plan_assertion(condition: Any) -> AssertionPlan:
             return term_for(node, prior=False)
         return None
 
-    template = map_expression(map_expression(condition, lift_prior), lift_aggregate)
+    def unwrap_call(node: Any) -> Any:
+        # A `@function(...)` call carries its expanded body; the call itself
+        # is only kept so the declaration renders as written.
+        if isinstance(node, FunctionCallWrapper):
+            return map_expression(node.content, unwrap_call)
+        return None
+
+    template = map_expression(condition, unwrap_call)
+    template = map_expression(map_expression(template, lift_prior), lift_aggregate)
     planned = list(terms.values())
     new_terms = [t for t in planned if not t.prior]
     prior_terms = [t for t in planned if t.prior]

@@ -3,7 +3,7 @@ from collections.abc import ItemsView, ValuesView
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field, ValidationInfo, field_validator
 
@@ -23,6 +23,7 @@ from trilogy.core.models.author import (
     ConceptRef,
     Conditional,
     Function,
+    FunctionCallWrapper,
     Grain,
     HasUUID,
     HavingClause,
@@ -255,14 +256,21 @@ class DatasourceMetadata:
 
 
 AssertionCondition = (
-    SubselectComparison | Comparison | Conditional | Parenthetical | Between
+    SubselectComparison
+    | Comparison
+    | Conditional
+    | Parenthetical
+    | Between
+    | FunctionCallWrapper
 )
 
 
 class DatasourceAssertion(BaseModel):
     """A boolean over aggregates of a build of the datasource, checked before
     the build replaces the asset. ``prior(expr)`` inside the condition is the
-    same expression over the asset being replaced."""
+    same expression over the asset being replaced. A ``@function(...)`` call
+    whose body is such a boolean is kept as the call, so it renders as
+    written; planning unwraps it."""
 
     condition: AssertionCondition
     line_no: int | None = None
@@ -274,6 +282,157 @@ class DatasourceAssertion(BaseModel):
         return DatasourceAssertion(
             condition=self.condition.with_namespace(namespace), line_no=self.line_no
         )
+
+
+class DatasourceTemplate(BaseModel):
+    """The declarative parts of a datasource, without a physical location.
+
+    Declared by a ``datasource`` statement that names no address, query or
+    file, and reused through ``datasource child extends template``: every
+    part is added to the child's own. A template never reaches the planner;
+    it lives in ``Environment.datasource_templates``.
+    """
+
+    name: str
+    namespace: str = DEFAULT_NAMESPACE
+    columns: list[ColumnAssignment] = Field(default_factory=list)
+    grain: Grain | None = None
+    where: WhereClause | None = None
+    non_partial_for: WhereClause | None = None
+    incremental_by: list[ConceptRef] = Field(default_factory=list)
+    partition_by: list[ConceptRef] = Field(default_factory=list)
+    freshness_by: list[ConceptRef] = Field(default_factory=list)
+    freshness_probe: str | None = None
+    refresh_script: str | None = None
+    allowed_lag: FreshnessLag | None = None
+    assertions: list[DatasourceAssertion] = Field(default_factory=list)
+    is_partial: bool = False
+    column_level_partial_addresses: set[str] = Field(default_factory=set)
+    # What this declaration itself extended, for rendering.
+    extends: list[str] = Field(default_factory=list)
+    # A concrete base's location, inherited when the child names none.
+    address: "Address | None" = None
+
+    @property
+    def identifier(self) -> str:
+        if not self.namespace or self.namespace == DEFAULT_NAMESPACE:
+            return self.name
+        return f"{self.namespace}.{self.name}"
+
+    def with_namespace(self, namespace: str) -> "DatasourceTemplate":
+        from trilogy.core.models.author import address_with_namespace
+
+        new_namespace = (
+            namespace + "." + self.namespace
+            if self.namespace and self.namespace != DEFAULT_NAMESPACE
+            else namespace
+        )
+        return DatasourceTemplate(
+            name=self.name,
+            namespace=new_namespace,
+            columns=[c.with_namespace(namespace) for c in self.columns],
+            grain=self.grain.with_namespace(namespace) if self.grain else None,
+            where=self.where.with_namespace(namespace) if self.where else None,
+            non_partial_for=(
+                self.non_partial_for.with_namespace(namespace)
+                if self.non_partial_for
+                else None
+            ),
+            incremental_by=[c.with_namespace(namespace) for c in self.incremental_by],
+            partition_by=[c.with_namespace(namespace) for c in self.partition_by],
+            freshness_by=[c.with_namespace(namespace) for c in self.freshness_by],
+            freshness_probe=self.freshness_probe,
+            refresh_script=self.refresh_script,
+            allowed_lag=self.allowed_lag,
+            assertions=[a.with_namespace(namespace) for a in self.assertions],
+            is_partial=self.is_partial,
+            column_level_partial_addresses={
+                address_with_namespace(addr, namespace)
+                for addr in self.column_level_partial_addresses
+            },
+            extends=[address_with_namespace(e, namespace) for e in self.extends],
+            address=self.address,
+        )
+
+
+def _and_where(parts: list[WhereClause | None]) -> WhereClause | None:
+    present = [p for p in parts if p is not None]
+    if not present:
+        return None
+    combined = present[0].conditional
+    for clause in present[1:]:
+        combined = Conditional(
+            left=combined, right=clause.conditional, operator=BooleanOperator.AND
+        )
+    return WhereClause(conditional=combined)
+
+
+def _single_setting(
+    attribute: str, child: "DatasourceTemplate", bases: list["DatasourceTemplate"]
+) -> Any:
+    """The child's value when it declares one, else the one value the bases
+    agree on. Two bases disagreeing is a conflict the child must settle."""
+    own = getattr(child, attribute)
+    if own:
+        return own
+    declared: dict[str, tuple[str, Any]] = {}
+    for base in bases:
+        value = getattr(base, attribute)
+        if value:
+            declared.setdefault(str(value), (base.identifier, value))
+    if len(declared) > 1:
+        spelled = ", ".join(f"{name}: {value}" for name, value in declared.values())
+        raise ValueError(
+            f"`{attribute.replace('_', ' ')}` differs between extended"
+            f" datasources ({spelled}); declare it on the extending datasource."
+        )
+    return next(iter(declared.values()))[1] if declared else own
+
+
+def compose_datasource(
+    child: "DatasourceTemplate", bases: list["DatasourceTemplate"]
+) -> "DatasourceTemplate":
+    """``child`` with every base's parts added in. Columns and assertions are
+    unioned (a column the child re-binds takes the child's binding), ``where``
+    and ``complete where`` are AND-combined, and a single-valued setting
+    (grain, refresh keys, lag, address) is the child's, else the bases'."""
+    if not bases:
+        return child
+    columns: dict[str, ColumnAssignment] = {}
+    for source in [*bases, child]:
+        for column in source.columns:
+            columns[column.concept.address] = column
+    seen: set[str] = set()
+    assertions: list[DatasourceAssertion] = []
+    for source in [*bases, child]:
+        for assertion in source.assertions:
+            if str(assertion) not in seen:
+                seen.add(str(assertion))
+                assertions.append(assertion)
+    return DatasourceTemplate(
+        name=child.name,
+        namespace=child.namespace,
+        columns=list(columns.values()),
+        grain=_single_setting("grain", child, bases),
+        where=_and_where([*(b.where for b in bases), child.where]),
+        non_partial_for=_and_where(
+            [*(b.non_partial_for for b in bases), child.non_partial_for]
+        ),
+        incremental_by=_single_setting("incremental_by", child, bases),
+        partition_by=_single_setting("partition_by", child, bases),
+        freshness_by=_single_setting("freshness_by", child, bases),
+        freshness_probe=_single_setting("freshness_probe", child, bases),
+        refresh_script=_single_setting("refresh_script", child, bases),
+        allowed_lag=_single_setting("allowed_lag", child, bases),
+        assertions=assertions,
+        is_partial=child.is_partial or any(b.is_partial for b in bases),
+        column_level_partial_addresses=set().union(
+            child.column_level_partial_addresses,
+            *(b.column_level_partial_addresses for b in bases),
+        ),
+        extends=child.extends,
+        address=_single_setting("address", child, bases),
+    )
 
 
 def safe_grain(v) -> Grain:
@@ -319,6 +478,11 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     # counts as stale. Non-roots only — a root's own freshness is never judged.
     allowed_lag: FreshnessLag | None = None
     assertions: list[DatasourceAssertion] = Field(default_factory=list)
+    # Datasources this one was composed from (`extends a, b`), and the parts
+    # it declared itself; the fields above hold the composed result. Kept so
+    # the declaration renders as written rather than flattened.
+    extends: list[str] = Field(default_factory=list)
+    authored: DatasourceTemplate | None = None
     is_root: bool = False
     is_partial: bool = False
     # Addresses of columns that carried Modifier.PARTIAL *before* the
@@ -480,6 +644,8 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             refresh_script=self.refresh_script,
             allowed_lag=self.allowed_lag,
             assertions=[a.with_namespace(namespace) for a in self.assertions],
+            extends=[address_with_namespace(e, namespace) for e in self.extends],
+            authored=self.authored.with_namespace(namespace) if self.authored else None,
             is_root=self.is_root,
             is_partial=self.is_partial,
             column_level_partial_addresses={
@@ -489,6 +655,28 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             declared_in=self.declared_in,
         )
         return new
+
+    def as_template(self) -> DatasourceTemplate:
+        """This datasource's declarative parts, as a base for `extends`."""
+        return DatasourceTemplate(
+            name=self.name,
+            namespace=self.namespace or DEFAULT_NAMESPACE,
+            columns=list(self.columns),
+            grain=self.grain if self.grain.components else None,
+            where=self.where,
+            non_partial_for=self.non_partial_for,
+            incremental_by=list(self.incremental_by),
+            partition_by=list(self.partition_by),
+            freshness_by=list(self.freshness_by),
+            freshness_probe=self.freshness_probe,
+            refresh_script=self.refresh_script,
+            allowed_lag=self.allowed_lag,
+            assertions=list(self.assertions),
+            is_partial=self.is_partial,
+            column_level_partial_addresses=set(self.column_level_partial_addresses),
+            extends=list(self.extends),
+            address=self.address if isinstance(self.address, Address) else None,
+        )
 
     def create_update_statement(
         self,

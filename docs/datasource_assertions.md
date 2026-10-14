@@ -121,10 +121,57 @@ and rendering it outside an assertion raises.
   asset and no previous one, so an assertion that reads `prior(...)` is
   listed with `ran = false` rather than evaluated.
 
+## Reuse: functions and `extends`
+
+An assertion can be a `def` function whose body is a boolean, called with
+`@`. The body may hold aggregates, `by` grains and `prior`, with parameters
+anywhere a column could appear; the call is kept in the declaration so it
+renders as written, and planning unwraps it:
+
+```trilogy
+def row_drop(key, pct) -> count(key) >= pct * prior(count(key));
+def grouped_drop(key, dim, pct) -> count(key) by dim >= pct * prior(count(key) by dim);
+
+datasource cobog_tree_info (...)
+file `...`
+assert @grouped_drop(tree_id, data_source, 0.75)
+;
+```
+
+A datasource declaration with no address, query or file is a **template**:
+it is kept in `Environment.datasource_templates`, never planned over, and
+reused through `datasource child extends a, b (...)`. Every part of the bases
+is added to the child's own: columns and assertions are unioned (a column the
+child re-binds takes the child's binding), `where` and `complete where` are
+AND-combined, and a single-valued setting (grain, refresh keys, lag, address)
+is the child's, else the one value the bases agree on; bases that disagree
+are an error the child must settle by declaring the setting. A concrete
+datasource can be a base too, in which case the child inherits its address
+unless it names one. Templates travel through imports under the alias like
+datasources do, and may themselves extend other templates.
+
+```trilogy
+# tree_dedup.preql, shared by every city
+datasource guarded_tree (tree_id, data_source)
+grain (tree_id)
+assert @grouped_drop(tree_id, data_source, 0.75)
+;
+
+# cobog.preql
+import tree_dedup as t;
+datasource cobog_tree_info extends t.guarded_tree (tree_id, city, data_source, ...)
+file `.../cobog_tree_info.parquet`
+freshness by cobog_published_data_updated_through
+;
+```
+
+The composed datasource keeps what it declared (`Datasource.authored`) and
+the names it extended (`Datasource.extends`), so the renderer writes the
+declaration back as authored rather than flattened; its other fields hold the
+composed result, which is what planning, refresh and fingerprints see.
+
 ## Not yet done
 
 - A `--check-assertions` mode that builds to staging and evaluates without
   swapping.
 - A committable one-shot override for cloud jobs, which cannot pass flags.
-- Reusable assertions attached from an import (one relative guard shared by
-  many city models).

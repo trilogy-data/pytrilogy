@@ -83,12 +83,18 @@ prop_ident_wildcard    = { "<" ~ "*" ~ ">" ~ "." ~ IDENTIFIER }
 // =============================================================================
 // DATASOURCE
 // =============================================================================
+// `extends a, b` adds every part of those declarations to this one. A
+// declaration with no address, query or file is a template: reusable through
+// `extends`, never read.
+datasource_extends_clause = { ^"extends" ~ IDENTIFIER ~ ("," ~ IDENTIFIER)* }
+
 datasource = {
     DATASOURCE_ROOT? ~ (DATASOURCE_PARTIAL | SHORTHAND_MODIFIER)? ~ ^"datasource" ~ IDENTIFIER
-    ~ "(" ~ column_assignment_list ~ ")"
+    ~ datasource_extends_clause?
+    ~ "(" ~ column_assignment_list? ~ ")"
     ~ grain_clause?
     ~ whole_grain_clause?
-    ~ (address | query | file)
+    ~ (address | query | file)?
     ~ where?
     ~ datasource_update_trigger_clause?
     ~ datasource_lag_clause?
