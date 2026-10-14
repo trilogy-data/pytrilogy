@@ -114,7 +114,7 @@ address = { ^"address" ~ (F_QUOTED_ADDRESS | QUOTED_ADDRESS | ADDRESS) }
 query   = { ^"query" ~ MULTILINE_STRING }
 file_path_list = { "[" ~ (F_FILE_PATH | FILE_PATH) ~ ("," ~ (F_FILE_PATH | FILE_PATH))* ~ ","? ~ "]" }
 file_const_ref = { IDENTIFIER }
-file    = { ^"file" ~ ((F_FILE_PATH ~ ":" ~ F_FILE_PATH) | (FILE_PATH ~ ":" ~ FILE_PATH) | F_FILE_PATH | FILE_PATH | file_path_list | file_const_ref) }
+file    = { ^"file" ~ ((F_FILE_PATH ~ ":" ~ F_FILE_PATH) | (FILE_PATH ~ ":" ~ FILE_PATH) | F_FILE_PATH | FILE_PATH | EXEC_PATH | file_path_list | file_const_ref) }
 
 STATE                    = @{ ^"state" }
 datasource_status_clause = { STATE ~ DATASOURCE_STATUS }
@@ -911,6 +911,9 @@ SELECT_LIST_STOP = @{
 FILE_EXT    = _{ ^"py" | ^"csv" | ^"json" | ^"parquet" | ^"tsv" | ^"sql" }
 FILE_PATH   = @{ "`" ~ (!("." ~ FILE_EXT ~ "`") ~ !"`" ~ ANY)+ ~ "." ~ FILE_EXT ~ "`" }
 F_FILE_PATH = @{ "f`" ~ (!("." ~ FILE_EXT ~ "`") ~ !"`" ~ ANY)+ ~ "." ~ FILE_EXT ~ "`" }
+// A program: a path whose last segment has no extension (or is a .exe). The
+// separator keeps it apart from a backtick-quoted identifier.
+EXEC_PATH   = @{ "`" ~ ((!("`" | "/" | "\\") ~ ANY)* ~ ("/" | "\\"))+ ~ (!("`" | "/" | "\\" | ".") ~ ANY)+ ~ ("." ~ ^"exe")? ~ "`" }
 
 SHORTHAND_MODIFIER = @{ "~" | "?" }
 JOIN_TYPE = @{ ^"left" | ^"inner" | ^"full" | ^"right" | ^"cross" | ^"subset" | ^"union" | ^"equal" }

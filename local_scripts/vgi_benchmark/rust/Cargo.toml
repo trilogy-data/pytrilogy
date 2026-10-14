@@ -1,0 +1,21 @@
+[package]
+name = "vgi-benchmark"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# `source`: the current contract (Arrow IPC on stdout) via trilogy-io; with
+# `--vgi` it serves itself (trilogy-io's resident mode).
+trilogy-io = { path = "../../../crates/trilogy-io", features = ["vgi"] }
+arrow = { version = "60", features = ["ipc"] }
+# `resident`: the same rows served by a pooled VGI worker. vgi is Query Farm
+# Source-Available licensed; this crate is a local benchmark only.
+vgi = { version = "0.43", default-features = false }
+vgi-rpc = "0.31"
+arrow-array = "60"
+arrow-schema = "60"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

@@ -659,6 +659,7 @@ def get_dialect_config(
                 "enable_gcs",
                 "enable_spatial",
                 "gcs_cache_bust",
+                "python_datasource_transport",
             ],
             "DuckDB",
         )

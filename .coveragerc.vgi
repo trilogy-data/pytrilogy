@@ -1,0 +1,11 @@
+# Coverage for the VGI job (.github/workflows/vgi.yml). The VGI workers are
+# python processes DuckDB launches, which pytest-cov alone never measures;
+# patch = subprocess has coverage start in any python process that inherits
+# the environment, including ones a C++ extension spawns. The extension stops
+# a pooled worker with SIGTERM on POSIX (TerminateProcess on Windows, which
+# nothing can intercept), so sigterm = true is what lets it save its data;
+# tests/vgi_support.flush_vgi_workers stops them before pytest-cov combines.
+[run]
+core = sysmon
+patch = subprocess
+sigterm = true

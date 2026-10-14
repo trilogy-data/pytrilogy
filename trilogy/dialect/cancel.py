@@ -49,6 +49,18 @@ def _duckdb_canceller(raw: Any) -> Callable[[], None] | None:
     return raw._ConnectionWrapper__c.interrupt
 
 
+def duckdb_side_cursor(connection: EngineConnection) -> Any | None:
+    """A separate connection to the same DuckDB database, outside any open
+    transaction on ``connection``. Database-level state (an ATTACH) made on it
+    is shared; a statement failing on it aborts nothing on ``connection``."""
+    from duckdb_engine import ConnectionWrapper
+
+    raw = _dbapi_connection(connection)
+    if not isinstance(raw, ConnectionWrapper):
+        return None
+    return raw._ConnectionWrapper__c.cursor()
+
+
 def _sqlite_canceller(raw: Any) -> Callable[[], None] | None:
     import sqlite3
 

@@ -107,7 +107,7 @@ def get_materialization_score(
         return base + 1.0
     if address_type in (AddressType.QUERY, AddressType.SQL):
         return base + 2.0
-    if address_type == AddressType.PYTHON_SCRIPT:
+    if address_type.is_program:
         return base + 3.0
     return base + 2.0
 

@@ -34,11 +34,25 @@ The binary implements Trilogy's script-datasource contract, so
 `trilogy source describe|preview|check` work against it and any consumer that
 invokes it gets the same answers as from a python source.
 
-> **Not yet a `file` address.** pytrilogy currently maps a datasource address to
-> a type by file extension, so only `.py` is recognized as a script source and an
-> extensionless binary is rejected at parse. Pointing a `datasource ... file`
-> clause at a compiled program needs an engine-side runner abstraction that does
-> not exist yet.
+Point a datasource at it like a script. A path with no extension (or a `.exe`)
+is run directly:
+
+```
+datasource fib (value: value) grain (value) file `./target/release/fib`;
+```
+
+## Resident mode (`vgi` feature)
+
+Built with `--features vgi`, the same binary started with `--vgi` serves itself
+as a pooled [VGI](https://query.farm/vgi/docs/rust/) worker. DuckDB (haybarn)
+keeps it running and calls it once per scan, so a query no longer pays for a
+process start. pytrilogy uses this automatically under
+`python_datasource_transport = "vgi"`. A build without the feature refuses
+`--vgi`, and pytrilogy then runs it once per scan instead.
+
+The function must be `Fn + Send + Sync + 'static`, because a resident worker
+calls it repeatedly. The `vgi` crate is Query Farm Source-Available licensed,
+not OSI open source, so it is never a default feature. It needs Rust 1.97+.
 
 ## What you get
 

@@ -61,7 +61,10 @@ Two constraints that are easy to break:
 - **`trilogy/io` must stay leaf-level** - a pyarrow import and nothing else. It must
   never import `trilogy.core`, and the script fast path must stay off `click`
   (~270ms), because DuckDB runs these scripts once per query.
+  `trilogy/io/vgi.py` (resident mode, `--vgi`) is the one module allowed to
+  import `vgi`, and `run` loads it lazily only under that flag.
 - **The command line is the cross-language contract**, not either library. Flag
   names, exit code 65, the `--describe` payload and the `trilogy.*` metadata keys
   are held byte-identical by `tests/io/test_conformance.py`; change one side and
-  that suite must change with it.
+  that suite must change with it. Served (`--vgi`) answers are held to
+  the one-shot ones by `tests/io/test_vgi_conformance.py`.

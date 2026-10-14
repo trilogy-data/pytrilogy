@@ -1,0 +1,105 @@
+"""A source served over VGI (``--vgi``) answers exactly as when run once per request.
+
+Resident mode delivers the same command line per call instead of per process,
+so every contract case must return the rows the one-shot run writes -- from the
+python and the rust implementation alike. Needs haybarn + vgi-python; the rust
+half also needs the crate's ``vgi`` feature to build.
+"""
+
+import shlex
+import shutil
+import subprocess
+import sys
+
+import pytest
+
+from tests.io.test_conformance import (
+    CASES,
+    CRATE,
+    PY_SOURCE,
+    _binary_path,
+    rows,
+    run_python,
+)
+from tests.vgi_support import (  # noqa: F401
+    flush_vgi_workers,
+    require_vgi,
+    skip_or_fail,
+)
+from trilogy.dialect.duckdb import VGI_SOURCE_CATALOG, vgi_failure, vgi_location
+
+require_vgi()
+import haybarn
+
+IS_WINDOWS = sys.platform == "win32"
+# Unordered requests come back in source order either way; ties are the one
+# allowed difference (see test_conformance), so those cases are left out.
+RESIDENT_CASES = [case for case in CASES if "name:asc" not in " ".join(case)]
+
+
+def attach(argv: list[str]):
+    con = haybarn.connect()
+    con.execute("LOAD vgi")
+    location = vgi_location([*argv, "--vgi"], IS_WINDOWS).replace("'", "''")
+    con.execute(
+        f"ATTACH '{VGI_SOURCE_CATALOG}' AS src (TYPE vgi, LOCATION '{location}')"
+    )
+    return con
+
+
+def served(con, args: list[str]) -> list[dict]:
+    sql_args = shlex.join(args).replace("'", "''")
+    query = f"SELECT * FROM src.main.source('{sql_args}')"
+    return con.execute(query).to_arrow_table().to_pylist()
+
+
+@pytest.fixture(scope="module")
+def python_worker():
+    con = attach([sys.executable, str(PY_SOURCE)])
+    yield con
+    con.close()
+
+
+@pytest.fixture(scope="module")
+def rust_worker():
+    if shutil.which("cargo") is None:
+        skip_or_fail("cargo not available")
+    build = subprocess.run(
+        ["cargo", "build", "--release", "--example", "landmarks", "--features", "vgi"],
+        cwd=CRATE,
+        capture_output=True,
+        check=False,
+    )
+    if build.returncode != 0:
+        skip_or_fail(f"vgi feature build failed: {build.stderr.decode()[-1000:]}")
+    con = attach([str(_binary_path())])
+    yield con
+    con.close()
+
+
+@pytest.mark.parametrize(
+    "args", RESIDENT_CASES, ids=lambda a: " ".join(a) or "no-flags"
+)
+def test_python_served_matches_one_shot(python_worker, args):
+    assert served(python_worker, args) == rows(run_python(args).stdout)
+
+
+@pytest.mark.parametrize(
+    "args", RESIDENT_CASES, ids=lambda a: " ".join(a) or "no-flags"
+)
+def test_rust_served_matches_one_shot(rust_worker, args):
+    assert served(rust_worker, args) == rows(run_python(args).stdout)
+
+
+@pytest.mark.parametrize("worker", ["python_worker", "rust_worker"])
+def test_served_failures_carry_the_contract_error(request, worker):
+    con = request.getfixturevalue(worker)
+    with pytest.raises(Exception) as raised:
+        served(con, ["--filter", "nonexistent = 1"])
+    error = vgi_failure(str(raised.value))
+
+    assert error is not None
+    assert error.return_code == 65
+    assert error.reported is not None
+    assert error.reported["type"] == "ContractError"
+    assert "Available columns" in error.reported["message"]

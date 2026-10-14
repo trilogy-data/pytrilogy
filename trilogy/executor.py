@@ -413,10 +413,11 @@ class Executor:
         """Setup DuckDB macro for Python script datasources."""
         import sys
 
-        from trilogy.dialect.config import DuckDBConfig
+        from trilogy.dialect.config import DuckDBConfig, PythonDatasourceTransport
         from trilogy.dialect.duckdb import (
             PYTHON_DATASOURCE_GUARD_MARKER,
             get_python_datasource_setup_sql,
+            get_vgi_setup_sql,
         )
 
         # A read-only handle can't CREATE the guard macro — and python
@@ -442,6 +443,15 @@ class Executor:
         ):
             return
         is_windows = sys.platform == "win32"
+        if (
+            enabled
+            and isinstance(self.config, DuckDBConfig)
+            and self.config.python_datasource_transport == PythonDatasourceTransport.VGI
+        ):
+            self._execute_setup_ddl(
+                get_vgi_setup_sql(Path(sys.executable).as_posix(), is_windows)
+            )
+            return
         self._execute_setup_ddl(
             get_python_datasource_setup_sql(
                 enabled, is_windows, self._instance_id, self.staging
@@ -516,10 +526,7 @@ class Executor:
             return datasource
 
         address = datasource.address
-        if (
-            not isinstance(address, Address)
-            or address.type != AddressType.PYTHON_SCRIPT
-        ):
+        if not isinstance(address, Address) or not address.type.is_program:
             return datasource
 
         cached = cache.get(datasource.identifier)

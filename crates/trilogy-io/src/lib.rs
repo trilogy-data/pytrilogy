@@ -41,6 +41,8 @@ pub mod describe;
 pub mod error;
 pub mod sinks;
 pub mod transform;
+#[cfg(feature = "vgi")]
+pub mod vgi;
 
 pub use adapters::{BatchReader, IntoBatchReader};
 pub use cli::{Cli, Invocation};
@@ -49,6 +51,10 @@ pub use error::{Error, Result, ERROR_PREFIX, SCRIPT_ERROR_EXIT_CODE};
 pub use sinks::Format;
 
 pub const METADATA_PREFIX: &str = "trilogy.";
+
+/// Serve the source as a pooled VGI worker instead of writing one stream.
+/// Matches `trilogy.io.errors.VGI_FLAG`.
+pub const VGI_FLAG: &str = "--vgi";
 
 /// A source function plus what it claims about itself.
 pub struct Source<F> {
@@ -61,7 +67,7 @@ pub struct Source<F> {
 /// Wrap a function so it can be run as a data source.
 pub fn source<F, T>(function: F) -> Source<F>
 where
-    F: FnOnce(&SourceRequest) -> T,
+    F: Fn(&SourceRequest) -> T + Send + Sync + 'static,
     T: IntoBatchReader,
 {
     Source {
@@ -74,7 +80,7 @@ where
 
 impl<F, T> Source<F>
 where
-    F: FnOnce(&SourceRequest) -> T,
+    F: Fn(&SourceRequest) -> T + Send + Sync + 'static,
     T: IntoBatchReader,
 {
     /// Contract fields this source honors itself. Anything omitted is enforced
@@ -98,18 +104,25 @@ where
     }
 
     /// Build the reader for an already-parsed invocation, applying the request.
-    pub fn resolve(self, invocation: &Invocation) -> Result<BatchReader> {
+    pub fn resolve(&self, invocation: &Invocation) -> Result<BatchReader> {
         let pushdown = effective_pushdown(&self.pushdown, &invocation.request);
         let handed = invocation.request.withheld(&pushdown);
         let declared = self.schema.clone();
-        let reader = (self.function)(&handed).into_batch_reader(self.schema)?;
+        let reader = (self.function)(&handed).into_batch_reader(self.schema.clone())?;
         let reader = adapters::conform_reader(reader, declared)?;
         let reader = transform::apply(reader, &invocation.request, &pushdown)?;
         Ok(stamp(reader, &pushdown, self.watermark.as_deref()))
     }
 
     /// Parse the process arguments and run. Returns a process exit code.
+    ///
+    /// With `--vgi`, serves the source as a pooled VGI worker instead (needs
+    /// the `vgi` feature; without it the flag is refused, and a consumer falls
+    /// back to running the source once per scan).
     pub fn run(self) -> ExitCode {
+        if std::env::args().any(|arg| arg == VGI_FLAG) {
+            return self.serve();
+        }
         let program = std::env::args().next().unwrap_or_else(|| "source".into());
         match self.execute(&program) {
             Ok(()) => ExitCode::SUCCESS,
@@ -118,6 +131,17 @@ where
                 ExitCode::from(SCRIPT_ERROR_EXIT_CODE)
             }
         }
+    }
+
+    #[cfg(feature = "vgi")]
+    fn serve(self) -> ExitCode {
+        vgi::serve(self)
+    }
+
+    #[cfg(not(feature = "vgi"))]
+    fn serve(self) -> ExitCode {
+        eprintln!("{VGI_FLAG} needs trilogy-io built with the `vgi` feature");
+        ExitCode::from(2)
     }
 
     fn execute(self, program: &str) -> Result<()> {
@@ -145,7 +169,7 @@ where
 /// Run `function` as a data source, claiming no pushdown.
 pub fn run<F, T>(function: F) -> ExitCode
 where
-    F: FnOnce(&SourceRequest) -> T,
+    F: Fn(&SourceRequest) -> T + Send + Sync + 'static,
     T: IntoBatchReader,
 {
     source(function).run()
@@ -207,15 +231,18 @@ impl RecordBatchReader for Restamped {
 }
 
 /// Machine-readable line first, then the detail a human needs.
-fn report(error: &Error) {
+pub(crate) fn error_report(error: &Error) -> String {
     let line = serde_json::json!({
         "type": error.kind(),
         "message": error.to_string(),
         "contract": CONTRACT_VERSION,
         "retryable": error.retryable(),
     });
+    format!("{ERROR_PREFIX}{line}\n{error}\n")
+}
+
+fn report(error: &Error) {
     let mut stderr = std::io::stderr().lock();
-    let _ = writeln!(stderr, "{ERROR_PREFIX}{line}");
-    let _ = writeln!(stderr, "{error}");
+    let _ = stderr.write_all(error_report(error).as_bytes());
     let _ = stderr.flush();
 }

@@ -77,10 +77,19 @@ The binary implements the same contract, so `trilogy source describe|preview|che
 work against it and any consumer that invokes it directly gets the same answers
 as from a python source.
 
-**It cannot be a `file` address yet.** The parser maps a datasource address to a
-type by file extension (`.py` → python script), so an extensionless binary is
-rejected at parse time. Pointing a datasource at a compiled source needs a
-runner abstraction on the engine side — see [Not done yet](#not-done-yet).
+**It is a `file` address like a script.** A path whose last segment has no
+extension (or is a `.exe`) parses as `AddressType.EXECUTABLE` and is run
+directly instead of through `uv`:
+
+```
+datasource landmarks (id: id, name: name, state: state)
+grain (id)
+file `./target/release/landmarks`;
+```
+
+It needs a path separator (`./landmarks`, not `landmarks`), which is what keeps
+it apart from a backtick-quoted identifier. Declared without the extension, the
+same model works on Windows, where the launcher resolves `landmarks.exe`.
 
 ## The contract
 
@@ -281,13 +290,89 @@ the ones SQL would have picked. That is SQL's own non-determinism for an
 incomplete ORDER BY, but it does mean pushdown can change *which* equally-valid
 rows come back. Add a unique tiebreaker if that matters.
 
+## DuckDB transports: shell (default) and VGI (opt-in)
+
+By default DuckDB reads a source through the `uv_run` macro. On POSIX that is a
+`shellfs` pipe; on Windows a wrapper stages the stream to a temp `.arrow` file
+that `read_arrow` then scans. Either way the source is started on every scan.
+
+`python_datasource_transport = "vgi"` reads it through
+[VGI](https://query.farm/vgi/docs/python/) instead. VGI is a DuckDB extension
+that runs table functions in pooled worker processes and speaks Arrow IPC over
+their stdio:
+
+```toml
+[engine.config]
+enable_python_datasources = true
+python_datasource_transport = "vgi"
+```
+
+Each source is served one of two ways, chosen per source and remembered for the
+executor's life:
+
+- **Resident.** Before a query runs, `prepare_sources` starts the source itself
+  as a pooled worker: `uv run --with vgi-python src.py --vgi`, or `landmarks --vgi`.
+  It renders as `trilogy_src_<hash>.main.source('<args>')`. The worker stays up,
+  so a warm query is a function call in an already-running process.
+  - `--vgi` is part of both libraries: `run(fn)` in python and `Source::run` in
+    rust (with the crate's `vgi` feature). It serves a `trilogy_source.main.source(args)`
+    table function, where `args` is the same command line, parsed by the same
+    parser, so the contract is unchanged; it is delivered per call instead of
+    per process. `tests/io/test_vgi_conformance.py` holds both implementations'
+    served answers to their one-shot output.
+  - The alias hashes the source's path and mtime, so an edited script or a
+    rebuilt binary gets a fresh worker rather than the stale pooled one.
+  - Startup is lazy: a source is attached by the first query that reads it,
+    never ahead of time. All of that query's new sources start in parallel, so
+    it waits for the slowest startup rather than the sum.
+  - Each attach runs on its own side cursor. A failure there cannot abort the
+    transaction the query runs in, and the separate cursors are what let the
+    attaches overlap.
+  - `.github/workflows/vgi.yml` installs haybarn and runs these tests on
+    Ubuntu and Windows. Elsewhere they skip.
+- **Bridge.** A source that cannot serve itself falls back to the bridge: a raw
+  script, a published pytrilogy without `--vgi`, or a binary built without the
+  feature. The bridge is one worker attached at connect
+  (`trilogy/dialect/duckdb_vgi.py`), rendering `trilogy_io.main.script('/abs/src.py', '<args>')`.
+  It starts the source per scan like `uv_run`, but streams its stdout straight
+  to DuckDB with no staging.
+
+In both modes DuckDB's projection is applied in the worker, and a failure still
+surfaces as `PythonDatasourceError`. The worker reports it as a
+`trilogy-script-failure {json}` payload carrying the exit code and stderr a
+one-shot run would have produced.
+
+Requirements and caveats:
+
+- **It needs `haybarn`**, Query.Farm's DuckDB build. The `vgi` extension is not
+  in DuckDB's public community repository, so stock `duckdb` cannot `LOAD` it.
+  The transport switches the SQLAlchemy URL to `haybarn://` (`haybarn_engine.py`,
+  a thin subclass of duckdb_engine's dialect). Install with `pytrilogy[vgi]`,
+  which needs python >= 3.13 for `vgi-python`.
+- **License:** `vgi`, `vgi-python` and the `vgi` crate are under the Query Farm
+  Source-Available License, not OSI open source. That is why they are an
+  optional extra and an opt-in cargo feature, never a default.
+- **A resident source owns the worker's stdout.** The python side redirects
+  `print` to stderr while the source runs. Anything writing to fd 1 directly
+  (C code) would corrupt the stream.
+- Pushdown args are unchanged, so the same transport-safety limits apply, even
+  though VGI has no shell layer (see [Planner pushdown](#planner-pushdown)).
+
+Benchmarks live in `local_scripts/vgi_benchmark/`. Windows warm medians, full
+3-column scan:
+
+| source | rows | current | vgi bridge | vgi resident |
+| --- | --- | --- | --- | --- |
+| python | 1M | 0.38s | 0.30s | 0.04s |
+| python | 10M | 1.89s | 0.68s | 0.24s |
+| rust | 1M | 0.23s | 0.05s | 0.04s |
+| rust | 10M | 0.79s | 0.30s | 0.27s |
+
+The current transport also stages ~290MB to disk per 10M-row scan on Windows.
+
 ## Not done yet
 
-**A compiled binary cannot be a datasource address.** `_FILE_TYPE_MAP` in
-`trilogy/parsing/v2/rules/datasource_rules.py` keys `AddressType` off the file
-extension, so only `.py` reaches `AddressType.PYTHON_SCRIPT` and an
-extensionless binary fails at parse. Making `trilogy-io` binaries first-class
-means generalizing `build_uv_command` into a runner chosen per address (`.py` →
-`uv run`, executable → exec directly) and giving the grammar a way to say "this
-address is a program". Until then the crate is usable through `trilogy source`
-and by downstream consumers, but not from a `file` clause.
+**VGI filter pushdown.** Resident workers take the planner's predicates through
+`args`, exactly as the other transports do. VGI can also hand a worker DuckDB's
+own filters (`filter_pushdown`), with no shell-safety limits; mapping those onto
+`SourceRequest` would let more predicates reach the source.

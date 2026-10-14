@@ -140,7 +140,7 @@ def rewritable_address(ds: Datasource) -> Address | None:
     if isinstance(address, str):
         address = Address(location=address)
         ds.address = address
-    if address.is_query or address.type in (AddressType.PYTHON_SCRIPT, AddressType.SQL):
+    if address.is_query or address.type.is_program or address.type == AddressType.SQL:
         return None
     return address
 

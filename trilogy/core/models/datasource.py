@@ -210,6 +210,7 @@ class Address:
     def is_file(self):
         return self.type in {
             AddressType.PYTHON_SCRIPT,
+            AddressType.EXECUTABLE,
             AddressType.CSV,
             AddressType.TSV,
             AddressType.PARQUET,

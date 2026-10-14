@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any
 
-from trilogy.io.errors import ERROR_PREFIX, SCRIPT_ERROR_EXIT_CODE
+from trilogy.io.errors import ERROR_PREFIX, SCRIPT_ERROR_EXIT_CODE, VGI_FAILURE_MARKER
 from trilogy.io.runner import METADATA_PREFIX
 from trilogy.io.sinks import normalize_object_uri, open_uri_sink
 
@@ -32,6 +32,7 @@ __all__ = [
     "MAX_ATTEMPTS",
     "RETRYABLE_UV_ERROR_MARKERS",
     "RETRY_DELAYS_SECONDS",
+    "VGI_FAILURE_MARKER",
     "ParquetStreamWriter",
     "PythonDatasourceError",
     "build_uv_command",
@@ -144,11 +145,11 @@ def build_uv_command(script: str, args: str = "") -> list[str]:
     return [*UV_RUN_PREFIX, script, *shlex.split(args)]
 
 
-def build_script_command(script: str) -> list[str]:
+def build_script_command(script: str, args: str = "") -> list[str]:
     """How to invoke ``script``: uv for python, anything else runs directly."""
     if Path(script).suffix == ".py":
-        return build_uv_command(script)
-    return [script]
+        return build_uv_command(script, args)
+    return [script, *shlex.split(args)]
 
 
 def source_key(location: str, args: str = "") -> str:
@@ -187,7 +188,7 @@ def _stream_once(
     failure: Exception | None = None
     with tempfile.TemporaryFile() as error_file:
         process = subprocess.Popen(
-            build_uv_command(script, args),
+            build_script_command(script, args),
             stdout=subprocess.PIPE,
             stderr=error_file,
         )

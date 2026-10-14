@@ -1,0 +1,89 @@
+# The opt-in VGI transport (python_datasource_transport = "vgi") runs on
+# haybarn, Query.Farm's DuckDB build, with the source-available vgi packages.
+# Neither is a default dependency, so the main matrix skips every VGI test; this
+# job installs them and runs those tests for real, alongside it.
+
+name: VGI transport
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  vgi:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    permissions:
+      contents: 'read'
+    env:
+      # Skips become failures: a missing haybarn or a binary built without the
+      # `vgi` feature must not pass this job by skipping what it exists to run.
+      TRILOGY_REQUIRE_VGI: '1'
+      # tests/io/test_conformance.py references the binary built below.
+      TRILOGY_IO_PREBUILT: '1'
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - name: Set up Python 3.13
+        # vgi-python requires python >= 3.13.
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
+        with:
+          python-version: "3.13"
+          cache: 'pip'
+          cache-dependency-path: |
+            requirements.txt
+            requirements-test.txt
+      - name: Set up Rust
+        # The vgi crate needs rust >= 1.97.
+        uses: actions-rust-lang/setup-rust-toolchain@150fca883cd4034361b621bd4e6a9d34e5143606  # v1.15.4
+        with:
+          toolchain: stable
+          cache-workspaces: |
+            trilogy/scripts/dependency
+            crates/trilogy-io
+      - name: Install uv for script tests
+        uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            requirements.txt
+            pyproject.toml
+      - name: Install pytrilogy with the vgi extra
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install wheel maturin==1.10.2
+          python -m pip install -r requirements.txt
+          python -m pip install -r requirements-test.txt
+          python -m pip install -e ".[vgi]"
+      - name: Build the conformance binary with the vgi feature
+        # One binary serves both suites: the one-shot conformance run and the
+        # resident (--vgi) one.
+        run: cargo build --release --example landmarks --features vgi --manifest-path crates/trilogy-io/Cargo.toml
+      - name: Warm the resident script environment
+        # A resident python source runs as `uv run --with vgi-python`, a
+        # different environment from the plain one, and building it (this
+        # checkout's pytrilogy is a maturin compile) would otherwise land
+        # inside the first test that attaches it.
+        shell: bash
+        run: |
+          uv sync --script tests/engine/scripts/pushdown_source.py
+          uv run --no-project --quiet --with vgi-python tests/engine/scripts/pushdown_source.py --describe > /dev/null
+      - name: Test the VGI transport
+        run: >
+          python -m pytest -p no:randomly -rs --cov=trilogy --cov-config=.coveragerc.vgi
+          tests/engine/scripts/test_vgi_transport.py
+          tests/engine/scripts/test_vgi_workers.py
+          tests/engine/scripts/test_executable_source.py
+          tests/io/test_vgi_conformance.py
+          tests/io/test_conformance.py
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2  # v6.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: vgi-${{ matrix.os }}
+          name: vgi-${{ matrix.os }}
