@@ -232,6 +232,8 @@ class BigqueryDialect(BaseDialect):
     DATATYPE_MAP = DATATYPE_MAP
     SUPPORTS_AGGREGATE_GROUPING_MODES = True
     SUPPORTS_QUALIFY = True
+    # Transactions cannot hold permanent-table DDL.
+    TRANSACTIONAL_DDL = False
     # python datasources have to be staged to GCS before a query can name them
     REQUIRES_SOURCE_PREPARATION = True
     # `404 Not found: Table proj:ds.tbl was not found in location US`
@@ -460,6 +462,20 @@ class BigqueryDialect(BaseDialect):
         """BigQuery spells the modifier ``TEMP``, and a temp table may not be
         qualified — which the shared staging name already satisfies."""
         return f"CREATE TEMP TABLE {staged} AS SELECT * FROM {target} LIMIT 0"
+
+    def render_table_clone(self, target: str, staged: str) -> list[str]:
+        """A table clone is a metadata operation: no bytes are copied until a
+        side diverges, and the clone keeps the partitioning and clustering
+        the partitioned append relies on."""
+        return [
+            f"CREATE TABLE {self.safe_quote(staged)} CLONE {self.safe_quote(target)}"
+        ]
+
+    def render_table_swap(self, target: str, staged: str, replace: bool) -> list[str]:
+        """One DDL statement, applied atomically, that makes the audited
+        staging table the target, metadata and all."""
+        mode = "CREATE OR REPLACE TABLE" if replace else "CREATE TABLE"
+        return [f"{mode} {self.safe_quote(target)} CLONE {self.safe_quote(staged)}"]
 
     def generate_partitioned_insert_statements(
         self,

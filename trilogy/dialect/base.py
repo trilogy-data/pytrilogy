@@ -910,6 +910,12 @@ class BaseDialect:
     # Whether the dialect has an array type. Dialects without one raise on array
     # membership rather than emitting SQL that cannot parse.
     SUPPORTS_ARRAYS = True
+    # Whether DDL and DML share one transaction the executor can roll back. When
+    # True an audited table build is checked inside the write transaction and a
+    # failed check rolls the write back. When False (BigQuery, Snowflake, MySQL,
+    # ClickHouse, Presto/Trino) the build lands in a staging table, is checked
+    # there, and is published by ``render_table_swap``.
+    TRANSACTIONAL_DDL = True
     # Names for the derived source that exposes one row per array element. Shared
     # so the predicate wrapping it is identical in every dialect.
     ARRAY_MEMBER_SOURCE_ALIAS = "unnest_members"
@@ -3330,6 +3336,37 @@ class BaseDialect:
             f"DELETE FROM {target} WHERE EXISTS"
             f" (SELECT 1 FROM {staged} WHERE {matches})"
         )
+
+    def staged_table_location(self, location: str, token: str) -> str:
+        """Where an audited build lands before it is published: a permanent
+        table beside the target, so the swap stays within one schema."""
+        head, dot, table = location.rpartition(".")
+        return f"{head}{dot}{table}_trilogy_stage_{token}"
+
+    def render_table_clone(self, target: str, staged: str) -> list[str]:
+        """Statements that make ``staged`` a full copy of ``target``, rows and
+        shape, for an append to be applied to before it is audited. Both are
+        unquoted locations."""
+        target, staged = self.safe_quote(target), self.safe_quote(staged)
+        return [f"CREATE TABLE {staged} AS SELECT * FROM {target}"]
+
+    def render_table_swap(self, target: str, staged: str, replace: bool) -> list[str]:
+        """Statements that publish ``staged`` as ``target`` (unquoted locations).
+
+        ``replace`` is False for a plain ``create``, which must still fail when
+        the target exists. The portable form is a drop and a rename, which is
+        not atomic; dialects with a swap, exchange or clone override it. The
+        new name is qualified like the old one: Trino resolves a bare name
+        against the session schema, not the table's."""
+        rename = (
+            f"ALTER TABLE {self.safe_quote(staged)} RENAME TO {self.safe_quote(target)}"
+        )
+        if not replace:
+            return [rename]
+        return [self.render_drop_table(target), rename]
+
+    def render_drop_table(self, location: str) -> str:
+        return f"DROP TABLE IF EXISTS {self.safe_quote(location)}"
 
     def staging_table_name(self, query: ProcessedQueryPersist) -> str:
         """Name of the temp table a partitioned append stages through.
