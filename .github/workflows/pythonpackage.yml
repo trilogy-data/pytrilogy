@@ -66,6 +66,10 @@ jobs:
           cache-workspaces: |
             trilogy/scripts/dependency
             crates/trilogy-io
+          # Bumped when the cached profiles change: an exact key hit is never
+          # re-saved, so the dev-profile deps `cargo test` builds would
+          # otherwise be compiled on every run until Cargo.lock next moves.
+          cache-key: dev-tests
       - name: Install uv for script tests
         uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8.0.0
         with:
@@ -228,13 +232,13 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           python -m venv .venv
-          uv pip install --python .venv/bin/python .
+          uv pip install --python .venv .
           .venv/bin/trilogy --help
           .venv/bin/trilogy run "SELECT 1 + 1->test;" duckdb
       - name: Test package cli (Windows)
         if: runner.os == 'Windows'
         run: |
           python -m venv .venv
-          uv pip install --python .venv/Scripts/python .
+          uv pip install --python .venv .
           .venv/Scripts/trilogy --help
           .venv/Scripts/trilogy run "SELECT 1 + 1->test;" duckdb
