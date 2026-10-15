@@ -21,6 +21,7 @@ from trilogy.execution.state.state_store import (
     create_refresh_plan,
     refresh_stale_assets,
 )
+from trilogy.execution.state.watermarks import schema_mismatch
 
 MODEL = """key id int;
 property id.a string;
@@ -156,3 +157,46 @@ def test_a_dialect_that_cannot_describe_a_file_declines():
     address = Address(location="x.parquet", type=AddressType.PARQUET)
 
     assert BaseDialect().get_file_columns(None, address) is None
+
+
+TYPED_MODEL = """key id int;
+property id.x float;
+property id.ts datetime;
+
+datasource target (id, x, ts)
+file `{target}`;
+"""
+
+
+def _typed_drift(tmp_path, select: str) -> str | None:
+    target = tmp_path / "target.parquet"
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=tmp_path)
+    )
+    executor.parse_text(TYPED_MODEL.format(target=target.as_posix()))
+    executor.execute_raw_sql(
+        f"COPY ({select}) TO '{target.as_posix()}' (FORMAT PARQUET)"
+    )
+    return schema_mismatch(executor.environment.datasources["target"], executor)
+
+
+@pytest.mark.parametrize(
+    "select",
+    [
+        "SELECT 1 AS id, 1.5::DOUBLE AS x, TIMESTAMP '2026-01-01' AS ts",
+        (
+            "SELECT 1::BIGINT AS id, 1.5::FLOAT AS x,"
+            " TIMESTAMPTZ '2026-01-01 00:00:00+00' AS ts"
+        ),
+    ],
+)
+def test_a_parquet_stored_at_another_width_is_not_drift(tmp_path, select):
+    assert _typed_drift(tmp_path, select) is None
+
+
+def test_a_parquet_column_of_another_kind_is_drift(tmp_path):
+    drift = _typed_drift(
+        tmp_path, "SELECT 1 AS id, '1.5' AS x, TIMESTAMP '2026-01-01' AS ts"
+    )
+
+    assert drift == "type of x (string vs float)"
