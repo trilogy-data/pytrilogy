@@ -36,16 +36,23 @@ jobs:
       # references the binary instead of shelling out to cargo. Unset locally,
       # where the fixture builds on demand.
       TRILOGY_IO_PREBUILT: '1'
+      # The extension is built three times per job: the editable install, the
+      # editable install uv makes for pushdown_source.py's script environment,
+      # and the packaged-CLI wheel. pyo3's build config is keyed on the
+      # interpreter path, so each venv used to force a full release compile of
+      # the crate (22-50s each). With the base interpreter passed instead, the
+      # second and third builds are cargo no-ops.
+      MATURIN_PEP517_USE_BASE_PYTHON: '1'
+      # The 3.11 and 3.12 cells fetch a managed 3.13 for the >=3.13 scripts;
+      # under uv's default preference every later script would then pick that
+      # interpreter, and pushdown_source.py would recompile the extension for it.
+      UV_PYTHON_PREFERENCE: system
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
         with:
           python-version: ${{ matrix.python-version }}
-          cache: 'pip'
-          cache-dependency-path: |
-            requirements.txt
-            requirements-test.txt
       - name: Set up Rust
         uses: actions-rust-lang/setup-rust-toolchain@150fca883cd4034361b621bd4e6a9d34e5143606  # v1.15.4
         with:
@@ -59,6 +66,10 @@ jobs:
           cache-workspaces: |
             trilogy/scripts/dependency
             crates/trilogy-io
+          # Bumped when the cached profiles change: an exact key hit is never
+          # re-saved, so the dev-profile deps `cargo test` builds would
+          # otherwise be compiled on every run until Cargo.lock next moves.
+          cache-key: dev-tests
       - name: Install uv for script tests
         uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8.0.0
         with:
@@ -89,10 +100,13 @@ jobs:
         run: |
           cd trilogy/scripts/dependency
           # Default features are what crates.io consumers get: pure Rust, no pyo3.
-          cargo test --release
+          # Dev profile: the release profile's LTO link of every test binary was
+          # 40-90s of a 5s debug build, and the release extension is exercised by
+          # the whole pytest step anyway.
+          cargo test
           # The pyo3 layer is feature-gated out of the run above, so type-check it
           # here rather than discovering a break at wheel-build time.
-          cargo check --release --features python --all-targets
+          cargo check --features python --all-targets
       - name: Build Rust extension
         run: |
           python -m pip install -e .
@@ -218,15 +232,13 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           python -m venv .venv
-          .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/python -m pip install .
+          uv pip install --python .venv .
           .venv/bin/trilogy --help
           .venv/bin/trilogy run "SELECT 1 + 1->test;" duckdb
       - name: Test package cli (Windows)
         if: runner.os == 'Windows'
         run: |
           python -m venv .venv
-          .venv/Scripts/python -m pip install --upgrade pip
-          .venv/Scripts/python -m pip install .
+          uv pip install --python .venv .
           .venv/Scripts/trilogy --help
           .venv/Scripts/trilogy run "SELECT 1 + 1->test;" duckdb
