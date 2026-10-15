@@ -808,7 +808,7 @@ def _wait_for_server(base_url, get_cli_result, thread, max_wait=10.0):
     raise AssertionError("\n".join(details))
 
 
-def test_serve_cli():
+def test_serve_cli(stop_servers):
 
     path = Path(__file__).parent
     config_dir = path / "config_directory"
@@ -859,7 +859,7 @@ def test_serve_cli():
         data = json.loads(response.read().decode())
         assert "models" in data
 
-    # Wait for CLI to finish (server --timeout should stop it)
+    stop_servers()
     thread.join(timeout=20.0)
     assert cli_result is not None
     if cli_result.exception:

@@ -153,6 +153,9 @@ class Config:
     human_identifiers: bool = True
     randomize_cte_names: bool = False
     validate_missing: bool = True
+    # Full gc pass when a DuckDB executor closes, so a long-lived process (a
+    # server cycling engines) frees DuckDB instances held by reference cycles.
+    collect_on_close: bool = True
     comments: Comments = field(default_factory=Comments)
     optimizations: Optimizations = field(default_factory=Optimizations)
     rendering: Rendering = field(default_factory=Rendering)

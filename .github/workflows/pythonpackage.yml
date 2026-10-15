@@ -26,6 +26,11 @@ jobs:
       contents: 'read'
       id-token: 'write'
     env:
+      # Coverage runs under sys.monitoring on 3.12+ (~60% overhead on this
+      # suite) but needs the C tracer on 3.11 (~150%), which made the 3.11
+      # cells the longest in the matrix by 10 minutes. 3.11 runs the same
+      # tests uncovered; its only unique lines are version-specific branches.
+      PYTEST_COV: ${{ matrix.python-version != '3.11' && '--cov=trilogy' || '' }}
       # Tells tests/io/test_conformance.py that the "Build the conformance
       # binary" step below already produced the rust example, so its fixture
       # references the binary instead of shelling out to cargo. Unset locally,
@@ -73,12 +78,13 @@ jobs:
           workload_identity_provider: 'projects/734709568634/locations/global/workloadIdentityPools/github/providers/preql-integration'
           project_id: 'preqldata'
       - name: Install dependencies
+        # uv resolves and installs into the job's interpreter several times
+        # faster than pip and shares the cache the step above restores.
+        # sqlalchemy-bigquery is in requirements-test.txt; the separate pip
+        # line with --ignore-requires-python dated from a release that
+        # excluded the Python of the day and has not been needed since.
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install wheel maturin==1.10.2
-          python -m pip install -r requirements.txt
-          python -m pip install -r requirements-test.txt
-          python -m pip install sqlalchemy-bigquery --ignore-requires-python
+          uv pip install --system wheel maturin==1.10.2 -r requirements.txt -r requirements-test.txt
       - name: Run Rust tests
         run: |
           cd trilogy/scripts/dependency
@@ -124,6 +130,22 @@ jobs:
             echo "== $script"
             uv sync --script "$script" || echo "WARNING: could not pre-warm $script"
           done
+      - name: Locate the Lark parser cache
+        # Lark pickles its LALR tables next to the grammar's hash in the
+        # interpreter's temp dir and rebuilds on a miss. The build is ~6s on
+        # 3.13 and ~30s on 3.11 under the C coverage tracer, paid by the first
+        # test that reaches the Lark backend. The file carries the grammar +
+        # lark-version + python-version hash and is verified on load, so a
+        # stale restore is only a miss. The key names the same inputs.
+        id: lark-cache
+        shell: bash
+        run: |
+          echo "dir=$(python -c 'import tempfile; print(tempfile.gettempdir())')" >> "$GITHUB_OUTPUT"
+          echo "lark=$(python -c 'import lark; print(lark.__version__)')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684  # v4.2.3
+        with:
+          path: ${{ steps.lark-cache.outputs.dir }}/.lark_cache_*
+          key: lark-${{ runner.os }}-py${{ matrix.python-version }}-lark${{ steps.lark-cache.outputs.lark }}-${{ hashFiles('trilogy/parsing/trilogy.lark') }}
       - name: Pre-fetch the gcat parquet fixtures
         # tests/modeling/gcat/setup.sql builds its tables from nine parquet
         # files on GCS. Left to the tests that is ~6.5MB plus an INSTALL httpfs
@@ -152,10 +174,9 @@ jobs:
           python .scripts/check_benchmark_growth.py FETCH_HEAD
       - name: Test with pytest
         if: matrix.run_llm_tests == true
+        shell: bash
         run: |
-          python -m pip install pytest
-          python -m pip install pytest-cov
-          python -m pytest tests/ --cov=trilogy -m "not adventureworks_execution and not cloud_live"
+          python -m pytest tests/ $PYTEST_COV --durations=80 -m "not adventureworks_execution and not cloud_live"
         env:
           GOOGLE_HMAC_SECRET: ${{ secrets.GOOGLE_HMAC_SECRET }}
           GOOGLE_HMAC_KEY: ${{ secrets.GOOGLE_HMAC_KEY }}
@@ -165,10 +186,9 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       - name: Test with pytest (skip LLM provider tests)
         if: matrix.run_llm_tests != true
+        shell: bash
         run: |
-          python -m pip install pytest
-          python -m pip install pytest-cov
-          python -m pytest tests/ --cov=trilogy -m "not adventureworks_execution and not cloud_live" --ignore=tests/ai/test_providers_basic.py
+          python -m pytest tests/ $PYTEST_COV --durations=80 -m "not adventureworks_execution and not cloud_live" --ignore=tests/ai/test_providers_basic.py
         env:
           GOOGLE_HMAC_SECRET: ${{ secrets.GOOGLE_HMAC_SECRET }}
           GOOGLE_HMAC_KEY: ${{ secrets.GOOGLE_HMAC_KEY }}
@@ -181,12 +201,14 @@ jobs:
         run: |
           python -m local_scripts.fuzzer
       - name: Test after installing rich
+        shell: bash
         run: |
           # install rich and rerun CLI tests. One invocation, not three: the -k
           # filters are disjoint but each run re-collected the whole tests/ tree.
-          python -m pip install rich
-          python -m pytest tests/ --cov=trilogy --cov-append -m "not adventureworks_execution" -k "test_trilogy or test_display or test_refresh"
+          uv pip install --system rich
+          python -m pytest tests/ $PYTEST_COV ${PYTEST_COV:+--cov-append} --durations=30 -m "not adventureworks_execution" -k "test_trilogy or test_display or test_refresh"
       - name: Upload coverage to Codecov
+        if: matrix.python-version != '3.11'
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2  # v6.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
