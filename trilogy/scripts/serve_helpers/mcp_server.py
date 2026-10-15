@@ -19,6 +19,8 @@ from trilogy.scripts.serve_helpers.file_discovery import (
 )
 
 MCP_PATH = "/mcp"
+# The hosts the SDK turns on DNS-rebinding (Host/Origin) protection for.
+LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 DEFAULT_ROW_LIMIT = 100
 MAX_ROW_LIMIT = 1000
 
@@ -26,6 +28,10 @@ INSTRUCTIONS = """Query a Trilogy semantic model. Trilogy is SQL-like but has no
 import a model, then select its fields and joins/grouping are resolved for you.
 Workflow: list_models -> describe_model(model) for its fields -> run_query with \
 `import <model>; select ...;`. Read get_syntax once before writing queries."""
+
+
+def is_loopback(host: str) -> bool:
+    return host in LOOPBACK_HOSTS
 
 
 def check_mcp_available() -> bool:
@@ -194,7 +200,13 @@ class _TokenGate:
 
 
 def mount_mcp(app, session: ModelSession, host: str, token: str | None) -> None:
-    """Serve ``session`` as an MCP server at ``/mcp`` on the FastAPI ``app``."""
+    """Serve ``session`` as an MCP server at ``/mcp`` on the FastAPI ``app``.
+
+    On a loopback bind the endpoint takes no token, as local MCP servers
+    conventionally don't; the SDK's Host/Origin checks stop a web page from
+    reaching it through DNS rebinding. Bound anywhere else it requires the
+    serve token: run_query can execute arbitrary SQL, shell pipes included.
+    """
     from contextlib import asynccontextmanager
 
     from mcp.server import MCPServer
@@ -208,7 +220,12 @@ def mount_mcp(app, session: ModelSession, host: str, token: str | None) -> None:
     server.streamable_http_app(host=host)
     manager = server.session_manager
     app.router.routes.append(
-        Route(MCP_PATH, endpoint=_TokenGate(manager.handle_request, token))
+        Route(
+            MCP_PATH,
+            endpoint=_TokenGate(
+                manager.handle_request, None if is_loopback(host) else token
+            ),
+        )
     )
     outer = app.router.lifespan_context
 

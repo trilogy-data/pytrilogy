@@ -100,19 +100,23 @@ def test_get_syntax(session: ModelSession):
         session.get_syntax("not-an-example")
 
 
-def _app(model_dir: Path, session: ModelSession, token: str | None) -> FastAPI:
+def _app(
+    model_dir: Path, session: ModelSession, token: str | None, host: str = "testserver"
+) -> FastAPI:
     return create_app(
         FastAPI(),
         "duck_db",
         model_dir,
-        "testserver",
-        80,
+        host,
+        8100,
         token=token,
         mcp_session=session,
     )
 
 
-def test_mcp_route_requires_token(model_dir: Path, session: ModelSession):
+def test_mcp_route_requires_token_beyond_localhost(
+    model_dir: Path, session: ModelSession
+):
     with TestClient(_app(model_dir, session, "secret")) as client:
         assert client.post("/mcp", json=INIT, headers=MCP_HEADERS).status_code == 401
         for header in (
@@ -122,6 +126,21 @@ def test_mcp_route_requires_token(model_dir: Path, session: ModelSession):
             response = client.post("/mcp", json=INIT, headers=MCP_HEADERS | header)
             assert response.status_code == 200
             assert "serverInfo" in response.text
+
+
+def test_mcp_route_is_open_on_localhost(model_dir: Path, session: ModelSession):
+    app = _app(model_dir, session, "secret", host="localhost")
+    with TestClient(app, base_url="http://localhost:8100") as client:
+        response = client.post("/mcp", json=INIT, headers=MCP_HEADERS)
+        assert response.status_code == 200
+        assert client.get("/index.json").status_code == 401
+
+
+def test_mcp_on_localhost_rejects_rebound_host(model_dir: Path, session: ModelSession):
+    app = _app(model_dir, session, None, host="localhost")
+    with TestClient(app, base_url="http://attacker.example:8100") as client:
+        response = client.post("/mcp", json=INIT, headers=MCP_HEADERS)
+        assert response.status_code in (400, 403, 421)
 
 
 def test_mcp_route_without_auth(model_dir: Path, session: ModelSession):

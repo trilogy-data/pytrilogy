@@ -28,6 +28,7 @@ from trilogy.scripts.serve_helpers import (
 from trilogy.scripts.serve_helpers.mcp_server import (
     ModelSession,
     check_mcp_available,
+    is_loopback,
 )
 from trilogy.scripts.source_identity import path_token
 from trilogy.utility import utc_now_iso
@@ -638,6 +639,8 @@ def create_app(
     print(f"Access the index at: http://{host}:{port}/index.json")
     if mcp_session is not None:
         print(f"MCP endpoint (streamable HTTP): {base_url}/mcp")
+        if token is not None and not is_loopback(host):
+            print("  (bound beyond localhost: MCP clients must send X-Trilogy-Token)")
     print(
         f"Found {len(find_all_model_files(directory_path))} model files (.preql, .sql, .csv, .py)"
     )
@@ -647,7 +650,12 @@ def create_app(
 @argument("path", type=Path(exists=True, file_okay=True, dir_okay=True), default=".")
 @argument("engine", type=str, required=False, default="generic")
 @option("--port", "-p", default=8100, help="Port to run the server on")
-@option("--host", "-h", default="0.0.0.0", help="Host to bind the server to")
+@option(
+    "--host",
+    "-h",
+    default="localhost",
+    help="Host to bind the server to; 0.0.0.0 exposes it to the network",
+)
 @option("--timeout", "-t", default=None, type=float, help="Shutdown after N seconds")
 @option(
     "--no-browser",
