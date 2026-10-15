@@ -14,6 +14,7 @@ later passes warm.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import statistics
 import subprocess
@@ -47,10 +48,9 @@ def run_session(
         )
         for _ in range(passes):
             for query in queries:
-                try:
+                # A failed query is recorded in the log with its error.
+                with contextlib.suppress(Exception):
                     session.run_query(query)
-                except Exception:
-                    pass  # recorded in the log
         if session._executor is not None:
             session._executor.close()
         records = [
