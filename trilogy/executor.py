@@ -1738,6 +1738,11 @@ class Executor:
             except QueryTimeoutException:
                 raise
             except Exception as e:
+                # A failed statement leaves the transaction it opened aborted on
+                # DuckDB/postgres; every later statement, retries included, would
+                # fail until it is rolled back.
+                if implicit and self.connection.in_transaction():
+                    self.connection.rollback()
                 policy = self._get_retry_policy(e)
                 if policy is None or attempt >= policy.max_attempts:
                     script_failure = self._script_failure(e)

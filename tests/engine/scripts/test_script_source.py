@@ -306,6 +306,46 @@ def test_uv_wrapper_retries_retryable_errors(
     assert capsys.readouterr().out.strip() == '{"name": "done"}'
 
 
+def test_uv_wrapper_stages_then_publishes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    output_path = tmp_path / "out.arrow"
+    written: list[Path] = []
+
+    def fake_run_uv(script, args, staged: Path, error_path):
+        written.append(staged)
+        staged.write_text("ok", encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr(duckdb_uv, "_run_uv", fake_run_uv)
+
+    assert run_with_retry("script.py", "", output_path, tmp_path / "out.err") == 0
+    assert written[0] != output_path
+    assert output_path.read_text(encoding="utf-8") == "ok"
+    assert [p.name for p in tmp_path.iterdir()] == ["out.arrow"]
+
+
+def test_uv_wrapper_keeps_a_concurrently_published_stream(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    output_path = tmp_path / "out.arrow"
+    output_path.write_text("concurrent", encoding="utf-8")
+
+    def fake_run_uv(script, args, staged: Path, error_path):
+        staged.write_text("ours", encoding="utf-8")
+        return 0
+
+    def locked(src, dst):
+        raise PermissionError("held open by a reader")
+
+    monkeypatch.setattr(duckdb_uv, "_run_uv", fake_run_uv)
+    monkeypatch.setattr(duckdb_uv.os, "replace", locked)
+
+    assert run_with_retry("script.py", "", output_path, tmp_path / "out.err") == 0
+    assert output_path.read_text(encoding="utf-8") == "concurrent"
+    assert [p.name for p in tmp_path.iterdir()] == ["out.arrow"]
+
+
 def test_validation_caches_python_datasource_per_run():
     script = """
 key fib_index int;

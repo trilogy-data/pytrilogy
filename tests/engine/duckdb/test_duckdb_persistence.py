@@ -172,6 +172,19 @@ def test_failed_overwrite_keeps_old_rows_and_a_usable_connection(db_path, tmp_pa
     assert _rows(db_path, "select * from out_t") == [(1, "keep")]
 
 
+def test_failed_read_leaves_a_usable_connection(db_path, tmp_path):
+    exec = _executor(db_path, tmp_path)
+    exec.execute_write_sql(
+        "CREATE VIEW raw_t AS SELECT 2 AS i, "
+        "CASE WHEN i > 0 THEN error('boom') ELSE 'x' END AS n"
+    )
+    with pytest.raises(Exception, match="boom"):
+        exec.execute_raw_sql("select * from raw_t").fetchall()
+    assert not exec.connection.in_transaction()
+    assert exec.execute_raw_sql("select 1").fetchall() == [(1,)]
+    exec.close()
+
+
 def test_rollback_leaves_a_caller_owned_transaction_alone(db_path, tmp_path):
     exec = _executor(db_path, tmp_path)
     exec.execute_write_sql("CREATE TABLE out_t AS SELECT 1 AS i, 'keep' AS n")
