@@ -306,6 +306,23 @@ def is_missing_table(
     return False
 
 
+# Widths and zone-awareness an engine picks on its own when it stores a value:
+# DuckDB writes a trilogy float as DOUBLE, a count as BIGINT, and keeps a
+# tz-aware source as TIMESTAMPTZ. A declared type change is caught by the model
+# fingerprint, so only a change of kind is drift.
+_STORAGE_FAMILY = {
+    DataType.DOUBLE: DataType.FLOAT,
+    DataType.BIGINT: DataType.INTEGER,
+    DataType.TIMESTAMP: DataType.DATETIME,
+}
+
+
+def _same_storage_kind(actual: DataType, expected: DataType) -> bool:
+    return _STORAGE_FAMILY.get(actual, actual) == _STORAGE_FAMILY.get(
+        expected, expected
+    )
+
+
 def schema_mismatch(
     datasource: Datasource,
     executor: Executor,
@@ -353,7 +370,8 @@ def schema_mismatch(
         drift = [
             f"type of {n} ({actual[n].value} vs {expected[n].value})"
             for n in expected
-            if actual[n] != DataType.UNKNOWN and actual[n] != expected[n]
+            if actual[n] != DataType.UNKNOWN
+            and not _same_storage_kind(actual[n], expected[n])
         ]
     return ", ".join(drift) or None
 

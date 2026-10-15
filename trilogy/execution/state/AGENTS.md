@@ -88,7 +88,9 @@ SELECT * FROM <file>`), because a watermark cannot see a column added to the
 model — every root stays where it was, so a file lacking the column would read
 fresh until its roots happened to move, and every read of the column would fail
 at execution. Types are compared only where the file stores them (parquet); a
-CSV's are sniffed from the values. Script and SQL-file addresses have no
+CSV's are sniffed from the values. Types compare by kind, not width: FLOAT/DOUBLE,
+INTEGER/BIGINT and DATETIME/TIMESTAMP are the same (`_STORAGE_FAMILY`), since the
+engine picks those itself when it writes. Script and SQL-file addresses have no
 declaration to drift from and are not judged. A missing or unreadable file
 yields no schema; those are their own verdicts, reached afterwards.
 
