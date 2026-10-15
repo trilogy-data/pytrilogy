@@ -1964,3 +1964,16 @@ def test_mcp_announces_its_endpoint(monkeypatch, tmp_path):
     )
     assert result.exit_code == 0, result.output
     assert "MCP endpoint (streamable HTTP): http://localhost:8100/mcp" in result.output
+
+
+def test_config_override_supplies_the_dialect(monkeypatch, tmp_path):
+    pytest.importorskip("mcp")
+    config = tmp_path.parent / f"{tmp_path.name}-alt.toml"
+    config.write_text('[engine]\ndialect = "duck_db"\n')
+    result = _serve_without_running(
+        monkeypatch,
+        tmp_path,
+        ["--mcp", "--no-local-studio", "--config", str(config)],
+    )
+    assert result.exit_code == 0, result.output
+    assert "Engine: duck_db" in result.output

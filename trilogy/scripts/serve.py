@@ -711,6 +711,13 @@ def create_app(
     "(requires pytrilogy[mcp])",
 )
 @option(
+    "--config",
+    "config_override",
+    default=None,
+    type=Path(exists=True, dir_okay=False),
+    help="Use this trilogy.toml instead of the nearest one to PATH",
+)
+@option(
     "--mcp-log",
     default=None,
     type=Path(dir_okay=False),
@@ -733,6 +740,7 @@ def serve(
     studio_url: str | None,
     mcp: bool,
     mcp_log: str | None,
+    config_override: str | None,
 ):
     """Start a FastAPI server to expose Trilogy models from a directory or file."""
     if not check_fastapi_available():
@@ -776,7 +784,11 @@ def serve(
         target_file = None
 
     # Load trilogy.toml for engine dialect and serve settings
-    config_path = find_trilogy_config(directory_path)
+    config_path = (
+        PathlibPath(config_override).resolve()
+        if config_override
+        else find_trilogy_config(directory_path)
+    )
     resolved_studio_url = DEFAULT_STUDIO_URL
     project_name: str | None = None
     connection_type: Dialects | str | None = None
@@ -856,7 +868,7 @@ def serve(
         mcp_session = ModelSession(
             directory_path,
             Dialects(engine),
-            get_runtime_config(directory_path),
+            get_runtime_config(directory_path, config_path),
             log=QueryLog(PathlibPath(mcp_log)) if mcp_log else None,
         )
 
