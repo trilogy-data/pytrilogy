@@ -225,7 +225,26 @@ cache key gained `cache-key: dev-tests` because an exact key hit is never
 re-saved, so the dev-profile dependencies would otherwise be rebuilt on every
 run until `Cargo.lock` next changed.
 
-RUST_RESULT_PLACEHOLDER
+With the cache warm (run 38743633413) the step is 18-23 s on Linux and
+30-35 s on Windows, against 39-82 s and 73-98 s before. What remains is the
+crate's own debug compile (13-19 s; rust-cache sets `CARGO_INCREMENTAL=0`)
+and `cargo check --features python`.
+
+### Effect of 8-10
+
+Job wall time is dominated by the pytest step, which swings by minutes between
+runners, so the comparable number is the time spent outside it:
+
+| cell | outside pytest, before (38648476126 / 38648426566) | after (38743633413) |
+|---|---|---|
+| ubuntu 3.11  | 290 / 268 s | 184 s |
+| ubuntu 3.12  | 400 / 310 s | 208 s |
+| ubuntu 3.13  | 301 / 245 s | 220 s |
+| windows 3.11 | 485 / 393 s | 334 s |
+| windows 3.12 | 555 / 543 s | 371 s |
+| windows 3.13 | 627 / 601 s | 401 s |
+
+The 3.13 cells also run the fuzzer corpus (20-38 s) outside pytest.
 
 ## Targets not taken (yet), in order of expected value
 
