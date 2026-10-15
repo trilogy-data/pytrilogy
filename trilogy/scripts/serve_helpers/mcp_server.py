@@ -5,12 +5,20 @@ from __future__ import annotations
 
 import datetime
 import decimal
+import json
+import os
 import threading
+import time
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from trilogy import Dialects, Environment, Executor
+from trilogy.core.models.datasource import Address
+from trilogy.core.models.execute import QueryDatasource
+from trilogy.core.statements.execute import ProcessedQuery
+from trilogy.dialect.config import DuckDBConfig
 from trilogy.execution.config import RuntimeConfig
 from trilogy.scripts.serve_helpers.file_discovery import (
     extract_description_from_file,
@@ -56,6 +64,56 @@ def _jsonable(value: Any) -> Any:
     return str(value)
 
 
+def _elapsed_ms(since: float) -> float:
+    return round((time.perf_counter() - since) * 1000, 1)
+
+
+def _collect_scripts(source: QueryDatasource, found: set[str]) -> None:
+    for datasource in source.datasources:
+        if isinstance(datasource, QueryDatasource):
+            _collect_scripts(datasource, found)
+        elif (
+            isinstance(datasource.address, Address)
+            and datasource.address.type.is_program
+        ):
+            found.add(datasource.address.location)
+
+
+def script_sources(statements: list[Any]) -> list[str]:
+    """Locations of the script datasources the planned statements read."""
+    found: set[str] = set()
+    for statement in statements:
+        if isinstance(statement, ProcessedQuery):
+            for cte in statement.ctes:
+                _collect_scripts(cte.source, found)
+    return sorted(found)
+
+
+class QueryLog:
+    """Appends one JSON line per query: the raw material for latency analysis."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.session = uuid.uuid4().hex[:12]
+        self._lock = threading.Lock()
+        self._seq = 0
+
+    def write(self, record: dict[str, Any]) -> None:
+        with self._lock:
+            self._seq += 1
+            line = json.dumps(
+                {
+                    "ts": datetime.datetime.now(datetime.UTC).isoformat(),
+                    "session": self.session,
+                    "pid": os.getpid(),
+                    "seq": self._seq,
+                    **record,
+                }
+            )
+            with open(self.path, "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+
+
 class ModelSession:
     """The served directory as seen by MCP tools.
 
@@ -66,14 +124,29 @@ class ModelSession:
     """
 
     def __init__(
-        self, directory: Path, dialect: Dialects, config: RuntimeConfig
+        self,
+        directory: Path,
+        dialect: Dialects,
+        config: RuntimeConfig,
+        log: QueryLog | None = None,
     ) -> None:
         self.directory = directory
         self.dialect = dialect
         self.config = config
+        self.log = log
         self._lock = threading.Lock()
         self._executor: Executor | None = None
         self._base: Environment | None = None
+        self._scripts_seen: set[str] = set()
+
+    @property
+    def transport(self) -> str | None:
+        if self.dialect != Dialects.DUCK_DB:
+            return None
+        engine_config = self.config.engine_config
+        if not isinstance(engine_config, DuckDBConfig):
+            engine_config = DuckDBConfig()
+        return engine_config.python_datasource_transport.value
 
     def _ensure_executor(self) -> tuple[Executor, Environment]:
         if self._executor is None or self._base is None:
@@ -140,20 +213,46 @@ class ModelSession:
     def run_query(self, query: str, limit: int = DEFAULT_ROW_LIMIT) -> dict[str, Any]:
         """Run Trilogy statements, e.g. `import process; select name, count(pid) -> n order by n desc limit 10;`. Returns the last result set, capped at `limit` rows (max 1000)."""
         limit = max(1, min(limit, MAX_ROW_LIMIT))
-        with self._lock:
-            executor, base = self._ensure_executor()
-            executor.environment = base.duplicate()
-            try:
-                results = executor.execute_text(query)
-                rows_result = next(
-                    (r for r in reversed(results) if r.returns_rows), None
-                )
-                if rows_result is None:
-                    return {"columns": [], "rows": [], "truncated": False}
-                columns = list(rows_result.keys())
-                rows = rows_result.fetchmany(limit + 1)
-            except Exception as e:
-                raise _tool_error(f"{type(e).__name__}: {e}") from e
+        record: dict[str, Any] = {"transport": self.transport, "query": query}
+        started = time.perf_counter()
+        try:
+            with self._lock:
+                record["queue_ms"] = _elapsed_ms(started)
+                payload = self._run_locked(query, limit, record)
+            record.update(rows=len(payload["rows"]), truncated=payload["truncated"])
+            return payload
+        except Exception as e:
+            record["error"] = str(e)
+            raise
+        finally:
+            record["total_ms"] = _elapsed_ms(started)
+            if self.log is not None:
+                self.log.write(record)
+
+    def _run_locked(
+        self, query: str, limit: int, record: dict[str, Any]
+    ) -> dict[str, Any]:
+        mark = time.perf_counter()
+        record["cold_executor"] = self._executor is None
+        executor, base = self._ensure_executor()
+        record["executor_ms"] = _elapsed_ms(mark)
+        executor.environment = base.duplicate()
+        try:
+            mark = time.perf_counter()
+            statements = executor.parse_text(query)
+            record["plan_ms"] = _elapsed_ms(mark)
+            scripts = script_sources(statements)
+            record["scripts"] = scripts
+            record["cold_scripts"] = sorted(set(scripts) - self._scripts_seen)
+            self._scripts_seen.update(scripts)
+            mark = time.perf_counter()
+            results = executor.execute_parsed(statements)
+            rows_result = next((r for r in reversed(results) if r.returns_rows), None)
+            columns = list(rows_result.keys()) if rows_result else []
+            rows = rows_result.fetchmany(limit + 1) if rows_result else []
+            record["execute_ms"] = _elapsed_ms(mark)
+        except Exception as e:
+            raise _tool_error(f"{type(e).__name__}: {e}") from e
         return {
             "columns": columns,
             "rows": [_jsonable(list(row)) for row in rows[:limit]],

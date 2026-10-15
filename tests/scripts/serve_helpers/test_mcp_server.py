@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -12,7 +13,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from trilogy import Dialects
 from trilogy.scripts.common import get_runtime_config
 from trilogy.scripts.serve import create_app
-from trilogy.scripts.serve_helpers.mcp_server import ModelSession
+from trilogy.scripts.serve_helpers.mcp_server import ModelSession, QueryLog
 
 ITEMS = """# Items for sale.
 key id int;
@@ -147,3 +148,25 @@ def test_mcp_route_without_auth(model_dir: Path, session: ModelSession):
     with TestClient(_app(model_dir, session, None)) as client:
         response = client.post("/mcp", json=INIT, headers=MCP_HEADERS)
         assert response.status_code == 200
+
+
+def test_query_log_records_timings(model_dir: Path, tmp_path: Path):
+    log_path = tmp_path / "mcp.jsonl"
+    session = ModelSession(
+        model_dir,
+        Dialects.DUCK_DB,
+        get_runtime_config(model_dir),
+        log=QueryLog(log_path),
+    )
+    session.run_query("import items; select id;")
+    session.run_query("import items; select id;")
+    with pytest.raises(ToolError):
+        session.run_query("import items; select nope;")
+    first, second, failed = [json.loads(x) for x in log_path.read_text().splitlines()]
+    assert first["transport"] == "shell"
+    assert first["cold_executor"] and not second["cold_executor"]
+    assert [first["seq"], second["seq"], failed["seq"]] == [1, 2, 3]
+    assert second["rows"] == 3 and second["scripts"] == []
+    for key in ("queue_ms", "executor_ms", "plan_ms", "execute_ms", "total_ms"):
+        assert second[key] >= 0
+    assert "nope" in failed["error"] and "execute_ms" not in failed

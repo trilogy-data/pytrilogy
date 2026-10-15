@@ -6,7 +6,7 @@ import subprocess
 import threading
 import time
 import uuid
-from collections.abc import Callable, Generator, Mapping, Sequence
+from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import replace as dc_replace
 from pathlib import Path
@@ -1831,13 +1831,21 @@ class Executor:
     def execute_text(
         self, command: str, non_interactive: bool = False
     ) -> list[ResultProtocol]:
+        """Run a trilogy query expressed as text."""
         if not self.connected:
             self.connect()
+        return self.execute_parsed(self.parse_text_generator(command), non_interactive)
 
-        """Run a trilogy query expressed as text."""
+    def execute_parsed(
+        self,
+        statements: Iterable[PROCESSED_STATEMENT_TYPES],
+        non_interactive: bool = False,
+    ) -> list[ResultProtocol]:
+        """Run already-parsed statements; ``execute_text`` is parse + this."""
+        if not self.connected:
+            self.connect()
         output: list[ResultProtocol] = []
-        # connection = self.engine.connect()
-        for statement in self.parse_text_generator(command):
+        for statement in statements:
             if isinstance(statement, ProcessedShowStatement):
                 results = handle_show_statement_outputs(
                     statement,

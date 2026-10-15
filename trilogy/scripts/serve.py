@@ -27,6 +27,7 @@ from trilogy.scripts.serve_helpers import (
 )
 from trilogy.scripts.serve_helpers.mcp_server import (
     ModelSession,
+    QueryLog,
     check_mcp_available,
     is_loopback,
 )
@@ -709,6 +710,12 @@ def create_app(
     help="Also serve an MCP endpoint at /mcp so agents can query the model "
     "(requires pytrilogy[mcp])",
 )
+@option(
+    "--mcp-log",
+    default=None,
+    type=Path(dir_okay=False),
+    help="Append one JSON line of timings per MCP query to this file",
+)
 @pass_context
 def serve(
     ctx,
@@ -725,6 +732,7 @@ def serve(
     studio_bundle: str | None,
     studio_url: str | None,
     mcp: bool,
+    mcp_log: str | None,
 ):
     """Start a FastAPI server to expose Trilogy models from a directory or file."""
     if not check_fastapi_available():
@@ -846,7 +854,10 @@ def serve(
             )
             sys.exit(1)
         mcp_session = ModelSession(
-            directory_path, Dialects(engine), get_runtime_config(directory_path)
+            directory_path,
+            Dialects(engine),
+            get_runtime_config(directory_path),
+            log=QueryLog(PathlibPath(mcp_log)) if mcp_log else None,
         )
 
     app = FastAPI(title="Trilogy Model Server", version=__version__)
