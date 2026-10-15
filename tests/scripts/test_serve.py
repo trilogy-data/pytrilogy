@@ -1946,3 +1946,21 @@ def test_store_id_survives_a_nameless_label():
         store_id = build_store_id(Path(tmpdir), "***")
         assert len(store_id) == 8
         assert store_id.isalnum()
+
+
+def test_mcp_requires_a_dialect(monkeypatch, tmp_path):
+    pytest.importorskip("mcp")
+    result = _serve_without_running(
+        monkeypatch, tmp_path, ["--mcp", "--no-local-studio"]
+    )
+    assert result.exit_code == 1
+    assert "--mcp runs queries, so it needs a dialect" in result.output
+
+
+def test_mcp_announces_its_endpoint(monkeypatch, tmp_path):
+    pytest.importorskip("mcp")
+    result = _serve_without_running(
+        monkeypatch, tmp_path, ["duck_db", "--mcp", "--no-local-studio"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "MCP endpoint (streamable HTTP): http://localhost:8100/mcp" in result.output

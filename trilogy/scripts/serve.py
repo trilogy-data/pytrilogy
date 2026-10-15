@@ -15,7 +15,7 @@ from trilogy.dialect.config import DialectConfig
 from trilogy.dialect.enums import Dialects
 from trilogy.execution.config import DEFAULT_STUDIO_URL, load_config_file
 from trilogy.execution.state.snapshot import StateSnapshot
-from trilogy.scripts.common import find_trilogy_config
+from trilogy.scripts.common import find_trilogy_config, get_runtime_config
 from trilogy.scripts.serve_helpers import (
     REMOTE_STORE_CONTRACT_VERSION,
     StudioBundle,
@@ -24,6 +24,10 @@ from trilogy.scripts.serve_helpers import (
     find_trilogy_files,
     get_relative_model_name,
     get_safe_model_name,
+)
+from trilogy.scripts.serve_helpers.mcp_server import (
+    ModelSession,
+    check_mcp_available,
 )
 from trilogy.scripts.source_identity import path_token
 from trilogy.utility import utc_now_iso
@@ -236,6 +240,7 @@ def create_app(
     startup_scripts: list[PathlibPath] | None = None,
     enable_state_cache: bool = True,
     studio_bundle: StudioBundle | None = None,
+    mcp_session: ModelSession | None = None,
 ):
     # Normalize once so every closure (including the state probe) sees the
     # same representation. Avoids Windows short-name vs full-name mismatches
@@ -603,6 +608,11 @@ def create_app(
 
     app.include_router(router)
 
+    if mcp_session is not None:
+        from trilogy.scripts.serve_helpers.mcp_server import mount_mcp
+
+        mount_mcp(app, mcp_session, host, token)
+
     if studio_bundle is not None:
         import mimetypes
 
@@ -626,6 +636,8 @@ def create_app(
     print(f"Serving model '{directory_path.name}' from: {directory_path}")
     print(f"Engine: {engine}")
     print(f"Access the index at: http://{host}:{port}/index.json")
+    if mcp_session is not None:
+        print(f"MCP endpoint (streamable HTTP): {base_url}/mcp")
     print(
         f"Found {len(find_all_model_files(directory_path))} model files (.preql, .sql, .csv, .py)"
     )
@@ -682,6 +694,13 @@ def create_app(
         "serving a local bundle. Overrides [serve] studio_url in trilogy.toml."
     ),
 )
+@option(
+    "--mcp",
+    is_flag=True,
+    default=False,
+    help="Also serve an MCP endpoint at /mcp so agents can query the model "
+    "(requires pytrilogy[mcp])",
+)
 @pass_context
 def serve(
     ctx,
@@ -697,12 +716,21 @@ def serve(
     no_local_studio: bool,
     studio_bundle: str | None,
     studio_url: str | None,
+    mcp: bool,
 ):
     """Start a FastAPI server to expose Trilogy models from a directory or file."""
     if not check_fastapi_available():
         print(
             "Error: FastAPI and uvicorn are required for the serve command.\n"
             "Please install with: pip install pytrilogy[serve]",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if mcp and not check_mcp_available():
+        print(
+            "Error: the mcp package is required for --mcp.\n"
+            "Please install with: pip install pytrilogy[mcp]",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -800,6 +828,19 @@ def serve(
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
 
+    mcp_session: ModelSession | None = None
+    if mcp:
+        if engine == "generic":
+            print(
+                "Error: --mcp runs queries, so it needs a dialect: pass an engine "
+                "or set [engine] dialect in trilogy.toml.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        mcp_session = ModelSession(
+            directory_path, Dialects(engine), get_runtime_config(directory_path)
+        )
+
     app = FastAPI(title="Trilogy Model Server", version=__version__)
     create_app(
         app,
@@ -816,6 +857,7 @@ def serve(
         startup_scripts=startup_scripts,
         enable_state_cache=not no_state_cache,
         studio_bundle=resolved_bundle,
+        mcp_session=mcp_session,
     )
 
     # Generate Trilogy Studio URL
