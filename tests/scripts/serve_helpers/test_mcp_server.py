@@ -170,3 +170,66 @@ def test_query_log_records_timings(model_dir: Path, tmp_path: Path):
     for key in ("queue_ms", "executor_ms", "plan_ms", "execute_ms", "total_ms"):
         assert second[key] >= 0
     assert "nope" in failed["error"] and "execute_ms" not in failed
+
+
+def test_jsonable_renders_driver_values():
+    import datetime
+    import decimal
+
+    from trilogy.scripts.serve_helpers.mcp_server import _jsonable
+
+    assert _jsonable(
+        {
+            1: [decimal.Decimal("1.5"), datetime.date(2026, 1, 2)],
+            "t": (datetime.time(3, 4),),
+            "other": b"x",
+        }
+    ) == {"1": [1.5, "2026-01-02"], "t": ["03:04:00"], "other": "b'x'"}
+
+
+def test_mcp_is_unavailable_without_the_extra(monkeypatch):
+    import sys
+
+    from trilogy.scripts.serve_helpers.mcp_server import check_mcp_available
+
+    monkeypatch.setitem(sys.modules, "mcp.server", None)
+    assert not check_mcp_available()
+
+
+def test_transport_is_only_reported_for_duckdb(model_dir: Path):
+    config = get_runtime_config(model_dir)
+    assert ModelSession(model_dir, Dialects.SQLITE, config).transport is None
+    assert ModelSession(model_dir, Dialects.DUCK_DB, config).transport == "shell"
+
+
+def test_describe_reports_a_model_that_fails_to_load(model_dir: Path):
+    (model_dir / "broken.preql").write_text("import nowhere;\n")
+    session = ModelSession(model_dir, Dialects.DUCK_DB, get_runtime_config(model_dir))
+    with pytest.raises(ToolError, match="failed to load"):
+        session.describe_model("broken")
+
+
+def test_get_syntax_renders_an_example(session: ModelSession):
+    from trilogy.ai.syntax_examples import available_names
+
+    name = available_names()[0]
+    assert session.get_syntax(name).strip()
+
+
+def test_script_sources_finds_programs_under_nested_sources():
+    from trilogy import Environment
+    from trilogy.execution import DuckDBConfig
+    from trilogy.scripts.serve_helpers.mcp_server import script_sources
+
+    scripts = Path(__file__).parents[2] / "engine" / "scripts"
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=scripts),
+        conf=DuckDBConfig(enable_python_datasources=True),
+    )
+    statements = executor.parse_text("""
+key fib_index int;
+property fib_index.value int;
+datasource fib (index: fib_index, fibonacci: value) grain (fib_index) file `./fib.py`;
+select sum(value) -> total;
+""")
+    assert [Path(s).name for s in script_sources(statements)] == ["fib.py"]
