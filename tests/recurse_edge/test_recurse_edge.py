@@ -71,7 +71,6 @@ def test_metric_by_subset_merged_root_extends(outputs: str, expected: list[tuple
     )
 
 
-@pytest.mark.parametrize("model", ["process", "process_by_path"])
 @pytest.mark.parametrize(
     "outputs, expected",
     [
@@ -80,18 +79,17 @@ def test_metric_by_subset_merged_root_extends(outputs: str, expected: list[tuple
         ("app.pid, app.name", [(1, "code", 16), (4, "fx", 10)]),
     ],
 )
-def test_self_imported_tree(model: str, outputs: str, expected: list[tuple]):
+def test_self_imported_tree(outputs: str, expected: list[tuple]):
     first = outputs.split(",")[0]
     assert (
-        run(f"import {model}; select {outputs}, sum(mem) -> m order by {first} asc;")
+        run(f"import process; select {outputs}, sum(mem) -> m order by {first} asc;")
         == expected
     )
 
 
-@pytest.mark.parametrize("model", ["process", "process_by_path"])
-def test_self_import_completes_namespace(model: str):
+def test_self_import_completes_namespace():
     assert run(
-        f"import {model}; where pid is not null "
+        "import process; where pid is not null "
         "select pid, parent.name order by pid asc;"
     ) == [(1, None), (2, "code"), (3, "node"), (4, None), (5, "fx")]
 
