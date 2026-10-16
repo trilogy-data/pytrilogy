@@ -80,7 +80,7 @@ def _enumerate_covers(
             (
                 node,
                 [
-                    (address, binding.partial)
+                    (address, binding.partial and address not in network.partial_ok)
                     for address, binding in candidate.bindings.items()
                 ],
                 list(candidate.grain),

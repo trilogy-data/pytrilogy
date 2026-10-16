@@ -1907,6 +1907,14 @@ class QueryDatasource:
         )
 
 
+class RecursiveStepCTE(CTE):
+    """The recursive member of a ``RecursiveCTE``. Its join walks the cursor to
+    the next row: an edge, not a shared key, so the sides never coalesce."""
+
+    def outer_join_key_class(self, address: str) -> list[BuildConcept]:
+        return []
+
+
 class RecursiveCTE(CTE):
 
     def generate_loop_functions(
@@ -2057,7 +2065,7 @@ class RecursiveCTE(CTE):
             join_gate.address: [top.identifier],
             recursive_derived.address: [top.identifier],
         }
-        bottom = CTE(
+        bottom = RecursiveStepCTE(
             name=self.name,
             source=self.source,
             output_columns=bottom_output,
@@ -2065,10 +2073,12 @@ class RecursiveCTE(CTE):
             grain=self.grain,
             existence_source_map=self.existence_source_map,
             parent_ctes=top_cte_array + parent_ctes,
+            # LEFT: a next node with no row of its own ends the walk there, as a
+            # null edge does, so an orphan's walk stops at its missing parent.
             joins=[
                 Join(
                     right=loop_input_cte,
-                    join_type=JoinType.INNER,
+                    join_type=JoinType.LEFT_OUTER,
                     pairs=[
                         ConceptPair(
                             left=recursive_derived,
@@ -2077,11 +2087,11 @@ class RecursiveCTE(CTE):
                             node=top,
                         )
                     ],
-                    condition=BuildComparison(
-                        left=join_gate, right=True, operator=ComparisonOperator.IS_NOT
-                    ),
                 )
             ],
+            condition=BuildComparison(
+                left=join_gate, right=True, operator=ComparisonOperator.IS_NOT
+            ),
             partial_concepts=self.partial_concepts,
             rollup_concepts=self.rollup_concepts,
             hidden_concepts=self.hidden_concepts,

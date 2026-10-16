@@ -28,15 +28,23 @@ row LIMIT or a FILTER anywhere in a side's chain vetoes the claim.
 
 from __future__ import annotations
 
+from trilogy.constants import RECURSIVE_GATING_CONCEPT
 from trilogy.core.domain_graph import DomainGraph, ResolvedRelation
 from trilogy.core.enums import Derivation, JoinType, Modifier, SourceType
 from trilogy.core.models.build import (
     BoolExpr,
+    BuildComparison,
     BuildConcept,
     BuildRowsetItem,
     nonstandard_grouping_lineage,
 )
-from trilogy.core.models.execute import CTE, BuildDatasource, Join, UnionCTE
+from trilogy.core.models.execute import (
+    CTE,
+    BuildDatasource,
+    Join,
+    RecursiveCTE,
+    UnionCTE,
+)
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
@@ -245,13 +253,32 @@ def _accumulate_filter(
         return None
     next_visited = _visited | {side_cte.name}
     parts: list[BoolExpr] = []
-    if side_cte.condition is not None:
+    if side_cte.condition is not None and _recursion_seed(side_cte) is None:
         parts.append(side_cte.condition)
     for parent in side_cte.parent_ctes:
         sub = _accumulate_filter(parent, next_visited)
         if sub is not None:
             parts.append(sub)
     return combine_condition_atoms(parts)
+
+
+def _recursion_seed(side_cte: CTE) -> CTE | None:
+    """The seed of the recursion whose terminal rows ``side_cte`` keeps. The
+    gate picks the one row each seed row's walk ends on, so it restricts no
+    seed value: the terminal rows carry the seed's value sets."""
+    condition = side_cte.condition
+    if not (
+        isinstance(condition, BuildComparison)
+        and isinstance(condition.left, BuildConcept)
+        and condition.left.name == RECURSIVE_GATING_CONCEPT
+        and len(side_cte.parent_ctes) == 1
+    ):
+        return None
+    recursion = side_cte.parent_ctes[0]
+    if not isinstance(recursion, RecursiveCTE) or len(recursion.parent_ctes) != 1:
+        return None
+    seed = recursion.parent_ctes[0]
+    return seed if isinstance(seed, CTE) else None
 
 
 def _filters_equivalent(a: BoolExpr | None, b: BoolExpr | None) -> bool:
@@ -446,6 +473,23 @@ def _complete_values(
             )
         ):
             return True
+    seed = _recursion_seed(side_cte)
+    if seed is not None:
+        # A recursive concept's domain is its image over the seed rows; the edge
+        # column is read off those same rows, so only the seed must be complete.
+        targets = (
+            concept.concept_arguments[:1]
+            if concept.derivation == Derivation.RECURSIVE
+            else [concept]
+        )
+        return bool(targets) and all(
+            any(
+                column.all_spellings & target.all_spellings
+                and _complete_values(column, seed, graph)
+                for column in seed.output_columns
+            )
+            for target in targets
+        )
     if concept.derivation in _COMPLETENESS_TRANSFERRING:
         args = concept.concept_arguments
         return bool(args) and all(
