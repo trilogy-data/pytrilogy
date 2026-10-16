@@ -6,7 +6,7 @@ import subprocess
 import threading
 import time
 import uuid
-from collections.abc import Callable, Generator, Mapping, Sequence
+from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import replace as dc_replace
 from pathlib import Path
@@ -440,8 +440,8 @@ class Executor:
         from trilogy.dialect.config import DuckDBConfig, PythonDatasourceTransport
         from trilogy.dialect.duckdb import (
             PYTHON_DATASOURCE_GUARD_MARKER,
+            VGI_SETUP_SQL,
             get_python_datasource_setup_sql,
-            get_vgi_setup_sql,
         )
 
         # A read-only handle can't CREATE the guard macro — and python
@@ -472,9 +472,7 @@ class Executor:
             and isinstance(self.config, DuckDBConfig)
             and self.config.python_datasource_transport == PythonDatasourceTransport.VGI
         ):
-            self._execute_setup_ddl(
-                get_vgi_setup_sql(Path(sys.executable).as_posix(), is_windows)
-            )
+            self._execute_setup_ddl(VGI_SETUP_SQL)
             return
         self._execute_setup_ddl(
             get_python_datasource_setup_sql(
@@ -1738,6 +1736,11 @@ class Executor:
             except QueryTimeoutException:
                 raise
             except Exception as e:
+                # A failed statement leaves the transaction it opened aborted on
+                # DuckDB/postgres; every later statement, retries included, would
+                # fail until it is rolled back.
+                if implicit and self.connection.in_transaction():
+                    self.connection.rollback()
                 policy = self._get_retry_policy(e)
                 if policy is None or attempt >= policy.max_attempts:
                     script_failure = self._script_failure(e)
@@ -1831,13 +1834,21 @@ class Executor:
     def execute_text(
         self, command: str, non_interactive: bool = False
     ) -> list[ResultProtocol]:
+        """Run a trilogy query expressed as text."""
         if not self.connected:
             self.connect()
+        return self.execute_parsed(self.parse_text_generator(command), non_interactive)
 
-        """Run a trilogy query expressed as text."""
+    def execute_parsed(
+        self,
+        statements: Iterable[PROCESSED_STATEMENT_TYPES],
+        non_interactive: bool = False,
+    ) -> list[ResultProtocol]:
+        """Run already-parsed statements; ``execute_text`` is parse + this."""
+        if not self.connected:
+            self.connect()
         output: list[ResultProtocol] = []
-        # connection = self.engine.connect()
-        for statement in self.parse_text_generator(command):
+        for statement in statements:
             if isinstance(statement, ProcessedShowStatement):
                 results = handle_show_statement_outputs(
                     statement,

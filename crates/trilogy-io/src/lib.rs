@@ -26,6 +26,7 @@
 //! requirement -- an API-backed source claims `Filters` so it can push the
 //! predicate to the API instead of scanning and discarding.
 
+use std::collections::BTreeMap;
 use std::io::Write;
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -120,6 +121,156 @@ where
     /// the `vgi` feature; without it the flag is refused, and a consumer falls
     /// back to running the source once per scan).
     pub fn run(self) -> ExitCode {
+        Program::Single(Box::new(self)).run()
+    }
+}
+
+/// A source with its function's type erased, so several can share a program.
+pub(crate) trait Erased: Send + Sync {
+    fn read(&self, invocation: &Invocation) -> Result<BatchReader>;
+    fn claims(&self) -> &[Field];
+    #[cfg(feature = "vgi")]
+    fn declared(&self) -> Option<SchemaRef>;
+}
+
+impl<F, T> Erased for Source<F>
+where
+    F: Fn(&SourceRequest) -> T + Send + Sync + 'static,
+    T: IntoBatchReader,
+{
+    fn read(&self, invocation: &Invocation) -> Result<BatchReader> {
+        self.resolve(invocation)
+    }
+
+    fn claims(&self) -> &[Field] {
+        &self.pushdown
+    }
+
+    #[cfg(feature = "vgi")]
+    fn declared(&self) -> Option<SchemaRef> {
+        self.schema.clone()
+    }
+}
+
+/// Several named sources served by one program, selected with `--source`.
+#[derive(Default)]
+pub struct Sources {
+    entries: BTreeMap<String, Box<dyn Erased>>,
+}
+
+/// Start a program that serves several sources.
+pub fn sources() -> Sources {
+    Sources::default()
+}
+
+impl Sources {
+    /// Register `source` as `name`. Panics on a name that is not an identifier
+    /// (`[A-Za-z_][A-Za-z0-9_]*`) or is already registered.
+    pub fn add<F, T>(mut self, name: &str, source: Source<F>) -> Self
+    where
+        F: Fn(&SourceRequest) -> T + Send + Sync + 'static,
+        T: IntoBatchReader,
+    {
+        assert!(
+            is_identifier(name),
+            "source name {name:?} is not an identifier"
+        );
+        assert!(
+            !self.entries.contains_key(name),
+            "source {name:?} is registered twice"
+        );
+        self.entries.insert(name.to_string(), Box::new(source));
+        self
+    }
+
+    /// Parse the process arguments and run the selected source, or serve them
+    /// all under `--vgi`. Returns a process exit code.
+    pub fn run(self) -> ExitCode {
+        Program::Several(self.entries).run()
+    }
+}
+
+fn is_identifier(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// What a program serves: one unnamed source, or several by name.
+pub(crate) enum Program {
+    Single(Box<dyn Erased>),
+    Several(BTreeMap<String, Box<dyn Erased>>),
+}
+
+impl Program {
+    /// The source `--source` names; a contract failure listing what is served.
+    pub(crate) fn select(&self, source: Option<&str>) -> Result<&dyn Erased> {
+        match (self, source) {
+            (Program::Single(only), None) => Ok(only.as_ref()),
+            (Program::Single(_), Some(name)) => Err(Error::contract(format!(
+                "unknown source '{name}': this program serves a single source"
+            ))),
+            (Program::Several(entries), None) => Err(Error::contract(format!(
+                "this program serves several sources; choose one with --source. \
+                 Available sources: {}",
+                available(entries)
+            ))),
+            (Program::Several(entries), Some(name)) => {
+                entries.get(name).map(|e| e.as_ref()).ok_or_else(|| {
+                    Error::contract(format!(
+                        "unknown source '{name}'. Available sources: {}",
+                        available(entries)
+                    ))
+                })
+            }
+        }
+    }
+
+    /// The selected source's reader for an already-parsed invocation.
+    #[cfg(feature = "vgi")]
+    pub(crate) fn resolve(&self, invocation: &Invocation) -> Result<BatchReader> {
+        self.select(invocation.source.as_deref())?.read(invocation)
+    }
+
+    /// The schema a call will produce, when it is known without running the
+    /// source: a declared schema the request cannot reshape. A source that
+    /// projects its own columns, or a request naming a column the schema
+    /// lacks, must run so its answer (or its error) is the one-shot one.
+    #[cfg(feature = "vgi")]
+    pub(crate) fn declared_schema(&self, invocation: &Invocation) -> Option<SchemaRef> {
+        let source = self.select(invocation.source.as_deref()).ok()?;
+        let schema = source.declared()?;
+        if source.claims().contains(&Field::Columns) {
+            return None;
+        }
+        let request = &invocation.request;
+        let named = request
+            .columns
+            .iter()
+            .flatten()
+            .chain(request.filters.iter().map(|f| &f.column))
+            .chain(request.order_by.iter().map(|s| &s.column));
+        for name in named {
+            schema.index_of(name).ok()?;
+        }
+        Some(match &request.columns {
+            Some(columns) => Arc::new(
+                schema
+                    .project(
+                        &columns
+                            .iter()
+                            .map(|c| schema.index_of(c).unwrap())
+                            .collect::<Vec<_>>(),
+                    )
+                    .ok()?,
+            ),
+            None => schema,
+        })
+    }
+
+    fn run(self) -> ExitCode {
         if std::env::args().any(|arg| arg == VGI_FLAG) {
             return self.serve();
         }
@@ -144,26 +295,38 @@ where
         ExitCode::from(2)
     }
 
-    fn execute(self, program: &str) -> Result<()> {
+    fn execute(&self, program: &str) -> Result<()> {
         let invocation = Cli::parse().into_invocation()?;
+        let selected = self.select(invocation.source.as_deref())?;
         if invocation.describe {
-            let pushdown = self.pushdown.clone();
             // Deliberately the unnarrowed request: describe reports what the
             // source produces, not what this particular invocation would return.
             let plain = Invocation {
                 request: SourceRequest::default(),
-                ..invocation
+                format: invocation.format,
+                output: None,
+                describe: true,
+                source: invocation.source.clone(),
             };
-            let reader = self.resolve(&plain)?;
-            let payload = describe::payload(&reader.schema(), &pushdown, program);
+            let reader = selected.read(&plain)?;
+            let payload = describe::payload(
+                &reader.schema(),
+                selected.claims(),
+                program,
+                invocation.source.as_deref(),
+            );
             println!("{}", serde_json::to_string_pretty(&payload)?);
             return Ok(());
         }
         let format = invocation.format;
         let output = invocation.output.clone();
-        sinks::write(self.resolve(&invocation)?, format, output.as_deref())?;
+        sinks::write(selected.read(&invocation)?, format, output.as_deref())?;
         Ok(())
     }
+}
+
+fn available(entries: &BTreeMap<String, Box<dyn Erased>>) -> String {
+    entries.keys().cloned().collect::<Vec<_>>().join(", ")
 }
 
 /// Run `function` as a data source, claiming no pushdown.
@@ -245,4 +408,74 @@ fn report(error: &Error) {
     let mut stderr = std::io::stderr().lock();
     let _ = stderr.write_all(error_report(error).as_bytes());
     let _ = stderr.flush();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn empty(_: &SourceRequest) -> Result<Vec<arrow::array::RecordBatch>> {
+        Ok(vec![])
+    }
+
+    fn several() -> Program {
+        Program::Several(
+            sources()
+                .add("b", source(empty))
+                .add("a", source(empty))
+                .entries,
+        )
+    }
+
+    fn message(program: &Program, name: Option<&str>) -> String {
+        program
+            .select(name)
+            .err()
+            .expect("selection fails")
+            .to_string()
+    }
+
+    #[test]
+    fn several_sources_need_a_known_name() {
+        let program = several();
+        assert!(program.select(Some("a")).is_ok());
+        assert_eq!(
+            message(&program, None),
+            "this program serves several sources; choose one with --source. \
+             Available sources: a, b"
+        );
+        assert_eq!(
+            message(&program, Some("x")),
+            "unknown source 'x'. Available sources: a, b"
+        );
+        assert_eq!(
+            program.select(Some("x")).err().unwrap().kind(),
+            "ContractError"
+        );
+    }
+
+    #[test]
+    fn a_single_source_refuses_a_name() {
+        let program = Program::Single(Box::new(source(empty)));
+        assert!(program.select(None).is_ok());
+        assert_eq!(
+            message(&program, Some("x")),
+            "unknown source 'x': this program serves a single source"
+        );
+    }
+
+    #[test]
+    fn names_are_identifiers() {
+        assert!(is_identifier("process"));
+        assert!(is_identifier("_a1"));
+        assert!(!is_identifier("1a"));
+        assert!(!is_identifier("a-b"));
+        assert!(!is_identifier(""));
+    }
+
+    #[test]
+    #[should_panic(expected = "registered twice")]
+    fn a_duplicate_name_panics() {
+        let _ = sources().add("a", source(empty)).add("a", source(empty));
+    }
 }

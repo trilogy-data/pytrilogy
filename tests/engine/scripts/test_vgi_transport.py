@@ -16,8 +16,10 @@ from trilogy.core.models.datasource import Address
 from trilogy.dialect.cancel import duckdb_side_cursor
 from trilogy.dialect.config import DuckDBConfig, PythonDatasourceTransport
 from trilogy.dialect.duckdb import (
+    VGI_SETUP_SQL,
+    attach_bridge,
     attach_resident,
-    get_vgi_setup_sql,
+    bridge_attach_sql,
     python_datasource_failure,
     resident_alias,
     resident_command,
@@ -59,13 +61,13 @@ def test_worker_command_survives_cmd_quote_stripping():
     )
 
 
-def test_setup_attaches_the_bridge_worker():
-    sql = get_vgi_setup_sql("/opt/py/python", is_windows=False)
-    assert "LOAD vgi;" in sql
-    assert (
+def test_setup_loads_vgi_without_starting_the_bridge():
+    assert "LOAD vgi;" in VGI_SETUP_SQL
+    assert "ATTACH" not in VGI_SETUP_SQL
+    assert bridge_attach_sql("/opt/py/python", is_windows=False) == (
         "ATTACH IF NOT EXISTS 'trilogy_io' (TYPE vgi, LOCATION "
-        "'/opt/py/python -m trilogy.dialect.duckdb_vgi');"
-    ) in sql
+        "'/opt/py/python -m trilogy.dialect.duckdb_vgi')"
+    )
 
 
 def test_resident_command_adds_vgi_only_to_python_scripts():
@@ -80,6 +82,12 @@ def test_resident_command_adds_vgi_only_to_python_scripts():
         "--vgi",
     ]
     assert resident_command("/w/bin/landmarks") == ["/w/bin/landmarks", "--vgi"]
+    assert resident_command("/w/bin/landmarks", "abc") == [
+        "/w/bin/landmarks",
+        "--vgi",
+        "--vgi-version",
+        "abc",
+    ]
 
 
 def test_resident_alias_follows_the_source_version(tmp_path: Path):
@@ -88,6 +96,16 @@ def test_resident_alias_follows_the_source_version(tmp_path: Path):
     first = resident_alias(str(source))
     assert first == resident_alias(str(source))
     os.utime(source, ns=(1, 1))
+    assert resident_alias(str(source)) != first
+
+
+def test_resident_alias_follows_the_modules_a_script_imports(tmp_path: Path):
+    source = tmp_path / "src.py"
+    source.write_text("import helper")
+    helper = tmp_path / "helper.py"
+    helper.write_text("VALUE = 1")
+    first = resident_alias(str(source))
+    os.utime(helper, ns=(1, 1))
     assert resident_alias(str(source)) != first
 
 
@@ -142,6 +160,7 @@ def test_prepare_sources_skips_what_is_already_decided():
         )
     )
     dialect._not_resident.add("/w/raw.py")
+    dialect._bridge_attached = True
     addresses = [
         Address(location="/w/raw.py", type=AddressType.PYTHON_SCRIPT),
         Address(location="orders", type=AddressType.TABLE),
@@ -191,6 +210,7 @@ def test_a_trilogy_io_source_runs_resident(vgi_executor):
     assert rows.fetchall()
     resident = vgi_executor.generator._residents
     assert [Path(location).name for location in resident] == ["pushdown_source.py"]
+    assert not vgi_executor.generator._bridge_attached
 
 
 def test_a_raw_script_falls_back_to_the_bridge(vgi_executor):
@@ -205,6 +225,7 @@ datasource fib (index: index, fibonacci: fibonacci) grain (index) file `./fib.py
 
     assert rows == [(24, 28657), (25, 46368)]
     assert not vgi_executor.generator._residents
+    assert vgi_executor.generator._bridge_attached
 
 
 def test_a_rust_source_runs_resident(vgi_executor):
@@ -268,6 +289,7 @@ def test_vgi_transport_matches_shell(vgi_executor):
 
 def test_vgi_scans_one_script_twice_in_one_query(vgi_executor):
     vgi_executor.parse_text(MODEL)
+    attach_bridge(vgi_executor.connection)
     path = (SCRIPTS / "pushdown_source.py").as_posix()
     rows = vgi_executor.execute_raw_sql(
         f"SELECT count(*) FROM trilogy_io.main.script('{path}', '') a "
@@ -279,9 +301,46 @@ def test_vgi_scans_one_script_twice_in_one_query(vgi_executor):
 
 def test_vgi_script_failure_surfaces_as_script_error(vgi_executor):
     path = (SCRIPTS / "error.py").as_posix()
+    attach_bridge(vgi_executor.connection)
     with pytest.raises(PythonDatasourceError) as raised:
         vgi_executor.execute_raw_sql(
             f"SELECT * FROM trilogy_io.main.script('{path}', '')"
         )
 
     assert "A helpful error describing what went wrong." in str(raised.value)
+
+
+EDITED_PROGRAM = """# /// script
+# requires-python = ">=3.11"
+# dependencies = ["pytrilogy"]
+# [tool.uv.sources]
+# pytrilogy = { path = "ROOT", editable = true }
+# ///
+import helper
+
+from trilogy.io import run
+
+if __name__ == "__main__":
+    raise SystemExit(run(lambda: [{"id": 1, "value": helper.VALUE}]))
+"""
+
+
+def test_an_edited_module_is_served_without_a_restart(vgi_executor, tmp_path: Path):
+    """A running executor picks up an edit to a module the source imports."""
+    (tmp_path / "program.py").write_text(EDITED_PROGRAM.replace("ROOT", ROOT))
+    helper = tmp_path / "helper.py"
+    helper.write_text("VALUE = 1")
+    vgi_executor.parse_text(f"""
+key id int;
+property id.value int;
+datasource edited (id: id, value: value) grain (id)
+file `{(tmp_path / "program.py").as_posix()}`;
+""")
+    query = "select id, value;"
+    assert vgi_executor.execute_text(query)[-1].fetchall() == [(1, 1)]
+    first = dict(vgi_executor.generator._residents)
+
+    helper.write_text("VALUE = 2")
+    os.utime(helper, ns=(10**18, 10**18))
+    assert vgi_executor.execute_text(query)[-1].fetchall() == [(1, 2)]
+    assert vgi_executor.generator._residents != first

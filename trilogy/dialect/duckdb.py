@@ -36,6 +36,13 @@ from trilogy.core.enums import (
 )
 from trilogy.core.models.core import CONCRETE_TYPES, DataType
 from trilogy.core.models.datasource import Address
+from trilogy.core.models.execute import (
+    CTE,
+    CompiledCTE,
+    QueryDatasource,
+    RecursiveCTE,
+    UnionCTE,
+)
 from trilogy.dialect.base import BaseDialect, is_array_arg
 from trilogy.dialect.cancel import duckdb_side_cursor
 from trilogy.utility import safe_open
@@ -299,26 +306,65 @@ def vgi_worker_command(python_executable: str, is_windows: bool) -> str:
     )
 
 
-def resident_command(location: str) -> list[str]:
-    """How to start a source as its own VGI worker (``--vgi``)."""
+def resident_command(location: str, version: str | None = None) -> list[str]:
+    """How to start a source as its own VGI worker (``--vgi``).
+
+    vgi pools worker processes by their command line, so ``version`` goes on it
+    (after ``--vgi``, which is all a served source reads): otherwise a worker for
+    an edited source is drawn from the pool still running the old code.
+    """
     from trilogy.dialect.python_source import UV_RUN_PREFIX
     from trilogy.io.errors import VGI_FLAG
 
+    tail = [VGI_FLAG, "--vgi-version", version] if version else [VGI_FLAG]
     if Path(location).suffix == ".py":
         # The script's own dependencies need not include vgi.
-        return [*UV_RUN_PREFIX, "--with", "vgi-python", location, VGI_FLAG]
-    return [location, VGI_FLAG]
+        return [*UV_RUN_PREFIX, "--with", "vgi-python", location, *tail]
+    return [location, *tail]
+
+
+RESIDENT_ALIAS_PREFIX = "trilogy_src_"
+
+
+def source_version(location: str) -> str:
+    """Modification times of the code a source runs. A python script may import
+    the modules beside it, so its version covers every ``.py`` in its directory."""
+    path = Path(location)
+    files = sorted(path.parent.glob("*.py")) if path.suffix == ".py" else [path]
+    stamps = []
+    for file in files:
+        try:
+            stamps.append(f"{file.name}:{file.stat().st_mtime_ns}")
+        except OSError:
+            stamps.append(f"{file.name}:0")
+    return "|".join(stamps)
 
 
 def resident_alias(location: str) -> str:
     """A catalog alias per source *version*: an edited or rebuilt source gets a
     fresh worker rather than the pooled one still running the old code."""
+    version = source_version(location)
+    digest = hashlib.md5(f"{location}|{version}".encode()).hexdigest()[:12]
+    return f"{RESIDENT_ALIAS_PREFIX}{digest}"
+
+
+def detach_resident(connection: Any, alias: str) -> None:
+    """Drop a superseded worker rather than leave it idling out its pool timeout."""
+    side = duckdb_side_cursor(connection)
+    if side is None:
+        return
     try:
-        mtime = Path(location).stat().st_mtime_ns
-    except OSError:
-        mtime = 0
-    digest = hashlib.md5(f"{location}|{mtime}".encode()).hexdigest()[:12]
-    return f"trilogy_src_{digest}"
+        side.execute(f"DETACH DATABASE IF EXISTS {alias}")
+    except Exception as e:
+        logger.info("could not detach superseded resident %s: %s", alias, e)
+    finally:
+        side.close()
+
+
+# How long an idle resident worker is kept. The vgi default (5s) is shorter than
+# the gap between an agent's queries, so each query would restart the source
+# (uv, interpreter, imports: seconds) and lose the point of a resident worker.
+RESIDENT_IDLE_SECONDS = 3600
 
 
 def attach_resident(connection: Any, location: str) -> str | None:
@@ -332,12 +378,14 @@ def attach_resident(connection: Any, location: str) -> str | None:
     if side is None:
         return None
     alias = resident_alias(location)
-    command = vgi_location(resident_command(location), sys.platform == "win32")
+    version = alias.removeprefix(RESIDENT_ALIAS_PREFIX)
+    command = vgi_location(resident_command(location, version), sys.platform == "win32")
     escaped = command.replace("'", "''")
     try:
         side.execute(
             f"ATTACH IF NOT EXISTS '{VGI_SOURCE_CATALOG}' AS {alias} "
-            f"(TYPE vgi, LOCATION '{escaped}')"
+            f"(TYPE vgi, LOCATION '{escaped}', "
+            f"POOL_TIMEOUT {RESIDENT_IDLE_SECONDS})"
         )
     except Exception as e:
         logger.info("%s is not resident, using the VGI bridge: %s", location, e)
@@ -347,14 +395,31 @@ def attach_resident(connection: Any, location: str) -> str | None:
     return alias
 
 
-def get_vgi_setup_sql(python_executable: str, is_windows: bool) -> str:
-    """Attach the bridge worker that serves script datasources over VGI."""
-    location = vgi_worker_command(python_executable, is_windows).replace("'", "''")
-    return f"""
+VGI_SETUP_SQL = """
 INSTALL vgi FROM community;
 LOAD vgi;
-ATTACH IF NOT EXISTS '{VGI_CATALOG}' (TYPE vgi, LOCATION '{location}');
 """
+
+
+def bridge_attach_sql(python_executable: str, is_windows: bool) -> str:
+    location = vgi_worker_command(python_executable, is_windows).replace("'", "''")
+    return f"ATTACH IF NOT EXISTS '{VGI_CATALOG}' (TYPE vgi, LOCATION '{location}')"
+
+
+def attach_bridge(connection: Any) -> None:
+    """Attach the bridge worker that serves sources which cannot run resident.
+
+    Lazy: a model whose sources all serve themselves never starts it.
+    """
+    side = duckdb_side_cursor(connection)
+    if side is None:
+        return
+    try:
+        side.execute(
+            bridge_attach_sql(Path(sys.executable).as_posix(), sys.platform == "win32")
+        )
+    finally:
+        side.close()
 
 
 # DuckDB reports a failed shellfs pipe only by its command line; both uv_run
@@ -410,6 +475,36 @@ def python_datasource_failure(error: Exception) -> PythonDatasourceError | None:
         int(failure.group(1)),
         stderr,
     )
+
+
+def reads_program(cte: CTE | UnionCTE) -> bool:
+    """Whether the CTE's own FROM/JOINs run a program datasource."""
+    return any(
+        not isinstance(datasource, QueryDatasource)
+        and isinstance(datasource.address, Address)
+        and datasource.address.type.is_program
+        for datasource in cte.source.datasources
+    )
+
+
+def rescanned_ctes(ctes: list[CTE | UnionCTE]) -> set[str]:
+    """CTEs DuckDB would evaluate more than once if inlined.
+
+    A CTE read by two consumers, or by a recursive CTE (whose step re-reads
+    it every iteration), is otherwise inlined at each reference.
+    """
+    consumers: dict[str, int] = {}
+    recursive: set[str] = set()
+    pending = list(ctes)
+    while pending:
+        cte = pending.pop()
+        if isinstance(cte, (UnionCTE, RecursiveCTE)):
+            pending.extend(cte.internal_ctes)
+        for parent in {p.name for p in cte.parent_ctes}:
+            consumers[parent] = consumers.get(parent, 0) + 1
+            if isinstance(cte, RecursiveCTE):
+                recursive.add(parent)
+    return {name for name, count in consumers.items() if count > 1} | recursive
 
 
 def get_gcs_setup_sql(enabled: bool) -> str:
@@ -555,6 +650,7 @@ class DuckDBDialect(BaseDialect):
         # location -> attached alias. Anything absent renders via the bridge.
         self._residents: dict[str, str] = {}
         self._not_resident: set[str] = set()
+        self._bridge_attached = False
         # Resident workers have to be attached before a query references them.
         self.REQUIRES_SOURCE_PREPARATION = self._vgi
         if isinstance(config, DuckDBConfig) and config.gcs_cache_bust:
@@ -567,34 +663,51 @@ class DuckDBDialect(BaseDialect):
     _GCS_PREFIXES = ("gcs://", "gs://", "https://storage.googleapis.com")
 
     def prepare_sources(self, addresses: Iterable[Address], executor: Executor) -> None:
-        """Start each program source as its own pooled VGI worker, once.
+        """Start each program source as its own pooled VGI worker, once per version.
 
         Sources are started lazily, by the first query that reads them, and
         all of a query's new sources start in parallel: the query waits for the
         slowest startup rather than the sum. A source that cannot serve itself
         (a raw script, a pytrilogy without ``--vgi``, a binary built without
-        the ``vgi`` feature) fails to attach and is read through the bridge.
+        the ``vgi`` feature) fails to attach and is read through the bridge,
+        which is itself attached only once a query needs it.
         """
-        pending = list(
-            dict.fromkeys(
-                address.location
-                for address in addresses
-                if address.type.is_program
-                and address.location not in self._residents
-                and address.location not in self._not_resident
-            )
+        programs = list(
+            dict.fromkeys(a.location for a in addresses if a.type.is_program)
         )
-        if not pending:
-            return
-        with ThreadPoolExecutor(max_workers=min(len(pending), 8)) as pool:
-            aliases = list(
-                pool.map(partial(attach_resident, executor.connection), pending)
-            )
-        for location, alias in zip(pending, aliases):
-            if alias is None:
-                self._not_resident.add(location)
-            else:
-                self._residents[location] = alias
+        # Re-checked per query, so a source edited under a running server is
+        # served by a fresh worker from the next query on.
+        pending = [
+            p
+            for p in programs
+            if p not in self._not_resident
+            and self._residents.get(p) != resident_alias(p)
+        ]
+        if pending:
+            with ThreadPoolExecutor(max_workers=min(len(pending), 8)) as pool:
+                aliases = list(
+                    pool.map(partial(attach_resident, executor.connection), pending)
+                )
+            for location, alias in zip(pending, aliases):
+                superseded = self._residents.pop(location, None)
+                if alias is None:
+                    self._not_resident.add(location)
+                else:
+                    self._residents[location] = alias
+                if superseded is not None and superseded != alias:
+                    detach_resident(executor.connection, superseded)
+        if not self._bridge_attached and any(p in self._not_resident for p in programs):
+            attach_bridge(executor.connection)
+            self._bridge_attached = True
+
+    def generate_ctes(self, query: ProcessedQuery) -> list[CompiledCTE]:
+        # An inlined script read reruns the program per reference (per
+        # iteration under recursion): slower, and each run a new snapshot.
+        compiled = super().generate_ctes(query)
+        rescanned = rescanned_ctes(query.ctes)
+        for cte, out in zip(query.ctes[:-1], compiled[:-1]):
+            out.materialized = cte.name in rescanned and reads_program(cte)
+        return compiled
 
     def _maybe_bust_gcs_url(self, url: str) -> str:
         if self._gcs_cache_bust_token and url.startswith(self._GCS_PREFIXES):
@@ -634,7 +747,7 @@ class DuckDBDialect(BaseDialect):
                 self.staging.prepare_executor_subdir(self.instance_id)
             from trilogy.dialect.source_pushdown import render_args
 
-            args = render_args(request)
+            args = " ".join(filter(None, [address.source_args, render_args(request)]))
             if self._vgi:
                 escaped = args.replace("'", "''")
                 alias = self._residents.get(address.location)

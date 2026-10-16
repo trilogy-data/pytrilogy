@@ -9,10 +9,13 @@ type quarter int[1..4];
 type week int[1..53];
 type day int[1..31];
 # hour/minute/second stay unbounded: they double as duration-unit tags
-# (e.g. `duration numeric::second`), unlike the calendar-position types above
+# (e.g. `duration numeric::second`), unlike the calendar-position types above.
+# second is numeric so a cast keeps fractions (1.5 seconds of CPU time); the
+# second(...) date part still returns an integer.
 type hour int;
 type minute int;
-type second int;
+type second numeric;
+type millisecond int;
 # 0..7 admits both 0-6 and 1-7 weekday conventions
 type day_of_week int[0..7];
 type day_of_week_name string;

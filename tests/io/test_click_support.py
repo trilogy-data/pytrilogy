@@ -38,7 +38,7 @@ def test_click_offers_every_flag_the_argparse_parser_does():
         for action in build_parser()._actions
         for option in action.option_strings
         if option.startswith("--")
-    } - {"--help", "--describe"}
+    } - {"--help", "--describe", "--source"}
     click_flags = {
         option
         for parameter in click_options(lambda **kwargs: None).__click_params__

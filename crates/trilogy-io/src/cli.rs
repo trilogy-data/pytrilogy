@@ -49,6 +49,10 @@ pub struct Cli {
     /// Print this source's schema and pushdown support as JSON.
     #[arg(long)]
     pub describe: bool,
+
+    /// The source to run, for a program that serves several.
+    #[arg(long, value_name = "NAME")]
+    pub source: Option<String>,
 }
 
 #[derive(Debug)]
@@ -57,6 +61,7 @@ pub struct Invocation {
     pub format: Format,
     pub output: Option<String>,
     pub describe: bool,
+    pub source: Option<String>,
 }
 
 impl Cli {
@@ -91,6 +96,7 @@ impl Cli {
             format: self.format,
             output: self.output,
             describe: self.describe,
+            source: self.source,
         })
     }
 }
@@ -143,7 +149,15 @@ mod tests {
         assert_eq!(invocation.format, Format::Arrow);
         assert!(invocation.output.is_none());
         assert!(!invocation.describe);
+        assert!(invocation.source.is_none());
         assert_eq!(invocation.request, SourceRequest::default());
+    }
+
+    #[test]
+    fn selects_a_source() {
+        let invocation = parse(&["--source", "states", "--limit", "2"]);
+        assert_eq!(invocation.source.as_deref(), Some("states"));
+        assert_eq!(invocation.request.limit, Some(2));
     }
 
     #[test]

@@ -229,3 +229,55 @@ def test_end_to_end_as_a_subprocess(tmp_path: Path):
     assert result.returncode == 0, result.stderr
     with pa.ipc.open_stream(result.stdout) as reader:
         assert reader.read_all().num_rows == 2
+
+
+STATE_SCHEMA = pa.schema([("state", pa.string())])
+
+
+@source(schema=STATE_SCHEMA)
+def states():
+    return [{"state": "CA", "extra": 1}]
+
+
+PROGRAM = {"rows": rows, "states": states}
+
+
+def test_a_program_runs_the_source_it_is_asked_for(out: Path):
+    assert run(PROGRAM, argv=["--source", "states", "--output", str(out)]) == 0
+    table = arrow_at(out)
+    assert table.schema.names == ["state"]
+    assert table.to_pylist() == [{"state": "CA"}]
+
+
+@pytest.mark.parametrize(
+    "argv, message",
+    [
+        ([], "choose one with --source. Available sources: rows, states"),
+        (["--source", "nope"], "unknown source 'nope'. Available sources: rows"),
+    ],
+)
+def test_a_program_needs_a_known_source(capsys, argv: list[str], message: str):
+    assert run(PROGRAM, argv=argv) == SCRIPT_ERROR_EXIT_CODE
+    assert message in capsys.readouterr().err
+
+
+def test_a_single_source_refuses_a_name(capsys):
+    assert run(rows, argv=["--source", "rows"]) == SCRIPT_ERROR_EXIT_CODE
+    assert "this program serves a single source" in capsys.readouterr().err
+
+
+def test_describe_names_the_selected_source(capsys):
+    assert run(PROGRAM, argv=["--describe", "--source", "states"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["datasource"].startswith("datasource states(")
+    assert payload["datasource"].endswith("#states`;")
+
+
+def test_a_program_takes_options_from_source_not_run():
+    with pytest.raises(TypeError, match="@source"):
+        run(PROGRAM, schema=STATE_SCHEMA, argv=[])
+
+
+def test_a_source_name_must_be_an_identifier():
+    with pytest.raises(ValueError, match="not an identifier"):
+        run({"two words": rows}, argv=[])

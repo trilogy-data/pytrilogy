@@ -196,3 +196,25 @@ select sum(field) as fun;
     assert "flag" not in env.concepts["fun"].datatype.traits
     assert "flag" in env.concepts["string_field"].datatype.traits
     assert "flag" not in env.concepts["no_field"].datatype.traits
+
+
+def test_std_units_keep_their_values():
+    executor = Dialects.DUCK_DB.default_executor()
+    rows = executor.execute_text("""
+import std.bytes;
+import std.date;
+import std.net;
+key id int;
+property id.size int::byte;
+property id.cpu int::millisecond;
+property id.listen int::port;
+auto size_mib <- round(size / 1048576.0, 1)::mib;
+auto cpu_seconds <- (cpu / 1000.0)::second;
+datasource d (id: id, size: size, cpu: cpu, listen: listen) grain (id)
+query '''select 1 as id, 3145728 as size, 2500 as cpu, 8100 as listen''';
+select size_mib, cpu_seconds, listen;
+""")[-1].fetchall()
+    assert [tuple(float(v) for v in row) for row in rows] == [(3.0, 2.5, 8100.0)]
+    concepts = executor.environment.concepts
+    assert concepts["cpu_seconds"].datatype.traits == ["second"]
+    assert concepts["listen"].datatype.traits == ["port"]

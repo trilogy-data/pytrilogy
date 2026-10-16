@@ -85,6 +85,19 @@ trilogy refresh reporting.preql
 trilogy serve .
 ```
 
+`trilogy serve . --mcp` (install `pytrilogy[mcp]`) also exposes the model to agents
+as an MCP server at `http://localhost:8100/mcp`, with tools to list models, describe
+their fields, read the syntax reference and run queries:
+
+```bash
+claude mcp add --transport http trilogy http://localhost:8100/mcp
+```
+
+`serve` binds to localhost by default, where `/mcp` needs no token (the MCP SDK's
+Host/Origin checks guard it). `--host 0.0.0.0` exposes the server to the network;
+then `/mcp` requires the printed token as an `X-Trilogy-Token` header, since queries
+can run arbitrary SQL.
+
 The snippet fetched in step 3 looks like this — copy/paste it into your
 editor if you'd rather author it by hand:
 

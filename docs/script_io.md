@@ -91,14 +91,66 @@ It needs a path separator (`./landmarks`, not `landmarks`), which is what keeps
 it apart from a backtick-quoted identifier. Declared without the extension, the
 same model works on Windows, where the launcher resolves `landmarks.exe`.
 
+## Several sources in one program
+
+One program can serve several sources, so related sources share one
+dependency set, one `uv` environment and, under VGI, one resident worker:
+
+```python
+@source(schema=PROCESS_SCHEMA)
+def process() -> pa.Table: ...
+
+@source(schema=HOST_SCHEMA)
+def host() -> pa.Table: ...
+
+if __name__ == "__main__":
+    raise SystemExit(run({"process": process, "host": host}))
+```
+
+```rust
+trilogy_io::sources()
+    .add("process", trilogy_io::source(process).schema(process_schema()))
+    .add("host", trilogy_io::source(host))
+    .run()
+```
+
+A datasource picks one with a `#name` fragment on its address, which becomes
+`--source name` on the program's command line:
+
+```
+datasource processes (pid: pid, name: name)
+grain (pid)
+file `./ingest/osquery.py#process`;
+```
+
+In python, a mapping takes each source's `schema` and `watermark` from its
+`@source(...)`; passing `schema=` or `watermark=` to `run` alongside a mapping is
+a `TypeError`. A source name is an identifier (`[A-Za-z_][A-Za-z0-9_]*`);
+registering any other name fails at registration, before the program serves
+anything.
+
 ## The contract
 
 ```
 --limit N            --columns a,b,c        --filter 'col op value'  (repeatable)
 --order-by k:desc,k2 --since VALUE          --partition k=v          (repeatable)
 --format arrow|parquet|csv|json            --output URI
---describe
+--describe           --source NAME
 ```
+
+`--source` selects one source of a program that serves several:
+
+- **Several sources.** `--source` is required. Without it, or naming a source
+  the program does not serve, the program fails as a `ContractError` (exit 65)
+  whose message lists the available sources, sorted:
+  `unknown source 'x'. Available sources: host, process` or
+  `this program serves several sources; choose one with --source. Available sources: host, process`.
+- **One source.** `--source` is refused the same way:
+  `unknown source 'x': this program serves a single source`.
+- `--describe --source NAME` describes that source, and its datasource stub
+  addresses it as `` file `<program>#NAME` ``.
+- Under `--vgi` a program still serves one `source(args)` table function;
+  `--source` travels inside `args`, so one resident worker serves every source.
 
 Operators: `=` `!=` `<` `<=` `>` `>=` `in` `not in` `like`. Values parse as JSON
 first, so `--filter 'state in ["CA","NY"]'` and `--filter 'id >= 90'` both work;
@@ -320,20 +372,35 @@ executor's life:
     parser, so the contract is unchanged; it is delivered per call instead of
     per process. `tests/io/test_vgi_conformance.py` holds both implementations'
     served answers to their one-shot output.
-  - The alias hashes the source's path and mtime, so an edited script or a
-    rebuilt binary gets a fresh worker rather than the stale pooled one.
+  - The alias hashes the source's path and version: its mtime, and for a python
+    script the mtime of every `.py` beside it, since it may import them. The
+    version is re-checked before every query, so a source edited under a
+    running server gets a fresh worker on the next query, and the superseded
+    worker is detached. vgi pools worker processes by command line, so the
+    version also goes on it, as `--vgi --vgi-version <digest>`; a served source
+    reads only `--vgi` and ignores the rest.
   - Startup is lazy: a source is attached by the first query that reads it,
     never ahead of time. All of that query's new sources start in parallel, so
     it waits for the slowest startup rather than the sum.
   - Each attach runs on its own side cursor. A failure there cannot abort the
     transaction the query runs in, and the separate cursors are what let the
     attaches overlap.
+  - Idle workers are kept for an hour (`POOL_TIMEOUT`, `RESIDENT_IDLE_SECONDS`).
+    The vgi default is 5s, shorter than the gap between an agent's queries, so
+    nearly every query would otherwise restart the source.
+  - A query scanning one source twice (a self-join, a recursive CTE beside its
+    seed) gets a second pooled worker. Bind answers from the source's declared
+    `schema` when the request cannot reshape it, without running the source,
+    so the two scans run at once rather than one after another inside binds.
+    A source with no declared schema, or one that projects its own columns,
+    still runs at bind.
   - `.github/workflows/vgi.yml` installs haybarn and runs these tests on
     Ubuntu and Windows. Elsewhere they skip.
 - **Bridge.** A source that cannot serve itself falls back to the bridge: a raw
   script, a published pytrilogy without `--vgi`, or a binary built without the
-  feature. The bridge is one worker attached at connect
-  (`trilogy/dialect/duckdb_vgi.py`), rendering `trilogy_io.main.script('/abs/src.py', '<args>')`.
+  feature. The bridge is one worker (`trilogy/dialect/duckdb_vgi.py`), attached
+  by the first query that reads such a source, so a model whose sources all run
+  resident never starts it. It renders `trilogy_io.main.script('/abs/src.py', '<args>')`.
   It starts the source per scan like `uv_run`, but streams its stdout straight
   to DuckDB with no staging.
 

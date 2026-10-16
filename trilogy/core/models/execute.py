@@ -2492,6 +2492,7 @@ def collect_source_addresses(ctes: Sequence[CTE | UnionCTE]) -> list[Address]:
 class CompiledCTE:
     name: str
     statement: str
+    materialized: bool = False
 
 
 SourceJoin = Join[BuildDatasource | QueryDatasource]

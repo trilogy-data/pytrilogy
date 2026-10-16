@@ -30,7 +30,14 @@ import pyarrow as pa
 from trilogy.io.adapters import register_adapter, to_reader
 from trilogy.io.contract import Filter, Sort, SourceRequest
 from trilogy.io.errors import ContractError, TrilogyIOError
-from trilogy.io.runner import main, parse_args, resolve, run
+from trilogy.io.runner import (
+    SOURCE_OPTIONS,
+    SourceOptions,
+    main,
+    parse_args,
+    resolve,
+    run,
+)
 from trilogy.io.sinks import Format, write
 
 __all__ = [
@@ -86,9 +93,13 @@ def source(
 
         if __name__ == "__main__":
             landmarks.cli()
+
+    ``run`` reads the same options, which is how a program serving several
+    sources gives each its own: ``run({"landmarks": landmarks, "states": states})``.
     """
 
     def decorate(target: Callable) -> Callable:
+        SOURCE_OPTIONS[target] = SourceOptions(schema=schema, watermark=watermark)
         target.cli = lambda argv=None: main(  # type: ignore[attr-defined]
             target, schema=schema, watermark=watermark, argv=argv
         )

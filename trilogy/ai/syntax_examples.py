@@ -1027,6 +1027,54 @@ order by sole_completions desc
 limit 100;
 """,
     ),
+    SyntaxExample(
+        name="recursive-rollup",
+        title="Roll a hierarchy up to its roots with `recurse_edge`",
+        summary=(
+            "walk a parent pointer (folder tree, org chart, process tree) to the "
+            "top of each chain with `recurse_edge(key, parent)`, then aggregate "
+            "per root"
+        ),
+        body="""# `recurse_edge(child, parent)` follows a parent pointer to the top of its chain.
+# For each row it returns the ROOT reached from that row (the row itself when its
+# parent is null), so grouping by it rolls every descendant up to its root.
+# Define it once as an `auto` concept in the model; queries then use it like any
+# other field.
+key folder_id int;
+property folder_id.parent_id int?; # null at a top-level folder
+property folder_id.name string;
+property folder_id.size_bytes int;
+auto root_folder_id <- recurse_edge(folder_id, parent_id);
+
+datasource folders (folder_id: folder_id, parent_id: parent_id, name: name, size_bytes: size_bytes)
+grain (folder_id)
+query '''
+select 1 as folder_id, null as parent_id, 'home' as name, 10 as size_bytes
+union all select 2, 1, 'docs', 200
+union all select 3, 2, 'drafts', 50
+union all select 4, null, 'tmp', 5
+union all select 5, 4, 'cache', 900
+''';
+
+# each top-level folder with everything below it
+select
+    root_folder_id,
+    count(folder_id) as folders,
+    sum(size_bytes) as total_bytes
+order by total_bytes desc;
+
+# ---------------------------------------------------------------------------
+# NOTES:
+#  - The argument ORDER matters: the key first, then its parent pointer.
+#  - A null parent ends the walk, and so does a parent with no row of its own;
+#    the value is the last row reached. Stop a walk early by nulling the parent
+#    in the data (e.g. at a boundary you do not want to roll across).
+#  - To show the ROOT's own attributes (its name) next to the rollup, import the
+#    model a second time under another name and merge the recursive concept into
+#    its key: `import folders as root; merge root_folder_id into root.folder_id;`
+#    then `select root.name, sum(size_bytes) ...`.
+""",
+    ),
 ]
 
 SYNTAX_EXAMPLES: dict[str, SyntaxExample] = {e.name: e for e in _EXAMPLES}

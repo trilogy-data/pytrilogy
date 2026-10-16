@@ -917,8 +917,10 @@ SELECT_LIST_STOP = @{
 }
 
 FILE_EXT    = _{ ^"py" | ^"csv" | ^"json" | ^"parquet" | ^"tsv" | ^"sql" }
-FILE_PATH   = @{ "`" ~ (!("." ~ FILE_EXT ~ "`") ~ !"`" ~ ANY)+ ~ "." ~ FILE_EXT ~ "`" }
-F_FILE_PATH = @{ "f`" ~ (!("." ~ FILE_EXT ~ "`") ~ !"`" ~ ANY)+ ~ "." ~ FILE_EXT ~ "`" }
+// `x.py#name`: one source of a program that serves several (--source).
+SOURCE_FRAGMENT = _{ "#" ~ (ASCII_ALPHA | "_") ~ (ASCII_ALPHANUMERIC | "_")* }
+FILE_PATH   = @{ "`" ~ (!("." ~ FILE_EXT ~ ("`" | "#")) ~ !"`" ~ ANY)+ ~ "." ~ FILE_EXT ~ SOURCE_FRAGMENT? ~ "`" }
+F_FILE_PATH = @{ "f`" ~ (!("." ~ FILE_EXT ~ ("`" | "#")) ~ !"`" ~ ANY)+ ~ "." ~ FILE_EXT ~ SOURCE_FRAGMENT? ~ "`" }
 // A program: a path whose last segment has no extension (or is a .exe). The
 // separator keeps it apart from a backtick-quoted identifier.
 EXEC_PATH   = @{ "`" ~ ((!("`" | "/" | "\\") ~ ANY)* ~ ("/" | "\\"))+ ~ (!("`" | "/" | "\\" | ".") ~ ANY)+ ~ ("." ~ ^"exe")? ~ "`" }

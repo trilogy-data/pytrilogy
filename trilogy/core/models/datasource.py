@@ -201,6 +201,14 @@ class Address:
     # Deployment environment this address has been namespaced into (see
     # trilogy.execution.envs). Doubles as the guard against double-prefixing.
     env_label: str | None = None
+    # The source a multi-source program serves (``file `x.py#name```), passed
+    # to it as ``--source name``.
+    source_name: str | None = None
+
+    @property
+    def source_args(self) -> str:
+        """The command line that selects this address's source of its program."""
+        return f"--source {self.source_name}" if self.source_name else ""
 
     @property
     def is_query(self):

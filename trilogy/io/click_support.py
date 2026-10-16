@@ -18,7 +18,8 @@ def click_options(fn: Callable) -> Callable:
 
     The flag set mirrors :func:`trilogy.io.runner.build_parser`; a source is
     still expected to answer ``--describe``, which stays the author's to wire up
-    because it is a mode rather than a request field.
+    because it is a mode rather than a request field. So is ``--source``: a click
+    group already chooses which function runs.
     """
     import click
 

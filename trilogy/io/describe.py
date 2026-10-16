@@ -49,18 +49,25 @@ def trilogy_type(field_type: pa.DataType) -> str:
 
 
 def datasource_stub(schema: pa.Schema, script: str, name: str | None = None) -> str:
-    """A ready-to-paste trilogy datasource block for this script."""
+    """A ready-to-paste trilogy datasource block for this script.
+
+    ``name`` is the source a multi-source program serves (``--source``).
+    """
     identifier = name or _UNSAFE.sub("_", Path(script).stem)
+    address = f"{script}#{name}" if name else script
     columns = ",\n".join(f"    {f.name}: {f.name}" for f in schema)
     return (
         f"datasource {identifier}(\n{columns}\n)\n"
         f"grain ({schema.names[0] if schema.names else ''})\n"
-        f"file `{script}`;"
+        f"file `{address}`;"
     )
 
 
 def payload(
-    schema: pa.Schema, pushdown: tuple[str, ...], script: str
+    schema: pa.Schema,
+    pushdown: tuple[str, ...],
+    script: str,
+    source: str | None = None,
 ) -> dict[str, object]:
     return {
         "contract": CONTRACT_VERSION,
@@ -69,5 +76,5 @@ def payload(
             for f in schema
         ],
         "pushdown": list(pushdown),
-        "datasource": datasource_stub(schema, script),
+        "datasource": datasource_stub(schema, script, source),
     }

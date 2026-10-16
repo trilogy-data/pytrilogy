@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
+import uuid
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -43,10 +45,27 @@ def _run_uv(script: str, args: str, output_path: Path, error_path: Path) -> int:
     return result.returncode
 
 
+def _publish(staged: Path, output_path: Path) -> None:
+    """Move a finished stream into place atomically.
+
+    The same script and args map to the same output path, so one query that
+    reads a source twice runs two of these concurrently; writing in place let
+    one reader see the other's half-written file. Windows refuses to replace a
+    file another reader holds open, and then that file is already a complete
+    stream from the concurrent run, so it stands.
+    """
+    try:
+        os.replace(staged, output_path)
+    except PermissionError:
+        staged.unlink(missing_ok=True)
+
+
 def run_with_retry(script: str, args: str, output_path: Path, error_path: Path) -> int:
+    staged = output_path.with_name(f"{output_path.name}.{uuid.uuid4().hex}.part")
     for attempt in range(1, MAX_ATTEMPTS + 1):
-        return_code = _run_uv(script, args, output_path, error_path)
+        return_code = _run_uv(script, args, staged, error_path)
         if return_code == 0:
+            _publish(staged, output_path)
             print('{"name": "done"}')
             return 0
 
@@ -55,6 +74,7 @@ def run_with_retry(script: str, args: str, output_path: Path, error_path: Path) 
         if attempt == MAX_ATTEMPTS or not is_retryable_uv_error(
             _read_error(error_path)
         ):
+            staged.unlink(missing_ok=True)
             return return_code
 
         time.sleep(retry_delay(attempt))

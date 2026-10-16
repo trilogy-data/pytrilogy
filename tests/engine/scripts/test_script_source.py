@@ -139,6 +139,96 @@ def test_rendering_sql_does_not_prepare_sources():
     assert spy.seen == []
 
 
+RECURSIVE_SOURCE_MODEL = """
+key fib_index int;
+property fib_index.parent int?;
+property fib_index.value int;
+auto root <- recurse_edge(fib_index, parent);
+
+datasource fib_numbers(
+    index:fib_index,
+    parent: parent,
+    fibonacci: value
+)
+grain (fib_index)
+file `./fib.py`;
+"""
+
+
+def materialized_ctes(sql: str) -> int:
+    return sql.count(" as MATERIALIZED (")
+
+
+def test_script_read_by_a_recursive_cte_runs_once():
+    """Inlined, the recursive step reruns the script every iteration."""
+    executor = python_source_executor()
+    executor.parse_text(RECURSIVE_SOURCE_MODEL)
+    sql = executor.generate_sql("select root, sum(value) -> total;")[-1]
+    assert "WITH RECURSIVE" in sql
+    assert materialized_ctes(sql) == 1
+
+
+def test_script_read_once_stays_inlined():
+    executor = python_source_executor()
+    executor.parse_text(RECURSIVE_SOURCE_MODEL)
+    sql = executor.generate_sql("select fib_index, value;")[-1]
+    assert materialized_ctes(sql) == 0
+
+
+MULTI_SOURCE_MODEL = """
+key region_id int;
+property region_id.region string;
+key store_id int;
+
+datasource regions (region_id: region_id, region: region)
+grain (region_id)
+file `./multi_source.py#regions`;
+
+datasource stores (store_id: store_id, region_id: region_id)
+grain (store_id)
+file `./multi_source.py#stores`;
+"""
+
+
+def test_a_source_fragment_selects_one_source_of_a_program():
+    executor = python_source_executor()
+    executor.parse_text(MULTI_SOURCE_MODEL)
+    regions = executor.environment.datasources["regions"].address
+    assert Path(regions.location).name == "multi_source.py"
+    assert regions.source_name == "regions"
+
+    sql = executor.generate_sql("select region_id, region;")[-1]
+    assert "multi_source.py', args := '--source regions')" in sql
+
+
+def test_a_source_fragment_round_trips_through_render():
+    from trilogy.parsing.render import Renderer
+
+    executor = python_source_executor()
+    executor.parse_text(MULTI_SOURCE_MODEL)
+    rendered = Renderer().to_string(executor.environment.datasources["stores"])
+    assert "multi_source.py#stores`;" in rendered
+
+
+def test_a_source_fragment_on_a_data_file_is_rejected():
+    from trilogy.parsing.v2.model import HydrationError
+
+    executor = python_source_executor()
+    with pytest.raises(HydrationError, match="names a source of a program"):
+        executor.parse_text(
+            "key id int;\ndatasource d (id: id) grain (id) file `./data.csv#x`;"
+        )
+
+
+def test_two_sources_of_one_program_join():
+    executor = python_source_executor()
+    executor.parse_text(MULTI_SOURCE_MODEL)
+    rows = executor.execute_text(
+        "select region, count(store_id) -> stores order by region asc;"
+    )[-1].fetchall()
+    assert rows == [("east", 3), ("west", 2)]
+
+
 def test_arrow_source_not_enabled_error():
     script = """
 key fib_index int;
@@ -304,6 +394,46 @@ def test_uv_wrapper_retries_retryable_errors(
     assert fake_run_uv.attempts == 2
     assert output_path.read_text(encoding="utf-8").strip() == "ok"
     assert capsys.readouterr().out.strip() == '{"name": "done"}'
+
+
+def test_uv_wrapper_stages_then_publishes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    output_path = tmp_path / "out.arrow"
+    written: list[Path] = []
+
+    def fake_run_uv(script, args, staged: Path, error_path):
+        written.append(staged)
+        staged.write_text("ok", encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr(duckdb_uv, "_run_uv", fake_run_uv)
+
+    assert run_with_retry("script.py", "", output_path, tmp_path / "out.err") == 0
+    assert written[0] != output_path
+    assert output_path.read_text(encoding="utf-8") == "ok"
+    assert [p.name for p in tmp_path.iterdir()] == ["out.arrow"]
+
+
+def test_uv_wrapper_keeps_a_concurrently_published_stream(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    output_path = tmp_path / "out.arrow"
+    output_path.write_text("concurrent", encoding="utf-8")
+
+    def fake_run_uv(script, args, staged: Path, error_path):
+        staged.write_text("ours", encoding="utf-8")
+        return 0
+
+    def locked(src, dst):
+        raise PermissionError("held open by a reader")
+
+    monkeypatch.setattr(duckdb_uv, "_run_uv", fake_run_uv)
+    monkeypatch.setattr(duckdb_uv.os, "replace", locked)
+
+    assert run_with_retry("script.py", "", output_path, tmp_path / "out.err") == 0
+    assert output_path.read_text(encoding="utf-8") == "concurrent"
+    assert [p.name for p in tmp_path.iterdir()] == ["out.arrow"]
 
 
 def test_validation_caches_python_datasource_per_run():

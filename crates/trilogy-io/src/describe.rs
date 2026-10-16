@@ -59,7 +59,9 @@ fn identifier(program: &str) -> String {
 
 use std::path::Path;
 
-pub fn datasource_stub(schema: &Schema, program: &str) -> String {
+/// A ready-to-paste trilogy datasource block for this program. With `source`,
+/// one source of a multi-source program: named for it and addressed by `#source`.
+pub fn datasource_stub(schema: &Schema, program: &str, source: Option<&str>) -> String {
     let columns: Vec<String> = schema
         .fields()
         .iter()
@@ -70,16 +72,25 @@ pub fn datasource_stub(schema: &Schema, program: &str) -> String {
         .first()
         .map(|f| f.name().as_str())
         .unwrap_or("");
+    let (name, address) = match source {
+        Some(source) => (source.to_string(), format!("{program}#{source}")),
+        None => (identifier(program), program.to_string()),
+    };
     format!(
         "datasource {}(\n{}\n)\ngrain ({})\nfile `{}`;",
-        identifier(program),
+        name,
         columns.join(",\n"),
         grain,
-        program
+        address
     )
 }
 
-pub fn payload(schema: &Schema, pushdown: &[Field], program: &str) -> Payload {
+pub fn payload(
+    schema: &Schema,
+    pushdown: &[Field],
+    program: &str,
+    source: Option<&str>,
+) -> Payload {
     Payload {
         contract: CONTRACT_VERSION,
         schema: schema
@@ -92,6 +103,22 @@ pub fn payload(schema: &Schema, pushdown: &[Field], program: &str) -> Payload {
             })
             .collect(),
         pushdown: pushdown.iter().map(|f| f.as_str().to_string()).collect(),
-        datasource: datasource_stub(schema, program),
+        datasource: datasource_stub(schema, program, source),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arrow::datatypes::Field as ArrowField;
+
+    #[test]
+    fn a_selected_source_is_named_and_addressed_by_fragment() {
+        let schema = Schema::new(vec![ArrowField::new("state", DataType::Utf8, false)]);
+        assert_eq!(
+            datasource_stub(&schema, "./catalog", Some("states")),
+            "datasource states(\n    state: state\n)\ngrain (state)\nfile `./catalog#states`;"
+        );
+        assert!(datasource_stub(&schema, "./catalog", None).ends_with("file `./catalog`;"));
     }
 }

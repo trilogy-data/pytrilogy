@@ -1,0 +1,235 @@
+import json
+from pathlib import Path
+
+import pytest
+
+pytest.importorskip("fastapi")
+pytest.importorskip("mcp")
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from mcp.server.mcpserver.exceptions import ToolError
+
+from trilogy import Dialects
+from trilogy.scripts.common import get_runtime_config
+from trilogy.scripts.serve import create_app
+from trilogy.scripts.serve_helpers.mcp_server import ModelSession, QueryLog
+
+ITEMS = """# Items for sale.
+key id int;
+property id.label string;
+
+datasource items (id: id, label: label)
+grain (id)
+query '''select * from (values (1, 'a'), (2, 'b'), (3, 'c')) as t(id, label)''';
+"""
+
+INIT = {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+        "protocolVersion": "2025-06-18",
+        "capabilities": {},
+        "clientInfo": {"name": "test", "version": "1"},
+    },
+}
+MCP_HEADERS = {"Accept": "application/json, text/event-stream"}
+
+
+@pytest.fixture
+def model_dir(tmp_path: Path) -> Path:
+    (tmp_path / "trilogy.toml").write_text('[engine]\ndialect = "duck_db"\n')
+    (tmp_path / "items.preql").write_text(ITEMS)
+    (tmp_path / "nested").mkdir()
+    (tmp_path / "nested" / "more.preql").write_text("import items;\n")
+    return tmp_path
+
+
+@pytest.fixture
+def session(model_dir: Path) -> ModelSession:
+    return ModelSession(model_dir, Dialects.DUCK_DB, get_runtime_config(model_dir))
+
+
+def test_list_models(session: ModelSession):
+    assert session.list_models() == {
+        "models": [
+            {"name": "items", "description": "Items for sale."},
+            {"name": "nested.more", "description": "Trilogy model: more"},
+        ]
+    }
+
+
+def test_describe_model(session: ModelSession):
+    described = session.describe_model("items")
+    assert "id int" in described and "label string" in described
+    with pytest.raises(ToolError, match="Unknown model"):
+        session.describe_model("../items")
+
+
+def test_run_query_caps_rows(session: ModelSession):
+    result = session.run_query(
+        "import items; select id, label order by id asc;", limit=2
+    )
+    assert result == {
+        "columns": ["id", "label"],
+        "rows": [[1, "a"], [2, "b"]],
+        "truncated": True,
+    }
+
+
+def test_run_query_isolates_definitions(session: ModelSession):
+    defined = session.run_query(
+        "import items; auto doubled <- id * 2; select doubled order by doubled asc;"
+    )
+    assert defined["rows"] == [[2], [4], [6]]
+    with pytest.raises(ToolError, match="doubled"):
+        session.run_query("import items; select doubled;")
+
+
+def test_run_query_without_rows(session: ModelSession):
+    assert session.run_query("import items;") == {
+        "columns": [],
+        "rows": [],
+        "truncated": False,
+    }
+
+
+def test_get_syntax(session: ModelSession):
+    assert "get_syntax(example=<name>)" in session.get_syntax()
+    with pytest.raises(ToolError, match="No example"):
+        session.get_syntax("not-an-example")
+
+
+def _app(
+    model_dir: Path, session: ModelSession, token: str | None, host: str = "testserver"
+) -> FastAPI:
+    return create_app(
+        FastAPI(),
+        "duck_db",
+        model_dir,
+        host,
+        8100,
+        token=token,
+        mcp_session=session,
+    )
+
+
+def test_mcp_route_requires_token_beyond_localhost(
+    model_dir: Path, session: ModelSession
+):
+    with TestClient(_app(model_dir, session, "secret")) as client:
+        assert client.post("/mcp", json=INIT, headers=MCP_HEADERS).status_code == 401
+        for header in (
+            {"X-Trilogy-Token": "secret"},
+            {"Authorization": "Bearer secret"},
+        ):
+            response = client.post("/mcp", json=INIT, headers=MCP_HEADERS | header)
+            assert response.status_code == 200
+            assert "serverInfo" in response.text
+
+
+def test_mcp_route_is_open_on_localhost(model_dir: Path, session: ModelSession):
+    app = _app(model_dir, session, "secret", host="localhost")
+    with TestClient(app, base_url="http://localhost:8100") as client:
+        response = client.post("/mcp", json=INIT, headers=MCP_HEADERS)
+        assert response.status_code == 200
+        assert client.get("/index.json").status_code == 401
+
+
+def test_mcp_on_localhost_rejects_rebound_host(model_dir: Path, session: ModelSession):
+    app = _app(model_dir, session, None, host="localhost")
+    with TestClient(app, base_url="http://attacker.example:8100") as client:
+        response = client.post("/mcp", json=INIT, headers=MCP_HEADERS)
+        assert response.status_code in (400, 403, 421)
+
+
+def test_mcp_route_without_auth(model_dir: Path, session: ModelSession):
+    with TestClient(_app(model_dir, session, None)) as client:
+        response = client.post("/mcp", json=INIT, headers=MCP_HEADERS)
+        assert response.status_code == 200
+
+
+def test_query_log_records_timings(model_dir: Path, tmp_path: Path):
+    log_path = tmp_path / "mcp.jsonl"
+    session = ModelSession(
+        model_dir,
+        Dialects.DUCK_DB,
+        get_runtime_config(model_dir),
+        log=QueryLog(log_path),
+    )
+    session.run_query("import items; select id;")
+    session.run_query("import items; select id;")
+    with pytest.raises(ToolError):
+        session.run_query("import items; select nope;")
+    first, second, failed = [json.loads(x) for x in log_path.read_text().splitlines()]
+    assert first["transport"] == "shell"
+    assert first["cold_executor"] and not second["cold_executor"]
+    assert [first["seq"], second["seq"], failed["seq"]] == [1, 2, 3]
+    assert second["rows"] == 3 and second["scripts"] == []
+    for key in ("queue_ms", "executor_ms", "plan_ms", "execute_ms", "total_ms"):
+        assert second[key] >= 0
+    assert "nope" in failed["error"] and "execute_ms" not in failed
+
+
+def test_jsonable_renders_driver_values():
+    import datetime
+    import decimal
+
+    from trilogy.scripts.serve_helpers.mcp_server import _jsonable
+
+    assert _jsonable(
+        {
+            1: [decimal.Decimal("1.5"), datetime.date(2026, 1, 2)],
+            "t": (datetime.time(3, 4),),
+            "other": b"x",
+        }
+    ) == {"1": [1.5, "2026-01-02"], "t": ["03:04:00"], "other": "b'x'"}
+
+
+def test_mcp_is_unavailable_without_the_extra(monkeypatch):
+    import sys
+
+    from trilogy.scripts.serve_helpers.mcp_server import check_mcp_available
+
+    monkeypatch.setitem(sys.modules, "mcp.server", None)
+    assert not check_mcp_available()
+
+
+def test_transport_is_only_reported_for_duckdb(model_dir: Path):
+    config = get_runtime_config(model_dir)
+    assert ModelSession(model_dir, Dialects.SQLITE, config).transport is None
+    assert ModelSession(model_dir, Dialects.DUCK_DB, config).transport == "shell"
+
+
+def test_describe_reports_a_model_that_fails_to_load(model_dir: Path):
+    (model_dir / "broken.preql").write_text("import nowhere;\n")
+    session = ModelSession(model_dir, Dialects.DUCK_DB, get_runtime_config(model_dir))
+    with pytest.raises(ToolError, match="failed to load"):
+        session.describe_model("broken")
+
+
+def test_get_syntax_renders_an_example(session: ModelSession):
+    from trilogy.ai.syntax_examples import available_names
+
+    name = available_names()[0]
+    assert session.get_syntax(name).strip()
+
+
+def test_script_sources_finds_programs_under_nested_sources():
+    from trilogy import Environment
+    from trilogy.execution import DuckDBConfig
+    from trilogy.scripts.serve_helpers.mcp_server import script_sources
+
+    scripts = Path(__file__).parents[2] / "engine" / "scripts"
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=scripts),
+        conf=DuckDBConfig(enable_python_datasources=True),
+    )
+    statements = executor.parse_text("""
+key fib_index int;
+property fib_index.value int;
+datasource fib (index: fib_index, fibonacci: value) grain (fib_index) file `./fib.py`;
+select sum(value) -> total;
+""")
+    assert [Path(s).name for s in script_sources(statements)] == ["fib.py"]
