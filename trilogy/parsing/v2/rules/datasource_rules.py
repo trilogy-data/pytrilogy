@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import re
 import sys
 from dataclasses import dataclass
 from enum import Enum
@@ -101,12 +102,14 @@ class File:
         type: AddressType = AddressType.PARQUET,
         exists: bool = True,
         additional_paths: list[str] | None = None,
+        source_name: str | None = None,
     ):
         self.path = path
         self.write_path = write_path
         self.type = type
         self.exists = exists
         self.additional_paths = additional_paths or []
+        self.source_name = source_name
 
 
 @dataclass
@@ -406,6 +409,9 @@ def _process_file_path(context: RuleContext, ipath: str) -> tuple[str, str, bool
     return base, suffix, exists
 
 
+# ``path#name``: one source of a program that serves several (``--source``).
+_SOURCE_FRAGMENT = re.compile(r"(.+)#([A-Za-z_][A-Za-z0-9_]*)")
+
 _FILE_TYPE_MAP = {
     ".sql": AddressType.SQL,
     ".py": AddressType.PYTHON_SCRIPT,
@@ -462,10 +468,14 @@ def file_node(
         return _build_file_from_paths(node, context, paths)
 
     write_path: str | None = None
+    source_name: str | None = None
     if len(args) == 2:
         read_path, write_path = str(args[0]), str(args[1])
     else:
         read_path = str(args[0])
+        fragment = _SOURCE_FRAGMENT.fullmatch(read_path)
+        if fragment:
+            read_path, source_name = fragment.group(1), fragment.group(2)
 
     read_base, suffix, exists = _process_file_path(context, read_path)
     write_base = _process_file_path(context, write_path)[0] if write_path else None
@@ -473,7 +483,19 @@ def file_node(
     addr_type = _FILE_TYPE_MAP.get(suffix)
     if addr_type is None:
         raise fail(node, f"Unsupported file type {suffix}")
-    return File(path=read_base, write_path=write_base, type=addr_type, exists=exists)
+    if source_name and not addr_type.is_program:
+        raise fail(
+            node,
+            f"`#{source_name}` names a source of a program; "
+            f"a {suffix} file has no sources to choose from",
+        )
+    return File(
+        path=read_base,
+        write_path=write_base,
+        type=addr_type,
+        exists=exists,
+        source_name=source_name,
+    )
 
 
 def raw_column_assignment(
@@ -780,6 +802,7 @@ def datasource_node(
                 type=val.type,
                 exists=val.exists,
                 additional_locations=list(val.additional_paths),
+                source_name=val.source_name,
             )
         elif isinstance(val, WhereClause):
             where = val

@@ -856,6 +856,8 @@ class Renderer:
                 return f"file [{paths}]"
             if arg.write_location:
                 return f"file `{arg.location}`:`{arg.write_location}`"
+            if arg.source_name:
+                return f"file `{arg.location}#{arg.source_name}`"
             return f"file `{arg.location}`"
         # Anything not a bare IDENTIFIER (hyphens, ``-``/``*``/``:``, spaces)
         # only parses back as a backtick-quoted QUOTED_ADDRESS.

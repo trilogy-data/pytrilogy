@@ -700,7 +700,7 @@ class DuckDBDialect(BaseDialect):
                 self.staging.prepare_executor_subdir(self.instance_id)
             from trilogy.dialect.source_pushdown import render_args
 
-            args = render_args(request)
+            args = " ".join(filter(None, [address.source_args, render_args(request)]))
             if self._vgi:
                 escaped = args.replace("'", "''")
                 alias = self._residents.get(address.location)

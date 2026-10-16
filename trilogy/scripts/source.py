@@ -38,13 +38,26 @@ def invoke(
     return result
 
 
-def describe_payload(script: str) -> dict:
+def selector(name: str | None) -> list[str]:
+    """The flag that picks one source of a program serving several."""
+    return ["--source", name] if name else []
+
+
+SOURCE_OPTION = click.option(
+    "--source",
+    "source_name",
+    default=None,
+    help="Which source, for a program that serves several (its `#name`).",
+)
+
+
+def describe_payload(script: str, source_name: str | None = None) -> dict:
     """Ask ``script`` what it produces.
 
     A script that predates the contract ignores ``--describe`` and writes its
     Arrow stream instead, so stdout here is binary as often as it is JSON.
     """
-    result = invoke(script, ["--describe"])
+    result = invoke(script, ["--describe", *selector(source_name)])
     try:
         return json.loads(result.stdout.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as e:
@@ -64,9 +77,10 @@ def source() -> None:
 @source.command()
 @click.argument("script", type=click.Path(exists=True, dir_okay=False))
 @click.option("--json", "as_json", is_flag=True, help="Print the raw describe payload.")
-def describe(script: str, as_json: bool) -> None:
+@SOURCE_OPTION
+def describe(script: str, as_json: bool, source_name: str | None) -> None:
     """Show a script's schema, pushdown support, and datasource block."""
-    payload = describe_payload(script)
+    payload = describe_payload(script, source_name)
     if as_json:
         click.echo(json.dumps(payload, indent=2))
         return
@@ -100,6 +114,7 @@ def describe(script: str, as_json: bool) -> None:
     default="csv",
     show_default=True,
 )
+@SOURCE_OPTION
 def preview(
     script: str,
     limit: int,
@@ -107,9 +122,10 @@ def preview(
     filters: tuple[str, ...],
     since: str | None,
     fmt: str,
+    source_name: str | None,
 ) -> None:
     """Run a script through the IO contract and print the rows."""
-    args = ["--limit", str(limit), "--format", fmt]
+    args = ["--limit", str(limit), "--format", fmt, *selector(source_name)]
     if columns:
         args += ["--columns", columns]
     for predicate in filters:
@@ -121,10 +137,11 @@ def preview(
 
 @source.command(name="check")
 @click.argument("script", type=click.Path(exists=True, dir_okay=False))
-def check_(script: str) -> None:
+@SOURCE_OPTION
+def check_(script: str, source_name: str | None) -> None:
     """Verify a script implements the contract, without reading its rows."""
     try:
-        payload = describe_payload(script)
+        payload = describe_payload(script, source_name)
     except PythonDatasourceError as e:
         reported = parse_script_error(e.stderr)
         detail = f"{reported['type']}: {reported['message']}" if reported else e.stderr

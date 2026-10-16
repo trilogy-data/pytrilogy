@@ -4,7 +4,8 @@
 //! attaches the program once and calls `trilogy_source.main.source(args)` per
 //! scan, so the function runs in a warm process. `args` is the command line the
 //! source would otherwise be launched with, parsed by the same [`Cli`]: the
-//! contract does not fork, it is just delivered per call.
+//! contract does not fork, it is just delivered per call. A program serving
+//! several sources still serves one function; `--source` travels in `args`.
 
 use std::collections::HashMap;
 use std::process::ExitCode;
@@ -18,11 +19,10 @@ use vgi::function::{ArgSpec, BindParams, BindResponse, FunctionMetadata, Process
 use vgi::table_function::{TableFunction, TableProducer};
 use vgi_rpc::{OutputCollector, RpcError};
 
-use crate::adapters::{BatchReader, IntoBatchReader};
+use crate::adapters::BatchReader;
 use crate::cli::{Cli, Invocation};
-use crate::contract::SourceRequest;
 use crate::error::{Error, Result, SCRIPT_ERROR_EXIT_CODE};
-use crate::{error_report, Source};
+use crate::{error_report, Program};
 
 /// Matches `trilogy.io.vgi.CATALOG_NAME` / `FUNCTION_NAME`.
 pub const CATALOG_NAME: &str = "trilogy_source";
@@ -52,21 +52,17 @@ fn plain(schema: &SchemaRef) -> SchemaRef {
     Arc::new(Schema::new(schema.fields().clone()))
 }
 
-struct Served<F> {
-    source: Source<F>,
+struct Served {
+    program: Program,
     // Readers resolved at bind (which needs the schema), claimed by the scan
     // that follows; a list per args because one query may scan a request twice.
     pending: Mutex<HashMap<String, Vec<BatchReader>>>,
 }
 
-impl<F, T> Served<F>
-where
-    F: Fn(&SourceRequest) -> T + Send + Sync + 'static,
-    T: IntoBatchReader,
-{
+impl Served {
     fn resolve(&self, args: &str) -> std::result::Result<BatchReader, RpcError> {
         invocation(args)
-            .and_then(|invocation| self.source.resolve(&invocation))
+            .and_then(|invocation| self.program.resolve(&invocation))
             .map_err(|e| failure(&e))
     }
 
@@ -75,11 +71,7 @@ where
     }
 }
 
-impl<F, T> TableFunction for Served<F>
-where
-    F: Fn(&SourceRequest) -> T + Send + Sync + 'static,
-    T: IntoBatchReader,
-{
+impl TableFunction for Served {
     fn name(&self) -> &str {
         FUNCTION_NAME
     }
@@ -158,14 +150,10 @@ impl TableProducer for Scan {
     }
 }
 
-pub(crate) fn serve<F, T>(source: Source<F>) -> ExitCode
-where
-    F: Fn(&SourceRequest) -> T + Send + Sync + 'static,
-    T: IntoBatchReader,
-{
+pub(crate) fn serve(program: Program) -> ExitCode {
     let mut worker = vgi::Worker::new();
     worker.register_table(Served {
-        source,
+        program,
         pending: Mutex::new(HashMap::new()),
     });
     worker.set_catalog(CatalogModel {

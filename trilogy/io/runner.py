@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import traceback
 from collections.abc import Callable, Mapping, Sequence
@@ -29,7 +30,12 @@ from trilogy.io.contract import (
     pushdown_parameters,
     request_from_strings,
 )
-from trilogy.io.errors import ERROR_PREFIX, SCRIPT_ERROR_EXIT_CODE, VGI_FLAG
+from trilogy.io.errors import (
+    ERROR_PREFIX,
+    SCRIPT_ERROR_EXIT_CODE,
+    VGI_FLAG,
+    ContractError,
+)
 from trilogy.io.sinks import Format, write
 
 METADATA_PREFIX = "trilogy."
@@ -38,6 +44,30 @@ METADATA_PREFIX = "trilogy."
 # query. A bug in the script is not retryable and must surface immediately.
 RETRYABLE_ERRORS = (ConnectionError, TimeoutError, BlockingIOError)
 
+SOURCE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+# What a program serves: one function, or several by name (``--source``).
+Program = Callable | Mapping[str, Callable]
+
+
+@dataclass(frozen=True)
+class SourceOptions:
+    schema: pa.Schema | None = None
+    watermark: Any | None = None
+
+
+# Filled by ``trilogy.io.source``: a mapping of sources reads each one's options
+# here, since ``run`` cannot take one schema for all of them.
+SOURCE_OPTIONS: dict[Callable, SourceOptions] = {}
+
+
+@dataclass(frozen=True)
+class Selected:
+    fn: Callable
+    schema: pa.Schema | None
+    watermark: Any | None
+    name: str | None
+
 
 @dataclass(frozen=True)
 class Invocation:
@@ -45,6 +75,7 @@ class Invocation:
     fmt: Format
     output: str | None
     describe: bool
+    source: str | None = None
 
 
 def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
@@ -86,6 +117,9 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
         action="store_true",
         help="print this source's schema and pushdown support as JSON",
     )
+    parser.add_argument(
+        "--source", help="which source to run, for a program that serves several"
+    )
     return parser
 
 
@@ -105,6 +139,7 @@ def parse_args(
         fmt=Format(parsed.fmt),
         output=parsed.output,
         describe=parsed.describe,
+        source=parsed.source,
     )
 
 
@@ -151,8 +186,56 @@ def resolve(
     )
 
 
+def check_program(
+    program: Program, schema: pa.Schema | None, watermark: Any | None
+) -> None:
+    """Reject a malformed program before it serves anything."""
+    if not isinstance(program, Mapping):
+        return
+    if schema is not None or watermark is not None:
+        raise TypeError(
+            "run() takes each source's schema and watermark from @source(...) "
+            "when given several sources"
+        )
+    for name in program:
+        if not SOURCE_NAME.fullmatch(name):
+            raise ValueError(f"source name {name!r} is not an identifier")
+
+
+def select(
+    program: Program,
+    name: str | None,
+    schema: pa.Schema | None = None,
+    watermark: Any | None = None,
+) -> Selected:
+    """The source ``--source`` names, with the options it runs under."""
+    if not isinstance(program, Mapping):
+        if name is not None:
+            raise ContractError(
+                f"unknown source '{name}': this program serves a single source"
+            )
+        options = SOURCE_OPTIONS.get(program, SourceOptions())
+        return Selected(
+            program,
+            schema if schema is not None else options.schema,
+            watermark if watermark is not None else options.watermark,
+            None,
+        )
+    available = f"Available sources: {', '.join(sorted(program))}"
+    if name is None:
+        raise ContractError(
+            "this program serves several sources; choose one with --source. "
+            + available
+        )
+    if name not in program:
+        raise ContractError(f"unknown source '{name}'. {available}")
+    fn = program[name]
+    options = SOURCE_OPTIONS.get(fn, SourceOptions())
+    return Selected(fn, options.schema, options.watermark, name)
+
+
 def run(
-    fn: Callable,
+    fn: Program,
     *,
     schema: pa.Schema | None = None,
     watermark: Any | None = None,
@@ -167,7 +250,11 @@ def run(
     contract fields
     (``limit``, ``columns``, ``filters``, ``since``, ``partition``) they are
     bound and it owns them; everything else is enforced on the output stream.
+
+    ``fn`` may also map names to functions: one program serving several
+    sources, chosen per call by ``--source``.
     """
+    check_program(fn, schema, watermark)
     args = sys.argv[1:] if argv is None else list(argv)
     if VGI_FLAG in args:
         # Imported only here: vgi is an optional dependency, and the default
@@ -178,21 +265,27 @@ def run(
         return 0
     try:
         invocation = parse_args(argv)
+        selected = select(fn, invocation.source, schema, watermark)
         if invocation.describe:
             # Deliberately the unnarrowed request: describe reports what the
             # source produces, not what this particular invocation would return.
-            reader = to_reader(fn(**bind(fn, SourceRequest())), schema)
+            reader = to_reader(
+                selected.fn(**bind(selected.fn, SourceRequest())), selected.schema
+            )
             print(
                 json.dumps(
                     describe_module.payload(
-                        reader.schema, pushdown_parameters(fn), sys.argv[0]
+                        reader.schema,
+                        pushdown_parameters(selected.fn),
+                        sys.argv[0],
+                        selected.name,
                     ),
                     indent=2,
                 )
             )
             return 0
         write(
-            resolve(fn, invocation, schema, watermark),
+            resolve(selected.fn, invocation, selected.schema, selected.watermark),
             invocation.fmt,
             invocation.output,
         )
@@ -222,6 +315,6 @@ def _report(error: BaseException) -> None:
     sys.stderr.flush()
 
 
-def main(fn: Callable, **kwargs: Any) -> None:
+def main(fn: Program, **kwargs: Any) -> None:
     """``run`` that exits the process, for use under ``if __name__``."""
     raise SystemExit(run(fn, **kwargs))

@@ -65,7 +65,7 @@ jobs:
       - name: Build the conformance binary with the vgi feature
         # One binary serves both suites: the one-shot conformance run and the
         # resident (--vgi) one.
-        run: cargo build --release --example landmarks --features vgi --manifest-path crates/trilogy-io/Cargo.toml
+        run: cargo build --release --example landmarks --example catalog --features vgi --manifest-path crates/trilogy-io/Cargo.toml
       - name: Warm the resident script environment
         # A resident python source runs as `uv run --with vgi-python`, a
         # different environment from the plain one, and building it (this

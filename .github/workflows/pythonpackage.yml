@@ -116,7 +116,7 @@ jobs:
         # arrow + parquet release build showed up as ~300s inside one test file
         # (5 minutes of the pytest step, invisible in the timing breakdown).
         # Built here it is a named step and the rust cache above covers it.
-        run: cargo build --release --example landmarks --manifest-path crates/trilogy-io/Cargo.toml
+        run: cargo build --release --example landmarks --example catalog --manifest-path crates/trilogy-io/Cargo.toml
       - name: Warm the uv script environments
         # DuckDB script datasources shell out to `uv run` once per query scan,
         # and uv builds one environment per distinct PEP 723 header. For

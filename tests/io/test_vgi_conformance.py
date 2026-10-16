@@ -15,7 +15,9 @@ import pytest
 
 from tests.io.test_conformance import (
     CASES,
+    CATALOG_CASES,
     CRATE,
+    PY_CATALOG,
     PY_SOURCE,
     _binary_path,
     rows,
@@ -61,18 +63,46 @@ def python_worker():
 
 
 @pytest.fixture(scope="module")
-def rust_worker():
+def python_catalog_worker():
+    con = attach([sys.executable, str(PY_CATALOG)])
+    yield con
+    con.close()
+
+
+@pytest.fixture(scope="module")
+def rust_examples() -> None:
     if shutil.which("cargo") is None:
         skip_or_fail("cargo not available")
     build = subprocess.run(
-        ["cargo", "build", "--release", "--example", "landmarks", "--features", "vgi"],
+        [
+            "cargo",
+            "build",
+            "--release",
+            "--example",
+            "landmarks",
+            "--example",
+            "catalog",
+            "--features",
+            "vgi",
+        ],
         cwd=CRATE,
         capture_output=True,
         check=False,
     )
     if build.returncode != 0:
         skip_or_fail(f"vgi feature build failed: {build.stderr.decode()[-1000:]}")
+
+
+@pytest.fixture(scope="module")
+def rust_worker(rust_examples):
     con = attach([str(_binary_path())])
+    yield con
+    con.close()
+
+
+@pytest.fixture(scope="module")
+def rust_catalog_worker(rust_examples):
+    con = attach([str(_binary_path("catalog"))])
     yield con
     con.close()
 
@@ -103,3 +133,10 @@ def test_served_failures_carry_the_contract_error(request, worker):
     assert error.reported is not None
     assert error.reported["type"] == "ContractError"
     assert "Available columns" in error.reported["message"]
+
+
+@pytest.mark.parametrize("worker", ["python_catalog_worker", "rust_catalog_worker"])
+@pytest.mark.parametrize("args", CATALOG_CASES, ids=" ".join)
+def test_one_worker_serves_every_source_of_a_program(request, worker, args):
+    con = request.getfixturevalue(worker)
+    assert served(con, args) == rows(run_python(args, PY_CATALOG).stdout)

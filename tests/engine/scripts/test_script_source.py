@@ -175,6 +175,60 @@ def test_script_read_once_stays_inlined():
     assert materialized_ctes(sql) == 0
 
 
+MULTI_SOURCE_MODEL = """
+key region_id int;
+property region_id.region string;
+key store_id int;
+
+datasource regions (region_id: region_id, region: region)
+grain (region_id)
+file `./multi_source.py#regions`;
+
+datasource stores (store_id: store_id, region_id: region_id)
+grain (store_id)
+file `./multi_source.py#stores`;
+"""
+
+
+def test_a_source_fragment_selects_one_source_of_a_program():
+    executor = python_source_executor()
+    executor.parse_text(MULTI_SOURCE_MODEL)
+    regions = executor.environment.datasources["regions"].address
+    assert Path(regions.location).name == "multi_source.py"
+    assert regions.source_name == "regions"
+
+    sql = executor.generate_sql("select region_id, region;")[-1]
+    assert "multi_source.py', args := '--source regions')" in sql
+
+
+def test_a_source_fragment_round_trips_through_render():
+    from trilogy.parsing.render import Renderer
+
+    executor = python_source_executor()
+    executor.parse_text(MULTI_SOURCE_MODEL)
+    rendered = Renderer().to_string(executor.environment.datasources["stores"])
+    assert "multi_source.py#stores`;" in rendered
+
+
+def test_a_source_fragment_on_a_data_file_is_rejected():
+    from trilogy.parsing.v2.model import HydrationError
+
+    executor = python_source_executor()
+    with pytest.raises(HydrationError, match="names a source of a program"):
+        executor.parse_text(
+            "key id int;\ndatasource d (id: id) grain (id) file `./data.csv#x`;"
+        )
+
+
+def test_two_sources_of_one_program_join():
+    executor = python_source_executor()
+    executor.parse_text(MULTI_SOURCE_MODEL)
+    rows = executor.execute_text(
+        "select region, count(store_id) -> stores order by region asc;"
+    )[-1].fetchall()
+    assert rows == [("east", 3), ("west", 2)]
+
+
 def test_arrow_source_not_enabled_error():
     script = """
 key fib_index int;

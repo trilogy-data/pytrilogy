@@ -36,7 +36,7 @@ from vgi.table_function import (
 from vgi_rpc import ArrowSerializableDataclass
 
 from trilogy.io.errors import SCRIPT_ERROR_EXIT_CODE, VGI_FAILURE_MARKER
-from trilogy.io.runner import error_report, parse_args, resolve
+from trilogy.io.runner import Program, error_report, parse_args, resolve, select
 
 CATALOG_NAME = "trilogy_source"
 FUNCTION_NAME = "source"
@@ -145,16 +145,23 @@ class SourceWorker(Worker):
 
 
 def resolve_args(
-    fn: Callable, schema: pa.Schema | None, watermark: Any, args: str
+    program: Program, schema: pa.Schema | None, watermark: Any, args: str
 ) -> pa.RecordBatchReader:
-    """``fn``'s reader for one call's command line, exactly as a one-shot run."""
+    """The reader for one call's command line, exactly as a one-shot run.
+
+    ``--source`` rides in ``args``, so one worker serves every source of a
+    program.
+    """
     try:
         invocation = parse_args(shlex.split(args))
     except SystemExit as e:  # argparse already wrote why to stderr
         raise ValueError(f"invalid source arguments: {args!r}") from e
-    return resolve(fn, invocation, schema, watermark)
+    selected = select(program, invocation.source, schema, watermark)
+    return resolve(selected.fn, invocation, selected.schema, selected.watermark)
 
 
-def serve(fn: Callable, schema: pa.Schema | None = None, watermark: Any = None) -> None:
-    Source.resolver = staticmethod(partial(resolve_args, fn, schema, watermark))  # type: ignore[assignment]
+def serve(
+    program: Program, schema: pa.Schema | None = None, watermark: Any = None
+) -> None:
+    Source.resolver = staticmethod(partial(resolve_args, program, schema, watermark))  # type: ignore[assignment]
     SourceWorker().run()

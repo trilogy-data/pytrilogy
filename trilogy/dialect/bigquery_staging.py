@@ -31,6 +31,7 @@ from trilogy.dialect.python_source import (
     ParquetStreamWriter,
     normalize_object_uri,
     open_uri_sink,
+    source_key,
     staged_object_name,
     stream_script,
 )
@@ -65,8 +66,8 @@ class BigQueryPythonStaging:
     # only ever delete objects this executor wrote.
     instance_id: str | None = None
     table_prefix: str = STAGING_TABLE_PREFIX
-    # script location -> staged object URI. A script is staged once per
-    # executor, not once per statement that references it.
+    # script invocation (location + source args) -> staged object URI. A
+    # source is staged once per executor, not once per statement reading it.
     staged: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -94,7 +95,9 @@ class BigQueryPythonStaging:
         return self.dataset or ""
 
     def table_name(self, address: Address) -> str:
-        return staged_object_name(address.location, prefix=self.table_prefix)
+        return staged_object_name(
+            address.location, address.source_args, prefix=self.table_prefix
+        )
 
     def table_reference(self, address: Address) -> str:
         name = self.table_name(address)
@@ -110,13 +113,16 @@ class BigQueryPythonStaging:
 
         Returns the object URI written, or None if it was already staged.
         """
-        if not force and address.location in self.staged:
+        key = source_key(address.location, address.source_args)
+        if not force and key in self.staged:
             return None
         uri = self.object_uri(address)
         rows = stream_script(
-            address.location, "", ParquetStreamWriter(open_uri_sink(uri))
+            address.location,
+            address.source_args,
+            ParquetStreamWriter(open_uri_sink(uri)),
         )
-        self.staged[address.location] = uri
+        self.staged[key] = uri
         logger.info(
             "%s staged %s rows from %s to %s",
             LOGGER_PREFIX,

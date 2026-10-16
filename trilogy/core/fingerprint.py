@@ -179,6 +179,7 @@ def _address_token(address: Address | str) -> str:
         # partition column order defines hive layout; keep it
         *address.partition_columns,
         *additional,
+        *([f"#{address.source_name}"] if address.source_name else []),
     )
 
 

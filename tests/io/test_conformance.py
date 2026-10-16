@@ -21,6 +21,7 @@ import pytest
 ROOT = Path(__file__).parents[2]
 CRATE = ROOT / "crates" / "trilogy-io"
 PY_SOURCE = Path(__file__).parent / "conformance" / "landmarks.py"
+PY_CATALOG = Path(__file__).parent / "conformance" / "catalog.py"
 
 CASES = [
     [],
@@ -40,9 +41,9 @@ CASES = [
 ]
 
 
-def _binary_path() -> Path:
+def _binary_path(example: str = "landmarks") -> Path:
     suffix = ".exe" if sys.platform == "win32" else ""
-    return CRATE / "target" / "release" / "examples" / f"landmarks{suffix}"
+    return CRATE / "target" / "release" / "examples" / f"{example}{suffix}"
 
 
 @pytest.fixture(scope="session")
@@ -61,7 +62,15 @@ def rust_binary() -> str:
     if shutil.which("cargo") is None:
         pytest.skip("cargo not available")
     build = subprocess.run(
-        ["cargo", "build", "--release", "--example", "landmarks"],
+        [
+            "cargo",
+            "build",
+            "--release",
+            "--example",
+            "landmarks",
+            "--example",
+            "catalog",
+        ],
         cwd=CRATE,
         capture_output=True,
         check=False,
@@ -73,9 +82,19 @@ def rust_binary() -> str:
     return str(binary)
 
 
-def run_python(args: list[str]) -> subprocess.CompletedProcess:
+@pytest.fixture(scope="session")
+def rust_catalog(rust_binary: str) -> str:
+    """The multi-source example, built alongside ``landmarks``."""
+    binary = _binary_path("catalog")
+    assert binary.exists(), f"{binary} was not built with landmarks"
+    return str(binary)
+
+
+def run_python(
+    args: list[str], source: Path = PY_SOURCE
+) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [sys.executable, str(PY_SOURCE), *args],
+        [sys.executable, str(source), *args],
         capture_output=True,
         check=False,
         cwd=ROOT,
@@ -218,3 +237,86 @@ def test_a_limit_under_an_ordering_returns_the_top_rows(rust_binary: str):
 def test_text_formats_match(rust_binary: str, fmt: str):
     args = ["--limit", "3", "--format", fmt]
     assert run_python(args).stdout == run_rust(rust_binary, args).stdout
+
+
+SEVERAL_SOURCES = (
+    "this program serves several sources; choose one with --source. "
+    "Available sources: landmarks, states"
+)
+
+CATALOG_CASES = [
+    ["--source", "states"],
+    ["--source", "landmarks", "--limit", "5"],
+    ["--source", "landmarks", "--filter", "state = CA", "--order-by", "id:desc"],
+    ["--source", "states", "--filter", "position >= 2", "--columns", "state"],
+]
+
+
+@pytest.mark.parametrize("args", CATALOG_CASES, ids=" ".join)
+def test_a_multi_source_program_serves_each_source_alike(
+    rust_catalog: str, args: list[str]
+):
+    py = run_python(args, PY_CATALOG)
+    rs = run_rust(rust_catalog, args)
+    assert py.returncode == 0, py.stderr.decode(errors="replace")
+    assert rs.returncode == 0, rs.stderr.decode(errors="replace")
+    assert rows(py.stdout) == rows(rs.stdout)
+
+
+def reported_error(result: subprocess.CompletedProcess) -> dict:
+    line = next(
+        line
+        for line in result.stderr.decode(errors="replace").splitlines()
+        if line.startswith("trilogy-io-error: ")
+    )
+    return json.loads(line[len("trilogy-io-error: ") :])
+
+
+@pytest.mark.parametrize(
+    "args, message",
+    [
+        (
+            [],
+            SEVERAL_SOURCES,
+        ),
+        (
+            ["--source", "nope"],
+            "unknown source 'nope'. Available sources: landmarks, states",
+        ),
+        (
+            ["--describe"],
+            SEVERAL_SOURCES,
+        ),
+    ],
+)
+def test_both_refuse_a_missing_or_unknown_source(
+    rust_catalog: str, args: list[str], message: str
+):
+    py, rs = run_python(args, PY_CATALOG), run_rust(rust_catalog, args)
+    assert py.returncode == rs.returncode == 65
+    for result in (py, rs):
+        detail = reported_error(result)
+        assert detail["type"] == "ContractError"
+        assert detail["message"] == message
+
+
+def test_a_single_source_program_refuses_a_source_name(rust_binary: str):
+    args = ["--source", "x"]
+    py, rs = run_python(args), run_rust(rust_binary, args)
+    assert py.returncode == rs.returncode == 65
+    for result in (py, rs):
+        assert reported_error(result)["message"] == (
+            "unknown source 'x': this program serves a single source"
+        )
+
+
+def test_both_describe_a_selected_source_identically(rust_catalog: str):
+    args = ["--describe", "--source", "states"]
+    py = json.loads(run_python(args, PY_CATALOG).stdout)
+    rs = json.loads(run_rust(rust_catalog, args).stdout)
+    assert py["schema"] == rs["schema"]
+    assert py["pushdown"] == rs["pushdown"]
+    assert py["datasource"].startswith("datasource states(")
+    for payload in (py, rs):
+        assert payload["datasource"].endswith("#states`;")
+    assert py["datasource"].split("file `")[0] == rs["datasource"].split("file `")[0]
