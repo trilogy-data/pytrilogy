@@ -805,7 +805,7 @@ SQL_TEMPLATE: Template = Template("""{%- if output %}
 {{output}}
 {% endif %}{%- if ctes %}
 WITH {% if recursive and recursive_keyword %}{{ recursive_keyword }}{% endif %}{% for cte in ctes %}
-{% if quote_cte_names %}"{{cte.name}}"{% else %}{{cte.name}}{% endif %} as (
+{% if quote_cte_names %}"{{cte.name}}"{% else %}{{cte.name}}{% endif %} as {% if cte.materialized %}MATERIALIZED {% endif %}(
 {{cte.statement}}){% if not loop.last %},{% else %}
 {% endif %}{% endfor %}{% endif %}
 {%- if full_select -%}

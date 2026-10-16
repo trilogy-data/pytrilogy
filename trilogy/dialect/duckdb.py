@@ -36,6 +36,13 @@ from trilogy.core.enums import (
 )
 from trilogy.core.models.core import CONCRETE_TYPES, DataType
 from trilogy.core.models.datasource import Address
+from trilogy.core.models.execute import (
+    CTE,
+    CompiledCTE,
+    QueryDatasource,
+    RecursiveCTE,
+    UnionCTE,
+)
 from trilogy.dialect.base import BaseDialect, is_array_arg
 from trilogy.dialect.cancel import duckdb_side_cursor
 from trilogy.utility import safe_open
@@ -412,6 +419,36 @@ def python_datasource_failure(error: Exception) -> PythonDatasourceError | None:
     )
 
 
+def reads_program(cte: CTE | UnionCTE) -> bool:
+    """Whether the CTE's own FROM/JOINs run a program datasource."""
+    return any(
+        not isinstance(datasource, QueryDatasource)
+        and isinstance(datasource.address, Address)
+        and datasource.address.type.is_program
+        for datasource in cte.source.datasources
+    )
+
+
+def rescanned_ctes(ctes: list[CTE | UnionCTE]) -> set[str]:
+    """CTEs DuckDB would evaluate more than once if inlined.
+
+    A CTE read by two consumers, or by a recursive CTE (whose step re-reads
+    it every iteration), is otherwise inlined at each reference.
+    """
+    consumers: dict[str, int] = {}
+    recursive: set[str] = set()
+    pending = list(ctes)
+    while pending:
+        cte = pending.pop()
+        if isinstance(cte, (UnionCTE, RecursiveCTE)):
+            pending.extend(cte.internal_ctes)
+        for parent in {p.name for p in cte.parent_ctes}:
+            consumers[parent] = consumers.get(parent, 0) + 1
+            if isinstance(cte, RecursiveCTE):
+                recursive.add(parent)
+    return {name for name, count in consumers.items() if count > 1} | recursive
+
+
 def get_gcs_setup_sql(enabled: bool) -> str:
     """Return SQL to setup GCS extension with optional HMAC credentials.
 
@@ -595,6 +632,15 @@ class DuckDBDialect(BaseDialect):
                 self._not_resident.add(location)
             else:
                 self._residents[location] = alias
+
+    def generate_ctes(self, query: ProcessedQuery) -> list[CompiledCTE]:
+        # An inlined script read reruns the program per reference (per
+        # iteration under recursion): slower, and each run a new snapshot.
+        compiled = super().generate_ctes(query)
+        rescanned = rescanned_ctes(query.ctes)
+        for cte, out in zip(query.ctes[:-1], compiled[:-1]):
+            out.materialized = cte.name in rescanned and reads_program(cte)
+        return compiled
 
     def _maybe_bust_gcs_url(self, url: str) -> str:
         if self._gcs_cache_bust_token and url.startswith(self._GCS_PREFIXES):

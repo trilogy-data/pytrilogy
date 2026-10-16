@@ -139,6 +139,42 @@ def test_rendering_sql_does_not_prepare_sources():
     assert spy.seen == []
 
 
+RECURSIVE_SOURCE_MODEL = """
+key fib_index int;
+property fib_index.parent int?;
+property fib_index.value int;
+auto root <- recurse_edge(fib_index, parent);
+
+datasource fib_numbers(
+    index:fib_index,
+    parent: parent,
+    fibonacci: value
+)
+grain (fib_index)
+file `./fib.py`;
+"""
+
+
+def materialized_ctes(sql: str) -> int:
+    return sql.count(" as MATERIALIZED (")
+
+
+def test_script_read_by_a_recursive_cte_runs_once():
+    """Inlined, the recursive step reruns the script every iteration."""
+    executor = python_source_executor()
+    executor.parse_text(RECURSIVE_SOURCE_MODEL)
+    sql = executor.generate_sql("select root, sum(value) -> total;")[-1]
+    assert "WITH RECURSIVE" in sql
+    assert materialized_ctes(sql) == 1
+
+
+def test_script_read_once_stays_inlined():
+    executor = python_source_executor()
+    executor.parse_text(RECURSIVE_SOURCE_MODEL)
+    sql = executor.generate_sql("select fib_index, value;")[-1]
+    assert materialized_ctes(sql) == 0
+
+
 def test_arrow_source_not_enabled_error():
     script = """
 key fib_index int;

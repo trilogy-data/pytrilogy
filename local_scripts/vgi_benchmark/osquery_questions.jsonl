@@ -1,0 +1,25 @@
+{"query": "import host; select hostname, os_name, os_version, cpu_brand, cpu_logical_cores, physical_memory_gb, booted_at;"}
+{"query": "import process; select count(pid) -> processes, sum(resident_mb) -> total_resident_mb;"}
+{"query": "import process; select pid, name, resident_mb order by resident_mb desc nulls last limit 5;"}
+{"query": "import process_tree; select app.name, process_count order by process_count desc limit 10;"}
+{"query": "import process_tree; select app.name, total_resident_mb, process_count order by total_resident_mb desc nulls last limit 5;"}
+{"query": "import process; select pid, name, cpu_seconds order by cpu_seconds desc limit 5;"}
+{"query": "import process_tree; select app.name, total_cpu_seconds order by total_cpu_seconds desc nulls last limit 5;"}
+{"query": "import connection; select state, count(connection_id) -> connections order by connections desc;"}
+{"query": "import connection; select process.pid, process.name, count(connection_id) -> connections order by connections desc limit 5;"}
+{"query": "import connection; where state = 'ESTABLISHED' select process.name, remote_address, remote_port limit 50;"}
+{"query": "import listening_port; where protocol = 'tcp' select process.pid, process.name, address, port order by port asc;"}
+{"query": "import listening_port; select protocol, count(listener_id) -> listeners;"}
+{"query": "import process; select pid, name, disk_bytes_written order by disk_bytes_written desc nulls last limit 5;"}
+{"query": "import process; select pid, name, disk_bytes_read order by disk_bytes_read desc nulls last limit 5;"}
+{"query": "import process; where started_at is not null select pid, name, started_at, age_hours order by started_at asc limit 5;"}
+{"query": "import process; where in_temp_dir select pid, name, path;"}
+{"query": "import process; where path is null select count(pid) -> processes_without_path;"}
+{"query": "import browser_extension; select browser, name, permission_count order by permission_count desc nulls last limit 5;"}
+{"query": "import browser_extension; select browser, count(extension_id) -> extensions;"}
+{"query": "import autostart; select trigger, kind, name, status order by trigger asc, name asc;"}
+{"query": "import autostart; select kind, status, count(autostart_id) -> entries;"}
+{"query": "import user; select username, type order by username asc;"}
+{"query": "import process; select user.username, count(pid) -> processes, sum(resident_mb) -> total_resident_mb order by total_resident_mb desc nulls last limit 5;"}
+{"query": "import interface_address; select interface, friendly_name, address, family order by interface asc;"}
+{"query": "import process; select pid, name, path, cmdline, --resident_mb order by resident_mb desc nulls last limit 20;"}
