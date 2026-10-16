@@ -9,7 +9,8 @@ from trilogy.core.models.build import (
     DataType,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.nodes import RecursiveNode, StrategyNode
+from trilogy.core.processing.condition_utility import merge_conditions_and_dedup
+from trilogy.core.processing.nodes import MergeNode, RecursiveNode, StrategyNode
 
 GATING_CONCEPT = BuildConcept(
     name=RECURSIVE_GATING_CONCEPT,
@@ -47,11 +48,22 @@ def gen_recursive(
         environment=environment,
         parents=list(parents) if (arguments or parents) else [],
     )
+    gate = BuildComparison(
+        left=GATING_CONCEPT, right=True, operator=ComparisonOperator.IS
+    )
+    walk_outputs = [recursive, *arguments]
+    # A WHERE hosted here filters the FINISHED walk, never its edge set: the
+    # parent stays unfiltered so every walk reaches its terminal row.
+    walk_conditions = conditions.conditional if conditions else None
+    carried = {c.address for c in walk_outputs}
+    joined_back = walk_conditions is not None and any(
+        c.address not in carried for c in walk_conditions.row_arguments
+    )
     # The recursion materializes a UNION; keep only the gated rows. The gate is
     # internal to the recursion and not an environment concept, so it stops here.
-    return StrategyNode(
+    walk = StrategyNode(
         input_concepts=node_outputs,
-        output_concepts=[recursive, *arguments],
+        output_concepts=walk_outputs,
         environment=environment,
         parents=[base],
         # A subset merge (`merge a into ~b`) declares the walk's roots only part
@@ -61,7 +73,21 @@ def gen_recursive(
             if recursive.address in environment.domain_graph.subset_sources()
             else []
         ),
-        conditions=BuildComparison(
-            left=GATING_CONCEPT, right=True, operator=ComparisonOperator.IS
+        conditions=(
+            merge_conditions_and_dedup(walk_conditions, gate)
+            if walk_conditions is not None and not joined_back
+            else gate
         ),
+    )
+    if not joined_back:
+        return walk
+    # The atom reads columns of the seed row the walk does not carry: join the
+    # walk back to its parent on the seed row and filter there.
+    return MergeNode(
+        input_concepts=walk_outputs,
+        output_concepts=walk_outputs,
+        environment=environment,
+        parents=[walk, *parents],
+        partial_concepts=walk.partial_concepts,
+        conditions=walk_conditions,
     )

@@ -17,6 +17,7 @@ from trilogy.core.models.execute import (
     CTE,
     DatasourceCTE,
     Join,
+    RecursiveCTE,
     UnionCTE,
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
@@ -510,8 +511,9 @@ class PredicatePushdown(OptimizationRule):
     ):
         if not isinstance(candidate, BuildConceptArgs):
             return False
-        # Filtering before a LIMIT changes which rows fill it.
-        if parent_cte.limit is not None:
+        # Filtering before a LIMIT changes which rows fill it, and filtering a
+        # recursion's rows changes which edges its walk can reach.
+        if parent_cte.limit is not None or isinstance(parent_cte, RecursiveCTE):
             return False
         if isinstance(parent_cte, UnionCTE):
             pruned = self._prune_union_parent(parent_cte, candidate, inverse_map)
@@ -723,8 +725,9 @@ class PredicatePushdown(OptimizationRule):
         """
         if not isinstance(parent_cte, CTE):
             return False
-        # Filtering before a LIMIT changes which rows fill it.
-        if parent_cte.limit is not None:
+        # Filtering before a LIMIT changes which rows fill it, and filtering a
+        # recursion's rows changes which edges its walk can reach.
+        if parent_cte.limit is not None or isinstance(parent_cte, RecursiveCTE):
             return False
         if not parent_cte.group_to_grain:
             return False
@@ -791,7 +794,7 @@ class PredicatePushdown(OptimizationRule):
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
     ) -> tuple[bool, MergedCTEMap | None]:
         # TODO - pushdown through unions
-        if isinstance(cte, UnionCTE):
+        if isinstance(cte, (UnionCTE, RecursiveCTE)):
             return False, None
         optimized = False
 

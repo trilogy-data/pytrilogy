@@ -140,12 +140,6 @@ def test_union_merge_keeps_orphan_walks():
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="the `pid is not null` atom is hosted on the scan feeding the "
-    "recursion, where it is a tautology, so the union's completion merge "
-    "null-extends pid past it; `union join app_pid = app.pid` leaks the same",
-)
 def test_union_merge_where_filters_null_extended_side():
     assert (
         run(
@@ -156,11 +150,6 @@ def test_union_merge_where_filters_null_extended_side():
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="planner leaves the measure unsourced (`Missing source reference`); "
-    "`union join app_pid = app.pid` fails the same",
-)
 def test_union_merge_measure_with_filter_on_side():
     assert run(
         "import orphans_union; where pid is not null "
@@ -240,3 +229,116 @@ def test_identity_merge_drops_orphan_walks(tmp_path: Path):
     )
     rows = executor.execute_text("import equal; select pid, app_pid order by pid asc;")
     assert [tuple(r) for r in rows[-1].fetchall()] == [(1, 1), (2, 1)]
+
+
+# A WHERE filters the finished walk, never the edge set it walks: every row
+# keeps the root its full ancestry reaches, as if the recursion were a scalar.
+@pytest.mark.parametrize(
+    "model, query, expected",
+    [
+        ("proc", "where pid = 3 select pid, app_pid;", [(3, 1)]),
+        (
+            "proc",
+            "where pid > 2 select pid, app_pid order by pid asc;",
+            [(3, 1), (4, 4), (5, 4)],
+        ),
+        (
+            "proc",
+            "where pid = 3 or pid = 5 select pid, app_pid order by pid asc;",
+            [(3, 1), (5, 4)],
+        ),
+        ("proc", "where name = 'py' select pid, app_pid, name;", [(3, 1, "py")]),
+        (
+            "proc",
+            "where pid > 2 select app_pid, count(pid) -> n order by app_pid asc;",
+            [(1, 1), (4, 2)],
+        ),
+        (
+            "proc",
+            "where pid > 2 select app_pid, sum(mem) -> m order by app_pid asc;",
+            [(1, 1), (4, 10)],
+        ),
+        (
+            "proc",
+            "where mem < 5 select app_pid, count(pid) -> n order by app_pid asc;",
+            [(1, 1), (4, 1)],
+        ),
+        ("proc", "where app_pid = 1 select pid order by pid asc;", [(1,), (2,), (3,)]),
+        ("orphans", "where pid = 8 select pid, app_pid;", [(8, 99)]),
+        (
+            "orphans",
+            "where pid > 6 select app_pid, sum(mem) -> m order by app_pid asc;",
+            [(98, 3), (99, 11000)],
+        ),
+        ("process", "where pid = 3 select pid, app_pid, app.name;", [(3, 1, "code")]),
+        (
+            "process",
+            "where pid > 3 select app.name, sum(mem) -> m order by app.name asc;",
+            [("fx", 10)],
+        ),
+        (
+            "orphans_union",
+            "where pid = 8 select pid, app_pid, app.name;",
+            [(8, 99, None)],
+        ),
+    ],
+)
+def test_where_filters_the_finished_walk(model: str, query: str, expected: list):
+    assert run(f"import {model}; {query}") == expected
+
+
+def test_where_on_walk_input_keeps_recursion_unfiltered():
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=HERE)
+    )
+    sql = executor.generate_sql("import proc; where pid = 3 select pid, app_pid;")[-1]
+    recursion = sql[: sql.index("UNION ALL")]
+    assert "= 3" not in recursion
+
+
+# The self-import's `app.procs` shares its datasource NAME with `procs`; a
+# presence probe on `app.pid` must still be computed on `app.procs`.
+@pytest.mark.parametrize(
+    "query, expected",
+    [
+        (
+            "where app.pid is not null select app_pid, count(pid) -> n",
+            [(1, 2), (2, 0), (6, 0), (7, 0), (8, 0), (9, 0)],
+        ),
+        (
+            "where app.pid is not null select app_pid, sum(mem) -> m",
+            [(1, 15), (2, None), (6, None), (7, None), (8, None), (9, None)],
+        ),
+        (
+            "where app.pid is null select app_pid, count(pid) -> n",
+            [(98, 1), (99, 3)],
+        ),
+        (
+            "where app.pid is not null select app_pid, pid",
+            [(1, 1), (1, 2), (2, None), (6, None), (7, None), (8, None), (9, None)],
+        ),
+    ],
+)
+@pytest.mark.parametrize("form", ["merge", "join"])
+def test_union_axis_presence_probe_on_self_import(
+    tmp_path: Path, query: str, expected: list, form: str
+):
+    if form == "merge":
+        rows = run(f"import orphans_union; {query};")
+    else:
+        model = (HERE / "orphans_union.preql").read_text()
+        (tmp_path / "joined.preql").write_text(
+            model.replace("merge union app_pid = app.pid;", "")
+        )
+        executor = Dialects.DUCK_DB.default_executor(
+            environment=Environment(working_path=tmp_path)
+        )
+        clause = "union join app_pid = app.pid "
+        where, select = query.split(" select ")
+        rows = [
+            tuple(r)
+            for r in executor.execute_text(
+                f"import joined; {where} {clause}select {select};"
+            )[-1].fetchall()
+        ]
+    assert sorted(rows, key=str) == sorted(expected, key=str)

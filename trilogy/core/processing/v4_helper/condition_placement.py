@@ -139,18 +139,20 @@ def _candidate_groups(
     lineage_ancestors_graph: nx.DiGraph,
     buckets: dict[str, GroupBucket],
 ) -> list[str]:
+    # No group feeding a RECURSIVE group hosts a row atom: filtering the edge
+    # set changes reachability (the walk seeds from and steps through the same
+    # rows). The recursion itself applies the atom to its finished walk.
+    recursion_inputs = {
+        anc
+        for gid, bucket in buckets.items()
+        if bucket.derivation == Derivation.RECURSIVE
+        for anc in nx.ancestors(lineage_ancestors_graph, gid)
+    }
     candidates = [
         gid
         for gid in group_members
         if gid not in d1_root_ids
-        # A RECURSIVE group never hosts a row atom: filtering the edge set
-        # changes reachability, so the WHERE belongs above the recursion, at
-        # the final select. Excluding it here lets the atom fall through to
-        # FINAL.
-        and not (
-            buckets.get(gid) is not None
-            and buckets[gid].derivation == Derivation.RECURSIVE
-        )
+        and gid not in recursion_inputs
         and row_inputs
         <= _reachable_input(gid, lineage_ancestors_graph, buckets, group_members)
     ]

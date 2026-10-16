@@ -128,11 +128,16 @@ an explicit author predicate (`where x is not null`).
   HAVING semijoin) renders null-safely but the non-null proof walker read it
   as null-propagating, narrowing a union's FULL join and dropping
   side-exclusive rows under a HAVING on an unprojected field. Fixed in
-  `comparison_proves_non_null` for both forms. Still open, shared with
-  `union join` over a recursive key: a WHERE on the edge table's key is
-  hosted below the recursion, so `where pid is not null` cannot filter rows
-  the union null-extends, and a measure beside such a filter is left
-  unsourced (strict xfails in `tests/recurse_edge/test_recurse_edge.py`).
+  `comparison_proves_non_null` for both forms. A WHERE over a recursion's
+  inputs now filters the finished walk rather than its edge set (no group
+  feeding a RECURSIVE group hosts an atom, the recursion applies it after
+  the walk, joining back to the seed row when the atom reads columns the
+  walk does not carry, and predicate pushdown never enters a recursive
+  CTE). A presence probe is pinned to its member's datasource by
+  IDENTIFIER, not name: a self-import's copy shares the datasource name, so
+  the probe was computed on the other side and `boss.id is not null`
+  silently kept absent-manager rows (or left the axis unsourced beside an
+  aggregate over a recursion).
 
 ## Residuals
 

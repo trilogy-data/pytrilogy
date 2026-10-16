@@ -1087,8 +1087,9 @@ def _datasource_renders_probe(
     member = probe_member_address(probe_address, environment)
     if member is None:
         return True
-    return datasource.name in {
-        ds.name for ds in member_binding_datasources(member, datasources)
+    # identifier, not name: a self-import's copy shares the datasource name
+    return datasource.identifier in {
+        ds.identifier for ds in member_binding_datasources(member, datasources)
     }
 
 
