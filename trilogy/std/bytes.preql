@@ -1,0 +1,11 @@
+# Data sizes. Binary units count in powers of 1,024, as operating systems report
+# memory and files; decimal units in powers of 1,000, as drives and network
+# rates are sold.
+
+type byte int; # bytes
+type kib numeric; # kibibytes (1,024 bytes)
+type mib numeric; # mebibytes (1,048,576 bytes)
+type gib numeric; # gibibytes (1,073,741,824 bytes)
+type kb numeric; # kilobytes (1,000 bytes)
+type mb numeric; # megabytes (1,000,000 bytes)
+type gb numeric; # gigabytes (1,000,000,000 bytes)
