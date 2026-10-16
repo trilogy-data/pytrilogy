@@ -2029,7 +2029,7 @@ merge first_parent into parent.id;
     assert (
         "local.first_parent",
         "parent.id",
-        JoinType.FULL,
+        JoinType.EQUAL,
     ) in executor.environment.merges
     build_env = executor.environment.materialize_for_select()
     recursive = build_env.alias_origin_lookup["local.first_parent"]

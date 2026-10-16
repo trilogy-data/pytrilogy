@@ -45,10 +45,11 @@ def test_declared_edge_translation():
         "anchor",
         DomainRelation.SUBSET,
     )
-    edge = declared_edge_from_join("a", "b", JoinType.FULL, EdgeScope.GLOBAL)
-    assert edge is not None and edge.relation is DomainRelation.EQUAL
-    edge = declared_edge_from_join("a", "b", JoinType.FULL, EdgeScope.STATEMENT)
-    assert edge is not None and edge.relation is DomainRelation.INCOMPARABLE
+    for scope in EdgeScope:
+        edge = declared_edge_from_join("a", "b", JoinType.EQUAL, scope)
+        assert edge is not None and edge.relation is DomainRelation.EQUAL
+        edge = declared_edge_from_join("a", "b", JoinType.FULL, scope)
+        assert edge is not None and edge.relation is DomainRelation.INCOMPARABLE
     assert (
         declared_edge_from_join("a", "b", JoinType.INNER, EdgeScope.STATEMENT) is None
     )
@@ -58,7 +59,7 @@ def test_registry_derivations():
     graph = DomainGraph.from_scoped_joins(
         [
             (("anchor", "opt", JoinType.LEFT_OUTER), EdgeScope.STATEMENT),
-            (("a", "b", JoinType.FULL), EdgeScope.GLOBAL),
+            (("a", "b", JoinType.EQUAL), EdgeScope.GLOBAL),
             (("c", "d", JoinType.FULL), EdgeScope.STATEMENT),
         ]
     )
@@ -70,7 +71,7 @@ def test_registry_derivations():
     assert graph.outer_relation_keys() == {"b", "d"}
     # ... but only the EQUAL key may narrow once completeness is proven
     assert graph.equal_narrowable_keys() == {"b"}
-    assert graph.statement_incomparable_keys() == {"d"}
+    assert graph.incomparable_keys() == {"d"}
     assert graph.join_key_groups() == {
         "anchor": {"anchor", "opt"},
         "b": {"a", "b"},

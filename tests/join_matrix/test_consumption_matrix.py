@@ -35,21 +35,21 @@ RELATIONS = {
     ("subset", "join"): "subset join rb.k = ra.k\n",
     ("subset", "merge"): "merge rb.k into ~ra.k;\n",
     ("union", "join"): "union join ra.k = rb.k\n",
-    ("union", "merge"): "merge ra.k into rb.k;\n",
+    ("union", "merge"): "merge union ra.k = rb.k;\n",
+    # EQUAL narrows to intersection by default (lying declaration = author
+    # error)
+    ("equal", "join"): "equal join ra.k = rb.k\n",
+    ("equal", "merge"): "merge ra.k into rb.k;\n",
+}
+ORACLES = {
+    "subset": expected_left,
+    "union": expected_full,
+    "equal": expected_equal,
 }
 
 
-def _base(join_type: str, form: str) -> list[tuple]:
-    left = aggregate(LEFT_ROWS)
-    right = aggregate(RIGHT_ROWS)
-    if join_type == "subset":
-        return expected_left(left, right)
-    # the merge form of full/union is the EQUAL declaration, narrowed to
-    # intersection by default (lying declaration = author error); the
-    # query-scoped join forms keep the preserving FULL rows.
-    if form == "merge":
-        return expected_equal(left, right)
-    return expected_full(left, right)
+def _base(join_type: str) -> list[tuple]:
+    return ORACLES[join_type](aggregate(LEFT_ROWS), aggregate(RIGHT_ROWS))
 
 
 def _query(join_type: str, form: str, where: str) -> str:
@@ -61,26 +61,22 @@ def _query(join_type: str, form: str, where: str) -> str:
     return HEAD + where + relation + SELECT
 
 
-@pytest.mark.parametrize("form", ["join", "merge"])
-@pytest.mark.parametrize("join_type", ["subset", "union"])
+@pytest.mark.parametrize("join_type,form", sorted(RELATIONS))
 def test_post_join_where_on_optional_measure(tmp_path: Path, join_type: str, form: str):
     # WHERE over the joined relation: NULL measures (unmatched rows) fail the
     # predicate and drop — this must filter the JOINED rows, not pre-filter one
     # side and change the join population.
     query = _query(join_type, form, "where rb.tot > 150\n")
     rows = run_cell(write_models(tmp_path), query)
-    want = sort_rows(
-        [r for r in _base(join_type, form) if r[2] is not None and r[2] > 150]
-    )
+    want = sort_rows([r for r in _base(join_type) if r[2] is not None and r[2] > 150])
     assert rows == want, f"{join_type}/{form}:\n{query}\ngot {rows}\nwant {want}"
 
 
-@pytest.mark.parametrize("form", ["join", "merge"])
-@pytest.mark.parametrize("join_type", ["subset", "union"])
+@pytest.mark.parametrize("join_type,form", sorted(RELATIONS))
 def test_intersection_via_not_null(tmp_path: Path, join_type: str, form: str):
     # the documented replacement for scoped INNER: outer join + `is not null`
     # on a non-key attribute of the optional side
     query = _query(join_type, form, "where rb.tot is not null\n")
     rows = run_cell(write_models(tmp_path), query)
-    want = sort_rows([r for r in _base(join_type, form) if r[2] is not None])
+    want = sort_rows([r for r in _base(join_type) if r[2] is not None])
     assert rows == want, f"{join_type}/{form}:\n{query}\ngot {rows}\nwant {want}"

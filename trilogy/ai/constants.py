@@ -35,7 +35,7 @@ Two rules decide whether the numbers are right, so apply them before reaching fo
 
 Chaining, expression keys, union/subset mixing, multi-key and self-pair shapes: trilogy agent-info syntax example scoped-join.
 
-merge <a> into ~<b>; is the persistent (whole-file) equivalent of `subset join a = b`; plain `merge a into b;` is the persistent equivalent of `equal join a = b`. Standalone statements; prefer a scoped join unless the connection is universal.
+`merge subset a = b;`, `merge union a = b;` and `merge equal a = b;` are the persistent (whole-file) equivalents of the three scoped joins; `merge a into ~b;` and `merge a into b;` are older spellings of `merge subset` and `merge equal`. Standalone statements; prefer a scoped join unless the connection is universal. Use `merge union` when each side has keys the other lacks (orphaned parents, dimension rows with no facts): `merge a into b` declares one domain and drops the unmatched rows.
 
 ### union / except / intersect (row set operations)
 

@@ -104,6 +104,25 @@ class DomainEdge:
     # WHERE). Opaque to the graph; compared via condition_implies by consumers.
     condition: Any = None
 
+    @property
+    def is_identity_merge(self) -> bool:
+        """A global `merge` other than `merge union`: it makes its endpoints
+        one concept, so it pairs INNER and never null-extends a side. A
+        global ∦ relates two concepts exactly as a query `union join` does."""
+        return (
+            self.scope is EdgeScope.GLOBAL
+            and self.relation is not DomainRelation.INCOMPARABLE
+        )
+
+    @property
+    def null_extends(self) -> bool:
+        """A query-scoped relation or a global `merge union`: its completion
+        merge can null-extend a side."""
+        return self.scope is EdgeScope.STATEMENT or (
+            self.scope is EdgeScope.GLOBAL
+            and self.relation is DomainRelation.INCOMPARABLE
+        )
+
     def identity(self) -> tuple:
         return (
             self.source,
@@ -154,12 +173,11 @@ def declared_edge_from_join(
     """Translate a scoped-join/merge tuple into its domain declaration.
 
     Tuple convention (merge_to_join / join normalization): LEFT_OUTER(s, t)
-    anchors on `s` with `t` the subset side, so it declares t ⊑ s. FULL
-    declares EQUAL when authored globally (`merge a into b` asserts one
-    identity) but INCOMPARABLE at query scope (`union join` / `full join`
-    assert neither domain contains the other); EQUAL (`equal join a = b`) is
-    that same identity declared at query scope. Other join types declare
-    nothing about domains.
+    anchors on `s` with `t` the subset side, so it declares t ⊑ s. EQUAL
+    (`equal join` / `merge a into b`) declares one identity; FULL (`union
+    join` / `merge union`) declares neither domain contains the other. The
+    meaning is the same at every scope. Other join types declare nothing
+    about domains.
     """
     if join_type is JoinType.EQUAL:
         return DomainEdge(
@@ -170,12 +188,12 @@ def declared_edge_from_join(
             source=target, target=source, relation=DomainRelation.SUBSET, scope=scope
         )
     if join_type is JoinType.FULL:
-        relation = (
-            DomainRelation.EQUAL
-            if scope is EdgeScope.GLOBAL
-            else DomainRelation.INCOMPARABLE
+        return DomainEdge(
+            source=source,
+            target=target,
+            relation=DomainRelation.INCOMPARABLE,
+            scope=scope,
         )
-        return DomainEdge(source=source, target=target, relation=relation, scope=scope)
     return None
 
 
@@ -412,31 +430,30 @@ class DomainGraph:
         condition the author wrote between two sides' own columns, so no
         grain or FD implication may infer it away: within one side a grain
         determines its columns, but nothing makes two sides' rows agree. A
-        global `merge` is excluded — it makes the two one concept."""
+        global identity merge is excluded — it makes the two one concept; a
+        global `merge union` is included."""
         if self._authored_join_members is None:
             self._authored_join_members = frozenset(
                 addr
                 for e in self.edges
-                if e.provenance is EdgeProvenance.DECLARED
-                and e.scope is not EdgeScope.GLOBAL
+                if e.provenance is EdgeProvenance.DECLARED and not e.is_identity_merge
                 for addr in (e.source, e.target)
             )
         return self._authored_join_members
 
-    def statement_incomparable_keys(self) -> set[str]:
-        """Canonicalized endpoints of statement-scoped ∦ declarations
-        (historical statement_full_keys)."""
+    def incomparable_keys(self) -> set[str]:
+        """Canonicalized endpoints of statement-scoped and global ∦
+        declarations (historical statement_full_keys)."""
         return {
             self.canonical(addr)
             for e in self.edges
-            if e.relation is DomainRelation.INCOMPARABLE
-            and e.scope is EdgeScope.STATEMENT
+            if e.relation is DomainRelation.INCOMPARABLE and e.null_extends
             for addr in (e.source, e.target)
         }
 
     def equal_narrowable_keys(self) -> set[str]:
         """Canonicalized endpoints of EQUAL declarations, minus keys also
-        authored as a statement-scoped ∦ (historical equal_join_keys): an
+        declared ∦ (historical equal_join_keys): an
         EQUAL key may narrow to INNER once completeness tests pass; a ∦ key
         keeps the veto."""
         return {
@@ -445,7 +462,7 @@ class DomainGraph:
             if e.relation is DomainRelation.EQUAL
             and e.provenance is EdgeProvenance.DECLARED
             for addr in (e.source, e.target)
-        } - self.statement_incomparable_keys()
+        } - self.incomparable_keys()
 
     def left_anchor_keys(self) -> set[str]:
         """Canonicalized superset anchors of declared SUBSET relations

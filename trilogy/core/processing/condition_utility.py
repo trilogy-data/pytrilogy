@@ -1026,6 +1026,14 @@ def comparison_proves_non_null(
     walkers differ only in their handling of nested conditionals/``BETWEEN``.
     """
     left, right, op = atom.left, atom.right, atom.operator
+    if (
+        op in (ComparisonOperator.IN, ComparisonOperator.NOT_IN)
+        and isinstance(left, BuildFunction)
+        and left.operator == FunctionType.ROW_TUPLE
+    ):
+        # row-tuple membership renders as a null-safe existence match, so a
+        # NULL component still matches a NULL member
+        return set()
     if op == ComparisonOperator.IS_NOT:
         # `<expr> IS NOT NULL`: every concept inside the expression is non-null.
         if is_null_literal(right):

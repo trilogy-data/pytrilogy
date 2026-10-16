@@ -454,7 +454,7 @@ class MergeStatementPlan(StatementPlanBase):
             hydrator.semantic_state.stage_merge(
                 source_c,
                 self.output.targets[source_c.address],
-                self.output.modifiers,
+                self.output.join_relation,
             )
         return self.output
 

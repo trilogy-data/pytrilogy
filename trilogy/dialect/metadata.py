@@ -85,7 +85,10 @@ def handle_merge_statement(
     """Handle merge statements by updating environment and returning result."""
     for concept in query.sources:
         environment.add_merge_join(
-            concept, query.targets[concept.address], modifiers=query.modifiers
+            concept,
+            query.targets[concept.address],
+            modifiers=[],
+            relation=query.join_relation,
         )
 
     return MockResult(

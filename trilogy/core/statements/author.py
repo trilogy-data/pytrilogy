@@ -707,6 +707,14 @@ class MergeStatementV2(HasUUID):
     source_wildcard: str | None = None
     target_wildcard: str | None = None
     modifiers: list[Modifier] = field(default_factory=list)
+    # the `merge subset|union|equal a = b` spelling; None for `merge a into [~]b`
+    relation: JoinType | None = None
+
+    @property
+    def join_relation(self) -> JoinType:
+        if self.relation is not None:
+            return self.relation
+        return JoinType.SUBSET if Modifier.PARTIAL in self.modifiers else JoinType.EQUAL
 
 
 @dataclass

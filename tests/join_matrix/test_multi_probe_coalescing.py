@@ -19,6 +19,8 @@ Data: store={1,2,3}, web={1}, catalog={2}, customer={1,2,3,4};
 
 from pathlib import Path
 
+import pytest
+
 from tests.join_matrix.harness import sort_rows
 from trilogy import Dialects, Executor
 from trilogy.core.models.environment import Environment
@@ -77,32 +79,44 @@ def _run(tmp_path: Path, query: str) -> list[tuple]:
     return sort_rows([tuple(r) for r in engine.execute_raw_sql(sql).fetchall()])
 
 
+def _relate(form: str, members: list[str], select: str, where: str) -> str:
+    """The same `union` relations as query join clauses or global merges."""
+    if form == "join":
+        joins = "".join(f"union join {m} = cust_id " for m in members)
+        return f"select {select} {joins}where {where};"
+    merges = "".join(f"merge union {m} = cust_id;\n" for m in members)
+    return f"{merges}select {select} where {where};"
+
+
 STORE_AND_WEB_OR_CATALOG = [(1,), (2,)]
+FORMS = pytest.mark.parametrize("form", ["join", "merge"])
 
 
-def test_store_and_web_or_catalog_key_only(tmp_path: Path):
+@FORMS
+def test_store_and_web_or_catalog_key_only(tmp_path: Path, form: str):
     rows = _run(
         tmp_path,
-        "select cust_id "
-        "union join s.sk = cust_id "
-        "union join w.wk = cust_id "
-        "union join c.ck = cust_id "
-        "where s.sk is not null "
-        "  and (w.wk is not null or c.ck is not null);",
+        _relate(
+            form,
+            ["s.sk", "w.wk", "c.ck"],
+            "cust_id",
+            "s.sk is not null and (w.wk is not null or c.ck is not null)",
+        ),
     )
     assert rows == STORE_AND_WEB_OR_CATALOG
 
 
-def test_store_and_web_or_catalog_join_order_swapped(tmp_path: Path):
-    # Swapping web/catalog join declaration order must not change the set.
+@FORMS
+def test_store_and_web_or_catalog_join_order_swapped(tmp_path: Path, form: str):
+    # Swapping web/catalog declaration order must not change the set.
     rows = _run(
         tmp_path,
-        "select cust_id "
-        "union join s.sk = cust_id "
-        "union join c.ck = cust_id "
-        "union join w.wk = cust_id "
-        "where s.sk is not null "
-        "  and (w.wk is not null or c.ck is not null);",
+        _relate(
+            form,
+            ["s.sk", "c.ck", "w.wk"],
+            "cust_id",
+            "s.sk is not null and (w.wk is not null or c.ck is not null)",
+        ),
     )
     assert rows == STORE_AND_WEB_OR_CATALOG
 
@@ -118,58 +132,62 @@ def test_store_and_web_or_catalog_matches_membership(tmp_path: Path):
     assert rows == STORE_AND_WEB_OR_CATALOG
 
 
-def test_store_and_web_or_catalog_with_property_and_aggregate(tmp_path: Path):
+@FORMS
+def test_store_and_web_or_catalog_with_property_and_aggregate(
+    tmp_path: Path, form: str
+):
     # Adding an unrelated dimension projection + aggregate must not alter the
     # qualifying key set (the full-q35 shape that took a different bad plan).
     rows = _run(
         tmp_path,
-        "select region, count(cust_id) as customers "
-        "union join s.sk = cust_id "
-        "union join w.wk = cust_id "
-        "union join c.ck = cust_id "
-        "where s.sk is not null "
-        "  and (w.wk is not null or c.ck is not null);",
+        _relate(
+            form,
+            ["s.sk", "w.wk", "c.ck"],
+            "region, count(cust_id) as customers",
+            "s.sk is not null and (w.wk is not null or c.ck is not null)",
+        ),
     )
     # customers 1 and 2 both in region 'E'
     assert rows == [("E", 2)]
 
 
-def test_two_member_and_intersects(tmp_path: Path):
+@FORMS
+def test_two_member_and_intersects(tmp_path: Path, form: str):
     # store AND web = {1}: two probes AND-ed, no OR.
     rows = _run(
         tmp_path,
-        "select cust_id "
-        "union join s.sk = cust_id "
-        "union join w.wk = cust_id "
-        "where s.sk is not null and w.wk is not null;",
+        _relate(
+            form, ["s.sk", "w.wk"], "cust_id", "s.sk is not null and w.wk is not null"
+        ),
     )
     assert rows == [(1,)]
 
 
-def test_two_member_or_unions(tmp_path: Path):
+@FORMS
+def test_two_member_or_unions(tmp_path: Path, form: str):
     # store OR web = {1,2,3}: presence widened by OR, still per-side.
     rows = _run(
         tmp_path,
-        "select cust_id "
-        "union join s.sk = cust_id "
-        "union join w.wk = cust_id "
-        "where s.sk is not null or w.wk is not null;",
+        _relate(
+            form, ["s.sk", "w.wk"], "cust_id", "s.sk is not null or w.wk is not null"
+        ),
     )
     assert rows == [(1,), (2,), (3,)]
 
 
-def test_four_member_nested_and_or(tmp_path: Path):
+@FORMS
+def test_four_member_nested_and_or(tmp_path: Path, form: str):
     # Four probes over one group, two OR clauses AND-ed: the carry is
     # N-agnostic (each probe made sticky independently). mobile={3}, so
     # (store OR web) AND (catalog OR mobile) = {1,2,3} & {2,3} = {2,3}.
     rows = _run(
         tmp_path,
-        "select cust_id "
-        "union join s.sk = cust_id "
-        "union join w.wk = cust_id "
-        "union join c.ck = cust_id "
-        "union join m.mk = cust_id "
-        "where (s.sk is not null or w.wk is not null) "
-        "  and (c.ck is not null or m.mk is not null);",
+        _relate(
+            form,
+            ["s.sk", "w.wk", "c.ck", "m.mk"],
+            "cust_id",
+            "(s.sk is not null or w.wk is not null)"
+            " and (c.ck is not null or m.mk is not null)",
+        ),
     )
     assert rows == [(2,), (3,)]

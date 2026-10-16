@@ -17,7 +17,8 @@ power-scaled values (fan-out changes sums), and an opt-in nullable axis
 
 | file | axes |
 |---|---|
-| `test_two_source_matrix.py` | key kind (root / derived / rowset) × join type (LEFT / FULL / SUBSET / UNION) × form (join / merge) × nullable |
+| `test_two_source_matrix.py` | key kind (root / derived / rowset) × relation (subset / union / equal) × form (join / `merge <relation>` / legacy `merge into`) × nullable |
+| `test_merge_union_parity.py` | `merge union a = b` vs `union join a = b` over root / derived / rowset / composite keys × WHERE / HAVING / aggregate / row shapes × nullable |
 | `test_composite_matrix.py` | composite key kind (both-plain / plain+derived / derived+derived) × join type; fan-out uniqueness guard |
 | `test_multiway_matrix.py` | 3-way derived-key relations: chained/pairwise join form vs merge stack |
 | `test_consumption_matrix.py` | post-join WHERE on the optional side; `is not null` intersection idiom × form |
@@ -42,11 +43,13 @@ those relations keep their preserving FULL.
   the cells rule `expected_left`.
 - `union join a = b` (≡ legacy `full join a = b`): neither domain contains the
   other; never narrows (`full_join_keys` veto), cells rule `expected_full`.
-- non-partial `merge a into b`: the EQUAL declaration. With
-  `narrow_equal_domain_joins` defaulted ON it narrows to INNER wherever both
-  sides prove value-complete — on the adversarial rows that DROPS the
-  side-exclusive rows (lying declaration = author error), so the merge-form
-  full/union cells rule intersection (`expected_equal`).
+- `equal join a = b` (≡ `merge equal a = b` ≡ non-partial `merge a into b`):
+  the EQUAL declaration. With `narrow_equal_domain_joins` defaulted ON it
+  narrows to INNER wherever both sides prove value-complete; on the
+  adversarial rows that DROPS the side-exclusive rows (lying declaration =
+  author error), so the equal cells rule intersection (`expected_equal`).
+- `merge union a = b` is `union join a = b` for every statement: the union
+  cells share one oracle across both forms.
 - NULL is not a value: nullability never affects the declared relation; NULL
   keys bind null-safely (`is not distinct from`) and NULL groups pair rather
   than drop. The former derived-LEFT-zip xfails dissolved with the flip (the

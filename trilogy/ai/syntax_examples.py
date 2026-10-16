@@ -639,6 +639,8 @@ limit 100;
 #                         side is on the other (`merge a into b` scoped to this
 #                         query); the join renders inner. Two rowsets ranking
 #                         the same rows two ways pair this way.
+# `merge subset|union|equal a = b;` declares the same relation for every query
+# in the file.
 # Place the clause(s) RIGHT AFTER the `select` list (the SQL-like spot).
 import enrollments as enroll;
 import students as students;
