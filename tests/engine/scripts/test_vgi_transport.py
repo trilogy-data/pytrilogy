@@ -82,6 +82,12 @@ def test_resident_command_adds_vgi_only_to_python_scripts():
         "--vgi",
     ]
     assert resident_command("/w/bin/landmarks") == ["/w/bin/landmarks", "--vgi"]
+    assert resident_command("/w/bin/landmarks", "abc") == [
+        "/w/bin/landmarks",
+        "--vgi",
+        "--vgi-version",
+        "abc",
+    ]
 
 
 def test_resident_alias_follows_the_source_version(tmp_path: Path):
@@ -90,6 +96,16 @@ def test_resident_alias_follows_the_source_version(tmp_path: Path):
     first = resident_alias(str(source))
     assert first == resident_alias(str(source))
     os.utime(source, ns=(1, 1))
+    assert resident_alias(str(source)) != first
+
+
+def test_resident_alias_follows_the_modules_a_script_imports(tmp_path: Path):
+    source = tmp_path / "src.py"
+    source.write_text("import helper")
+    helper = tmp_path / "helper.py"
+    helper.write_text("VALUE = 1")
+    first = resident_alias(str(source))
+    os.utime(helper, ns=(1, 1))
     assert resident_alias(str(source)) != first
 
 
@@ -292,3 +308,39 @@ def test_vgi_script_failure_surfaces_as_script_error(vgi_executor):
         )
 
     assert "A helpful error describing what went wrong." in str(raised.value)
+
+
+EDITED_PROGRAM = """# /// script
+# requires-python = ">=3.11"
+# dependencies = ["pytrilogy"]
+# [tool.uv.sources]
+# pytrilogy = { path = "ROOT", editable = true }
+# ///
+import helper
+
+from trilogy.io import run
+
+if __name__ == "__main__":
+    raise SystemExit(run(lambda: [{"id": 1, "value": helper.VALUE}]))
+"""
+
+
+def test_an_edited_module_is_served_without_a_restart(vgi_executor, tmp_path: Path):
+    """A running executor picks up an edit to a module the source imports."""
+    (tmp_path / "program.py").write_text(EDITED_PROGRAM.replace("ROOT", ROOT))
+    helper = tmp_path / "helper.py"
+    helper.write_text("VALUE = 1")
+    vgi_executor.parse_text(f"""
+key id int;
+property id.value int;
+datasource edited (id: id, value: value) grain (id)
+file `{(tmp_path / "program.py").as_posix()}`;
+""")
+    query = "select id, value;"
+    assert vgi_executor.execute_text(query)[-1].fetchall() == [(1, 1)]
+    first = dict(vgi_executor.generator._residents)
+
+    helper.write_text("VALUE = 2")
+    os.utime(helper, ns=(10**18, 10**18))
+    assert vgi_executor.execute_text(query)[-1].fetchall() == [(1, 2)]
+    assert vgi_executor.generator._residents != first

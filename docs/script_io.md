@@ -372,8 +372,13 @@ executor's life:
     parser, so the contract is unchanged; it is delivered per call instead of
     per process. `tests/io/test_vgi_conformance.py` holds both implementations'
     served answers to their one-shot output.
-  - The alias hashes the source's path and mtime, so an edited script or a
-    rebuilt binary gets a fresh worker rather than the stale pooled one.
+  - The alias hashes the source's path and version: its mtime, and for a python
+    script the mtime of every `.py` beside it, since it may import them. The
+    version is re-checked before every query, so a source edited under a
+    running server gets a fresh worker on the next query, and the superseded
+    worker is detached. vgi pools worker processes by command line, so the
+    version also goes on it, as `--vgi --vgi-version <digest>`; a served source
+    reads only `--vgi` and ignores the rest.
   - Startup is lazy: a source is attached by the first query that reads it,
     never ahead of time. All of that query's new sources start in parallel, so
     it waits for the slowest startup rather than the sum.

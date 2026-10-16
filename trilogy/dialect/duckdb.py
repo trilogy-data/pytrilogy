@@ -306,26 +306,59 @@ def vgi_worker_command(python_executable: str, is_windows: bool) -> str:
     )
 
 
-def resident_command(location: str) -> list[str]:
-    """How to start a source as its own VGI worker (``--vgi``)."""
+def resident_command(location: str, version: str | None = None) -> list[str]:
+    """How to start a source as its own VGI worker (``--vgi``).
+
+    vgi pools worker processes by their command line, so ``version`` goes on it
+    (after ``--vgi``, which is all a served source reads): otherwise a worker for
+    an edited source is drawn from the pool still running the old code.
+    """
     from trilogy.dialect.python_source import UV_RUN_PREFIX
     from trilogy.io.errors import VGI_FLAG
 
+    tail = [VGI_FLAG, "--vgi-version", version] if version else [VGI_FLAG]
     if Path(location).suffix == ".py":
         # The script's own dependencies need not include vgi.
-        return [*UV_RUN_PREFIX, "--with", "vgi-python", location, VGI_FLAG]
-    return [location, VGI_FLAG]
+        return [*UV_RUN_PREFIX, "--with", "vgi-python", location, *tail]
+    return [location, *tail]
+
+
+RESIDENT_ALIAS_PREFIX = "trilogy_src_"
+
+
+def source_version(location: str) -> str:
+    """Modification times of the code a source runs. A python script may import
+    the modules beside it, so its version covers every ``.py`` in its directory."""
+    path = Path(location)
+    files = sorted(path.parent.glob("*.py")) if path.suffix == ".py" else [path]
+    stamps = []
+    for file in files:
+        try:
+            stamps.append(f"{file.name}:{file.stat().st_mtime_ns}")
+        except OSError:
+            stamps.append(f"{file.name}:0")
+    return "|".join(stamps)
 
 
 def resident_alias(location: str) -> str:
     """A catalog alias per source *version*: an edited or rebuilt source gets a
     fresh worker rather than the pooled one still running the old code."""
+    version = source_version(location)
+    digest = hashlib.md5(f"{location}|{version}".encode()).hexdigest()[:12]
+    return f"{RESIDENT_ALIAS_PREFIX}{digest}"
+
+
+def detach_resident(connection: Any, alias: str) -> None:
+    """Drop a superseded worker rather than leave it idling out its pool timeout."""
+    side = duckdb_side_cursor(connection)
+    if side is None:
+        return
     try:
-        mtime = Path(location).stat().st_mtime_ns
-    except OSError:
-        mtime = 0
-    digest = hashlib.md5(f"{location}|{mtime}".encode()).hexdigest()[:12]
-    return f"trilogy_src_{digest}"
+        side.execute(f"DETACH DATABASE IF EXISTS {alias}")
+    except Exception as e:
+        logger.info("could not detach superseded resident %s: %s", alias, e)
+    finally:
+        side.close()
 
 
 # How long an idle resident worker is kept. The vgi default (5s) is shorter than
@@ -345,7 +378,8 @@ def attach_resident(connection: Any, location: str) -> str | None:
     if side is None:
         return None
     alias = resident_alias(location)
-    command = vgi_location(resident_command(location), sys.platform == "win32")
+    version = alias.removeprefix(RESIDENT_ALIAS_PREFIX)
+    command = vgi_location(resident_command(location, version), sys.platform == "win32")
     escaped = command.replace("'", "''")
     try:
         side.execute(
@@ -629,7 +663,7 @@ class DuckDBDialect(BaseDialect):
     _GCS_PREFIXES = ("gcs://", "gs://", "https://storage.googleapis.com")
 
     def prepare_sources(self, addresses: Iterable[Address], executor: Executor) -> None:
-        """Start each program source as its own pooled VGI worker, once.
+        """Start each program source as its own pooled VGI worker, once per version.
 
         Sources are started lazily, by the first query that reads them, and
         all of a query's new sources start in parallel: the query waits for the
@@ -641,10 +675,13 @@ class DuckDBDialect(BaseDialect):
         programs = list(
             dict.fromkeys(a.location for a in addresses if a.type.is_program)
         )
+        # Re-checked per query, so a source edited under a running server is
+        # served by a fresh worker from the next query on.
         pending = [
             p
             for p in programs
-            if p not in self._residents and p not in self._not_resident
+            if p not in self._not_resident
+            and self._residents.get(p) != resident_alias(p)
         ]
         if pending:
             with ThreadPoolExecutor(max_workers=min(len(pending), 8)) as pool:
@@ -652,10 +689,13 @@ class DuckDBDialect(BaseDialect):
                     pool.map(partial(attach_resident, executor.connection), pending)
                 )
             for location, alias in zip(pending, aliases):
+                superseded = self._residents.pop(location, None)
                 if alias is None:
                     self._not_resident.add(location)
                 else:
                     self._residents[location] = alias
+                if superseded is not None and superseded != alias:
+                    detach_resident(executor.connection, superseded)
         if not self._bridge_attached and any(p in self._not_resident for p in programs):
             attach_bridge(executor.connection)
             self._bridge_attached = True
