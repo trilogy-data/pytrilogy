@@ -296,14 +296,49 @@ def test_where_on_walk_input_keeps_recursion_unfiltered():
     assert "= 3" not in recursion
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="a presence probe on the coalesced union axis beside an aggregate "
-    "leaves app.pid unsourced (`Missing source reference`); `union join "
-    "app_pid = app.pid` fails the same on main. `having app.pid is not null` works",
+# The self-import's `app.procs` shares its datasource NAME with `procs`; a
+# presence probe on `app.pid` must still be computed on `app.procs`.
+@pytest.mark.parametrize(
+    "query, expected",
+    [
+        (
+            "where app.pid is not null select app_pid, count(pid) -> n",
+            [(1, 2), (2, 0), (6, 0), (7, 0), (8, 0), (9, 0)],
+        ),
+        (
+            "where app.pid is not null select app_pid, sum(mem) -> m",
+            [(1, 15), (2, None), (6, None), (7, None), (8, None), (9, None)],
+        ),
+        (
+            "where app.pid is null select app_pid, count(pid) -> n",
+            [(98, 1), (99, 3)],
+        ),
+        (
+            "where app.pid is not null select app_pid, pid",
+            [(1, 1), (1, 2), (2, None), (6, None), (7, None), (8, None), (9, None)],
+        ),
+    ],
 )
-def test_union_axis_presence_beside_aggregate():
-    assert run(
-        "import orphans_union; where app.pid is not null "
-        "select app_pid, count(pid) -> n order by app_pid asc;"
-    ) == [(1, 2), (2, 0), (6, 0), (7, 0), (8, 0), (9, 0)]
+@pytest.mark.parametrize("form", ["merge", "join"])
+def test_union_axis_presence_probe_on_self_import(
+    tmp_path: Path, query: str, expected: list, form: str
+):
+    if form == "merge":
+        rows = run(f"import orphans_union; {query};")
+    else:
+        model = (HERE / "orphans_union.preql").read_text()
+        (tmp_path / "joined.preql").write_text(
+            model.replace("merge union app_pid = app.pid;", "")
+        )
+        executor = Dialects.DUCK_DB.default_executor(
+            environment=Environment(working_path=tmp_path)
+        )
+        clause = "union join app_pid = app.pid "
+        where, select = query.split(" select ")
+        rows = [
+            tuple(r)
+            for r in executor.execute_text(
+                f"import joined; {where} {clause}select {select};"
+            )[-1].fetchall()
+        ]
+    assert sorted(rows, key=str) == sorted(expected, key=str)

@@ -133,9 +133,11 @@ an explicit author predicate (`where x is not null`).
   feeding a RECURSIVE group hosts an atom, the recursion applies it after
   the walk, joining back to the seed row when the atom reads columns the
   walk does not carry, and predicate pushdown never enters a recursive
-  CTE). Still open, shared with `union join` on main: a presence probe on
-  the coalesced union axis beside an aggregate leaves the axis unsourced
-  (strict xfail in `tests/recurse_edge/test_recurse_edge.py`).
+  CTE). A presence probe is pinned to its member's datasource by
+  IDENTIFIER, not name: a self-import's copy shares the datasource name, so
+  the probe was computed on the other side and `boss.id is not null`
+  silently kept absent-manager rows (or left the axis unsourced beside an
+  aggregate over a recursion).
 
 ## Residuals
 
