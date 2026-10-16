@@ -35,7 +35,8 @@ from vgi.table_function import (
 )
 from vgi_rpc import ArrowSerializableDataclass
 
-from trilogy.io.errors import SCRIPT_ERROR_EXIT_CODE, VGI_FAILURE_MARKER
+from trilogy.io.contract import pushdown_parameters
+from trilogy.io.errors import SCRIPT_ERROR_EXIT_CODE, VGI_FAILURE_MARKER, ContractError
 from trilogy.io.runner import Program, error_report, parse_args, resolve, select
 
 CATALOG_NAME = "trilogy_source"
@@ -87,6 +88,7 @@ class Source(TableFunctionGenerator[SourceArgs, SourceState]):
     """The served function; ``resolver`` is bound by ``serve``."""
 
     resolver: ClassVar[Callable[[str], pa.RecordBatchReader]]
+    declared: ClassVar[Callable[[str], pa.Schema | None]]
 
     class Meta:
         name = FUNCTION_NAME
@@ -95,6 +97,11 @@ class Source(TableFunctionGenerator[SourceArgs, SourceState]):
 
     @classmethod
     def on_bind(cls, params: BindParams[SourceArgs]) -> BindResponse:
+        # Binds run one after another; leaving the source's run to the scan
+        # lets two scans of one query run at once, in separate workers.
+        declared = cls.declared(params.args.args)
+        if declared is not None:
+            return BindResponse(output_schema=declared)
         try:
             with _quiet():
                 reader = cls.resolver(params.args.args)
@@ -160,8 +167,38 @@ def resolve_args(
     return resolve(selected.fn, invocation, selected.schema, selected.watermark)
 
 
+def declared_schema(
+    program: Program, schema: pa.Schema | None, args: str
+) -> pa.Schema | None:
+    """The schema a call will produce, when it is known without running the source.
+
+    Only a declared schema the request cannot reshape qualifies: a source that
+    projects its own columns, or a request naming a column the schema lacks,
+    must run so that its answer (or its error) is the one-shot one.
+    """
+    try:
+        invocation = parse_args(shlex.split(args))
+        selected = select(program, invocation.source, schema)
+    except (SystemExit, ContractError):
+        return None
+    if selected.schema is None or "columns" in pushdown_parameters(selected.fn):
+        return None
+    request = invocation.request
+    named = [
+        *(request.columns or ()),
+        *(f.column for f in request.filters),
+        *(s.column for s in request.order_by),
+    ]
+    if any(name not in selected.schema.names for name in named):
+        return None
+    if request.columns:
+        return pa.schema([selected.schema.field(name) for name in request.columns])
+    return selected.schema.remove_metadata()
+
+
 def serve(
     program: Program, schema: pa.Schema | None = None, watermark: Any = None
 ) -> None:
     Source.resolver = staticmethod(partial(resolve_args, program, schema, watermark))  # type: ignore[assignment]
+    Source.declared = staticmethod(partial(declared_schema, program, schema))  # type: ignore[assignment]
     SourceWorker().run()

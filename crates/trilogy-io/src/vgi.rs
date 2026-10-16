@@ -95,6 +95,17 @@ impl TableFunction for Served {
 
     fn on_bind(&self, params: &BindParams) -> vgi_rpc::Result<BindResponse> {
         let args = Self::args(&params.arguments);
+        // Binds run one after another; leaving the source's run to the scan
+        // lets two scans of one query run at once, in separate workers.
+        if let Some(declared) = invocation(&args)
+            .ok()
+            .and_then(|invocation| self.program.declared_schema(&invocation))
+        {
+            return Ok(BindResponse {
+                output_schema: plain(&declared),
+                opaque_data: Vec::new(),
+            });
+        }
         let reader = self.resolve(&args)?;
         let output_schema = plain(&reader.schema());
         self.pending

@@ -129,6 +129,8 @@ where
 pub(crate) trait Erased: Send + Sync {
     fn read(&self, invocation: &Invocation) -> Result<BatchReader>;
     fn claims(&self) -> &[Field];
+    #[cfg(feature = "vgi")]
+    fn declared(&self) -> Option<SchemaRef>;
 }
 
 impl<F, T> Erased for Source<F>
@@ -142,6 +144,11 @@ where
 
     fn claims(&self) -> &[Field] {
         &self.pushdown
+    }
+
+    #[cfg(feature = "vgi")]
+    fn declared(&self) -> Option<SchemaRef> {
+        self.schema.clone()
     }
 }
 
@@ -225,6 +232,42 @@ impl Program {
     #[cfg(feature = "vgi")]
     pub(crate) fn resolve(&self, invocation: &Invocation) -> Result<BatchReader> {
         self.select(invocation.source.as_deref())?.read(invocation)
+    }
+
+    /// The schema a call will produce, when it is known without running the
+    /// source: a declared schema the request cannot reshape. A source that
+    /// projects its own columns, or a request naming a column the schema
+    /// lacks, must run so its answer (or its error) is the one-shot one.
+    #[cfg(feature = "vgi")]
+    pub(crate) fn declared_schema(&self, invocation: &Invocation) -> Option<SchemaRef> {
+        let source = self.select(invocation.source.as_deref()).ok()?;
+        let schema = source.declared()?;
+        if source.claims().contains(&Field::Columns) {
+            return None;
+        }
+        let request = &invocation.request;
+        let named = request
+            .columns
+            .iter()
+            .flatten()
+            .chain(request.filters.iter().map(|f| &f.column))
+            .chain(request.order_by.iter().map(|s| &s.column));
+        for name in named {
+            schema.index_of(name).ok()?;
+        }
+        Some(match &request.columns {
+            Some(columns) => Arc::new(
+                schema
+                    .project(
+                        &columns
+                            .iter()
+                            .map(|c| schema.index_of(c).unwrap())
+                            .collect::<Vec<_>>(),
+                    )
+                    .ok()?,
+            ),
+            None => schema,
+        })
     }
 
     fn run(self) -> ExitCode {

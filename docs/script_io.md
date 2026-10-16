@@ -380,6 +380,15 @@ executor's life:
   - Each attach runs on its own side cursor. A failure there cannot abort the
     transaction the query runs in, and the separate cursors are what let the
     attaches overlap.
+  - Idle workers are kept for an hour (`POOL_TIMEOUT`, `RESIDENT_IDLE_SECONDS`).
+    The vgi default is 5s, shorter than the gap between an agent's queries, so
+    nearly every query would otherwise restart the source.
+  - A query scanning one source twice (a self-join, a recursive CTE beside its
+    seed) gets a second pooled worker. Bind answers from the source's declared
+    `schema` when the request cannot reshape it, without running the source,
+    so the two scans run at once rather than one after another inside binds.
+    A source with no declared schema, or one that projects its own columns,
+    still runs at bind.
   - `.github/workflows/vgi.yml` installs haybarn and runs these tests on
     Ubuntu and Windows. Elsewhere they skip.
 - **Bridge.** A source that cannot serve itself falls back to the bridge: a raw

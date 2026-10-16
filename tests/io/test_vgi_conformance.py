@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 
+import pyarrow as pa
 import pytest
 
 from tests.io.test_conformance import (
@@ -140,3 +141,42 @@ def test_served_failures_carry_the_contract_error(request, worker):
 def test_one_worker_serves_every_source_of_a_program(request, worker, args):
     con = request.getfixturevalue(worker)
     assert served(con, args) == rows(run_python(args, PY_CATALOG).stdout)
+
+
+DECLARED = pa.schema([("id", pa.int64()), ("state", pa.string())])
+
+
+def _rows():
+    return [{"id": 1, "state": "CA"}]
+
+
+def _owns_columns(columns=None):
+    return [{"id": 1, "state": "CA"}]
+
+
+@pytest.mark.parametrize(
+    "fn, args, expected",
+    [
+        (_rows, "--limit 3 --filter 'state = CA'", DECLARED),
+        (
+            _rows,
+            "--columns state,id",
+            pa.schema([DECLARED.field(1), DECLARED.field(0)]),
+        ),
+        (_rows, "--columns nope", None),
+        (_rows, "--order-by nope", None),
+        (_owns_columns, "", None),
+    ],
+)
+def test_bind_answers_from_a_declared_schema(fn, args, expected):
+    """Bind need not run a source whose schema the request cannot reshape."""
+    from trilogy.io.vgi import declared_schema
+
+    assert declared_schema(fn, DECLARED, args) == expected
+
+
+def test_bind_runs_a_source_that_declares_nothing_or_is_not_served():
+    from trilogy.io.vgi import declared_schema
+
+    assert declared_schema(_rows, None, "") is None
+    assert declared_schema({"a": _rows}, None, "--source b") is None

@@ -328,6 +328,12 @@ def resident_alias(location: str) -> str:
     return f"trilogy_src_{digest}"
 
 
+# How long an idle resident worker is kept. The vgi default (5s) is shorter than
+# the gap between an agent's queries, so each query would restart the source
+# (uv, interpreter, imports: seconds) and lose the point of a resident worker.
+RESIDENT_IDLE_SECONDS = 3600
+
+
 def attach_resident(connection: Any, location: str) -> str | None:
     """Attach ``location`` as a pooled worker; its alias, or None if it cannot serve.
 
@@ -344,7 +350,8 @@ def attach_resident(connection: Any, location: str) -> str | None:
     try:
         side.execute(
             f"ATTACH IF NOT EXISTS '{VGI_SOURCE_CATALOG}' AS {alias} "
-            f"(TYPE vgi, LOCATION '{escaped}')"
+            f"(TYPE vgi, LOCATION '{escaped}', "
+            f"POOL_TIMEOUT {RESIDENT_IDLE_SECONDS})"
         )
     except Exception as e:
         logger.info("%s is not resident, using the VGI bridge: %s", location, e)
