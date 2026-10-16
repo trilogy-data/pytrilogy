@@ -16,8 +16,10 @@ from trilogy.core.models.datasource import Address
 from trilogy.dialect.cancel import duckdb_side_cursor
 from trilogy.dialect.config import DuckDBConfig, PythonDatasourceTransport
 from trilogy.dialect.duckdb import (
+    VGI_SETUP_SQL,
+    attach_bridge,
     attach_resident,
-    get_vgi_setup_sql,
+    bridge_attach_sql,
     python_datasource_failure,
     resident_alias,
     resident_command,
@@ -59,13 +61,13 @@ def test_worker_command_survives_cmd_quote_stripping():
     )
 
 
-def test_setup_attaches_the_bridge_worker():
-    sql = get_vgi_setup_sql("/opt/py/python", is_windows=False)
-    assert "LOAD vgi;" in sql
-    assert (
+def test_setup_loads_vgi_without_starting_the_bridge():
+    assert "LOAD vgi;" in VGI_SETUP_SQL
+    assert "ATTACH" not in VGI_SETUP_SQL
+    assert bridge_attach_sql("/opt/py/python", is_windows=False) == (
         "ATTACH IF NOT EXISTS 'trilogy_io' (TYPE vgi, LOCATION "
-        "'/opt/py/python -m trilogy.dialect.duckdb_vgi');"
-    ) in sql
+        "'/opt/py/python -m trilogy.dialect.duckdb_vgi')"
+    )
 
 
 def test_resident_command_adds_vgi_only_to_python_scripts():
@@ -142,6 +144,7 @@ def test_prepare_sources_skips_what_is_already_decided():
         )
     )
     dialect._not_resident.add("/w/raw.py")
+    dialect._bridge_attached = True
     addresses = [
         Address(location="/w/raw.py", type=AddressType.PYTHON_SCRIPT),
         Address(location="orders", type=AddressType.TABLE),
@@ -191,6 +194,7 @@ def test_a_trilogy_io_source_runs_resident(vgi_executor):
     assert rows.fetchall()
     resident = vgi_executor.generator._residents
     assert [Path(location).name for location in resident] == ["pushdown_source.py"]
+    assert not vgi_executor.generator._bridge_attached
 
 
 def test_a_raw_script_falls_back_to_the_bridge(vgi_executor):
@@ -205,6 +209,7 @@ datasource fib (index: index, fibonacci: fibonacci) grain (index) file `./fib.py
 
     assert rows == [(24, 28657), (25, 46368)]
     assert not vgi_executor.generator._residents
+    assert vgi_executor.generator._bridge_attached
 
 
 def test_a_rust_source_runs_resident(vgi_executor):
@@ -268,6 +273,7 @@ def test_vgi_transport_matches_shell(vgi_executor):
 
 def test_vgi_scans_one_script_twice_in_one_query(vgi_executor):
     vgi_executor.parse_text(MODEL)
+    attach_bridge(vgi_executor.connection)
     path = (SCRIPTS / "pushdown_source.py").as_posix()
     rows = vgi_executor.execute_raw_sql(
         f"SELECT count(*) FROM trilogy_io.main.script('{path}', '') a "
@@ -279,6 +285,7 @@ def test_vgi_scans_one_script_twice_in_one_query(vgi_executor):
 
 def test_vgi_script_failure_surfaces_as_script_error(vgi_executor):
     path = (SCRIPTS / "error.py").as_posix()
+    attach_bridge(vgi_executor.connection)
     with pytest.raises(PythonDatasourceError) as raised:
         vgi_executor.execute_raw_sql(
             f"SELECT * FROM trilogy_io.main.script('{path}', '')"

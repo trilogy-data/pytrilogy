@@ -354,14 +354,31 @@ def attach_resident(connection: Any, location: str) -> str | None:
     return alias
 
 
-def get_vgi_setup_sql(python_executable: str, is_windows: bool) -> str:
-    """Attach the bridge worker that serves script datasources over VGI."""
-    location = vgi_worker_command(python_executable, is_windows).replace("'", "''")
-    return f"""
+VGI_SETUP_SQL = """
 INSTALL vgi FROM community;
 LOAD vgi;
-ATTACH IF NOT EXISTS '{VGI_CATALOG}' (TYPE vgi, LOCATION '{location}');
 """
+
+
+def bridge_attach_sql(python_executable: str, is_windows: bool) -> str:
+    location = vgi_worker_command(python_executable, is_windows).replace("'", "''")
+    return f"ATTACH IF NOT EXISTS '{VGI_CATALOG}' (TYPE vgi, LOCATION '{location}')"
+
+
+def attach_bridge(connection: Any) -> None:
+    """Attach the bridge worker that serves sources which cannot run resident.
+
+    Lazy: a model whose sources all serve themselves never starts it.
+    """
+    side = duckdb_side_cursor(connection)
+    if side is None:
+        return
+    try:
+        side.execute(
+            bridge_attach_sql(Path(sys.executable).as_posix(), sys.platform == "win32")
+        )
+    finally:
+        side.close()
 
 
 # DuckDB reports a failed shellfs pipe only by its command line; both uv_run
@@ -592,6 +609,7 @@ class DuckDBDialect(BaseDialect):
         # location -> attached alias. Anything absent renders via the bridge.
         self._residents: dict[str, str] = {}
         self._not_resident: set[str] = set()
+        self._bridge_attached = False
         # Resident workers have to be attached before a query references them.
         self.REQUIRES_SOURCE_PREPARATION = self._vgi
         if isinstance(config, DuckDBConfig) and config.gcs_cache_bust:
@@ -610,28 +628,30 @@ class DuckDBDialect(BaseDialect):
         all of a query's new sources start in parallel: the query waits for the
         slowest startup rather than the sum. A source that cannot serve itself
         (a raw script, a pytrilogy without ``--vgi``, a binary built without
-        the ``vgi`` feature) fails to attach and is read through the bridge.
+        the ``vgi`` feature) fails to attach and is read through the bridge,
+        which is itself attached only once a query needs it.
         """
-        pending = list(
-            dict.fromkeys(
-                address.location
-                for address in addresses
-                if address.type.is_program
-                and address.location not in self._residents
-                and address.location not in self._not_resident
-            )
+        programs = list(
+            dict.fromkeys(a.location for a in addresses if a.type.is_program)
         )
-        if not pending:
-            return
-        with ThreadPoolExecutor(max_workers=min(len(pending), 8)) as pool:
-            aliases = list(
-                pool.map(partial(attach_resident, executor.connection), pending)
-            )
-        for location, alias in zip(pending, aliases):
-            if alias is None:
-                self._not_resident.add(location)
-            else:
-                self._residents[location] = alias
+        pending = [
+            p
+            for p in programs
+            if p not in self._residents and p not in self._not_resident
+        ]
+        if pending:
+            with ThreadPoolExecutor(max_workers=min(len(pending), 8)) as pool:
+                aliases = list(
+                    pool.map(partial(attach_resident, executor.connection), pending)
+                )
+            for location, alias in zip(pending, aliases):
+                if alias is None:
+                    self._not_resident.add(location)
+                else:
+                    self._residents[location] = alias
+        if not self._bridge_attached and any(p in self._not_resident for p in programs):
+            attach_bridge(executor.connection)
+            self._bridge_attached = True
 
     def generate_ctes(self, query: ProcessedQuery) -> list[CompiledCTE]:
         # An inlined script read reruns the program per reference (per

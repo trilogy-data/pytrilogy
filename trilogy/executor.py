@@ -440,8 +440,8 @@ class Executor:
         from trilogy.dialect.config import DuckDBConfig, PythonDatasourceTransport
         from trilogy.dialect.duckdb import (
             PYTHON_DATASOURCE_GUARD_MARKER,
+            VGI_SETUP_SQL,
             get_python_datasource_setup_sql,
-            get_vgi_setup_sql,
         )
 
         # A read-only handle can't CREATE the guard macro — and python
@@ -472,9 +472,7 @@ class Executor:
             and isinstance(self.config, DuckDBConfig)
             and self.config.python_datasource_transport == PythonDatasourceTransport.VGI
         ):
-            self._execute_setup_ddl(
-                get_vgi_setup_sql(Path(sys.executable).as_posix(), is_windows)
-            )
+            self._execute_setup_ddl(VGI_SETUP_SQL)
             return
         self._execute_setup_ddl(
             get_python_datasource_setup_sql(
