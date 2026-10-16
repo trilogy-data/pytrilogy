@@ -2181,7 +2181,11 @@ class BuildDatasource:
     def can_be_inlined(self) -> bool:
         return not (
             isinstance(self.address, Address)
-            and (self.address.is_query or self.address.is_file)
+            and (
+                self.address.is_query
+                or self.address.is_file
+                or self.address.is_table_function
+            )
         )
 
     @property

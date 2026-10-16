@@ -118,7 +118,9 @@
 
     grain_clause: "grain" "(" column_list ")"
     
-    address: "address" (F_QUOTED_ADDRESS | QUOTED_ADDRESS | ADDRESS)
+    address: "address" (F_QUOTED_ADDRESS | QUOTED_ADDRESS | ADDRESS) address_arguments?
+    address_arguments: "(" address_argument ("," address_argument)* ","? ")"
+    address_argument: (IDENTIFIER ":=")? (string_lit | float_lit | int_lit | bool_lit | IDENTIFIER)
 
     query: "query" MULTILINE_STRING
 

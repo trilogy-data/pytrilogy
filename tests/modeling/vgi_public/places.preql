@@ -1,0 +1,20 @@
+# overture.places.place refuses a scan without all four bbox bounds, so the
+# datasource is pinned to central Amsterdam.
+key place_id string;
+property place_id.place_name string;
+property place_id.category string;
+property place_id.confidence float;
+
+datasource amsterdam_places (
+    id: place_id,
+    ?place_name,
+    basic_category: ?category,
+    confidence,
+)
+grain (place_id)
+query '''
+select id, names.primary as place_name, basic_category, confidence
+from overture.places.place
+where bbox.xmin >= 4.880 and bbox.xmax <= 4.900
+  and bbox.ymin >= 52.368 and bbox.ymax <= 52.378
+''';

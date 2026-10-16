@@ -1,0 +1,36 @@
+key station_code string;
+property station_code.station_name string;
+property station_code.country string;
+property station_code.latitude float;
+property station_code.longitude float;
+property station_code.station_type string;
+
+datasource stations (
+    station_code,
+    name: station_name,
+    country,
+    lat: latitude,
+    lng: longitude,
+    station_type,
+)
+grain (station_code)
+address trains.main.train_stations;
+
+key train_number string;
+property <station_code, train_number>.planned_time datetime;
+property <station_code, train_number>.destination string;
+property <station_code, train_number>.category string;
+property <station_code, train_number>.delay_minutes int;
+property <station_code, train_number>.cancelled bool;
+
+datasource departures (
+    station_code,
+    train_number,
+    planned_time,
+    destination,
+    category,
+    delay_minutes,
+    cancelled,
+)
+grain (station_code, train_number)
+address trains.main.station_departures;

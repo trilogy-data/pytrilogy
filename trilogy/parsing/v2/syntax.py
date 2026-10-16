@@ -283,6 +283,8 @@ class SyntaxNodeKind(str, Enum):
     COLUMN_LIST = "column_list"
     GRAIN_CLAUSE = "grain_clause"
     ADDRESS = "address"
+    ADDRESS_ARGUMENTS = "address_arguments"
+    ADDRESS_ARGUMENT = "address_argument"
     QUERY = "query"
     FILE = "file"
     FILE_PATH_LIST = "file_path_list"
@@ -608,6 +610,8 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "column_list": SyntaxNodeKind.COLUMN_LIST,
     "grain_clause": SyntaxNodeKind.GRAIN_CLAUSE,
     "address": SyntaxNodeKind.ADDRESS,
+    "address_arguments": SyntaxNodeKind.ADDRESS_ARGUMENTS,
+    "address_argument": SyntaxNodeKind.ADDRESS_ARGUMENT,
     "query": SyntaxNodeKind.QUERY,
     "file": SyntaxNodeKind.FILE,
     "file_path_list": SyntaxNodeKind.FILE_PATH_LIST,
