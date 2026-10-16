@@ -217,7 +217,15 @@ align_clause = { align_item ~ (^"and" ~ align_item)* ~ (^"and")? }
 derive_item   = { expr ~ ("->" | ^"as") ~ IDENTIFIER }
 derive_clause = { derive_item ~ ("," ~ derive_item)* ~ ","? }
 
-merge_statement = { ^"merge" ~ WILDCARD_IDENTIFIER ~ ^"into" ~ SHORTHAND_MODIFIER? ~ WILDCARD_IDENTIFIER }
+// `merge a into [~]b`, or the relation spelling shared with scoped joins:
+// `merge subset|union|equal a = b`. The relation form backtracks when the name
+// after the keyword is `into` (`merge union into x` merges a concept `union`).
+merge_statement = {
+    ^"merge" ~ (
+        (MERGE_RELATION ~ WILDCARD_IDENTIFIER ~ COMPARISON_OPERATOR ~ WILDCARD_IDENTIFIER)
+      | (WILDCARD_IDENTIFIER ~ ^"into" ~ SHORTHAND_MODIFIER? ~ WILDCARD_IDENTIFIER)
+    )
+}
 
 rawsql_statement = { ^"raw_sql" ~ "(" ~ MULTILINE_STRING ~ ")" }
 
@@ -917,6 +925,7 @@ EXEC_PATH   = @{ "`" ~ ((!("`" | "/" | "\\") ~ ANY)* ~ ("/" | "\\"))+ ~ (!("`" |
 
 SHORTHAND_MODIFIER = @{ "~" | "?" }
 JOIN_TYPE = @{ ^"left" | ^"inner" | ^"full" | ^"right" | ^"cross" | ^"subset" | ^"union" | ^"equal" }
+MERGE_RELATION = @{ (^"subset" | ^"union" | ^"equal") ~ &(" " | "\t" | "\r" | "\n") }
 
 // =============================================================================
 // PURPOSE / KEYWORDS (order matters: priority-like)

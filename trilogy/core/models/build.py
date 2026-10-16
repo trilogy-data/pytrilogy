@@ -2564,8 +2564,8 @@ def scope_tagged_joins(
 ) -> list[tuple[tuple[str, str, JoinType], EdgeScope]]:
     """Tag each build-scoped join tuple with its declaration scope: a tuple
     persisted on the environment is a global `merge`, anything else arrived
-    from a statement. The scope decides what a FULL tuple DECLARES — a global
-    merge asserts EQUAL domains, a query `union join` asserts INCOMPARABLE."""
+    from a statement. The tuple alone decides what it declares; the scope
+    says where (a global edge lives in every statement)."""
     global_merges = set(environment.merges)
     return [
         (
@@ -2651,8 +2651,8 @@ class JoinScope:
         # join sets
         self.merge_token = frozenset(self.scoped_merge_map.items())
         self.scoped_partial_sources = self.domain_graph.subset_sources()
-        # A global `merge` IS a scoped join persisted on the environment (FULL
-        # non-partial / LEFT partial). It resolves identically to the equivalent
+        # A global `merge` IS a scoped join persisted on the environment (EQUAL
+        # / FULL union / LEFT subset). It resolves identically to the equivalent
         # query-scoped join; the only difference is scope (merges are re-injected
         # at sub-build boundaries, query joins are not).
         full_join_sources = {

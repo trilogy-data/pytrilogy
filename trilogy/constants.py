@@ -69,8 +69,8 @@ class Optimizations:
     # once both sides pass the completeness tests. Default ON since the
     # always-preserving render flip (docs/subset_union_join_design.md) — a
     # lying declaration is an author error, and the narrowed join dropping
-    # the violating rows is the ruled semantics. Query-scoped `full join` /
-    # `union join` keys never narrow regardless.
+    # the violating rows is the ruled semantics. `union join` / `merge union`
+    # keys never narrow regardless.
     narrow_equal_domain_joins: bool = True
     simplify_null_safe_joins: bool = True
     strip_redundant_not_null: bool = True

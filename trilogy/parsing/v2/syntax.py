@@ -345,6 +345,7 @@ class SyntaxTokenKind(str, Enum):
     CURRENT_TIMESTAMP = "current_timestamp"
     SHORTHAND_MODIFIER = "shorthand_modifier"
     JOIN_TYPE = "join_type"
+    MERGE_RELATION = "merge_relation"
     WILDCARD_IDENTIFIER = "wildcard_identifier"
     DATASOURCE_PARTIAL = "datasource_partial"
     PERSIST_MODE = "persist_mode"
@@ -697,6 +698,7 @@ LARK_TOKEN_KIND: dict[str, SyntaxTokenKind] = {
     "CURRENT_TIMESTAMP": SyntaxTokenKind.CURRENT_TIMESTAMP,
     "SHORTHAND_MODIFIER": SyntaxTokenKind.SHORTHAND_MODIFIER,
     "JOIN_TYPE": SyntaxTokenKind.JOIN_TYPE,
+    "MERGE_RELATION": SyntaxTokenKind.MERGE_RELATION,
     "WILDCARD_IDENTIFIER": SyntaxTokenKind.WILDCARD_IDENTIFIER,
     "DATASOURCE_PARTIAL": SyntaxTokenKind.DATASOURCE_PARTIAL,
     "PERSIST_MODE": SyntaxTokenKind.PERSIST_MODE,

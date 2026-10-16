@@ -92,6 +92,48 @@ an explicit author predicate (`where x is not null`).
   an INNER join provide is one value per row; the renderer spells it from the
   first source instead of `coalesce(a.k, b.k)` (`CTE.inner_join_key_sources`).
 
+## Landed (phase 2c: relation-spelled merges, 2026-10-16)
+
+- **`merge subset|union|equal a = b`**: a global merge takes the scoped
+  join's relation vocabulary, so every declaration exists at both scopes.
+  `merge union` is new: neither domain contains the other, for every
+  statement (osquery-style process trees whose walks end at an exited
+  parent, `tests/recurse_edge/orphans_union.preql`). `merge a into ~b` /
+  `merge a into b` stay as the older spellings of `merge subset` /
+  `merge equal`.
+- **One tuple per relation at every scope.** A plain merge now stores
+  `JoinType.EQUAL` (as `equal join` does) and `merge union` stores FULL (as
+  `union join` does), so `declared_edge_from_join` reads a FULL tuple as ∦
+  regardless of scope. Previously a global FULL meant EQUAL, which left no
+  tuple for a global ∦.
+- **Global is no longer shorthand for identity.** Checks that excluded every
+  global edge because a merge "makes the two one concept" now exclude only
+  identity merges (`DomainEdge.is_identity_merge`): `merge union` endpoints
+  stay authored join members (no FD pruning across sides), veto EQUAL
+  narrowing for their whole group (`incomparable_keys`), and count as
+  null-extending relations for condition placement and rowset-handle wiring
+  (`DomainEdge.null_extends`). The relation-partitioning rail in
+  `concept_graph` gates a global union on the relation being demanded, like a
+  computed-origin merge, since it lives in every statement.
+- **Lint.** A union beside a containment on the same pair (directly or
+  through an identity merge) is rejected by `DomainGraph.contradicts`.
+  Unlike query scope, where mixing `equal`/`union` joins in one group is
+  ambiguous, an identity merge and a union merge in one group are
+  consistent: the ∦ declaration keeps the whole group preserving.
+- **Coverage**: `tests/test_merge_union.py` (syntax, both backends, render,
+  lint, cache, import), `tests/join_matrix/test_merge_union_parity.py`
+  (every shape as `union join` vs `merge union`), merge cells in the
+  two-source / multiway / consumption / multi-probe matrices.
+- **Found on the way**: row-tuple membership (`(a, b) in (s.a, s.b)`, the
+  HAVING semijoin) renders null-safely but the non-null proof walker read it
+  as null-propagating, narrowing a union's FULL join and dropping
+  side-exclusive rows under a HAVING on an unprojected field. Fixed in
+  `comparison_proves_non_null` for both forms. Still open, shared with
+  `union join` over a recursive key: a WHERE on the edge table's key is
+  hosted below the recursion, so `where pid is not null` cannot filter rows
+  the union null-extends, and a measure beside such a filter is left
+  unsourced (strict xfails in `tests/recurse_edge/test_recurse_edge.py`).
+
 ## Residuals
 
 - `left join` / `full join` (and `inner` / `right` / `cross`) spellings are
@@ -108,8 +150,9 @@ an explicit author predicate (`where x is not null`).
 
 | old spelling | becomes |
 |---|---|
-| `merge a into ~b` | `subset join a = b` (a ⊆ b) |
-| `merge a into b` | `equal join a = b` (query scope); `merge` stays the persistent form |
+| `merge a into ~b` | `subset join a = b` (a ⊆ b); persistent: `merge subset a = b` |
+| `merge a into b` | `equal join a = b` (query scope); persistent: `merge equal a = b` |
+| (none) | `union join a = b` (query scope); persistent: `merge union a = b` |
 | `full join a = b` | `union join a = b` |
 | `left join a = b` | `subset join b = a` + explicit filter if rows must drop |
 | scoped INNER (removed) | already: outer + `where x is not null` |

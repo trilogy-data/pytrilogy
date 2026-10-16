@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Never
 
 from trilogy.constants import DEFAULT_NAMESPACE
 from trilogy.core.constants import rowset_alias_prefix
-from trilogy.core.enums import Modifier, Purpose
+from trilogy.core.enums import JoinType, Purpose
 from trilogy.core.exceptions import UndefinedConceptException
 from trilogy.core.models.author import (
     Concept,
@@ -80,7 +80,7 @@ class SemanticState:
     # commit when either side is pending. Merge statements are stored as
     # environment-level build-time joins, so they share the scoped join machinery
     # instead of rewriting the author environment during parse.
-    _pending_merges: list[tuple[Concept, Concept, list[Modifier]]] = field(
+    _pending_merges: list[tuple[Concept, Concept, JoinType]] = field(
         default_factory=list
     )
     # Aliases whose import parse was short-circuited because a cycle was
@@ -284,7 +284,7 @@ class SemanticState:
         self,
         source: Concept,
         target: Concept,
-        modifiers: list[Modifier],
+        relation: JoinType,
     ) -> None:
         # Register eagerly when both sides are already durable. When either
         # side is pending, defer until commit so rollback does not leak a merge
@@ -296,9 +296,9 @@ class SemanticState:
             and source.address not in self._pending_by_address
             and target.address not in self._pending_by_address
         ):
-            self.environment.add_merge_join(source, target, modifiers)
+            self.environment.add_merge_join(source, target, [], relation)
             return
-        self._pending_merges.append((source, target, modifiers))
+        self._pending_merges.append((source, target, relation))
 
     def stage_rowset_aliases(self, updates: list[Any]) -> None:
         self._pending_rowset_aliases.extend(updates)
@@ -338,8 +338,8 @@ class SemanticState:
             # when their concepts were pending during plan commit.
             pending_merges = self._pending_merges
             self._pending_merges = []
-            for source, target, modifiers in pending_merges:
-                self.environment.add_merge_join(source, target, modifiers)
+            for source, target, relation in pending_merges:
+                self.environment.add_merge_join(source, target, [], relation)
             self._pending_by_address.clear()
             self._placeholder_addresses.clear()
             self._pending_start = len(self.concepts)

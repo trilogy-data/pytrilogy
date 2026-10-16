@@ -370,19 +370,18 @@ def _materialize_group_graph(
 
 
 def _statement_relation_addresses(environment: BuildEnvironment) -> frozenset[str]:
-    """Endpoints of query-scoped (STATEMENT) join declarations: the relations
-    whose completion merge can null-extend a side in this query. Global
-    `merge` identities are excluded; they pair INNER and never null-extend.
+    """Endpoints of query-scoped join declarations and global `merge union`s:
+    the relations whose completion merge can null-extend a side in this
+    query. Global identity merges are excluded; they pair INNER and never
+    null-extend.
     Computed-origin merges (which DO null-extend) are widened in per-query
     row-level statements by `plan_condition_placements`, not here: with a
     grouping contributor the completion merge sits below the aggregate and a
     FINAL-deferred side WHERE would filter aggregated rows."""
-    from trilogy.core.domain_graph import EdgeScope
-
     return frozenset(
         addr
         for e in environment.domain_graph.edges
-        if e.scope is EdgeScope.STATEMENT
+        if e.null_extends
         for addr in (e.source, e.target)
     )
 

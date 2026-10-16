@@ -613,6 +613,8 @@ class Renderer:
         right = self.to_string(ConceptRef(address=target))
         if join_type == JoinType.LEFT_OUTER:
             return f"merge {right} into ~{left};"
+        if join_type == JoinType.FULL:
+            return f"merge union {left} = {right};"
         return f"merge {left} into {right};"
 
     @to_string.register
@@ -1664,8 +1666,15 @@ class Renderer:
     @to_string.register
     def _(self, arg: MergeStatementV2):
         if len(arg.sources) == 1:
-            return f"merge {self.to_string(arg.sources[0])} into {''.join([self.to_string(modifier) for modifier in arg.modifiers])}{self.to_string(arg.targets[arg.sources[0].address])};"
-        return f"merge {arg.source_wildcard}.* into {''.join([self.to_string(modifier) for modifier in arg.modifiers])}{arg.target_wildcard}.*;"
+            source = self.to_string(arg.sources[0])
+            target = self.to_string(arg.targets[arg.sources[0].address])
+        else:
+            source = f"{arg.source_wildcard}.*"
+            target = f"{arg.target_wildcard}.*"
+        if arg.relation is not None:
+            return f"merge {arg.relation.value} {source} = {target};"
+        modifiers = "".join(self.to_string(modifier) for modifier in arg.modifiers)
+        return f"merge {source} into {modifiers}{target};"
 
     @to_string.register
     def _(self, arg: KeyMergeStatement):

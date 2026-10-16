@@ -1131,26 +1131,33 @@ class Environment:
         source: Concept,
         target: Concept,
         modifiers: list[Modifier],
+        relation: JoinType | None = None,
     ) -> tuple[str, str, JoinType] | None:
+        """Normalize a merge onto the tuple its query-scoped join spelling
+        produces: `merge subset a = b` / `merge a into ~b` is `subset join`,
+        `merge union a = b` is `union join`, `merge a into b` is `equal join`."""
         if source.address == target.address:
             return None
-        if Modifier.PARTIAL in modifiers:
+        if relation is None:
+            relation = (
+                JoinType.SUBSET if Modifier.PARTIAL in modifiers else JoinType.EQUAL
+            )
+        if relation is JoinType.SUBSET:
             return (target.address, source.address, JoinType.LEFT_OUTER)
-        # A non-partial `merge` asserts the two keys are one identity present on
-        # BOTH sides -> a FULL join over the coalesced canonical key (the language
-        # has no INNER; a filtering condition downstream may still let the optimizer
-        # narrow the emitted SQL join to INNER).
-        return (source.address, target.address, JoinType.FULL)
+        if relation is JoinType.UNION:
+            return (source.address, target.address, JoinType.FULL)
+        return (source.address, target.address, JoinType.EQUAL)
 
     def add_merge_join(
         self,
         source: Concept,
         target: Concept,
         modifiers: list[Modifier],
+        relation: JoinType | None = None,
     ) -> bool:
         if self.frozen:
             raise ValueError("Environment is frozen, cannot merge concepts")
-        pair = self.merge_to_join(source, target, modifiers)
+        pair = self.merge_to_join(source, target, modifiers, relation)
         if pair is None or pair in self.merges:
             return False
         self._lint_merge_declaration(pair, source, target)

@@ -165,7 +165,7 @@ key  order_id int;
     assert (
         "replacements.order_id",
         "local.order_id",
-        JoinType.FULL,
+        JoinType.EQUAL,
     ) in env1.merges
     assert env1.concepts["order_id"] != env1.concepts["replacements.order_id"]
     assert env1.alias_origin_lookup == {}

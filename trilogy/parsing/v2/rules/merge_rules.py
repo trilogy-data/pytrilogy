@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from trilogy.core.enums import Modifier
+from trilogy.core.enums import ComparisonOperator, JoinType, Modifier
 from trilogy.core.models.author import Concept, UndefinedConcept
 from trilogy.core.statements.author import MergeStatementV2
 from trilogy.parsing.v2.rules_context import (
@@ -21,9 +21,18 @@ def merge_statement(
     args = hydrated_children(node, hydrate)
     modifiers: list[Modifier] = []
     cargs: list[str] = []
+    relation: JoinType | None = None
     for arg in args:
         if isinstance(arg, Modifier):
             modifiers.append(arg)
+        elif isinstance(arg, JoinType):
+            relation = arg
+        elif isinstance(arg, ComparisonOperator):
+            if arg is not ComparisonOperator.EQ:
+                raise fail(
+                    node,
+                    f"A merge relation pairs two concepts with `=`, not `{arg.value}`.",
+                )
         else:
             cargs.append(str(arg))
     source_str, target_str = cargs[0], cargs[1]
@@ -60,6 +69,7 @@ def merge_statement(
         modifiers=modifiers,
         source_wildcard=source_wildcard,
         target_wildcard=target_wildcard,
+        relation=relation,
     )
 
 

@@ -17,6 +17,7 @@ from collections.abc import Callable, Sequence
 
 from trilogy.core import graph as nx
 from trilogy.core.constants import ALL_ROWS_ADDRESS, GRAIN_SEPARATOR
+from trilogy.core.domain_graph import DomainEdge, EdgeScope
 from trilogy.core.enums import (
     AggregateGroupingMode,
     Derivation,
@@ -998,26 +999,32 @@ def node_id(label: str, address: str) -> str:
     return f"[{label}]{address}" if label else address
 
 
-def _statement_scoped_relation_members(environment: BuildEnvironment) -> frozenset[str]:
-    """All addresses of scoped-join relations declared at STATEMENT scope
-    (query-level `union/left/full/subset join a = b`). Global `merge`
-    identities are excluded; they pair INNER and never redefine row
-    identity."""
-    from trilogy.core.domain_graph import EdgeScope
-
+def _relation_members_declared_by(
+    environment: BuildEnvironment, declares: Callable[[DomainEdge], bool]
+) -> frozenset[str]:
+    """All members of the scoped-join relations with a declared edge
+    satisfying `declares`."""
     if not environment.scoped_join_key_groups:
         return frozenset()
-    statement_addrs = {
+    declared = {
         addr
         for e in environment.domain_graph.edges
-        if e.scope is EdgeScope.STATEMENT
+        if declares(e)
         for addr in (e.source, e.target)
     }
     out: set[str] = set()
     for relation in environment.scoped_join_relations():
-        if relation & statement_addrs:
+        if relation & declared:
             out |= relation
     return frozenset(out)
+
+
+def _statement_scoped_relation_members(environment: BuildEnvironment) -> frozenset[str]:
+    """All addresses of scoped-join relations that can null-extend a side:
+    query-level `union/subset join a = b` and global `merge union`. Global
+    identity merges are excluded; they pair INNER and never redefine row
+    identity."""
+    return _relation_members_declared_by(environment, lambda e: e.null_extends)
 
 
 def _unsourced_relation_mates(
@@ -2330,16 +2337,25 @@ def build_concept_graph(
     # property (`where parent.label = 'A' select count(id)`) is served by the
     # condition-feeder fallback joining below the consumer, and restructuring
     # its graph into relation-partitioned sides breaks that path (over-count).
-    # Statement relations stay unconditional: declared in the query, always in
-    # play.
+    # A global `merge union` is gated the same way: it lives in every
+    # statement, not just the ones that read it. Statement relations stay
+    # unconditional: declared in the query, always in play.
     if environment.scoped_join_key_groups:
         demanded_addresses = {c.address for c in mandatory_list} | {
             c.address for clause in conditions for c in clause.concept_arguments
         }
-        relation_members = set(_statement_scoped_relation_members(environment))
-        computed_members = computed_origin_relation_members(environment)
+        relation_members = set(
+            _relation_members_declared_by(
+                environment, lambda e: e.scope is EdgeScope.STATEMENT
+            )
+        )
+        gated_members = computed_origin_relation_members(
+            environment
+        ) | _relation_members_declared_by(
+            environment, lambda e: e.null_extends and e.scope is EdgeScope.GLOBAL
+        )
         for relation in environment.scoped_join_relations():
-            if relation & computed_members and relation & demanded_addresses:
+            if relation & gated_members and relation & demanded_addresses:
                 relation_members |= relation
         for member in sorted(relation_members):
             if member in datasource_addresses:

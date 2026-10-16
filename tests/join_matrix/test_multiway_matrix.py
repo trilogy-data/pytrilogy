@@ -45,7 +45,9 @@ RELATIONS = {
     ("subset", "join"): "subset join kb = ka\nsubset join kc = ka",
     ("subset", "merge"): "merge kb into ~ka;\nmerge kc into ~ka;",
     ("union", "join"): "union join ka = kb = kc",
-    ("union", "merge"): "merge ka into kb;\nmerge kb into kc;",
+    ("union", "merge"): "merge union ka = kb;\nmerge union kb = kc;",
+    ("equal", "join"): "equal join ka = kb = kc",
+    ("equal", "merge"): "merge ka into kb;\nmerge kb into kc;",
 }
 
 
@@ -55,30 +57,28 @@ def _write(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def _oracle(join_type: str, form: str) -> list[tuple]:
+def _oracle(join_type: str) -> list[tuple]:
     shift = lambda k: k + 1
     a = aggregate(LEFT_ROWS, shift)
     b = aggregate(RIGHT_ROWS, shift)
     c = aggregate(MID_ROWS, shift)
     if join_type == "subset":
         keys = set(a)
-    elif form == "merge":
-        # the merge stack is a chain of EQUAL declarations, narrowed to the
-        # three-way intersection by default (lying declaration = author
-        # error); the query-scoped `union join` chain keeps the union.
+    elif join_type == "equal":
+        # a chain of EQUAL declarations narrows to the three-way intersection
+        # by default (lying declaration = author error)
         keys = set(a) & set(b) & set(c)
     else:
         keys = set(a) | set(b) | set(c)
     return sort_rows([(k, a.get(k), b.get(k), c.get(k)) for k in keys])
 
 
-@pytest.mark.parametrize("form", ["join", "merge"])
-@pytest.mark.parametrize("join_type", ["subset", "union"])
+@pytest.mark.parametrize("join_type,form", sorted(RELATIONS))
 def test_three_way_derived_key(tmp_path: Path, join_type: str, form: str):
     relation = RELATIONS[(join_type, form)]
     query = HEAD + relation + "\n" + SELECT
     rows = run_cell(_write(tmp_path), query)
-    want = _oracle(join_type, form)
+    want = _oracle(join_type)
     assert rows == want, f"{join_type}/{form}:\n{query}\ngot {rows}\nwant {want}"
 
 
@@ -100,6 +100,7 @@ ROWSET_HEAD = (
     "rowset rc <- select c.m_key as k, sum(c.m_val) as v, count(c.m_id) as n;\n"
 )
 ROWSET_CHAIN = "union join ra.k = rb.k = rc.k\n"
+ROWSET_MERGES = "merge union ra.k = rb.k;\nmerge union rb.k = rc.k;\n"
 
 ROWSET_CELLS = {
     "measures_only": "select ra.k as k, ra.v as av, rb.v as bv, rc.v as cv,\n",
@@ -126,11 +127,36 @@ def _rowset_oracle(cell: str, having: bool) -> list[tuple]:
     return sort_rows([(k,) + tuple(m.get(k) for m in picked) for k in keys])
 
 
+@pytest.mark.parametrize("form", ["join", "merge"])
 @pytest.mark.parametrize("having", [False, True])
 @pytest.mark.parametrize("cell", sorted(ROWSET_CELLS))
-def test_three_way_chain_over_rowsets(tmp_path: Path, cell: str, having: bool):
-    query = ROWSET_HEAD + ROWSET_CELLS[cell] + ROWSET_CHAIN
+def test_three_way_chain_over_rowsets(
+    tmp_path: Path, cell: str, having: bool, form: str
+):
+    if form == "join":
+        query = ROWSET_HEAD + ROWSET_CELLS[cell] + ROWSET_CHAIN
+    else:
+        query = ROWSET_HEAD + ROWSET_MERGES + ROWSET_CELLS[cell].rstrip(",\n") + "\n"
     query += "having ra.n > 0 and rb.n > 0 and rc.n > 0;" if having else ";"
     rows = run_cell(_write(tmp_path), query)
     want = _rowset_oracle(cell, having)
     assert rows == want, f"{cell}/having={having}:\n{query}\ngot {rows}\nwant {want}"
+
+
+# One key group holding an identity merge AND a union merge: the ∦ declaration
+# vetoes narrowing for the whole group, exactly as a query `union join` beside
+# a global identity merge does (a query mixing `equal`/`union` joins in one
+# group is rejected as ambiguous instead).
+MIXED_GROUP = {
+    "merges": "merge ka into kb;\nmerge union kb = kc;",
+    "merges_reversed": "merge union kb = kc;\nmerge ka into kb;",
+    "merge_beside_join": "merge ka into kb;\nunion join kb = kc",
+}
+
+
+@pytest.mark.parametrize("spelling", sorted(MIXED_GROUP))
+def test_identity_and_union_in_one_group_keeps_union(tmp_path: Path, spelling: str):
+    query = HEAD + MIXED_GROUP[spelling] + "\n" + SELECT
+    rows = run_cell(_write(tmp_path), query)
+    want = _oracle("union")
+    assert rows == want, f"{spelling}:\n{query}\ngot {rows}\nwant {want}"
