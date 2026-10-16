@@ -94,3 +94,29 @@ def test_self_import_completes_namespace(model: str):
         f"import {model}; where pid is not null "
         "select pid, parent.name order by pid asc;"
     ) == [(1, None), (2, "code"), (3, "node"), (4, None), (5, "fx")]
+
+
+def test_orphan_walk_ends_at_missing_parent():
+    assert run("import orphans; select pid, app_pid order by pid asc;") == [
+        (1, 1),
+        (2, 1),
+        (6, 99),
+        (7, 99),
+        (8, 99),
+        (9, 98),
+    ]
+
+
+def test_orphan_rollup_groups_by_missing_parent():
+    assert run(
+        "import orphans; select app_pid, sum(mem) -> m order by app_pid asc;"
+    ) == [(1, 15), (98, 3), (99, 11100)]
+
+
+def test_orphan_recursion_renders_left_step():
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=HERE)
+    )
+    sql = executor.generate_sql("import orphans; select pid, app_pid;")[-1]
+    assert "LEFT OUTER JOIN" in sql
+    assert "coalesce" not in sql.lower()
