@@ -95,6 +95,7 @@ from .constants import (
     FINAL_NODE_ID,
     GROUPING_DERIVATIONS,
     ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS,
+    ROW_SHAPE_BARRIER_DERIVATIONS,
     DepthLabel,
     EdgeKind,
 )
@@ -2372,9 +2373,10 @@ def _carried_handle_is_partial(
     return False
 
 
-def _carry_needs_grain_change(concept: BuildConcept) -> bool:
+def _carry_needs_own_node(concept: BuildConcept) -> bool:
     """True when synthesizing ``concept`` from a parent's row stream would need
-    an aggregate/window node of its own, so it cannot be widened onto a scan.
+    a row-shaping node of its own (aggregate, window, recursion, ...), so it
+    cannot be widened onto a scan.
 
     A ROWSET handle terminates the walk: its value arrives materialized at the
     rowset boundary rather than being recomputed here, so a derived key over one
@@ -2387,10 +2389,10 @@ def _carry_needs_grain_change(concept: BuildConcept) -> bool:
         if current.address in seen:
             continue
         seen.add(current.address)
-        if current.derivation in (Derivation.AGGREGATE, Derivation.WINDOW):
-            return True
         if current.derivation == Derivation.ROWSET:
             continue
+        if current.derivation in ROW_SHAPE_BARRIER_DERIVATIONS:
+            return True
         if current.lineage:
             stack.extend(current.lineage.concept_arguments)
     return False
@@ -2540,7 +2542,7 @@ def _carry_join_keys(
             # cannot render that way (it needs its own aggregate/window node),
             # so widening a plain scan onto one emits a column nothing can
             # source (`avg(amount) by part` asked of the bare `rows` scan).
-            if concept.address not in available and _carry_needs_grain_change(concept):
+            if concept.address not in available and _carry_needs_own_node(concept):
                 continue
             carried.append(concept)
             input_candidates.extend(_row_lineage_closure(concept))
@@ -3535,12 +3537,17 @@ def _add_relation_axis_contributors(
     outputs_of = {
         gid: {o.address for o in node.output_concepts} for gid, node in built.items()
     }
+    # A merge pseudonym names the same column, so its side is already present.
+    hosts_of = {
+        gid: outputs_of[gid].union(*(o.pseudonyms for o in node.output_concepts))
+        for gid, node in built.items()
+    }
     chosen = set(per_group)
     for canonical, members in environment.scoped_join_key_groups.items():
         relation = {canonical, *members} & merge_grain
         if len(relation) < 2:
             continue
-        hosted = {addr for gid in chosen for addr in relation & outputs_of[gid]}
+        hosted = {addr for gid in chosen for addr in relation & hosts_of[gid]}
         if not hosted:
             continue
         for addr in sorted(relation - hosted):

@@ -289,6 +289,8 @@ class ImportStatementPlan(StatementPlanBase):
         if isinstance(request, ImportRequest):
             request.description = self.description
             self.output = hydrator.import_service.execute(request)
+        else:
+            self.output = request
 
     def commit(self, hydrator: NativeHydrator) -> ImportStatement | None:
         return self.output

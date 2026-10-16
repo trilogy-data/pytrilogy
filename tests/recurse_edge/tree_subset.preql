@@ -1,0 +1,4 @@
+import proc as process;
+import proc as app;
+merge process.app_pid into ~app.pid;
+auto total_mem <- sum(process.mem);

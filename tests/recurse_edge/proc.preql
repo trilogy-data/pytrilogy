@@ -1,0 +1,12 @@
+key pid int;
+property pid.app_parent int?;
+property pid.name string;
+property pid.mem int;
+auto app_pid <- recurse_edge(pid, app_parent);
+
+datasource procs (pid: pid, app_parent: app_parent, name: name, mem: mem)
+grain (pid)
+query '''
+select * from (values (1, null, 'code', 10), (2, 1, 'node', 5), (3, 2, 'py', 1),
+    (4, null, 'fx', 7), (5, 4, 'fxc', 3)) as t(pid, app_parent, name, mem)
+''';

@@ -343,15 +343,21 @@ class SourceNetwork:
         return cached
 
     def full_binders(self, address: str) -> frozenset[str]:
-        """Candidates binding this address FULLY. The hot loops ask per (cover,
+        """Candidates binding this address FULLY, or partially where a partial
+        binding answers in full (`partial_ok`). The hot loops ask per (cover,
         source, terminal), so this is one membership test against a table sized
         by the candidate set."""
         cached = self._full_binder_cache.get(address)
         if cached is None:
+            binds = (
+                SourceCandidate.binds
+                if address in self.partial_ok
+                else SourceCandidate.binds_fully
+            )
             cached = frozenset(
                 node
                 for node, candidate in self.candidates.items()
-                if candidate.binds_fully(address)
+                if binds(candidate, address)
             )
             self._full_binder_cache[address] = cached
         return cached

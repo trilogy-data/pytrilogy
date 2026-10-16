@@ -2,7 +2,7 @@ from trilogy.core.enums import SetOperator
 from trilogy.core.models.build import (
     BuildConcept,
 )
-from trilogy.core.models.execute import CTE, UnionCTE
+from trilogy.core.models.execute import CTE, RecursiveCTE, UnionCTE
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import output_addresses, render_cte_used_map
 
@@ -89,7 +89,8 @@ class HideUnusedConcepts(OptimizationRule):
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
     ) -> tuple[bool, MergedCTEMap | None]:
         children = inverse_map.get(cte.name, [])
-        if not children:
+        # The recursive step reads the CTE's own columns, which no child sees.
+        if not children or isinstance(cte, RecursiveCTE):
             return False, None
         if isinstance(cte, UnionCTE) and cte.operator != SetOperator.UNION_ALL.value:
             # EXCEPT/INTERSECT compare the entire projected row, so every

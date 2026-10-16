@@ -82,15 +82,43 @@ def _resolve_import_path(
     return alias, cache_key, input_path, target, token_lookup, is_stdlib, leading_dots
 
 
+def _imports_own_file(environment: Environment, alias: str, target: str) -> bool:
+    own = environment.env_file_path
+    return (
+        alias != environment.namespace
+        and own is not None
+        and isinstance(environment.config.import_resolver, FileSystemImportResolver)
+        and Path(target).resolve() == Path(own).resolve()
+    )
+
+
+def _stage_self_import(context: RuleContext, alias: str, path: Path) -> None:
+    # Register the alias for deferred-placeholder fallbacks during datasource /
+    # concept hydration (``parent.id`` → UndefinedConceptFull) and stage the
+    # self-import for materialization after the current parse's concepts and
+    # datasources are durable. See SemanticState._pending_self_imports.
+    context.semantic_state.add_deferred_import_alias(alias)
+    context.semantic_state.add_pending_self_import(alias, path)
+
+
 def import_statement(
     node: SyntaxNode,
     context: RuleContext,
     hydrate: HydrateFunction,
-) -> ImportRequest:
+) -> ImportRequest | ImportStatement:
     args = [str(hydrate(child)) for child in node.children]
     alias, cache_key, input_path, target, token_lookup, is_stdlib, leading_dots = (
         _resolve_import_path(args, context.environment, context.in_stdlib)
     )
+    # `import <this file> as x` is the path spelling of `self import as x`.
+    if _imports_own_file(context.environment, alias, target):
+        _stage_self_import(context, alias, Path(target))
+        return ImportStatement(
+            alias=alias,
+            input_path=input_path,
+            path=Path(target),
+            leading_dots=leading_dots,
+        )
     return ImportRequest(
         alias=alias,
         cache_key=cache_key,
@@ -148,12 +176,7 @@ def self_import_statement(
         path = env_file_path
     else:
         raise ImportError("Cannot use 'self import' without a file path context.")
-    # Register the alias for deferred-placeholder fallbacks during datasource /
-    # concept hydration (``parent.id`` → UndefinedConceptFull) and stage the
-    # self-import for materialization after the current parse's concepts and
-    # datasources are durable. See SemanticState._pending_self_imports.
-    context.semantic_state.add_deferred_import_alias(alias)
-    context.semantic_state.add_pending_self_import(alias, path)
+    _stage_self_import(context, alias, path)
     return ImportStatement(
         alias=alias,
         input_path=input_path,

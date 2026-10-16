@@ -47,12 +47,20 @@ def gen_recursive(
         environment=environment,
         parents=list(parents) if (arguments or parents) else [],
     )
-    # The recursion materializes a UNION; keep only the gated rows.
+    # The recursion materializes a UNION; keep only the gated rows. The gate is
+    # internal to the recursion and not an environment concept, so it stops here.
     return StrategyNode(
         input_concepts=node_outputs,
-        output_concepts=node_outputs,
+        output_concepts=[recursive, *arguments],
         environment=environment,
         parents=[base],
+        # A subset merge (`merge a into ~b`) declares the walk's roots only part
+        # of b's domain, as a partial column binding would.
+        partial_concepts=(
+            [recursive]
+            if recursive.address in environment.domain_graph.subset_sources()
+            else []
+        ),
         conditions=BuildComparison(
             left=GATING_CONCEPT, right=True, operator=ComparisonOperator.IS
         ),

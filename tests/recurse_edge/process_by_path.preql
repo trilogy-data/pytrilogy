@@ -1,0 +1,15 @@
+import process_by_path as parent;
+import process_by_path as app;
+
+key pid int;
+property pid.name string;
+property pid.mem int;
+auto app_pid <- recurse_edge(pid, parent.pid);
+merge app_pid into app.pid;
+
+datasource procs (pid: pid, app_parent: ~?parent.pid, name: name, mem: mem)
+grain (pid)
+query '''
+select * from (values (1, null, 'code', 10), (2, 1, 'node', 5), (3, 2, 'py', 1),
+    (4, null, 'fx', 7), (5, 4, 'fxc', 3)) as t(pid, app_parent, name, mem)
+''';
