@@ -1,8 +1,11 @@
+from dataclasses import fields
+
 import pytest
 
 from trilogy import Dialects, Environment, Executor
 from trilogy.constants import CONFIG, ParserBackend
 from trilogy.core.models.datasource import AddressArgument
+from trilogy.core.models.execute import CTE
 from trilogy.dialect.table_function import MissingSourceArgumentException
 from trilogy.parsing.v2.model import HydrationError
 
@@ -135,3 +138,39 @@ def test_render_source_without_query_names_argument(executor: Executor):
     datasource = executor.environment.datasources["forecast"]
     with pytest.raises(MissingSourceArgumentException, match="`latitude`"):
         executor.generator.render_source(datasource.address)
+
+
+def test_no_where_names_first_argument(executor: Executor):
+    with pytest.raises(MissingSourceArgumentException, match="`latitude`"):
+        executor.generate_sql("select day, temp;")
+
+
+def test_literal_only_arguments_render_bare_call(executor: Executor):
+    executor.execute_raw_sql(
+        "create macro days_fn(n) as table select range::int as day from range(n);"
+    )
+    executor.parse_text("datasource days (day) grain (day) address days_fn(2);")
+    assert rows(executor, "select day order by day asc;") == [(0,), (1,)]
+
+
+def test_namespaced_concept_in_message(executor: Executor):
+    executor.environment.parse(MODEL, namespace="w")
+    with pytest.raises(
+        MissingSourceArgumentException, match="Add a `where w.longitude = <literal>`"
+    ):
+        executor.generate_sql("where w.latitude = 1.5 select w.day;")
+
+
+def test_plain_cte_reads_its_base_datasource(executor: Executor, monkeypatch):
+    seen: list[CTE] = []
+    original = executor.generator.render_table_function
+
+    def spy(address, cte=None):
+        seen.append(cte)
+        return original(address, cte)
+
+    monkeypatch.setattr(executor.generator, "render_table_function", spy)
+    executor.generate_sql("where latitude = 1.5 and longitude = 2.5 select day;")
+    [cte] = seen
+    plain = CTE(**{f.name: getattr(cte, f.name) for f in fields(CTE) if f.init})
+    assert '"forecast_fn"(1.5, 2.5' in original(cte.source_address, plain)

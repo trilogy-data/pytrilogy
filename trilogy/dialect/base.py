@@ -1041,12 +1041,10 @@ class BaseDialect:
         """
         if not address.type.is_program or not isinstance(cte, CTE):
             return None
-        datasource = _cte_datasource(cte)
-        if datasource is None:
-            return None
         from trilogy.dialect.source_pushdown import request_for_cte
 
-        return request_for_cte(cte, datasource)
+        datasource = _cte_datasource(cte)
+        return request_for_cte(cte, datasource) if datasource else None
 
     def render_table_function(self, address: Address, cte: CTE | None = None) -> str:
         """One call of a table-function address, with each bound column's
