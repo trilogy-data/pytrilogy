@@ -22,6 +22,7 @@ from trilogy.parsing.v2.errors import (
     detect_named_function_missing_at,
     detect_paren_select_after_from,
     detect_select_distinct,
+    detect_select_level_by,
     detect_star_argument,
     detect_subselect,
     detect_unparenthesized_by_expr,
@@ -130,6 +131,11 @@ def _handle_unexpected_token(e: UnexpectedToken, text: str) -> None:
         if as_pos is not None:
             raise create_syntax_error(105, as_pos, text)
         raise create_syntax_error(203, pos, text)
+
+    # 233: a select-level `by` after the select list (`... as total by *`).
+    select_by_pos = detect_select_level_by(text, pos)
+    if select_by_pos is not None:
+        raise create_syntax_error(233, select_by_pos, text)
 
     by_pos = detect_unparenthesized_by_expr(text, pos, _lark_parses)
     if by_pos is not None:

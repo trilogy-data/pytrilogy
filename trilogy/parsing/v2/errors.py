@@ -168,6 +168,14 @@ ERROR_CODES: dict[int, str] = {
         "A call/copy into target is a file path and must be wrapped in "
         "backticks: write `{path}`, e.g. call `./scripts/notify.py`;"
     ),
+    233: (
+        "Trilogy has no select-level `by` clause - remove it. Grouping is "
+        "automatic by the non-aggregated select columns, and a select of only "
+        "aggregates already returns one row. To pin ONE aggregate's grain, put "
+        "the `by` on that aggregate, before its alias: `sum(x) by * as total` "
+        "or `sum(x) by store.id as total`. (`by rollup/cube/grouping sets` is "
+        "the only select-level grouping clause.)"
+    ),
 }
 
 
@@ -741,6 +749,49 @@ def detect_by_on_non_aggregate(text: str, pos: int) -> int | None:
     if _AGG_CALL_RE.search(text, _by_expr_start(text, i), by_pos) is not None:
         return None
     return by_pos
+
+
+_SELECT_KEYWORD_RE = re.compile(r"\bselect\b", re.IGNORECASE)
+_SELECT_LEVEL_BY_RE = re.compile(
+    r"(?:,|\bas\s+[A-Za-z_][\w.]*)\s*\b(by)\b", re.IGNORECASE
+)
+
+
+def detect_select_level_by(text: str, pos: int) -> int | None:
+    """Locate a `by` written as a clause after the select list - after an
+    alias (`sum(x) as total by *`) or a trailing comma (`count(k) as n, by *`).
+    Returns the `by` position, or None. Shared by both grammar backends."""
+    stmt_start = text.rfind(";", 0, pos) + 1
+    end = min(len(text), pos + 6)
+    select = None
+    for select in _SELECT_KEYWORD_RE.finditer(text, stmt_start, end):
+        pass
+    if select is None:
+        return None
+    for m in _SELECT_LEVEL_BY_RE.finditer(text, select.end(), end):
+        by_pos = m.start(1)
+        if _bracket_depth(text, select.end(), by_pos) != 0:
+            continue
+        if _BY_GROUPING_TAIL_RE.match(text, _skip_space(text, m.end(1))):
+            continue
+        return by_pos
+    return None
+
+
+def _bracket_depth(text: str, start: int, end: int) -> int:
+    depth = 0
+    for c in text[start:end]:
+        if c in "([":
+            depth += 1
+        elif c in ")]":
+            depth -= 1
+    return depth
+
+
+def _skip_space(text: str, i: int) -> int:
+    while i < len(text) and text[i].isspace():
+        i += 1
+    return i
 
 
 def detect_star_argument(text: str, pos: int) -> int | None:
