@@ -158,7 +158,7 @@ ERROR_CODES: dict[int, str] = {
         "SAME key instead, extend the equality: `a.k = b.k = c.k`."
     ),
     231: (
-        "A `subset|union join` cannot follow a trailing `where`. Put the join "
+        "A `subset|union|equal join` cannot follow a trailing `where`. Put the join "
         "right after the select list, with the filter either before `select` "
         "or after the join: `where <filters> select <cols> subset join a.key = "
         "b.key` or `select <cols> subset join a.key = b.key where <filters>`. "
@@ -450,6 +450,9 @@ _QUERY_JOIN_RE = re.compile(
     r"\b(?:left|inner|full|right|cross|subset|union)\s+join\b", re.IGNORECASE
 )
 _SELECT_KW_RE = re.compile(r"\bselect\b", re.IGNORECASE)
+_TRAILING_JOIN_RE = re.compile(
+    r"\b(?:left|inner|full|right|cross|subset|union|equal)\s+join\b", re.IGNORECASE
+)
 
 
 def detect_join_missing_key(text: str, pos: int) -> int | None:
@@ -538,7 +541,7 @@ def detect_join_after_trailing_where(text: str, pos: int) -> int | None:
     statement's closing filter, so a well-formed join there fails with a raw
     expectation list. Returns the join's position, or None. Shared by both
     grammar backends."""
-    if _QUERY_JOIN_RE.match(text, pos) is None:
+    if _TRAILING_JOIN_RE.match(text, pos) is None:
         return None
     stmt_start = text.rfind(";", 0, pos) + 1
     selects = list(_SELECT_KW_RE.finditer(text, stmt_start, pos))
