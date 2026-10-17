@@ -1,0 +1,10 @@
+import earthquakes as quake;
+
+select
+    quake.magnitude_type,
+    count(quake.event_id) as events,
+    max(quake.magnitude) as largest,
+    avg(quake.depth_km) as avg_depth_km
+where quake.magnitude is not null
+order by events desc
+limit 5;

@@ -1,0 +1,8 @@
+import places as places;
+
+select
+    places.category,
+    count(places.place_id) as place_count
+where places.category is not null
+order by place_count desc
+limit 10;

@@ -1,0 +1,6 @@
+import weather as weather;
+
+where weather.latitude = 52.374
+select
+    weather.forecast_date,
+    weather.temp_max;

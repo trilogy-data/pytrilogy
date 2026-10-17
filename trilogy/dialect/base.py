@@ -311,6 +311,14 @@ def _existence_alias(target: str, cte: "CTE | UnionCTE | None") -> str:
     return target
 
 
+def _cte_datasource(cte: CTE) -> BuildDatasource | None:
+    """The one raw datasource a CTE reads, if it reads exactly one."""
+    if isinstance(cte, DatasourceCTE):
+        return cte.datasource
+    base = cte.source.base_datasource
+    return base if isinstance(base, BuildDatasource) else None
+
+
 def _is_build_row_tuple(x: Any) -> bool:
     """True for a ROW_TUPLE operand of composite (row-wise) membership."""
     return isinstance(x, BuildFunction) and x.operator == FunctionType.ROW_TUPLE
@@ -1009,6 +1017,9 @@ class BaseDialect:
         """``request`` is the contract pushdown for a script source (see
         ``trilogy.dialect.source_pushdown``); dialects that cannot use it ignore
         it, which is always safe because the caller keeps its own WHERE."""
+        if address.is_table_function:
+            # No CTE to pin the bound arguments from: report the first one.
+            return self.render_table_function(address)
         if address.type == AddressType.QUERY:
             return f"({address.location})"
         if address.is_file:
@@ -1030,16 +1041,35 @@ class BaseDialect:
         """
         if not address.type.is_program or not isinstance(cte, CTE):
             return None
-        if isinstance(cte, DatasourceCTE):
-            datasource = cte.datasource
-        else:
-            base = cte.source.base_datasource
-            if not isinstance(base, BuildDatasource):
-                return None
-            datasource = base
         from trilogy.dialect.source_pushdown import request_for_cte
 
-        return request_for_cte(cte, datasource)
+        datasource = _cte_datasource(cte)
+        return request_for_cte(cte, datasource) if datasource else None
+
+    def render_table_function(self, address: Address, cte: CTE | None = None) -> str:
+        """One call of a table-function address, with each bound column's
+        argument pinned by ``cte``'s condition and projected back as that
+        column (see ``trilogy.dialect.table_function``)."""
+        from trilogy.dialect.table_function import bound_values
+
+        datasource = _cte_datasource(cte) if cte is not None else None
+        bound = bound_values(
+            address, cte.condition if cte is not None else None, datasource
+        )
+        args: list[str] = []
+        for arg in address.arguments or []:
+            value = self.render_expr(
+                bound[str(arg.value)] if arg.bound else arg.value, cte
+            )
+            args.append(f"{arg.name} := {value}" if arg.name else value)
+        call = f"{self.safe_quote(address.location)}({', '.join(args)})"
+        if not bound:
+            return call
+        projected = ", ".join(
+            f"{self.render_expr(value, cte)} AS {self.quote(column)}"
+            for column, value in bound.items()
+        )
+        return f"(SELECT *, {projected} FROM {call})"
 
     def make_table_column(
         self,
@@ -2804,7 +2834,10 @@ class BaseDialect:
             # source_address / base_*_override path (set by inline), the same
             # path a non-inlined leaf datasource uses for its own FROM.
             addr = cte.source_address
-            if isinstance(addr, Address):
+            if isinstance(addr, Address) and addr.is_table_function:
+                assert isinstance(cte, CTE)
+                source = self.render_table_function(addr, cte)
+            elif isinstance(addr, Address):
                 source = self.render_source(addr, self.source_pushdown(cte, addr))
             elif cte.quote_address:
                 source = safe_quote(addr, self.QUOTE_CHARACTER)

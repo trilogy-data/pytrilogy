@@ -33,6 +33,7 @@ from trilogy.core.models.core import DataType, ListWrapper
 from trilogy.core.models.datasource import (
     LAG_UNIT_SECONDS,
     Address,
+    AddressArgument,
     ColumnAssignment,
     Datasource,
     DatasourceAssertion,
@@ -51,6 +52,7 @@ from trilogy.parsing.v2.rules_context import (
     hydrated_children,
 )
 from trilogy.parsing.v2.syntax import (
+    SyntaxElement,
     SyntaxNode,
     SyntaxNodeKind,
     SyntaxToken,
@@ -317,7 +319,38 @@ def address_node(
         quoted = True
     else:
         location = raw.strip("'\"")
-    return Address(location=location, type=AddressType.TABLE, quoted=quoted)
+    arguments = None
+    if len(node.children) > 1:
+        argument_list = node.children[1]
+        assert isinstance(argument_list, SyntaxNode)
+        arguments = [_address_argument(a, hydrate) for a in argument_list.children]
+    return Address(
+        location=location, type=AddressType.TABLE, quoted=quoted, arguments=arguments
+    )
+
+
+def _address_argument(node: SyntaxElement, hydrate: HydrateFunction) -> AddressArgument:
+    assert isinstance(node, SyntaxNode)
+    *named, value = node.children
+    name = str(hydrate(named[0])) if named else None
+    if isinstance(value, SyntaxToken) and value.kind == SyntaxTokenKind.IDENTIFIER:
+        return AddressArgument(value=str(hydrate(value)), bound=True, name=name)
+    return AddressArgument(value=hydrate(value), name=name)
+
+
+def _validate_address_arguments(
+    node: SyntaxNode, name: str, addr: Address, columns: list[ColumnAssignment]
+) -> None:
+    concrete = {c.alias for c in columns if isinstance(c.alias, str)}
+    for column in addr.bound_columns:
+        if column not in concrete:
+            raise fail(
+                node,
+                f"Datasource '{name}' passes `{column}` to {addr.location}, but"
+                f" `{column}` is not one of its columns. A bare name in a table"
+                " function address binds a column the query must filter with"
+                " `= <literal>`; quote it to pass a string.",
+            )
 
 
 def query_node(
@@ -939,6 +972,8 @@ def datasource_node(
 
     if where is not None:
         _validate_where_against_columns(node, context, name, where, columns)
+    if addr.is_table_function:
+        _validate_address_arguments(node, name, addr, columns)
     if assertions:
         _validate_assertions(node, context, name, assertions, columns)
 

@@ -1,0 +1,9 @@
+[engine]
+dialect = "duck_db"
+
+# haybarn (Query.Farm's DuckDB build) is the only DuckDB that can LOAD vgi.
+[engine.config]
+python_datasource_transport = "vgi"
+
+[setup]
+sql = ["setup.sql"]
