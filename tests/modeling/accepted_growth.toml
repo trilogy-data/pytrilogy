@@ -1,5 +1,2 @@
 # Benchmark plans allowed to be larger than on main, each with why.
 # Read by .scripts/check_benchmark_growth.py; remove an entry once the plan shrinks back.
-
-["tpc_ds_duckdb/zquery08.log"]
-reason = "the final_zips projection now carries its parent's zips_pre grain key, so the GROUP over it no longer folds into it and stays its own CTE; same rows, +78 chars"

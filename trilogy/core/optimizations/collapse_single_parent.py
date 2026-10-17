@@ -136,16 +136,6 @@ def passthrough_renders_from_parent(cte: CTE, parent: CTE) -> bool:
     return True
 
 
-def has_unsafe_derivations(cte: CTE) -> bool:
-    """Check if a CTE derives any concepts that can't be merged into an aggregate."""
-    for concept in cte.output_columns:
-        if concept.derivation in SENSITIVE_DERIVATIONS:
-            return True
-        if isinstance(concept.lineage, BuildWindowItem):
-            return True
-    return False
-
-
 def has_basic_derivation(cte: CTE) -> bool:
     return any(concept.derivation == Derivation.BASIC for concept in cte.output_columns)
 
@@ -504,7 +494,6 @@ class CollapseSingleParent(OptimizationRule):
         # columns. A consumed filter is predicate pushdown's job, whose guards
         # cover null-extension and union parents; a BASIC child computing its
         # own columns under a WHERE stays.
-        filtered_projection = False
         if cte.condition is not None and merge_mode in (
             MergeMode.BASIC,
             MergeMode.PASSTHROUGH,
@@ -513,7 +502,6 @@ class CollapseSingleParent(OptimizationRule):
                 self.debug(f"CTE {cte.name} is a consumed or local filter, skipping")
                 return False, None
             merge_mode = MergeMode.PASSTHROUGH
-            filtered_projection = True
         # A limited parent is an opaque boundary: folding the child's shape
         # into it moves work below the limit. A limited child is fine, LIMIT
         # evaluates last and `apply_child_merge` carries it across.
@@ -598,10 +586,10 @@ class CollapseSingleParent(OptimizationRule):
                 return False, None
             merge_mode = MergeMode.PASSTHROUGH
 
-        # A filtered projection only needs the parent's local window/unnest
-        # columns ruled out (done in `is_filtered_projection`): its WHERE
-        # cannot disturb a window the parent merely carries from upstream.
-        if not filtered_projection and has_unsafe_derivations(parent):
+        # Only a window/unnest the parent renders itself blocks the fold; one
+        # it carries from upstream is a plain column the child's regroup,
+        # window or WHERE cannot disturb.
+        if computes_sensitive_derivation(parent):
             self.log(f"Parent {parent.name} has unsafe derivations, skipping")
             return False, None
 
