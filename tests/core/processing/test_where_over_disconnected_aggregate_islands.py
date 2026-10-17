@@ -95,10 +95,10 @@ def test_where_beside_a_constant_output_still_plans():
 def test_parentless_group_keeps_literal_producible_outputs():
     # The refusal above works by no longer trusting a group whose parents all
     # failed to build. A group that legitimately has no parents must survive it:
-    # `sum(1)`, a constant and a parameter render from literals alone, and
+    # `max(1)`, a constant and a parameter render from literals alone, and
     # `concept_satisfiable` reads their empty row lineage as a dead end.
     engine = Dialects.DUCK_DB.default_executor(environment=Environment())
-    assert engine.execute_text("select sum(1) as c;")[0].fetchall() == [(1,)]
+    assert engine.execute_text("select max(1) as c;")[0].fetchall() == [(1,)]
     assert (
         engine.execute_text("const c <- 10; select c as x where c > 50;")[0].fetchall()
         == []
@@ -111,17 +111,17 @@ def test_parentless_group_keeps_literal_producible_outputs():
 @pytest.mark.parametrize(
     "select, expected",
     [
-        ("sum(1) as n", [(1,)]),
-        ("count(sale_id) as c, sum(1) as n", [(2, 1)]),
-        ("sum(1) as n, max(5) as m", [(1, 5)]),
+        ("max(5) as m", [(5,)]),
+        ("count(sale_id) as c, max(5) as m", [(2, 5)]),
+        ("min(5) as n, max(5) as m", [(5, 5)]),
     ],
 )
-def test_literal_aggregate_under_where_is_gated_not_counted(select, expected):
+def test_literal_aggregate_under_where_is_gated(select, expected):
     engine = _engine()
     query = f"where sdate > '1990-01-01'::date select {select};"
     rows = engine.execute_text(query)[0].fetchall()
     assert [tuple(row) for row in rows] == expected
-    query = "where sdate > '2100-01-01'::date select sum(1) as n;"
+    query = "where sdate > '2100-01-01'::date select max(5) as m;"
     empty = engine.execute_text(query)[0].fetchall()
     assert empty == []
 

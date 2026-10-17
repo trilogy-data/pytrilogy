@@ -30,7 +30,7 @@ def test_basic_query(duckdb_engine: Executor, expected_results):
 
 @mark.parametrize(
     "agg",
-    ["sum(1)"],
+    ["max(1)"],
 )
 def test_global_literal_aggregate(agg):
     """A global sum over a pure literal with no grain key must build
@@ -72,6 +72,24 @@ select {expression} as c;
         engine.parse_text(text)
 
 
+@mark.parametrize(
+    "expression",
+    ["sum(1)", "sum(1) by *", "sum(1) by id", "sum((1))", "sum(1 + 1)", "avg(1)"],
+)
+@mark.parametrize("where", ["", "where id > 0 "])
+def test_sum_constant_recommends_counting_a_key(expression: str, where: str) -> None:
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.parse_text("""
+key id int;
+property id.g string;
+datasource t (id, g) grain (id)
+  query '''select 1 as id, 'a' as g union all select 2, 'a' as g''';
+""")
+    for select in (f"{expression} as c", f"g, {expression} as c"):
+        with raises(InvalidSyntaxException, match=r"count\(grain\(key1, key2\)\)"):
+            engine.parse_text(f"{where}select {select};")
+
+
 @mark.parametrize("declaration", ["const one <- 1;", "parameter one int default 1;"])
 def test_count_named_constant_recommends_grain(declaration: str) -> None:
     engine = Dialects.DUCK_DB.default_executor()
@@ -107,8 +125,8 @@ datasource t (id, g, yr) grain (id)
             "select g, sum(1 ? yr between 1999 and 2001) as c order by g asc;"
         )[-1].fetchall()
     ] == [("a", 2), ("b", 1)]
-    # bare sum(1) with no filter remains the single-constant idiom
-    assert engine.execute_text("select sum(1) as c;")[-1].fetchall() == [(1,)]
+    with raises(InvalidSyntaxException, match=r"aggregates a constant"):
+        engine.parse_text("select sum(1) as c;")
 
 
 @mark.parametrize(

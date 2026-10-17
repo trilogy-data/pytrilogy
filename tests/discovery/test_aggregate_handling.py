@@ -477,7 +477,7 @@ key item_sk int;
 property item_sk.item_desc string;
 
 auto prefix <- substring(item_desc, 1, 4);
-auto pair <- sum(1) by (prefix, item_sk);
+auto pair <- count(item_sk) by (prefix, item_sk);
 
 datasource items (
     item_sk: item_sk,
@@ -505,13 +505,13 @@ def test_aggregate_by_grain_with_derived_of_key():
     assert "INVALID_REFERENCE_BUG" not in generated, generated
 
     rows = exec.execute_text("select prefix, item_sk, pair;")[-1].fetchall()
-    # Each (prefix, item_sk) group is a single item row, so sum(1) == 1.
+    # Each (prefix, item_sk) group is a single item row, so the count is 1.
     assert len(rows) == 3, rows
     assert all(r.pair == 1 for r in rows), rows
 
 
 def test_literal_measure_aggregate_beside_key():
-    """A literal-measure aggregate (`sum(1)`) beside a real key: the grain keys
+    """A literal-measure aggregate (`max(1)`) beside a real key: the grain keys
     are its only tie to the model, so connectivity must keep those edges (a
     literal measure has no functional inputs to anchor it otherwise). Was a
     DisconnectedConceptsException: {cnt}; {store}."""
@@ -527,6 +527,6 @@ union all select 2, 1
 union all select 3, 2
 ''';
 
-select store, sum(1) -> cnt;
+select store, max(1) -> cnt;
 """)[-1].fetchall()
     assert sorted((r.store, r.cnt) for r in rows) == [(1, 1), (2, 1)]
