@@ -938,6 +938,30 @@ class TestAggregateFunctionTypes:
         assert env.concepts["mx"].datatype == DataType.STRING
         assert env.concepts["mn"].datatype == DataType.STRING
 
+    @pytest.mark.parametrize(
+        "arg",
+        ["name ? amt > 1", "grain(id, name) ? amt > 1"],
+    )
+    def test_sum_of_filtered_string_fails(self, arg):
+        with pytest.raises(TypeError, match="Invalid argument type"):
+            parse_text(f"""
+                key id int;
+                property id.name string;
+                property id.amt int;
+                select sum({arg}) as total;
+                """)
+
+    def test_filtered_aggregates_of_valid_types_succeed(self):
+        env, _ = parse_text("""
+            key id int;
+            property id.name string;
+            property id.amt int;
+            auto total <- sum(amt ? name = 'a');
+            auto n <- count(name ? amt > 1);
+            select total, n;
+            """)
+        assert env.concepts["n"].datatype == DataType.INTEGER
+
     def test_bool_and_with_non_bool_fails(self):
         """BOOL_AND requires boolean argument."""
         with pytest.raises(TypeError, match="Invalid argument type"):
