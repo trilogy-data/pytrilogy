@@ -4,7 +4,8 @@ The per-run size check (`tests/modeling/_benchmark_artifacts.py`) compares a
 query with its log on the same branch, so growth committed earlier on the
 branch passes it. This compares the branch's logs with the base's: a query
 that gained a CTE or outgrew its size budget fails unless
-`tests/modeling/accepted_growth.toml` names it with a reason.
+`tests/modeling/accepted_growth.toml` names it with a reason. An entry whose
+plan no longer grows fails too, so an exception cannot outlive its growth.
 
     python .scripts/check_benchmark_growth.py [base-ref]   # default origin/main
 """
@@ -105,7 +106,7 @@ def main(base_ref: str) -> int:
             f"{len(failures)} benchmark plan(s) grew against {base_ref}. Shrink "
             f"them, or add each to {ACCEPTED.relative_to(ROOT)} with a reason."
         )
-    return 1 if failures else 0
+    return 1 if failures or stale else 0
 
 
 if __name__ == "__main__":

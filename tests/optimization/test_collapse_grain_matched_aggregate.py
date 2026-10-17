@@ -58,4 +58,4 @@ def test_precomputed_aggregate_does_not_block_an_aggregate_fold():
     aggregate child into it nests nothing."""
     sql = _sql(TPCDS, (TPCDS / "query08.preql").read_text(encoding="utf-8"))
     assert not _rename_only_ctes(sql), sql
-    assert len(_cte_names(sql)) == 8, sql
+    assert len(_cte_names(sql)) == 7, sql
