@@ -294,3 +294,29 @@ def test_paren_leading_where_round_trips(predicate):
     env2 = Environment()
     _, queries2 = env2.parse(_PAREN_HEAD + rendered)
     assert Renderer().to_string(queries2[-1]) == rendered
+
+
+DISTINCT_MODEL = """key id int;
+property id.species string;
+datasource t (id: id, species: species) grain (id) address t;
+"""
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("select count(distinct species) as n;", "count(distinct(species)) as n"),
+        ("select count_distinct(species) as n;", "count(distinct(species)) as n"),
+        ("select count(distinct(species)) as n;", "count(distinct(species)) as n"),
+        ("select distinct(species) as s;", "distinct(species) as s"),
+        ("select group(species) by species as s;", "distinct(species) as s"),
+    ],
+)
+def test_distinct_is_canonical_spelling(text: str, expected: str):
+    env = Environment()
+    env.parse(DISTINCT_MODEL)
+    _, queries = env.parse(text)
+    rendered = Renderer().render_statement_string(queries)
+    assert expected in rendered, rendered
+    _, again = env.parse(rendered)
+    assert Renderer().render_statement_string(again) == rendered

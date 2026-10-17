@@ -1475,23 +1475,27 @@ def _numbering_window_to_concept(
     )
 
 
-def _frame_determines_operand(
-    operand: Concept, frame_refs: list, environment: Environment
-) -> bool:
-    """Whether a navigation window's frame grain already functionally determines
-    its operand. True when the operand is itself a frame key, or when the frame
-    covers every component of the operand's grain — in both cases the window
-    emits one row per frame key and must not inherit the operand's finer
-    storage grain."""
-    if not frame_refs:
-        return False
-    components = set(Grain.from_concepts(frame_refs, environment).components)
-    if not components:
-        return False
-    if operand.address in components:
+def _carried_by_stream(ref: Any, stream: set[str], environment: Environment) -> bool:
+    """Whether a frame ref is a value of the stream's rows: one of its keys,
+    at or above its grain, or a scalar derivation of such values."""
+    if ref.address in stream:
         return True
-    operand_grain = set(operand.grain.components) if operand.grain else set()
-    return bool(operand_grain) and operand_grain <= components
+    concept = environment.concepts[ref.address]
+    if concept.grain and set(concept.grain.components) <= stream:
+        return True
+    if concept.derivation == Derivation.BASIC and concept.lineage:
+        return all(
+            _carried_by_stream(arg, stream, environment)
+            for arg in concept.lineage.concept_arguments
+        )
+    return False
+
+
+def _frame_ref_grain(ref: Any, environment: Environment) -> set[str]:
+    concept = environment.concepts[ref.address]
+    if concept.grain and concept.grain.components:
+        return set(concept.grain.components)
+    return {concept.address}
 
 
 def _navigation_window_to_concept(
@@ -1551,15 +1555,15 @@ def _navigation_window_to_concept(
         for item in parent.order_by:
             relevant, _ = get_relevant_parent_concepts(item.expr)
             order_refs += relevant
-    frame_refs: list = list(over_refs) + order_refs
-    # When the frame (partition + order) already pins a grain that determines
-    # the operand, that frame IS the row stream — descending to the operand's
-    # storage grain would fan the window out. `lag(species) over (order by
-    # <species-grain rank>)` is one row per species, not one per tree.
-    if _frame_determines_operand(bcontent, frame_refs, environment):
-        grain_components: list = list(frame_refs)
-    else:
-        grain_components = list(over_refs) + operand_grain + order_refs
+    # The row stream is the operand's grain; a partition/order ref the stream
+    # does not carry brings its own grain keys, so a frame property over tied
+    # values cannot collapse distinct rows. `lag(distinct x)` keys the stream
+    # on x's values instead.
+    stream = {c if isinstance(c, str) else c.address for c in operand_grain}
+    grain_components = list(operand_grain)
+    for ref in list(over_refs) + order_refs:
+        if not _carried_by_stream(ref, stream, environment):
+            grain_components += sorted(_frame_ref_grain(ref, environment))
     final_grain = Grain.from_concepts(grain_components, environment)
 
     modifiers = get_lineage_modifiers(parent, environment)

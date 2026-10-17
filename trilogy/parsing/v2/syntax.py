@@ -101,6 +101,7 @@ class SyntaxNodeKind(str, Enum):
     BOOL_OR = "bool_or"
     ANY = "any"
     FGROUP = "fgroup"
+    FDISTINCT = "fdistinct"
     OVER_LIST = "over_list"
     EXPR_OVER_LIST = "expr_over_list"
     # Phase 3: merge + cast
@@ -458,6 +459,7 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "bool_or": SyntaxNodeKind.BOOL_OR,
     "any": SyntaxNodeKind.ANY,
     "fgroup": SyntaxNodeKind.FGROUP,
+    "fdistinct": SyntaxNodeKind.FDISTINCT,
     "over_list": SyntaxNodeKind.OVER_LIST,
     "expr_over_list": SyntaxNodeKind.EXPR_OVER_LIST,
     # Phase 3: merge + cast

@@ -277,7 +277,19 @@ def generic_aggregate(
         # Note grain() is total over NULLs, so unlike SQL's COUNT(DISTINCT a, b)
         # a combination with a missing member still counts.
         args = [grain_hash(args, context.function_factory)]
+    elif ft == FunctionType.COUNT and len(args) == 1 and _is_distinct(args[0]):
+        # `count(distinct(x))` is the canonical spelling of `count_distinct(x)`.
+        ft, args = FunctionType.COUNT_DISTINCT, [args[0].arguments[0]]
     return context.function_factory.create_function(args, ft)
+
+
+def _is_distinct(arg: Any) -> bool:
+    return (
+        isinstance(arg, Function)
+        and arg.operator == FunctionType.GROUP
+        and len(arg.arguments) == 2
+        and arg.arguments[0] == arg.arguments[1]
+    )
 
 
 def aggregate_functions(
@@ -426,6 +438,17 @@ def fgroup(
     else:
         fargs = [args[0]]
     return context.function_factory.create_function(fargs, FunctionType.GROUP)
+
+
+def fdistinct(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> Function:
+    operand = hydrated_children(node, hydrate)[0]
+    return context.function_factory.create_function(
+        [operand, operand], FunctionType.GROUP
+    )
 
 
 def over_list(
@@ -1129,6 +1152,7 @@ FUNCTION_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.SELECT_CUBE: select_cube,
     SyntaxNodeKind.SELECT_GROUPING_SETS: select_grouping_sets,
     SyntaxNodeKind.FGROUP: fgroup,
+    SyntaxNodeKind.FDISTINCT: fdistinct,
     SyntaxNodeKind.OVER_LIST: over_list,
     SyntaxNodeKind.OVER_COMPONENT: over_component,
     SyntaxNodeKind.EXPR_OVER_LIST: expr_over_list,

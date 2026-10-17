@@ -1,6 +1,8 @@
 import pytest
 
 from trilogy import Dialects, Environment
+from trilogy.parsing.v2.lark_backend import parse_lark
+from trilogy.parsing.v2.pest_backend import parse_pest
 
 MODEL = """
 key tree_id int;
@@ -17,8 +19,10 @@ datasource trees (
 
 auto species_count <- count(tree_id) by species;
 auto dominance_rank <- rank(species) over (order by count(tree_id) by species desc, species asc);
-auto prev_species <- lag(species, 1) over (order by dominance_rank asc);
-auto prev_species_by_agg <- lag(species, 1) over (order by species_count desc, species asc);
+auto prev_species <- lag(distinct(species), 1) over (order by dominance_rank asc);
+auto prev_species_by_agg <- lag(distinct(species), 1) over (order by species_count desc, species asc);
+auto prev_species_per_tree <- lag(species, 1) over (order by dominance_rank asc);
+auto prev_species_by_planted <- lag(distinct(species), 1) over (order by planted asc);
 auto prev_count <- lag(species_count, 1) over (order by species asc);
 auto prev_dbh <- lag(dbh, 1) over (order by planted asc);
 auto prev_dbh_in_species <- lag(dbh, 1) over (partition by species order by planted asc);
@@ -49,6 +53,48 @@ def test_navigation_window_grain_keeps_operand_grain(executor):
     env = executor.environment
     assert env.concepts["prev_dbh"].grain.components == {"local.tree_id"}
     assert env.concepts["prev_dbh_in_species"].grain.components == {"local.tree_id"}
+
+
+def test_navigation_window_property_brings_its_key(executor):
+    env = executor.environment
+    assert env.concepts["prev_species_per_tree"].grain.components == {"local.tree_id"}
+    assert env.concepts["prev_species_by_planted"].grain.components == {"local.tree_id"}
+
+
+def test_per_tree_lag_runs_over_tree_rows(executor):
+    sql = executor.generate_sql(
+        "select tree_id, prev_species_per_tree order by tree_id asc;"
+    )[-1]
+    rows = executor.execute_raw_sql(sql).fetchall()
+    assert [r[0] for r in rows] == [1, 2, 3, 4, 5, 6], rows
+    assert sorted((r[1] for r in rows), key=str) == [None, "a", "a", "a", "b", "b"]
+
+
+@pytest.mark.parametrize("parse", [parse_lark, parse_pest])
+def test_distinct_parses_on_both_backends(parse):
+    parse("auto x <- lag(distinct(species), 1) over (order by dominance_rank asc);")
+    parse("auto y <- lag(distinct_flag) over (order by dominance_rank asc);")
+    parse("select distinct(species) as s, distinct_flag;")
+
+
+def test_distinct_is_group_by_itself(executor):
+    rows = executor.execute_text("select distinct(species) as s order by s asc;")[
+        -1
+    ].fetchall()
+    assert rows == [("a",), ("b",), ("c",)], rows
+    rows = executor.execute_text(
+        "select count(distinct(species)) as n, sum(distinct(planted)) as p;"
+    )[-1].fetchall()
+    assert rows == [(3, 2001 + 2002 + 2003 + 2004 + 2005)], rows
+
+
+def test_operand_named_like_keyword_is_not_distinct():
+    env = Environment()
+    env.parse(MODEL + """
+property tree_id.distinct_tag string;
+auto prev_tag <- lag(distinct_tag, 1) over (order by planted asc);
+""")
+    assert env.concepts["prev_tag"].grain.components == {"local.tree_id"}
 
 
 def test_lag_over_coarser_window_does_not_fan_out(executor):
@@ -89,3 +135,36 @@ def test_partitioned_row_grain_lag_still_runs_over_rows(executor):
         (5, "b", 4.0),
         (6, "c", None),
     ], rows
+
+
+TIE_MODEL = """
+key route string;
+key event_id int;
+property event_id.event_time int;
+
+datasource events (eid: event_id, route: route, t: event_time)
+grain (event_id)
+query '''
+select 1 eid, 'A' route, 0 t union all
+select 2 eid, 'A' route, 5 t union all
+select 3 eid, 'A' route, 5 t union all
+select 4 eid, 'B' route, 1 t
+''';
+
+auto prior_event_time <- lag(event_time, 1) over (partition by route order by event_time asc);
+auto gap <- event_time - prior_event_time;
+"""
+
+
+def test_lag_over_tied_frame_values_keeps_one_row_per_event():
+    env = Environment()
+    env.parse(TIE_MODEL)
+    assert env.concepts["prior_event_time"].grain.components == {
+        "local.event_id",
+        "local.route",
+    }
+    ex = Dialects.DUCK_DB.default_executor(environment=env)
+    rows = ex.execute_text("select event_id, gap order by event_id asc;")[-1].fetchall()
+    assert [r[0] for r in rows] == [1, 2, 3, 4], rows
+    assert rows[0][1] is None and rows[3][1] is None, rows
+    assert sorted([rows[1][1], rows[2][1]]) == [0, 5], rows

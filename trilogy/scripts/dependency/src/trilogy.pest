@@ -477,6 +477,7 @@ _atom = _{
     | union
     | subselect
     | fgroup
+    | fdistinct
     | concept_lit
 }
 
@@ -572,7 +573,10 @@ count          = { ^"count" ~ "(" ~ expr ~ ")" }
 // Tried before `count` in aggregate_functions, so `count(x)` still resolves to count.
 // Several arguments (`count_distinct(a, b)`, `count(distinct a, b)`) count distinct
 // combinations: hydration desugars them through grain(), same as count(grain(a, b)).
-count_distinct = { (^"count_distinct" ~ "(" ~ (expr ~ ",")* ~ expr ~ ")") | (^"count" ~ "(" ~ ^"distinct" ~ (expr ~ ",")* ~ expr ~ ")") }
+// `count(distinct(x))` is `count` over the distinct() function, as in lark, where
+// the `distinct(` token outranks the bare keyword.
+count_distinct = { (^"count_distinct" ~ "(" ~ (expr ~ ",")* ~ expr ~ ")") | (^"count" ~ "(" ~ !DISTINCT_CALL ~ ^"distinct" ~ (expr ~ ",")* ~ expr ~ ")") }
+DISTINCT_CALL  = @{ ^"distinct" ~ "(" }
 grouping       = { ^"grouping" ~ "(" ~ expr ~ ")" }
 grouping_id    = { ^"grouping_id" ~ "(" ~ (expr ~ ",")* ~ expr ~ ")" }
 sum            = { ^"sum" ~ "(" ~ expr ~ ")" }
@@ -591,6 +595,8 @@ aggregate_functions = {
 }
 
 fgroup = { ^"group" ~ "(" ~ expr ~ ")" ~ aggregate_over? }
+// `distinct(x)` is the distinct values of x: sugar for `group(x) by x`.
+fdistinct = { ^"distinct" ~ "(" ~ expr ~ ")" }
 
 // =============================================================================
 // FILTER
@@ -609,7 +615,7 @@ fgroup = { ^"group" ~ "(" ~ expr ~ ")" ~ aggregate_over? }
 FILTER_KW = @{ ^"filter" ~ !(ASCII_ALPHANUMERIC | "_" | ".") }
 filter_item = {
       (&FILTER_KW ~ ^"filter" ~ IDENTIFIER ~ where)
-    | ((_constant_functions | _static_functions | _generic_functions | _date_functions | window_item | aggregate_functions | aggregate_by | custom_function | unnest | union | subselect | fgroup | expr_tuple | literal | ("(" ~ expr ~ ")") | IDENTIFIER) ~ "?" ~ conditional)
+    | ((_constant_functions | _static_functions | _generic_functions | _date_functions | window_item | aggregate_functions | aggregate_by | custom_function | unnest | union | subselect | fgroup | fdistinct | expr_tuple | literal | ("(" ~ expr ~ ")") | IDENTIFIER) ~ "?" ~ conditional)
 }
 
 // =============================================================================
