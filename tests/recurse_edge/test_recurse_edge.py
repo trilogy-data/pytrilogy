@@ -94,6 +94,20 @@ def test_self_import_completes_namespace():
     ) == [(1, None), (2, "code"), (3, "node"), (4, None), (5, "fx")]
 
 
+@pytest.mark.parametrize(
+    "import_statement", ["import process;", "import process as p;"]
+)
+def test_self_imported_roles_validate(import_statement: str) -> None:
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=HERE)
+    )
+    try:
+        executor.execute_text(import_statement)
+        executor.validate_environment()
+    finally:
+        executor.close()
+
+
 def test_orphan_walk_ends_at_missing_parent():
     assert run("import orphans; select pid, app_pid order by pid asc;") == [
         (1, 1),

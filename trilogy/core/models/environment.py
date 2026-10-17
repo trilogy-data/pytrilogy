@@ -166,7 +166,17 @@ def build_namespace_projection(source: Environment, alias: str) -> NamespaceProj
     bulk_hidden: set[str] = set()
     bulk_safe = True
     hidden = source.concepts.hidden
+    bound = {c.address for d in source.datasources.values() for c in d.concepts}
+    # Self-import merge targets are deferred until their role is materialized.
+    # Copying an unbound target and its merge creates a phantom nested role.
+    unbound_placeholders = {
+        k
+        for k, c in source.concepts.all_items()
+        if isinstance(c, UndefinedConceptFull) and c.address not in bound
+    }
     for k, concept in source.concepts.all_items():
+        if k in unbound_placeholders:
+            continue
         if INTERNAL_NAMESPACE in concept.namespace:
             continue
         # don't overwrite working path
@@ -212,6 +222,7 @@ def build_namespace_projection(source: Environment, alias: str) -> NamespaceProj
                 jt,
             )
             for s_addr, t_addr, jt in list(source.merges)
+            if s_addr not in unbound_placeholders and t_addr not in unbound_placeholders
         ],
         functions=[
             (address_with_namespace(k, alias), f.with_namespace(alias))
