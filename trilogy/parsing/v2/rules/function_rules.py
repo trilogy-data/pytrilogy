@@ -428,6 +428,17 @@ def fgroup(
     return context.function_factory.create_function(fargs, FunctionType.GROUP)
 
 
+def window_distinct_operand(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> Function:
+    operand = hydrated_children(node, hydrate)[0]
+    return context.function_factory.create_function(
+        [operand, operand], FunctionType.GROUP
+    )
+
+
 def over_list(
     node: SyntaxNode,
     context: RuleContext,
@@ -1161,6 +1172,7 @@ FUNCTION_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.WINDOW_ITEM_LEGACY: window_item_from_args,
     SyntaxNodeKind.WINDOW_ITEM_SQL_NUMBERING: window_item_from_args,
     SyntaxNodeKind.WINDOW_ITEM_SQL_NAVIGATION: window_item_from_args,
+    SyntaxNodeKind.WINDOW_DISTINCT_OPERAND: window_distinct_operand,
     SyntaxNodeKind.WINDOW_ITEM_SQL_AGGREGATE: window_item_sql_aggregate,
     SyntaxNodeKind.WINDOW_ITEM_OVER: window_single_arg,
     SyntaxNodeKind.WINDOW_ITEM_ORDER: window_single_arg,

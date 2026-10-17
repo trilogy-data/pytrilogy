@@ -99,7 +99,7 @@ Multi-level grouping (`by rollup|cube|grouping sets (...)`) is a clause of the W
 
 ## Window functions
 
-Default to windows for self-referential queries (period-over-period, running totals, rank, share of group). SQL-style syntax: `rank(<key>) over (partition by <g> order by <expr> desc)` (`dense_rank`/`row_number` same shape; multi-key `rank(a, b)`); `sum(x) over (partition by g order by t)` for running totals; `lag(<field>, <offset>) over (...)` / `lead(...)` for offsets (default 1). `partition by` is optional and accepts expressions.
+Default to windows for self-referential queries (period-over-period, running totals, rank, share of group). SQL-style syntax: `rank(<key>) over (partition by <g> order by <expr> desc)` (`dense_rank`/`row_number` same shape; multi-key `rank(a, b)`); `sum(x) over (partition by g order by t)` for running totals; `lag(<field>, <offset>) over (...)` / `lead(...)` for offsets (default 1); these walk one row per key of the field (a property walks its key's rows), while `lag(distinct <field>) over (...)` walks the field's distinct values. `partition by` is optional and accepts expressions.
 
 ## Data types
 
