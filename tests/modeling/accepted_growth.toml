@@ -1,5 +1,5 @@
 # Benchmark plans allowed to be larger than on main, each with why.
 # Read by .scripts/check_benchmark_growth.py; remove an entry once the plan shrinks back.
 
-["tpc_ds_duckdb/zquery83.log"]
-reason = "the date dim and its week filter push into each returns union branch (the stale FULL copy of the join had blocked union dim pushdown); same rows, 120ms -> 72ms at sf=1"
+["tpc_ds_duckdb/zquery08.log"]
+reason = "the final_zips projection now carries its parent's zips_pre grain key, so the GROUP over it no longer folds into it and stays its own CTE; same rows, +78 chars"
