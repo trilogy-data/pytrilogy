@@ -44,8 +44,8 @@ def _grain_claim_needs_group(
       projection, or the projected grain functionally determines them (the
       parent holds at most one row per it, so dropping them loses nothing).
     - The projection can be widened back to the parent's grain. That is
-      ``outputs_with_parent_grain_keys``'s job, and it needs the parent to
-      actually expose those keys.
+      ``_widen_to_parent_grain``'s job, and it needs the parent to actually
+      expose those keys; ``gen_basic`` applies it before asking here.
 
     When the parent does NOT expose its own grain there is nothing to widen with,
     and grouping is the only repair left. The outputs are functionally determined
@@ -62,14 +62,46 @@ def _grain_claim_needs_group(
         return False
     if parent_grain.issubset({c.address for c in parent.output_concepts}):
         return False
+    return not _claim_determines(outputs, parent_grain, environment)
+
+
+def _claim_determines(
+    outputs: list[BuildConcept], parent_grain: set[str], environment: BuildEnvironment
+) -> bool:
+    """Does the grain `outputs` claims fix every key of the parent's grain?"""
     claimed = BuildGrain.from_concepts(outputs).components
-    return not all(
+    return all(
         component in claimed
         or build_fd_determines(
             environment, claimed, component, include_empty_grain=False
         )
         for component in parent_grain
     )
+
+
+def _widen_to_parent_grain(
+    outputs: list[BuildConcept],
+    parent: StrategyNode,
+    environment: BuildEnvironment,
+) -> list[BuildConcept]:
+    """Carry the parent's grain keys through a projection that would drop them.
+
+    An ungrouped projection keeps its parent's grain: one row per parent row,
+    and ``SelectNode._resolve`` stamps it so. A consumer that merges with it
+    can only join on what it renders; hide the grain keys and the one shared
+    column left may be a coarser attribute, and a join on that multiplies rows.
+    A species-grain bucket read off a tree-grain parent counted every species
+    n**2 times this way (``test_basic_projection_parent_grain_fanout``)."""
+    parent_grain = set(parent.resolve().grain.components)
+    present = {c.address for c in outputs}
+    if not parent_grain or parent_grain.issubset(present):
+        return outputs
+    exposed = {c.address: c for c in parent.usable_outputs}
+    if not parent_grain.issubset(exposed):
+        return outputs
+    if _claim_determines(outputs, parent_grain, environment):
+        return outputs
+    return outputs + [exposed[address] for address in sorted(parent_grain - present)]
 
 
 def gen_basic(
@@ -95,6 +127,8 @@ def gen_basic(
             preexisting_conditions=pre,
         )
     full_outputs = outputs_with_parent_grain_keys(outputs, parents)
+    if len(parents) == 1:
+        full_outputs = _widen_to_parent_grain(full_outputs, parents[0], environment)
     inputs = parent_outputs_needed(full_outputs, parents, conditions)
     if len(parents) == 1:
         return SelectNode(

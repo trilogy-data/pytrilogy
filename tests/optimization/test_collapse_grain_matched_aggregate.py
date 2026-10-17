@@ -58,4 +58,8 @@ def test_precomputed_aggregate_does_not_block_an_aggregate_fold():
     aggregate child into it nests nothing."""
     sql = _sql(TPCDS, (TPCDS / "query08.preql").read_text(encoding="utf-8"))
     assert not _rename_only_ctes(sql), sql
-    assert len(_cte_names(sql)) == 8, sql
+    # Nine, not eight: the `final_zips` projection keeps its parent's
+    # `zips_pre` grain key (it emits one row per it either way, and a merge
+    # has to be able to join on it), so the group over it stays its own CTE
+    # instead of inlining into the exists-linked projection.
+    assert len(_cte_names(sql)) == 9, sql
