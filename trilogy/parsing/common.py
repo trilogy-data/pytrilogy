@@ -1547,9 +1547,9 @@ def _navigation_window_to_concept(
     # them from sharing a scan. Recurse to the operand's actual grain,
     # falling back to the operand when it has none (a bare key/property).
     if bcontent.grain and bcontent.grain.components:
-        operand_grain = set(bcontent.grain.components)
+        operand_grain: list = list(bcontent.grain.components)
     else:
-        operand_grain = {bcontent.address}
+        operand_grain = [bcontent.output]
     order_refs: list = []
     if parent.order_by:
         for item in parent.order_by:
@@ -1559,11 +1559,11 @@ def _navigation_window_to_concept(
     # does not carry brings its own grain keys, so a frame property over tied
     # values cannot collapse distinct rows. `lag(distinct x)` keys the stream
     # on x's values instead.
-    stream = set(operand_grain)
-    grain_components = set(stream)
+    stream = {c if isinstance(c, str) else c.address for c in operand_grain}
+    grain_components = list(operand_grain)
     for ref in list(over_refs) + order_refs:
         if not _carried_by_stream(ref, stream, environment):
-            grain_components |= _frame_ref_grain(ref, environment)
+            grain_components += sorted(_frame_ref_grain(ref, environment))
     final_grain = Grain.from_concepts(grain_components, environment)
 
     modifiers = get_lineage_modifiers(parent, environment)
