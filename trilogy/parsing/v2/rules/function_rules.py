@@ -33,7 +33,6 @@ from trilogy.core.models.author import (
     FunctionCallWrapper,
     NavigationWindowItem,
     NumberingWindowItem,
-    Parenthetical,
     ReferenceReplaceable,
     SubselectItem,
     TraitDataType,
@@ -281,13 +280,6 @@ def generic_aggregate(
     elif ft == FunctionType.COUNT and len(args) == 1 and _is_distinct(args[0]):
         # `count(distinct(x))` is the canonical spelling of `count_distinct(x)`.
         ft, args = FunctionType.COUNT_DISTINCT, [args[0].arguments[0]]
-    elif (
-        ft == FunctionType.COUNT_DISTINCT
-        and len(args) == 1
-        and isinstance(args[0], Parenthetical)
-    ):
-        # pest reads `count(distinct(x))` as the keyword form over `(x)`.
-        args = [args[0].content]
     return context.function_factory.create_function(args, ft)
 
 

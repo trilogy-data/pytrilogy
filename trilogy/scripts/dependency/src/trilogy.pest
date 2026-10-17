@@ -573,7 +573,10 @@ count          = { ^"count" ~ "(" ~ expr ~ ")" }
 // Tried before `count` in aggregate_functions, so `count(x)` still resolves to count.
 // Several arguments (`count_distinct(a, b)`, `count(distinct a, b)`) count distinct
 // combinations: hydration desugars them through grain(), same as count(grain(a, b)).
-count_distinct = { (^"count_distinct" ~ "(" ~ (expr ~ ",")* ~ expr ~ ")") | (^"count" ~ "(" ~ ^"distinct" ~ (expr ~ ",")* ~ expr ~ ")") }
+// `count(distinct(x))` is `count` over the distinct() function, as in lark, where
+// the `distinct(` token outranks the bare keyword.
+count_distinct = { (^"count_distinct" ~ "(" ~ (expr ~ ",")* ~ expr ~ ")") | (^"count" ~ "(" ~ !DISTINCT_CALL ~ ^"distinct" ~ (expr ~ ",")* ~ expr ~ ")") }
+DISTINCT_CALL  = @{ ^"distinct" ~ "(" }
 grouping       = { ^"grouping" ~ "(" ~ expr ~ ")" }
 grouping_id    = { ^"grouping_id" ~ "(" ~ (expr ~ ",")* ~ expr ~ ")" }
 sum            = { ^"sum" ~ "(" ~ expr ~ ")" }
