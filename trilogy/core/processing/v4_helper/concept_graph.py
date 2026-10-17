@@ -67,6 +67,7 @@ from .projection import (
     lineage_crosses_row_shape_barrier,
     lineage_existence_only,
     lineage_existence_parts,
+    literal_producible,
     origin_inputs_sourceable,
 )
 from .staged_where import cross_row_stage_args
@@ -2183,7 +2184,8 @@ def _constrain_aggregates_by_root_conditions(
     the aggregate's grain decides it. An aggregate over roots shares its input
     scan with the WHERE's roots (root partitioning co-sources them); one that
     reads no root (a rowset paired on a declared join) has nothing else making
-    the WHERE's scan a row parent, and the WHERE could only filter its output."""
+    the WHERE's scan a row parent, and the WHERE could only filter its output.
+    One over literals alone (`sum(1)`) reads no rows for the WHERE to filter."""
     lineage = lineage_subgraph(graph, edges)
     for address in sorted(row_arg_addresses):
         concept = environment.concepts.get(address)
@@ -2207,8 +2209,10 @@ def _constrain_aggregates_by_root_conditions(
             ):
                 continue
             aggregate = environment.concepts.get(node.address)
-            if aggregate is None or decided_at_output_grain(
-                address, [aggregate], environment
+            if (
+                aggregate is None
+                or literal_producible(aggregate)
+                or decided_at_output_grain(address, [aggregate], environment)
             ):
                 continue
             add_edge(graph, edges, src, dst, EdgeKind.LINEAGE)

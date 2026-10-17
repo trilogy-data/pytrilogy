@@ -41,7 +41,7 @@ from .edges import (
 )
 from .functional_dependency import build_fd_determines_all
 from .models import ConceptAttrs, GroupBucket, RootReason
-from .projection import decided_at_output_grain
+from .projection import decided_at_output_grain, literal_producible
 from .region_reads import restated_over_region
 from .staged_where import (
     CROSS_ROW_DERIVATIONS,
@@ -1770,8 +1770,13 @@ def _check_final_atoms_precede_aggregates(
     """A row atom hosted only at FINAL filters the aggregates' outputs, not
     their inputs: right only when each aggregate output's grain determines what
     the atom reads. Otherwise the aggregate never saw the WHERE, a wrong answer
-    no later pass can repair."""
-    aggregates = [c for c in mandatory_list if _crosses_outer_aggregate(c)]
+    no later pass can repair. An aggregate over literals alone reads no rows,
+    so the FINAL gate is all a WHERE can do to it."""
+    aggregates = [
+        c
+        for c in mandatory_list
+        if _crosses_outer_aggregate(c) and not literal_producible(c)
+    ]
     if not aggregates:
         return
     hosted_below = {
