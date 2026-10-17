@@ -302,7 +302,7 @@
     // in `?atom` except `filter_item` itself and `_access_expr`, which loops
     // back through `atom`). Parenthesized `expr` covers arbitrary sub-trees,
     // including unary/binary chains and filter nesting.
-    _filter_alt: (IDENTIFIER | literal | _constant_functions | _static_functions | _generic_functions | _date_functions | aggregate_functions | aggregate_by | custom_function | window_item | unnest | union | subselect | fgroup | expr_tuple | "(" expr ")") "?" conditional
+    _filter_alt: (IDENTIFIER | literal | _constant_functions | _static_functions | _generic_functions | _date_functions | aggregate_functions | aggregate_by | custom_function | window_item | unnest | union | subselect | fgroup | fdistinct | expr_tuple | "(" expr ")") "?" conditional
     _filter_base: "filter"i IDENTIFIER where
     filter_item: _filter_base | _filter_alt
 
@@ -347,10 +347,7 @@
     // inherit the surrounding SELECT grain during select finalization.
     window_item_sql_numbering: WINDOW_TYPE_SQL_NUMBERING (expr ("," expr)*)? ")" window_sql_over?
     // SQL-like navigation: lag(field) or lag(field, 2) over (...)
-    // `lag(distinct x)` reads the distinct values of x (`group(x) by x`) rather
-    // than one row per x's key.
-    window_item_sql_navigation: WINDOW_TYPE_SQL_NAVIGATION (window_distinct_operand | expr) ("," int_lit)? ")" window_sql_over?
-    window_distinct_operand: "distinct"i expr
+    window_item_sql_navigation: WINDOW_TYPE_SQL_NAVIGATION expr ("," int_lit)? ")" window_sql_over?
 
     // SQL-like aggregate-as-window: sum(x) over (partition by y order by z)
     // Aggregate body is parsed via the existing aggregate_functions rule,
@@ -511,6 +508,7 @@
      | union
      | subselect
      | fgroup
+     | fdistinct
      | filter_item
      | _access_expr
      | aggregate_by
@@ -649,6 +647,9 @@
     // special aggregate
     _GROUP.1: "group("i
     fgroup: _GROUP expr ")" aggregate_over?
+    // `distinct(x)` is the distinct values of x: sugar for `group(x) by x`.
+    _DISTINCT_FN.1: "distinct("i
+    fdistinct: _DISTINCT_FN expr ")"
 
     //by:  
     aggregate_by: /(group)\s+([a-zA-Z\_][a-zA-Z0-9\_\.]*)/i "BY"i (IDENTIFIER ",")* IDENTIFIER

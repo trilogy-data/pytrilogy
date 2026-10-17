@@ -54,12 +54,12 @@ is a property of `tree_id`), and tied `dominance_rank` values stay separate
 rows. A partition or order field the stream already carries adds nothing;
 any other field brings its own keys.
 
-To walk the distinct values of a property instead, mark the operand
-`distinct`. That is sugar for `group(species) by species`: the stream is one
-row per species.
+To walk the distinct values of a property instead, wrap the operand in
+`distinct(...)`. `distinct(species)` is sugar for `group(species) by species`
+anywhere an expression goes; here it makes the stream one row per species.
 
 ```
-auto prev_species <- lag(distinct species, 1) over (order by dominance_rank asc);
+auto prev_species <- lag(distinct(species), 1) over (order by dominance_rank asc);
 ```
 
 `order by` a property of `tree_id` (say `planted`) would still bring

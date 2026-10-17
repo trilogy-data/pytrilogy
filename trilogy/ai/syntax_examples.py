@@ -307,7 +307,7 @@ order by iris.species asc;
 # COMPOSITE GRAIN: when SEVERAL keys together identify the thing you are counting,
 # name them with `grain(...)` instead of picking one:
 #   count(grain(sales.order_id, sales.item_id))                 # order+item lines
-#   count_distinct(grain(cust.first_name, cust.last_name, sales.date))
+#   count(distinct(grain(cust.first_name, cust.last_name, sales.date)))
 # `grain(...)` is NEVER NULL, so a combination with a missing member (a customer
 # with no last name) still counts - whereas `count(last_name)` silently drops it.
 # It composes with `?` like any expression: count(grain(a, b) ? cond).
@@ -792,7 +792,7 @@ select enroll.student_id;
 rowset multi_course_pairs <- select
     enroll.department as dept,
     enroll.course as course,
-having count_distinct(enroll.year) > 1;      # (dept, course) offered in >1 year
+having count(distinct(enroll.year)) > 1;      # (dept, course) offered in >1 year
 
 where (enroll.department, enroll.course)
     in (multi_course_pairs.dept, multi_course_pairs.course)
@@ -973,7 +973,7 @@ import enrollments as enroll;
 # Coarse stage: courses offered in more than one year.
 rowset multi_year <- select
     enroll.course as course,
-    --count_distinct(enroll.year) as year_count,
+    --count(distinct(enroll.year)) as year_count,
 having year_count > 1
 ;
 

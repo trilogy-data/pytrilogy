@@ -101,6 +101,7 @@ class SyntaxNodeKind(str, Enum):
     BOOL_OR = "bool_or"
     ANY = "any"
     FGROUP = "fgroup"
+    FDISTINCT = "fdistinct"
     OVER_LIST = "over_list"
     EXPR_OVER_LIST = "expr_over_list"
     # Phase 3: merge + cast
@@ -207,7 +208,6 @@ class SyntaxNodeKind(str, Enum):
     WINDOW_ITEM_LEGACY = "window_item_legacy"
     WINDOW_ITEM_SQL_NUMBERING = "window_item_sql_numbering"
     WINDOW_ITEM_SQL_NAVIGATION = "window_item_sql_navigation"
-    WINDOW_DISTINCT_OPERAND = "window_distinct_operand"
     WINDOW_ITEM_SQL_AGGREGATE = "window_item_sql_aggregate"
     WINDOW_ITEM_OVER = "window_item_over"
     WINDOW_ITEM_ORDER = "window_item_order"
@@ -459,6 +459,7 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "bool_or": SyntaxNodeKind.BOOL_OR,
     "any": SyntaxNodeKind.ANY,
     "fgroup": SyntaxNodeKind.FGROUP,
+    "fdistinct": SyntaxNodeKind.FDISTINCT,
     "over_list": SyntaxNodeKind.OVER_LIST,
     "expr_over_list": SyntaxNodeKind.EXPR_OVER_LIST,
     # Phase 3: merge + cast
@@ -565,7 +566,6 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "window_item_legacy": SyntaxNodeKind.WINDOW_ITEM_LEGACY,
     "window_item_sql_numbering": SyntaxNodeKind.WINDOW_ITEM_SQL_NUMBERING,
     "window_item_sql_navigation": SyntaxNodeKind.WINDOW_ITEM_SQL_NAVIGATION,
-    "window_distinct_operand": SyntaxNodeKind.WINDOW_DISTINCT_OPERAND,
     "window_item_sql_aggregate": SyntaxNodeKind.WINDOW_ITEM_SQL_AGGREGATE,
     "window_item_over": SyntaxNodeKind.WINDOW_ITEM_OVER,
     "window_item_order": SyntaxNodeKind.WINDOW_ITEM_ORDER,

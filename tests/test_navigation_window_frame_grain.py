@@ -19,10 +19,10 @@ datasource trees (
 
 auto species_count <- count(tree_id) by species;
 auto dominance_rank <- rank(species) over (order by count(tree_id) by species desc, species asc);
-auto prev_species <- lag(distinct species, 1) over (order by dominance_rank asc);
-auto prev_species_by_agg <- lag(distinct species, 1) over (order by species_count desc, species asc);
+auto prev_species <- lag(distinct(species), 1) over (order by dominance_rank asc);
+auto prev_species_by_agg <- lag(distinct(species), 1) over (order by species_count desc, species asc);
 auto prev_species_per_tree <- lag(species, 1) over (order by dominance_rank asc);
-auto prev_species_by_planted <- lag(distinct species, 1) over (order by planted asc);
+auto prev_species_by_planted <- lag(distinct(species), 1) over (order by planted asc);
 auto prev_count <- lag(species_count, 1) over (order by species asc);
 auto prev_dbh <- lag(dbh, 1) over (order by planted asc);
 auto prev_dbh_in_species <- lag(dbh, 1) over (partition by species order by planted asc);
@@ -71,9 +71,21 @@ def test_per_tree_lag_runs_over_tree_rows(executor):
 
 
 @pytest.mark.parametrize("parse", [parse_lark, parse_pest])
-def test_distinct_operand_parses_on_both_backends(parse):
-    parse("auto x <- lag(distinct species, 1) over (order by dominance_rank asc);")
+def test_distinct_parses_on_both_backends(parse):
+    parse("auto x <- lag(distinct(species), 1) over (order by dominance_rank asc);")
     parse("auto y <- lag(distinct_flag) over (order by dominance_rank asc);")
+    parse("select distinct(species) as s, distinct_flag;")
+
+
+def test_distinct_is_group_by_itself(executor):
+    rows = executor.execute_text("select distinct(species) as s order by s asc;")[
+        -1
+    ].fetchall()
+    assert rows == [("a",), ("b",), ("c",)], rows
+    rows = executor.execute_text(
+        "select count(distinct(species)) as n, sum(distinct(planted)) as p;"
+    )[-1].fetchall()
+    assert rows == [(3, 2001 + 2002 + 2003 + 2004 + 2005)], rows
 
 
 def test_operand_named_like_keyword_is_not_distinct():

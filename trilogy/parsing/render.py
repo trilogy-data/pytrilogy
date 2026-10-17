@@ -1571,7 +1571,11 @@ class Renderer:
             arg_string = ", ".join(args[1:])
             if len(args) == 1:
                 return f"group({args[0]})"
+            if args[1:] == [args[0]]:
+                return f"distinct({args[0]})"
             return f"group({args[0]}) by {arg_string}"
+        if arg.operator == FunctionType.COUNT_DISTINCT and len(args) == 1:
+            return f"count(distinct({args[0]}))"
 
         if arg.operator == FunctionType.CONSTANT:
             return f"{', '.join(args)}"
