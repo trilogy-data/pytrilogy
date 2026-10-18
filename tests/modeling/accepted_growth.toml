@@ -1,5 +1,5 @@
 # Benchmark plans allowed to be larger than on main, each with why.
 # Read by .scripts/check_benchmark_growth.py; remove an entry once the plan shrinks back.
 
-["tpc_ds_duckdb/zquery83.log"]
-reason = "the date dim and its week filter push into each returns union branch (the stale FULL copy of the join had blocked union dim pushdown); same rows, 120ms -> 72ms at sf=1"
+["tpc_ds_duckdb/zquery76.log"]
+reason = "set-op arm aliases carry their rowset name (`___q76_results_arm_1_*` vs `___tvf_arm_1_*`) so nested set ops cannot collide; same plan, longer names only"

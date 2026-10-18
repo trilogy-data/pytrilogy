@@ -447,12 +447,9 @@ def detect_clause_after_join(text: str, pos: int) -> int | None:
 
 
 _QUERY_JOIN_RE = re.compile(
-    r"\b(?:left|inner|full|right|cross|subset|union)\s+join\b", re.IGNORECASE
-)
-_SELECT_KW_RE = re.compile(r"\bselect\b", re.IGNORECASE)
-_TRAILING_JOIN_RE = re.compile(
     r"\b(?:left|inner|full|right|cross|subset|union|equal)\s+join\b", re.IGNORECASE
 )
+_SELECT_KW_RE = re.compile(r"\bselect\b", re.IGNORECASE)
 
 
 def detect_join_missing_key(text: str, pos: int) -> int | None:
@@ -541,7 +538,7 @@ def detect_join_after_trailing_where(text: str, pos: int) -> int | None:
     statement's closing filter, so a well-formed join there fails with a raw
     expectation list. Returns the join's position, or None. Shared by both
     grammar backends."""
-    if _TRAILING_JOIN_RE.match(text, pos) is None:
+    if _QUERY_JOIN_RE.match(text, pos) is None:
         return None
     stmt_start = text.rfind(";", 0, pos) + 1
     selects = list(_SELECT_KW_RE.finditer(text, stmt_start, pos))
@@ -754,7 +751,6 @@ def detect_by_on_non_aggregate(text: str, pos: int) -> int | None:
     return by_pos
 
 
-_SELECT_KEYWORD_RE = re.compile(r"\bselect\b", re.IGNORECASE)
 _SELECT_LEVEL_BY_RE = re.compile(
     r"(?:,|\bas\s+[A-Za-z_][\w.]*)\s*\b(by)\b", re.IGNORECASE
 )
@@ -767,7 +763,7 @@ def detect_select_level_by(text: str, pos: int) -> int | None:
     stmt_start = text.rfind(";", 0, pos) + 1
     end = min(len(text), pos + 6)
     select = None
-    for select in _SELECT_KEYWORD_RE.finditer(text, stmt_start, end):
+    for select in _SELECT_KW_RE.finditer(text, stmt_start, end):
         pass
     if select is None:
         return None
