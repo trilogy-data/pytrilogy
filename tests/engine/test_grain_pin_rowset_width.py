@@ -9,6 +9,7 @@ from unittest import mock
 
 from trilogy import Dialects, Environment
 from trilogy.core import grain_pin
+from trilogy.core.domain_graph import DomainGraph
 
 MODEL = """
 key ticket int;
@@ -44,19 +45,24 @@ and sale_lines.cust = return_lines.cust;
 """
 
 
+def _environment(names: list[str]) -> Environment:
+    env = Environment()
+    env.parse(
+        MODEL.format(
+            props="\n".join(f"property store.{n} string;" for n in names),
+            cols="".join(f", {n}: {n}" for n in names),
+            vals="".join(f", 'x' {n}" for n in names),
+        )
+    )
+    return env
+
+
 def _walks(width: int) -> int:
     names = [f"p{i}" for i in range(width)]
-    model = MODEL.format(
-        props="\n".join(f"property store.{n} string;" for n in names),
-        cols="".join(f", {n}: {n}" for n in names),
-        vals="".join(f", 'x' {n}" for n in names),
-    )
-    env = Environment()
-    env.parse(model)
-    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    executor = Dialects.DUCK_DB.default_executor(environment=_environment(names))
     query = QUERY.format(selected="".join(f", {n}" for n in names))
     with mock.patch.object(
-        grain_pin, "_walk_entity_keys", wraps=grain_pin._walk_entity_keys
+        grain_pin, "_entity_reads", wraps=grain_pin._entity_reads
     ) as walk:
         assert executor.execute_query(query).fetchall() == [("a", 1)]
     return walk.call_count
@@ -66,3 +72,13 @@ def test_anchor_walk_is_linear_in_rowset_width():
     narrow = _walks(2)
     wide = _walks(10)
     assert wide <= narrow * 6
+
+
+def test_keyless_rowset_column_is_identified_by_the_whole_rowset():
+    names = ["p0", "p1", "p2"]
+    env = _environment(names)
+    env.parse("rowset rs <- select store_name, p0, p1, p2;")
+    columns = {f"rs.{n}" for n in ["store_name", *names]}
+    for address in columns:
+        keys = grain_pin._entity_keys(env.concepts[address], {}, env, DomainGraph())
+        assert keys == columns
