@@ -296,18 +296,19 @@ def test_union_tvf_remains_union_all_bag():
     # Regression: the union(...) TVF is a bag stack, untouched by the set-op
     # plumbing. Each arm is a grain-deduped select ({1,2,3} and {1,2}); the
     # stack keeps the cross-arm duplicates an EXCEPT/INTERSECT would collapse.
+    # Summed, not counted: count(k) is distinct, so it can't tell bag from set.
     executor = _executor()
     query = """
 from union(
     (where yr = 2001 select item_id -> k),
     (where yr = 2002 select item_id -> k)
 ) -> (k)
-select count(k) -> total;
+select sum(k) -> total;
 """
     sql = executor.generate_sql(query)[-1]
     assert "UNION ALL" in sql, sql
     assert "\nEXCEPT\n" not in sql, sql
-    assert _rows(executor, query) == [(5,)]
+    assert _rows(executor, query) == [(9,)]
 
 
 def test_except_and_union_over_same_arms_do_not_merge():
