@@ -48,8 +48,8 @@ def validate_environment(
     env = env.duplicate()
     grain_check = function_to_concept(
         parent=Function(
-            operator=FunctionType.SUM,
-            arguments=[1],
+            operator=FunctionType.ROW_COUNT,
+            arguments=[],
             output_datatype=DataType.INTEGER,
             output_purpose=Purpose.METRIC,
         ),

@@ -336,6 +336,8 @@ class FunctionType(Enum):
 
     COUNT = "count"
     COUNT_DISTINCT = "count_distinct"
+    # internal: count(*), the rows of each group
+    ROW_COUNT = "row_count"
     SUM = "sum"
     MAX = "max"
     MIN = "min"
@@ -426,6 +428,7 @@ class FunctionClass(Enum):
         FunctionType.ARRAY_AGG,
         FunctionType.COUNT,
         FunctionType.COUNT_DISTINCT,
+        FunctionType.ROW_COUNT,
         FunctionType.ANY,
         FunctionType.GROUPING,
         FunctionType.GROUPING_ID,
@@ -450,7 +453,7 @@ class FunctionClass(Enum):
 # non-NULL constant do not: a padded row left NULL by the join must be
 # coalesced back to it.
 ZERO_ON_EMPTY_AGGREGATES: frozenset[FunctionType] = frozenset(
-    {FunctionType.COUNT, FunctionType.COUNT_DISTINCT}
+    {FunctionType.COUNT, FunctionType.COUNT_DISTINCT, FunctionType.ROW_COUNT}
 )
 
 

@@ -11,13 +11,15 @@ from trilogy.constants import Rendering
 from trilogy.core.enums import Derivation, FunctionType, Granularity, JoinType, Purpose
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.exceptions import FunctionArgumentException, InvalidSyntaxException
-from trilogy.core.models.author import Concept, FunctionCallWrapper, Grain
+from trilogy.core.models.author import Concept, Function, FunctionCallWrapper, Grain
 from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import ShowStatement
+from trilogy.core.validation.common import easy_query
 from trilogy.dialect.mock import DEFAULT_SCALE_FACTOR
 from trilogy.executor import Executor
 from trilogy.parser import parse_text
+from trilogy.parsing.common import function_to_concept
 
 
 def test_basic_query(duckdb_engine: Executor, expected_results):
@@ -88,8 +90,14 @@ datasource t (id, g) grain (id)
         ("sum(1) as c", [(1,)]),
         ("sum(1) by * as c", [(1,)]),
         ("avg(1) as c", [(1,)]),
+        ("g, avg(1) as c", [("a", 1), ("b", 1)]),
+        ("g, sum(1) as c", [("a", 1), ("b", 1)]),
         ("g, sum(1) by * as c", [("a", 1), ("b", 1)]),
+        ("sum(1) by g as c", [(1,), (1,)]),
         ("sum(1) by id as c", [(1,), (1,), (1,)]),
+        ("g, sum(1) by id as c", [("a", 1), ("a", 1), ("b", 1)]),
+        ("g, count(id) as n, sum(1) as c", [("a", 2, 1), ("b", 1, 1)]),
+        ("g, sum(1 ? id > 0) as c", [("a", 2), ("b", 1)]),
     ],
 )
 def test_constant_aggregate_is_one_per_output_row(where, select, expected) -> None:
@@ -97,6 +105,28 @@ def test_constant_aggregate_is_one_per_output_row(where, select, expected) -> No
     engine.parse_text(_CONSTANT_MODEL)
     rows = engine.execute_text(f"{where}select {select};")[-1].fetchall()
     assert sorted(tuple(row) for row in rows) == expected
+
+
+@mark.parametrize("dialect", [Dialects.DUCK_DB, Dialects.POSTGRES, Dialects.SQL_SERVER])
+def test_row_count_renders_count_star(dialect: Dialects) -> None:
+    env = Environment()
+    env.parse(
+        "key id int; property id.g string; datasource t (id, g) grain (id) address t;"
+    )
+    row_count = Function(
+        operator=FunctionType.ROW_COUNT,
+        arguments=[],
+        output_datatype=DataType.INTEGER,
+        output_purpose=Purpose.METRIC,
+    )
+    env.add_concept(function_to_concept(parent=row_count, name="rows", environment=env))
+    build = env.materialize_for_select()
+    query = easy_query(
+        concepts=[build.concepts["g"], build.concepts["rows"]],
+        datasource=build.datasources["t"],
+        env=env,
+    )
+    assert 'count(*) as "rows"' in dialect.default_renderer().compile_statement(query)
 
 
 @mark.parametrize("declaration", ["const one <- 1;", "parameter one int default 1;"])

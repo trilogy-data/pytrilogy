@@ -220,6 +220,17 @@ INFIX_PARENTS_REQUIRING_PARENS = ARITHMETIC_OPERATORS + (
 )
 
 
+def _aggregates_a_constant(function: Any) -> bool:
+    """`sum(1)` holds one constant per output row, so it collapses like an
+    aggregate already at its grain, whatever rows the group reads."""
+    return (
+        isinstance(function, BuildFunction)
+        and function.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
+        and function.operator != FunctionType.ROW_COUNT
+        and all(c.derivation == Derivation.CONSTANT for c in function.concept_arguments)
+    )
+
+
 def _needs_arithmetic_parentheses(
     expr: Any, parent_operator: FunctionType | None = None
 ) -> bool:
@@ -702,6 +713,7 @@ FUNCTION_MAP = {
     # aggregate types
     FunctionType.COUNT_DISTINCT: lambda x, types: f"count(distinct {x[0]})",
     FunctionType.COUNT: lambda x, types: f"count({x[0]})",
+    FunctionType.ROW_COUNT: lambda x, types: "count(*)",
     FunctionType.GROUPING: lambda x, types: f"grouping({','.join(x)})",
     FunctionType.GROUPING_ID: lambda x, types: f"grouping_id({','.join(x)})",
     FunctionType.SUM: lambda x, types: f"sum({x[0]})",
@@ -787,6 +799,7 @@ FUNCTION_MAP = {
 AGGREGATE_GRAIN_MATCH_MAP = {
     FunctionType.COUNT_DISTINCT: lambda args, types: f"CASE WHEN {args[0]} IS NOT NULL THEN 1 ELSE 0 END",
     FunctionType.COUNT: lambda args, types: f"CASE WHEN {args[0]} IS NOT NULL THEN 1 ELSE 0 END",
+    FunctionType.ROW_COUNT: lambda args, types: "1",
     FunctionType.SUM: lambda args, types: f"{args[0]}",
     FunctionType.AVG: lambda args, types: f"{args[0]}",
     FunctionType.MAX: lambda args, types: f"{args[0]}",
@@ -1573,7 +1586,9 @@ class BaseDialect:
                 args = [self.render_expr(v, cte) for v in c.lineage.function.arguments]
                 operator = _aggregate_operator(cte, c)
                 if cte.group_to_grain:
-                    if _aggregate_over_collapsed_filter(cte, c.lineage):
+                    if _aggregate_over_collapsed_filter(
+                        cte, c.lineage
+                    ) or _aggregates_a_constant(c.lineage.function):
                         rval = self.FUNCTION_GRAIN_MATCH_MAP[operator](args, [])
                     else:
                         rval = self.FUNCTION_MAP[operator](args, [])
@@ -1636,7 +1651,7 @@ class BaseDialect:
                         )
                     types.append(arg_to_datatype(arg))
 
-                if cte.group_to_grain:
+                if cte.group_to_grain and not _aggregates_a_constant(c.lineage):
                     rval = f"{self.FUNCTION_MAP[c.lineage.operator](args, types)}"
                 else:
 
@@ -2472,7 +2487,7 @@ class BaseDialect:
             # types come from the unrendered arguments; `arguments` at this
             # point are SQL strings, which would type every argument as STRING
             arg_types = [arg_to_datatype(x) for x in e.arguments]
-            if cte and cte.group_to_grain:
+            if cte and cte.group_to_grain and not _aggregates_a_constant(e):
                 return self.FUNCTION_MAP[e.operator](arguments, arg_types)
 
             return self.FUNCTION_GRAIN_MATCH_MAP[e.operator](arguments, arg_types)
