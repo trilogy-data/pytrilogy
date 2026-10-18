@@ -75,6 +75,10 @@ def topological_sort(graph: GraphT):
     return nx.topological_sort(graph)
 
 
+def strongly_connected_components(graph: GraphT):
+    return nx.strongly_connected_components(graph)
+
+
 def shortest_path(graph: GraphT, source: str, target: str):
     return nx.shortest_path(graph, source, target)
 

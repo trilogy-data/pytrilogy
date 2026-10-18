@@ -19,8 +19,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import replace as dc_replace
 from typing import Any, TypeGuard
 
-import networkx as nx
-
+from trilogy.core import graph as nx
 from trilogy.core.constants import GRAIN_NULL_SENTINEL
 from trilogy.core.domain_graph import DomainGraph
 from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
@@ -184,17 +183,24 @@ def _entity_keys(
             if read.address not in concepts:
                 concepts[read.address] = read
                 stack.append(read)
-    components = nx.condensation(reads)
-    answers: dict[int, set[str]] = {}
-    for component in reversed(list(nx.topological_sort(components))):
-        members = components.nodes[component]["members"]
-        out = set().union(*(answers[c] for c in components.successors(component)))
-        answers[component] = out or {
+    answers: dict[str, set[str]] = {}
+    # sinks first, so every component a cycle reads is already answered
+    for members in nx.strongly_connected_components(reads):
+        out = set().union(
+            *(
+                answers[read]
+                for m in members
+                for read in reads.successors(m)
+                if read not in members
+            )
+        )
+        answer = out or {
             m
             for m in members
             if _own_identity(concepts[m], set(reads.successors(m)) - members)
         }
-    return set(answers[components.graph["mapping"][concept.address]])
+        answers.update(dict.fromkeys(members, answer))
+    return set(answers[concept.address])
 
 
 def _entity_reads(
