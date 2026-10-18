@@ -1437,6 +1437,31 @@ def test_bridge_refuses_a_pair_that_keys_neither_side():
     assert merged == [key_slice, projection]
 
 
+def test_bridge_dedupes_a_projection_the_shared_column_determines():
+    """The projection cannot render the bridge's key, but `species` determines
+    everything it renders: it is grouped to `species` and the bridge pairs it
+    on a key of that side."""
+    env = BuildEnvironment()
+    tree, rows, key_slice, projection, graph = _bridge_fixture(env)
+    for concept in rows.output_concepts + projection.output_concepts:
+        env.concepts[concept.address] = concept
+    hidden = SelectNode(
+        input_concepts=[c for c in rows.output_concepts if c is not tree],
+        output_concepts=[c for c in rows.output_concepts if c is not tree],
+        parents=[rows],
+        environment=env,
+    )
+    projection.parents = [hidden]
+    projection.rebuild_cache()
+
+    merged = _bridge_unpaired_parents(
+        [key_slice, projection], graph, {"root": rows}, env
+    )
+
+    assert merged[0] is key_slice and merged[2] is rows
+    assert isinstance(merged[1], GroupNode) and merged[1].parents == [projection]
+
+
 def test_elide_passthrough_tree_collapses_linear_identity_projection():
     env = BuildEnvironment()
     key = _build_concept("item.id", Purpose.KEY)
