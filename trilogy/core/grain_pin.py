@@ -156,16 +156,37 @@ def _entity_keys(
     environment: Environment,
     graph: DomainGraph,
     seen: frozenset[str] = frozenset(),
+    memo: dict[str, set[str]] | None = None,
 ) -> set[str]:
     """The entities `concept` is a function of, as the keyspace reads them
     (`keyspace._entity_keys`): a key is its own entity unless derived (`c` of
     `customer_id as c`, or a key a merge computes), and a derived grouping
     value (`count(..) by status`) stands for the rows it is keyed on, never as
     an input another pinned value could be derived beside. A single-row value
-    (a `<*>` constant) sits beside every row and is no row identity."""
+    (a `<*>` constant) sits beside every row and is no row identity.
+
+    `memo` holds each address's answer once per walk: a keyless rowset
+    column's grain lists its sibling columns, and re-walking them per path is
+    factorial in the rowset's width."""
     if concept.granularity == Granularity.SINGLE_ROW:
         return set()
-    seen = seen | {concept.address}
+    if memo is None:
+        memo = {}
+    if concept.address not in memo:
+        memo[concept.address] = _walk_entity_keys(
+            concept, local, environment, graph, seen | {concept.address}, memo
+        )
+    return set(memo[concept.address])
+
+
+def _walk_entity_keys(
+    concept: Concept,
+    local: Mapping[str, Concept],
+    environment: Environment,
+    graph: DomainGraph,
+    seen: frozenset[str],
+    memo: dict[str, set[str]],
+) -> set[str]:
     if concept.purpose == Purpose.KEY and concept.derivation != Derivation.BASIC:
         origins = [
             o
@@ -176,16 +197,18 @@ def _entity_keys(
             return {concept.address}
         out: set[str] = set()
         for origin in origins:
-            out |= _entity_keys(origin, local, environment, graph, seen)
+            out |= _entity_keys(origin, local, environment, graph, seen, memo)
         return out
     if concept.derivation == Derivation.BASIC and concept.lineage is not None:
-        out = _expr_entities(concept.lineage, local, environment, graph, seen, set())
+        out = _expr_entities(
+            concept.lineage, local, environment, graph, seen, set(), memo
+        )
     else:
         out = set()
         for address in _row_keys(concept) - seen:
             read = _lookup(address, local, environment)
             if read is not None:
-                out |= _entity_keys(read, local, environment, graph, seen)
+                out |= _entity_keys(read, local, environment, graph, seen, memo)
     # a stored or rowset column with no key is its own row identity; a keyless
     # aggregate, metric or derived value has none to anchor on (an abstract
     # count resolves its grain through the very select it would anchor)
@@ -205,6 +228,7 @@ def _expr_entities(
     graph: DomainGraph,
     seen: frozenset[str],
     bare: set[str],
+    memo: dict[str, set[str]] | None = None,
 ) -> set[str]:
     """The entities of the rows `expr` reads. An inline aggregate is read on
     its `by` (a bare one on `bare`, the select's grain), never on its
@@ -213,17 +237,19 @@ def _expr_entities(
         if expr.address in seen:
             return set()
         read = _lookup(expr.address, local, environment)
-        return _entity_keys(read, local, environment, graph, seen) if read else set()
+        if read is None:
+            return set()
+        return _entity_keys(read, local, environment, graph, seen, memo)
     if isinstance(expr, AggregateWrapper):
         if not expr.by:
             return set(bare)
         out: set[str] = set()
         for b in expr.by:
-            out |= _expr_entities(b, local, environment, graph, seen, bare)
+            out |= _expr_entities(b, local, environment, graph, seen, bare, memo)
         return out
     out = set()
     for child in _child_exprs(expr):
-        out |= _expr_entities(child, local, environment, graph, seen, bare)
+        out |= _expr_entities(child, local, environment, graph, seen, bare, memo)
     return out
 
 
