@@ -546,9 +546,23 @@ def _rowset_row_identity(
             if (member := environment.concepts.get(address)) is not None
             and member.purpose == Purpose.KEY
         ]
+    # a renamed output (`s_cust as cust`) re-exposes its body column through
+    # a select alias; the grain is spelled in body columns
+    by_body: dict[str, BuildConcept] = {}
+    for address in sorted(rowset.derived_concepts):
+        member = environment.concepts.get(address)
+        if member is not None and isinstance(member.lineage, BuildRowsetItem):
+            content = member.lineage.content
+            body = (
+                content.lineage.concept_arguments[0].address
+                if isinstance(content.lineage, BuildFunction)
+                and content.lineage.operator == FunctionType.ALIAS
+                else content.address
+            )
+            by_body.setdefault(body, member)
     out: list[BuildConcept] = []
     for comp in sorted(rowset.select.grain.components):
-        member = environment.concepts.get(f"{rowset.name}.{comp}")
+        member = by_body.get(comp) or environment.concepts.get(f"{rowset.name}.{comp}")
         if member is None:
             return []
         out.append(member)
@@ -607,9 +621,20 @@ def _walk_scoped_aggregate_grain_inputs(
     `_rowset_local_grain_identity`)."""
     lineage = concept.lineage
     if not isinstance(lineage, BuildRowsetItem):
-        return _expand_aggregate_row_identities(
+        inputs = _expand_aggregate_row_identities(
             _walk_aggregate_grain_inputs(concept, environment), environment
         )
+        # a member reached through an expression (a presence probe keyed on
+        # it) is read at its rowset's identity, as a bare one is
+        out: list[BuildConcept] = []
+        for c in inputs:
+            if isinstance(c.lineage, BuildRowsetItem):
+                out.extend(
+                    _walk_scoped_aggregate_grain_inputs(aggregate, c, environment)
+                )
+            else:
+                out.append(c)
+        return out
     # Counting a key counts its own values; anything else ranges over the
     # rowset's identity.
     counted = _counted_key(aggregate)

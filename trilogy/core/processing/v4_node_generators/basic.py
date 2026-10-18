@@ -1,8 +1,15 @@
-from trilogy.core.models.build import BuildConcept, BuildGrain, BuildWhereClause
+from trilogy.core.enums import Derivation
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildGrain,
+    BuildRowsetItem,
+    BuildWhereClause,
+)
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.nodes import (
     ConstantNode,
     MergeNode,
+    RowsetNode,
     SelectNode,
     StrategyNode,
 )
@@ -29,23 +36,59 @@ def basic_regroups(
     )
 
 
+def _expose_boundary_handle(node: StrategyNode, handle: BuildConcept) -> bool:
+    """Expose a rowset handle on the boundary under `node` whose body produces
+    its content: a boundary carries the columns its reader demands, so a grain
+    key nobody selected is materialized only when a reader needs the row
+    identity."""
+    lineage = handle.lineage
+    if not isinstance(lineage, BuildRowsetItem):
+        return False
+    for boundary in node.parents:
+        if not isinstance(boundary, RowsetNode) or not boundary.parents:
+            continue
+        if not any(
+            isinstance(o.lineage, BuildRowsetItem)
+            and o.lineage.rowset.name == lineage.rowset.name
+            for o in boundary.output_concepts
+        ):
+            continue
+        if handle.address in {o.address for o in boundary.output_concepts}:
+            return True
+        produced = {o.address for o in boundary.parents[0].usable_outputs}
+        if lineage.content.address not in produced:
+            return False
+        widen_projection(
+            boundary,
+            [handle],
+            input_candidates=[lineage.content],
+            available_addresses=produced,
+        )
+        return True
+    return False
+
+
 def _expose_parent_grain(
     parent: StrategyNode, parent_grain: set[str], environment: BuildEnvironment
 ) -> None:
-    """Widen a projecting parent with the grain keys it claims but does not
-    project when its own inputs render them (a merge over a rowset boundary
-    at the boundary's identity): the keys are what a projection over it
-    widens back to, and dedup is the repair of last resort."""
+    """Widen a projecting parent with the rowset identity handles it claims
+    but does not project (a merge over a rowset boundary at the boundary's
+    identity): the keys are what a projection over it widens back to, and
+    dedup is the repair of last resort. A root key a merge hides is left to
+    that dedup, as before."""
     if parent.force_group or not isinstance(parent, (SelectNode, MergeNode)):
         return
     exposed = {c.address for c in parent.output_concepts}
-    available = renderable_addresses(parent)
-    keys = [
+    missing = [
         key
         for address in sorted(parent_grain - exposed)
-        if address in available
-        and (key := environment.concepts.get(address)) is not None
+        if (key := environment.concepts.get(address)) is not None
+        and key.derivation == Derivation.ROWSET
     ]
+    for key in missing:
+        _expose_boundary_handle(parent, key)
+    available = renderable_addresses(parent)
+    keys = [key for key in missing if key.address in available]
     if keys:
         widen_projection(
             parent, keys, input_candidates=keys, available_addresses=available

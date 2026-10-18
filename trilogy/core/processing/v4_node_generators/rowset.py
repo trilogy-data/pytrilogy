@@ -442,21 +442,6 @@ def resolve_rowset(
                     boundary.add(arg_handle, arg_input)
                 boundary.add(member_concept)
 
-    # The boundary claims the body's identity as its grain (below), so it
-    # exposes the identity handles it does not already carry: a reader
-    # projecting it widens back to the rows it emits instead of
-    # deduplicating them, and a hidden column cannot be read.
-    identity = (
-        _body_grain_handles(built, derived, environment)
-        if isinstance(built, BuildSelectLineage)
-        else None
-    )
-    for handle in identity or []:
-        assert isinstance(handle.lineage, BuildRowsetItem)
-        content_address = handle.lineage.content.address
-        if handle.address not in boundary and content_address in produced:
-            boundary.add(handle, produced[content_address])
-
     handles = boundary.handles
     hidden = boundary.hidden
     # A handle that is a declared-subset SOURCE (`subset join rs.k = anchor.k`)
@@ -517,6 +502,11 @@ def resolve_rowset(
             for addr in sorted(derived)
             if (handle_concept := environment.concepts.get(addr)) is not None
         ]
+        identity = (
+            _body_grain_handles(built, derived, environment)
+            if isinstance(built, BuildSelectLineage)
+            else None
+        )
         if identity is not None:
             boundary_grain = BuildGrain.from_concepts(identity)
         elif full_handles:
