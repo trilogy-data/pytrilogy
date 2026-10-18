@@ -14,14 +14,21 @@ import pytest
 from trilogy.core import graph as nx
 from trilogy.core.enums import (
     AggregateGroupingMode,
+    BooleanOperator,
+    ComparisonOperator,
     Derivation,
     Granularity,
     Purpose,
 )
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
+    BuildColumnAssignment,
+    BuildComparison,
     BuildConcept,
+    BuildConditional,
+    BuildDatasource,
     BuildGrain,
+    BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import DataType
@@ -74,6 +81,7 @@ from trilogy.core.processing.v4_helper.models import (
 from trilogy.core.processing.v4_helper.strategy_builder import (
     ParentBuild,
     _apply_input_contracts,
+    _bridge_unpaired_parents,
     _elide_passthrough_tree,
     _filter_intrinsic_pushdown_safe,
     _final_contributor_contracts,
@@ -1270,6 +1278,163 @@ def test_fold_passthrough_keeps_shape_barrier_parent():
     folded = _fold_passthrough_parents([barrier, carrier])
 
     assert folded == [barrier, carrier]
+
+
+def _scan_under_own_where(
+    env: BuildEnvironment, key: BuildConcept, cluster: BuildConcept
+) -> tuple[SelectNode, BuildComparison]:
+    own_where = BuildComparison(left=key, right=cluster, operator=ComparisonOperator.EQ)
+    trees = BuildDatasource(
+        name="trees",
+        address="trees",
+        columns=[
+            BuildColumnAssignment(alias=c.name, concept=c) for c in (key, cluster)
+        ],
+        grain=BuildGrain(components={key.address}),
+        where=BuildWhereClause(conditional=own_where),
+    )
+    scan = SelectNode(
+        input_concepts=[key, cluster],
+        output_concepts=[key],
+        datasource=trees,
+        environment=env,
+        conditions=own_where,
+    )
+    return scan, own_where
+
+
+def test_fold_passthrough_absorbs_scan_reading_under_its_own_where():
+    """A direct scan's conditions are its datasource's declared `where`: the
+    relation's definition, not a filter on the sibling's rows, so a sibling
+    that renders its column takes it."""
+    env = BuildEnvironment()
+    key = _build_concept("tree.id", Purpose.KEY)
+    cluster = _build_concept("tree.cluster", Purpose.PROPERTY, keys={key.address})
+    bucket = _build_concept("bucket", Purpose.PROPERTY, derivation=Derivation.BASIC)
+    scan, _ = _scan_under_own_where(env, key, cluster)
+    source = StrategyNode(
+        input_concepts=[], output_concepts=[key, cluster, bucket], environment=env
+    )
+    carrier = SelectNode(
+        input_concepts=[bucket],
+        output_concepts=[bucket],
+        parents=[source],
+        environment=env,
+    )
+
+    folded = _fold_passthrough_parents([scan, carrier])
+
+    assert folded == [carrier]
+    assert {c.address for c in carrier.output_concepts} == {key.address, bucket.address}
+
+
+def test_fold_passthrough_keeps_scan_with_a_filter_beyond_its_where():
+    env = BuildEnvironment()
+    key = _build_concept("tree.id", Purpose.KEY)
+    cluster = _build_concept("tree.cluster", Purpose.PROPERTY, keys={key.address})
+    bucket = _build_concept("bucket", Purpose.PROPERTY, derivation=Derivation.BASIC)
+    scan, own_where = _scan_under_own_where(env, key, cluster)
+    scan.conditions = BuildConditional(
+        left=own_where,
+        right=BuildComparison(left=cluster, right="a", operator=ComparisonOperator.EQ),
+        operator=BooleanOperator.AND,
+    )
+    source = StrategyNode(
+        input_concepts=[], output_concepts=[key, cluster, bucket], environment=env
+    )
+    carrier = SelectNode(
+        input_concepts=[bucket],
+        output_concepts=[bucket],
+        parents=[source],
+        environment=env,
+    )
+
+    assert _fold_passthrough_parents([scan, carrier]) == [scan, carrier]
+
+
+def _scan(
+    env: BuildEnvironment, name: str, columns: list[BuildConcept], key: BuildConcept
+) -> SelectNode:
+    datasource = BuildDatasource(
+        name=name,
+        address=name,
+        columns=[BuildColumnAssignment(alias=c.name, concept=c) for c in columns],
+        grain=BuildGrain(components={key.address}),
+    )
+    return SelectNode(
+        input_concepts=list(columns),
+        output_concepts=list(columns),
+        datasource=datasource,
+        environment=env,
+    )
+
+
+def _bridge_fixture(env: BuildEnvironment):
+    """A tree key sliced off beside a species bucket projected off the tree
+    rows: they share nothing, and the tree rows they both came from are the
+    only bridge. Bridged on `species`, the bucket's tree-grain rows and the
+    tree rows pair on a column that keys neither."""
+    tree = _build_concept("tree.id", Purpose.KEY)
+    species = _build_concept("species", Purpose.KEY, datatype=DataType.STRING)
+    zone = _build_concept(
+        "species.zone",
+        Purpose.PROPERTY,
+        grain={species.address},
+        keys={species.address},
+    )
+    bucket = _build_concept(
+        "bucket",
+        Purpose.PROPERTY,
+        datatype=DataType.STRING,
+        derivation=Derivation.BASIC,
+        grain={species.address},
+        keys={species.address},
+    )
+    rows = _scan(env, "trees", [tree, species, zone], tree)
+    key_slice = _scan(env, "tree_ids", [tree], tree)
+    bucket_projection = SelectNode(
+        input_concepts=[species, zone],
+        output_concepts=[bucket, species],
+        parents=[rows],
+        environment=env,
+    )
+    graph = nx.DiGraph()
+    graph.add_node("root")
+    return tree, rows, key_slice, bucket_projection, graph
+
+
+def test_bridge_widens_a_coarse_projection_to_the_bridge_key():
+    env = BuildEnvironment()
+    tree, rows, key_slice, projection, graph = _bridge_fixture(env)
+
+    merged = _bridge_unpaired_parents(
+        [key_slice, projection], graph, {"root": rows}, env
+    )
+
+    assert tree.address in {c.address for c in projection.output_concepts}
+    assert merged == [key_slice, projection], "paired on the key, no bridge needed"
+
+
+def test_bridge_refuses_a_pair_that_keys_neither_side():
+    """The projection cannot render the bridge's key (its parent hides it) and
+    `species` does not determine what it renders: no bridge rather than a
+    silent fanout."""
+    env = BuildEnvironment()
+    tree, rows, key_slice, projection, graph = _bridge_fixture(env)
+    hidden = SelectNode(
+        input_concepts=[c for c in rows.output_concepts if c is not tree],
+        output_concepts=[c for c in rows.output_concepts if c is not tree],
+        parents=[rows],
+        environment=env,
+    )
+    projection.parents = [hidden]
+    projection.rebuild_cache()
+
+    merged = _bridge_unpaired_parents(
+        [key_slice, projection], graph, {"root": rows}, env
+    )
+
+    assert merged == [key_slice, projection]
 
 
 def test_elide_passthrough_tree_collapses_linear_identity_projection():

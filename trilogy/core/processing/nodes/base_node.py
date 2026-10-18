@@ -450,16 +450,19 @@ class StrategyNode:
     def add_output_concepts(
         self, concepts: list[BuildConcept], rebuild: bool = True, unhide: bool = True
     ):
-        # nullability was computed at construction; keep it current for
-        # post-construction outputs (a derived concept computed over a nullable
-        # input is nullable wherever the input is)
+        # nullability and partiality were computed at construction; keep them
+        # current for post-construction outputs (a derived concept computed
+        # over a nullable input is nullable wherever the input is; a column
+        # every supplying parent binds partially stays partial)
         upstream_nullable = {x.address for x in self.nullable_concepts}
         for p in self.parents:
             upstream_nullable |= {x.address for x in p.nullable_concepts}
         nullable_addresses = {x.address for x in self.nullable_concepts}
+        added: list[BuildConcept] = []
         for concept in concepts:
             if concept.address not in self.output_lcl.addresses:
                 self.output_concepts.append(concept)
+                added.append(concept)
                 if concept.address not in nullable_addresses and (
                     concept.address in upstream_nullable
                     or (
@@ -475,6 +478,14 @@ class StrategyNode:
             if unhide and concept.address in self.hidden_concepts:
                 self.hidden_concepts.remove(concept.address)
         self.output_lcl = LooseBuildConceptList(concepts=self.output_concepts)
+        if added and self.parents:
+            self.partial_concepts = unique(
+                self.partial_concepts
+                + get_all_parent_partial(added, self.parents, self.environment)
+                + get_computed_partial(added, self.parents),
+                "address",
+            )
+            self.partial_lcl = LooseBuildConceptList(concepts=self.partial_concepts)
         if rebuild:
             self.rebuild_cache()
         return self

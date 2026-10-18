@@ -158,10 +158,13 @@ class _HeldKeys:
 
     @property
     def anchor_keys(self) -> frozenset[str]:
-        """An entity peel's key, a column of its own: the axis the peel joins
+        """A dimension peel's key, a column of its own: the axis the peel joins
         back on, and the grain a scalar reading the peel alone is evaluated
-        at (`_anchor_scalars_to_dim_peel_key`)."""
-        return self.dim_keys if self.reason is RootReason.ENTITY else frozenset()
+        at (`_anchor_scalars_to_dim_peel_key`). An entity peel and a synthetic
+        dimension (`BASIC_INPUT`) are both scans keyed by the dimension."""
+        if self.reason in (RootReason.ENTITY, RootReason.BASIC_INPUT):
+            return self.dim_keys
+        return frozenset()
 
     @property
     def carried_keys(self) -> tuple[str, ...]:
