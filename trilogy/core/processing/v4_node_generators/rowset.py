@@ -3,13 +3,15 @@
 from dataclasses import dataclass, field
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation
+from trilogy.core.enums import Derivation, SetOperator
 from trilogy.core.models.author import MultiSelectLineage, SelectLineage
 from trilogy.core.models.build import (
     BuildConcept,
     BuildGrain,
     BuildMultiSelectLineage,
     BuildRowsetItem,
+    BuildSelectLineage,
+    BuildUnionSelectLineage,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -133,6 +135,22 @@ def _nullability_aliases(concept: BuildConcept) -> set[str]:
         content = concept.lineage.content
         aliases.update((content.address, *content.pseudonyms))
     return aliases
+
+
+def _is_stacked_key_set(
+    built: BuildSelectLineage | BuildMultiSelectLineage,
+    derived: list[str],
+    environment: BuildEnvironment,
+) -> bool:
+    """A UNION ALL repeats a value its arms share. When every output is a
+    scoped-join key, the repeats are indistinguishable rows of a key set that
+    would only fan the join: dedup them to make the handle grain true."""
+    if not isinstance(built, BuildUnionSelectLineage):
+        return False
+    if built.operator != SetOperator.UNION_ALL:
+        return False
+    keys = environment.all_scoped_join_group_members()
+    return all(address in keys for address in derived)
 
 
 def resolve_rowset(
@@ -445,13 +463,14 @@ def resolve_rowset(
             if h.address not in hidden and not is_presence_probe(h.address)
         ]
     )
+    dedup = _is_stacked_key_set(built, derived, environment)
     # A multiselect/union boundary's rows are at the FULL align grain even
     # when only a subset of its outputs is demanded (`subset join x =
     # all_combos.b` never projects `ch`): the projection does NOT dedup, so
     # stamping the demanded subset as the grain overclaims uniqueness and a
     # downstream aggregate elides its GROUP BY over the per-arm fan. Stamp the
     # grain over every align output instead.
-    if isinstance(built, BuildMultiSelectLineage):
+    if isinstance(built, BuildMultiSelectLineage) and not dedup:
         full_handles = [
             handle_concept
             for addr in sorted(derived)
@@ -466,6 +485,7 @@ def resolve_rowset(
         environment=plan.environment,
         depth=depth,
         grain=boundary_grain,
+        force_group=dedup,
         hidden_concepts=hidden,
         partial_concepts=scoped_partial,
         nullable_concepts=nullable_handles,
