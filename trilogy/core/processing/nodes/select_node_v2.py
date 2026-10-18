@@ -124,7 +124,11 @@ class SelectNode(StrategyNode):
         return
 
     def partial_rows(self, address: str) -> bool:
-        if self.datasource is None or self.parents:
+        # An existence parent (a membership's set) feeds the WHERE, not this
+        # column: the scan still reads it straight off the datasource.
+        if self.datasource is None or any(
+            address in p.output_lcl for p in self.parents
+        ):
             return super().partial_rows(address)
         if address not in self.partial_lcl:
             return False
