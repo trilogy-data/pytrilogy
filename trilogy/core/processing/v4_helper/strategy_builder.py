@@ -82,7 +82,11 @@ from trilogy.core.processing.nodes import (
     UnionNode,
     WindowNode,
 )
-from trilogy.core.processing.nodes.base_node import NodeJoin, region_reads
+from trilogy.core.processing.nodes.base_node import (
+    NodeJoin,
+    get_all_parent_partial,
+    region_reads,
+)
 from trilogy.utility import unique
 
 from .concept_graph import _relation_mates, _statement_scoped_relation_members
@@ -105,6 +109,7 @@ from .edges import (
     dependency_subgraph,
     edge_kind,
     edges_of_kind,
+    lineage_predecessors,
     remove_edge,
 )
 from .extent_ownership import takes_a_value_on_padding
@@ -1576,8 +1581,26 @@ def _merges_coalesced_sides(node: StrategyNode) -> bool:
     return any(o.address in coalescing for o in node.output_concepts)
 
 
-def _rows_passed(node: StrategyNode, condition: BoolExpr | None) -> bool:
-    """Every atom of `condition` is one `node` applies or already holds."""
+def _relation_atoms(node: StrategyNode) -> list[BoolExpr]:
+    """The atoms a scan applies as its datasource's own declared `where`: the
+    relation's definition, which every scan of that datasource reads under,
+    not a filter the scan imposes on a consumer's rows."""
+    if (
+        not isinstance(node, SelectNode)
+        or node.datasource is None
+        or node.datasource.where is None
+    ):
+        return []
+    return list(decompose_condition(node.datasource.where.conditional))
+
+
+def _rows_passed(
+    node: StrategyNode,
+    condition: BoolExpr | None,
+    relation: list[BoolExpr] | None = None,
+) -> bool:
+    """Every atom of `condition` is one `node` applies or already holds, or an
+    atom of `relation` (a scan's own declared `where`, see `_relation_atoms`)."""
     if condition is None:
         return True
     applied = [
@@ -1585,8 +1608,24 @@ def _rows_passed(node: StrategyNode, condition: BoolExpr | None) -> bool:
         for clause in (node.conditions, node.preexisting_conditions)
         if clause is not None
         for atom in decompose_condition(clause)
-    ]
+    ] + (relation or [])
     return all(atom in applied for atom in decompose_condition(condition))
+
+
+def _renders_no_less_completely(b: StrategyNode, a: StrategyNode) -> bool:
+    """`b` may stand in for `a` only where every column `a` holds complete stays
+    complete read off `b`'s parents. Read off a member declared a subset of it
+    (`subset join buyers.id = id` renders `id` from `buyers.id`) a column is
+    only as complete as the subset, and a sibling holding it partial cannot
+    stand in for a complete binding."""
+    would_be_partial = {
+        c.address
+        for c in get_all_parent_partial(a.output_concepts, b.parents, b.environment)
+    }
+    return not any(
+        o.address in would_be_partial and o.address not in a.partial_lcl
+        for o in a.output_concepts
+    )
 
 
 def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
@@ -1646,7 +1685,7 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
             # CASE-WHEN virt-filter with no row-reducing WHERE or semijoin).
             if (
                 a.force_group
-                or not _rows_passed(b, a.conditions)
+                or not _rows_passed(b, a.conditions, _relation_atoms(a))
                 or not (
                     isinstance(a, (SelectNode, MergeNode))
                     or _is_row_preserving_filter(a)
@@ -1666,6 +1705,8 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
             ):
                 continue
             if not all(concept_satisfiable(o, available) for o in a.output_concepts):
+                continue
+            if not _renders_no_less_completely(b, a):
                 continue
             widen_projection(
                 b,
@@ -4316,15 +4357,19 @@ def _bridge_unpaired_parents(
     domain).
 
     A contributor that genuinely cross joins (a global aggregate) is untouched:
-    nothing else renders its column, so it has no candidate."""
+    nothing else renders its column, so it has no candidate.
+
+    A bridge pairs a contributor on whatever they share, which must identify
+    one side's rows (`_key_bridged_members`): a species bucket projected off
+    tree rows, bridged back to those rows on `species`, multiplies both."""
     if len(parents) < 2:
         return parents
+    parents = list(parents)
     outputs = [_pairing_addresses(parent, environment) for parent in parents]
     exposed = {
         gid: _pairing_addresses(node, environment) for gid, node in built.items()
     }
     present = {id(parent) for parent in parents}
-    added: list[StrategyNode] = []
     while True:
         islands = _pairing_islands(outputs)
         if len(islands) < 2:
@@ -4332,10 +4377,104 @@ def _bridge_unpaired_parents(
         bridge = _island_bridge(islands, outputs, exposed, present, built, group_graph)
         if bridge is None:
             break
+        if not _key_bridged_members(
+            parents, outputs, built[bridge], exposed[bridge], environment
+        ):
+            break
+        # a member widened to the bridge's key may now pair its island directly
+        if len(_pairing_islands(outputs)) < 2:
+            continue
         present.add(id(built[bridge]))
-        added.append(built[bridge])
+        parents.append(built[bridge])
         outputs.append(exposed[bridge])
-    return parents + added
+    return parents
+
+
+def _keyed_by(
+    node: StrategyNode, shared: set[str], environment: BuildEnvironment
+) -> bool:
+    """`shared` identifies `node`'s rows: it holds or determines every key of
+    the grain the node resolves to. A node claiming no grain (one row, or
+    nothing known) is taken as keyed, as the merge always has."""
+    return all(
+        key in shared
+        or build_fd_determines(environment, shared, key, include_empty_grain=False)
+        for key in node.resolve().grain.components
+    )
+
+
+def _key_bridged_members(
+    parents: list[StrategyNode],
+    outputs: list[set[str]],
+    bridge: StrategyNode,
+    bridge_pairing: set[str],
+    environment: BuildEnvironment,
+) -> bool:
+    """Make every member the bridge pairs with pair on a key of one side.
+
+    Shared columns that identify neither side's rows multiply both. Repair, in
+    order: widen the member with the bridge's grain keys when its own parents
+    render them (the pair becomes a row-identity lookup); else dedupe the
+    member to the shared columns when they determine everything it renders;
+    else refuse the bridge, and the keyless-join guard names the gap rather
+    than the merge fanning out silently. Edits `parents` and `outputs` in
+    place."""
+    bridge_keys = set(bridge.resolve().grain.components)
+    key_concepts = [c for c in bridge.output_concepts if c.address in bridge_keys]
+    relations = environment.scoped_join_relations()
+    for idx, member in enumerate(parents):
+        shared = outputs[idx] & bridge_pairing
+        if not shared:
+            continue
+        # an authored axis (`subset join a.k = b.k`) is the pairing the
+        # statement asked for, whatever it keys
+        if any(shared & relation for relation in relations):
+            continue
+        if _keyed_by(member, shared, environment) or _keyed_by(
+            bridge, shared, environment
+        ):
+            continue
+        if (
+            len(key_concepts) == len(bridge_keys)
+            and isinstance(member, _WIDENABLE_PROJECTIONS)
+            and not member.force_group
+        ):
+            available = parent_output_addresses(member)
+            # a key the member would hold partial where the bridge holds it
+            # complete is no repair (read off a declared-subset member)
+            partial_on_member = {
+                c.address
+                for c in get_all_parent_partial(
+                    key_concepts, member.parents, environment
+                )
+            } - {c.address for c in bridge.partial_concepts}
+            if not partial_on_member and all(
+                concept_satisfiable(c, available) for c in key_concepts
+            ):
+                widen_projection(
+                    member,
+                    key_concepts,
+                    input_candidates=key_concepts,
+                    available_addresses=available,
+                )
+                outputs[idx] = _pairing_addresses(member, environment)
+                continue
+        if isinstance(member, SelectNode) and all(
+            c.address in shared
+            or build_fd_determines(
+                environment, shared, c.address, include_empty_grain=False
+            )
+            for c in member.output_concepts
+        ):
+            parents[idx] = GroupNode(
+                output_concepts=list(member.output_concepts),
+                input_concepts=list(member.output_concepts),
+                environment=environment,
+                parents=[member],
+            )
+            continue
+        return False
+    return True
 
 
 def _island_bridge(
@@ -5816,6 +5955,9 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
         - (set() if keeps_grain else set(a.grain_components))
         - set(a.output_concepts)
     )
+    # a dimension peel is read with its key, the axis its rows are paired on
+    for pgid in lineage_predecessors(group_graph, group_edges, gid):
+        needed |= attrs[pgid].anchor_keys
     parent_builds = _parent_nodes_for(
         group_graph,
         group_edges,

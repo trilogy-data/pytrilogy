@@ -25,13 +25,13 @@ Top 5 queries where PreQL is longest vs reference SQL
 | 89 | 1,586 | 965 | +621 |
 | 64 | 4,382 | 3,783 | +599 |
 
-Trilogy execution is faster than the reference SQL for 54/99 queries. Total Trilogy execution time is 13.143s vs 12.084s reference SQL time.
+Trilogy execution is faster than the reference SQL for 55/99 queries. Total Trilogy execution time is 13.358s vs 13.365s reference SQL time.
 
 | Performance metric | P10 | P50 | P90 |
 | --- | ---: | ---: | ---: |
-| Trilogy - Reference SQL seconds | -0.091s | -0.001s | +0.051s |
-| Trilogy vs Reference SQL | -34.6% | -4.1% | +60.7% |
-| Trilogy / Reference SQL | 0.65x | 0.96x | 1.61x |
+| Trilogy - Reference SQL seconds | -0.111s | -0.001s | +0.051s |
+| Trilogy vs Reference SQL | -36.3% | -5.5% | +60.7% |
+| Trilogy / Reference SQL | 0.64x | 0.95x | 1.61x |
 
 Top 5 queries where reference SQL is fastest vs Trilogy
 

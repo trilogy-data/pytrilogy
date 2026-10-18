@@ -1763,6 +1763,9 @@ def _group_inputs(gid: str, ctx: _InputPass) -> None:
             if edge_kind(group_edges, sibling, succ) == EdgeKind.EXISTENCE:
                 continue
             outs |= facts[sibling].grain & cap_gid
+        # a dimension peel is read by its key: the reader pairs it with the
+        # rows it decorates on that axis, whatever else it demands
+        outs |= attrs[gid].anchor_keys & cap_gid
     if fact.derivation in GROUPING_DERIVATIONS:
         outs |= fact.grain & cap_gid
         # A grouping group whose grain component is a STATEMENT-scoped join

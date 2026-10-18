@@ -281,11 +281,11 @@ def widen_projection(
             node.input_concepts.append(concept)
             in_addrs.add(concept.address)
             changed = True
-    for concept in output_concepts:
-        if concept.address not in out_addrs:
-            node.output_concepts.append(concept)
-            out_addrs.add(concept.address)
-            changed = True
+    new_outputs = [c for c in output_concepts if c.address not in out_addrs]
+    if new_outputs:
+        # the node keeps its null and partial stamps current for the columns
+        node.add_output_concepts(new_outputs, rebuild=False, unhide=False)
+        changed = True
     if changed and rebuild:
         node.rebuild_cache()
     return changed
