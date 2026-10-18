@@ -501,7 +501,7 @@ def _entity_keys(
     declared: dict[str, _Declared],
     identifying: frozenset[str],
     environment: BuildEnvironment,
-    seen: frozenset[str] = frozenset(),
+    visited: set[str] | None = None,
 ) -> frozenset[str]:
     """The entity keys a concept is a function of. A key is its own entity:
     the `keys` it carries are an FK-path addressing artifact (`customer_id`
@@ -514,7 +514,11 @@ def _entity_keys(
     0)` lists `order_id`), which the aggregate is evaluated OVER, not on.
 
     A rowset key stays its OWN entity: the rowset is a row source, and stores
-    no order references are not rows of `select even_orders.store_id`."""
+    no order references are not rows of `select even_orders.store_id`.
+
+    The answer is every entity reachable from `address`, so each address is
+    expanded once per walk (`visited`): a per-path walk is exponential where
+    the keys cross-reference (a rollup aggregate keyed on its every `by`)."""
     known = declared.get(address)
     if known is None:
         concept = environment.concepts.get(address)
@@ -540,14 +544,14 @@ def _entity_keys(
         # statuses it has: a row of the customer, NULL-valued where it has none
         keys = _group_to_addresses(address, environment) or keys
     keys = frozenset(keys) | axis_member_keys(address, environment)
-    seen = seen | {address}
-    return frozenset().union(
-        *(
-            _entity_keys(k, declared, identifying, environment, seen)
-            for k in keys
-            if k not in seen
-        )
-    )
+    if visited is None:
+        visited = set()
+    visited.add(address)
+    out: set[str] = set()
+    for k in keys:
+        if k not in visited:
+            out |= _entity_keys(k, declared, identifying, environment, visited)
+    return frozenset(out)
 
 
 def entity_keys(
