@@ -152,10 +152,14 @@ def _lower_set_op(
 
     # Each arm is hydrated under its own alias scope so identical surface names
     # (`-> dt` in every arm) mangle to distinct internal addresses; the
-    # positional binding below ties each arm's i-th column to one output.
+    # positional binding below ties each arm's i-th column to one output. The
+    # scope carries the rowset name, or a set op whose arm reads another set-op
+    # rowset would rebind that rowset's arm columns to its own.
+    rowset_name = context.semantic_state.current_rowset_name
+    arm_scope = f"__{rowset_name}_arm" if rowset_name is not None else "__tvf_arm"
     arms: list[SelectStatement] = []
     for i, arm_node in enumerate(arm_nodes):
-        with context.semantic_state.rowset_alias_scope(f"__tvf_arm_{i}"):
+        with context.semantic_state.rowset_alias_scope(f"{arm_scope}_{i}"):
             arm = hydrate(arm_node)
         finalize_select_statement(arm, context)
         arms.append(arm)
@@ -177,7 +181,6 @@ def _lower_set_op(
     # wrapping unmangles the name back to `combined.k`. The inline form has no
     # rowset scope, so its outputs keep their bare names (resolved in the trailing
     # select).
-    rowset_name = context.semantic_state.current_rowset_name
     align_items = [
         AlignItem(
             alias=(
