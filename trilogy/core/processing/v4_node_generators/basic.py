@@ -9,6 +9,10 @@ from trilogy.core.processing.nodes import (
 from trilogy.core.processing.v4_helper.functional_dependency import (
     build_fd_determines,
 )
+from trilogy.core.processing.v4_helper.projection import (
+    renderable_addresses,
+    widen_projection,
+)
 
 from .common import outputs_with_parent_grain_keys, parent_outputs_needed
 
@@ -23,6 +27,29 @@ def basic_regroups(
     return len(parents) == 1 and _grain_claim_needs_group(
         outputs_with_parent_grain_keys(outputs, parents), parents[0], environment
     )
+
+
+def _expose_parent_grain(
+    parent: StrategyNode, parent_grain: set[str], environment: BuildEnvironment
+) -> None:
+    """Widen a projecting parent with the grain keys it claims but does not
+    project when its own inputs render them (a merge over a rowset boundary
+    at the boundary's identity): the keys are what a projection over it
+    widens back to, and dedup is the repair of last resort."""
+    if parent.force_group or not isinstance(parent, (SelectNode, MergeNode)):
+        return
+    exposed = {c.address for c in parent.output_concepts}
+    available = renderable_addresses(parent)
+    keys = [
+        key
+        for address in sorted(parent_grain - exposed)
+        if address in available
+        and (key := environment.concepts.get(address)) is not None
+    ]
+    if keys:
+        widen_projection(
+            parent, keys, input_candidates=keys, available_addresses=available
+        )
 
 
 def _grain_claim_needs_group(
@@ -60,6 +87,7 @@ def _grain_claim_needs_group(
     parent_grain = set(parent.resolve().grain.components)
     if not parent_grain or parent_grain.issubset({c.address for c in outputs}):
         return False
+    _expose_parent_grain(parent, parent_grain, environment)
     if parent_grain.issubset({c.address for c in parent.output_concepts}):
         return False
     claimed = BuildGrain.from_concepts(outputs).components

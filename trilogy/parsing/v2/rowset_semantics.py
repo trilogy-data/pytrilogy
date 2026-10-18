@@ -205,10 +205,12 @@ def rowset_to_concepts_v2(
     # to plain-select rowsets: a multiselect's grain is alignment-based and its
     # per-arm grouping (rollup) / source maps don't fit this single-grain rule.
     rowset_grain: set[str] = set()
+    identity_in_outputs = False
     if isinstance(select_lineage, SelectLineage):
         rowset_grain = {
             orig[c].address for c in select_lineage.grain.components if c in orig
         }
+        identity_in_outputs = all(c in orig for c in select_lineage.grain.components)
     for x in pre_output:
         if x.keys:
             if all(k in orig for k in x.keys):
@@ -253,7 +255,14 @@ def rowset_to_concepts_v2(
         elif all(c in orig for c in x.grain.components):
             x.grain = Grain(components={orig[c].address for c in x.grain.components})
         else:
-            x.grain = default_grain
+            # A column whose own key the rowset hides (`item_name` without
+            # `item_sk`) lives at the rowset's identity: its select grain
+            # when every component is an output, else the whole tuple.
+            x.grain = (
+                Grain(components=set(rowset_grain))
+                if identity_in_outputs and rowset_grain
+                else default_grain
+            )
         # When the source dimension carried no key of its own, its alias is
         # keyed by the source concept itself; remapping that through `orig`
         # (a rowset derived twice from a shared parent) yields a self-key

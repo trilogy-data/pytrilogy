@@ -2,7 +2,7 @@
 # Read by .scripts/check_benchmark_growth.py; remove an entry once the plan shrinks back.
 
 ["tpc_ds_duckdb/zquery76.log"]
-reason = "set-op arm aliases carry their rowset name (`___q76_results_arm_1_*` vs `___tvf_arm_1_*`) so nested set ops cannot collide; same plan, longer names only"
+reason = "set-op arm aliases carry their rowset name (`___q76_results_arm_1_*` vs `___tvf_arm_1_*`) so nested set ops cannot collide, and the final projection of the stack dedups to its output tuple (a set op's projections are its distinct tuples): longer names and one GROUP BY, no added CTE"
 
 ["tpc_ds_duckdb/zquery87.log"]
 reason = "counts the except's tuple with count(grain(last_name, first_name, sale_date)) instead of count(sale_date), which is distinct over a set op; grain() renders as a hash of the three columns"

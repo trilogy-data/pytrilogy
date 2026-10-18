@@ -595,6 +595,10 @@ def test_sixty_four_no_transitive_key_fanout(engine):
         f"{len(set(rows))} distinct"
     )
     assert len(rows) == 2, f"expected 2 rows, got {len(rows)}"
+    # The dimension lookups hang off the agg_99/agg_00 boundaries at the
+    # boundaries' identity; a boundary that claimed that grain without
+    # exposing it left the lookups FULL and RIGHT OUTER over whole dimensions.
+    assert "FULL JOIN" not in sql and "RIGHT OUTER JOIN" not in sql, sql
 
 
 def test_sixty_five(engine):

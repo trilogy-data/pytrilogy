@@ -1316,11 +1316,22 @@ def _apply_grouping_parent_grain_overrides(
     grain, `parent` keeps a redundant fact rescan alive through parent election,
     and that rescan INNER JOINs back onto the ROLLUP rows on their NULL-injected
     grouping keys, fanning every subtotal row out. Each pass only adds to
-    `rides`, so this terminates."""
+    `rides`, so this terminates.
+
+    A rowset boundary is a fixed-grain barrier too: a projection computed
+    pointwise over its handles emits the boundary's rows, so a grain pinned
+    outside that identity (the coalesced axis of a scoped join over the
+    handles) re-anchors to it rather than deduplicating the rows to the axis
+    and re-joining the boundary for every other column."""
     rides: dict[str, frozenset[str]] = {
         gid: fact.grain
         for gid, fact in facts.items()
-        if gid != FINAL_NODE_ID and fact.derivation in GROUPING_DERIVATIONS
+        if gid != FINAL_NODE_ID
+        and fact.grain
+        and (
+            fact.derivation in GROUPING_DERIVATIONS
+            or fact.derivation == Derivation.ROWSET
+        )
     }
     while _extend_grouping_output_rides(
         group_graph, group_edges, facts, lineage_parents, rides
@@ -2463,16 +2474,15 @@ def _terminal_basic_grouping_provider(
     current = attrs[gid]
     if current.derivation != Derivation.BASIC or current.condition_atoms:
         return None
-    if len(current.primary_members) != 1:
-        return None
     if any(successor != FINAL_NODE_ID for successor in group_graph.successors(gid)):
         return None
-    member = environment.concepts.get(current.primary_members[0])
-    read_by_expression = (
-        {c.address for c in member.lineage.concept_arguments}
+    members = [environment.concepts.get(a) for a in current.primary_members]
+    read_by_expression = {
+        c.address
+        for member in members
         if member is not None and member.lineage is not None
-        else set()
-    )
+        for c in member.lineage.concept_arguments
+    }
     expression_inputs = (
         set(current.input_concepts) - set(current.grain_components)
     ) | (read_by_expression & set(current.grain_components))

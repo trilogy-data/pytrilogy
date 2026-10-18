@@ -1417,6 +1417,34 @@ def _alternative_origins(
     ]
 
 
+def _rowset_key_handles(
+    concept: BuildConcept,
+    upstreams: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> list[BuildConcept]:
+    """The handles a BASIC over a rowset's handles is keyed on and does not
+    already read: a row derivation of the rowset reads them, so the boundary
+    exposes the grain the value is computed at."""
+    if concept.derivation != Derivation.BASIC or not concept.keys:
+        return []
+    read_rowsets = {
+        u.lineage.rowset.name
+        for u in upstreams
+        if isinstance(u.lineage, BuildRowsetItem)
+    }
+    upstream_addrs = {u.address for u in upstreams}
+    out: list[BuildConcept] = []
+    for key in sorted(concept.keys - upstream_addrs):
+        handle = environment.concepts.get(key)
+        if (
+            handle is not None
+            and isinstance(handle.lineage, BuildRowsetItem)
+            and handle.lineage.rowset.name in read_rowsets
+        ):
+            out.append(handle)
+    return out
+
+
 def _add_concept(
     concept: BuildConcept,
     environment: BuildEnvironment,
@@ -1650,24 +1678,7 @@ def _add_concept(
     # gets a lineage edge, not just `concept_arguments`.
     fetcher = _UPSTREAM.get(concept.derivation, _upstream_default)
     upstreams = list(fetcher(concept, environment))
-    # A BASIC over a rowset's handles is a row derivation of that rowset, keyed
-    # on the handles it varies with: read them, so the boundary exposes the
-    # grain the value is computed at.
-    if concept.derivation == Derivation.BASIC and concept.keys:
-        read_rowsets = {
-            u.lineage.rowset.name
-            for u in upstreams
-            if isinstance(u.lineage, BuildRowsetItem)
-        }
-        upstream_addrs = {u.address for u in upstreams}
-        for key in sorted(concept.keys - upstream_addrs):
-            handle = environment.concepts.get(key)
-            if (
-                handle is not None
-                and isinstance(handle.lineage, BuildRowsetItem)
-                and handle.lineage.rowset.name in read_rowsets
-            ):
-                upstreams.append(handle)
+    upstreams.extend(_rowset_key_handles(concept, upstreams, environment))
     # A BASIC whose grain is the coalesced axis of a rowset-crossing preserving
     # relation reads the COMPLETED axis row: a null-sensitive scalar
     # (`coalesce(web.qty, 0) + ...`) computed on only the sides it reads gets
