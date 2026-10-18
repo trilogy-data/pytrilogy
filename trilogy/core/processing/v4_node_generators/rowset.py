@@ -3,10 +3,11 @@
 from dataclasses import dataclass, field
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation, SetOperator
+from trilogy.core.enums import Derivation, FunctionType, SetOperator
 from trilogy.core.models.author import MultiSelectLineage, SelectLineage
 from trilogy.core.models.build import (
     BuildConcept,
+    BuildFunction,
     BuildGrain,
     BuildMultiSelectLineage,
     BuildRowsetItem,
@@ -137,20 +138,42 @@ def _nullability_aliases(concept: BuildConcept) -> set[str]:
     return aliases
 
 
-def _is_stacked_key_set(
+def _body_address(handle: BuildConcept) -> str:
+    """The body column a handle re-exposes, through its select alias."""
+    assert isinstance(handle.lineage, BuildRowsetItem)
+    content = handle.lineage.content
+    if (
+        isinstance(content.lineage, BuildFunction)
+        and content.lineage.operator == FunctionType.ALIAS
+    ):
+        return content.lineage.concept_arguments[0].address
+    return content.address
+
+
+def _fans_subset_join(
     built: BuildSelectLineage | BuildMultiSelectLineage,
     derived: list[str],
+    read: list[BuildConcept],
     environment: BuildEnvironment,
 ) -> bool:
-    """A UNION ALL repeats a value its arms share. When every output is a
-    scoped-join key, the repeats are indistinguishable rows of a key set that
-    would only fan the join: dedup them to make the handle grain true."""
-    if not isinstance(built, BuildUnionSelectLineage):
+    """A `subset join` never changes the grain: a rowset on either side of one
+    contributes rows at its join keys plus the columns the query reads, so a
+    body not unique on those must dedup. A select is unique on its grain; a
+    multiselect only on its full output, and a UNION ALL on nothing."""
+    members = {
+        a for pair in environment.domain_graph.declared_subset_pairs() for a in pair
+    }
+    if not members.intersection(derived):
         return False
-    if built.operator != SetOperator.UNION_ALL:
-        return False
-    keys = environment.all_scoped_join_group_members()
-    return all(address in keys for address in derived)
+    if isinstance(built, BuildUnionSelectLineage) and (
+        built.operator == SetOperator.UNION_ALL
+    ):
+        return True
+    read_addresses = {h.address for h in read}
+    if isinstance(built, BuildMultiSelectLineage):
+        return not set(derived) <= read_addresses
+    bodies = {_body_address(h) for h in read if isinstance(h.lineage, BuildRowsetItem)}
+    return not built.grain.components <= bodies
 
 
 def resolve_rowset(
@@ -456,16 +479,15 @@ def resolve_rowset(
     # their shared/pseudonym grain key instead of cross-joining when the
     # boundary exposes no grain. Probes are per-key presence markers, not part
     # of the boundary's row grain.
-    boundary_grain = BuildGrain.from_concepts(
-        [
-            h
-            for h in handles
-            if h.address not in hidden and not is_presence_probe(h.address)
-        ]
-    )
-    dedup = _is_stacked_key_set(built, derived, environment)
+    read = [
+        h
+        for h in handles
+        if h.address not in hidden and not is_presence_probe(h.address)
+    ]
+    boundary_grain = BuildGrain.from_concepts(read)
+    dedup = _fans_subset_join(built, derived, read, environment)
     # A multiselect/union boundary's rows are at the FULL align grain even
-    # when only a subset of its outputs is demanded (`subset join x =
+    # when only a subset of its outputs is demanded (`union join x =
     # all_combos.b` never projects `ch`): the projection does NOT dedup, so
     # stamping the demanded subset as the grain overclaims uniqueness and a
     # downstream aggregate elides its GROUP BY over the per-arm fan. Stamp the

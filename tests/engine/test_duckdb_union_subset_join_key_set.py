@@ -1,11 +1,11 @@
-"""A `union(...)` of keys used as a `subset join` key set must not fan the
-anchor's rows.
+"""A rowset used as a `subset join` key set must not fan the anchor's rows.
 
-The arms stack with UNION ALL, so a key two arms share appears twice; joined
-onto the anchor key, the repeat fanned the anchor rows and `count(key)` counted
-a customer once per arm (q35).
+A `union(...)` stacks its arms with UNION ALL, so a key two arms share
+appears twice; a plain rowset read for one column repeats it on its finer
+grain. Joined onto the anchor key, either repeat fanned the anchor rows and
+`count(key)` counted a customer once per repeat (q35).
 
-Fixture: four customers; customer 1 is in both union arms.
+Fixture: four customers; customer 1 is in both union arms and has two orders.
 """
 
 import pytest
@@ -51,6 +51,10 @@ CASES = {
             "with other as union((where o_amt > 5 select cust_id as csk), "
             "(where o_amt < 8 select cust_id as csk)) -> (csk);"
         ),
+        [("F", 1), ("M", 2)],
+    ),
+    "rowset_finer_than_key": (
+        "with other as select cust_id as csk, o_id as oid;",
         [("F", 1), ("M", 2)],
     ),
 }

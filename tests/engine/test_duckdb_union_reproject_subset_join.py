@@ -178,16 +178,31 @@ subset join s_class = {rhs[1]};
 def test_composite_subset_join_direct_union_rhs_rowset_lhs(executor):
     """Sibling cell the report didn't isolate: rowset LHS joined straight onto
     the union outputs (no re-projection layer). The union rowset participates
-    for real here (no pseudonym collapse), at its own (b, c, ch) grain: the
-    preserving join fans (1, 1) out over both channel rows and null-extends
-    the union-only pair (3, 1). Merge form gives the same rows (parity)."""
+    for real here (no pseudonym collapse). A subset join never changes the
+    grain: the unread `ch` does not fan (1, 1) over both channel rows, and the
+    union-only pair (3, 1) is null-extended."""
     query = """
 select nov_data.brand_id, nov_data.class_id, sum(nov_data.total_sales) as q
 subset join nov_data.brand_id = all_combos.b
 subset join nov_data.class_id = all_combos.c;
 """
     rows = _rows(executor, query)
-    assert rows == [(1, 1, 20), (1, 2, 5), (2, 1, 7), (3, 1, None)]
+    assert rows == [(1, 1, 10), (1, 2, 5), (2, 1, 7), (3, 1, None)]
+
+
+def test_composite_subset_join_direct_union_rhs_reads_channel(executor):
+    query = """
+select nov_data.brand_id, nov_data.class_id, all_combos.ch, sum(nov_data.total_sales) as q
+subset join nov_data.brand_id = all_combos.b
+subset join nov_data.class_id = all_combos.c;
+"""
+    assert _rows(executor, query) == [
+        (1, 1, "catalog", 10),
+        (1, 1, "store", 10),
+        (1, 2, "store", 5),
+        (2, 1, "store", 7),
+        (3, 1, "catalog", None),
+    ]
 
 
 def test_composite_subset_join_union_reproject_rollup(executor):
