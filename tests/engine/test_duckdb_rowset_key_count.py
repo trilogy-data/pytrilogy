@@ -40,6 +40,14 @@ UNION = (
 CASES = {
     "finer_than_key": ("with other as select cust_id as csk, o_id as oid;", 3),
     "key_alone": ("with other as select cust_id as csk;", 4),
+    "unaliased": ("with other as select cust_id, o_id;", 3),
+    "rowset_over_rowset": (
+        (
+            "with inner as select cust_id as csk, o_id as oid; "
+            "with other as select inner.csk, inner.oid;"
+        ),
+        3,
+    ),
     "computed_from_key": (
         "with other as select cust_id + 0 as csk, o_id as oid;",
         4,
@@ -54,5 +62,18 @@ def test_count_rowset_key(case):
     env = Environment()
     env.parse(MODEL)
     executor = Dialects.DUCK_DB.default_executor(environment=env)
-    rows = executor.execute_query(rowset + " select count(other.csk) as n;")
+    column = "other.cust_id" if case == "unaliased" else "other.csk"
+    rows = executor.execute_query(rowset + f" select count({column}) as n;")
     assert rows.fetchall() == [(expected,)]
+
+
+def test_count_rowset_key_grouped_on_the_rest_of_its_grain_is_plain():
+    env = Environment()
+    env.parse(MODEL)
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    query = (
+        "with other as select cust_id as csk, o_id as oid; "
+        "select other.oid, count(other.csk) as n order by other.oid asc;"
+    )
+    assert "distinct" not in executor.generate_sql(query)[-1].lower()
+    assert executor.execute_query(query).fetchall() == [(i, 1) for i in range(1, 5)]

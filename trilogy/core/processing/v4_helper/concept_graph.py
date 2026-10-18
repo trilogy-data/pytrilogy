@@ -1278,25 +1278,53 @@ def _counted_key(concept: BuildConcept) -> BuildConcept | None:
     return content if content.purpose == Purpose.KEY else None
 
 
-def _repeats_in_rowset(key: BuildConcept) -> bool:
-    """A rowset handle passing a key through repeats it wherever its body is
-    finer than the key: a select whose grain the key does not cover, or a
-    UNION ALL stacking arms that share a value. Counting it is still counting
-    the key, so the count renders DISTINCT. A handle computed FROM a key
-    (`cust_id + 0`) is not a pass-through."""
+def _rowset_pass_through(concept: BuildConcept) -> tuple[str, str] | None:
+    """(rowset, body column) of a handle re-exposing a body column as is,
+    through select aliases on either side. A handle computed FROM a column
+    (`cust_id + 0`) passes nothing through."""
+    while (
+        isinstance(concept.lineage, BuildFunction)
+        and concept.lineage.operator == FunctionType.ALIAS
+    ):
+        concept = concept.lineage.concept_arguments[0]
+    lineage = concept.lineage
+    if not isinstance(lineage, BuildRowsetItem):
+        return None
+    content = lineage.content
+    if (
+        isinstance(content.lineage, BuildFunction)
+        and content.lineage.operator == FunctionType.ALIAS
+    ):
+        return lineage.rowset.name, content.lineage.concept_arguments[0].address
+    if content.lineage is None or isinstance(content.lineage, BuildRowsetItem):
+        return lineage.rowset.name, content.address
+    return None
+
+
+def _repeats_in_rowset(
+    key: BuildConcept, aggregate: BuildConcept, environment: BuildEnvironment
+) -> bool:
+    """A rowset handle passing a key through repeats it within a group wherever
+    its body is finer than the key and the group's own keys: a select whose
+    grain those do not cover, or a UNION ALL stacking arms that share a value.
+    Counting it is still counting the key, so the count renders DISTINCT."""
     lineage = key.lineage
     if not isinstance(lineage, BuildRowsetItem):
         return False
     select = lineage.rowset.select
     if isinstance(select, UnionSelectLineage):
         return select.operator == SetOperator.UNION_ALL
-    content = lineage.content.lineage
-    if not isinstance(select, SelectLineage) or not (
-        isinstance(content, BuildFunction) and content.operator == FunctionType.ALIAS
-    ):
+    passed = _rowset_pass_through(key)
+    if not isinstance(select, SelectLineage) or passed is None:
         return False
+    covered = {passed[1]}
+    for address in aggregate.grain.components:
+        grouped = environment.concepts.get(address)
+        through = _rowset_pass_through(grouped) if grouped else None
+        if through is not None and through[0] == passed[0]:
+            covered.add(through[1])
     grain = select.grain.components
-    return bool(grain) and not grain <= {content.concept_arguments[0].address}
+    return bool(grain) and not grain <= covered
 
 
 def _aggregate_distinct_rewritable(
@@ -1591,7 +1619,8 @@ def _add_concept(
             else frozenset()
         ),
         counted_key=counted.address if (counted := _counted_key(concept)) else None,
-        counted_key_repeats=counted is not None and _repeats_in_rowset(counted),
+        counted_key_repeats=counted is not None
+        and _repeats_in_rowset(counted, concept, environment),
         aggregate_operator=(
             concept.lineage.function.operator
             if isinstance(concept.lineage, BuildAggregateWrapper)
