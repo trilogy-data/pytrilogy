@@ -307,8 +307,7 @@ def _materialize_group_graph(
     # through the default bucket and inherits its pushed-down WHEREs. With
     # `then where` stage-qualified condition labels, each stage has its own
     # R_d1; the consuming node's label picks the feeder.
-    d1_root_gids = partition.condition_scans
-    d1_calc_roots_by_stage = partition.condition_roots
+    d1_feeders = partition.condition_feeders
     d1_subgraph = partition.condition_nodes
     # The group-edge `kind` records the strongest concept-level edge that maps
     # to it: lineage > constraint > existence. Lineage means the row stream
@@ -328,11 +327,9 @@ def _materialize_group_graph(
         if kind not in DEPENDENCY_EDGE_KINDS:
             continue
         gu = primary_group[u]
-        if d1_root_gids and v in d1_subgraph:
+        if d1_feeders and v in d1_subgraph:
             stage = condition_stage_of_label(concept_attrs[v].label)
-            feeder_gid = d1_root_gids.get(stage)
-            if feeder_gid is not None and u in d1_calc_roots_by_stage.get(stage, ()):
-                gu = feeder_gid
+            gu = d1_feeders.get(stage, {}).get(u, gu)
         gv = primary_group[v]
         if gu == gv:
             continue

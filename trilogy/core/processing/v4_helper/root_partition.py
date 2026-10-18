@@ -68,6 +68,12 @@ def _needs_pristine_scan(
     # the SELECT's common root. Otherwise the fact columns that exist only
     # to define the set sit in the shared root and drag the SELECT's
     # dimension projection onto the fact instead of its own dim tables.
+    return _defines_existence_set(concept_graph, concept_edges, n)
+
+
+def _defines_existence_set(
+    concept_graph: nx.DiGraph, concept_edges: EdgeMap, n: str
+) -> bool:
     return any(
         edge_kind(concept_edges, n, succ) == EdgeKind.EXISTENCE
         for succ in concept_graph.successors(n)
@@ -120,7 +126,7 @@ def _d1_calc_subgraph(
     concept_edges: EdgeMap,
     concept_attrs: dict[str, ConceptAttrs],
     datasources: Sequence[BuildDatasource],
-) -> tuple[dict[int | None, set[str]], set[str]]:
+) -> tuple[dict[int | None, list[set[str]]], set[str]]:
     """Identify (d1_calc_roots by `then where` stage, d1_subgraph_nodes).
 
     Every condition-phase node (label suffix ``@condition``) is d1. A
@@ -159,14 +165,25 @@ def _d1_calc_subgraph(
     stage_of = {
         n: condition_stage_of_label(concept_attrs[n].label) for n in d1_subgraph
     }
-    roots_by_stage: dict[int | None, set[str]] = {}
+    roots_by_stage: dict[int | None, list[set[str]]] = {}
     for stage in {stage_of[n] for n in (*pristine, *cycle_only)}:
-        hard = _lineage_roots(
-            concept_graph,
-            concept_edges,
-            concept_attrs,
-            [n for n in pristine if stage_of[n] == stage],
-        )
+        # Each semijoin set is its own discovery; other pristine calcs share
+        # one scan, which is what relates (or fails to relate) their facts.
+        set_roots: list[set[str]] = []
+        rest: list[set[str]] = []
+        for n in pristine:
+            if stage_of[n] != stage:
+                continue
+            roots = _lineage_roots(concept_graph, concept_edges, concept_attrs, [n])
+            if _defines_existence_set(concept_graph, concept_edges, n):
+                set_roots.append(roots)
+            else:
+                rest.append(roots)
+        hard_sets = [
+            *set_roots,
+            set().union(*(r for r in rest if not any(r <= s for s in set_roots))),
+        ]
+        hard: set[str] = set().union(*hard_sets)
         soft = (
             _lineage_roots(
                 concept_graph,
@@ -185,8 +202,26 @@ def _d1_calc_subgraph(
             datasources,
         ):
             soft = set()
-        roots_by_stage[stage] = hard | soft
+        roots_by_stage[stage] = _disjoint_scans(hard_sets, soft)
     return roots_by_stage, d1_subgraph
+
+
+def _disjoint_scans(hard_sets: list[set[str]], soft: set[str]) -> list[set[str]]:
+    """One scan per group of pristine root sets sharing a root: sets defined
+    on two facts must not be bridged into one scan, which joins rows neither
+    population owns. A cycle-avoidance root
+    rides the scans it shares a root with, or every scan when it shares none
+    (alone it has no key back to the rows it filters)."""
+    sets = [s for s in hard_sets if s]
+    if soft:
+        sets.append(soft)
+        if all(soft.isdisjoint(s) for s in sets[:-1]):
+            sets = [set().union(*sets)]
+    scans = [
+        set().union(*(sets[i] for i in component))
+        for component in overlap_components(sets)
+    ]
+    return sorted(scans, key=lambda scan: sorted(scan))
 
 
 def _root_join_axis(attrs: ConceptAttrs) -> set[str]:
@@ -297,30 +332,31 @@ def _split_strands_condition_scan(
 
 def _condition_scans(
     concept_attrs: dict[str, ConceptAttrs],
-    d1_calc_roots_by_stage: dict[int | None, set[str]],
-) -> dict[int | None, GroupBucket]:
-    """A ROOT bucket per stage qualifier holding that stage's d1-feeding
-    roots, beside the row stream that keeps them. Only stage-qualified buckets
-    carry a discriminator. Plain-first then by stage, so bucket order does not
-    depend on set iteration order."""
-    scans: dict[int | None, GroupBucket] = {}
-    for stage, d1_calc_roots in sorted(
+    d1_calc_roots_by_stage: dict[int | None, list[set[str]]],
+) -> dict[int | None, list[GroupBucket]]:
+    """ROOT buckets per stage qualifier, one per disjoint scan of that stage's
+    d1-feeding roots, beside the row stream that keeps them. Only
+    stage-qualified and later scans carry a discriminator. Plain-first then by
+    stage, so bucket order does not depend on set iteration order."""
+    scans: dict[int | None, list[GroupBucket]] = {}
+    for stage, root_sets in sorted(
         d1_calc_roots_by_stage.items(), key=lambda kv: (-1 if kv[0] is None else kv[0])
     ):
-        if not d1_calc_roots:
-            continue
-        bucket = GroupBucket(
-            depth_label=DepthLabel.ROOT_D1,
-            derivation=Derivation.ROOT,
-            grain_components=frozenset(),
-            reason=RootReason.CONDITION,
-        )
-        if stage is not None:
-            bucket.discriminator = f"stage:s{stage}"
-        for node in sorted(d1_calc_roots):
-            data = concept_attrs[node]
-            bucket.add_member(data.address, node, data.depth_label)
-        scans[stage] = bucket
+        for index, d1_calc_roots in enumerate(root_sets):
+            bucket = GroupBucket(
+                depth_label=DepthLabel.ROOT_D1,
+                derivation=Derivation.ROOT,
+                grain_components=frozenset(),
+                reason=RootReason.CONDITION,
+            )
+            parts = ([f"stage:s{stage}"] if stage is not None else []) + (
+                [f"scan:{index}"] if index else []
+            )
+            bucket.discriminator = ":".join(parts)
+            for node in sorted(d1_calc_roots):
+                data = concept_attrs[node]
+                bucket.add_member(data.address, node, data.depth_label)
+            scans.setdefault(stage, []).append(bucket)
     return scans
 
 
@@ -1024,10 +1060,10 @@ def _split_root_dimension_clusters(
 class RootPartition:
     """What the partition decided that the group graph's wiring reads: each
     condition stage's private scan, the roots it holds, the condition-phase
-    nodes that read them, and where each demanded region's rows come from."""
+    nodes that read them, and where each demanded region's rows come from.
+    `condition_feeders` maps each stage's roots to the scan that holds them."""
 
-    condition_scans: dict[int | None, str]
-    condition_roots: dict[int | None, set[str]]
+    condition_feeders: dict[int | None, dict[str, str]]
     condition_nodes: set[str]
     domains: list[RegionDomain]
 
@@ -1081,7 +1117,9 @@ def partition_root_demand(
     roots_by_stage, condition_nodes = _d1_calc_subgraph(
         concept_graph, concept_edges, concept_attrs, datasources
     )
-    condition_roots: set[str] = set().union(*roots_by_stage.values())
+    condition_roots: set[str] = set().union(
+        *(roots for sets in roots_by_stage.values() for roots in sets)
+    )
     _prune_existence_exclusive_roots(
         concept_graph,
         concept_edges,
@@ -1134,12 +1172,20 @@ def partition_root_demand(
     )
     trace_buckets("entity clusters peeled", buckets, primary_group)
     scans = _condition_scans(concept_attrs, roots_by_stage)
-    buckets.update({scan.group_id: scan for scan in scans.values()})
+    buckets.update(
+        {scan.group_id: scan for stage_scans in scans.values() for scan in stage_scans}
+    )
     carry_region_spans(buckets, own, keyspace, environment)
     trace_buckets("condition scans added, spans carried", buckets, primary_group)
     return RootPartition(
-        {stage: scan.group_id for stage, scan in scans.items()},
-        roots_by_stage,
+        {
+            stage: {
+                root: scan.group_id
+                for scan, roots in zip(stage_scans, roots_by_stage[stage])
+                for root in roots
+            }
+            for stage, stage_scans in scans.items()
+        },
         condition_nodes,
         domains,
     )
