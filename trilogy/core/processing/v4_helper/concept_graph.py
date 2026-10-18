@@ -1223,11 +1223,9 @@ def _aggregate_input_grain(
         # walking only top-level concept args would miss its fact inputs. Two
         # aggregates over different facts at the same output grain would then
         # look identical and co-source into one raw fact-to-fact join before
-        # aggregating (fan-out). A referenced concept that is itself a
-        # row-shape barrier (inner aggregate / rowset) has already collapsed to
-        # its own grain and is consumed opaquely; pulling its grain here would
-        # force a spurious regroup of the outer aggregate's input (a
-        # grand-total sum over rowset outputs would dedup the rowset rows).
+        # aggregating (fan-out). A referenced inner aggregate or window has
+        # already collapsed to its own grain and is consumed opaquely; a
+        # rowset member is read at its rowset's identity, as a bare one is.
         if isinstance(arg, BuildConcept):
             sub_args = [arg]
         elif isinstance(arg, BuildConceptArgs):
@@ -1235,7 +1233,10 @@ def _aggregate_input_grain(
                 c
                 for c in arg.concept_arguments
                 if isinstance(c, BuildConcept)
-                and c.derivation not in ROW_SHAPE_BARRIER_DERIVATIONS
+                and (
+                    c.derivation == Derivation.ROWSET
+                    or c.derivation not in ROW_SHAPE_BARRIER_DERIVATIONS
+                )
             ]
         else:
             continue
@@ -1649,6 +1650,24 @@ def _add_concept(
     # gets a lineage edge, not just `concept_arguments`.
     fetcher = _UPSTREAM.get(concept.derivation, _upstream_default)
     upstreams = list(fetcher(concept, environment))
+    # A BASIC over a rowset's handles is a row derivation of that rowset, keyed
+    # on the handles it varies with: read them, so the boundary exposes the
+    # grain the value is computed at.
+    if concept.derivation == Derivation.BASIC and concept.keys:
+        read_rowsets = {
+            u.lineage.rowset.name
+            for u in upstreams
+            if isinstance(u.lineage, BuildRowsetItem)
+        }
+        upstream_addrs = {u.address for u in upstreams}
+        for key in sorted(concept.keys - upstream_addrs):
+            handle = environment.concepts.get(key)
+            if (
+                handle is not None
+                and isinstance(handle.lineage, BuildRowsetItem)
+                and handle.lineage.rowset.name in read_rowsets
+            ):
+                upstreams.append(handle)
     # A BASIC whose grain is the coalesced axis of a rowset-crossing preserving
     # relation reads the COMPLETED axis row: a null-sensitive scalar
     # (`coalesce(web.qty, 0) + ...`) computed on only the sides it reads gets

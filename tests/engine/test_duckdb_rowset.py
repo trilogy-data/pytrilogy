@@ -1250,7 +1250,8 @@ order by combined.store_agg.item_code nulls first,
 limit 100;
 """
     sql = executor.generate_sql(query)[-1]
-    assert "combined_store_agg_store_qty" in sql
+    final_group_by = sql.rsplit("GROUP BY", 1)[1].split("ORDER BY")[0]
+    assert "store_agg_store_qty" in final_group_by
     results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
     assert results == [(1, 10.0, 5.0, 3.0), (2, 20.0, 7.0, 9.0)]
 
