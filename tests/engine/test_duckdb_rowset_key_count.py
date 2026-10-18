@@ -36,6 +36,10 @@ query '''select 1 id, 1 c union all select 2, 3''';
 UNION = (
     "with other as union((select ws_cust as csk), (select cs_cust as csk)) -> (csk);"
 )
+EXCEPT = (
+    "with other as except((select cust_id as csk, o_id as x), "
+    "(select cs_cust as csk, cs_id + 100 as x)) -> (csk, x);"
+)
 
 CASES = {
     "finer_than_key": ("with other as select cust_id as csk, o_id as oid;", 3),
@@ -53,6 +57,7 @@ CASES = {
         4,
     ),
     "union_arms": (UNION, 3),
+    "except_wider_than_key": (EXCEPT, 3),
 }
 
 
@@ -77,3 +82,11 @@ def test_count_rowset_key_grouped_on_the_rest_of_its_grain_is_plain():
     )
     assert "distinct" not in executor.generate_sql(query)[-1].lower()
     assert executor.execute_query(query).fetchall() == [(i, 1) for i in range(1, 5)]
+
+
+def test_count_set_op_grain_counts_each_grain_value():
+    env = Environment()
+    env.parse(MODEL)
+    executor = Dialects.DUCK_DB.default_executor(environment=env)
+    query = EXCEPT + " select count(grain(other.csk, other.x)) as n;"
+    assert executor.execute_query(query).fetchall() == [(4,)]

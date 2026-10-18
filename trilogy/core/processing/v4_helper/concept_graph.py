@@ -1306,14 +1306,16 @@ def _repeats_in_rowset(
 ) -> bool:
     """A rowset handle passing a key through repeats it within a group wherever
     its body is finer than the key and the group's own keys: a select whose
-    grain those do not cover, or a UNION ALL stacking arms that share a value.
-    Counting it is still counting the key, so the count renders DISTINCT."""
+    grain those do not cover, a UNION ALL stacking arms that share a value, or
+    a set op deduplicating rows wider than the key. Counting it is still
+    counting the key, so the count renders DISTINCT; `count(grain(...))`
+    counts the body's grain instead."""
     lineage = key.lineage
     if not isinstance(lineage, BuildRowsetItem):
         return False
     select = lineage.rowset.select
     if isinstance(select, UnionSelectLineage):
-        return select.operator == SetOperator.UNION_ALL
+        return select.operator == SetOperator.UNION_ALL or len(select.align.items) > 1
     passed = _rowset_pass_through(key)
     if not isinstance(select, SelectLineage) or passed is None:
         return False
