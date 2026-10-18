@@ -511,7 +511,7 @@ def test_aggregate_by_grain_with_derived_of_key():
 
 
 def test_literal_measure_aggregate_beside_key():
-    """A literal-measure aggregate (`max(1)`) beside a real key: the grain keys
+    """A literal-measure aggregate (`sum(1)`) beside a real key: the grain keys
     are its only tie to the model, so connectivity must keep those edges (a
     literal measure has no functional inputs to anchor it otherwise). Was a
     DisconnectedConceptsException: {cnt}; {store}."""
@@ -527,6 +527,6 @@ union all select 2, 1
 union all select 3, 2
 ''';
 
-select store, max(1) -> cnt;
+select store, sum(1) -> cnt;
 """)[-1].fetchall()
     assert sorted((r.store, r.cnt) for r in rows) == [(1, 1), (2, 1)]

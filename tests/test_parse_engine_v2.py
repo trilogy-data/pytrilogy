@@ -779,7 +779,7 @@ def test_empty_top_level_rollup_inherits_build_grain() -> None:
     query = """
 const a <- unnest([1, 2, 3]);
 const b <- unnest([1, 1, 2]);
-auto sx <- max(1);
+auto sx <- sum(1);
 select
     a,
     b,

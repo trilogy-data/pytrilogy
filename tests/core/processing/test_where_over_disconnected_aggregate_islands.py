@@ -95,10 +95,10 @@ def test_where_beside_a_constant_output_still_plans():
 def test_parentless_group_keeps_literal_producible_outputs():
     # The refusal above works by no longer trusting a group whose parents all
     # failed to build. A group that legitimately has no parents must survive it:
-    # `max(1)`, a constant and a parameter render from literals alone, and
+    # `sum(1)`, a constant and a parameter render from literals alone, and
     # `concept_satisfiable` reads their empty row lineage as a dead end.
     engine = Dialects.DUCK_DB.default_executor(environment=Environment())
-    assert engine.execute_text("select max(1) as c;")[0].fetchall() == [(1,)]
+    assert engine.execute_text("select sum(1) as c;")[0].fetchall() == [(1,)]
     assert (
         engine.execute_text("const c <- 10; select c as x where c > 50;")[0].fetchall()
         == []
@@ -111,8 +111,9 @@ def test_parentless_group_keeps_literal_producible_outputs():
 @pytest.mark.parametrize(
     "select, expected",
     [
+        ("sum(1) as n", [(1,)]),
+        ("count(sale_id) as c, sum(1) as n", [(2, 1)]),
         ("max(5) as m", [(5,)]),
-        ("count(sale_id) as c, max(5) as m", [(2, 5)]),
         ("min(5) as n, max(5) as m", [(5, 5)]),
     ],
 )
