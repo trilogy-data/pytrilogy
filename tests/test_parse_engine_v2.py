@@ -526,6 +526,32 @@ def test_parse_text_v2_not_like_infix(
 
 
 @pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
+@pytest.mark.parametrize(
+    "condition",
+    ["lower(x) <> lower(y)", "x <> 'STORE'", "x<>y", "n <> 1 and n <= 2 and n < 3"],
+)
+def test_sql_not_equal_is_an_alias_for_ne(backend: ParserBackend, condition: str):
+    from trilogy.core.models.author import Comparison
+
+    prelude = "key n int;\nproperty n.x string;\nproperty n.y string;\n"
+    query = f"select n where {condition};"
+    canonical = query.replace("<>", " != ").replace("  ", " ")
+    with _using_backend(backend):
+        _, statements = parse_text(prelude + query, Environment())
+        _, expected = parse_text(prelude + canonical, Environment())
+        rendered = Renderer().render_statement_string(statements)
+        _, again = parse_text(rendered, Environment())
+    assert "<>" not in rendered and "!=" in rendered, rendered
+    assert Renderer().render_statement_string(again) == rendered
+    assert str(statements[-1].where_clause) == str(expected[-1].where_clause)
+    conditional = statements[-1].where_clause.conditional
+    first = conditional
+    while not isinstance(first, Comparison):
+        first = first.left
+    assert first.operator == ComparisonOperator.NE
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
 def test_parse_text_v2_named_predicate_usable_in_filter(backend: ParserBackend) -> None:
     # The named predicate is reusable inside a `?` inline-aggregate filter.
     with _using_backend(backend):

@@ -422,7 +422,7 @@
 
     having: "HAVING"i conditional
 
-    COMPARISON_OPERATOR: /(\s+is\s+not\s|\s+is\s|\s+in\s|\s+not\s+in\s|=|>=|<=|!=|>|<)/i
+    COMPARISON_OPERATOR: /(\s+is\s+not\s|\s+is\s|\s+in\s|\s+not\s+in\s|=|>=|<>|<=|!=|>|<)/i
 
     between_comparison: "between"i expr "and"i expr
 
