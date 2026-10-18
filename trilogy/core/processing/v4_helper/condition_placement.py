@@ -1479,11 +1479,26 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
         )
     agg_outputs = _aggregate_outputs(row_inputs, buckets)
     if _routes_to_final_for_cross_grain_aggregates(agg_outputs, buckets):
+        # FINAL sits above a select window, which must rank the filtered
+        # rows: host on the window's input instead.
+        windows = [
+            gid
+            for gid in restricted
+            if gid in d0_group_ids and buckets[gid].derivation == Derivation.WINDOW
+        ]
         out.append(
             ConditionPlacement(
                 atom=atom,
-                group_ids=(FINAL_NODE_ID,),
-                reason=PlacementReason.FINAL_CROSS_GRAIN_AGGREGATE,
+                group_ids=(
+                    tuple(_upstream_most(windows, host_graph))
+                    if windows
+                    else (FINAL_NODE_ID,)
+                ),
+                reason=(
+                    PlacementReason.UPSTREAM_MOST
+                    if windows
+                    else PlacementReason.FINAL_CROSS_GRAIN_AGGREGATE
+                ),
             )
         )
         return out
