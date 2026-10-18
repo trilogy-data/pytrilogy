@@ -69,7 +69,7 @@ def test_subset_join_key_set_counts_distinct_customers(case):
     assert executor.execute_query(rowset + COUNT_BY_GENDER).fetchall() == expected
 
 
-def test_union_rowset_projection_keeps_stacked_rows():
+def test_union_rowset_projection_is_its_distinct_tuples():
     env = Environment()
     env.parse(MODEL)
     executor = Dialects.DUCK_DB.default_executor(environment=env)
@@ -77,4 +77,4 @@ def test_union_rowset_projection_keeps_stacked_rows():
         "with other as union((select ws_cust as csk), (select cs_cust as csk)) -> (csk);"
         " select other.csk order by other.csk asc;"
     ).fetchall()
-    assert rows == [(1,), (1,), (2,), (3,), (3,)]
+    assert rows == [(1,), (2,), (3,)]

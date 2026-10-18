@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation, FunctionType, SetOperator
+from trilogy.core.enums import Derivation, FunctionType
 from trilogy.core.models.author import MultiSelectLineage, SelectLineage
 from trilogy.core.models.build import (
     BuildConcept,
@@ -12,7 +12,6 @@ from trilogy.core.models.build import (
     BuildMultiSelectLineage,
     BuildRowsetItem,
     BuildSelectLineage,
-    BuildUnionSelectLineage,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -150,6 +149,24 @@ def _body_address(handle: BuildConcept) -> str:
     return content.address
 
 
+def _body_grain(
+    built: BuildSelectLineage, derived: list[str], environment: BuildEnvironment
+) -> BuildGrain | None:
+    """A select body's grain in its handles, however few the query demands: a
+    demanded subset is no row identity, and claiming one lets a downstream
+    aggregate skip deduplicating to its own grain. None when a grain column
+    has no handle."""
+    by_body: dict[str, BuildConcept] = {}
+    for address in sorted(derived):
+        handle = environment.concepts.get(address)
+        if handle is not None and isinstance(handle.lineage, BuildRowsetItem):
+            by_body.setdefault(_body_address(handle), handle)
+    grain = built.grain.components
+    if not grain or not grain <= by_body.keys():
+        return None
+    return BuildGrain.from_concepts([by_body[c] for c in sorted(grain)])
+
+
 def _fans_subset_join(
     built: BuildSelectLineage | BuildMultiSelectLineage,
     derived: list[str],
@@ -159,16 +176,12 @@ def _fans_subset_join(
     """A `subset join` never changes the grain: a rowset on either side of one
     contributes rows at its join keys plus the columns the query reads, so a
     body not unique on those must dedup. A select is unique on its grain; a
-    multiselect only on its full output, and a UNION ALL on nothing."""
+    multiselect only on its full output (a UNION ALL's includes its arm key)."""
     members = {
         a for pair in environment.domain_graph.declared_subset_pairs() for a in pair
     }
     if not members.intersection(derived):
         return False
-    if isinstance(built, BuildUnionSelectLineage) and (
-        built.operator == SetOperator.UNION_ALL
-    ):
-        return True
     read_addresses = {h.address for h in read}
     if isinstance(built, BuildMultiSelectLineage):
         return not set(derived) <= read_addresses
@@ -500,6 +513,8 @@ def resolve_rowset(
         ]
         if full_handles:
             boundary_grain = BuildGrain.from_concepts(full_handles)
+    elif isinstance(built, BuildSelectLineage) and not dedup:
+        boundary_grain = _body_grain(built, derived, environment) or boundary_grain
     node: StrategyNode = RowsetNode(
         output_concepts=handles,
         input_concepts=boundary.inputs,

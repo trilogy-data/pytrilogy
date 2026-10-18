@@ -312,8 +312,6 @@ class ConceptAttrs:
     aggregate_partial_keys: frozenset[str] = frozenset()
     # the key a COUNT counts (`count(order_id)`), whatever its input grain
     counted_key: str | None = None
-    # the counted key is a rowset pass-through its body repeats
-    counted_key_repeats: bool = False
     # the aggregate's function, None for any other concept
     aggregate_operator: FunctionType | None = None
     keys: frozenset[str] = frozenset()

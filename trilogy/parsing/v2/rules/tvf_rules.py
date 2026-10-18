@@ -3,13 +3,21 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from trilogy.constants import MAGIC_TVF_UNION_NAME
-from trilogy.core.enums import ConceptSource, Derivation, Modifier, Purpose, SetOperator
+from trilogy.core.enums import (
+    ConceptSource,
+    Derivation,
+    FunctionType,
+    Modifier,
+    Purpose,
+    SetOperator,
+)
 from trilogy.core.exceptions import InvalidSyntaxException
 from trilogy.core.models.author import (
     AlignClause,
     AlignItem,
     Concept,
     ConceptRef,
+    Function,
     Metadata,
     RowsetItem,
     RowsetLineage,
@@ -21,8 +29,12 @@ from trilogy.core.models.core import (
     TraitDataType,
     ValidatedType,
 )
-from trilogy.core.statements.author import SelectStatement, UnionSelectStatement
-from trilogy.parsing.common import union_item_to_concept
+from trilogy.core.statements.author import (
+    SelectItem,
+    SelectStatement,
+    UnionSelectStatement,
+)
+from trilogy.parsing.common import constant_to_concept, union_item_to_concept
 from trilogy.parsing.v2.rules.concept_rules import metadata_from_meta
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
@@ -118,6 +130,71 @@ _TVF_SURFACE_NAMES: dict[SetOperator, str] = {
 }
 
 
+# A UNION ALL's synthetic per-arm key: each arm's tuples are distinct, so
+# (arm, outputs) identifies every stacked tuple and the stack is a set.
+ARM_KEY = "__arm"
+
+
+def _add_arm_key(
+    arm: SelectStatement, scope: str, index: int, context: RuleContext
+) -> None:
+    key = constant_to_concept(index, f"{scope}{ARM_KEY}", context.environment.namespace)
+    context.add_select_concept(key)
+    arm.selection.append(SelectItem(content=key.reference))
+
+
+def _identity_positions(
+    arms: list[SelectStatement],
+    operator: SetOperator,
+    width: int,
+    context: RuleContext,
+) -> set[int]:
+    """Output positions identifying a set op's tuples: each arm's grain (read
+    through its select aliases), or its whole output tuple where its grain is
+    not among its outputs (as for any select), over the arms its tuples come
+    from."""
+    positions: set[int] = set()
+    for arm in _tuple_sources(arms, operator):
+        addresses = [
+            _alias_source(c.address, context) for c in arm.output_components[:width]
+        ]
+        grain = arm.grain.components
+        if grain and grain <= set(addresses):
+            positions |= {i for i, a in enumerate(addresses) if a in grain}
+        else:
+            positions |= set(range(width))
+    return positions
+
+
+def _tuple_sources(
+    arms: list[SelectStatement], operator: SetOperator
+) -> list[SelectStatement]:
+    """The arms a set op's tuples come from: an except/intersect's are the
+    first arm's."""
+    return arms if operator == SetOperator.UNION_ALL else arms[:1]
+
+
+def _is_arm_key(arms: list[SelectStatement], pos: int, context: RuleContext) -> bool:
+    """A key every source arm passes through stays a key outside the
+    identity."""
+    for arm in arms:
+        concept = context.concepts.get(arm.output_components[pos].address)
+        if concept is None or concept.purpose != Purpose.KEY:
+            return False
+    return True
+
+
+def _alias_source(address: str, context: RuleContext) -> str:
+    concept = context.concepts.get(address)
+    if (
+        concept is not None
+        and isinstance(concept.lineage, Function)
+        and concept.lineage.operator == FunctionType.ALIAS
+    ):
+        return concept.lineage.concept_arguments[0].address
+    return address
+
+
 def _lower_set_op(
     node: SyntaxNode,
     context: RuleContext,
@@ -149,6 +226,7 @@ def _lower_set_op(
         )
 
     outputs: list[TVFOutputItem] = hydrate(output_node)
+    declared = len(outputs)
 
     # Each arm is hydrated under its own alias scope so identical surface names
     # (`-> dt` in every arm) mangle to distinct internal addresses; the
@@ -157,19 +235,22 @@ def _lower_set_op(
     # rowset would rebind that rowset's arm columns to its own.
     rowset_name = context.semantic_state.current_rowset_name
     arm_scope = f"__{rowset_name}_arm" if rowset_name is not None else "__tvf_arm"
+    stacked = operator == SetOperator.UNION_ALL
     arms: list[SelectStatement] = []
     for i, arm_node in enumerate(arm_nodes):
         with context.semantic_state.rowset_alias_scope(f"{arm_scope}_{i}"):
             arm = hydrate(arm_node)
+        if stacked:
+            _add_arm_key(arm, f"{arm_scope}_{i}", i, context)
         finalize_select_statement(arm, context)
         arms.append(arm)
 
     for i, arm in enumerate(arms):
-        n = len(arm.output_components)
-        if n != len(outputs):
+        n = len(arm.output_components) - stacked
+        if n != declared:
             raise InvalidSyntaxException(
                 f"{surface} arm {i} projects {n} column(s) but the output signature "
-                f"declares {len(outputs)}. Each arm must project exactly one "
+                f"declares {declared}. Each arm must project exactly one "
                 "column per output item, in order."
             )
 
@@ -181,6 +262,8 @@ def _lower_set_op(
     # wrapping unmangles the name back to `combined.k`. The inline form has no
     # rowset scope, so its outputs keep their bare names (resolved in the trailing
     # select).
+    if stacked:
+        outputs = [*outputs, TVFOutputItem(name=ARM_KEY, purpose=Purpose.KEY)]
     align_items = [
         AlignItem(
             alias=(
@@ -196,6 +279,10 @@ def _lower_set_op(
     ]
     align_c = AlignClause(items=align_items)
 
+    positions = _identity_positions(arms, operator, declared, context)
+    if stacked:
+        positions.add(declared)
+    identity = {f"{namespace}.{align_items[p].alias}" for p in positions}
     derived_concepts = []
     for pos, out in enumerate(outputs):
         concept = union_item_to_concept(
@@ -203,7 +290,14 @@ def _lower_set_op(
             align_c,
             arms,
             context.environment,
-            purpose=out.purpose,
+            purpose=out.purpose
+            or (
+                Purpose.KEY
+                if pos in positions
+                or _is_arm_key(_tuple_sources(arms, operator), pos, context)
+                else Purpose.PROPERTY
+            ),
+            keys=identity,
             datatype=out.datatype,
             nullable=out.nullable,
         )

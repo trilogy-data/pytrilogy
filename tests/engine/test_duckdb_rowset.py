@@ -645,8 +645,9 @@ order by combined.k asc, combined.v asc;
     assert "UNION ALL" in sql
     assert "FULL JOIN" not in sql
     results = [tuple(r) for r in executor.execute_text(query)[0].fetchall()]
-    # Row count == sum of arm rows (stack, not join); each arm contributes 2 rows.
-    assert results == [(1, 10), (1, 30), (2, 5), (2, 5)]
+    # A stack of the arms' (k, v) tuples; projecting (k, v) returns each tuple
+    # once, as from any relation (the stacked (2, 5) is summed twice, below).
+    assert results == [(1, 10), (1, 30), (2, 5)]
 
 
 def test_tvf_union_named_aggregating_consumer():
@@ -826,13 +827,15 @@ def test_tvf_union_renamed_output_preserves_arm_duplicates():
     # silently dropping a row vs the bare projection.
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_text(_TVF_UNION_FIXTURE)
-    bare = [tuple(r) for r in executor.execute_text("""
+    bare_query = """
 with combined as union(
     (where yr = 2001 select item_id -> k, val -> v),
     (where yr = 2002 select item_id -> k, val -> v)
 ) -> (k, v);
 select combined.k, combined.v order by 1, 2;
-""")[0].fetchall()]
+"""
+    bare_sql = executor.generate_sql(bare_query)[-1]
+    bare = [tuple(r) for r in executor.execute_text(bare_query)[0].fetchall()]
     renamed_sql = executor.generate_sql("""
 with combined as union(
     (where yr = 2001 select item_id -> k, val -> v),
@@ -847,11 +850,9 @@ with combined as union(
 ) -> (k, v);
 select combined.k as kk, combined.v as vv order by 1, 2;
 """)[0].fetchall()]
-    assert bare == [(1, 10), (1, 30), (2, 5), (2, 5)]
+    assert bare == [(1, 10), (1, 30), (2, 5)]
     assert renamed == bare
-    # the rename must not introduce a collapsing GROUP BY over the stack: only the
-    # two per-arm group bys remain, none on the outer projection.
-    assert renamed_sql.count("GROUP BY") == 2
+    assert renamed_sql.count("GROUP BY") == bare_sql.count("GROUP BY")
 
 
 def test_tvf_union_inline_output_self_alias_errors():

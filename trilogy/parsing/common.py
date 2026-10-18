@@ -1714,6 +1714,7 @@ def union_item_to_concept(
     purpose: Purpose | None = None,
     datatype: DataType | TraitDataType | ValidatedType | None = None,
     nullable: bool = False,
+    keys: set[str] | None = None,
 ) -> Concept:
     """Build one positional output concept of a relational ``union(...)`` TVF.
 
@@ -1748,11 +1749,10 @@ def union_item_to_concept(
         )
     merged_datatype = datatype if datatype is not None else inferred
 
-    # The grain of stacking two selects (UNION ALL) is unknowable in general, so
-    # every union output is its own grain component: a KEY, never a metric. (A
-    # metric output would be dropped from downstream grain and break consumers
-    # that re-aggregate the stacked result; an explicit grain clause could refine
-    # this later.) An explicit signature purpose still wins.
+    # A KEY output is its own grain component; a PROPERTY is keyed on `keys`,
+    # the set op's grain (its arms' grain positions, plus a UNION ALL's arm
+    # key). Never a metric: a metric output would be dropped from downstream
+    # grain and break consumers that re-aggregate the stacked result.
     new_selects = [x.as_lineage(environment) for x in selects]
     union_lineage = UnionSelectLineage(
         selects=new_selects,
@@ -1760,16 +1760,21 @@ def union_item_to_concept(
         namespace=align.namespace,
         hidden_components={y for x in new_selects for y in x.hidden_components},
     )
+    purpose = purpose or Purpose.KEY
     new = Concept(
         name=align.alias,
         datatype=merged_datatype,
-        purpose=purpose or Purpose.KEY,
+        purpose=purpose,
         lineage=union_lineage,
-        grain=Grain(),
+        grain=(
+            Grain(components={f"{align.namespace}.{align.alias}"})
+            if purpose == Purpose.KEY
+            else Grain(components=keys or set())
+        ),
         namespace=align.namespace,
         granularity=Granularity.MULTI_ROW,
         derivation=Derivation.TVF_UNION,
-        keys=None,
+        keys=keys if purpose != Purpose.KEY else None,
         # A stacked column is nullable wherever ANY arm's is: the arms are
         # rows of one column, not sides of a join. Read as non-nullable,
         # sibling aggregates over it rejoin on their shared group keys with
