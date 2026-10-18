@@ -23,8 +23,9 @@ from trilogy.core.enums import (
     Derivation,
     FunctionType,
     Purpose,
+    SetOperator,
 )
-from trilogy.core.models.author import SelectLineage
+from trilogy.core.models.author import SelectLineage, UnionSelectLineage
 from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
@@ -1276,6 +1277,27 @@ def _counted_key(concept: BuildConcept) -> BuildConcept | None:
     return content if content.purpose == Purpose.KEY else None
 
 
+def _repeats_in_rowset(key: BuildConcept) -> bool:
+    """A rowset handle passing a key through repeats it wherever its body is
+    finer than the key: a select whose grain the key does not cover, or a
+    UNION ALL stacking arms that share a value. Counting it is still counting
+    the key, so the count renders DISTINCT. A handle computed FROM a key
+    (`cust_id + 0`) is not a pass-through."""
+    lineage = key.lineage
+    if not isinstance(lineage, BuildRowsetItem):
+        return False
+    select = lineage.rowset.select
+    if isinstance(select, UnionSelectLineage):
+        return select.operator == SetOperator.UNION_ALL
+    content = lineage.content.lineage
+    if not isinstance(select, SelectLineage) or not (
+        isinstance(content, BuildFunction) and content.operator == FunctionType.ALIAS
+    ):
+        return False
+    grain = select.grain.components
+    return bool(grain) and not grain <= {content.concept_arguments[0].address}
+
+
 def _aggregate_distinct_rewritable(
     concept: BuildConcept,
     datasources: Sequence[BuildDatasource],
@@ -1568,6 +1590,7 @@ def _add_concept(
             else frozenset()
         ),
         counted_key=counted.address if (counted := _counted_key(concept)) else None,
+        counted_key_repeats=counted is not None and _repeats_in_rowset(counted),
         aggregate_operator=(
             concept.lineage.function.operator
             if isinstance(concept.lineage, BuildAggregateWrapper)

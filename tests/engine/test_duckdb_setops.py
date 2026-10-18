@@ -272,7 +272,7 @@ with combined as union(
 select count(combined.k) -> total;
 """
     sql = executor.generate_sql(query)[-1]
-    assert _rows(executor, query) == [(4,)]
+    assert _rows(executor, query) == [(2,)]
     assert sql.count('as "c"') == 0, sql
 
 
@@ -328,7 +328,7 @@ with stacked as union(
 select count(kept.k) -> except_count, count(stacked.ku) -> union_count;
 """,
     )
-    assert rows == [(1, 5)]
+    assert rows == [(1, 3)]
 
 
 def test_except_requires_two_arms():

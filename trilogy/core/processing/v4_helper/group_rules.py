@@ -386,7 +386,7 @@ def _partition_standard_aggregates(
             layer_addrs = {data.address for _, data in layer}
             bucket.aggregate_distinct_addrs = (
                 distinct_by_key.get(key, set()) & layer_addrs
-            )
+            ) | {data.address for _, data in layer if data.counted_key_repeats}
             for node, data in layer:
                 _add_member(bucket, node, data)
             buckets.append(bucket)
@@ -516,6 +516,7 @@ def _partition_grouped_aggregates(
                 and (
                     members[i][1].aggregate_input_grain != frozenset({counted})
                     or residual - {counted}
+                    or members[i][1].counted_key_repeats
                 )
             }
             bucket.aggregate_first_row_grains = _first_row_grains(

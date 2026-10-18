@@ -31,7 +31,7 @@ CASES = {
         INTERSECT
         + "with u as union((select sc.csk as csk), (select a_cust as csk)) -> (csk);"
         + "select count(u.csk) as n;",
-        [(5,)],
+        [(3,)],
     ),
     "except_over_intersect": (
         INTERSECT
@@ -49,7 +49,7 @@ CASES = {
         UNION
         + "with u as union((select sc.csk as csk), (select a_cust as csk)) -> (csk);"
         + "select count(u.csk) as n;",
-        [(9,)],
+        [(4,)],
     ),
 }
 
