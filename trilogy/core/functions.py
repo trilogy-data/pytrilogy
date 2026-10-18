@@ -1770,7 +1770,9 @@ def _is_unfiltered_constant(arg: Any, environment: Environment) -> bool:
         return bool(arg.arguments) and all(
             _is_unfiltered_constant(child, environment) for child in arg.arguments
         )
-    return _is_constant_count_argument(arg, environment)
+    if isinstance(arg, (ConceptRef, Concept, int, float, str, bool)):
+        return _is_constant_count_argument(arg, environment)
+    return False
 
 
 def _is_constant_count_argument(arg: Any, environment: Environment) -> bool:
