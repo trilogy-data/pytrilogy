@@ -1527,20 +1527,6 @@ class FunctionFactory:
             arg_count=arg_count,
         )
         func.validate_arguments()
-        if (
-            operator in (FunctionType.SUM, FunctionType.AVG)
-            and full_args
-            and self.environment is not None
-            and _is_unfiltered_constant(full_args[0], self.environment)
-        ):
-            name = operator.value
-            raise InvalidSyntaxException(
-                f"`{name}(<constant>)` aggregates a constant, which has no rows to "
-                "count: it returns the constant, never a row count. To count "
-                "rows, count a non-null key: `count(<key>)`, or "
-                "`count(grain(key1, key2))` when the row identity takes several "
-                "keys; for a conditional count use `count(<key> ? condition)`."
-            )
         return func
 
     def retype_expression(self, node: Any) -> None:
@@ -1757,22 +1743,6 @@ def argument_to_purpose(arg) -> Purpose:
 
         case _:
             raise ValueError(f"Cannot parse arg purpose for {arg} of type {type(arg)}")
-
-
-def _is_unfiltered_constant(arg: Any, environment: Environment) -> bool:
-    """A constant with no `?` filter: a filtered one (`sum(1 ? cond)`) takes
-    the condition's rows, so it counts them."""
-    if isinstance(arg, FilterItem):
-        return False
-    if isinstance(arg, Parenthetical):
-        return _is_unfiltered_constant(arg.content, environment)
-    if isinstance(arg, Function) and arg.operator != FunctionType.UNNEST:
-        return bool(arg.arguments) and all(
-            _is_unfiltered_constant(child, environment) for child in arg.arguments
-        )
-    if isinstance(arg, (ConceptRef, Concept, int, float, str, bool)):
-        return _is_constant_count_argument(arg, environment)
-    return False
 
 
 def _is_constant_count_argument(arg: Any, environment: Environment) -> bool:
