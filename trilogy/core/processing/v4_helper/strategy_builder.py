@@ -1673,6 +1673,7 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
         if id(b) in dropped or not isinstance(b, SelectNode) or b.force_group:
             continue
         available = parent_output_addresses(b)
+        coalescing = b.environment.domain_graph.coalescing_relation_members()
         b_regions = region_reads(b)
         for a in parents:
             if a is b or id(a) in dropped or not a.output_concepts:
@@ -1699,6 +1700,13 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
             if any(_synthesizes_handle(o, b, available) for o in a.output_concepts):
                 continue
             if id(a) in coalesced_merges:
+                continue
+            # A `union join` mate answers for the member only on its own
+            # side's rows: the other side's keys are what `a` contributes.
+            if any(
+                o.address in coalescing and o.address not in available
+                for o in a.output_concepts
+            ):
                 continue
             if any(
                 crosses_unsourced_aggregate(o, available) for o in a.output_concepts

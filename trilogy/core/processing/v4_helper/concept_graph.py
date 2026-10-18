@@ -62,6 +62,7 @@ from .functional_dependency import (
     origin_relation_stored,
 )
 from .models import ConceptAttrs
+from .network_build import absorbs_null
 from .projection import (
     concept_satisfiable,
     decided_at_output_grain,
@@ -1675,14 +1676,26 @@ def _add_concept(
     ):
         upstream_addrs = {u.address for u in upstreams}
         scoped = _statement_scoped_relation_members(environment)
+        # Under a `union join` every side null-extends, so a NULL-absorbing
+        # scalar reads the axis from each side: the merge pads below it.
+        coalescing = (
+            environment.domain_graph.coalescing_relation_members()
+            if absorbs_null(concept)
+            else frozenset()
+        )
         for addr in sorted(out_grain & scoped):
-            axis = environment.concepts.get(addr)
-            if (
-                axis is not None
-                and addr not in upstream_addrs
-                and _relation_crosses_row_shape_barrier(addr, environment)
-            ):
-                upstreams.append(axis)
+            if not _relation_crosses_row_shape_barrier(addr, environment):
+                continue
+            relation = {addr} | (
+                _relation_mates(addr, environment) & coalescing
+                if addr in coalescing
+                else set()
+            )
+            for member in sorted(relation - upstream_addrs):
+                axis = environment.concepts.get(member)
+                if axis is not None:
+                    upstreams.append(axis)
+                    upstream_addrs.add(member)
     # The `union join` axis an aggregate's input pairs on is read from every
     # side, so each side's scan parents the aggregate.
     upstream_addrs = {u.address for u in upstreams}
