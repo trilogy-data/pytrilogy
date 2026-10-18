@@ -831,6 +831,30 @@ def _rowset_handles_read_by_scalars(
     return list(found.values())
 
 
+def _rowset_grain_keys(
+    outputs: list[BuildConcept], grain_only: dict[str, set[str]]
+) -> list[BuildConcept]:
+    """Rowset handles an output aggregate is grouped `by` without reading them
+    (`sum(x) by rs.key`). A grain-only key is no join edge, but grouping by a
+    rowset's rows pairs them with the measure's, and that pairing needs a
+    declared join."""
+    found: dict[str, BuildConcept] = {}
+    stack = list(outputs)
+    seen: set[str] = set()
+    while stack:
+        concept = stack.pop()
+        if concept.address in seen or concept.derivation == Derivation.ROWSET:
+            continue
+        seen.add(concept.address)
+        keys = grain_only.get(concept.address, set())
+        for arg in concept.concept_arguments:
+            if arg.address in keys and arg.derivation == Derivation.ROWSET:
+                found.setdefault(arg.address, arg)
+            elif arg.derivation in READ_THROUGH_DERIVATIONS:
+                stack.append(arg)
+    return list(found.values())
+
+
 def _rowsets_read_by(concepts: list[BuildConcept]) -> set[str]:
     """Names of the rowsets whose handles these concepts are or derive from
     (`buyers_a.cust_id as a_cust` reads `buyers_a`); the walk stops at a
@@ -1127,6 +1151,9 @@ def raise_if_disconnected_for(
                 concepts = unique(concepts + handles, "address")
     grain_only = _aggregate_grain_only_parents(environment)
     bound = _bound_addresses(g)
+    grain_keys = _rowset_grain_keys(outputs, grain_only)
+    output_addresses |= {c.address for c in grain_keys}
+    concepts = unique(concepts + grain_keys, "address")
     subgraphs = disconnected_components(
         environment,
         concepts,
