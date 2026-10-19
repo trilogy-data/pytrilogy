@@ -827,13 +827,20 @@ def _aggregate_axis_members(
     coalescing = environment.domain_graph.coalescing_relation_members()
     # a NULL-absorbing argument is evaluated on every axis row, padded ones too
     absorbing = null_sensitive(concept)
+    # a `by` rename of a member (`a.k as k`) names the member's relation
+    named = {
+        c.address
+        for address in out_grain
+        if (grain_concept := environment.concepts.get(address)) is not None
+        for c in through_renames([grain_concept])
+    } | set(out_grain)
     for addr in _aggregate_relation_members(
         concept, environment, aggregate_input_grain
     ):
         relation = {addr} | _relation_mates(addr, environment)
-        if relation & out_grain:
+        if relation & named:
             widen.add(addr)
-        if relation & coalescing and (absorbing or not relation & out_grain):
+        if relation & coalescing and (absorbing or not relation & named):
             coalesced |= relation
     return frozenset(widen), frozenset(coalesced)
 
@@ -1081,6 +1088,45 @@ def _statement_scoped_relation_members(environment: BuildEnvironment) -> frozens
     return _relation_members_declared_by(environment, lambda e: e.null_extends)
 
 
+def renamed_coalescing_relation(
+    concept: BuildConcept, environment: BuildEnvironment
+) -> list[BuildConcept]:
+    """The `union join` relation a pure rename (through any chain of renames)
+    projects, every member of it; empty for anything else."""
+    if not (
+        isinstance(concept.lineage, BuildFunction)
+        and concept.lineage.operator == FunctionType.ALIAS
+    ):
+        return []
+    coalescing = environment.domain_graph.coalescing_relation_members()
+    sources = {c.address for c in through_renames([concept])} & coalescing
+    relation = set().union(
+        *({s} | (_relation_mates(s, environment) & coalescing) for s in sources)
+    )
+    return [
+        c
+        for address in sorted(relation)
+        if (c := environment.concepts.get(address)) is not None and c.address == address
+    ]
+
+
+def through_renames(concepts: list[BuildConcept]) -> list[BuildConcept]:
+    """`concepts` plus the sources their pure renames project."""
+    out: list[BuildConcept] = []
+    stack = list(concepts)
+    while stack:
+        concept = stack.pop()
+        out.append(concept)
+        lineage = concept.lineage
+        if (
+            isinstance(lineage, BuildFunction)
+            and lineage.operator == FunctionType.ALIAS
+            and isinstance(lineage.arguments[0], BuildConcept)
+        ):
+            stack.append(lineage.arguments[0])
+    return out
+
+
 def _unsourced_relation_mates(
     mandatory_list: list[BuildConcept],
     conditions: list[BuildWhereClause],
@@ -1109,7 +1155,8 @@ def _unsourced_relation_mates(
     """
     if not environment.scoped_join_key_groups:
         return []
-    demanded = {c.address for c in mandatory_list} | {
+    # a rename projects its source: `a.k as k` demands the member `a.k`
+    demanded = {c.address for c in through_renames(mandatory_list)} | {
         c.address for clause in conditions for c in clause.concept_arguments
     }
     authored = environment.statement_authored_addresses
@@ -1757,6 +1804,14 @@ def _add_concept(
                 if axis is not None:
                     upstreams.append(axis)
                     upstream_addrs.add(member)
+        # A rename of a `union join` member is the coalesced axis, as the bare
+        # member is; its build grain is empty (the alias collapses onto the
+        # member), so the axis is read off its source, from every side.
+        upstreams.extend(
+            c
+            for c in renamed_coalescing_relation(concept, environment)
+            if c.address not in upstream_addrs
+        )
     # The `union join` axis an aggregate's input pairs on is read from every
     # side, so each side's scan parents the aggregate.
     upstream_addrs = {u.address for u in upstreams}
