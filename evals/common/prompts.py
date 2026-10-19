@@ -41,6 +41,7 @@ zero-row result means the query has an issue. Do NOT, however, add/drop/loosen
 filters just to force rows; find and fix the actual mistake.
 {dataset_note}
 Exact response column names do not matter, but the position and values do.
+Return only the columns the question asks for, in that order - no extra helper columns.
 
 Business question {opaque_id}:
 {prompt}{params_block}
@@ -67,6 +68,7 @@ zero-row result means the query has an issue. Do NOT, however, add/drop/loosen
 filters just to force rows; find and fix the actual mistake.
 {dataset_note}
 Exact response column names do not matter, but the position and values do.
+Return only the columns the question asks for, in that order - no extra helper columns.
 
 Business question {opaque_id}:
 {prompt}{params_block}
@@ -101,6 +103,7 @@ zero-row result means the query has an issue. Do NOT, however, add/drop/loosen
 filters just to force rows; find and fix the actual mistake.
 {dataset_note}
 Exact response column names do not matter, but the position and values do.
+Return only the columns the question asks for, in that order - no extra helper columns.
 
 Business questions
 ==================

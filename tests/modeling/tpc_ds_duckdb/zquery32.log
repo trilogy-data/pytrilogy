@@ -1,5 +1,5 @@
 query_id = "32"
-gen_length = 1204
+gen_length = 1228
 preql_size = 361
 comp_size = 527
 generated_sql = """
@@ -35,5 +35,8 @@ FROM
     INNER JOIN \"thoughtful\" on \"cheerful\".\"item_sk\" = \"thoughtful\".\"item_sk\"
 WHERE
     \"cheerful\".\"discount_amount\" > \"thoughtful\".\"avg_item_disc\"
+
+HAVING
+    count(*) > 0
 
 LIMIT (100)"""

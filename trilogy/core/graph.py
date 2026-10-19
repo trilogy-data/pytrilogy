@@ -542,6 +542,11 @@ def topological_sort(graph: _GraphBase) -> Iterator[str]:
     return iter(order)
 
 
+def strongly_connected_components(graph: _GraphBase) -> Iterator[set[str]]:
+    """Sinks first: each component follows every component it reaches."""
+    return (set(c) for c in graph._core.strongly_connected_components())
+
+
 def is_directed_acyclic_graph(graph: _GraphBase) -> bool:
     if not graph.directed:
         return False

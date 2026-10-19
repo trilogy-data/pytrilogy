@@ -11,13 +11,15 @@ from trilogy.constants import Rendering
 from trilogy.core.enums import Derivation, FunctionType, Granularity, JoinType, Purpose
 from trilogy.core.env_processor import generate_graph
 from trilogy.core.exceptions import FunctionArgumentException, InvalidSyntaxException
-from trilogy.core.models.author import Concept, FunctionCallWrapper, Grain
+from trilogy.core.models.author import Concept, Function, FunctionCallWrapper, Grain
 from trilogy.core.models.core import DataType
 from trilogy.core.models.environment import Environment
 from trilogy.core.statements.author import ShowStatement
+from trilogy.core.validation.common import easy_query
 from trilogy.dialect.mock import DEFAULT_SCALE_FACTOR
 from trilogy.executor import Executor
 from trilogy.parser import parse_text
+from trilogy.parsing.common import function_to_concept
 
 
 def test_basic_query(duckdb_engine: Executor, expected_results):
@@ -70,6 +72,89 @@ select {expression} as c;
 """
     with raises(InvalidSyntaxException, match=r"count\(grain\(key1, key2\)\)"):
         engine.parse_text(text)
+
+
+_CONSTANT_MODEL = """
+key id int;
+property id.g string;
+datasource t (id, g) grain (id)
+  query '''select 1 as id, 'a' as g union all select 2, 'a' as g
+           union all select 3, 'b' as g''';
+"""
+
+
+@mark.parametrize("where", ["", "where id > 0 "])
+@mark.parametrize(
+    "select, expected",
+    [
+        ("sum(1) as c", [(1,)]),
+        ("sum(1) by * as c", [(1,)]),
+        ("avg(1) as c", [(1,)]),
+        ("g, avg(1) as c", [("a", 1), ("b", 1)]),
+        ("g, sum(1) as c", [("a", 1), ("b", 1)]),
+        ("g, sum(1) by * as c", [("a", 1), ("b", 1)]),
+        ("sum(1) by g as c", [(1,), (1,)]),
+        ("sum(1) by id as c", [(1,), (1,), (1,)]),
+        ("g, sum(1) by id as c", [("a", 1), ("a", 1), ("b", 1)]),
+        ("g, count(id) as n, sum(1) as c", [("a", 2, 1), ("b", 1, 1)]),
+        ("g, sum(1 ? id > 0) as c", [("a", 2), ("b", 1)]),
+        ("g, sum(1) + count(id) as c", [("a", 3), ("b", 2)]),
+        ("sum(sum(1) by id) as c", [(3,)]),
+        ("g, sum(sum(1) by id) as c", [("a", 2), ("b", 1)]),
+        ("avg(sum(1) by id) as c", [(1,)]),
+        ("g, count(id) as n having sum(1) = 1", [("a", 2), ("b", 1)]),
+    ],
+)
+def test_constant_aggregate_is_one_per_output_row(where, select, expected) -> None:
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.parse_text(_CONSTANT_MODEL)
+    rows = engine.execute_text(f"{where}select {select};")[-1].fetchall()
+    assert sorted(tuple(row) for row in rows) == expected
+
+
+@mark.parametrize(
+    "query, expected",
+    [
+        (
+            "select g, sum(1) as c by rollup (g) order by g asc nulls last;",
+            [("a", 1), ("b", 1), (None, 1)],
+        ),
+        ("rowset r <- select g, sum(1) as one;\nselect sum(r.one) as total;", [(2,)]),
+        (
+            (
+                "rowset r <- select id, g, sum(1) as one;\n"
+                "select r.g, sum(r.one) as total order by r.g asc;"
+            ),
+            [("a", 2), ("b", 1)],
+        ),
+    ],
+)
+def test_constant_aggregate_in_rollup_and_rowset(query, expected) -> None:
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.parse_text(_CONSTANT_MODEL)
+    assert [tuple(row) for row in engine.execute_text(query)[-1].fetchall()] == expected
+
+
+@mark.parametrize("dialect", [Dialects.DUCK_DB, Dialects.POSTGRES, Dialects.SQL_SERVER])
+def test_row_count_renders_count_star(dialect: Dialects) -> None:
+    env = Environment()
+    env.parse(
+        "key id int; property id.g string; datasource t (id, g) grain (id) address t;"
+    )
+    row_count = Function(
+        operator=FunctionType.ROW_COUNT,
+        arguments=[],
+        output_datatype=DataType.INTEGER,
+        output_purpose=Purpose.METRIC,
+    )
+    env.add_concept(function_to_concept(parent=row_count, name="rows", environment=env))
+    build = env.materialize_for_select()
+    query = easy_query(
+        concepts=[build.concepts["g"], build.concepts["rows"]],
+        datasource=build.datasources["t"],
+        env=env,
+    )
+    assert 'count(*) as "rows"' in dialect.default_renderer().compile_statement(query)
 
 
 @mark.parametrize("declaration", ["const one <- 1;", "parameter one int default 1;"])
@@ -3599,3 +3684,51 @@ auto folded_date <- case when 1 = 1 then '2020-01-01'::date else '2021-01-01'::d
         "select id, folded_str, folded_null, folded_num, folded_date where folded_str = 'y';"
     )[0].fetchall()
     assert [tuple(r) for r in rows] == [(1, "y", None, 7, date(2020, 1, 1))]
+
+
+_EMPTY_MODEL = """
+key id int;
+property id.state string;
+property id.x float;
+datasource t (id: id, state: state, x: x) grain (id)
+query '''select * from (values (1,'TX',1.0),(2,'TX',2.0),(3,'GA',4.0)) as t(id,state,x)''';
+"""
+
+
+@mark.parametrize(
+    "select",
+    [
+        "sum(x) as n",
+        "count(id) as n",
+        "sum(1) as n",
+        "sum(1) as n, sum(x) as s",
+        "sum(1) as n, count(id) as c",
+        "count(id) by * as n",
+        "state, sum(x) by * as tot",
+        "state, sum(x) as n",
+        "state, sum(x) as n by rollup (state)",
+        "state, sum(x) as n by cube (state)",
+    ],
+)
+def test_where_leaving_no_rows_returns_no_rows(select) -> None:
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.parse_text(_EMPTY_MODEL)
+    assert engine.execute_text(f"where x > 100 select {select};")[-1].fetchall() == []
+
+
+@mark.parametrize(
+    "query, expected",
+    [
+        ("select sum(x) as n, count(id) as c;", [(7.0, 3)]),
+        ("where x > 1 select sum(x) as n, count(id) as c;", [(6.0, 2)]),
+        ("select count(id ? x > 100) as c, sum(x ? x > 100) as s;", [(0, None)]),
+    ],
+)
+def test_grand_total_over_rows_keeps_its_row(query, expected) -> None:
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.parse_text(_EMPTY_MODEL)
+    rows = engine.execute_text(query)[-1].fetchall()
+    assert [
+        tuple(float(v) if v is not None and not isinstance(v, int) else v for v in r)
+        for r in rows
+    ] == expected

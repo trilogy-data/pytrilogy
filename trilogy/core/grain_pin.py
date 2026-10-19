@@ -19,6 +19,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import replace as dc_replace
 from typing import Any, TypeGuard
 
+from trilogy.core import graph as nx
 from trilogy.core.constants import GRAIN_NULL_SENTINEL
 from trilogy.core.domain_graph import DomainGraph
 from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
@@ -155,82 +156,112 @@ def _entity_keys(
     local: Mapping[str, Concept],
     environment: Environment,
     graph: DomainGraph,
-    seen: frozenset[str] = frozenset(),
 ) -> set[str]:
     """The entities `concept` is a function of, as the keyspace reads them
     (`keyspace._entity_keys`): a key is its own entity unless derived (`c` of
     `customer_id as c`, or a key a merge computes), and a derived grouping
     value (`count(..) by status`) stands for the rows it is keyed on, never as
     an input another pinned value could be derived beside. A single-row value
-    (a `<*>` constant) sits beside every row and is no row identity."""
+    (a `<*>` constant) sits beside every row and is no row identity.
+
+    Reads can cycle (a keyless rowset column's grain lists its sibling
+    columns), so the walk is over strongly connected components: a cycle
+    reading nothing outside itself is identified by its members that can be
+    their own identity, the whole keyless rowset."""
     if concept.granularity == Granularity.SINGLE_ROW:
         return set()
-    seen = seen | {concept.address}
-    if concept.purpose == Purpose.KEY and concept.derivation != Derivation.BASIC:
-        origins = [
-            o
-            for o in _merge_origins(concept, local, environment, graph)
-            if o.address not in seen
-        ]
-        if not origins:
-            return {concept.address}
-        out: set[str] = set()
-        for origin in origins:
-            out |= _entity_keys(origin, local, environment, graph, seen)
-        return out
-    if concept.derivation == Derivation.BASIC and concept.lineage is not None:
-        out = _expr_entities(concept.lineage, local, environment, graph, seen, set())
-    else:
-        out = set()
-        for address in _row_keys(concept) - seen:
-            read = _lookup(address, local, environment)
-            if read is not None:
-                out |= _entity_keys(read, local, environment, graph, seen)
-    # a stored or rowset column with no key is its own row identity; a keyless
-    # aggregate, metric or derived value has none to anchor on (an abstract
-    # count resolves its grain through the very select it would anchor)
-    if (
-        out
-        or concept.purpose == Purpose.METRIC
-        or concept.derivation not in (Derivation.ROOT, Derivation.ROWSET)
-    ):
-        return out
-    return {concept.address}
+    reads = nx.DiGraph()
+    concepts = {concept.address: concept}
+    stack = [concept]
+    while stack:
+        current = stack.pop()
+        reads.add_node(current.address)
+        for read in _entity_reads(current, local, environment, graph):
+            if read.granularity == Granularity.SINGLE_ROW:
+                continue
+            reads.add_edge(current.address, read.address)
+            if read.address not in concepts:
+                concepts[read.address] = read
+                stack.append(read)
+    answers: dict[str, set[str]] = {}
+    # sinks first, so every component a cycle reads is already answered
+    for members in nx.strongly_connected_components(reads):
+        out = set().union(
+            *(
+                answers[read]
+                for m in members
+                for read in reads.successors(m)
+                if read not in members
+            )
+        )
+        answer = out or {
+            m
+            for m in members
+            if _own_identity(concepts[m], set(reads.successors(m)) - members)
+        }
+        answers.update(dict.fromkeys(members, answer))
+    return set(answers[concept.address])
 
 
-def _expr_entities(
-    expr: Any,
+def _entity_reads(
+    concept: Concept,
     local: Mapping[str, Concept],
     environment: Environment,
     graph: DomainGraph,
-    seen: frozenset[str],
-    bare: set[str],
-) -> set[str]:
-    """The entities of the rows `expr` reads. An inline aggregate is read on
-    its `by` (a bare one on `bare`, the select's grain), never on its
-    argument's rows."""
+) -> list[Concept]:
+    if concept.purpose == Purpose.KEY and concept.derivation != Derivation.BASIC:
+        return _merge_origins(concept, local, environment, graph)
+    if concept.derivation == Derivation.BASIC and concept.lineage is not None:
+        addresses = _expr_reads(concept.lineage)
+    else:
+        addresses = _row_keys(concept) - {concept.address}
+    return [
+        read
+        for address in sorted(addresses)
+        if (read := _lookup(address, local, environment)) is not None
+    ]
+
+
+def _own_identity(concept: Concept, reads_outside: set[str]) -> bool:
+    """With nothing else to stand on: a key no merge outside its cycle
+    derives, or a stored or rowset column. A keyless aggregate, metric or
+    derived value has none (an abstract count resolves its grain through the
+    very select it would anchor)."""
+    if concept.purpose == Purpose.KEY and concept.derivation != Derivation.BASIC:
+        return not reads_outside
+    return concept.purpose != Purpose.METRIC and concept.derivation in (
+        Derivation.ROOT,
+        Derivation.ROWSET,
+    )
+
+
+def _expr_reads(expr: Any) -> set[str]:
+    """Addresses `expr` reads rows of: an inline aggregate is read on its
+    `by`, never on its argument's rows."""
     if isinstance(expr, ConceptRef):
-        if expr.address in seen:
-            return set()
-        read = _lookup(expr.address, local, environment)
-        return _entity_keys(read, local, environment, graph, seen) if read else set()
+        return {expr.address}
     if isinstance(expr, AggregateWrapper):
-        if not expr.by:
-            return set(bare)
-        out: set[str] = set()
-        for b in expr.by:
-            out |= _expr_entities(b, local, environment, graph, seen, bare)
-        return out
-    out = set()
-    for child in _child_exprs(expr):
-        out |= _expr_entities(child, local, environment, graph, seen, bare)
-    return out
+        return set().union(*(_expr_reads(b) for b in expr.by))
+    return set().union(*(_expr_reads(child) for child in _child_exprs(expr)))
 
 
 def _own_keys(
     expr: Any, environment: Environment, anchors: set[str], graph: DomainGraph
 ) -> set[str]:
-    return _expr_entities(expr, {}, environment, graph, frozenset(), anchors)
+    """The entities of the rows `expr` reads; a bare inline aggregate is read
+    on `anchors`, the select's grain."""
+    if isinstance(expr, ConceptRef):
+        read = _lookup(expr.address, {}, environment)
+        return _entity_keys(read, {}, environment, graph) if read else set()
+    if isinstance(expr, AggregateWrapper):
+        if not expr.by:
+            return set(anchors)
+        return set().union(
+            *(_own_keys(b, environment, anchors, graph) for b in expr.by)
+        )
+    return set().union(
+        *(_own_keys(child, environment, anchors, graph) for child in _child_exprs(expr))
+    )
 
 
 def select_anchors(

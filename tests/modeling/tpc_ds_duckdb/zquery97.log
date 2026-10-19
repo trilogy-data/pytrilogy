@@ -1,5 +1,5 @@
 query_id = "97"
-gen_length = 2305
+gen_length = 2329
 preql_size = 1214
 comp_size = 1159
 generated_sql = """
@@ -58,4 +58,7 @@ SELECT
 	ELSE 0
 	END) as \"both_sale_count\"
 FROM
-    \"thoughtful\""""
+    \"thoughtful\"
+HAVING
+    count(*) > 0
+"""

@@ -220,6 +220,30 @@ INFIX_PARENTS_REQUIRING_PARENS = ARITHMETIC_OPERATORS + (
 )
 
 
+def _aggregates_a_constant(function: Any) -> bool:
+    """`sum(1)` holds one constant per output row, so it collapses like an
+    aggregate already at its grain, whatever rows the group reads."""
+    return (
+        isinstance(function, BuildFunction)
+        and function.operator in FunctionClass.AGGREGATE_FUNCTIONS.value
+        and function.operator != FunctionType.ROW_COUNT
+        and all(c.derivation == Derivation.CONSTANT for c in function.concept_arguments)
+    )
+
+
+def _aggregates_rows(cte: Any) -> bool:
+    """A CTE computing an aggregate over the rows it reads."""
+    return (
+        isinstance(cte, CTE)
+        and cte.group_to_grain
+        and cte.render_from_clause
+        and any(
+            c.derivation == Derivation.AGGREGATE and not cte.source_map.get(c.address)
+            for c in cte.output_columns
+        )
+    )
+
+
 def _needs_arithmetic_parentheses(
     expr: Any, parent_operator: FunctionType | None = None
 ) -> bool:
@@ -702,6 +726,7 @@ FUNCTION_MAP = {
     # aggregate types
     FunctionType.COUNT_DISTINCT: lambda x, types: f"count(distinct {x[0]})",
     FunctionType.COUNT: lambda x, types: f"count({x[0]})",
+    FunctionType.ROW_COUNT: lambda x, types: "count(*)",
     FunctionType.GROUPING: lambda x, types: f"grouping({','.join(x)})",
     FunctionType.GROUPING_ID: lambda x, types: f"grouping_id({','.join(x)})",
     FunctionType.SUM: lambda x, types: f"sum({x[0]})",
@@ -787,6 +812,7 @@ FUNCTION_MAP = {
 AGGREGATE_GRAIN_MATCH_MAP = {
     FunctionType.COUNT_DISTINCT: lambda args, types: f"CASE WHEN {args[0]} IS NOT NULL THEN 1 ELSE 0 END",
     FunctionType.COUNT: lambda args, types: f"CASE WHEN {args[0]} IS NOT NULL THEN 1 ELSE 0 END",
+    FunctionType.ROW_COUNT: lambda args, types: "1",
     FunctionType.SUM: lambda args, types: f"{args[0]}",
     FunctionType.AVG: lambda args, types: f"{args[0]}",
     FunctionType.MAX: lambda args, types: f"{args[0]}",
@@ -1573,7 +1599,9 @@ class BaseDialect:
                 args = [self.render_expr(v, cte) for v in c.lineage.function.arguments]
                 operator = _aggregate_operator(cte, c)
                 if cte.group_to_grain:
-                    if _aggregate_over_collapsed_filter(cte, c.lineage):
+                    if _aggregate_over_collapsed_filter(
+                        cte, c.lineage
+                    ) or _aggregates_a_constant(c.lineage.function):
                         rval = self.FUNCTION_GRAIN_MATCH_MAP[operator](args, [])
                     else:
                         rval = self.FUNCTION_MAP[operator](args, [])
@@ -1636,7 +1664,7 @@ class BaseDialect:
                         )
                     types.append(arg_to_datatype(arg))
 
-                if cte.group_to_grain:
+                if cte.group_to_grain and not _aggregates_a_constant(c.lineage):
                     rval = f"{self.FUNCTION_MAP[c.lineage.operator](args, types)}"
                 else:
 
@@ -2472,7 +2500,7 @@ class BaseDialect:
             # types come from the unrendered arguments; `arguments` at this
             # point are SQL strings, which would type every argument as STRING
             arg_types = [arg_to_datatype(x) for x in e.arguments]
-            if cte and cte.group_to_grain:
+            if cte and cte.group_to_grain and not _aggregates_a_constant(e):
                 return self.FUNCTION_MAP[e.operator](arguments, arg_types)
 
             return self.FUNCTION_GRAIN_MATCH_MAP[e.operator](arguments, arg_types)
@@ -2663,6 +2691,14 @@ class BaseDialect:
                 rendered_sets.append(f"({render_concepts(grouping_set)})")
             return [f"GROUPING SETS ({', '.join(rendered_sets)})"]
         raise ValueError(f"Unsupported aggregate grouping mode {mode}")
+
+    def _grouping_has_empty_set(self, cte: CTE | UnionCTE) -> bool:
+        mode, _, grouping_sets = self._get_aggregate_grouping(cte)
+        if mode in (AggregateGroupingMode.ROLLUP, AggregateGroupingMode.CUBE):
+            return True
+        return mode == AggregateGroupingMode.GROUPING_SETS and any(
+            not grouping_set for grouping_set in grouping_sets
+        )
 
     @staticmethod
     def _constant_output_group_by_fallback(cte: CTE | UnionCTE) -> list[str]:
@@ -2892,6 +2928,15 @@ class BaseDialect:
         else:
             rendered_having = self.render_expr(having, cte) if having else None
 
+        group_by = self.render_cte_group_by(cte, select_concept_index)
+        # A group formed from no rows (a grand total, or the `()` set of a
+        # rollup/cube) is no row, not one NULL (or 0) row.
+        if _aggregates_rows(cte) and (
+            not group_by or self._grouping_has_empty_set(cte)
+        ):
+            rendered_having = " and ".join(
+                ([rendered_having] if rendered_having else []) + ["count(*) > 0"]
+            )
         logger.debug(f"{LOGGER_PREFIX} {len(final_joins)} joins for cte {cte.name}")
         return CompiledCTE(
             name=cte.name,
@@ -2914,7 +2959,7 @@ class BaseDialect:
                     if cte.order_by
                     else None
                 ),
-                group_by=self.render_cte_group_by(cte, select_concept_index),
+                group_by=group_by,
             ),
         )
 

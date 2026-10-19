@@ -1,5 +1,5 @@
 query_id = "28"
-gen_length = 9018
+gen_length = 9042
 preql_size = 2694
 comp_size = 2056
 generated_sql = """
@@ -152,4 +152,7 @@ SELECT
     max(\"cheerful\".\"_virt_filter_lp_cntd_3811294399709285\") as \"B6_CNTD\"
 FROM
     \"cheerful\"
+HAVING
+    count(*) > 0
+
 LIMIT (100)"""

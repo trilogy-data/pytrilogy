@@ -108,7 +108,7 @@ ERROR_CODES: dict[int, str] = {
         "`select distinct s.channel, ...`)."
     ),
     225: (
-        "Expected a join condition. A query-scoped `subset|union join` needs a "
+        "Expected a join condition. A query-scoped `subset|union|equal join` needs a "
         "key equality - write `subset join a.key = b.key` (or `union join a.key "
         "= b.key`). Chain more keys for a composite grain with `= c.key`, and "
         "separate independent joins with `and` (`a.k1 = b.k1 and a.k2 = b.k2`). "
@@ -158,7 +158,7 @@ ERROR_CODES: dict[int, str] = {
         "SAME key instead, extend the equality: `a.k = b.k = c.k`."
     ),
     231: (
-        "A `subset|union join` cannot follow a trailing `where`. Put the join "
+        "A `subset|union|equal join` cannot follow a trailing `where`. Put the join "
         "right after the select list, with the filter either before `select` "
         "or after the join: `where <filters> select <cols> subset join a.key = "
         "b.key` or `select <cols> subset join a.key = b.key where <filters>`. "
@@ -167,6 +167,14 @@ ERROR_CODES: dict[int, str] = {
     232: (
         "A call/copy into target is a file path and must be wrapped in "
         "backticks: write `{path}`, e.g. call `./scripts/notify.py`;"
+    ),
+    233: (
+        "Trilogy has no select-level `by` clause - remove it. Grouping is "
+        "automatic by the non-aggregated select columns, and a select of only "
+        "aggregates already returns one row. To pin ONE aggregate's grain, put "
+        "the `by` on that aggregate, before its alias: `sum(x) by * as total` "
+        "or `sum(x) by store.id as total`. (`by rollup/cube/grouping sets` is "
+        "the only select-level grouping clause.)"
     ),
 }
 
@@ -439,8 +447,19 @@ def detect_clause_after_join(text: str, pos: int) -> int | None:
 
 
 _QUERY_JOIN_RE = re.compile(
-    r"\b(?:left|inner|full|right|cross|subset|union)\s+join\b", re.IGNORECASE
+    r"\b(?:left|inner|full|right|cross|subset|union|equal)\s+join\b", re.IGNORECASE
 )
+_LITERAL_RE = re.compile(
+    r"'''.*?'''|'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\"|#[^\n]*|//[^\n]*", re.DOTALL
+)
+
+
+def _mask_literals(text: str) -> str:
+    """`text` with string literals and comments blanked, positions kept, so
+    keyword scans cannot match inside them."""
+    return _LITERAL_RE.sub(lambda m: re.sub(r"[^\n]", " ", m.group()), text)
+
+
 _SELECT_KW_RE = re.compile(r"\bselect\b", re.IGNORECASE)
 
 
@@ -452,7 +471,7 @@ def detect_join_missing_key(text: str, pos: int) -> int | None:
     join-condition message. Returns the offending join clause's position, or
     None. Shared by both grammar backends."""
     stmt_start = text.rfind(";", 0, pos) + 1
-    joins = list(_QUERY_JOIN_RE.finditer(text, stmt_start, pos + 1))
+    joins = list(_QUERY_JOIN_RE.finditer(_mask_literals(text), stmt_start, pos + 1))
     if not joins:
         return None
     join = joins[-1]
@@ -471,7 +490,7 @@ def detect_join_comma_group(text: str, pos: int) -> int | None:
     if pos >= len(text) or text[pos] != ",":
         return None
     stmt_start = text.rfind(";", 0, pos) + 1
-    joins = list(_QUERY_JOIN_RE.finditer(text, stmt_start, pos))
+    joins = list(_QUERY_JOIN_RE.finditer(_mask_literals(text), stmt_start, pos))
     if not joins:
         return None
     join = joins[-1]
@@ -505,7 +524,7 @@ def misplaced_join_candidate(text: str, pos: int) -> tuple[int, str] | None:
     a malformed key falls through to 225. Returns None when the join is absent or
     already in a valid position. Shared by both grammar backends."""
     stmt_start = text.rfind(";", 0, pos) + 1
-    joins = list(_QUERY_JOIN_RE.finditer(text, stmt_start, pos + 1))
+    joins = list(_QUERY_JOIN_RE.finditer(_mask_literals(text), stmt_start, pos + 1))
     if not joins:
         return None
     join = joins[-1]
@@ -530,7 +549,7 @@ def detect_join_after_trailing_where(text: str, pos: int) -> int | None:
     statement's closing filter, so a well-formed join there fails with a raw
     expectation list. Returns the join's position, or None. Shared by both
     grammar backends."""
-    if _QUERY_JOIN_RE.match(text, pos) is None:
+    if _QUERY_JOIN_RE.match(_mask_literals(text), pos) is None:
         return None
     stmt_start = text.rfind(";", 0, pos) + 1
     selects = list(_SELECT_KW_RE.finditer(text, stmt_start, pos))
@@ -741,6 +760,49 @@ def detect_by_on_non_aggregate(text: str, pos: int) -> int | None:
     if _AGG_CALL_RE.search(text, _by_expr_start(text, i), by_pos) is not None:
         return None
     return by_pos
+
+
+_SELECT_LEVEL_BY_RE = re.compile(
+    r"(?:,|\bas\s+[A-Za-z_][\w.]*)\s*\b(by)\b", re.IGNORECASE
+)
+
+
+def detect_select_level_by(text: str, pos: int) -> int | None:
+    """Locate a `by` written as a clause after the select list - after an
+    alias (`sum(x) as total by *`) or a trailing comma (`count(k) as n, by *`).
+    Returns the `by` position, or None. Shared by both grammar backends."""
+    text = _mask_literals(text)
+    stmt_start = text.rfind(";", 0, pos) + 1
+    end = min(len(text), pos + 6)
+    select = None
+    for select in _SELECT_KW_RE.finditer(text, stmt_start, end):
+        pass
+    if select is None:
+        return None
+    for m in _SELECT_LEVEL_BY_RE.finditer(text, select.end(), end):
+        by_pos = m.start(1)
+        if _bracket_depth(text, select.end(), by_pos) != 0:
+            continue
+        if _BY_GROUPING_TAIL_RE.match(text, _skip_space(text, m.end(1))):
+            continue
+        return by_pos
+    return None
+
+
+def _bracket_depth(text: str, start: int, end: int) -> int:
+    depth = 0
+    for c in text[start:end]:
+        if c in "([":
+            depth += 1
+        elif c in ")]":
+            depth -= 1
+    return depth
+
+
+def _skip_space(text: str, i: int) -> int:
+    while i < len(text) and text[i].isspace():
+        i += 1
+    return i
 
 
 def detect_star_argument(text: str, pos: int) -> int | None:

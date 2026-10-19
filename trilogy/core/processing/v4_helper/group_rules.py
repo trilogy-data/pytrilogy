@@ -741,7 +741,14 @@ def _cosource_component_groups(
         # meet at a cross-product of single-row aggregates; forcing them
         # into one scan yields an unsourceable disconnected root group
         # (`select sum(av), sum(bv)` over two unrelated models).
+        # A membership (`x in set`) is a side-channel subselect, never a join,
+        # so its EXISTENCE edge relates no two models.
         undirected = concept_graph.to_undirected()
+        undirected.remove_edges_from(
+            (u, v)
+            for (u, v), edge in concept_edges.items()
+            if edge.kind == EdgeKind.EXISTENCE
+        )
         # A PROPERTY root and its KEY root are FD-related even when the
         # lineage graph never joins them (a pure two-alias projection
         # `select cust_id as x, cname as y` has one BASIC per root and

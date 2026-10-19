@@ -89,7 +89,12 @@ from trilogy.core.processing.nodes.base_node import (
 )
 from trilogy.utility import unique
 
-from .concept_graph import _relation_mates, _statement_scoped_relation_members
+from .concept_graph import (
+    _relation_mates,
+    _statement_scoped_relation_members,
+    renamed_coalescing_relation,
+    through_renames,
+)
 from .condition_injection import (
     ConditionSources,
     condition_row_args,
@@ -1673,6 +1678,7 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
         if id(b) in dropped or not isinstance(b, SelectNode) or b.force_group:
             continue
         available = parent_output_addresses(b)
+        coalescing = b.environment.domain_graph.coalescing_relation_members()
         b_regions = region_reads(b)
         for a in parents:
             if a is b or id(a) in dropped or not a.output_concepts:
@@ -1699,6 +1705,13 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
             if any(_synthesizes_handle(o, b, available) for o in a.output_concepts):
                 continue
             if id(a) in coalesced_merges:
+                continue
+            # A `union join` mate answers for the member only on its own
+            # side's rows: the other side's keys are what `a` contributes.
+            if any(
+                o.address in coalescing and o.address not in available
+                for o in a.output_concepts
+            ):
                 continue
             if any(
                 crosses_unsourced_aggregate(o, available) for o in a.output_concepts
@@ -3739,7 +3752,8 @@ def _add_partial_completion_contributors(
     covered_partial: set[str] = set()
     for gid, concepts in per_group.items():
         node_partial = {c.address for c in built[gid].partial_concepts}
-        for concept in concepts:
+        # a rename projects its member: `a.k as k` covers `a.k`
+        for concept in through_renames(concepts):
             covered.add(concept.address)
             if concept.address in node_partial:
                 covered_partial.add(concept.address)
@@ -3836,6 +3850,16 @@ def _fold_descendant_contributors(
             b_node.rebuild_cache()
 
 
+def _hosts_rename(
+    concept: BuildConcept, available: set[str], environment: BuildEnvironment
+) -> bool:
+    """A node with `available` outputs can render `concept`. A rename of a
+    `union join` member is the coalesced axis: only a node carrying every
+    member of the relation holds all of its rows."""
+    relation = {c.address for c in renamed_coalescing_relation(concept, environment)}
+    return relation <= available and concept_satisfiable(concept, available)
+
+
 def _promote_final_aliases_to_grouping_contributors(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
@@ -3865,7 +3889,7 @@ def _promote_final_aliases_to_grouping_contributors(
         ]
         for gid in grouping_candidates:
             available = {output.address for output in built[gid].output_concepts}
-            if not concept_satisfiable(concept, available):
+            if not _hosts_rename(concept, available, environment):
                 continue
             base = built[gid]
             projected = SelectNode(
@@ -3925,7 +3949,7 @@ def _promote_final_aliases_to_grouping_contributors(
             ):
                 continue
             available = {output.address for output in built[gid].output_concepts}
-            if not all(concept_satisfiable(c, available) for c in members):
+            if not all(_hosts_rename(c, available, environment) for c in members):
                 continue
             if not _feeder_conditions_implied(group_graph, attrs, src_gid, gid):
                 continue

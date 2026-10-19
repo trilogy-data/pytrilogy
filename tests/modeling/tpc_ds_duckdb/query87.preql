@@ -32,5 +32,5 @@ from except(
     )
 ) -> (last_name, first_name, sale_date)
 select
-    count(sale_date) as cnt
+    count(grain(last_name, first_name, sale_date)) as cnt
 ;

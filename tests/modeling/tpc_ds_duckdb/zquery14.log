@@ -1,5 +1,5 @@
 query_id = "14"
-gen_length = 5112
+gen_length = 5160
 preql_size = 1753
 comp_size = 4229
 generated_sql = """
@@ -43,6 +43,9 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"cheerful\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
     \"sales_sale_date_date\".\"D_YEAR\" BETWEEN 1999 AND 2001
+
+HAVING
+    count(*) > 0
 ),
 questionable as (
 SELECT
@@ -121,6 +124,9 @@ FROM
     \"friendly\"
 GROUP BY
     ROLLUP (1, 2, 3, 4)
+HAVING
+    count(*) > 0
+
 ORDER BY 
     \"channel\" asc nulls first,
     \"i_brand_id\" asc nulls first,

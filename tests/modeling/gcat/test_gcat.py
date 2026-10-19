@@ -18,7 +18,7 @@ SELECT
     "lvs_info"."LV_Name" as "name",
     "lvs_info"."LV_Variant" as "variant",
     "lvs_info"."Stage_Name" as "stage_name",
-    sum(1) as "grain_check"
+    count(*) as "grain_check"
 FROM
     "lvs_info"
 GROUP BY

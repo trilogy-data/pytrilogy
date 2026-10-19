@@ -443,6 +443,9 @@ def _run_categories(
         )
         for key in category_keys
     }
+    # Build the shared cache once here; parallel legs racing on a cold cache
+    # collide on the `.building` file (Windows file locks).
+    db.build_database(spec, args.scale_factor)
     print("[categories] spawning parallel runs:")
     for key, out in outs.items():
         print(f"   {key:<10} → {out}")

@@ -4,7 +4,12 @@ from typing import TYPE_CHECKING
 from trilogy.constants import PRESENCE_PROBE_PREFIX, logger
 from trilogy.core.enums import Derivation
 from trilogy.core.graph_models import ReferenceGraph
-from trilogy.core.models.build import BuildConcept, BuildDatasource
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildDatasource,
+    BuildMultiSelectLineage,
+    BuildSelectLineage,
+)
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.join_key_groups import is_join_key_group
 from trilogy.core.processing.node_generators.select_helpers.datasource_nodes import (
@@ -24,6 +29,29 @@ def is_presence_probe(address: str) -> bool:
     (the null-test rewrite for coalescing join key-group members). The single
     place the probe naming convention is interpreted."""
     return PRESENCE_PROBE_PREFIX in address
+
+
+def having_presence_probes(
+    statement: BuildSelectLineage | BuildMultiSelectLineage,
+    environment: BuildEnvironment,
+) -> list[BuildConcept]:
+    """Presence probes the HAVING clause tests that the SELECT does not already
+    project. A HAVING wrap sits above the key-group merge, where the member
+    reads as the group's coalesce, so the probe is demanded as a hidden output
+    to pin it to its member's own boundary."""
+    if not statement.having_clause:
+        return []
+    projected = {c.address for c in statement.output_components}
+    out: list[BuildConcept] = []
+    seen: set[str] = set()
+    for arg in statement.having_clause.concept_arguments:
+        if not is_presence_probe(arg.address):
+            continue
+        if arg.address in projected or arg.address in seen:
+            continue
+        seen.add(arg.address)
+        out.append(environment.concepts.get(arg.address, arg) or arg)
+    return out
 
 
 def probe_member_address(

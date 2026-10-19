@@ -29,6 +29,9 @@ from trilogy.core.processing.discovery_utility import (
     depth_to_prefix,
     raise_if_disconnected_for,
 )
+from trilogy.core.processing.node_generators.presence_probe import (
+    having_presence_probes,
+)
 from trilogy.core.processing.nodes import BuildCaches, SelectNode, StrategyNode
 from trilogy.core.processing.statement_scope import generate_scope_graph
 from trilogy.core.processing.v4_helper.history import (
@@ -262,7 +265,7 @@ def plan_nested_select(
     try:
         try:
             node = search_parent(
-                list(built.output_components),
+                list(built.output_components) + having_presence_probes(built, env),
                 env,
                 history,
                 graph,

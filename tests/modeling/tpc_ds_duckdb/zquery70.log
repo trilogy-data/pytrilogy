@@ -1,5 +1,5 @@
 query_id = "70"
-gen_length = 2955
+gen_length = 2980
 preql_size = 1048
 comp_size = 1258
 generated_sql = """
@@ -67,7 +67,10 @@ SELECT
 FROM
     \"uneven\"
 GROUP BY
-    ROLLUP (2, 1)),
+    ROLLUP (2, 1)
+HAVING
+    count(*) > 0
+),
 juicy as (
 SELECT
     \"yummy\".\"g_state\" + \"yummy\".\"g_county\" as \"lochierarchy\",

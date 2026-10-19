@@ -526,6 +526,32 @@ def test_parse_text_v2_not_like_infix(
 
 
 @pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
+@pytest.mark.parametrize(
+    "condition",
+    ["lower(x) <> lower(y)", "x <> 'STORE'", "x<>y", "n <> 1 and n <= 2 and n < 3"],
+)
+def test_sql_not_equal_is_an_alias_for_ne(backend: ParserBackend, condition: str):
+    from trilogy.core.models.author import Comparison
+
+    prelude = "key n int;\nproperty n.x string;\nproperty n.y string;\n"
+    query = f"select n where {condition};"
+    canonical = query.replace("<>", " != ").replace("  ", " ")
+    with _using_backend(backend):
+        _, statements = parse_text(prelude + query, Environment())
+        _, expected = parse_text(prelude + canonical, Environment())
+        rendered = Renderer().render_statement_string(statements)
+        _, again = parse_text(rendered, Environment())
+    assert "<>" not in rendered and "!=" in rendered, rendered
+    assert Renderer().render_statement_string(again) == rendered
+    assert str(statements[-1].where_clause) == str(expected[-1].where_clause)
+    conditional = statements[-1].where_clause.conditional
+    first = conditional
+    while not isinstance(first, Comparison):
+        first = first.left
+    assert first.operator == ComparisonOperator.NE
+
+
+@pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
 def test_parse_text_v2_named_predicate_usable_in_filter(backend: ParserBackend) -> None:
     # The named predicate is reusable inside a `?` inline-aggregate filter.
     with _using_backend(backend):
@@ -1017,8 +1043,9 @@ with combined as union(
     rowset = parsed[-1]
     assert isinstance(rowset, RowsetDerivationStatement)
     assert isinstance(rowset.select, UnionSelectStatement)
-    # Two positional output bindings, distinct per-arm mangled inputs.
-    assert len(rowset.select.align.items) == 2
+    # Two positional output bindings plus the UNION ALL's arm key, distinct
+    # per-arm mangled inputs.
+    assert len(rowset.select.align.items) == 3
     arm0 = {c.address for c in rowset.select.align.items[0].concepts}
     assert len(arm0) == 2  # one mangled column per arm
     assert env.concepts["combined.k"].derivation == Derivation.ROWSET
@@ -1061,13 +1088,12 @@ def _tvf_union_output(env, name: str):
 
 
 @pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
-def test_parse_text_v2_tvf_union_outputs_are_keys(
+def test_parse_text_v2_tvf_union_outputs_key_on_arm_grain(
     backend: ParserBackend,
 ) -> None:
-    # The grain of stacking two selects (UNION ALL) is unknowable, so every union
-    # output is its own grain component: a KEY, never a metric — even one that
-    # fronts an aggregate arm column. (A metric output would be dropped from
-    # downstream grain and break a consumer that re-aggregates the stack.)
+    # Each arm is grained on its `k`, so `k` and the arm key identify a stacked
+    # tuple; the aggregate-fronting `v` is a property of them, never a metric (a
+    # metric output would be dropped from downstream grain).
     from trilogy.core.enums import Purpose
 
     body = """
@@ -1079,16 +1105,19 @@ with combined as union(
     with _using_backend(backend):
         env, _ = parse_text(_TVF_UNION_PRELUDE + body, Environment())
 
-    assert _tvf_union_output(env, "k").purpose == Purpose.KEY
-    assert _tvf_union_output(env, "v").purpose == Purpose.KEY
+    k = _tvf_union_output(env, "k")
+    v = _tvf_union_output(env, "v")
+    arm = _tvf_union_output(env, "_arm")
+    assert k.purpose == Purpose.KEY
+    assert arm.purpose == Purpose.KEY
+    assert v.purpose == Purpose.PROPERTY
+    assert v.keys == {k.address, arm.address}
 
 
 @pytest.mark.parametrize("backend", [ParserBackend.LARK, ParserBackend.PEST])
 def test_parse_text_v2_tvf_union_outputs_form_the_grain(
     backend: ParserBackend,
 ) -> None:
-    # Because every union output is a key, the stack's grain is all of them — the
-    # dimension AND the aggregate-fronting output both anchor the row identity.
     body = """
 with combined as union(
     (select a -> k, sum(b) -> v),
@@ -1101,8 +1130,9 @@ with combined as union(
     build_env = env.materialize_for_select()
     from trilogy.core.models.build import BuildGrain
 
-    k = build_env.concepts[_tvf_union_output(env, "k").address]
-    v = build_env.concepts[_tvf_union_output(env, "v").address]
-    grain = BuildGrain.from_concepts([k, v], environment=build_env)
-    assert k.address in grain.components
-    assert v.address in grain.components
+    outputs = [
+        build_env.concepts[_tvf_union_output(env, name).address]
+        for name in ("k", "v", "_arm")
+    ]
+    grain = BuildGrain.from_concepts(outputs, environment=build_env)
+    assert grain.components == {outputs[0].address, outputs[2].address}

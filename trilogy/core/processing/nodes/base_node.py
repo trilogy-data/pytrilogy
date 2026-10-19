@@ -16,6 +16,7 @@ from trilogy.core.models.build import (
     BuildNavigationWindowItem,
     BuildNumberingWindowItem,
     BuildOrderBy,
+    BuildRowsetItem,
     LooseBuildConceptList,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -254,6 +255,17 @@ def get_all_parent_nullable(
     )
 
 
+def nullability_aliases(concept: BuildConcept) -> set[str]:
+    """Every address a concept's nullability can arrive under: its own, its
+    pseudonyms and, for a rowset handle, the body content it wraps (a handle
+    is a new address over that content)."""
+    aliases = {concept.address, *concept.pseudonyms}
+    if isinstance(concept.lineage, BuildRowsetItem):
+        content = concept.lineage.content
+        aliases.update((content.address, *content.pseudonyms))
+    return aliases
+
+
 def region_reads(node: "StrategyNode") -> frozenset[str]:
     """The region domains under `node`: the spans whose extension rows are
     rows of its stream. Two nodes can stand in for each other's columns only
@@ -464,7 +476,7 @@ class StrategyNode:
                 self.output_concepts.append(concept)
                 added.append(concept)
                 if concept.address not in nullable_addresses and (
-                    concept.address in upstream_nullable
+                    nullability_aliases(concept) & upstream_nullable
                     or (
                         propagates_argument_nulls(concept)
                         and any(

@@ -72,7 +72,9 @@ def COMPARISON_OPERATOR(
     token: SyntaxToken,
     context: RuleContext,
 ) -> ComparisonOperator:
-    return ComparisonOperator(token.value.strip())
+    value = token.value.strip()
+    # SQL's `<>` is an alias for `!=`
+    return ComparisonOperator.NE if value == "<>" else ComparisonOperator(value)
 
 
 def PLUS_OR_MINUS(token: SyntaxToken, context: RuleContext) -> str:

@@ -1,5 +1,5 @@
 query_id = "23"
-gen_length = 6514
+gen_length = 6539
 preql_size = 1595
 comp_size = 2441
 generated_sql = """
@@ -40,7 +40,10 @@ sweltering as (
 SELECT
     max(\"sparkling\".\"customer_total_in_window\") as \"max_total_cmax\"
 FROM
-    \"sparkling\"),
+    \"sparkling\"
+HAVING
+    count(*) > 0
+),
 friendly as (
 SELECT
     \"macho\".\"_best_customers_best_customer_id\" as \"best_customers_best_customer_id\"

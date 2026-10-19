@@ -28,6 +28,9 @@ PRESENCE_MARKER_PREFIX = f"{VIRTUAL_CONCEPT_PREFIX}_row_present_"
 # Magic rowset name for an inline `from union(...) -> (...)` TVF; its outputs are
 # exposed as bare select-local bindings, so the name never collides.
 MAGIC_TVF_UNION_NAME = "_tvf_union"
+# A UNION ALL's synthetic per-arm key: each arm's tuples are distinct, so
+# (arm, outputs) identifies every stacked tuple and the stack is a set.
+UNION_ARM_KEY = "__arm"
 
 ENV_CACHE_NAME = ".preql_cache.json"
 

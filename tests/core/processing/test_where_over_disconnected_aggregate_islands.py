@@ -108,6 +108,25 @@ def test_parentless_group_keeps_literal_producible_outputs():
     )[0].fetchall() == [(10,)]
 
 
+@pytest.mark.parametrize(
+    "select, expected",
+    [
+        ("sum(1) as n", [(1,)]),
+        ("count(sale_id) as c, sum(1) as n", [(2, 1)]),
+        ("max(5) as m", [(5,)]),
+        ("min(5) as n, max(5) as m", [(5, 5)]),
+    ],
+)
+def test_literal_aggregate_under_where_is_gated(select, expected):
+    engine = _engine()
+    query = f"where sdate > '1990-01-01'::date select {select};"
+    rows = engine.execute_text(query)[0].fetchall()
+    assert [tuple(row) for row in rows] == expected
+    query = "where sdate > '2100-01-01'::date select max(5) as m;"
+    empty = engine.execute_text(query)[0].fetchall()
+    assert empty == []
+
+
 def test_per_island_inline_filter_is_the_working_spelling():
     rows = (
         _engine()

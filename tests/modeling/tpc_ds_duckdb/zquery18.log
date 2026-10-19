@@ -1,5 +1,5 @@
 query_id = "18"
-gen_length = 6763
+gen_length = 6787
 preql_size = 1797
 comp_size = 1593
 generated_sql = """
@@ -83,6 +83,9 @@ FROM
     \"yummy\"
 GROUP BY
     ROLLUP (1, 2, 3, 4)
+HAVING
+    count(*) > 0
+
 ORDER BY 
     \"yummy\".\"cs_billing_customer_current_address_country\" asc nulls first,
     \"yummy\".\"cs_billing_customer_current_address_state\" asc nulls first,

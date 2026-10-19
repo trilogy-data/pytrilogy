@@ -207,7 +207,8 @@ def test_bare_member_projection_unions_domains(tmp_path: Path):
 
 def test_presence_projection_stays_coalesced(tmp_path: Path):
     # Projecting a key-group member still renders the coalesced group axis;
-    # only the null test binds per-side. Both semantics in one statement.
+    # only the null test binds per-side. Both semantics in one statement. The
+    # projection is the distinct tuples: cust 1's two store rows are one row.
     rows = _run(
         tmp_path,
         "select store_set.cust, catalog_set.cust,"
@@ -217,8 +218,8 @@ def test_presence_projection_stays_coalesced(tmp_path: Path):
         " then 1 else 0 end as catalog_only_flag "
         "union join store_set.cust = catalog_set.cust;",
     )
-    want = []
+    want: set[tuple] = set()
     for s, c in _full_join(*SINGLE_KEY):
         axis = s[0] if s is not None else c[0]
-        want.append((axis, axis, 1 if c is None else 0, 1 if s is None else 0))
-    assert rows == sort_rows(want)
+        want.add((axis, axis, 1 if c is None else 0, 1 if s is None else 0))
+    assert rows == sort_rows(list(want))

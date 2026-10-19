@@ -41,7 +41,7 @@ from .edges import (
 )
 from .functional_dependency import build_fd_determines_all
 from .models import ConceptAttrs, GroupBucket, RootReason
-from .projection import decided_at_output_grain
+from .projection import decided_at_output_grain, literal_producible
 from .region_reads import restated_over_region
 from .staged_where import (
     CROSS_ROW_DERIVATIONS,
@@ -1479,14 +1479,21 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
         )
     agg_outputs = _aggregate_outputs(row_inputs, buckets)
     if _routes_to_final_for_cross_grain_aggregates(agg_outputs, buckets):
-        out.append(
-            ConditionPlacement(
-                atom=atom,
-                group_ids=(FINAL_NODE_ID,),
-                reason=PlacementReason.FINAL_CROSS_GRAIN_AGGREGATE,
+        # A gate over aggregates of several grains filters the rows every
+        # selected aggregate and window reads (`sum(x) by *` included): host
+        # it on the row stream that joins its inputs, never on a group that
+        # produces one of them. FINAL only when no such host exists.
+        producers = set(_producer_groups(row_inputs, buckets))
+        restricted = [gid for gid in restricted if gid not in producers]
+        if not restricted:
+            out.append(
+                ConditionPlacement(
+                    atom=atom,
+                    group_ids=(FINAL_NODE_ID,),
+                    reason=PlacementReason.FINAL_CROSS_GRAIN_AGGREGATE,
+                )
             )
-        )
-        return out
+            return out
     # Drop hosts sitting downstream of a d0 row-shape barrier the
     # atom's own producers don't already consume: conditions cannot be
     # pushed past row-shape changes. A cross-boundary atom (an OR of
@@ -1770,8 +1777,13 @@ def _check_final_atoms_precede_aggregates(
     """A row atom hosted only at FINAL filters the aggregates' outputs, not
     their inputs: right only when each aggregate output's grain determines what
     the atom reads. Otherwise the aggregate never saw the WHERE, a wrong answer
-    no later pass can repair."""
-    aggregates = [c for c in mandatory_list if _crosses_outer_aggregate(c)]
+    no later pass can repair. An aggregate over literals alone reads no rows,
+    so the FINAL gate is all a WHERE can do to it."""
+    aggregates = [
+        c
+        for c in mandatory_list
+        if _crosses_outer_aggregate(c) and not literal_producible(c)
+    ]
     if not aggregates:
         return
     hosted_below = {

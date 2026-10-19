@@ -82,7 +82,7 @@ select combined.y, combined.c order by combined.y asc, combined.c asc;
 
 
 def test_union_arm_limit_applies(executor):
-    """Arm one is limited to the 2 latest years; arm two contributes the 4
+    """Arm one is limited to the 2 latest years; arm two contributes the
     years having cat='a'. Dropping the LIMIT yields all 5 years from arm one."""
     assert (
         _rows(
@@ -95,7 +95,7 @@ with combined as union(
 select combined.y order by combined.y asc;
 """,
         )
-        == [(2001,), (2002,), (2011,), (2011,), (2012,), (2012,)]
+        == [(2001,), (2002,), (2011,), (2012,)]
     )
 
 

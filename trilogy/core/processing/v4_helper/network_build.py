@@ -16,14 +16,25 @@ search it feeds.
 
 from __future__ import annotations
 
-from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
+from trilogy.core.enums import (
+    ComparisonOperator,
+    Derivation,
+    FunctionType,
+    Granularity,
+    Purpose,
+)
 from trilogy.core.graph_models import (
     ReferenceGraph,
     datasource_has_filter_sensitive_aggregate,
 )
 from trilogy.core.models.build import (
+    BuildAggregateWrapper,
     BuildCaseElse,
+    BuildCaseSimpleWhen,
+    BuildCaseWhen,
+    BuildComparison,
     BuildConcept,
+    BuildConditional,
     BuildDatasource,
     BuildFunction,
     BuildGrain,
@@ -408,6 +419,58 @@ def _expr_absorbs_null(expr: object) -> bool:
     ):
         return True
     return any(_expr_absorbs_null(arg) for arg in expr.arguments)
+
+
+# skip NULL arguments rather than propagate them
+_NULL_SKIPPING_FUNCTIONS = frozenset(
+    {
+        FunctionType.COALESCE,
+        FunctionType.CONCAT,
+        FunctionType.CONCAT_WS,
+        FunctionType.GREATEST,
+        FunctionType.LEAST,
+    }
+)
+
+
+def null_sensitive(concept: BuildConcept | None) -> bool:
+    """A row value that is not NULL where its inputs are (`coalesce(x, 0)`, `x
+    is null`, `concat`, a CASE with an ELSE), or an aggregate over one: under a
+    `union join` it is evaluated on the padded rows, not padded after."""
+    if concept is None:
+        return False
+    if concept.derivation is Derivation.AGGREGATE and isinstance(
+        concept.lineage, BuildAggregateWrapper
+    ):
+        return any(_expr_null_sensitive(a) for a in concept.lineage.function.arguments)
+    if concept.derivation is not Derivation.BASIC:
+        return False
+    return _expr_null_sensitive(concept.lineage)
+
+
+def _expr_null_sensitive(expr: object) -> bool:
+    if isinstance(expr, BuildConcept):
+        return expr.derivation is Derivation.BASIC and null_sensitive(expr)
+    if isinstance(expr, BuildParenthetical):
+        return _expr_null_sensitive(expr.content)
+    if isinstance(expr, BuildComparison):
+        if expr.operator in (ComparisonOperator.IS, ComparisonOperator.IS_NOT):
+            return True
+        return _expr_null_sensitive(expr.left) or _expr_null_sensitive(expr.right)
+    if isinstance(expr, BuildConditional):
+        return _expr_null_sensitive(expr.left) or _expr_null_sensitive(expr.right)
+    if isinstance(expr, BuildCaseWhen):
+        return _expr_null_sensitive(expr.comparison) or _expr_null_sensitive(expr.expr)
+    if isinstance(expr, BuildCaseSimpleWhen):
+        return _expr_null_sensitive(expr.value_expr) or _expr_null_sensitive(expr.expr)
+    if not isinstance(expr, BuildFunction):
+        return False
+    if expr.operator in _NULL_SKIPPING_FUNCTIONS or (
+        expr.operator in (FunctionType.CASE, FunctionType.SIMPLE_CASE)
+        and any(isinstance(arg, BuildCaseElse) for arg in expr.arguments)
+    ):
+        return True
+    return any(_expr_null_sensitive(arg) for arg in expr.arguments)
 
 
 def _decomposable(

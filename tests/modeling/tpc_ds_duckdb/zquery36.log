@@ -1,5 +1,5 @@
 query_id = "36"
-gen_length = 2365
+gen_length = 2390
 preql_size = 979
 comp_size = 1844
 generated_sql = """
@@ -30,7 +30,10 @@ SELECT
 FROM
     \"thoughtful\"
 GROUP BY
-    ROLLUP (1, 2)),
+    ROLLUP (1, 2)
+HAVING
+    count(*) > 0
+),
 abundant as (
 SELECT
     \"questionable\".\"g_cat\" + \"questionable\".\"g_class\" as \"lochierarchy\",

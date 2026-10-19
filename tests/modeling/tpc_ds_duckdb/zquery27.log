@@ -1,5 +1,5 @@
 query_id = "27"
-gen_length = 2302
+gen_length = 2326
 preql_size = 812
 comp_size = 1550
 generated_sql = """
@@ -34,6 +34,9 @@ FROM
     \"cooperative\"
 GROUP BY
     ROLLUP (1, 2)
+HAVING
+    count(*) > 0
+
 ORDER BY 
     \"cooperative\".\"store_sales_item_id\" asc nulls first,
     \"cooperative\".\"store_sales_store_state\" asc nulls first

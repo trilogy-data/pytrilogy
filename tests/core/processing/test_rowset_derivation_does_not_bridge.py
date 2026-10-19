@@ -80,3 +80,19 @@ def test_a_derivation_across_a_declared_join_plans(ex: Executor) -> None:
         A + "select customer_id, a.n + order_id as x "
         "subset join a.customer_id = customer_id;",
     ) == [(1, 101), (1, 102), (2, 103), (3, None)]
+
+
+@pytest.mark.parametrize(
+    "tail, expected",
+    [("", [(0,), (1,), (2,)]), (" where customer_id in a.customer_id", [(1,), (2,)])],
+)
+def test_an_aggregate_by_a_rowset_key_needs_a_declared_join(
+    ex: Executor, tail: str, expected: list[tuple]
+) -> None:
+    query = A + f"select count(order_id) by a.customer_id as c{tail};"
+    assert ["a.customer_id"] in _subgraphs(ex, query)
+    joined = (
+        A + "select count(order_id) by a.customer_id as c"
+        " subset join a.customer_id = customer_id" + tail + ";"
+    )
+    assert _rows(ex, joined) == expected

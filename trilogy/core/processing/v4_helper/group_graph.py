@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, Purpose
+from trilogy.core.models.author import UnionSelectLineage
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
@@ -307,8 +308,7 @@ def _materialize_group_graph(
     # through the default bucket and inherits its pushed-down WHEREs. With
     # `then where` stage-qualified condition labels, each stage has its own
     # R_d1; the consuming node's label picks the feeder.
-    d1_root_gids = partition.condition_scans
-    d1_calc_roots_by_stage = partition.condition_roots
+    d1_feeders = partition.condition_feeders
     d1_subgraph = partition.condition_nodes
     # The group-edge `kind` records the strongest concept-level edge that maps
     # to it: lineage > constraint > existence. Lineage means the row stream
@@ -328,11 +328,9 @@ def _materialize_group_graph(
         if kind not in DEPENDENCY_EDGE_KINDS:
             continue
         gu = primary_group[u]
-        if d1_root_gids and v in d1_subgraph:
+        if d1_feeders and v in d1_subgraph:
             stage = condition_stage_of_label(concept_attrs[v].label)
-            feeder_gid = d1_root_gids.get(stage)
-            if feeder_gid is not None and u in d1_calc_roots_by_stage.get(stage, ()):
-                gu = feeder_gid
+            gu = d1_feeders.get(stage, {}).get(u, gu)
         gv = primary_group[v]
         if gu == gv:
             continue
@@ -876,10 +874,14 @@ def _refresh_final_contract(
     # contract is the author pairing the sides themselves. A SOLE projected
     # member of its relation is the unified axis, the coalesce of the domains,
     # deduped to the output grain.
+    # A set-op rowset's member is no such side: its rows differ only by the
+    # synthetic arm key, and a set op's projection is its distinct tuples.
     if axis_only_projection:
-        mandatory_addresses = {concept.address for concept in mandatory_list}
+        row_sides = {
+            concept.address for concept in mandatory_list if not _set_op_member(concept)
+        }
         axis_only_projection = any(
-            len({canonical, *members} & mandatory_addresses) >= 2
+            len({canonical, *members} & row_sides) >= 2
             for canonical, members in environment.scoped_join_key_groups.items()
         )
     # ...and a WHERE FINAL tests carries its columns at their own grain: when
@@ -896,6 +898,13 @@ def _refresh_final_contract(
         merge_grain=merge_grain,
         contributor_contracts=tuple(contributors),
         deduplicate_to_grain=not axis_only_projection,
+    )
+
+
+def _set_op_member(concept: BuildConcept) -> bool:
+    lineage = concept.lineage
+    return isinstance(lineage, BuildRowsetItem) and isinstance(
+        lineage.rowset.select, UnionSelectLineage
     )
 
 
@@ -1319,11 +1328,22 @@ def _apply_grouping_parent_grain_overrides(
     grain, `parent` keeps a redundant fact rescan alive through parent election,
     and that rescan INNER JOINs back onto the ROLLUP rows on their NULL-injected
     grouping keys, fanning every subtotal row out. Each pass only adds to
-    `rides`, so this terminates."""
+    `rides`, so this terminates.
+
+    A rowset boundary is a fixed-grain barrier too: a projection computed
+    pointwise over its handles emits the boundary's rows, so a grain pinned
+    outside that identity (the coalesced axis of a scoped join over the
+    handles) re-anchors to it rather than deduplicating the rows to the axis
+    and re-joining the boundary for every other column."""
     rides: dict[str, frozenset[str]] = {
         gid: fact.grain
         for gid, fact in facts.items()
-        if gid != FINAL_NODE_ID and fact.derivation in GROUPING_DERIVATIONS
+        if gid != FINAL_NODE_ID
+        and fact.grain
+        and (
+            fact.derivation in GROUPING_DERIVATIONS
+            or fact.derivation == Derivation.ROWSET
+        )
     }
     while _extend_grouping_output_rides(
         group_graph, group_edges, facts, lineage_parents, rides
@@ -2466,16 +2486,15 @@ def _terminal_basic_grouping_provider(
     current = attrs[gid]
     if current.derivation != Derivation.BASIC or current.condition_atoms:
         return None
-    if len(current.primary_members) != 1:
-        return None
     if any(successor != FINAL_NODE_ID for successor in group_graph.successors(gid)):
         return None
-    member = environment.concepts.get(current.primary_members[0])
-    read_by_expression = (
-        {c.address for c in member.lineage.concept_arguments}
+    members = [environment.concepts.get(a) for a in current.primary_members]
+    read_by_expression = {
+        c.address
+        for member in members
         if member is not None and member.lineage is not None
-        else set()
-    )
+        for c in member.lineage.concept_arguments
+    }
     expression_inputs = (
         set(current.input_concepts) - set(current.grain_components)
     ) | (read_by_expression & set(current.grain_components))

@@ -85,7 +85,9 @@ from trilogy.core.processing.discovery_utility import (
     raise_if_where_outside_partitions,
     raise_if_where_population_split,
 )
-from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
+from trilogy.core.processing.node_generators.presence_probe import (
+    having_presence_probes,
+)
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     describe_incomplete_partitions,
 )
@@ -804,27 +806,6 @@ def _raise_if_disconnected(
         raise_if_filter_disconnected(group, build_environment, graph, comp_of=comp_of)
 
 
-def _having_presence_probes(
-    build_statement: BuildSelectLineage | BuildMultiSelectLineage,
-    build_environment: BuildEnvironment,
-) -> list[BuildConcept]:
-    """Presence probes the HAVING clause tests that the SELECT does not already
-    project."""
-    if not build_statement.having_clause:
-        return []
-    projected = {c.address for c in build_statement.output_components}
-    out: list[BuildConcept] = []
-    seen: set[str] = set()
-    for arg in build_statement.having_clause.concept_arguments:
-        if not is_presence_probe(arg.address):
-            continue
-        if arg.address in projected or arg.address in seen:
-            continue
-        seen.add(arg.address)
-        out.append(build_environment.concepts.get(arg.address, arg) or arg)
-    return out
-
-
 def _plan_query_node(
     build_statement: BuildSelectLineage | BuildMultiSelectLineage,
     build_environment: BuildEnvironment,
@@ -862,7 +843,7 @@ def _plan_query_node(
     # to the member's own boundary and carries it through the join un-fused.
     # The WHERE path needs no such step: its condition args already enter the
     # concept graph.
-    having_probes = _having_presence_probes(build_statement, build_environment)
+    having_probes = having_presence_probes(build_statement, build_environment)
     info = search_concepts_v4(
         mandatory_list=list(build_statement.output_components) + having_probes,
         history=v4_history,

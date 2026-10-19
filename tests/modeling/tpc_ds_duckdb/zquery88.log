@@ -1,5 +1,5 @@
 query_id = "88"
-gen_length = 4108
+gen_length = 4132
 preql_size = 1281
 comp_size = 5658
 generated_sql = """
@@ -35,4 +35,7 @@ SELECT
     sum(\"thoughtful\".\"_virt_agg_count_5772604446830271\") as \"h11_30_to_12\",
     sum(\"thoughtful\".\"_virt_agg_count_8131349511282978\") as \"h12_to_12_30\"
 FROM
-    \"thoughtful\""""
+    \"thoughtful\"
+HAVING
+    count(*) > 0
+"""

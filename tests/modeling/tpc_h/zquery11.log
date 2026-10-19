@@ -1,5 +1,5 @@
 query_id = "11"
-gen_length = 1254
+gen_length = 1279
 preql_size = 285
 comp_size = 581
 generated_sql = """
@@ -29,7 +29,10 @@ thoughtful as (
 SELECT
     sum(\"cheerful\".\"supply_cost\" * \"cheerful\".\"available_quantity\") as \"total_value\"
 FROM
-    \"cheerful\")
+    \"cheerful\"
+HAVING
+    count(*) > 0
+)
 SELECT
     \"cheerful\".\"id\" as \"id\",
     sum(\"cheerful\".\"supply_cost\" * \"cheerful\".\"available_quantity\") as \"part_value\"

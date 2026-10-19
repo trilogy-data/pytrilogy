@@ -3,13 +3,15 @@
 from dataclasses import dataclass, field
 
 from trilogy.constants import logger
-from trilogy.core.enums import Derivation
+from trilogy.core.enums import Derivation, FunctionType
 from trilogy.core.models.author import MultiSelectLineage, SelectLineage
 from trilogy.core.models.build import (
     BuildConcept,
+    BuildFunction,
     BuildGrain,
     BuildMultiSelectLineage,
     BuildRowsetItem,
+    BuildSelectLineage,
     BuildWhereClause,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
@@ -19,6 +21,7 @@ from trilogy.core.processing.node_generators.presence_probe import (
     probe_member_address,
 )
 from trilogy.core.processing.nodes import RowsetNode, StrategyNode
+from trilogy.core.processing.nodes.base_node import nullability_aliases
 from trilogy.core.processing.v4_helper.history import V4History
 
 from .condition_sources import inject_condition_at_node, resolve_row_sources
@@ -125,14 +128,56 @@ def _probed_member_handle(
     return None
 
 
-def _nullability_aliases(concept: BuildConcept) -> set[str]:
-    """Every address a concept's nullability can arrive under: its own, its
-    pseudonyms and, for a rowset handle, the body content it wraps."""
-    aliases = {concept.address, *concept.pseudonyms}
-    if isinstance(concept.lineage, BuildRowsetItem):
-        content = concept.lineage.content
-        aliases.update((content.address, *content.pseudonyms))
-    return aliases
+def _body_address(handle: BuildConcept) -> str:
+    """The body column a handle re-exposes, through its select alias."""
+    assert isinstance(handle.lineage, BuildRowsetItem)
+    content = handle.lineage.content
+    if (
+        isinstance(content.lineage, BuildFunction)
+        and content.lineage.operator == FunctionType.ALIAS
+    ):
+        return content.lineage.concept_arguments[0].address
+    return content.address
+
+
+def _body_grain_handles(
+    built: BuildSelectLineage, derived: list[str], environment: BuildEnvironment
+) -> list[BuildConcept] | None:
+    """A select body's grain in its handles, however few the query demands: a
+    demanded subset is no row identity, and claiming one lets a downstream
+    aggregate skip deduplicating to its own grain. None when a grain column
+    has no handle."""
+    by_body: dict[str, BuildConcept] = {}
+    for address in sorted(derived):
+        handle = environment.concepts.get(address)
+        if handle is not None and isinstance(handle.lineage, BuildRowsetItem):
+            by_body.setdefault(_body_address(handle), handle)
+    grain = built.grain.components
+    if not grain or not grain <= by_body.keys():
+        return None
+    return [by_body[c] for c in sorted(grain)]
+
+
+def _fans_subset_join(
+    built: BuildSelectLineage | BuildMultiSelectLineage,
+    derived: list[str],
+    read: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> bool:
+    """A `subset join` never changes the grain: a rowset on either side of one
+    contributes rows at its join keys plus the columns the query reads, so a
+    body not unique on those must dedup. A select is unique on its grain; a
+    multiselect only on its full output (a UNION ALL's includes its arm key)."""
+    members = {
+        a for pair in environment.domain_graph.declared_subset_pairs() for a in pair
+    }
+    if not members.intersection(derived):
+        return False
+    read_addresses = {h.address for h in read}
+    if isinstance(built, BuildMultiSelectLineage):
+        return not set(derived) <= read_addresses
+    bodies = {_body_address(h) for h in read if isinstance(h.lineage, BuildRowsetItem)}
+    return not built.grain.components <= bodies
 
 
 def resolve_rowset(
@@ -433,31 +478,38 @@ def resolve_rowset(
         for c in inner_node.resolve().nullable_concepts
         for alias in (c.address, *c.pseudonyms)
     }
-    nullable_handles = [h for h in handles if _nullability_aliases(h) & base_nullable]
+    nullable_handles = [h for h in handles if nullability_aliases(h) & base_nullable]
     # Grain over the outer handles: lets the FINAL merge join two rowsets on
     # their shared/pseudonym grain key instead of cross-joining when the
     # boundary exposes no grain. Probes are per-key presence markers, not part
     # of the boundary's row grain.
-    boundary_grain = BuildGrain.from_concepts(
-        [
-            h
-            for h in handles
-            if h.address not in hidden and not is_presence_probe(h.address)
-        ]
-    )
-    # A multiselect/union boundary's rows are at the FULL align grain even
-    # when only a subset of its outputs is demanded (`subset join x =
-    # all_combos.b` never projects `ch`): the projection does NOT dedup, so
-    # stamping the demanded subset as the grain overclaims uniqueness and a
-    # downstream aggregate elides its GROUP BY over the per-arm fan. Stamp the
-    # grain over every align output instead.
-    if isinstance(built, BuildMultiSelectLineage):
+    read = [
+        h
+        for h in handles
+        if h.address not in hidden and not is_presence_probe(h.address)
+    ]
+    boundary_grain = BuildGrain.from_concepts(read)
+    dedup = _fans_subset_join(built, derived, read, environment)
+    # The boundary's rows are at the rowset's FULL identity however few
+    # outputs the query demands (`union join x = all_combos.b` never projects
+    # `ch`): the projection does NOT dedup, so stamping the demanded subset
+    # overclaims uniqueness and a downstream aggregate elides its GROUP BY. A
+    # select body is identified by its grain in handles; a multiselect, or a
+    # select whose grain is not among its outputs, by its whole tuple.
+    if not dedup:
         full_handles = [
             handle_concept
             for addr in sorted(derived)
             if (handle_concept := environment.concepts.get(addr)) is not None
         ]
-        if full_handles:
+        identity = (
+            _body_grain_handles(built, derived, environment)
+            if isinstance(built, BuildSelectLineage)
+            else None
+        )
+        if identity is not None:
+            boundary_grain = BuildGrain.from_concepts(identity)
+        elif full_handles:
             boundary_grain = BuildGrain.from_concepts(full_handles)
     node: StrategyNode = RowsetNode(
         output_concepts=handles,
@@ -466,6 +518,7 @@ def resolve_rowset(
         environment=plan.environment,
         depth=depth,
         grain=boundary_grain,
+        force_group=dedup,
         hidden_concepts=hidden,
         partial_concepts=scoped_partial,
         nullable_concepts=nullable_handles,

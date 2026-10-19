@@ -501,6 +501,7 @@ COMPARISON_OPERATOR = @{
     | (^"in" ~ WHITESPACE+)
     | "="
     | ">="
+    | "<>"
     | "<="
     | "!="
     | ">"

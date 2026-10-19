@@ -521,7 +521,9 @@ def test_validated_tvf_output(backend: ParserBackend):
             select combined.uid, combined.uscore;
             """)
         rows = results[-1].fetchall()
-        assert [tuple(r) for r in rows] == [(1, 50), (1, 50)]
+        # the stack's projection is its distinct tuples; the validated range
+        # still types the output
+        assert [tuple(r) for r in rows] == [(1, 50)]
 
 
 def test_reduce_expression_declared_ranges():

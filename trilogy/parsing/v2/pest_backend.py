@@ -22,6 +22,7 @@ from trilogy.parsing.v2.errors import (
     detect_named_function_missing_at,
     detect_paren_select_after_from,
     detect_select_distinct,
+    detect_select_level_by,
     detect_star_argument,
     detect_subselect,
     detect_unparenthesized_by_expr,
@@ -244,6 +245,11 @@ def _diagnose_pest_error(text: str, raw_error: str) -> InvalidSyntaxException:
     target_pos = detect_unquoted_path_target(text, pos)
     if target_pos is not None:
         return create_syntax_error(232, target_pos, text)
+
+    # 233: a select-level `by` after the select list (`... as total by *`).
+    select_by_pos = detect_select_level_by(text, pos)
+    if select_by_pos is not None:
+        return create_syntax_error(233, select_by_pos, text)
 
     # 211: BY clause with an unparenthesized expression (e.g. `by substring(x,1,2)`).
     # Detect by probing with parens around the run after `by`.

@@ -1,5 +1,5 @@
 query_id = "92"
-gen_length = 1310
+gen_length = 1334
 preql_size = 454
 comp_size = 555
 generated_sql = """
@@ -35,6 +35,9 @@ FROM
     INNER JOIN \"thoughtful\" on \"cheerful\".\"ws_item_sk\" = \"thoughtful\".\"ws_item_sk\"
 WHERE
     \"cheerful\".\"ws_ext_discount_amount\" > \"thoughtful\".\"avg_item_disc\"
+
+HAVING
+    count(*) > 0
 
 ORDER BY 
     \"excess_discount_amount\" asc nulls first

@@ -94,6 +94,21 @@ def test_topological_sort_cycle_and_shortest_path_parity():
         list(nx.topological_sort(reference))
 
 
+def test_strongly_connected_components_parity_sinks_first():
+    native, reference = rust_nx.DiGraph(), nx.DiGraph()
+    for graph in [native, reference]:
+        graph.add_edges_from(
+            [("a", "b"), ("b", "c"), ("c", "b"), ("c", "d"), ("e", "e")]
+        )
+    components = list(rust_nx.strongly_connected_components(native))
+    assert sorted(map(sorted, components)) == sorted(
+        map(sorted, nx.strongly_connected_components(reference))
+    )
+    position = {n: i for i, c in enumerate(components) for n in c}
+    for left, right in native.edges:
+        assert position[left] >= position[right]
+
+
 def test_native_digraph_supports_real_networkx_shortest_path():
     native, reference = build_weighted_directed_pair()
 

@@ -181,6 +181,10 @@ impl PyGraphCore {
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e))
     }
 
+    fn strongly_connected_components(&self) -> Vec<Vec<String>> {
+        self.graph.strongly_connected_components()
+    }
+
     fn shortest_path(&self, source: &str, target: &str) -> Option<Vec<String>> {
         self.graph.shortest_path(source, target)
     }

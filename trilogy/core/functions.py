@@ -1281,6 +1281,8 @@ EXCLUDED_FUNCTIONS = {
     FunctionType.DATETIME_LITERAL,
     # constructed directly by the parser for composite membership, never via create_function
     FunctionType.ROW_TUPLE,
+    # internal row counter (datasource grain checks); not in the grammar
+    FunctionType.ROW_COUNT,
 }
 
 for k in FunctionType.__members__.values():

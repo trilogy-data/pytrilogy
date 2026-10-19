@@ -427,6 +427,63 @@ impl GraphCore {
         Ok(output)
     }
 
+    /// Tarjan's strongly connected components, sinks first: each component
+    /// follows every component it reaches.
+    pub fn strongly_connected_components(&self) -> Vec<Vec<String>> {
+        let unvisited = usize::MAX;
+        let mut index = vec![unvisited; self.id_to_node.len()];
+        let mut low = vec![0usize; self.id_to_node.len()];
+        let mut on_stack = vec![false; self.id_to_node.len()];
+        let mut stack: Vec<NodeId> = Vec::new();
+        let mut next = 0usize;
+        let mut output = Vec::new();
+        for &root in &self.node_order {
+            if index[root] != unvisited {
+                continue;
+            }
+            index[root] = next;
+            low[root] = next;
+            next += 1;
+            stack.push(root);
+            on_stack[root] = true;
+            let mut work: Vec<(NodeId, usize)> = vec![(root, 0)];
+            while let Some(&(node, child)) = work.last() {
+                if let Some(&succ) = self.succ_order[node].get(child) {
+                    if let Some(top) = work.last_mut() {
+                        top.1 += 1;
+                    }
+                    if index[succ] == unvisited {
+                        index[succ] = next;
+                        low[succ] = next;
+                        next += 1;
+                        stack.push(succ);
+                        on_stack[succ] = true;
+                        work.push((succ, 0));
+                    } else if on_stack[succ] {
+                        low[node] = low[node].min(index[succ]);
+                    }
+                    continue;
+                }
+                work.pop();
+                if let Some(&(parent, _)) = work.last() {
+                    low[parent] = low[parent].min(low[node]);
+                }
+                if low[node] == index[node] {
+                    let mut component = Vec::new();
+                    while let Some(member) = stack.pop() {
+                        on_stack[member] = false;
+                        component.push(self.id_to_node[member].clone());
+                        if member == node {
+                            break;
+                        }
+                    }
+                    output.push(component);
+                }
+            }
+        }
+        output
+    }
+
     pub fn shortest_path(&self, source: &str, target: &str) -> Option<Vec<String>> {
         let source_id = self.node_to_id.get(source).copied()?;
         let target_id = self.node_to_id.get(target).copied()?;
