@@ -1748,7 +1748,7 @@ CREATE IF NOT EXISTS DATASOURCE us_target;
 
 
 @pytest.mark.parametrize("built, stale", [("2024-01-20", False), ("2024-01-10", True)])
-def test_partial_target_unscopable_scalar_keeps_global_expectation(built, stale):
+def test_partial_target_scoped_freshness_on_abstract_scalar(built, stale):
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_text(_UNSCOPABLE_SCALAR_SETUP)
     executor.execute_raw_sql(
