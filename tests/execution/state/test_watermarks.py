@@ -1727,6 +1727,39 @@ def test_partial_target_is_judged_inside_its_scope(key, built, stale):
         assert "2024-01-20" in found[0].reason
 
 
+_UNSCOPABLE_SCALAR_SETUP = """
+key us_id int;
+property us_id.city string;
+property <*>.updated_through datetime;
+
+root datasource us_probe (updated_through: updated_through)
+query '''SELECT TIMESTAMP '2024-01-20 00:00:00' as updated_through''';
+
+root datasource us_rows (us_id: us_id, city: city)
+query '''SELECT 1 as us_id, 'A' as city UNION ALL SELECT 2 as us_id, 'B' as city''';
+
+partial datasource us_target (us_id: us_id, city: city, updated_through: updated_through)
+complete where city = 'A'
+address us_target_table
+freshness by updated_through;
+
+CREATE IF NOT EXISTS DATASOURCE us_target;
+"""
+
+
+@pytest.mark.parametrize("built, stale", [("2024-01-20", False), ("2024-01-10", True)])
+def test_partial_target_unscopable_scalar_keeps_global_expectation(built, stale):
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_text(_UNSCOPABLE_SCALAR_SETUP)
+    executor.execute_raw_sql(
+        f"INSERT INTO us_target_table VALUES (1, 'A', TIMESTAMP '{built} 00:00:00')"
+    )
+    found = BaseStateStore().get_stale_assets(executor.environment, executor)
+    assert [a.datasource_id for a in found] == (["us_target"] if stale else [])
+    if stale:
+        assert "2024-01-20" in found[0].reason
+
+
 def test_is_missing_local_file_nonexistent(tmp_path):
     from unittest.mock import MagicMock
 
