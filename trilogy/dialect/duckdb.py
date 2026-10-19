@@ -40,7 +40,6 @@ from trilogy.core.models.execute import (
     CTE,
     CompiledCTE,
     QueryDatasource,
-    RecursiveCTE,
     UnionCTE,
 )
 from trilogy.dialect.base import BaseDialect, is_array_arg
@@ -487,26 +486,6 @@ def reads_program(cte: CTE | UnionCTE) -> bool:
     )
 
 
-def rescanned_ctes(ctes: list[CTE | UnionCTE]) -> set[str]:
-    """CTEs DuckDB would evaluate more than once if inlined.
-
-    A CTE read by two consumers, or by a recursive CTE (whose step re-reads
-    it every iteration), is otherwise inlined at each reference.
-    """
-    consumers: dict[str, int] = {}
-    recursive: set[str] = set()
-    pending = list(ctes)
-    while pending:
-        cte = pending.pop()
-        if isinstance(cte, (UnionCTE, RecursiveCTE)):
-            pending.extend(cte.internal_ctes)
-        for parent in {p.name for p in cte.parent_ctes}:
-            consumers[parent] = consumers.get(parent, 0) + 1
-            if isinstance(cte, RecursiveCTE):
-                recursive.add(parent)
-    return {name for name, count in consumers.items() if count > 1} | recursive
-
-
 def get_gcs_setup_sql(enabled: bool) -> str:
     """Return SQL to setup GCS extension with optional HMAC credentials.
 
@@ -649,7 +628,8 @@ class DuckDBDialect(BaseDialect):
         # Sources prepare_sources started as their own pooled worker, by
         # location -> attached alias. Anything absent renders via the bridge.
         self._residents: dict[str, str] = {}
-        self._not_resident: set[str] = set()
+        # location -> the version alias that failed to attach; an edit retries.
+        self._not_resident: dict[str, str] = {}
         self._bridge_attached = False
         # Resident workers have to be attached before a query references them.
         self.REQUIRES_SOURCE_PREPARATION = self._vgi
@@ -676,12 +656,12 @@ class DuckDBDialect(BaseDialect):
             dict.fromkeys(a.location for a in addresses if a.type.is_program)
         )
         # Re-checked per query, so a source edited under a running server is
-        # served by a fresh worker from the next query on.
+        # served by a fresh worker (or retried, if it failed) from the next query on.
+        versions = {p: resident_alias(p) for p in programs}
         pending = [
             p
             for p in programs
-            if p not in self._not_resident
-            and self._residents.get(p) != resident_alias(p)
+            if versions[p] not in (self._residents.get(p), self._not_resident.get(p))
         ]
         if pending:
             with ThreadPoolExecutor(max_workers=min(len(pending), 8)) as pool:
@@ -690,8 +670,9 @@ class DuckDBDialect(BaseDialect):
                 )
             for location, alias in zip(pending, aliases):
                 superseded = self._residents.pop(location, None)
+                self._not_resident.pop(location, None)
                 if alias is None:
-                    self._not_resident.add(location)
+                    self._not_resident[location] = versions[location]
                 else:
                     self._residents[location] = alias
                 if superseded is not None and superseded != alias:
@@ -701,12 +682,12 @@ class DuckDBDialect(BaseDialect):
             self._bridge_attached = True
 
     def generate_ctes(self, query: ProcessedQuery) -> list[CompiledCTE]:
-        # An inlined script read reruns the program per reference (per
-        # iteration under recursion): slower, and each run a new snapshot.
+        # An inlined script read reruns the program per reference, including
+        # references through other inlined CTEs and each recursive iteration:
+        # slower, and each run a new snapshot. Materialize every one.
         compiled = super().generate_ctes(query)
-        rescanned = rescanned_ctes(query.ctes)
         for cte, out in zip(query.ctes[:-1], compiled[:-1]):
-            out.materialized = cte.name in rescanned and reads_program(cte)
+            out.materialized = reads_program(cte)
         return compiled
 
     def _maybe_bust_gcs_url(self, url: str) -> str:

@@ -210,6 +210,32 @@ def test_a_source_fragment_round_trips_through_render():
     assert "multi_source.py#stores`;" in rendered
 
 
+def test_two_sources_of_one_program_are_distinct_assets():
+    from trilogy.execution.state.declaration import declaration_key
+    from trilogy.execution.state.snapshot import address_type_of, stable_asset_key
+
+    executor = python_source_executor()
+    executor.parse_text(MULTI_SOURCE_MODEL)
+    datasources = list(executor.environment.datasources.values())
+    root = Path(executor.environment.working_path)
+
+    assert {
+        stable_asset_key(ds.safe_address, address_type_of(ds), root)
+        for ds in datasources
+    } == {"script::multi_source.py#regions", "script::multi_source.py#stores"}
+    assert len({declaration_key(ds) for ds in datasources}) == 2
+
+
+def test_a_source_fragment_follows_an_exe():
+    executor = python_source_executor()
+    executor.parse_text(
+        "key id int;\ndatasource d (id: id) grain (id) file `./bin/catalog.exe#states`;"
+    )
+    address = executor.environment.datasources["d"].address
+    assert Path(address.location).name == "catalog.exe"
+    assert address.source_name == "states"
+
+
 def test_a_source_fragment_on_a_data_file_is_rejected():
     from trilogy.parsing.v2.model import HydrationError
 
@@ -430,10 +456,30 @@ def test_uv_wrapper_keeps_a_concurrently_published_stream(
 
     monkeypatch.setattr(duckdb_uv, "_run_uv", fake_run_uv)
     monkeypatch.setattr(duckdb_uv.os, "replace", locked)
+    monkeypatch.setattr(duckdb_uv.sys, "platform", "win32")
 
     assert run_with_retry("script.py", "", output_path, tmp_path / "out.err") == 0
     assert output_path.read_text(encoding="utf-8") == "concurrent"
     assert [p.name for p in tmp_path.iterdir()] == ["out.arrow"]
+
+
+def test_uv_wrapper_surfaces_a_permission_error_off_windows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    def fake_run_uv(script, args, staged: Path, error_path):
+        staged.write_text("ours", encoding="utf-8")
+        return 0
+
+    def denied(src, dst):
+        raise PermissionError("no write access")
+
+    monkeypatch.setattr(duckdb_uv, "_run_uv", fake_run_uv)
+    monkeypatch.setattr(duckdb_uv.os, "replace", denied)
+    monkeypatch.setattr(duckdb_uv.sys, "platform", "linux")
+
+    with pytest.raises(PermissionError):
+        run_with_retry("script.py", "", tmp_path / "out.arrow", tmp_path / "out.err")
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_validation_caches_python_datasource_per_run():

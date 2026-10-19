@@ -58,6 +58,8 @@ def _publish(staged: Path, output_path: Path) -> None:
         os.replace(staged, output_path)
     except PermissionError:
         staged.unlink(missing_ok=True)
+        if sys.platform != "win32":
+            raise
 
 
 def run_with_retry(script: str, args: str, output_path: Path, error_path: Path) -> int:

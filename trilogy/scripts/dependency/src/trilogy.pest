@@ -931,7 +931,7 @@ FILE_PATH   = @{ "`" ~ (!("." ~ FILE_EXT ~ ("`" | "#")) ~ !"`" ~ ANY)+ ~ "." ~ F
 F_FILE_PATH = @{ "f`" ~ (!("." ~ FILE_EXT ~ ("`" | "#")) ~ !"`" ~ ANY)+ ~ "." ~ FILE_EXT ~ SOURCE_FRAGMENT? ~ "`" }
 // A program: a path whose last segment has no extension (or is a .exe). The
 // separator keeps it apart from a backtick-quoted identifier.
-EXEC_PATH   = @{ "`" ~ ((!("`" | "/" | "\\") ~ ANY)* ~ ("/" | "\\"))+ ~ (!("`" | "/" | "\\" | ".") ~ ANY)+ ~ ("." ~ ^"exe")? ~ "`" }
+EXEC_PATH   = @{ "`" ~ ((!("`" | "/" | "\\") ~ ANY)* ~ ("/" | "\\"))+ ~ (!("`" | "/" | "\\" | ".") ~ ANY)+ ~ ("." ~ ^"exe")? ~ SOURCE_FRAGMENT? ~ "`" }
 
 SHORTHAND_MODIFIER = @{ "~" | "?" }
 JOIN_TYPE = @{ ^"left" | ^"inner" | ^"full" | ^"right" | ^"cross" | ^"subset" | ^"union" | ^"equal" }

@@ -159,7 +159,7 @@ def test_prepare_sources_skips_what_is_already_decided():
             enable_python_datasources=True, python_datasource_transport="vgi"
         )
     )
-    dialect._not_resident.add("/w/raw.py")
+    dialect._not_resident["/w/raw.py"] = resident_alias("/w/raw.py")
     dialect._bridge_attached = True
     addresses = [
         Address(location="/w/raw.py", type=AddressType.PYTHON_SCRIPT),
@@ -168,6 +168,26 @@ def test_prepare_sources_skips_what_is_already_decided():
     # Nothing left to start, so the executor is never touched.
     dialect.prepare_sources(addresses, executor=None)  # type: ignore[arg-type]
     assert not dialect._residents
+
+
+def test_an_edited_source_that_failed_to_start_is_retried(monkeypatch):
+    from trilogy.dialect import duckdb
+    from trilogy.dialect.duckdb import DuckDBDialect
+
+    dialect = DuckDBDialect(
+        config=DuckDBConfig(
+            enable_python_datasources=True, python_datasource_transport="vgi"
+        )
+    )
+    dialect._not_resident["/w/raw.py"] = "trilogy_src_before_the_edit"
+    dialect._bridge_attached = True
+    monkeypatch.setattr(duckdb, "attach_resident", lambda conn, loc: "trilogy_src_x")
+    executor = type("Stub", (), {"connection": None})()
+
+    address = Address(location="/w/raw.py", type=AddressType.PYTHON_SCRIPT)
+    dialect.prepare_sources([address], executor=executor)  # type: ignore[arg-type]
+    assert dialect._residents == {"/w/raw.py": "trilogy_src_x"}
+    assert not dialect._not_resident
 
 
 def test_vgi_renders_the_bridge_call_with_pushdown_args():
