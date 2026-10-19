@@ -803,6 +803,18 @@ def _aggregate_relation_members(
     )
 
 
+def _aggregates_a_coalescing_member(
+    concept: BuildConcept, environment: BuildEnvironment
+) -> bool:
+    if not isinstance(concept.lineage, BuildAggregateWrapper):
+        return False
+    coalescing = environment.domain_graph.coalescing_relation_members()
+    return any(
+        isinstance(arg, BuildConcept) and arg.address in coalescing
+        for arg in concept.lineage.function.arguments
+    )
+
+
 def _aggregate_axis_members(
     concept: BuildConcept,
     environment: BuildEnvironment,
@@ -1646,12 +1658,18 @@ def _add_concept(
     # over the joined relation, never per-axis).
     dimension_grain = {addr for addr in out_grain if addr != ALL_ROWS_ADDRESS}
     coalesced_axis: frozenset[str] = frozenset()
-    # A global aggregate over a NULL-absorbing expression does read the joined
-    # axis: its value on a padded row is not NULL (`sum(coalesce(b.x, -1))`).
+    # A global aggregate reads the joined axis too when its value there differs
+    # from one side's: over a NULL-absorbing expression (`sum(coalesce(b.x,
+    # -1))`), or over a member itself, which reads as the coalesced axis
+    # (`count(b.k)` counts the axis, as `select b.k` projects it).
     if (
         not is_materialized_root
         and concept.derivation == Derivation.AGGREGATE
-        and (dimension_grain or null_sensitive(concept))
+        and (
+            dimension_grain
+            or null_sensitive(concept)
+            or _aggregates_a_coalescing_member(concept, environment)
+        )
     ):
         if is_grouping_identity(concept):
             # A grouping()/grouping_id() identity is a KEY of its pass, not a

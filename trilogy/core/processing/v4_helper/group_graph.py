@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from trilogy.constants import logger
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, Purpose
+from trilogy.core.models.author import UnionSelectLineage
 from trilogy.core.models.build import (
     BoolExpr,
     BuildConcept,
@@ -873,10 +874,14 @@ def _refresh_final_contract(
     # contract is the author pairing the sides themselves. A SOLE projected
     # member of its relation is the unified axis, the coalesce of the domains,
     # deduped to the output grain.
+    # A set-op rowset's member is no such side: its rows differ only by the
+    # synthetic arm key, and a set op's projection is its distinct tuples.
     if axis_only_projection:
-        mandatory_addresses = {concept.address for concept in mandatory_list}
+        row_sides = {
+            concept.address for concept in mandatory_list if not _set_op_member(concept)
+        }
         axis_only_projection = any(
-            len({canonical, *members} & mandatory_addresses) >= 2
+            len({canonical, *members} & row_sides) >= 2
             for canonical, members in environment.scoped_join_key_groups.items()
         )
     # ...and a WHERE FINAL tests carries its columns at their own grain: when
@@ -893,6 +898,13 @@ def _refresh_final_contract(
         merge_grain=merge_grain,
         contributor_contracts=tuple(contributors),
         deduplicate_to_grain=not axis_only_projection,
+    )
+
+
+def _set_op_member(concept: BuildConcept) -> bool:
+    lineage = concept.lineage
+    return isinstance(lineage, BuildRowsetItem) and isinstance(
+        lineage.rowset.select, UnionSelectLineage
     )
 
 

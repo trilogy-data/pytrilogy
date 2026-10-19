@@ -15,6 +15,16 @@ MODEL = "\nkey item_id int;\nproperty item_id.item_name string;\nproperty item_i
 
 CASES = [
     (
+        "union join union rowset to model key",
+        "with c as union((where yr = 2001 select item_id -> k),(where yr = 2002 select item_id -> k)) -> (k);\nselect item_id, c.k union join c.k = item_id;",
+        "select distinct coalesce(l.item_id, c.k), coalesce(c.k, l.item_id) from (select distinct item_id from lines) l full join (select distinct item_id k from lines where yr in (2001, 2002)) c on c.k = l.item_id",
+    ),
+    (
+        "union join two union rowsets",
+        "with c as union((where yr = 2001 select item_id -> k),(where yr = 2002 select item_id -> k)) -> (k);\nwith d as union((where yr = 2011 select item_id -> k),(where yr = 2012 select item_id -> k)) -> (k);\nselect c.k, d.k union join c.k = d.k;",
+        "select distinct coalesce(c.k, d.k), coalesce(d.k, c.k) from (select distinct item_id k from lines where yr in (2001, 2002)) c full join (select distinct item_id k from lines where yr in (2011, 2012)) d on c.k = d.k",
+    ),
+    (
         "proj_distinct",
         "with c as union(\n (where yr = 2001 select item_id -> k),\n (where yr = 2002 select item_id -> k)\n) -> (k);\nselect c.k;",
         "select distinct k from ((select distinct item_id k from lines where yr=2001) union all (select distinct item_id k from lines where yr=2002))",

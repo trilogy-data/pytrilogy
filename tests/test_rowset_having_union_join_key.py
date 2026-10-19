@@ -91,3 +91,14 @@ def test_having_presence_of_the_projected_side():
     assert _single_sided_rows(
         "select a.k, a.sales union join a.k = b.k having a.k is null;"
     ) == [(3, None)]
+
+
+def test_member_aggregate_reads_the_axis_alone_or_beside_its_mate():
+    for query, expected in [
+        ("select count(a.k) as n union join a.k = b.k;", [(3,)]),
+        ("select count(b.k) as m union join a.k = b.k;", [(3,)]),
+        ("select count(a.k) as n, count(b.k) as m union join a.k = b.k;", [(3, 3)]),
+        ("select sum(a.k) as n union join a.k = b.k;", [(6,)]),
+        ("select count(a.k ? a.k is not null) as n union join a.k = b.k;", [(2,)]),
+    ]:
+        assert _single_sided_rows(query) == expected, query
