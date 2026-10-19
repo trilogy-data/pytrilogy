@@ -16,6 +16,7 @@ from trilogy.core.enums import (
     Modifier,
     PersistMode,
     PublishAction,
+    Purpose,
     QueryComparison,
     ScaleType,
     SetOperator,
@@ -52,6 +53,7 @@ from trilogy.core.models.author import (
     combine_staged_wheres,
     get_concept_arguments,
 )
+from trilogy.core.models.core import DataType, TraitDataType, ValidatedType
 from trilogy.core.models.datasource import Address, ColumnAssignment, Datasource
 from trilogy.core.models.environment import (
     Environment,
@@ -654,6 +656,17 @@ class MultiSelectStatement(HasUUID, SelectTypeMixin):
 
 
 @dataclass
+class TVFOutputItem:
+    """One positional output column of a TVF signature `-> (...)`."""
+
+    name: str
+    purpose: Purpose | None = None
+    datatype: DataType | TraitDataType | ValidatedType | None = None
+    nullable: bool = False
+    metadata: Metadata | None = None
+
+
+@dataclass
 class UnionSelectStatement(MultiSelectStatement):
     """Relational `union(...)`/`except(...)`/`intersect(...)` TVF: a positional
     column-stack (SQL set operation) of the arm selects. Reuses the multiselect
@@ -663,6 +676,9 @@ class UnionSelectStatement(MultiSelectStatement):
     for EXCEPT the arm order is semantic (left-fold)."""
 
     operator: SetOperator = SetOperator.UNION_ALL
+    # the authored signature and each arm's alias scope, for rendering
+    outputs: list[TVFOutputItem] = field(default_factory=list)
+    arm_scopes: list[str] = field(default_factory=list)
 
     def as_lineage(self, environment: Environment) -> UnionSelectLineage:
         new_selects = [x.as_lineage(environment) for x in self.selects]

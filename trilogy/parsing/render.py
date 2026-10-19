@@ -1,14 +1,19 @@
 import re
 from collections import defaultdict
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
 from jinja2 import Template
 
-from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
+from trilogy.constants import (
+    DEFAULT_NAMESPACE,
+    UNION_ARM_KEY,
+    VIRTUAL_CONCEPT_PREFIX,
+    MagicConstants,
+)
 from trilogy.core.constants import (
     INTERNAL_NAMESPACE,
     SUBQUERY_NAMESPACE_PREFIX,
@@ -25,6 +30,7 @@ from trilogy.core.enums import (
     PersistMode,
     Purpose,
     QueryComparison,
+    SetOperator,
     ShowCategory,
     ValidationScope,
 )
@@ -106,7 +112,9 @@ from trilogy.core.statements.author import (
     SelectItem,
     SelectStatement,
     ShowStatement,
+    TVFOutputItem,
     TypeDeclaration,
+    UnionSelectStatement,
     ValidateNaturalStatement,
     ValidateStatement,
 )
@@ -184,6 +192,12 @@ DEFAULT_MAX_LINE_LENGTH = 100
 # their canonical parseable spelling so rendered output round-trips.
 _FUNCTION_NAME_OVERRIDES = {
     FunctionType.DATE_TRUNCATE: "date_trunc",
+}
+
+_SET_OP_SURFACE_NAMES = {
+    SetOperator.UNION_ALL: "union",
+    SetOperator.EXCEPT: "except",
+    SetOperator.INTERSECT: "intersect",
 }
 
 
@@ -1254,6 +1268,46 @@ class Renderer:
             base += f"\nlimit {arg.limit}"
         base += "\n;"
         return base
+
+    @to_string.register
+    def _(self, arg: UnionSelectStatement):
+        # The set-op call form; a UNION ALL's arm key is re-added on parse.
+        surface = _SET_OP_SURFACE_NAMES[arg.operator]
+        arms = []
+        for select, scope in zip(arg.selects, arg.arm_scopes):
+            arm_key = f"{scope}{UNION_ARM_KEY}"
+            select = replace(
+                select,
+                selection=[
+                    s
+                    for s in select.selection
+                    if not (
+                        isinstance(s.content, ConceptRef) and s.content.name == arm_key
+                    )
+                ],
+            )
+            with self._rowset_scope(scope):
+                body = self.to_string(select).strip().removesuffix(";").rstrip()
+            with self.indented():
+                body = self.indent_lines(body.removesuffix(","), extra_levels=1)
+                arms.append(
+                    f"{self.indent_lines('(')}\n{body}\n{self.indent_lines(')')}"
+                )
+        outputs = ", ".join(self.to_string(o) for o in arg.outputs)
+        return f"{surface}(\n" + ",\n".join(arms) + f"\n) -> ({outputs});"
+
+    @to_string.register
+    def _(self, arg: TVFOutputItem):
+        parts = [arg.name]
+        if arg.datatype is not None:
+            if arg.purpose is not None:
+                parts.append(arg.purpose.value)
+            parts.append(self.to_string(arg.datatype) + ("?" if arg.nullable else ""))
+        if arg.metadata is not None and arg.metadata.description:
+            parts.append(
+                f"metadata(description={self.to_string(arg.metadata.description)})"
+            )
+        return " ".join(parts)
 
     @to_string.register
     def _(self, arg: DeriveClause):

@@ -940,7 +940,11 @@ class TestAggregateFunctionTypes:
 
     @pytest.mark.parametrize(
         "arg",
-        ["name ? amt > 1", "grain(id, name) ? amt > 1"],
+        [
+            "name ? amt > 1",
+            "grain(id, name) ? amt > 1",
+            "(name ? amt > 1) ? id = 2",
+        ],
     )
     def test_sum_of_filtered_string_fails(self, arg):
         with pytest.raises(TypeError, match="Invalid argument type"):

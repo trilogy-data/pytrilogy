@@ -792,7 +792,7 @@ class _HavingNormalization:
         for _, lineage in self.derived_lineages():
             for ref in _bare_row_refs(lineage):
                 allowed.add(ref.address)
-        return allowed
+        return allowed | _scoped_join_mates(self.base, allowed)
 
     def stable_grain_keys(self) -> list[str]:
         """Grain keys usable as the semijoin anchor. A window-derived grain key
@@ -1014,6 +1014,20 @@ class _HavingNormalization:
             )
 
 
+def _scoped_join_mates(base: SelectLineage, addresses: set[str]) -> set[str]:
+    """The scoped-join mates of `addresses`: one axis row carries every member
+    of a join key group, so a HAVING test on a mate (`having b.k is null`
+    beside a projected `a.k`) reads that row's presence, not a finer dim."""
+    groups: list[set[str]] = []
+    for left, right, _ in base.scoped_joins:
+        joined = {left, right}
+        for group in [g for g in groups if g & joined]:
+            groups.remove(group)
+            joined |= group
+        groups.append(joined)
+    return set().union(*(g for g in groups if g & addresses))
+
+
 def normalize_select_having(
     base: SelectLineage, environment: Environment
 ) -> SelectLineage:
@@ -1037,6 +1051,7 @@ def normalize_select_having(
     allowed_addresses = {
         r.address for r in state.selection
     } | state.alias_source_addresses()
+    allowed_addresses |= _scoped_join_mates(base, allowed_addresses)
     state.rewrite_finer_dims_to_membership(allowed_addresses)
     state.validate_remaining_refs(allowed_addresses)
     if not state.changed:

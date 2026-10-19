@@ -90,6 +90,15 @@ def test_join_after_trailing_where_reports_231(backend):
 
 
 @pytest.mark.parametrize("backend", [parse_lark, parse_pest])
+@pytest.mark.parametrize("join", ["equal", "subset", "union"])
+def test_join_words_in_a_string_are_not_a_join(backend, join):
+    with pytest.raises(InvalidSyntaxException) as exc:
+        backend(_IMPORTS + f"select a.x where a.x = '{join} join' and a.y = = 1;")
+    assert "Syntax [225]" not in str(exc.value), str(exc.value)
+    assert "Syntax [231]" not in str(exc.value), str(exc.value)
+
+
+@pytest.mark.parametrize("backend", [parse_lark, parse_pest])
 def test_equal_join_after_trailing_where_reports_231(backend):
     with pytest.raises(InvalidSyntaxException) as exc:
         backend(

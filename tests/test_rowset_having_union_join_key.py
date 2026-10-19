@@ -54,3 +54,40 @@ def test_union_arms_having_on_union_join_key():
         ("web", 1, Decimal("2.0")),
         ("web", 3, Decimal("4.0")),
     ]
+
+
+SINGLE_SIDED = """
+key ss_id int;
+property ss_id.ss_store int;
+property ss_id.ss_amt float;
+key sr_id int;
+property sr_id.sr_store int;
+property sr_id.sr_amt float;
+datasource ss (id: ss_id, st: ss_store, amt: ss_amt) grain (ss_id)
+query '''select * from (values (1,1,10.0),(2,1,5.0),(3,2,7.0)) as t(id,st,amt)''';
+datasource sr (id: sr_id, st: sr_store, amt: sr_amt) grain (sr_id)
+query '''select * from (values (1,1,2.0),(2,3,4.0)) as t(id,st,amt)''';
+with a as select ss_store as k, sum(ss_amt) as sales;
+with b as select sr_store as k, sum(sr_amt) as rets;
+"""
+
+
+def _single_sided_rows(body: str):
+    e = Dialects.DUCK_DB.default_executor(environment=Environment())
+    e.parse_text(SINGLE_SIDED)
+    return sorted((tuple(r) for r in e.execute_query(body).fetchall()), key=str)
+
+
+def test_having_presence_of_the_unprojected_side():
+    assert _single_sided_rows(
+        "select a.k, a.sales union join a.k = b.k having b.k is null;"
+    ) == [(2, Decimal("7.0"))]
+    assert _single_sided_rows(
+        "select a.k, a.sales union join a.k = b.k having b.k is not null;"
+    ) == [(1, Decimal("15.0")), (3, None)]
+
+
+def test_having_presence_of_the_projected_side():
+    assert _single_sided_rows(
+        "select a.k, a.sales union join a.k = b.k having a.k is null;"
+    ) == [(3, None)]

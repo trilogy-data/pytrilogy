@@ -2258,7 +2258,7 @@ class Function(DataTyped, ConceptArgs, ReferenceReplaceable, Namespaced):
         elif not valid_inputs:
             return
         for idx, arg in enumerate(self.arguments):
-            if isinstance(arg, FilterItem):
+            while isinstance(arg, FilterItem):
                 arg = arg.content
             if isinstance(arg, ConceptRef):
                 if arg.datatype == DataType.UNKNOWN:

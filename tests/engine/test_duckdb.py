@@ -98,6 +98,11 @@ datasource t (id, g) grain (id)
         ("g, sum(1) by id as c", [("a", 1), ("a", 1), ("b", 1)]),
         ("g, count(id) as n, sum(1) as c", [("a", 2, 1), ("b", 1, 1)]),
         ("g, sum(1 ? id > 0) as c", [("a", 2), ("b", 1)]),
+        ("g, sum(1) + count(id) as c", [("a", 3), ("b", 2)]),
+        ("sum(sum(1) by id) as c", [(3,)]),
+        ("g, sum(sum(1) by id) as c", [("a", 2), ("b", 1)]),
+        ("avg(sum(1) by id) as c", [(1,)]),
+        ("g, count(id) as n having sum(1) = 1", [("a", 2), ("b", 1)]),
     ],
 )
 def test_constant_aggregate_is_one_per_output_row(where, select, expected) -> None:
@@ -105,6 +110,29 @@ def test_constant_aggregate_is_one_per_output_row(where, select, expected) -> No
     engine.parse_text(_CONSTANT_MODEL)
     rows = engine.execute_text(f"{where}select {select};")[-1].fetchall()
     assert sorted(tuple(row) for row in rows) == expected
+
+
+@mark.parametrize(
+    "query, expected",
+    [
+        (
+            "select g, sum(1) as c by rollup (g) order by g asc nulls last;",
+            [("a", 1), ("b", 1), (None, 1)],
+        ),
+        ("rowset r <- select g, sum(1) as one;\nselect sum(r.one) as total;", [(2,)]),
+        (
+            (
+                "rowset r <- select id, g, sum(1) as one;\n"
+                "select r.g, sum(r.one) as total order by r.g asc;"
+            ),
+            [("a", 2), ("b", 1)],
+        ),
+    ],
+)
+def test_constant_aggregate_in_rollup_and_rowset(query, expected) -> None:
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.parse_text(_CONSTANT_MODEL)
+    assert [tuple(row) for row in engine.execute_text(query)[-1].fetchall()] == expected
 
 
 @mark.parametrize("dialect", [Dialects.DUCK_DB, Dialects.POSTGRES, Dialects.SQL_SERVER])

@@ -108,7 +108,7 @@ ERROR_CODES: dict[int, str] = {
         "`select distinct s.channel, ...`)."
     ),
     225: (
-        "Expected a join condition. A query-scoped `subset|union join` needs a "
+        "Expected a join condition. A query-scoped `subset|union|equal join` needs a "
         "key equality - write `subset join a.key = b.key` (or `union join a.key "
         "= b.key`). Chain more keys for a composite grain with `= c.key`, and "
         "separate independent joins with `and` (`a.k1 = b.k1 and a.k2 = b.k2`). "
@@ -449,6 +449,17 @@ def detect_clause_after_join(text: str, pos: int) -> int | None:
 _QUERY_JOIN_RE = re.compile(
     r"\b(?:left|inner|full|right|cross|subset|union|equal)\s+join\b", re.IGNORECASE
 )
+_LITERAL_RE = re.compile(
+    r"'''.*?'''|'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\"|#[^\n]*|//[^\n]*", re.DOTALL
+)
+
+
+def _mask_literals(text: str) -> str:
+    """`text` with string literals and comments blanked, positions kept, so
+    keyword scans cannot match inside them."""
+    return _LITERAL_RE.sub(lambda m: re.sub(r"[^\n]", " ", m.group()), text)
+
+
 _SELECT_KW_RE = re.compile(r"\bselect\b", re.IGNORECASE)
 
 
@@ -460,7 +471,7 @@ def detect_join_missing_key(text: str, pos: int) -> int | None:
     join-condition message. Returns the offending join clause's position, or
     None. Shared by both grammar backends."""
     stmt_start = text.rfind(";", 0, pos) + 1
-    joins = list(_QUERY_JOIN_RE.finditer(text, stmt_start, pos + 1))
+    joins = list(_QUERY_JOIN_RE.finditer(_mask_literals(text), stmt_start, pos + 1))
     if not joins:
         return None
     join = joins[-1]
@@ -479,7 +490,7 @@ def detect_join_comma_group(text: str, pos: int) -> int | None:
     if pos >= len(text) or text[pos] != ",":
         return None
     stmt_start = text.rfind(";", 0, pos) + 1
-    joins = list(_QUERY_JOIN_RE.finditer(text, stmt_start, pos))
+    joins = list(_QUERY_JOIN_RE.finditer(_mask_literals(text), stmt_start, pos))
     if not joins:
         return None
     join = joins[-1]
@@ -513,7 +524,7 @@ def misplaced_join_candidate(text: str, pos: int) -> tuple[int, str] | None:
     a malformed key falls through to 225. Returns None when the join is absent or
     already in a valid position. Shared by both grammar backends."""
     stmt_start = text.rfind(";", 0, pos) + 1
-    joins = list(_QUERY_JOIN_RE.finditer(text, stmt_start, pos + 1))
+    joins = list(_QUERY_JOIN_RE.finditer(_mask_literals(text), stmt_start, pos + 1))
     if not joins:
         return None
     join = joins[-1]
@@ -538,7 +549,7 @@ def detect_join_after_trailing_where(text: str, pos: int) -> int | None:
     statement's closing filter, so a well-formed join there fails with a raw
     expectation list. Returns the join's position, or None. Shared by both
     grammar backends."""
-    if _QUERY_JOIN_RE.match(text, pos) is None:
+    if _QUERY_JOIN_RE.match(_mask_literals(text), pos) is None:
         return None
     stmt_start = text.rfind(";", 0, pos) + 1
     selects = list(_SELECT_KW_RE.finditer(text, stmt_start, pos))
@@ -760,6 +771,7 @@ def detect_select_level_by(text: str, pos: int) -> int | None:
     """Locate a `by` written as a clause after the select list - after an
     alias (`sum(x) as total by *`) or a trailing comma (`count(k) as n, by *`).
     Returns the `by` position, or None. Shared by both grammar backends."""
+    text = _mask_literals(text)
     stmt_start = text.rfind(";", 0, pos) + 1
     end = min(len(text), pos + 6)
     select = None

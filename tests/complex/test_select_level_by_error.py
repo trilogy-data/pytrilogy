@@ -52,6 +52,20 @@ def test_aggregate_level_by_parses(backend, body):
     backend(_IMPORTS + body)
 
 
+@pytest.mark.parametrize("backend", [parse_lark, parse_pest])
+@pytest.mark.parametrize(
+    "body",
+    [
+        "select x.a where x.a = 'as y by z' and x.b = = 1;",
+        "select x.a as label, x.b # note: , by the way\nwhere x.a = = 1;",
+    ],
+)
+def test_by_in_a_string_or_comment_is_not_233(backend, body):
+    with pytest.raises(InvalidSyntaxException) as exc:
+        backend(_IMPORTS + body)
+    assert "Syntax [233]" not in str(exc.value), str(exc.value)
+
+
 @pytest.mark.parametrize("body", _BAD)
 def test_detector_points_at_by(body):
     pos = body.rindex("by")

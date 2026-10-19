@@ -44,3 +44,11 @@ def test_rowset_having_over_window_with_filtered_global_gate():
         "select bp.item_sk, bp.rk order by bp.rk asc;"
     )
     assert rows == [(2, 1), (4, 2)]
+
+
+def test_global_gate_filters_finer_grained_aggregate():
+    rows = _rows(
+        "where avg(np) by item > (avg(np) by *) "
+        "select ticket, sum(np) as s order by ticket asc;"
+    )
+    assert rows == [(1, 30.0)]

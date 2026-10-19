@@ -61,7 +61,7 @@ from .functional_dependency import (
     origin_relation_stored,
 )
 from .models import ConceptAttrs
-from .network_build import absorbs_null
+from .network_build import null_sensitive
 from .projection import (
     concept_satisfiable,
     decided_at_output_grain,
@@ -825,13 +825,15 @@ def _aggregate_axis_members(
     widen: set[str] = set()
     coalesced: set[str] = set()
     coalescing = environment.domain_graph.coalescing_relation_members()
+    # a NULL-absorbing argument is evaluated on every axis row, padded ones too
+    absorbing = null_sensitive(concept)
     for addr in _aggregate_relation_members(
         concept, environment, aggregate_input_grain
     ):
         relation = {addr} | _relation_mates(addr, environment)
         if relation & out_grain:
             widen.add(addr)
-        elif relation & coalescing:
+        if relation & coalescing and (absorbing or not relation & out_grain):
             coalesced |= relation
     return frozenset(widen), frozenset(coalesced)
 
@@ -900,6 +902,16 @@ def _upstream_aggregate(
     ]
     if isinstance(concept.lineage, BuildAggregateWrapper):
         for arg in concept.lineage.function.arguments:
+            # a rowset member inside an inline expression (`sum(rs.a * rs.b)`)
+            # is read at its rowset's identity, as a bare one is
+            if isinstance(arg, BuildConceptArgs) and not isinstance(arg, BuildConcept):
+                for sub in arg.concept_arguments:
+                    if sub.derivation == Derivation.ROWSET:
+                        base.extend(
+                            _walk_scoped_aggregate_grain_inputs(
+                                concept, sub, environment
+                            )
+                        )
             if isinstance(arg, BuildConcept):
                 grain_inputs = _walk_scoped_aggregate_grain_inputs(
                     concept, arg, environment
@@ -1587,10 +1599,12 @@ def _add_concept(
     # over the joined relation, never per-axis).
     dimension_grain = {addr for addr in out_grain if addr != ALL_ROWS_ADDRESS}
     coalesced_axis: frozenset[str] = frozenset()
+    # A global aggregate over a NULL-absorbing expression does read the joined
+    # axis: its value on a padded row is not NULL (`sum(coalesce(b.x, -1))`).
     if (
         not is_materialized_root
         and concept.derivation == Derivation.AGGREGATE
-        and dimension_grain
+        and (dimension_grain or null_sensitive(concept))
     ):
         if is_grouping_identity(concept):
             # A grouping()/grouping_id() identity is a KEY of its pass, not a
@@ -1727,7 +1741,7 @@ def _add_concept(
         # scalar reads the axis from each side: the merge pads below it.
         coalescing = (
             environment.domain_graph.coalescing_relation_members()
-            if absorbs_null(concept)
+            if null_sensitive(concept)
             else frozenset()
         )
         for addr in sorted(out_grain & scoped):

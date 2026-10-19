@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
-from trilogy.constants import MAGIC_TVF_UNION_NAME
+from trilogy.constants import MAGIC_TVF_UNION_NAME, UNION_ARM_KEY
 from trilogy.core.enums import (
     ConceptSource,
     Derivation,
@@ -32,6 +30,7 @@ from trilogy.core.models.core import (
 from trilogy.core.statements.author import (
     SelectItem,
     SelectStatement,
+    TVFOutputItem,
     UnionSelectStatement,
 )
 from trilogy.parsing.common import constant_to_concept, union_item_to_concept
@@ -46,17 +45,6 @@ from trilogy.parsing.v2.rules_context import (
 )
 from trilogy.parsing.v2.select_finalize import finalize_select_statement
 from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
-
-
-@dataclass
-class TVFOutputItem:
-    """One positional output column of a TVF signature `-> (...)`."""
-
-    name: str
-    purpose: Purpose | None = None
-    datatype: DataType | TraitDataType | ValidatedType | None = None
-    nullable: bool = False
-    metadata: Metadata | None = None
 
 
 def tvf_output_item(
@@ -130,9 +118,7 @@ _TVF_SURFACE_NAMES: dict[SetOperator, str] = {
 }
 
 
-# A UNION ALL's synthetic per-arm key: each arm's tuples are distinct, so
-# (arm, outputs) identifies every stacked tuple and the stack is a set.
-ARM_KEY = "__arm"
+ARM_KEY = UNION_ARM_KEY
 
 
 def _add_arm_key(
@@ -227,6 +213,11 @@ def _lower_set_op(
 
     outputs: list[TVFOutputItem] = hydrate(output_node)
     declared = len(outputs)
+    signature = list(outputs)
+    if any(out.name == ARM_KEY for out in outputs):
+        raise InvalidSyntaxException(
+            f"{surface}(...) output name `{ARM_KEY}` is reserved; rename it."
+        )
 
     # Each arm is hydrated under its own alias scope so identical surface names
     # (`-> dt` in every arm) mangle to distinct internal addresses; the
@@ -237,11 +228,12 @@ def _lower_set_op(
     arm_scope = f"__{rowset_name}_arm" if rowset_name is not None else "__tvf_arm"
     stacked = operator == SetOperator.UNION_ALL
     arms: list[SelectStatement] = []
+    arm_scopes = [f"{arm_scope}_{i}" for i in range(len(arm_nodes))]
     for i, arm_node in enumerate(arm_nodes):
-        with context.semantic_state.rowset_alias_scope(f"{arm_scope}_{i}"):
+        with context.semantic_state.rowset_alias_scope(arm_scopes[i]):
             arm = hydrate(arm_node)
         if stacked:
-            _add_arm_key(arm, f"{arm_scope}_{i}", i, context)
+            _add_arm_key(arm, arm_scopes[i], i, context)
         finalize_select_statement(arm, context)
         arms.append(arm)
 
@@ -311,6 +303,8 @@ def _lower_set_op(
         derived_concepts=derived_concepts,
         operator=operator,
         meta=metadata_from_meta(node.meta),
+        outputs=signature,
+        arm_scopes=arm_scopes,
     )
 
 
