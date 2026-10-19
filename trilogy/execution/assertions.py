@@ -13,11 +13,11 @@ fetched values are then substituted into the condition and the result checked
 as a constant query, which keeps the comparison's semantics (``NULL``, numeric
 promotion, string collation) with the engine rather than reimplementing them.
 
-The asset is usually remote, so reads are what a check costs. Assertions that
-share a ``by`` grain are read together: one scan of the previous asset and one
-of the build per grain, however many assertions there are. Every group's
-substituted condition is then checked in one constant query rather than one
-per group.
+The asset is usually remote, so reads are what a check costs. Assertions whose
+side queries come out at the same grain (``Grain.from_concepts`` over their
+group keys) are read together: one read of the previous asset and one of the
+build per grain, however many assertions there are. Every group's substituted
+condition is then checked in one constant query rather than one per group.
 
 Missing history is never a failure: a first build, an asset that cannot be
 read, or one whose schema lacks a column the assertion needs all pass the
@@ -41,7 +41,7 @@ from trilogy.core.assertions import (
     substitute,
 )
 from trilogy.core.enums import DatasourceState
-from trilogy.core.models.author import ConceptRef
+from trilogy.core.models.author import ConceptRef, Grain
 from trilogy.core.models.datasource import Address, Datasource, DatasourceAssertion
 from trilogy.core.models.environment import Environment
 from trilogy.execution.state.exceptions import (
@@ -106,23 +106,33 @@ def _literal(value: Any) -> Any:
     return float(value) if isinstance(value, Decimal) else value
 
 
+#: One assertion's share of a merged read: its group keys and its terms.
+SideRequest = tuple[list[ConceptRef], list[AssertionTerm]]
+
+
 def _fetch_sides(
     executor: Executor,
     datasource: Datasource,
     address: Address,
-    keys: list[ConceptRef],
-    requests: dict[int, list[AssertionTerm]],
+    requests: dict[int, SideRequest],
 ) -> dict[int, SideValues]:
-    """One grouped read answering the terms of several assertions.
+    """One read answering the terms of several assertions whose side queries
+    share an output grain.
 
+    The select projects every assertion's keys, so each reads its group tuple
+    in its own key order; at one grain the extra keys add no rows.
     Placeholders restart at zero per assertion, so each term is aliased with
-    its assertion's index for the read and keyed by its own placeholder in
-    the result. A shared grain means a shared group set: a filtered aggregate
-    renders as a ``CASE`` inside the same ``GROUP BY``, so it reports 0 for a
-    group it filters empty rather than dropping the group."""
+    its assertion's index for the read and keyed by its own placeholder in the
+    result. A filtered aggregate renders as a ``CASE`` inside the shared
+    ``GROUP BY``, so it reports 0 for a group it filters empty rather than
+    dropping the group."""
+    keys: list[ConceptRef] = []
+    for group_keys, _ in requests.values():
+        keys.extend(k for k in group_keys if k.address not in {x.address for x in keys})
+    position = {k.address: i for i, k in enumerate(keys)}
     columns = [
         (index, term, f"__a{index}{term.placeholder}")
-        for index, terms in requests.items()
+        for index, (_, terms) in requests.items()
         for term in terms
     ]
     items = [_render(k) for k in keys] + [
@@ -135,8 +145,8 @@ def _fetch_sides(
     width = len(keys)
     sides: dict[int, SideValues] = {index: {} for index in requests}
     for row in rows:
-        group = tuple(row[:width])
         for offset, (index, term, _) in enumerate(columns):
+            group = tuple(row[position[k.address]] for k in requests[index][0])
             sides[index].setdefault(group, {})[term.placeholder] = _literal(
                 row[width + offset]
             )
@@ -150,7 +160,7 @@ def _fetch_side(
     keys: list[ConceptRef],
     terms: list[AssertionTerm],
 ) -> SideValues:
-    return _fetch_sides(executor, datasource, address, keys, {0: terms})[0]
+    return _fetch_sides(executor, datasource, address, {0: (keys, terms)})[0]
 
 
 def _plans(datasource: Datasource) -> list[tuple[DatasourceAssertion, AssertionPlan]]:
@@ -158,16 +168,15 @@ def _plans(datasource: Datasource) -> list[tuple[DatasourceAssertion, AssertionP
 
 
 def _by_grain(
-    plans: list[tuple[int, AssertionPlan]],
-) -> list[tuple[list[ConceptRef], list[tuple[int, AssertionPlan]]]]:
-    """Plans grouped by their ``by`` keys as spelled, so a group tuple reads
-    the same for every assertion sharing the read."""
-    grains: dict[tuple[str, ...], list[tuple[int, AssertionPlan]]] = {}
+    environment: Environment, plans: list[tuple[int, AssertionPlan]]
+) -> list[list[tuple[int, AssertionPlan]]]:
+    """Plans whose side queries come out at the same grain, so one read can
+    answer them all."""
+    grains: dict[frozenset[str], list[tuple[int, AssertionPlan]]] = {}
     for index, plan in plans:
-        grains.setdefault(tuple(k.address for k in plan.group_keys), []).append(
-            (index, plan)
-        )
-    return [(members[0][1].group_keys, members) for members in grains.values()]
+        grain = Grain.from_concepts(plan.group_keys, environment=environment)
+        grains.setdefault(frozenset(grain.components), []).append((index, plan))
+    return list(grains.values())
 
 
 def collect_prior_values(executor: Executor, datasource: Datasource) -> PriorValues:
@@ -197,7 +206,8 @@ def collect_prior_values(executor: Executor, datasource: Datasource) -> PriorVal
             exc, dialect
         )
 
-    for keys, members in _by_grain(plans):
+    group_keys = {index: plan.group_keys for index, plan in plans}
+    for members in _by_grain(executor.environment, plans):
         fetched: dict[int, SideValues | None] = {}
         failed: dict[int, Exception] = {}
         try:
@@ -206,8 +216,10 @@ def collect_prior_values(executor: Executor, datasource: Datasource) -> PriorVal
                     executor,
                     datasource,
                     address,
-                    keys,
-                    {index: plan.prior_terms for index, plan in members},
+                    {
+                        index: (plan.group_keys, plan.prior_terms)
+                        for index, plan in members
+                    },
                 )
             )
         except Exception as exc:
@@ -221,7 +233,11 @@ def collect_prior_values(executor: Executor, datasource: Datasource) -> PriorVal
                 for index, plan in members:
                     try:
                         fetched[index] = _fetch_side(
-                            executor, datasource, address, keys, plan.prior_terms
+                            executor,
+                            datasource,
+                            address,
+                            plan.group_keys,
+                            plan.prior_terms,
                         )
                     except Exception as single:
                         if not unanswerable(single):
@@ -240,7 +256,7 @@ def collect_prior_values(executor: Executor, datasource: Datasource) -> PriorVal
             # A grouped read of an empty asset (a table created just before
             # its first build) has no groups to compare against: that is no
             # history, not a history of vanished groups.
-            if not values and keys:
+            if not values and group_keys[index]:
                 logger.warning(
                     "%s: previous asset has no rows; `%s` passes this build",
                     datasource.identifier,
@@ -372,14 +388,15 @@ def check_assertions(
     write (None when nothing was collected)."""
     plans = _plans(datasource)
     new_values: dict[int, SideValues] = {}
-    for keys, members in _by_grain(list(enumerate(p for _, p in plans))):
+    for members in _by_grain(
+        executor.environment, list(enumerate(p for _, p in plans))
+    ):
         new_values.update(
             _fetch_sides(
                 executor,
                 datasource,
                 new_address,
-                keys,
-                {index: plan.new_terms for index, plan in members},
+                {index: (plan.group_keys, plan.new_terms) for index, plan in members},
             )
         )
     failures: list[str] = []

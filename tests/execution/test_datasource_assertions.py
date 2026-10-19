@@ -319,8 +319,46 @@ class TestTableTarget:
 
 
 class TestReadCost:
-    """A check reads the asset, usually remote, once per side per `by` grain,
+    """A check reads the asset, usually remote, once per side per output grain,
     and checks every group's condition in one constant query."""
+
+    def test_the_same_grain_in_another_key_order_shares_a_read(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        executor = Dialects.DUCK_DB.default_executor(
+            environment=Environment(working_path=tmp_path)
+        )
+        executor.execute_raw_sql(
+            "CREATE TABLE raw AS SELECT i AS id, CASE WHEN i % 10 = 0 THEN 'B'"
+            " ELSE 'A' END AS source, i % 2 AS parity FROM range(100) t(i)"
+        )
+        executor.parse_text("""
+key id int;
+property id.source string;
+property id.parity int;
+root datasource raw (id: id, source: source, parity: parity) grain (id) address raw;
+datasource built (id: id, source: source, parity: parity)
+grain (id)
+address built
+assert count(id) by source, parity >= 40
+assert max(id) by parity, source >= 0;
+""")
+        statements: list[str] = []
+        original = executor.execute_ephemeral
+        monkeypatch.setattr(
+            executor,
+            "execute_ephemeral",
+            lambda text, *a, **k: statements.append(text) or original(text, *a, **k),
+        )
+        with pytest.raises(DatasourceAssertionError) as info:
+            executor.update_datasource(executor.environment.datasources["built"])
+        assert len([s for s in statements if "__assert_ok" not in s]) == 1
+        message = str(info.value)
+        # each assertion names its groups in its own key order
+        assert "for source = 'B', parity = 0: count(id) by source, parity = 10" in (
+            message
+        )
+        assert "max(id)" not in message
 
     def test_assertions_sharing_a_grain_share_a_read(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
