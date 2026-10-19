@@ -365,11 +365,23 @@ def test_gcs_cache_bust_render_source():
     )
 
     token = dialect._gcs_cache_bust_token
-    assert f"?cache_bust={token}" in dialect.render_source(gcs_address)
-    assert f"?cache_bust={token}" in dialect.render_source(gs_address)
     assert f"?cache_bust={token}" in dialect.render_source(gcs_https_address)
+    # httpfs refuses any non-s3_* query parameter on a gs:// path; a staged
+    # build read back for its assertions failed every audited publish.
+    assert "cache_bust" not in dialect.render_source(gcs_address)
+    assert "cache_bust" not in dialect.render_source(gs_address)
     assert "cache_bust" not in dialect.render_source(local_address)
     assert "cache_bust" not in dialect.render_source(other_https_address)
+
+
+def test_gcs_cache_bust_extends_an_existing_query():
+    dialect = DuckDBDialect(config=DuckDBConfig(gcs_cache_bust=True))
+    address = Address(
+        location="https://storage.googleapis.com/bucket/data.parquet?x=1",
+        type=AddressType.PARQUET,
+    )
+    token = dialect._gcs_cache_bust_token
+    assert f"data.parquet?x=1&cache_bust={token}" in dialect.render_source(address)
 
 
 def test_gcs_cache_bust_disabled_by_default():

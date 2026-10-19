@@ -200,3 +200,28 @@ def test_a_parquet_column_of_another_kind_is_drift(tmp_path):
     )
 
     assert drift == "type of x (string vs float)"
+
+
+def test_a_numeric_stored_as_double_is_not_drift(tmp_path):
+    """A numeric DuckDB computes in floating point (`geo_y(...)`) is written as
+    DOUBLE; reading that back as drift rebuilt the asset on every run."""
+    target = tmp_path / "target.parquet"
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=tmp_path)
+    )
+    executor.parse_text(
+        f"key id int;\nproperty id.lat numeric;\n"
+        f"datasource target (id, lat) file `{target.as_posix()}`;"
+    )
+    datasource = executor.environment.datasources["target"]
+    executor.execute_raw_sql(
+        f"COPY (SELECT 1 AS id, 1.5::DOUBLE AS lat) TO '{target.as_posix()}'"
+        " (FORMAT PARQUET)"
+    )
+    assert schema_mismatch(datasource, executor) is None
+
+    executor.execute_raw_sql(
+        f"COPY (SELECT 1 AS id, '1.5' AS lat) TO '{target.as_posix()}'"
+        " (FORMAT PARQUET)"
+    )
+    assert schema_mismatch(datasource, executor) == "type of lat (string vs numeric)"

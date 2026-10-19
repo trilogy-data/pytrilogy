@@ -13,6 +13,12 @@ fetched values are then substituted into the condition and the result checked
 as a constant query, which keeps the comparison's semantics (``NULL``, numeric
 promotion, string collation) with the engine rather than reimplementing them.
 
+The asset is usually remote, so reads are what a check costs. Assertions whose
+side queries come out at the same grain (``Grain.from_concepts`` over their
+group keys) are read together: one read of the previous asset and one of the
+build per grain, however many assertions there are. Every group's substituted
+condition is then checked in one constant query rather than one per group.
+
 Missing history is never a failure: a first build, an asset that cannot be
 read, or one whose schema lacks a column the assertion needs all pass the
 ``prior``-bearing assertions with a warning. A group that exists in the new
@@ -35,7 +41,7 @@ from trilogy.core.assertions import (
     substitute,
 )
 from trilogy.core.enums import DatasourceState
-from trilogy.core.models.author import ConceptRef
+from trilogy.core.models.author import ConceptRef, Grain
 from trilogy.core.models.datasource import Address, Datasource, DatasourceAssertion
 from trilogy.core.models.environment import Environment
 from trilogy.execution.state.exceptions import (
@@ -54,6 +60,9 @@ SideValues = dict[GroupKey, dict[str, Any]]
 #: Per assertion (by position), the previous asset's values; None when the
 #: previous asset could not answer.
 PriorValues = dict[int, SideValues | None]
+#: Substituted conditions checked per constant query, so a grain with
+#: thousands of groups does not render one unbounded statement.
+HOLDS_CHUNK = 200
 
 
 class DatasourceAssertionError(RuntimeError):
@@ -93,15 +102,55 @@ def _render(expr: Any) -> str:
     return Renderer().to_string(expr)
 
 
-def _side_query(datasource: Datasource, keys: list[ConceptRef], terms: list) -> str:
-    items = [_render(k) for k in keys] + [
-        f"{_render(t.expr)} as {t.placeholder}" for t in terms
-    ]
-    return "select " + ", ".join(items) + scope_where(datasource) + ";"
-
-
 def _literal(value: Any) -> Any:
     return float(value) if isinstance(value, Decimal) else value
+
+
+#: One assertion's share of a merged read: its group keys and its terms.
+SideRequest = tuple[list[ConceptRef], list[AssertionTerm]]
+
+
+def _fetch_sides(
+    executor: Executor,
+    datasource: Datasource,
+    address: Address,
+    requests: dict[int, SideRequest],
+) -> dict[int, SideValues]:
+    """One read answering the terms of several assertions whose side queries
+    share an output grain.
+
+    The select projects every assertion's keys, so each reads its group tuple
+    in its own key order; at one grain the extra keys add no rows.
+    Placeholders restart at zero per assertion, so each term is aliased with
+    its assertion's index for the read and keyed by its own placeholder in the
+    result. A filtered aggregate renders as a ``CASE`` inside the shared
+    ``GROUP BY``, so it reports 0 for a group it filters empty rather than
+    dropping the group."""
+    keys: list[ConceptRef] = []
+    for group_keys, _ in requests.values():
+        keys.extend(k for k in group_keys if k.address not in {x.address for x in keys})
+    position = {k.address: i for i, k in enumerate(keys)}
+    columns = [
+        (index, term, f"__a{index}{term.placeholder}")
+        for index, (_, terms) in requests.items()
+        for term in terms
+    ]
+    items = [_render(k) for k in keys] + [
+        f"{_render(term.expr)} as {alias}" for _, term, alias in columns
+    ]
+    text = "select " + ", ".join(items) + scope_where(datasource) + ";"
+    with pinned_datasource(executor.environment, datasource, address):
+        result = executor.execute_ephemeral(text)
+    rows = result.fetchall() if result is not None else []
+    width = len(keys)
+    sides: dict[int, SideValues] = {index: {} for index in requests}
+    for row in rows:
+        for offset, (index, term, _) in enumerate(columns):
+            group = tuple(row[position[k.address]] for k in requests[index][0])
+            sides[index].setdefault(group, {})[term.placeholder] = _literal(
+                row[width + offset]
+            )
+    return sides
 
 
 def _fetch_side(
@@ -109,23 +158,25 @@ def _fetch_side(
     datasource: Datasource,
     address: Address,
     keys: list[ConceptRef],
-    terms: list,
+    terms: list[AssertionTerm],
 ) -> SideValues:
-    text = _side_query(datasource, keys, terms)
-    with pinned_datasource(executor.environment, datasource, address):
-        result = executor.execute_ephemeral(text)
-    rows = result.fetchall() if result is not None else []
-    width = len(keys)
-    return {
-        tuple(row[:width]): {
-            t.placeholder: _literal(row[width + i]) for i, t in enumerate(terms)
-        }
-        for row in rows
-    }
+    return _fetch_sides(executor, datasource, address, {0: (keys, terms)})[0]
 
 
 def _plans(datasource: Datasource) -> list[tuple[DatasourceAssertion, AssertionPlan]]:
     return [(a, plan_assertion(a.condition)) for a in datasource.assertions]
+
+
+def _by_grain(
+    environment: Environment, plans: list[tuple[int, AssertionPlan]]
+) -> list[list[tuple[int, AssertionPlan]]]:
+    """Plans whose side queries come out at the same grain, so one read can
+    answer them all."""
+    grains: dict[frozenset[str], list[tuple[int, AssertionPlan]]] = {}
+    for index, plan in plans:
+        grain = Grain.from_concepts(plan.group_keys, environment=environment)
+        grains.setdefault(frozenset(grain.components), []).append((index, plan))
+    return list(grains.values())
 
 
 def collect_prior_values(executor: Executor, datasource: Datasource) -> PriorValues:
@@ -139,47 +190,81 @@ def collect_prior_values(executor: Executor, datasource: Datasource) -> PriorVal
         if isinstance(datasource.address, Address)
         else Address(location=datasource.address)
     )
-    plans = [(i, a, p) for i, (a, p) in enumerate(_plans(datasource)) if p.uses_prior]
+    assertions = datasource.assertions
+    plans = [(i, p) for i, (_, p) in enumerate(_plans(datasource)) if p.uses_prior]
     if plans and address.is_missing_locally:
         logger.warning(
             "%s: no previous asset at %s; `prior` assertions pass this build",
             datasource.identifier,
             address.location,
         )
-        return {index: None for index, _, _ in plans}
-    for index, assertion, plan in plans:
+        return {index: None for index, _ in plans}
+
+    def unanswerable(exc: Exception) -> bool:
+        dialect = executor.generator
+        return is_missing_source_error(exc, dialect) or is_schema_mismatch_error(
+            exc, dialect
+        )
+
+    group_keys = {index: plan.group_keys for index, plan in plans}
+    for members in _by_grain(executor.environment, plans):
+        fetched: dict[int, SideValues | None] = {}
+        failed: dict[int, Exception] = {}
         try:
-            values = _fetch_side(
-                executor, datasource, address, plan.group_keys, plan.prior_terms
+            fetched.update(
+                _fetch_sides(
+                    executor,
+                    datasource,
+                    address,
+                    {
+                        index: (plan.group_keys, plan.prior_terms)
+                        for index, plan in members
+                    },
+                )
             )
         except Exception as exc:
-            dialect = executor.generator
-            if not (
-                is_missing_source_error(exc, dialect)
-                or is_schema_mismatch_error(exc, dialect)
-            ):
+            if not unanswerable(exc):
                 raise
+            if len(members) == 1:
+                failed[members[0][0]] = exc
+            else:
+                # One assertion naming a column the previous asset lacks must
+                # not cost the others their history: read them one at a time.
+                for index, plan in members:
+                    try:
+                        fetched[index] = _fetch_side(
+                            executor,
+                            datasource,
+                            address,
+                            plan.group_keys,
+                            plan.prior_terms,
+                        )
+                    except Exception as single:
+                        if not unanswerable(single):
+                            raise
+                        failed[index] = single
+        for index, error in failed.items():
             logger.warning(
                 "%s: previous asset cannot answer `%s` (%s); the assertion"
                 " passes this build",
                 datasource.identifier,
-                _render(assertion.condition),
-                exc,
+                _render(assertions[index].condition),
+                error,
             )
             prior[index] = None
-            continue
-        # A grouped read of an empty asset (a table created just before its
-        # first build) has no groups to compare against: that is no history,
-        # not a history of vanished groups.
-        if not values and plan.group_keys:
-            logger.warning(
-                "%s: previous asset has no rows; `%s` passes this build",
-                datasource.identifier,
-                _render(assertion.condition),
-            )
-            prior[index] = None
-            continue
-        prior[index] = values
+        for index, values in fetched.items():
+            # A grouped read of an empty asset (a table created just before
+            # its first build) has no groups to compare against: that is no
+            # history, not a history of vanished groups.
+            if not values and group_keys[index]:
+                logger.warning(
+                    "%s: previous asset has no rows; `%s` passes this build",
+                    datasource.identifier,
+                    _render(assertions[index].condition),
+                )
+                prior[index] = None
+                continue
+            prior[index] = values
     return prior
 
 
@@ -199,11 +284,19 @@ def _describe_values(terms: list[AssertionTerm], values: dict[str, Any]) -> str:
     return ", ".join(f"{_label(t)} = {values[t.placeholder]!r}" for t in terms)
 
 
-def _holds(executor: Executor, condition: Any) -> bool:
-    result = executor.execute_ephemeral(
-        f"select 1 as __assert_ok where {_render(condition)};"
-    )
-    return bool(result is not None and result.fetchall())
+def _holds(executor: Executor, conditions: list[Any]) -> list[bool]:
+    """Whether each constant condition is true; ``NULL`` is not."""
+    held: list[bool] = []
+    for start in range(0, len(conditions), HOLDS_CHUNK):
+        chunk = conditions[start : start + HOLDS_CHUNK]
+        items = ", ".join(
+            f"{_render(condition)} as __assert_ok_{i}"
+            for i, condition in enumerate(chunk)
+        )
+        result = executor.execute_ephemeral(f"select {items};")
+        row = result.fetchone() if result is not None else None
+        held.extend(row is not None and row[i] is True for i in range(len(chunk)))
+    return held
 
 
 def _check_one(
@@ -219,6 +312,7 @@ def _check_one(
         return []
     previous_side = prior_values or {}
     failures: list[str] = []
+    to_check: list[tuple[str, dict[str, Any]]] = []
     spelled = _render(assertion.condition)
     groups = list(new_values) + [g for g in previous_side if g not in new_values]
     for group in groups:
@@ -255,7 +349,12 @@ def _check_one(
                 where,
             )
             continue
-        if not _holds(executor, substitute(plan.template, values)):
+        to_check.append((where, values))
+    verdicts = _holds(
+        executor, [substitute(plan.template, values) for _, values in to_check]
+    )
+    for (where, values), held in zip(to_check, verdicts):
+        if not held:
             failures.append(
                 f"`{spelled}`{where}: {_describe_values(plan.terms, values)}"
             )
@@ -287,11 +386,29 @@ def check_assertions(
     ``new_address``; raise :class:`DatasourceAssertionError` listing each
     failure. ``prior`` is what :func:`collect_prior_values` read before the
     write (None when nothing was collected)."""
+    plans = _plans(datasource)
+    new_values: dict[int, SideValues] = {}
+    for members in _by_grain(
+        executor.environment, list(enumerate(p for _, p in plans))
+    ):
+        new_values.update(
+            _fetch_sides(
+                executor,
+                datasource,
+                new_address,
+                {index: (plan.group_keys, plan.new_terms) for index, plan in members},
+            )
+        )
     failures: list[str] = []
-    for index, assertion in enumerate(datasource.assertions):
+    for index, (assertion, plan) in enumerate(plans):
         failures.extend(
-            evaluate_assertion(
-                executor, datasource, assertion, new_address, (prior or {}).get(index)
+            _check_one(
+                executor,
+                datasource,
+                assertion,
+                plan,
+                new_values[index],
+                (prior or {}).get(index),
             )
         )
     if failures:

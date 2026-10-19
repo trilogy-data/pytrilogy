@@ -640,7 +640,10 @@ class DuckDBDialect(BaseDialect):
         else:
             self._gcs_cache_bust_token = None
 
-    _GCS_PREFIXES = ("gcs://", "gs://", "https://storage.googleapis.com")
+    # Only the public HTTPS form: httpfs rejects any query parameter on a
+    # ``gs://``/``gcs://`` path other than its own ``s3_*`` settings, and those
+    # reads go through the authenticated API, which no edge cache sits in front of.
+    _GCS_BUST_PREFIX = "https://storage.googleapis.com/"
 
     def prepare_sources(self, addresses: Iterable[Address], executor: Executor) -> None:
         """Start each program source as its own pooled VGI worker, once per version.
@@ -691,8 +694,9 @@ class DuckDBDialect(BaseDialect):
         return compiled
 
     def _maybe_bust_gcs_url(self, url: str) -> str:
-        if self._gcs_cache_bust_token and url.startswith(self._GCS_PREFIXES):
-            return f"{url}?cache_bust={self._gcs_cache_bust_token}"
+        if self._gcs_cache_bust_token and url.startswith(self._GCS_BUST_PREFIX):
+            separator = "&" if "?" in url else "?"
+            return f"{url}{separator}cache_bust={self._gcs_cache_bust_token}"
         return url
 
     def render_source(

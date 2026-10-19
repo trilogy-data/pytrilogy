@@ -12,7 +12,9 @@ types-tabulate
 google-cloud-bigquery
 sqlalchemy-bigquery
 #fakesnow needs an upgrade to support 1.9; it calls CURRENT_VERSION which isn't mocked and hits duckdb
-snowflake-sqlalchemy
+# snowflake-sqlalchemy 2 needs snowflake-connector-python 5, which dropped the
+# snowflake.connector.converter module fakesnow 0.11.22 still imports
+snowflake-sqlalchemy<2
 fakesnow
 matplotlib
 networkx

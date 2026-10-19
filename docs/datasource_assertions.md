@@ -148,6 +148,15 @@ substituting the values into the template and running it as a constant query.
 The comparison itself therefore keeps the engine's semantics rather than
 reimplementing them.
 
+What a check costs is reads, and the asset is often remote. Assertions whose
+side queries come out at the same grain (compared with `Grain.from_concepts`
+over their group keys, so key order does not matter) share each side's
+select, so a datasource reads its previous asset once and its build once per
+output grain, however many assertions it declares. Every group's substituted condition is checked in one constant
+query (chunked at 200), not one per group. If the shared `prior` read fails
+because the previous asset lacks a column, the assertions are read one at a
+time, so only those naming that column lose their history.
+
 `prior` is `FunctionType.PRIOR` so it rides the ordinary expression
 machinery (namespacing, argument validation, rendering); it has no SQL form,
 and rendering it outside an assertion raises.
