@@ -111,3 +111,33 @@ ORDER BY order_id
     # both rows share the single last_updated value
     assert results[0][1] == results[1][1]
     assert isinstance(results[0][1], datetime)
+
+
+GATED_SETUP = SETUP + """
+key region_id int;
+property region_id.region string;
+
+datasource regions (region_id: region_id, region: region)
+query '''select 1 as region_id, 'A' as region union all select 2, 'B' ''';
+"""
+
+
+def test_abstract_property_aggregate_under_disconnected_where():
+    exec = Dialects.DUCK_DB.default_executor()
+    exec.parse_text(GATED_SETUP)
+    results = exec.execute_text("""
+SELECT max(last_updated) -> latest, count(last_updated) -> n
+where region = 'A';
+""")
+    assert results[-1].fetchall() == [(datetime(2024, 1, 15), 1)]
+
+
+def test_derived_abstract_scalar_aggregate_under_disconnected_where():
+    exec = Dialects.DUCK_DB.default_executor()
+    exec.parse_text(GATED_SETUP + """
+const fallback <- '2024-01-01'::datetime;
+auto lu2 <- greatest(last_updated, last_updated);
+auto lu3 <- coalesce(greatest(lu2, lu2), fallback);
+""")
+    results = exec.execute_text("SELECT max(lu3) -> latest where region = 'A';")
+    assert results[-1].fetchall() == [(datetime(2024, 1, 15),)]
