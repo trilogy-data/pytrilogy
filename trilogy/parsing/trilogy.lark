@@ -799,7 +799,7 @@
     F_FILE_PATH.2: /f`[^`]+\.(py|csv|json|parquet|tsv|sql)(#[A-Za-z_][A-Za-z0-9_]*)?`/i
     // A program: a path whose last segment has no extension (or is a .exe). The
     // separator keeps it apart from a backtick-quoted identifier.
-    EXEC_PATH: /`[^`]*[\/\\][^`\/\\.]+(\.exe)?`/i
+    EXEC_PATH: /`[^`]*[\/\\][^`\/\\.]+(\.exe)?(#[A-Za-z_][A-Za-z0-9_]*)?`/i
     
     DOUBLE_STRING_CHARS: /(?:(?!\${)([^"\\]|\\.))+/+ // any character except "
     SINGLE_STRING_CHARS: /(?:(?!\${)([^'\\]|\\.))+/+ // any character except '

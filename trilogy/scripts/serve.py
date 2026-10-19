@@ -830,7 +830,9 @@ def serve(
             print(
                 "WARNING: Authentication is disabled and the server is bound to "
                 f"{host}. File read and write endpoints are accessible to anyone "
-                "who can reach this host. Use --host localhost for local-only access.",
+                "who can reach this host"
+                + (", and /mcp runs any query they send" if mcp else "")
+                + ". Use --host localhost for local-only access.",
                 file=sys.stderr,
             )
     elif auth_token:

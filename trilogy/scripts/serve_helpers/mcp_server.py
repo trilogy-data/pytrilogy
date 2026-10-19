@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import datetime
 import decimal
+import hmac
 import json
 import os
 import threading
@@ -283,7 +284,8 @@ class _TokenGate:
             headers.get(b"x-trilogy-token", b"").decode(),
             headers.get(b"authorization", b"").decode().removeprefix("Bearer "),
         }
-        return self.token in offered
+        expected = (self.token or "").encode()
+        return any(hmac.compare_digest(o.encode(), expected) for o in offered)
 
     async def __call__(self, scope, receive, send) -> None:
         if self.token is not None and not self._authorized(scope):

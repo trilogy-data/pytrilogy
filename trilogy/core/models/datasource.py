@@ -529,6 +529,9 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     @property
     def safe_address(self) -> str:
         if isinstance(self.address, Address):
+            # Sources of one program share its location but are distinct assets.
+            if self.address.source_name:
+                return f"{self.address.location}#{self.address.source_name}"
             return self.address.location
         return self.address
 
