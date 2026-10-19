@@ -27,7 +27,10 @@ from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing.condition_utility import (
     decompose_condition,
 )
-from trilogy.core.processing.discovery_utility import _output_is_rootless
+from trilogy.core.processing.discovery_utility import (
+    _output_is_rootless,
+    _scalar_rooted,
+)
 from trilogy.core.processing.node_generators.presence_probe import is_presence_probe
 
 from .concept_graph import computed_origin_relation_members
@@ -1778,11 +1781,13 @@ def _check_final_atoms_precede_aggregates(
     their inputs: right only when each aggregate output's grain determines what
     the atom reads. Otherwise the aggregate never saw the WHERE, a wrong answer
     no later pass can repair. An aggregate over literals alone reads no rows,
-    so the FINAL gate is all a WHERE can do to it."""
+    so the FINAL gate is all a WHERE can do to it; nor does one over grain-()
+    roots, which read the same single row inside any WHERE."""
     aggregates = [
         c
         for c in mandatory_list
-        if _crosses_outer_aggregate(c) and not literal_producible(c)
+        if _crosses_outer_aggregate(c)
+        and not (literal_producible(c) or _scalar_rooted(c))
     ]
     if not aggregates:
         return

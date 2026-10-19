@@ -518,8 +518,7 @@ class BaseStateStore:
         """What each of `ds`'s watermark keys should have reached. A target
         holding part of its population is judged against the roots inside its
         `complete where`, not the max over every partition; a key it cannot
-        scope (a table mtime, or a scalar the `where` cannot gate) keeps the
-        global expectation."""
+        scope (a table mtime) keeps the global expectation."""
         self._ensure_concept_max_watermarks(env, executor, root_assets)
         where = scope_where(ds)
         observed = self.watermarks.get(ds.identifier)
@@ -535,10 +534,7 @@ class BaseStateStore:
             )
             with self._lock:
                 scoped.update(found)
-        return {
-            **self.concept_max_watermarks,
-            **{k: scoped[k] for k in keys if scoped[k].value is not None},
-        }
+        return {**self.concept_max_watermarks, **{k: scoped[k] for k in keys}}
 
     def is_stale(
         self,
