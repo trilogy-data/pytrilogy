@@ -1,5 +1,5 @@
 query_id = "67"
-gen_length = 3615
+gen_length = 3640
 preql_size = 871
 comp_size = 1224
 generated_sql = """
@@ -39,7 +39,10 @@ SELECT
 FROM
     \"thoughtful\"
 GROUP BY
-    ROLLUP (2, 3, 1, 4, 7, 6, 5, 8)),
+    ROLLUP (2, 3, 1, 4, 7, 6, 5, 8)
+HAVING
+    count(*) > 0
+),
 abundant as (
 SELECT
     \"questionable\".\"ss_item_brand_name\" as \"ss_item_brand_name\",

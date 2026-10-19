@@ -1,5 +1,5 @@
 query_id = "77"
-gen_length = 8643
+gen_length = 8667
 preql_size = 3178
 comp_size = 3255
 generated_sql = """
@@ -198,6 +198,9 @@ FROM
     \"trite\"
 GROUP BY
     ROLLUP (1, 2)
+HAVING
+    count(*) > 0
+
 ORDER BY 
     \"channel\" asc nulls first,
     \"sk\" asc nulls first,

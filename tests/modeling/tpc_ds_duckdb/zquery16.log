@@ -1,5 +1,5 @@
 query_id = "16"
-gen_length = 2178
+gen_length = 2202
 preql_size = 633
 comp_size = 821
 generated_sql = """
@@ -46,6 +46,9 @@ FROM
     INNER JOIN \"memory\".\"customer_address\" as \"cs_pos_ship_address_customer_address\" on \"cs_catalog_sales\".\"CS_SHIP_ADDR_SK\" = \"cs_pos_ship_address_customer_address\".\"CA_ADDRESS_SK\"
 WHERE
     cast(\"cs_ship_date_date\".\"D_DATE\" as date) BETWEEN date '2002-02-01' AND date '2002-04-02' and \"cs_pos_ship_address_customer_address\".\"CA_STATE\" = 'GA' and \"cs_call_center_call_center\".\"CC_COUNTY\" = 'Williamson County' and not exists (select 1 from cheerful where cheerful.\"returned_orders\" is not distinct from \"cs_catalog_sales\".\"CS_ORDER_NUMBER\") and exists (select 1 from uneven where uneven.\"multi_warehouse_sales\" is not distinct from \"cs_catalog_sales\".\"CS_ORDER_NUMBER\")
+
+HAVING
+    count(*) > 0
 
 ORDER BY 
     \"order_count\" desc

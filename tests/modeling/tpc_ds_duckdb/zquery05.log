@@ -1,5 +1,5 @@
 query_id = "05"
-gen_length = 9802
+gen_length = 9826
 preql_size = 1419
 comp_size = 4238
 generated_sql = """
@@ -177,6 +177,9 @@ FROM
     \"scrawny\"
 GROUP BY
     ROLLUP (1, 2)
+HAVING
+    count(*) > 0
+
 ORDER BY 
     \"scrawny\".\"channel_label\" asc nulls first,
     \"scrawny\".\"entity_id\" asc nulls first

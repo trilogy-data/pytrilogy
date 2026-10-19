@@ -1,5 +1,5 @@
 query_id = "17"
-gen_length = 764
+gen_length = 788
 preql_size = 266
 comp_size = 328
 generated_sql = """
@@ -31,4 +31,7 @@ FROM
     INNER JOIN \"cheerful\" on \"wakeful\".\"part_id\" = \"cheerful\".\"part_id\"
 WHERE
     \"wakeful\".\"quantity\" < 0.2 * \"cheerful\".\"avg_qty_per_part\"
+
+HAVING
+    count(*) > 0
 """

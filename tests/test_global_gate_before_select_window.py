@@ -52,3 +52,23 @@ def test_global_gate_filters_finer_grained_aggregate():
         "select ticket, sum(np) as s order by ticket asc;"
     )
     assert rows == [(1, 30.0)]
+
+
+def test_global_gate_filters_grand_total_beside_window_or_not():
+    plain = _rows(
+        f"{GATE} select item, sum(np) as s, sum(np) by * as tot order by item asc;"
+    )
+    windowed = _rows(
+        f"{GATE} select item, sum(np) as s, sum(np) by * as tot, "
+        "rank(item) over (order by avg(np) asc) as rk order by item asc;"
+    )
+    assert plain == [(2, 10.0, 30.0), (4, 20.0, 30.0)]
+    assert windowed == [(2, 10.0, 30.0, 1), (4, 20.0, 30.0, 2)]
+
+
+def test_global_gate_filters_count_and_avg_by_star():
+    rows = _rows(
+        f"{GATE} select item, count(ticket) by * as n, avg(np) by * as a "
+        "order by item asc;"
+    )
+    assert rows == [(2, 1, 15.0), (4, 1, 15.0)]

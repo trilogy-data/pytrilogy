@@ -1,5 +1,5 @@
 query_id = "24"
-gen_length = 3261
+gen_length = 3286
 preql_size = 665
 comp_size = 1264
 generated_sql = """
@@ -38,7 +38,10 @@ vacuous as (
 SELECT
     avg(\"juicy\".\"_virt_agg_sum_8086358811880305\") as \"_virt_agg_avg_3394423827549395\"
 FROM
-    \"juicy\"),
+    \"juicy\"
+HAVING
+    count(*) > 0
+),
 yummy as (
 SELECT
     \"questionable\".\"store_sales_customer_first_name\" as \"store_sales_customer_first_name\",

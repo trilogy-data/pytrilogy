@@ -1,5 +1,5 @@
 query_id = "80"
-gen_length = 7937
+gen_length = 7961
 preql_size = 1137
 comp_size = 3674
 generated_sql = """
@@ -155,6 +155,9 @@ FROM
     \"abhorrent\"
 GROUP BY
     ROLLUP (1, 2)
+HAVING
+    count(*) > 0
+
 ORDER BY 
     \"channel\" asc nulls first,
     \"sk\" asc nulls first

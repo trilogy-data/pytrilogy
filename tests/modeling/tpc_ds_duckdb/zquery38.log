@@ -1,5 +1,5 @@
 query_id = "38"
-gen_length = 2916
+gen_length = 2940
 preql_size = 1247
 comp_size = 1032
 generated_sql = """
@@ -76,4 +76,7 @@ SELECT
 	END) as \"cnt\"
 FROM
     \"uneven\"
+HAVING
+    count(*) > 0
+
 LIMIT (100)"""

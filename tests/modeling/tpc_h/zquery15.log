@@ -1,5 +1,5 @@
 query_id = "15"
-gen_length = 1188
+gen_length = 1213
 preql_size = 417
 comp_size = 560
 generated_sql = """
@@ -20,7 +20,10 @@ cheerful as (
 SELECT
     max(\"quizzical\".\"supplier_rev\") as \"max_supplier_rev\"
 FROM
-    \"quizzical\"),
+    \"quizzical\"
+HAVING
+    count(*) > 0
+),
 wakeful as (
 SELECT
     \"quizzical\".\"part_supplier_id\" as \"part_supplier_id\",

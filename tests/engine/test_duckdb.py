@@ -3684,3 +3684,51 @@ auto folded_date <- case when 1 = 1 then '2020-01-01'::date else '2021-01-01'::d
         "select id, folded_str, folded_null, folded_num, folded_date where folded_str = 'y';"
     )[0].fetchall()
     assert [tuple(r) for r in rows] == [(1, "y", None, 7, date(2020, 1, 1))]
+
+
+_EMPTY_MODEL = """
+key id int;
+property id.state string;
+property id.x float;
+datasource t (id: id, state: state, x: x) grain (id)
+query '''select * from (values (1,'TX',1.0),(2,'TX',2.0),(3,'GA',4.0)) as t(id,state,x)''';
+"""
+
+
+@mark.parametrize(
+    "select",
+    [
+        "sum(x) as n",
+        "count(id) as n",
+        "sum(1) as n",
+        "sum(1) as n, sum(x) as s",
+        "sum(1) as n, count(id) as c",
+        "count(id) by * as n",
+        "state, sum(x) by * as tot",
+        "state, sum(x) as n",
+        "state, sum(x) as n by rollup (state)",
+        "state, sum(x) as n by cube (state)",
+    ],
+)
+def test_where_leaving_no_rows_returns_no_rows(select) -> None:
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.parse_text(_EMPTY_MODEL)
+    assert engine.execute_text(f"where x > 100 select {select};")[-1].fetchall() == []
+
+
+@mark.parametrize(
+    "query, expected",
+    [
+        ("select sum(x) as n, count(id) as c;", [(7.0, 3)]),
+        ("where x > 1 select sum(x) as n, count(id) as c;", [(6.0, 2)]),
+        ("select count(id ? x > 100) as c, sum(x ? x > 100) as s;", [(0, None)]),
+    ],
+)
+def test_grand_total_over_rows_keeps_its_row(query, expected) -> None:
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.parse_text(_EMPTY_MODEL)
+    rows = engine.execute_text(query)[-1].fetchall()
+    assert [
+        tuple(float(v) if v is not None and not isinstance(v, int) else v for v in r)
+        for r in rows
+    ] == expected

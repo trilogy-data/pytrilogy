@@ -1,5 +1,5 @@
 query_id = "22"
-gen_length = 1471
+gen_length = 1495
 preql_size = 513
 comp_size = 806
 generated_sql = """
@@ -23,6 +23,9 @@ FROM
     \"memory\".\"customer\" as \"orders_customer_customers\"
 WHERE
     (SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) is not null and SUBSTRING(\"orders_customer_customers\".\"c_phone\",1,2) in ('13','31','23','29','30','18','17')) and \"orders_customer_customers\".\"c_acctbal\" > 0
+
+HAVING
+    count(*) > 0
 )
 SELECT
     \"thoughtful\".\"cntrycode\" as \"cntrycode\",

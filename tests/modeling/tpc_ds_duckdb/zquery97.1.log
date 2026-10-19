@@ -1,5 +1,5 @@
 query_id = "97.1"
-gen_length = 2797
+gen_length = 2821
 preql_size = 1120
 comp_size = 1159
 generated_sql = """
@@ -55,4 +55,7 @@ SELECT
 	ELSE 0
 	END) as \"both_sale_count\"
 FROM
-    \"uneven\""""
+    \"uneven\"
+HAVING
+    count(*) > 0
+"""

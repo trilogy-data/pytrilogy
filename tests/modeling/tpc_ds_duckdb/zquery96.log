@@ -1,5 +1,5 @@
 query_id = "96"
-gen_length = 1030
+gen_length = 1054
 preql_size = 357
 comp_size = 382
 generated_sql = """
@@ -12,6 +12,9 @@ FROM
     INNER JOIN \"memory\".\"household_demographics\" as \"store_sales_pos_household_demographic_household_demographics\" on \"store_sales_store_sales\".\"SS_HDEMO_SK\" = \"store_sales_pos_household_demographic_household_demographics\".\"HD_DEMO_SK\"
 WHERE
     \"store_sales_sale_time_time\".\"T_HOUR\" = 20 and \"store_sales_sale_time_time\".\"T_MINUTE\" >= 30 and \"store_sales_pos_household_demographic_household_demographics\".\"HD_DEP_COUNT\" = 7 and \"store_sales_store_store\".\"S_STORE_NAME\" = 'ese'
+
+HAVING
+    count(*) > 0
 
 ORDER BY 
     \"ct\" asc

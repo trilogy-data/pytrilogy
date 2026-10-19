@@ -257,7 +257,8 @@ with combined as intersect(
 ) -> (k, c);
 select count(combined.k) -> total;
 """
-    assert _rows(executor, query) == [(0,)]
+    # the intersect is empty, and a count over no rows is no row
+    assert _rows(executor, query) == []
 
 
 def test_union_subset_consumer_still_prunes():

@@ -1,5 +1,5 @@
 query_id = "22"
-gen_length = 1510
+gen_length = 1534
 preql_size = 599
 comp_size = 486
 generated_sql = """
@@ -29,6 +29,9 @@ FROM
     \"cheerful\"
 GROUP BY
     ROLLUP (1, 2, 3, 4)
+HAVING
+    count(*) > 0
+
 ORDER BY 
     \"qoh\" asc nulls first,
     \"cheerful\".\"inventory_item_product_name\" asc nulls first,

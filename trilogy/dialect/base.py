@@ -231,6 +231,19 @@ def _aggregates_a_constant(function: Any) -> bool:
     )
 
 
+def _aggregates_rows(cte: Any) -> bool:
+    """A CTE computing an aggregate over the rows it reads."""
+    return (
+        isinstance(cte, CTE)
+        and cte.group_to_grain
+        and cte.render_from_clause
+        and any(
+            c.derivation == Derivation.AGGREGATE and not cte.source_map.get(c.address)
+            for c in cte.output_columns
+        )
+    )
+
+
 def _needs_arithmetic_parentheses(
     expr: Any, parent_operator: FunctionType | None = None
 ) -> bool:
@@ -2679,6 +2692,14 @@ class BaseDialect:
             return [f"GROUPING SETS ({', '.join(rendered_sets)})"]
         raise ValueError(f"Unsupported aggregate grouping mode {mode}")
 
+    def _grouping_has_empty_set(self, cte: CTE | UnionCTE) -> bool:
+        mode, _, grouping_sets = self._get_aggregate_grouping(cte)
+        if mode in (AggregateGroupingMode.ROLLUP, AggregateGroupingMode.CUBE):
+            return True
+        return mode == AggregateGroupingMode.GROUPING_SETS and any(
+            not grouping_set for grouping_set in grouping_sets
+        )
+
     @staticmethod
     def _constant_output_group_by_fallback(cte: CTE | UnionCTE) -> list[str]:
         # Dedupe to one row when group_to_grain is set but every output is a
@@ -2907,6 +2928,15 @@ class BaseDialect:
         else:
             rendered_having = self.render_expr(having, cte) if having else None
 
+        group_by = self.render_cte_group_by(cte, select_concept_index)
+        # A group formed from no rows (a grand total, or the `()` set of a
+        # rollup/cube) is no row, not one NULL (or 0) row.
+        if _aggregates_rows(cte) and (
+            not group_by or self._grouping_has_empty_set(cte)
+        ):
+            rendered_having = " and ".join(
+                ([rendered_having] if rendered_having else []) + ["count(*) > 0"]
+            )
         logger.debug(f"{LOGGER_PREFIX} {len(final_joins)} joins for cte {cte.name}")
         return CompiledCTE(
             name=cte.name,
@@ -2929,7 +2959,7 @@ class BaseDialect:
                     if cte.order_by
                     else None
                 ),
-                group_by=self.render_cte_group_by(cte, select_concept_index),
+                group_by=group_by,
             ),
         )
 

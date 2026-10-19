@@ -1,5 +1,5 @@
 query_id = "86"
-gen_length = 2147
+gen_length = 2172
 preql_size = 934
 comp_size = 847
 generated_sql = """
@@ -27,7 +27,10 @@ SELECT
 FROM
     \"cheerful\"
 GROUP BY
-    ROLLUP (1, 2)),
+    ROLLUP (1, 2)
+HAVING
+    count(*) > 0
+),
 questionable as (
 SELECT
     \"cooperative\".\"g_cat\" + \"cooperative\".\"g_class\" as \"lochierarchy\",

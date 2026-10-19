@@ -1,5 +1,5 @@
 query_id = "09"
-gen_length = 2261
+gen_length = 2285
 preql_size = 1109
 comp_size = 2446
 generated_sql = """
@@ -73,4 +73,7 @@ FROM
     \"memory\".\"store_sales\" as \"store_sales_store_sales\"
 WHERE
     \"store_sales_store_sales\".\"SS_QUANTITY\" BETWEEN 1 AND 100
+
+HAVING
+    count(*) > 0
 """

@@ -139,7 +139,7 @@ def test_window_output_condition_lands_on_downstream_consumer(
     assert placements[0].reason is PlacementReason.UPSTREAM_MOST
 
 
-def test_cross_grain_aggregate_comparison_defers_to_final(
+def test_cross_grain_aggregate_comparison_hosts_on_the_joining_consumer(
     empty_environment: BuildEnvironment,
 ) -> None:
     graph, edges = _graph()
@@ -185,8 +185,8 @@ def test_cross_grain_aggregate_comparison_defers_to_final(
     )
 
     assert len(placements) == 1
-    assert placements[0].group_ids == (FINAL_NODE_ID,)
-    assert placements[0].reason is PlacementReason.FINAL_CROSS_GRAIN_AGGREGATE
+    assert placements[0].group_ids == ("consumer",)
+    assert placements[0].reason is PlacementReason.UPSTREAM_MOST
 
 
 def _filter_environment(scope_condition_address: str) -> BuildEnvironment:

@@ -1,5 +1,5 @@
 query_id = "61"
-gen_length = 1872
+gen_length = 1896
 preql_size = 628
 comp_size = 1279
 generated_sql = """
@@ -17,6 +17,9 @@ FROM
     LEFT OUTER JOIN \"memory\".\"promotion\" as \"ss_promotion_promotion\" on \"ss_store_sales\".\"SS_PROMO_SK\" = \"ss_promotion_promotion\".\"P_PROMO_SK\"
 WHERE
     \"ss_sale_date_date\".\"D_YEAR\" = 1998 and \"ss_sale_date_date\".\"D_MOY\" = 11 and \"ss_item_items\".\"I_CATEGORY\" = 'Jewelry' and \"ss_customer_current_address_customer_address\".\"CA_GMT_OFFSET\" = -5 and \"ss_store_store\".\"S_GMT_OFFSET\" = -5
+
+HAVING
+    count(*) > 0
 
 ORDER BY 
     \"promotions\" asc nulls first,

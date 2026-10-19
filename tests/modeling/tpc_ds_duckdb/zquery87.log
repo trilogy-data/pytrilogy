@@ -1,5 +1,5 @@
 query_id = "87"
-gen_length = 4369
+gen_length = 4393
 preql_size = 1135
 comp_size = 1163
 generated_sql = """
@@ -113,4 +113,7 @@ FROM
 SELECT
     count(md5(CONCAT_WS('\u001f', coalesce(cast(\"macho\".\"_tvf_union_last_name\" as string),'\u001e'), coalesce(cast(\"macho\".\"_tvf_union_first_name\" as string),'\u001e'), coalesce(cast(\"macho\".\"_tvf_union_sale_date\" as string),'\u001e')))) as \"cnt\"
 FROM
-    \"macho\""""
+    \"macho\"
+HAVING
+    count(*) > 0
+"""
