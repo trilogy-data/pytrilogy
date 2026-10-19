@@ -156,6 +156,38 @@ select base order by base asc;
     assert busted_results == baseline_results
 
 
+def test_duckdb_gcs_audited_publish_with_cache_bust():
+    """An audited build is read back from its ``gcs://`` staging key; a
+    cache-bust parameter there is refused by httpfs and failed every publish."""
+    from trilogy.dialect.config import DuckDBConfig
+
+    load_secret("GOOGLE_HMAC_KEY")
+    load_secret("GOOGLE_HMAC_SECRET")
+
+    busted = Dialects.DUCK_DB.default_executor(
+        conf=DuckDBConfig(enable_gcs=True, gcs_cache_bust=True)
+    )
+    busted.execute_raw_sql("CREATE TABLE raw AS SELECT i AS id FROM range(5) t(i)")
+    text = """
+key id int;
+
+root datasource raw (id) grain (id) address raw;
+
+datasource gcs_audited (
+id
+)
+grain (id)
+file `https://storage.googleapis.com/trilogy_public_models/tests/gcs_audited.parquet`:`gcs://trilogy_public_models/tests/gcs_audited.parquet`
+assert count(id) >= 0.5 * prior(count(id))
+state unpublished;
+
+overwrite gcs_audited;
+"""
+    # twice: the second build has a previous asset to compare against
+    busted.execute_text(text)
+    busted.execute_text("overwrite gcs_audited;")
+
+
 def test_duckdb_gcs_refresh():
     """Test refresh command with GCS-backed datasources (mimics sf_trees refresh)."""
     from pathlib import Path

@@ -575,7 +575,8 @@ instead; when set here, always reference the environment (see below).
 - `read_only` — open the file read-only, so many processes can share it
 - `enable_python_datasources` — allow `.py` (Arrow) datasources
 - `enable_gcs` / `enable_spatial` — load the matching DuckDB extension
-- `gcs_cache_bust` — append a cache-busting query param to `gs://` reads
+- `gcs_cache_bust` — append a cache-busting query param to
+  `https://storage.googleapis.com/` reads; `gs://` paths are left alone
 
 **bigquery**
 - `project` — GCP project; defaults to the application-default-credentials one

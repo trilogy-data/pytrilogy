@@ -318,6 +318,67 @@ class TestTableTarget:
             executor.execute_text("persist into built from select id, source;")
 
 
+class TestReadCost:
+    """A check reads the asset, usually remote, once per side per `by` grain,
+    and checks every group's condition in one constant query."""
+
+    def test_assertions_sharing_a_grain_share_a_read(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        target = tmp_path / "built.parquet"
+        executor, built = _executor(tmp_path, f"file `{target.as_posix()}`")
+        executor.update_datasource(built)
+        statements: list[str] = []
+        original = executor.execute_ephemeral
+        monkeypatch.setattr(
+            executor,
+            "execute_ephemeral",
+            lambda text, *a, **k: statements.append(text) or original(text, *a, **k),
+        )
+        executor.update_datasource(built)
+        reads = [s for s in statements if "__assert_ok" not in s]
+        checks = [s for s in statements if "__assert_ok" in s]
+        # prior: the ungrouped grain and `by source`; new: the same two grains,
+        # the ungrouped one answering both of its assertions.
+        assert len(reads) == 4
+        assert any(
+            "__a0__assert_new_0" in r and "__a2__assert_new_0" in r for r in reads
+        )
+        # one per assertion, though `by source` holds two groups
+        assert len(checks) == 3
+
+    def test_an_unanswerable_term_keeps_its_neighbours_history(
+        self, tmp_path: Path, caplog
+    ) -> None:
+        executor = Dialects.DUCK_DB.default_executor(
+            environment=Environment(working_path=tmp_path)
+        )
+        executor.execute_raw_sql(
+            "CREATE TABLE raw AS SELECT i AS id, i % 2 = 0 AS flag FROM range(1000) t(i)"
+        )
+        # the previous build predates `flag`
+        executor.execute_raw_sql("CREATE TABLE built AS SELECT id FROM raw")
+        executor.parse_text("""
+key id int;
+property id.flag bool;
+root datasource raw (id: id, flag: flag) grain (id) address raw;
+datasource built (id: id, flag: flag)
+grain (id)
+address built
+freshness by id
+assert count(id) >= 0.75 * prior(count(id))
+assert count(id ? flag) >= 0.5 * prior(count(id ? flag));
+""")
+        executor.execute_raw_sql("DELETE FROM raw WHERE id >= 10")
+        with caplog.at_level("WARNING", logger="trilogy"), pytest.raises(
+            DatasourceAssertionError
+        ) as info:
+            executor.update_datasource(executor.environment.datasources["built"])
+        assert "previous asset cannot answer `count(id ? flag = True)" in caplog.text
+        assert "count(id) = 10, prior(count(id)) = 1000" in str(info.value)
+        assert "count(id ? flag" not in str(info.value)
+
+
 class TestSkipAndValidate:
     def test_check_assertions_false_builds_past_a_violation(
         self, tmp_path: Path, caplog
