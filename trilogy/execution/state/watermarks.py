@@ -308,10 +308,13 @@ def is_missing_table(
 
 # Widths and zone-awareness an engine picks on its own when it stores a value:
 # DuckDB writes a trilogy float as DOUBLE, a count as BIGINT, and keeps a
-# tz-aware source as TIMESTAMPTZ. A declared type change is caught by the model
-# fingerprint, so only a change of kind is drift.
+# tz-aware source as TIMESTAMPTZ. A numeric the engine computes in floating
+# point (`geo_y`, arithmetic over a double) is stored as DOUBLE too. A declared
+# type change is caught by the model fingerprint, so only a change of kind is
+# drift.
 _STORAGE_FAMILY = {
     DataType.DOUBLE: DataType.FLOAT,
+    DataType.NUMERIC: DataType.FLOAT,
     DataType.BIGINT: DataType.INTEGER,
     DataType.TIMESTAMP: DataType.DATETIME,
 }
