@@ -1511,8 +1511,10 @@ def raise_if_where_population_split(
     That is right with no WHERE (two scalar aggregates over unrelated models are a
     well-defined cross join) and wrong with one, because an output whose source no
     join relates to the filter would ride through silently unfiltered. Anchor those
-    skipped outputs by their upstream row sources instead and name the split. Only
-    called once discovery has already failed, so it can only sharpen the message."""
+    skipped outputs by their upstream row sources instead and name the split.
+    Checked before discovery, which would otherwise plan the stranded output as an
+    unfiltered cross join under an EXISTS gate. Scalars over grain-() roots read
+    one row whatever the WHERE selects, so the EXISTS gate is all they need."""
     if conditions is None:
         return
     filter_args = [c for c in conditions.row_arguments if not _crossjoinable(c)]
@@ -1527,7 +1529,8 @@ def raise_if_where_population_split(
     stranded = [
         c
         for c in outputs
-        if (components := _reachable_components(c, environment, comp_of))
+        if not _scalar_rooted(c)
+        and (components := _reachable_components(c, environment, comp_of))
         and not components & filter_components
     ]
     if not stranded:

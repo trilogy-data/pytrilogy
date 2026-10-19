@@ -136,3 +136,17 @@ def test_per_island_inline_filter_is_the_working_spelling():
         .fetchall()
     )
     assert [tuple(row) for row in rows] == [(10.0, 300.0)]
+
+
+def test_where_on_unrelated_model_raises_for_single_scalar_aggregate():
+    env = Environment()
+    env.parse(_ISLANDS + """
+key region_id int;
+property region_id.region string;
+datasource regions (id: region_id, r: region)
+query '''select 1 id, 'A' r''';
+""")
+    with pytest.raises(DisconnectedConceptsException, match="cannot restrict"):
+        Dialects.DUCK_DB.default_executor(environment=env).generate_sql(
+            "select sum(amt) as s where region = 'A';"
+        )
