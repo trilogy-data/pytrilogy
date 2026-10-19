@@ -130,3 +130,14 @@ SELECT max(last_updated) -> latest, count(last_updated) -> n
 where region = 'A';
 """)
     assert results[-1].fetchall() == [(datetime(2024, 1, 15), 1)]
+
+
+def test_derived_abstract_scalar_aggregate_under_disconnected_where():
+    exec = Dialects.DUCK_DB.default_executor()
+    exec.parse_text(GATED_SETUP + """
+const fallback <- '2024-01-01'::datetime;
+auto lu2 <- greatest(last_updated, last_updated);
+auto lu3 <- coalesce(greatest(lu2, lu2), fallback);
+""")
+    results = exec.execute_text("SELECT max(lu3) -> latest where region = 'A';")
+    assert results[-1].fetchall() == [(datetime(2024, 1, 15),)]

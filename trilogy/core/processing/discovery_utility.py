@@ -785,8 +785,6 @@ def _scalar_rooted(concept: BuildConcept, _seen: set[str] | None = None) -> bool
     """Every leaf is a literal or a grain-() root (`property <*>.x`): one row
     whatever a WHERE selects. ``sum(amount)`` is single-row but reads amount's
     rows, so it is not."""
-    if concept.derivation == Derivation.CONSTANT:
-        return True
     if concept.derivation == Derivation.ROOT or concept.lineage is None:
         return concept.granularity == Granularity.SINGLE_ROW
     seen = _seen if _seen is not None else set()
