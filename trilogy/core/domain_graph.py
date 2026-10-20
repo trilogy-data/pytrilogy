@@ -36,7 +36,7 @@ from functools import partial
 from typing import Any
 from weakref import ReferenceType, ref
 
-from trilogy.core.enums import JoinType
+from trilogy.core.enums import Derivation, JoinType
 from trilogy.core.union_find import find
 
 
@@ -992,6 +992,9 @@ def mint_binding_edges(environment: Any) -> list[BindingEdge]:
 def mint_fd_edges(environment: Any) -> list[FDEdge]:
     out: list[FDEdge] = []
     for concept in _unique_concepts(environment):
+        # an unnest's keys name the row it came from; it is many-valued per key
+        if concept.derivation == Derivation.UNNEST:
+            continue
         keys = concept.effective_keys(environment)
         if keys:
             out.append(
