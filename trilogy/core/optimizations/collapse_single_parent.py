@@ -137,8 +137,11 @@ def passthrough_renders_from_parent(cte: CTE, parent: CTE) -> bool:
 
 
 def has_unsafe_derivations(cte: CTE) -> bool:
-    """Check if a CTE derives any concepts that can't be merged into an aggregate."""
+    """Check if a CTE derives any concepts that can't be merged into an aggregate.
+    A column pulled from upstream is a plain column whatever its derivation."""
     for concept in cte.output_columns:
+        if cte.source_map.get(concept.address):
+            continue
         if concept.derivation in SENSITIVE_DERIVATIONS:
             return True
         if isinstance(concept.lineage, BuildWindowItem):

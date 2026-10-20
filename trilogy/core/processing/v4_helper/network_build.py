@@ -16,6 +16,7 @@ search it feeds.
 
 from __future__ import annotations
 
+from trilogy.core.constants import parent_axis_keys
 from trilogy.core.enums import (
     ComparisonOperator,
     Derivation,
@@ -535,7 +536,7 @@ def connector_join_keys(alias: str, origin: BuildConcept) -> set[str]:
     provided = {alias} | origin.all_spellings
     if set(origin.grain.components) - provided:
         return set()
-    return set(origin.keys or ()) - provided
+    return parent_axis_keys(origin.keys or ()) - provided
 
 
 def _connector_candidates(

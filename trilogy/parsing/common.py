@@ -3,7 +3,7 @@ from datetime import date, datetime
 from typing import Any
 
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
-from trilogy.core.constants import ALL_ROWS_ADDRESS
+from trilogy.core.constants import ALL_ROWS_ADDRESS, UNNEST_ORDINAL_PREFIX
 from trilogy.core.enums import (
     ComparisonOperator,
     Derivation,
@@ -507,7 +507,7 @@ def concept_list_to_keys(
         # derivation onto whichever fact was declared last, and an undemanded
         # partial (`~`) binder then elects into the plan and fans it out
         # (partial-binder filtered-count fuzzer bugs).
-        if concept.purpose == Purpose.KEY and not concept.keys:
+        if concept.is_own_key:
             final_keys.append(concept.address)
             continue
         concept_keys = concept.effective_keys(environment)
@@ -1051,6 +1051,26 @@ def _alias_target_cycles(
     return False
 
 
+def unnest_ordinal(name: str, namespace: str, environment: Environment) -> Concept:
+    """The virtual position key of unnest output `name`: an element is keyed by
+    its parent row's keys and its position in that row's list, never by the
+    parent's keys alone."""
+    address = f"{namespace}.{UNNEST_ORDINAL_PREFIX}{name}"
+    existing = environment.concepts.data.get(address)
+    if isinstance(existing, Concept):
+        return existing
+    ordinal = Concept(
+        name=f"{UNNEST_ORDINAL_PREFIX}{name}",
+        namespace=namespace,
+        datatype=DataType.INTEGER,
+        purpose=Purpose.KEY,
+        granularity=Granularity.MULTI_ROW,
+    )
+    if not environment.frozen:
+        environment.add_concept(ordinal, force=True)
+    return ordinal
+
+
 def function_to_concept(
     parent: Function,
     name: str,
@@ -1092,7 +1112,7 @@ def function_to_concept(
     key_grain: list[str] = []
     for x in pkeys:
         # metrics will group to keys, so do not do key traversal
-        if is_metric or x.purpose == Purpose.KEY and not x.keys:
+        if is_metric or x.is_own_key:
             key_grain.append(x.address)
         # otherwse, for row ops, assume keys are transitive
         elif x_keys := x.effective_keys(environment):
@@ -1100,6 +1120,8 @@ def function_to_concept(
         else:
             key_grain.append(x.address)
     keys = Grain.from_concepts(set(key_grain), environment).components
+    if parent.operator in FunctionClass.ONE_TO_MANY.value:
+        keys = keys | {unnest_ordinal(name, namespace, environment).address}
     # A metric's grain is the grouping grain it's aggregated to (its keys),
     # not the union of those keys' own grains — summing x.grain descends a
     # property grouping key like week_seq down to its key (date.id), finer
@@ -1946,7 +1968,7 @@ def comparison_to_concept(
     key_grain: list[str] = []
     for x in pkeys:
         # metrics will group to keys, so do not do key traversal
-        if is_metric or x.purpose == Purpose.KEY and not x.keys:
+        if is_metric or x.is_own_key:
             key_grain.append(x.address)
         # otherwse, for row ops, assume keys are transitive
         elif x_keys := x.effective_keys(environment):
