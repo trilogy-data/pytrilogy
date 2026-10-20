@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import cast
 
 from trilogy.constants import logger
+from trilogy.core.constants import parent_axis_keys
 from trilogy.core.enums import Derivation, Granularity, JoinType
 from trilogy.core.graph_models import ReferenceGraph, concept_to_node
 from trilogy.core.models.build import (
@@ -1720,6 +1721,21 @@ def _lineage_connected(graph: ReferenceGraph, outputs: list[BuildConcept]) -> bo
     return all(matches & seen for matches in targets)
 
 
+def _elements_of(
+    addresses: frozenset[str], closure: frozenset[str], environment: BuildEnvironment
+) -> bool:
+    """Some address is an unnest element of `closure`'s rows: keyed by a
+    position beside a parent axis the closure holds, so the two are related by
+    that axis even though the axis alone does not determine the element."""
+    for address in addresses:
+        concept = environment.concepts.get(address)
+        keys = set(concept.keys or ()) if concept is not None else set()
+        axis = parent_axis_keys(keys)
+        if axis != keys and axis and axis <= closure:
+            return True
+    return False
+
+
 def _cross_component_source(request: SourceRequest) -> StrategyNode | None:
     """Assemble a lineage-related but join-disconnected request from its
     components: the `sum(samt) + sum(wamt)` scalar shape, two facts related
@@ -1779,7 +1795,9 @@ def _cross_component_source(request: SourceRequest) -> StrategyNode | None:
             request.environment, addresses, include_empty_grain=False
         )
         for other_index, other in enumerate(component_addresses):
-            if other_index != index and closure & other:
+            if other_index != index and (
+                closure & other or _elements_of(other, closure, request.environment)
+            ):
                 return None
     parents: list[StrategyNode] = []
     for index in sorted(grouped):

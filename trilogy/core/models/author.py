@@ -1297,6 +1297,16 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
             pseudonyms={address_with_namespace(v, namespace) for v in self.pseudonyms},
         )
 
+    @property
+    def is_own_key(self) -> bool:
+        """A concept that derivations over it are keyed by directly: a bare key,
+        or an unnest output (of any purpose), whose keys (parent row +
+        position) say how it was produced, not what a value computed from the
+        element depends on."""
+        return self.derivation == Derivation.UNNEST or (
+            self.purpose == Purpose.KEY and not self.keys
+        )
+
     def effective_keys(self, environment: Environment | None) -> set[str] | None:
         """``keys``, falling back to what a datasource declaration implies.
 
@@ -1413,6 +1423,9 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
                     x = environment.concepts[x_ref.address]
                     if isinstance(x, UndefinedConcept):
                         continue
+                    if x.derivation == Derivation.UNNEST:
+                        pkeys.add(x.address)
+                        continue
                     _, _, parent_keys = x.get_select_grain_and_keys(grain, environment)
                     if parent_keys:
                         pkeys.update(parent_keys)
@@ -1428,6 +1441,9 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
                 for x_ref in _row_grain_concept_refs(new_lineage):
                     x = environment.concepts[x_ref.address]
                     if isinstance(x, UndefinedConcept):
+                        continue
+                    if x.derivation == Derivation.UNNEST:
+                        pkeys.add(x.address)
                         continue
                     _, _, parent_keys = x.get_select_grain_and_keys(grain, environment)
                     if parent_keys:

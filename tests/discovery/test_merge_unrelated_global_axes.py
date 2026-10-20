@@ -5,9 +5,10 @@ Two planner errors fanned these answers out:
 - two unrelated global `merge`s in one namespace were read as legs of one
   composite relation, so a global `count(tree_id)` widened its input grain
   with the ecoregion axis and counted tree x ecoregion rows;
-- an unnest output's `keys` (the row it came from) were minted as a functional
-  dependency, so `species` "determined" `ecoregion_id` and `min(ecoregion_id)
-  by species` was grouped at (species, ecoregion_id) beside that axis.
+- an unnest output was keyed by its parent's keys alone, so `species`
+  "determined" `ecoregion_id` and `min(ecoregion_id) by species` was grouped
+  at (species, ecoregion_id) beside that axis. Its keys are now the parent's
+  keys plus a virtual position key, which is never sourced.
 
 Each case is checked against an oracle computed in Python."""
 
@@ -116,3 +117,15 @@ def test_species_aggregate_over_ecoregion_axis(axis, unrelated, metric, group):
     got = sorted((tuple(_normalize(v) for v in r) for r in rows), key=str)
     want = [tuple(_normalize(v) for v in r) for r in _oracle(metric, group)]
     assert got == want
+
+
+def test_unnest_output_keyed_by_parent_and_position():
+    env = Environment()
+    env.parse(
+        BASE + AXES["unnest_partial_merge"] + "auto shifted <- tree_eco_region + 1;"
+    )
+    element = env.concepts["tree_eco_region"]
+    ordinal = env.concepts["__unnest_ordinal_tree_eco_region"]
+    assert element.keys == {"local.species", ordinal.address}
+    assert ordinal.is_internal
+    assert env.concepts["shifted"].keys == {element.address}

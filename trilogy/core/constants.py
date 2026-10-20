@@ -1,3 +1,5 @@
+from collections.abc import Iterable
+
 CONSTANT_DATASET: str = "preql_internal_constant_dataset"
 ALL_ROWS_CONCEPT = "all_rows"
 INTERNAL_NAMESPACE = "__preql_internal"
@@ -5,6 +7,22 @@ INTERNAL_NAMESPACE = "__preql_internal"
 ALL_ROWS_ADDRESS = f"{INTERNAL_NAMESPACE}.{ALL_ROWS_CONCEPT}"
 PERSISTED_CONCEPT_PREFIX = "__pre_persist"
 UNNEST_NAME = "_unnest_alias"
+# Name prefix of the virtual position key an unnest output is keyed by beside
+# its parent row's keys. It is never sourced or rendered: it only keeps the
+# parent's keys from reading as determining a many-valued output.
+UNNEST_ORDINAL_PREFIX = "__unnest_ordinal_"
+
+
+def is_unnest_ordinal(address: str) -> bool:
+    return address.rpartition(".")[2].startswith(UNNEST_ORDINAL_PREFIX)
+
+
+def parent_axis_keys(keys: Iterable[str]) -> set[str]:
+    """`keys` less unnest positions: the input-row axis an element hangs off,
+    which the input side carries; the position exists only on the element."""
+    return {k for k in keys if not is_unnest_ordinal(k)}
+
+
 WORKING_PATH_CONCEPT = "_env_working_path"
 # Namespace prefix for the anonymous rowset an inline `(select …)` subquery is
 # desugared into. Used to mint the name and to skip its auto-promoted hidden
