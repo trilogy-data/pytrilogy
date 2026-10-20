@@ -17,6 +17,7 @@ from collections import defaultdict
 import pytest
 
 from trilogy import Dialects
+from trilogy.core.models.author import Grain
 from trilogy.core.models.environment import Environment
 
 TREES = [(1, "a", 10.0), (2, "a", 20.0), (3, "b", 5.0), (4, "c", 7.0), (5, "b", 1.0)]
@@ -129,3 +130,30 @@ def test_unnest_output_keyed_by_parent_and_position():
     assert element.keys == {"local.species", ordinal.address}
     assert ordinal.is_internal
     assert env.concepts["shifted"].keys == {element.address}
+
+
+@pytest.mark.parametrize("axis", ["unnest_merge", "unnest_partial_merge"])
+def test_element_beside_by_aggregate_keeps_element_grain(axis):
+    model = (
+        BASE
+        + AXES[axis]
+        + "auto gap <- tree_eco_region - (min(tree_eco_region) by species);"
+    )
+    engine = Dialects.DUCK_DB.default_executor(environment=Environment())
+    engine.parse_text(model)
+    rows = engine.execute_text("select species, tree_eco_region, gap;")[-1].fetchall()
+    want = sorted((s, e, e - min(es)) for s, es in NATIVE.items() for e in es)
+    assert sorted(tuple(r) for r in rows) == want
+
+
+def test_element_beside_by_aggregate_select_grain_is_element():
+    env = Environment()
+    env.parse(
+        BASE
+        + AXES["unnest_partial_merge"]
+        + "auto gap <- tree_eco_region - (min(tree_eco_region) by species);"
+    )
+    grain = Grain(components={"local.species", "local.tree_eco_region"})
+    _, select_grain, keys = env.concepts["gap"].get_select_grain_and_keys(grain, env)
+    assert select_grain.components == {"local.species", "local.tree_eco_region"}
+    assert keys == {"local.species", "local.tree_eco_region"}
