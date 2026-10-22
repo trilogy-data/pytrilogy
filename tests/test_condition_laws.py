@@ -50,3 +50,20 @@ where active and nullable_amount > 0
 select group_id, sum(amount) as t;
 """
     assert _rows(query) == [(2, 7), (3, 11)]
+
+
+def test_named_where_beside_subset_joined_rowset_stays_below_the_aggregate():
+    # A subset-joined rowset is a side input, not a row-shape barrier the
+    # atom's rows cross: the gate used to be pushed past the aggregate.
+    prefix = """
+auto has_amount <- nullable_amount is not null;
+rowset totals <- select group_id as tgid, sum(amount) as tt;
+rowset joined <- where """
+    suffix = """ and totals.tt > 0
+select group_id as gid, sum(amount) as t
+subset join totals.tgid = group_id;
+select joined.gid, joined.t;
+"""
+    expected = [(1, 5), (2, 7), (3, 11)]
+    assert _rows(prefix + "has_amount = true" + suffix) == expected
+    assert _rows(prefix + "nullable_amount is not null" + suffix) == expected

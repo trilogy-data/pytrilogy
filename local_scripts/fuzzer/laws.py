@@ -516,6 +516,29 @@ select base.gid, sum(base.amt) as t order by base.gid asc;
         ),
         _law(
             seed,
+            "named_where_beside_subset_join",
+            "Pin.named_eq_inline",
+            "A WHERE over a named derivation reads as its inline spelling, "
+            "beside a `subset join`ed rowset too.",
+            ("rowset", "subset", "where"),
+            """
+rowset totals <- select group_id as tgid, sum(event_amount) as tt;
+rowset joined <- where has_amount = true and totals.tt > 0
+select group_id as gid, sum(event_amount) as t, max(totals.tt) as m
+subset join totals.tgid = group_id;
+select joined.gid, joined.t, joined.m order by joined.gid asc;
+""",
+            """
+rowset totals <- select group_id as tgid, sum(event_amount) as tt;
+rowset joined <- where nullable_amount is not null and totals.tt > 0
+select group_id as gid, sum(event_amount) as t, max(totals.tt) as m
+subset join totals.tgid = group_id;
+select joined.gid, joined.t, joined.m order by joined.gid asc;
+""",
+            model_extra="\nauto has_amount <- nullable_amount is not null;\n",
+        ),
+        _law(
+            seed,
             "key_count_is_source_independent",
             "Rows.count_key_eq_count_distinct",
             "`count(key)` counts distinct key values, whichever rows carry it.",

@@ -47,6 +47,13 @@ a design decision or a bug.
   status, while `select customer_id, status` gave `'in-transit'`
   (`Pin.projection_invariant`). The sibling kept the shared bucket off the
   padded rows. Pinned BASICs now bucket apart.
+- **A WHERE over a named derivation in a rowset with a `subset join` could
+  not be placed.** `where has_amount = true` raised "could only be placed
+  after the aggregates", while its inline spelling `nullable_amount is not
+  null` planned (`Pin.named_eq_inline`). The joined rowset counted as a
+  row-shape barrier the atom's rows crossed, though it is a side input. This
+  was latent on main: TPC-DS q29's bare `is_returned` dodged it only because
+  the conjunct-split bug above kept the whole WHERE in one piece.
 - **`docs/modeling_concepts.md` contradicted `docs/grain_pin.md`** on the
   padded row of a CASE with an ELSE (`Domain.pin_contradicts_stored_reading`:
   no one value satisfies both). The engine follows the pin, and the
