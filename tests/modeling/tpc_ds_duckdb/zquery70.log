@@ -1,5 +1,5 @@
 query_id = "70"
-gen_length = 2980
+gen_length = 2793
 preql_size = 1048
 comp_size = 1258
 generated_sql = """
@@ -50,22 +50,15 @@ FROM
 WHERE
     \"questionable\".\"state_rnk\" <= 5
 ),
-uneven as (
-SELECT
-    \"abundant\".\"ss_net_profit\" as \"ss_net_profit\",
-    \"abundant\".\"ss_store_county\" as \"ss_store_county\",
-    \"abundant\".\"ss_store_state\" as \"ss_store_state\"
-FROM
-    \"abundant\"),
 yummy as (
 SELECT
-    \"uneven\".\"ss_store_county\" as \"ss_store_county\",
-    \"uneven\".\"ss_store_state\" as \"ss_store_state\",
-    grouping(\"uneven\".\"ss_store_county\") as \"g_county\",
-    grouping(\"uneven\".\"ss_store_state\") as \"g_state\",
-    sum(\"uneven\".\"ss_net_profit\") as \"total_sum\"
+    \"abundant\".\"ss_store_county\" as \"ss_store_county\",
+    \"abundant\".\"ss_store_state\" as \"ss_store_state\",
+    grouping(\"abundant\".\"ss_store_county\") as \"g_county\",
+    grouping(\"abundant\".\"ss_store_state\") as \"g_state\",
+    sum(\"abundant\".\"ss_net_profit\") as \"total_sum\"
 FROM
-    \"uneven\"
+    \"abundant\"
 GROUP BY
     ROLLUP (2, 1)
 HAVING
