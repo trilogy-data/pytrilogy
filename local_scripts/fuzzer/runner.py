@@ -78,6 +78,12 @@ def fetch_rows(result: Any) -> list[tuple[Any, ...]]:
     return [tuple(row) for row in result.fetchall()]
 
 
+def run_oracle(executor: Any, case: FuzzCase) -> Any:
+    if case.twin_trilogy:
+        return executor.execute_text(case.twin_trilogy)[-1]
+    return executor.execute_raw_sql(case.oracle_sql)
+
+
 def run_case(case: FuzzCase) -> CaseOutcome:
     executor = Dialects.DUCK_DB.default_executor()
     expected: list[tuple[Any, ...]] = []
@@ -92,9 +98,9 @@ def run_case(case: FuzzCase) -> CaseOutcome:
     try:
         started = perf_counter()
         try:
-            expected = fetch_rows(executor.execute_raw_sql(case.oracle_sql))
+            expected = fetch_rows(run_oracle(executor, case))
         except Exception as exc:
-            error_stage = "oracle"
+            error_stage = "twin" if case.twin_trilogy else "oracle"
             error = format_exception(exc)
         oracle_ms = elapsed_ms(started)
 
@@ -168,7 +174,10 @@ def write_repro(case: FuzzCase, outcome: CaseOutcome, repro_dir: Path) -> Path:
 
     outcome.result.repro = str(preql_path)
     preql_path.write_text(case.trilogy, encoding="utf-8")
-    oracle_path.write_text(case.oracle_sql.rstrip() + "\n", encoding="utf-8")
+    if case.twin_trilogy:
+        (target / "twin.preql").write_text(case.twin_trilogy, encoding="utf-8")
+    else:
+        oracle_path.write_text(case.oracle_sql.rstrip() + "\n", encoding="utf-8")
     if outcome.generated_sql:
         (target / "generated.sql").write_text(
             outcome.generated_sql.rstrip() + "\n", encoding="utf-8"
@@ -227,7 +236,8 @@ Actual:
 ```
 
 `repro.preql` contains the complete query-backed dataset and Trilogy query.
-`oracle.sql` is the independent DuckDB query. `generated.sql`, when present,
+`oracle.sql` is the independent DuckDB query, or `twin.preql` the Trilogy
+program a `formal/` theorem proves equal. `generated.sql`, when present,
 is the SQL emitted by Trilogy.
 """
 

@@ -314,6 +314,8 @@ class ConceptAttrs:
     counted_key: str | None = None
     # the aggregate's function, None for any other concept
     aggregate_operator: FunctionType | None = None
+    # the select keys a GRAIN_PIN evaluates on (`grain_pin`); empty otherwise
+    grain_pin_anchors: frozenset[str] = frozenset()
     keys: frozenset[str] = frozenset()
     # For a ROOT whose declared keys the query never names: the KEY roots that
     # jointly determine it through the environment's FD closure (a dimension

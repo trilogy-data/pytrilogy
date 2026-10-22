@@ -69,6 +69,21 @@ def _release_executors():
                 (3, None, "in-transit", 0),
             ],
         ),
+        # a comparison sibling at the reads' grain must not share the pinned
+        # value's bucket, which `solid_groups` keeps off the padded rows
+        (
+            "select customer_id, status, undelivered",
+            [
+                (1, "delivered", False),
+                (1, "in-transit", True),
+                (2, "delivered", False),
+                (3, "in-transit", None),
+            ],
+        ),
+        (
+            "select customer_id, flag, amount > 15 as big",
+            [(1, 0, False), (1, 1, True), (2, 0, True), (3, 1, None)],
+        ),
     ],
 )
 def test_fallback_fires_on_the_select_row(query: str, expected: list[tuple]):

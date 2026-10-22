@@ -1548,6 +1548,18 @@ def _rowset_key_handles(
     return out
 
 
+def _grain_pin_anchors(concept: BuildConcept) -> frozenset[str]:
+    lineage = concept.lineage
+    if not (
+        isinstance(lineage, BuildFunction)
+        and lineage.operator == FunctionType.GRAIN_PIN
+    ):
+        return frozenset()
+    return frozenset(
+        arg.address for arg in lineage.arguments[1:] if isinstance(arg, BuildConcept)
+    )
+
+
 def _add_concept(
     concept: BuildConcept,
     environment: BuildEnvironment,
@@ -1729,6 +1741,7 @@ def _add_concept(
             if isinstance(concept.lineage, BuildAggregateWrapper)
             else None
         ),
+        grain_pin_anchors=_grain_pin_anchors(concept),
         keys=frozenset(concept.keys or set()),
         pseudonyms=frozenset(concept.pseudonyms),
         is_rename=is_rename,
