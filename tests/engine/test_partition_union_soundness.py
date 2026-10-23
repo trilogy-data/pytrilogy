@@ -19,6 +19,7 @@ from trilogy.core.models.core import DataType
 from trilogy.core.processing.condition_utility import (
     conditions_partition_domain,
     domain_hits,
+    exact_covers,
     partitions_domain,
     reduce_expression,
     simplify_conditions,
@@ -74,8 +75,16 @@ T20 = "'2024-01-01 20:00:00'::datetime"
         ("int", ["x <= 10", "x >= 5"], [(1, "1"), (2, "7"), (3, "20")]),
         ("int?", ["x <= 10", "x > 10"], [(1, "1"), (2, "NULL::int"), (3, "20")]),
         (f"{ENUM}?", ["x = 'a'", "x = 'b'"], [(1, "'a'"), (2, "NULL")]),
+        ("string", ["x = 'a'", "x = 'b'"], [(1, "'a'"), (2, "'c'")]),
     ],
-    ids=["float_cut", "datetime_subday_gap", "overlap", "nullable", "nullable_enum"],
+    ids=[
+        "float_cut",
+        "datetime_subday_gap",
+        "overlap",
+        "nullable",
+        "nullable_enum",
+        "open_string",
+    ],
 )
 def test_non_partition_is_not_a_source(datatype, claims, rows):
     with pytest.raises(UnresolvableQueryException):
@@ -123,6 +132,21 @@ def test_non_partition_is_not_a_source(datatype, claims, rows):
             "where x = 'a' ",
             1,
         ),
+        ("int", ["x <= 10", "x > 10", "x <= 10"], [(1, "1"), (2, "11")], "", 2),
+        (
+            "string?",
+            ["x = 'a'", "x != 'a'", "x is null"],
+            [(1, "'a'"), (2, "'b'"), (3, "NULL")],
+            "",
+            3,
+        ),
+        (
+            "string",
+            ["x = 'a'", "x != 'a'", "x = 'a'"],
+            [(1, "'a'"), (2, "'b'")],
+            "",
+            2,
+        ),
     ],
     ids=[
         "float",
@@ -133,6 +157,9 @@ def test_non_partition_is_not_a_source(datatype, claims, rows):
         "gated",
         "enum_null_arm",
         "enum_gated",
+        "redundant_copy",
+        "string_equality",
+        "string_copy",
     ],
 )
 def test_partition_unions(datatype, claims, rows, gate, expected):
@@ -167,10 +194,29 @@ def test_partition_requires_disjoint_arms():
     assert not partitions_domain(DataType.BOOL, [(EQ, True), (EQ, False)], True)
 
 
+def test_exact_covers_pick_one_copy_of_a_duplicate_arm():
+    low, high = [True, False], [False, True]
+    assert exact_covers([list(r) for r in zip(low, high, low)]) == [(0, 1), (2, 1)]
+    assert exact_covers([[True, True], [False, True]]) == [(1,)]
+    assert exact_covers([[True, False], [False, False]]) == []
+
+
+def test_string_cells_are_literals_and_everything_else():
+    NE = ComparisonOperator.NE
+    assert domain_hits(DataType.STRING, [(EQ, "a")]) == [1, 0]
+    assert partitions_domain(DataType.STRING, [(EQ, "a"), (NE, "a")])
+    assert not partitions_domain(DataType.STRING, [(EQ, "a"), (EQ, "b")])
+    assert not partitions_domain(DataType.STRING, [(EQ, "a"), (NE, "a")], True)
+    assert partitions_domain(
+        DataType.STRING, [(EQ, "a"), (NE, "a"), (ComparisonOperator.IS, None)], True
+    )
+
+
 def test_cells_decline_what_they_cannot_decide():
     from trilogy.core.models.core import EnumType, ValidatedType, ValueRange
 
-    assert domain_hits(DataType.STRING, [(EQ, "a")]) is None
+    assert domain_hits(DataType.STRING, [(LT, "a")]) is None
+    assert domain_hits(DataType.STRING, [(EQ, 1)]) is None
     assert domain_hits(DataType.INTEGER, [(EQ, True)]) is None
     assert domain_hits(DataType.DATE, [(LT, date(2024, 1, 1)), (GT, 5)]) is None
     assert domain_hits(DataType.INTEGER, [(ComparisonOperator.LIKE, 1)]) is None

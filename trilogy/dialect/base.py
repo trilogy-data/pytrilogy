@@ -3,6 +3,7 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime
+from decimal import Decimal
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -2544,6 +2545,8 @@ class BaseDialect:
             return self.render_string_literal(e)
         elif isinstance(e, (int, float)):
             return str(e)
+        elif isinstance(e, Decimal):
+            return format(e, "f")
         elif isinstance(e, TupleWrapper):
             return f"({','.join([self.render_expr(x, cte=cte, raise_invalid=raise_invalid) for x in e])})"
         elif isinstance(e, MapWrapper):

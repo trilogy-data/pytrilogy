@@ -433,20 +433,30 @@ def _in_declared_ranges(ranges: tuple[ValueRange, ...], cell: _Cell) -> bool:
     )
 
 
-def domain_hits(
+def domain_cover(
     datatype: Any,
     group_tuple: list[tuple[ComparisonOperator, Any]],
     nullable: bool = False,
-) -> list[int] | None:
-    """How many of ``group_tuple``'s atoms hold on each cell of ``datatype``'s
-    domain (plus NULL when ``nullable``); None when the atoms or the type are
-    outside what the cell model can decide."""
+) -> list[list[bool]] | None:
+    """Which of ``group_tuple``'s atoms hold on each cell of ``datatype``'s
+    domain (plus NULL when ``nullable``), one row per cell; None when the atoms
+    or the type are outside what the cell model can decide."""
     if isinstance(datatype, EnumType):
         # An enum's order is not its values' string order: only equality.
         if any(op in _ORDER_OPERATORS for op, _ in group_tuple):
             return None
         cells: list[_Cell] = [("point", str(v)) for v in datatype.values]
         atoms = [(op, None if v is None else str(v)) for op, v in group_tuple]
+    elif isinstance(datatype, DataType) and datatype == DataType.STRING:
+        # Unbounded, and SQL collation is not python's string order: equality
+        # only, each literal a point and every other string one cell.
+        if any(op in _ORDER_OPERATORS for op, _ in group_tuple):
+            return None
+        strings = {v for _, v in group_tuple if v is not None}
+        if not all(isinstance(v, str) for v in strings):
+            return None
+        cells = [("point", v) for v in sorted(strings)] + [("gap", None, None)]
+        atoms = list(group_tuple)
     else:
         base = datatype
         ranges: tuple[ValueRange, ...] = ()
@@ -463,16 +473,61 @@ def domain_hits(
         atoms = list(group_tuple)
     if nullable:
         cells.append(_NULL_CELL)
-    hits: list[int] = []
+    matrix: list[list[bool]] = []
     for cell in cells:
-        count = 0
+        row: list[bool] = []
         for op, value in atoms:
             holds = _atom_holds(op, value, cell)
             if holds is None:
                 return None
-            count += holds
-        hits.append(count)
-    return hits
+            row.append(holds)
+        matrix.append(row)
+    return matrix
+
+
+def domain_hits(
+    datatype: Any,
+    group_tuple: list[tuple[ComparisonOperator, Any]],
+    nullable: bool = False,
+) -> list[int] | None:
+    """How many of ``group_tuple``'s atoms hold on each cell of the domain."""
+    matrix = domain_cover(datatype, group_tuple, nullable)
+    return None if matrix is None else [sum(row) for row in matrix]
+
+
+# An exact-cover search enumerates products of duplicate arms; a family's
+# best cover is among the first few, so the search stops here.
+MAX_EXACT_COVERS = 64
+
+
+def exact_covers(matrix: list[list[bool]]) -> list[tuple[int, ...]]:
+    """Every set of columns (atoms) that holds exactly once on each row
+    (cell): the sub-families that partition the domain."""
+    found: list[tuple[int, ...]] = []
+    _search_covers(matrix, frozenset(range(len(matrix))), (), found)
+    return found
+
+
+def _search_covers(
+    matrix: list[list[bool]],
+    open_rows: frozenset[int],
+    chosen: tuple[int, ...],
+    found: list[tuple[int, ...]],
+) -> None:
+    if len(found) >= MAX_EXACT_COVERS:
+        return
+    if not open_rows:
+        found.append(chosen)
+        return
+    # Branch on the lowest open cell: exactly one column of any cover claims
+    # it, so each cover is found once.
+    row = min(open_rows)
+    for col, holds in enumerate(matrix[row]):
+        if not holds:
+            continue
+        claimed = frozenset(i for i, r in enumerate(matrix) if r[col])
+        if claimed <= open_rows:
+            _search_covers(matrix, open_rows - claimed, chosen + (col,), found)
 
 
 def reduce_expression(
@@ -637,6 +692,21 @@ def conditions_partition_domain(
             for dt, nullable, atoms in grouped.values()
         )
     )
+
+
+def conditions_partition_covers(
+    conditions: list[BoolExpr],
+    excluded: ExcludedEnumValues | None = None,
+) -> list[tuple[int, ...]]:
+    """Index sets of ``conditions`` that each partition the domain. A family
+    with a redundant arm (a materialized copy of one partition) has no
+    partition as a whole, but every cover that picks one copy is one."""
+    grouped = _grouped_atoms(conditions, excluded)
+    if grouped is None or len(grouped) != 1:
+        return []
+    ((datatype, nullable, atoms),) = grouped.values()
+    matrix = domain_cover(datatype, atoms, nullable)
+    return exact_covers(matrix) if matrix else []
 
 
 def references_any_concept(element: Any, addresses: set[str]) -> bool:

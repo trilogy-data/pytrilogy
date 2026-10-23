@@ -2,6 +2,7 @@ import glob as glob_module
 from collections.abc import ItemsView, ValuesView
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 
@@ -90,7 +91,7 @@ class UpdateKey:
     #: environment, or the literal ``update_time`` for a table-mtime watermark.
     concept_name: str
     type: UpdateKeyType
-    value: str | int | float | datetime | date | None
+    value: str | int | float | Decimal | datetime | date | None
 
     def to_comparison(self, environment: "Environment") -> "Comparison":
         """Convert this update key to a Comparison for use in WHERE clauses."""
@@ -99,7 +100,9 @@ class UpdateKey:
         right_value = self.value if self.value is not None else MagicConstants.NULL
         return Comparison(
             left=concept.reference,
-            right=right_value,
+            # A DECIMAL watermark stays exact; the build layer and every
+            # dialect render it as a literal.
+            right=right_value,  # type: ignore[arg-type]
             operator=ComparisonOperator.GT,
         )
 
