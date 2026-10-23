@@ -30,6 +30,7 @@ a design decision or a bug.
 | `Domain.lean` | `~` padding, grain pin | materialization invariance, pin vs stored column, pin is projection-invariant, `sum(coalesce)` |
 | `Sourcing.lean` | `complete where` arms, partition unions, the cell checker | a partition family unions back to the table (split, point, bool, `is null` arm, NULL-rejecting gate, a redundant copy of an arm), an arm answers under an implying WHERE, summary table = computed aggregate |
 | `Freshness.lean` | watermarks, the stale verdict, the incremental refresh | verdict = refresh has a row to write, incremental = rebuild under strict arrivals (checked by `tests/execution/state/test_freshness_laws.py`, not the query fuzzer) |
+| `StateMerge.lean` | partition deltas folded into a state snapshot | disjoint overlays commute, replay is a no-op, newest claim wins as a semilattice join, the per-slice count adjustment (checked by `tests/execution/state/test_merge_laws.py`) |
 
 ## What it found
 
@@ -112,6 +113,23 @@ a design decision or a bug.
   snapshots restore `Decimal`. The incremental refresh of a DECIMAL key also
   crashed: the dialect could not render a `Decimal` literal in its `k > m`
   filter.
+- **A fan-out merge depended on what the deltas carried.** `merge_snapshots`
+  promised order independence, and three inputs broke it or its counts.
+  `--state-max-partitions` trimmed a worker's scoped delta, so rebuilt slices
+  stayed stale in the merge and a newly built one was never recorded
+  (`StateMerge.trimmed_delta_loses_a_rebuild`). A scoped list is no longer
+  trimmed. A record that only scoped deltas had reached, as on an asset's first
+  fan-out, took one worker's mid-run count as its base and counted every later
+  slice as new: 8 slices read `total=13, stale=4` with all of them fresh
+  (`StateMerge.unlisted_slice_counts_twice`). Two scoped records now drop the
+  count, and the status comes from the slices. Two claims on one slice, from a
+  retried worker or a whole-table probe, were last-listed-wins
+  (`StateMerge.overlapping_order_matters`), and replaying an old whole-table
+  delta onto a merged file rewound its counts. Every input, the base included,
+  now folds oldest first, which is the newest-claim join. Separately, a trimmed
+  whole-table probe kept base slices its own count disagreed with, so later
+  slices were subtracted twice and a count reached `stale=-1`. Counts are now
+  recounted from a list that holds every slice and bounded by a shorter one.
 - **Staged-where collisions are necessary, not conservative**
   (`Staged.same_address_two_stages_differ`). One address cannot carry both
   stages' values, which justifies `_validate_staged_where`.
