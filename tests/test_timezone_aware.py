@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from trilogy.core.enums import DatePart
+from trilogy.core.enums import DatePart, FunctionType
 from trilogy.core.functions import get_date_trunc_output
 from trilogy.core.models.core import DataType, arg_to_datatype
 from trilogy.core.validation.datasource import type_check
@@ -53,14 +53,39 @@ def test_written_type_reads_back_as_declared(dialect):
         assert dialect.normalize_db_type(dialect.render_expr(declared)) == declared
 
 
-def test_aware_literal_renders_aware():
-    assert (
-        DuckDBDialect().render_expr(AWARE) == "timestamptz '2024-01-15 22:30:00+00:00'"
-    )
-    assert (
-        BigqueryDialect().render_expr(AWARE) == "TIMESTAMP '2024-01-15 22:30:00+00:00'"
-    )
-    assert DuckDBDialect().render_expr(NAIVE) == "datetime '2024-01-15 22:30:00'"
+@pytest.mark.parametrize(
+    "dialect, naive, aware",
+    [
+        (
+            DuckDBDialect(),
+            "datetime '2024-01-15 22:30:00'",
+            "timestamptz '2024-01-15 22:30:00+00:00'",
+        ),
+        (
+            PostgresDialect(),
+            "timestamp '2024-01-15 22:30:00'",
+            "timestamptz '2024-01-15 22:30:00+00:00'",
+        ),
+        (
+            BigqueryDialect(),
+            "DATETIME '2024-01-15 22:30:00'",
+            "TIMESTAMP '2024-01-15 22:30:00+00:00'",
+        ),
+        (
+            TrinoDialect(),
+            "timestamp '2024-01-15 22:30:00'",
+            "timestamp '2024-01-15 22:30:00+00:00'",
+        ),
+        (
+            ClickhouseDialect(),
+            "toDateTime64('2024-01-15 22:30:00', 3)",
+            "parseDateTime64BestEffort('2024-01-15 22:30:00+00:00', 3, 'UTC')",
+        ),
+    ],
+)
+def test_literal_keeps_awareness(dialect, naive, aware):
+    assert dialect.render_expr(NAIVE) == naive
+    assert dialect.render_expr(AWARE) == aware
 
 
 def test_duckdb_timestamp_function_is_aware():
@@ -94,3 +119,16 @@ def test_mock_timestamps_are_aware():
 
     assert all(v.tzinfo for v in mock_timestamps(5, True))
     assert all(v.tzinfo for v in mock_timestamps(5, False))
+
+
+@pytest.mark.parametrize(
+    "dialect, naive, aware",
+    [
+        (TrinoDialect(), "LOCALTIMESTAMP", "CURRENT_TIMESTAMP"),
+        (PostgresDialect(), "LOCALTIMESTAMP", "CURRENT_TIMESTAMP"),
+        (SnowflakeDialect(), "LOCALTIMESTAMP()::TIMESTAMP_NTZ", "CURRENT_TIMESTAMP()"),
+    ],
+)
+def test_current_time_keeps_awareness(dialect, naive, aware):
+    assert dialect.FUNCTION_MAP[FunctionType.CURRENT_DATETIME]([], []) == naive
+    assert dialect.FUNCTION_MAP[FunctionType.CURRENT_TIMESTAMP]([], []) == aware

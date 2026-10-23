@@ -90,7 +90,7 @@ def test_type_check():
     # DateTime and Timestamp tests
     test_datetime = datetime(2023, 12, 25, 15, 30, 45)
     assert type_check(test_datetime, DataType.DATETIME)
-    assert type_check(test_datetime, DataType.TIMESTAMP)
+    assert not type_check(test_datetime, DataType.TIMESTAMP)
     assert not type_check("2023-12-25 15:30:45", DataType.DATETIME)
     assert not type_check(
         test_date, DataType.DATETIME

@@ -15,5 +15,5 @@ def test_render_query(postgres_engine):
             today,
             ten_days_from_now,
             ten_day_diff;""")[0]
-    assert "(current_datetime() + INTERVAL '10 day')" in results2, results2
+    assert "(LOCALTIMESTAMP + INTERVAL '10 day')" in results2, results2
     assert "date_part('day', " in results2
