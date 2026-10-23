@@ -74,7 +74,9 @@ jobs:
         shell: bash
         run: |
           uv sync --script tests/engine/scripts/pushdown_source.py
-          uv run --no-project --quiet --with vgi-python tests/engine/scripts/pushdown_source.py --describe > /dev/null
+          # The same vgi-python the host runs; see vgi_python_requirement.
+          VGI_PYTHON=$(python -c "from trilogy.dialect.duckdb import vgi_python_requirement; print(vgi_python_requirement())")
+          uv run --no-project --quiet --with "$VGI_PYTHON" tests/engine/scripts/pushdown_source.py --describe > /dev/null
       - name: Test the VGI transport
         run: >
           python -m pytest -p no:randomly -rs --cov=trilogy --cov-config=.coveragerc.vgi

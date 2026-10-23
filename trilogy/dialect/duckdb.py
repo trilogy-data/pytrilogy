@@ -305,6 +305,17 @@ def vgi_worker_command(python_executable: str, is_windows: bool) -> str:
     )
 
 
+def vgi_python_requirement() -> str:
+    """The host's own vgi-python: the worker must speak the protocol of the vgi
+    extension the host's haybarn loads, which a newer release may not."""
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return f"vgi-python=={version('vgi-python')}"
+    except PackageNotFoundError:
+        return "vgi-python"
+
+
 def resident_command(location: str, version: str | None = None) -> list[str]:
     """How to start a source as its own VGI worker (``--vgi``).
 
@@ -318,7 +329,7 @@ def resident_command(location: str, version: str | None = None) -> list[str]:
     tail = [VGI_FLAG, "--vgi-version", version] if version else [VGI_FLAG]
     if Path(location).suffix == ".py":
         # The script's own dependencies need not include vgi.
-        return [*UV_RUN_PREFIX, "--with", "vgi-python", location, *tail]
+        return [*UV_RUN_PREFIX, "--with", vgi_python_requirement(), location, *tail]
     return [location, *tail]
 
 
