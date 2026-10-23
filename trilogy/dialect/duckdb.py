@@ -163,7 +163,7 @@ FUNCTION_MAP = {
     # datetime is aliased,
     FunctionType.CURRENT_DATETIME: lambda x, types: "cast(get_current_timestamp() as datetime)",
     FunctionType.DATETIME: lambda x, types: f"cast({x[0]} as datetime)",
-    FunctionType.TIMESTAMP: lambda x, types: f"cast({x[0]} as timestamp)",
+    FunctionType.TIMESTAMP: lambda x, types: f"cast({x[0]} as timestamptz)",
     FunctionType.DATE: lambda x, types: f"cast({x[0]} as date)",
     FunctionType.DATE_TRUNCATE: lambda x, types: date_trunc(x, types),
     FunctionType.DATE_ADD: lambda x, types: f"date_add({x[0]}, {x[2]} * INTERVAL 1 {x[1]})",
@@ -779,7 +779,6 @@ class DuckDBDialect(BaseDialect):
         "int1": DataType.INTEGER,
         "hugeint": DataType.BIGINT,
         "logical": DataType.BOOL,
-        "timestamp": DataType.DATETIME,
     }
 
     def refine_runtime_value_type_for_validation(

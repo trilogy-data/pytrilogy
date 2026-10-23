@@ -782,7 +782,7 @@ def arg_to_datatype(arg) -> CONCRETE_TYPES:
             return dt
 
         case datetime():
-            return DataType.DATETIME
+            return DataType.TIMESTAMP if arg.tzinfo else DataType.DATETIME
         case date():
             return DataType.DATE
 

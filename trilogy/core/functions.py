@@ -349,6 +349,8 @@ def get_date_trunc_output(
         or target == DatePart.MINUTE
         or target == DatePart.SECOND
     ):
+        if arg_to_datatype(args[0]) == DataType.TIMESTAMP:
+            return DataType.TIMESTAMP
         return DataType.DATETIME
     elif target == DatePart.WEEK or target == DatePart.QUARTER:
         return DataType.DATE

@@ -475,9 +475,9 @@ def type_check(
     if target_type == DataType.DATE:
         return isinstance(input, date) and not isinstance(input, datetime)
     if target_type == DataType.DATETIME:
-        return isinstance(input, datetime)
+        return isinstance(input, datetime) and input.tzinfo is None
     if target_type == DataType.TIMESTAMP:
-        return isinstance(input, datetime)  # or timestamp type if you have one
+        return isinstance(input, datetime) and input.tzinfo is not None
     if target_type == DataType.GEOGRAPHY:
         # Unsafe compatibility shim: some DuckDB geography values currently surface
         # as raw bytes, but not all bytes payloads are valid geometries.

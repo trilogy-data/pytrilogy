@@ -319,24 +319,29 @@ def is_missing_table(
     return False
 
 
-# Widths and zone-awareness an engine picks on its own when it stores a value:
-# DuckDB writes a trilogy float as DOUBLE, a count as BIGINT, and keeps a
-# tz-aware source as TIMESTAMPTZ. A numeric the engine computes in floating
-# point (`geo_y`, arithmetic over a double) is stored as DOUBLE too. A declared
-# type change is caught by the model fingerprint, so only a change of kind is
-# drift.
+# Widths an engine picks on its own when it stores a value: DuckDB writes a
+# trilogy float as DOUBLE and a count as BIGINT. A numeric the engine computes
+# in floating point (`geo_y`, arithmetic over a double) is stored as DOUBLE too.
+# A declared type change is caught by the model fingerprint, so only a change of
+# kind is drift.
 _STORAGE_FAMILY = {
     DataType.DOUBLE: DataType.FLOAT,
     DataType.NUMERIC: DataType.FLOAT,
     DataType.BIGINT: DataType.INTEGER,
-    DataType.TIMESTAMP: DataType.DATETIME,
 }
 
+# Zone-awareness is a kind for a table, whose DDL is rendered from the model: a
+# naive column under an aware declaration coerces every write and yields naive
+# watermarks the aware roots cannot be compared with. A file is written by
+# `COPY (select)`, so its awareness is the source's, which a rewrite cannot
+# change - judging it would rebuild forever.
+_FILE_STORAGE_FAMILY = {**_STORAGE_FAMILY, DataType.TIMESTAMP: DataType.DATETIME}
 
-def _same_storage_kind(actual: DataType, expected: DataType) -> bool:
-    return _STORAGE_FAMILY.get(actual, actual) == _STORAGE_FAMILY.get(
-        expected, expected
-    )
+
+def _same_storage_kind(
+    actual: DataType, expected: DataType, family: dict[DataType, DataType]
+) -> bool:
+    return family.get(actual, actual) == family.get(expected, expected)
 
 
 def schema_mismatch(
@@ -356,6 +361,7 @@ def schema_mismatch(
     if _is_table_address(datasource):
         actual = _table_columns(datasource, executor, cache)
         compare_types = True
+        family = _STORAGE_FAMILY
     elif (
         isinstance(address, Address)
         and address.type in DATA_FILE_TYPES
@@ -363,6 +369,7 @@ def schema_mismatch(
     ):
         actual = _file_columns(datasource, executor, cache)
         compare_types = address.type == AddressType.PARQUET
+        family = _FILE_STORAGE_FAMILY
     else:
         return None
     if actual is None:
@@ -387,7 +394,7 @@ def schema_mismatch(
             f"type of {n} ({actual[n].value} vs {expected[n].value})"
             for n in expected
             if actual[n] != DataType.UNKNOWN
-            and not _same_storage_kind(actual[n], expected[n])
+            and not _same_storage_kind(actual[n], expected[n], family)
         ]
     return ", ".join(drift) or None
 

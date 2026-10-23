@@ -2,6 +2,7 @@ from collections.abc import Callable
 from typing import ClassVar
 
 from trilogy.core.enums import DatePart, FunctionType
+from trilogy.core.models.core import DataType
 from trilogy.dialect.base import BaseDialect
 
 
@@ -30,6 +31,11 @@ FUNCTION_MAP = {
     FunctionType.DATE_PART: lambda x, types: f"date_part('{x[1]}', {x[0]})",
     FunctionType.DATE_DIFF: lambda x, types: date_diff(x[0], x[1], x[2]),
     FunctionType.IS_NULL: lambda x, types: f"{x[0]} IS NULL",
+    FunctionType.CURRENT_DATETIME: lambda x, types: "LOCALTIMESTAMP",
+    FunctionType.CURRENT_TIMESTAMP: lambda x, types: "CURRENT_TIMESTAMP",
+    FunctionType.DATETIME_LITERAL: lambda x, types: (
+        f"timestamptz '{x}'" if x.tzinfo else f"timestamp '{x}'"
+    ),
 }
 
 MAX_IDENTIFIER_LENGTH = 50
@@ -39,6 +45,10 @@ class PostgresDialect(BaseDialect):
     FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
         **BaseDialect.FUNCTION_MAP,
         **FUNCTION_MAP,
+    }
+    DATATYPE_MAP: ClassVar[dict[DataType, str]] = {
+        **BaseDialect.DATATYPE_MAP,
+        DataType.DATETIME: "timestamp",
     }
     QUOTE_CHARACTER = '"'
     SUPPORTS_AGGREGATE_GROUPING_MODES = True

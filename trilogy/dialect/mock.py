@@ -3,7 +3,7 @@ import random
 from binascii import crc32
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -167,6 +167,10 @@ def mock_datetimes(scale_factor: int, is_key: bool) -> list[Any]:
     ]
 
 
+def mock_timestamps(scale_factor: int, is_key: bool) -> list[Any]:
+    return [v.replace(tzinfo=UTC) for v in mock_datetimes(scale_factor, is_key)]
+
+
 def mock_decimals(
     precision: int, scale: int, scale_factor: int, is_key: bool
 ) -> list[Any]:
@@ -231,7 +235,7 @@ BASE_GENERATORS: dict[DataType, Callable[[int, bool], list[Any]]] = {
     DataType.BOOL: mock_bools,
     DataType.DATE: mock_dates,
     DataType.DATETIME: mock_datetimes,
-    DataType.TIMESTAMP: mock_datetimes,
+    DataType.TIMESTAMP: mock_timestamps,
 }
 
 
@@ -550,7 +554,7 @@ def arrow_scalar_type(datatype: CONCRETE_TYPES) -> "pyarrow.DataType | None":
         DataType.BOOL: pa.bool_(),
         DataType.DATE: pa.date32(),
         DataType.DATETIME: pa.timestamp("us"),
-        DataType.TIMESTAMP: pa.timestamp("us"),
+        DataType.TIMESTAMP: pa.timestamp("us", tz="UTC"),
         DataType.BYTES: pa.binary(),
     }
     return scalar_map.get(datatype)
