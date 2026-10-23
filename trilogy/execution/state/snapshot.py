@@ -1398,12 +1398,17 @@ def merge_snapshots(base: StateSnapshot, *deltas: StateSnapshot) -> StateSnapsho
     them into one file. Every input, the base included, folds oldest first, so
     the result does not depend on the order the deltas are passed in, replaying
     them changes nothing, and of two claims on one slice (a retried worker, a
-    whole-table probe, a leftover delta older than the base) the later wins.
+    whole-table probe, a leftover delta older than the base) the later wins. A
+    delta stamped the same instant as the base, as a coarse clock does, follows it.
     That is what lets a file-backed store support parallelism with a
     single-writer coordinator instead of a lock per asset.
     """
     assets: dict[str, PhysicalAssetState] = {}
-    claims = sorted([base, *deltas], key=_fold_order)
+    # Stable on time alone, so the base folds first among equal timestamps:
+    # only strictly older evidence yields to it.
+    claims = sorted(
+        [base, *sorted(deltas, key=_fold_order)], key=lambda s: s.snapshot_ts
+    )
     for claim in claims:
         for incoming in claim.assets:
             existing = assets.setdefault(

@@ -167,3 +167,11 @@ def test_a_count_never_drifts_from_the_slices_beside_it():
     fixed = scope_to_partitions(_probe(dict.fromkeys(ids, "fresh"), 2), set(ids))
     summary = _record(merge_snapshots(base, trimmed, fixed)).partition_summary
     assert (summary.total, summary.stale) == (3, 0)
+
+
+def test_a_delta_stamped_with_the_base_instant_still_follows_it():
+    base = _probe({"d=00": "stale", "d=01": "stale"}, 0)
+    fixed = scope_to_partitions(_probe({"d=00": "fresh", "d=01": "stale"}, 0), {"d=00"})
+    record = _record(merge_snapshots(base, fixed))
+    assert [p.status for p in record.partitions] == ["fresh", "stale"]
+    assert record.partition_summary.stale == 1
