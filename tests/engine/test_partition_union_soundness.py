@@ -7,21 +7,31 @@ from datetime import date, datetime
 import pytest
 
 from trilogy import Dialects
-from trilogy.core.enums import ComparisonOperator
+from trilogy.core.enums import ComparisonOperator, FunctionType, Purpose
 from trilogy.core.exceptions import UnresolvableQueryException
+from trilogy.core.models.build import (
+    BuildComparison,
+    BuildConcept,
+    BuildFunction,
+    BuildGrain,
+)
 from trilogy.core.models.core import DataType
 from trilogy.core.processing.condition_utility import (
+    conditions_partition_domain,
+    domain_hits,
     partitions_domain,
     reduce_expression,
+    simplify_conditions,
 )
 
-LT, LTE, GT, GTE, EQ, IS = (
+LT, LTE, GT, GTE, EQ, IS, IS_NOT = (
     ComparisonOperator.LT,
     ComparisonOperator.LTE,
     ComparisonOperator.GT,
     ComparisonOperator.GTE,
     ComparisonOperator.EQ,
     ComparisonOperator.IS,
+    ComparisonOperator.IS_NOT,
 )
 
 
@@ -153,7 +163,54 @@ def test_partition_requires_disjoint_arms():
     assert not partitions_domain(DataType.INTEGER, [(LTE, 10), (GTE, 5)])
     assert partitions_domain(DataType.INTEGER, [(LT, 5), (EQ, 5), (GT, 5)])
     assert partitions_domain(DataType.BOOL, [(EQ, True), (EQ, False)])
+    assert partitions_domain(DataType.INTEGER, [(EQ, 5), (ComparisonOperator.NE, 5)])
     assert not partitions_domain(DataType.BOOL, [(EQ, True), (EQ, False)], True)
+
+
+def test_cells_decline_what_they_cannot_decide():
+    from trilogy.core.models.core import EnumType, ValidatedType, ValueRange
+
+    assert domain_hits(DataType.STRING, [(EQ, "a")]) is None
+    assert domain_hits(DataType.INTEGER, [(EQ, True)]) is None
+    assert domain_hits(DataType.DATE, [(LT, date(2024, 1, 1)), (GT, 5)]) is None
+    assert domain_hits(DataType.INTEGER, [(ComparisonOperator.LIKE, 1)]) is None
+    assert domain_hits(DataType.INTEGER, [(LT, None)]) is None
+    assert (
+        domain_hits(EnumType(type=DataType.STRING, values=["a"]), [(LT, "a")]) is None
+    )
+    assert (
+        domain_hits(ValidatedType(type=DataType.STRING, pattern="[a-z]+"), []) is None
+    )
+    assert domain_hits(DataType.INTEGER, [(IS_NOT, None)], nullable=True) == [1, 0]
+    bounded = ValidatedType(type=DataType.STRING, ranges=(ValueRange(min="a"),))
+    assert domain_hits(bounded, [(GTE, "a")]) is None
+
+
+def test_atoms_must_compare_a_concept_with_a_literal():
+    x = BuildConcept(
+        name="x",
+        canonical_name="x",
+        datatype=DataType.INTEGER,
+        purpose=Purpose.KEY,
+        build_is_aggregate=False,
+        grain=BuildGrain(),
+    )
+    concat = BuildFunction(
+        operator=FunctionType.ADD,
+        arguments=[1, 2],
+        output_data_type=DataType.INTEGER,
+        output_purpose=Purpose.CONSTANT,
+    )
+    assert not simplify_conditions([BuildComparison(left=1, right=2, operator=EQ)])
+    assert not simplify_conditions([BuildComparison(left=x, right=concat, operator=EQ)])
+    assert not simplify_conditions([BuildComparison(left=x, right=[1], operator=EQ)])
+    assert not conditions_partition_domain([x])  # type: ignore[list-item]
+    assert conditions_partition_domain(
+        [
+            BuildComparison(left=10, right=x, operator=GTE),
+            BuildComparison(left=x, right=10, operator=GT),
+        ]
+    )
 
 
 def test_union_answer_projects_in_select_order():

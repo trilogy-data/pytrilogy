@@ -384,7 +384,7 @@ def _domain_cells(base: Any, literals: list[Any]) -> list[_Cell] | None:
     return cells
 
 
-def _compare(op: ComparisonOperator, left: Any, right: Any) -> bool | None:
+def _compare(op: ComparisonOperator, left: Any, right: Any) -> bool:
     if op in (ComparisonOperator.EQ, ComparisonOperator.IS):
         return left == right
     if op in (ComparisonOperator.NE, ComparisonOperator.IS_NOT):
@@ -395,9 +395,7 @@ def _compare(op: ComparisonOperator, left: Any, right: Any) -> bool | None:
         return left <= right
     if op == ComparisonOperator.GT:
         return left > right
-    if op == ComparisonOperator.GTE:
-        return left >= right
-    return None
+    return left >= right
 
 
 def _atom_holds(op: ComparisonOperator, value: Any, cell: _Cell) -> bool | None:
