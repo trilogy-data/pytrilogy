@@ -549,7 +549,7 @@ class ScopeDatasources:
     (`keyspace.scope_facts`), so a heal that changes nothing hands its
     authored bindings, facts and all, to the plan. ``excluded_enum_values``
     is the discriminator domain the statement's row gate rules out
-    (`partial_bridging.gate_excluded_enum_values`): partition-family proofs
+    (`partial_bridging.gate_excluded_values`): partition-family proofs
     (union coverage, `merge_conditions`) run over what remains, so hiding a
     contradicted arm never breaks the proof the other arms need."""
 

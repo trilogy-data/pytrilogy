@@ -5,9 +5,9 @@ from trilogy import Dialects
 from trilogy.core.enums import ComparisonOperator
 from trilogy.core.models.build import BuildComparison
 from trilogy.core.models.environment import Environment
+from trilogy.core.processing.condition_utility import simplify_conditions
 from trilogy.core.processing.node_generators.select_helpers.datasource_injection import (
     get_union_sources,
-    simplify_conditions,
 )
 
 

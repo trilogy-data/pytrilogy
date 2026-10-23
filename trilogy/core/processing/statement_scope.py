@@ -25,7 +25,7 @@ from trilogy.core.models.environment import Environment
 from trilogy.core.processing.partial_bridging import (
     decide_exclusion,
     decide_heal,
-    gate_excluded_enum_values,
+    gate_excluded_values,
 )
 from trilogy.core.processing.v4_helper.projection import statement_filter_population
 from trilogy.core.processing.v4_helper.staged_where import universal_row_bound
@@ -133,7 +133,7 @@ def _scope(
         scope = ScopeDatasources(
             ds for ds in scope.datasources if ds.identifier not in excluded
         )
-    scope.excluded_enum_values = gate_excluded_enum_values(build_environment, bound)
+    scope.excluded_enum_values = gate_excluded_values(build_environment, bound)
     return scope
 
 

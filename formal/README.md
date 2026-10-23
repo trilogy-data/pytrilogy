@@ -3,8 +3,8 @@
 A small, dependency-free Lean 4 model of the Trilogy rules that decide
 *which rows* a query returns: condition logic, WHERE / staged `then where` /
 HAVING, aggregates over partitions, the "no intrinsic rows" set semantics,
-grain, and `~` padding with the grain pin. Every theorem is checked; there is
-no `sorry`.
+grain, `~` padding with the grain pin, and which datasources may answer a
+query. Every theorem is checked; there is no `sorry`.
 
 ```bash
 cd formal
@@ -28,6 +28,7 @@ a design decision or a bug.
 | `Staged.lean` | flat WHERE, `then where`, HAVING | row stage folds, staged = inline filter (2 and 3 stages), flat WHERE aggregate = membership, HAVING = outer WHERE |
 | `Rows.lean` | distinct tuples, grain | keyed rowset keeps rows, filter pushdown through a rowset, `distinct = group`, FD extension, window = `by`, sibling aggregates |
 | `Domain.lean` | `~` padding, grain pin | materialization invariance, pin vs stored column, pin is projection-invariant, `sum(coalesce)` |
+| `Sourcing.lean` | `complete where` arms, partition unions, the cell checker | a partition family unions back to the table (split, point, bool, `is null` arm, NULL-rejecting gate), an arm answers under an implying WHERE, summary table = computed aggregate |
 
 ## What it found
 
@@ -58,6 +59,32 @@ a design decision or a bug.
   padded row of a CASE with an ELSE (`Domain.pin_contradicts_stored_reading`:
   no one value satisfies both). The engine follows the pin, and the
   modeling doc is corrected.
+- **Partition unions lost and doubled rows** (`Sourcing.union_perm_of_partition`:
+  a union of `complete where` arms equals the table when every row satisfies
+  exactly one arm). The checker that admitted a family tested coverage by
+  stepping an increment across each gap. It had four holes:
+  - it never tested overlap, so arms `x <= 10` and `x >= 5` doubled every row
+    in between (`Sourcing.overlap_double_counts`)
+  - comparisons are Kleene, so a nullable discriminator's NULL rows were in no
+    arm and vanished (`Sourcing.null_escapes_comparison_arms`)
+  - a `datetime` is a Python `date`, so datetimes stepped by a whole day:
+    `t <= 00:00` and `t >= 20:00` "met" (`Sourcing.day_step_misses_a_time`)
+  - floats stepped by machine epsilon, which `100.0 ± ε` rounds away, so
+    `x < 100.0` and `x > 100.0` lost `100.0`
+    (`Sourcing.absorbed_epsilon_misses_the_cut`)
+
+  The checker now evaluates each arm once per cell: each literal, each
+  non-empty open gap between adjacent literals, and NULL. Comparisons are
+  constant on a cell, so this is exact on dense and discrete domains alike
+  (`Sourcing.checker_exact`). A family is a source only if it partitions the
+  domain. `x is null` arms are understood, and a gate that proves the
+  discriminator non-null drops NULL from the domain (`Sourcing.gated_union_perm`).
+  A family the old checker rejected is now admitted: a nullable discriminator
+  with an `is null` arm.
+- **A union's answer came back in alphabetical column order.** The fuzzer's
+  `union_*_rows` laws found that when the union was the whole answer, its arms
+  projected in their own order, not the select's. Set operations pair columns
+  by position, so every arm now projects in the union's order.
 - **Staged-where collisions are necessary, not conservative**
   (`Staged.same_address_two_stages_differ`). One address cannot carry both
   stages' values, which justifies `_validate_staged_where`.
@@ -66,5 +93,7 @@ a design decision or a bug.
 
 The model is a reference semantics, not a refinement proof of the planner.
 Populations are lists, and conditions and aggregates are functions over them.
-Joins appear only through padding and fan-out. Windows, ROLLUP subtotal rows
+Joins appear only through padding and fan-out. The cell checker is proved
+exact over integers; the Python twin applies the same cells to dense domains
+without a successor step. Windows, ROLLUP subtotal rows
 and unions are modelled at the level the laws need.
