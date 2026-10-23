@@ -485,6 +485,7 @@ DATATYPE_MAP: dict[DataType, str] = {
     DataType.MAP: "map",
     DataType.DATE: "date",
     DataType.DATETIME: "datetime",
+    DataType.TIMESTAMP: "timestamptz",
     DataType.ARRAY: "list",
 }
 
@@ -582,7 +583,8 @@ DB_COLUMN_TYPE_MAP: dict[str, DataType] = {
     "datetime": DataType.DATETIME,
     "datetime2": DataType.DATETIME,
     "smalldatetime": DataType.DATETIME,
-    "timestamp": DataType.TIMESTAMP,
+    # SQL standard: a bare TIMESTAMP is WITHOUT TIME ZONE
+    "timestamp": DataType.DATETIME,
     "timestamp without time zone": DataType.DATETIME,
     "timestamp with time zone": DataType.TIMESTAMP,
     "timestamptz": DataType.TIMESTAMP,
@@ -690,7 +692,9 @@ FUNCTION_MAP = {
     FunctionType.ARRAY: lambda x, types: f"[{', '.join(x)}]",
     FunctionType.ROW_TUPLE: lambda x, types: f"({', '.join(x)})",
     FunctionType.DATE_LITERAL: lambda x, types: f"date '{x}'",
-    FunctionType.DATETIME_LITERAL: lambda x, types: f"datetime '{x}'",
+    FunctionType.DATETIME_LITERAL: lambda x, types: (
+        f"timestamptz '{x}'" if x.tzinfo else f"datetime '{x}'"
+    ),
     # MAP
     FunctionType.MAP_KEYS: lambda x, types: f"map_keys({x[0]})",
     FunctionType.MAP_VALUES: lambda x, types: f"map_values({x[0]})",

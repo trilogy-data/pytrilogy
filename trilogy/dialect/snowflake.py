@@ -23,7 +23,7 @@ FUNCTION_MAP = {
     FunctionType.ARRAY_AGG: lambda x, types: (
         f"NULLIF(array_agg({x[0]}), ARRAY_CONSTRUCT())"
     ),
-    FunctionType.CURRENT_DATETIME: lambda x, types: "CURRENT_TIMESTAMP()",
+    FunctionType.CURRENT_DATETIME: lambda x, types: "LOCALTIMESTAMP()::TIMESTAMP_NTZ",
     FunctionType.CURRENT_DATE: lambda x, types: "CURRENT_DATE()",
     FunctionType.CURRENT_TIMESTAMP: lambda x, types: "CURRENT_TIMESTAMP()",
     # Snowflake date functions use different argument order
@@ -47,6 +47,11 @@ class SnowflakeDialect(BaseDialect):
     FUNCTION_MAP: ClassVar[dict[FunctionType, Callable[..., str]]] = {
         **BaseDialect.FUNCTION_MAP,
         **FUNCTION_MAP,
+    }
+    DATATYPE_MAP: ClassVar[dict[DataType, str]] = {
+        **BaseDialect.DATATYPE_MAP,
+        DataType.DATETIME: "TIMESTAMP_NTZ",
+        DataType.TIMESTAMP: "TIMESTAMP_TZ",
     }
     QUOTE_CHARACTER = '"'
     QUOTE_CTE_NAMES = True

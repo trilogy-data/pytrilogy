@@ -114,7 +114,11 @@ FUNCTION_MAP = {
     FunctionType.DATETIME: lambda x, types: f"toDateTime64({x[0]}, 3)",
     FunctionType.TIMESTAMP: lambda x, types: f"toDateTime64({x[0]}, 3)",
     FunctionType.DATE_LITERAL: lambda x, types: f"toDate('{x}')",
-    FunctionType.DATETIME_LITERAL: lambda x, types: f"toDateTime64('{x}', 3)",
+    FunctionType.DATETIME_LITERAL: lambda x, types: (
+        f"parseDateTime64BestEffort('{x}', 3, 'UTC')"
+        if x.tzinfo
+        else f"toDateTime64('{x}', 3)"
+    ),
     # arrays
     FunctionType.UNNEST: lambda x, types: f"arrayJoin({x[0]})",
     FunctionType.ARRAY_SUM: lambda x, types: f"arraySum({x[0]})",
@@ -147,7 +151,7 @@ DATATYPE_MAP: dict[DataType, str] = {
     DataType.NUMERIC: "Decimal64(4)",
     DataType.DATE: "Date",
     DataType.DATETIME: "DateTime64(3)",
-    DataType.TIMESTAMP: "DateTime64(3)",
+    DataType.TIMESTAMP: "DateTime64(3, 'UTC')",
     DataType.MAP: "Map",
     DataType.ARRAY: "Array",
 }
@@ -196,6 +200,13 @@ class ClickhouseDialect(BaseDialect):
     TABLE_NOT_FOUND_PATTERN = "Table .* doesn't exist"
     COLUMN_NOT_FOUND_PATTERN = "Unknown identifier"
     TRANSACTIONAL_DDL = False
+
+    def normalize_db_type(self, db_type: str) -> DataType:
+        # DateTime64(3, 'UTC'): a zone argument is what makes the column an instant
+        base = super().normalize_db_type(db_type)
+        if base == DataType.DATETIME and "," in db_type:
+            return DataType.TIMESTAMP
+        return base
 
     def render_empty_copy(self, target: str, staged: str) -> list[str]:
         """``CREATE TABLE ... AS other`` copies structure and engine, no rows."""

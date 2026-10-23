@@ -130,6 +130,12 @@ class MySQLDialect(BaseDialect):
         **BaseDialect.DATATYPE_MAP,
         **DATATYPE_MAP,
     }
+    # TIMESTAMP is MySQL's instant type (stored UTC, read in the session zone),
+    # so it is what a trilogy timestamp is written as and read back as.
+    DB_COLUMN_TYPE_MAP: ClassVar[dict[str, DataType]] = {
+        **BaseDialect.DB_COLUMN_TYPE_MAP,
+        "timestamp": DataType.TIMESTAMP,
+    }
     QUOTE_CHARACTER = "`"
     SUPPORTS_ALIAS_IN_HAVING = True
     SUPPORTS_FULL_JOIN = False

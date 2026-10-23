@@ -20,7 +20,10 @@ FUNCTION_MAP = {
     FunctionType.DATE_ADD: lambda x, types: f"date_add({x[1]},{x[2]}, {x[0]})",
     FunctionType.DATE_SUB: lambda x, types: f"date_add({x[1]},-{x[2]}, {x[0]})",
     FunctionType.CURRENT_DATE: lambda x, types: "CURRENT_DATE",
-    FunctionType.CURRENT_DATETIME: lambda x, types: "CURRENT_TIMESTAMP",
+    FunctionType.CURRENT_DATETIME: lambda x, types: "LOCALTIMESTAMP",
+    FunctionType.CURRENT_TIMESTAMP: lambda x, types: "CURRENT_TIMESTAMP",
+    # an offset in the literal is what makes it a timestamp with time zone
+    FunctionType.DATETIME_LITERAL: lambda x, types: f"timestamp '{x}'",
     FunctionType.ARRAY: lambda x, types: f"ARRAY[{', '.join(x)}]",
     # regex
     FunctionType.REGEXP_CONTAINS: lambda x, types: f"REGEXP_LIKE({x[0]}, {x[1]})",
@@ -45,6 +48,8 @@ class PrestoDialect(BaseDialect):
         **BaseDialect.DATATYPE_MAP,
         DataType.NUMERIC: "DECIMAL",
         DataType.STRING: "VARCHAR",
+        DataType.DATETIME: "timestamp",
+        DataType.TIMESTAMP: "timestamp with time zone",
     }
     # `line 1:15: Table 'hive.default.orders' does not exist`; the client also
     # surfaces the engine's error name, which is matched for both forms.

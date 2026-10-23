@@ -126,6 +126,9 @@ FUNCTION_MAP = {
     FunctionType.IS_NULL: lambda x, types: f"{x[0]} IS NULL",
     # no FILTER clause; ARRAY_AGG raises on a NULL element without this
     FunctionType.ARRAY_AGG: lambda x, types: f"ARRAY_AGG({x[0]} IGNORE NULLS)",
+    FunctionType.DATETIME_LITERAL: lambda x, types: (
+        f"TIMESTAMP '{x}'" if x.tzinfo else f"DATETIME '{x}'"
+    ),
     **SQL_STANDARD_EXTRACT,
     # BigQuery's DAYOFWEEK returns 1 for Sunday, so it does not take the
     # shared entry.
@@ -360,6 +363,7 @@ class BigqueryDialect(BaseDialect):
         **BaseDialect.DB_COLUMN_TYPE_MAP,
         "int64": DataType.INTEGER,
         "float64": DataType.FLOAT,
+        "timestamp": DataType.TIMESTAMP,
         # legacy aliases
     }
 
