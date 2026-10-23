@@ -105,6 +105,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Container
 from datetime import date, datetime
+from decimal import Decimal
 from pathlib import PurePath
 from typing import Literal
 
@@ -474,7 +475,7 @@ def observed_and_expected(
 
 def restore_watermark_value(
     entry: WatermarkValue,
-) -> str | int | float | datetime | date | None:
+) -> str | int | float | Decimal | datetime | date | None:
     """Inverse of :func:`_watermark_value` — rebuild the comparable python value.
 
     ``value_raw`` covers the JSON-native cases. Temporal values survive only as
@@ -490,7 +491,9 @@ def restore_watermark_value(
             return datetime.fromisoformat(entry.value)
         if entry.value_type == "date":
             return date.fromisoformat(entry.value)
-    except ValueError:
+        if entry.value_type == "Decimal":
+            return Decimal(entry.value)
+    except (ValueError, ArithmeticError):
         pass
     return entry.value
 

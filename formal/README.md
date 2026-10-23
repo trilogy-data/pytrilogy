@@ -28,7 +28,8 @@ a design decision or a bug.
 | `Staged.lean` | flat WHERE, `then where`, HAVING | row stage folds, staged = inline filter (2 and 3 stages), flat WHERE aggregate = membership, HAVING = outer WHERE |
 | `Rows.lean` | distinct tuples, grain | keyed rowset keeps rows, filter pushdown through a rowset, `distinct = group`, FD extension, window = `by`, sibling aggregates |
 | `Domain.lean` | `~` padding, grain pin | materialization invariance, pin vs stored column, pin is projection-invariant, `sum(coalesce)` |
-| `Sourcing.lean` | `complete where` arms, partition unions, the cell checker | a partition family unions back to the table (split, point, bool, `is null` arm, NULL-rejecting gate), an arm answers under an implying WHERE, summary table = computed aggregate |
+| `Sourcing.lean` | `complete where` arms, partition unions, the cell checker | a partition family unions back to the table (split, point, bool, `is null` arm, NULL-rejecting gate, a redundant copy of an arm), an arm answers under an implying WHERE, summary table = computed aggregate |
+| `Freshness.lean` | watermarks, the stale verdict, the incremental refresh | verdict = refresh has a row to write, incremental = rebuild under strict arrivals (checked by `tests/execution/state/test_freshness_laws.py`, not the query fuzzer) |
 
 ## What it found
 
@@ -85,6 +86,32 @@ a design decision or a bug.
   `union_*_rows` laws found that when the union was the whole answer, its arms
   projected in their own order, not the select's. Set operations pair columns
   by position, so every arm now projects in the union's order.
+- **A materialized copy of an arm made its family unresolvable.** A
+  `partial datasource ... complete where x <= 10` built beside the roots it
+  copies overlaps their `x <= 10` arm. The family as a whole is then no
+  partition (`Sourcing.duplicate_arm_double_counts`). Before the cell checker
+  it doubled those rows. After it, every unfiltered query over the family
+  raised "unresolvable". The planner now unions an exact cover of the cells,
+  one arm per cell, preferring the widest column overlap and then the most
+  materialized arms. Which cover it picks cannot change the rows
+  (`Sourcing.cover_choice_irrelevant`). Enum families already chose arms per
+  value.
+- **String discriminators get equality cells.** A plain `string` family was
+  always declined. With equality atoms only, every string that is not a
+  literal agrees on every atom (`Sourcing.eq_atoms_agree_off_literals`), so
+  `x = 'a'`, `x != 'a'`, `x is null` is proved a partition. Order atoms on
+  strings still decline, since SQL collation is not Python's order.
+- **Watermarks compared across Python types by string order.**
+  `Freshness.verdict_agrees_with_refresh` holds only if the Python verdict
+  orders values as SQL's `>` does. `_compare_watermark_values` fell back to
+  `str()` whenever two values had different Python types, and `"10" < "9"`
+  (`Freshness.string_order_misses_a_refresh`). A DECIMAL root beside a CSV
+  target sniffed as DOUBLE read fresh while behind, so its new rows were never
+  loaded. A DECIMAL watermark restored from a `--state-input` snapshot came
+  back as text and failed the same way. Numbers now compare by value, and
+  snapshots restore `Decimal`. The incremental refresh of a DECIMAL key also
+  crashed: the dialect could not render a `Decimal` literal in its `k > m`
+  filter.
 - **Staged-where collisions are necessary, not conservative**
   (`Staged.same_address_two_stages_differ`). One address cannot carry both
   stages' values, which justifies `_validate_staged_where`.
@@ -93,7 +120,11 @@ a design decision or a bug.
 
 The model is a reference semantics, not a refinement proof of the planner.
 Populations are lists, and conditions and aggregates are functions over them.
-Joins appear only through padding and fan-out. The cell checker is proved
+Joins appear only through padding and fan-out. Freshness assumes arrivals
+land strictly past the watermark: a late row with a tied or NULL key is
+invisible to the verdict and the refresh alike
+(`Freshness.tie_is_invisible`, `Freshness.null_key_is_invisible`). That is a
+property of `MAX`-based watermarks, not a bug the model can fix. The cell checker is proved
 exact over integers; the Python twin applies the same cells to dense domains
 without a successor step. Windows, ROLLUP subtotal rows
 and unions are modelled at the level the laws need.

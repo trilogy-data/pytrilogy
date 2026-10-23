@@ -673,6 +673,19 @@ def _sourcing_laws(seed: SeedData) -> list[FuzzCase]:
             (("neg", "nullable_amount <= 0"), ("pos", "nullable_amount > 0")),
             "where nullable_amount is not null\n",
         ),
+        (
+            "copy",
+            (
+                "a materialized copy of one arm overlaps it; the union picks "
+                "one copy, not both."
+            ),
+            (
+                ("low", "event_amount <= 10"),
+                ("high", "event_amount > 10"),
+                ("low_copy", "event_amount <= 10"),
+            ),
+            "",
+        ),
     )
     cases = [
         _law(
@@ -681,7 +694,11 @@ def _sourcing_laws(seed: SeedData) -> list[FuzzCase]:
             (
                 "Sourcing.gated_union_perm"
                 if gate
-                else "Sourcing.union_perm_of_partition"
+                else (
+                    "Sourcing.cover_choice_irrelevant"
+                    if family == "copy"
+                    else "Sourcing.union_perm_of_partition"
+                )
             ),
             f"A partition family unions back to the table: {why}",
             ("sourcing", "partial", "union"),

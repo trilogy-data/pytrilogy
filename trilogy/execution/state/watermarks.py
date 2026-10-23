@@ -2,6 +2,7 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from enum import Enum
 from typing import Any
 
@@ -31,7 +32,11 @@ from trilogy.execution.state.exceptions import (
 )
 from trilogy.execution.state.isolation import hidden_datasources
 
-WatermarkValueType = str | int | float | datetime | date | None
+WatermarkValueType = str | int | float | Decimal | datetime | date | None
+
+
+def _is_number(value: object) -> bool:
+    return isinstance(value, (int, float, Decimal)) and not isinstance(value, bool)
 
 
 @dataclass
@@ -102,11 +107,17 @@ class StaleAsset:
     explicit: bool = False
 
 
-def _compare_watermark_values(a: str | float | date, b: str | float | date) -> int:
+def _compare_watermark_values(
+    a: str | float | Decimal | date, b: str | float | Decimal | date
+) -> int:
     """Compare two watermark values, returning -1, 0, or 1.
 
-    Handles type mismatches by comparing string representations.
+    Numbers order by value whatever their python type: a DECIMAL root against
+    a DOUBLE target (a sniffed CSV) is the same order SQL's ``>`` refreshes by.
+    Other type mismatches compare string representations.
     """
+    if _is_number(a) and _is_number(b):
+        return (a > b) - (a < b)  # type: ignore[operator]
     if type(a) is type(b):
         if isinstance(a, datetime):
             a_aware = a.tzinfo is not None
@@ -129,8 +140,8 @@ def _compare_watermark_values(a: str | float | date, b: str | float | date) -> i
 
 
 def _watermark_distance(
-    current: str | float | date, expected: str | float | date
-) -> timedelta | float | None:
+    current: str | float | Decimal | date, expected: str | float | Decimal | date
+) -> timedelta | float | Decimal | None:
     """How far ``current`` trails ``expected``, or None if not measurable.
 
     Ordering (``_compare_watermark_values``) is enough to say *whether* an asset
@@ -149,14 +160,16 @@ def _watermark_distance(
         return expected - current
     if isinstance(current, bool) or isinstance(expected, bool):
         return None
-    if isinstance(current, (int, float)) and isinstance(expected, (int, float)):
-        return expected - current
+    if _is_number(current) and _is_number(expected):
+        if isinstance(current, float) or isinstance(expected, float):
+            return float(expected) - float(current)  # type: ignore[arg-type]
+        return expected - current  # type: ignore[operator]
     return None
 
 
 def within_allowed_lag(
-    current: str | float | date | None,
-    expected: str | float | date,
+    current: str | float | Decimal | date | None,
+    expected: str | float | Decimal | date,
     lag: FreshnessLag,
     key: str,
 ) -> bool:

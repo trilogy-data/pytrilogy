@@ -94,10 +94,8 @@ class TestCompareWatermarkValues:
         assert _compare_watermark_values("1", 1) == 0
 
     def test_different_types_int_float(self) -> None:
-        # Compare as strings: "1" vs "1.0"
-        result = _compare_watermark_values(1, 1.0)
-        # "1" < "1.0" (string comparison)
-        assert result == -1
+        assert _compare_watermark_values(1, 1.0) == 0
+        assert _compare_watermark_values(9, 10.0) == -1
 
     def test_different_types_date_string(self) -> None:
         d = date(2024, 1, 15)

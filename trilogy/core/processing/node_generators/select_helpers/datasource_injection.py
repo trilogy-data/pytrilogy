@@ -30,6 +30,7 @@ from trilogy.core.processing.basic_graph import (
 from trilogy.core.processing.condition_utility import (
     NULL_MEMBER,
     ExcludedEnumValues,
+    conditions_partition_covers,
     conditions_partition_domain,
     decompose_condition,
     effective_enum_domain,
@@ -374,13 +375,32 @@ def get_union_sources(
             result = _best_enum_union(dses, merge_key.datatype, merge_key, excluded)
             if result:
                 final.extend(result)
-        else:
-            conditions = [
-                c.non_partial_for.conditional for c in dses if c.non_partial_for
-            ]
-            if conditions_partition_domain(conditions, excluded):
-                final.append(dses)
+        elif best := _best_range_cover(dses, excluded):
+            final.append(best)
     return final
+
+
+def _best_range_cover(
+    dses: list[BuildDatasource],
+    excluded: ExcludedEnumValues | None,
+) -> list[BuildDatasource] | None:
+    """The arms of a non-enum family that partition its discriminator, widest
+    column overlap first, then most materialized, then fewest scans."""
+    arms = [ds for ds in dses if ds.non_partial_for]
+    covers = conditions_partition_covers(
+        [ds.non_partial_for.conditional for ds in arms], excluded  # type: ignore[union-attr]
+    )
+    if not covers:
+        return None
+    best = max(
+        covers,
+        key=lambda cover: (
+            len(frozenset.intersection(*(_columns(arms[i]) for i in cover))),
+            sum(_datasource_score(arms[i]) for i in cover),
+            -len(cover),
+        ),
+    )
+    return [arms[i] for i in sorted(best)]
 
 
 def union_sources(
@@ -477,9 +497,9 @@ def describe_incomplete_partitions(
     """Why a `complete where` family failed to union into a complete source.
 
     ``get_union_sources`` only unions arms whose predicates provably partition
-    the discriminator's domain. A plain `string` discriminator has no enumerable
-    domain, so no set of equality predicates over it can be proven complete;
-    this names that modeling gap instead of a generic "no complete sources".
+    the discriminator's domain. A plain `string` family of `=` arms leaves every
+    other string uncovered; this names that modeling gap instead of a generic
+    "no complete sources".
     """
     requested = {c.address for c in concepts}
     reasons: list[str] = []
@@ -501,10 +521,7 @@ def describe_incomplete_partitions(
         if isinstance(merge_key.datatype, EnumType):
             if _best_enum_union(dses, merge_key.datatype, merge_key, excluded):
                 continue
-        elif conditions_partition_domain(
-            [c.non_partial_for.conditional for c in dses if c.non_partial_for],
-            excluded,
-        ):
+        elif _best_range_cover(dses, excluded):
             continue
         names = ", ".join(sorted(d.name for d in dses))
         reasons.append(

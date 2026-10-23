@@ -290,12 +290,15 @@ needs a domain to check against, so the discriminator must be one of:
 - an `enum` whose values the arms exhaust (`region` above);
 - a numeric/date/bool concept whose arms split the full range without overlap (`complete where created_at <
   '2024-01-01'` plus `complete where created_at >= '2024-01-01'`);
-- a `::ranged` validated type whose declared ranges the arms cover.
+- a `::ranged` validated type whose declared ranges the arms cover;
+- a plain `string` split by equality alone, with one arm for everything else
+  (`shard = 'a'`, `shard != 'a'`).
 
-A plain `string` discriminator has no enumerable domain, so `complete where shard = 'a'` and
-`complete where shard = 'b'` can never be proven complete. Such a family stays partial, and an
-unfiltered `select` over it fails with "no complete sources found for output concepts". Give
-the discriminator an `enum` type to make the coverage checkable. A query whose own `where`
+A plain `string` has no enumerable domain, so `complete where shard = 'a'` and
+`complete where shard = 'b'` can never be proven complete: some other string is in no arm.
+Such a family stays partial, and an unfiltered `select` over it fails with "no complete
+sources found for output concepts". Give the discriminator an `enum` type, or add a `!=` arm.
+A materialized copy of one arm beside the family is fine: the union picks one copy. A query whose own `where`
 *implies* one arm's `complete where` still resolves against that arm alone, typed or not.
 
 Partial datasources can also carry `incremental by` for time-partitioned appends:

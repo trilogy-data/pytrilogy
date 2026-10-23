@@ -149,6 +149,15 @@ model-level default would be the better answer to fan-out repetition.
 clause because that keeps it independent of a trigger form it doesn't belong to
 (it still *requires* one — see below).
 
+Ordering must be SQL's, because the refresh filter it predicts is SQL's
+`k > m` (`formal/Trilogy/Freshness.lean`, `verdict_agrees_with_refresh`).
+Numbers compare by value across `int`/`float`/`Decimal`: a DECIMAL root and a
+DOUBLE-sniffed CSV target are one order, and string order on their renderings
+(`"10" < "9"`) read a behind asset as fresh. Snapshots restore `Decimal` for the
+same reason. `tests/execution/state/test_freshness_laws.py` checks
+refresh-to-rebuild convergence and snapshot-vs-live verdicts across key types,
+storage, partitioning, `complete where` targets and roots.
+
 A missing watermark value is never lag — an asset with no rows is empty, not
 behind, so it stays stale regardless of tolerance. Probe-based freshness can't
 take a lag: a probe returns a bool, so there's nothing to measure.

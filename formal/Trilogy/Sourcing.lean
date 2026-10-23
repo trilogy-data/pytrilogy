@@ -137,6 +137,53 @@ which the old checker tested, is not enough. -/
 theorem Sourcing.overlap_double_counts :
     (unionAll id [le 10, ge 5] [some 1, some 7, some 20]).length = 4 := by decide
 
+/-- A materialized copy of one arm beside the family it was built from
+overlaps that arm, so the family as a whole is no partition: unioning every
+arm doubles the copied rows. The planner unions a sub-family instead. -/
+theorem Sourcing.duplicate_arm_double_counts :
+    (unionAll id [le 10, gt 10, le 10] [some 1, some 20]).length = 3 := by decide
+
+/-- Any two sub-families that partition the domain union to the same rows, so
+the planner may pick among covers (a table over a query) freely. -/
+theorem Sourcing.cover_choice_irrelevant [DecidableEq α] (d : α → Val)
+    (a b : List (Val → Bool)) (rows : List α)
+    (ha : ∀ r ∈ rows, hits a (d r) = 1) (hb : ∀ r ∈ rows, hits b (d r) = 1) :
+    (unionAll d a rows).Perm (unionAll d b rows) :=
+  (Sourcing.union_perm_of_partition d a rows ha).trans
+    (Sourcing.union_perm_of_partition d b rows hb).symm
+
+/-! ### Equality cells on an unordered type
+
+A string discriminator has no order the planner can trust: SQL collation is
+not Python's. Equality atoms need none. Every string that is not a literal
+agrees on every atom, so the literals and one "any other value" cell, plus
+NULL, decide the family. The domain is infinite, so that cell is never empty. -/
+
+inductive EqOp where
+  | eq | ne
+  deriving DecidableEq, Repr
+
+structure EqAtom (β : Type) where
+  op : EqOp
+  lit : β
+
+def EqAtom.eval {β : Type} [DecidableEq β] (a : EqAtom β) : Option β → Bool
+  | none => false
+  | some x =>
+    match a.op with
+    | .eq => decide (x = a.lit)
+    | .ne => decide (x ≠ a.lit)
+
+theorem Sourcing.eq_atoms_agree_off_literals {β : Type} [DecidableEq β]
+    (atoms : List (EqAtom β)) (v w : β)
+    (hv : ∀ a ∈ atoms, v ≠ a.lit) (hw : ∀ a ∈ atoms, w ≠ a.lit) :
+    ∀ a ∈ atoms, a.eval (some v) = a.eval (some w) := by
+  intro a ha
+  have h1 := hv a ha
+  have h2 := hw a ha
+  cases a with
+  | mk op lit => cases op <;> simp_all [EqAtom.eval]
+
 /-- One arm answers alone when the query's WHERE implies its claim. -/
 theorem Sourcing.partial_is_full_under_implication (d : α → Val) (c w : Val → Bool)
     (rows : List α) (h : ∀ v, w v = true → c v = true) :
