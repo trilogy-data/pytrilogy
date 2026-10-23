@@ -2086,9 +2086,9 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vgi"
-version = "0.43.0"
+version = "0.46.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37ca676897452905bd47a548582e319b2808a1073f1cbdb04cf6b8aa403a5d14"
+checksum = "3cfed7977702b9187465950eae04aba7a802597060e7a2fb6396e16d98c02e8e"
 dependencies = [
  "arrow",
  "arrow-arith",
@@ -2101,6 +2101,7 @@ dependencies = [
  "arrow-schema",
  "arrow-select",
  "base64 0.22.1",
+ "chrono",
  "ctrlc",
  "libc",
  "log",
@@ -2115,9 +2116,9 @@ dependencies = [
 
 [[package]]
 name = "vgi-protocol"
-version = "0.43.0"
+version = "0.46.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "908213e134a356c1bc1947a8d20fa67328dffeec662ca6b405418b61d1e95966"
+checksum = "dd7cb2abfe4d5a52379a3695083334edbe1995e734263618653d25772c2c2dc9"
 dependencies = [
  "arrow-array",
  "arrow-ipc",
@@ -2127,9 +2128,9 @@ dependencies = [
 
 [[package]]
 name = "vgi-rpc"
-version = "0.31.4"
+version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5bb1def0111f1526fc06a23def97b1b9b18c6dab439b57a5704aaeccece31890"
+checksum = "a8a370b8919e452a80a9e7132852bcb6bef6dd45db3cfd399268a529a3efda1f"
 dependencies = [
  "arrow-array",
  "arrow-buffer",
@@ -2167,9 +2168,9 @@ dependencies = [
 
 [[package]]
 name = "vgi-rpc-macros"
-version = "0.31.4"
+version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "537262b957f65bab4695b4d1e0fcbc4b64f32896ef5ca246bf8afb913b3d35b7"
+checksum = "6affe17b28d973a09b71a83f90d0edbdc31e8f2b914a469899a726f1ae357ca7"
 dependencies = [
  "proc-macro2",
  "quote",
