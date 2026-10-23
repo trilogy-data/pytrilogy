@@ -178,6 +178,9 @@ class FuzzCase:
     trilogy: str
     oracle_sql: str
     accepted_compile_errors: tuple[str, ...] = ()
+    # A metamorphic case's expected rows come from a second Trilogy program
+    # (formal/ proves the two equal) instead of `oracle_sql`.
+    twin_trilogy: str = ""
 
 
 def sql_literal(value: Scalar) -> str:

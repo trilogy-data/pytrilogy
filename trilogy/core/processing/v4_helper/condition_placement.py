@@ -1507,10 +1507,16 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
         consumed_barriers: set[str] = set(producer_groups)
         for producer in producer_groups:
             consumed_barriers |= nx.ancestors(group_graph, producer)
+        # only a barrier the atom's rows flow through: a side input joined
+        # in beside them (a `subset join`ed rowset) reshapes nothing it reads
         restricted = [
             gid
             for gid in restricted
-            if not ((d0_group_ids & nx.ancestors(group_graph, gid)) - consumed_barriers)
+            if not any(
+                nx.ancestors(group_graph, barrier) & consumed_barriers
+                for barrier in (d0_group_ids & nx.ancestors(group_graph, gid))
+                - consumed_barriers
+            )
         ]
     restricted = _hosts_carrying_condition_grain(
         restricted, row_inputs, buckets, group_own_keys

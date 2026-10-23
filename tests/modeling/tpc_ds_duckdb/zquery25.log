@@ -1,5 +1,5 @@
 query_id = "25"
-gen_length = 5300
+gen_length = 5307
 preql_size = 798
 comp_size = 1067
 generated_sql = """
@@ -27,7 +27,7 @@ FROM
     INNER JOIN \"memory\".\"item\" as \"analysis_item_items\" on \"analysis_store_sales\".\"SS_ITEM_SK\" = \"analysis_item_items\".\"I_ITEM_SK\"
     LEFT OUTER JOIN \"memory\".\"store\" as \"analysis_store_store\" on \"analysis_store_sales\".\"SS_STORE_SK\" = \"analysis_store_store\".\"S_STORE_SK\"
 WHERE
-    \"analysis_store_sale_date_date\".\"D_YEAR\" = 2001 and \"analysis_store_sale_date_date\".\"D_MOY\" = 4 and \"analysis_store_return_date_date\".\"D_YEAR\" = 2001 and \"analysis_store_return_date_date\".\"D_MOY\" BETWEEN 4 AND 10 and \"analysis_catalog_date_date\".\"D_YEAR\" = 2001 and \"analysis_catalog_date_date\".\"D_MOY\" BETWEEN 4 AND 10 and SR_RETURN_TIME_SK IS NOT NULL
+    \"analysis_store_sale_date_date\".\"D_YEAR\" = 2001 and \"analysis_store_sale_date_date\".\"D_MOY\" = 4 and \"analysis_store_return_date_date\".\"D_YEAR\" = 2001 and \"analysis_store_return_date_date\".\"D_MOY\" BETWEEN 4 AND 10 and \"analysis_catalog_date_date\".\"D_YEAR\" = 2001 and \"analysis_catalog_date_date\".\"D_MOY\" BETWEEN 4 AND 10 and SR_RETURN_TIME_SK IS NOT NULL = True
 ),
 vacuous as (
 SELECT

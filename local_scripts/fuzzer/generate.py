@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from local_scripts.fuzzer.laws import law_cases
 from local_scripts.fuzzer.models import SEEDS, FuzzCase, SeedData, indent
 
 
@@ -3776,6 +3777,7 @@ def generate_cases(seeds: Iterable[SeedData] = SEEDS) -> list[FuzzCase]:
         _padding_provenance_cases,
         _partition_cover_cases,
         _summary_rollup_cases,
+        law_cases,
     )
     for seed in seeds:
         for builder in builders:

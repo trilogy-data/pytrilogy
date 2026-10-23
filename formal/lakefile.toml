@@ -1,0 +1,5 @@
+name = "trilogy"
+defaultTargets = ["Trilogy"]
+
+[[lean_lib]]
+name = "Trilogy"

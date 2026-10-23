@@ -403,13 +403,13 @@ def test_navigation_or_gate_splits():
     assert _sql(model, query).count("lead(") == 2
 
 
-def test_navigation_boolean_literal_conjunct_splits():
-    # A bare boolean literal conjunct is neither a concept reference nor a
-    # concept-bearing predicate; the conservative answer is to split.
+def test_navigation_boolean_literal_conjunct_is_identity():
+    # `true` is AND's identity (formal/Trilogy/Logic.lean `and_true_left`): the
+    # gate answers exactly as the self-gate above.
     model = NAV_SCHEMA
     query = "where true and nxt is not null select cat, wk, nxt;"
-    assert _rows(model, query) == [("A", 1, 40.0), ("A", 2, None)]
-    assert _sql(model, query).count("lead(") == 2
+    assert _rows(model, query) == [("A", 1, 40.0), ("A", 2, 80.0)]
+    assert _sql(model, query).count("lead(") == 1
 
 
 def test_navigation_bare_boolean_concept_conjunct_splits():

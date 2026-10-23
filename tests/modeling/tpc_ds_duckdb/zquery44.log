@@ -1,5 +1,5 @@
 query_id = "44"
-gen_length = 2907
+gen_length = 2582
 preql_size = 994
 comp_size = 1462
 generated_sql = """
@@ -49,54 +49,42 @@ FROM
     \"uneven\"),
 abhorrent as (
 SELECT
-    \"ss_item_items\".\"I_PRODUCT_NAME\" as \"_descending_worst_performing\",
-    \"vacuous\".\"_descending_rnk_d\" as \"_descending_rnk_d\"
+    \"ss_item_items\".\"I_PRODUCT_NAME\" as \"descending_worst_performing\",
+    \"vacuous\".\"_descending_rnk_d\" as \"descending_rnk_d\"
 FROM
     \"vacuous\"
     INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"vacuous\".\"ss_item_sk\" = \"ss_item_items\".\"I_ITEM_SK\"
 GROUP BY
     1,
     2),
-sweltering as (
-SELECT
-    \"abhorrent\".\"_descending_rnk_d\" as \"descending_rnk_d\",
-    \"abhorrent\".\"_descending_worst_performing\" as \"descending_worst_performing\"
-FROM
-    \"abhorrent\"),
 concerned as (
 SELECT
-    \"ss_item_items\".\"I_PRODUCT_NAME\" as \"_ascending_best_performing\",
-    \"vacuous\".\"_ascending_rnk_a\" as \"_ascending_rnk_a\"
+    \"ss_item_items\".\"I_PRODUCT_NAME\" as \"ascending_best_performing\",
+    \"vacuous\".\"_ascending_rnk_a\" as \"ascending_rnk_a\"
 FROM
     \"vacuous\"
     INNER JOIN \"memory\".\"item\" as \"ss_item_items\" on \"vacuous\".\"ss_item_sk\" = \"ss_item_items\".\"I_ITEM_SK\"
 GROUP BY
     1,
     2),
-young as (
-SELECT
-    \"concerned\".\"_ascending_best_performing\" as \"ascending_best_performing\",
-    \"concerned\".\"_ascending_rnk_a\" as \"ascending_rnk_a\"
-FROM
-    \"concerned\"),
 sparkling as (
 SELECT
-    \"young\".\"ascending_best_performing\" as \"ascending_best_performing\",
-    \"young\".\"ascending_rnk_a\" as \"rnk\"
+    \"concerned\".\"ascending_best_performing\" as \"ascending_best_performing\",
+    \"concerned\".\"ascending_rnk_a\" as \"rnk\"
 FROM
-    \"young\"
+    \"concerned\"
 WHERE
-    \"young\".\"ascending_rnk_a\" < 11
+    \"concerned\".\"ascending_rnk_a\" < 11
 )
 SELECT
-    \"sparkling\".\"rnk\" as \"rnk\",
+    \"abhorrent\".\"descending_rnk_d\" as \"rnk\",
     \"sparkling\".\"ascending_best_performing\" as \"ascending_best_performing\",
-    \"sweltering\".\"descending_worst_performing\" as \"descending_worst_performing\"
+    \"abhorrent\".\"descending_worst_performing\" as \"descending_worst_performing\"
 FROM
-    \"sweltering\"
-    INNER JOIN \"sparkling\" on \"sweltering\".\"descending_rnk_d\" = \"sparkling\".\"rnk\"
+    \"abhorrent\"
+    INNER JOIN \"sparkling\" on \"abhorrent\".\"descending_rnk_d\" = \"sparkling\".\"rnk\"
 ORDER BY 
-    \"sparkling\".\"rnk\" asc nulls first,
+    \"abhorrent\".\"descending_rnk_d\" asc nulls first,
     \"sparkling\".\"ascending_best_performing\" desc nulls first,
-    \"sweltering\".\"descending_worst_performing\" desc nulls first
+    \"abhorrent\".\"descending_worst_performing\" desc nulls first
 LIMIT (100)"""

@@ -1,5 +1,5 @@
 query_id = "84"
-gen_length = 1872
+gen_length = 1879
 preql_size = 676
 comp_size = 606
 generated_sql = """
@@ -13,7 +13,7 @@ SELECT
 FROM
     \"memory\".\"store_returns\" as \"ss_store_returns\"
 WHERE
-    coalesce(\"ss_store_returns\".\"SR_CDEMO_SK\") is not null and (\"ss_store_returns\".\"SR_TICKET_NUMBER\" is not null)
+    coalesce(\"ss_store_returns\".\"SR_CDEMO_SK\") is not null and (\"ss_store_returns\".\"SR_TICKET_NUMBER\" is not null) = True
 )
 SELECT
     \"customer_customers\".\"C_CUSTOMER_ID\" as \"customer_id\",

@@ -23,6 +23,7 @@ from trilogy.dialect.duckdb import (
     python_datasource_failure,
     resident_alias,
     resident_command,
+    vgi_python_requirement,
     vgi_worker_command,
 )
 from trilogy.dialect.python_source import VGI_FAILURE_MARKER, PythonDatasourceError
@@ -77,7 +78,7 @@ def test_resident_command_adds_vgi_only_to_python_scripts():
         "--no-project",
         "--quiet",
         "--with",
-        "vgi-python",
+        vgi_python_requirement(),
         "/w/src.py",
         "--vgi",
     ]

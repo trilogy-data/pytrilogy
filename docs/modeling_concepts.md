@@ -32,18 +32,24 @@ select
     case when ship_date is not null then true else false end as is_shipped_two;
 ```
 
-The customer with no order gets NULL for `ship_date`, and NULL for both
-`is_shipped` and `is_shipped_two`, even though each CASE has an ELSE that would
-seem to rule NULL out.
+The customer with no order gets NULL for `ship_date`, and `false` for both
+`is_shipped` and `is_shipped_two`: a CASE with an ELSE (or a `coalesce`)
+absorbs NULL, so it is evaluated on the select's own row, where the missing
+order reads as NULL and the ELSE fires (`docs/grain_pin.md`). A NULL-propagating
+expression (`upper(ship_date)`, `ship_date is null` alone) stays NULL there.
 
-That follows from one invariant: **a query returns the same rows whether a
-derived property is computed or stored.** Had `is_shipped` been materialized as
-a column of the orders table, that table would have no row for a customer
-without an order, and the join would give NULL. The computed version must
-agree.
+The invariant is still that **a query returns the same rows whether a derived
+property is computed or stored**, but a column stored at the order grain only
+answers selects whose rows its orders cover. Read through the join, it would
+give NULL on the padded row while the pinned value is `false`, and no single
+value satisfies both (`formal/Trilogy/Domain.lean`,
+`pin_contradicts_stored_reading`). So a pinned select computes the expression
+and never reads the column.
 
-Filling in the ELSE value instead would be the same as inventing a default ship
-date for an order that does not exist.
+The pin depends only on the select's keys: an order-grain output beside it
+(`select customer.id, is_shipped, ship_date`) adds the order key, which the
+reads already cover, so the customer without an order keeps `false`
+(`Pin.projection_invariant`).
 
 ## Windows run over their operand's rows
 

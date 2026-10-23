@@ -84,7 +84,8 @@ serve = ["fastapi", "uvicorn"]
 mcp = ["fastapi", "uvicorn", "mcp>=2,<3"]
 analysis = ["altair", "pandas", "vl-convert-python"]
 report = ["markdown", "altair", "pandas", "vl-convert-python", "playwright"]
-vgi = ["haybarn", "vgi-python; python_version >= '3.13'"]
+# vgi-python 0.46 speaks VGI protocol 2.2, which needs haybarn 1.5.6's vgi extension.
+vgi = ["haybarn>=1.5.6rc1", "vgi-python>=0.46; python_version >= '3.13'"]
 
 
 [tool.setuptools.dynamic]

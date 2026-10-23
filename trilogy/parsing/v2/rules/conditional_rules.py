@@ -41,6 +41,15 @@ def _expr_to_boolean(root: Any, context: RuleContext) -> Any:
     return root
 
 
+def _operand_to_boolean(operand: Any, context: RuleContext) -> Any:
+    """A bare `active` beside `and`/`or` becomes `active = true`, as a lone
+    `where active` does, so conjunct decomposition sees every operand as a
+    condition instead of refusing to split the conjunction."""
+    if isinstance(operand, Parenthetical):
+        return operand
+    return _expr_to_boolean(operand, context)
+
+
 def conditional(
     node: SyntaxNode,
     context: RuleContext,
@@ -51,7 +60,11 @@ def conditional(
     def munch(args: list[Any]) -> Any:
         if len(args) == 1:
             return args[0]
-        return Conditional(left=args[0], operator=args[1], right=munch(args[2:]))
+        return Conditional(
+            left=_operand_to_boolean(args[0], context),
+            operator=args[1],
+            right=_operand_to_boolean(munch(args[2:]), context),
+        )
 
     return munch(args)
 
@@ -63,8 +76,12 @@ def condition_parenthetical(
 ) -> Any:
     args = hydrated_children(node, hydrate)
     if len(args) == 2:
+        # Two-valued like `fnot`: an UNKNOWN operand negates to TRUE, so
+        # `not (a or b)` agrees with `not a and not b`.
         return Comparison(
-            left=Parenthetical(content=args[1]),
+            left=context.function_factory.create_function(
+                [Parenthetical(content=args[1]), False], FunctionType.COALESCE
+            ),
             right=False,
             operator=ComparisonOperator.EQ,
         )

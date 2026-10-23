@@ -1118,9 +1118,14 @@ def _partition_by_signature_and_grain(
             and not _has_lineage_consumer(node, concept_graph, concept_edges)
             for node, data in sub_items
         ]
+        pins = [sub_items[i][1].grain_pin_anchors for i in range(n)]
         merged: list[tuple[int, int]] = []
         for i in range(n):
             for j in range(i + 1, n):
+                # a pinned value evaluates on the select's rows, which a
+                # sibling at its reads' grain may be kept off (`solid_groups`)
+                if pins[i] != pins[j]:
+                    continue
                 signatures_match = sigs[i] == sigs[j] or (
                     sub_items[i][0] in signature_exempt
                     and sub_items[j][0] in signature_exempt
@@ -1168,6 +1173,8 @@ def _partition_by_signature_and_grain(
             # stay distinct.
             sig_repr = "|".join(sorted(shared_sig)) or "none"
             discriminator = f"sig:{_sig_digest(sig_repr)}"
+            if pin := pins[member_indices[0]]:
+                discriminator += f":pin:{'|'.join(sorted(pin))}"
             bucket = _bucket_for(
                 depth_label=group_depth,
                 derivation=own_derivation,

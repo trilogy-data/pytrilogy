@@ -59,9 +59,7 @@ jobs:
           python -m pip install wheel maturin==1.10.2
           python -m pip install -r requirements.txt
           python -m pip install -r requirements-test.txt
-          # haybarn 1.5.6rc1 shipped without a vgi extension build (404);
-          # drop the pin once community/v1.5.6/*/vgi.duckdb_extension.gz exists.
-          python -m pip install -e ".[vgi]" "haybarn<1.5.6"
+          python -m pip install -e ".[vgi]"
       - name: Build the conformance binary with the vgi feature
         # One binary serves both suites: the one-shot conformance run and the
         # resident (--vgi) one.
@@ -74,7 +72,9 @@ jobs:
         shell: bash
         run: |
           uv sync --script tests/engine/scripts/pushdown_source.py
-          uv run --no-project --quiet --with vgi-python tests/engine/scripts/pushdown_source.py --describe > /dev/null
+          # The same vgi-python the host runs; see vgi_python_requirement.
+          VGI_PYTHON=$(python -c "from trilogy.dialect.duckdb import vgi_python_requirement; print(vgi_python_requirement())")
+          uv run --no-project --quiet --with "$VGI_PYTHON" tests/engine/scripts/pushdown_source.py --describe > /dev/null
       - name: Test the VGI transport
         run: >
           python -m pytest -p no:randomly -rs --cov=trilogy --cov-config=.coveragerc.vgi
