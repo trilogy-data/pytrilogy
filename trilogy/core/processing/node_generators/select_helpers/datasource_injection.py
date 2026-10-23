@@ -497,9 +497,9 @@ def describe_incomplete_partitions(
     """Why a `complete where` family failed to union into a complete source.
 
     ``get_union_sources`` only unions arms whose predicates provably partition
-    the discriminator's domain. A plain `string` discriminator has no enumerable
-    domain, so no set of equality predicates over it can be proven complete;
-    this names that modeling gap instead of a generic "no complete sources".
+    the discriminator's domain. A plain `string` family of `=` arms leaves every
+    other string uncovered; this names that modeling gap instead of a generic
+    "no complete sources".
     """
     requested = {c.address for c in concepts}
     reasons: list[str] = []
