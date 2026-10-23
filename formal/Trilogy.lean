@@ -5,3 +5,4 @@ import Trilogy.Rows
 import Trilogy.Domain
 import Trilogy.Sourcing
 import Trilogy.Freshness
+import Trilogy.StateMerge

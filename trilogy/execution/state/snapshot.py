@@ -316,8 +316,9 @@ class DatasourceState(BaseModel):
     # a base's, because only there does an absent id mean the slice is gone.
     partitions_complete: bool = True
     # Counts over the whole probed set, which outlive the cap on ``partitions``.
-    # None on a scoped delta: a worker that owns three slices has no standing to
-    # describe the table.
+    # A scoped delta keeps its probe's counts (see ``scope_to_partitions``), but
+    # two scoped records cannot be reconciled into one count — see
+    # ``_merge_partition_summary``.
     partition_summary: PartitionSummary | None = None
 
 
@@ -747,7 +748,9 @@ def cap_snapshot(snapshot: StateSnapshot, limit: int | None) -> StateSnapshot:
     capped = snapshot.model_copy(deep=True)
     for asset in capped.assets:
         for ds_state in asset.datasources:
-            if ds_state.partition_summary is None:
+            # A scoped list is the delta's whole claim, already bounded by what
+            # one worker owns: a trimmed slice is a rebuild the merge never hears of.
+            if ds_state.partition_summary is None or not ds_state.partitions_complete:
                 continue
             ds_state.partitions, ds_state.partition_summary = cap_partitions(
                 ds_state.partitions, limit, ds_state.partition_summary
@@ -1288,10 +1291,17 @@ def _merge_partition_summary(
     # ``total`` is the winning probe's whole-set count; ``reported`` describes
     # the merged list, which overlaying a truncated delta may have grown past
     # what the delta itself carried.
+    if not (base.partitions_complete or delta.partitions_complete):
+        # Two scoped records: an id absent from the base's list may already be
+        # in its count, so neither count can be adjusted by the other's slices.
+        return None
     if delta.partitions_complete or base.partition_summary is None:
         if delta.partition_summary is None:
             return None
-        return _reported_over(delta.partition_summary, merged_partitions)
+        return _agree_with_list(
+            _reported_over(delta.partition_summary, merged_partitions),
+            merged_partitions,
+        )
 
     summary = base.partition_summary.model_copy(deep=True)
     base_by_id = {p.partition_id: p for p in base.partitions}
@@ -1311,6 +1321,26 @@ def _merge_partition_summary(
     ends = [p.partition_id for p in merged_partitions]
     summary.first = min([*ends, summary.first] if summary.first else ends, default=None)
     summary.last = max([*ends, summary.last] if summary.last else ends, default=None)
+    return _agree_with_list(summary, merged_partitions)
+
+
+def _agree_with_list(
+    summary: PartitionSummary, partitions: list[PartitionState]
+) -> PartitionSummary:
+    """Hold the counts to what the slice list beside them proves.
+
+    A truncated overlay keeps base entries the newer count may not agree with,
+    and adjusting such a count by later slices drifts, even below zero. A list
+    that speaks for every slice is the work queue, so it is recounted; a shorter
+    one bounds each count by the slices it does and does not hold."""
+    stale = sum(p.status == "stale" for p in partitions)
+    missing = sum(_is_missing(p) for p in partitions)
+    if not summary.truncated:
+        summary.stale, summary.missing = stale, missing
+        return summary
+    unlisted = summary.total - len(partitions)
+    summary.stale = min(max(summary.stale, stale), stale + unlisted)
+    summary.missing = min(max(summary.missing, missing), missing + unlisted)
     return summary
 
 
@@ -1343,31 +1373,47 @@ def _merge_datasource_state(
     return merged
 
 
+def _unprobed(state: DatasourceState) -> DatasourceState:
+    """The record a declaration has before any probe reached it, so a first
+    delta folds like every later one."""
+    return state.model_copy(
+        update={
+            "partitions": [],
+            "partition_summary": None,
+            "partitions_complete": False,
+        }
+    )
+
+
+def _fold_order(snapshot: StateSnapshot) -> tuple[str, str]:
+    # The content breaks a timestamp tie, so equal-time deltas still fold one way.
+    return snapshot.snapshot_ts, snapshot.model_dump_json()
+
+
 def merge_snapshots(base: StateSnapshot, *deltas: StateSnapshot) -> StateSnapshot:
     """Fold partition deltas into a base snapshot.
 
     The write side of fan-out: N workers each publish a snapshot scoped to the
     slices they refreshed (see :func:`scope_to_partitions`), and this merges
-    them into one file. Because the merge unit is the ``partition_id`` and each
-    worker only speaks for slices it owns, the result is independent of merge
-    order — which is what lets a file-backed store support parallelism with a
+    them into one file. Every input, the base included, folds oldest first, so
+    the result does not depend on the order the deltas are passed in, replaying
+    them changes nothing, and of two claims on one slice (a retried worker, a
+    whole-table probe, a leftover delta older than the base) the later wins. A
+    delta stamped the same instant as the base, as a coarse clock does, follows it.
+    That is what lets a file-backed store support parallelism with a
     single-writer coordinator instead of a lock per asset.
-
-    Assets and datasources present only in a delta are added; everything else
-    keeps the base's record unless the delta claims a complete probe.
     """
-    assets: dict[str, PhysicalAssetState] = {
-        asset.address: asset.model_copy(deep=True) for asset in base.assets
-    }
-    latest = base
-    for delta in deltas:
-        if delta.snapshot_ts > latest.snapshot_ts:
-            latest = delta
-        for incoming in delta.assets:
-            existing = assets.get(incoming.address)
-            if existing is None:
-                assets[incoming.address] = incoming.model_copy(deep=True)
-                continue
+    assets: dict[str, PhysicalAssetState] = {}
+    # Stable on time alone, so the base folds first among equal timestamps:
+    # only strictly older evidence yields to it.
+    claims = sorted(
+        [base, *sorted(deltas, key=_fold_order)], key=lambda s: s.snapshot_ts
+    )
+    for claim in claims:
+        for incoming in claim.assets:
+            existing = assets.setdefault(
+                incoming.address, incoming.model_copy(update={"datasources": []})
+            )
             # Paired by declaration, which is the same whichever script did
             # the probing — a delta legitimately comes from a per-partition
             # build script that imports the model, not from the model itself.
@@ -1375,8 +1421,8 @@ def merge_snapshots(base: StateSnapshot, *deltas: StateSnapshot) -> StateSnapsho
             for ds_state in incoming.datasources:
                 current = _same_declaration(merged, ds_state)
                 if current is None:
-                    merged.append(ds_state.model_copy(deep=True))
-                    continue
+                    current = _unprobed(ds_state)
+                    merged.append(current)
                 folded = _merge_datasource_state(current, ds_state)
                 folded.aliases = sorted({*current.aliases, *ds_state.aliases})
                 merged[merged.index(current)] = folded
@@ -1388,6 +1434,7 @@ def merge_snapshots(base: StateSnapshot, *deltas: StateSnapshot) -> StateSnapsho
             existing.owner_script = existing.owner_script or incoming.owner_script
 
     ordered = [assets[address] for address in sorted(assets)]
+    latest = claims[-1]
     return StateSnapshot(
         snapshot_ts=utc_now_iso(),
         run_id=latest.run_id,
