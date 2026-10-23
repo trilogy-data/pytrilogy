@@ -3,6 +3,7 @@ from collections.abc import Generator
 from pytest import fixture
 from sqlalchemy import create_engine
 
+from tests._fakesnow import skip_if_fakesnow_unsupported
 from trilogy import Dialects, Executor
 from trilogy.core.models.environment import Environment
 
@@ -21,6 +22,7 @@ def duckdb_engine() -> Generator[Executor, None, None]:
 
 @fixture(scope="session")
 def snowflake_engine():
+    skip_if_fakesnow_unsupported()
     from unittest import mock
 
     import fakesnow

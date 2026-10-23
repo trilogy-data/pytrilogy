@@ -2,6 +2,7 @@
 
 from pytest import fixture
 
+from tests._fakesnow import skip_if_fakesnow_unsupported
 from trilogy import Dialects, parse
 from trilogy.constants import Rendering
 from trilogy.dialect.config import SnowflakeConfig
@@ -9,6 +10,7 @@ from trilogy.dialect.config import SnowflakeConfig
 
 @fixture(scope="session")
 def fakesnow_happening():
+    skip_if_fakesnow_unsupported()
     from unittest import mock
 
     import fakesnow

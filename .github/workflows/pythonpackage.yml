@@ -19,9 +19,19 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         python-version: ["3.11", "3.12", "3.13"]
+        # Temporary while both majors are supported: 2.x moved shellfs to
+        # Query.Farm, dropped `x ->` lambdas and aborts transactions on bind
+        # errors. Drop the axis once <2 support goes.
+        duckdb: ["1.x"]
         include:
           - python-version: "3.13"
             run_llm_tests: true
+          - os: ubuntu-latest
+            python-version: "3.13"
+            duckdb: "2.x"
+          - os: windows-latest
+            python-version: "3.13"
+            duckdb: "2.x"
     permissions:
       contents: 'read'
       id-token: 'write'
@@ -30,7 +40,7 @@ jobs:
       # suite) but needs the C tracer on 3.11 (~150%), which made the 3.11
       # cells the longest in the matrix by 10 minutes. 3.11 runs the same
       # tests uncovered; its only unique lines are version-specific branches.
-      PYTEST_COV: ${{ matrix.python-version != '3.11' && '--cov=trilogy' || '' }}
+      PYTEST_COV: ${{ matrix.python-version != '3.11' && matrix.duckdb == '1.x' && '--cov=trilogy' || '' }}
       # Tells tests/io/test_conformance.py that the "Build the conformance
       # binary" step below already produced the rust example, so its fixture
       # references the binary instead of shelling out to cargo. Unset locally,
@@ -96,6 +106,10 @@ jobs:
         # excluded the Python of the day and has not been needed since.
         run: |
           uv pip install --system wheel maturin==1.10.2 -r requirements.txt -r requirements-test.txt
+      - name: Install DuckDB 2.x
+        if: matrix.duckdb == '2.x'
+        run: |
+          uv pip install --system "duckdb>=2,<3"
       - name: Run Rust tests
         run: |
           cd trilogy/scripts/dependency
@@ -182,7 +196,7 @@ jobs:
         run: |
           python -m black --check .
       - name: Benchmark plans did not grow against main
-        if: github.event_name == 'pull_request' && matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13'
+        if: github.event_name == 'pull_request' && matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13' && matrix.duckdb == '1.x'
         run: |
           git fetch --no-tags --depth=1 origin main
           python .scripts/check_benchmark_growth.py FETCH_HEAD
@@ -222,7 +236,7 @@ jobs:
           uv pip install --system rich
           python -m pytest tests/ $PYTEST_COV ${PYTEST_COV:+--cov-append} --durations=30 -m "not adventureworks_execution" -k "test_trilogy or test_display or test_refresh"
       - name: Upload coverage to Codecov
-        if: matrix.python-version != '3.11'
+        if: matrix.python-version != '3.11' && matrix.duckdb == '1.x'
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2  # v6.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

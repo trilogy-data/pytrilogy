@@ -1,5 +1,5 @@
 query_id = "94"
-gen_length = 2061
+gen_length = 2054
 preql_size = 619
 comp_size = 795
 generated_sql = """
@@ -31,7 +31,7 @@ FROM
     \"memory\".\"web_sales\" as \"ws_web_sales\"
     INNER JOIN \"memory\".\"web_returns\" as \"ws_web_returns\" on \"ws_web_sales\".\"WS_ITEM_SK\" = \"ws_web_returns\".\"WR_ITEM_SK\" AND \"ws_web_sales\".\"WS_ORDER_NUMBER\" = \"ws_web_returns\".\"WR_ORDER_NUMBER\"
 WHERE
-    (\"ws_web_returns\".\"WR_ORDER_NUMBER\" is not null) = True
+    (\"ws_web_returns\".\"WR_ORDER_NUMBER\" is not null)
 
 GROUP BY
     1)

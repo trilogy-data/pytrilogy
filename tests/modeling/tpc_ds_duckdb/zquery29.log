@@ -1,5 +1,5 @@
 query_id = "29"
-gen_length = 5935
+gen_length = 5928
 preql_size = 1692
 comp_size = 1350
 generated_sql = """
@@ -47,7 +47,7 @@ SELECT
 FROM
     \"vacuous\"
 WHERE
-    (\"vacuous\".\"store_sales__returned_ticket\" is not null) = True
+    (\"vacuous\".\"store_sales__returned_ticket\" is not null)
 ),
 wakeful as (
 SELECT

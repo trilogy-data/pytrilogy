@@ -1,5 +1,5 @@
 query_id = "16"
-gen_length = 2202
+gen_length = 2195
 preql_size = 633
 comp_size = 821
 generated_sql = """
@@ -31,7 +31,7 @@ FROM
     \"memory\".\"catalog_sales\" as \"cs_catalog_sales\"
     INNER JOIN \"memory\".\"catalog_returns\" as \"cs_catalog_returns\" on \"cs_catalog_sales\".\"CS_ITEM_SK\" = \"cs_catalog_returns\".\"CR_ITEM_SK\" AND \"cs_catalog_sales\".\"CS_ORDER_NUMBER\" = \"cs_catalog_returns\".\"CR_ORDER_NUMBER\"
 WHERE
-    (\"cs_catalog_returns\".\"CR_ORDER_NUMBER\" is not null) = True
+    (\"cs_catalog_returns\".\"CR_ORDER_NUMBER\" is not null)
 
 GROUP BY
     1)
