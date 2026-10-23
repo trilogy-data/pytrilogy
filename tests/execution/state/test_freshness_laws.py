@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 from trilogy import Dialects
-from trilogy.core.models.datasource import UpdateKey, UpdateKeyType
+from trilogy.core.models.datasource import FreshnessLag, UpdateKey, UpdateKeyType
 from trilogy.core.models.environment import Environment
 from trilogy.execution.state import (
     SnapshotStateStore,
@@ -29,9 +29,12 @@ from trilogy.execution.state import (
     merge_into_snapshot,
     restore_watermark_value,
 )
-from trilogy.execution.state.snapshot import _watermark_value
+from trilogy.execution.state.snapshot import WatermarkValue, _watermark_value
 from trilogy.execution.state.state_store import refresh_stale_assets
-from trilogy.execution.state.watermarks import _compare_watermark_values
+from trilogy.execution.state.watermarks import (
+    _compare_watermark_values,
+    within_allowed_lag,
+)
 
 KEYS = {
     "int": ("int", "INTEGER", lambda i: i * 7 - 3, str),
@@ -243,3 +246,17 @@ def test_a_decimal_renders_as_a_plain_literal():
     generator = Dialects.DUCK_DB.default_executor().generator
     assert generator.render_expr(Decimal("57.25")) == "57.25"
     assert generator.render_expr(Decimal("1E+2")) == "100"
+
+
+def test_a_malformed_decimal_degrades_to_text():
+    entry = WatermarkValue(
+        key="k", type="incremental_key", value="n/a", value_type="Decimal"
+    )
+    assert restore_watermark_value(entry) == "n/a"
+
+
+def test_a_lag_measures_across_numeric_types():
+    lag = FreshnessLag(value=1)
+    assert within_allowed_lag(Decimal("9.5"), 10.0, lag, "k")
+    assert not within_allowed_lag(Decimal(8), 10.0, lag, "k")
+    assert within_allowed_lag(Decimal("9.5"), Decimal(10), lag, "k")

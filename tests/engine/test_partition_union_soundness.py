@@ -17,6 +17,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.core import DataType
 from trilogy.core.processing.condition_utility import (
+    MAX_EXACT_COVERS,
     conditions_partition_domain,
     domain_hits,
     exact_covers,
@@ -199,6 +200,7 @@ def test_exact_covers_pick_one_copy_of_a_duplicate_arm():
     assert exact_covers([list(r) for r in zip(low, high, low)]) == [(0, 1), (2, 1)]
     assert exact_covers([[True, True], [False, True]]) == [(1,)]
     assert exact_covers([[True, False], [False, False]]) == []
+    assert len(exact_covers([[True] * 100])) == MAX_EXACT_COVERS
 
 
 def test_string_cells_are_literals_and_everything_else():
