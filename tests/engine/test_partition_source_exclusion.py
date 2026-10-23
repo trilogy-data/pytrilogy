@@ -11,7 +11,7 @@ from trilogy.core.exceptions import UnresolvableQueryException
 from trilogy.core.models.build import BuildComparison, BuildWhereClause
 from trilogy.core.processing.partial_bridging import (
     decide_exclusion,
-    gate_excluded_enum_values,
+    gate_excluded_values,
 )
 from trilogy.core.processing.statement_scope import authored_datasources
 from trilogy.core.processing.v4_helper.staged_where import universal_row_bound
@@ -226,7 +226,7 @@ def test_reduced_domain_recorded_by_address_and_canonical():
         )
     )
     assert decide_exclusion(authored_datasources(environment), gate) == {"store"}
-    excluded = gate_excluded_enum_values(environment, gate)
+    excluded = gate_excluded_values(environment, gate)
     assert excluded["local.channel"] == frozenset({"STORE"})
     assert excluded[environment.concepts["local.channel"].canonical_address] == (
         frozenset({"STORE"})

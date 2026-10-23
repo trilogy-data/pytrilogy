@@ -280,14 +280,15 @@ address orders_eu_table;
 
 When Trilogy needs `order_id` it will union `orders_us` and `orders_eu` automatically.
 
-**The union only forms when the arms provably cover the whole population.** Trilogy has to
-prove that the disjunction of the arms' `complete where` predicates is a tautology over the
-discriminator's domain — otherwise a row whose `region` is neither `'US'` nor `'EU'` would
-silently disappear from an unfiltered query. That proof needs a domain to check against, so
-the discriminator must be one of:
+**The union only forms when the arms provably partition the whole population.** Trilogy has
+to prove that every value of the discriminator satisfies exactly one arm's `complete where`:
+a row in no arm would silently disappear from an unfiltered query, and a row in two would be
+counted twice. A nullable discriminator (`region string?`) also needs an arm for its NULLs
+(`complete where region is null`), unless the query's own `where` rules NULL out. That proof
+needs a domain to check against, so the discriminator must be one of:
 
 - an `enum` whose values the arms exhaust (`region` above);
-- a numeric/date/bool concept whose arms cover the full range (`complete where created_at <
+- a numeric/date/bool concept whose arms split the full range without overlap (`complete where created_at <
   '2024-01-01'` plus `complete where created_at >= '2024-01-01'`);
 - a `::ranged` validated type whose declared ranges the arms cover.
 

@@ -21,9 +21,10 @@ mutually exclusive with the statement's row gate cannot contribute a row, so
 it is hidden from discovery. Left visible it still counts as a binding: a bare
 key it binds is planned as a scan instead of through its ``merge`` origin, and
 a union over the sibling partition is deemed complete and then filtered to
-nothing. The enum values the gate rules out (``gate_excluded_enum_values``)
-are recorded on the environment so the surviving arms are still proven
-complete over the domain that remains.
+nothing. The values the gate rules out (``gate_excluded_values``: enum
+values, and NULL for a discriminator it proves non-null) are recorded on the
+environment so the surviving arms are still proven complete over the domain
+that remains.
 
 Both are pure over the datasource list they are given; applying them is the
 caller's.
@@ -47,6 +48,8 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.core import EnumType
 from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing.condition_utility import (
+    NULL_MEMBER,
+    condition_proves_non_null,
     conditions_mutually_exclusive,
     gate_allowed_values,
 )
@@ -313,23 +316,29 @@ def decide_heal(
     return replacements
 
 
-def gate_excluded_enum_values(
+def gate_excluded_values(
     environment: BuildEnvironment, stage: BuildWhereClause
 ) -> dict[str, frozenset[str]]:
-    """Enum discriminator values the gate's literal atoms rule out, keyed by
-    address and canonical address."""
-    out: dict[str, frozenset[str]] = {}
+    """Discriminator values the gate rules out, keyed by address and canonical
+    address: enum values its literal atoms exclude, and ``NULL_MEMBER`` for a
+    nullable concept it proves non-null."""
+    out: dict[str, set[str]] = {}
     for address, allowed in gate_allowed_values(stage.conditional).items():
         concept = environment.concepts.get(address)
         if concept is None or not isinstance(concept.datatype, EnumType):
             continue
-        gone = frozenset(str(v) for v in concept.datatype.values) - {
-            str(v) for v in allowed
-        }
+        gone = {str(v) for v in concept.datatype.values} - {str(v) for v in allowed}
         if gone:
-            out[concept.address] = gone
-            out[concept.canonical_address] = gone
-    return out
+            out.setdefault(concept.address, set()).update(gone)
+    for address in condition_proves_non_null(stage.conditional):
+        concept = environment.concepts.get(address)
+        if concept is not None and concept.is_nullable:
+            out.setdefault(concept.address, set()).add(NULL_MEMBER)
+    result: dict[str, frozenset[str]] = {}
+    for address, gone in out.items():
+        concept = environment.concepts[address]
+        result[concept.address] = result[concept.canonical_address] = frozenset(gone)
+    return result
 
 
 def decide_exclusion(

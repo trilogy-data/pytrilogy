@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import sys
+import math
 from collections.abc import Mapping
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from enum import Enum
-from typing import Any, TypeVar
+from typing import Any
 
 from trilogy.constants import MagicConstants
 from trilogy.core.enums import (
@@ -45,6 +45,7 @@ from trilogy.core.models.core import (
     TraitDataType,
     TupleWrapper,
     ValidatedType,
+    ValueRange,
 )
 from trilogy.core.models.datasource import RawColumnExpr
 from trilogy.core.models.execute import CTE, QueryDatasource, UnionCTE
@@ -103,8 +104,6 @@ NULL_OPAQUE_FUNCTIONS: tuple[FunctionType, ...] = (
     # a non-null array proves SOME element was non-null, not the row's own value
     FunctionType.ARRAY_AGG,
 )
-
-_T = TypeVar("_T", int, float, date, datetime)
 
 TARGET_TYPES = (int, date, float, datetime, bool, str)
 REDUCABLE_TYPES = (int, float, date, bool, datetime, str, BuildFunction)
@@ -315,145 +314,209 @@ def contains_window(element: Any, materialized: set[str] | None = None) -> bool:
     return bool(gather_windows(element, materialized))
 
 
-def reduce_expression(
-    datatype: Any, group_tuple: list[tuple[ComparisonOperator, Any]]
-) -> bool:
-    """True when ``group_tuple`` (``(operator, value)`` atoms against a single
-    concept of type ``datatype``) covers that type's entire domain."""
-    if isinstance(datatype, EnumType):
-        covered = {
-            str(v)
-            for op, v in group_tuple
-            if op in (ComparisonOperator.EQ, ComparisonOperator.IS)
-        }
-        return covered >= {str(v) for v in datatype.values}
+# Discrete domains step to a successor; every other ordered domain is dense,
+# so no epsilon can stand in for "the next value" (`formal/Trilogy/Sourcing.lean`).
+_DISCRETE = (DataType.INTEGER, DataType.BIGINT, DataType.DATE)
+_ORDERED = _DISCRETE + (
+    DataType.FLOAT,
+    DataType.DOUBLE,
+    DataType.NUMBER,
+    DataType.NUMERIC,
+    DataType.DATETIME,
+    DataType.TIMESTAMP,
+)
+_ORDERED_LITERALS = (int, float, Decimal, date)
 
-    lower_check: Any
-    upper_check: Any
-    declared_ranges = None
-    if isinstance(datatype, ValidatedType):
-        # Declared ranges shrink the domain that must be covered, same trust
-        # model as the EnumType branch above (data conformance is checked by
-        # datasource validation). Regex domains are not reasoned about.
-        if datatype.pattern is not None or not datatype.ranges:
-            return False
-        declared_ranges = datatype.ranges
-        base = datatype.data_type
-        if base in (
-            DataType.INTEGER,
-            DataType.BIGINT,
-            DataType.FLOAT,
-            DataType.DOUBLE,
-            DataType.NUMBER,
-            DataType.NUMERIC,
-        ):
-            lower_check = float("-inf")
-            upper_check = float("inf")
-        elif base == DataType.DATE:
-            lower_check = date.min
-            upper_check = date.max
-        elif base in (DataType.DATETIME, DataType.TIMESTAMP):
-            lower_check = datetime.min
-            upper_check = datetime.max
-        else:
-            return False
-    elif datatype in (DataType.INTEGER, DataType.FLOAT, DataType.DOUBLE):
-        lower_check = float("-inf")
-        upper_check = float("inf")
-    elif datatype == DataType.DATE:
-        lower_check = date.min
-        upper_check = date.max
-    elif datatype == DataType.DATETIME:
-        lower_check = datetime.min
-        upper_check = datetime.max
-    elif datatype == DataType.BOOL:
-        lower_check = False
-        upper_check = True
-    else:
+_ORDER_OPERATORS = (
+    ComparisonOperator.LT,
+    ComparisonOperator.LTE,
+    ComparisonOperator.GT,
+    ComparisonOperator.GTE,
+)
+_CELL_OPERATORS = (
+    ComparisonOperator.EQ,
+    ComparisonOperator.IS,
+    ComparisonOperator.NE,
+    ComparisonOperator.IS_NOT,
+    *_ORDER_OPERATORS,
+)
+
+
+# A domain cell: a literal, an open interval between adjacent literals (None
+# is unbounded), or the NULL member. Every comparison against the literals is
+# constant on a cell, so evaluating each atom once per cell decides it exactly.
+_Cell = tuple[Any, ...]
+_NULL_CELL: _Cell = ("null",)
+
+
+def _gap_nonempty(lo: Any, hi: Any, discrete: bool) -> bool:
+    if lo is None or hi is None:
+        return True
+    if not discrete:
+        return lo < hi
+    if isinstance(lo, date):
+        return lo + timedelta(days=1) < hi
+    return math.floor(lo) + 1 < hi
+
+
+def _domain_cells(base: Any, literals: list[Any]) -> list[_Cell] | None:
+    if base == DataType.BOOL:
+        return [("point", False), ("point", True)]
+    if base not in _ORDERED:
+        return None
+    if any(
+        isinstance(v, bool) or not isinstance(v, _ORDERED_LITERALS) for v in literals
+    ):
+        return None
+    try:
+        points = sorted(set(literals))
+    except TypeError:
+        return None
+    discrete = base in _DISCRETE
+    bounds: list[Any] = [None, *points, None]
+    cells: list[_Cell] = []
+    for idx in range(len(bounds) - 1):
+        lo, hi = bounds[idx], bounds[idx + 1]
+        if _gap_nonempty(lo, hi, discrete):
+            cells.append(("gap", lo, hi))
+        if hi is not None:
+            cells.append(("point", hi))
+    return cells
+
+
+def _compare(op: ComparisonOperator, left: Any, right: Any) -> bool:
+    if op in (ComparisonOperator.EQ, ComparisonOperator.IS):
+        return left == right
+    if op in (ComparisonOperator.NE, ComparisonOperator.IS_NOT):
+        return left != right
+    if op == ComparisonOperator.LT:
+        return left < right
+    if op == ComparisonOperator.LTE:
+        return left <= right
+    if op == ComparisonOperator.GT:
+        return left > right
+    return left >= right
+
+
+def _atom_holds(op: ComparisonOperator, value: Any, cell: _Cell) -> bool | None:
+    """Kleene-TRUE of ``x <op> value`` on ``cell``; None for an operator the
+    cell model does not reason about."""
+    if value is None:
+        if op == ComparisonOperator.IS:
+            return cell == _NULL_CELL
+        if op == ComparisonOperator.IS_NOT:
+            return cell != _NULL_CELL
+        return None
+    if op not in _CELL_OPERATORS:
+        return None
+    if cell == _NULL_CELL:
         return False
-
-    ranges: list[tuple[Any, Any]] = []
-    for op, value in group_tuple:
-        increment: int | timedelta | float
-        if isinstance(value, date):
-            increment = timedelta(days=1)
-        elif isinstance(value, datetime):
-            increment = timedelta(seconds=1)
-        elif isinstance(value, int):
-            increment = 1
-        elif isinstance(value, float):
-            increment = sys.float_info.epsilon
-        else:
-            return False
-
-        if op == ">":
-            ranges.append((value + increment, upper_check))  # type: ignore[operator]
-        elif op == ">=":
-            ranges.append((value, upper_check))
-        elif op == "<":
-            ranges.append((lower_check, value - increment))  # type: ignore[operator]
-        elif op == "<=":
-            ranges.append((lower_check, value))
-        elif op in ("=", ComparisonOperator.IS):
-            ranges.append((value, value))
-        elif op == ComparisonOperator.NE:
-            pass
-        else:
-            return False
-    if declared_ranges is not None:
-        # is_fully_covered treats `start` as already covered (safe when start
-        # is the type's own -inf bound); a finite declared minimum must itself
-        # be covered, so back it off by one increment.
-        def _covered_start(lo: Any) -> Any:
-            try:
-                return lo - increment
-            except (OverflowError, ValueError, TypeError):
-                return lo
-
-        return all(
-            is_fully_covered(
-                _covered_start(r.min) if r.min is not None else lower_check,
-                r.max if r.max is not None else upper_check,
-                ranges,
-                increment,  # type: ignore[arg-type]
-            )
-            for r in declared_ranges
-        )
-    return is_fully_covered(lower_check, upper_check, ranges, increment)  # type: ignore[arg-type]
+    if cell[0] == "point":
+        return _compare(op, cell[1], value)
+    # An open gap holds no literal, so it lies wholly below or above `value`.
+    lo, hi = cell[1], cell[2]
+    if op in (ComparisonOperator.LT, ComparisonOperator.LTE):
+        return hi is not None and hi <= value
+    if op in (ComparisonOperator.GT, ComparisonOperator.GTE):
+        return lo is not None and lo >= value
+    return op in (ComparisonOperator.NE, ComparisonOperator.IS_NOT)
 
 
-def boolean_fully_covered(
-    start: bool,
-    end: bool,
-    ranges: list[tuple[bool, bool]],
-) -> bool:
-    return any(r_start is True and r_end is True for r_start, r_end in ranges) and any(
-        r_start is False and r_end is False for r_start, r_end in ranges
+def _in_declared_ranges(ranges: tuple[ValueRange, ...], cell: _Cell) -> bool:
+    if cell[0] == "point":
+        return any(r.contains(cell[1]) for r in ranges)
+    lo, hi = cell[1], cell[2]
+    return any(
+        (r.min is None or (lo is not None and lo >= r.min))
+        and (r.max is None or (hi is not None and hi <= r.max))
+        for r in ranges
     )
 
 
-def is_fully_covered(
-    start: _T,
-    end: _T,
-    ranges: list[tuple[_T, _T]],
-    increment: timedelta | float,
+def domain_hits(
+    datatype: Any,
+    group_tuple: list[tuple[ComparisonOperator, Any]],
+    nullable: bool = False,
+) -> list[int] | None:
+    """How many of ``group_tuple``'s atoms hold on each cell of ``datatype``'s
+    domain (plus NULL when ``nullable``); None when the atoms or the type are
+    outside what the cell model can decide."""
+    if isinstance(datatype, EnumType):
+        # An enum's order is not its values' string order: only equality.
+        if any(op in _ORDER_OPERATORS for op, _ in group_tuple):
+            return None
+        cells: list[_Cell] = [("point", str(v)) for v in datatype.values]
+        atoms = [(op, None if v is None else str(v)) for op, v in group_tuple]
+    else:
+        base = datatype
+        ranges: tuple[ValueRange, ...] = ()
+        if isinstance(datatype, ValidatedType):
+            if datatype.pattern is not None or not datatype.ranges:
+                return None
+            base, ranges = datatype.data_type, datatype.ranges
+        literals = [v for _, v in group_tuple if v is not None]
+        literals += [b for r in ranges for b in (r.min, r.max) if b is not None]
+        domain = _domain_cells(base, literals)
+        if domain is None:
+            return None
+        cells = [c for c in domain if not ranges or _in_declared_ranges(ranges, c)]
+        atoms = list(group_tuple)
+    if nullable:
+        cells.append(_NULL_CELL)
+    hits: list[int] = []
+    for cell in cells:
+        count = 0
+        for op, value in atoms:
+            holds = _atom_holds(op, value, cell)
+            if holds is None:
+                return None
+            count += holds
+        hits.append(count)
+    return hits
+
+
+def reduce_expression(
+    datatype: Any,
+    group_tuple: list[tuple[ComparisonOperator, Any]],
+    nullable: bool = False,
 ) -> bool:
-    if isinstance(start, bool) and isinstance(end, bool):
-        bool_ranges = [(bool(r_start), bool(r_end)) for r_start, r_end in ranges]
-        return boolean_fully_covered(start, end, bool_ranges)
-    ranges.sort()
-    current_end = start
-    for r_start, r_end in ranges:
-        if (r_start - current_end) > increment:  # type: ignore[operator]
-            return False
-        current_end = max(current_end, r_end)
-    return current_end >= end
+    """True when the disjunction of ``group_tuple`` (``(operator, value)``
+    atoms against one concept of type ``datatype``) holds on its whole domain."""
+    hits = domain_hits(datatype, group_tuple, nullable)
+    return hits is not None and all(hits)
+
+
+def partitions_domain(
+    datatype: Any,
+    group_tuple: list[tuple[ComparisonOperator, Any]],
+    nullable: bool = False,
+) -> bool:
+    """True when exactly one atom holds on every value of the domain: the
+    atoms' sources union, with no gap and no overlap, into the whole."""
+    hits = domain_hits(datatype, group_tuple, nullable)
+    return hits is not None and all(h == 1 for h in hits)
 
 
 # Discriminator address (or canonical address) -> enum values the statement's
 # row gate rules out. A per-statement view of the domain: a partition family
 # is complete once it covers the values that can still occur.
 ExcludedEnumValues = Mapping[str, frozenset[str]]
+
+# The NULL member of a nullable discriminator, listed among a gate's excluded
+# values when the gate proves the discriminator non-null.
+NULL_MEMBER = "<null>"
+
+_FLIPPED = (
+    (ComparisonOperator.LT, ComparisonOperator.GT),
+    (ComparisonOperator.LTE, ComparisonOperator.GTE),
+    (ComparisonOperator.GT, ComparisonOperator.LT),
+    (ComparisonOperator.GTE, ComparisonOperator.LTE),
+)
+
+
+def _flipped(operator: ComparisonOperator) -> ComparisonOperator:
+    """``operator`` with its operands swapped: ``10 > x`` is ``x < 10``."""
+    return next((b for a, b in _FLIPPED if a == operator), operator)
 
 
 def gate_allowed_values(conditional: BoolExpr) -> dict[str, set[object]]:
@@ -492,46 +555,88 @@ def conditions_cover_domain(
     return all(reduce_expression(dt, atoms) for dt, atoms in grouped.values())
 
 
+def _grouped_atoms(
+    conditions: list[BoolExpr],
+    excluded: ExcludedEnumValues | None,
+) -> dict[str, tuple[Any, bool, list[tuple[ComparisonOperator, Any]]]] | None:
+    """Concept -> ``(domain, nullable, atoms)`` for a list of single-atom
+    conditions, each atom normalized to ``concept <op> literal`` (a NULL
+    literal is None); None when any condition is not such an atom."""
+    # Key by address string: concept objects from different datasources may not
+    # hash/compare identically even when they represent the same concept.
+    grouped: dict[str, tuple[Any, bool, list[tuple[ComparisonOperator, Any]]]] = {}
+    for condition in conditions:
+        if not isinstance(condition, BuildComparison):
+            return None
+        operator = condition.operator
+        raw_comparison: Any
+        if isinstance(condition.left, BuildConcept) and not isinstance(
+            condition.right, BuildConcept
+        ):
+            concept, raw_comparison = condition.left, condition.right
+        elif isinstance(condition.right, BuildConcept):
+            concept, raw_comparison = condition.right, condition.left
+            operator = _flipped(operator)
+        else:
+            return None
+
+        comparison: Any
+        if raw_comparison is MagicConstants.NULL:
+            comparison = None
+        elif isinstance(raw_comparison, BuildFunction):
+            if raw_comparison.operator != FunctionType.CONSTANT:
+                return None
+            comparison = raw_comparison.arguments[0]
+        else:
+            comparison = raw_comparison
+        if comparison is not None and not isinstance(comparison, TARGET_TYPES):
+            return None
+
+        gone = (excluded or {}).get(concept.address) or (excluded or {}).get(
+            concept.canonical_address, frozenset()
+        )
+        entry = grouped.setdefault(
+            concept.canonical_address,
+            (
+                effective_enum_domain(concept.datatype, concept, excluded),
+                concept.is_nullable and NULL_MEMBER not in gone,
+                [],
+            ),
+        )
+        entry[2].append((operator, comparison))
+    return grouped
+
+
 def simplify_conditions(
     conditions: list[BoolExpr],
     excluded: ExcludedEnumValues | None = None,
 ) -> bool:
-    # Key by address string: concept objects from different datasources may not
-    # hash/compare identically even when they represent the same concept.
-    grouped: dict[str, tuple[Any, list[tuple[ComparisonOperator, Any]]]] = {}
-    for condition in conditions:
-        if not isinstance(condition, BuildComparison):
-            return False
-        if isinstance(condition.left, BuildConcept) and isinstance(
-            condition.right, REDUCABLE_TYPES
-        ):
-            concept, raw_comparison = condition.left, condition.right
-        elif isinstance(condition.right, BuildConcept) and isinstance(
-            condition.left, REDUCABLE_TYPES
-        ):
-            concept, raw_comparison = condition.right, condition.left
-        else:
-            return False
+    """True when the disjunction of ``conditions`` holds on every row."""
+    grouped = _grouped_atoms(conditions, excluded)
+    if not grouped:
+        return False
+    return all(
+        reduce_expression(dt, atoms, nullable)
+        for dt, nullable, atoms in grouped.values()
+    )
 
-        if isinstance(raw_comparison, BuildFunction):
-            if raw_comparison.operator != FunctionType.CONSTANT:
-                return False
-            first_arg = raw_comparison.arguments[0]
-            if not isinstance(first_arg, TARGET_TYPES):
-                return False
-            comparison = first_arg
-        else:
-            if not isinstance(raw_comparison, TARGET_TYPES):
-                return False
-            comparison = raw_comparison
 
-        entry = grouped.setdefault(
-            concept.canonical_address,
-            (effective_enum_domain(concept.datatype, concept, excluded), []),
+def conditions_partition_domain(
+    conditions: list[BoolExpr],
+    excluded: ExcludedEnumValues | None = None,
+) -> bool:
+    """True when exactly one of ``conditions`` holds on every row, so sources
+    each complete where one of them holds union, with no row missing or
+    doubled, into a complete source (`Sourcing.union_perm_of_partition`)."""
+    grouped = _grouped_atoms(conditions, excluded)
+    return (
+        grouped is not None
+        and len(grouped) == 1
+        and all(
+            partitions_domain(dt, atoms, nullable)
+            for dt, nullable, atoms in grouped.values()
         )
-        entry[1].append((condition.operator, comparison))
-
-    return conditions_cover_domain(grouped)
+    )
 
 
 def references_any_concept(element: Any, addresses: set[str]) -> bool:

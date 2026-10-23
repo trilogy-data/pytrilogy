@@ -6,6 +6,7 @@ other way."""
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 
 from local_scripts.fuzzer.models import FuzzCase, SeedData, TableData
@@ -26,6 +27,7 @@ def _law(
     twin: str,
     model_extra: str = "",
     twin_extra: str = "",
+    twin_model: str | None = None,
 ) -> FuzzCase:
     model = seed.trilogy_model()
     normalized_tags = tuple(tags)
@@ -39,7 +41,10 @@ def _law(
         tags=("law", *normalized_tags),
         trilogy=model + model_extra + body.strip() + "\n",
         oracle_sql="",
-        twin_trilogy=model + (twin_extra or model_extra) + twin.strip() + "\n",
+        twin_trilogy=(twin_model or model)
+        + (twin_extra or model_extra)
+        + twin.strip()
+        + "\n",
     )
 
 
@@ -574,6 +579,176 @@ select count(keys.group_id) as c;
     ]
 
 
+EVENT_COLUMNS = """eid: event_id,
+    gid: group_id,
+    amount: event_amount,
+    nullable_amount: nullable_amount,
+    active: active"""
+
+SOURCING_QUERIES = (
+    (
+        "rows",
+        (
+            "select event_id, event_amount, nullable_amount, active "
+            "order by event_id asc;"
+        ),
+    ),
+    (
+        "grouped",
+        (
+            "select group_id, count(event_id) as c, sum(event_amount) as t "
+            "order by group_id asc nulls first;"
+        ),
+    ),
+    (
+        "joined",
+        "select group_name, sum(nullable_amount) as t order by group_name asc;",
+    ),
+    ("total", "select count(event_id) as c, sum(event_amount) as t;"),
+)
+
+
+def _events_as_arms(seed: SeedData, arms: tuple[tuple[str, str], ...]) -> str:
+    """The seed model with `events` replaced by `complete where` arms, each
+    holding exactly the rows its claim is TRUE on."""
+    blocks = "".join(
+        f"""
+partial datasource events_{suffix} (
+    {EVENT_COLUMNS}
+)
+grain (event_id)
+complete where {claim}
+query '''select * from ({seed.events.select_sql()}) where {column_claim}''';
+"""
+        for suffix, claim in arms
+        for column_claim in [claim.replace("event_amount", "amount")]
+    )
+    model, count = re.subn(
+        r"datasource events \(.*?''';\n", blocks, seed.trilogy_model(), flags=re.DOTALL
+    )
+    assert count == 1
+    return model
+
+
+def _sourcing_laws(seed: SeedData) -> list[FuzzCase]:
+    families = (
+        (
+            "split",
+            "the arms `<= 10` and `> 10` partition a non-null int.",
+            (("low", "event_amount <= 10"), ("high", "event_amount > 10")),
+            "",
+        ),
+        (
+            "point",
+            "a point arm `= 5` between `< 5` and `> 5` partitions too.",
+            (
+                ("below", "event_amount < 5"),
+                ("at", "event_amount = 5"),
+                ("above", "event_amount > 5"),
+            ),
+            "",
+        ),
+        (
+            "bool",
+            "`active = true` and `active = false` partition a non-null bool.",
+            (("on", "active = true"), ("off", "active = false")),
+            "",
+        ),
+        (
+            "null_arm",
+            "a nullable discriminator needs its `is null` arm.",
+            (
+                ("neg", "nullable_amount <= 0"),
+                ("pos", "nullable_amount > 0"),
+                ("null", "nullable_amount is null"),
+            ),
+            "",
+        ),
+        (
+            "gated",
+            (
+                "a gate proving the discriminator non-null removes NULL from "
+                "the domain the arms must partition."
+            ),
+            (("neg", "nullable_amount <= 0"), ("pos", "nullable_amount > 0")),
+            "where nullable_amount is not null\n",
+        ),
+    )
+    cases = [
+        _law(
+            seed,
+            f"union_{family}_{name}",
+            (
+                "Sourcing.gated_union_perm"
+                if gate
+                else "Sourcing.union_perm_of_partition"
+            ),
+            f"A partition family unions back to the table: {why}",
+            ("sourcing", "partial", "union"),
+            gate + query,
+            gate + query,
+            twin_model=_events_as_arms(seed, arms),
+        )
+        for family, why, arms, gate in families
+        for name, query in SOURCING_QUERIES
+    ]
+    active_arm = f"""
+partial datasource events_active (
+    {EVENT_COLUMNS}
+)
+grain (event_id)
+complete where active = true
+query '''select * from ({seed.events.select_sql()}) where active''';
+"""
+    cases += [
+        _law(
+            seed,
+            f"partial_under_implication_{name}",
+            "Sourcing.partial_is_full_under_implication",
+            "A `complete where` arm beside the full table answers a query "
+            "whose WHERE implies its claim, without losing a row.",
+            ("sourcing", "partial", "where"),
+            f"where active = true\n{query}",
+            f"where active = true\n{query}",
+            twin_extra=active_arm,
+        )
+        for name, query in SOURCING_QUERIES
+    ]
+    summary = "\nauto group_total <- sum(event_amount) by group_id;\n"
+    stored = summary + f"""
+datasource group_totals (gid: group_id, total: group_total)
+grain (group_id)
+query '''select gid, sum(amount) as total
+from ({seed.events.select_sql()}) group by gid''';
+"""
+    cases += [
+        _law(
+            seed,
+            f"summary_table_{name}",
+            "Domain.materialization_invariance",
+            "An aggregate answers the same computed or read from a summary "
+            "table at its grain.",
+            ("sourcing", "aggregate", "materialization"),
+            query,
+            query,
+            model_extra=summary,
+            twin_extra=stored,
+        )
+        for name, query in (
+            ("projection", "select group_id, group_total order by group_id asc;"),
+            (
+                "filter",
+                "where group_total > 10 select group_id order by group_id asc;",
+            ),
+            (
+                "dimension",
+                "select group_name, group_total order by group_name asc;",
+            ),
+        )
+    ]
+    return cases
+
+
 def law_cases(seed: SeedData) -> list[FuzzCase]:
     return [
         *_boolean_laws(seed),
@@ -581,4 +756,5 @@ def law_cases(seed: SeedData) -> list[FuzzCase]:
         *_materialization_laws(seed),
         *_pin_laws(seed),
         *_extended_laws(seed),
+        *_sourcing_laws(seed),
     ]

@@ -2780,6 +2780,15 @@ class BaseDialect:
     def render_cte(self, cte: CTE | UnionCTE, auto_sort: bool = True) -> CompiledCTE:
         if isinstance(cte, UnionCTE):
             operator = self.SET_OPERATOR_MAP.get(cte.operator, cte.operator)
+            # A set operation pairs columns by position: as the final select,
+            # every arm projects in the union's (output) order.
+            if not auto_sort:
+                position = {c.address: i for i, c in enumerate(cte.output_columns)}
+                for child in cte.internal_ctes:
+                    child.output_columns = sorted(
+                        child.output_columns,
+                        key=lambda c: position.get(c.address, len(position)),
+                    )
             base_statement = f"\n{operator}\n".join(
                 [
                     self.render_cte(child, auto_sort=False).statement
