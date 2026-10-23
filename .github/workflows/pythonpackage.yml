@@ -16,6 +16,8 @@ jobs:
     # ~42-50m, so keep a margin - raise it rather than trimming coverage.
     timeout-minutes: 60
     strategy:
+      # One failing cell (e.g. a 2.x-only break) should not cancel the others.
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
         python-version: ["3.11", "3.12", "3.13"]
@@ -106,10 +108,6 @@ jobs:
         # excluded the Python of the day and has not been needed since.
         run: |
           uv pip install --system wheel maturin==1.10.2 -r requirements.txt -r requirements-test.txt
-      - name: Install DuckDB 2.x
-        if: matrix.duckdb == '2.x'
-        run: |
-          uv pip install --system "duckdb>=2,<3"
       - name: Run Rust tests
         run: |
           cd trilogy/scripts/dependency
@@ -124,6 +122,15 @@ jobs:
       - name: Build Rust extension
         run: |
           python -m pip install -e .
+      - name: Generate TPC fixtures with DuckDB 1.x
+        # dsdgen draws different rows under 2.x and the modeling tests pin
+        # results to the 1.x data, so the 2.x cells reuse it.
+        if: matrix.duckdb == '2.x'
+        run: python .scripts/generate_tpc_fixtures.py
+      - name: Install DuckDB 2.x
+        if: matrix.duckdb == '2.x'
+        run: |
+          uv pip install --system "duckdb>=2,<3"
       - name: Build the conformance binary
         # tests/io/test_conformance.py runs this example against its python twin.
         # It used to be built from the test's own session fixture, where a cold
