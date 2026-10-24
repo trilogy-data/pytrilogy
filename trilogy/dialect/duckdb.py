@@ -438,10 +438,26 @@ def attach_resident(connection: Any, location: str) -> str | None:
     return alias
 
 
-VGI_SETUP_SQL = """
-INSTALL vgi FROM community;
-LOAD vgi;
-"""
+# The vgi build to install: a 10-char commit, served immutably at
+# haybarn-extensions.query.farm/community/<engine>/<platform>/vgi/<commit>/
+# (`.../vgi/current.json` names the latest). A worker speaks only the protocol
+# of the build it was made for, so bump this with vgi-python (pyproject) and the
+# `vgi` crate (crates/trilogy-io); the haybarn bound keeps <engine> published.
+VGI_EXTENSION_VERSION = "454fefa50b"
+
+
+def vgi_setup_sql(installed: str | None) -> str:
+    """LOAD the pinned vgi build, installing it only if another one is installed.
+
+    A plain INSTALL refuses to replace a differently pinned (or unpinned) build,
+    and FORCE downloads every time, so FORCE runs only on a mismatch.
+    """
+    if installed and VGI_EXTENSION_VERSION.startswith(installed):
+        return "LOAD vgi;"
+    return (
+        f"FORCE INSTALL vgi FROM community VERSION '{VGI_EXTENSION_VERSION}';\n"
+        "LOAD vgi;"
+    )
 
 
 def bridge_attach_sql(python_executable: str, is_windows: bool) -> str:
@@ -526,14 +542,15 @@ _VGI_SCHEMA_DRIFT = "Worker returned an out-of-date Apache Arrow schema"
 _VGI_WORKER = re.compile(r"\[worker: ([^\]]*)\]")
 
 
-def loaded_vgi_version(connection: Any) -> str | None:
+def loaded_vgi_version(connection: Any, state: str = "loaded") -> str | None:
+    """The vgi build ``state`` (``loaded`` or ``installed``), as a short commit."""
     side = duckdb_side_cursor(connection)
     if side is None:
         return None
     try:
         row = side.execute(
             "SELECT extension_version FROM duckdb_extensions() "
-            "WHERE extension_name = 'vgi' AND loaded"
+            f"WHERE extension_name = 'vgi' AND {state}"
         ).fetchone()
     finally:
         side.close()
@@ -553,8 +570,9 @@ def vgi_version_mismatch(
         f"(extension {extension_version or 'unknown'}, host {vgi_python_requirement()}"
         f"{f', worker: {worker.group(1)}' if worker else ''}). Either side may be "
         "the stale one:\n"
-        "- extension older: run `FORCE INSTALL vgi FROM community;` "
-        "(a plain INSTALL never upgrades it)\n"
+        f"- extension: this pytrilogy pins vgi {VGI_EXTENSION_VERSION}; run "
+        f"`FORCE INSTALL vgi FROM community VERSION '{VGI_EXTENSION_VERSION}';` "
+        "if another build was loaded\n"
         "- worker older: `pip install -U 'pytrilogy[vgi]'` for python sources; "
         "rebuild compiled sources against the current `vgi` crate"
     )

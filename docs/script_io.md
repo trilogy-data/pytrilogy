@@ -419,6 +419,12 @@ Requirements and caveats:
   The transport switches the SQLAlchemy URL to `haybarn://` (`haybarn_engine.py`,
   a thin subclass of duckdb_engine's dialect). Install with `pytrilogy[vgi]`,
   which needs python >= 3.13 for `vgi-python`.
+- **The extension build is pinned.** A worker speaks only the protocol of the
+  vgi build it was made for, so pytrilogy installs one build by commit
+  (`VGI_EXTENSION_VERSION` in `trilogy/dialect/duckdb.py`), not the moving
+  latest, and bounds haybarn, `vgi-python` and the `vgi` crate to match. Bump
+  them together; `https://haybarn-extensions.query.farm/community/v<engine>/<platform>/vgi/current.json`
+  names the newest published build.
 - **License:** `vgi`, `vgi-python` and the `vgi` crate are under the Query Farm
   Source-Available License, not OSI open source. That is why they are an
   optional extra and an opt-in cargo feature, never a default.

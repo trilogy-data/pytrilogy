@@ -26,6 +26,7 @@ from tests.io.test_conformance import (
 )
 from tests.vgi_support import (  # noqa: F401
     flush_vgi_workers,
+    load_vgi,
     require_vgi,
     skip_or_fail,
 )
@@ -42,7 +43,7 @@ RESIDENT_CASES = [case for case in CASES if "name:asc" not in " ".join(case)]
 
 def attach(argv: list[str]):
     con = haybarn.connect()
-    con.execute("LOAD vgi")
+    load_vgi(con)
     location = vgi_location([*argv, "--vgi"], IS_WINDOWS).replace("'", "''")
     con.execute(
         f"ATTACH '{VGI_SOURCE_CATALOG}' AS src (TYPE vgi, LOCATION '{location}')"
