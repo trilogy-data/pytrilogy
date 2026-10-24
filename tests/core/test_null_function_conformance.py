@@ -142,7 +142,7 @@ def _evaluate(op: FunctionType, args: list[str], kinds: list[Any]) -> Any:
     types = [VALUES[k][0] if isinstance(k, str) else DataType.STRING for k in kinds]
     sql = DuckDBDialect.FUNCTION_MAP[op](args, types)
     try:
-        return duckdb.sql(f"select {sql}").fetchone()[0]  # type: ignore[index]
+        return duckdb.connect().execute(f"select {sql}").fetchall()[0][0]
     except duckdb.Error:
         return "error"
 

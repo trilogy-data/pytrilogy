@@ -121,7 +121,7 @@ limit 2000;
 """)
 
     sql = base.generate_sql(queries[-1])
-    assert "date_add(current_date(), -100 * INTERVAL 1 year)" in sql[0]
+    assert "date_add(current_date(), (-100) * INTERVAL 1 year)" in sql[0]
 
 
 def test_case_key():
@@ -960,7 +960,7 @@ align date:launch_spine,decom_spine;
     sql = base.generate_sql(queries[-1])
     results = base.execute_query(queries[-1])
     assert len(results.fetchall()) > 0, sql
-    assert "date_add(current_date(), -6000 * INTERVAL 1 day)," in sql[0], sql[0]
+    assert "date_add(current_date(), (-6000) * INTERVAL 1 day)," in sql[0], sql[0]
 
 
 def test_extra_filter_two(gcat_env: Executor):
