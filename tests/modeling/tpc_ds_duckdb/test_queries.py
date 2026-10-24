@@ -796,7 +796,7 @@ def test_ninety_eight(engine):
 
 
 def test_ninety_nine(engine):
-    query = run_query(engine, 99)
+    query = run_query(engine, 99, sql_override=True)
     assert len(query) < 4000, query
 
 

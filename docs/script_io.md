@@ -347,6 +347,9 @@ rows come back. Add a unique tiebreaker if that matters.
 By default DuckDB reads a source through the `uv_run` macro. On POSIX that is a
 `shellfs` pipe; on Windows a wrapper stages the stream to a temp `.arrow` file
 that `read_arrow` then scans. Either way the source is started on every scan.
+`shellfs` comes from the community repository before DuckDB 2.0 and from
+Query.Farm's repository (`https://duckdb-extensions.query.farm`) from 2.0 on;
+`shellfs_setup_sql` picks by the installed `duckdb` version.
 
 `python_datasource_transport = "vgi"` reads it through
 [VGI](https://query.farm/vgi/docs/python/) instead. VGI is a DuckDB extension

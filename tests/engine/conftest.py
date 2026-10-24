@@ -5,6 +5,7 @@ from pytest import fixture
 from sqlalchemy import text
 from sqlalchemy.engine import create_engine
 
+from tests._fakesnow import skip_if_fakesnow_unsupported
 from trilogy import Dialects, Executor, parse
 from trilogy.constants import Rendering
 from trilogy.core.models.environment import Environment
@@ -205,6 +206,7 @@ def postgres_engine(presto_model) -> Generator[Executor, None, None]:
 
 @fixture(scope="session")
 def fakesnow_happening():
+    skip_if_fakesnow_unsupported()
     from unittest import mock
 
     import fakesnow

@@ -28,13 +28,14 @@ if TYPE_CHECKING:
 from trilogy.constants import logger
 from trilogy.core.enums import (
     AddressType,
+    ComparisonOperator,
     FunctionType,
     GroupMode,
     JoinType,
     Modifier,
     UnnestMode,
 )
-from trilogy.core.models.core import CONCRETE_TYPES, DataType
+from trilogy.core.models.core import CONCRETE_TYPES, DataType, arg_to_datatype
 from trilogy.core.models.datasource import Address
 from trilogy.core.models.execute import (
     CTE,
@@ -142,8 +143,22 @@ def generate_simple_case(args):
     return f"CASE\n\t{args[0]}\n\t" + "\n\t".join(output_args) + "\n\tEND"
 
 
+def _is_parenthesized(sql: str) -> bool:
+    """True when one paren pair encloses all of ``sql`` (not `(a) or (b)`)."""
+    if not (sql.startswith("(") and sql.endswith(")")):
+        return False
+    depth = 0
+    for i, ch in enumerate(sql):
+        depth += {"(": 1, ")": -1}.get(ch, 0)
+        if depth == 0 and i < len(sql) - 1:
+            return False
+    return True
+
+
 def render_geo_transform(args: list[str]) -> str:
-    return f"ST_Transform({args[0]}, CONCAT('EPSG:', CAST({args[1]} AS VARCHAR)), CONCAT('EPSG:', CAST({args[2]} AS VARCHAR)))"
+    # always_xy: geo_point is (longitude, latitude), but EPSG:4326 is officially
+    # lat/long; without it 1.x swaps axes and 2.0 refuses to guess.
+    return f"ST_Transform({args[0]}, CONCAT('EPSG:', CAST({args[1]} AS VARCHAR)), CONCAT('EPSG:', CAST({args[2]} AS VARCHAR)), true)"
 
 
 FUNCTION_MAP = {
@@ -157,8 +172,12 @@ FUNCTION_MAP = {
     FunctionType.ARRAY_DISTINCT: lambda args, types: f"list_distinct({args[0]})",
     FunctionType.ARRAY_SUM: lambda args, types: f"list_sum({args[0]})",
     FunctionType.ARRAY_SORT: render_sort,
+    # DuckDB 2.0 rejects the `x -> expr` arrow lambda; `lambda x:` works since 1.3.
     FunctionType.ARRAY_TRANSFORM: lambda args, types: (
-        f"list_transform({args[0]}, {args[1]} -> {args[2]})"
+        f"list_transform({args[0]}, lambda {args[1]}: {args[2]})"
+    ),
+    FunctionType.ARRAY_FILTER: lambda args, types: (
+        f"list_filter({args[0]}, lambda {args[1]}: {args[2]})"
     ),
     # datetime is aliased,
     FunctionType.CURRENT_DATETIME: lambda x, types: "cast(get_current_timestamp() as datetime)",
@@ -195,6 +214,23 @@ DATATYPE_MAP: dict[DataType, str] = {}
 # config" with a read-only catalog lookup. Must appear in the disabled SQL below
 # and never in the enabled one.
 PYTHON_DATASOURCE_GUARD_MARKER = "enable_python_datasources=True in DuckDBConfig"
+
+
+QUERY_FARM_REPOSITORY = "https://duckdb-extensions.query.farm"
+
+
+def shellfs_setup_sql() -> str:
+    """shellfs moved from the community repository to Query.Farm's at DuckDB 2.0,
+    which hosts no 1.x builds; its binaries load only through the named repo."""
+    import duckdb
+
+    if int(duckdb.__version__.split(".")[0]) < 2:
+        return "INSTALL shellfs FROM community;\nLOAD shellfs;\n"
+    return f"""SET allow_extension_repositories = 'allowed';
+CREATE EXTENSION REPOSITORY IF NOT EXISTS query_farm WITH PREFIX '{QUERY_FARM_REPOSITORY}';
+INSTALL shellfs FROM query_farm;
+LOAD shellfs FROM query_farm;
+"""
 
 
 def get_python_datasource_setup_sql(
@@ -242,9 +278,7 @@ SELECT * FROM (
         base_dir = staging.prepare_executor_subdir(unique_id)
         python_executable = Path(sys.executable).as_posix()
         return f"""
-INSTALL shellfs FROM community;
-INSTALL arrow FROM community;
-LOAD shellfs;
+{shellfs_setup_sql()}INSTALL arrow FROM community;
 LOAD arrow;
 SET VARIABLE __trilogy_uv_temp_dir = '{base_dir}';
 CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
@@ -272,9 +306,7 @@ SELECT r.* FROM __build b, read_arrow(getvariable('__trilogy_uv_temp_dir') || md
             staging = StagingConfig()
         err_dir = staging.prepare_executor_subdir(instance_id or str(uuid.uuid4()))
         return f"""
-INSTALL shellfs FROM community;
-INSTALL arrow FROM community;
-LOAD shellfs;
+{shellfs_setup_sql()}INSTALL arrow FROM community;
 LOAD arrow;
 SET VARIABLE __trilogy_uv_temp_dir = '{err_dir}';
 CREATE OR REPLACE MACRO uv_run(script, args := '') AS TABLE
@@ -709,6 +741,36 @@ class DuckDBDialect(BaseDialect):
             separator = "&" if "?" in url else "?"
             return f"{url}{separator}cache_bust={self._gcs_cache_bust_token}"
         return url
+
+    def render_comparison(
+        self,
+        left,
+        right,
+        operator: ComparisonOperator,
+        cte: CTE | UnionCTE | None = None,
+        raise_invalid: bool = False,
+        materialized_addresses: set[str] | None = None,
+    ) -> str:
+        # A bare boolean filter parses as `x = True`; DuckDB 2.0 estimates that
+        # comparison as near-empty and flips the join's build side onto the full
+        # table, losing join-filter pushdown. `x` alone is the same predicate.
+        if (
+            operator == ComparisonOperator.EQ
+            and right is True
+            and arg_to_datatype(left) == DataType.BOOL
+        ):
+            rendered = self.render_expr(
+                left,
+                cte=cte,
+                raise_invalid=raise_invalid,
+                materialized_addresses=materialized_addresses,
+            )
+            if " " not in rendered or _is_parenthesized(rendered):
+                return rendered
+            return f"({rendered})"
+        return super().render_comparison(
+            left, right, operator, cte, raise_invalid, materialized_addresses
+        )
 
     def render_source(
         self, address: Address, request: SourceRequest | None = None

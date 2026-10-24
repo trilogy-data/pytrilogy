@@ -2,8 +2,8 @@ lark
 jinja2
 sqlalchemy>=2.0.0
 pydantic
-# temporary until extensions catch up
-duckdb
+# 1.3 for the `lambda x:` syntax; 2.0 dropped the `x ->` arrow form
+duckdb>=1.3
 pyarrow
 duckdb-engine
 click

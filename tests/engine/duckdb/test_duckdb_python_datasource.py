@@ -1,7 +1,7 @@
 import re
 from unittest.mock import patch
 
-from trilogy.dialect.duckdb import get_python_datasource_setup_sql
+from trilogy.dialect.duckdb import get_python_datasource_setup_sql, shellfs_setup_sql
 from trilogy.staging import StagingConfig
 
 
@@ -94,3 +94,18 @@ def test_python_datasource_windows_s3_staging():
         enabled=True, is_windows=True, instance_id="test", staging=staging
     )
     assert "s3://my-bucket/staging/test/" in sql
+
+
+def test_shellfs_comes_from_community_before_duckdb_2():
+    with patch("duckdb.__version__", "1.5.5"):
+        sql = shellfs_setup_sql()
+    assert "INSTALL shellfs FROM community;" in sql
+    assert "query_farm" not in sql
+
+
+def test_shellfs_comes_from_query_farm_from_duckdb_2():
+    with patch("duckdb.__version__", "2.0.0"):
+        sql = shellfs_setup_sql()
+    assert "community" not in sql
+    assert "INSTALL shellfs FROM query_farm;" in sql
+    assert "LOAD shellfs FROM query_farm;" in sql
