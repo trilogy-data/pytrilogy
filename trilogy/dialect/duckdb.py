@@ -535,8 +535,6 @@ def loaded_vgi_version(connection: Any) -> str | None:
             "SELECT extension_version FROM duckdb_extensions() "
             "WHERE extension_name = 'vgi' AND loaded"
         ).fetchone()
-    except Exception:
-        return None
     finally:
         side.close()
     return row[0] if row else None

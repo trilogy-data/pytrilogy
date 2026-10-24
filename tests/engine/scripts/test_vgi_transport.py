@@ -21,6 +21,7 @@ from trilogy.dialect.duckdb import (
     attach_bridge,
     attach_resident,
     bridge_attach_sql,
+    loaded_vgi_version,
     python_datasource_failure,
     resident_alias,
     resident_command,
@@ -178,6 +179,7 @@ def test_resident_attach_needs_a_duckdb_connection():
     sqlite = Dialects.SQLITE.default_executor(environment=Environment())
     assert duckdb_side_cursor(sqlite.connection) is None
     assert attach_resident(sqlite.connection, "/w/bin/landmarks") is None
+    assert loaded_vgi_version(sqlite.connection) is None
 
 
 def test_prepare_sources_skips_what_is_already_decided():
