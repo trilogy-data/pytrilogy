@@ -670,11 +670,28 @@ def _lineage_pinned_grain(
     coalesce(min(x) by cell, tree_id)`) varies per row, so its rows are unique
     at the row grain, not the aggregate's; pinning only the barrier claims a
     coarser grain than the rows have and the FINAL merge regroups a 1:1 join
-    back onto those rows. With no barrier anywhere nothing is pinned: a plain
+    back onto those rows. A barrier's own grain key is the exception: a
+    derived `by` key (`event_date <- date(event_time)`) is the axis the
+    barrier's rows are unique on, not a row input beside it, so its lineage
+    pins nothing finer. With no barrier anywhere nothing is pinned: a plain
     BASIC over row columns regenerates at any grain. Members of an AUTHORED
     scoped-join relation are skipped: the authored keys are the axis there,
     and pairing on internal grain too would silently narrow the authored
     fan-out."""
+    grain, _ = _lineage_pin_walk(addresses, environment, frozenset())
+    if not grain:
+        return frozenset()
+    _, row_grain = _lineage_pin_walk(addresses, environment, frozenset(grain))
+    return frozenset(grain | row_grain)
+
+
+def _lineage_pin_walk(
+    addresses: frozenset[str] | set[str],
+    environment: BuildEnvironment,
+    stop_at: frozenset[str],
+) -> tuple[set[str], set[str]]:
+    """Barrier grain and row grain reached from ``addresses``, never walking
+    into a ``stop_at`` concept."""
     scoped_members = environment.all_scoped_join_group_members()
     stack: list[BuildConcept] = []
     for addr in addresses:
@@ -685,7 +702,7 @@ def _lineage_pinned_grain(
             stack.append(concept)
     grain: set[str] = set()
     row_grain: set[str] = set()
-    seen: set[str] = set()
+    seen: set[str] = set(stop_at)
     while stack:
         concept = stack.pop()
         if concept.address in seen:
@@ -713,7 +730,7 @@ def _lineage_pinned_grain(
             stack.extend(concept.lineage.concept_arguments)
         elif concept.derivation == Derivation.ROOT and concept.grain:
             row_grain |= set(concept.grain.components)
-    return frozenset(grain | row_grain) if grain else frozenset()
+    return grain, row_grain
 
 
 def _final_merge_grain(
