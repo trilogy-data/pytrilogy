@@ -409,10 +409,8 @@ def _derivation_missing_arrow(text: str, pos: int) -> bool:
 
 
 def parse_pest(text: str) -> SyntaxDocument:
-    # ImportError from the lazy import bubbles up to parse_syntax so the dispatcher
-    # can fall back to lark when the rust wheel isn't installed. Pest parse
-    # failures arrive as pyo3 ValueError; we normalize them here and run the
-    # rich-error probe so users see the same 101/201/202 codes as under lark.
+    # Pest parse failures arrive as pyo3 ValueError; we normalize them here and run
+    # the rich-error probe so users see the same 101/201/202 codes as under lark.
     from _preql_import_resolver import parse_trilogy_syntax_tuple
 
     try:

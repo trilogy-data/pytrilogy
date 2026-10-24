@@ -1,5 +1,7 @@
 pytest
 pytest-cov
+# parity oracle for the pest parser; not a runtime dependency
+lark
 duckdb<1.5.4
 mypy
 # 0.16.0 false-positives PYI041 on the build-dispatch union; fixed in 0.16.2

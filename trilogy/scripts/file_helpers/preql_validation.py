@@ -30,7 +30,7 @@ def validate_preql_syntax(content: str) -> str | None:
     """Return a parse-error message for invalid Trilogy syntax, else None.
 
     Validates with the configured backend (pest/rust by default, matching the
-    rest of the engine), falling back to lark only if the rust wheel is absent."""
+    rest of the engine)."""
     from trilogy.core.exceptions import InvalidSyntaxException
 
     try:
@@ -39,16 +39,6 @@ def validate_preql_syntax(content: str) -> str | None:
         parse_syntax(content)
     except InvalidSyntaxException as exc:
         return str(exc)
-    except ImportError:
-        # rust wheel unavailable — fall back to the pure-python lark backend.
-        from trilogy.parsing.v2.lark_backend import parse_lark
-
-        try:
-            parse_lark(content)
-        except InvalidSyntaxException as exc:
-            return str(exc)
-        except Exception as exc:  # safety net — never crash the write
-            return f"{type(exc).__name__}: {exc}"
     except Exception as exc:  # safety net — never let validation crash the write
         return f"{type(exc).__name__}: {exc}"
     return None

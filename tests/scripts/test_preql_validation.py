@@ -60,36 +60,3 @@ def test_validate_preql_content_hints_grouping_after_having():
     assert msg is not None
     assert "not syntactically valid Trilogy" in msg
     assert "must come *before* HAVING" in msg
-
-
-def test_validate_preql_syntax_lark_fallback_when_wheel_absent(monkeypatch):
-    """If the rust parser raises ImportError, validation falls back to lark."""
-    import trilogy.parsing.parse_engine_v2 as pe
-
-    def boom(_content):
-        raise ImportError("rust wheel missing")
-
-    monkeypatch.setattr(pe, "parse_syntax", boom)
-    # Valid syntax → lark agrees → None.
-    assert pv.validate_preql_syntax("select 1 -> answer;") is None
-    # Invalid syntax → lark raises InvalidSyntaxException → returned as a string.
-    err = pv.validate_preql_syntax("definitely !!! not valid")
-    assert err is not None
-    assert isinstance(err, str)
-
-
-def test_validate_preql_syntax_lark_safety_net(monkeypatch):
-    """A non-syntax error from the lark fallback is caught, not raised."""
-    import trilogy.parsing.parse_engine_v2 as pe
-    import trilogy.parsing.v2.lark_backend as lark
-
-    def boom(_content):
-        raise ImportError("rust wheel missing")
-
-    def explode(_content):
-        raise ValueError("unexpected lark crash")
-
-    monkeypatch.setattr(pe, "parse_syntax", boom)
-    monkeypatch.setattr(lark, "parse_lark", explode)
-    err = pv.validate_preql_syntax("select 1 -> answer;")
-    assert err == "ValueError: unexpected lark crash"
