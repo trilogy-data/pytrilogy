@@ -26,8 +26,8 @@ leaves a contributor dangling at render time.
 from __future__ import annotations
 
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation, FunctionType
-from trilogy.core.models.build import BuildConcept, BuildFilterItem, BuildFunction
+from trilogy.core.enums import Derivation
+from trilogy.core.models.build import BuildConcept, BuildFilterItem
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.keyspace import Keyspace, Region
 from trilogy.core.processing.condition_utility import concepts_implied_non_null
@@ -149,7 +149,7 @@ def null_on_padding(
     cannot be non-null unless something absent there is (`sale_price - cost`).
     Padding already gives the rule's answer, so only a null-opaque derivation
     (CASE, COALESCE, IS NULL, a window) needs the region kept off its row
-    stream. CONCAT skips NULL arguments on some dialects."""
+    stream. CONCAT skips NULL arguments."""
     if not isinstance(value, BuildConcept):
         return _null_on_padding(value, region, keyspace, environment)
     key = (value.address, region, id(environment))
@@ -174,11 +174,9 @@ def _null_on_padding(
     # `content ? condition` is NULL wherever its content is.
     if isinstance(value, BuildFilterItem):
         return null_on_padding(value.content, region, keyspace, environment)
-    if isinstance(value, BuildFunction) and value.operator == FunctionType.CONCAT:
-        return False
     return any(
         null_on_padding(environment.concepts[address], region, keyspace, environment)
-        for address in concepts_implied_non_null(value)
+        for address in concepts_implied_non_null(value, per_group=True)
         if address in environment.concepts
     )
 

@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from dataclasses import replace as dc_replace
 from datetime import date, datetime
 from decimal import Decimal
+from enum import Enum
 from functools import cached_property, reduce, singledispatchmethod
 from typing import (
     TYPE_CHECKING,
@@ -25,6 +26,8 @@ from trilogy.core.constants import ALL_ROWS_ADDRESS
 from trilogy.core.domain_graph import DomainGraph, EdgeScope, assemble_full_graph
 from trilogy.core.enums import (
     NAVIGATION_WINDOW_TYPES,
+    NULL_INTRODUCING_FUNCTIONS,
+    NULL_STRICT_FUNCTIONS,
     NUMBERING_WINDOW_TYPES,
     SYMMETRIC_JOIN_TYPES,
     ZERO_ON_EMPTY_AGGREGATES,
@@ -1081,6 +1084,9 @@ class BuildComparison(DataTyped, BuildOperandArgs, ConstantInlineable):
 
 @dataclass(slots=True)
 class BuildSubselectComparison(BuildComparison):
+    # every member of the right-hand set is non-null (`Factory._null_free_set`)
+    null_free_members: bool = False
+
     def __eq__(self, other):
         if not isinstance(other, BuildSubselectComparison):
             return False
@@ -2899,6 +2905,21 @@ class JoinScope:
                 )
 
 
+def _constant_value(value: Any) -> Any:
+    """The literal a `const` concept is bound to, else `value` itself."""
+    if isinstance(value, BuildParamaterizedConceptReference):
+        value = value.concept
+    while (
+        isinstance(value, BuildConcept)
+        and value.derivation == Derivation.CONSTANT
+        and isinstance(value.lineage, BuildFunction)
+        and value.lineage.operator == FunctionType.CONSTANT
+        and len(value.lineage.arguments) == 1
+    ):
+        value = value.lineage.arguments[0]
+    return value
+
+
 class Factory:
 
     def __init__(
@@ -4023,7 +4044,57 @@ class Factory:
             left=left_built,
             right=right_built,
             operator=base.operator,
+            null_free_members=self._null_free_set(right_built),
         )
+
+    def _null_free_set(self, member: Any) -> bool:
+        """Whether a membership set holds no NULL member: values of a ROOT
+        column no binding makes nullable, narrowed by filters, under functions
+        NULL exactly when an argument is. A filter's padding NULL is no member
+        (the set is the values where it holds), so a NULL there only marks a
+        row the filter dropped. Membership matches by identity, so only over
+        such a set does `x in S` reject a NULL `x`."""
+        if isinstance(member, BuildParenthetical):
+            return self._null_free_set(member.content)
+        if isinstance(member, BuildFilterItem):
+            return self._null_free_set(member.content)
+        if isinstance(member, (ListWrapper, TupleWrapper)):
+            return all(self._null_free_set(x) for x in member)
+        if isinstance(member, (int, float, str, bool, date, datetime, Enum, DataType)):
+            return True
+        if isinstance(member, BuildConcept):
+            if member.derivation in (
+                Derivation.FILTER,
+                Derivation.BASIC,
+                Derivation.CONSTANT,
+                Derivation.UNNEST,
+            ):
+                return self._null_free_set(member.lineage)
+            if member.derivation != Derivation.ROOT or member.is_nullable:
+                return False
+            return not any(
+                col.concept.address == member.address
+                and Modifier.NULLABLE in col.modifiers
+                for ds in self.environment.datasources.values()
+                for col in ds.columns
+            )
+        if isinstance(member, BuildFunction):
+            if member.operator == FunctionType.UNNEST:
+                # an array column's elements may be NULL whatever the column
+                # is; only a literal array's are known
+                return all(
+                    isinstance(
+                        array := _constant_value(arg), (ListWrapper, TupleWrapper)
+                    )
+                    and self._null_free_set(array)
+                    for arg in member.arguments
+                )
+            return (
+                member.operator == FunctionType.CONSTANT
+                or member.operator in NULL_STRICT_FUNCTIONS
+                and member.operator not in NULL_INTRODUCING_FUNCTIONS
+            ) and all(self._null_free_set(arg) for arg in member.arguments)
+        return False
 
     @_build_dispatch.register
     def _(self, base: Between) -> "BuildBetween | bool":

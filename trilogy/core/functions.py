@@ -1716,6 +1716,7 @@ def argument_to_purpose(arg) -> Purpose:
             | NavigationWindowItem()
             | Conditional()
             | Comparison()
+            | Between()
             | FilterItem()
             | RowsetItem()
         ):

@@ -45,6 +45,7 @@ from trilogy.core.models.author import (
 )
 from trilogy.core.models.core import ArrayType, DataType, MapType, arg_to_datatype
 from trilogy.parsing.common import arbitrary_to_concept
+from trilogy.parsing.v2.rules.conditional_rules import negate_two_valued
 from trilogy.parsing.v2.rules_context import (
     HydrateFunction,
     NodeHydrator,
@@ -657,13 +658,7 @@ def fnot(
 ) -> Any:
     args = hydrated_children(node, hydrate)
     if arg_to_datatype(args[0]) == DataType.BOOL:
-        return Comparison(
-            left=context.function_factory.create_function(
-                [args[0], False], FunctionType.COALESCE
-            ),
-            operator=ComparisonOperator.EQ,
-            right=False,
-        )
+        return negate_two_valued(args[0], context)
     return context.function_factory.create_function(args, FunctionType.IS_NULL)
 
 

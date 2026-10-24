@@ -30,7 +30,7 @@ FUNCTION_MAP = {
     FunctionType.DATE_TRUNCATE: lambda x, types: f"DATE_TRUNC({x[1]}, {x[0]})",
     FunctionType.DATE_PART: lambda x, types: f"DATE_PART({x[1]}, {x[0]})",
     FunctionType.DATE_ADD: lambda x, types: f"DATEADD({x[1]}, {x[2]}, {x[0]})",
-    FunctionType.DATE_SUB: lambda x, types: f"DATEADD({x[1]}, -{x[2]}, {x[0]})",
+    FunctionType.DATE_SUB: lambda x, types: f"DATEADD({x[1]}, -({x[2]}), {x[0]})",
     FunctionType.DATE_DIFF: lambda x, types: f"DATEDIFF({x[2]}, {x[0]}, {x[1]})",
     # CONCAT_WS propagates NULL too; ARRAY_CONSTRUCT_COMPACT drops NULL elements.
     **CONCAT_COALESCE_UPPER,

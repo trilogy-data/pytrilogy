@@ -18,7 +18,7 @@ FUNCTION_MAP = {
     # math
     FunctionType.DIVIDE: lambda x, types: f"{x[0]}/{x[1]}",
     FunctionType.DATE_ADD: lambda x, types: f"date_add({x[1]},{x[2]}, {x[0]})",
-    FunctionType.DATE_SUB: lambda x, types: f"date_add({x[1]},-{x[2]}, {x[0]})",
+    FunctionType.DATE_SUB: lambda x, types: f"date_add({x[1]},-({x[2]}), {x[0]})",
     FunctionType.CURRENT_DATE: lambda x, types: "CURRENT_DATE",
     FunctionType.CURRENT_DATETIME: lambda x, types: "LOCALTIMESTAMP",
     FunctionType.CURRENT_TIMESTAMP: lambda x, types: "CURRENT_TIMESTAMP",

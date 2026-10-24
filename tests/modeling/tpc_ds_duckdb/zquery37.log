@@ -1,5 +1,5 @@
 query_id = "37"
-gen_length = 1032
+gen_length = 1013
 preql_size = 470
 comp_size = 592
 generated_sql = """
@@ -23,7 +23,7 @@ SELECT
 FROM
     \"memory\".\"item\" as \"items_items\"
 WHERE
-    exists (select 1 from wakeful where wakeful.\"inv_item_ids\" is not distinct from \"items_items\".\"I_ITEM_SK\") and \"items_items\".\"I_CURRENT_PRICE\" BETWEEN 68 AND 98 and (\"items_items\".\"I_MANUFACT_ID\" is not null and \"items_items\".\"I_MANUFACT_ID\" in (677,940,694,808))
+    exists (select 1 from wakeful where wakeful.\"inv_item_ids\" = \"items_items\".\"I_ITEM_SK\") and \"items_items\".\"I_CURRENT_PRICE\" BETWEEN 68 AND 98 and (\"items_items\".\"I_MANUFACT_ID\" is not null and \"items_items\".\"I_MANUFACT_ID\" in (677,940,694,808))
 
 GROUP BY
     1,

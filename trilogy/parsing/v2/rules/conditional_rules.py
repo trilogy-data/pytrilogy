@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import replace as dc_replace
 from typing import Any
 
 from trilogy.constants import NULL_VALUE
-from trilogy.core.enums import ComparisonOperator, FunctionType
+from trilogy.core.enums import BooleanOperator, ComparisonOperator, FunctionType
 from trilogy.core.models.author import (
     Between,
     Comparison,
@@ -20,6 +21,38 @@ from trilogy.parsing.v2.rules_context import (
     hydrated_children,
 )
 from trilogy.parsing.v2.syntax import SyntaxNode, SyntaxNodeKind
+
+
+def negate_two_valued(operand: Any, context: RuleContext) -> Comparison | Conditional:
+    """`not operand`, where an UNKNOWN operand negates to TRUE. Membership is
+    total, so its negation is the complementary membership, which keeps the
+    set an existence input rather than a value read inside `coalesce`; De
+    Morgan carries the negation down to it (exact for this `not`,
+    formal/Trilogy/Logic.lean `not_and`, `not_or`)."""
+    inner = operand
+    while isinstance(inner, Parenthetical):
+        inner = inner.content
+    if isinstance(inner, Conditional):
+        return Conditional(
+            left=negate_two_valued(inner.left, context),
+            operator=(
+                BooleanOperator.OR
+                if inner.operator == BooleanOperator.AND
+                else BooleanOperator.AND
+            ),
+            right=negate_two_valued(inner.right, context),
+        )
+    if isinstance(inner, Comparison) and inner.operator == ComparisonOperator.IN:
+        return dc_replace(inner, operator=ComparisonOperator.NOT_IN)
+    if isinstance(inner, Comparison) and inner.operator == ComparisonOperator.NOT_IN:
+        return dc_replace(inner, operator=ComparisonOperator.IN)
+    return Comparison(
+        left=context.function_factory.create_function(
+            [operand, False], FunctionType.COALESCE
+        ),
+        right=False,
+        operator=ComparisonOperator.EQ,
+    )
 
 
 def _expr_to_boolean(root: Any, context: RuleContext) -> Any:
@@ -78,13 +111,7 @@ def condition_parenthetical(
     if len(args) == 2:
         # Two-valued like `fnot`: an UNKNOWN operand negates to TRUE, so
         # `not (a or b)` agrees with `not a and not b`.
-        return Comparison(
-            left=context.function_factory.create_function(
-                [Parenthetical(content=args[1]), False], FunctionType.COALESCE
-            ),
-            right=False,
-            operator=ComparisonOperator.EQ,
-        )
+        return negate_two_valued(Parenthetical(content=args[1]), context)
     return Parenthetical(content=args[0])
 
 

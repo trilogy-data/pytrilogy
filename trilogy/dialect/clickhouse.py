@@ -104,8 +104,8 @@ FUNCTION_MAP = {
     # mismatch error. INTERVAL syntax is the portable form.
     FunctionType.DATE_TRUNCATE: lambda x, types: f"date_trunc('{x[1]}', {x[0]})",
     FunctionType.DATE_PART: lambda x, types: f"EXTRACT({x[1]} FROM {x[0]})",
-    FunctionType.DATE_ADD: lambda x, types: f"({x[0]} + INTERVAL {x[2]} {x[1]})",
-    FunctionType.DATE_SUB: lambda x, types: f"({x[0]} - INTERVAL {x[2]} {x[1]})",
+    FunctionType.DATE_ADD: lambda x, types: f"({x[0]} + INTERVAL ({x[2]}) {x[1]})",
+    FunctionType.DATE_SUB: lambda x, types: f"({x[0]} - INTERVAL ({x[2]}) {x[1]})",
     FunctionType.DATE_DIFF: lambda x, types: f"dateDiff('{x[2]}', {x[0]}, {x[1]})",
     # toWeek mode 1 = ISO (Mon-Sun); default mode 0 returns Sun-Sat with off-by-one
     FunctionType.WEEK: lambda x, types: f"toWeek({x[0]}, 1)",

@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 from trilogy.core.enums import (
     JoinType,
 )
+from trilogy.core.models.build import BoolExpr, BuildFunction, BuildParenthetical
 from trilogy.core.models.execute import (
     CTE,
     Join,
@@ -52,6 +53,7 @@ from trilogy.core.optimizations.utils import (
     zero_filled_reads,
 )
 from trilogy.core.processing.condition_utility import (
+    concepts_implied_non_null,
     gather_non_null_proofs,
     gather_or_groups,
     opaque_binding_addresses,
@@ -201,8 +203,12 @@ def _downgrade(
         {a for lc in left_ctes for a in partial_addresses(lc)},
         left_ds - right_ds - {join.right.name},
     )
-    right_only = right_only - right_block
-    left_only = left_only - left_block
+    # Only a column read off a side is NULL on that side's padded rows; a
+    # concept computed here from its lineage is judged by the lineage instead
+    # (see `_lineage_proofs`).
+    read = {a for a, sources in cte.source_map.items() if sources}
+    right_only = (right_only - right_block) & read
+    left_only = (left_only - left_block) & read
 
     # A non-null proof on a concept whose column binding is structurally
     # non-null (a CASE/raw expression) doesn't prove its side matched.
@@ -261,6 +267,28 @@ def _downgrade(
         return None
 
     return None
+
+
+def _lineage_proofs(cte: CTE, condition: BoolExpr, proofs: set[str]) -> set[str]:
+    """Add what each proven concept's lineage proves, for the concepts this CTE
+    computes inline (no ``source_map`` column). Such a value is computed after
+    the join, so it can be non-null on a padded row (``ret is not null`` is
+    ``false`` there); only its strict inputs are NULL with the padding."""
+    known = {c.address: c for c in condition.concept_arguments}
+    out = set(proofs)
+    todo = [a for a in proofs if not cte.source_map.get(a)]
+    while todo:
+        concept = known.get(todo.pop())
+        if concept is None or concept.lineage is None:
+            continue
+        lineage = concept.lineage
+        if isinstance(lineage, BuildFunction | BuildParenthetical):
+            known.update({c.address: c for c in lineage.concept_arguments})
+        for address in concepts_implied_non_null(lineage) - out:
+            out.add(address)
+            if not cte.source_map.get(address):
+                todo.append(address)
+    return out
 
 
 def _add_inner_join_key_proofs(join: Join, proofs: _ProofState) -> bool:
@@ -503,6 +531,12 @@ class UpgradeJoinOnGuards(OptimizationRule):
         if zero:
             direct_proofs -= zero
             or_groups = [[d - zero for d in group] for group in or_groups]
+        if cte.condition is not None:
+            direct_proofs = _lineage_proofs(cte, cte.condition, direct_proofs)
+            or_groups = [
+                [_lineage_proofs(cte, cte.condition, d) for d in group]
+                for group in or_groups
+            ]
         if not direct_proofs and not or_groups:
             return False, None
         proofs = _ProofState(direct=direct_proofs, or_groups=or_groups)
