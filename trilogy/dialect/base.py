@@ -2118,6 +2118,7 @@ class BaseDialect:
         member_sql: str,
         from_clause: str,
         operator: ComparisonOperator,
+        null_free: bool = False,
     ) -> str:
         """Scalar membership as a null-safe existence subquery: `exists (select
         1 from f where member is not distinct from probe)` (`not exists` for
@@ -2130,7 +2131,13 @@ class BaseDialect:
             prefix = "not "
         else:
             raise ValueError(f"membership only supports IN/NOT IN, got {operator}")
-        pred = self.NULL_WRAPPER(member_sql, left_sql, [Modifier.NULLABLE])
+        # over a set with no NULL member identity is plain equality, and a
+        # filter's padding NULL in the feeder must not match a NULL probe
+        pred = (
+            f"{member_sql} = {left_sql}"
+            if null_free
+            else self.NULL_WRAPPER(member_sql, left_sql, [Modifier.NULLABLE])
+        )
         return f"{prefix}exists (select 1 from {from_clause} where {pred})"
 
     def _render_value_list_membership(
@@ -2333,7 +2340,12 @@ class BaseDialect:
                         from_clause=from_clause,
                     )
                 return self._render_membership_exists(
-                    left_sql, col_ref, from_clause, e.operator
+                    left_sql,
+                    col_ref,
+                    from_clause,
+                    e.operator,
+                    null_free=isinstance(e, BuildSubselectComparison)
+                    and e.null_free_members,
                 )
             elif isinstance(right, BuildParamaterizedConceptReference):
                 literal = _parameterized_list_value(right)

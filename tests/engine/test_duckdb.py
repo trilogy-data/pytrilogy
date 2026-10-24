@@ -3732,3 +3732,44 @@ def test_grand_total_over_rows_keeps_its_row(query, expected) -> None:
         tuple(float(v) if v is not None and not isinstance(v, int) else v for v in r)
         for r in rows
     ] == expected
+
+
+_NEGATION_MODEL = """
+key id int;
+property id.x int?;
+property id.d date;
+key y int;
+datasource t (id, x, d) grain (id)
+query '''select 1 id, 2 x, DATE '2020-01-10' d union all select 2, 5, DATE '2020-01-10'
+union all select 3, null, DATE '2020-01-10' ''';
+datasource u (y) grain (y) query '''select 2 y''';
+"""
+
+
+@mark.parametrize(
+    "query, expected",
+    [
+        ("where not (x between 1 and 3) select id;", [(2,), (3,)]),
+        ("where not (x in y) select id;", [(2,), (3,)]),
+        ("where not (not (x in y)) select id;", [(1,)]),
+        ("where not (x in y and id > 1) select id;", [(1,), (2,), (3,)]),
+        ("where not (x in y or id > 2) select id;", [(2,)]),
+        ("where not (x > 2 or id = 1) select id;", [(3,)]),
+    ],
+)
+def test_two_valued_negation_of_membership_and_between(query, expected) -> None:
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.parse_text(_NEGATION_MODEL)
+    assert sorted(engine.execute_text(query)[-1].fetchall()) == expected
+
+
+def test_date_offsets_render_as_one_operand() -> None:
+    engine = Dialects.DUCK_DB.default_executor()
+    engine.parse_text(_NEGATION_MODEL)
+    rows = engine.execute_text(
+        "where id = 1 select date_add(d, day, id + 2) -> a, "
+        "date_sub(d, day, id + 2) -> s, date_sub(d, day, -1) -> n;"
+    )[-1].fetchall()
+    assert [tuple(str(v)[:10] for v in r) for r in rows] == [
+        ("2020-01-13", "2020-01-07", "2020-01-11")
+    ]

@@ -1,5 +1,5 @@
 query_id = "02"
-gen_length = 4766
+gen_length = 4728
 preql_size = 951
 comp_size = 2566
 generated_sql = """
@@ -23,7 +23,7 @@ FROM
     \"memory\".\"catalog_sales\" as \"sales_catalog_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_catalog_sales_unified\".\"CS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    exists (select 1 from thoughtful where thoughtful.\"relevent_week_seq\" is not distinct from \"sales_sale_date_date\".\"D_WEEK_SEQ\")
+    exists (select 1 from thoughtful where thoughtful.\"relevent_week_seq\" = \"sales_sale_date_date\".\"D_WEEK_SEQ\")
 
 UNION ALL
 SELECT
@@ -33,7 +33,7 @@ FROM
     \"memory\".\"web_sales\" as \"sales_web_sales_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"sales_web_sales_unified\".\"WS_SOLD_DATE_SK\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 WHERE
-    exists (select 1 from thoughtful where thoughtful.\"relevent_week_seq\" is not distinct from \"sales_sale_date_date\".\"D_WEEK_SEQ\")
+    exists (select 1 from thoughtful where thoughtful.\"relevent_week_seq\" = \"sales_sale_date_date\".\"D_WEEK_SEQ\")
 ),
 questionable as (
 SELECT

@@ -457,6 +457,130 @@ ZERO_ON_EMPTY_AGGREGATES: frozenset[FunctionType] = frozenset(
 )
 
 
+# Functions that are NULL whenever any argument is NULL, so a non-null result
+# proves every argument non-null. An allowlist: `concat`, `isnull`, `bool`,
+# array/struct constructors and the aggregates (which skip NULL rows) are not
+# strict. tests/core/test_null_function_conformance.py checks each member on
+# DuckDB (formal/Trilogy/NullReject.lean, `Fn.Strict`).
+NULL_STRICT_FUNCTIONS: frozenset[FunctionType] = frozenset(
+    {
+        FunctionType.ALIAS,
+        FunctionType.PARENTHETICAL,
+        # a value grouped by or pinned to its anchors exists on their rows only
+        FunctionType.GROUP,
+        FunctionType.GRAIN_PIN,
+        FunctionType.CAST,
+        FunctionType.CONCAT_STRICT,
+        FunctionType.INDEX_ACCESS,
+        FunctionType.MAP_ACCESS,
+        FunctionType.ATTR_ACCESS,
+        FunctionType.ARRAY_DISTINCT,
+        FunctionType.ARRAY_SUM,
+        FunctionType.ARRAY_SORT,
+        FunctionType.ARRAY_TRANSFORM,
+        FunctionType.ARRAY_TO_STRING,
+        FunctionType.ARRAY_FILTER,
+        FunctionType.GENERATE_ARRAY,
+        FunctionType.MAP_KEYS,
+        FunctionType.MAP_VALUES,
+        FunctionType.SPLIT,
+        FunctionType.LENGTH,
+        FunctionType.DIVIDE,
+        FunctionType.MULTIPLY,
+        FunctionType.ADD,
+        FunctionType.SUBTRACT,
+        FunctionType.MOD,
+        FunctionType.ROUND,
+        FunctionType.ABS,
+        FunctionType.SQRT,
+        FunctionType.FLOOR,
+        FunctionType.CEIL,
+        FunctionType.LOG,
+        FunctionType.POWER,
+        FunctionType.LOWER,
+        FunctionType.UPPER,
+        FunctionType.SUBSTRING,
+        FunctionType.STRPOS,
+        FunctionType.CONTAINS,
+        FunctionType.TRIM,
+        FunctionType.LTRIM,
+        FunctionType.RTRIM,
+        FunctionType.REPLACE,
+        FunctionType.HASH,
+        FunctionType.HEX,
+        FunctionType.REGEXP_CONTAINS,
+        FunctionType.REGEXP_EXTRACT,
+        FunctionType.REGEXP_REPLACE,
+        FunctionType.DATE,
+        FunctionType.DATETIME,
+        FunctionType.TIMESTAMP,
+        FunctionType.SECOND,
+        FunctionType.MINUTE,
+        FunctionType.HOUR,
+        FunctionType.DAY,
+        FunctionType.DAY_OF_WEEK,
+        FunctionType.WEEK,
+        FunctionType.MONTH,
+        FunctionType.QUARTER,
+        FunctionType.YEAR,
+        FunctionType.MONTH_NAME,
+        FunctionType.DAY_NAME,
+        FunctionType.FORMAT_TIME,
+        FunctionType.PARSE_TIME,
+        FunctionType.DATE_PART,
+        FunctionType.DATE_TRUNCATE,
+        FunctionType.DATE_ADD,
+        FunctionType.DATE_SUB,
+        FunctionType.DATE_DIFF,
+        FunctionType.UNIX_TO_TIMESTAMP,
+        FunctionType.GEO_FROM_TEXT,
+        FunctionType.GEO_POINT,
+        FunctionType.GEO_DISTANCE,
+        FunctionType.GEO_X,
+        FunctionType.GEO_Y,
+        FunctionType.GEO_CENTROID,
+        FunctionType.GEO_TRANSFORM,
+    }
+)
+
+# Aggregates that skip NULL rows but are NULL over a group with no value, as a
+# padded group is: strict per group, not per row. COUNT is 0 there.
+GROUP_STRICT_AGGREGATES: frozenset[FunctionType] = frozenset(
+    {
+        FunctionType.SUM,
+        FunctionType.MAX,
+        FunctionType.MIN,
+        FunctionType.AVG,
+        FunctionType.ANY,
+        FunctionType.BOOL_OR,
+        FunctionType.BOOL_AND,
+        FunctionType.STDDEV,
+        FunctionType.VARIANCE,
+        FunctionType.ARRAY_AGG,
+    }
+)
+
+# Functions that can be NULL although every argument is non-null, so the
+# nullability inference may not assume a strict function stays non-null:
+# `x % 0`, an index or key that is absent, the sample statistics of one row,
+# `nullif`. A failed `regexp_extract` is NULL on some dialects. `/ 0` is not
+# here: DuckDB, the reference, gives inf (MySQL and SQLite give NULL).
+# formal/Trilogy/NullReject.lean, `Fn.Total`.
+NULL_INTRODUCING_FUNCTIONS: frozenset[FunctionType] = frozenset(
+    {
+        FunctionType.MOD,
+        FunctionType.NULLIF,
+        FunctionType.INDEX_ACCESS,
+        FunctionType.MAP_ACCESS,
+        FunctionType.ATTR_ACCESS,
+        FunctionType.ARRAY_SUM,
+        FunctionType.REGEXP_EXTRACT,
+        FunctionType.STDDEV,
+        FunctionType.VARIANCE,
+    }
+)
+
+
 class Boolean(Enum):
     TRUE = "true"
     FALSE = "false"

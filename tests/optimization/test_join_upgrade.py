@@ -414,7 +414,7 @@ def test_proves_non_null_helpers():
         == set()
     )
 
-    # Aggregate wrapper around a non-opaque function → recurses through to args.
+    # sum skips NULL rows: a non-null sum proves no row's y non-null
     sum_y = BuildAggregateWrapper(
         function=BuildFunction(
             operator=FunctionType.SUM,
@@ -424,7 +424,7 @@ def test_proves_non_null_helpers():
             arg_count=1,
         )
     )
-    assert concepts_implied_non_null(sum_y) == {y.address}
+    assert concepts_implied_non_null(sum_y) == set()
 
     # Operators outside IS/IS_NOT/NULL_PROPAGATING_OPS (e.g. ELSE) fall through
     # to the empty-set guard.

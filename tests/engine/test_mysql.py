@@ -121,7 +121,7 @@ def test_mysql_date_functions():
     )
     assert (
         MySQLDialect.FUNCTION_MAP[FunctionType.DATE_ADD](["created_at", "day", "3"], [])
-        == "DATE_ADD(created_at, INTERVAL 3 DAY)"
+        == "DATE_ADD(created_at, INTERVAL (3) DAY)"
     )
 
 

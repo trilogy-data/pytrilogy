@@ -42,7 +42,7 @@ def test_date_diff_rendering():
     executor = Dialects.BIGQUERY.default_executor(environment=environment)
     sql = executor.generate_sql(queries[-1])
 
-    assert "DATE_ADD(current_date(), INTERVAL -30 day)" in sql[0]
+    assert "DATE_ADD(current_date(), INTERVAL (-30) day)" in sql[0]
 
 
 @pytest.mark.skipif(

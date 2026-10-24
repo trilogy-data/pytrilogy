@@ -39,6 +39,7 @@ from trilogy.core.processing.condition_utility import (
     gather_non_null_proofs,
     gather_or_groups,
     is_scalar_condition,
+    membership_proves_non_null,
     opaque_binding_addresses,
 )
 from trilogy.core.processing.join_resolution import (
@@ -133,6 +134,8 @@ def non_null_proofs(
         if atom.operator in NULL_PROPAGATING_OPS:
             proofs |= concepts_implied_non_null(atom.left)
             proofs |= concepts_implied_non_null(atom.right)
+        else:
+            proofs |= membership_proves_non_null(atom)
     return proofs
 
 

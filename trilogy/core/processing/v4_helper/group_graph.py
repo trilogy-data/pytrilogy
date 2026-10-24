@@ -810,6 +810,25 @@ def _group_final_grain_contribution(
     # parents ON 1=1.
     pinned = frozenset(attrs[gid].output_concepts) or frozenset(attrs[gid].members)
     rowset_keys |= _lineage_pinned_grain(pinned, environment)
+    # A row derivation its grouped siblings' grain does not determine (`ret +
+    # 1` per line beside `sum(qty) by order`) pairs on its own grain:
+    # projected at the coarser one, its rows collapse onto a merge key and
+    # fan back out.
+    grouped = frozenset().union(
+        *(
+            attrs[other].grain_components
+            for other in group_graph.predecessors(FINAL_NODE_ID)
+            if other in attrs and attrs[other].derivation in GROUPING_DERIVATIONS
+        )
+    )
+    if (
+        grouped
+        and attrs[gid].derivation == Derivation.BASIC
+        and not build_fd_determines_all(
+            environment, set(grouped), set(attrs[gid].primary_members)
+        )
+    ):
+        rowset_keys |= attrs[gid].grain_components & merge_grain
     # A row stream reading a region domain is the region's rows (`customer_id
     # as c2`), and pairs on the spans as the domain would. Folded into this
     # contributor, the domain no longer advertises them itself, and a sibling

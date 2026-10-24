@@ -1,5 +1,5 @@
 query_id = "83"
-gen_length = 5280
+gen_length = 5223
 preql_size = 1541
 comp_size = 2195
 generated_sql = """
@@ -25,7 +25,7 @@ FROM
     \"memory\".\"catalog_returns\" as \"sales_catalog_returns_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"sales_catalog_returns_unified\".\"CR_RETURNED_DATE_SK\" = \"sales_return_date_date\".\"D_DATE_SK\"
 WHERE
-    exists (select 1 from quizzical where quizzical.\"target_week_seqs\" is not distinct from \"sales_return_date_date\".\"D_WEEK_SEQ\")
+    exists (select 1 from quizzical where quizzical.\"target_week_seqs\" = \"sales_return_date_date\".\"D_WEEK_SEQ\")
 
 UNION ALL
 SELECT
@@ -37,7 +37,7 @@ FROM
     \"memory\".\"store_returns\" as \"sales_store_returns_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"sales_store_returns_unified\".\"SR_RETURNED_DATE_SK\" = \"sales_return_date_date\".\"D_DATE_SK\"
 WHERE
-    exists (select 1 from quizzical where quizzical.\"target_week_seqs\" is not distinct from \"sales_return_date_date\".\"D_WEEK_SEQ\")
+    exists (select 1 from quizzical where quizzical.\"target_week_seqs\" = \"sales_return_date_date\".\"D_WEEK_SEQ\")
 
 UNION ALL
 SELECT
@@ -49,7 +49,7 @@ FROM
     \"memory\".\"web_returns\" as \"sales_web_returns_unified\"
     INNER JOIN \"memory\".\"date_dim\" as \"sales_return_date_date\" on \"sales_web_returns_unified\".\"WR_RETURNED_DATE_SK\" = \"sales_return_date_date\".\"D_DATE_SK\"
 WHERE
-    exists (select 1 from quizzical where quizzical.\"target_week_seqs\" is not distinct from \"sales_return_date_date\".\"D_WEEK_SEQ\")
+    exists (select 1 from quizzical where quizzical.\"target_week_seqs\" = \"sales_return_date_date\".\"D_WEEK_SEQ\")
 ),
 yummy as (
 SELECT
