@@ -85,9 +85,10 @@ serve = ["fastapi", "uvicorn"]
 mcp = ["fastapi", "uvicorn", "mcp>=2,<3"]
 analysis = ["altair", "pandas", "vl-convert-python"]
 report = ["markdown", "altair", "pandas", "vl-convert-python", "playwright"]
-# The vgi extension is installed live from the DuckDB community repo, so vgi-python
-# and crates/trilogy-io's `vgi` crate must track its current release together.
-vgi = ["haybarn>=1.5.6rc1", "vgi-python>=0.47; python_version >= '3.13'"]
+# Held to the vgi extension build pinned by VGI_EXTENSION_VERSION (trilogy/dialect/
+# duckdb.py), with crates/trilogy-io's `vgi` crate: bump all three together. The
+# pinned build is published per haybarn engine, hence the haybarn upper bound.
+vgi = ["haybarn>=1.5.6rc1,<1.5.7", "vgi-python>=0.47,<0.48; python_version >= '3.13'"]
 
 
 [tool.setuptools.dynamic]
