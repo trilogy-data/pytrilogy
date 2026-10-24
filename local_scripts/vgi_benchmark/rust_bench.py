@@ -60,10 +60,10 @@ def current(rows: int, staging: Path) -> tuple[object, str]:
 def vgi_bridge(rows: int, staging: Path) -> tuple[object, str]:
     import haybarn
 
-    from trilogy.dialect.duckdb import VGI_SETUP_SQL, bridge_attach_sql
+    from trilogy.dialect.duckdb import bridge_attach_sql, vgi_setup_sql
 
     con = haybarn.connect()
-    con.execute(VGI_SETUP_SQL)
+    con.execute(vgi_setup_sql(None))
     con.execute(
         bridge_attach_sql(Path(sys.executable).as_posix(), sys.platform == "win32")
     )

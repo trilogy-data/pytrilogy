@@ -17,7 +17,7 @@ from trilogy.core.models.datasource import Address
 from trilogy.dialect.cancel import duckdb_side_cursor
 from trilogy.dialect.config import DuckDBConfig, PythonDatasourceTransport
 from trilogy.dialect.duckdb import (
-    VGI_SETUP_SQL,
+    VGI_EXTENSION_VERSION,
     attach_bridge,
     attach_resident,
     bridge_attach_sql,
@@ -26,6 +26,7 @@ from trilogy.dialect.duckdb import (
     resident_alias,
     resident_command,
     vgi_python_requirement,
+    vgi_setup_sql,
     vgi_version_mismatch,
     vgi_worker_command,
 )
@@ -66,12 +67,22 @@ def test_worker_command_survives_cmd_quote_stripping():
 
 
 def test_setup_loads_vgi_without_starting_the_bridge():
-    assert "LOAD vgi;" in VGI_SETUP_SQL
-    assert "ATTACH" not in VGI_SETUP_SQL
+    assert "ATTACH" not in vgi_setup_sql(None)
     assert bridge_attach_sql("/opt/py/python", is_windows=False) == (
         "ATTACH IF NOT EXISTS 'trilogy_io' (TYPE vgi, LOCATION "
         "'/opt/py/python -m trilogy.dialect.duckdb_vgi')"
     )
+
+
+def test_setup_installs_the_pinned_vgi_only_when_another_is_installed():
+    force = (
+        f"FORCE INSTALL vgi FROM community VERSION '{VGI_EXTENSION_VERSION}';\n"
+        "LOAD vgi;"
+    )
+    assert vgi_setup_sql(None) == force
+    assert vgi_setup_sql("") == force
+    assert vgi_setup_sql("0000000") == force
+    assert vgi_setup_sql(VGI_EXTENSION_VERSION[:7]) == "LOAD vgi;"
 
 
 def test_resident_command_adds_vgi_only_to_python_scripts():
@@ -163,7 +174,9 @@ def test_vgi_schema_drift_names_both_fixes():
     assert "extension unknown" in message
     assert vgi_python_requirement() in message
     assert "worker: /w/bin/landmarks --vgi" in message
-    assert "FORCE INSTALL vgi FROM community" in message
+    assert (
+        f"FORCE INSTALL vgi FROM community VERSION '{VGI_EXTENSION_VERSION}'" in message
+    )
     assert "pip install -U 'pytrilogy[vgi]'" in message
     assert vgi_version_mismatch("Binder Error: no column", None) is None
 
@@ -252,6 +265,11 @@ def vgi_executor():
     )
     yield executor
     executor.close()
+
+
+def test_vgi_executor_loads_the_pinned_build(vgi_executor):
+    loaded = loaded_vgi_version(vgi_executor.connection)
+    assert loaded and VGI_EXTENSION_VERSION.startswith(loaded)
 
 
 def test_a_trilogy_io_source_runs_resident(vgi_executor):

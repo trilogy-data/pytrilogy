@@ -22,6 +22,17 @@ def require_vgi() -> None:
     pytest.importorskip("vgi")
 
 
+def load_vgi(con) -> None:
+    """LOAD the pinned vgi build on a raw haybarn connection."""
+    from trilogy.dialect.duckdb import vgi_setup_sql
+
+    row = con.execute(
+        "SELECT extension_version FROM duckdb_extensions() "
+        "WHERE extension_name = 'vgi' AND installed"
+    ).fetchone()
+    con.execute(vgi_setup_sql(row[0] if row else None))
+
+
 def skip_or_fail(reason: str) -> None:
     if REQUIRED:
         pytest.fail(reason)
