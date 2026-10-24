@@ -1667,9 +1667,14 @@ class Executor:
     def _script_failure(self, error: Exception) -> Exception | None:
         if self.dialect != Dialects.DUCK_DB:
             return None
-        from trilogy.dialect.duckdb import python_datasource_failure
+        from trilogy.dialect.duckdb import (
+            python_datasource_failure,
+            vgi_version_mismatch,
+        )
 
-        return python_datasource_failure(error)
+        return vgi_version_mismatch(
+            str(error), self.connection
+        ) or python_datasource_failure(error)
 
     def _execute_now(self, statement: Any, final_params: dict | None) -> ResultProtocol:
         if final_params:

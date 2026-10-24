@@ -35,6 +35,7 @@ from trilogy.core.enums import (
     Modifier,
     UnnestMode,
 )
+from trilogy.core.exceptions import ConfigurationException
 from trilogy.core.models.core import CONCRETE_TYPES, DataType, arg_to_datatype
 from trilogy.core.models.datasource import Address
 from trilogy.core.models.execute import (
@@ -516,6 +517,48 @@ def python_datasource_failure(error: Exception) -> PythonDatasourceError | None:
         next(g for g in script.groups() if g) if script else command,
         int(failure.group(1)),
         stderr,
+    )
+
+
+# haybarn says "out-of-date" whichever side is older: a worker built for a newer
+# vgi extension than the one loaded fails exactly like one built for an older.
+_VGI_SCHEMA_DRIFT = "Worker returned an out-of-date Apache Arrow schema"
+_VGI_WORKER = re.compile(r"\[worker: ([^\]]*)\]")
+
+
+def loaded_vgi_version(connection: Any) -> str | None:
+    side = duckdb_side_cursor(connection)
+    if side is None:
+        return None
+    try:
+        row = side.execute(
+            "SELECT extension_version FROM duckdb_extensions() "
+            "WHERE extension_name = 'vgi' AND loaded"
+        ).fetchone()
+    except Exception:
+        return None
+    finally:
+        side.close()
+    return row[0] if row else None
+
+
+def vgi_version_mismatch(
+    message: str, connection: Any | None
+) -> ConfigurationException | None:
+    """An actionable error for a vgi extension and worker built for different releases."""
+    if _VGI_SCHEMA_DRIFT not in message:
+        return None
+    extension_version = loaded_vgi_version(connection) if connection else None
+    worker = _VGI_WORKER.search(message)
+    return ConfigurationException(
+        "The vgi extension and a VGI worker were built for different vgi releases "
+        f"(extension {extension_version or 'unknown'}, host {vgi_python_requirement()}"
+        f"{f', worker: {worker.group(1)}' if worker else ''}). Either side may be "
+        "the stale one:\n"
+        "- extension older: run `FORCE INSTALL vgi FROM community;` "
+        "(a plain INSTALL never upgrades it)\n"
+        "- worker older: `pip install -U 'pytrilogy[vgi]'` for python sources; "
+        "rebuild compiled sources against the current `vgi` crate"
     )
 
 

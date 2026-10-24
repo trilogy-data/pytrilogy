@@ -12,6 +12,7 @@ from tests.vgi_support import (  # noqa: F401
 )
 from trilogy import Dialects, Environment
 from trilogy.core.enums import AddressType
+from trilogy.core.exceptions import ConfigurationException
 from trilogy.core.models.datasource import Address
 from trilogy.dialect.cancel import duckdb_side_cursor
 from trilogy.dialect.config import DuckDBConfig, PythonDatasourceTransport
@@ -24,6 +25,7 @@ from trilogy.dialect.duckdb import (
     resident_alias,
     resident_command,
     vgi_python_requirement,
+    vgi_version_mismatch,
     vgi_worker_command,
 )
 from trilogy.dialect.python_source import VGI_FAILURE_MARKER, PythonDatasourceError
@@ -144,6 +146,32 @@ def test_vgi_transport_connects_through_haybarn(monkeypatch):
     monkeypatch.setattr(importlib.util, "find_spec", lambda name: object())
     config = DuckDBConfig(path="/w/db.duckdb", python_datasource_transport="vgi")
     assert config.connection_string() == "haybarn:////w/db.duckdb"
+
+
+SCHEMA_DRIFT = (
+    "IO Error: Worker returned an out-of-date Apache Arrow schema. RPC item schema "
+    "mismatch for 'catalog_schema_contents_functions' item[0] "
+    "[worker: /w/bin/landmarks --vgi]"
+)
+
+
+def test_vgi_schema_drift_names_both_fixes():
+    error = vgi_version_mismatch(SCHEMA_DRIFT, None)
+    assert isinstance(error, ConfigurationException)
+    message = str(error)
+    assert "extension unknown" in message
+    assert vgi_python_requirement() in message
+    assert "worker: /w/bin/landmarks --vgi" in message
+    assert "FORCE INSTALL vgi FROM community" in message
+    assert "pip install -U 'pytrilogy[vgi]'" in message
+    assert vgi_version_mismatch("Binder Error: no column", None) is None
+
+
+def test_executor_raises_the_vgi_mismatch():
+    executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    error = executor._script_failure(Exception(SCHEMA_DRIFT))
+    assert isinstance(error, ConfigurationException)
+    assert "extension unknown" in str(error)
 
 
 def test_resident_attach_needs_a_duckdb_connection():
