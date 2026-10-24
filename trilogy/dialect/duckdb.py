@@ -186,8 +186,10 @@ FUNCTION_MAP = {
     FunctionType.TIMESTAMP: lambda x, types: f"cast({x[0]} as timestamptz)",
     FunctionType.DATE: lambda x, types: f"cast({x[0]} as date)",
     FunctionType.DATE_TRUNCATE: lambda x, types: date_trunc(x, types),
-    FunctionType.DATE_ADD: lambda x, types: f"date_add({x[0]}, {x[2]} * INTERVAL 1 {x[1]})",
-    FunctionType.DATE_SUB: lambda x, types: f"date_add({x[0]}, -{x[2]} * INTERVAL 1 {x[1]})",
+    # the offset is parenthesized: `n + 1 * INTERVAL` binds the 1, and `--1`
+    # comments out the rest of the statement
+    FunctionType.DATE_ADD: lambda x, types: f"date_add({x[0]}, ({x[2]}) * INTERVAL 1 {x[1]})",
+    FunctionType.DATE_SUB: lambda x, types: f"date_add({x[0]}, -({x[2]}) * INTERVAL 1 {x[1]})",
     FunctionType.DATE_PART: lambda x, types: date_part(x, types),
     FunctionType.DATE_DIFF: lambda x, types: f"date_diff('{x[2]}', {x[0]}, {x[1]})",
     # concat() skips NULLs, || (CONCAT_STRICT) propagates, concat_ws(sep, ...)

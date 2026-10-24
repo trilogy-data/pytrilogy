@@ -40,9 +40,9 @@ def date_modifier(unit: str, amount: str, subtract: bool = False) -> str:
         raise ValueError(f"Unsupported date unit for sqlite: {unit}")
     factor = "7" if normalized == "week" else "3" if normalized == "quarter" else "1"
     final_amount = (
-        f"(({multiplier}{amount})*{factor})"
+        f"(({multiplier}({amount}))*{factor})"
         if factor != "1"
-        else f"{multiplier}{amount}"
+        else f"{multiplier}({amount})"
     )
     return f"({final_amount}) || ' {mapping[normalized]}'"
 

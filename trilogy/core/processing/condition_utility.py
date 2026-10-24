@@ -9,6 +9,8 @@ from typing import Any
 
 from trilogy.constants import MagicConstants
 from trilogy.core.enums import (
+    GROUP_STRICT_AGGREGATES,
+    NULL_STRICT_FUNCTIONS,
     BooleanOperator,
     ComparisonOperator,
     DatePart,
@@ -73,7 +75,8 @@ CONDITION_TYPES = (
 # Operators whose result is NULL (and therefore not TRUE) when either operand is
 # NULL: in an AND chain, both sides' concept references must be non-null in
 # surviving rows. (Tuple, not set, since ComparisonOperator overrides __eq__
-# without __hash__.)
+# without __hash__.) Membership is not one: `in`/`not in` match by identity
+# and never yield NULL (see ``membership_proves_non_null``).
 NULL_PROPAGATING_OPS: tuple[ComparisonOperator, ...] = (
     ComparisonOperator.EQ,
     ComparisonOperator.NE,
@@ -85,24 +88,7 @@ NULL_PROPAGATING_OPS: tuple[ComparisonOperator, ...] = (
     ComparisonOperator.ILIKE,
     ComparisonOperator.NOT_LIKE,
     ComparisonOperator.NOT_ILIKE,
-    ComparisonOperator.IN,
-    ComparisonOperator.NOT_IN,
     ComparisonOperator.CONTAINS,
-)
-
-# Functions whose result can be non-null even when an argument is NULL, so
-# recursing through them cannot claim the args are non-null.
-NULL_OPAQUE_FUNCTIONS: tuple[FunctionType, ...] = (
-    FunctionType.COALESCE,
-    FunctionType.NULLIF,
-    FunctionType.CASE,
-    FunctionType.COUNT,  # COUNT(NULL) = 0, not NULL
-    FunctionType.COUNT_DISTINCT,
-    # skip NULL arguments on DuckDB and Postgres: greatest(NULL, 0) = 0
-    FunctionType.GREATEST,
-    FunctionType.LEAST,
-    # a non-null array proves SOME element was non-null, not the row's own value
-    FunctionType.ARRAY_AGG,
 )
 
 TARGET_TYPES = (int, date, float, datetime, bool, str)
@@ -1032,25 +1018,30 @@ def _not_null_concept(
     return None
 
 
-def concepts_implied_non_null(value: object) -> set[str]:
+def concepts_implied_non_null(value: object, per_group: bool = False) -> set[str]:
     """Concepts whose individual non-nullness is implied when ``value`` evaluates non-null.
 
-    Stops at null-opaque functions (``COALESCE`` et al.): those can produce a
-    non-null result even when an argument is NULL, so descending past them
-    would over-claim.
+    Descends only into ``NULL_STRICT_FUNCTIONS``: any other function
+    (``COALESCE``, ``concat``, an aggregate) can produce a non-null result
+    from a NULL argument, so descending past it would over-claim.
+    ``per_group`` also descends into ``GROUP_STRICT_AGGREGATES``, for a caller
+    asking about a group whose every row is NULL (a padded one).
     """
     if isinstance(value, BuildConcept):
-        return {value.address}
+        # a padded COUNT reads 0, never NULL (see `_zero_default_proves`)
+        return set() if value.zero_on_empty else {value.address}
     if isinstance(value, BuildParenthetical):
-        return concepts_implied_non_null(value.content)
+        return concepts_implied_non_null(value.content, per_group)
     if isinstance(value, BuildAggregateWrapper):
-        return concepts_implied_non_null(value.function)
+        return concepts_implied_non_null(value.function, per_group)
     if isinstance(value, BuildFunction):
-        if value.operator in NULL_OPAQUE_FUNCTIONS:
+        if value.operator not in NULL_STRICT_FUNCTIONS and not (
+            per_group and value.operator in GROUP_STRICT_AGGREGATES
+        ):
             return set()
         addresses: set[str] = set()
         for arg in value.arguments:
-            addresses |= concepts_implied_non_null(arg)
+            addresses |= concepts_implied_non_null(arg, per_group)
         return addresses
     return set()
 
@@ -1175,6 +1166,22 @@ def _coalesce_primary_proves_non_null(
     return concepts_implied_non_null(expr.arguments[0])
 
 
+def _zero_default_proves(
+    value: object, op: ComparisonOperator, rhs: object
+) -> set[str]:
+    """A COUNT (``zero_on_empty``) is 0 on a row its group has none for: the
+    planner coalesces a padded one to 0. It reads as ``coalesce(count, 0)``,
+    so it proves its group present only when 0 fails the comparison."""
+    while isinstance(value, BuildParenthetical):
+        value = value.content  # type: ignore[assignment]
+    if not isinstance(value, BuildConcept) or not value.zero_on_empty:
+        return set()
+    rhs_value = _literal_value(rhs)
+    if rhs_value is None or _eval_literal_comparison(0, op, rhs_value) is not False:
+        return set()
+    return {value.address}
+
+
 def _forced_true_proofs(value: object) -> set[str]:
     """Non-null proofs carried by ``<value> = True`` / ``IS True``.
 
@@ -1189,6 +1196,40 @@ def _forced_true_proofs(value: object) -> set[str]:
     if isinstance(value, CONDITION_TYPES):
         return condition_proves_non_null(value)
     return set()
+
+
+def _non_null_constant(value: object) -> bool:
+    """A non-null literal, or a `const` concept bound to one."""
+    if (
+        isinstance(value, BuildConcept)
+        and value.derivation == Derivation.CONSTANT
+        and isinstance(value.lineage, BuildFunction)
+        and value.lineage.operator == FunctionType.CONSTANT
+        and len(value.lineage.arguments) == 1
+    ):
+        value = value.lineage.arguments[0]
+    return _literal_value(value) is not None
+
+
+def membership_proves_non_null(atom: BuildComparison) -> set[str]:
+    """Membership matches by identity: a NULL probe matches a NULL member, and
+    neither form yields NULL. ``x in S`` proves ``x`` only when ``S`` holds no
+    NULL: a list of non-null literals, or a set the build proved NULL-free
+    (``null_free_members``). ``x not in S`` keeps a NULL ``x`` whenever ``S``
+    is NULL-free, so it proves nothing."""
+    if atom.operator != ComparisonOperator.IN:
+        return set()
+    right = atom.right
+    while isinstance(right, BuildParenthetical):
+        right = right.content  # type: ignore[assignment]
+    if isinstance(right, (ListWrapper, TupleWrapper)):
+        elements = list(right.val) if isinstance(right, TupleWrapper) else list(right)
+        null_free = all(_non_null_constant(x) for x in elements)
+    else:
+        null_free = (
+            isinstance(atom, BuildSubselectComparison) and atom.null_free_members
+        )
+    return concepts_implied_non_null(atom.left) if null_free else set()
 
 
 def comparison_proves_non_null(
@@ -1227,6 +1268,12 @@ def comparison_proves_non_null(
         if left is True:
             proofs |= _forced_true_proofs(right)
         return proofs
+    if op == ComparisonOperator.IN:
+        return (
+            membership_proves_non_null(atom)
+            | _coalesce_primary_proves_non_null(left, op, right)
+            | _zero_default_proves(left, op, right)
+        )
     if op in NULL_PROPAGATING_OPS:
         proofs = concepts_implied_non_null(left) | concepts_implied_non_null(right)
         if op == ComparisonOperator.EQ:
@@ -1239,9 +1286,11 @@ def comparison_proves_non_null(
         # ``count(...)`` in ``coalesce(..., 0)``, so predicates like ``> 0``
         # over the wrapped column would otherwise be opaque.
         proofs |= _coalesce_primary_proves_non_null(left, op, right)
+        proofs |= _zero_default_proves(left, op, right)
         flipped = _flip_op(op)
         if flipped is not None:
             proofs |= _coalesce_primary_proves_non_null(right, flipped, left)
+            proofs |= _zero_default_proves(right, flipped, left)
         return proofs
     return set()
 

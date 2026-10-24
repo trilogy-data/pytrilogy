@@ -39,7 +39,7 @@ def date_truncate(expr: str, part: str) -> str:
 
 def date_interval(function: str, args: list[str]) -> str:
     grain = DatePart(args[1]).value.upper()
-    return f"{function}({args[0]}, INTERVAL {args[2]} {grain})"
+    return f"{function}({args[0]}, INTERVAL ({args[2]}) {grain})"
 
 
 def date_diff(first: str, second: str, part: str) -> str:
