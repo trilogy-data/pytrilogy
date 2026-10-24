@@ -131,9 +131,10 @@ def test_remote_success_stages_then_copies_over_the_target(fake_remote):
 def test_remote_failure_leaves_the_previous_object_intact(fake_remote):
     """The exact regression: a killed writer must not truncate the target."""
     remote = fake_remote(FakeRemote(("bucket/trees/out.parquet",)))
-    with pytest.raises(RuntimeError), staged_write(
-        "gcs://bucket/trees/out.parquet"
-    ) as staged:
+    with (
+        pytest.raises(RuntimeError),
+        staged_write("gcs://bucket/trees/out.parquet") as staged,
+    ):
         remote.objects[staged.split("://", 1)[1]] = b"PAR1-partial-no-footer"
         raise RuntimeError("OOM")
     assert remote.objects["bucket/trees/out.parquet"] == b"old"
@@ -143,9 +144,10 @@ def test_remote_failure_leaves_the_previous_object_intact(fake_remote):
 
 def test_remote_failure_on_a_fresh_target_publishes_nothing(fake_remote):
     remote = fake_remote(FakeRemote())
-    with pytest.raises(RuntimeError), staged_write(
-        "gcs://bucket/trees/new.parquet"
-    ) as staged:
+    with (
+        pytest.raises(RuntimeError),
+        staged_write("gcs://bucket/trees/new.parquet") as staged,
+    ):
         remote.objects[staged.split("://", 1)[1]] = b"partial"
         raise RuntimeError("boom")
     assert remote.objects == {}
@@ -178,9 +180,10 @@ def test_cleanup_failure_is_logged_and_never_fails_a_good_publish(fake_remote, c
             raise OSError("permission denied")
 
     remote = fake_remote(Undeletable(("bucket/trees/out.parquet",)))
-    with caplog.at_level("WARNING"), staged_write(
-        "gcs://bucket/trees/out.parquet"
-    ) as staged:
+    with (
+        caplog.at_level("WARNING"),
+        staged_write("gcs://bucket/trees/out.parquet") as staged,
+    ):
         remote.objects[staged.split("://", 1)[1]] = b"new"
     assert remote.objects["bucket/trees/out.parquet"] == b"new"
     assert "Could not remove staged object" in caplog.text
@@ -194,9 +197,11 @@ def test_writer_that_never_staged_anything_fails_quietly(fake_remote, caplog):
             super().delete_file(path)
 
     remote = fake_remote(StrictRemote(("bucket/trees/out.parquet",)))
-    with caplog.at_level("WARNING"), pytest.raises(
-        RuntimeError, match="Binder"
-    ), staged_write("gcs://bucket/trees/out.parquet"):
+    with (
+        caplog.at_level("WARNING"),
+        pytest.raises(RuntimeError, match="Binder"),
+        staged_write("gcs://bucket/trees/out.parquet"),
+    ):
         raise RuntimeError("Binder Error")
     assert remote.objects["bucket/trees/out.parquet"] == b"old"
     assert "Could not remove staged object" not in caplog.text
@@ -264,8 +269,9 @@ def test_gcs_credentials_build_an_s3_endpoint_filesystem(
 
 
 def test_missing_parent_directory_is_reported(tmp_path: Path):
-    with pytest.raises(FileNotFoundError, match="does not exist"), staged_write(
-        str(tmp_path / "missing" / "out.parquet")
+    with (
+        pytest.raises(FileNotFoundError, match="does not exist"),
+        staged_write(str(tmp_path / "missing" / "out.parquet")),
     ):
         pass
 

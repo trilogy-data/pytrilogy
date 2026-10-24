@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from os.path import dirname, join
 from re import IGNORECASE
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from trilogy.parsing.v2.errors import (
     create_generic_syntax_error,
@@ -29,14 +29,53 @@ from trilogy.parsing.v2.errors import (
     detect_unquoted_path_target,
     misplaced_join_candidate,
 )
-from trilogy.parsing.v2.syntax import SyntaxDocument, syntax_document_from_parser
+from trilogy.parsing.v2.syntax import (
+    LARK_NODE_KIND,
+    LARK_TOKEN_KIND,
+    SyntaxDocument,
+    SyntaxElement,
+    SyntaxNode,
+    SyntaxToken,
+)
 from trilogy.utility import safe_open
 
 if TYPE_CHECKING:
-    from lark import Lark
+    from lark import Lark, Token, Tree
     from lark.exceptions import UnexpectedToken
 
 _PARSER: Lark | None = None
+
+
+def syntax_from_parser(element: Tree[Token] | Token) -> SyntaxElement:
+    # lark's Token subclasses str, which keeps lark itself off the import path.
+    if isinstance(element, str):
+        return SyntaxToken(
+            element.type,
+            element.value,
+            element.line,
+            element.column,
+            element.end_line,
+            element.end_column,
+            element.start_pos,
+            element.end_pos,
+            LARK_TOKEN_KIND.get(element.type),
+        )
+    meta = element.meta
+    return SyntaxNode(
+        element.data,
+        [syntax_from_parser(child) for child in element.children],
+        None if meta.empty else meta.line,
+        None if meta.empty else meta.column,
+        None if meta.empty else meta.end_line,
+        None if meta.empty else meta.end_column,
+        None if meta.empty else meta.start_pos,
+        None if meta.empty else meta.end_pos,
+        LARK_NODE_KIND.get(element.data),
+    )
+
+
+def syntax_document_from_parser(text: str, tree: Tree[Token]) -> SyntaxDocument:
+    return SyntaxDocument(text=text, tree=cast(SyntaxNode, syntax_from_parser(tree)))
 
 
 def _grammar_path() -> str:

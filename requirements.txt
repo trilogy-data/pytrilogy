@@ -7,4 +7,5 @@ duckdb>=1.3
 pyarrow
 duckdb-engine
 click
+# not imported directly: duckdb needs it to fetch TIMESTAMPTZ values
 pytz

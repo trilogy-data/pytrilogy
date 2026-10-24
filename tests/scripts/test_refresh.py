@@ -568,10 +568,13 @@ def test_refresh_cli_splits_comma_separated_force_sources(tmp_path):
         )
 
     runner = CliRunner()
-    with patch(
-        "trilogy.scripts.refresh.run_parallel_execution",
-        side_effect=fake_run_parallel_execution,
-    ), set_rich_mode(False):
+    with (
+        patch(
+            "trilogy.scripts.refresh.run_parallel_execution",
+            side_effect=fake_run_parallel_execution,
+        ),
+        set_rich_mode(False),
+    ):
         result = runner.invoke(
             cli,
             [
@@ -944,9 +947,11 @@ incremental by src.ev_ts;
 """)
 
     cli_params = _make_cli_params(tmp_path)
-    with set_rich_mode(False), patch(
-        "trilogy.scripts.refresh._collect_root_watermarks", return_value={}
-    ), pytest.raises(Exit) as exc_info:
+    with (
+        set_rich_mode(False),
+        patch("trilogy.scripts.refresh._collect_root_watermarks", return_value={}),
+        pytest.raises(Exit) as exc_info,
+    ):
         _preview_directory_refresh(cli_params, tmp_path)
 
     assert exc_info.value.exit_code == 1
@@ -1013,10 +1018,13 @@ def test_refresh_asset_error_includes_datasource_context():
         all_assets=0,
     )
 
-    with patch(
-        "trilogy.executor.Executor.update_datasource",
-        new=raising,
-    ), pytest.raises(RefreshAssetError) as info:
+    with (
+        patch(
+            "trilogy.executor.Executor.update_datasource",
+            new=raising,
+        ),
+        pytest.raises(RefreshAssetError) as info,
+    ):
         execute_refresh_plan(executor, plan, dry_run=True)
 
     err = info.value

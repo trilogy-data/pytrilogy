@@ -44,11 +44,12 @@ def test_refreshable_root_probe_fresh_no_script():
     """Probe returns true → script does NOT run, no stale asset emitted."""
     e = _executor_with_refreshable_root("/fake/probe.py", "/fake/refresh.py")
 
-    with patch(
-        "trilogy.execution.state.state_store.run_freshness_probe", return_value=True
-    ) as mock_probe, patch(
-        "trilogy.execution.state.state_store.run_refresh_script"
-    ) as mock_refresh:
+    with (
+        patch(
+            "trilogy.execution.state.state_store.run_freshness_probe", return_value=True
+        ) as mock_probe,
+        patch("trilogy.execution.state.state_store.run_refresh_script") as mock_refresh,
+    ):
         store = BaseStateStore()
         stale = store.get_stale_assets(e.environment, e)
 
@@ -112,10 +113,13 @@ def test_refresh_runs_script_when_probe_stale():
 
     refreshed: list[tuple[str, str]] = []
 
-    with patch(
-        "trilogy.execution.state.state_store.run_freshness_probe",
-        side_effect=probe_side_effect,
-    ), patch("trilogy.execution.state.state_store.run_refresh_script") as mock_refresh:
+    with (
+        patch(
+            "trilogy.execution.state.state_store.run_freshness_probe",
+            side_effect=probe_side_effect,
+        ),
+        patch("trilogy.execution.state.state_store.run_refresh_script") as mock_refresh,
+    ):
         result = refresh_stale_assets(
             e, on_refresh=lambda i, r: refreshed.append((i, r))
         )
@@ -132,11 +136,14 @@ def test_refresh_hard_errors_when_probe_still_false_after_script():
     """Script exits 0 but probe still says stale → RefreshAssetError."""
     e = _executor_with_refreshable_root("/fake/probe.py", "/fake/refresh.py")
 
-    with patch(
-        "trilogy.execution.state.state_store.run_freshness_probe", return_value=False
-    ), patch("trilogy.execution.state.state_store.run_refresh_script"), pytest.raises(
-        RefreshAssetError
-    ) as exc_info:
+    with (
+        patch(
+            "trilogy.execution.state.state_store.run_freshness_probe",
+            return_value=False,
+        ),
+        patch("trilogy.execution.state.state_store.run_refresh_script"),
+        pytest.raises(RefreshAssetError) as exc_info,
+    ):
         refresh_stale_assets(e)
 
     assert "still returned false" in str(exc_info.value)
@@ -147,14 +154,17 @@ def test_refresh_propagates_script_error():
     """Script raises → RefreshAssetError wraps it with the asset id."""
     e = _executor_with_refreshable_root("/fake/probe.py", "/fake/refresh.py")
 
-    with patch(
-        "trilogy.execution.state.state_store.run_freshness_probe", return_value=False
-    ), patch(
-        "trilogy.execution.state.state_store.run_refresh_script",
-        side_effect=RuntimeError("bad script"),
-    ), pytest.raises(
-        RefreshAssetError
-    ) as exc_info:
+    with (
+        patch(
+            "trilogy.execution.state.state_store.run_freshness_probe",
+            return_value=False,
+        ),
+        patch(
+            "trilogy.execution.state.state_store.run_refresh_script",
+            side_effect=RuntimeError("bad script"),
+        ),
+        pytest.raises(RefreshAssetError) as exc_info,
+    ):
         refresh_stale_assets(e)
 
     assert exc_info.value.datasource_id == "raw"
@@ -165,9 +175,13 @@ def test_refresh_dry_run_does_not_invoke_script():
     """Dry-run: probe is checked, but refresh_script is not invoked."""
     e = _executor_with_refreshable_root("/fake/probe.py", "/fake/refresh.py")
 
-    with patch(
-        "trilogy.execution.state.state_store.run_freshness_probe", return_value=False
-    ), patch("trilogy.execution.state.state_store.run_refresh_script") as mock_refresh:
+    with (
+        patch(
+            "trilogy.execution.state.state_store.run_freshness_probe",
+            return_value=False,
+        ),
+        patch("trilogy.execution.state.state_store.run_refresh_script") as mock_refresh,
+    ):
         result = refresh_stale_assets(e, dry_run=True)
 
     mock_refresh.assert_not_called()
@@ -179,9 +193,13 @@ def test_refresh_dry_run_emits_dry_run_marker_to_query_callback():
     e = _executor_with_refreshable_root("/fake/probe.py", "/fake/refresh.py")
     seen: list[tuple[str, str]] = []
 
-    with patch(
-        "trilogy.execution.state.state_store.run_freshness_probe", return_value=False
-    ), patch("trilogy.execution.state.state_store.run_refresh_script"):
+    with (
+        patch(
+            "trilogy.execution.state.state_store.run_freshness_probe",
+            return_value=False,
+        ),
+        patch("trilogy.execution.state.state_store.run_refresh_script"),
+    ):
         refresh_stale_assets(
             e,
             dry_run=True,
@@ -198,9 +216,12 @@ def test_refresh_forced_runs_script_even_when_probe_fresh():
     """force_sources should run the refresh script for refreshable roots."""
     e = _executor_with_refreshable_root("/fake/probe.py", "/fake/refresh.py")
 
-    with patch(
-        "trilogy.execution.state.state_store.run_freshness_probe", return_value=True
-    ), patch("trilogy.execution.state.state_store.run_refresh_script") as mock_refresh:
+    with (
+        patch(
+            "trilogy.execution.state.state_store.run_freshness_probe", return_value=True
+        ),
+        patch("trilogy.execution.state.state_store.run_refresh_script") as mock_refresh,
+    ):
         result = refresh_stale_assets(
             e, policy=RefreshPolicy(force_sources=frozenset({"raw"}))
         )
@@ -253,12 +274,15 @@ def test_cross_script_cascade_dependent_refreshes():
         return probe_calls["n"] > 1
 
     refreshed: list[str] = []
-    with patch(
-        "trilogy.execution.state.state_store.run_freshness_probe",
-        side_effect=fake_probe,
-    ), patch(
-        "trilogy.execution.state.state_store.run_refresh_script",
-        side_effect=fake_refresh,
+    with (
+        patch(
+            "trilogy.execution.state.state_store.run_freshness_probe",
+            side_effect=fake_probe,
+        ),
+        patch(
+            "trilogy.execution.state.state_store.run_refresh_script",
+            side_effect=fake_refresh,
+        ),
     ):
         result = refresh_stale_assets(e, on_refresh=lambda i, _r: refreshed.append(i))
 

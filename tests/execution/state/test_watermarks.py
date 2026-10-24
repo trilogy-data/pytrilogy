@@ -1582,13 +1582,15 @@ def test_get_stale_assets_timezone_mismatch_incremental():
     mock_env = MagicMock()
     mock_env.datasources = {"tz_source": src_ds, "tz_target": tgt_ds}
 
-    with patch.object(state_store, "watermark_all_assets"), patch(
-        "trilogy.execution.state.state_store.schema_mismatch", return_value=None
-    ), patch(
-        "trilogy.execution.state.state_store.is_missing_local_file", return_value=False
-    ), pytest.raises(
-        TypeError
-    ) as exc_info:
+    with (
+        patch.object(state_store, "watermark_all_assets"),
+        patch("trilogy.execution.state.state_store.schema_mismatch", return_value=None),
+        patch(
+            "trilogy.execution.state.state_store.is_missing_local_file",
+            return_value=False,
+        ),
+        pytest.raises(TypeError) as exc_info,
+    ):
         state_store.get_stale_assets(
             mock_env,
             MagicMock(),
@@ -2207,9 +2209,10 @@ incremental by created_at.date
         executor = self._executor()
         boom = RuntimeError("connection reset by peer")
 
-        with patch.object(
-            executor, "execute_ephemeral", side_effect=boom
-        ), pytest.raises(RuntimeError, match="connection reset"):
+        with (
+            patch.object(executor, "execute_ephemeral", side_effect=boom),
+            pytest.raises(RuntimeError, match="connection reset"),
+        ):
             get_concept_max_watermark_abstract("local.created_at.date", executor, set())
 
     def test_hidden_datasources_are_restored_after_a_failure(self) -> None:
@@ -2219,9 +2222,10 @@ incremental by created_at.date
         executor = self._executor()
         before = dict(executor.environment.datasources)
 
-        with patch.object(
-            executor, "execute_ephemeral", side_effect=RuntimeError("x")
-        ), pytest.raises(RuntimeError):
+        with (
+            patch.object(executor, "execute_ephemeral", side_effect=RuntimeError("x")),
+            pytest.raises(RuntimeError),
+        ):
             get_concept_max_watermark_abstract("local.created_at.date", executor, set())
 
         assert executor.environment.datasources == before

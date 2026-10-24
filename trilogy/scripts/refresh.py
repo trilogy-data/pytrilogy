@@ -529,9 +529,10 @@ def probe_directory_state(
 
     all_root_watermarks: dict[str, DatasourceWatermark] = {}
     if root_probe_plan:
-        with root_probe_progress(
-            len(root_addr_to_needed_concepts)
-        ) as _root_progress, ThreadPoolExecutor(max_workers=parallelism) as pool:
+        with (
+            root_probe_progress(len(root_addr_to_needed_concepts)) as _root_progress,
+            ThreadPoolExecutor(max_workers=parallelism) as pool,
+        ):
             root_futures = {
                 pool.submit(
                     _collect_root_watermarks,
@@ -556,9 +557,10 @@ def probe_directory_state(
     # Root watermarks are pre-injected so each root is only queried once across all scripts.
     initial_watermarks = all_root_watermarks or None
     plans_by_node: list[tuple[ScriptNode, RefreshPlan]] = []
-    with probe_progress(total_physical) as _progress, ThreadPoolExecutor(
-        max_workers=parallelism
-    ) as pool:
+    with (
+        probe_progress(total_physical) as _progress,
+        ThreadPoolExecutor(max_workers=parallelism) as pool,
+    ):
         futures = {
             pool.submit(
                 _probe_owner_node,
@@ -1193,9 +1195,11 @@ def refresh(
             baseline: dict[str, str] | None = None
             if activation:
                 baseline = load_env_model_baseline(activation)
-            with env_activation_scope(activation), model_fingerprint_baseline(
-                baseline
-            ), phase_recording() as recorder:
+            with (
+                env_activation_scope(activation),
+                model_fingerprint_baseline(baseline),
+                phase_recording() as recorder,
+            ):
                 try:
                     with state_input_scope(state_input, cli_params):
                         summary = run_refresh_command(cli_params)

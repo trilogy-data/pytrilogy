@@ -1226,9 +1226,12 @@ def test_a_targeted_slice_survives_the_post_script_re_evaluation(executor):
         partition_selector={"local.order_date": "2024-01-01"},
     )
 
-    with patch(
-        "trilogy.execution.state.state_store.run_freshness_probe", return_value=True
-    ), patch("trilogy.execution.state.state_store.run_refresh_script"):
+    with (
+        patch(
+            "trilogy.execution.state.state_store.run_freshness_probe", return_value=True
+        ),
+        patch("trilogy.execution.state.state_store.run_refresh_script"),
+    ):
         plan = create_refresh_plan(executor, policy=policy)
         assert any(
             a.kind == RefreshKind.SCRIPT for a in plan.refresh_assets
@@ -1289,11 +1292,14 @@ def test_expected_probe_does_not_absorb_a_warehouse_failure(executor):
     Injected: a real connection failure is not reproducible on demand.
     """
     ds = _ds(executor)
-    with patch.object(
-        executor,
-        "execute_ephemeral",
-        side_effect=RuntimeError("connection reset by peer"),
-    ), pytest.raises(RuntimeError, match="connection reset"):
+    with (
+        patch.object(
+            executor,
+            "execute_ephemeral",
+            side_effect=RuntimeError("connection reset by peer"),
+        ),
+        pytest.raises(RuntimeError, match="connection reset"),
+    ):
         probe_expected_partitions(ds, executor, set())
 
 
@@ -1301,8 +1307,9 @@ def test_expected_probe_restores_hidden_datasources_after_a_failure(executor):
     """The probe mutates the environment; a raise must not leave it stripped."""
     ds = _ds(executor)
     before = dict(executor.environment.datasources)
-    with patch.object(
-        executor, "execute_ephemeral", side_effect=RuntimeError("x")
-    ), pytest.raises(RuntimeError):
+    with (
+        patch.object(executor, "execute_ephemeral", side_effect=RuntimeError("x")),
+        pytest.raises(RuntimeError),
+    ):
         probe_expected_partitions(ds, executor, set())
     assert executor.environment.datasources == before

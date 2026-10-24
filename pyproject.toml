@@ -58,11 +58,10 @@ name = "pytrilogy"
 description = "Declarative, typed query language that compiles to SQL."
 dynamic = ["dependencies", "version"]
 readme = {file = "README.md", content-type = "text/markdown"}
+requires-python = ">=3.11"
 classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -78,6 +77,8 @@ postgres = ["psycopg2-binary"]
 mysql = ["pymysql"]
 bigquery = ["sqlalchemy-bigquery"]
 snowflake = ["snowflake-sqlalchemy"]
+clickhouse = ["clickhouse-sqlalchemy"]
+chdb = ["chdb"]
 ai = ["httpx"]
 cli = ["rich", "plotext<6"]
 serve = ["fastapi", "uvicorn"]

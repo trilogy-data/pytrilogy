@@ -408,9 +408,10 @@ assert count(id) >= 0.75 * prior(count(id))
 assert count(id ? flag) >= 0.5 * prior(count(id ? flag));
 """)
         executor.execute_raw_sql("DELETE FROM raw WHERE id >= 10")
-        with caplog.at_level("WARNING", logger="trilogy"), pytest.raises(
-            DatasourceAssertionError
-        ) as info:
+        with (
+            caplog.at_level("WARNING", logger="trilogy"),
+            pytest.raises(DatasourceAssertionError) as info,
+        ):
             executor.update_datasource(executor.environment.datasources["built"])
         assert "previous asset cannot answer `count(id ? flag = True)" in caplog.text
         assert "count(id) = 10, prior(count(id)) = 1000" in str(info.value)

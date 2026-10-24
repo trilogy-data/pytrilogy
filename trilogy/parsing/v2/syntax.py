@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import TypeAlias, cast
-
-from lark import Token, Tree
+from typing import TypeAlias
 
 
 class SyntaxNodeKind(str, Enum):
@@ -830,38 +828,3 @@ def _syntax_error(syntax: SyntaxElement, message: str) -> Exception:
     from trilogy.parsing.v2.model import HydrationDiagnostic, HydrationError
 
     return HydrationError(HydrationDiagnostic.from_syntax(message, syntax))
-
-
-def syntax_from_parser(element: Tree[Token] | Token) -> SyntaxElement:
-    if isinstance(element, Tree):
-        meta = element.meta
-        return SyntaxNode(
-            element.data,
-            [syntax_from_parser(child) for child in element.children],
-            None if meta.empty else meta.line,
-            None if meta.empty else meta.column,
-            None if meta.empty else meta.end_line,
-            None if meta.empty else meta.end_column,
-            None if meta.empty else meta.start_pos,
-            None if meta.empty else meta.end_pos,
-            LARK_NODE_KIND.get(element.data),
-        )
-    if isinstance(element, Token):
-        return SyntaxToken(
-            element.type,
-            element.value,
-            element.line,
-            element.column,
-            element.end_line,
-            element.end_column,
-            element.start_pos,
-            element.end_pos,
-            LARK_TOKEN_KIND.get(element.type),
-        )
-    msg = f"Unknown syntax element {element!r}"
-    raise TypeError(msg)
-
-
-def syntax_document_from_parser(text: str, tree: Tree[Token]) -> SyntaxDocument:
-    syntax = syntax_from_parser(tree)
-    return SyntaxDocument(text=text, tree=cast(SyntaxNode, syntax))
