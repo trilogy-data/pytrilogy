@@ -156,7 +156,7 @@ class PrestoEngine(ExecutionEngine):
 
 
 @fixture()
-def presto_engine(presto_model, mocker) -> Generator[Executor, None, None]:
+def presto_engine(presto_model) -> Generator[Executor, None, None]:
     executor = Dialects.PRESTO.default_executor(
         environment=presto_model,
         conf=PrestoConfig(
@@ -172,7 +172,7 @@ def presto_engine(presto_model, mocker) -> Generator[Executor, None, None]:
 
 
 @fixture()
-def trino_engine(presto_model, mocker) -> Generator[Executor, None, None]:
+def trino_engine(presto_model) -> Generator[Executor, None, None]:
     executor = Dialects.TRINO.default_executor(
         environment=presto_model,
         conf=TrinoConfig(

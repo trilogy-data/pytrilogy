@@ -246,9 +246,10 @@ class ParquetStreamWriter:
         import pyarrow.parquet as pq
 
         rows = 0
-        with self.open_sink() as sink, pq.ParquetWriter(
-            sink, schema, compression=self.compression
-        ) as writer:
+        with (
+            self.open_sink() as sink,
+            pq.ParquetWriter(sink, schema, compression=self.compression) as writer,
+        ):
             for batch in batches:
                 writer.write_batch(batch)
                 rows += batch.num_rows

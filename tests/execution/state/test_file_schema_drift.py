@@ -147,9 +147,14 @@ def test_an_unexpected_describe_error_is_not_absorbed(tmp_path):
     target = _built(tmp_path, "target.parquet")
     executor = _executor(tmp_path, target.as_posix())
 
-    with patch.object(
-        type(executor.generator), "get_file_columns", side_effect=RuntimeError("boom")
-    ), pytest.raises(RuntimeError, match="boom"):
+    with (
+        patch.object(
+            type(executor.generator),
+            "get_file_columns",
+            side_effect=RuntimeError("boom"),
+        ),
+        pytest.raises(RuntimeError, match="boom"),
+    ):
         create_refresh_plan(executor)
 
 

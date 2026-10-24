@@ -393,9 +393,10 @@ class FunctionDefinitionPlan(StatementPlanBase):
         # The pending overlay exposes scoped placeholders staged by
         # ConceptLookup to v1 helpers (FunctionFactory / parsing.common)
         # that read environment.concepts directly during the same hydration.
-        with hydrator.symbol_table.function_scope(
-            self.parameter_names
-        ), hydrator.semantic_state.pending_overlay_scope():
+        with (
+            hydrator.symbol_table.function_scope(self.parameter_names),
+            hydrator.semantic_state.pending_overlay_scope(),
+        ):
             self.output = hydrator.hydrate_rule(self.syntax)
         if self.output is None:
             return

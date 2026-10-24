@@ -58,11 +58,10 @@ name = "pytrilogy"
 description = "Declarative, typed query language that compiles to SQL."
 dynamic = ["dependencies", "version"]
 readme = {file = "README.md", content-type = "text/markdown"}
+requires-python = ">=3.11"
 classifiers = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -78,14 +77,17 @@ postgres = ["psycopg2-binary"]
 mysql = ["pymysql"]
 bigquery = ["sqlalchemy-bigquery"]
 snowflake = ["snowflake-sqlalchemy"]
+clickhouse = ["clickhouse-sqlalchemy"]
+chdb = ["chdb"]
 ai = ["httpx"]
 cli = ["rich", "plotext<6"]
 serve = ["fastapi", "uvicorn"]
 mcp = ["fastapi", "uvicorn", "mcp>=2,<3"]
 analysis = ["altair", "pandas", "vl-convert-python"]
 report = ["markdown", "altair", "pandas", "vl-convert-python", "playwright"]
-# vgi-python 0.46 speaks VGI protocol 2.2, which needs haybarn 1.5.6's vgi extension.
-vgi = ["haybarn>=1.5.6rc1", "vgi-python>=0.46; python_version >= '3.13'"]
+# The vgi extension is installed live from the DuckDB community repo, so vgi-python
+# and crates/trilogy-io's `vgi` crate must track its current release together.
+vgi = ["haybarn>=1.5.6rc1", "vgi-python>=0.47; python_version >= '3.13'"]
 
 
 [tool.setuptools.dynamic]

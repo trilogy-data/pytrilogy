@@ -124,8 +124,9 @@ def test_second_positional_where_slot_still_ands(backend: ParserBackend) -> None
 
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_staged_chain_conflicts_with_second_slot(backend: ParserBackend) -> None:
-    with _using_backend(backend), pytest.raises(
-        Exception, match="consolidate into one staged where"
+    with (
+        _using_backend(backend),
+        pytest.raises(Exception, match="consolidate into one staged where"),
     ):
         _select(MODEL + """
 where cat = 'a' then where sum(val) > 10
@@ -175,8 +176,9 @@ select id;
 def test_same_computation_in_two_stages_rejected(backend: ParserBackend) -> None:
     # `sum(val) by cat` names a different value per stage (each stage has its
     # own input population) but the identical spelling resolves to one concept
-    with _using_backend(backend), pytest.raises(
-        InvalidSyntaxException, match="same computation"
+    with (
+        _using_backend(backend),
+        pytest.raises(InvalidSyntaxException, match="same computation"),
     ):
         _select(MODEL + """
 where sum(val) by cat > 5
@@ -190,8 +192,9 @@ def test_same_computation_under_two_spellings_rejected(backend: ParserBackend) -
     # the two stages spell it differently but resolve to one build address, so
     # the graph's address-keyed stage split cannot tell them apart
     model = MODEL + "auto sv <- sum(val) by cat;\n"
-    with _using_backend(backend), pytest.raises(
-        InvalidSyntaxException, match="same computation"
+    with (
+        _using_backend(backend),
+        pytest.raises(InvalidSyntaxException, match="same computation"),
     ):
         _select(model + """
 where sum(val) by cat > 5
@@ -204,8 +207,9 @@ select id;
 def test_scalar_wrapped_computation_in_two_stages_rejected(
     backend: ParserBackend,
 ) -> None:
-    with _using_backend(backend), pytest.raises(
-        InvalidSyntaxException, match="same computation"
+    with (
+        _using_backend(backend),
+        pytest.raises(InvalidSyntaxException, match="same computation"),
     ):
         _select(MODEL + """
 where sum(val) by cat > 5
@@ -217,8 +221,9 @@ select id;
 @pytest.mark.parametrize("backend", BACKENDS)
 def test_same_named_metric_in_two_stages_rejected(backend: ParserBackend) -> None:
     model = MODEL + "auto sv <- sum(val) by cat;\n"
-    with _using_backend(backend), pytest.raises(
-        InvalidSyntaxException, match="same computation"
+    with (
+        _using_backend(backend),
+        pytest.raises(InvalidSyntaxException, match="same computation"),
     ):
         _select(model + """
 where sv > 5

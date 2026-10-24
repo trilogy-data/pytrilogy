@@ -259,8 +259,9 @@ def test_scoped_inner_join_rejected(models: Path, backend: ParserBackend) -> Non
         "import orders as orders;\nimport customers as customers;\n"
         "INNER JOIN orders.ckey = customers.cid SELECT customers.region;"
     )
-    with _using_backend(backend), pytest.raises(
-        HydrationError, match="inner` join is not supported"
+    with (
+        _using_backend(backend),
+        pytest.raises(HydrationError, match="inner` join is not supported"),
     ):
         parse_text(text, root=models)
 
@@ -274,7 +275,8 @@ def test_filter_chained_onto_join_points_to_where(
         "subset join customers.cid = orders.ckey and orders.amt > 0 "
         "SELECT customers.region;"
     )
-    with _using_backend(backend), pytest.raises(
-        InvalidSyntaxException, match="Filter input rows in `where`"
+    with (
+        _using_backend(backend),
+        pytest.raises(InvalidSyntaxException, match="Filter input rows in `where`"),
     ):
         parse_text(text, root=models)

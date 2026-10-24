@@ -1,14 +1,13 @@
 pytest
 pytest-cov
-pytest-mock
+# parity oracle for the pest parser; not a runtime dependency
+lark
 duckdb<1.5.4
-duckdb-engine
 mypy
 # 0.16.0 false-positives PYI041 on the build-dispatch union; fixed in 0.16.2
 ruff>=0.16.2
 black
 pandas<3.0.0
-types-tabulate
 google-cloud-bigquery
 sqlalchemy-bigquery
 #fakesnow needs an upgrade to support 1.9; it calls CURRENT_VERSION which isn't mocked and hits duckdb
@@ -19,12 +18,11 @@ fakesnow
 matplotlib
 networkx
 tomli-w
-types-tabulate
 httpx
 maturin
 fastapi
 uvicorn
-mcp>=2,<3; python_version >= "3.10"
+mcp>=2,<3
 altair
 vl-convert-python
 markdown

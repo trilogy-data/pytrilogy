@@ -582,8 +582,9 @@ def test_parse_text_v2_align_comma_between_groups_actionable(
         "SELECT label, count(one) as c, MERGE SELECT label2, count(two) as c2,"
         " ALIGN k: label, label2, k2: c, c2 ORDER BY c desc;"
     )
-    with _using_backend(backend), pytest.raises(
-        InvalidSyntaxException, match=r"separated by `and`"
+    with (
+        _using_backend(backend),
+        pytest.raises(InvalidSyntaxException, match=r"separated by `and`"),
     ):
         parse_text(_ALIGN_MODEL + bad, Environment())
 
@@ -609,8 +610,9 @@ def test_parse_text_v2_multiselect_duplicate_arm_outputs_raise(
         "SELECT label as g, count(one) as c, MERGE SELECT label2 as g, count(two) as c,"
         " ALIGN grp: g, g ORDER BY grp;"
     )
-    with _using_backend(backend), pytest.raises(
-        InvalidSyntaxException, match="distinct output names"
+    with (
+        _using_backend(backend),
+        pytest.raises(InvalidSyntaxException, match="distinct output names"),
     ):
         parse_text(_ALIGN_MODEL + bad, Environment())
 
@@ -626,8 +628,9 @@ def test_parse_text_v2_multiselect_align_reuses_arm_name_raise(
         "SELECT label as g, count(one) as c, MERGE SELECT label2 as g2, count(two) as c2,"
         " ALIGN g: g, g2 DERIVE coalesce(c, 0) as t ORDER BY g;"
     )
-    with _using_backend(backend), pytest.raises(
-        InvalidSyntaxException, match="reuses an arm output name"
+    with (
+        _using_backend(backend),
+        pytest.raises(InvalidSyntaxException, match="reuses an arm output name"),
     ):
         parse_text(_ALIGN_MODEL + bad, Environment())
 
@@ -922,8 +925,9 @@ def test_lark_parse_error_keeps_rich_error_codes() -> None:
     # The lark backend should still produce the numbered syntax hints even
     # after the pest decoupling. Regression guard: if parse_text starts
     # swallowing lark's UnexpectedToken again, these codes disappear.
-    with _using_backend(ParserBackend.LARK), pytest.raises(
-        InvalidSyntaxException, match=r"Syntax \[201\]"
+    with (
+        _using_backend(ParserBackend.LARK),
+        pytest.raises(InvalidSyntaxException, match=r"Syntax \[201\]"),
     ):
         parse_text("key revenue float;\nSELECT revenue + 1 total;", Environment())
 
