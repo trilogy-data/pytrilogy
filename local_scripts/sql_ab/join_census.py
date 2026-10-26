@@ -379,7 +379,7 @@ def summarize(out: dict) -> None:
         if verdict != "EXACT":
             misses.append((verdict, k, sorted(actual), sorted(predicted)))
     total = sum(verdicts.values())
-    print(f"\nstage-2 pairing rule vs resolve-time keys over {total} FINAL merges:")
+    print(f"\nplanned join keys vs resolve-time keys over {total} FINAL merges:")
     for verdict in ("EXACT", "UNDER", "OVER", "DIFFERENT"):
         print(f"  {verdicts[verdict]:4d}  {verdict}")
     for verdict, k, actual, predicted in sorted(misses):
