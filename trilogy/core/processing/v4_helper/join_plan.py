@@ -150,17 +150,18 @@ def lineage_pinned_grain(
 
 
 def authored_axes(
-    cover: Sequence[str],
+    groups: Sequence[str],
     attrs: dict[str, GroupAttrs],
     environment: BuildEnvironment,
     relation_edge_members: frozenset[str],
 ) -> frozenset[str]:
     """Members of an authored relation carried on the concept graph's RELATION
-    edges and hosted by different contributors: the sides recombine only
+    edges and hosted by different groups: the statement's sides recombine only
     through the authored equality (`union join rank orders.oid order by
-    orders.amt desc = customers.rnk`). An unhosted third member of a chained
-    relation is not this merge's to demand."""
-    if len(cover) < 2 or not relation_edge_members:
+    orders.amt desc = customers.rnk`), whichever groups the cover elects. An
+    unhosted third member of a chained relation is not the statement's to
+    demand."""
+    if len(groups) < 2 or not relation_edge_members:
         return frozenset()
     out: set[str] = set()
     for relation in environment.scoped_join_relations():
@@ -168,7 +169,7 @@ def authored_axes(
             continue
         hosts: set[str] = set()
         hosted: set[str] = set()
-        for gid in cover:
+        for gid in groups:
             have = relation & set(attrs[gid].members)
             if have:
                 hosts.add(gid)
@@ -182,8 +183,7 @@ def merge_axes(
     cover: Sequence[str],
     attrs: dict[str, GroupAttrs],
     mandatory_list: Sequence[BuildConcept],
-    environment: BuildEnvironment,
-    relation_edge_members: frozenset[str],
+    authored: frozenset[str],
 ) -> frozenset[str]:
     """Every key some contributor's rows are identified by: a candidate join
     axis. A BASIC over aggregates (`customer_status <- case ... min(x) by
@@ -200,9 +200,7 @@ def merge_axes(
             or concept.derivation == Derivation.ROWSET
         ) and concept.grain:
             axes |= set(concept.grain.components)
-    if environment.scoped_join_key_groups:
-        axes |= authored_axes(cover, attrs, environment, relation_edge_members)
-    return frozenset(axes)
+    return frozenset(axes) | authored
 
 
 def row_identity(
@@ -383,6 +381,28 @@ def _over_own_rows(group: GroupAttrs) -> frozenset[str]:
     return frozenset(held)
 
 
+def _from_row_parents(
+    group_graph: nx.DiGraph, attrs: dict[str, GroupAttrs], gid: str
+) -> frozenset[str]:
+    """What a row stream's ROOT or row-preserving parents output: it passes
+    their rows through, columns and all (`item_name as p_name` off the sale
+    lines holds the store each line was sold at)."""
+    if attrs[gid].derivation in GROUPING_DERIVATIONS or attrs[gid].derivation in (
+        Derivation.ROOT,
+        Derivation.ROWSET,
+    ):
+        return frozenset()
+    return frozenset().union(
+        *(
+            attrs[parent].output_concepts
+            for parent in group_graph.predecessors(gid)
+            if parent in attrs
+            and attrs[parent].derivation
+            in (Derivation.ROOT, Derivation.BASIC, Derivation.FILTER)
+        )
+    )
+
+
 def _joined_on(group: GroupAttrs) -> frozenset[str]:
     """The keys a row stream's inputs are stitched on, as its input contracts
     declare them: its rows hold them (`sale_recency` over a by-customer
@@ -426,25 +446,29 @@ def _carries(
     return held | (sibling_keys & closure)
 
 
-def _renderable_members(
-    carried: frozenset[str], environment: BuildEnvironment
+def _renderable(
+    carried: frozenset[str],
+    candidates: Iterable[str],
+    environment: BuildEnvironment,
+    derivations: frozenset[Derivation] | None = None,
 ) -> frozenset[str]:
-    """Authored relation members a side renders off what it carries: an
-    expression member (`subset join b.oid + 1 = a.oid`) is no group's column,
-    and is computed on the side holding its arguments."""
+    """Of `candidates`, what a side renders off the columns it carries: an
+    expression relation member (`subset join b.oid + 1 = a.oid`) or a row
+    derivation a sibling is keyed by (`case sort_k ... end -> label`) is no
+    group's column of this side, and is computed where its arguments are."""
     out: set[str] = set()
-    for relation in environment.scoped_join_relations():
-        for address in relation - carried:
-            concept = environment.concepts.get(
-                address
-            ) or environment.alias_origin_lookup.get(address)
-            if (
-                concept is not None
-                and concept.lineage is not None
-                and concept.lineage.concept_arguments
-                and {a.address for a in concept.lineage.concept_arguments} <= carried
-            ):
-                out.add(address)
+    for address in set(candidates) - carried:
+        concept = environment.concepts.get(
+            address
+        ) or environment.alias_origin_lookup.get(address)
+        if (
+            concept is not None
+            and concept.lineage is not None
+            and concept.lineage.concept_arguments
+            and (derivations is None or concept.derivation in derivations)
+            and {a.address for a in concept.lineage.concept_arguments} <= carried
+        ):
+            out.add(address)
     return frozenset(out)
 
 
@@ -551,7 +575,7 @@ def plan_final_join(
     cover: dict[str, list[BuildConcept]],
     mandatory_list: Sequence[BuildConcept],
     environment: BuildEnvironment,
-    relation_edge_members: frozenset[str] = frozenset(),
+    authored: frozenset[str] = frozenset(),
     split: frozenset[str] = frozenset(),
 ) -> JoinPlan:
     """The plan for merging `cover` (contributor -> the outputs it supplies).
@@ -559,9 +583,7 @@ def plan_final_join(
     which pair on anything they both hold: that is the one relation, never a
     key to carry."""
     contributors = tuple(cover)
-    axes = merge_axes(
-        contributors, attrs, mandatory_list, environment, relation_edge_members
-    )
+    axes = merge_axes(contributors, attrs, mandatory_list, authored)
     pins = {
         gid: row_identity(group_graph, attrs, gid, contributors, axes, environment)
         for gid in contributors
@@ -581,7 +603,8 @@ def plan_final_join(
         if attrs[gid].derivation == Derivation.ROOT
     }
     carries = {
-        gid: _carries(
+        gid: _from_row_parents(group_graph, attrs, gid)
+        | _carries(
             attrs[gid],
             identity[gid],
             frozenset().union(*(identity[o] for o in contributors if o != gid))
@@ -591,11 +614,18 @@ def plan_final_join(
         | carry_demands.get(gid, frozenset())
         for gid in contributors
     }
-    if environment.scoped_join_key_groups:
-        carries = {
-            gid: held | _renderable_members(held, environment)
-            for gid, held in carries.items()
-        }
+    members = environment.all_scoped_join_group_members()
+    carries = {
+        gid: held
+        | _renderable(held, members, environment)
+        | _renderable(
+            held,
+            frozenset().union(*(identity[o] for o in contributors if o != gid)),
+            environment,
+            frozenset({Derivation.BASIC}),
+        )
+        for gid, held in carries.items()
+    }
     scalars = frozenset(
         gid for gid in contributors if _single_row(attrs[gid], environment)
     )

@@ -79,7 +79,7 @@ from .functional_dependency import (
 )
 from .group_behaviors import Behavior, behavior_for
 from .group_rules import DEFAULT_RULE, GROUPING_RULES
-from .join_plan import final_predecessors, merge_axes, row_identity
+from .join_plan import authored_axes, final_predecessors, merge_axes, row_identity
 from .models import (
     ConceptAttrs,
     FinalAssemblyContract,
@@ -691,11 +691,10 @@ def _refresh_final_contract(
     # every side's rows are just its projected member, those columns add only
     # rows the dedup to the outputs removes (`year` per sale line beside
     # `ticket`).
+    groups = final_predecessors(group_graph, attrs)
+    authored = authored_axes(groups, attrs, environment, relation_edge_members)
     if axis_only_projection and attrs[FINAL_NODE_ID].condition_atoms:
-        groups = final_predecessors(group_graph, attrs)
-        axes = merge_axes(
-            groups, attrs, mandatory_list, environment, relation_edge_members
-        )
+        axes = merge_axes(groups, attrs, mandatory_list, authored)
         axis_only_projection = not all(
             row_identity(group_graph, attrs, gid, groups, axes, environment)
             <= output_addresses
@@ -704,7 +703,7 @@ def _refresh_final_contract(
     attrs[FINAL_NODE_ID].final_contract = FinalAssemblyContract(
         output_addresses=output_addresses,
         required_grain=frozenset(BuildGrain.from_concepts(mandatory_list).components),
-        relation_edge_members=relation_edge_members,
+        authored_axes=authored,
         deduplicate_to_grain=not axis_only_projection,
     )
 
@@ -1304,12 +1303,12 @@ def _widen_mixed_scalar_basic_to_final_spine(
         candidates.append(gid)
     if not candidates:
         return
+    groups = final_predecessors(group_graph, attrs)
     spine = merge_axes(
-        final_predecessors(group_graph, attrs),
+        groups,
         attrs,
         mandatory_list,
-        environment,
-        relation_edge_members,
+        authored_axes(groups, attrs, environment, relation_edge_members),
     )
     # Only a spine that is the result's own row identity qualifies: every
     # spine key is a requested output, or is FD-determined by them (the by-key

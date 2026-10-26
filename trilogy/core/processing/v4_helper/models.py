@@ -131,9 +131,9 @@ class FinalAssemblyContract:
 
     output_addresses: frozenset[str] = frozenset()
     required_grain: frozenset[str] = frozenset()
-    # members of authored relations carried on the concept graph's RELATION
-    # edges; the join plan pairs the contributors hosting them on them
-    relation_edge_members: frozenset[str] = frozenset()
+    # authored relation members hosted by different groups: the statement's
+    # sides recombine through them (`join_plan.authored_axes`)
+    authored_axes: frozenset[str] = frozenset()
     deduplicate_to_grain: bool = True
 
 

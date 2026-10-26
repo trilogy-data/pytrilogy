@@ -3936,8 +3936,13 @@ def _promote_final_aliases_to_grouping_contributors(
             # column that is non-unique in its own table (an SCD business key)
             # multiplies every rollup row. Ask what the node EMITS, which is
             # the same question the dedup asks.
-            if attrs[gid].derivation not in GROUPING_DERIVATIONS and not (
-                has_grouping_output(gid)
+            # The group the renames read holds their rows by construction:
+            # built apart, the rename stream joins its host back on whatever
+            # row key both were sourced at.
+            if (
+                attrs[gid].derivation not in GROUPING_DERIVATIONS
+                and not has_grouping_output(gid)
+                and gid not in nx.ancestors(group_graph, src_gid)
             ):
                 continue
             available = {output.address for output in built[gid].output_concepts}
@@ -5310,13 +5315,7 @@ def _assemble_final_node(
         group_graph,
         built,
         per_group,
-        merge_axes(
-            list(built),
-            attrs,
-            mandatory_list,
-            environment,
-            final_contract.relation_edge_members,
-        ),
+        merge_axes(list(built), attrs, mandatory_list, final_contract.authored_axes),
         environment,
     )
     _add_partial_completion_contributors(built, per_group, environment)
@@ -5365,7 +5364,7 @@ def _assemble_final_node(
         per_group,
         mandatory_list,
         environment,
-        final_contract.relation_edge_members,
+        final_contract.authored_axes,
     )
     final_merge_grain = plan.merge_grain
     origin = {id(node): gid for gid, node in built.items()}
@@ -5552,7 +5551,7 @@ def _assemble_final_node(
         {gid: per_group.get(gid, []) for gid in sides},
         mandatory_list,
         environment,
-        final_contract.relation_edge_members,
+        final_contract.authored_axes,
         split=frozenset(gid for gid in sides if sides.count(gid) > 1),
     )
     logger.info(f"[v4] FINAL join plan: {merge_plan}")
