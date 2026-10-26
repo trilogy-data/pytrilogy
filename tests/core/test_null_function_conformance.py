@@ -133,9 +133,12 @@ UNPROBED = {
 }
 
 # NULL from non-null arguments on another dialect only: DuckDB's
-# regexp_extract gives '' on no match (BigQuery gives NULL), and a struct
-# field is NULL only when stored so.
+# regexp_extract gives '' on no match (BigQuery gives NULL), a struct
+# field is NULL only when stored so, and DuckDB 2.x raises on `x % 0`
+# (1.x, MySQL and SQLite give NULL).
 NULL_ELSEWHERE = {F.REGEXP_EXTRACT, F.ATTR_ACCESS}
+if int(duckdb.__version__.split(".")[0]) >= 2:
+    NULL_ELSEWHERE.add(F.MOD)
 
 
 def _evaluate(op: FunctionType, args: list[str], kinds: list[Any]) -> Any:
