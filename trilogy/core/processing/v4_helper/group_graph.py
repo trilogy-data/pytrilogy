@@ -670,28 +670,11 @@ def _lineage_pinned_grain(
     coalesce(min(x) by cell, tree_id)`) varies per row, so its rows are unique
     at the row grain, not the aggregate's; pinning only the barrier claims a
     coarser grain than the rows have and the FINAL merge regroups a 1:1 join
-    back onto those rows. A barrier's own grain key is the exception: a
-    derived `by` key (`event_date <- date(event_time)`) is the axis the
-    barrier's rows are unique on, not a row input beside it, so its lineage
-    pins nothing finer. With no barrier anywhere nothing is pinned: a plain
+    back onto those rows. With no barrier anywhere nothing is pinned: a plain
     BASIC over row columns regenerates at any grain. Members of an AUTHORED
     scoped-join relation are skipped: the authored keys are the axis there,
     and pairing on internal grain too would silently narrow the authored
     fan-out."""
-    grain, _ = _lineage_pin_walk(addresses, environment, frozenset())
-    if not grain:
-        return frozenset()
-    _, row_grain = _lineage_pin_walk(addresses, environment, frozenset(grain))
-    return frozenset(grain | row_grain)
-
-
-def _lineage_pin_walk(
-    addresses: frozenset[str] | set[str],
-    environment: BuildEnvironment,
-    stop_at: frozenset[str],
-) -> tuple[set[str], set[str]]:
-    """Barrier grain and row grain reached from ``addresses``, never walking
-    into a ``stop_at`` concept."""
     scoped_members = environment.all_scoped_join_group_members()
     stack: list[BuildConcept] = []
     for addr in addresses:
@@ -702,7 +685,7 @@ def _lineage_pin_walk(
             stack.append(concept)
     grain: set[str] = set()
     row_grain: set[str] = set()
-    seen: set[str] = set(stop_at)
+    seen: set[str] = set()
     while stack:
         concept = stack.pop()
         if concept.address in seen:
@@ -730,7 +713,7 @@ def _lineage_pin_walk(
             stack.extend(concept.lineage.concept_arguments)
         elif concept.derivation == Derivation.ROOT and concept.grain:
             row_grain |= set(concept.grain.components)
-    return grain, row_grain
+    return frozenset(grain | row_grain) if grain else frozenset()
 
 
 def _final_merge_grain(
@@ -747,8 +730,9 @@ def _final_merge_grain(
         # Every contributor's grain is a merge axis, not only a grouping one: a
         # BASIC over aggregates (`customer_status <- case ... min(x) by user`)
         # sits at user grain and its CTE emits that key; without it no ROOT
-        # sibling can be given a join key and the merge falls to ON 1=1.
-        grain |= set(attrs[gid].grain_components)
+        # sibling can be given a join key and the merge falls to ON 1=1. Only
+        # the keys it emits: a grain its rows never carry is no join axis.
+        grain |= set(attrs[gid].emitted_grain)
         # a region domain's rows are keyed by its spans, and every solid
         # contributor joins them there
         grain |= set(attrs[gid].extent_spans)
@@ -814,7 +798,7 @@ def _group_final_grain_contribution(
     # the FINAL merge cross-joins ON 1=1. Global `merge` identities are
     # excluded; they pair INNER and never define a statement's join axis
     # (advertising one strands a partial dimension).
-    available = set(attrs[gid].input_concepts) | set(attrs[gid].output_concepts)
+    available = attrs[gid].row_columns
     rowset_keys = (
         _statement_scoped_relation_members(environment) & merge_grain & available
     )
@@ -824,9 +808,11 @@ def _group_final_grain_contribution(
     # advertising it the assembly-side merge grain (union of contributor
     # projection grains) can collapse to empty, which disables every join-key
     # preservation guard in `_wrap_for_grain` and cross-joins the FINAL
-    # parents ON 1=1.
+    # parents ON 1=1. Only the pins it carries: a derived `by` key's row
+    # lineage (`event_date <- date(event_time)`) reaches a fact grain the
+    # contributor's rows, read off the barrier, never hold.
     pinned = frozenset(attrs[gid].output_concepts) or frozenset(attrs[gid].members)
-    rowset_keys |= _lineage_pinned_grain(pinned, environment)
+    rowset_keys |= _lineage_pinned_grain(pinned, environment) & available
     # A row derivation its grouped siblings' grain does not determine (`ret +
     # 1` per line beside `sum(qty) by order`) pairs on its own grain:
     # projected at the coarser one, its rows collapse onto a merge key and
@@ -845,7 +831,7 @@ def _group_final_grain_contribution(
             environment, set(grouped), set(attrs[gid].primary_members)
         )
     ):
-        rowset_keys |= attrs[gid].grain_components & merge_grain
+        rowset_keys |= attrs[gid].emitted_grain & merge_grain
     # A row stream reading a region domain is the region's rows (`customer_id
     # as c2`), and pairs on the spans as the domain would. Folded into this
     # contributor, the domain no longer advertises them itself, and a sibling

@@ -28,6 +28,7 @@ from trilogy.core.enums import (
     ComparisonOperator,
     Derivation,
     FunctionType,
+    Granularity,
     JoinType,
     Ordering,
     Purpose,
@@ -4636,7 +4637,12 @@ def _relevant_root_preserve_keys(
     preserve_keys: frozenset[str],
     member_addresses: frozenset[str] = frozenset(),
 ) -> frozenset[str]:
-    if not preserve_keys:
+    # A single-row output pairs with every row: any key "determines" it, and
+    # keeping one would re-source a scalar at that key's grain.
+    output_concepts = [
+        c for c in output_concepts if c.granularity != Granularity.SINGLE_ROW
+    ]
+    if not preserve_keys or not output_concepts:
         return frozenset()
     output_addresses = {concept.address for concept in output_concepts}
     statement_members = _statement_scoped_relation_members(environment)
@@ -5440,7 +5446,7 @@ def _assemble_final_node(
                 address
                 for other in contributing
                 if other != gid and other in attrs
-                for address in attrs[other].grain_components
+                for address in attrs[other].emitted_grain
             }
             preserve_keys |= contributor_contract.preserve_keys & sibling_grain
             preserve_keys = _relevant_root_preserve_keys(
