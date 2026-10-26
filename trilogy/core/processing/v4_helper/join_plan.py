@@ -360,6 +360,20 @@ def _boundary_columns(
     )
 
 
+def _over_own_rows(group: GroupAttrs) -> frozenset[str]:
+    """The other row arguments of an atom `group` hosts that reads its own
+    outputs (`date = max_date` on the `max(date)` group): it is decided after
+    the value exists, against rows that still hold those arguments. An atom
+    over inputs alone (`id > 2`) filters before and leaves nothing behind."""
+    outputs = set(group.output_concepts)
+    held: set[str] = set()
+    for atom in group.condition_atoms:
+        args = {c.address for c in atom.row_arguments}
+        if args & outputs:
+            held |= args - outputs
+    return frozenset(held)
+
+
 def _carries(
     group: GroupAttrs,
     identity: frozenset[str],
@@ -371,12 +385,18 @@ def _carries(
     its grain when it reads source rows (a scan holds its row keys; a BASIC
     over aggregates is computed off their rows and does not), and any merge
     key its identity determines (a filter at `item.sk` is widened to
-    `item.manufact` to pair with an aggregate by it)."""
+    `item.manufact` to pair with an aggregate by it). Any group also holds
+    what an atom over its own outputs is decided against."""
     if group.derivation in GROUPING_DERIVATIONS:
-        return frozenset(group.output_concepts)
+        return frozenset(group.output_concepts) | _over_own_rows(group)
     if group.derivation == Derivation.ROWSET:
         return frozenset(group.output_concepts) | _boundary_columns(group, environment)
-    held = frozenset(group.output_concepts) | group.row_columns | set(group.members)
+    held = (
+        frozenset(group.output_concepts)
+        | group.row_columns
+        | set(group.members)
+        | _over_own_rows(group)
+    )
     if not lineage_pinned_grain(group.output_concepts or group.members, environment):
         held |= group.grain_components
     # a ROOT carries exactly its carry demand beyond what it holds
@@ -387,6 +407,9 @@ def _carries(
 
 
 def _single_row(group: GroupAttrs, environment: BuildEnvironment) -> bool:
+    """Every output is one row's worth, and no atom keeps rows beside them."""
+    if _over_own_rows(group):
+        return False
     concepts = [
         c
         for addr in group.output_concepts
