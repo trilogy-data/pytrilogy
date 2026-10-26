@@ -81,11 +81,10 @@ def pytest_runtest_protocol(item, nextitem):
     paths.pop("final.merge_sides", None)
     paths.pop("final.cover_contributors", None)
     if paths and _out is not None:
-        _out.write(json.dumps({"nodeid": item.nodeid, "paths": paths}) + "
-")
+        _out.write(json.dumps({"nodeid": item.nodeid, "paths": paths}) + "\n")
 
 
 def pytest_unconfigure(config) -> None:
     if _out is not None:
-        _out.write(json.dumps({"seen": _state["seen"], **_state}) + "\n")
+        _out.write(json.dumps(_state) + "\n")
         _out.close()
