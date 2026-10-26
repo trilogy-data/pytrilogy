@@ -14,7 +14,7 @@ from enum import Enum
 from itertools import combinations
 
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation, Granularity
+from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.models.build import (
     BuildConcept,
     BuildRowsetItem,
@@ -45,8 +45,9 @@ class Pairing:
     right: str
     keys: frozenset[str]
     kind: PairingKind
-    # shared columns the keys determine: equating them too changes nothing,
-    # so resolve may (a side's physical grain is never pruned)
+    # what the keys determine: equating it too changes nothing, so resolve
+    # may (a side's physical grain is never pruned, a re-sourced side carries
+    # its raw key)
     implied: frozenset[str] = frozenset()
 
 
@@ -401,9 +402,9 @@ def _carries(
     group's outputs; a rowset's boundary; a row stream's inputs and members,
     its grain when it reads source rows (a scan holds its row keys; a BASIC
     over aggregates is computed off their rows and does not), and any merge
-    key a sibling is identified by that its own identity determines (a
-    filter at `item.sk` is widened to `item.manufact` to pair with an
-    aggregate by it). Any group also holds
+    key a sibling is identified by, or authored relation member, that its own
+    identity determines (a filter at `item.sk` is widened to `item.manufact`
+    to pair with an aggregate by it). Any group also holds
     what an atom over its own outputs is decided against."""
     if group.derivation in GROUPING_DERIVATIONS:
         return frozenset(group.output_concepts) | _over_own_rows(group)
@@ -461,6 +462,24 @@ def _single_row(group: GroupAttrs, environment: BuildEnvironment) -> bool:
     )
 
 
+def _determined(keys: Iterable[str], environment: BuildEnvironment) -> frozenset[str]:
+    """What `keys` determine, a `unique` property determining its key too
+    (`unique property sk.id`: equal ids are one customer)."""
+    closure = frozenset(keys)
+    while True:
+        seed = closure | {
+            key
+            for address in closure
+            if (c := environment.concepts.get(address)) is not None
+            and c.purpose == Purpose.UNIQUE_PROPERTY
+            for key in c.keys or ()
+        }
+        grown = build_fd_closure(environment, seed, include_empty_grain=False)
+        if grown == closure:
+            return closure
+        closure = grown
+
+
 def _axis_of(
     address: str, roots: dict[str, str], environment: BuildEnvironment
 ) -> frozenset[str]:
@@ -502,17 +521,16 @@ def _pair(
         *(_axis_of(a, roots, environment) for a in identity[left] | identity[right])
     )
     keys = {a for a in shared if _axis_of(a, roots, environment) & axes}
+    # a relation both sides carry a member of is an axis by declaration;
+    # authored when the sides hold different members of it
     authored: set[str] = set()
     for relation in environment.scoped_join_relations():
         lhs, rhs = relation & carries[left], relation & carries[right]
-        if lhs and rhs and lhs | rhs != lhs & rhs:
-            authored |= lhs | rhs
-    keys |= authored
-    implied = (
-        shared & build_fd_closure(environment, keys, include_empty_grain=False)
-        if keys
-        else frozenset()
-    ) - keys
+        if lhs and rhs:
+            keys |= lhs | rhs
+            if lhs | rhs != lhs & rhs:
+                authored |= lhs | rhs
+    implied = (_determined(keys, environment) if keys else frozenset()) - keys
     if authored:
         kind = PairingKind.AUTHORED
     elif {left, right} & scalars:
@@ -562,7 +580,8 @@ def plan_final_join(
         gid: _carries(
             attrs[gid],
             identity[gid],
-            frozenset().union(*(identity[o] for o in contributors if o != gid)),
+            frozenset().union(*(identity[o] for o in contributors if o != gid))
+            | environment.all_scoped_join_group_members(),
             environment,
         )
         | carry_demands.get(gid, frozenset())
