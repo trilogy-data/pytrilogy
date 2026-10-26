@@ -3083,6 +3083,32 @@ def _reads_only_values_defined_everywhere(atom: BoolExpr, keyspace: Keyspace) ->
     )
 
 
+def _mergeable_outputs(parents: list[StrategyNode]) -> list[BuildConcept]:
+    """Every parent output a merge can read. An output each carrying parent
+    hides (a root scan's fallback column) is not readable unless a visible
+    output answers for it by address, pseudonym, or canonical address."""
+    visible: set[str] = set()
+    visible_canonical: set[str] = set()
+    for p in parents:
+        for o in p.usable_outputs:
+            visible.add(o.address)
+            visible.update(o.pseudonyms)
+            visible_canonical.add(o.canonical_address)
+    seen: set[str] = set()
+    outputs: list[BuildConcept] = []
+    for p in parents:
+        for o in p.output_concepts:
+            if o.address in seen:
+                continue
+            if o.address not in visible and o.canonical_address not in (
+                visible_canonical
+            ):
+                continue
+            seen.add(o.address)
+            outputs.append(o)
+    return outputs
+
+
 def _pre_merge_parents(
     parents: list[StrategyNode],
     environment: BuildEnvironment,
@@ -3125,13 +3151,7 @@ def _pre_merge_parents(
     # key it was missing needs no bridge.
     if group_graph is not None and built is not None:
         parents = _bridge_unpaired_parents(parents, group_graph, built, environment)
-    seen: set[str] = set()
-    all_outputs: list[BuildConcept] = []
-    for p in parents:
-        for o in p.output_concepts:
-            if o.address not in seen:
-                seen.add(o.address)
-                all_outputs.append(o)
+    all_outputs = _mergeable_outputs(parents)
     merged = MergeNode(
         input_concepts=all_outputs,
         output_concepts=all_outputs,
