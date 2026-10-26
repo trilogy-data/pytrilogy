@@ -55,3 +55,19 @@ Run a moved test twice on one tree before reading it as a plan change.
 A moved plan still needs its rows checked. The modeling suites compare rows
 against reference SQL; a plan that moved only in a test asserting nothing
 about rows needs a look.
+
+## Join census
+
+`join_census.py` answers a different question from the two oracles above: not
+"did the SQL move" but "where did each merge's join keys come from". It
+compiles the globbed corpus with the planner instrumented and reports, per
+statement, the FINAL merge's side count, which stage-2 and stage-3 join-key
+paths fired (preserve keys, fresh ROOT re-source, widening, bridging, regraft),
+the keys `get_node_joins` actually used, and whether the declarative pairing
+rule in `predicted_keys` would have stated the same keys from stage-2 facts.
+The gate it exists for is in `docs/join_axis_audit_2026_10.md`: that rule must
+predict every corpus FINAL before it is allowed to drive assembly.
+
+```bash
+python local_scripts/sql_ab/join_census.py /tmp/census.json "tests/modeling/**/*.preql" "tests/engine/**/*.preql" "tests/complex/**/*.preql" "tests/discovery/**/*.preql"
+```
