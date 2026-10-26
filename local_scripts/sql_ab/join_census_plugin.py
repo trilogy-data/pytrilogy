@@ -19,7 +19,6 @@ import pytest
 
 _out: IO[str] | None = None
 _state: dict[str, Any] = {"nodeid": None, "seen": 0, "mismatched": 0}
-_plans: dict[int, list[str]] = {}
 
 
 def pytest_configure(config) -> None:
@@ -32,40 +31,38 @@ def pytest_configure(config) -> None:
     import join_census as jc
 
     jc.install()
-    init = jc.mn.MergeNode.__init__
-
-    def merge_init(self, *a, **k):
-        init(self, *a, **k)
-        if id(self) in jc.FINAL_NODES:
-            _plans[id(self)] = list(jc.REC.get("final.plan_keys") or [])
-
-    jc.mn.MergeNode.__init__ = merge_init  # type: ignore[method-assign]
     resolved = jc.mn.get_node_joins
 
-    def get_node_joins(datasources, environment, *a, **k):
-        joins = resolved(datasources, environment, *a, **k)
-        node = jc.CURRENT_MERGE[-1] if jc.CURRENT_MERGE else None
-        if node is None or id(node) not in _plans or len(datasources) < 2:
-            return joins
-        planned = _plans[id(node)]
-        canon = environment.address_roots(set(jc.REC["final.join_keys"]) | set(planned))
-        actual = jc.canon(canon, jc.REC["final.join_keys"])
-        stated = jc.canon(canon, planned)
+    def get_node_joins(datasources, *a, **k):
+        planned = k.get("planned_keys")
+        if planned is None or len(datasources) < 2:
+            return resolved(datasources, *a, **k)
+        # what resolve picks unrestricted, beside what the plan states
+        shadow = resolved(datasources, *a, **{**k, "planned_keys": None})
+        environment = k["environment"]
+        actual = {
+            side.address
+            for join in shadow
+            for pair in getattr(join, "pairs", None) or []
+            for side in (pair.left, pair.right)
+        }
+        roots = environment.address_roots()
         _state["seen"] += 1
-        if actual != stated and _out is not None:
+        if {roots.get(a, a) for a in actual} != {roots.get(a, a) for a in planned}:
             _state["mismatched"] += 1
-            _out.write(
-                json.dumps(
-                    {
-                        "nodeid": _state["nodeid"],
-                        "sides": len(datasources),
-                        "actual": sorted(actual),
-                        "planned": sorted(stated),
-                    }
+            if _out is not None:
+                _out.write(
+                    json.dumps(
+                        {
+                            "nodeid": _state["nodeid"],
+                            "sides": len(datasources),
+                            "actual": sorted(actual),
+                            "planned": sorted(planned),
+                        }
+                    )
+                    + "\n"
                 )
-                + "\n"
-            )
-        return joins
+        return resolved(datasources, *a, **k)
 
     jc.mn.get_node_joins = get_node_joins
 

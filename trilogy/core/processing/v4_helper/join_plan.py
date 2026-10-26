@@ -368,13 +368,17 @@ def _carries(
 ) -> frozenset[str]:
     """The columns a contributor's rows hold or can be widened to: a grouping
     group's outputs; a rowset's boundary; a row stream's inputs and members,
-    and any merge key its identity determines (a filter at `item.sk` is
-    widened to `item.manufact` to pair with an aggregate by it)."""
+    its grain when it reads source rows (a scan holds its row keys; a BASIC
+    over aggregates is computed off their rows and does not), and any merge
+    key its identity determines (a filter at `item.sk` is widened to
+    `item.manufact` to pair with an aggregate by it)."""
     if group.derivation in GROUPING_DERIVATIONS:
         return frozenset(group.output_concepts)
     if group.derivation == Derivation.ROWSET:
         return frozenset(group.output_concepts) | _boundary_columns(group, environment)
     held = frozenset(group.output_concepts) | group.row_columns | set(group.members)
+    if not lineage_pinned_grain(group.output_concepts or group.members, environment):
+        held |= group.grain_components
     # a ROOT carries exactly its carry demand beyond what it holds
     if not identity or group.derivation == Derivation.ROOT:
         return held

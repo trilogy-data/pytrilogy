@@ -12,7 +12,7 @@ no projection grain, the assembly-side merge grain collapsed to empty, and
 with every review id).
 
 Two planner rules under test:
-- `_group_final_grain_contribution`: a non-grouping contributor whose outputs
+- `join_plan.row_identity`: a non-grouping contributor whose outputs
   ride a grouping concept is grain-pinned at that grouping grain.
 - `_wrap_for_grain`: the FK-hop collapse projects FD dims at the part of the
   merge grain the parent can SUPPLY (here {cust_id}; the sibling aggregate's
