@@ -53,6 +53,24 @@ def pytest_configure(config) -> None:
         return plan
 
     jc.sb.plan_final_join = plan_final_join
+    merge_init = jc.mn.MergeNode.__init__
+    plans: dict[int, tuple] = {}
+
+    def init(self, *a, **k):
+        merge_init(self, *a, **k)
+        if k.get("planned_keys") is not None:
+            plans[id(self)] = (_state.get("plan"), _state.get("pairings"))
+
+    jc.mn.MergeNode.__init__ = init  # type: ignore[method-assign]
+    copy = jc.mn.MergeNode.copy
+
+    def copied(self):
+        node = copy(self)
+        if id(self) in plans:
+            plans[id(node)] = plans[id(self)]
+        return node
+
+    jc.mn.MergeNode.copy = copied  # type: ignore[method-assign]
 
     def get_node_joins(datasources, *a, **k):
         planned = k.get("planned_keys")
@@ -61,6 +79,8 @@ def pytest_configure(config) -> None:
         # what resolve picks unrestricted, beside what the plan states
         shadow = resolved(datasources, *a, **{**k, "planned_keys": None})
         environment = k["environment"]
+        node = jc.CURRENT_MERGE[-1] if jc.CURRENT_MERGE else None
+        plan, pairings = plans.get(id(node), (None, None))
         actual = {
             side.address
             for join in shadow
@@ -84,8 +104,8 @@ def pytest_configure(config) -> None:
                             "nodeid": _state["nodeid"],
                             "actual": sorted(actual),
                             "planned": sorted(planned),
-                            "plan": _state.get("plan"),
-                            "pairings": _state.get("pairings"),
+                            "plan": plan,
+                            "pairings": pairings,
                             "sides": [
                                 {
                                     "id": d.identifier,
