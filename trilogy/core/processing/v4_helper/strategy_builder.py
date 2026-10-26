@@ -85,6 +85,7 @@ from trilogy.core.processing.nodes import (
 from trilogy.core.processing.nodes.base_node import (
     NodeJoin,
     get_all_parent_partial,
+    readable_outputs,
     region_reads,
 )
 from trilogy.utility import unique
@@ -3083,32 +3084,6 @@ def _reads_only_values_defined_everywhere(atom: BoolExpr, keyspace: Keyspace) ->
     )
 
 
-def _mergeable_outputs(parents: list[StrategyNode]) -> list[BuildConcept]:
-    """Every parent output a merge can read. An output each carrying parent
-    hides (a root scan's fallback column) is not readable unless a visible
-    output answers for it by address, pseudonym, or canonical address."""
-    visible: set[str] = set()
-    visible_canonical: set[str] = set()
-    for p in parents:
-        for o in p.usable_outputs:
-            visible.add(o.address)
-            visible.update(o.pseudonyms)
-            visible_canonical.add(o.canonical_address)
-    seen: set[str] = set()
-    outputs: list[BuildConcept] = []
-    for p in parents:
-        for o in p.output_concepts:
-            if o.address in seen:
-                continue
-            if o.address not in visible and o.canonical_address not in (
-                visible_canonical
-            ):
-                continue
-            seen.add(o.address)
-            outputs.append(o)
-    return outputs
-
-
 def _pre_merge_parents(
     parents: list[StrategyNode],
     environment: BuildEnvironment,
@@ -3151,7 +3126,7 @@ def _pre_merge_parents(
     # key it was missing needs no bridge.
     if group_graph is not None and built is not None:
         parents = _bridge_unpaired_parents(parents, group_graph, built, environment)
-    all_outputs = _mergeable_outputs(parents)
+    all_outputs = readable_outputs(parents)
     merged = MergeNode(
         input_concepts=all_outputs,
         output_concepts=all_outputs,
@@ -5806,7 +5781,7 @@ def _read_first_rows(
         rewritten.append(dc_replace(concept, lineage=lineage))
     if not markers:
         return outputs, parents
-    stream = unique([o for p in parents for o in p.output_concepts], "address")
+    stream = readable_outputs(parents)
     window = WindowNode(
         input_concepts=stream,
         output_concepts=[*stream, *markers.values()],
