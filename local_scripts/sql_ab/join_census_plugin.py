@@ -3,9 +3,9 @@
     CENSUS_OUT=<file.jsonl> PYTHONPATH=local_scripts/sql_ab \\
         python -m pytest -p join_census_plugin tests ...
 
-One JSON line per FINAL merge with two or more sides whose resolve-time join
-keys differ from the keys its join plan states: {nodeid, sides, actual,
-planned}; one per test that exercised a counted planner path: {nodeid,
+One JSON line per FINAL merge with two or more sides that resolve, left
+unrestricted, would pair off its join plan (a key the plan does not state, or
+none where the plan pairs): {nodeid, actual, planned, plan, sides}; one per test that exercised a counted planner path: {nodeid,
 paths}. A final line counts every multi-side FINAL seen. See README.md.
 """
 
@@ -18,7 +18,7 @@ from typing import IO, Any
 import pytest
 
 _out: IO[str] | None = None
-_state: dict[str, Any] = {"nodeid": None, "seen": 0, "mismatched": 0}
+_state: dict[str, Any] = {"nodeid": None, "seen": 0, "mismatched": 0, "over": 0}
 
 
 def pytest_configure(config) -> None:
@@ -32,6 +32,27 @@ def pytest_configure(config) -> None:
 
     jc.install()
     resolved = jc.mn.get_node_joins
+    planner = jc.sb.plan_final_join
+
+    def plan_final_join(group_graph, attrs, cover, *a, **k):
+        plan = planner(group_graph, attrs, cover, *a, **k)
+        _state["plan"] = {
+            gid: {
+                "derivation": str(attrs[gid].derivation),
+                "grain": sorted(attrs[gid].grain_components),
+                "outputs": sorted(attrs[gid].output_concepts),
+                "inputs": sorted(attrs[gid].input_concepts),
+                "identity": sorted(plan.identity[gid]),
+                "atoms": [str(atom) for atom in attrs[gid].condition_atoms],
+            }
+            for gid in plan.contributors
+        }
+        _state["pairings"] = [
+            [p.left, p.right, sorted(p.keys), p.kind.value] for p in plan.pairings
+        ]
+        return plan
+
+    jc.sb.plan_final_join = plan_final_join
 
     def get_node_joins(datasources, *a, **k):
         planned = k.get("planned_keys")
@@ -48,16 +69,35 @@ def pytest_configure(config) -> None:
         }
         roots = environment.address_roots()
         _state["seen"] += 1
-        if {roots.get(a, a) for a in actual} != {roots.get(a, a) for a in planned}:
+        actual_roots = {roots.get(a, a) for a in actual}
+        planned_roots = {roots.get(a, a) for a in planned}
+        # resolve may prune a planned key a surviving one determines; it may
+        # never pair off the plan, nor drop every key the plan pairs on
+        if actual_roots != planned_roots:
+            _state["over"] += 1
+        if not actual_roots <= planned_roots or (planned_roots and not actual_roots):
             _state["mismatched"] += 1
             if _out is not None:
                 _out.write(
                     json.dumps(
                         {
                             "nodeid": _state["nodeid"],
-                            "sides": len(datasources),
                             "actual": sorted(actual),
                             "planned": sorted(planned),
+                            "plan": _state.get("plan"),
+                            "pairings": _state.get("pairings"),
+                            "sides": [
+                                {
+                                    "id": d.identifier,
+                                    "grain": sorted(d.grain.components),
+                                    "outputs": sorted(
+                                        c.address
+                                        for c in d.output_concepts
+                                        if c.address not in d.hidden_concepts
+                                    ),
+                                }
+                                for d in datasources
+                            ],
                         }
                     )
                     + "\n"
@@ -83,5 +123,6 @@ def pytest_runtest_protocol(item, nextitem):
 
 def pytest_unconfigure(config) -> None:
     if _out is not None:
-        _out.write(json.dumps(_state) + "\n")
+        totals = {k: _state[k] for k in ("seen", "mismatched", "over")}
+        _out.write(json.dumps(totals) + "\n")
         _out.close()

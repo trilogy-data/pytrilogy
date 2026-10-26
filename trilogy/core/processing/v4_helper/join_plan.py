@@ -45,6 +45,9 @@ class Pairing:
     right: str
     keys: frozenset[str]
     kind: PairingKind
+    # shared columns the keys determine: equating them too changes nothing,
+    # so resolve may (a side's physical grain is never pruned)
+    implied: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -67,6 +70,11 @@ class JoinPlan:
     @property
     def join_keys(self) -> frozenset[str]:
         return frozenset().union(*(p.keys for p in self.pairings))
+
+    @property
+    def permitted_keys(self) -> frozenset[str]:
+        """Everything resolve may equate: the keys and what they imply."""
+        return self.join_keys | frozenset().union(*(p.implied for p in self.pairings))
 
     def islands(self) -> list[set[str]]:
         """Contributors grouped by what pairs them, single-row ones aside."""
@@ -406,6 +414,28 @@ def _carries(
     return held | (merge_grain & closure)
 
 
+def _renderable_members(
+    carried: frozenset[str], environment: BuildEnvironment
+) -> frozenset[str]:
+    """Authored relation members a side renders off what it carries: an
+    expression member (`subset join b.oid + 1 = a.oid`) is no group's column,
+    and is computed on the side holding its arguments."""
+    out: set[str] = set()
+    for relation in environment.scoped_join_relations():
+        for address in relation - carried:
+            concept = environment.concepts.get(
+                address
+            ) or environment.alias_origin_lookup.get(address)
+            if (
+                concept is not None
+                and concept.lineage is not None
+                and concept.lineage.concept_arguments
+                and {a.address for a in concept.lineage.concept_arguments} <= carried
+            ):
+                out.add(address)
+    return frozenset(out)
+
+
 def _single_row(group: GroupAttrs, environment: BuildEnvironment) -> bool:
     """Every output is one row's worth, and no atom keeps rows beside them."""
     if _over_own_rows(group):
@@ -428,26 +458,31 @@ def _pair(
     scalars: frozenset[str],
     environment: BuildEnvironment,
 ) -> Pairing:
-    keys = (identity[left] | identity[right]) & carries[left] & carries[right]
+    shared = carries[left] & carries[right]
+    keys = (identity[left] | identity[right]) & shared
     authored: set[str] = set()
     for relation in environment.scoped_join_relations():
         lhs, rhs = relation & carries[left], relation & carries[right]
         if lhs and rhs and lhs | rhs != lhs & rhs:
             authored |= lhs | rhs
+    keys |= authored
+    implied = (
+        shared & build_fd_closure(environment, keys, include_empty_grain=False)
+        if keys
+        else frozenset()
+    ) - keys
     if authored:
-        return Pairing(left, right, frozenset(keys | authored), PairingKind.AUTHORED)
-    if {left, right} & scalars:
-        return Pairing(left, right, frozenset(keys), PairingKind.SCALAR)
-    lookup = any(
+        kind = PairingKind.AUTHORED
+    elif {left, right} & scalars:
+        kind = PairingKind.SCALAR
+    elif any(
         identity[gid] and build_fd_determines_all(environment, keys, identity[gid])
         for gid in (left, right)
-    )
-    return Pairing(
-        left,
-        right,
-        frozenset(keys),
-        PairingKind.LOOKUP if lookup else PairingKind.BLEND,
-    )
+    ):
+        kind = PairingKind.LOOKUP
+    else:
+        kind = PairingKind.BLEND
+    return Pairing(left, right, frozenset(keys), kind, frozenset(implied))
 
 
 def plan_final_join(
@@ -487,6 +522,11 @@ def plan_final_join(
         | carry_demands.get(gid, frozenset())
         for gid in contributors
     }
+    if environment.scoped_join_key_groups:
+        carries = {
+            gid: held | _renderable_members(held, environment)
+            for gid, held in carries.items()
+        }
     scalars = frozenset(
         gid for gid in contributors if _single_row(attrs[gid], environment)
     )
