@@ -276,6 +276,25 @@ class GroupAttrs(_HeldKeys):
     def members(self) -> tuple[str, ...]:
         return (*self.primary_members, *self.carried_keys)
 
+    @property
+    def row_columns(self) -> frozenset[str]:
+        """Every address this group's rows hold: what it reads and outputs,
+        plus the all-rows marker, a constant any row can emit."""
+        return frozenset(
+            {*self.input_concepts, *self.output_concepts, ALL_ROWS_ADDRESS}
+        )
+
+    @property
+    def emitted_grain(self) -> frozenset[str]:
+        """The grain keys this group's rows carry. A grouping group's GROUP BY
+        emits its grain. Any other group's grain is where its value is
+        computable, which its rows hold only if it reads or outputs those keys:
+        `pages_per_session + day_of_week(event_date)` is pageview-grained but
+        computed off the aggregates' `(site_key, event_date)` rows."""
+        if self.derivation in GROUPING_DERIVATIONS:
+            return self.grain_components
+        return self.grain_components & self.row_columns
+
 
 @dataclass
 class ConceptAttrs:

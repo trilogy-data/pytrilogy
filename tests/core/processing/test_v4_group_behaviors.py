@@ -232,15 +232,17 @@ def test_final_node_declares_logical_output_grain_contract():
     assert contract.deduplicate_to_grain is True
 
 
+@pytest.mark.parametrize("carried", [True, False])
 def test_final_merge_grain_takes_a_non_grouping_contributor_grain(
-    empty_environment: BuildEnvironment,
+    empty_environment: BuildEnvironment, carried: bool
 ):
-    """A BASIC contributor's grain is a merge axis too.
+    """A BASIC contributor's grain is a merge axis too, if its rows carry it.
 
     `customer_status <- case ... min(order_date) by user` is BASIC, not
     grouping, but it sits at user grain and its CTE emits that key. Counting
     only grouping contributors left the merge grain empty, so a ROOT sibling
     holding a foreign key got no join key and FINAL fell to `FULL JOIN ON 1=1`.
+    A grain the group never reads or outputs is no join axis (issue #769).
     """
     user_id = _build_concept("user_id", Purpose.KEY)
     center_id = _build_concept(
@@ -269,6 +271,7 @@ def test_final_merge_grain_takes_a_non_grouping_contributor_grain(
             depth_label=DepthLabel.STAR,
             derivation=Derivation.BASIC,
             grain_components=frozenset({user_id.address}),
+            input_concepts=(user_id.address,) if carried else (),
             output_concepts=(customer_status.address,),
         ),
         FINAL_NODE_ID: GroupAttrs(depth_label=DepthLabel.FINAL),
@@ -286,8 +289,9 @@ def test_final_merge_grain_takes_a_non_grouping_contributor_grain(
     root_contract = next(
         item for item in contract.contributor_contracts if item.group_id == "root"
     )
-    assert contract.merge_grain == {user_id.address}
-    assert root_contract.preserve_keys == {user_id.address}
+    expected = {user_id.address} if carried else set()
+    assert contract.merge_grain == expected
+    assert root_contract.preserve_keys == expected
 
 
 def test_stage3_requires_declared_final_contract():

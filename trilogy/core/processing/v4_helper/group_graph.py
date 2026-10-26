@@ -730,8 +730,9 @@ def _final_merge_grain(
         # Every contributor's grain is a merge axis, not only a grouping one: a
         # BASIC over aggregates (`customer_status <- case ... min(x) by user`)
         # sits at user grain and its CTE emits that key; without it no ROOT
-        # sibling can be given a join key and the merge falls to ON 1=1.
-        grain |= set(attrs[gid].grain_components)
+        # sibling can be given a join key and the merge falls to ON 1=1. Only
+        # the keys it emits: a grain its rows never carry is no join axis.
+        grain |= set(attrs[gid].emitted_grain)
         # a region domain's rows are keyed by its spans, and every solid
         # contributor joins them there
         grain |= set(attrs[gid].extent_spans)
@@ -797,7 +798,7 @@ def _group_final_grain_contribution(
     # the FINAL merge cross-joins ON 1=1. Global `merge` identities are
     # excluded; they pair INNER and never define a statement's join axis
     # (advertising one strands a partial dimension).
-    available = set(attrs[gid].input_concepts) | set(attrs[gid].output_concepts)
+    available = attrs[gid].row_columns
     rowset_keys = (
         _statement_scoped_relation_members(environment) & merge_grain & available
     )
@@ -807,9 +808,11 @@ def _group_final_grain_contribution(
     # advertising it the assembly-side merge grain (union of contributor
     # projection grains) can collapse to empty, which disables every join-key
     # preservation guard in `_wrap_for_grain` and cross-joins the FINAL
-    # parents ON 1=1.
+    # parents ON 1=1. Only the pins it carries: a derived `by` key's row
+    # lineage (`event_date <- date(event_time)`) reaches a fact grain the
+    # contributor's rows, read off the barrier, never hold.
     pinned = frozenset(attrs[gid].output_concepts) or frozenset(attrs[gid].members)
-    rowset_keys |= _lineage_pinned_grain(pinned, environment)
+    rowset_keys |= _lineage_pinned_grain(pinned, environment) & available
     # A row derivation its grouped siblings' grain does not determine (`ret +
     # 1` per line beside `sum(qty) by order`) pairs on its own grain:
     # projected at the coarser one, its rows collapse onto a merge key and
@@ -828,7 +831,7 @@ def _group_final_grain_contribution(
             environment, set(grouped), set(attrs[gid].primary_members)
         )
     ):
-        rowset_keys |= attrs[gid].grain_components & merge_grain
+        rowset_keys |= attrs[gid].emitted_grain & merge_grain
     # A row stream reading a region domain is the region's rows (`customer_id
     # as c2`), and pairs on the spans as the domain would. Folded into this
     # contributor, the domain no longer advertises them itself, and a sibling
