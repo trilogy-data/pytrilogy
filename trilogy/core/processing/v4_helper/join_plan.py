@@ -423,6 +423,22 @@ def _from_row_parents(
     )
 
 
+def _held(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    carry_demands: dict[str, frozenset[str]],
+    environment: BuildEnvironment,
+    identity: frozenset[str] = frozenset(),
+    sibling_keys: frozenset[str] = frozenset(),
+) -> frozenset[str]:
+    return (
+        _from_row_parents(group_graph, attrs, gid)
+        | _carries(attrs[gid], identity, sibling_keys, environment)
+        | carry_demands.get(gid, frozenset())
+    )
+
+
 def _joined_on(group: GroupAttrs) -> frozenset[str]:
     """The keys a row stream's inputs are stitched on, as its input contracts
     declare them: its rows hold them (`sale_recency` over a by-customer
@@ -645,40 +661,31 @@ def plan_final_join(
         for gid in contributors
         if attrs[gid].derivation == Derivation.ROOT
     }
-    carries = {
-        gid: _from_row_parents(group_graph, attrs, gid)
-        | _carries(
-            attrs[gid],
-            identity[gid],
-            frozenset().union(*(identity[o] for o in contributors if o != gid)),
-            environment,
-        )
-        | carry_demands.get(gid, frozenset())
-        for gid in contributors
-    }
-    members = environment.all_scoped_join_group_members()
-    carries = {
-        gid: held
-        | _renderable(held, members, environment)
-        | _renderable(
-            held,
-            frozenset().union(*(identity[o] for o in contributors if o != gid)),
-            environment,
-            frozenset({Derivation.BASIC}),
-        )
-        for gid, held in carries.items()
-    }
-    # a row stream is identified by the grain keys its rows turn out to hold
-    # (`sale_recency` at customer and sale date holds both off its inputs)
+    # A row stream is identified by the grain keys its rows turn out to hold
+    # (`sale_recency` at customer and sale date holds both off its inputs);
+    # settled before what each side is widened to is read off the identities.
     identity = {
         gid: identity[gid]
         | (
-            attrs[gid].grain_components & carries[gid]
+            attrs[gid].grain_components
+            & _held(group_graph, attrs, gid, carry_demands, environment)
             if attrs[gid].derivation not in GROUPING_DERIVATIONS
             else frozenset()
         )
         for gid in contributors
     }
+    members = environment.all_scoped_join_group_members()
+    carries = {}
+    for gid in contributors:
+        siblings = frozenset().union(*(identity[o] for o in contributors if o != gid))
+        held = _held(
+            group_graph, attrs, gid, carry_demands, environment, identity[gid], siblings
+        )
+        carries[gid] = (
+            held
+            | _renderable(held, members, environment)
+            | _renderable(held, siblings, environment, frozenset({Derivation.BASIC}))
+        )
     # authored members a row stream's identity determines: it can be widened
     # to them, so the relation pairs it, but they are no key to carry
     reach = {
