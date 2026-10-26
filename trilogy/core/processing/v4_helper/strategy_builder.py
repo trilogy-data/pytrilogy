@@ -5545,13 +5545,15 @@ def _assemble_final_node(
     parents = parents + arg_nodes
     # Folds, bridges and filter-arg producers changed the sides since the plan
     # above: state the merge's own plan over the sides it actually joins.
+    sides = side_groups(parents, origin)
     merge_plan = plan_final_join(
         group_graph,
         attrs,
-        {gid: per_group.get(gid, []) for gid in unique_sides(parents, origin)},
+        {gid: per_group.get(gid, []) for gid in sides},
         mandatory_list,
         environment,
         final_contract.relation_edge_members,
+        split=frozenset(gid for gid in sides if sides.count(gid) > 1),
     )
     logger.info(f"[v4] FINAL join plan: {merge_plan}")
     merge_inputs = unique(
@@ -5681,16 +5683,17 @@ def _at_declared_identity(
     )
 
 
-def unique_sides(parents: list[StrategyNode], origin: dict[int, str]) -> list[str]:
-    """The groups `parents` came from, looking through the single-parent
-    wraps assembly puts over a contributor."""
+def side_groups(parents: list[StrategyNode], origin: dict[int, str]) -> list[str]:
+    """The group each of `parents` came from, looking through the
+    single-parent wraps assembly puts over a contributor; a contributor split
+    into several wraps appears once per wrap."""
     sides: list[str] = []
     for parent in parents:
         node = parent
         while id(node) not in origin and len(node.parents) == 1:
             node = node.parents[0]
         gid = origin.get(id(node))
-        if gid is not None and gid not in sides:
+        if gid is not None:
             sides.append(gid)
     return sides
 

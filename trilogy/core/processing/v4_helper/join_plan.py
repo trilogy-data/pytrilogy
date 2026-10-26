@@ -552,8 +552,12 @@ def plan_final_join(
     mandatory_list: Sequence[BuildConcept],
     environment: BuildEnvironment,
     relation_edge_members: frozenset[str] = frozenset(),
+    split: frozenset[str] = frozenset(),
 ) -> JoinPlan:
-    """The plan for merging `cover` (contributor -> the outputs it supplies)."""
+    """The plan for merging `cover` (contributor -> the outputs it supplies).
+    A `split` contributor is joined as several projections of its own rows,
+    which pair on anything they both hold: that is the one relation, never a
+    key to carry."""
     contributors = tuple(cover)
     axes = merge_axes(
         contributors, attrs, mandatory_list, environment, relation_edge_members
@@ -600,6 +604,11 @@ def plan_final_join(
         for left, right in combinations(contributors, 2)
         if (pairing := _pair(left, right, identity, carries, scalars, environment)).keys
         or pairing.kind == PairingKind.SCALAR
+    )
+    pairings += tuple(
+        Pairing(gid, gid, frozenset(), PairingKind.LOOKUP, carries[gid])
+        for gid in contributors
+        if gid in split
     )
     return JoinPlan(contributors, pins, identity, carry_demands, pairings, scalars)
 
