@@ -65,6 +65,8 @@ class JoinPlan:
     scalars: frozenset[str] = frozenset()
     # the columns each contributor's rows hold or can be widened to
     carries: dict[str, frozenset[str]] = field(default_factory=dict)
+    # members of the statement's coalescing (`union`/`full`) relations
+    coalescing: frozenset[str] = frozenset()
 
     @property
     def merge_grain(self) -> frozenset[str]:
@@ -80,15 +82,14 @@ class JoinPlan:
         return self.join_keys | frozenset().union(*(p.implied for p in self.pairings))
 
     def keys_for(self, gid: str) -> frozenset[str]:
-        """The keys `gid`'s own side of its pairings holds: a side of an
-        authored relation carries its member, never its mate's (two rowsets
-        over one table pair on `a.id = b.id`, not on the base `id`)."""
+        """The keys `gid`'s own side of its pairings holds. A side of a
+        `subset` relation carries its member, never its mate's (two rowsets
+        over one table pair on `a.id = b.id`, not on the base `id`); a
+        coalescing (`union`) relation is one axis every side presents under
+        all of its names."""
+        held = self.carries.get(gid, frozenset()) | self.coalescing
         return frozenset().union(
-            *(
-                p.keys & self.carries.get(gid, frozenset())
-                for p in self.pairings
-                if gid in (p.left, p.right)
-            )
+            *(p.keys & held for p in self.pairings if gid in (p.left, p.right))
         )
 
     def islands(self) -> list[set[str]]:
@@ -667,6 +668,17 @@ def plan_final_join(
         )
         for gid, held in carries.items()
     }
+    # a row stream is identified by the grain keys its rows turn out to hold
+    # (`sale_recency` at customer and sale date holds both off its inputs)
+    identity = {
+        gid: identity[gid]
+        | (
+            attrs[gid].grain_components & carries[gid]
+            if attrs[gid].derivation not in GROUPING_DERIVATIONS
+            else frozenset()
+        )
+        for gid in contributors
+    }
     # authored members a row stream's identity determines: it can be widened
     # to them, so the relation pairs it, but they are no key to carry
     reach = {
@@ -700,7 +712,14 @@ def plan_final_join(
         if gid in split
     )
     return JoinPlan(
-        contributors, pins, identity, carry_demands, pairings, scalars, carries
+        contributors,
+        pins,
+        identity,
+        carry_demands,
+        pairings,
+        scalars,
+        carries,
+        frozenset(environment.domain_graph.coalescing_relation_members()),
     )
 
 
