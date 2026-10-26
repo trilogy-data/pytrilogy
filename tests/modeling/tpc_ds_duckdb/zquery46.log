@@ -1,5 +1,5 @@
 query_id = "46"
-gen_length = 3348
+gen_length = 3270
 preql_size = 1152
 comp_size = 1474
 generated_sql = """
@@ -28,7 +28,6 @@ GROUP BY
 wakeful as (
 SELECT
     \"customer_current_address_customer_address\".\"CA_CITY\" as \"customer_current_address_city\",
-    \"customer_customers\".\"C_CUSTOMER_SK\" as \"bought_store_sales_customer_sk\",
     \"customer_customers\".\"C_CUSTOMER_SK\" as \"customer_sk\",
     \"customer_customers\".\"C_FIRST_NAME\" as \"customer_first_name\",
     \"customer_customers\".\"C_LAST_NAME\" as \"customer_last_name\"

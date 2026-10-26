@@ -125,7 +125,7 @@ from .functional_dependency import (
 )
 from .group_graph import row_parents, trace_group_graph
 from .history import V4History
-from .join_plan import merge_axes, plan_final_join
+from .join_plan import JoinPlan, merge_axes, plan_final_join
 from .models import (
     ExtentOwnership,
     FinalAssemblyContract,
@@ -2515,6 +2515,34 @@ def _widen_merge_join_keys(
         _join_key_concepts(parents, environment, set(join_key_addresses)),
         environment,
     )
+    mates = _unprojected_expression_mates(parents, environment)
+    if mates:
+        _carry_join_keys(
+            parents, _join_key_concepts(parents, environment, mates), environment
+        )
+
+
+def _carry_planned_keys(
+    parents: list[StrategyNode],
+    origin: dict[int, str],
+    plan: JoinPlan,
+    environment: BuildEnvironment,
+) -> None:
+    """Widen each FINAL parent with the keys its own side of its planned
+    pairings holds, then with the expression relation members two parents
+    reach and none projects."""
+    if len(parents) <= 1:
+        return
+    for parent in parents:
+        node = parent
+        while id(node) not in origin and len(node.parents) == 1:
+            node = node.parents[0]
+        gid = origin.get(id(node))
+        if gid is None or not (keys := plan.keys_for(gid)):
+            continue
+        _carry_join_keys(
+            [parent], _join_key_concepts(parents, environment, set(keys)), environment
+        )
     mates = _unprojected_expression_mates(parents, environment)
     if mates:
         _carry_join_keys(
@@ -5440,7 +5468,7 @@ def _assemble_final_node(
         environment,
     )
     parents = _fold_passthrough_parents(parents)
-    _widen_merge_join_keys(parents, environment, plan.join_keys)
+    _carry_planned_keys(parents, origin, plan, environment)
     parents = _fold_covered_contributors(
         parents,
         environment,

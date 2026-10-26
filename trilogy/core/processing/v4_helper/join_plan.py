@@ -9,7 +9,7 @@ happen to project. See `docs/join_axis_audit_2026_10.md`.
 """
 
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from itertools import combinations
 
@@ -63,6 +63,8 @@ class JoinPlan:
     pairings: tuple[Pairing, ...]
     # contributors of one row, which pair with every row
     scalars: frozenset[str] = frozenset()
+    # the columns each contributor's rows hold or can be widened to
+    carries: dict[str, frozenset[str]] = field(default_factory=dict)
 
     @property
     def merge_grain(self) -> frozenset[str]:
@@ -76,6 +78,18 @@ class JoinPlan:
     def permitted_keys(self) -> frozenset[str]:
         """Everything resolve may equate: the keys and what they imply."""
         return self.join_keys | frozenset().union(*(p.implied for p in self.pairings))
+
+    def keys_for(self, gid: str) -> frozenset[str]:
+        """The keys `gid`'s own side of its pairings holds: a side of an
+        authored relation carries its member, never its mate's (two rowsets
+        over one table pair on `a.id = b.id`, not on the base `id`)."""
+        return frozenset().union(
+            *(
+                p.keys & self.carries.get(gid, frozenset())
+                for p in self.pairings
+                if gid in (p.left, p.right)
+            )
+        )
 
     def islands(self) -> list[set[str]]:
         """Contributors grouped by what pairs them, single-row ones aside."""
@@ -354,7 +368,12 @@ def _boundary_columns(
     carries them all, projected or not (an axis-only side projects none)."""
     names = {
         c.lineage.rowset.name
-        for addr in {*group.output_concepts, *group.members, *group.grain_components}
+        for addr in {
+            *group.output_concepts,
+            *group.input_concepts,
+            *group.members,
+            *group.grain_components,
+        }
         if (c := environment.concepts.get(addr)) is not None
         and isinstance(c.lineage, BuildRowsetItem)
     }
@@ -435,15 +454,29 @@ def _carries(
         | group.row_columns
         | set(group.members)
         | _over_own_rows(group)
-        | _joined_on(group)
     )
+    extra = _joined_on(group)
     if not lineage_pinned_grain(group.output_concepts or group.members, environment):
-        held |= group.grain_components
+        extra |= group.grain_components
     # a ROOT carries exactly its carry demand beyond what it holds
-    if not identity or group.derivation == Derivation.ROOT:
-        return held
-    closure = build_fd_closure(environment, identity, include_empty_grain=False)
-    return held | (sibling_keys & closure)
+    if identity and group.derivation != Derivation.ROOT:
+        closure = build_fd_closure(environment, identity, include_empty_grain=False)
+        extra |= sibling_keys & closure
+    # Off a rowset boundary the rows hold the boundary's columns under its
+    # handles, and nothing else: a base key there (the `id` a body selects)
+    # welds two rowsets of one table on that key.
+    if any(_is_handle(address, environment) for address in group.input_concepts):
+        return (
+            held
+            | _boundary_columns(group, environment)
+            | frozenset(a for a in extra if _is_handle(a, environment))
+        )
+    return held | extra
+
+
+def _is_handle(address: str, environment: BuildEnvironment) -> bool:
+    concept = environment.concepts.get(address)
+    return concept is not None and concept.derivation == Derivation.ROWSET
 
 
 def _renderable(
@@ -461,9 +494,12 @@ def _renderable(
         concept = environment.concepts.get(
             address
         ) or environment.alias_origin_lookup.get(address)
+        # a rowset handle is a column of its own boundary: computed off
+        # another relation it is a different value under the same name
         if (
             concept is not None
             and concept.lineage is not None
+            and concept.derivation != Derivation.ROWSET
             and concept.lineage.concept_arguments
             and (derivations is None or concept.derivation in derivations)
             and {a.address for a in concept.lineage.concept_arguments} <= carried
@@ -522,6 +558,7 @@ def _pair(
     right: str,
     identity: dict[str, frozenset[str]],
     carries: dict[str, frozenset[str]],
+    reach: dict[str, frozenset[str]],
     scalars: frozenset[str],
     environment: BuildEnvironment,
 ) -> Pairing:
@@ -548,13 +585,18 @@ def _pair(
     # a relation both sides carry a member of is an axis by declaration;
     # authored when the sides hold different members of it
     authored: set[str] = set()
+    reached: set[str] = set()
     for relation in environment.scoped_join_relations():
-        lhs, rhs = relation & carries[left], relation & carries[right]
+        lhs, rhs = relation & reach[left], relation & reach[right]
         if lhs and rhs:
-            keys |= lhs | rhs
+            reached |= lhs | rhs
+            keys |= (lhs & carries[left]) | (rhs & carries[right])
             if lhs | rhs != lhs & rhs:
                 authored |= lhs | rhs
-    implied = (_determined(keys, environment) if keys else frozenset()) - keys
+    implied = (
+        (shared & _determined(keys, environment) if keys else frozenset())
+        | _determined(reached, environment)
+    ) - keys
     if authored:
         kind = PairingKind.AUTHORED
     elif {left, right} & scalars:
@@ -607,8 +649,7 @@ def plan_final_join(
         | _carries(
             attrs[gid],
             identity[gid],
-            frozenset().union(*(identity[o] for o in contributors if o != gid))
-            | environment.all_scoped_join_group_members(),
+            frozenset().union(*(identity[o] for o in contributors if o != gid)),
             environment,
         )
         | carry_demands.get(gid, frozenset())
@@ -626,13 +667,31 @@ def plan_final_join(
         )
         for gid, held in carries.items()
     }
+    # authored members a row stream's identity determines: it can be widened
+    # to them, so the relation pairs it, but they are no key to carry
+    reach = {
+        gid: carries[gid]
+        | (
+            members
+            & build_fd_closure(environment, identity[gid], include_empty_grain=False)
+            if identity[gid]
+            and attrs[gid].derivation not in (*GROUPING_DERIVATIONS, Derivation.ROOT)
+            else frozenset()
+        )
+        for gid in contributors
+    }
     scalars = frozenset(
         gid for gid in contributors if _single_row(attrs[gid], environment)
     )
     pairings = tuple(
         pairing
         for left, right in combinations(contributors, 2)
-        if (pairing := _pair(left, right, identity, carries, scalars, environment)).keys
+        if (
+            pairing := _pair(
+                left, right, identity, carries, reach, scalars, environment
+            )
+        ).keys
+        or pairing.implied
         or pairing.kind == PairingKind.SCALAR
     )
     pairings += tuple(
@@ -640,7 +699,9 @@ def plan_final_join(
         for gid in contributors
         if gid in split
     )
-    return JoinPlan(contributors, pins, identity, carry_demands, pairings, scalars)
+    return JoinPlan(
+        contributors, pins, identity, carry_demands, pairings, scalars, carries
+    )
 
 
 def final_predecessors(
