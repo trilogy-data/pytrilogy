@@ -5426,7 +5426,7 @@ def _assemble_final_node(
         environment,
     )
     parents = _fold_passthrough_parents(parents)
-    _widen_merge_join_keys(parents, environment, final_merge_grain)
+    _widen_merge_join_keys(parents, environment, plan.join_keys)
     parents = _fold_covered_contributors(
         parents,
         environment,
