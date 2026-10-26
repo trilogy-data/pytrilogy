@@ -4399,9 +4399,24 @@ def _bridge_unpaired_parents(
         islands = _pairing_islands(outputs)
         if len(islands) < 2:
             break
-        bridge = _island_bridge(islands, outputs, exposed, present, built, group_graph)
-        if bridge is None:
+        candidates = _island_bridges(
+            islands, outputs, exposed, present, built, group_graph
+        )
+        if not candidates:
             break
+        # a bridge pairing every member on a key needs no repair; the most
+        # derived otherwise (the FILTER beside a derived `by` key holds the
+        # entity key but not the derived one)
+        bridge = next(
+            (
+                gid
+                for gid in candidates
+                if _pairs_on_keys(
+                    parents, outputs, built[gid], exposed[gid], environment
+                )
+            ),
+            candidates[0],
+        )
         if not _key_bridged_members(
             parents, outputs, built[bridge], exposed[bridge], environment
         ):
@@ -4428,6 +4443,35 @@ def _keyed_by(
     )
 
 
+def _pair_is_keyed(
+    member: StrategyNode,
+    bridge: StrategyNode,
+    shared: set[str],
+    environment: BuildEnvironment,
+) -> bool:
+    # an authored axis (`subset join a.k = b.k`) is the pairing the
+    # statement asked for, whatever it keys
+    return (
+        any(shared & relation for relation in environment.scoped_join_relations())
+        or _keyed_by(member, shared, environment)
+        or _keyed_by(bridge, shared, environment)
+    )
+
+
+def _pairs_on_keys(
+    parents: list[StrategyNode],
+    outputs: list[set[str]],
+    bridge: StrategyNode,
+    bridge_pairing: set[str],
+    environment: BuildEnvironment,
+) -> bool:
+    return all(
+        _pair_is_keyed(member, bridge, shared, environment)
+        for member, own in zip(parents, outputs)
+        if (shared := own & bridge_pairing)
+    )
+
+
 def _key_bridged_members(
     parents: list[StrategyNode],
     outputs: list[set[str]],
@@ -4446,18 +4490,9 @@ def _key_bridged_members(
     place."""
     bridge_keys = set(bridge.resolve().grain.components)
     key_concepts = [c for c in bridge.output_concepts if c.address in bridge_keys]
-    relations = environment.scoped_join_relations()
     for idx, member in enumerate(parents):
         shared = outputs[idx] & bridge_pairing
-        if not shared:
-            continue
-        # an authored axis (`subset join a.k = b.k`) is the pairing the
-        # statement asked for, whatever it keys
-        if any(shared & relation for relation in relations):
-            continue
-        if _keyed_by(member, shared, environment) or _keyed_by(
-            bridge, shared, environment
-        ):
+        if not shared or _pair_is_keyed(member, bridge, shared, environment):
             continue
         if (
             len(key_concepts) == len(bridge_keys)
@@ -4502,16 +4537,16 @@ def _key_bridged_members(
     return True
 
 
-def _island_bridge(
+def _island_bridges(
     islands: list[set[int]],
     outputs: list[set[str]],
     exposed: dict[str, set[str]],
     present: set[int],
     built: dict[str, StrategyNode],
     group_graph: nx.DiGraph,
-) -> str | None:
-    """The most derived built group pairing the first island with any other
-    that has a candidate."""
+) -> list[str]:
+    """The built groups pairing the first island with any other that has a
+    candidate, most derived first."""
     columns = [set().union(*(outputs[i] for i in island)) for island in islands]
     for index, own in enumerate(columns):
         others = set().union(*(c for i, c in enumerate(columns) if i != index))
@@ -4521,14 +4556,15 @@ def _island_bridge(
             if id(node) not in present and exposed[gid] & own and exposed[gid] & others
         ]
         if candidates:
-            return max(
+            return sorted(
                 candidates,
                 key=lambda gid: (
                     sum(1 for a in nx.ancestors(group_graph, gid) if a in built),
                     gid,
                 ),
+                reverse=True,
             )
-    return None
+    return []
 
 
 def _gate_grain_keys(concepts: list[BuildConcept]) -> frozenset[str]:

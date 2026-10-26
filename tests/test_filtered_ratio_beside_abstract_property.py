@@ -39,6 +39,7 @@ auto daily_pageviews <- count(pageview_id ? bot_reason = 0) by site_key, event_d
 auto daily_sessions <- {agg}(session_id ? bot_reason = 0) by site_key, event_date;
 auto pages_per_session <- daily_pageviews / daily_sessions;
 auto weekday_ratio <- pages_per_session + day_of_week(event_date);
+auto pageview_events <- count(event_time ? bot_reason = 0) by pageview_id;
 """
 
 UPDATED = datetime(2026, 10, 21, 10, 0, 0)
@@ -73,4 +74,13 @@ def test_abstract_property_cross_joins_instead_of_rekeying():
     assert f'JOIN "{scalar_cte}" on 1=1' in sql
     assert sorted(_rows(query)) == [
         (f"a:{i}", date(2026, 10, 20), 2.0, UPDATED) for i in (1, 2, 3)
+    ]
+
+
+def test_aggregates_by_entity_and_derived_key_bridge_on_both_keys():
+    query = "select pageview_id, pageview_events, daily_pageviews, updated_through;"
+    assert sorted(_rows(query)) == [
+        ("a:1", 1, 2, UPDATED),
+        ("a:2", 1, 2, UPDATED),
+        ("a:3", 0, 2, UPDATED),
     ]
