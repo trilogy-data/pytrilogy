@@ -5581,6 +5581,7 @@ def _assemble_final_node(
         # not collapse the authored fan-out back to distinct key pairs.
         whole_grain=not final_contract.deduplicate_to_grain,
         host_stitch=True,
+        planned_keys=merge_plan.join_keys,
     )
     _clear_groupmate_completed_partials(merged, environment)
     # A hidden axis mate rides sides kept at their own finer row grain, and the
