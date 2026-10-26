@@ -27,7 +27,9 @@ def date_diff(first: str, second: str, grain: DatePart) -> str:
 FUNCTION_MAP = {
     FunctionType.SPLIT: lambda x, types: f"string_to_array({x[0]}, {x[1]})",
     FunctionType.DATE_TRUNCATE: lambda x, types: f"date_trunc('{x[1]}', {x[0]})",
-    FunctionType.DATE_ADD: lambda x, types: f"({x[0]} + INTERVAL '{x[2]} {x[1]}')",
+    # the offset may be an expression, which an interval string cannot hold
+    FunctionType.DATE_ADD: lambda x, types: f"({x[0]} + ({x[2]}) * INTERVAL '1 {x[1]}')",
+    FunctionType.DATE_SUB: lambda x, types: f"({x[0]} - ({x[2]}) * INTERVAL '1 {x[1]}')",
     FunctionType.DATE_PART: lambda x, types: f"date_part('{x[1]}', {x[0]})",
     FunctionType.DATE_DIFF: lambda x, types: date_diff(x[0], x[1], x[2]),
     FunctionType.IS_NULL: lambda x, types: f"{x[0]} IS NULL",

@@ -420,10 +420,27 @@ class MergeNode(StrategyNode):
         order has). The dialect coalesces them (`QueryDatasource.zero_filled`),
         so a WHERE over one (`count(order_id) by customer_id = 0`) accepts the
         padded row and proves nothing about the side that padded it. The
-        WHERE's own inputs count: such a count need not be an output."""
+        WHERE's own inputs count: such a count need not be an output. A parent
+        partial on a key another parent holds completely (`~order_id`) is
+        padded the same way."""
         reads = [region_reads(p) for p in self.parents]
         regions = frozenset().union(*reads)
-        short = [p for p, read in zip(self.parents, reads) if regions - read]
+        complete = [
+            {o.address for o in p.output_concepts}
+            - {c.address for c in p.partial_concepts}
+            for p in self.parents
+        ]
+        short = [
+            p
+            for idx, (p, read) in enumerate(zip(self.parents, reads))
+            if regions - read
+            or any(
+                c.address in other
+                for c in p.partial_concepts
+                for o_idx, other in enumerate(complete)
+                if o_idx != idx
+            )
+        ]
         if not short:
             return frozenset()
         solid_outputs = {o.address for p in short for o in p.output_concepts}

@@ -5,6 +5,7 @@ from typing import Any
 from trilogy.constants import DEFAULT_NAMESPACE, VIRTUAL_CONCEPT_PREFIX, MagicConstants
 from trilogy.core.constants import ALL_ROWS_ADDRESS, UNNEST_ORDINAL_PREFIX
 from trilogy.core.enums import (
+    NULL_INTRODUCING_FUNCTIONS,
     ComparisonOperator,
     Derivation,
     FunctionClass,
@@ -383,6 +384,8 @@ def _function_is_nullable(fn: Function, environment: Environment) -> bool:
         return any(_value_is_null_literal(a) for a in arguments)
     if op in NEVER_NULL_FUNCTIONS:
         return False
+    if op in NULL_INTRODUCING_FUNCTIONS:
+        return True
     if op == FunctionType.GROUP:
         # group(expr, *grain): nullability tracks the wrapped expression.
         return bool(arguments) and _expr_is_nullable(arguments[0], environment)

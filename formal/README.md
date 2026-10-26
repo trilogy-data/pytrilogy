@@ -31,6 +31,7 @@ a design decision or a bug.
 | `Sourcing.lean` | `complete where` arms, partition unions, the cell checker | a partition family unions back to the table (split, point, bool, `is null` arm, NULL-rejecting gate, a redundant copy of an arm), an arm answers under an implying WHERE, summary table = computed aggregate |
 | `Freshness.lean` | watermarks, the stale verdict, the incremental refresh | verdict = refresh has a row to write, incremental = rebuild under strict arrivals (checked by `tests/execution/state/test_freshness_laws.py`, not the query fuzzer) |
 | `StateMerge.lean` | partition deltas folded into a state snapshot | disjoint overlays commute, replay is a no-op, newest claim wins as a semilattice join, the per-slice count adjustment (checked by `tests/execution/state/test_merge_laws.py`) |
+| `NullReject.lean` | the null-rejection walk, membership, outer-join upgrade, nullability inference | a proved column is non-null on every kept row, a proof on a column read off the padded side turns a left join inner, a derived column is judged by its lineage, strict and total functions (checked by `tests/optimization/test_null_rejection_laws.py` and `tests/core/test_null_function_conformance.py`) |
 
 ## What it found
 
@@ -130,6 +131,61 @@ a design decision or a bug.
   whole-table probe kept base slices its own count disagreed with, so later
   slices were subtracted twice and a count reached `stale=-1`. Counts are now
   recounted from a list that holds every slice and bounded by a shorter one.
+- **The null-rejection walk proved columns non-null that a kept row held
+  NULL.** `gather_non_null_proofs` decides when a WHERE forces a padded side
+  present, which lets the planner read a partial source alone or turn an
+  outer join inner. `NullReject.proofs_sound` holds only if every function
+  the walk descends into is strict, and only if every operator it trusts
+  rejects a NULL. Five rules broke that, and each dropped rows from a model
+  whose `returns` pad through a `~` key:
+  - the walk descended into every function but a short list, so `concat`,
+    `concat_ws`, `isnull`, `bool` and the aggregates counted as strict
+    (`NullReject.skip_null_keeps_null`). `concat(ret::string, 'z') = 'z'`
+    read `returns` alone and lost every unreturned line. The walk now takes
+    an allowlist, `NULL_STRICT_FUNCTIONS`, that the conformance suite checks
+    on DuckDB.
+  - membership matches by identity, so `x in (1, null)` keeps a NULL `x`
+    and `x not in (1, 3)` does too (`NullReject.mem_null_member_keeps_null`,
+    `NullReject.not_mem_keeps_null`). Both counted as proofs. An `in` now
+    proves its operand only over a set known to hold no NULL: non-null
+    literals, or a ROOT column no binding makes nullable, through filters
+    and strict functions. A filter's padding NULL is not a member, so such a
+    set now matches with plain `=`. Before, q08's zip set carried the
+    padding NULL as a member and matched a sale with no store.
+  - a concept computed after the join counted as a column of the side it
+    reads. `is_returned <- ret is not null` is `false` on the padded row, so
+    `is_returned = false` turned the join inner and kept nothing
+    (`NullReject.derived_flag_breaks_upgrade`). A proof now forces a side
+    only through a column read off it, and a derived concept is judged by
+    its lineage (`NullReject.proofs_subst`).
+  - a COUNT is 0 on a group it has no row for. `count(ret) by order_id = 0`
+    proved the count's side present, and a merge partial on `~order_id` did
+    not zero-fill it, so the order with no returns vanished
+    (`NullReject.zero_filled_count`). A COUNT now proves only when 0 fails
+    the test, and a parent partial on a key another parent holds completely
+    pads like a short region.
+  - the nullability inference took every strict function as total. `x % 0`,
+    an absent index or key, `array_sum([])` and `stddev` of one row are NULL
+    from non-null inputs (`NullReject.mod_zero_not_total`), and are now
+    `NULL_INTRODUCING_FUNCTIONS`.
+- **A row derivation beside a grouped sibling lost its rows.** The law
+  harness pairs the padded model with one over a pre-joined table.
+  `(ret_plus > 2) or (sum(qty) by order_id > 7)` duplicated every line of an
+  order and admitted lines whose own atom failed, because the condition's
+  FINAL merge took the aggregate's `order_id` grain and dropped `item_id`.
+  A BASIC contributor its grouped siblings' grain does not determine now
+  advertises its own grain.
+- **`not (...)` over a membership or a `between` failed to plan.** `not (x
+  between 1 and 3)` raised "Cannot parse arg purpose", and `not (x in s)`
+  buried the set inside `coalesce`, where it lost its existence edge.
+  Membership is total, so its negation is the complementary membership
+  (`NullReject.not_mem_is_complement`). The parser emits that complement and
+  pushes `not` through `and` and `or` (`Logic.not_and`, `Logic.not_or`).
+- **Date offsets rendered unparenthesized.** `date_add(d, day, n + 1)`
+  rendered `n + 1 * INTERVAL 1 day`, and `date_sub(d, day, -1)` rendered
+  `--1`, which comments out the rest of the statement. Postgres put the
+  offset inside an interval string and had no `date_sub`. Found by the
+  conformance probe.
 - **Staged-where collisions are necessary, not conservative**
   (`Staged.same_address_two_stages_differ`). One address cannot carry both
   stages' values, which justifies `_validate_staged_where`.
@@ -142,7 +198,8 @@ Joins appear only through padding and fan-out. Freshness assumes arrivals
 land strictly past the watermark: a late row with a tied or NULL key is
 invisible to the verdict and the refresh alike
 (`Freshness.tie_is_invisible`, `Freshness.null_key_is_invisible`). That is a
-property of `MAX`-based watermarks, not a bug the model can fix. The cell checker is proved
+property of `MAX`-based watermarks, not a bug the model can fix. Nullability follows DuckDB: `x / 0` is
+inf there, so `/` is total, though MySQL and SQLite return NULL. The cell checker is proved
 exact over integers; the Python twin applies the same cells to dense domains
 without a successor step. Windows, ROLLUP subtotal rows
 and unions are modelled at the level the laws need.
