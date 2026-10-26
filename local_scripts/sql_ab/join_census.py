@@ -3,15 +3,14 @@
 Compiles every SELECT in the globbed .preql files with the planner
 instrumented, and reports per statement: how many sides the FINAL merge had,
 which stage-2 (group graph) and stage-3 (assembly) join-key paths fired, which
-keys resolve-time join discovery (`get_node_joins`) actually used, and whether a
-declarative pairing rule over stage-2 facts alone would have predicted them.
+keys resolve-time join discovery (`get_node_joins`) actually used, and whether
+the planner's FINAL join plan (`v4_helper/join_plan.py`) stated them.
 
     python local_scripts/sql_ab/join_census.py <out.json> "tests/modeling/**/*.preql" ...
 
 Run from the root of the tree under test (cwd goes first on sys.path). The
 JSON holds the per-statement records; the summary prints to stdout. See
-`docs/join_axis_audit_2026_10.md` for what the numbers mean and the rule the
-prediction uses.
+`docs/join_axis_audit_2026_10.md` for what the numbers mean.
 """
 
 from __future__ import annotations

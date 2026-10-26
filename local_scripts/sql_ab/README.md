@@ -63,10 +63,17 @@ about rows needs a look.
 compiles the globbed corpus with the planner instrumented and reports, per
 statement, the FINAL merge's side count, which stage-2 and stage-3 join-key
 paths fired (preserve keys, fresh ROOT re-source, widening, bridging, regraft),
-the keys `get_node_joins` actually used, and whether the declarative pairing
-rule in `predicted_keys` would have stated the same keys from stage-2 facts.
-The gate it exists for is in `docs/join_axis_audit_2026_10.md`: that rule must
-predict every corpus FINAL before it is allowed to drive assembly.
+the keys `get_node_joins` actually used, and whether the planner's own FINAL
+join plan (`v4_helper/join_plan.py`) stated the same keys. `join_census_plugin.py`
+runs the same check over every statement a suite compiles: it resolves each
+planned FINAL merge twice, unrestricted and restricted, and writes one line
+per merge whose unrestricted keys leave the plan's permitted set (with the
+plan and each side's resolved columns). Its double resolve can trip module
+fixtures, so confirm a failure without the plugin before reading it.
+
+```bash
+CENSUS_OUT=/tmp/census.jsonl PYTHONPATH=local_scripts/sql_ab   python -m pytest -p join_census_plugin tests -q -p no:cacheprovider -m "..."
+```
 
 ```bash
 python local_scripts/sql_ab/join_census.py /tmp/census.json "tests/modeling/**/*.preql" "tests/engine/**/*.preql" "tests/complex/**/*.preql" "tests/discovery/**/*.preql"

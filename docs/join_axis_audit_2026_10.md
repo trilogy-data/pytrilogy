@@ -266,40 +266,61 @@ provenance, `_wrap_for_grain`'s dedup of a wide ROOT to a pairing's grain
 (now driven by the pairing rather than by `final_merge_grain`), and the
 network search inside a group.
 
-## 7. Migration, gated
+## 7. Status (PR #773) and what is left
 
-Each step is gated the way the 2026-10 simplification audit was: corpus SQL
-byte-identical or every moved statement row-verified, pins green, fuzzer
-unchanged, and the join census run before and after.
+**Landed.** `v4_helper/join_plan.py` computes a `JoinPlan` from stage-2 facts
+twice per multi-contributor FINAL: over the elected cover (ROOT carry demands,
+merge grain, widening) and over the sides the merge actually joins (after
+folds, bridges, filter-arg producers). The FINAL MergeNode carries the second
+plan's `permitted_keys`, and `get_node_joins` drops every shared column off
+it before ordering and typing joins. Join typing, padding and hosting stay at
+resolve.
 
-0. **Oracle first.** `join_census.py` is landed with this document. The rule
-   in `predicted_keys` must reach 45/45 on the corpus and hold on the
-   discovery and engine test shapes (run under `sqlcap`-style capture) before
-   it is allowed to drive anything. Add the three missing rules from §5.
-1. **Shadow plan.** Compute `JoinPlan` at stage 2 after a stage-2 cover
-   election; record it in the plan trace; assert at resolve that the FINAL's
-   discovered keys equal it. No behaviour change. Any mismatch is a finding.
-2. **Plan feeds `preserve_keys`.** Replace `_final_merge_grain`,
-   `_group_final_grain_contribution`, `_lineage_pinned_grain`,
-   `_relevant_root_preserve_keys` and the ROOT `sibling_grain` block with
-   `carry_demands`. Delete `emitted_grain` by renaming it `RowIdentity`.
-3. **Plan drives widening and bridging.** One pass that carries each
-   contributor's `carry_demands` (the `widen_projection` call that
-   `_carry_join_keys` and `_key_bridged_members` both make), and a cover-time
-   bridge. Delete `_pairing_addresses`, `_pairing_islands`,
-   `_bridge_unpaired_parents`, `_island_bridges`, `_key_bridged_members`,
-   `_pair_is_keyed`, `_pairs_on_keys`, `_keyed_by`.
-4. **Plan reaches the MergeNode.** `node_joins` from pairings; the keyless
-   guard becomes the stage-2 connectivity check.
-5. **Per-group contracts** on the same object; then the regraft family.
+The contract, as the census plugin checks it: a pairing's *keys* are decisive
+(what widening carries onto that side); its *implied* columns are what the
+keys determine, which resolve may also equate (a side's physical grain is
+never pruned). Resolve may prune a planned key; it may never pair off the
+plan, nor go keyless where the plan pairs.
 
-Risks worth naming now: hidden outputs (a key carried hidden still pairs at
-resolve; the plan must say so explicitly); rowset handles, which pair only on
-their own boundary; region domains, whose spans are both identity and
-pairing; the authored-relation spellings, where one axis has several
-addresses and the plan must speak in value classes as `get_node_joins` does.
-None of these is new; each is a rule the stage-3 code already encodes
-somewhere and the plan would state once.
+Retired: the stage-2 per-group `FinalContributorContract`, `_final_merge_grain`,
+`_group_final_grain_contribution`, the ROOT `sibling_grain` block and
+`_relevant_root_preserve_keys`, and merge-grain-wide widening (each side now
+carries only its own pairings' keys, `JoinPlan.keys_for`).
+
+Rules the plan states that §6 did not name, each from a suite shape:
+
+- identity and carried columns compare by value class and authored relation,
+  never spelling (`ka`/`kb`, `ws`/`week_seq`);
+- a row stream carries its row parents' columns, the keys its input contracts
+  stitch on, its source grain when no barrier is in its lineage, the other
+  arguments of an atom over its own outputs, and any sibling identity key it
+  can render or its identity determines;
+- a rowset reader carries the boundary under its handles, never the base
+  key a body selects; a handle is never renderable off another relation;
+- authored axes are a statement fact computed over every group at stage 2
+  (`FinalAssemblyContract.authored_axes`), not over the cover;
+- a ROOT split into several wraps pairs with itself on what the wraps hold.
+
+Stage 3 now builds what stage 2 declares in three places: a non-grouping
+contributor sourced finer than its declared identity is projected to it when
+an independent sibling exposes the finer row key (`_at_declared_identity`); a
+rename-only contributor renders on the group it reads; widening is per side.
+
+**Open.**
+
+1. Cover election still runs in stage 3 off built nodes
+   (`_cover_groups_for_mandatory` and the add/fold passes); the second plan
+   exists because folds and bridges change the sides after it. Moving the
+   cover to stage 2 makes one plan enough.
+2. The bridge and island family (`_bridge_unpaired_parents`, `_island_bridges`,
+   `_key_bridged_members`, `_raise_if_rowset_islanded`) still decides
+   connectivity from built outputs. It is shared with per-group merges, so it
+   goes when per-group merges take a `JoinPlan` (their `GroupInputContract.
+   preserve_keys` is the same union-of-sets shape the FINAL contract was).
+3. The gated global aggregate (`avg(x) by * ? yr = 1999`) is grouped at the
+   statement grain and filtered per row; the plan matches it only because the
+   rename now renders on the filter group. Its declared grain should be a
+   single row.
 
 ## 8. Not claimed
 
