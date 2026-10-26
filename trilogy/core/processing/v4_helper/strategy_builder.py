@@ -13,7 +13,7 @@ generator dispatch lives in `v4_node_generators.dispatch.build_node`."""
 
 import logging
 from collections import Counter, defaultdict
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from dataclasses import replace as dc_replace
@@ -28,7 +28,6 @@ from trilogy.core.enums import (
     ComparisonOperator,
     Derivation,
     FunctionType,
-    Granularity,
     JoinType,
     Ordering,
     Purpose,
@@ -122,10 +121,10 @@ from .extent_ownership import takes_a_value_on_padding
 from .functional_dependency import build_fd_determines, build_fd_determines_all
 from .group_graph import row_parents, trace_group_graph
 from .history import V4History
+from .join_plan import merge_axes, plan_final_join
 from .models import (
     ExtentOwnership,
     FinalAssemblyContract,
-    FinalContributorContract,
     GroupAttrs,
     InputChannel,
     nulls_grouping_keys,
@@ -1137,15 +1136,6 @@ def _fold_into_readers(
     else names it."""
     _read_parents_in_place(group_graph, group_edges, attrs, gid)
     final = attrs[FINAL_NODE_ID]
-    if final.final_contract is not None:
-        final.final_contract = dc_replace(
-            final.final_contract,
-            contributor_contracts=tuple(
-                c
-                for c in final.final_contract.contributor_contracts
-                if c.group_id != gid
-            ),
-        )
     if final.extent_ownership is not None:
         final.extent_ownership.permitted.pop(gid, None)
     logger.info(f"[v4] {gid} is computed inline by its readers; not built")
@@ -3573,7 +3563,7 @@ def _add_relation_axis_contributors(
     group_graph: nx.DiGraph,
     built: dict[str, StrategyNode],
     per_group: dict[str, list[BuildConcept]],
-    final_contract: FinalAssemblyContract,
+    axes: frozenset[str],
     environment: BuildEnvironment,
 ) -> None:
     """A FINAL merge grain carrying an authored relation needs every hosting
@@ -3584,10 +3574,7 @@ def _add_relation_axis_contributors(
     Add the built group exposing a missing hosted axis member as an axis-only
     contributor (it contributes no mandatory concepts). Edits `per_group` in
     place."""
-    if len(per_group) < 2 or not environment.scoped_join_key_groups:
-        return
-    merge_grain = set(final_contract.merge_grain)
-    if not merge_grain:
+    if len(per_group) < 2 or not environment.scoped_join_key_groups or not axes:
         return
     outputs_of = {
         gid: {o.address for o in node.output_concepts} for gid, node in built.items()
@@ -3599,7 +3586,7 @@ def _add_relation_axis_contributors(
     }
     chosen = set(per_group)
     for canonical, members in environment.scoped_join_key_groups.items():
-        relation = {canonical, *members} & merge_grain
+        relation = {canonical, *members} & axes
         if len(relation) < 2:
             continue
         hosted = {addr for gid in chosen for addr in relation & hosts_of[gid]}
@@ -4651,93 +4638,6 @@ def _required_final_contract(attrs: dict[str, GroupAttrs]) -> FinalAssemblyContr
     return contract
 
 
-def _final_contributor_contracts(
-    final_contract: FinalAssemblyContract,
-    contributing: list[str],
-) -> dict[str, FinalContributorContract]:
-    contracts = {
-        contract.group_id: contract for contract in final_contract.contributor_contracts
-    }
-    missing_contracts = [gid for gid in contributing if gid not in contracts]
-    if missing_contracts:
-        raise ValueError(
-            "FINAL contributor contract missing for groups: "
-            + ", ".join(sorted(missing_contracts))
-        )
-    return {gid: contracts[gid] for gid in contributing}
-
-
-def _relevant_root_preserve_keys(
-    environment: BuildEnvironment,
-    output_concepts: list[BuildConcept],
-    preserve_keys: frozenset[str],
-    member_addresses: frozenset[str] = frozenset(),
-) -> frozenset[str]:
-    # A single-row output pairs with every row: any key "determines" it, and
-    # keeping one would re-source a scalar at that key's grain.
-    output_concepts = [
-        c for c in output_concepts if c.granularity != Granularity.SINGLE_ROW
-    ]
-    if not preserve_keys or not output_concepts:
-        return frozenset()
-    output_addresses = {concept.address for concept in output_concepts}
-    statement_members = _statement_scoped_relation_members(environment)
-    relevant: set[str] = set()
-    for key in preserve_keys:
-        if key in output_addresses:
-            relevant.add(key)
-            continue
-        # An AUTHORED statement-relation member is the declared merge axis: it
-        # already survived the merge-grain intersection, and the FD test below
-        # cannot vouch for it (a `unique` business key determines the outputs
-        # only through a uniqueness the FD tables don't encode). Dropping it
-        # re-loses the authored join key (`subset join cust.cid = id` with
-        # only `id`-determined properties projected).
-        if key in statement_members and environment.concepts.get(key) is not None:
-            relevant.add(key)
-            continue
-        # A key the ROOT group itself carries as a member is a genuine BRIDGE
-        # join key even when it doesn't FD-determine any output: the group put
-        # this key beside the output because a shared finer member (the fact's
-        # order_id) connects them (`customer_id` beside `product_name`, bridged
-        # through orders). Keeping it lets the root scan emit the connecting
-        # pairs and join the sibling aggregate on it, instead of the merge
-        # cross-joining ON 1=1.
-        if key in member_addresses:
-            relevant.add(key)
-            continue
-        if any(
-            build_fd_determines(
-                environment,
-                {key},
-                concept.address,
-                include_empty_grain=False,
-            )
-            for concept in output_concepts
-        ):
-            relevant.add(key)
-    # A composite merge grain reaches a dimension through a foreign key OFF
-    # the grain (`(item, ticket)` -> customer -> region): the keys determine
-    # the output jointly and none does alone, which is the composite peel
-    # `_composite_determining_grain` hands this scan.
-    if any(
-        concept.address not in preserve_keys
-        and not _fd_determined(environment, relevant, concept)
-        and _fd_determined(environment, preserve_keys, concept)
-        for concept in output_concepts
-    ):
-        return preserve_keys
-    return frozenset(relevant)
-
-
-def _fd_determined(
-    environment: BuildEnvironment, keys: Iterable[str], concept: BuildConcept
-) -> bool:
-    return build_fd_determines(
-        environment, set(keys), concept.address, include_empty_grain=False
-    )
-
-
 def _group_to_grain_if_required(
     node: StrategyNode,
     mandatory_list: list[BuildConcept],
@@ -5403,7 +5303,17 @@ def _assemble_final_node(
             )
         )
     _add_relation_axis_contributors(
-        group_graph, built, per_group, final_contract, environment
+        group_graph,
+        built,
+        per_group,
+        merge_axes(
+            list(built),
+            attrs,
+            mandatory_list,
+            environment,
+            final_contract.relation_edge_members,
+        ),
+        environment,
     )
     _add_partial_completion_contributors(built, per_group, environment)
     _fold_descendant_contributors(group_graph, attrs, built, per_group)
@@ -5439,24 +5349,22 @@ def _assemble_final_node(
             environment,
         )
 
-    # Only root scans get the grain projection: their grain is the row-level
-    # source-table grain (often much wider than what a downstream merge
-    # wants), and a SELECT DISTINCT-style projection is always safe.
-    # Wrapping intermediate aggregates is *not* safe: a GroupNode over a
-    # `sum(x)` node would re-aggregate the partial sums (OK for SUM, wrong
-    # for AVG/STDDEV), and intermediate aggregates often don't even expose
-    # the requested grain key (their GROUP BY is their grain, not the
-    # downstream's).
-    # Merge grain is defined by the grouping (aggregate/window) contributors;
-    # compute it up front so root-scan wrapping can project an FD dimension at
-    # this grain (keeping the join key) instead of its own key-grain. A ROWSET
-    # boundary is a fixed-grain barrier too: its select grain is the key set a
-    # merging dimension must join on, so a dimension scan rides it instead of
-    # deduping to its own key grain and cross-joining ON 1=1.
-    contracts_by_gid = _final_contributor_contracts(final_contract, contributing)
-    final_merge_grain = frozenset().union(
-        *(contract.projection_grain for contract in contracts_by_gid.values())
+    # The join plan states, from stage-2 facts over the cover, what identifies
+    # each contributor's rows and which keys each ROOT must carry to pair with
+    # its siblings. Its merge grain is the grain the grouping and barrier-pinned
+    # contributors fix: a dimension scan projects its FD attributes at it
+    # (keeping the join key) instead of deduping to its own key grain and
+    # cross-joining ON 1=1.
+    plan = plan_final_join(
+        group_graph,
+        attrs,
+        per_group,
+        mandatory_list,
+        environment,
+        final_contract.relation_edge_members,
     )
+    final_merge_grain = plan.merge_grain
+    logger.info(f"[v4] FINAL join plan: {plan}")
 
     # A grouping-sets sibling suppresses the FINAL dedup (`_group_to_grain_if_
     # required` passes a subtotal-bearing merge through), so a row-grain leaf
@@ -5466,91 +5374,40 @@ def _assemble_final_node(
     parents: list[StrategyNode] = []
     for gid in contributing:
         node = built[gid]
-        is_root = attrs[gid].derivation == Derivation.ROOT
-        contributor_contract = contracts_by_gid[gid]
-        preserve_keys = contributor_contract.preserve_keys & final_merge_grain
-        group_concepts = list(per_group[gid])
-        if is_root:
-            # `final_merge_grain` is the union of what contributors ADVERTISE
-            # (their projection grain), which a non-grouping contributor leaves
-            # empty, so a ROOT sibling's join key would be filtered away and
-            # the merge would cross-join ON 1=1. A sibling's own grain is a
-            # stronger guarantee than its advertisement: a group at user grain
-            # emits the user key whether or not it projects it. Preserve the
-            # merge keys some sibling's grain vouches for.
-            sibling_grain = {
-                address
-                for other in contributing
-                if other != gid and other in attrs
-                for address in attrs[other].emitted_grain
-            }
-            preserve_keys |= contributor_contract.preserve_keys & sibling_grain
-            preserve_keys = _relevant_root_preserve_keys(
-                environment,
-                group_concepts,
-                preserve_keys,
-                frozenset(_own_members(attrs, gid)),
-            )
-            # A ROOT that already carries a merge key among its own concepts
-            # joins its siblings on that key alone. Preserving the OTHER merge
-            # keys forces the re-source below to drag in whatever fact table
-            # carries them (a pure dim scan becomes a fact-dim join deduped to
-            # the full output grain), and the merge then stitches on every key
-            # null-safely, which under `~` partials pairs join-manufactured
-            # NULLs with each other.
-            # Foreign keys stay preserved only for the carrier-less case the
-            # widen exists for: no own key means no join path, and the merge
-            # would cross-join ON 1=1.
-            # Only when the own keys determine what the ROOT delivers: a span
-            # carrying `order_id` beside a `product_id` the composite
-            # `(order_id, line_no)` determines repeats per line, and joining on
-            # `order_id` alone pairs every line with every product of its order.
-            own_join_keys = preserve_keys & (
-                {concept.address for concept in group_concepts}
-                | {concept.address for concept in node.usable_outputs}
-            )
-            if own_join_keys and all(
-                concept.address in preserve_keys
-                or _fd_determined(environment, own_join_keys, concept)
-                for concept in group_concepts
-            ):
-                preserve_keys = frozenset(own_join_keys)
-        # A preserved join key must survive the wrap: grouping the contributor
-        # to a grain that excludes the key it was just re-sourced to carry
-        # dedups that key straight back out, and the merge cross-joins anyway.
-        projection_grain = (
-            final_merge_grain | preserve_keys
-            if is_root
-            else contributor_contract.projection_grain
-        )
-        if is_root and preserve_keys:
-            seen_group_concepts = {concept.address for concept in group_concepts}
-            # Carry the merge grain's join KEYS onto the root scan.
-            group_concepts.extend(
-                c
-                for address in sorted(preserve_keys)
-                if (c := _concept_at(environment, address)) is not None
-                and address not in seen_group_concepts
-            )
-        if is_root:
-            parents.extend(
-                _resourced_root_contributor(
-                    gid,
-                    node,
-                    group_concepts,
-                    projection_grain,
-                    attrs,
-                    environment,
-                    ownership,
-                    root_requests[gid],
-                    graph,
-                    history,
-                    arms_delivered,
-                    grouping_sibling,
-                )
-            )
-        else:
+        if attrs[gid].derivation != Derivation.ROOT:
             parents.append(node)
+            continue
+        # Only root scans are re-sourced and wrapped: their grain is the
+        # row-level source-table grain (often much wider than the merge wants),
+        # and a SELECT DISTINCT-style projection is always safe. Wrapping an
+        # intermediate aggregate is not: it would re-aggregate partial sums.
+        carry = plan.carry_demands[gid]
+        group_concepts = list(per_group[gid])
+        seen_group_concepts = {concept.address for concept in group_concepts}
+        group_concepts.extend(
+            c
+            for address in sorted(carry)
+            if (c := _concept_at(environment, address)) is not None
+            and address not in seen_group_concepts
+        )
+        # A carried key must survive the wrap: grouping to a grain without the
+        # key it was re-sourced to carry dedups it straight back out.
+        parents.extend(
+            _resourced_root_contributor(
+                gid,
+                node,
+                group_concepts,
+                final_merge_grain | carry,
+                attrs,
+                environment,
+                ownership,
+                root_requests[gid],
+                graph,
+                history,
+                arms_delivered,
+                grouping_sibling,
+            )
+        )
 
     # Sibling contributors that descend from a common richer parent (one
     # renames the aggregate's grouping key while others derive from that same

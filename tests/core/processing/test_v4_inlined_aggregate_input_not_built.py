@@ -19,8 +19,6 @@ from trilogy.core.processing.v4_helper.constants import (
 from trilogy.core.processing.v4_helper.edges import EdgeMap, add_edge
 from trilogy.core.processing.v4_helper.history import V4History
 from trilogy.core.processing.v4_helper.models import (
-    FinalAssemblyContract,
-    FinalContributorContract,
     GroupAttrs,
     GroupInputContract,
 )
@@ -135,11 +133,6 @@ def test_fold_puts_the_parents_in_the_folded_groups_place():
         GroupInputContract(parent_group_id=parent, consumer_group_id="agg")
         for parent in ("root", "basic", "other")
     )
-    attrs[FINAL_NODE_ID].final_contract = FinalAssemblyContract(
-        contributor_contracts=tuple(
-            FinalContributorContract(group_id=gid) for gid in ("agg", "basic")
-        )
-    )
 
     _fold_into_readers(graph, edges, attrs, "basic")
 
@@ -153,9 +146,6 @@ def test_fold_puts_the_parents_in_the_folded_groups_place():
         "root",
         "other",
     ]
-    contract = attrs[FINAL_NODE_ID].final_contract
-    assert contract is not None
-    assert [c.group_id for c in contract.contributor_contracts] == ["agg"]
 
 
 def test_fold_turns_a_side_channel_from_a_row_parent_into_a_row_edge():
@@ -179,9 +169,6 @@ def test_fold_turns_a_side_channel_from_a_row_parent_into_a_row_edge():
             (FINAL_NODE_ID, None),
         ]
     }
-    attrs[FINAL_NODE_ID].final_contract = FinalAssemblyContract(
-        contributor_contracts=(FinalContributorContract(group_id="agg"),)
-    )
 
     _fold_into_readers(graph, edges, attrs, "dy")
 
