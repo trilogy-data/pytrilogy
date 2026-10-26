@@ -57,6 +57,8 @@ class JoinPlan:
     # keys a ROOT contributor must be widened to carry
     carry_demands: dict[str, frozenset[str]]
     pairings: tuple[Pairing, ...]
+    # contributors of one row, which pair with every row
+    scalars: frozenset[str] = frozenset()
 
     @property
     def merge_grain(self) -> frozenset[str]:
@@ -67,19 +69,12 @@ class JoinPlan:
         return frozenset().union(*(p.keys for p in self.pairings))
 
     def islands(self) -> list[set[str]]:
-        """Contributors grouped by what pairs them, scalars aside."""
-        scalar = {
-            gid
-            for p in self.pairings
-            if p.kind == PairingKind.SCALAR
-            for gid in (p.left, p.right)
-            if not self.identity[gid]
-        }
+        """Contributors grouped by what pairs them, single-row ones aside."""
         islands: list[set[str]] = [
-            {gid} for gid in self.contributors if gid not in scalar
+            {gid} for gid in self.contributors if gid not in self.scalars
         ]
         for p in self.pairings:
-            if not p.keys or p.kind == PairingKind.SCALAR:
+            if p.kind == PairingKind.SCALAR:
                 continue
             joined = [i for i in islands if p.left in i or p.right in i]
             if len(joined) > 1:
@@ -401,9 +396,9 @@ def _single_row(group: GroupAttrs, environment: BuildEnvironment) -> bool:
 def _pair(
     left: str,
     right: str,
-    attrs: dict[str, GroupAttrs],
     identity: dict[str, frozenset[str]],
     carries: dict[str, frozenset[str]],
+    scalars: frozenset[str],
     environment: BuildEnvironment,
 ) -> Pairing:
     keys = (identity[left] | identity[right]) & carries[left] & carries[right]
@@ -414,7 +409,7 @@ def _pair(
             authored |= lhs | rhs
     if authored:
         return Pairing(left, right, frozenset(keys | authored), PairingKind.AUTHORED)
-    if any(_single_row(attrs[gid], environment) for gid in (left, right)):
+    if {left, right} & scalars:
         return Pairing(left, right, frozenset(keys), PairingKind.SCALAR)
     lookup = any(
         identity[gid] and build_fd_determines_all(environment, keys, identity[gid])
@@ -465,13 +460,16 @@ def plan_final_join(
         | carry_demands.get(gid, frozenset())
         for gid in contributors
     }
+    scalars = frozenset(
+        gid for gid in contributors if _single_row(attrs[gid], environment)
+    )
     pairings = tuple(
         pairing
         for left, right in combinations(contributors, 2)
-        if (pairing := _pair(left, right, attrs, identity, carries, environment)).keys
+        if (pairing := _pair(left, right, identity, carries, scalars, environment)).keys
         or pairing.kind == PairingKind.SCALAR
     )
-    return JoinPlan(contributors, pins, identity, carry_demands, pairings)
+    return JoinPlan(contributors, pins, identity, carry_demands, pairings, scalars)
 
 
 def final_predecessors(
