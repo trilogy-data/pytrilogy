@@ -118,7 +118,11 @@ from .edges import (
     remove_edge,
 )
 from .extent_ownership import takes_a_value_on_padding
-from .functional_dependency import build_fd_determines, build_fd_determines_all
+from .functional_dependency import (
+    build_fd_closure,
+    build_fd_determines,
+    build_fd_determines_all,
+)
 from .group_graph import row_parents, trace_group_graph
 from .history import V4History
 from .join_plan import merge_axes, plan_final_join
@@ -5409,6 +5413,17 @@ def _assemble_final_node(
         origin.update((id(wrap), gid) for wrap in wraps)
         parents.extend(wraps)
 
+    parents = [
+        (
+            _at_declared_identity(
+                parent, parents, attrs[side], plan.identity[side], environment
+            )
+            if (side := origin.get(id(parent))) is not None
+            else parent
+        )
+        for parent in parents
+    ]
+
     # Sibling contributors that descend from a common richer parent (one
     # renames the aggregate's grouping key while others derive from that same
     # aggregate) expose no shared output key (their declared grain is the
@@ -5615,6 +5630,54 @@ def _assemble_final_node(
         mandatory_list,
         final_contract,
         environment,
+    )
+
+
+def _at_declared_identity(
+    node: StrategyNode,
+    siblings: list[StrategyNode],
+    group: GroupAttrs,
+    identity: frozenset[str],
+    environment: BuildEnvironment,
+) -> StrategyNode:
+    """A row stream built off rows finer than the identity its group declares
+    (a filter of an item attribute sourced off the sale lines), deduplicated
+    to that identity when an independent sibling exposes the finer row key
+    too: the two would pair on the stream's row key, which no plan states. Its
+    outputs are functions of the identity, so nothing is lost."""
+    if (
+        group.derivation in GROUPING_DERIVATIONS
+        or group.derivation == Derivation.ROWSET
+        or group.extent_spans
+        or node_nulls_grouping_keys(node)
+    ):
+        return node
+    keys = identity - {ALL_ROWS_ADDRESS}
+    if not keys or not keys <= {o.address for o in node.usable_outputs}:
+        return node
+    closure = build_fd_closure(environment, keys, include_empty_grain=False)
+    finer = _resolved_grain(node) - closure
+    # a sibling the stream is built on, or built on it, holds the same rows
+    exposed = set().union(
+        *(
+            _visible_addresses(other)
+            for other in siblings
+            if other is not node
+            and not _derives_from(node, other)
+            and not _derives_from(other, node)
+        )
+    )
+    if not finer & exposed or not set(group.output_concepts) <= closure:
+        return node
+    kept = [o for o in node.usable_outputs if o.address in closure]
+    return GroupNode(
+        output_concepts=kept,
+        input_concepts=kept,
+        environment=environment,
+        parents=[node],
+        partial_concepts=[c for c in node.partial_concepts if c.address in closure],
+        preexisting_conditions=node.preexisting_conditions,
+        force_group=True,
     )
 
 

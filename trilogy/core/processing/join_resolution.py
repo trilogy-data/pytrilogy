@@ -1897,12 +1897,15 @@ def _drop_unplanned_keys(
 ) -> None:
     """Take every column two sides share but the plan does not pair on out of
     the join graph, so join order and typing choose among planned keys only."""
-    roots = environment.address_roots()
+    concepts = [
+        node for node in graph.nodes() if graph.nodes[node]["type"] == NodeType.CONCEPT
+    ]
+    roots = environment.address_roots(
+        {node.removeprefix("c~") for node in concepts} | planned_keys
+    )
     planned = {roots.get(address, address) for address in planned_keys}
     unplanned = []
-    for node in graph.nodes():
-        if graph.nodes[node]["type"] != NodeType.CONCEPT:
-            continue
+    for node in concepts:
         address = node.removeprefix("c~")
         if (
             roots.get(address, address) not in planned

@@ -351,11 +351,11 @@ def root_carry_demand(
 def _boundary_columns(
     group: GroupAttrs, environment: BuildEnvironment
 ) -> frozenset[str]:
-    """Every column of the rowsets a rowset group's outputs belong to: its
-    boundary carries them all, projected or not."""
+    """Every column of the rowsets a rowset group belongs to: its boundary
+    carries them all, projected or not (an axis-only side projects none)."""
     names = {
         c.lineage.rowset.name
-        for addr in group.output_concepts
+        for addr in {*group.output_concepts, *group.members, *group.grain_components}
         if (c := environment.concepts.get(addr)) is not None
         and isinstance(c.lineage, BuildRowsetItem)
     }
@@ -450,6 +450,19 @@ def _single_row(group: GroupAttrs, environment: BuildEnvironment) -> bool:
     )
 
 
+def _axis_of(
+    address: str, roots: dict[str, str], environment: BuildEnvironment
+) -> frozenset[str]:
+    """`address` with every name of the same axis: its value class root, and
+    the members of an authored relation it belongs to (`union join a.k = b.k`
+    keys one axis under two names)."""
+    names = {address, roots.get(address, address)}
+    for relation in environment.scoped_join_relations():
+        if address in relation:
+            names |= relation
+    return frozenset(names)
+
+
 def _pair(
     left: str,
     right: str,
@@ -459,7 +472,12 @@ def _pair(
     environment: BuildEnvironment,
 ) -> Pairing:
     shared = carries[left] & carries[right]
-    keys = (identity[left] | identity[right]) & shared
+    # scoped: an unscoped lookup caches on the statement's class baseline
+    roots = environment.address_roots(shared | identity[left] | identity[right])
+    axes = frozenset().union(
+        *(_axis_of(a, roots, environment) for a in identity[left] | identity[right])
+    )
+    keys = {a for a in shared if _axis_of(a, roots, environment) & axes}
     authored: set[str] = set()
     for relation in environment.scoped_join_relations():
         lhs, rhs = relation & carries[left], relation & carries[right]
