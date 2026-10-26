@@ -6,7 +6,7 @@ from trilogy.core.processing.nodes import (
     GroupNode,
     StrategyNode,
 )
-from trilogy.utility import unique
+from trilogy.core.processing.nodes.base_node import readable_outputs
 
 
 def gen_constant(
@@ -35,7 +35,7 @@ def gen_constant(
             if r.address in parent_addresses
         ]
         if gate_inputs:
-            passthrough = unique(parent_outputs, "address")
+            passthrough = readable_outputs(parents)
             gate = FilterNode(
                 input_concepts=passthrough,
                 output_concepts=passthrough,

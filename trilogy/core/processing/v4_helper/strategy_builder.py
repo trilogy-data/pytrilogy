@@ -86,6 +86,7 @@ from trilogy.core.processing.nodes import (
 from trilogy.core.processing.nodes.base_node import (
     NodeJoin,
     get_all_parent_partial,
+    readable_outputs,
     region_reads,
 )
 from trilogy.utility import unique
@@ -3126,13 +3127,7 @@ def _pre_merge_parents(
     # key it was missing needs no bridge.
     if group_graph is not None and built is not None:
         parents = _bridge_unpaired_parents(parents, group_graph, built, environment)
-    seen: set[str] = set()
-    all_outputs: list[BuildConcept] = []
-    for p in parents:
-        for o in p.output_concepts:
-            if o.address not in seen:
-                seen.add(o.address)
-                all_outputs.append(o)
+    all_outputs = readable_outputs(parents)
     merged = MergeNode(
         input_concepts=all_outputs,
         output_concepts=all_outputs,
@@ -5828,7 +5823,7 @@ def _read_first_rows(
         rewritten.append(dc_replace(concept, lineage=lineage))
     if not markers:
         return outputs, parents
-    stream = unique([o for p in parents for o in p.output_concepts], "address")
+    stream = readable_outputs(parents)
     window = WindowNode(
         input_concepts=stream,
         output_concepts=[*stream, *markers.values()],

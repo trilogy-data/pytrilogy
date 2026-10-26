@@ -266,6 +266,35 @@ def nullability_aliases(concept: BuildConcept) -> set[str]:
     return aliases
 
 
+def _visible_addresses(
+    parents: Sequence["StrategyNode"],
+) -> tuple[set[str], set[str]]:
+    addresses: set[str] = set()
+    canonical: set[str] = set()
+    for parent in parents:
+        for output in parent.usable_outputs:
+            addresses.add(output.address)
+            addresses.update(output.pseudonyms)
+            canonical.add(output.canonical_address)
+    return addresses, canonical
+
+
+def _readable(concept: BuildConcept, visible: tuple[set[str], set[str]]) -> bool:
+    # Two addresses with the same lineage render from the same SQL expression,
+    # so a parent producing one satisfies the other.
+    return concept.address in visible[0] or concept.canonical_address in visible[1]
+
+
+def readable_outputs(parents: Sequence["StrategyNode"]) -> list[BuildConcept]:
+    """Every parent output a child may take as input. A hidden output (a root
+    scan's fallback column) qualifies only when some parent exposes it."""
+    visible = _visible_addresses(parents)
+    return unique(
+        [o for p in parents for o in p.output_concepts if _readable(o, visible)],
+        "address",
+    )
+
+
 def region_reads(node: "StrategyNode") -> frozenset[str]:
     """The region domains under `node`: the spans whose extension rows are
     rows of its stream. Two nodes can stand in for each other's columns only
@@ -380,32 +409,12 @@ class StrategyNode:
     def validate_inputs(self):
         if not self.parents:
             return
-        non_hidden = set()
-        non_hidden_canonical = set()
-        hidden = set()
-        usable_outputs = set()
-        for x in self.parents:
-            for z in x.usable_outputs:
-                usable_outputs.add(z.address)
-                non_hidden.add(z.address)
-                non_hidden_canonical.add(z.canonical_address)
-                for psd in z.pseudonyms:
-                    non_hidden.add(psd)
-            for z in x.hidden_concepts:
-                hidden.add(z)
-        # Inputs may match a parent's output by canonical_address: two addresses
-        # with the same lineage render from the same SQL expression, so a parent
-        # producing one satisfies the other.
-        missing = [
-            x.address
-            for x in self.input_concepts
-            if x.address not in non_hidden
-            and x.canonical_address not in non_hidden_canonical
-        ]
+        visible = _visible_addresses(self.parents)
+        missing = [x.address for x in self.input_concepts if not _readable(x, visible)]
         if missing:
-
+            hidden = {h for x in self.parents for h in x.hidden_concepts}
             raise ValueError(
-                f"Invalid input concepts to node! {missing} are missing non-hidden parent nodes; have {non_hidden} and hidden {hidden} from root {usable_outputs}"
+                f"Invalid input concepts to node! {missing} are missing non-hidden parent nodes; have {visible[0]} and hidden {hidden}"
             )
 
     def add_parents(self, parents: list["StrategyNode"]):
