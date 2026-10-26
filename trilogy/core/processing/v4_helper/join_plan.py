@@ -382,18 +382,28 @@ def _over_own_rows(group: GroupAttrs) -> frozenset[str]:
     return frozenset(held)
 
 
+def _joined_on(group: GroupAttrs) -> frozenset[str]:
+    """The keys a row stream's inputs are stitched on, as its input contracts
+    declare them: its rows hold them (`sale_recency` over a by-customer
+    aggregate and a sale's date holds `customer.sk` and `sale_date.sk`)."""
+    return frozenset().union(
+        *(contract.preserve_keys for contract in group.input_contracts)
+    )
+
+
 def _carries(
     group: GroupAttrs,
     identity: frozenset[str],
-    merge_grain: frozenset[str],
+    sibling_keys: frozenset[str],
     environment: BuildEnvironment,
 ) -> frozenset[str]:
     """The columns a contributor's rows hold or can be widened to: a grouping
     group's outputs; a rowset's boundary; a row stream's inputs and members,
     its grain when it reads source rows (a scan holds its row keys; a BASIC
     over aggregates is computed off their rows and does not), and any merge
-    key its identity determines (a filter at `item.sk` is widened to
-    `item.manufact` to pair with an aggregate by it). Any group also holds
+    key a sibling is identified by that its own identity determines (a
+    filter at `item.sk` is widened to `item.manufact` to pair with an
+    aggregate by it). Any group also holds
     what an atom over its own outputs is decided against."""
     if group.derivation in GROUPING_DERIVATIONS:
         return frozenset(group.output_concepts) | _over_own_rows(group)
@@ -404,6 +414,7 @@ def _carries(
         | group.row_columns
         | set(group.members)
         | _over_own_rows(group)
+        | _joined_on(group)
     )
     if not lineage_pinned_grain(group.output_concepts or group.members, environment):
         held |= group.grain_components
@@ -411,7 +422,7 @@ def _carries(
     if not identity or group.derivation == Derivation.ROOT:
         return held
     closure = build_fd_closure(environment, identity, include_empty_grain=False)
-    return held | (merge_grain & closure)
+    return held | (sibling_keys & closure)
 
 
 def _renderable_members(
@@ -471,9 +482,22 @@ def _pair(
     scalars: frozenset[str],
     environment: BuildEnvironment,
 ) -> Pairing:
-    shared = carries[left] & carries[right]
     # scoped: an unscoped lookup caches on the statement's class baseline
-    roots = environment.address_roots(shared | identity[left] | identity[right])
+    roots = environment.address_roots(
+        carries[left] | carries[right] | identity[left] | identity[right]
+    )
+    # one value under two names (`ws` beside `week_seq`) is shared
+    right_values = {roots.get(a, a) for a in carries[right]}
+    left_values = {roots.get(a, a) for a in carries[left]}
+    shared = frozenset(
+        a
+        for side, other in (
+            (carries[left], right_values),
+            (carries[right], left_values),
+        )
+        for a in side
+        if roots.get(a, a) in other
+    )
     axes = frozenset().union(
         *(_axis_of(a, roots, environment) for a in identity[left] | identity[right])
     )
@@ -520,7 +544,6 @@ def plan_final_join(
         gid: row_identity(group_graph, attrs, gid, contributors, axes, environment)
         for gid in contributors
     }
-    merge_grain = frozenset().union(*pins.values())
     identity = {
         gid: pins[gid]
         | attrs[gid].emitted_grain
@@ -536,7 +559,12 @@ def plan_final_join(
         if attrs[gid].derivation == Derivation.ROOT
     }
     carries = {
-        gid: _carries(attrs[gid], identity[gid], merge_grain, environment)
+        gid: _carries(
+            attrs[gid],
+            identity[gid],
+            frozenset().union(*(identity[o] for o in contributors if o != gid)),
+            environment,
+        )
         | carry_demands.get(gid, frozenset())
         for gid in contributors
     }
