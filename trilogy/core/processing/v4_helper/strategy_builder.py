@@ -5364,7 +5364,7 @@ def _assemble_final_node(
         final_contract.relation_edge_members,
     )
     final_merge_grain = plan.merge_grain
-    logger.info(f"[v4] FINAL join plan: {plan}")
+    origin = {id(node): gid for gid, node in built.items()}
 
     # A grouping-sets sibling suppresses the FINAL dedup (`_group_to_grain_if_
     # required` passes a subtotal-bearing merge through), so a row-grain leaf
@@ -5392,22 +5392,22 @@ def _assemble_final_node(
         )
         # A carried key must survive the wrap: grouping to a grain without the
         # key it was re-sourced to carry dedups it straight back out.
-        parents.extend(
-            _resourced_root_contributor(
-                gid,
-                node,
-                group_concepts,
-                final_merge_grain | carry,
-                attrs,
-                environment,
-                ownership,
-                root_requests[gid],
-                graph,
-                history,
-                arms_delivered,
-                grouping_sibling,
-            )
+        wraps = _resourced_root_contributor(
+            gid,
+            node,
+            group_concepts,
+            final_merge_grain | carry,
+            attrs,
+            environment,
+            ownership,
+            root_requests[gid],
+            graph,
+            history,
+            arms_delivered,
+            grouping_sibling,
         )
+        origin.update((id(wrap), gid) for wrap in wraps)
+        parents.extend(wraps)
 
     # Sibling contributors that descend from a common richer parent (one
     # renames the aggregate's grouping key while others derive from that same
@@ -5528,6 +5528,17 @@ def _assemble_final_node(
             if host and built[host] not in parents:
                 parents = parents + [built[host]]
     parents = parents + arg_nodes
+    # Folds, bridges and filter-arg producers changed the sides since the plan
+    # above: state the merge's own plan over the sides it actually joins.
+    merge_plan = plan_final_join(
+        group_graph,
+        attrs,
+        {gid: per_group.get(gid, []) for gid in unique_sides(parents, origin)},
+        mandatory_list,
+        environment,
+        final_contract.relation_edge_members,
+    )
+    logger.info(f"[v4] FINAL join plan: {merge_plan}")
     merge_inputs = unique(
         [c for c in outputs if c.address not in pseudonym_only]
         + arg_concepts
@@ -5604,6 +5615,20 @@ def _assemble_final_node(
         final_contract,
         environment,
     )
+
+
+def unique_sides(parents: list[StrategyNode], origin: dict[int, str]) -> list[str]:
+    """The groups `parents` came from, looking through the single-parent
+    wraps assembly puts over a contributor."""
+    sides: list[str] = []
+    for parent in parents:
+        node = parent
+        while id(node) not in origin and len(node.parents) == 1:
+            node = node.parents[0]
+        gid = origin.get(id(node))
+        if gid is not None and gid not in sides:
+            sides.append(gid)
+    return sides
 
 
 def _first_row_marker(partition: list[BuildConcept]) -> BuildConcept:

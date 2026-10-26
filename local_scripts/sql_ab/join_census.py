@@ -23,7 +23,6 @@ import sys
 import time
 from collections import Counter
 from contextlib import contextmanager
-from itertools import combinations
 from pathlib import Path
 
 sys.path.insert(0, os.getcwd())
@@ -33,7 +32,6 @@ from trilogy.core.processing import join_resolution as jr
 from trilogy.core.processing.nodes import merge_node as mn
 from trilogy.core.processing.v4_helper import group_graph as gg
 from trilogy.core.processing.v4_helper import strategy_builder as sb
-from trilogy.core.processing.v4_helper.constants import FINAL_NODE_ID
 from trilogy.core.query_processor import process_query
 from trilogy.core.statements.author import (
     MultiSelectStatement,
@@ -42,7 +40,6 @@ from trilogy.core.statements.author import (
 from trilogy.dialect.enums import Dialects
 
 ALL_ROWS = "__preql_internal.all_rows"
-GROUPING_SUFFIXES = ("AGGREGATE", "WINDOW", "GROUP_TO", "ROWSET", "UNION")
 
 REC: dict = {}
 STATE = {"in_final": False, "in_carry": False, "in_bridge": False}
@@ -93,9 +90,6 @@ def p_final_contract(
     orig, group_graph, attrs, mandatory_list, environment, *rest, **kw
 ):
     r = orig(group_graph, attrs, mandatory_list, environment, *rest, **kw)
-    c = attrs[FINAL_NODE_ID].final_contract
-    REC["contract_merge_grain"] = sorted(c.merge_grain) if c else None
-    REC["contract_contributors"] = len(c.contributor_contracts) if c else 0
     return r
 
 
@@ -137,6 +131,16 @@ def p_cover(
         if gid in attrs
     }
     return r
+
+
+def p_plan(orig, *a, **k):
+    plan = orig(*a, **k)
+    REC["final.plan_keys"] = sorted(plan.join_keys)
+    REC["final.plan_pairings"] = [
+        [p.left, p.right, sorted(p.keys), p.kind.value] for p in plan.pairings
+    ]
+    REC["final.plan_carry"] = {g: sorted(v) for g, v in plan.carry_demands.items()}
+    return plan
 
 
 def p_fresh_root(orig, *a, **k):
@@ -188,15 +192,6 @@ def p_widen(orig, *a, **k):
         bump(f"{where()}.widen_join_key_onto_parent")
     elif STATE["in_bridge"]:
         bump(f"{where()}.widen_member_to_bridge_key")
-    return r
-
-
-def p_relevant_preserve(orig, env, outputs, preserve_keys, *rest, **kw):
-    r = orig(env, outputs, preserve_keys, *rest, **kw)
-    if preserve_keys:
-        bump("final.root_preserve_keys_requested")
-        if r:
-            bump("final.root_preserve_keys_kept")
     return r
 
 
@@ -252,7 +247,7 @@ def p_get_node_joins(orig, datasources, environment, *a, **k):
     REC["final.merge_sides"] = len(datasources)
     REC["final.join_keys"] = sorted(keys)
     REC["final.keyless_joins"] = keyless
-    everything = set(keys) | set(REC.get("contract_merge_grain") or [])
+    everything = set(keys) | set(REC.get("final.plan_keys") or [])
     for info in (REC.get("final.cover") or {}).values():
         for field, values in info.items():
             if field != "derivation":
@@ -273,7 +268,6 @@ def install() -> None:
     mn.MergeNode.__init__ = p_merge_init  # type: ignore[method-assign]
     mn.MergeNode.generate_joins = p_generate  # type: ignore[method-assign]
     wrap(gg, "_refresh_final_contract", p_final_contract)
-    wrap(gg, "_lineage_pinned_grain", nonempty("s2.lineage_pinned_grain_nonempty"))
     wrap(gg, "_regraft_candidate", p_regraft_candidate)
     wrap(
         gg,
@@ -288,6 +282,7 @@ def install() -> None:
     wrap(gg, "_shared_row_parent_join_keys", nonempty("s2.shared_row_parent_join_keys"))
     wrap(sb, "_assemble_final_node", p_assemble_final)
     wrap(sb, "_cover_groups_for_mandatory", p_cover)
+    wrap(sb, "plan_final_join", p_plan)
     wrap(sb, "_fresh_final_root_projection", p_fresh_root)
     wrap(sb, "_wrap_for_grain", p_wrap_for_grain)
     wrap(sb, "_satisfy_parent_projection_contract", p_satisfy)
@@ -295,7 +290,6 @@ def install() -> None:
     wrap(sb, "_fold_covered_contributors", p_fold_covered)
     wrap(sb, "_carry_join_keys", p_carry)
     wrap(sb, "widen_projection", p_widen)
-    wrap(sb, "_relevant_root_preserve_keys", p_relevant_preserve)
     wrap(sb, "_pairing_islands", p_pairing_islands)
     wrap(mn, "get_node_joins", p_get_node_joins)
     wrap(jr, "_raise_if_keyless_row_bearing_join", p_keyless_guard)
@@ -307,31 +301,8 @@ def canon(canon_map: dict[str, str], addrs) -> frozenset[str]:
 
 
 def predicted_keys(record: dict) -> frozenset[str]:
-    """Pairing keys a stage-2 plan would state for this FINAL's cover.
-
-    identity(g): a grouping group's GROUP BY keys (or a rowset's grain), a
-    ROOT's anchor keys (dim peel key / region spans), a row-preserving group's
-    carried grain. carries(g): what the group's rows hold, outputs only for a
-    grouping group, inputs too for a row-preserving one. Two contributors pair
-    on (identity(a) | identity(b)) & carries(a) & carries(b)."""
-    cm = record["final.canon"]
-    ident: dict[str, frozenset[str]] = {}
-    cols: dict[str, frozenset[str]] = {}
-    for gid, info in record["final.cover"].items():
-        grouping = info["derivation"].endswith(GROUPING_SUFFIXES)
-        ident[gid] = (
-            canon(cm, info["emitted_grain"])
-            | canon(cm, info["anchor_keys"])
-            | canon(cm, info["extent_spans"])
-        )
-        carried = set(info["outputs"])
-        if not grouping:
-            carried |= set(info["inputs"]) | set(info["members"])
-        cols[gid] = canon(cm, carried)
-    predicted: set[str] = set()
-    for a, b in combinations(record["final.cover"], 2):
-        predicted |= (ident[a] | ident[b]) & cols[a] & cols[b]
-    return frozenset(predicted)
+    """The keys the planner's own FINAL join plan pairs its cover on."""
+    return canon(record["final.canon"], record.get("final.plan_keys") or [])
 
 
 # ---- driver ----------------------------------------------------------------------

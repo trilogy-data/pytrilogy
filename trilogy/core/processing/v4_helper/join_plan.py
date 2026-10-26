@@ -15,7 +15,11 @@ from itertools import combinations
 
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation, Granularity
-from trilogy.core.models.build import BuildConcept, get_grouped_aggregate_wrapper
+from trilogy.core.models.build import (
+    BuildConcept,
+    BuildRowsetItem,
+    get_grouped_aggregate_wrapper,
+)
 from trilogy.core.models.build_environment import BuildEnvironment
 
 from .concept_graph import _statement_scoped_relation_members
@@ -46,7 +50,9 @@ class Pairing:
 @dataclass(frozen=True)
 class JoinPlan:
     contributors: tuple[str, ...]
-    # the keys each contributor's rows are unique at, as the merge pairs them
+    # the keys each contributor fixes the merge's grain at (`row_identity`)
+    pins: dict[str, frozenset[str]]
+    # the keys each contributor's rows are unique at, as a pairing reads them
     identity: dict[str, frozenset[str]]
     # keys a ROOT contributor must be widened to carry
     carry_demands: dict[str, frozenset[str]]
@@ -54,7 +60,7 @@ class JoinPlan:
 
     @property
     def merge_grain(self) -> frozenset[str]:
-        return frozenset().union(*self.identity.values())
+        return frozenset().union(*self.pins.values())
 
     @property
     def join_keys(self) -> frozenset[str]:
@@ -302,7 +308,7 @@ def root_carry_demand(
     gid: str,
     cover: Sequence[str],
     concepts: Sequence[BuildConcept],
-    identity: dict[str, frozenset[str]],
+    pins: dict[str, frozenset[str]],
     axes: frozenset[str],
     environment: BuildEnvironment,
 ) -> frozenset[str]:
@@ -321,7 +327,7 @@ def root_carry_demand(
     line_no)` determines repeats per line, so there the others stay."""
     group = attrs[gid]
     base = group.extent_spans or axes
-    merge_grain = frozenset().union(*identity.values())
+    merge_grain = frozenset().union(*pins.values())
     sibling_keys = frozenset().union(
         *(attrs[other].emitted_grain for other in cover if other != gid)
     )
@@ -339,10 +345,46 @@ def root_carry_demand(
     return demand
 
 
-def _carries(group: GroupAttrs) -> frozenset[str]:
+def _boundary_columns(
+    group: GroupAttrs, environment: BuildEnvironment
+) -> frozenset[str]:
+    """Every column of the rowsets a rowset group's outputs belong to: its
+    boundary carries them all, projected or not."""
+    names = {
+        c.lineage.rowset.name
+        for addr in group.output_concepts
+        if (c := environment.concepts.get(addr)) is not None
+        and isinstance(c.lineage, BuildRowsetItem)
+    }
+    if not names:
+        return frozenset()
+    return frozenset(
+        c.address
+        for c in environment.concepts.values()
+        if isinstance(c.lineage, BuildRowsetItem) and c.lineage.rowset.name in names
+    )
+
+
+def _carries(
+    group: GroupAttrs,
+    identity: frozenset[str],
+    merge_grain: frozenset[str],
+    environment: BuildEnvironment,
+) -> frozenset[str]:
+    """The columns a contributor's rows hold or can be widened to: a grouping
+    group's outputs; a rowset's boundary; a row stream's inputs and members,
+    and any merge key its identity determines (a filter at `item.sk` is
+    widened to `item.manufact` to pair with an aggregate by it)."""
     if group.derivation in GROUPING_DERIVATIONS:
         return frozenset(group.output_concepts)
-    return frozenset(group.output_concepts) | group.row_columns | set(group.members)
+    if group.derivation == Derivation.ROWSET:
+        return frozenset(group.output_concepts) | _boundary_columns(group, environment)
+    held = frozenset(group.output_concepts) | group.row_columns | set(group.members)
+    # a ROOT carries exactly its carry demand beyond what it holds
+    if not identity or group.derivation == Derivation.ROOT:
+        return held
+    closure = build_fd_closure(environment, identity, include_empty_grain=False)
+    return held | (merge_grain & closure)
 
 
 def _single_row(group: GroupAttrs, environment: BuildEnvironment) -> bool:
@@ -364,11 +406,7 @@ def _pair(
     carries: dict[str, frozenset[str]],
     environment: BuildEnvironment,
 ) -> Pairing:
-    ident = {
-        gid: identity[gid] | attrs[gid].anchor_keys | attrs[gid].extent_spans
-        for gid in (left, right)
-    }
-    keys = (ident[left] | ident[right]) & carries[left] & carries[right]
+    keys = (identity[left] | identity[right]) & carries[left] & carries[right]
     authored: set[str] = set()
     for relation in environment.scoped_join_relations():
         lhs, rhs = relation & carries[left], relation & carries[right]
@@ -379,7 +417,7 @@ def _pair(
     if any(_single_row(attrs[gid], environment) for gid in (left, right)):
         return Pairing(left, right, frozenset(keys), PairingKind.SCALAR)
     lookup = any(
-        ident[gid] and build_fd_determines_all(environment, keys, ident[gid])
+        identity[gid] and build_fd_determines_all(environment, keys, identity[gid])
         for gid in (left, right)
     )
     return Pairing(
@@ -398,23 +436,33 @@ def plan_final_join(
     environment: BuildEnvironment,
     relation_edge_members: frozenset[str] = frozenset(),
 ) -> JoinPlan:
+    """The plan for merging `cover` (contributor -> the outputs it supplies)."""
     contributors = tuple(cover)
     axes = merge_axes(
         contributors, attrs, mandatory_list, environment, relation_edge_members
     )
-    identity = {
+    pins = {
         gid: row_identity(group_graph, attrs, gid, contributors, axes, environment)
+        for gid in contributors
+    }
+    merge_grain = frozenset().union(*pins.values())
+    identity = {
+        gid: pins[gid]
+        | attrs[gid].emitted_grain
+        | attrs[gid].anchor_keys
+        | attrs[gid].extent_spans
         for gid in contributors
     }
     carry_demands = {
         gid: root_carry_demand(
-            attrs, gid, contributors, cover[gid], identity, axes, environment
+            attrs, gid, contributors, cover[gid], pins, axes, environment
         )
         for gid in contributors
         if attrs[gid].derivation == Derivation.ROOT
     }
     carries = {
-        gid: _carries(attrs[gid]) | carry_demands.get(gid, frozenset())
+        gid: _carries(attrs[gid], identity[gid], merge_grain, environment)
+        | carry_demands.get(gid, frozenset())
         for gid in contributors
     }
     pairings = tuple(
@@ -423,7 +471,7 @@ def plan_final_join(
         if (pairing := _pair(left, right, attrs, identity, carries, environment)).keys
         or pairing.kind == PairingKind.SCALAR
     )
-    return JoinPlan(contributors, identity, carry_demands, pairings)
+    return JoinPlan(contributors, pins, identity, carry_demands, pairings)
 
 
 def final_predecessors(
