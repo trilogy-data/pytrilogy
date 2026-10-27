@@ -84,5 +84,8 @@ def test_global_scalar_beside_rows_is_a_scalar_pairing(plans):
     )
     assert rows == [(10, 12.0, 13.0), (11, 1.0, 13.0)]
     merge = plans[-1]
-    assert any(p.kind == PairingKind.SCALAR for p in merge.pairings)
+    scalar = [p for p in merge.pairings if p.kind == PairingKind.SCALAR]
+    assert scalar
+    assert all(not p.keys and not p.implied for p in scalar)
+    assert "local.customer_id" not in merge.permitted_keys
     assert len(merge.islands()) == 1

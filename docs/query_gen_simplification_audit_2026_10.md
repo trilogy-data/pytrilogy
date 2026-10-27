@@ -204,8 +204,9 @@ Rowset discovery:
 - `_unsourced_relation_mates` SUBSET-anchor request: 0 corpus firings, but a
   demanded raw `~` member stays partial without its anchor rowset
   (`test_filtered_rowset_anchor.py::test_filtered_rowset_anchor_subset_join_narrows`).
-- `_group_final_grain_contribution` returning `merge_grain` for a ROWSET:
-  q44, q46 and q68 gain a redundant `GROUP BY` without it.
+- `join_plan.row_identity` returning the merge axes for a ROWSET (was
+  `_group_final_grain_contribution`): q44, q46 and q68 gain a redundant
+  `GROUP BY` without it.
 
 Rowset assembly:
 - Two rowset boundaries flowing straight to FINAL defer their WHERE to FINAL

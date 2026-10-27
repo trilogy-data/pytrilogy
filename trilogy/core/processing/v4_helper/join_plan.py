@@ -525,9 +525,24 @@ def _renderable(
     return frozenset(out)
 
 
-def _single_row(group: GroupAttrs, environment: BuildEnvironment) -> bool:
-    """Every output is one row's worth, and no atom keeps rows beside them."""
+def _single_row(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    environment: BuildEnvironment,
+) -> bool:
+    """Every output is one row's worth, no atom keeps rows beside them, and no
+    row-preserving parent hands the group a grain: a rename of a gated global
+    aggregate (`avg(x) by * ? yr = 2001` read off a filter at brand grain)
+    is one value per row of that filter, whatever its outputs declare."""
+    group = attrs[gid]
     if _over_own_rows(group):
+        return False
+    if group.derivation not in GROUPING_DERIVATIONS and any(
+        attrs[parent].grain_components
+        for parent in group_graph.predecessors(gid)
+        if parent in attrs and attrs[parent].derivation not in GROUPING_DERIVATIONS
+    ):
         return False
     concepts = [
         c
@@ -580,6 +595,9 @@ def _pair(
     environment: BuildEnvironment,
 ) -> Pairing:
     # scoped: an unscoped lookup caches on the statement's class baseline
+    # one row pairs with every row: no key, whatever the sides share
+    if {left, right} & scalars:
+        return Pairing(left, right, frozenset(), PairingKind.SCALAR)
     roots = environment.address_roots(
         carries[left] | carries[right] | identity[left] | identity[right]
     )
@@ -616,8 +634,6 @@ def _pair(
     ) - keys
     if authored:
         kind = PairingKind.AUTHORED
-    elif {left, right} & scalars:
-        kind = PairingKind.SCALAR
     elif any(
         identity[gid] and build_fd_determines_all(environment, keys, identity[gid])
         for gid in (left, right)
@@ -700,7 +716,7 @@ def plan_final_join(
         for gid in contributors
     }
     scalars = frozenset(
-        gid for gid in contributors if _single_row(attrs[gid], environment)
+        gid for gid in contributors if _single_row(group_graph, attrs, gid, environment)
     )
     pairings = tuple(
         pairing

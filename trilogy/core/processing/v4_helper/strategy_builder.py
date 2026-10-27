@@ -2534,10 +2534,7 @@ def _carry_planned_keys(
     if len(parents) <= 1:
         return
     for parent in parents:
-        node = parent
-        while id(node) not in origin and len(node.parents) == 1:
-            node = node.parents[0]
-        gid = origin.get(id(node))
+        gid = _origin_group(parent, origin)
         if gid is None or not (keys := plan.keys_for(gid)):
             continue
         _carry_join_keys(
@@ -4298,7 +4295,7 @@ def _wrap_for_grain(
         # shatter the scan into self-grain buckets with no join key.
         #
         # With no merge grain to supply (a pure projection: no aggregate, no
-        # rowset, so `_final_merge_grain` has nothing to declare) fall back to
+        # rowset, so the join plan pins nothing) fall back to
         # the parent's own grain, then to the concept's own keys. A dimension
         # this parent's rows determine must ride that identity rather than
         # dedup to its own key-grain, or two properties of one key bound by a
@@ -5710,19 +5707,20 @@ def _at_declared_identity(
     )
 
 
+def _origin_group(node: StrategyNode, origin: dict[int, str]) -> str | None:
+    """The group `node` came from, looking through the single-parent wraps
+    assembly puts over a contributor."""
+    while id(node) not in origin and len(node.parents) == 1:
+        node = node.parents[0]
+    return origin.get(id(node))
+
+
 def side_groups(parents: list[StrategyNode], origin: dict[int, str]) -> list[str]:
-    """The group each of `parents` came from, looking through the
-    single-parent wraps assembly puts over a contributor; a contributor split
-    into several wraps appears once per wrap."""
-    sides: list[str] = []
-    for parent in parents:
-        node = parent
-        while id(node) not in origin and len(node.parents) == 1:
-            node = node.parents[0]
-        gid = origin.get(id(node))
-        if gid is not None:
-            sides.append(gid)
-    return sides
+    """The group each of `parents` came from; a contributor split into several
+    wraps appears once per wrap."""
+    return [
+        gid for parent in parents if (gid := _origin_group(parent, origin)) is not None
+    ]
 
 
 def _first_row_marker(partition: list[BuildConcept]) -> BuildConcept:
