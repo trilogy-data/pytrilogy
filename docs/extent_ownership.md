@@ -101,7 +101,7 @@ splits CTEs that should stay shared (q29 grew by a third when it did).
 
 ## One source of truth
 
-`_cover_groups_for_mandatory` reads the election rather than re-deriving
+`final_cover.elect_cover` reads the election rather than re-deriving
 ownership from built outputs. That is load-bearing, not tidiness: a predicted
 election that diverges from the actual one leaves a contributor dangling and the
 statement fails to bind at render time.

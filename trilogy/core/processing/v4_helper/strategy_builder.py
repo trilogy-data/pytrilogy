@@ -114,11 +114,11 @@ from .edges import (
     EdgeMap,
     dependency_subgraph,
     edge_kind,
-    edges_of_kind,
     lineage_predecessors,
     remove_edge,
 )
 from .extent_ownership import takes_a_value_on_padding
+from .final_cover import elect_cover, output_covers
 from .functional_dependency import (
     build_fd_closure,
     build_fd_determines,
@@ -3113,6 +3113,8 @@ def _pre_merge_parents(
     built: dict[str, StrategyNode] | None = None,
     force_join_type: JoinType | None = None,
     preexisting_conditions: BoolExpr | None = None,
+    attrs: dict[str, GroupAttrs] | None = None,
+    origin: dict[int, str] | None = None,
 ) -> list[StrategyNode]:
     """Collapse a multi-parent set into a single MergeNode that auto-joins
     on shared output concepts. Non-merging generators (GroupNode for
@@ -3157,8 +3159,56 @@ def _pre_merge_parents(
         # a region domain hosts its spans' extension rows: preserve it, and
         # the feeder only where it holds a value-NULL key
         host_stitch=any(p.region_spans for p in parents),
+        planned_keys=_planned_merge_keys(
+            parents,
+            attrs,
+            origin,
+            group_graph,
+            needed,
+            join_key_addresses,
+            environment,
+        ),
     )
     return [merged]
+
+
+def _planned_merge_keys(
+    parents: list[StrategyNode],
+    attrs: dict[str, GroupAttrs] | None,
+    origin: dict[int, str] | None,
+    group_graph: nx.DiGraph | None,
+    needed: set[str] | None,
+    join_key_addresses: frozenset[str],
+    environment: BuildEnvironment,
+) -> frozenset[str] | None:
+    """The keys a consumer's join plan pairs its row parents on, stated over
+    the groups the merge's sides came from. None when a side is no group's
+    (a merge assembled below the consumer), and resolve discovers the keys."""
+    if attrs is None or origin is None or group_graph is None:
+        return None
+    sides = side_groups(parents, origin)
+    if len(sides) != len(parents):
+        return None
+    wanted = needed or set()
+    cover = {
+        gid: [
+            c
+            for address in attrs[gid].output_concepts
+            if address in wanted and (c := _concept_at(environment, address))
+        ]
+        for gid in sides
+    }
+    final_contract = _required_final_contract(attrs)
+    return plan_final_join(
+        group_graph,
+        attrs,
+        cover,
+        [c for concepts in cover.values() for c in concepts],
+        environment,
+        final_contract.authored_axes,
+        split=frozenset(gid for gid in sides if sides.count(gid) > 1),
+        contracted={gid: join_key_addresses for gid in sides},
+    ).permitted_keys
 
 
 def _union_arm_parents(
@@ -3430,19 +3480,6 @@ def _topological_order(group_graph: nx.DiGraph, group_edges: EdgeMap) -> list[st
         ) from exc
 
 
-def _output_covers(output: BuildConcept, concept: BuildConcept) -> bool:
-    """Whether a node output supplies `concept`, directly or via pseudonym.
-
-    A struct field selected as `unnest_array.a` parses to the bare key
-    `local.a` but is produced under its derivable pseudonym `unnest_array.a`;
-    the CTE layer maps the two by pseudonym, so coverage matching must too."""
-    return (
-        output.address == concept.address
-        or output.address in concept.pseudonyms
-        or concept.address in output.pseudonyms
-    )
-
-
 def _bridge_pseudonyms(node: StrategyNode, provided: list[BuildConcept]) -> None:
     """Add the merge-canonical concepts as hidden bridge outputs on a sole FINAL
     contributor so the CTE layer can map every requested alias of a merged key
@@ -3466,7 +3503,7 @@ def _bridge_pseudonyms(node: StrategyNode, provided: list[BuildConcept]) -> None
     for m in provided:
         if m.address in out_addrs:
             continue
-        if any(_output_covers(o, m) for o in node.output_concepts):
+        if any(output_covers(o, m) for o in node.output_concepts):
             bridges.append(m)
     if not bridges:
         return
@@ -3479,108 +3516,6 @@ def _bridge_pseudonyms(node: StrategyNode, provided: list[BuildConcept]) -> None
         m.address for m in bridges
     }
     node.rebuild_cache()
-
-
-def _scoped_join_mates(environment: BuildEnvironment, address: str) -> frozenset[str]:
-    """The other members of the COALESCING key group `address` belongs to.
-
-    Only a coalescing relation (`union`/`full`) fuses its members onto one axis
-    that the merge emits under every member's own alias, which is what lets a
-    mate answer for the address. A subset or global-merge member keeps its own
-    column name, so reading it under the other member's address dangles."""
-    coalescing = environment.domain_graph.coalescing_relation_members()
-    if address not in coalescing:
-        return frozenset()
-    for group in environment.scoped_join_relations():
-        if address in group:
-            return frozenset(group - {address}) & coalescing
-    return frozenset()
-
-
-def _cover_groups_for_mandatory(
-    group_graph: nx.DiGraph,
-    group_edges: EdgeMap,
-    attrs: dict[str, GroupAttrs],
-    built: dict[str, StrategyNode],
-    mandatory_list: list[BuildConcept],
-    environment: BuildEnvironment,
-    ownership: ExtentOwnership,
-) -> dict[str, list[BuildConcept]]:
-    """For each mandatory concept, pick the most-downstream built group that
-    actually exposes it (more built ancestors = further downstream). Returns
-    `{gid: [concepts that group provides]}` preserving discovery order so
-    the MergeNode renders with a stable join layout.
-
-    A group carrying the concept's authored scoped-join MATE counts as exposing
-    it: the merge coalesces the two members onto one axis, and the mate is
-    surfaced under the concept's own address once the merge resolves. Without
-    that, an aggregate over the completed join loses the axis to the raw
-    boundary below it, which then re-enters the merge with the rows the
-    aggregate's population already excluded.
-
-    A ``~``-licensed key comes from its elected owner and nowhere else: that
-    group is the one built with permission to manufacture the key's extension
-    rows, so any other candidate exposes only the members the fact bound. The
-    election is read here rather than re-derived, because the two answers
-    diverging is what leaves a contributor dangling at render time."""
-    per_group: dict[str, list[BuildConcept]] = defaultdict(list)
-    coalescing = environment.domain_graph.coalescing_relation_members()
-    # a side-channel set feeds no rows: reading a host through one is not
-    # reading that host's side
-    row_graph = group_graph.copy()
-    row_graph.remove_edges_from(edges_of_kind(group_edges, EdgeKind.EXISTENCE))
-    for concept in mandatory_list:
-        addr = concept.address
-        mates = _scoped_join_mates(environment, addr)
-        candidates = [
-            gid
-            for gid, node in built.items()
-            if any(
-                o.address == addr or o.address in mates for o in node.output_concepts
-            )
-        ]
-        # Only fall back to pseudonym coverage (struct fields produced under
-        # their derivable origin address) when nothing provides the concept
-        # directly; a plain alias keeps its own contributor.
-        if not candidates:
-            candidates = [
-                gid
-                for gid, node in built.items()
-                if any(_output_covers(o, concept) for o in node.output_concepts)
-            ]
-        if not candidates:
-            continue
-        # A COALESCING mate carries only its own side's domain: a group that
-        # never read the one hosting the concept itself misses that side's rows.
-        if addr in coalescing:
-            hosts = {gid for gid in candidates if addr in attrs[gid].members}
-            if hosts:
-                candidates = [
-                    gid
-                    for gid in candidates
-                    if gid in hosts or hosts & nx.ancestors(row_graph, gid)
-                ]
-        # A dim peeled off a row stream decorates the stream's keys; its own
-        # key carries every entity, not the rows the stream's WHERE kept.
-        candidates.sort(
-            key=lambda gid: (
-                sum(1 for a in nx.ancestors(group_graph, gid) if a in built),
-                addr not in attrs[gid].dim_keys,
-                addr in attrs[gid].members,
-            ),
-            reverse=True,
-        )
-        winner = candidates[0]
-        owner = ownership.owner_of(addr)
-        # a group that READ the owner carries its rows too, and more besides
-        if (
-            owner is not None
-            and owner in candidates
-            and not any(owner in nx.ancestors(group_graph, gid) for gid in candidates)
-        ):
-            winner = owner
-        per_group[winner].append(concept)
-    return per_group
 
 
 def _add_relation_axis_contributors(
@@ -4726,7 +4661,7 @@ def _group_to_grain_if_required(
         targets = [
             o
             for o in node.output_concepts
-            if any(_output_covers(o, m) for m in contract_outputs)
+            if any(output_covers(o, m) for m in contract_outputs)
         ]
     if isinstance(node, MergeNode):
         # Narrow to the requested grain *before* force-grouping: a MergeNode
@@ -5313,14 +5248,18 @@ def _assemble_final_node(
     )
 
     ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
-    per_group = _cover_groups_for_mandatory(
+    per_group = elect_cover(
         group_graph,
         group_edges,
         attrs,
-        built,
+        list(built),
         mandatory_list,
         environment,
         ownership,
+        {
+            gid: frozenset(o.address for o in node.output_concepts)
+            for gid, node in built.items()
+        },
     )
     if not per_group:
         return apply_final_conditions(
@@ -5488,7 +5427,7 @@ def _assemble_final_node(
         for c in mandatory_list
         if c.address not in available
         and any(
-            _output_covers(o, c)
+            output_covers(o, c)
             for p in parents
             for o in p.output_concepts
             if o.address not in p.hidden_concepts
@@ -6025,6 +5964,9 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
             for parent in parent_builds
         )
         parents = _apply_input_contracts(parent_builds, a, needed, environment)
+        origin = {id(node): pgid for pgid, node in built.items()} | {
+            id(build.node): build.group_id for build in parent_builds
+        }
         # A ROOT scan hosting a null-rejecting request atom emits exactly
         # the atom's population, so the merge may claim it. A grouping
         # parent applies the atom to its INPUT rows and its output claims
@@ -6085,6 +6027,8 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                     group_graph=group_graph,
                     built=built,
                     preexisting_conditions=applied,
+                    attrs=attrs,
+                    origin=origin,
                 )
             outputs, named_arguments = _name_inline_arguments(
                 outputs, primary_addrs, domain_spans, environment
@@ -6110,6 +6054,8 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
             built=built,
             force_join_type=JoinType.INNER if filter_scan else None,
             preexisting_conditions=applied,
+            attrs=attrs,
+            origin=origin,
         )
     # ROOT scans source columns from datasources directly, not from their
     # group-graph predecessors. A `constraint`-edge predecessor (e.g. a
@@ -6530,7 +6476,7 @@ def _raise_if_output_unrendered(
     missing = [
         concept.address
         for concept in mandatory_list
-        if not any(_output_covers(o, concept) for o in final.output_concepts)
+        if not any(output_covers(o, concept) for o in final.output_concepts)
     ]
     if missing:
         raise UnresolvableQueryException(
