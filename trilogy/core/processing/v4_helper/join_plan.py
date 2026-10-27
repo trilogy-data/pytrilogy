@@ -652,11 +652,13 @@ def plan_final_join(
     environment: BuildEnvironment,
     authored: frozenset[str] = frozenset(),
     split: frozenset[str] = frozenset(),
+    contracted: dict[str, frozenset[str]] | None = None,
 ) -> JoinPlan:
     """The plan for merging `cover` (contributor -> the outputs it supplies).
     A `split` contributor is joined as several projections of its own rows,
     which pair on anything they both hold: that is the one relation, never a
-    key to carry."""
+    key to carry. `contracted` are the keys a consumer's input contracts ask
+    each contributor to carry (a per-group merge's `preserve_keys`)."""
     contributors = tuple(cover)
     axes = merge_axes(contributors, attrs, mandatory_list, authored)
     pins = {
@@ -677,6 +679,8 @@ def plan_final_join(
         for gid in contributors
         if attrs[gid].derivation == Derivation.ROOT
     }
+    for gid, keys in (contracted or {}).items():
+        carry_demands[gid] = carry_demands.get(gid, frozenset()) | keys
     # A row stream is identified by the grain keys its rows turn out to hold
     # (`sale_recency` at customer and sale date holds both off its inputs);
     # settled before what each side is widened to is read off the identities.
