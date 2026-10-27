@@ -309,30 +309,49 @@ Rules the plan states, each from a suite shape:
   (`FinalAssemblyContract.authored_axes`), not over the cover;
 - a ROOT split into several wraps pairs with itself on what the wraps hold.
 
+**One FINAL plan; bridges elected by it.** The FINAL plan is stated once,
+over the cover and every side joined beside it to pair or filter it: the
+bridges `join_plan.elect_bridges` picks from the plan's islands, each
+filter-only argument's producer and each gate key's row stream
+(`_final_extra_sides`). Those extras pair, but fix no merge grain, ask no ROOT
+to carry a key, and are never credited a key they would have to be widened to
+(a bridge is joined as built). The merge reads the plan over the sides it
+joins (`JoinPlan.over`: a contributor folded into another side pairs with
+nothing); a side the plan never elected is a planner bug. Per-group merges
+take their bridge candidates from the same election over their row parents,
+reading the consumer's preserve keys as asks, not columns a side holds (a
+dimension peel is never widened to its sibling dimension's key, query64).
+Among the candidates that join islands, one whose every pairing is keyed is
+preferred (a filter pairing an aggregate on its value multiplies both).
+Stage 3 still checks built connectivity and repairs a member's pairing
+(`_key_bridged_members`); it no longer chooses.
+
+What made the islands honest:
+
+- a row stream beside a grouped parent is credited its row parents' columns
+  only within what its grain determines: the parents are projected to the
+  stream's grain before they pair (`_satisfy_parent_projection_contract`), so
+  `sale_recency` at `(customer, sale_date)` holds no sale line's item
+  (`test_partial_grain_with_by_key_aggregate`). Without a grouped parent the
+  rows pass as they stand (`item_name as p_name` off the sale lines holds the
+  store);
+- a row stream reading only region domains holds only their spans, whatever
+  its grain or input contract says (`s.sk` off the item domain never holds the
+  sale's `order_number`).
+
+The handoff's hypothesis, that ROOT slicing in `parent_for_consumer` made the
+plan over-state a stream, did not hold: that slice fires for no over-claiming
+stream in the suites. Over the full suite, every bridged merge (81) elects
+the bridge the built-output search found, and every FINAL's sides fall inside
+its one plan.
+
 **Open.**
 
-1. The FINAL plan is still stated twice: over the cover (ROOT carry demands,
-   wraps) and over the sides the merge joins. Measured over the same four
-   suites (1,563 multi-side FINALs), every key the second plan permits and
-   the first does not comes from a side added after election (108: bridges,
-   filter-arg producers, gate-key row streams) or a split ROOT (10); none
-   from anything else. So one plan is enough once those sides are elected
-   before it. Filter-arg producers (`_filter_arg_parents`,
-   `_region_paired_args`) and gate-key hosts read `available` and region
-   reads off built parents, and need a stage-2 restatement first.
-2. Bridges (`_bridge_unpaired_parents`, `_island_bridges`,
-   `_key_bridged_members`) still decide connectivity from built outputs. The
-   first plan's islands predict them (72 of 73 bridged FINALs had a
-   disconnected first plan), but electing the bridge from the plan
-   (`plan.islands()`, add the group that joins two) fails where the plan
-   over-states what a row stream carries: a BASIC over a by-customer
-   aggregate is credited its ROOT row parent's `item.sk`/`ticket_number`,
-   and stage 3 slices that ROOT to the columns the consumer reads
-   (`_parent_nodes_for.parent_for_consumer`), so the key is never widened on
-   (`test_partial_grain_with_by_key_aggregate`). Root slicing has to be a
-   stage-2 decision, or `_carries` has to read it, before the plan can own
-   connectivity.
-3. The add passes after election (`_add_relation_axis_contributors`,
+1. Per-group merges still state two plans: the bridge election (without the
+   consumer's contracted keys) and the keys the merge pairs on (with them).
+   And `_final_extra_sides` elects before the plan, but off the cover's built
+   nodes (their outputs and region reads), not stage-2 attrs.
+2. The add passes after election (`_add_relation_axis_contributors`,
    `_add_partial_completion_contributors`, `_fold_descendant_contributors`,
    `_promote_final_aliases_to_grouping_contributors`,
    `_add_region_domain_contributors`) read built outputs, partials and
@@ -340,7 +359,7 @@ Rules the plan states, each from a suite shape:
    group claims a column it cannot pass through; a window under a condition
    twin claims the twin's value), which is why the cover is filtered by what
    each built node renders.
-4. A gated global aggregate (`avg(x) by * ? yr = 1999`) is planned per
+3. A gated global aggregate (`avg(x) by * ? yr = 1999`) is planned per
    statement row: the build gives the FILTER the statement's grain, so beside
    `brand` it is `CASE WHEN yr = 1999 ...` per `(yr, brand)` row and the merge
    returns a brand twice (once with the value, once NULL) and NULL for a
