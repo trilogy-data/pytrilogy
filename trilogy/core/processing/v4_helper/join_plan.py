@@ -402,17 +402,21 @@ def _over_own_rows(group: GroupAttrs) -> frozenset[str]:
 
 
 def _from_row_parents(
-    group_graph: nx.DiGraph, attrs: dict[str, GroupAttrs], gid: str
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    environment: BuildEnvironment,
 ) -> frozenset[str]:
     """What a row stream's ROOT or row-preserving parents output: it passes
     their rows through, columns and all (`item_name as p_name` off the sale
     lines holds the store each line was sold at)."""
-    if attrs[gid].derivation in GROUPING_DERIVATIONS or attrs[gid].derivation in (
+    group = attrs[gid]
+    if group.derivation in GROUPING_DERIVATIONS or group.derivation in (
         Derivation.ROOT,
         Derivation.ROWSET,
     ):
         return frozenset()
-    return frozenset().union(
+    passed = frozenset().union(
         *(
             attrs[parent].output_concepts
             for parent in group_graph.predecessors(gid)
@@ -421,6 +425,9 @@ def _from_row_parents(
             in (Derivation.ROOT, Derivation.BASIC, Derivation.FILTER)
         )
     )
+    if not group.grain_components:
+        return passed
+    return passed & _determined(group.grain_components, environment)
 
 
 def _held(
@@ -433,10 +440,28 @@ def _held(
     sibling_keys: frozenset[str] = frozenset(),
 ) -> frozenset[str]:
     return (
-        _from_row_parents(group_graph, attrs, gid)
-        | _carries(attrs[gid], identity, sibling_keys, environment)
+        _from_row_parents(group_graph, attrs, gid, environment)
+        | _carries(
+            attrs[gid],
+            identity,
+            sibling_keys,
+            environment,
+            _domain_spans(group_graph, attrs, gid),
+        )
         | carry_demands.get(gid, frozenset())
     )
+
+
+def _domain_spans(
+    group_graph: nx.DiGraph, attrs: dict[str, GroupAttrs], gid: str
+) -> frozenset[str] | None:
+    """The spans a row stream reading only region domains holds (`s.sk` off
+    the item domain holds the item, never the sale it is grained at); None
+    when it reads anything else."""
+    parents = [p for p in group_graph.predecessors(gid) if p in attrs]
+    if not parents or not all(attrs[p].extent_spans for p in parents):
+        return None
+    return frozenset().union(*(attrs[p].extent_spans for p in parents))
 
 
 def _joined_on(group: GroupAttrs) -> frozenset[str]:
@@ -453,6 +478,7 @@ def _carries(
     identity: frozenset[str],
     sibling_keys: frozenset[str],
     environment: BuildEnvironment,
+    domain_spans: frozenset[str] | None = None,
 ) -> frozenset[str]:
     """The columns a contributor's rows hold or can be widened to: a grouping
     group's outputs; a rowset's boundary; a row stream's inputs and members,
@@ -475,6 +501,8 @@ def _carries(
     extra = _joined_on(group)
     if not lineage_pinned_grain(group.output_concepts or group.members, environment):
         extra |= group.grain_components
+    if domain_spans is not None:
+        extra &= domain_spans
     # a ROOT carries exactly its carry demand beyond what it holds
     if identity and group.derivation != Derivation.ROOT:
         closure = build_fd_closure(environment, identity, include_empty_grain=False)
@@ -756,3 +784,54 @@ def final_predecessors(
     return sorted(
         gid for gid in group_graph.predecessors(FINAL_NODE_ID) if gid in attrs
     )
+
+
+def elect_bridges(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    cover: dict[str, list[BuildConcept]],
+    candidates: Sequence[str],
+    mandatory_list: Sequence[BuildConcept],
+    environment: BuildEnvironment,
+    authored: frozenset[str] = frozenset(),
+    split: frozenset[str] = frozenset(),
+    contracted: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    """The groups outside `cover` that join its plan's islands, in the order
+    they join: each, planned beside the cover as a side supplying nothing,
+    leaves fewer islands (`select id, min(x) by id, min(y) by cell` is bridged
+    by the row stream holding both keys). `candidates` in preference order."""
+    sides = dict(cover)
+    islands = plan_final_join(
+        group_graph,
+        attrs,
+        sides,
+        mandatory_list,
+        environment,
+        authored,
+        split,
+        contracted,
+    ).islands()
+    bridges: list[str] = []
+    while len(islands) > 1:
+        for gid in candidates:
+            if gid in sides:
+                continue
+            trial = plan_final_join(
+                group_graph,
+                attrs,
+                {**sides, gid: []},
+                mandatory_list,
+                environment,
+                authored,
+                split,
+                contracted,
+            ).islands()
+            if len(trial) < len(islands):
+                break
+        else:
+            return bridges
+        sides[gid] = []
+        islands = trial
+        bridges.append(gid)
+    return bridges
