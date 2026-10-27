@@ -266,28 +266,36 @@ provenance, `_wrap_for_grain`'s dedup of a wide ROOT to a pairing's grain
 (now driven by the pairing rather than by `final_merge_grain`), and the
 network search inside a group.
 
-## 7. Status (PR #773) and what is left
+## 7. Status and what is left
 
 **Landed.** `v4_helper/join_plan.py` computes a `JoinPlan` from stage-2 facts
-twice per multi-contributor FINAL: over the elected cover (ROOT carry demands,
-merge grain, widening) and over the sides the merge actually joins (after
-folds, bridges, filter-arg producers). The FINAL MergeNode carries the second
-plan's `permitted_keys`, and `get_node_joins` drops every shared column off
-it before ordering and typing joins. Join typing, padding and hosting stay at
-resolve.
+for every v4 merge whose sides are groups:
+
+- the FINAL merge, over the cover `final_cover.elect_cover` picks from what
+  each group exposes at stage 2 (its outputs; a row stream also the grain it
+  is computed at and the key of a property grain), filtered to what the
+  group's built node renders;
+- every per-group merge (`_pre_merge_parents`), over the consumer's row
+  parents, with the consumer's input contract `preserve_keys` as each side's
+  carry demand. A merge assembled below the consumer (no group behind a side)
+  still discovers its keys at resolve.
+
+The MergeNode carries the plan's `permitted_keys`, and `get_node_joins` drops
+every shared column off it before ordering and typing joins. Join typing,
+padding and hosting stay at resolve.
 
 The contract, as the census plugin checks it: a pairing's *keys* are decisive
 (what widening carries onto that side); its *implied* columns are what the
 keys determine, which resolve may also equate (a side's physical grain is
 never pruned). Resolve may prune a planned key; it may never pair off the
-plan, nor go keyless where the plan pairs.
+plan, nor go keyless where the plan pairs. Over `tests/modeling`,
+`tests/complex`, `tests/discovery` and `tests/engine` (3,417 planned
+merges), resolve left unrestricted pairs off the plan in 6, each the same
+rows: a grand total paired on `all_rows` that the plan broadcasts on 1=1, a
+key the planned keys determine (`sale_date` beside `ticket`), and a gcat
+date-spine merge that is keyless with or without the plan.
 
-Retired: the stage-2 per-group `FinalContributorContract`, `_final_merge_grain`,
-`_group_final_grain_contribution`, the ROOT `sibling_grain` block and
-`_relevant_root_preserve_keys`, and merge-grain-wide widening (each side now
-carries only its own pairings' keys, `JoinPlan.keys_for`).
-
-Rules the plan states that §6 did not name, each from a suite shape:
+Rules the plan states, each from a suite shape:
 
 - identity and carried columns compare by value class and authored relation,
   never spelling (`ka`/`kb`, `ws`/`week_seq`);
@@ -301,26 +309,45 @@ Rules the plan states that §6 did not name, each from a suite shape:
   (`FinalAssemblyContract.authored_axes`), not over the cover;
 - a ROOT split into several wraps pairs with itself on what the wraps hold.
 
-Stage 3 now builds what stage 2 declares in three places: a non-grouping
-contributor sourced finer than its declared identity is projected to it when
-an independent sibling exposes the finer row key (`_at_declared_identity`); a
-rename-only contributor renders on the group it reads; widening is per side.
-
 **Open.**
 
-1. Cover election still runs in stage 3 off built nodes
-   (`_cover_groups_for_mandatory` and the add/fold passes); the second plan
-   exists because folds and bridges change the sides after it. Moving the
-   cover to stage 2 makes one plan enough.
-2. The bridge and island family (`_bridge_unpaired_parents`, `_island_bridges`,
-   `_key_bridged_members`, `_raise_if_rowset_islanded`) still decides
-   connectivity from built outputs. It is shared with per-group merges, so it
-   goes when per-group merges take a `JoinPlan` (their `GroupInputContract.
-   preserve_keys` is the same union-of-sets shape the FINAL contract was).
-3. The gated global aggregate (`avg(x) by * ? yr = 1999`) is grouped at the
-   statement grain and filtered per row; the plan matches it only because the
-   rename now renders on the filter group. Its declared grain should be a
-   single row.
+1. The FINAL plan is still stated twice: over the cover (ROOT carry demands,
+   wraps) and over the sides the merge joins. Measured over the same four
+   suites (1,563 multi-side FINALs), every key the second plan permits and
+   the first does not comes from a side added after election (108: bridges,
+   filter-arg producers, gate-key row streams) or a split ROOT (10); none
+   from anything else. So one plan is enough once those sides are elected
+   before it. Filter-arg producers (`_filter_arg_parents`,
+   `_region_paired_args`) and gate-key hosts read `available` and region
+   reads off built parents, and need a stage-2 restatement first.
+2. Bridges (`_bridge_unpaired_parents`, `_island_bridges`,
+   `_key_bridged_members`) still decide connectivity from built outputs. The
+   first plan's islands predict them (72 of 73 bridged FINALs had a
+   disconnected first plan), but electing the bridge from the plan
+   (`plan.islands()`, add the group that joins two) fails where the plan
+   over-states what a row stream carries: a BASIC over a by-customer
+   aggregate is credited its ROOT row parent's `item.sk`/`ticket_number`,
+   and stage 3 slices that ROOT to the columns the consumer reads
+   (`_parent_nodes_for.parent_for_consumer`), so the key is never widened on
+   (`test_partial_grain_with_by_key_aggregate`). Root slicing has to be a
+   stage-2 decision, or `_carries` has to read it, before the plan can own
+   connectivity.
+3. The add passes after election (`_add_relation_axis_contributors`,
+   `_add_partial_completion_contributors`, `_fold_descendant_contributors`,
+   `_promote_final_aliases_to_grouping_contributors`,
+   `_add_region_domain_contributors`) read built outputs, partials and
+   pseudonyms. Two derivations over-claim outputs at stage 2 (a recursive
+   group claims a column it cannot pass through; a window under a condition
+   twin claims the twin's value), which is why the cover is filtered by what
+   each built node renders.
+4. A gated global aggregate (`avg(x) by * ? yr = 1999`) is planned per
+   statement row: the build gives the FILTER the statement's grain, so beside
+   `brand` it is `CASE WHEN yr = 1999 ...` per `(yr, brand)` row and the merge
+   returns a brand twice (once with the value, once NULL) and NULL for a
+   brand with no 1999 row. It is one value; declaring its grain a single row
+   is not enough on its own (the filter group still reads `yr` off its row
+   parent), it needs a one-row gate (any in-scope row passes). Held by the
+   strict xfail `test_gated_global_agg_is_one_value_beside_rows`.
 
 ## 8. Not claimed
 

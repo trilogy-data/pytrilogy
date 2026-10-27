@@ -107,12 +107,9 @@ def p_assemble_final(orig, *a, **k):
         return orig(*a, **k)
 
 
-def p_cover(
-    orig, group_graph, group_edges, attrs, built, mandatory_list, environment, ownership
-):
-    r = orig(
-        group_graph, group_edges, attrs, built, mandatory_list, environment, ownership
-    )
+def p_cover(orig, group_graph, group_edges, attrs, groups, *a, **k):
+    r = orig(group_graph, group_edges, attrs, groups, *a, **k)
+    rendered = a[3] if len(a) > 3 else k.get("rendered") or {}
     REC["final.cover_contributors"] = len(r)
     REC["final.cover"] = {
         gid: {
@@ -124,7 +121,7 @@ def p_cover(
             "members": sorted(attrs[gid].members),
             "anchor_keys": sorted(attrs[gid].anchor_keys),
             "extent_spans": sorted(attrs[gid].extent_spans),
-            "built_outputs": sorted(c.address for c in built[gid].output_concepts),
+            "built_outputs": sorted(rendered.get(gid, ())),
         }
         for gid in r
         if gid in attrs
@@ -280,7 +277,7 @@ def install() -> None:
     )
     wrap(gg, "_shared_row_parent_join_keys", nonempty("s2.shared_row_parent_join_keys"))
     wrap(sb, "_assemble_final_node", p_assemble_final)
-    wrap(sb, "_cover_groups_for_mandatory", p_cover)
+    wrap(sb, "elect_cover", p_cover)
     wrap(sb, "plan_final_join", p_plan)
     wrap(sb, "_fresh_final_root_projection", p_fresh_root)
     wrap(sb, "_wrap_for_grain", p_wrap_for_grain)

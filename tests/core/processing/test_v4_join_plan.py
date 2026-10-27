@@ -89,3 +89,21 @@ def test_global_scalar_beside_rows_is_a_scalar_pairing(plans):
     assert all(not p.keys and not p.implied for p in scalar)
     assert "local.customer_id" not in merge.permitted_keys
     assert len(merge.islands()) == 1
+
+
+def test_group_merge_pairs_on_its_plan(monkeypatch):
+    planned: list[frozenset[str] | None] = []
+    plan_merge = strategy_builder._planned_merge_keys
+
+    def capture(*args, **kwargs) -> frozenset[str] | None:
+        keys = plan_merge(*args, **kwargs)
+        planned.append(keys)
+        return keys
+
+    monkeypatch.setattr(strategy_builder, "_planned_merge_keys", capture)
+    rows = _run(
+        "select region, count(order_id) -> orders, "
+        "sum(amount) by customer_id -> cust_total order by region;"
+    )
+    assert rows == [("east", 2, 12.0), ("west", 1, 1.0)]
+    assert any(keys and "local.customer_id" in keys for keys in planned)

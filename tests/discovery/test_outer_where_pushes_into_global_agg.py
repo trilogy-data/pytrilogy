@@ -1,3 +1,5 @@
+import pytest
+
 from trilogy import Dialects, Environment
 
 # An outer WHERE row predicate must push into a `by *` global aggregate's INPUT
@@ -107,3 +109,24 @@ def test_cross_grain_predicate_stays_in_aggregate_scan():
     next_cte = sql.find(" as (", avg_at)
     avg_cte = sql[avg_at:next_cte] if next_cte != -1 else sql[avg_at:]
     assert "item_id" in avg_cte and "> 5" in avg_cte, avg_cte
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="a gated global aggregate is planned per statement row, not as one row "
+    "(docs/join_axis_audit_2026_10.md, open item 3)",
+)
+def test_gated_global_agg_is_one_value_beside_rows():
+    model = CROSS_GRAIN.replace(
+        "union all select 3, 5.0, 9, 100",
+        "union all select 3, 5.0, 9, 100\nunion all select 4, 7.0, 7, 200",
+    )
+    exec = Dialects.DUCK_DB.default_executor(environment=Environment())
+    rows = exec.execute_query(
+        model + "select brand as b, sum(x) as s, a as _avg order by b;"
+    ).fetchall()
+    assert [(r[0], float(r[1]), r[2]) for r in rows] == [
+        ("A", 17.0, 10.5),
+        ("B", 20.0, 10.5),
+        ("C", 5.0, 10.5),
+    ]
