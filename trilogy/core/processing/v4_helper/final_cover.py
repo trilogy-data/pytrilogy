@@ -97,7 +97,15 @@ def elect_cover(
     coalescing = environment.domain_graph.coalescing_relation_members()
     exposed = {gid: exposes(attrs[gid], environment) for gid in groups}
     if rendered is not None:
-        exposed = {gid: exposed[gid] & rendered[gid] for gid in groups}
+        # a coalescing axis renders under any of its members' names
+        exposed = {
+            gid: frozenset(
+                a
+                for a in exposed[gid]
+                if ({a} | coalescing_mates(environment, a)) & rendered[gid]
+            )
+            for gid in groups
+        }
     # a side-channel set feeds no rows: reading a host through one is not
     # reading that host's side
     row_graph = group_graph.copy()
