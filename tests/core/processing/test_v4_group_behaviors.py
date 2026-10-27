@@ -58,7 +58,6 @@ from trilogy.core.processing.v4_helper.group_behaviors import (
 )
 from trilogy.core.processing.v4_helper.group_graph import (
     _add_final_node,
-    _refresh_final_contract,
     _refresh_input_contracts,
     _virtual_filter_scoped_columns,
 )
@@ -69,10 +68,10 @@ from trilogy.core.processing.v4_helper.group_rules import (
     partition_roots,
 )
 from trilogy.core.processing.v4_helper.history import V4History
+from trilogy.core.processing.v4_helper.join_plan import plan_final_join
 from trilogy.core.processing.v4_helper.models import (
     ConceptAttrs,
     FinalAssemblyContract,
-    FinalContributorContract,
     GroupAttrs,
     GroupBucket,
     GroupInputContract,
@@ -84,7 +83,6 @@ from trilogy.core.processing.v4_helper.strategy_builder import (
     _bridge_unpaired_parents,
     _elide_passthrough_tree,
     _filter_intrinsic_pushdown_safe,
-    _final_contributor_contracts,
     _fold_passthrough_parents,
     _group_to_grain_if_required,
     _hide_final_only_grain_keys,
@@ -260,7 +258,6 @@ def test_final_merge_grain_takes_a_non_grouping_contributor_grain(
         keys={user_id.address},
     )
     group_graph = nx.DiGraph()
-    group_edges: EdgeMap = {}
     attrs = {
         "root": GroupAttrs(
             depth_label=DepthLabel.ROOT,
@@ -277,21 +274,19 @@ def test_final_merge_grain_takes_a_non_grouping_contributor_grain(
         FINAL_NODE_ID: GroupAttrs(depth_label=DepthLabel.FINAL),
     }
     group_graph.add_nodes_from(attrs)
-    add_edge(group_graph, group_edges, "root", FINAL_NODE_ID, EdgeKind.MERGE)
-    add_edge(group_graph, group_edges, "basic", FINAL_NODE_ID, EdgeKind.MERGE)
+    for concept in (user_id, center_id, customer_status):
+        empty_environment.concepts[concept.address] = concept
 
-    _refresh_final_contract(
-        group_graph, attrs, [customer_status, center_id], empty_environment
+    plan = plan_final_join(
+        group_graph,
+        attrs,
+        {"root": [center_id], "basic": [customer_status]},
+        [customer_status, center_id],
+        empty_environment,
     )
 
-    contract = attrs[FINAL_NODE_ID].final_contract
-    assert contract is not None
-    root_contract = next(
-        item for item in contract.contributor_contracts if item.group_id == "root"
-    )
     expected = {user_id.address} if carried else set()
-    assert contract.merge_grain == expected
-    assert root_contract.preserve_keys == expected
+    assert plan.carry_demands["root"] == expected
 
 
 def test_stage3_requires_declared_final_contract():
@@ -299,17 +294,6 @@ def test_stage3_requires_declared_final_contract():
 
     with pytest.raises(ValueError, match="FINAL contract missing"):
         _required_final_contract(attrs)
-
-
-def test_stage3_requires_declared_final_contributor_contracts():
-    contract = FinalAssemblyContract(
-        contributor_contracts=(
-            FinalContributorContract(group_id="root", output_addresses=frozenset()),
-        )
-    )
-
-    with pytest.raises(ValueError, match="agg"):
-        _final_contributor_contracts(contract, ["root", "agg"])
 
 
 def test_input_contract_declares_projection_grain_with_barrier_sibling():

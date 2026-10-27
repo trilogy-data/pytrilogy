@@ -1892,6 +1892,29 @@ def _pairs_region_padding(
     return bool(padded_for & right.held_spans) and key in right.nullables
 
 
+def _drop_unplanned_keys(
+    graph: nx.Graph, planned_keys: frozenset[str], environment: BuildEnvironment
+) -> None:
+    """Take every column two sides share but the plan does not pair on out of
+    the join graph, so join order and typing choose among planned keys only."""
+    concepts = [
+        node for node in graph.nodes() if graph.nodes[node]["type"] == NodeType.CONCEPT
+    ]
+    roots = environment.address_roots(
+        {node.removeprefix("c~") for node in concepts} | planned_keys
+    )
+    planned = {roots.get(address, address) for address in planned_keys}
+    unplanned = []
+    for node in concepts:
+        address = node.removeprefix("c~")
+        if (
+            roots.get(address, address) not in planned
+            and sum(1 for _ in graph.neighbors(node)) > 1
+        ):
+            unplanned.append(node)
+    graph.remove_nodes_from(unplanned)
+
+
 def get_node_joins(
     datasources: list[DataSource],
     environment: BuildEnvironment,
@@ -1899,9 +1922,12 @@ def get_node_joins(
     demanded_domains: Collection[str] = frozenset(),
     extent_free_spans: frozenset[str] = frozenset(),
     keyspace: Keyspace | None = None,
+    planned_keys: frozenset[str] | None = None,
 ) -> list[SourceJoin]:
     """`keyspace` is the plan's, for the spans it can pad for, the spellings a
-    rowset body pads them under and its region partition."""
+    rowset body pads them under and its region partition. `planned_keys`, when
+    given, are the only value classes the sides may pair on: the planner's
+    join plan stated them, and a column two sides merely share is not a key."""
     keyspace = keyspace or Keyspace()
     from trilogy.core import graph as nx
 
@@ -2017,6 +2043,9 @@ def get_node_joins(
                 for address in extent_free_spans
             },
         )
+
+    if planned_keys is not None:
+        _drop_unplanned_keys(graph, planned_keys, environment)
 
     # Beside the region contract: a FULL join between two families' padding
     # must not pair NULL with NULL null-safely.

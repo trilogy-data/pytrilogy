@@ -5,7 +5,7 @@ it is 1:1 by construction, so the FINAL merge must not regroup."""
 from decimal import Decimal
 
 from trilogy import Dialects, Environment
-from trilogy.core.processing.v4_helper.group_graph import _lineage_pinned_grain
+from trilogy.core.processing.v4_helper.join_plan import lineage_pinned_grain
 
 _MODEL = """
 key tree_id string;
@@ -65,7 +65,7 @@ def test_derived_key_basic_pins_its_row_grain():
     env = Environment()
     env.parse(_MODEL)
     build = env.materialize_for_select()
-    pinned = _lineage_pinned_grain({"local.cluster_id"}, build)
+    pinned = lineage_pinned_grain({"local.cluster_id"}, build)
     assert "local.tree_id" in pinned
     assert "local.cell_a" in pinned
 

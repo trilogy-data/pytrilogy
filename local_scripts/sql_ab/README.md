@@ -55,3 +55,26 @@ Run a moved test twice on one tree before reading it as a plan change.
 A moved plan still needs its rows checked. The modeling suites compare rows
 against reference SQL; a plan that moved only in a test asserting nothing
 about rows needs a look.
+
+## Join census
+
+`join_census.py` answers a different question from the two oracles above: not
+"did the SQL move" but "where did each merge's join keys come from". It
+compiles the globbed corpus with the planner instrumented and reports, per
+statement, the FINAL merge's side count, which stage-2 and stage-3 join-key
+paths fired (preserve keys, fresh ROOT re-source, widening, bridging, regraft),
+the keys `get_node_joins` actually used, and whether the planner's own FINAL
+join plan (`v4_helper/join_plan.py`) stated the same keys. `join_census_plugin.py`
+runs the same check over every statement a suite compiles: it resolves each
+planned FINAL merge twice, unrestricted and restricted, and writes one line
+per merge whose unrestricted keys leave the plan's permitted set (with the
+plan and each side's resolved columns). Its double resolve can trip module
+fixtures, so confirm a failure without the plugin before reading it.
+
+```bash
+CENSUS_OUT=/tmp/census.jsonl PYTHONPATH=local_scripts/sql_ab   python -m pytest -p join_census_plugin tests -q -p no:cacheprovider -m "..."
+```
+
+```bash
+python local_scripts/sql_ab/join_census.py /tmp/census.json "tests/modeling/**/*.preql" "tests/engine/**/*.preql" "tests/complex/**/*.preql" "tests/discovery/**/*.preql"
+```

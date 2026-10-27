@@ -38,7 +38,7 @@ two-region (`tests/engine/test_padded_null_pairing.py::TWO_REGIONS`) and
   "parents carry different sides" if it shows up in a regression.
 - **Two rowset merge-site patches are still load-bearing**:
   `group_graph._rowset_relation_keys` (composite three-key union joins) and
-  the ROWSET branch of `_group_final_grain_contribution`
+  the ROWSET branch of `join_plan.row_identity`
   (`test_union_join_single_key_with_measures`).
 
 ## Open: design

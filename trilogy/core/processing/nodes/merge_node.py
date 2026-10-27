@@ -234,6 +234,7 @@ class MergeNode(StrategyNode):
         preserve_parents: bool = False,
         host_stitch: bool = False,
         span_scope: SpanScope | None = None,
+        planned_keys: frozenset[str] | None = None,
     ):
         super().__init__(
             input_concepts=input_concepts,
@@ -268,6 +269,9 @@ class MergeNode(StrategyNode):
         # plain domain-preserving semantics.
         self.host_stitch = host_stitch
         self.span_scope = environment.span_scope if span_scope is None else span_scope
+        # The keys the planner's join plan pairs the parents on; join inference
+        # pairs on these alone.
+        self.planned_keys = planned_keys
 
         final_joins: list[NodeJoin] = []
         if self.node_joins is not None:
@@ -396,6 +400,7 @@ class MergeNode(StrategyNode):
                     demanded_domains=demanded_domains,
                     extent_free_spans=self.span_scope.extent_free,
                     keyspace=self.span_scope.keyspace,
+                    planned_keys=self.planned_keys,
                 )
         elif final_joins:
             logger.info(
@@ -1009,5 +1014,6 @@ class MergeNode(StrategyNode):
             preserve_parents=self.preserve_parents,
             host_stitch=self.host_stitch,
             span_scope=self.span_scope,
+            planned_keys=self.planned_keys,
         )
         return self.with_marks(node)

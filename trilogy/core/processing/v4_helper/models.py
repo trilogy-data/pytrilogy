@@ -55,16 +55,6 @@ class RootReason(Enum):
     BASIC_INPUT = "basic_input"
 
 
-@dataclass
-class FinalContributorContract:
-    """Logical contract for one group feeding the FINAL sink."""
-
-    group_id: str
-    output_addresses: frozenset[str] = frozenset()
-    preserve_keys: frozenset[str] = frozenset()
-    projection_grain: frozenset[str] = frozenset()
-
-
 class InputChannel(Enum):
     ROW_STREAM = "row_stream"
     EXISTENCE = "existence"
@@ -134,14 +124,16 @@ class FinalAssemblyContract:
 
     Stage 2 owns these semantic requirements: which user-visible concepts the
     final query must expose, and the grain those outputs should be unique at.
-    Stage 3 may still skip a physical GroupNode when the chosen source already
-    satisfies the contract.
+    How the contributors pair is the join plan's (`join_plan.plan_final_join`),
+    computed over the elected cover. Stage 3 may still skip a physical
+    GroupNode when the chosen source already satisfies the contract.
     """
 
     output_addresses: frozenset[str] = frozenset()
     required_grain: frozenset[str] = frozenset()
-    merge_grain: frozenset[str] = frozenset()
-    contributor_contracts: tuple[FinalContributorContract, ...] = ()
+    # authored relation members hosted by different groups: the statement's
+    # sides recombine through them (`join_plan.authored_axes`)
+    authored_axes: frozenset[str] = frozenset()
     deduplicate_to_grain: bool = True
 
 

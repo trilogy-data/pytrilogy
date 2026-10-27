@@ -1,5 +1,5 @@
 query_id = "15"
-gen_length = 1213
+gen_length = 1164
 preql_size = 417
 comp_size = 560
 generated_sql = """
@@ -8,7 +8,8 @@ WITH
 quizzical as (
 SELECT
     \"lineitem\".\"l_suppkey\" as \"part_supplier_id\",
-    sum(\"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\")) as \"supplier_rev\"
+    sum(\"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\")) as \"supplier_rev\",
+    sum(\"lineitem\".\"l_extendedprice\" * (1 - \"lineitem\".\"l_discount\")) as \"total_revenue\"
 FROM
     \"memory\".\"lineitem\" as \"lineitem\"
 WHERE
@@ -23,25 +24,19 @@ FROM
     \"quizzical\"
 HAVING
     count(*) > 0
-),
-wakeful as (
+)
 SELECT
     \"quizzical\".\"part_supplier_id\" as \"part_supplier_id\",
-    \"quizzical\".\"supplier_rev\" as \"total_revenue\"
-FROM
-    \"quizzical\")
-SELECT
-    \"wakeful\".\"part_supplier_id\" as \"part_supplier_id\",
     \"part_supplier_supplier\".\"s_name\" as \"part_supplier_name\",
     \"part_supplier_supplier\".\"s_address\" as \"part_supplier_address\",
     \"part_supplier_supplier\".\"s_phone\" as \"part_supplier_phone\",
-    \"wakeful\".\"total_revenue\" as \"total_revenue\"
+    \"quizzical\".\"total_revenue\" as \"total_revenue\"
 FROM
     \"memory\".\"supplier\" as \"part_supplier_supplier\"
-    INNER JOIN \"wakeful\" on \"part_supplier_supplier\".\"s_suppkey\" = \"wakeful\".\"part_supplier_id\"
+    INNER JOIN \"quizzical\" on \"part_supplier_supplier\".\"s_suppkey\" = \"quizzical\".\"part_supplier_id\"
     INNER JOIN \"cheerful\" on 1=1
 WHERE
-    \"wakeful\".\"total_revenue\" = \"cheerful\".\"max_supplier_rev\"
+    \"quizzical\".\"total_revenue\" = \"cheerful\".\"max_supplier_rev\"
 
 ORDER BY 
-    \"wakeful\".\"part_supplier_id\" asc"""
+    \"quizzical\".\"part_supplier_id\" asc"""

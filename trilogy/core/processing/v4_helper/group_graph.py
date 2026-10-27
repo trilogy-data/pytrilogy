@@ -30,7 +30,6 @@ from trilogy.core.models.build import (
     BuildGrain,
     BuildRowsetItem,
     BuildWhereClause,
-    get_grouped_aggregate_wrapper,
     is_grouping_identity,
 )
 from trilogy.core.models.build_environment import (
@@ -80,10 +79,10 @@ from .functional_dependency import (
 )
 from .group_behaviors import Behavior, behavior_for
 from .group_rules import DEFAULT_RULE, GROUPING_RULES
+from .join_plan import authored_axes, final_predecessors, merge_axes, row_identity
 from .models import (
     ConceptAttrs,
     FinalAssemblyContract,
-    FinalContributorContract,
     GroupAttrs,
     GroupBucket,
     GroupInputContract,
@@ -654,199 +653,6 @@ def _grain_determines(
     )
 
 
-def _lineage_pinned_grain(
-    addresses: frozenset[str] | set[str], environment: BuildEnvironment
-) -> frozenset[str]:
-    """Grain components pinned by fixed-grain barriers in the lineage of
-    ``addresses``. A BASIC that renames or derives from an aggregate
-    (`cust_state_amt as total`) is a fixed-grain barrier exactly like the
-    aggregate itself: its rows are unique at the aggregate's grain and cannot
-    be regenerated finer. Same for a rename of a rowset member
-    (`buyers_b.cust_id as b_cust`): its join axis is the handle the body value
-    is keyed by (`buyers_b.id`). The walk stops at each
-    barrier; grains BELOW it are pre-aggregation / body row grains, not join
-    axes. A row-level ROOT reached BESIDE a barrier is part of the pin: a
-    derivation over an aggregate and a row key (`cluster_id <-
-    coalesce(min(x) by cell, tree_id)`) varies per row, so its rows are unique
-    at the row grain, not the aggregate's; pinning only the barrier claims a
-    coarser grain than the rows have and the FINAL merge regroups a 1:1 join
-    back onto those rows. With no barrier anywhere nothing is pinned: a plain
-    BASIC over row columns regenerates at any grain. Members of an AUTHORED
-    scoped-join relation are skipped: the authored keys are the axis there,
-    and pairing on internal grain too would silently narrow the authored
-    fan-out."""
-    scoped_members = environment.all_scoped_join_group_members()
-    stack: list[BuildConcept] = []
-    for addr in addresses:
-        concept = environment.concepts.get(addr) or environment.alias_origin_lookup.get(
-            addr
-        )
-        if concept is not None:
-            stack.append(concept)
-    grain: set[str] = set()
-    row_grain: set[str] = set()
-    seen: set[str] = set()
-    while stack:
-        concept = stack.pop()
-        if concept.address in seen:
-            continue
-        seen.add(concept.address)
-        # A ROLLUP/CUBE/GROUPING SETS aggregate NULLs its grouping keys on the
-        # subtotal rows, so those keys are not a row identity and cannot serve
-        # as a join axis: pinning them drops every subtotal row from the merge
-        # (a rolled-up NULL never pairs). The `nulls_grouping_keys` wrapper is
-        # the same authority `_renders_nonstandard_grouping` uses, and it sees
-        # through a rowset handle to the aggregate underneath.
-        wrapper = get_grouped_aggregate_wrapper(concept)
-        if wrapper is not None and wrapper.grouping.nulls_grouping_keys:
-            continue
-        if concept.derivation in GROUPING_DERIVATIONS:
-            if concept.grain:
-                grain |= set(concept.grain.components)
-            continue
-        if concept.derivation == Derivation.ROWSET:
-            axis = set(concept.grain.components) if concept.grain else set()
-            if not ({concept.address} | axis) & scoped_members:
-                grain |= axis
-            continue
-        if concept.lineage is not None:
-            stack.extend(concept.lineage.concept_arguments)
-        elif concept.derivation == Derivation.ROOT and concept.grain:
-            row_grain |= set(concept.grain.components)
-    return frozenset(grain | row_grain) if grain else frozenset()
-
-
-def _final_merge_grain(
-    group_graph: nx.DiGraph,
-    attrs: dict[str, GroupAttrs],
-    mandatory_list: list[BuildConcept],
-    environment: BuildEnvironment,
-    relation_edge_members: frozenset[str] = frozenset(),
-) -> frozenset[str]:
-    grain: set[str] = set()
-    for gid in group_graph.predecessors(FINAL_NODE_ID):
-        if gid not in attrs:
-            continue
-        # Every contributor's grain is a merge axis, not only a grouping one: a
-        # BASIC over aggregates (`customer_status <- case ... min(x) by user`)
-        # sits at user grain and its CTE emits that key; without it no ROOT
-        # sibling can be given a join key and the merge falls to ON 1=1. Only
-        # the keys it emits: a grain its rows never carry is no join axis.
-        grain |= set(attrs[gid].emitted_grain)
-        # a region domain's rows are keyed by its spans, and every solid
-        # contributor joins them there
-        grain |= set(attrs[gid].extent_spans)
-    # A grouping output's grain is the result's row grain; so is a rowset
-    # output's (its `keys` are not: a KEY's are the FK path that determines
-    # it, snapshotted onto the handle, and reading `r.line_id` there waved the
-    # FINAL dedup through at line grain). A keyless, grainless handle (a
-    # global-aggregate scalar body) has no axis and cross-joins.
-    for concept in mandatory_list:
-        if (
-            concept.derivation in GROUPING_DERIVATIONS
-            or concept.derivation == Derivation.ROWSET
-        ) and concept.grain:
-            grain |= set(concept.grain.components)
-    if environment.scoped_join_key_groups:
-        finals = [
-            gid for gid in group_graph.predecessors(FINAL_NODE_ID) if gid in attrs
-        ]
-        # A relation carried on the concept graph's RELATION edges (an
-        # authored axis whose collapsed side is a first-class computed node)
-        # and HOSTED by different FINAL contributors is the merge's join axis:
-        # the sides recombine only through the authored equality. This covers
-        # the inline computed-member family (`union join rank orders.oid
-        # order by orders.amt desc = customers.rnk`), where one side's member
-        # is its own row-shape-barrier group and the other side's canonical
-        # rides a ROOT scan. Only the hosted members enter the grain: an unhosted third
-        # member of a chained relation is not this merge's to demand.
-        if len(finals) > 1 and relation_edge_members:
-            for relation_addrs in environment.scoped_join_relations():
-                if not relation_addrs & relation_edge_members:
-                    continue
-                hosts: set[str] = set()
-                hosted: set[str] = set()
-                for gid in finals:
-                    have = relation_addrs & set(attrs[gid].members)
-                    if have:
-                        hosts.add(gid)
-                        hosted |= have
-                if len(hosts) > 1 and len(hosted) > 1:
-                    grain |= hosted
-    return frozenset(grain)
-
-
-def _group_final_grain_contribution(
-    group_graph: nx.DiGraph,
-    attrs: dict[str, GroupAttrs],
-    gid: str,
-    merge_grain: frozenset[str],
-    environment: BuildEnvironment,
-) -> frozenset[str]:
-    if gid not in attrs:
-        return frozenset()
-    if attrs[gid].derivation in GROUPING_DERIVATIONS:
-        return attrs[gid].grain_components
-    if attrs[gid].extent_spans:
-        return attrs[gid].extent_spans
-    if attrs[gid].derivation == Derivation.ROWSET:
-        return merge_grain
-    # A STATEMENT-scoped relation member the group carries is the merge's join
-    # axis whether or not it is the group's grain: `subset join
-    # best.pair_rank_best = worst.pair_rank_worst` projecting only the two
-    # product names leaves neither BASIC rename group advertising the rank, and
-    # the FINAL merge cross-joins ON 1=1. Global `merge` identities are
-    # excluded; they pair INNER and never define a statement's join axis
-    # (advertising one strands a partial dimension).
-    available = attrs[gid].row_columns
-    rowset_keys = (
-        _statement_scoped_relation_members(environment) & merge_grain & available
-    )
-    # A non-grouping contributor whose outputs ride a fixed-grain barrier (a
-    # BASIC rename/derivation of an aggregate: `cust_state_amt as total`, or
-    # of a rowset member) is grain-pinned at that barrier's grain. Without
-    # advertising it the assembly-side merge grain (union of contributor
-    # projection grains) can collapse to empty, which disables every join-key
-    # preservation guard in `_wrap_for_grain` and cross-joins the FINAL
-    # parents ON 1=1. Only the pins it carries: a derived `by` key's row
-    # lineage (`event_date <- date(event_time)`) reaches a fact grain the
-    # contributor's rows, read off the barrier, never hold.
-    pinned = frozenset(attrs[gid].output_concepts) or frozenset(attrs[gid].members)
-    rowset_keys |= _lineage_pinned_grain(pinned, environment) & available
-    # A row derivation its grouped siblings' grain does not determine (`ret +
-    # 1` per line beside `sum(qty) by order`) pairs on its own grain:
-    # projected at the coarser one, its rows collapse onto a merge key and
-    # fan back out.
-    grouped = frozenset().union(
-        *(
-            attrs[other].grain_components
-            for other in group_graph.predecessors(FINAL_NODE_ID)
-            if other in attrs and attrs[other].derivation in GROUPING_DERIVATIONS
-        )
-    )
-    if (
-        grouped
-        and attrs[gid].derivation == Derivation.BASIC
-        and not build_fd_determines_all(
-            environment, set(grouped), set(attrs[gid].primary_members)
-        )
-    ):
-        rowset_keys |= attrs[gid].emitted_grain & merge_grain
-    # A row stream reading a region domain is the region's rows (`customer_id
-    # as c2`), and pairs on the spans as the domain would. Folded into this
-    # contributor, the domain no longer advertises them itself, and a sibling
-    # with a grain of its own (`count(customer_id) by *`) would leave the
-    # solid stream projected off the span.
-    held: frozenset[str] = frozenset().union(
-        *(
-            attrs[parent].extent_spans
-            for parent in group_graph.predecessors(gid)
-            if parent in attrs
-        )
-    )
-    return frozenset(rowset_keys) | (held & available)
-
-
 def _refresh_final_contract(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
@@ -857,31 +663,6 @@ def _refresh_final_contract(
     if FINAL_NODE_ID not in attrs:
         return
     output_addresses = frozenset(c.address for c in mandatory_list)
-    merge_grain = _final_merge_grain(
-        group_graph, attrs, mandatory_list, environment, relation_edge_members
-    )
-    contributors: list[FinalContributorContract] = []
-    for gid in sorted(group_graph.predecessors(FINAL_NODE_ID)):
-        if gid not in attrs:
-            continue
-        preserve_keys = (
-            merge_grain if attrs[gid].derivation == Derivation.ROOT else frozenset()
-        )
-        # A region domain pairs on its spans alone: widening it to the merge
-        # grain re-sources it through the fact, the row stream it exists to
-        # stay off.
-        if attrs[gid].extent_spans:
-            preserve_keys = attrs[gid].extent_spans
-        contributors.append(
-            FinalContributorContract(
-                group_id=gid,
-                output_addresses=frozenset(attrs[gid].output_concepts),
-                preserve_keys=preserve_keys,
-                projection_grain=_group_final_grain_contribution(
-                    group_graph, attrs, gid, merge_grain, environment
-                ),
-            )
-        )
     # A bare axis-member projection (every output is a member of a scoped
     # join-key relation) has no dedup grain of its own: the output IS the
     # joined relation row-by-row, so a same-key fan-out (two this-year weeks
@@ -910,15 +691,19 @@ def _refresh_final_contract(
     # every side's rows are just its projected member, those columns add only
     # rows the dedup to the outputs removes (`year` per sale line beside
     # `ticket`).
+    groups = final_predecessors(group_graph, attrs)
+    authored = authored_axes(groups, attrs, environment, relation_edge_members)
     if axis_only_projection and attrs[FINAL_NODE_ID].condition_atoms:
+        axes = merge_axes(groups, attrs, mandatory_list, authored)
         axis_only_projection = not all(
-            contract.projection_grain <= output_addresses for contract in contributors
+            row_identity(group_graph, attrs, gid, groups, axes, environment)
+            <= output_addresses
+            for gid in groups
         )
     attrs[FINAL_NODE_ID].final_contract = FinalAssemblyContract(
         output_addresses=output_addresses,
         required_grain=frozenset(BuildGrain.from_concepts(mandatory_list).components),
-        merge_grain=merge_grain,
-        contributor_contracts=tuple(contributors),
+        authored_axes=authored,
         deduplicate_to_grain=not axis_only_projection,
     )
 
@@ -1518,8 +1303,12 @@ def _widen_mixed_scalar_basic_to_final_spine(
         candidates.append(gid)
     if not candidates:
         return
-    spine = _final_merge_grain(
-        group_graph, attrs, mandatory_list, environment, relation_edge_members
+    groups = final_predecessors(group_graph, attrs)
+    spine = merge_axes(
+        groups,
+        attrs,
+        mandatory_list,
+        authored_axes(groups, attrs, environment, relation_edge_members),
     )
     # Only a spine that is the result's own row identity qualifies: every
     # spine key is a requested output, or is FD-determined by them (the by-key
