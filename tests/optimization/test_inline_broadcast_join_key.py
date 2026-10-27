@@ -1,6 +1,7 @@
-"""A grand-total broadcast join's `all_rows` marker is a join key the dim scan
-produces, but no source_map entry attributes it to that scan; folding the scan
-away used to leave the key unrenderable (bare AssertionError at render time)."""
+"""A grand-total broadcast join used to pair on the `all_rows` marker, a key no
+source_map entry attributes to the dim scan; folding the scan away left it
+unrenderable (bare AssertionError at render time). A single-row side now pairs
+on no key, so the scan inlines and the marker never reaches the join."""
 
 from trilogy import Dialects, Environment
 
@@ -41,11 +42,6 @@ auto bench <- avg(net_profit ? address_sk is null) by *;
 def test_broadcast_join_key_survives_inline():
     executor = Dialects.DUCK_DB.default_executor(environment=Environment())
     sql = executor.generate_sql(MODEL + "\nselect store_sk as d, bench as v;")[-1]
-    # The scan stays a CTE, so the marker resolves through a qualified alias on
-    # both legs rather than through a column the raw `store` table lacks.
-    marker = '"__preql_internal_all_rows"'
-    join_line = next(
-        line for line in sql.splitlines() if "INNER JOIN" in line and marker in line
-    )
-    assert join_line.count(f".{marker}") == 2, join_line
-    assert f'"store".{marker}' not in sql, sql
+    assert "__preql_internal_all_rows" not in sql, sql
+    join_line = next(line for line in sql.splitlines() if "INNER JOIN" in line)
+    assert join_line.strip().endswith("on 1=1"), join_line
