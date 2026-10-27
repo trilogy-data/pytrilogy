@@ -3159,7 +3159,6 @@ def _pre_merge_parents(
                 group_graph,
                 built,
                 needed,
-                join_key_addresses,
                 environment,
             ),
         )
@@ -3242,11 +3241,12 @@ def _elected_merge_bridges(
     group_graph: nx.DiGraph,
     built: dict[str, StrategyNode],
     needed: set[str] | None,
-    join_key_addresses: frozenset[str],
     environment: BuildEnvironment,
 ) -> list[str] | None:
     """The bridges a consumer's join plan elects over its row parents' groups;
-    None when a side is no group's, and the merge bridges off what is built."""
+    None when a side is no group's, and the merge bridges off what is built.
+    The consumer's preserve keys are asks, not columns a side holds: a
+    dimension peel is never widened to its sibling dimension's key."""
     if attrs is None or origin is None:
         return None
     sides = side_groups(parents, origin)
@@ -3262,7 +3262,6 @@ def _elected_merge_bridges(
         environment,
         _required_final_contract(attrs).authored_axes,
         split=frozenset(gid for gid in sides if sides.count(gid) > 1),
-        contracted={gid: join_key_addresses for gid in sides},
     )
 
 
