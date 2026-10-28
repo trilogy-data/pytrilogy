@@ -18,6 +18,7 @@ from trilogy.core.enums import (
     Derivation,
     FunctionClass,
     FunctionType,
+    Granularity,
     JoinType,
     Modifier,
     Purpose,
@@ -654,7 +655,11 @@ class CTE:
             return False
         grain_components = set(self.grain.components)
         keys = c.keys or set()
-        if not keys or not keys <= grain_components:
+        if keys:
+            if not keys <= grain_components:
+                return False
+        elif grain_components or c.granularity != Granularity.SINGLE_ROW:
+            # a keyless one-value filter collapses only in a one-row group
             return False
         where_args = {a.address for a in c.lineage.where.row_arguments}
         if where_args <= grain_components:

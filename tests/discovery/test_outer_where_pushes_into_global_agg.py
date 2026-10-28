@@ -1,5 +1,3 @@
-import pytest
-
 from trilogy import Dialects, Environment
 
 # An outer WHERE row predicate must push into a `by *` global aggregate's INPUT
@@ -111,11 +109,6 @@ def test_cross_grain_predicate_stays_in_aggregate_scan():
     assert "item_id" in avg_cte and "> 5" in avg_cte, avg_cte
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="a gated global aggregate is planned per statement row, not as one row "
-    "(docs/join_axis_audit_2026_10.md, open item 3)",
-)
 def test_gated_global_agg_is_one_value_beside_rows():
     model = CROSS_GRAIN.replace(
         "union all select 3, 5.0, 9, 100",
@@ -130,3 +123,22 @@ def test_gated_global_agg_is_one_value_beside_rows():
         ("B", 20.0, 10.5),
         ("C", 5.0, 10.5),
     ]
+
+
+def test_gated_global_agg_beside_its_gate_column():
+    exec = Dialects.DUCK_DB.default_executor(environment=Environment())
+    for query in ("select yr, a order by yr;", "select yr, a as _avg order by yr;"):
+        rows = exec.execute_query(CROSS_GRAIN + query).fetchall()
+        assert [(r[0], round(r[1], 4)) for r in rows] == [
+            (1999, 11.6667),
+            (2000, 11.6667),
+        ], query
+
+
+def test_gated_global_agg_with_no_passing_row_is_null():
+    exec = Dialects.DUCK_DB.default_executor(environment=Environment())
+    rows = exec.execute_query(
+        CROSS_GRAIN.replace("yr = 1999;", "yr = 2001;")
+        + "select brand as b, a as _avg order by b;"
+    ).fetchall()
+    assert [tuple(r) for r in rows] == [("A", None), ("B", None), ("C", None)]

@@ -1,3 +1,4 @@
+from trilogy.core.enums import Granularity
 from trilogy.core.graph_models import ReferenceGraph
 from trilogy.core.models.build import (
     BuildConcept,
@@ -90,7 +91,18 @@ def gen_filter(
     )
 
     grain: BuildGrain | None = None
-    if filter_lineages and intrinsic is None and collapse_to_grain:
+    if (
+        filter_lineages
+        and intrinsic is None
+        and collapse_to_grain
+        and all(o.granularity == Granularity.SINGLE_ROW for o in outputs)
+    ):
+        # one value gated on whether any in-scope row passes: a one-row group
+        grain = BuildGrain()
+        full_outputs = list(outputs) + [
+            o for o in pass_through if o.granularity == Granularity.SINGLE_ROW
+        ]
+    elif filter_lineages and intrinsic is None and collapse_to_grain:
         # projected or not, a property stands for its keys: `select name,
         # late_name` is at customer grain
         entity_grain: set[str] = set().union(
