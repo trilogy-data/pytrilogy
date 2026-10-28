@@ -1,0 +1,18 @@
+# forecast_daily is a table function of a coordinate. Binding `latitude` and
+# `longitude` as arguments makes each query name the location it wants with
+# `where latitude = .. and longitude = ..`.
+key latitude float;
+key longitude float;
+key forecast_date date;
+property <latitude, longitude, forecast_date>.temp_max float;
+property <latitude, longitude, forecast_date>.temp_min float;
+
+datasource forecast_daily (
+    latitude,
+    longitude,
+    time: forecast_date,
+    temperature_2m_max: temp_max,
+    temperature_2m_min: temp_min,
+)
+grain (latitude, longitude, forecast_date)
+address weather.main.forecast_daily(latitude, longitude, days := 3);

@@ -1,0 +1,8 @@
+import weather as weather;
+
+where weather.latitude = 10.0 and weather.longitude = 20.0
+select
+    weather.forecast_date,
+    weather.temp_max,
+    weather.temp_min
+order by weather.forecast_date asc;

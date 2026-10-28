@@ -1,6 +1,6 @@
 import weather as weather;
 
-where weather.latitude = 52.374
+where weather.latitude = 10.0
 select
     weather.forecast_date,
     weather.temp_max;

@@ -1,0 +1,13 @@
+import stations as stations;
+import weather as weather;
+
+# No join relates weather to stations, so its coordinates are a rowset's WHERE
+# rather than one over every output.
+with tester_a as
+where weather.latitude = 10.0 and weather.longitude = 20.0
+select max(weather.temp_max) as high;
+
+select
+    count(stations.station_code) as station_count,
+    count(stations.train_number) as departures,
+    tester_a.high as tester_a_high;

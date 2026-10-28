@@ -1,0 +1,7 @@
+import stations as stations;
+
+select
+    stations.station_name,
+    count(stations.train_number) as departures,
+    sum(stations.delay_minutes) as total_delay
+order by departures desc;

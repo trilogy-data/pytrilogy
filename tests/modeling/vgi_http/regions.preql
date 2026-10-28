@@ -1,0 +1,14 @@
+# A query datasource over the stations server, rather than a table address.
+key regional_code string;
+property regional_code.regional_region string;
+
+datasource regional_stations (
+    station_code: regional_code,
+    region: regional_region,
+)
+grain (regional_code)
+query '''
+select station_code, region
+from stations.main.stations
+where region is not null
+''';

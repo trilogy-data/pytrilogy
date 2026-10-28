@@ -86,8 +86,9 @@ mcp = ["fastapi", "uvicorn", "mcp>=2,<3"]
 analysis = ["altair", "pandas", "vl-convert-python"]
 report = ["markdown", "altair", "pandas", "vl-convert-python", "playwright"]
 # Held to the vgi extension build pinned by VGI_EXTENSION_VERSION (trilogy/dialect/
-# duckdb.py), with crates/trilogy-io's `vgi` crate: bump all three together. The
-# pinned build is published per haybarn engine, hence the haybarn upper bound.
+# duckdb.py), with the `vgi` crate in crates/trilogy-io and
+# tests/modeling/vgi_http/weather_worker: bump them all together. The pinned
+# build is published per haybarn engine, hence the haybarn upper bound.
 vgi = ["haybarn>=1.5.6rc1,<1.5.7", "vgi-python>=0.47,<0.48; python_version >= '3.13'"]
 
 
