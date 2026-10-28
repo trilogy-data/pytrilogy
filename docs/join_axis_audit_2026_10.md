@@ -365,16 +365,37 @@ What made the cover honest without a render filter:
 The window-under-a-condition-twin over-claim did not reproduce: no group in
 `tests/` claimed an output its built node drops once the above held.
 
+`_add_relation_axis_contributors` and `_add_region_domain_contributors`
+elect off group outputs, members and concept pseudonyms. Over `tests/` the
+relation-axis pass adds no contributor at all: the cover and the authored
+axes already seat every hosting side.
+
 **Open.**
 
-1. The add passes after election (`_add_relation_axis_contributors`,
-   `_add_partial_completion_contributors`, `_fold_descendant_contributors`,
-   `_promote_final_aliases_to_grouping_contributors`,
-   `_add_region_domain_contributors`) read built outputs, partials and
-   pseudonyms. `_promote_final_aliases_to_grouping_contributors` hosts a
-   rename only where `_crosses_unsourced_aggregate` holds
-   (`concept_satisfiable` walks through aggregate lineage); a stage-2 move
-   keeps that guard.
+1. Three add passes still read built nodes, each for a fact stage 2 does not
+   state. Each was measured by computing its decision both ways over the
+   whole `tests/` tree:
+   - `_fold_descendant_contributors` asks what a descendant's built parents
+     render. Stage 2's nearest fact (row parents' outputs and members,
+     projected to the descendant's grain beside a grouped parent) disagrees
+     in 13 folds: a parent's node renders values no consumer listed among
+     its outputs (a rollup window's `lvl`, ncaa's `points_per_game`).
+   - `_add_partial_completion_contributors` asks which side renders a
+     relation member complete. A declared subset source is partial by
+     declaration, but a ROOT scan renders members it only advertises as
+     capability (`ka`, `kb`, `kc` beside a `union join`) and a row stream
+     reads a mate it never renders; 9 files disagree.
+   - `_promote_final_aliases_to_grouping_contributors` reads the source's
+     built `existence_concepts`/`force_group`, and its hosts' outputs miss a
+     coalescing mate the aggregate renders (`a.k` beside `b.k`). It hosts a
+     rename only where `_crosses_unsourced_aggregate` holds
+     (`concept_satisfiable` walks through aggregate lineage); a stage-2 move
+     keeps that guard.
+
+   The common gap: `output_concepts` is what consumers read off a group,
+   not what its node renders. A stage-2 "renders" fact (outputs, members,
+   carried preserve keys, advertised relation members) would serve all
+   three.
 
 ## 8. Not claimed
 

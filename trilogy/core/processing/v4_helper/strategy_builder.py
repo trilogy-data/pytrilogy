@@ -3537,7 +3537,8 @@ def _bridge_pseudonyms(node: StrategyNode, provided: list[BuildConcept]) -> None
 
 def _add_relation_axis_contributors(
     group_graph: nx.DiGraph,
-    built: dict[str, StrategyNode],
+    attrs: dict[str, GroupAttrs],
+    candidates: Sequence[str],
     per_group: dict[str, list[BuildConcept]],
     axes: frozenset[str],
     environment: BuildEnvironment,
@@ -3552,13 +3553,13 @@ def _add_relation_axis_contributors(
     place."""
     if len(per_group) < 2 or not environment.scoped_join_key_groups or not axes:
         return
-    outputs_of = {
-        gid: {o.address for o in node.output_concepts} for gid, node in built.items()
-    }
+    outputs_of = {gid: set(attrs[gid].output_concepts) for gid in candidates}
     # A merge pseudonym names the same column, so its side is already present.
     hosts_of = {
-        gid: outputs_of[gid].union(*(o.pseudonyms for o in node.output_concepts))
-        for gid, node in built.items()
+        gid: outputs.union(
+            *(c.pseudonyms for a in outputs if (c := environment.concepts.get(a)))
+        )
+        for gid, outputs in outputs_of.items()
     }
     chosen = set(per_group)
     for canonical, members in environment.scoped_join_key_groups.items():
@@ -3579,7 +3580,7 @@ def _add_relation_axis_contributors(
             provider = next(
                 (
                     gid
-                    for gid in sorted(built)
+                    for gid in sorted(candidates)
                     if gid not in chosen
                     and gid not in merged_below
                     and addr in outputs_of[gid]
@@ -3636,7 +3637,7 @@ def _add_region_domain_contributors(
             for other, concepts in per_group.items()
             if other != gid
             for concept in concepts
-            if _renders_rename_of_member(concept, attrs[gid], base)
+            if _renders_rename_of_member(concept, attrs[gid])
         ]
         if not renames:
             continue
@@ -3665,20 +3666,18 @@ def _add_region_domain_contributors(
         per_group[gid].extend(renames)
 
 
-def _renders_rename_of_member(
-    concept: BuildConcept, domain: GroupAttrs, node: StrategyNode
-) -> bool:
-    """`concept` renames a member of `domain` its built node can render: it
-    outputs the rename itself or every argument of it."""
+def _renders_rename_of_member(concept: BuildConcept, domain: GroupAttrs) -> bool:
+    """`concept` renames a member of `domain` its rows can render: it outputs
+    the rename itself or every argument of it."""
     if not (
         isinstance(concept.lineage, BuildFunction)
         and concept.lineage.operator == FunctionType.ALIAS
     ):
         return False
     args = {a.address for a in concept.lineage.concept_arguments}
-    outputs = {c.address for c in node.output_concepts}
+    held = {*domain.output_concepts, *domain.members}
     return args <= set(domain.primary_members) and (
-        concept.address in outputs or args <= outputs
+        concept.address in held or args <= held
     )
 
 
@@ -5371,7 +5370,8 @@ def _assemble_final_node(
         )
     _add_relation_axis_contributors(
         group_graph,
-        built,
+        attrs,
+        list(built),
         per_group,
         merge_axes(list(built), attrs, mandatory_list, final_contract.authored_axes),
         environment,
