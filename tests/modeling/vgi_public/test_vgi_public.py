@@ -3,10 +3,26 @@ from pathlib import Path
 import pytest
 
 from trilogy import Dialects, Environment, Executor
+from trilogy.core.exceptions import ConfigurationException
 from trilogy.dialect.config import DuckDBConfig
 from trilogy.dialect.table_function import MissingSourceArgumentException
 
 ROOT = Path(__file__).parent
+# ATTACH succeeds across vgi releases; a mismatch surfaces on the first catalog read.
+PROBES = [
+    "earthquakes.main.recent",
+    "trains.main.train_stations",
+    (
+        "overture.places.place where bbox.xmin >= 4.880 and bbox.xmax <= 4.900"
+        " and bbox.ymin >= 52.368 and bbox.ymax <= 52.378"
+    ),
+    "open_meteo.main.forecast_daily(52.374, 4.890)",
+]
+QUERIES = sorted(
+    p.name
+    for p in ROOT.glob("query_*.preql")
+    if p.name != "query_weather_missing.preql"
+)
 
 
 @pytest.fixture(scope="module")
@@ -21,6 +37,12 @@ def executor():
     except Exception as e:
         ex.close()
         pytest.skip(f"public VGI servers unreachable: {e}")
+    try:
+        for table in PROBES:
+            ex.execute_raw_sql(f"select * from {table} limit 0")
+    except ConfigurationException as e:
+        ex.close()
+        pytest.skip(f"public VGI servers run another vgi release: {e}")
     yield ex
     ex.close()
 
@@ -53,8 +75,19 @@ def test_cross_server(executor: Executor):
     assert row["amsterdam_places"] > 0
 
 
-def test_weather_requires_coordinates(executor: Executor):
+def plan(name: str) -> None:
+    Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=ROOT)
+    ).generate_sql((ROOT / name).read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("name", QUERIES)
+def test_query_plans(name: str):
+    plan(name)
+
+
+def test_weather_requires_coordinates():
     with pytest.raises(
         MissingSourceArgumentException, match="where weather.longitude = <literal>"
     ):
-        run(executor, "query_weather_missing.preql")
+        plan("query_weather_missing.preql")

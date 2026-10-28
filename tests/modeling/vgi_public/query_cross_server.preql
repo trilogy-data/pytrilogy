@@ -3,9 +3,14 @@ import trains as trains;
 import weather as weather;
 import places as places;
 
+# No join relates weather to the other servers, so its coordinates are a
+# rowset's WHERE rather than one over every output.
+with amsterdam as
 where weather.latitude = 52.374 and weather.longitude = 4.890
+select max(weather.temp_max) as week_high;
+
 select
     count(quake.event_id) as quakes,
     count(trains.station_code) as stations,
-    max(weather.temp_max) as amsterdam_week_high,
+    amsterdam.week_high as amsterdam_week_high,
     count(places.place_id) as amsterdam_places;
