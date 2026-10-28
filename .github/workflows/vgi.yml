@@ -46,6 +46,7 @@ jobs:
           cache-workspaces: |
             trilogy/scripts/dependency
             crates/trilogy-io
+            tests/modeling/vgi_http/weather_worker
       - name: Install uv for script tests
         uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v8.0.0
         with:
@@ -60,10 +61,14 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install -r requirements-test.txt
           python -m pip install -e ".[vgi]"
+          # tests/modeling/vgi_http serves a python worker over HTTP.
+          python -m pip install "vgi-rpc[http]"
       - name: Build the conformance binary with the vgi feature
         # One binary serves both suites: the one-shot conformance run and the
         # resident (--vgi) one.
         run: cargo build --release --example landmarks --example catalog --features vgi --manifest-path crates/trilogy-io/Cargo.toml
+      - name: Build the HTTP weather worker
+        run: cargo build --release --manifest-path tests/modeling/vgi_http/weather_worker/Cargo.toml
       - name: Warm the resident script environment
         # A resident python source runs as `uv run --with vgi-python`, a
         # different environment from the plain one, and building it (this
@@ -83,6 +88,7 @@ jobs:
           tests/engine/scripts/test_executable_source.py
           tests/io/test_vgi_conformance.py
           tests/io/test_conformance.py
+          tests/modeling/vgi_http
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@57e3a136b779b570ffcdbf80b3bdc90e7fab3de2  # v6.0.0
         with:

@@ -1,0 +1,26 @@
+key station_code string;
+property station_code.station_name string;
+property station_code.region string;
+property station_code.latitude float;
+property station_code.longitude float;
+
+datasource stations (
+    station_code,
+    name: station_name,
+    ?region,
+    lat: latitude,
+    lng: longitude,
+)
+grain (station_code)
+address stations.main.stations;
+
+key train_number string;
+property <station_code, train_number>.delay_minutes int;
+
+datasource departures (
+    station_code,
+    train_number,
+    delay_minutes,
+)
+grain (station_code, train_number)
+address stations.main.departures;

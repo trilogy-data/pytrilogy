@@ -1,0 +1,5 @@
+import regions as regions;
+
+select
+    regions.regional_region,
+    count(regions.regional_code) as station_count;

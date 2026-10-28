@@ -1,9 +1,0 @@
-import trains as trains;
-
-select
-    trains.station_name,
-    trains.country,
-    count(trains.train_number) as departures,
-    avg(trains.delay_minutes) as avg_delay
-order by departures desc
-limit 5;
