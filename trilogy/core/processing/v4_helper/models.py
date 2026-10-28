@@ -243,6 +243,9 @@ class GroupAttrs(_HeldKeys):
     # Members of the row-preserving input groups this aggregate computes
     # inline: every reader did, so those groups were never built.
     inlined_members: tuple[str, ...] = ()
+    # Of an aggregate's members, the ones a same-grain grouping group built
+    # before it already outputs: read through that twin, never recomputed.
+    twin_reused: frozenset[str] = frozenset()
 
     @classmethod
     def from_bucket(cls, bucket: "GroupBucket") -> "GroupAttrs":

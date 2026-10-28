@@ -13,9 +13,12 @@ from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.build_environment import BuildEnvironment
 
-from .constants import GROUPING_DERIVATIONS
+from .condition_placement import feeder_conditions_implied
+from .constants import AGGREGATING_DERIVATIONS, FINAL_NODE_ID, GROUPING_DERIVATIONS
 from .edges import EdgeKind, EdgeMap, edges_of_kind
+from .group_graph import read_row_parents
 from .models import ExtentOwnership, GroupAttrs
+from .projection import concept_satisfiable
 
 
 def exposes(group: GroupAttrs, environment: BuildEnvironment) -> frozenset[str]:
@@ -39,6 +42,111 @@ def exposes(group: GroupAttrs, environment: BuildEnvironment) -> frozenset[str]:
         for key in c.keys or ()
     }
     return outputs | group.emitted_grain | (keys & group.row_columns)
+
+
+def record_twin_reuse(order: Sequence[str], attrs: dict[str, GroupAttrs]) -> None:
+    """Set each aggregate's `twin_reused`: the values a grouping group at the
+    SAME grain, built before it in `order`, already outputs (its pre-condition
+    twin). Grain equality gates out a coarser re-aggregation (avg-of-sum),
+    which genuinely recomputes."""
+    earlier: list[str] = []
+    for gid in order:
+        group = attrs.get(gid)
+        if group is None or gid == FINAL_NODE_ID:
+            continue
+        if group.derivation in AGGREGATING_DERIVATIONS:
+            group.twin_reused = frozenset(
+                address
+                for address in group.primary_members
+                if any(
+                    attrs[other].grain_components == group.grain_components
+                    and address in attrs[other].output_concepts
+                    for other in earlier
+                )
+            )
+        if group.derivation in GROUPING_DERIVATIONS:
+            earlier.append(gid)
+
+
+def unrendered(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    environment: BuildEnvironment,
+) -> dict[str, frozenset[str]]:
+    """What each group exposes but cannot render. A value read through a twin
+    (`record_twin_reuse`) is recomputed only off a parent that survives as a
+    feeder (`_feeders`); with none, the aggregate is built as its population
+    alone. A value a parent lost is opaque to its readers (they read it, never
+    its lineage). The named combo in `test_v4_window_basic_merge`: the
+    select-phase window's value is its condition twin's, and the select-phase
+    chain renders `wk`."""
+    dropped: dict[str, frozenset[str]] = {}
+    for gid in nx.topological_sort(group_graph):
+        if gid == FINAL_NODE_ID:
+            continue
+        parents = read_row_parents(group_graph, group_edges, attrs, gid)
+        if not parents:
+            continue
+        shown = {
+            p: exposes(attrs[p], environment) - dropped.get(p, frozenset())
+            for p in parents
+        }
+        available: set[str] = set().union(*shown.values())
+        opaque = set().union(*(dropped.get(p, frozenset()) for p in parents))
+        if attrs[gid].twin_reused:
+            fed = set().union(
+                *(shown[p] for p in _feeders(group_graph, attrs, gid, shown))
+            )
+            opaque |= {
+                address
+                for address in attrs[gid].twin_reused
+                if (concept := environment.concepts.get(address)) is None
+                or not concept_satisfiable(concept, fed)
+            }
+        opaque -= available
+        if not opaque:
+            continue
+        drops = frozenset(
+            address
+            for address in attrs[gid].output_concepts
+            if (concept := environment.concepts.get(address)) is not None
+            and concept_satisfiable(concept, available | opaque)
+            and not concept_satisfiable(
+                concept, available, cache=dict.fromkeys(opaque, False)
+            )
+        )
+        if drops:
+            dropped[gid] = drops
+    return dropped
+
+
+def _feeders(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    shown: dict[str, frozenset[str]],
+) -> list[str]:
+    """The row parents of an aggregate reading values through its twin that
+    survive as feeders: one whose every column the aggregate reads a grouping
+    sibling at its grain also holds, under conditions at least as narrow, is
+    a redundant re-scan (`_parent_nodes_for`)."""
+    group = attrs[gid]
+    reads = (set(group.output_concepts) - group.twin_reused) | {
+        arg.address for atom in group.condition_atoms for arg in atom.row_arguments
+    }
+    return [
+        p
+        for p in shown
+        if attrs[p].derivation in GROUPING_DERIVATIONS
+        or not any(
+            q != p
+            and attrs[q].derivation in GROUPING_DERIVATIONS
+            and shown[p] & reads <= shown[q]
+            and feeder_conditions_implied(group_graph, attrs, p, q)
+            for q in shown
+        )
+    ]
 
 
 def _single_valued(group: GroupAttrs, environment: BuildEnvironment) -> bool:
@@ -85,7 +193,6 @@ def elect_cover(
     mandatory_list: Sequence[BuildConcept],
     environment: BuildEnvironment,
     ownership: ExtentOwnership,
-    rendered: dict[str, frozenset[str]] | None = None,
 ) -> dict[str, list[BuildConcept]]:
     """For each mandatory concept, the most-downstream of `groups` exposing it
     (more ancestors among `groups` = further downstream). Returns `{gid:
@@ -100,24 +207,16 @@ def elect_cover(
     group is the one built with permission to manufacture the key's extension
     rows, so any other candidate exposes only the members the fact bound.
 
-    `rendered`, when given, is what each group's built node renders: a group
-    stage 2 says exposes a concept its node drops is no candidate for it. One
-    shape still needs it: a select-phase window whose value its condition
-    twin computes is built as the population alone (`test_v4_window_basic_
-    merge`, the named combo)."""
+    A group exposes nothing it cannot render (`unrendered`): a select-phase
+    aggregate reading its value through a condition twin is built as its
+    population alone."""
     per_group: dict[str, list[BuildConcept]] = defaultdict(list)
     coalescing = environment.domain_graph.coalescing_relation_members()
-    exposed = {gid: exposes(attrs[gid], environment) for gid in groups}
-    if rendered is not None:
-        # a coalescing axis renders under any of its members' names
-        exposed = {
-            gid: frozenset(
-                a
-                for a in exposed[gid]
-                if ({a} | coalescing_mates(environment, a)) & rendered[gid]
-            )
-            for gid in groups
-        }
+    dropped = unrendered(group_graph, group_edges, attrs, environment)
+    exposed = {
+        gid: exposes(attrs[gid], environment) - dropped.get(gid, frozenset())
+        for gid in groups
+    }
     # a side-channel set feeds no rows: reading a host through one is not
     # reading that host's side
     row_graph = group_graph.copy()

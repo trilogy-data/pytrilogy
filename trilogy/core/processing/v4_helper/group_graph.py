@@ -725,6 +725,32 @@ def row_parents(group_graph: nx.DiGraph, group_edges: EdgeMap, gid: str) -> list
     ]
 
 
+# The condition-phase row streams an UNNEST or a WINDOW is never built over.
+_SKIPPED_CONDITION_STREAMS: dict[Derivation | None, tuple[Derivation, ...]] = {
+    Derivation.UNNEST: (Derivation.BASIC, Derivation.FILTER, Derivation.WINDOW),
+    Derivation.WINDOW: (Derivation.WINDOW,),
+}
+
+
+def read_row_parents(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+) -> list[str]:
+    """The row parents `gid` is built over: an UNNEST or a WINDOW skips a
+    condition-phase row stream, whose rows the condition already narrowed."""
+    skipped = _SKIPPED_CONDITION_STREAMS.get(attrs[gid].derivation, ())
+    return [
+        pgid
+        for pgid in row_parents(group_graph, group_edges, gid)
+        if not (
+            attrs[pgid].depth_label == DepthLabel.D1
+            and attrs[pgid].derivation in skipped
+        )
+    ]
+
+
 def _consumer_required_input_grain(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,

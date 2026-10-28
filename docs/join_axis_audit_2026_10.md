@@ -273,8 +273,8 @@ for every v4 merge whose sides are groups:
 
 - the FINAL merge, over the cover `final_cover.elect_cover` picks from what
   each group exposes at stage 2 (its outputs; a row stream also the grain
-  keys and property-grain key its rows hold), filtered to what the group's
-  built node renders for the one over-claim open below;
+  keys and property-grain key its rows hold), less what it cannot render
+  (`final_cover.unrendered`);
 - every per-group merge (`_pre_merge_parents`), over the consumer's row
   parents, with the consumer's input contract `preserve_keys` as each side's
   carry demand. A merge assembled below the consumer (no group behind a side)
@@ -353,8 +353,8 @@ merge pairs on that plan over the sides it joins. The FINAL's filter-argument
 producers and gate hosts are elected off group outputs and the region domains
 the group graph shows each side reading.
 
-What made the cover honest (over `tests/`, the render filter now changes
-one cover):
+What made the cover honest (over all of `tests/`, the stage-2 cover equals
+the one filtered by built outputs):
 
 - a row stream exposes the grain keys its rows hold (`emitted_grain`), not
   the grain it is computable at (`f_byitem` at `(item, rid)` holds no `rid`);
@@ -362,7 +362,14 @@ one cover):
 - a filter whose every value is one row (`avg(x) by * ? yr = 1999`) exposes
   no grain;
 - a recursive walk carries its own value and the edge it walks, nothing its
-  grain key determines (`gen_recursive`).
+  grain key determines (`gen_recursive`);
+- an aggregate reads a value through a same-grain grouping twin built before
+  it (`GroupAttrs.twin_reused`, set once over the build order). It recomputes
+  that value only off a row parent that survives as a feeder, the builder's
+  redundant re-scan rule; with none it is built as its population alone, and
+  every reader of the lost value loses what it computed off it (a lost value
+  is opaque: a reader never re-derives it from its lineage). The named combo
+  in `test_v4_window_basic_merge` is the shape.
 
 `_add_relation_axis_contributors` and `_add_region_domain_contributors`
 elect off group outputs, members and concept pseudonyms. Over `tests/` the
@@ -371,15 +378,7 @@ axes already seat every hosting side.
 
 **Open.**
 
-1. A select-phase window whose value its condition twin computes claims it
-   at stage 2 and drops it at build (`test_v4_window_basic_merge`, the
-   named combo: `round(combo / lead(combo) ...)` under `where ratio is not
-   null`). The d0 aggregate reads its value through the d1 twin
-   (`_aggregate_reused_from_twin`), so the d0 chain is built as the
-   population (`wk`) and `satisfiable_outputs` prunes `ratio` off the d0
-   window. Stage 2 has to state that reuse before `elect_cover` can drop its
-   `rendered` filter.
-2. Three add passes still read built nodes, each for a fact stage 2 does not
+1. Three add passes still read built nodes, each for a fact stage 2 does not
    state. Each was measured by computing its decision both ways over
    `tests/` (`tests/core` aside):
    - `_fold_descendant_contributors` asks what a descendant's built parents

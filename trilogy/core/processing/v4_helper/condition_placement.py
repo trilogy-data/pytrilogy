@@ -43,7 +43,13 @@ from .edges import (
     subgraph_of_kinds,
 )
 from .functional_dependency import build_fd_determines_all
-from .models import ConceptAttrs, GroupBucket, RootReason
+from .models import (
+    ConceptAttrs,
+    GroupAttrs,
+    GroupBucket,
+    RootReason,
+    nulls_grouping_keys,
+)
 from .projection import decided_at_output_grain, literal_producible
 from .region_reads import restated_over_region
 from .staged_where import (
@@ -1818,3 +1824,60 @@ def _check_final_atoms_precede_aggregates(
             f"be placed after the aggregates {[c.address for c in aggregates]} "
             f"({placement.reason.value}); they would never see it."
         )
+
+
+def accumulated_atoms_above(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+) -> list[BoolExpr]:
+    """Atoms applied at any STRICT ancestor of `gid` that still hold on this
+    group's rows. Threaded into the node as `preexisting_conditions` so
+    nullable inference (and any later optimizer) knows which rows the parent
+    already filtered, without re-emitting the same WHERE on this CTE.
+
+    A standard grouping ancestor applies its atom to the rows it aggregates;
+    the groups it emits are filtered only when the atom is decided per group
+    (every row arg among the group's own columns). Otherwise a descendant that
+    joins those groups back onto a row stream re-admits rows the atom
+    rejects, so the atom is not preexisting for it."""
+    accumulated: list[BoolExpr] = []
+    for anc in nx.ancestors(group_graph, gid):
+        if anc == FINAL_NODE_ID:
+            continue
+        anc_attrs = attrs[anc]
+        collapsing = anc_attrs.derivation in GROUPING_DERIVATIONS and not (
+            nulls_grouping_keys(anc_attrs.grouping_mode)
+        )
+        columns = set(anc_attrs.members) | set(anc_attrs.grain_components)
+        for atom in anc_attrs.condition_atoms:
+            if collapsing and not ({c.address for c in atom.row_arguments} <= columns):
+                continue
+            if atom not in accumulated:
+                accumulated.append(atom)
+    return accumulated
+
+
+def feeder_conditions_implied(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    feeder_gid: str,
+    sibling_gid: str,
+) -> bool:
+    """Whether every row-reducing condition in the feeder's subtree (the atoms at
+    it AND at its ancestors) is also applied in the grouping sibling's subtree.
+
+    A redundant fact-rescan feeder can only be dropped in favor of a co-grain
+    grouping sibling if the sibling's rows are filtered at least as much;
+    otherwise dropping the feeder silently widens the row set. A feeder whose
+    parent scan carries a post-aggregate condition the sibling does not apply
+    must stay."""
+    feeder = list(attrs[feeder_gid].condition_atoms) + accumulated_atoms_above(
+        group_graph, attrs, feeder_gid
+    )
+    if not feeder:
+        return True
+    sibling = list(attrs[sibling_gid].condition_atoms) + accumulated_atoms_above(
+        group_graph, attrs, sibling_gid
+    )
+    return all(atom in sibling for atom in feeder)

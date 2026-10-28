@@ -101,7 +101,9 @@ from .condition_injection import (
     condition_row_args,
     inject_condition_at_node,
 )
+from .condition_placement import accumulated_atoms_above, feeder_conditions_implied
 from .constants import (
+    AGGREGATING_DERIVATIONS,
     FINAL_NODE_ID,
     GROUPING_DERIVATIONS,
     ROW_PRESERVING_AGGREGATE_INPUT_DERIVATIONS,
@@ -118,13 +120,13 @@ from .edges import (
     remove_edge,
 )
 from .extent_ownership import takes_a_value_on_padding
-from .final_cover import elect_cover, output_covers
+from .final_cover import elect_cover, output_covers, record_twin_reuse
 from .functional_dependency import (
     build_fd_closure,
     build_fd_determines,
     build_fd_determines_all,
 )
-from .group_graph import row_parents, trace_group_graph
+from .group_graph import read_row_parents, row_parents, trace_group_graph
 from .history import V4History
 from .join_plan import JoinPlan, elect_bridges, merge_axes, plan_final_join
 from .models import (
@@ -132,7 +134,6 @@ from .models import (
     FinalAssemblyContract,
     GroupAttrs,
     InputChannel,
-    nulls_grouping_keys,
 )
 from .network_coalescing import axis_arms_delivered
 from .projection import (
@@ -150,11 +151,6 @@ from .projection import (
 )
 from .region_reads import inline_arguments_taking_a_value, nameable
 from .source_planning import SourceRequest, plan_source
-
-_AGGREGATING_DERIVATIONS = {
-    Derivation.AGGREGATE,
-    Derivation.GROUP_TO,
-}
 
 
 @dataclass
@@ -632,63 +628,6 @@ def _wire_existence(
             feeder_cache,
             preferred,
         )
-
-
-def _accumulated_atoms_above(
-    group_graph: nx.DiGraph,
-    attrs: dict[str, GroupAttrs],
-    gid: str,
-) -> list[BoolExpr]:
-    """Atoms applied at any STRICT ancestor of `gid` that still hold on this
-    group's rows. Threaded into the node as `preexisting_conditions` so
-    nullable inference (and any later optimizer) knows which rows the parent
-    already filtered, without re-emitting the same WHERE on this CTE.
-
-    A standard grouping ancestor applies its atom to the rows it aggregates;
-    the groups it emits are filtered only when the atom is decided per group
-    (every row arg among the group's own columns). Otherwise a descendant that
-    joins those groups back onto a row stream re-admits rows the atom
-    rejects, so the atom is not preexisting for it."""
-    accumulated: list[BoolExpr] = []
-    for anc in nx.ancestors(group_graph, gid):
-        if anc == FINAL_NODE_ID:
-            continue
-        anc_attrs = attrs[anc]
-        collapsing = anc_attrs.derivation in GROUPING_DERIVATIONS and not (
-            nulls_grouping_keys(anc_attrs.grouping_mode)
-        )
-        columns = _own_members(attrs, anc) | set(anc_attrs.grain_components)
-        for atom in anc_attrs.condition_atoms:
-            if collapsing and not ({c.address for c in atom.row_arguments} <= columns):
-                continue
-            if atom not in accumulated:
-                accumulated.append(atom)
-    return accumulated
-
-
-def _feeder_conditions_implied(
-    group_graph: nx.DiGraph,
-    attrs: dict[str, GroupAttrs],
-    feeder_gid: str,
-    sibling_gid: str,
-) -> bool:
-    """Whether every row-reducing condition in the feeder's subtree (the atoms at
-    it AND at its ancestors) is also applied in the grouping sibling's subtree.
-
-    A redundant fact-rescan feeder can only be dropped in favor of a co-grain
-    grouping sibling if the sibling's rows are filtered at least as much;
-    otherwise dropping the feeder silently widens the row set. A feeder whose
-    parent scan carries a post-aggregate condition the sibling does not apply
-    must stay."""
-    feeder = _atoms_at(attrs, feeder_gid) + _accumulated_atoms_above(
-        group_graph, attrs, feeder_gid
-    )
-    if not feeder:
-        return True
-    sibling = _atoms_at(attrs, sibling_gid) + _accumulated_atoms_above(
-        group_graph, attrs, sibling_gid
-    )
-    return all(atom in sibling for atom in feeder)
 
 
 def node_nulls_grouping_keys(node: StrategyNode) -> bool:
@@ -1231,23 +1170,7 @@ def _parent_nodes_for(
     candidates: list[tuple[str, StrategyNode]] = []
     # Existence-kind edges feed a subselect, not the row stream;
     # `_wire_existence` wires them as side-channel parents post-build.
-    for pgid in row_parents(group_graph, group_edges, gid):
-        if attrs[pgid].depth_label == DepthLabel.D1 and (
-            (
-                attrs[gid].derivation == Derivation.UNNEST
-                and attrs[pgid].derivation
-                in (
-                    Derivation.BASIC,
-                    Derivation.FILTER,
-                    Derivation.WINDOW,
-                )
-            )
-            or (
-                attrs[gid].derivation == Derivation.WINDOW
-                and attrs[pgid].derivation == Derivation.WINDOW
-            )
-        ):
-            continue
+    for pgid in read_row_parents(group_graph, group_edges, attrs, gid):
         node = built.get(pgid)
         if node is not None:
             candidates.append((pgid, node))
@@ -1415,7 +1338,7 @@ def _parent_nodes_for(
                 and not node.existence_concepts
                 and not node.force_group
                 and attrs[other_pgid].derivation in GROUPING_DERIVATIONS
-                and _feeder_conditions_implied(group_graph, attrs, pgid, other_pgid)
+                and feeder_conditions_implied(group_graph, attrs, pgid, other_pgid)
             )
             if not (
                 covers_as_grouping_sibling
@@ -3923,7 +3846,7 @@ def _promote_final_aliases_to_grouping_contributors(
             available = {output.address for output in built[gid].output_concepts}
             if not all(_hosts_rename(c, available, environment) for c in members):
                 continue
-            if not _feeder_conditions_implied(group_graph, attrs, src_gid, gid):
+            if not feeder_conditions_implied(group_graph, attrs, src_gid, gid):
                 continue
             base = built[gid]
             projected = SelectNode(
@@ -4057,31 +3980,6 @@ def _parent_supplied_args(
             continue
         supplied.append(arg)
     return supplied
-
-
-def _aggregate_reused_from_twin(
-    address: str,
-    gid: str,
-    attrs: dict[str, GroupAttrs],
-    built: dict[str, StrategyNode],
-) -> bool:
-    """Whether an aggregate value of `gid` is already produced by another built
-    grouping group at the SAME grain, its pre-condition d1 twin. Such a value is
-    read through (the GroupNode resolves it from the twin parent), not recomputed,
-    so its raw inputs need not enter `gid`'s `needed` set. Grain equality gates
-    out a coarser re-aggregation (avg-of-sum), which genuinely recomputes."""
-    grain = attrs[gid].grain_components
-    for other_gid, other_node in built.items():
-        if other_gid == gid:
-            continue
-        other = attrs[other_gid]
-        if other.derivation not in GROUPING_DERIVATIONS:
-            continue
-        if other.grain_components != grain:
-            continue
-        if any(o.address == address for o in other_node.output_concepts):
-            return True
-    return False
 
 
 def _with_null_members(
@@ -5358,10 +5256,6 @@ def _assemble_final_node(
         mandatory_list,
         environment,
         ownership,
-        {
-            gid: frozenset(o.address for o in node.output_concepts)
-            for gid, node in built.items()
-        },
     )
     if not per_group:
         return apply_final_conditions(
@@ -5961,27 +5855,23 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
         ctx.unbuilt[gid] = outputs
         return None
     primary_addrs = set(a.primary_members)
-    if derivation not in _AGGREGATING_DERIVATIONS:
+    if derivation not in AGGREGATING_DERIVATIONS:
         outputs += _merge_origin_intermediates(outputs, primary_addrs, environment)
-    twin_reused: dict[str, bool] = (
-        {
-            c.address: _aggregate_reused_from_twin(c.address, gid, attrs, built)
-            for c in outputs
-            if c.address in primary_addrs and c.lineage is not None
-        }
-        if derivation in _AGGREGATING_DERIVATIONS
-        else {}
-    )
+    valued = {
+        c.address
+        for c in outputs
+        if c.address in primary_addrs and c.lineage is not None
+    }
     atoms = _atoms_at(attrs, gid)
     # Conjunction-coverage siblings only bind when this group recomputes
     # its aggregate over rows; a fully twin-reused value is read through,
     # so its input population is not this group's to filter, and keeping
     # the atom would resurrect the redundant fact-rescan parent through
     # its `needed` args.
-    if a.conjunction_atoms and twin_reused and all(twin_reused.values()):
+    if a.conjunction_atoms and valued and valued <= a.twin_reused:
         atoms = [atom for atom in atoms if atom not in a.conjunction_atoms]
     injected = _wrap_atoms(atoms)
-    preexisting = _wrap_atoms(_accumulated_atoms_above(group_graph, attrs, gid))
+    preexisting = _wrap_atoms(accumulated_atoms_above(group_graph, attrs, gid))
     # The "needed" set drives ancestor-dedup: a parent is kept only if
     # it contributes something to it that no descendant parent also
     # provides. Includes the output addresses themselves, the lineage
@@ -5997,7 +5887,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     for c in outputs:
         needed.add(c.address)
         if c.address in primary_addrs and c.lineage is not None:
-            if derivation in _AGGREGATING_DERIVATIONS:
+            if derivation in AGGREGATING_DERIVATIONS:
                 # A post-condition aggregate that REUSES a same-grain twin
                 # (its pre-condition d1 sibling already materialized this
                 # value) reads the value through rather than recomputing,
@@ -6006,7 +5896,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                 # redundant fact-rescan ROOT parent alive that only
                 # re-supplies grouping keys the twin already carries. Treat
                 # it like a passthrough: skip its lineage.
-                if not twin_reused.get(c.address, False):
+                if c.address not in a.twin_reused:
                     _add_aggregate_needed_concepts(needed, c)
             else:
                 # Recurse through args that are THEMSELVES primary members
@@ -6203,7 +6093,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     # semantics: the window computes over the filtered rows.
     if (
         injected is not None
-        and derivation in (*_AGGREGATING_DERIVATIONS, Derivation.WINDOW)
+        and derivation in (*AGGREGATING_DERIVATIONS, Derivation.WINDOW)
         and parents
     ):
         parent_output_by_addr = {
@@ -6489,7 +6379,9 @@ def build_strategy_node(
     ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
     plan_scope = environment.span_scope
 
-    for gid in _topological_order(group_graph, group_edges):
+    order = _topological_order(group_graph, group_edges)
+    record_twin_reuse(order, attrs)
+    for gid in order:
         if gid == FINAL_NODE_ID:
             continue
         plan_trace.set_context(gid)
