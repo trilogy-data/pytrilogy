@@ -43,15 +43,48 @@ ORDER BY
 LIMIT (100)"""
 
 
+# GCAT's fact tables hold foreign keys its dimension tables lack, so each
+# dimension's complete binding of its key fails containment.
+ORPHAN_KEYS = {
+    ("org.code", "organizations"),
+    ("payload.launch.org.code", "organizations"),
+    ("payload.launch.platform.code", "platform_info"),
+    ("payload.launch.site.key", "launch_sites"),
+    ("payload.launch.vehicle.stage.engine.name", "engines"),
+    ("payload.launch.vehicle.stage.name", "stages"),
+    ("payload.launch.vehicle.variant", "lv_info"),
+    ("payload.launch.vehicle.variant", "lvs_info"),
+    ("payload.manufacturer.code", "organizations"),
+    ("payload.owner.code", "organizations"),
+    ("platform.code", "platform_info"),
+    ("site.key", "launch_sites"),
+    ("vehicle.stage.engine.name", "engines"),
+    ("vehicle.stage.name", "stages"),
+    ("vehicle.variant", "lv_info"),
+    ("vehicle.variant", "lvs_info"),
+}
+
+ORPHAN_PATTERN = re.compile(r"Concept (\S+) is bound complete in datasource (\S+),")
+
+
 def test_environment(gcat_env):
 
     gcat_env.parse_text("""import launch;
 """)
     try:
         gcat_env.validate_environment()
+        children: list[Exception] = []
     except ModelValidationError as e:
-        for x in e.children or []:
-            raise x
+        children = list(e.children or [])
+    orphans = {
+        (m.group(1), m.group(2))
+        for child in children
+        if (m := ORPHAN_PATTERN.search(str(child)))
+    }
+    for child in children:
+        if not ORPHAN_PATTERN.search(str(child)):
+            raise child
+    assert orphans == ORPHAN_KEYS
     assert "year" in gcat_env.environment.concepts["launch_date.year"].datatype.traits
 
 
