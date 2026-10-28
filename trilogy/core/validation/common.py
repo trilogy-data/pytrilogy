@@ -60,10 +60,12 @@ def easy_query(
     condition: BuildConditional | BuildComparison | None = None,
     limit: int | None = 100,
     grain: BuildGrain | None = None,
+    name: str | None = None,
 ):
     """
     Build basic datasource specific queries.
     """
+    prefix = name or f"datasource_{datasource.name}"
     datasource_outputs = {c.address: c for c in datasource.concepts}
     first_qds_concepts = datasource.concepts + concepts
     root_qds = QueryDatasource(
@@ -83,7 +85,7 @@ def easy_query(
     )
     query_grain = grain or datasource.grain
     cte = CTE(
-        name=f"datasource_{datasource.name}_base",
+        name=f"{prefix}_base",
         source=root_qds,
         output_columns=concepts,
         source_map={
@@ -99,7 +101,7 @@ def easy_query(
         base_alias_override=datasource.safe_identifier,
     )
     filter_cte = CTE(
-        name=f"datasource_{datasource.name}_filter",
+        name=f"{prefix}_filter",
         source=QueryDatasource(
             datasources=[root_qds],
             input_concepts=cte.output_columns,

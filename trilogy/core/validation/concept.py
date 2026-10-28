@@ -74,6 +74,8 @@ def missing_values_sql(
                 env=env,
                 grain=BuildGrain(components={concept.address}),
                 limit=None,
+                # one datasource imported twice shares a name
+                name=f"complete_source_{idx}",
             )
         )
         name = f"complete_values_{idx}"

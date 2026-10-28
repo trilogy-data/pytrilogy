@@ -500,8 +500,8 @@ _AIRCRAFT_DATASOURCE = """
 
 
 def test_multi_datasource_complete_binding_cardinality_mismatch():
-    """A concept bound complete in two datasources must have matching
-    distinct cardinality — if one has fewer values, it should be marked partial."""
+    """A concept bound complete in two datasources must hold every value the
+    other does; one that lacks a value should be marked partial."""
     executor = Dialects.DUCK_DB.default_executor()
     executor.execute_text(_MULTI_DATASOURCE_PREAMBLE + _AIRCRAFT_DATASOURCE + """
         datasource flight (
@@ -522,8 +522,8 @@ def test_multi_datasource_complete_binding_cardinality_mismatch():
     assert any(
         isinstance(child, DatasourceColumnBindingError)
         and "tail_num" in child.message
-        and "missing values in datasource flight" in child.message
-        and "not marked as partial" in child.message
+        and "bound complete in datasource flight" in child.message
+        and "missing there" in child.message
         for child in exc_info.value.children or []
     )
 

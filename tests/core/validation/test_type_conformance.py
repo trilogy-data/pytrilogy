@@ -63,7 +63,7 @@ def _validate(declared: str, literal: str) -> list[str]:
 
 @pytest.mark.parametrize("literal", LITERALS)
 def test_ingested_type_validates(literal: str):
-    engine_type = duckdb.sql(f"select typeof({literal})").fetchone()[0]
+    engine_type = duckdb.sql(f"select typeof({literal})").fetchall()[0][0]
     declared = Dialects.DUCK_DB.default_renderer().normalize_db_type(engine_type)
     assert declared != DataType.UNKNOWN, engine_type
     assert not _validate(declared.value, literal), (engine_type, declared)
