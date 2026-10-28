@@ -27,7 +27,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation
+from trilogy.core.enums import Derivation, Granularity
 
 from .edges import EdgeMap, lineage_predecessors
 from .functional_dependency import concept_attr_fd_closure, concept_attr_fd_determines
@@ -87,7 +87,13 @@ def native_grain_filter_inputs(
     aggregate that consumes it (`count(x ? predicate) by rank`), but the filter
     CTE itself is still a row-preserving/subsetting stream over `x`. Use the
     lineage input grains so join keys from that row stream can ride through.
+    A one-value filter (`avg(x) by * ? cond`) is one row whatever it reads.
     """
+    if bucket.primary_node_ids and all(
+        concept_attrs[p].granularity == Granularity.SINGLE_ROW
+        for p in bucket.primary_node_ids
+    ):
+        return frozenset()
     inherited: set[str] = set()
     for primary in bucket.primary_members:
         for parent in _lineage_parents(concept_graph, concept_edges, primary):

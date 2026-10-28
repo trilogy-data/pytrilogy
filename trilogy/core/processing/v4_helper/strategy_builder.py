@@ -1629,6 +1629,25 @@ def _renders_no_less_completely(b: StrategyNode, a: StrategyNode) -> bool:
     )
 
 
+def _crosses_unsourced_aggregate(
+    concept: BuildConcept, available: set[str], seen: set[str] | None = None
+) -> bool:
+    """Deriving `concept` off `available` would recompute an aggregate's
+    inner expression per row (the bare CASE, silently dropping the `avg()`)."""
+    if concept.address in available:
+        return False
+    seen = seen or set()
+    if concept.address in seen:
+        return False
+    seen.add(concept.address)
+    if concept.derivation == Derivation.AGGREGATE:
+        return True
+    return any(
+        _crosses_unsourced_aggregate(arg, available, seen)
+        for arg in row_lineage_arguments(concept)
+    )
+
+
 def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]:
     """Absorb a parent into a row-preserving sibling that can render it.
 
@@ -1651,22 +1670,6 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
     Widen B's OUTPUT with A's outputs and B's INPUT with A's inputs (the source
     columns A consumed). `resolve_concept_map` then sources a passthrough from
     the parent (it's an input) and derives the rest inline from those inputs."""
-
-    def crosses_unsourced_aggregate(
-        concept: BuildConcept, available: set[str], seen: set[str] | None = None
-    ) -> bool:
-        if concept.address in available:
-            return False
-        seen = seen or set()
-        if concept.address in seen:
-            return False
-        seen.add(concept.address)
-        if concept.derivation == Derivation.AGGREGATE:
-            return True
-        return any(
-            crosses_unsourced_aggregate(arg, available, seen)
-            for arg in row_lineage_arguments(concept)
-        )
 
     dropped: set[int] = set()
     coalesced_merges = {id(a) for a in parents if _merges_coalesced_sides(a)}
@@ -1710,7 +1713,7 @@ def _fold_passthrough_parents(parents: list[StrategyNode]) -> list[StrategyNode]
             ):
                 continue
             if any(
-                crosses_unsourced_aggregate(o, available) for o in a.output_concepts
+                _crosses_unsourced_aggregate(o, available) for o in a.output_concepts
             ):
                 continue
             if not all(concept_satisfiable(o, available) for o in a.output_concepts):
@@ -3858,7 +3861,11 @@ def _hosts_rename(
     `union join` member is the coalesced axis: only a node carrying every
     member of the relation holds all of its rows."""
     relation = {c.address for c in renamed_coalescing_relation(concept, environment)}
-    return relation <= available and concept_satisfiable(concept, available)
+    return (
+        relation <= available
+        and concept_satisfiable(concept, available)
+        and not _crosses_unsourced_aggregate(concept, available)
+    )
 
 
 def _promote_final_aliases_to_grouping_contributors(

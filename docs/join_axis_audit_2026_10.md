@@ -359,14 +359,6 @@ its one plan.
    group claims a column it cannot pass through; a window under a condition
    twin claims the twin's value), which is why the cover is filtered by what
    each built node renders.
-3. A gated global aggregate (`avg(x) by * ? yr = 1999`) is planned per
-   statement row: the build gives the FILTER the statement's grain, so beside
-   `brand` it is `CASE WHEN yr = 1999 ...` per `(yr, brand)` row and the merge
-   returns a brand twice (once with the value, once NULL) and NULL for a
-   brand with no 1999 row. It is one value; declaring its grain a single row
-   is not enough on its own (the filter group still reads `yr` off its row
-   parent), it needs a one-row gate (any in-scope row passes). Held by the
-   strict xfail `test_gated_global_agg_is_one_value_beside_rows`.
 
 ## 8. Not claimed
 
