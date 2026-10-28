@@ -204,14 +204,24 @@ class ValueRange:
         return f"{left}..{right}"
 
     def contains(self, value: Any) -> bool:
+        lo, hi = _comparable_bound(self.min, value), _comparable_bound(self.max, value)
         try:
-            if self.min is not None and value < self.min:
+            if lo is not None and value < lo:
                 return False
-            if self.max is not None and value > self.max:
+            if hi is not None and value > hi:
                 return False
         except TypeError:
             return False
         return True
+
+
+def _comparable_bound(bound: RANGE_BOUND_TYPES, value: Any) -> Any:
+    """A float bound beside a Decimal value is the literal its author wrote:
+    Decimal orders against the binary double exactly, and the double nearest
+    0.3 lies below Decimal('0.30')."""
+    if isinstance(bound, float) and isinstance(value, Decimal):
+        return Decimal(repr(bound))
+    return bound
 
 
 @dataclass

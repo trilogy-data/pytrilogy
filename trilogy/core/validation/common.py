@@ -2,26 +2,14 @@ from dataclasses import dataclass
 from enum import Enum
 
 from trilogy import Environment
-from trilogy.authoring import (
-    ConceptRef,
-    DataType,
-    Ordering,
-    Purpose,
-)
-from trilogy.constants import MagicConstants
-from trilogy.core.enums import ComparisonOperator, FunctionType
+from trilogy.authoring import ConceptRef
 from trilogy.core.exceptions import ModelValidationError
 from trilogy.core.models.build import (
-    BuildCaseElse,
-    BuildCaseWhen,
     BuildComparison,
     BuildConcept,
     BuildConditional,
     BuildDatasource,
-    BuildFunction,
     BuildGrain,
-    BuildOrderBy,
-    BuildOrderItem,
 )
 from trilogy.core.models.environment import EnvironmentConceptDict
 from trilogy.core.models.execute import (
@@ -48,32 +36,6 @@ class ValidationTest:
     ran: bool = True
 
 
-def build_order_args(concepts: list[BuildConcept]) -> list[BuildFunction]:
-    order_args = []
-    for concept in concepts:
-        order_args.append(
-            BuildFunction(
-                operator=FunctionType.CASE,
-                arguments=[
-                    BuildCaseWhen(
-                        comparison=BuildComparison(
-                            left=concept,
-                            operator=ComparisonOperator.IS,
-                            right=MagicConstants.NULL,
-                        ),
-                        expr=1,
-                    ),
-                    BuildCaseElse(expr=0),
-                ],
-                output_data_type=DataType.INTEGER,
-                output_purpose=Purpose.PROPERTY,
-                arg_count=2,
-            )
-        )
-
-    return order_args
-
-
 def grain_check_address(concept: BuildConcept | ConceptRef) -> str:
     """Address of a concept's grain-check helper.
 
@@ -86,12 +48,17 @@ def grain_check_address(concept: BuildConcept | ConceptRef) -> str:
     return f"{concept.namespace}.grain_check_{concept.name}"
 
 
+def non_null_count_address(concept: BuildConcept | ConceptRef) -> str:
+    """Address of a key's `count(k)` helper, beside its grain check."""
+    return f"{concept.namespace}.grain_non_null_{concept.name}"
+
+
 def easy_query(
     concepts: list[BuildConcept],
     datasource: BuildDatasource,
     env: Environment,
     condition: BuildConditional | BuildComparison | None = None,
-    limit: int = 100,
+    limit: int | None = 100,
     grain: BuildGrain | None = None,
 ):
     """
@@ -150,20 +117,6 @@ def easy_query(
         grain=cte.grain,
         condition=condition,
         limit=limit,
-        order_by=BuildOrderBy(
-            items=[
-                BuildOrderItem(
-                    expr=BuildFunction(
-                        operator=FunctionType.SUM,
-                        arguments=build_order_args(concepts),
-                        output_data_type=DataType.INTEGER,
-                        output_purpose=Purpose.PROPERTY,
-                        arg_count=len(concepts),
-                    ),
-                    order=Ordering.DESCENDING,
-                )
-            ]
-        ),
     )
 
     return ProcessedQuery(

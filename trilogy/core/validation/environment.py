@@ -74,6 +74,21 @@ def validate_environment(
             environment=env,
         )
         new_concepts.append(concept_grain_check)
+        if concept.purpose != Purpose.KEY:
+            continue
+        new_concepts.append(
+            function_to_concept(
+                parent=Function(
+                    operator=FunctionType.COUNT,
+                    arguments=[concept.reference],
+                    output_datatype=DataType.INTEGER,
+                    output_purpose=Purpose.METRIC,
+                ),
+                name=f"grain_non_null_{concept.name}",
+                namespace=concept.namespace,
+                environment=env,
+            )
+        )
     for concept in new_concepts:
         env.add_concept(concept)
     build_env = env.materialize_for_select()

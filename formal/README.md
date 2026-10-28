@@ -32,6 +32,7 @@ a design decision or a bug.
 | `Freshness.lean` | watermarks, the stale verdict, the incremental refresh | verdict = refresh has a row to write, incremental = rebuild under strict arrivals (checked by `tests/execution/state/test_freshness_laws.py`, not the query fuzzer) |
 | `StateMerge.lean` | partition deltas folded into a state snapshot | disjoint overlays commute, replay is a no-op, newest claim wins as a semilattice join, the per-slice count adjustment (checked by `tests/execution/state/test_merge_laws.py`) |
 | `NullReject.lean` | the null-rejection walk, membership, outer-join upgrade, nullability inference | a proved column is non-null on every kept row, a proof on a column read off the padded side turns a left join inner, a derived column is judged by its lineage, strict and total functions (checked by `tests/optimization/test_null_rejection_laws.py` and `tests/core/test_null_function_conformance.py`) |
+| `Validate.lean` | datasource validation: nullability, declared ranges, grain, complete bindings, `unique` properties, `complete where` containment | each check fails exactly when the claim the planner trusts fails, under Kleene WHERE and GROUP BY's NULL grouping (checked by `tests/core/validation/test_validation_laws.py` and `tests/core/validation/test_type_conformance.py`) |
 
 ## What it found
 
@@ -189,6 +190,34 @@ a design decision or a bug.
 - **Staged-where collisions are necessary, not conservative**
   (`Staged.same_address_two_stages_differ`). One address cannot carry both
   stages' values, which justifies `_validate_staged_where`.
+- **Datasource validation passed sources that broke the claims the planner
+  trusts.** A datasource's nullability, ranges, grain, complete bindings and
+  `unique` properties are taken on trust by the planner. `validate` is the only
+  thing that checks them, so each check must fail exactly when its claim does
+  (`Validate.*_exact`). Four did not:
+  - nullability was judged on a 100-row sample ordered NULL-first. The order
+    was `SUM` over one `CASE` per column, and `SUM` renders only its first
+    argument, so it sorted by the key's NULL flag and a NULL past row 100
+    passed (`Validate.sample_misses_null`). A correct count order would still
+    let rows NULL in nullable columns crowd out a row NULL in a non-nullable
+    one (`Validate.null_count_order_misses`). It is now a full-table scan.
+  - completeness compared distinct counts. Complete sources holding `{1, 2}`
+    and `{2, 3}` passed (`Validate.card_check_misses_disjoint`), and a partial
+    source's values were never read (`Validate.card_check_ignores_partial`).
+    It is now an anti-join of every other source's values against each
+    complete one.
+  - a `unique` property counted keys with `count(distinct k)`, which skips a
+    NULL key, so a value mapping to a NULL key and to `1` passed
+    (`Validate.count_distinct_misses_null_key`). The planner groups by the
+    property, where NULL is one key value (`Validate.distinct_with_null`).
+  - the sampled range check compared `Decimal('0.30')` with the double
+    nearest `0.3`, which is smaller, and failed `numeric(10,2)[0.1..0.3]`
+    (`Validate.float_bound_rejects_its_decimal`).
+- **Ingest and validation disagreed on types.** A BOOLEAN column validated as
+  `int`, `float` and `numeric`, since Python's `bool` is an `int`. An ingested
+  UUID column (`string`) crashed validation, `DECIMAL(10,2)[]` ingested as
+  `numeric`, and DuckDB's bitstring `BIT` as `bool`. Unsigned integers and
+  `TIMESTAMP_S/MS/NS` ingested as `unknown`. Found by the conformance probe.
 
 ## Limits
 
