@@ -85,6 +85,7 @@ def elect_cover(
     mandatory_list: Sequence[BuildConcept],
     environment: BuildEnvironment,
     ownership: ExtentOwnership,
+    rendered: dict[str, frozenset[str]] | None = None,
 ) -> dict[str, list[BuildConcept]]:
     """For each mandatory concept, the most-downstream of `groups` exposing it
     (more ancestors among `groups` = further downstream). Returns `{gid:
@@ -97,10 +98,26 @@ def elect_cover(
 
     A ``~``-licensed key comes from its elected owner and nowhere else: that
     group is the one built with permission to manufacture the key's extension
-    rows, so any other candidate exposes only the members the fact bound."""
+    rows, so any other candidate exposes only the members the fact bound.
+
+    `rendered`, when given, is what each group's built node renders: a group
+    stage 2 says exposes a concept its node drops is no candidate for it. One
+    shape still needs it: a select-phase window whose value its condition
+    twin computes is built as the population alone (`test_v4_window_basic_
+    merge`, the named combo)."""
     per_group: dict[str, list[BuildConcept]] = defaultdict(list)
     coalescing = environment.domain_graph.coalescing_relation_members()
     exposed = {gid: exposes(attrs[gid], environment) for gid in groups}
+    if rendered is not None:
+        # a coalescing axis renders under any of its members' names
+        exposed = {
+            gid: frozenset(
+                a
+                for a in exposed[gid]
+                if ({a} | coalescing_mates(environment, a)) & rendered[gid]
+            )
+            for gid in groups
+        }
     # a side-channel set feeds no rows: reading a host through one is not
     # reading that host's side
     row_graph = group_graph.copy()

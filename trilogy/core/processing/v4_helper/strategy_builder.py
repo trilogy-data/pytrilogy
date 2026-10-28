@@ -5358,6 +5358,10 @@ def _assemble_final_node(
         mandatory_list,
         environment,
         ownership,
+        {
+            gid: frozenset(o.address for o in node.output_concepts)
+            for gid, node in built.items()
+        },
     )
     if not per_group:
         return apply_final_conditions(
