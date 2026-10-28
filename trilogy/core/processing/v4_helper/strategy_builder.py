@@ -13,7 +13,7 @@ generator dispatch lives in `v4_node_generators.dispatch.build_node`."""
 
 import logging
 from collections import Counter, defaultdict
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Collection, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from dataclasses import replace as dc_replace
@@ -3146,6 +3146,16 @@ def _pre_merge_parents(
     parents = _drop_ancestor_parents(parents)
     if len(parents) <= 1:
         return parents
+    plan = _merge_plan(
+        parents,
+        attrs,
+        origin,
+        group_graph,
+        built,
+        needed,
+        join_key_addresses,
+        environment,
+    )
     _widen_merge_join_keys(parents, environment, join_key_addresses)
     # After widening, not before: a parent that has just been handed the join
     # key it was missing needs no bridge.
@@ -3155,15 +3165,7 @@ def _pre_merge_parents(
             group_graph,
             built,
             environment,
-            _elected_merge_bridges(
-                parents,
-                attrs,
-                origin,
-                group_graph,
-                built,
-                needed,
-                environment,
-            ),
+            plan.extras if plan is not None else None,
         )
     all_outputs = readable_outputs(parents)
     merged = MergeNode(
@@ -3176,58 +3178,36 @@ def _pre_merge_parents(
         # a region domain hosts its spans' extension rows: preserve it, and
         # the feeder only where it holds a value-NULL key
         host_stitch=any(p.region_spans for p in parents),
-        planned_keys=_planned_merge_keys(
-            parents,
-            attrs,
-            origin,
-            group_graph,
-            needed,
-            join_key_addresses,
-            environment,
+        planned_keys=(
+            plan.over(side_groups(parents, origin)).permitted_keys
+            if plan is not None and origin is not None
+            else None
         ),
     )
     return [merged]
 
 
-def _planned_merge_keys(
+def _merge_plan(
     parents: list[StrategyNode],
     attrs: dict[str, GroupAttrs] | None,
     origin: dict[int, str] | None,
     group_graph: nx.DiGraph | None,
+    built: dict[str, StrategyNode] | None,
     needed: set[str] | None,
     join_key_addresses: frozenset[str],
     environment: BuildEnvironment,
-) -> frozenset[str] | None:
-    """The keys a consumer's join plan pairs its row parents on, stated over
-    the groups the merge's sides came from. None when a side is no group's
-    (a merge assembled below the consumer), and resolve discovers the keys."""
-    if attrs is None or origin is None or group_graph is None:
+) -> JoinPlan | None:
+    """A consumer's join plan over the groups its row parents came from, with
+    the bridges it elects as extras. None when a side is no group's (a merge
+    assembled below the consumer): it bridges off what is built, and resolve
+    discovers the keys."""
+    if attrs is None or origin is None or group_graph is None or built is None:
         return None
     sides = side_groups(parents, origin)
     if len(sides) != len(parents):
         return None
-    cover = _merge_cover(sides, attrs, needed, environment)
-    return plan_final_join(
-        group_graph,
-        attrs,
-        cover,
-        [c for concepts in cover.values() for c in concepts],
-        environment,
-        _required_final_contract(attrs).authored_axes,
-        split=frozenset(gid for gid in sides if sides.count(gid) > 1),
-        contracted={gid: join_key_addresses for gid in sides},
-    ).permitted_keys
-
-
-def _merge_cover(
-    sides: list[str],
-    attrs: dict[str, GroupAttrs],
-    needed: set[str] | None,
-    environment: BuildEnvironment,
-) -> dict[str, list[BuildConcept]]:
-    """Each side's group and the outputs the consumer reads off it."""
     wanted = needed or set()
-    return {
+    cover = {
         gid: [
             c
             for address in attrs[gid].output_concepts
@@ -3235,27 +3215,6 @@ def _merge_cover(
         ]
         for gid in sides
     }
-
-
-def _elected_merge_bridges(
-    parents: list[StrategyNode],
-    attrs: dict[str, GroupAttrs] | None,
-    origin: dict[int, str] | None,
-    group_graph: nx.DiGraph,
-    built: dict[str, StrategyNode],
-    needed: set[str] | None,
-    environment: BuildEnvironment,
-) -> list[str] | None:
-    """The bridges a consumer's join plan elects over its row parents' groups;
-    None when a side is no group's, and the merge bridges off what is built.
-    The consumer's preserve keys are asks, not columns a side holds: a
-    dimension peel is never widened to its sibling dimension's key."""
-    if attrs is None or origin is None:
-        return None
-    sides = side_groups(parents, origin)
-    if len(sides) != len(parents):
-        return None
-    cover = _merge_cover(sides, attrs, needed, environment)
     return elect_bridges(
         group_graph,
         attrs,
@@ -3265,6 +3224,7 @@ def _elected_merge_bridges(
         environment,
         _required_final_contract(attrs).authored_axes,
         split=frozenset(gid for gid in sides if sides.count(gid) > 1),
+        contracted={gid: join_key_addresses for gid in sides},
     )
 
 
@@ -3577,7 +3537,8 @@ def _bridge_pseudonyms(node: StrategyNode, provided: list[BuildConcept]) -> None
 
 def _add_relation_axis_contributors(
     group_graph: nx.DiGraph,
-    built: dict[str, StrategyNode],
+    attrs: dict[str, GroupAttrs],
+    candidates: Sequence[str],
     per_group: dict[str, list[BuildConcept]],
     axes: frozenset[str],
     environment: BuildEnvironment,
@@ -3592,13 +3553,13 @@ def _add_relation_axis_contributors(
     place."""
     if len(per_group) < 2 or not environment.scoped_join_key_groups or not axes:
         return
-    outputs_of = {
-        gid: {o.address for o in node.output_concepts} for gid, node in built.items()
-    }
+    outputs_of = {gid: set(attrs[gid].output_concepts) for gid in candidates}
     # A merge pseudonym names the same column, so its side is already present.
     hosts_of = {
-        gid: outputs_of[gid].union(*(o.pseudonyms for o in node.output_concepts))
-        for gid, node in built.items()
+        gid: outputs.union(
+            *(c.pseudonyms for a in outputs if (c := environment.concepts.get(a)))
+        )
+        for gid, outputs in outputs_of.items()
     }
     chosen = set(per_group)
     for canonical, members in environment.scoped_join_key_groups.items():
@@ -3619,7 +3580,7 @@ def _add_relation_axis_contributors(
             provider = next(
                 (
                     gid
-                    for gid in sorted(built)
+                    for gid in sorted(candidates)
                     if gid not in chosen
                     and gid not in merged_below
                     and addr in outputs_of[gid]
@@ -3676,7 +3637,7 @@ def _add_region_domain_contributors(
             for other, concepts in per_group.items()
             if other != gid
             for concept in concepts
-            if _renders_rename_of_member(concept, attrs[gid], base)
+            if _renders_rename_of_member(concept, attrs[gid])
         ]
         if not renames:
             continue
@@ -3705,20 +3666,18 @@ def _add_region_domain_contributors(
         per_group[gid].extend(renames)
 
 
-def _renders_rename_of_member(
-    concept: BuildConcept, domain: GroupAttrs, node: StrategyNode
-) -> bool:
-    """`concept` renames a member of `domain` its built node can render: it
-    outputs the rename itself or every argument of it."""
+def _renders_rename_of_member(concept: BuildConcept, domain: GroupAttrs) -> bool:
+    """`concept` renames a member of `domain` its rows can render: it outputs
+    the rename itself or every argument of it."""
     if not (
         isinstance(concept.lineage, BuildFunction)
         and concept.lineage.operator == FunctionType.ALIAS
     ):
         return False
     args = {a.address for a in concept.lineage.concept_arguments}
-    outputs = {c.address for c in node.output_concepts}
+    held = {*domain.output_concepts, *domain.members}
     return args <= set(domain.primary_members) and (
-        concept.address in outputs or args <= outputs
+        concept.address in held or args <= held
     )
 
 
@@ -4610,6 +4569,7 @@ def _gate_grain_keys(concepts: list[BuildConcept]) -> frozenset[str]:
 
 def _filter_arg_parents(
     group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
     built: dict[str, StrategyNode],
     missing_addrs: set[str],
     spans: frozenset[str] = frozenset(),
@@ -4627,7 +4587,7 @@ def _filter_arg_parents(
     concepts: list[BuildConcept] = []
     seen: set[str] = set()
     for addr in missing_addrs:
-        gid = _filter_arg_producer(group_graph, built, addr, spans)
+        gid = _filter_arg_producer(group_graph, attrs, built, addr, spans)
         if gid is None:
             continue
         supplier = built[gid]
@@ -4648,20 +4608,18 @@ def _filter_arg_parents(
 
 def _filter_arg_producer(
     group_graph: nx.DiGraph,
-    built: dict[str, StrategyNode],
+    attrs: dict[str, GroupAttrs],
+    candidates: Collection[str],
     addr: str,
     spans: frozenset[str],
 ) -> str | None:
-    candidates = [
-        gid
-        for gid, node in built.items()
-        if any(o.address == addr for o in node.output_concepts)
-    ]
+    """The most derived of `candidates` outputting `addr`; beside a region's
+    rows, one carrying every span first."""
     return max(
-        candidates,
+        (gid for gid in candidates if addr in attrs[gid].output_concepts),
         key=lambda gid: (
-            spans <= {o.address for o in built[gid].output_concepts},
-            sum(1 for a in nx.ancestors(group_graph, gid) if a in built),
+            spans <= set(attrs[gid].output_concepts),
+            sum(1 for a in nx.ancestors(group_graph, gid) if a in candidates),
         ),
         default=None,
     )
@@ -4670,7 +4628,7 @@ def _filter_arg_producer(
 def _final_extra_sides(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
-    built: dict[str, StrategyNode],
+    candidates: Sequence[str],
     sides: Sequence[str],
     filter_only_addrs: set[str],
     environment: BuildEnvironment,
@@ -4678,24 +4636,44 @@ def _final_extra_sides(
     """The groups the FINAL merge joins beside `sides` to evaluate its WHERE:
     each filter-only argument's producer, and the row stream computing a gate
     key none of them renders (`count(id) by genus`, genus derived)."""
-    nodes = [built[gid] for gid in sides]
-    available = {o.address for node in nodes for o in node.output_concepts}
-    spans = frozenset().union(*(region_reads(node) for node in nodes))
+    available = set().union(*(attrs[gid].output_concepts for gid in sides))
+    spans = frozenset().union(
+        *(_group_region_reads(group_graph, attrs, gid) for gid in sides)
+    )
     extras: list[str] = []
     args: list[BuildConcept] = []
     for addr in sorted(
         _region_paired_args(filter_only_addrs, available, spans, environment)
     ):
-        gid = _filter_arg_producer(group_graph, built, addr, spans)
+        gid = _filter_arg_producer(group_graph, attrs, candidates, addr, spans)
         if gid is None:
             continue
         extras.append(gid)
-        args.extend(o for o in built[gid].output_concepts if o.address == addr)
+        if (concept := _concept_at(environment, addr)) is not None:
+            args.append(concept)
     for address in sorted(_gate_grain_keys(args) - available):
-        key = _concept_at(environment, address)
-        if key and (host := _gate_key_row_stream(key, attrs, built)):
+        if host := _gate_key_row_stream(address, attrs, candidates):
             extras.append(host)
     return list(dict.fromkeys(extras))
+
+
+def _group_region_reads(
+    group_graph: nx.DiGraph, attrs: dict[str, GroupAttrs], gid: str
+) -> frozenset[str]:
+    """The region domains `gid` reads, as `region_reads` finds them on its
+    built node: a rowset boundary's body reads are the body's."""
+    out: set[str] = set()
+    stack, seen = [gid], set()
+    while stack:
+        g = stack.pop()
+        if g in seen or g not in attrs:
+            continue
+        seen.add(g)
+        out |= attrs[g].extent_spans
+        if attrs[g].derivation == Derivation.ROWSET and g != gid:
+            continue
+        stack.extend(group_graph.predecessors(g))
+    return frozenset(out)
 
 
 def _region_paired_args(
@@ -5125,7 +5103,7 @@ def _assemble_sole_contributor(
     if final_conditions is not None and not final_already_applied:
         sole_avail = {o.address for o in sole_node.output_concepts}
         feeder_nodes, _ = _filter_arg_parents(
-            group_graph, built, filter_only_addrs - sole_avail
+            group_graph, attrs, built, filter_only_addrs - sole_avail
         )
         feeder_outs = [{o.address for o in f.output_concepts} for f in feeder_nodes]
         scoped_addrs = environment.all_scoped_join_group_members()
@@ -5216,6 +5194,7 @@ def _apply_final_conditions(
     filter_only_addrs: set[str],
     mandatory_list: list[BuildConcept],
     group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
     built: dict[str, StrategyNode],
     environment: BuildEnvironment,
     feeder_cache: "_CleanFeederCache | None",
@@ -5233,6 +5212,7 @@ def _apply_final_conditions(
     spans = region_reads(node)
     arg_nodes, arg_concepts = _filter_arg_parents(
         group_graph,
+        attrs,
         built,
         _region_paired_args(filter_only_addrs, avail, spans, environment),
         spans,
@@ -5305,15 +5285,15 @@ def _apply_final_conditions(
 
 
 def _gate_key_row_stream(
-    key: BuildConcept, attrs: dict[str, GroupAttrs], built: dict[str, StrategyNode]
+    address: str, attrs: dict[str, GroupAttrs], candidates: Collection[str]
 ) -> str | None:
     """The row stream computing a gate's derived key: a BASIC group, never the
     gate's own feeder (which carries the key too). The select phase's first."""
     hosts = sorted(
         (gid.startswith("grp:[@"), gid)
-        for gid, node in built.items()
+        for gid in candidates
         if attrs[gid].derivation == Derivation.BASIC
-        and any(o.address == key.address for o in node.output_concepts)
+        and address in attrs[gid].output_concepts
     )
     return hosts[0][1] if hosts else None
 
@@ -5363,6 +5343,7 @@ def _assemble_final_node(
         filter_only_addrs=filter_only_addrs,
         mandatory_list=mandatory_list,
         group_graph=group_graph,
+        attrs=attrs,
         built=built,
         environment=environment,
         feeder_cache=feeder_cache,
@@ -5393,7 +5374,8 @@ def _assemble_final_node(
         )
     _add_relation_axis_contributors(
         group_graph,
-        built,
+        attrs,
+        list(built),
         per_group,
         merge_axes(list(built), attrs, mandatory_list, final_contract.authored_axes),
         environment,
@@ -5446,7 +5428,7 @@ def _assemble_final_node(
         mandatory_list,
         environment,
         final_contract.authored_axes,
-    )
+    ).extras
     plan = plan_final_join(
         group_graph,
         attrs,
@@ -5458,7 +5440,7 @@ def _assemble_final_node(
         + _final_extra_sides(
             group_graph,
             attrs,
-            built,
+            list(built),
             [*per_group, *bridges],
             filter_only_addrs,
             environment,
@@ -5584,6 +5566,7 @@ def _assemble_final_node(
     spans = frozenset().union(*(region_reads(p) for p in parents))
     arg_nodes, arg_concepts = _filter_arg_parents(
         group_graph,
+        attrs,
         built,
         _region_paired_args(filter_only_addrs, available, spans, environment),
         spans,
@@ -5637,8 +5620,7 @@ def _assemble_final_node(
         # lack) is joined in from the row stream computing it
         carried = {o.address for p in parents for o in p.output_concepts}
         for address in sorted(gate_keys - carried):
-            key = _concept_at(environment, address)
-            host = key and _gate_key_row_stream(key, attrs, built)
+            host = _gate_key_row_stream(address, attrs, built)
             if host and built[host] not in parents:
                 parents = parents + [built[host]]
     parents = parents + arg_nodes

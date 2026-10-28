@@ -272,9 +272,9 @@ network search inside a group.
 for every v4 merge whose sides are groups:
 
 - the FINAL merge, over the cover `final_cover.elect_cover` picks from what
-  each group exposes at stage 2 (its outputs; a row stream also the grain it
-  is computed at and the key of a property grain), filtered to what the
-  group's built node renders;
+  each group exposes at stage 2 (its outputs; a row stream also the grain
+  keys and property-grain key its rows hold), filtered to what the group's
+  built node renders for the one over-claim open below;
 - every per-group merge (`_pre_merge_parents`), over the consumer's row
   parents, with the consumer's input contract `preserve_keys` as each side's
   carry demand. A merge assembled below the consumer (no group behind a side)
@@ -345,20 +345,64 @@ stream in the suites. Over the full suite, every bridged merge (81) elects
 the bridge the built-output search found, and every FINAL's sides fall inside
 its one plan.
 
+A per-group merge is planned once: the consumer's preserve keys are carry
+demands only on a side that can hold them (a grouped side its outputs, a row
+side what its rows determine; a dimension peel is never widened to its
+sibling dimension's key), the plan elects its bridges as extras, and the
+merge pairs on that plan over the sides it joins. The FINAL's filter-argument
+producers and gate hosts are elected off group outputs and the region domains
+the group graph shows each side reading.
+
+What made the cover honest (over `tests/`, the render filter now changes
+one cover):
+
+- a row stream exposes the grain keys its rows hold (`emitted_grain`), not
+  the grain it is computable at (`f_byitem` at `(item, rid)` holds no `rid`);
+  an UNNEST's element grain is no column of it under the merged key's name;
+- a filter whose every value is one row (`avg(x) by * ? yr = 1999`) exposes
+  no grain;
+- a recursive walk carries its own value and the edge it walks, nothing its
+  grain key determines (`gen_recursive`).
+
+`_add_relation_axis_contributors` and `_add_region_domain_contributors`
+elect off group outputs, members and concept pseudonyms. Over `tests/` the
+relation-axis pass adds no contributor at all: the cover and the authored
+axes already seat every hosting side.
+
 **Open.**
 
-1. Per-group merges still state two plans: the bridge election (without the
-   consumer's contracted keys) and the keys the merge pairs on (with them).
-   And `_final_extra_sides` elects before the plan, but off the cover's built
-   nodes (their outputs and region reads), not stage-2 attrs.
-2. The add passes after election (`_add_relation_axis_contributors`,
-   `_add_partial_completion_contributors`, `_fold_descendant_contributors`,
-   `_promote_final_aliases_to_grouping_contributors`,
-   `_add_region_domain_contributors`) read built outputs, partials and
-   pseudonyms. Two derivations over-claim outputs at stage 2 (a recursive
-   group claims a column it cannot pass through; a window under a condition
-   twin claims the twin's value), which is why the cover is filtered by what
-   each built node renders.
+1. A select-phase window whose value its condition twin computes claims it
+   at stage 2 and drops it at build (`test_v4_window_basic_merge`, the
+   named combo: `round(combo / lead(combo) ...)` under `where ratio is not
+   null`). The d0 aggregate reads its value through the d1 twin
+   (`_aggregate_reused_from_twin`), so the d0 chain is built as the
+   population (`wk`) and `satisfiable_outputs` prunes `ratio` off the d0
+   window. Stage 2 has to state that reuse before `elect_cover` can drop its
+   `rendered` filter.
+2. Three add passes still read built nodes, each for a fact stage 2 does not
+   state. Each was measured by computing its decision both ways over
+   `tests/` (`tests/core` aside):
+   - `_fold_descendant_contributors` asks what a descendant's built parents
+     render. Stage 2's nearest fact (row parents' outputs and members,
+     projected to the descendant's grain beside a grouped parent) disagrees
+     in 13 folds: a parent's node renders values no consumer listed among
+     its outputs (a rollup window's `lvl`, ncaa's `points_per_game`).
+   - `_add_partial_completion_contributors` asks which side renders a
+     relation member complete. A declared subset source is partial by
+     declaration, but a ROOT scan renders members it only advertises as
+     capability (`ka`, `kb`, `kc` beside a `union join`) and a row stream
+     reads a mate it never renders; 9 files disagree.
+   - `_promote_final_aliases_to_grouping_contributors` reads the source's
+     built `existence_concepts`/`force_group`, and its hosts' outputs miss a
+     coalescing mate the aggregate renders (`a.k` beside `b.k`). It hosts a
+     rename only where `_crosses_unsourced_aggregate` holds
+     (`concept_satisfiable` walks through aggregate lineage); a stage-2 move
+     keeps that guard.
+
+   The common gap: `output_concepts` is what consumers read off a group,
+   not what its node renders. A stage-2 "renders" fact (outputs, members,
+   carried preserve keys, advertised relation members) would serve all
+   three.
 
 ## 8. Not claimed
 

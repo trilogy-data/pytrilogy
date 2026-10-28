@@ -9,7 +9,7 @@ from collections import defaultdict
 from collections.abc import Collection, Sequence
 
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation, Purpose
+from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.models.build import BuildConcept
 from trilogy.core.models.build_environment import BuildEnvironment
 
@@ -21,11 +21,14 @@ from .models import ExtentOwnership, GroupAttrs
 def exposes(group: GroupAttrs, environment: BuildEnvironment) -> frozenset[str]:
     """What a group's rows present to FINAL: its outputs; a row stream also
     the grain it is computed at, and the key of a property grain (`label`
-    keyed by `tree_id`): the columns it carries its rows by."""
+    keyed by `tree_id`): the columns it carries its rows by. Only what its
+    rows hold: a grain key it is computed at but never reads is no column of
+    it, and a one-value filter (`avg(x) by * ? yr = 1999`) is one row."""
     outputs = frozenset(group.output_concepts)
-    if group.derivation in GROUPING_DERIVATIONS or group.derivation in (
-        Derivation.ROOT,
-        Derivation.ROWSET,
+    if (
+        group.derivation in GROUPING_DERIVATIONS
+        or group.derivation in (Derivation.ROOT, Derivation.ROWSET)
+        or _single_valued(group, environment)
     ):
         return outputs
     keys = {
@@ -35,7 +38,14 @@ def exposes(group: GroupAttrs, environment: BuildEnvironment) -> frozenset[str]:
         and c.purpose == Purpose.PROPERTY
         for key in c.keys or ()
     }
-    return outputs | group.grain_components | keys
+    return outputs | group.emitted_grain | (keys & group.row_columns)
+
+
+def _single_valued(group: GroupAttrs, environment: BuildEnvironment) -> bool:
+    concepts = [environment.concepts.get(a) for a in group.primary_members]
+    return bool(concepts) and all(
+        c is not None and c.granularity == Granularity.SINGLE_ROW for c in concepts
+    )
 
 
 def coalescing_mates(environment: BuildEnvironment, address: str) -> frozenset[str]:
@@ -91,8 +101,10 @@ def elect_cover(
     rows, so any other candidate exposes only the members the fact bound.
 
     `rendered`, when given, is what each group's built node renders: a group
-    stage 2 says exposes a concept its node drops (a recursive CTE claiming
-    a column it cannot pass through) is no candidate for it."""
+    stage 2 says exposes a concept its node drops is no candidate for it. One
+    shape still needs it: a select-phase window whose value its condition
+    twin computes is built as the population alone (`test_v4_window_basic_
+    merge`, the named combo)."""
     per_group: dict[str, list[BuildConcept]] = defaultdict(list)
     coalescing = environment.domain_graph.coalescing_relation_members()
     exposed = {gid: exposes(attrs[gid], environment) for gid in groups}
