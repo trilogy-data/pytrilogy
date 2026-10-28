@@ -12,6 +12,12 @@ from trilogy.dialect.common import (
 )
 
 FUNCTION_MAP = {
+    FunctionType.BIT_AND: lambda x, types: f"bitwise_and({x[0]}, {x[1]})",
+    FunctionType.BIT_OR: lambda x, types: f"bitwise_or({x[0]}, {x[1]})",
+    FunctionType.BIT_XOR: lambda x, types: f"bitwise_xor({x[0]}, {x[1]})",
+    FunctionType.BIT_SHIFT_LEFT: lambda x, types: f"bitwise_left_shift({x[0]}, {x[1]})",
+    FunctionType.BIT_SHIFT_RIGHT: lambda x, types: f"bitwise_right_shift({x[0]}, {x[1]})",
+    FunctionType.ARRAY_REDUCE: lambda x, types: f"reduce({x[0]}, {x[4]}, ({x[1]}, {x[2]}) -> {x[3]}, s -> s)",
     FunctionType.INDEX_ACCESS: lambda x, types: f"element_at({x[0]},{x[1]})",
     **SQL_STANDARD_EXTRACT,
     **SQL_STANDARD_EXTRACT_DAY_OF_WEEK,

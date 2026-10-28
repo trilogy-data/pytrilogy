@@ -27,6 +27,7 @@ from trilogy.core.models.author import (
     Function,
     Grain,
     Metadata,
+    OrderBy,
     WhereClause,
 )
 from trilogy.core.models.core import DataType, ListWrapper
@@ -40,7 +41,9 @@ from trilogy.core.models.datasource import (
     DatasourceTemplate,
     FreshnessLag,
     RawColumnExpr,
+    StorageValue,
     compose_datasource,
+    validate_storage,
 )
 from trilogy.parsing.helpers import comment_body
 from trilogy.parsing.v2.rules_context import (
@@ -73,6 +76,11 @@ class DatasourceUpdateTrigger(Enum):
 @dataclass
 class DatasourcePartitionClause:
     columns: list[ConceptRef]
+
+
+@dataclass
+class DatasourceStorage:
+    options: dict[str, StorageValue]
 
 
 @dataclass
@@ -565,6 +573,32 @@ def datasource_partition_clause(
     return DatasourcePartitionClause(columns=columns)
 
 
+def datasource_storage_arg(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> tuple[str, StorageValue]:
+    key, value = hydrated_children(node, hydrate)
+    return str(key), value
+
+
+def datasource_storage_clause(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> DatasourceStorage:
+    options: dict[str, StorageValue] = {}
+    for key, value in hydrated_children(node, hydrate):
+        if key in options:
+            raise fail(node, f"`storage` sets '{key}' twice")
+        options[key] = value
+    return DatasourceStorage(options=options)
+
+
+#: Formats a build writes whole, so the order of its rows is the writer's.
+ORDERABLE_TARGETS = {AddressType.PARQUET, AddressType.CSV}
+
+
 TEMPORAL_LAG_TYPES = {DataType.DATE, DataType.DATETIME, DataType.TIMESTAMP}
 NUMERIC_LAG_TYPES = {
     DataType.INTEGER,
@@ -716,6 +750,33 @@ def _validate_assertions(
             )
 
 
+def _validate_order_by(
+    node: SyntaxNode,
+    context: RuleContext,
+    name: str,
+    order_by: OrderBy,
+    columns: list[ColumnAssignment],
+) -> None:
+    """The write sorts the rows it already holds, so each order term must be
+    computable from the datasource's own columns."""
+    stored = {col.concept.address for col in columns}
+    unresolved = sorted(
+        {
+            ref.address
+            for ref in order_by.concept_arguments
+            if not _resolves_from(ref.address, stored, context)
+        }
+    )
+    if unresolved:
+        raise fail(
+            node,
+            f"Datasource '{name}' `order by` reads"
+            f" {', '.join(repr(a) for a in unresolved)}, which its columns"
+            " neither store nor derive row by row. Rows are sorted as they are"
+            " written, so the order can only use what the build writes.",
+        )
+
+
 def datasource_extends_clause(
     node: SyntaxNode,
     context: RuleContext,
@@ -812,6 +873,8 @@ def datasource_node(
     freshness_probe: str | None = None
     refresh_script: str | None = None
     allowed_lag: FreshnessLag | None = None
+    order_by: OrderBy | None = None
+    storage: dict[str, StorageValue] = {}
     assertions: list[DatasourceAssertion] = []
     ds_status = DatasourceState.PUBLISHED
 
@@ -854,6 +917,10 @@ def datasource_node(
             allowed_lag = val
         elif isinstance(val, DatasourcePartitionClause):
             partition_by = val.columns
+        elif isinstance(val, OrderBy):
+            order_by = val
+        elif isinstance(val, DatasourceStorage):
+            storage = val.options
         elif isinstance(val, DatasourceAssertion):
             assertions.append(val)
 
@@ -870,6 +937,8 @@ def datasource_node(
         freshness_probe=freshness_probe,
         refresh_script=refresh_script,
         allowed_lag=allowed_lag,
+        order_by=order_by,
+        storage=storage,
         assertions=assertions,
         is_partial=is_partial,
         column_level_partial_addresses={
@@ -926,6 +995,8 @@ def datasource_node(
     freshness_probe = composed.freshness_probe
     refresh_script = composed.refresh_script
     allowed_lag = composed.allowed_lag
+    order_by = composed.order_by
+    storage = composed.storage
     assertions = composed.assertions
     is_partial = composed.is_partial
 
@@ -976,6 +1047,19 @@ def datasource_node(
         _validate_address_arguments(node, name, addr, columns)
     if assertions:
         _validate_assertions(node, context, name, assertions, columns)
+    if order_by is not None:
+        if addr.type not in ORDERABLE_TARGETS:
+            raise fail(
+                node,
+                f"Datasource '{name}' `order by` needs a file target trilogy"
+                f" writes ({', '.join(sorted(t.value for t in ORDERABLE_TARGETS))}),"
+                f" not a {addr.type.value} address.",
+            )
+        _validate_order_by(node, context, name, order_by, columns)
+    try:
+        validate_storage(addr, storage)
+    except ValueError as exc:
+        raise fail(node, f"Datasource '{name}': {exc}")
 
     if addr.is_file and not addr.exists:
         ds_status = DatasourceState.UNPOPULATED
@@ -1042,6 +1126,8 @@ def datasource_node(
         freshness_probe=freshness_probe,
         refresh_script=refresh_script,
         allowed_lag=allowed_lag,
+        order_by=order_by,
+        storage=storage,
         assertions=assertions,
         extends=extends,
         authored=authored if extends else None,
@@ -1087,6 +1173,10 @@ def _validate_template_columns(
         _validate_assertions(
             node, context, template.name, template.assertions, template.columns
         )
+    if template.order_by is not None:
+        _validate_order_by(
+            node, context, template.name, template.order_by, template.columns
+        )
 
 
 DATASOURCE_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
@@ -1109,6 +1199,8 @@ DATASOURCE_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.RAW_COLUMN_ASSIGNMENT: raw_column_assignment,
     SyntaxNodeKind.DATASOURCE_STATUS_CLAUSE: datasource_status_clause,
     SyntaxNodeKind.DATASOURCE_PARTITION_CLAUSE: datasource_partition_clause,
+    SyntaxNodeKind.DATASOURCE_STORAGE_CLAUSE: datasource_storage_clause,
+    SyntaxNodeKind.DATASOURCE_STORAGE_ARG: datasource_storage_arg,
     SyntaxNodeKind.DATASOURCE_UPDATE_TRIGGER_CLAUSE: datasource_update_trigger_clause,
     SyntaxNodeKind.DATASOURCE_REFRESH_CLAUSE: datasource_refresh_clause,
     SyntaxNodeKind.DATASOURCE_LAG_CLAUSE: datasource_lag_clause,

@@ -398,6 +398,8 @@ class _Canonicalizer:
             self.node(datasource.freshness_probe),
             self.node(datasource.refresh_script),
             self.node(datasource.allowed_lag),
+            self.node(datasource.order_by),
+            self.node(datasource.storage),
             self.node(datasource.is_root),
             "clp",
             *sorted(datasource.column_level_partial_addresses),

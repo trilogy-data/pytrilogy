@@ -98,6 +98,8 @@ datasource = {
     ~ datasource_lag_clause?
     ~ datasource_refresh_clause?
     ~ datasource_partition_clause?
+    ~ order_by?
+    ~ datasource_storage_clause?
     ~ datasource_assert_clause*
     ~ datasource_status_clause?
 }
@@ -128,6 +130,9 @@ datasource_lag_clause = { ^"within" ~ int_lit ~ DURATION_UNIT? }
 datasource_update_trigger_clause = { DATASOURCE_UPDATE_TRIGGER ~ ^"by" ~ (column_list | FILE_PATH) }
 datasource_refresh_clause        = { ^"refresh" ~ FILE_PATH }
 datasource_partition_clause      = { ^"partition" ~ ^"by" ~ column_list }
+// Write options for the target's storage format, e.g. a parquet row-group size.
+datasource_storage_clause        = { ^"storage" ~ "(" ~ datasource_storage_arg ~ ("," ~ datasource_storage_arg)* ~ ","? ~ ")" }
+datasource_storage_arg           = { IDENTIFIER ~ "=" ~ (bool_lit | float_lit | int_lit | string_lit) }
 // A data-quality check on a build, evaluated against the staged write before
 // it replaces the asset; `prior(expr)` inside it reads the asset being replaced.
 datasource_assert_clause         = { ^"assert" ~ conditional }
@@ -779,7 +784,12 @@ fabs   = { ^"abs" ~ "(" ~ expr ~ ")" }
 fsqrt  = { ^"sqrt" ~ "(" ~ expr ~ ")" }
 frandom = { ^"random" ~ "(" ~ expr ~ ")" }
 
-_math_functions = _{ fmul | fdiv | fadd | fsub | fround | ffloor | fceil | fmod | flog | fabs | fsqrt | frandom }
+fbit_and = { ^"bit_and" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
+fbit_or = { ^"bit_or" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
+fbit_xor = { ^"bit_xor" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
+fbit_shift_left = { ^"bit_shift_left" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
+fbit_shift_right = { ^"bit_shift_right" ~ "(" ~ expr ~ "," ~ expr ~ ")" }
+_math_functions = _{ fmul | fdiv | fadd | fsub | fround | ffloor | fceil | fmod | flog | fabs | fsqrt | frandom | fbit_and | fbit_or | fbit_xor | fbit_shift_left | fbit_shift_right }
 
 farray_sum       = { ^"array_sum" ~ "(" ~ expr ~ ")" }
 farray_distinct  = { ^"array_distinct" ~ "(" ~ expr ~ ")" }
@@ -788,10 +798,11 @@ farray_sort      = { ^"array_sort" ~ "(" ~ expr ~ ("," ~ ordering)? ~ ")" }
 transform_lambda = { "@" ~ IDENTIFIER }
 farray_transform = { ^"array_transform" ~ "(" ~ expr ~ "," ~ transform_lambda ~ ")" }
 farray_filter    = { ^"array_filter" ~ "(" ~ expr ~ "," ~ transform_lambda ~ ")" }
+farray_reduce    = { ^"array_reduce" ~ "(" ~ expr ~ "," ~ transform_lambda ~ "," ~ expr ~ ")" }
 fgenerate_array  = { ^"generate_array" ~ "(" ~ expr ~ "," ~ expr ~ "," ~ expr ~ ")" }
 
 _array_functions = _{
-    farray_sum | farray_distinct | farray_sort | farray_transform | farray_to_string | farray_filter | fgenerate_array
+    farray_sum | farray_distinct | farray_sort | farray_transform | farray_to_string | farray_filter | farray_reduce | fgenerate_array
 }
 
 fmap_keys   = { ^"map_keys" ~ "(" ~ expr ~ ")" }

@@ -51,6 +51,12 @@ def _ch_hash(val, hash_type):
 # ClickHouse uses backticks and is mostly forgiving on EXTRACT/CAST syntax,
 # but several functions diverge meaningfully from the BaseDialect defaults.
 FUNCTION_MAP = {
+    FunctionType.BIT_AND: lambda x, types: f"bitAnd({x[0]}, {x[1]})",
+    FunctionType.BIT_OR: lambda x, types: f"bitOr({x[0]}, {x[1]})",
+    FunctionType.BIT_XOR: lambda x, types: f"bitXor({x[0]}, {x[1]})",
+    FunctionType.BIT_SHIFT_LEFT: lambda x, types: f"bitShiftLeft({x[0]}, {x[1]})",
+    FunctionType.BIT_SHIFT_RIGHT: lambda x, types: f"bitShiftRight({x[0]}, {x[1]})",
+    FunctionType.ARRAY_REDUCE: lambda x, types: f"arrayFold(({x[1]}, {x[2]}) -> {x[3]}, {x[0]}, {x[4]})",
     # constants
     FunctionType.CURRENT_DATE: lambda x, types: "today()",
     FunctionType.CURRENT_DATETIME: lambda x, types: "now()",

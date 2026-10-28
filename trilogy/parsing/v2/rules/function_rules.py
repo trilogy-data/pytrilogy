@@ -87,6 +87,11 @@ SIMPLE_FUNCTION_DISPATCH: dict[SyntaxNodeKind, FunctionType] = {
     SyntaxNodeKind.FMUL: FunctionType.MULTIPLY,
     SyntaxNodeKind.FDIV: FunctionType.DIVIDE,
     SyntaxNodeKind.FMOD: FunctionType.MOD,
+    SyntaxNodeKind.FBIT_AND: FunctionType.BIT_AND,
+    SyntaxNodeKind.FBIT_OR: FunctionType.BIT_OR,
+    SyntaxNodeKind.FBIT_XOR: FunctionType.BIT_XOR,
+    SyntaxNodeKind.FBIT_SHIFT_LEFT: FunctionType.BIT_SHIFT_LEFT,
+    SyntaxNodeKind.FBIT_SHIFT_RIGHT: FunctionType.BIT_SHIFT_RIGHT,
     SyntaxNodeKind.FFLOOR: FunctionType.FLOOR,
     SyntaxNodeKind.FCEIL: FunctionType.CEIL,
     SyntaxNodeKind.FABS: FunctionType.ABS,
@@ -1094,6 +1099,38 @@ def farray_lambda(
     )
 
 
+def farray_reduce(
+    node: SyntaxNode,
+    context: RuleContext,
+    hydrate: HydrateFunction,
+) -> Function:
+    array, factory, initial = hydrated_children(node, hydrate)
+    if not len(factory.function_arguments) == 2:
+        raise fail(
+            node, "Array reduce lambda must have exactly 2 arguments (state, element)"
+        )
+    array_type = arg_to_datatype(array)
+    if not isinstance(array_type, ArrayType):
+        raise fail(
+            node, f"Array reduce function must be applied to an array, not {array_type}"
+        )
+    state, element = factory.function_arguments
+    return context.function_factory.create_function(
+        [
+            array,
+            state,
+            element,
+            factory(
+                ArgBinding(name=state.name, datatype=arg_to_datatype(initial)),
+                ArgBinding(name=element.name, datatype=array_type.value_data_type),
+            ),
+            initial,
+        ],
+        FunctionType.ARRAY_REDUCE,
+        meta=core_meta(node.meta),
+    )
+
+
 def _bind_forward_references(expr: Any, context: RuleContext) -> Any:
     """A `def` body hydrates before the file's concept declarations, so a
     concept it reads by name rather than as a parameter is an UNKNOWN-typed
@@ -1195,6 +1232,7 @@ FUNCTION_NODE_HYDRATORS: dict[SyntaxNodeKind, NodeHydrator] = {
     SyntaxNodeKind.TRANSFORM_LAMBDA: transform_lambda,
     SyntaxNodeKind.FARRAY_TRANSFORM: farray_lambda,
     SyntaxNodeKind.FARRAY_FILTER: farray_lambda,
+    SyntaxNodeKind.FARRAY_REDUCE: farray_reduce,
     # custom function
     SyntaxNodeKind.CUSTOM_FUNCTION: custom_function,
     # binary boolean predicates emitted as ``Comparison``

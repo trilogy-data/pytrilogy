@@ -652,7 +652,21 @@ def render_prior(args: list[str], types: list[Any]) -> str:
     )
 
 
+def render_unsupported(name: str) -> Callable[..., str]:
+    def render(args: list[str], types: list) -> str:
+        raise NotImplementedError(f"`{name}` is not supported by this dialect")
+
+    return render
+
+
 FUNCTION_MAP = {
+    # bitwise
+    FunctionType.BIT_AND: lambda x, types: f"({x[0]} & {x[1]})",
+    FunctionType.BIT_OR: lambda x, types: f"({x[0]} | {x[1]})",
+    FunctionType.BIT_XOR: lambda x, types: f"({x[0]} ^ {x[1]})",
+    FunctionType.BIT_SHIFT_LEFT: lambda x, types: f"({x[0]} << {x[1]})",
+    FunctionType.BIT_SHIFT_RIGHT: lambda x, types: f"({x[0]} >> {x[1]})",
+    FunctionType.ARRAY_REDUCE: render_unsupported("array_reduce"),
     # generic types
     FunctionType.ALIAS: lambda x, types: f"{x[0]}",
     FunctionType.PRIOR: render_prior,

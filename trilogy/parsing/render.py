@@ -201,6 +201,14 @@ _SET_OP_SURFACE_NAMES = {
 }
 
 
+def _storage_literal(value: bool | float | str) -> str:
+    if isinstance(value, bool):
+        return str(value).lower()
+    if isinstance(value, str):
+        return "'" + value.replace("'", "\\'") + "'"
+    return repr(value)
+
+
 def _purpose_keyword(purpose: Purpose) -> str:
     """Grammar keyword for a Purpose — ``unique property`` not ``unique_property``."""
     if purpose == Purpose.UNIQUE_PROPERTY:
@@ -743,6 +751,14 @@ class Renderer:
             base += f"\nwithin {parts.allowed_lag.render()}"
         if parts.refresh_script:
             base += f"\nrefresh `{parts.refresh_script}`"
+        if parts.order_by:
+            items = ", ".join(self.to_string(i) for i in parts.order_by.items)
+            base += f"\norder by {items}"
+        if parts.storage:
+            options = ", ".join(
+                f"{k} = {_storage_literal(v)}" for k, v in parts.storage.items()
+            )
+            base += f"\nstorage ({options})"
         for check in parts.assertions:
             base += f"\nassert {self.to_string(check.condition)}"
         return base
