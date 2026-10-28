@@ -272,6 +272,58 @@ class TestBuild:
         ]
         assert lats == sorted(lats, reverse=True)
 
+    @pytest.mark.parametrize("preserve", [True, False])
+    def test_a_csv_target_through_the_local_stage(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, preserve: bool
+    ) -> None:
+        monkeypatch.setattr("trilogy.executor.staged_write", _unstageable)
+        target = tmp_path / "points.csv"
+        executor = Dialects.DUCK_DB.default_executor(
+            environment=Environment(working_path=tmp_path)
+        )
+        executor.execute_raw_sql(RAW)
+        executor.execute_raw_sql(f"SET preserve_insertion_order = {preserve}")
+        executor.parse_text(
+            HEADER
+            + "root datasource raw (id: id, lat: lat, lon: lon) grain (id) address raw;\n"
+            + "datasource points (id: id, lat: lat) grain (id)"
+            + f" file `{target.as_posix()}` order by lat desc assert count(id) >= 1;"
+        )
+        points = executor.environment.datasources["points"]
+        if not preserve:
+            with pytest.raises(ValueError, match="preserve_insertion_order"):
+                executor.update_datasource(points)
+            return
+        executor.update_datasource(points)
+        lats = [
+            r[0]
+            for r in duckdb.sql(f"SELECT lat FROM '{target.as_posix()}'").fetchall()
+        ]
+        assert lats == sorted(lats, reverse=True)
+
+
+def test_storage_values_render_as_literals() -> None:
+    from trilogy.executor import _copy_option_value
+    from trilogy.parsing.render import _storage_literal
+
+    assert [_storage_literal(v) for v in (True, 3, 1.5, "it's")] == [
+        "true",
+        "3",
+        "1.5",
+        "'it\\'s'",
+    ]
+    assert [_copy_option_value(v) for v in (False, 3, "it's")] == [
+        "false",
+        "3",
+        "'it''s'",
+    ]
+
+
+def test_plan_ephemeral_wants_one_select() -> None:
+    executor = Dialects.DUCK_DB.default_executor()
+    with pytest.raises(ValueError, match="one select"):
+        executor.plan_ephemeral("select 1 -> a; select 2 -> b;")
+
 
 @contextmanager
 def _unstageable(target: str, staging_root: str | None = None) -> Iterator[str]:

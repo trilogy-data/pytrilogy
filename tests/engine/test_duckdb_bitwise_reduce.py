@@ -58,6 +58,11 @@ def test_array_reduce_needs_two_arguments() -> None:
         )
 
 
+def test_array_reduce_needs_an_array() -> None:
+    with pytest.raises(Exception, match="must be applied to an array"):
+        _value("def add(acc, x) -> acc + x;\nselect array_reduce(5, @add, 0) -> v;")
+
+
 @pytest.mark.parametrize(
     "dialect, xor",
     [
