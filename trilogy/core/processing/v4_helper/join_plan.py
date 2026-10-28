@@ -105,6 +105,11 @@ class JoinPlan:
         )
 
     @property
+    def extras(self) -> list[str]:
+        """The sides joined to pair or filter the suppliers."""
+        return [gid for gid in self.contributors if gid not in self.suppliers]
+
+    @property
     def join_keys(self) -> frozenset[str]:
         return frozenset().union(*(p.keys for p in self.pairings))
 
@@ -490,6 +495,21 @@ def _held(
     )
 
 
+def _widenable(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    environment: BuildEnvironment,
+) -> frozenset[str]:
+    """What a consumer's preserve key can be carried on `gid` as: a grouped
+    side holds only its outputs; a row side what its rows determine. A
+    dimension peel is never widened to its sibling dimension's key."""
+    held = _held(group_graph, attrs, gid, {}, environment)
+    if attrs[gid].derivation in (*GROUPING_DERIVATIONS, Derivation.ROWSET):
+        return held
+    return _determined(held, environment)
+
+
 def _domain_spans(
     group_graph: nx.DiGraph, attrs: dict[str, GroupAttrs], gid: str
 ) -> frozenset[str] | None:
@@ -757,7 +777,9 @@ def plan_final_join(
         if attrs[gid].derivation == Derivation.ROOT
     }
     for gid, keys in (contracted or {}).items():
-        carry_demands[gid] = carry_demands.get(gid, frozenset()) | keys
+        carry_demands[gid] = carry_demands.get(gid, frozenset()) | (
+            keys & _widenable(group_graph, attrs, gid, environment)
+        )
     # A row stream is identified by the grain keys its rows turn out to hold
     # (`sale_recency` at customer and sale date holds both off its inputs);
     # settled before what each side is widened to is read off the identities.
@@ -847,11 +869,12 @@ def elect_bridges(
     authored: frozenset[str] = frozenset(),
     split: frozenset[str] = frozenset(),
     contracted: dict[str, frozenset[str]] | None = None,
-) -> list[str]:
-    """The groups outside `cover` that join its plan's islands, in the order
-    they join: each, planned beside the cover as a side supplying nothing,
-    leaves fewer islands (`select id, min(x) by id, min(y) by cell` is bridged
-    by the row stream holding both keys). `candidates` in preference order."""
+) -> JoinPlan:
+    """The plan over `cover` with the groups outside it that join its islands
+    as extras, in the order they join: each, planned beside the cover as a
+    side supplying nothing, leaves fewer islands (`select id, min(x) by id,
+    min(y) by cell` is bridged by the row stream holding both keys).
+    `candidates` in preference order."""
 
     plan = partial(
         plan_final_join,
@@ -865,8 +888,9 @@ def elect_bridges(
         contracted,
     )
     bridges: list[str] = []
-    islands = len(plan(extras=bridges).islands())
-    while islands > 1:
+    current = plan(extras=bridges)
+    while len(current.islands()) > 1:
+        islands = len(current.islands())
         joining = [
             (gid, trial)
             for gid in candidates
@@ -875,10 +899,10 @@ def elect_bridges(
             and len((trial := plan(extras=[*bridges, gid])).islands()) < islands
         ]
         if not joining:
-            return bridges
+            return current
         # a bridge every pairing of which is keyed first: shared columns that
         # identify neither side multiply both
-        gid, trial = next(
+        gid, current = next(
             (
                 (gid, trial)
                 for gid, trial in joining
@@ -891,5 +915,4 @@ def elect_bridges(
             joining[0],
         )
         bridges.append(gid)
-        islands = len(trial.islands())
-    return bridges
+    return current

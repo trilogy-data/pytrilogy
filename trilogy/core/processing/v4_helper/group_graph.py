@@ -1792,6 +1792,13 @@ def _compute_concept_sets(
             cap |= region_join_keys & set(attrs[gid].carried_spans)
             io.capability[gid] = cap
             continue
+        # a recursive walk emits its own value and the edge it walks, nothing
+        # it could pass through (`gen_recursive`)
+        if fact.derivation == Derivation.RECURSIVE:
+            io.capability[gid] = cap.union(
+                *(lineage_parents.get(addr, set()) for addr in fact.primary)
+            )
+            continue
         # A grouping group's grain component that is a STATEMENT-scoped join axis
         # is equally expressed by any other member of that relation; the members
         # ARE the same value, each rendered on its own side. So a mate a parent
