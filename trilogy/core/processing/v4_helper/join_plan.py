@@ -9,8 +9,9 @@ happen to project. See `docs/join_axis_audit_2026_10.md`.
 """
 
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
+from functools import partial
 from itertools import combinations
 
 from trilogy.core import graph as nx
@@ -67,10 +68,41 @@ class JoinPlan:
     carries: dict[str, frozenset[str]] = field(default_factory=dict)
     # members of the statement's coalescing (`union`/`full`) relations
     coalescing: frozenset[str] = frozenset()
+    # the contributors supplying outputs; the rest join to pair or filter them
+    suppliers: frozenset[str] = frozenset()
 
     @property
     def merge_grain(self) -> frozenset[str]:
-        return frozenset().union(*self.pins.values())
+        """The grain the suppliers fix: a side joined only to pair or filter
+        them (a bridge, a filter argument's producer) fixes none."""
+        return frozenset().union(
+            *(pins for gid, pins in self.pins.items() if gid in self.suppliers)
+        )
+
+    def over(self, sides: Sequence[str]) -> "JoinPlan":
+        """The plan for a merge joining `sides`: a contributor folded into
+        another side pairs with nothing there. A side joined more than once is
+        split: its projections pair on anything they both hold."""
+        joined = frozenset(sides)
+        return replace(
+            self,
+            pairings=tuple(
+                p for p in self.pairings if p.left in joined and p.right in joined
+            ),
+        ).with_split(frozenset(gid for gid in joined if sides.count(gid) > 1))
+
+    def with_split(self, split: frozenset[str]) -> "JoinPlan":
+        """The plan with each `split` contributor joined as several projections
+        of its own rows, which pair on anything they both hold."""
+        return replace(
+            self,
+            pairings=self.pairings
+            + tuple(
+                Pairing(gid, gid, frozenset(), PairingKind.LOOKUP, self.carries[gid])
+                for gid in self.contributors
+                if gid in split
+            ),
+        )
 
     @property
     def join_keys(self) -> frozenset[str]:
@@ -402,25 +434,38 @@ def _over_own_rows(group: GroupAttrs) -> frozenset[str]:
 
 
 def _from_row_parents(
-    group_graph: nx.DiGraph, attrs: dict[str, GroupAttrs], gid: str
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    environment: BuildEnvironment,
 ) -> frozenset[str]:
     """What a row stream's ROOT or row-preserving parents output: it passes
     their rows through, columns and all (`item_name as p_name` off the sale
-    lines holds the store each line was sold at)."""
-    if attrs[gid].derivation in GROUPING_DERIVATIONS or attrs[gid].derivation in (
+    lines holds the store each line was sold at). Beside a grouped parent the
+    row parents are projected to the stream's grain before they pair with it
+    (`_satisfy_parent_projection_contract`): `sale_recency` at customer and
+    sale date, beside a by-customer aggregate, holds no sale line's item."""
+    group = attrs[gid]
+    if group.derivation in GROUPING_DERIVATIONS or group.derivation in (
         Derivation.ROOT,
         Derivation.ROWSET,
     ):
         return frozenset()
-    return frozenset().union(
+    parents = [p for p in group_graph.predecessors(gid) if p in attrs]
+    passed = frozenset().union(
         *(
             attrs[parent].output_concepts
-            for parent in group_graph.predecessors(gid)
-            if parent in attrs
-            and attrs[parent].derivation
+            for parent in parents
+            if attrs[parent].derivation
             in (Derivation.ROOT, Derivation.BASIC, Derivation.FILTER)
         )
     )
+    if not group.grain_components or not any(
+        attrs[parent].derivation in (*GROUPING_DERIVATIONS, Derivation.WINDOW)
+        for parent in parents
+    ):
+        return passed
+    return passed & _determined(group.grain_components, environment)
 
 
 def _held(
@@ -433,10 +478,28 @@ def _held(
     sibling_keys: frozenset[str] = frozenset(),
 ) -> frozenset[str]:
     return (
-        _from_row_parents(group_graph, attrs, gid)
-        | _carries(attrs[gid], identity, sibling_keys, environment)
+        _from_row_parents(group_graph, attrs, gid, environment)
+        | _carries(
+            attrs[gid],
+            identity,
+            sibling_keys,
+            environment,
+            _domain_spans(group_graph, attrs, gid),
+        )
         | carry_demands.get(gid, frozenset())
     )
+
+
+def _domain_spans(
+    group_graph: nx.DiGraph, attrs: dict[str, GroupAttrs], gid: str
+) -> frozenset[str] | None:
+    """The spans a row stream reading only region domains holds (`s.sk` off
+    the item domain holds the item, never the sale it is grained at); None
+    when it reads anything else."""
+    parents = [p for p in group_graph.predecessors(gid) if p in attrs]
+    if not parents or not all(attrs[p].extent_spans for p in parents):
+        return None
+    return frozenset().union(*(attrs[p].extent_spans for p in parents))
 
 
 def _joined_on(group: GroupAttrs) -> frozenset[str]:
@@ -453,6 +516,7 @@ def _carries(
     identity: frozenset[str],
     sibling_keys: frozenset[str],
     environment: BuildEnvironment,
+    domain_spans: frozenset[str] | None = None,
 ) -> frozenset[str]:
     """The columns a contributor's rows hold or can be widened to: a grouping
     group's outputs; a rowset's boundary; a row stream's inputs and members,
@@ -475,6 +539,8 @@ def _carries(
     extra = _joined_on(group)
     if not lineage_pinned_grain(group.output_concepts or group.members, environment):
         extra |= group.grain_components
+    if domain_spans is not None:
+        extra &= domain_spans
     # a ROOT carries exactly its carry demand beyond what it holds
     if identity and group.derivation != Derivation.ROOT:
         closure = build_fd_closure(environment, identity, include_empty_grain=False)
@@ -653,16 +719,21 @@ def plan_final_join(
     authored: frozenset[str] = frozenset(),
     split: frozenset[str] = frozenset(),
     contracted: dict[str, frozenset[str]] | None = None,
+    extras: Sequence[str] = (),
 ) -> JoinPlan:
     """The plan for merging `cover` (contributor -> the outputs it supplies).
     A `split` contributor is joined as several projections of its own rows,
     which pair on anything they both hold: that is the one relation, never a
     key to carry. `contracted` are the keys a consumer's input contracts ask
-    each contributor to carry (a per-group merge's `preserve_keys`)."""
-    contributors = tuple(cover)
-    axes = merge_axes(contributors, attrs, mandatory_list, authored)
+    each contributor to carry (a per-group merge's `preserve_keys`). `extras`
+    join beside the cover supplying nothing (bridges, filter-argument
+    producers): they pair, but fix no grain and ask no ROOT to carry a key."""
+    supplying = tuple(cover)
+    contributors = supplying + tuple(g for g in extras if g not in cover)
+    cover = {**cover, **{gid: [] for gid in contributors if gid not in cover}}
+    axes = merge_axes(supplying, attrs, mandatory_list, authored)
     pins = {
-        gid: row_identity(group_graph, attrs, gid, contributors, axes, environment)
+        gid: row_identity(group_graph, attrs, gid, supplying, axes, environment)
         for gid in contributors
     }
     identity = {
@@ -674,7 +745,13 @@ def plan_final_join(
     }
     carry_demands = {
         gid: root_carry_demand(
-            attrs, gid, contributors, cover[gid], pins, axes, environment
+            attrs,
+            gid,
+            supplying,
+            cover[gid],
+            {g: pins[g] for g in supplying},
+            axes,
+            environment,
         )
         for gid in contributors
         if attrs[gid].derivation == Derivation.ROOT
@@ -697,7 +774,12 @@ def plan_final_join(
     members = environment.all_scoped_join_group_members()
     carries = {}
     for gid in contributors:
-        siblings = frozenset().union(*(identity[o] for o in contributors if o != gid))
+        # an extra side is joined as built, never widened to a sibling's key
+        siblings = (
+            frozenset().union(*(identity[o] for o in contributors if o != gid))
+            if gid in supplying
+            else frozenset()
+        )
         held = _held(
             group_graph, attrs, gid, carry_demands, environment, identity[gid], siblings
         )
@@ -714,6 +796,7 @@ def plan_final_join(
             members
             & build_fd_closure(environment, identity[gid], include_empty_grain=False)
             if identity[gid]
+            and gid in supplying
             and attrs[gid].derivation not in (*GROUPING_DERIVATIONS, Derivation.ROOT)
             else frozenset()
         )
@@ -733,11 +816,6 @@ def plan_final_join(
         or pairing.implied
         or pairing.kind == PairingKind.SCALAR
     )
-    pairings += tuple(
-        Pairing(gid, gid, frozenset(), PairingKind.LOOKUP, carries[gid])
-        for gid in contributors
-        if gid in split
-    )
     return JoinPlan(
         contributors,
         pins,
@@ -747,7 +825,8 @@ def plan_final_join(
         scalars,
         carries,
         frozenset(environment.domain_graph.coalescing_relation_members()),
-    )
+        frozenset(supplying),
+    ).with_split(split)
 
 
 def final_predecessors(
@@ -756,3 +835,61 @@ def final_predecessors(
     return sorted(
         gid for gid in group_graph.predecessors(FINAL_NODE_ID) if gid in attrs
     )
+
+
+def elect_bridges(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    cover: dict[str, list[BuildConcept]],
+    candidates: Sequence[str],
+    mandatory_list: Sequence[BuildConcept],
+    environment: BuildEnvironment,
+    authored: frozenset[str] = frozenset(),
+    split: frozenset[str] = frozenset(),
+    contracted: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    """The groups outside `cover` that join its plan's islands, in the order
+    they join: each, planned beside the cover as a side supplying nothing,
+    leaves fewer islands (`select id, min(x) by id, min(y) by cell` is bridged
+    by the row stream holding both keys). `candidates` in preference order."""
+
+    plan = partial(
+        plan_final_join,
+        group_graph,
+        attrs,
+        cover,
+        mandatory_list,
+        environment,
+        authored,
+        split,
+        contracted,
+    )
+    bridges: list[str] = []
+    islands = len(plan(extras=bridges).islands())
+    while islands > 1:
+        joining = [
+            (gid, trial)
+            for gid in candidates
+            if gid not in cover
+            and gid not in bridges
+            and len((trial := plan(extras=[*bridges, gid])).islands()) < islands
+        ]
+        if not joining:
+            return bridges
+        # a bridge every pairing of which is keyed first: shared columns that
+        # identify neither side multiply both
+        gid, trial = next(
+            (
+                (gid, trial)
+                for gid, trial in joining
+                if all(
+                    p.kind != PairingKind.BLEND
+                    for p in trial.pairings
+                    if gid in (p.left, p.right)
+                )
+            ),
+            joining[0],
+        )
+        bridges.append(gid)
+        islands = len(trial.islands())
+    return bridges

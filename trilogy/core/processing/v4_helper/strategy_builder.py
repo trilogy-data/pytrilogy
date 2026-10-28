@@ -126,7 +126,7 @@ from .functional_dependency import (
 )
 from .group_graph import row_parents, trace_group_graph
 from .history import V4History
-from .join_plan import JoinPlan, merge_axes, plan_final_join
+from .join_plan import JoinPlan, elect_bridges, merge_axes, plan_final_join
 from .models import (
     ExtentOwnership,
     FinalAssemblyContract,
@@ -3147,7 +3147,21 @@ def _pre_merge_parents(
     # After widening, not before: a parent that has just been handed the join
     # key it was missing needs no bridge.
     if group_graph is not None and built is not None:
-        parents = _bridge_unpaired_parents(parents, group_graph, built, environment)
+        parents = _bridge_unpaired_parents(
+            parents,
+            group_graph,
+            built,
+            environment,
+            _elected_merge_bridges(
+                parents,
+                attrs,
+                origin,
+                group_graph,
+                built,
+                needed,
+                environment,
+            ),
+        )
     all_outputs = readable_outputs(parents)
     merged = MergeNode(
         input_concepts=all_outputs,
@@ -3189,8 +3203,28 @@ def _planned_merge_keys(
     sides = side_groups(parents, origin)
     if len(sides) != len(parents):
         return None
+    cover = _merge_cover(sides, attrs, needed, environment)
+    return plan_final_join(
+        group_graph,
+        attrs,
+        cover,
+        [c for concepts in cover.values() for c in concepts],
+        environment,
+        _required_final_contract(attrs).authored_axes,
+        split=frozenset(gid for gid in sides if sides.count(gid) > 1),
+        contracted={gid: join_key_addresses for gid in sides},
+    ).permitted_keys
+
+
+def _merge_cover(
+    sides: list[str],
+    attrs: dict[str, GroupAttrs],
+    needed: set[str] | None,
+    environment: BuildEnvironment,
+) -> dict[str, list[BuildConcept]]:
+    """Each side's group and the outputs the consumer reads off it."""
     wanted = needed or set()
-    cover = {
+    return {
         gid: [
             c
             for address in attrs[gid].output_concepts
@@ -3198,17 +3232,37 @@ def _planned_merge_keys(
         ]
         for gid in sides
     }
-    final_contract = _required_final_contract(attrs)
-    return plan_final_join(
+
+
+def _elected_merge_bridges(
+    parents: list[StrategyNode],
+    attrs: dict[str, GroupAttrs] | None,
+    origin: dict[int, str] | None,
+    group_graph: nx.DiGraph,
+    built: dict[str, StrategyNode],
+    needed: set[str] | None,
+    environment: BuildEnvironment,
+) -> list[str] | None:
+    """The bridges a consumer's join plan elects over its row parents' groups;
+    None when a side is no group's, and the merge bridges off what is built.
+    The consumer's preserve keys are asks, not columns a side holds: a
+    dimension peel is never widened to its sibling dimension's key."""
+    if attrs is None or origin is None:
+        return None
+    sides = side_groups(parents, origin)
+    if len(sides) != len(parents):
+        return None
+    cover = _merge_cover(sides, attrs, needed, environment)
+    return elect_bridges(
         group_graph,
         attrs,
         cover,
+        _bridge_candidates(group_graph, built),
         [c for concepts in cover.values() for c in concepts],
         environment,
-        final_contract.authored_axes,
+        _required_final_contract(attrs).authored_axes,
         split=frozenset(gid for gid in sides if sides.count(gid) > 1),
-        contracted={gid: join_key_addresses for gid in sides},
-    ).permitted_keys
+    )
 
 
 def _union_arm_parents(
@@ -4319,6 +4373,7 @@ def _bridge_unpaired_parents(
     group_graph: nx.DiGraph,
     built: dict[str, StrategyNode],
     environment: BuildEnvironment,
+    elected: Sequence[str] | None = None,
 ) -> list[StrategyNode]:
     """Pull in the built group that pairs contributors sharing no column, so
     the merge below joins on an axis instead of `ON 1=1`.
@@ -4337,9 +4392,14 @@ def _bridge_unpaired_parents(
 
     A bridge pairs a contributor on whatever they share, which must identify
     one side's rows (`_key_bridged_members`): a species bucket projected off
-    tree rows, bridged back to those rows on `species`, multiplies both."""
+    tree rows, bridged back to those rows on `species`, multiplies both.
+
+    `elected` are the bridges the join plan chose (`join_plan.elect_bridges`):
+    when given, only those are candidates."""
     if len(parents) < 2:
         return parents
+    if elected is not None:
+        built = {gid: built[gid] for gid in elected}
     parents = list(parents)
     outputs = [_pairing_addresses(parent, environment) for parent in parents]
     exposed = {
@@ -4488,6 +4548,20 @@ def _key_bridged_members(
     return True
 
 
+def _bridge_candidates(
+    group_graph: nx.DiGraph, built: dict[str, StrategyNode]
+) -> list[str]:
+    """Built groups, most derived first."""
+    return sorted(
+        built,
+        key=lambda gid: (
+            sum(1 for a in nx.ancestors(group_graph, gid) if a in built),
+            gid,
+        ),
+        reverse=True,
+    )
+
+
 def _island_bridges(
     islands: list[set[int]],
     outputs: list[set[str]],
@@ -4546,21 +4620,9 @@ def _filter_arg_parents(
     concepts: list[BuildConcept] = []
     seen: set[str] = set()
     for addr in missing_addrs:
-        candidates = [
-            gid
-            for gid, node in built.items()
-            if any(o.address == addr for o in node.output_concepts)
-        ]
-        if not candidates:
+        gid = _filter_arg_producer(group_graph, built, addr, spans)
+        if gid is None:
             continue
-        candidates.sort(
-            key=lambda gid: (
-                spans <= {o.address for o in built[gid].output_concepts},
-                sum(1 for a in nx.ancestors(group_graph, gid) if a in built),
-            ),
-            reverse=True,
-        )
-        gid = candidates[0]
         supplier = built[gid]
         concept = next(o for o in supplier.output_concepts if o.address == addr)
         # The group is being pulled in PRECISELY to supply this column, so a
@@ -4575,6 +4637,58 @@ def _filter_arg_parents(
             seen.add(gid)
             nodes.append(built[gid])
     return nodes, concepts
+
+
+def _filter_arg_producer(
+    group_graph: nx.DiGraph,
+    built: dict[str, StrategyNode],
+    addr: str,
+    spans: frozenset[str],
+) -> str | None:
+    candidates = [
+        gid
+        for gid, node in built.items()
+        if any(o.address == addr for o in node.output_concepts)
+    ]
+    return max(
+        candidates,
+        key=lambda gid: (
+            spans <= {o.address for o in built[gid].output_concepts},
+            sum(1 for a in nx.ancestors(group_graph, gid) if a in built),
+        ),
+        default=None,
+    )
+
+
+def _final_extra_sides(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    built: dict[str, StrategyNode],
+    sides: Sequence[str],
+    filter_only_addrs: set[str],
+    environment: BuildEnvironment,
+) -> list[str]:
+    """The groups the FINAL merge joins beside `sides` to evaluate its WHERE:
+    each filter-only argument's producer, and the row stream computing a gate
+    key none of them renders (`count(id) by genus`, genus derived)."""
+    nodes = [built[gid] for gid in sides]
+    available = {o.address for node in nodes for o in node.output_concepts}
+    spans = frozenset().union(*(region_reads(node) for node in nodes))
+    extras: list[str] = []
+    args: list[BuildConcept] = []
+    for addr in sorted(
+        _region_paired_args(filter_only_addrs, available, spans, environment)
+    ):
+        gid = _filter_arg_producer(group_graph, built, addr, spans)
+        if gid is None:
+            continue
+        extras.append(gid)
+        args.extend(o for o in built[gid].output_concepts if o.address == addr)
+    for address in sorted(_gate_grain_keys(args) - available):
+        key = _concept_at(environment, address)
+        if key and (host := _gate_key_row_stream(key, attrs, built)):
+            extras.append(host)
+    return list(dict.fromkeys(extras))
 
 
 def _region_paired_args(
@@ -5317,6 +5431,15 @@ def _assemble_final_node(
     # contributors fix: a dimension scan projects its FD attributes at it
     # (keeping the join key) instead of deduping to its own key grain and
     # cross-joining ON 1=1.
+    bridges = elect_bridges(
+        group_graph,
+        attrs,
+        per_group,
+        _bridge_candidates(group_graph, built),
+        mandatory_list,
+        environment,
+        final_contract.authored_axes,
+    )
     plan = plan_final_join(
         group_graph,
         attrs,
@@ -5324,6 +5447,15 @@ def _assemble_final_node(
         mandatory_list,
         environment,
         final_contract.authored_axes,
+        extras=bridges
+        + _final_extra_sides(
+            group_graph,
+            attrs,
+            built,
+            [*per_group, *bridges],
+            filter_only_addrs,
+            environment,
+        ),
     )
     final_merge_grain = plan.merge_grain
     origin = {id(node): gid for gid, node in built.items()}
@@ -5407,7 +5539,9 @@ def _assemble_final_node(
         {id(built[gid]) for gid, concepts in per_group.items() if concepts},
         {id(built[gid]) for gid in ownership.owner_by_span.values() if gid in built},
     )
-    parents = _bridge_unpaired_parents(parents, group_graph, built, environment)
+    parents = _bridge_unpaired_parents(
+        parents, group_graph, built, environment, bridges
+    )
     parents = _pair_inside_padding_streams(parents, environment)
     _raise_if_rowset_islanded(parents, mandatory_list, environment, graph)
 
@@ -5501,18 +5635,13 @@ def _assemble_final_node(
             if host and built[host] not in parents:
                 parents = parents + [built[host]]
     parents = parents + arg_nodes
-    # Folds, bridges and filter-arg producers changed the sides since the plan
-    # above: state the merge's own plan over the sides it actually joins.
     sides = side_groups(parents, origin)
-    merge_plan = plan_final_join(
-        group_graph,
-        attrs,
-        {gid: per_group.get(gid, []) for gid in sides},
-        mandatory_list,
-        environment,
-        final_contract.authored_axes,
-        split=frozenset(gid for gid in sides if sides.count(gid) > 1),
-    )
+    if unplanned := set(sides) - set(plan.contributors):
+        raise ValueError(
+            f"[v4] FINAL merge joins {sorted(unplanned)}, which its join plan "
+            "never elected. This is a planner bug."
+        )
+    merge_plan = plan.over(sides)
     logger.info(f"[v4] FINAL join plan: {merge_plan}")
     merge_inputs = unique(
         [c for c in outputs if c.address not in pseudonym_only]
