@@ -128,7 +128,7 @@ from .functional_dependency import (
 )
 from .group_graph import read_row_parents, row_parents, trace_group_graph
 from .history import V4History
-from .join_plan import JoinPlan, elect_bridges, merge_axes, plan_final_join
+from .join_plan import JoinPlan, elect_bridges, plan_final_join
 from .models import (
     ExtentOwnership,
     FinalAssemblyContract,
@@ -150,6 +150,7 @@ from .projection import (
     widen_projection,
 )
 from .region_reads import inline_arguments_taking_a_value, nameable
+from .renders import declared_partial, parents_render, renders
 from .source_planning import SourceRequest, plan_source
 
 
@@ -2659,8 +2660,8 @@ def _fold_covered_contributors(
     drop row-identical rather than merely tidy:
 
     - The contributor was elected to cover a mandatory concept. An axis-only
-      contributor (`_add_relation_axis_contributors`,
-      `_add_partial_completion_contributors`) is deliberately column-invisible
+      contributor (`_add_partial_completion_contributors`) is deliberately
+      column-invisible
       (the axis IS its contribution), and so is an elected extent owner, whose
       contribution is the span's extension rows. Neither is ever folded.
     - Dropping it leaves the survivors no less connected: it may be the only
@@ -3458,63 +3459,6 @@ def _bridge_pseudonyms(node: StrategyNode, provided: list[BuildConcept]) -> None
     node.rebuild_cache()
 
 
-def _add_relation_axis_contributors(
-    group_graph: nx.DiGraph,
-    attrs: dict[str, GroupAttrs],
-    candidates: Sequence[str],
-    per_group: dict[str, list[BuildConcept]],
-    axes: frozenset[str],
-    environment: BuildEnvironment,
-) -> None:
-    """A FINAL merge grain carrying an authored relation needs every hosting
-    side present as a contributor: a computed member (`union join rank
-    orders.oid order by orders.amt desc = customers.rnk`) is exposed only by
-    its own row-shape-barrier group, which covers no mandatory output and so
-    is dropped by the mandatory cover, degrading the merge to a cross join.
-    Add the built group exposing a missing hosted axis member as an axis-only
-    contributor (it contributes no mandatory concepts). Edits `per_group` in
-    place."""
-    if len(per_group) < 2 or not environment.scoped_join_key_groups or not axes:
-        return
-    outputs_of = {gid: set(attrs[gid].output_concepts) for gid in candidates}
-    # A merge pseudonym names the same column, so its side is already present.
-    hosts_of = {
-        gid: outputs.union(
-            *(c.pseudonyms for a in outputs if (c := environment.concepts.get(a)))
-        )
-        for gid, outputs in outputs_of.items()
-    }
-    chosen = set(per_group)
-    for canonical, members in environment.scoped_join_key_groups.items():
-        relation = {canonical, *members} & axes
-        if len(relation) < 2:
-            continue
-        hosted = {addr for gid in chosen for addr in relation & hosts_of[gid]}
-        if not hosted:
-            continue
-        for addr in sorted(relation - hosted):
-            # A provider upstream of a chosen contributor already had its
-            # side merged there, so it pairs nothing new: re-entering the
-            # FINAL merge it would only re-admit the rows that contributor's
-            # own join and population already dropped.
-            merged_below = set().union(
-                *(nx.ancestors(group_graph, gid) for gid in chosen)
-            )
-            provider = next(
-                (
-                    gid
-                    for gid in sorted(candidates)
-                    if gid not in chosen
-                    and gid not in merged_below
-                    and addr in outputs_of[gid]
-                ),
-                None,
-            )
-            if provider is not None:
-                per_group.setdefault(provider, [])
-                chosen.add(provider)
-
-
 def _holds_statement_rows(
     reader: GroupAttrs, required: frozenset[str], environment: BuildEnvironment
 ) -> bool:
@@ -3605,47 +3549,48 @@ def _renders_rename_of_member(concept: BuildConcept, domain: GroupAttrs) -> bool
 
 
 def _add_partial_completion_contributors(
-    built: dict[str, StrategyNode],
+    groups: Sequence[str],
     per_group: dict[str, list[BuildConcept]],
+    attrs: dict[str, GroupAttrs],
+    rendered: dict[str, frozenset[str]],
     environment: BuildEnvironment,
 ) -> None:
     """A mandatory scoped-join member completes through its group-mate's
-    boundary: add as an axis-only contributor a built group exposing a
-    COMPLETE rowset-handle mate the chosen contributors don't carry (the
-    request itself happened in `_unsourced_relation_mates`). Two triggers:
+    boundary: add as an axis-only contributor a group rendering a COMPLETE
+    rowset-handle mate the chosen contributors don't carry (the request itself
+    happened in `_unsourced_relation_mates`). Two triggers:
 
-    - the covering contributor leaves the member PARTIAL: its own binding
-      spans only its side's domain, and only the mate's boundary carries the
-      axis (rowset-anchor `subset join cust = members.mid`); the FINAL merge
-      then pairs the sides and `_clear_groupmate_completed_partials` un-marks
-      the member.
+    - the covering contributor leaves the member PARTIAL: it is a declared
+      subset side, and only the mate's boundary carries the axis
+      (rowset-anchor `subset join cust = members.mid`); the FINAL merge then
+      pairs the sides and `_clear_groupmate_completed_partials` un-marks the
+      member.
     - the member belongs to a COALESCING (`union`/`full`) relation: a
       demanded member projects the unified axis, so every side's boundary must
       join the merge even though it covers no mandatory output (bare-member
       projection).
 
-    Edits `per_group` in place."""
+    Decided off what each group renders (`renders.renders`). Edits
+    `per_group` in place."""
     if not environment.scoped_join_key_groups:
         return
     chosen = set(per_group)
 
     def _complete_outputs(gid: str) -> set[str]:
-        node = built[gid]
-        partial = {c.address for c in node.partial_concepts}
-        return {o.address for o in node.output_concepts if o.address not in partial}
+        return set(rendered[gid]) - declared_partial(attrs[gid], environment)
+
+    def _outputs(gid: str) -> set[str]:
+        return set(rendered[gid])
 
     covered: set[str] = set()
     covered_partial: set[str] = set()
     for gid, concepts in per_group.items():
-        node_partial = {c.address for c in built[gid].partial_concepts}
+        partial = declared_partial(attrs[gid], environment)
         # a rename projects its member: `a.k as k` covers `a.k`
         for concept in through_renames(concepts):
             covered.add(concept.address)
-            if concept.address in node_partial:
+            if concept.address in partial:
                 covered_partial.add(concept.address)
-
-    def _outputs(gid: str) -> set[str]:
-        return {o.address for o in built[gid].output_concepts}
 
     coalescing = environment.domain_graph.coalescing_relation_members()
     for relation in environment.scoped_join_relations():
@@ -3674,7 +3619,7 @@ def _add_partial_completion_contributors(
             provider = next(
                 (
                     gid
-                    for gid in sorted(built)
+                    for gid in sorted(groups)
                     if gid not in chosen and addr in expose(gid)
                 ),
                 None,
@@ -3686,9 +3631,12 @@ def _add_partial_completion_contributors(
 
 def _fold_descendant_contributors(
     group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     built: dict[str, StrategyNode],
     per_group: dict[str, list[BuildConcept]],
+    rendered: dict[str, frozenset[str]],
+    environment: BuildEnvironment,
 ) -> None:
     """Reroute FINAL to read a contributor's columns *through* a basic
     descendant instead of merging the two.
@@ -3705,8 +3653,9 @@ def _fold_descendant_contributors(
     Passthrough = add S's concepts to B's input AND output: `resolve_concept_
     map` sources an output from a parent only when it's also an input
     (`inherited`); an output that isn't an input is re-derived in B's own CTE
-    (which would recompute S's aggregates from their source columns). The
-    `available` guard ensures the columns actually come off B's own parents."""
+    (which would recompute S's aggregates from their source columns). Whether
+    B's parents carry S's columns is read off what they render
+    (`renders.parents_render`)."""
     for b_gid in list(per_group.keys()):
         if b_gid not in per_group or attrs[b_gid].derivation not in (
             Derivation.BASIC,
@@ -3715,13 +3664,16 @@ def _fold_descendant_contributors(
             continue
         b_node = built[b_gid]
         b_ancestors = nx.ancestors(group_graph, b_gid)
+        reads = parents_render(
+            group_graph, group_edges, attrs, b_gid, rendered, environment
+        )
         available = parent_output_addresses(b_node)
         dirty = False
         for s_gid in b_ancestors:
             if s_gid not in per_group or s_gid == b_gid:
                 continue
             s_concepts = per_group[s_gid]
-            if not all(c.address in available for c in s_concepts):
+            if not all(c.address in reads for c in s_concepts):
                 continue
             dirty |= widen_projection(
                 b_node,
@@ -3752,14 +3704,23 @@ def _hosts_rename(
 
 def _promote_final_aliases_to_grouping_contributors(
     group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     built: dict[str, StrategyNode],
     per_group: dict[str, list[BuildConcept]],
     mandatory_list: list[BuildConcept],
+    rendered: dict[str, frozenset[str]],
     environment: BuildEnvironment,
 ) -> None:
+    """Host a FINAL rename on a grouping contributor that renders what it
+    renames, decided off what each contributor renders (`renders.renders`)
+    and the concepts the cover gave it."""
+
     def has_grouping_output(gid: str) -> bool:
-        return node_nulls_grouping_keys(built[gid])
+        return _renders_grouping_rows(rendered[gid], environment)
+
+    def available(gid: str) -> set[str]:
+        return set(rendered[gid]) | {c.address for c in per_group[gid]}
 
     for concept in mandatory_list:
         current_gid = next(
@@ -3778,8 +3739,7 @@ def _promote_final_aliases_to_grouping_contributors(
             and has_grouping_output(gid)
         ]
         for gid in grouping_candidates:
-            available = {output.address for output in built[gid].output_concepts}
-            if not _hosts_rename(concept, available, environment):
+            if not _hosts_rename(concept, available(gid), environment):
                 continue
             base = built[gid]
             projected = SelectNode(
@@ -3813,8 +3773,10 @@ def _promote_final_aliases_to_grouping_contributors(
         members = per_group.get(src_gid)
         if not members:
             continue
-        src_node = built[src_gid]
-        if src_node.existence_concepts or src_node.force_group:
+        if any(
+            edge_kind(group_edges, pgid, src_gid) == EdgeKind.EXISTENCE
+            for pgid in group_graph.predecessors(src_gid)
+        ):
             continue
         if not all(
             isinstance(c.lineage, BuildFunction)
@@ -3843,8 +3805,7 @@ def _promote_final_aliases_to_grouping_contributors(
                 and gid not in nx.ancestors(group_graph, src_gid)
             ):
                 continue
-            available = {output.address for output in built[gid].output_concepts}
-            if not all(_hosts_rename(c, available, environment) for c in members):
+            if not all(_hosts_rename(c, available(gid), environment) for c in members):
                 continue
             if not feeder_conditions_implied(group_graph, attrs, src_gid, gid):
                 continue
@@ -3869,6 +3830,18 @@ def _promote_final_aliases_to_grouping_contributors(
                     del per_group[old_gid]
             per_group[gid].extend(members)
             break
+
+
+def _renders_grouping_rows(
+    rendered: frozenset[str], environment: BuildEnvironment
+) -> bool:
+    """Whether a group renders ROLLUP/CUBE/GROUPING SETS rows: the stage-2
+    twin of `node_nulls_grouping_keys`."""
+    return any(
+        (c := environment.concepts.get(address)) is not None
+        and nonstandard_grouping_lineage(c) is not None
+        for address in rendered
+    )
 
 
 def _projection_root_concepts(
@@ -5266,18 +5239,22 @@ def _assemble_final_node(
                 environment,
             )
         )
-    _add_relation_axis_contributors(
-        group_graph,
-        attrs,
-        list(built),
-        per_group,
-        merge_axes(list(built), attrs, mandatory_list, final_contract.authored_axes),
-        environment,
+    rendered = renders(group_graph, group_edges, attrs, environment)
+    _add_partial_completion_contributors(
+        list(built), per_group, attrs, rendered, environment
     )
-    _add_partial_completion_contributors(built, per_group, environment)
-    _fold_descendant_contributors(group_graph, attrs, built, per_group)
+    _fold_descendant_contributors(
+        group_graph, group_edges, attrs, built, per_group, rendered, environment
+    )
     _promote_final_aliases_to_grouping_contributors(
-        group_graph, attrs, built, per_group, mandatory_list, environment
+        group_graph,
+        group_edges,
+        attrs,
+        built,
+        per_group,
+        mandatory_list,
+        rendered,
+        environment,
     )
     # last: the promotion above drops a contributor left with no concepts,
     # which is all a row-only domain ever has
