@@ -24,3 +24,48 @@ type biogeographic_realm string; # Biogeographic realm - one of 8 global regions
 
 ## special formats
 type geojson string; # GeoJSON format for geographic data
+
+## spatial ordering
+# One step of a Hilbert curve walk, most significant bit first. `acc` packs the
+# index so far (above bit 32) with the point's x and y (16 bits each), which a
+# quadrant with a 0 y bit rotates: x and y swap, and flip when the x bit is 1.
+def _hilbert_x(acc) -> bit_and(bit_shift_right(acc, 16), 65535);
+def _hilbert_y(acc) -> bit_and(acc, 65535);
+def _hilbert_bit(v, level) -> bit_and(bit_shift_right(v, level), 1);
+def _hilbert_step(acc, level) -> bit_or(
+    bit_shift_left(
+        bit_shift_right(acc, 32) * 4
+        + bit_xor(3 * @_hilbert_bit(@_hilbert_x(acc), level), @_hilbert_bit(@_hilbert_y(acc), level)),
+        32
+    ),
+    bit_or(
+        bit_shift_left(
+            case
+                when @_hilbert_bit(@_hilbert_y(acc), level) = 0
+                    then bit_xor(@_hilbert_y(acc), 65535 * @_hilbert_bit(@_hilbert_x(acc), level))
+                else @_hilbert_x(acc)
+            end,
+            16
+        ),
+        case
+            when @_hilbert_bit(@_hilbert_y(acc), level) = 0
+                then bit_xor(@_hilbert_x(acc), 65535 * @_hilbert_bit(@_hilbert_x(acc), level))
+            else @_hilbert_y(acc)
+        end
+    )
+);
+# The high 8 levels and then the low 8, so the packed state stays under 2^48.
+def _hilbert_walk(start) -> array_reduce(generate_array(15, 8, -1), @_hilbert_step, start);
+def _hilbert_finish(high) -> bit_or(
+    bit_shift_left(bit_shift_right(high, 32), 16),
+    bit_shift_right(array_reduce(generate_array(7, 0, -1), @_hilbert_step, bit_and(high, 4294967295)), 32)
+);
+def _hilbert_axis(degrees, span) -> least(greatest(floor((degrees + span / 2) / span * 65536), 0), 65535)::bigint;
+
+# Position of a point on a Hilbert curve over the whole globe, 16 bits per axis,
+# so nearby points get nearby keys. Order a file by it to make row groups
+# spatially compact; NULL when either coordinate is.
+def hilbert_index(lat, lon) -> case
+    when lat is null or lon is null then null::bigint
+    else @_hilbert_finish(@_hilbert_walk(bit_or(bit_shift_left(@_hilbert_axis(lon, 360), 16), @_hilbert_axis(lat, 180))))
+end;

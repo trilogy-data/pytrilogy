@@ -374,6 +374,8 @@ def get_map_value_type(arg):
 
 # Numeric argument types accepted by math / aggregate functions. SQL backends
 # coerce freely across this family, so a function that accepts one accepts all.
+INTEGER_INPUT_TYPES: set[VALID_INPUT_ITEM] = {DataType.INTEGER, DataType.BIGINT}
+
 NUMERIC_INPUT_TYPES: set[VALID_INPUT_ITEM] = {
     DataType.INTEGER,
     DataType.BIGINT,
@@ -553,6 +555,19 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_purpose=Purpose.PROPERTY,
         output_type_function=get_transform_output_type,
         arg_count=3,
+    ),
+    # (array, accumulator binding, element binding, step body, initial value)
+    FunctionType.ARRAY_REDUCE: FunctionConfig(
+        valid_inputs=[
+            {DataType.ARRAY},
+            {*DataType},
+            {*DataType},
+            {*DataType},
+            {*DataType},
+        ],
+        output_purpose=Purpose.PROPERTY,
+        output_type_function=lambda args: get_output_type_at_index(args, 4),
+        arg_count=5,
     ),
     FunctionType.ARRAY_TO_STRING: FunctionConfig(
         # any element type is accepted; dialects that require a string array
@@ -1031,6 +1046,36 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
         output_purpose=Purpose.PROPERTY,
         arg_count=InfiniteFunctionArgs,
     ),
+    FunctionType.BIT_AND: FunctionConfig(
+        valid_inputs=[INTEGER_INPUT_TYPES, INTEGER_INPUT_TYPES],
+        output_purpose=Purpose.PROPERTY,
+        output_type_function=lambda args: get_output_type_at_index(args, 0),
+        arg_count=2,
+    ),
+    FunctionType.BIT_OR: FunctionConfig(
+        valid_inputs=[INTEGER_INPUT_TYPES, INTEGER_INPUT_TYPES],
+        output_purpose=Purpose.PROPERTY,
+        output_type_function=lambda args: get_output_type_at_index(args, 0),
+        arg_count=2,
+    ),
+    FunctionType.BIT_XOR: FunctionConfig(
+        valid_inputs=[INTEGER_INPUT_TYPES, INTEGER_INPUT_TYPES],
+        output_purpose=Purpose.PROPERTY,
+        output_type_function=lambda args: get_output_type_at_index(args, 0),
+        arg_count=2,
+    ),
+    FunctionType.BIT_SHIFT_LEFT: FunctionConfig(
+        valid_inputs=[INTEGER_INPUT_TYPES, INTEGER_INPUT_TYPES],
+        output_purpose=Purpose.PROPERTY,
+        output_type_function=lambda args: get_output_type_at_index(args, 0),
+        arg_count=2,
+    ),
+    FunctionType.BIT_SHIFT_RIGHT: FunctionConfig(
+        valid_inputs=[INTEGER_INPUT_TYPES, INTEGER_INPUT_TYPES],
+        output_purpose=Purpose.PROPERTY,
+        output_type_function=lambda args: get_output_type_at_index(args, 0),
+        arg_count=2,
+    ),
     FunctionType.MOD: FunctionConfig(
         valid_inputs=[
             NUMERIC_INPUT_TYPES,
@@ -1389,6 +1434,7 @@ FUNCTION_FAMILIES: list[tuple[str, frozenset[FunctionType]]] = [
                 FunctionType.ARRAY_TO_STRING,
                 FunctionType.ARRAY_TRANSFORM,
                 FunctionType.ARRAY_FILTER,
+                FunctionType.ARRAY_REDUCE,
                 FunctionType.GENERATE_ARRAY,
                 FunctionType.MAP_KEYS,
                 FunctionType.MAP_VALUES,
@@ -1407,6 +1453,11 @@ FUNCTION_FAMILIES: list[tuple[str, frozenset[FunctionType]]] = [
                 FunctionType.CEIL,
                 FunctionType.ROUND,
                 FunctionType.MOD,
+                FunctionType.BIT_AND,
+                FunctionType.BIT_OR,
+                FunctionType.BIT_XOR,
+                FunctionType.BIT_SHIFT_LEFT,
+                FunctionType.BIT_SHIFT_RIGHT,
                 FunctionType.LOG,
                 FunctionType.POWER,
                 FunctionType.HASH,

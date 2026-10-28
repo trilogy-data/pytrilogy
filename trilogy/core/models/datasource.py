@@ -30,6 +30,7 @@ from trilogy.core.models.author import (
     HavingClause,
     LooseConceptList,
     Namespaced,
+    OrderBy,
     Parenthetical,
     SubselectComparison,
     WhereClause,
@@ -288,6 +289,36 @@ class DatasourceMetadata:
     line_no: int | None = None
 
 
+StorageValue = bool | int | float | str
+
+#: The `storage (...)` options each written format accepts, with their types.
+STORAGE_OPTIONS: dict[AddressType, dict[str, type]] = {
+    AddressType.PARQUET: {"row_group_size": int},
+}
+
+
+def validate_storage(address: "Address", storage: dict[str, StorageValue]) -> None:
+    """Refuse a `storage` option the target's format does not accept, rather
+    than writing the file without it."""
+    if not storage:
+        return
+    accepted = STORAGE_OPTIONS.get(address.type, {})
+    for key, value in storage.items():
+        if key not in accepted:
+            allowed = ", ".join(accepted) or "none"
+            raise ValueError(
+                f"`storage ({key} = ...)` is not an option for a"
+                f" {address.type.value} target (accepted: {allowed})."
+            )
+        expected = accepted[key]
+        if type(value) is not expected:
+            raise ValueError(
+                f"`storage ({key} = {value!r})` must be {expected.__name__}."
+            )
+        if isinstance(value, int) and value <= 0:
+            raise ValueError(f"`storage ({key} = {value})` must be positive.")
+
+
 AssertionCondition = (
     SubselectComparison
     | Comparison
@@ -338,6 +369,8 @@ class DatasourceTemplate(BaseModel):
     freshness_probe: str | None = None
     refresh_script: str | None = None
     allowed_lag: FreshnessLag | None = None
+    order_by: OrderBy | None = None
+    storage: dict[str, StorageValue] = Field(default_factory=dict)
     assertions: list[DatasourceAssertion] = Field(default_factory=list)
     is_partial: bool = False
     column_level_partial_addresses: set[str] = Field(default_factory=set)
@@ -377,6 +410,8 @@ class DatasourceTemplate(BaseModel):
             freshness_probe=self.freshness_probe,
             refresh_script=self.refresh_script,
             allowed_lag=self.allowed_lag,
+            order_by=self.order_by.with_namespace(namespace) if self.order_by else None,
+            storage=dict(self.storage),
             assertions=[a.with_namespace(namespace) for a in self.assertions],
             is_partial=self.is_partial,
             column_level_partial_addresses={
@@ -457,6 +492,8 @@ def compose_datasource(
         freshness_probe=_single_setting("freshness_probe", child, bases),
         refresh_script=_single_setting("refresh_script", child, bases),
         allowed_lag=_single_setting("allowed_lag", child, bases),
+        order_by=_single_setting("order_by", child, bases),
+        storage=_single_setting("storage", child, bases),
         assertions=assertions,
         is_partial=child.is_partial or any(b.is_partial for b in bases),
         column_level_partial_addresses=set().union(
@@ -510,6 +547,10 @@ class Datasource(HasUUID, Namespaced, BaseModel):
     # Lag this datasource is allowed to run behind its upstream before it
     # counts as stale. Non-roots only — a root's own freshness is never judged.
     allowed_lag: FreshnessLag | None = None
+    # The order rows are written in, and options for the written format.
+    # Write-side only: neither changes what the datasource answers.
+    order_by: OrderBy | None = None
+    storage: dict[str, StorageValue] = Field(default_factory=dict)
     assertions: list[DatasourceAssertion] = Field(default_factory=list)
     # Datasources this one was composed from (`extends a, b`), and the parts
     # it declared itself; the fields above hold the composed result. Kept so
@@ -679,6 +720,8 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             freshness_probe=self.freshness_probe,
             refresh_script=self.refresh_script,
             allowed_lag=self.allowed_lag,
+            order_by=self.order_by.with_namespace(namespace) if self.order_by else None,
+            storage=dict(self.storage),
             assertions=[a.with_namespace(namespace) for a in self.assertions],
             extends=[address_with_namespace(e, namespace) for e in self.extends],
             authored=self.authored.with_namespace(namespace) if self.authored else None,
@@ -707,6 +750,8 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             freshness_probe=self.freshness_probe,
             refresh_script=self.refresh_script,
             allowed_lag=self.allowed_lag,
+            order_by=self.order_by,
+            storage=dict(self.storage),
             assertions=list(self.assertions),
             is_partial=self.is_partial,
             column_level_partial_addresses=set(self.column_level_partial_addresses),

@@ -94,6 +94,8 @@ class ProcessedCopyStatement(ProcessedQuery, CopyQueryMixin):
     # Holds the target's address for its type; the location is re-pointed at
     # the resolved copy target before it is read.
     append_to: Address | None = None
+    # The datasource being built, for its `order by` and `storage` options.
+    datasource: Datasource | None = None
 
 
 @dataclass

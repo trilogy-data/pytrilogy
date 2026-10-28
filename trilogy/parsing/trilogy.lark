@@ -84,6 +84,10 @@
 
     datasource_partition_clause: "partition"i "by"i column_list
 
+    // Write options for the target's storage format, e.g. a parquet row-group size.
+    datasource_storage_clause: "storage"i "(" datasource_storage_arg ("," datasource_storage_arg)* ","? ")"
+    datasource_storage_arg: IDENTIFIER "=" (bool_lit | float_lit | int_lit | string_lit)
+
     // A data-quality check on a build of this datasource, evaluated against
     // the staged write before it replaces the asset. `prior(expr)` inside it
     // is the same expression over the asset being replaced.
@@ -101,7 +105,7 @@
     // would have to reduce on the keyword, and LALR resolves that in favour
     // of any other statement that shifts the same keyword (see
     // select_statement).
-    datasource: DATASOURCE_ROOT? DATASOURCE_TEMPLATE? (DATASOURCE_PARTIAL | SHORTHAND_MODIFIER)? "datasource" IDENTIFIER _ds_extends_opt "(" _ds_columns_opt ")" _ds_grain_opt _ds_whole_grain_opt _ds_location_opt _ds_where_opt _ds_trigger_opt _ds_lag_opt _ds_refresh_opt _ds_partition_opt datasource_assert_clause* _ds_status_opt
+    datasource: DATASOURCE_ROOT? DATASOURCE_TEMPLATE? (DATASOURCE_PARTIAL | SHORTHAND_MODIFIER)? "datasource" IDENTIFIER _ds_extends_opt "(" _ds_columns_opt ")" _ds_grain_opt _ds_whole_grain_opt _ds_location_opt _ds_where_opt _ds_trigger_opt _ds_lag_opt _ds_refresh_opt _ds_partition_opt _ds_order_opt _ds_storage_opt datasource_assert_clause* _ds_status_opt
     _ds_extends_opt: datasource_extends_clause |
     _ds_columns_opt: column_assignment_list |
     _ds_grain_opt: grain_clause |
@@ -112,6 +116,8 @@
     _ds_lag_opt: datasource_lag_clause |
     _ds_refresh_opt: datasource_refresh_clause |
     _ds_partition_opt: datasource_partition_clause |
+    _ds_order_opt: order_by |
+    _ds_storage_opt: datasource_storage_clause |
     _ds_status_opt: datasource_status_clause |
    
     whole_grain_clause: "complete" where
@@ -536,7 +542,17 @@
     _RANDOM.1: "random("i
     frandom: _RANDOM expr ")"
         
-    _math_functions: fmul | fdiv | fadd | fsub | fround | ffloor | fceil | fmod | flog | fabs | fsqrt | frandom
+    _math_functions: fmul | fdiv | fadd | fsub | fround | ffloor | fceil | fmod | flog | fabs | fsqrt | frandom | fbit_and | fbit_or | fbit_xor | fbit_shift_left | fbit_shift_right
+    _BIT_AND.1: "bit_and("i
+    fbit_and: _BIT_AND expr "," expr ")"
+    _BIT_OR.1: "bit_or("i
+    fbit_or: _BIT_OR expr "," expr ")"
+    _BIT_XOR.1: "bit_xor("i
+    fbit_xor: _BIT_XOR expr "," expr ")"
+    _BIT_SHIFT_LEFT.1: "bit_shift_left("i
+    fbit_shift_left: _BIT_SHIFT_LEFT expr "," expr ")"
+    _BIT_SHIFT_RIGHT.1: "bit_shift_right("i
+    fbit_shift_right: _BIT_SHIFT_RIGHT expr "," expr ")"
     
     //generic
     // Allow a bare IDENTIFIER as a cast target (e.g. `x::percent`) so a
@@ -631,10 +647,12 @@
     farray_transform: _ARRAY_TRANSFORM expr ","  transform_lambda   ")"
     _ARRAY_FILTER.1: "array_filter("i
     farray_filter: _ARRAY_FILTER expr "," transform_lambda ")"
+    _ARRAY_REDUCE.1: "array_reduce("i
+    farray_reduce: _ARRAY_REDUCE expr "," transform_lambda "," expr ")"
     _GENERATE_ARRAY.1: "generate_array("i
     fgenerate_array: _GENERATE_ARRAY expr "," expr "," expr ")"
 
-    _array_functions: farray_sum | farray_distinct | farray_sort | farray_transform | farray_to_string | farray_filter | fgenerate_array
+    _array_functions: farray_sum | farray_distinct | farray_sort | farray_transform | farray_to_string | farray_filter | farray_reduce | fgenerate_array
 
     //map_functions
     _MAP_KEYS.1: "map_keys("i

@@ -11,6 +11,8 @@ from trilogy.dialect.base import BaseDialect, TableColumn
 from trilogy.utility import string_to_hash
 
 FUNCTION_MAP = {
+    FunctionType.BIT_SHIFT_LEFT: lambda x, types: f"LEFT_SHIFT({x[0]}, {x[1]})",
+    FunctionType.BIT_SHIFT_RIGHT: lambda x, types: f"RIGHT_SHIFT({x[0]}, {x[1]})",
     # CONCAT skips NULLs natively; `+` propagates (CONCAT_NULL_YIELDS_NULL ON)
     FunctionType.CONCAT: lambda args, types: f"CONCAT({', '.join(args)})",
     FunctionType.CONCAT_STRICT: lambda args, types: f"({' + '.join(args)})",

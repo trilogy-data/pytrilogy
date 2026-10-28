@@ -841,6 +841,8 @@ def datasource_structural_signature(datasource: Datasource) -> tuple:
         datasource.freshness_probe,
         datasource.refresh_script,
         str(datasource.allowed_lag) if datasource.allowed_lag else None,
+        repr(datasource.order_by) if datasource.order_by else None,
+        tuple(sorted(datasource.storage.items())),
         tuple(str(a) for a in datasource.assertions),
         datasource.is_root,
         datasource.is_partial,

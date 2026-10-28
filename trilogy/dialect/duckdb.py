@@ -180,6 +180,10 @@ FUNCTION_MAP = {
     FunctionType.ARRAY_FILTER: lambda args, types: (
         f"list_filter({args[0]}, lambda {args[1]}: {args[2]})"
     ),
+    FunctionType.ARRAY_REDUCE: lambda args, types: (
+        f"list_reduce({args[0]}, lambda {args[1]}, {args[2]}: {args[3]}, {args[4]})"
+    ),
+    FunctionType.BIT_XOR: lambda x, types: f"xor({x[0]}, {x[1]})",
     # datetime is aliased,
     FunctionType.CURRENT_DATETIME: lambda x, types: "cast(get_current_timestamp() as datetime)",
     FunctionType.DATETIME: lambda x, types: f"cast({x[0]} as datetime)",

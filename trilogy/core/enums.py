@@ -299,6 +299,7 @@ class FunctionType(Enum):
     ARRAY_TRANSFORM = "array_transform"
     ARRAY_TO_STRING = "array_to_string"
     ARRAY_FILTER = "array_filter"
+    ARRAY_REDUCE = "array_reduce"
     GENERATE_ARRAY = "generate_array"
 
     # MAP
@@ -315,6 +316,11 @@ class FunctionType(Enum):
     ADD = "add"
     SUBTRACT = "subtract"
     MOD = "mod"
+    BIT_AND = "bit_and"
+    BIT_OR = "bit_or"
+    BIT_XOR = "bit_xor"
+    BIT_SHIFT_LEFT = "bit_shift_left"
+    BIT_SHIFT_RIGHT = "bit_shift_right"
     ROUND = "round"
     ABS = "abs"
     # `prior(expr)` in a datasource `assert`: the same expression over the
@@ -480,6 +486,11 @@ NULL_STRICT_FUNCTIONS: frozenset[FunctionType] = frozenset(
         FunctionType.ARRAY_TRANSFORM,
         FunctionType.ARRAY_TO_STRING,
         FunctionType.ARRAY_FILTER,
+        FunctionType.BIT_AND,
+        FunctionType.BIT_OR,
+        FunctionType.BIT_XOR,
+        FunctionType.BIT_SHIFT_LEFT,
+        FunctionType.BIT_SHIFT_RIGHT,
         FunctionType.GENERATE_ARRAY,
         FunctionType.MAP_KEYS,
         FunctionType.MAP_VALUES,

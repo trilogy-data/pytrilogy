@@ -31,6 +31,7 @@ from trilogy.core.models.datasource import (
     Address,
     Datasource,
     DatasourceTemplate,
+    StorageValue,
     UpdateKeys,
 )
 from trilogy.core.models.environment import Environment
@@ -220,14 +221,29 @@ def _is_catalog_write_conflict(error: BaseException) -> bool:
     return _CATALOG_WRITE_CONFLICT in str(error)
 
 
-def _copy_format_options(target_type: IOType) -> str:
+def _copy_format_options(
+    target_type: IOType, storage: Mapping[str, StorageValue] | None = None
+) -> str:
     if target_type == IOType.PARQUET:
-        return "FORMAT PARQUET"
+        # Option names in STORAGE_OPTIONS are DuckDB's own COPY options.
+        return ", ".join(
+            ["FORMAT PARQUET"]
+            + [
+                f"{k.upper()} {_copy_option_value(v)}"
+                for k, v in (storage or {}).items()
+            ]
+        )
     if target_type == IOType.CSV:
         return "FORMAT CSV, HEADER"
     if target_type == IOType.JSON:
         return "FORMAT JSON, ARRAY true"
     raise NotImplementedError(f"Unsupported IO Type {target_type}")
+
+
+def _copy_option_value(value: StorageValue) -> str:
+    if isinstance(value, str):
+        return "'" + value.replace("'", "''") + "'"
+    return str(value).lower() if isinstance(value, bool) else str(value)
 
 
 def _local_stage_reader(target_type: IOType, path: str) -> str:
@@ -919,6 +935,7 @@ class Executor:
                 target_type=io_type,
                 column_aliases=column_aliases,
                 append_to=addr if appending else None,
+                datasource=query.datasource,
             )
             prior = self._collect_prior_values(query.datasource)
             verify: Callable[[str], None] | None = None
@@ -1188,6 +1205,11 @@ class Executor:
                     additional_locations=[],
                 ),
             )
+        datasource = query.datasource
+        if datasource is not None and datasource.order_by is not None:
+            from trilogy.execution.write_order import sorted_rows_sql
+
+            sql = sorted_rows_sql(self, datasource, sql)
         if self.dialect == Dialects.DUCK_DB:
             # Check for GCS write credentials if target is a GCS path
             if target.startswith(("gcs://", "gs://")):
@@ -1195,7 +1217,9 @@ class Executor:
 
                 check_gcs_write_credentials()
 
-            format_options = _copy_format_options(query.target_type)
+            format_options = _copy_format_options(
+                query.target_type, datasource.storage if datasource else None
+            )
             # The staged path is already the safety copy, so DuckDB's own
             # tmp_-and-rename step (on by default over an existing file) is
             # redundant and would leave its tmp_ file behind on failure.
@@ -1257,12 +1281,36 @@ class Executor:
                 local_concepts=query.local_concepts,
             )
             verify(str(local))
-            reader = _local_stage_reader(query.target_type, local.as_posix())
-            self.execute_raw_sql(
-                f"COPY (SELECT * FROM {reader}) TO '{target}' ({format_options})"
-            )
+            reader = self._audited_rows(query, local.as_posix())
+            self.execute_raw_sql(f"COPY ({reader}) TO '{target}' ({format_options})")
         finally:
             local.unlink(missing_ok=True)
+
+    def _audited_rows(self, query: ProcessedCopyStatement, path: str) -> str:
+        """The audited local file's rows for the write-through, in the order
+        they were written when the target declares one."""
+        reader = _local_stage_reader(query.target_type, path)
+        ordered = query.datasource is not None and query.datasource.order_by
+        if not ordered:
+            return f"SELECT * FROM {reader}"
+        if query.target_type == IOType.PARQUET:
+            return (
+                f"SELECT * EXCLUDE (file_row_number) FROM"
+                f" read_parquet('{path}', file_row_number = true)"
+                " ORDER BY file_row_number"
+            )
+        # A text format has no row number to sort by; a single file reads back
+        # in file order unless the session lets DuckDB reorder.
+        result = self.execute_raw_sql(
+            "SELECT current_setting('preserve_insertion_order')"
+        )
+        row = result.fetchone() if result is not None else None
+        if row is None or not row[0]:
+            raise ValueError(
+                f"Cannot keep the `order by` of {query.target} through a local"
+                " stage with `preserve_insertion_order` off."
+            )
+        return f"SELECT * FROM {reader}"
 
     @execute_query.register
     def _(self, query: ProcessedCallStatement) -> ResultProtocol | None:
@@ -1914,6 +1962,16 @@ class Executor:
             for processed in self._generate([statement]):
                 result = self.execute_query(processed)
         return result
+
+    def plan_ephemeral(self, command: str) -> ProcessedQuery:
+        """The one select in ``command``, planned without its parse artifacts
+        reaching the durable environment (see ``execute_ephemeral``)."""
+        _, parsed = parse_text(command, self.environment, ephemeral=True)
+        statements = [s for s in parsed if isinstance(s, GENERATABLE_STATEMENT_TYPES)]
+        processed = self._generate(statements)
+        if len(processed) != 1 or not isinstance(processed[0], ProcessedQuery):
+            raise ValueError(f"Expected one select to plan, got {command!r}")
+        return processed[0]
 
     def execute_file(
         self, file: str | Path, non_interactive: bool = False

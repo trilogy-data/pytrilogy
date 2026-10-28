@@ -145,6 +145,11 @@ class SyntaxNodeKind(str, Enum):
     FMUL = "fmul"
     FDIV = "fdiv"
     FMOD = "fmod"
+    FBIT_AND = "fbit_and"
+    FBIT_OR = "fbit_or"
+    FBIT_XOR = "fbit_xor"
+    FBIT_SHIFT_LEFT = "fbit_shift_left"
+    FBIT_SHIFT_RIGHT = "fbit_shift_right"
     FLOG = "flog"
     FROUND = "fround"
     FFLOOR = "ffloor"
@@ -181,6 +186,7 @@ class SyntaxNodeKind(str, Enum):
     FARRAY_SORT = "farray_sort"
     FARRAY_TRANSFORM = "farray_transform"
     FARRAY_FILTER = "farray_filter"
+    FARRAY_REDUCE = "farray_reduce"
     FGENERATE_ARRAY = "fgenerate_array"
     FMAP_KEYS = "fmap_keys"
     FMAP_VALUES = "fmap_values"
@@ -295,6 +301,8 @@ class SyntaxNodeKind(str, Enum):
     WHOLE_GRAIN_CLAUSE = "whole_grain_clause"
     DATASOURCE_STATUS_CLAUSE = "datasource_status_clause"
     DATASOURCE_PARTITION_CLAUSE = "datasource_partition_clause"
+    DATASOURCE_STORAGE_CLAUSE = "datasource_storage_clause"
+    DATASOURCE_STORAGE_ARG = "datasource_storage_arg"
     DATASOURCE_UPDATE_TRIGGER_CLAUSE = "datasource_update_trigger_clause"
     DATASOURCE_REFRESH_CLAUSE = "datasource_refresh_clause"
     DATASOURCE_LAG_CLAUSE = "datasource_lag_clause"
@@ -503,6 +511,11 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "fmul": SyntaxNodeKind.FMUL,
     "fdiv": SyntaxNodeKind.FDIV,
     "fmod": SyntaxNodeKind.FMOD,
+    "fbit_and": SyntaxNodeKind.FBIT_AND,
+    "fbit_or": SyntaxNodeKind.FBIT_OR,
+    "fbit_xor": SyntaxNodeKind.FBIT_XOR,
+    "fbit_shift_left": SyntaxNodeKind.FBIT_SHIFT_LEFT,
+    "fbit_shift_right": SyntaxNodeKind.FBIT_SHIFT_RIGHT,
     "flog": SyntaxNodeKind.FLOG,
     "fround": SyntaxNodeKind.FROUND,
     "ffloor": SyntaxNodeKind.FFLOOR,
@@ -539,6 +552,7 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "farray_sort": SyntaxNodeKind.FARRAY_SORT,
     "farray_transform": SyntaxNodeKind.FARRAY_TRANSFORM,
     "farray_filter": SyntaxNodeKind.FARRAY_FILTER,
+    "farray_reduce": SyntaxNodeKind.FARRAY_REDUCE,
     "fgenerate_array": SyntaxNodeKind.FGENERATE_ARRAY,
     "fmap_keys": SyntaxNodeKind.FMAP_KEYS,
     "fmap_values": SyntaxNodeKind.FMAP_VALUES,
@@ -652,6 +666,8 @@ LARK_NODE_KIND: dict[str, SyntaxNodeKind] = {
     "whole_grain_clause": SyntaxNodeKind.WHOLE_GRAIN_CLAUSE,
     "datasource_status_clause": SyntaxNodeKind.DATASOURCE_STATUS_CLAUSE,
     "datasource_partition_clause": SyntaxNodeKind.DATASOURCE_PARTITION_CLAUSE,
+    "datasource_storage_clause": SyntaxNodeKind.DATASOURCE_STORAGE_CLAUSE,
+    "datasource_storage_arg": SyntaxNodeKind.DATASOURCE_STORAGE_ARG,
     "datasource_update_trigger_clause": SyntaxNodeKind.DATASOURCE_UPDATE_TRIGGER_CLAUSE,
     "datasource_refresh_clause": SyntaxNodeKind.DATASOURCE_REFRESH_CLAUSE,
     "datasource_lag_clause": SyntaxNodeKind.DATASOURCE_LAG_CLAUSE,

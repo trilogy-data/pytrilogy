@@ -92,6 +92,7 @@ def date_truncate(expr: str, part: str) -> str:
 
 
 FUNCTION_MAP = {
+    FunctionType.BIT_XOR: lambda x, types: f"(({x[0]} | {x[1]}) - ({x[0]} & {x[1]}))",
     # concat() skips NULLs (coalesce-wrapped for pre-3.44 sqlite); || propagates
     FunctionType.CONCAT: lambda args, types: (
         "(" + " || ".join([f"coalesce({a}, '')" for a in args]) + ")"
