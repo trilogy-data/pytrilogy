@@ -83,9 +83,9 @@ from trilogy.core.processing.v4_helper.strategy_builder import (
     _elide_passthrough_tree,
     _filter_intrinsic_pushdown_safe,
     _fold_passthrough_parents,
-    _join_elected_bridges,
     _group_to_grain_if_required,
     _hide_final_only_grain_keys,
+    _join_elected_bridges,
     _parent_nodes_for,
     _pre_merge_parents,
     _required_final_contract,
@@ -1393,9 +1393,7 @@ def test_bridge_widens_a_coarse_projection_to_the_bridge_key():
     env = BuildEnvironment()
     tree, rows, key_slice, projection = _bridge_fixture(env)
 
-    merged = _join_elected_bridges(
-        [key_slice, projection], [(rows, frozenset())], env
-    )
+    merged = _join_elected_bridges([key_slice, projection], [(rows, frozenset())], env)
 
     assert tree.address in {c.address for c in projection.output_concepts}
     assert merged == [key_slice, projection], "paired on the key, no bridge needed"
@@ -1416,9 +1414,7 @@ def test_bridge_refuses_a_pair_that_keys_neither_side():
     projection.parents = [hidden]
     projection.rebuild_cache()
 
-    merged = _join_elected_bridges(
-        [key_slice, projection], [(rows, frozenset())], env
-    )
+    merged = _join_elected_bridges([key_slice, projection], [(rows, frozenset())], env)
 
     assert merged == [key_slice, projection]
 
@@ -1440,9 +1436,7 @@ def test_bridge_dedupes_a_projection_the_shared_column_determines():
     projection.parents = [hidden]
     projection.rebuild_cache()
 
-    merged = _join_elected_bridges(
-        [key_slice, projection], [(rows, frozenset())], env
-    )
+    merged = _join_elected_bridges([key_slice, projection], [(rows, frozenset())], env)
 
     assert merged[0] is key_slice and merged[2] is rows
     assert isinstance(merged[1], GroupNode) and merged[1].parents == [projection]
