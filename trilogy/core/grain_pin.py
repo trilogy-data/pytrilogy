@@ -24,6 +24,7 @@ from trilogy.core.constants import GRAIN_NULL_SENTINEL
 from trilogy.core.domain_graph import DomainGraph
 from trilogy.core.enums import (
     BooleanOperator,
+    DatasourceState,
     Derivation,
     FunctionType,
     Granularity,
@@ -363,15 +364,25 @@ def _and_atoms(condition: Any) -> list[Any]:
     return [condition]
 
 
-def statement_graph(graph: DomainGraph, where: WhereClause | None) -> DomainGraph:
+def statement_graph(
+    graph: DomainGraph, where: WhereClause | None, environment: Environment
+) -> DomainGraph:
     """`graph` as the statement filtered by `where` sees it: a datasource
     whose `complete where` the WHERE implies holds every row the statement
-    can (see `DomainGraph.with_conditions_met`)."""
+    can (see `DomainGraph.with_conditions_met`). Only a datasource the
+    statement can read: a persist's own target is unpublished while it is
+    built, and its WHERE implies the target's `complete where` by design."""
     if where is None:
         return graph
     atoms = _and_atoms(where.conditional)
+    readable = {
+        ds.identifier
+        for ds in environment.datasources.values()
+        if ds.status == DatasourceState.PUBLISHED
+    }
     return graph.with_conditions_met(
-        lambda condition: all(a in atoms for a in _and_atoms(condition))
+        lambda binding: binding.datasource in readable
+        and all(a in atoms for a in _and_atoms(binding.condition))
     )
 
 

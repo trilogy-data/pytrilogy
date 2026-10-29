@@ -3367,7 +3367,10 @@ class Factory:
     def _statement_graph(self) -> DomainGraph:
         full = assemble_full_graph(self.environment, self.domain_graph)
         if self._pin_graph is None or self._pin_graph[0] is not full:
-            self._pin_graph = (full, statement_graph(full, self.select_where))
+            self._pin_graph = (
+                full,
+                statement_graph(full, self.select_where, self.environment),
+            )
         return self._pin_graph[1]
 
     def _named_pin_keys(self, address: str) -> frozenset[str]:
@@ -4499,6 +4502,7 @@ class Factory:
             statement_graph(
                 assemble_full_graph(self.environment, self.domain_graph),
                 base.where_clause,
+                self.environment,
             ),
         )
 
