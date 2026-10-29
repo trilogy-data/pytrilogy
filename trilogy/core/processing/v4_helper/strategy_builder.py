@@ -60,7 +60,7 @@ from trilogy.core.models.core import arg_to_datatype
 from trilogy.core.models.execute import Join
 from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing import plan_trace
-from trilogy.core.processing.aggregate_rollup import _is_additive_aggregate
+from trilogy.core.processing.aggregate_rollup import _is_rollable_aggregate
 from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
     condition_implies,
@@ -4641,13 +4641,13 @@ def _group_to_grain_if_required(
         node.set_output_concepts(targets, rebuild=False, change_visibility=False)
         node.rebuild_cache()
         return node
-    # An additive aggregate exposed by a row-preserving scan being grouped to a
+    # A rollable aggregate exposed by a row-preserving scan being grouped to a
     # coarser grain is a precomputed value at the finer grain (a
     # materialized-root rollup from a finer summary table), so re-aggregate it
     # with SUM rather than dedup it. Exact-grain materialized aggregates never
     # reach here: their scan already matches the target grain, so no group is
     # required.
-    rollup = [o for o in targets if o.is_aggregate and _is_additive_aggregate(o)]
+    rollup = [o for o in targets if o.is_aggregate and _is_rollable_aggregate(o)]
     return GroupNode(
         output_concepts=targets,
         input_concepts=targets,

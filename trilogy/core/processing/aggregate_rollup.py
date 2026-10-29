@@ -2,7 +2,7 @@ from collections.abc import Iterable, Mapping
 
 from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.models.build import (
-    ADDITIVE_ROLLUP_FUNCTIONS,
+    ROLLUP_REAGGREGATES,
     BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
@@ -17,22 +17,21 @@ def _aggregate_inputs(concept: BuildConcept) -> list[BuildConcept]:
     return list(concept.lineage.function.concept_arguments)
 
 
-def _is_additive_aggregate(concept: BuildConcept) -> bool:
+def _is_rollable_aggregate(concept: BuildConcept) -> bool:
     return (
         isinstance(concept.lineage, BuildAggregateWrapper)
-        and concept.lineage.function.operator in ADDITIVE_ROLLUP_FUNCTIONS
+        and concept.lineage.function.operator in ROLLUP_REAGGREGATES
     )
 
 
-def _datasource_has_matching_additive_aggregate(
+def _datasource_has_matching_rollup_aggregate(
     datasource: BuildDatasource, concept: BuildConcept
 ) -> bool:
-    signature = concept.additive_aggregate_signature
+    signature = concept.rollup_signature
     if signature is None:
         return False
     return any(
-        output.additive_aggregate_signature == signature
-        for output in datasource.output_concepts
+        output.rollup_signature == signature for output in datasource.output_concepts
     )
 
 
@@ -178,7 +177,7 @@ def filter_finer_row_args(
     return finer
 
 
-def get_additive_rollup_concepts(
+def get_rollup_concepts(
     datasource: BuildDatasource,
     requested_concepts: list[BuildConcept],
     concepts_by_address: Mapping[str, BuildConcept],
@@ -190,7 +189,7 @@ def get_additive_rollup_concepts(
         return []
 
     datasource_grain = datasource.grain
-    # Grand total target: any finer-grain additive aggregate rolls up to one row.
+    # Grand total target: any finer-grain rollable aggregate rolls up to one row.
     # A grand-total datasource is an exact match, handled outside the rollup branch.
     if not target_grain.components:
         if not datasource_grain.components:
@@ -199,8 +198,8 @@ def get_additive_rollup_concepts(
             concept
             for concept in requested_concepts
             if concept.is_aggregate
-            and _is_additive_aggregate(concept)
-            and _datasource_has_matching_additive_aggregate(datasource, concept)
+            and _is_rollable_aggregate(concept)
+            and _datasource_has_matching_rollup_aggregate(datasource, concept)
         ]
     target_concepts = [
         concepts_by_address[component]
@@ -229,9 +228,9 @@ def get_additive_rollup_concepts(
     for concept in requested_concepts:
         if not concept.is_aggregate:
             continue
-        if not _is_additive_aggregate(concept):
+        if not _is_rollable_aggregate(concept):
             continue
-        if not _datasource_has_matching_additive_aggregate(datasource, concept):
+        if not _datasource_has_matching_rollup_aggregate(datasource, concept):
             continue
         base_keys = _base_keys(_aggregate_inputs(concept))
         if all(
@@ -248,14 +247,14 @@ def merge_rollup_concepts(
     all_concepts: list[BuildConcept],
     concepts_by_address: Mapping[str, BuildConcept],
 ) -> list[BuildConcept]:
-    """The additive aggregates a merge of `parent_grains` must SUM-roll up to
+    """The rollable aggregates a merge of `parent_grains` must roll up to
     reach `all_concepts`' grain: the joined rows sit at the parents' finer
     grain and every target component the join does not reach is a property
     keyed within it (a per-customer count joined to a customer's region rolls
     to region). Empty when no rollup applies, including when any requested
-    aggregate is non-additive: a merge cannot regroup a distinct count."""
-    additive = [c for c in all_concepts if c.is_aggregate and _is_additive_aggregate(c)]
-    if not additive or len(additive) != sum(1 for c in all_concepts if c.is_aggregate):
+    aggregate is not rollable: a merge cannot regroup a distinct count."""
+    rollable = [c for c in all_concepts if c.is_aggregate and _is_rollable_aggregate(c)]
+    if not rollable or len(rollable) != sum(1 for c in all_concepts if c.is_aggregate):
         return []
     merge_components: set[str] = set()
     for grain in parent_grains:
@@ -282,4 +281,4 @@ def merge_rollup_concepts(
             or not concept.keys.issubset(merge_components)
         ):
             return []
-    return additive
+    return rollable

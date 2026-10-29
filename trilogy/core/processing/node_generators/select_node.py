@@ -12,7 +12,7 @@ from trilogy.core.models.build import (
     CanonicalBuildConceptList,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.aggregate_rollup import get_additive_rollup_concepts
+from trilogy.core.processing.aggregate_rollup import get_rollup_concepts
 from trilogy.core.processing.node_generators.select_merge_node import (
     gen_select_merge_node,
 )
@@ -116,7 +116,7 @@ def gen_select_node(
     rollup_materialized = {
         concept.canonical_address
         for datasource in datasources
-        for concept in get_additive_rollup_concepts(
+        for concept in get_rollup_concepts(
             datasource=datasource,
             requested_concepts=concepts,
             concepts_by_address=environment.concepts,

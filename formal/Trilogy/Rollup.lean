@@ -12,8 +12,9 @@ their columns are grain keys or properties of them. Then each is a predicate
 the direct answer aggregates the base rows `q ∘ g` keeps.
 
 The planner's rule is the satisfiability theorem below: when the aggregate
-re-aggregates (`sum`, `count`) and every filter and target column is
-evaluable on the summary's grain, the summary answers. The target grain may
+re-aggregates (`sum` and `count` by `sum`, `min` and `max` by themselves) and
+every filter and target column is evaluable on the summary's grain, the
+summary answers. The target grain may
 be empty (a grand total) and the aggregate may be a component of a larger
 demand (`count(x) by k` inside a window): neither changes `q`.
 
@@ -315,6 +316,167 @@ theorem Rollup.count_distinct_not_additive :
     let distinct (s : List (Nat × Nat)) : Nat := (s.map (·.2)).eraseDups.length
     ((([1, 2] : List Nat).map (fun k => distinct (slice (·.1) k rows))).sum) ≠
       distinct rows := by
+  decide
+
+/-! ## MIN and MAX
+
+`min` and `max` re-aggregate with themselves. They are idempotent, so unlike
+`sum` they need no `Nodup` on the summary's keys: a value read twice changes
+nothing. `bool_and` and `bool_or` are `min` and `max` over `false < true`. -/
+
+/-- SQL `MIN`: skips NULLs, NULL over no non-NULL input. -/
+def optMin : Option Int → Option Int → Option Int
+  | none, y => y
+  | x, none => x
+  | some a, some b => some (min a b)
+
+def sqlMin (xs : List (Option Int)) : Option Int := xs.foldr optMin none
+
+def minAgg (v : α → Option Int) (s : List α) : Option Int := sqlMin (s.map v)
+
+theorem sqlMin_none_iff (xs : List (Option Int)) :
+    sqlMin xs = none ↔ ∀ x ∈ xs, x = none := by
+  induction xs with
+  | nil => simp [sqlMin]
+  | cons x xs ih =>
+    simp only [sqlMin, List.foldr_cons, List.mem_cons, forall_eq_or_imp] at *
+    rw [← ih]
+    cases x <;> cases List.foldr optMin none xs <;> simp [optMin]
+
+theorem sqlMin_some (xs : List (Option Int)) (m : Int) (h : sqlMin xs = some m) :
+    some m ∈ xs ∧ ∀ a, some a ∈ xs → m ≤ a := by
+  induction xs generalizing m with
+  | nil => simp [sqlMin] at h
+  | cons x xs ih =>
+    simp only [sqlMin, List.foldr_cons] at h
+    cases x with
+    | none =>
+      obtain ⟨hm, hb⟩ := ih m h
+      exact ⟨List.mem_cons_of_mem _ hm, fun a ha => by
+        cases List.mem_cons.mp ha with
+        | inl e => cases e
+        | inr e => exact hb a e⟩
+    | some a =>
+      cases hs : List.foldr optMin none xs with
+      | none =>
+        rw [hs] at h
+        simp only [optMin, Option.some.injEq] at h
+        subst h
+        have hn := (sqlMin_none_iff xs).mp hs
+        refine ⟨List.mem_cons_self .., fun b hb => ?_⟩
+        cases List.mem_cons.mp hb with
+        | inl e => cases e; exact Int.le_refl _
+        | inr e => cases hn _ e
+      | some n =>
+        rw [hs] at h
+        simp only [optMin, Option.some.injEq] at h
+        subst h
+        obtain ⟨hn, hb⟩ := ih n hs
+        refine ⟨?_, fun b hb' => ?_⟩
+        · rw [Int.min_def]
+          split
+          · exact List.mem_cons_self ..
+          · exact List.mem_cons_of_mem _ hn
+        · cases List.mem_cons.mp hb' with
+          | inl e => cases e; exact Int.min_le_left _ _
+          | inr e => exact Int.le_trans (Int.min_le_right _ _) (hb b e)
+
+theorem sqlMin_le (xs : List (Option Int)) (a : Int) (ha : some a ∈ xs) :
+    ∃ m, sqlMin xs = some m ∧ m ≤ a := by
+  cases h : sqlMin xs with
+  | none => cases (sqlMin_none_iff xs).mp h _ ha
+  | some m => exact ⟨m, rfl, (sqlMin_some xs m h).2 a ha⟩
+
+/-- Two lists whose every value is bounded below by a value of the other have
+the same `MIN`, the NULL answer included. -/
+theorem sqlMin_eq_of (xs ys : List (Option Int))
+    (hxy : ∀ a, some a ∈ xs → ∃ b, some b ∈ ys ∧ b ≤ a)
+    (hyx : ∀ b, some b ∈ ys → ∃ a, some a ∈ xs ∧ a ≤ b) :
+    sqlMin xs = sqlMin ys := by
+  cases hx : sqlMin xs with
+  | none =>
+    cases hy : sqlMin ys with
+    | none => rfl
+    | some n =>
+      obtain ⟨a, ha, _⟩ := hyx n (sqlMin_some ys n hy).1
+      cases (sqlMin_none_iff xs).mp hx _ ha
+  | some m =>
+    obtain ⟨b, hb, hbm⟩ := hxy m (sqlMin_some xs m hx).1
+    obtain ⟨n, hy, hnb⟩ := sqlMin_le ys b hb
+    obtain ⟨a, ha, han⟩ := hyx n (sqlMin_some ys n hy).1
+    have hma := (sqlMin_some xs m hx).2 a ha
+    rw [hy]
+    congr 1
+    omega
+
+/-- **MIN rolls up.** The `MIN` of a summary's per-group minimums under any
+predicate on its grain is the filtered `MIN` over the base rows. -/
+theorem Rollup.min_exact (g : α → κ) (ks : List κ) (rows : List α)
+    (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int) (q : κ → Bool) :
+    sqlMin (stored g ks rows (minAgg v) q) = minAgg v (keep g q rows) := by
+  have hcov' : ∀ r ∈ keep g q rows, g r ∈ ks :=
+    fun r hr => hcov r (List.mem_filter.mp hr).1
+  rw [stored_keep]
+  apply sqlMin_eq_of
+  · intro a ha
+    obtain ⟨k, _, hk⟩ := List.mem_map.mp ha
+    obtain ⟨r, hr, hv⟩ := List.mem_map.mp (sqlMin_some _ a hk).1
+    exact ⟨a, List.mem_map.mpr ⟨r, slice_sub g k _ hr, hv⟩, Int.le_refl _⟩
+  · intro a ha
+    obtain ⟨r, hr, hv⟩ := List.mem_map.mp ha
+    have hs : some a ∈ (slice g (g r) (keep g q rows)).map v :=
+      List.mem_map.mpr ⟨r, mem_slice_self g r _ hr, hv⟩
+    obtain ⟨m, hm, hle⟩ := sqlMin_le _ a hs
+    exact ⟨m, List.mem_map.mpr ⟨g r, mem_groups g ks _ hcov' r hr, hm⟩, hle⟩
+
+def negOpt : Option Int → Option Int := Option.map (fun a => -a)
+
+theorem negOpt_negOpt (x : Option Int) : negOpt (negOpt x) = x := by
+  cases x <;> simp [negOpt]
+
+/-- SQL `MAX`, as the negated `MIN` of the negated values. -/
+def sqlMax (xs : List (Option Int)) : Option Int := negOpt (sqlMin (xs.map negOpt))
+
+def maxAgg (v : α → Option Int) (s : List α) : Option Int := sqlMax (s.map v)
+
+theorem negOpt_maxAgg (v : α → Option Int) (s : List α) :
+    negOpt (maxAgg v s) = minAgg (fun r => negOpt (v r)) s := by
+  simp [maxAgg, sqlMax, minAgg, negOpt_negOpt, List.map_map, Function.comp_def]
+
+/-- **MAX rolls up**, by `Rollup.min_exact` on the negated values. -/
+theorem Rollup.max_exact (g : α → κ) (ks : List κ) (rows : List α)
+    (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int) (q : κ → Bool) :
+    sqlMax (stored g ks rows (maxAgg v) q) = maxAgg v (keep g q rows) := by
+  have hneg : (stored g ks rows (maxAgg v) q).map negOpt =
+      stored g ks rows (minAgg (fun r => negOpt (v r))) q := by
+    simp only [stored, List.map_map, Function.comp_def, negOpt_maxAgg]
+  rw [sqlMax, hneg, Rollup.min_exact g ks rows hcov, ← negOpt_maxAgg, negOpt_negOpt]
+
+theorem Rollup.grand_total_min (g : α → κ) (ks : List κ) (rows : List α)
+    (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int) (q : κ → Bool) :
+    total (stored g ks rows (minAgg v) q) (sqlMin (stored g ks rows (minAgg v) q)) =
+      total (keep g q rows) (minAgg v (keep g q rows)) := by
+  have hcov' : ∀ r ∈ keep g q rows, g r ∈ ks :=
+    fun r hr => hcov r (List.mem_filter.mp hr).1
+  have he : stored g ks rows (minAgg v) q = [] ↔ keep g q rows = [] := by
+    rw [stored_keep]; exact storedAll_nil_iff g ks _ hcov' _
+  simp only [total, he, Rollup.min_exact g ks rows hcov v q]
+
+theorem Rollup.grand_total_max (g : α → κ) (ks : List κ) (rows : List α)
+    (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int) (q : κ → Bool) :
+    total (stored g ks rows (maxAgg v) q) (sqlMax (stored g ks rows (maxAgg v) q)) =
+      total (keep g q rows) (maxAgg v (keep g q rows)) := by
+  have hcov' : ∀ r ∈ keep g q rows, g r ∈ ks :=
+    fun r hr => hcov r (List.mem_filter.mp hr).1
+  have he : stored g ks rows (maxAgg v) q = [] ↔ keep g q rows = [] := by
+    rw [stored_keep]; exact storedAll_nil_iff g ks _ hcov' _
+  simp only [total, he, Rollup.max_exact g ks rows hcov v q]
+
+/-- AVG does not re-aggregate: the average of per-group averages weighs each
+group once, whatever its row count. -/
+theorem Rollup.avg_not_rollable :
+    let avg (xs : List Int) : Int := xs.sum / xs.length
+    avg [avg [0], avg [6, 6]] ≠ avg [0, 6, 6] := by
   decide
 
 end Rollup

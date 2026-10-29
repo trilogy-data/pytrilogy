@@ -17,8 +17,8 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.aggregate_rollup import (
-    _is_additive_aggregate,
-    get_additive_rollup_concepts,
+    _is_rollable_aggregate,
+    get_rollup_concepts,
 )
 from trilogy.core.processing.basic_graph import (
     build_basic_concept_graph,
@@ -149,12 +149,12 @@ def get_default_grain_concept(
     return default
 
 
-def additive_rollup_edges(
+def rollup_edges(
     concepts: list[BuildConcept],
     datasources: Sequence[BuildDatasource],
     node_stash: dict[str, str],
 ) -> list[tuple[str, str]]:
-    """Edges from a summary table to each aggregate it can SUM-roll up to.
+    """Edges from a summary table to each aggregate it can roll up to.
 
     An aggregate's canonical name bakes in its by-grain, so `sum(x)<[a,b]>` and
     the coarser `sum(x)<[a]>` are different canonicals: a rollup is a derivation,
@@ -164,19 +164,19 @@ def additive_rollup_edges(
     even a candidate source and the query silently scans the raw fact.
 
     The edge is candidacy only. `create_datasource_node` re-runs
-    `get_additive_rollup_concepts` with the query's real conditions and drops the
+    `get_rollup_concepts` with the query's real conditions and drops the
     aggregate from the scan's outputs when the rollup does not hold, so an edge
     added here can never by itself produce a wrong plan.
     """
     binding = [
         ds
         for ds in datasources
-        if any(_is_additive_aggregate(c) for c in ds.output_concepts)
+        if any(_is_rollable_aggregate(c) for c in ds.output_concepts)
     ]
     if not binding:
         return []
     concepts_by_address = {c.address: c for c in concepts}
-    targets = [c for c in concepts if c.is_aggregate and _is_additive_aggregate(c)]
+    targets = [c for c in concepts if c.is_aggregate and _is_rollable_aggregate(c)]
     edges: list[tuple[str, str]] = []
     for datasource in binding:
         ds_node = datasource_to_node(datasource)
@@ -185,7 +185,7 @@ def additive_rollup_edges(
             # Already bound by address — the existing column edge covers it.
             if concept.address in bound:
                 continue
-            if not get_additive_rollup_concepts(
+            if not get_rollup_concepts(
                 datasource=datasource,
                 requested_concepts=[concept],
                 concepts_by_address=concepts_by_address,
@@ -291,7 +291,7 @@ def generate_adhoc_graph(
                 edges.append((cnode, dcnode))
                 edges.append((dcnode, cnode))
         g.add_edges_from(edges)
-    g.add_edges_from(additive_rollup_edges(concepts, datasources, node_stash))
+    g.add_edges_from(rollup_edges(concepts, datasources, node_stash))
     return g
 
 

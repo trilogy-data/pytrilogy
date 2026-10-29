@@ -770,6 +770,8 @@ ROLLUP_MEASURES = """
 auto rollup_count <- count(event_id);
 auto rollup_amount <- sum(event_amount);
 auto rollup_nullable <- sum(nullable_amount);
+auto rollup_low <- min(nullable_amount);
+auto rollup_high <- max(event_amount);
 """
 
 ROLLUP_QUERIES = (
@@ -812,6 +814,22 @@ ROLLUP_QUERIES = (
         "sum_of_counts",
         "where group_id > 1 select sum(count(event_id) by group_name) as s;",
     ),
+    (
+        "min_max_total",
+        "select min(nullable_amount) as lo, max(event_amount) as hi;",
+    ),
+    (
+        "min_max_compound_filter",
+        (
+            "where group_id > 1 or group_name is null "
+            "select nullable_name, min(nullable_amount) as lo, "
+            "max(event_amount) as hi order by nullable_name asc;"
+        ),
+    ),
+    (
+        "max_of_mins",
+        "where group_id > 1 select max(min(nullable_amount) by group_name) as m;",
+    ),
 )
 
 
@@ -821,19 +839,22 @@ datasource group_rollup (
     gid: group_id,
     n: rollup_count,
     amount: rollup_amount,
-    nullable_total: ?rollup_nullable
+    nullable_total: ?rollup_nullable,
+    low: ?rollup_low,
+    high: ?rollup_high
 )
 grain (group_id)
 query '''select gid, count(eid) as n, sum(amount) as amount,
-sum(nullable_amount) as nullable_total
+sum(nullable_amount) as nullable_total, min(nullable_amount) as low,
+max(amount) as high
 from ({seed.events.select_sql()}) group by gid''';
 """
     return [
         _law(
             seed,
             f"rollup_{name}",
-            "Rollup.sum_exact",
-            "A summary at a finer grain answers a sum or count under any "
+            "Rollup.min_exact" if "min" in name else "Rollup.sum_exact",
+            "A summary at a finer grain answers a rollable aggregate under any "
             "filter and target its grain determines.",
             ("sourcing", "aggregate", "rollup"),
             query,

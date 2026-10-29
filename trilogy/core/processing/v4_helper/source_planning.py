@@ -28,9 +28,9 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing import plan_trace
 from trilogy.core.processing.aggregate_rollup import (
-    _is_additive_aggregate,
+    _is_rollable_aggregate,
     filter_finer_row_args,
-    get_additive_rollup_concepts,
+    get_rollup_concepts,
     merge_rollup_concepts,
 )
 from trilogy.core.processing.condition_utility import (
@@ -1012,7 +1012,7 @@ def _datasource_rolls_up_to(
     environment: BuildEnvironment,
     datasources: Sequence[BuildDatasource],
 ) -> bool:
-    """`datasource` binds an additive aggregate that SUM-rolls up to `concept` at
+    """`datasource` binds a rollable aggregate that rolls up to `concept` at
     `concept`'s own grain: the anonymous-alias analogue of binding it outright.
 
     A named metric reaches its summary table because query and column share an
@@ -1021,10 +1021,10 @@ def _datasource_rolls_up_to(
     lineage-signature rollup check can relate them."""
     if not isinstance(datasource, BuildDatasource):
         return False
-    if not (concept.is_aggregate and _is_additive_aggregate(concept)):
+    if not (concept.is_aggregate and _is_rollable_aggregate(concept)):
         return False
     return bool(
-        get_additive_rollup_concepts(
+        get_rollup_concepts(
             datasource=datasource,
             requested_concepts=[concept],
             concepts_by_address=environment.concepts,
@@ -1225,7 +1225,7 @@ def _local_concept_nodes_for_datasource(
                     # By canonical: when two requested names share one, the
                     # `canonical_concepts` winner need not be the bound one.
                     _datasource_binds_canonical(datasource, canonical)
-                    # ...or it binds a finer additive aggregate that rolls up to
+                    # ...or it binds a finer rollable aggregate that rolls up to
                     # it, which is how an anonymous alias reaches a summary table.
                     or _datasource_rolls_up_to(
                         datasource, canonical, environment, graph.scope.datasources
@@ -1417,13 +1417,13 @@ def _complete_partial_requested(
 def _finer_filter_rollup_source(
     request: SourceRequest,
 ) -> tuple[BuildDatasource, bool] | None:
-    """A single datasource that can serve an additive-rollup aggregate under a
+    """A single datasource that can serve an rollup aggregate under a
     filter on a column *finer* than the requested grain.
 
     The filter splits the requested groups (e.g. `WHERE order_date` below a
     `customer_id` grain), so the only correct plan is to scan a summary table
     that carries both the aggregate and the finer column, push the filter into
-    that scan, then SUM-roll to the requested grain. A coarser exact table
+    that scan, then roll up to the requested grain. A coarser exact table
     (`agg_by_customer`) can't express the filter: joining its unfiltered count
     to a separately-filtered key list double-counts. We require ONE datasource
     that binds every requested aggregate, holds the requested grain keys, and
@@ -1435,14 +1435,14 @@ def _finer_filter_rollup_source(
     if conditions is None:
         return None
     outputs = request.outputs
-    aggregates = [c for c in outputs if c.is_aggregate and _is_additive_aggregate(c)]
+    aggregates = [c for c in outputs if c.is_aggregate and _is_rollable_aggregate(c)]
     if not aggregates:
         return None
     environment = request.environment
     target_grain = BuildGrain.from_concepts(outputs, environment=environment)
     target_components = set(target_grain.components)
     # Every output must be a rolled aggregate or a target-grain key; a property
-    # or other shape would not survive the pinned scan + SUM-roll.
+    # or other shape would not survive the pinned scan + roll up.
     if any(not c.is_aggregate and c.address not in target_components for c in outputs):
         return None
     finer = filter_finer_row_args(conditions, target_grain, environment.concepts)
@@ -1459,7 +1459,7 @@ def _finer_filter_rollup_source(
         ds_addresses = {c.address for c in ds.output_concepts}
         if not target_components.issubset(ds_addresses):
             continue
-        rolled = get_additive_rollup_concepts(
+        rolled = get_rollup_concepts(
             datasource=ds,
             requested_concepts=list(outputs),
             concepts_by_address=environment.concepts,

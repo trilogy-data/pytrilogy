@@ -19,7 +19,7 @@ from trilogy.core.models.build import (
     nonstandard_grouping_lineage,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.aggregate_rollup import get_additive_rollup_concepts
+from trilogy.core.processing.aggregate_rollup import get_rollup_concepts
 from trilogy.core.processing.condition_utility import (
     condition_implies,
     condition_proves_non_null,
@@ -319,7 +319,7 @@ def create_datasource_node(
     ):
         force_group = True
     rollup_concepts = (
-        get_additive_rollup_concepts(
+        get_rollup_concepts(
             datasource=datasource,
             requested_concepts=all_concepts,
             concepts_by_address=environment.concepts,

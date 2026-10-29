@@ -135,10 +135,24 @@ if TYPE_CHECKING:
 
 LOGGER_PREFIX = "[MODELS_BUILD]"
 
-# SUM-rollable aggregates: re-aggregating a precomputed value with SUM reproduces
-# the coarser-grain value. (`trilogy.core.processing.aggregate_rollup` builds on
-# this; it lives here so the datasource column lookup can use it without a cycle.)
-ADDITIVE_ROLLUP_FUNCTIONS = {FunctionType.COUNT, FunctionType.SUM}
+# Rollable aggregates, each mapped to the function that re-aggregates its
+# precomputed per-group values into the coarser-grain value (`Rollup.lean`).
+# (`trilogy.core.processing.aggregate_rollup` builds on this; it lives here so
+# the datasource column lookup can use it without a cycle.)
+ROLLUP_REAGGREGATES = {
+    FunctionType.COUNT: FunctionType.SUM,
+    FunctionType.SUM: FunctionType.SUM,
+    FunctionType.MIN: FunctionType.MIN,
+    FunctionType.MAX: FunctionType.MAX,
+    FunctionType.BOOL_AND: FunctionType.BOOL_AND,
+    FunctionType.BOOL_OR: FunctionType.BOOL_OR,
+}
+
+
+def rollup_reaggregate(concept: BuildConcept) -> FunctionType:
+    """The function that re-aggregates `concept`'s precomputed values."""
+    assert isinstance(concept.lineage, BuildAggregateWrapper)
+    return ROLLUP_REAGGREGATES[concept.lineage.function.operator]
 
 
 def _gen_agg_name(parent: BuildAggregateWrapper) -> str:
@@ -1311,19 +1325,19 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
         return f"{self.canonical_address}@{self.grain!s}"
 
     @cached_property
-    def additive_aggregate_signature(
+    def rollup_signature(
         self,
     ) -> tuple[FunctionType, tuple[str, ...]] | None:
-        """`(operator, sorted canonical arg addresses)` for a SUM/COUNT aggregate.
+        """`(operator, sorted canonical arg addresses)` for a rollable aggregate.
 
         Deliberately grain-free: it is the identity a precomputed aggregate shares
-        with every coarser aggregate it can SUM-roll up to. `canonical_address`
+        with every coarser aggregate it can roll up to. `canonical_address`
         cannot serve here because it bakes in the by-grain, so a summary table's
         column and the query aggregate it answers never match on it. ``None`` for
-        anything that is not an additive aggregate."""
+        anything that is not a rollable aggregate."""
         if not isinstance(self.lineage, BuildAggregateWrapper):
             return None
-        if self.lineage.function.operator not in ADDITIVE_ROLLUP_FUNCTIONS:
+        if self.lineage.function.operator not in ROLLUP_REAGGREGATES:
             return None
         return (
             self.lineage.function.operator,
@@ -2258,7 +2272,7 @@ class BuildDatasource:
     def aggregate_column_for(
         self, concept: BuildConcept
     ) -> BuildColumnAssignment | None:
-        """The column binding the same additive aggregate as `concept`, at
+        """The column binding the same rollable aggregate as `concept`, at
         whatever grain this table happens to hold it.
 
         This is the only tie between a summary table's `total_x` column and an
@@ -2267,17 +2281,17 @@ class BuildDatasource:
         differ again when the target grain is spelled as a property of the
         table's key — `carrier.name` over a `carrier.code` grain). Callers own
         the grain question; this is purely "same metric"."""
-        signature = concept.additive_aggregate_signature
+        signature = concept.rollup_signature
         if signature is None:
             return None
         for column in self.columns:
-            if column.concept.additive_aggregate_signature == signature:
+            if column.concept.rollup_signature == signature:
                 return column
         return None
 
     def rollup_column_for(self, concept: BuildConcept) -> BuildColumnAssignment | None:
         """`aggregate_column_for`, restricted to tables this concept could be
-        SUM-rolled up from — i.e. not ones strictly coarser than it, which hold
+        rolled up from — i.e. not ones strictly coarser than it, which hold
         no value that could be re-aggregated into the requested one.
 
         The comparison is against the aggregate's own `by` grain, not
@@ -2364,7 +2378,7 @@ class BuildDatasource:
                 canonical_match = x
         match = native_match or exact_match or canonical_match
         if match is None:
-            # Last tier: a finer-grain aggregate this scan will SUM-roll up.
+            # Last tier: a finer-grain aggregate this scan will roll up.
             match = self.rollup_column_for(concept)
         if match is not None:
             if use_raw_name:

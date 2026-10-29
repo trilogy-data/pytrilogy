@@ -302,18 +302,18 @@ def _build_env(text: str):
     return exec.environment.materialize_for_select()
 
 
-def test_additive_aggregate_signature_matches_across_spellings():
+def test_rollup_signature_matches_across_spellings():
     env = _build_env(BASE + SUMMARY)
     bound = env.concepts["local.total_distance"]
-    signature = bound.additive_aggregate_signature
+    signature = bound.rollup_signature
     assert signature is not None
     assert signature[0] == FunctionType.SUM
-    assert env.concepts["local.flight_count"].additive_aggregate_signature != signature
+    assert env.concepts["local.flight_count"].rollup_signature != signature
     # Non-additive aggregates have no rollup identity at all.
-    assert env.concepts["local.avg_distance"].additive_aggregate_signature is None
-    assert env.concepts["local.distinct_carriers"].additive_aggregate_signature is None
+    assert env.concepts["local.avg_distance"].rollup_signature is None
+    assert env.concepts["local.distinct_carriers"].rollup_signature is None
     # A plain column is not an aggregate.
-    assert env.concepts["local.distance"].additive_aggregate_signature is None
+    assert env.concepts["local.distance"].rollup_signature is None
 
 
 def test_rollup_column_for_matches_a_coarser_aggregate():
