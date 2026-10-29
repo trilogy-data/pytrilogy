@@ -421,6 +421,15 @@ act on built nodes, `elect_bridges` takes its candidates from what was built
 (the inline-by-every-reader fold that keeps a group unbuilt reads built
 outputs), and `_key_bridged_members` checks built connectivity.
 
+Measured for the candidates: electing over every group not downstream of
+all of a merge's sides, ranked by ancestors, picks the same bridges as the
+built candidates at 4,961 of 4,962 merges over all of `tests/` (115 of them
+bridged). The one difference is a group later in the build order than the
+consumer (`root_d1` beside a disconnected comparison, which must raise the
+clean disconnected error). So the candidates are a stage-2 fact once build
+order and the inline fold are: the fold has to be decided before the build
+loop first, as twin reuse was.
+
 ## 8. Not claimed
 
 - Not that the concept graph or the grouping rules are wrong. The grouping by
