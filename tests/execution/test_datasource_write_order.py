@@ -358,10 +358,9 @@ storage (row_group_size = 2048);
 def test_stored_derived_columns_are_read_not_rederived(tmp_path: Path) -> None:
     """The sort reads the columns the datasource stores as facts of its rows.
 
-    Planned as derivations, `label` was grain-pinned to the sort select's keys
-    (`city`, the slice's key, is one) and re-read `common`, which the pinned scope does not bind
-    (NoDatasourceException); and `@hilbert_index`'s `array_reduce` reached the
-    generic dialect `render_cte_used_map` walks CTEs with (NotImplementedError).
+    Planned as a derivation, `label` was grain-pinned to the sort select's
+    keys (`city`, the slice's key, is one) and re-read `common`, which the
+    pinned scope does not bind (NoDatasourceException).
     """
     target = tmp_path / "points.parquet"
     executor = Dialects.DUCK_DB.default_executor(
@@ -386,8 +385,8 @@ def test_stored_derived_columns_are_read_not_rederived(tmp_path: Path) -> None:
         assert form == (common or "default")
     groups = duckdb.sql(
         f"SELECT count(DISTINCT row_group_id) FROM parquet_metadata('{target.as_posix()}')"
-    ).fetchone()
-    assert groups == (-(-(ROWS // 2) // 2048),)
+    ).fetchall()
+    assert groups == [(-(-(ROWS // 2) // 2048),)]
 
 
 def test_a_watermark_column_beside_the_sort_key(tmp_path: Path) -> None:
