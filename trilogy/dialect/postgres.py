@@ -3,7 +3,7 @@ from typing import ClassVar
 
 from trilogy.core.enums import DatePart, FunctionType
 from trilogy.core.models.core import DataType
-from trilogy.dialect.base import BaseDialect
+from trilogy.dialect.base import BaseDialect, render_unsupported
 
 
 def date_diff(first: str, second: str, grain: DatePart) -> str:
@@ -25,6 +25,8 @@ def date_diff(first: str, second: str, grain: DatePart) -> str:
 
 
 FUNCTION_MAP = {
+    # no fold over an array
+    FunctionType.ARRAY_REDUCE: render_unsupported("array_reduce"),
     FunctionType.BIT_XOR: lambda x, types: f"({x[0]} # {x[1]})",
     FunctionType.SPLIT: lambda x, types: f"string_to_array({x[0]}, {x[1]})",
     FunctionType.DATE_TRUNCATE: lambda x, types: f"date_trunc('{x[1]}', {x[0]})",

@@ -24,6 +24,7 @@ from trilogy.dialect.base import (
     TableColumn,
     array_element_type,
     is_array_arg,
+    render_unsupported,
     safe_quote,
 )
 from trilogy.dialect.base import null_wrapper as base_null_wrapper
@@ -122,6 +123,8 @@ def null_wrapper(
 
 
 FUNCTION_MAP = {
+    # no fold over an array
+    FunctionType.ARRAY_REDUCE: render_unsupported("array_reduce"),
     FunctionType.LENGTH: lambda x, types: handle_length(x, types),
     FunctionType.IS_NULL: lambda x, types: f"{x[0]} IS NULL",
     # no FILTER clause; ARRAY_AGG raises on a NULL element without this

@@ -11,7 +11,7 @@ from trilogy.core.enums import (
 )
 from trilogy.core.models.core import DataType
 from trilogy.core.statements.execute import CreateTableInfo
-from trilogy.dialect.base import BaseDialect, TableColumn
+from trilogy.dialect.base import BaseDialect, TableColumn, render_unsupported
 from trilogy.dialect.common import CONCAT_COALESCE_UPPER
 
 
@@ -78,6 +78,8 @@ def null_safe_join_key(
 
 
 FUNCTION_MAP = {
+    # no fold over an array
+    FunctionType.ARRAY_REDUCE: render_unsupported("array_reduce"),
     FunctionType.IS_NOT_DISTINCT: lambda x, types: f"({x[0]} <=> {x[1]})",
     FunctionType.POWER: lambda x, types: f"POWER({x[0]}, {x[1]})",
     FunctionType.RANDOM: lambda x, types: "RAND()",

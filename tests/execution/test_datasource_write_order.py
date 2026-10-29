@@ -302,6 +302,127 @@ class TestBuild:
         assert lats == sorted(lats, reverse=True)
 
 
+DERIVED_RAW = f"""
+CREATE TABLE trees AS SELECT i AS id,
+    CASE WHEN i % 2 = 0 THEN 'A' ELSE 'B' END AS city,
+    'sp' || (i % 7) AS species,
+    CASE WHEN i % 3 = 0 THEN NULL ELSE 'tree ' || i END AS name,
+    42.2 + (hash(i) % 100000) / 100000.0 * 0.2 AS lat,
+    -71.2 + (hash(i * 7 + 3) % 100000) / 100000.0 * 0.2 AS lon,
+    TIMESTAMPTZ '2026-10-01 00:00:00+00' AS updated_through
+FROM range({ROWS}) t(i);
+CREATE TABLE species_info AS SELECT 'sp' || i AS species,
+    CASE WHEN i < 4 THEN 'common ' || i END AS common
+FROM range(7) t(i);
+"""
+
+
+def _derived_model(target: str) -> str:
+    """The shape of a published per-city projection: one city's slice of the
+    rows (`complete where`), stored values derived through a join (`label`, a
+    NULL-absorbing coalesce, and `form`, at the species' grain), and a
+    watermark column."""
+    return f"""
+import std.geography;
+key id int;
+key city string;
+key species string;
+property id.name string;
+property id.lat float;
+property id.lon float;
+property species.common string;
+property id.updated_through datetime;
+
+root datasource trees (id: id, city: city, species: species, name: ?name,
+    lat: lat, lon: lon, updated_through: updated_through)
+grain (id)
+address trees;
+
+root datasource species_info (species: ~species, common: ?common)
+grain (species)
+address species_info;
+
+auto label <- coalesce(common, name, species);
+auto form <- coalesce(common, 'default');
+
+partial datasource points (id, city, species, name: ?name, label, form,
+    lat: ?lat, lon: ?lon, updated_through)
+grain (id)
+complete where city = 'A'
+file `{target}`
+order by @hilbert_index(lat, lon) asc
+storage (row_group_size = 2048);
+"""
+
+
+def test_stored_derived_columns_are_read_not_rederived(tmp_path: Path) -> None:
+    """The sort reads the columns the datasource stores as facts of its rows.
+
+    Planned as derivations, `label` was grain-pinned to the sort select's keys
+    (`city`, the slice's key, is one) and re-read `common`, which the pinned scope does not bind
+    (NoDatasourceException); and `@hilbert_index`'s `array_reduce` reached the
+    generic dialect `render_cte_used_map` walks CTEs with (NotImplementedError).
+    """
+    target = tmp_path / "points.parquet"
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=tmp_path)
+    )
+    executor.execute_raw_sql(DERIVED_RAW)
+    executor.parse_text(_derived_model(target.as_posix()))
+    executor.update_datasource(executor.environment.datasources["points"])
+
+    rows = duckdb.sql(f"""SELECT id, label, form, lat, lon FROM
+        read_parquet('{target.as_posix()}', file_row_number = true)
+        ORDER BY file_row_number""").fetchall()
+    assert len(rows) == ROWS // 2  # city 'A', the even ids
+    assert all(id_ % 2 == 0 for id_, *_ in rows)
+    keys = [hilbert(lat, lon) for _, _, _, lat, lon in rows]
+    assert keys == sorted(keys)
+    for id_, label, form, _, _ in rows:
+        species = id_ % 7
+        common = f"common {species}" if species < 4 else None
+        name = None if id_ % 3 == 0 else f"tree {id_}"
+        assert label == (common or name or f"sp{species}")
+        assert form == (common or "default")
+    groups = duckdb.sql(
+        f"SELECT count(DISTINCT row_group_id) FROM parquet_metadata('{target.as_posix()}')"
+    ).fetchone()
+    assert groups == (-(-(ROWS // 2) // 2048),)
+
+
+def test_a_watermark_column_beside_the_sort_key(tmp_path: Path) -> None:
+    """A `<*>` column puts the sort key through `hide_unused_concept`, whose
+    `render_cte_used_map` walks CTEs with the base dialect. The base dialect
+    refused `array_reduce` (inside `@hilbert_index`) instead of giving it a
+    generic form like `array_transform`'s, so the walk raised."""
+    target = tmp_path / "points.parquet"
+    executor = Dialects.DUCK_DB.default_executor(
+        environment=Environment(working_path=tmp_path)
+    )
+    executor.execute_raw_sql(
+        RAW.replace(
+            " AS lon",
+            " AS lon, TIMESTAMPTZ '2026-10-01 00:00:00+00' AS updated_through",
+        )
+    )
+    executor.parse_text(HEADER + f"""
+property <*>.updated_through datetime;
+root datasource raw (id: id, lat: lat, lon: lon, updated_through: updated_through)
+grain (id) address raw;
+datasource points (id, lat, lon, updated_through)
+grain (id)
+file `{target.as_posix()}`
+order by @hilbert_index(lat, lon) asc
+storage (row_group_size = 2048);
+""")
+    executor.update_datasource(executor.environment.datasources["points"])
+    rows = duckdb.sql(f"""SELECT lat, lon FROM
+        read_parquet('{target.as_posix()}', file_row_number = true)
+        ORDER BY file_row_number""").fetchall()
+    keys = [hilbert(lat, lon) for lat, lon in rows]
+    assert len(keys) == ROWS and keys == sorted(keys)
+
+
 def test_storage_values_render_as_literals() -> None:
     from trilogy.executor import _copy_option_value
     from trilogy.parsing.render import _storage_literal
