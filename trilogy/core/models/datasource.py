@@ -807,15 +807,12 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         )
 
     def _pin_grain(self, where: WhereClause | None) -> WhereClause | None:
-        """A `~` column outside the grain licenses extension rows: one per
+        """An authored `~` column outside the grain licenses extension rows: one per
         member the grain's rows never cite, NULL at the grain. The target is
         built from its grain's rows, so pin its grain columns non-null (which
         also heals the partial into a plain scan)."""
         grain = self.grain.components
-        if not any(
-            Modifier.PARTIAL in col.modifiers and col.concept.address not in grain
-            for col in self.columns
-        ):
+        if not self.column_level_partial_addresses - grain:
             return where
         pins: list[Comparison | Conditional] = [
             Comparison(
