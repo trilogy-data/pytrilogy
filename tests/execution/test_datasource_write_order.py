@@ -358,9 +358,10 @@ storage (row_group_size = 2048);
 def test_stored_derived_columns_are_read_not_rederived(tmp_path: Path) -> None:
     """The sort reads the columns the datasource stores as facts of its rows.
 
-    Planned as a derivation, `label` was grain-pinned to the sort select's
-    keys (`city`, the slice's key, is one) and re-read `common`, which the
-    pinned scope does not bind (NoDatasourceException).
+    The sort select's WHERE is the target's `complete where`, so the target
+    holds every row it can see and nothing pads. Treated as partial, `label`
+    was grain-pinned to the select's keys (`city` is one) and re-read
+    `common`, which the pinned scope does not bind (NoDatasourceException).
     """
     target = tmp_path / "points.parquet"
     executor = Dialects.DUCK_DB.default_executor(

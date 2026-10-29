@@ -29,8 +29,8 @@ structural and binding edges are true by construction. All derivations are
 deterministic in edge insertion order.
 """
 
-from collections.abc import Iterable
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, replace
 from enum import Enum
 from functools import partial
 from typing import Any
@@ -306,6 +306,22 @@ class DomainGraph:
                         b.datasource
                     )
         return self._whole_domain_holders.get(concept, [])
+
+    def with_conditions_met(self, met: Callable[[Any], bool]) -> "DomainGraph":
+        """Copy where a binding complete under a condition `met` accepts is
+        complete outright: for a statement its WHERE implies, a `complete
+        where` datasource holds the whole domain."""
+        promoted = [
+            replace(b, complete=True, condition=None)
+            if b.condition is not None and met(b.condition)
+            else b
+            for b in self.binding_edges
+        ]
+        if all(p is b for p, b in zip(promoted, self.binding_edges)):
+            return self
+        return DomainGraph(
+            edges=self.edges, binding_edges=promoted, fd_edges=self.fd_edges
+        )
 
     def with_overlay(self, edges: Iterable[DomainEdge] | None = None) -> "DomainGraph":
         """Copy-on-write view: a new graph with this graph's edges plus the
