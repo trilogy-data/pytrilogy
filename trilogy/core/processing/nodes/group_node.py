@@ -9,6 +9,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import QueryDatasource
+from trilogy.core.processing.aggregate_rollup import pending_rollups
 from trilogy.core.processing.condition_utility import (
     condition_proves_non_null,
     is_scalar_condition,
@@ -181,7 +182,7 @@ class GroupNode(StrategyNode):
                 c
                 for ps in parent_sources
                 if isinstance(ps, QueryDatasource)
-                for c in ps.rollup_concepts
+                for c in pending_rollups(ps.rollup_concepts, ps.grain)
                 if c.address in output_addresses
             ],
             "address",

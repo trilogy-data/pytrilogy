@@ -47,6 +47,7 @@ from trilogy.core.processing.aggregate_rollup import (
     _conditions_supported,
     _datasource_has_matching_rollup_aggregate,
     _is_rollable_aggregate,
+    at_own_grain,
     filter_finer_row_args,
     get_rollup_concepts,
 )
@@ -428,6 +429,7 @@ def materialized_root_addresses(
                 if isinstance(arg, BuildConcept):
                     candidates.append(environment.concepts.get(arg.address) or arg)
     out = _binding_only_roots(candidates, environment, datasources, where)
+    row_grain = _keyed_grain(target_grain, environment)
     rolled_roots: set[str] = set()
     rollup_sources: list[BuildDatasource] = []
     seen_candidates: set[str] = set()
@@ -470,10 +472,13 @@ def materialized_root_addresses(
                     out.add(concept.address)
                     exact = True
                     break
+        # A rolled root joins the target-grain scan, so an aggregate at another
+        # grain (`count(x) by *` beside per-city rows) plans as its own group.
         if (
             exact
             or condition_only
             or not (is_aggregate and _is_rollable_aggregate(concept))
+            or not at_own_grain(concept, row_grain)
         ):
             continue
         # ROLLUP: a finer-grain table binds the same aggregate expression and it
@@ -510,6 +515,19 @@ def materialized_root_addresses(
     ):
         return frozenset(out)
     return frozenset(out | rolled_roots)
+
+
+def _keyed_grain(grain: BuildGrain, environment: BuildEnvironment) -> BuildGrain:
+    """`grain` with each aggregate component read as its own grain: a select of
+    `sum(x) by k` alone has the aggregate as its grain, and `k` as its rows."""
+    components: set[str] = set()
+    for address in grain.components:
+        concept = environment.concepts.get(address)
+        if concept is not None and concept.is_aggregate:
+            components |= set(concept.grain.components)
+        else:
+            components.add(address)
+    return BuildGrain(components=components)
 
 
 def scan_filtered_roots(

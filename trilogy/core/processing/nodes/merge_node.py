@@ -22,6 +22,7 @@ from trilogy.core.models.execute import (
     SourceJoin,
     UnnestJoin,
 )
+from trilogy.core.processing.aggregate_rollup import pending_rollups
 from trilogy.core.processing.condition_utility import (
     condition_proves_non_null,
     decompose_condition,
@@ -905,7 +906,7 @@ class MergeNode(StrategyNode):
                 c
                 for source in final_datasets
                 if isinstance(source, QueryDatasource)
-                for c in source.rollup_concepts
+                for c in pending_rollups(source.rollup_concepts, source.grain)
                 if c.address in {out.address for out in final_output_concepts}
             ],
             "address",

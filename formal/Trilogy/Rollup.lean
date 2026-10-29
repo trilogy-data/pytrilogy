@@ -479,5 +479,106 @@ theorem Rollup.avg_not_rollable :
     avg [avg [0], avg [6, 6]] ≠ avg [0, 6, 6] := by
   decide
 
+/-! ## Re-aggregating partials within a query
+
+A query that asks for one aggregate at several grains needs its rows grouped
+once. A GROUP BY at grain `g` is a summary the query builds itself, and
+`stored` reads its groups exactly as it reads a table's. A coarser grain is a
+function `h : κ → τ` of `g`: the coarse group `t` is the key predicate
+`h k = t`, so each `*_exact` theorem above answers it from the finer groups.
+The planner's dropped-grain guard is what makes `g` a function of the row: a
+partial computed over a join that fans a row into two groups is not `stored`
+of the base rows (`Rollup.fanout_partial_double_counts`). -/
+
+section Partials
+
+variable {τ : Type} [DecidableEq τ]
+
+omit [DecidableEq κ] in
+/-- The base rows the coarse key predicate keeps are the coarse group. -/
+theorem keep_coarser (g : α → κ) (h : κ → τ) (t : τ) (rows : List α) :
+    keep g (fun k => decide (h k = t)) rows = slice (fun r => h (g r)) t rows := rfl
+
+theorem Rollup.reaggregate_partial_sum (g : α → κ) (ks : List κ) (hnd : ks.Nodup)
+    (rows : List α) (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int)
+    (h : κ → τ) (t : τ) :
+    sqlSum (stored g ks rows (sumAgg v) (fun k => decide (h k = t))) =
+      sumAgg v (slice (fun r => h (g r)) t rows) :=
+  Rollup.sum_exact g ks hnd rows hcov v _
+
+/-- A coarse group the rows reach: GROUP BY never emits an empty one. -/
+theorem Rollup.reaggregate_partial_count (g : α → κ) (ks : List κ) (hnd : ks.Nodup)
+    (rows : List α) (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int)
+    (h : κ → τ) (t : τ) (hne : slice (fun r => h (g r)) t rows ≠ []) :
+    sqlSum (stored g ks rows (countAgg v) (fun k => decide (h k = t))) =
+      countAgg v (slice (fun r => h (g r)) t rows) :=
+  Rollup.count_group g ks hnd rows hcov v _ hne
+
+theorem Rollup.reaggregate_partial_min (g : α → κ) (ks : List κ) (rows : List α)
+    (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int) (h : κ → τ) (t : τ) :
+    sqlMin (stored g ks rows (minAgg v) (fun k => decide (h k = t))) =
+      minAgg v (slice (fun r => h (g r)) t rows) :=
+  Rollup.min_exact g ks rows hcov v _
+
+theorem Rollup.reaggregate_partial_max (g : α → κ) (ks : List κ) (rows : List α)
+    (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int) (h : κ → τ) (t : τ) :
+    sqlMax (stored g ks rows (maxAgg v) (fun k => decide (h k = t))) =
+      maxAgg v (slice (fun r => h (g r)) t rows) :=
+  Rollup.max_exact g ks rows hcov v _
+
+theorem slice_ne_nil_of_mem_groups (g : α → κ) (ks : List κ) (rows : List α) (k : κ)
+    (hk : k ∈ groups g ks rows) : slice g k rows ≠ [] := by
+  intro he
+  simp [groups, he] at hk
+
+/-- **Re-aggregated partials are partials.** Re-aggregating a grain-`g` GROUP
+BY to the coarser grain `h ∘ g`, one row per coarse group the rows reach, is
+the table a GROUP BY at `h ∘ g` stores. A still coarser grain re-aggregates
+it in turn, so a chain of grains reads the rows once. -/
+theorem Rollup.reaggregated_sum_is_partial (g : α → κ) (ks : List κ) (hnd : ks.Nodup)
+    (rows : List α) (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int)
+    (h : κ → τ) (ts : List τ) :
+    (groups (fun r => h (g r)) ts rows).map
+        (fun t => sqlSum (stored g ks rows (sumAgg v) (fun k => decide (h k = t)))) =
+      storedAll (fun r => h (g r)) ts rows (sumAgg v) :=
+  List.map_congr_left (fun t _ => Rollup.reaggregate_partial_sum g ks hnd rows hcov v h t)
+
+theorem Rollup.reaggregated_count_is_partial (g : α → κ) (ks : List κ) (hnd : ks.Nodup)
+    (rows : List α) (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int)
+    (h : κ → τ) (ts : List τ) :
+    (groups (fun r => h (g r)) ts rows).map
+        (fun t => sqlSum (stored g ks rows (countAgg v) (fun k => decide (h k = t)))) =
+      storedAll (fun r => h (g r)) ts rows (countAgg v) :=
+  List.map_congr_left (fun t ht => Rollup.reaggregate_partial_count g ks hnd rows hcov v
+    h t (slice_ne_nil_of_mem_groups _ ts rows t ht))
+
+theorem Rollup.reaggregated_min_is_partial (g : α → κ) (ks : List κ) (rows : List α)
+    (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int) (h : κ → τ) (ts : List τ) :
+    (groups (fun r => h (g r)) ts rows).map
+        (fun t => sqlMin (stored g ks rows (minAgg v) (fun k => decide (h k = t)))) =
+      storedAll (fun r => h (g r)) ts rows (minAgg v) :=
+  List.map_congr_left (fun t _ => Rollup.reaggregate_partial_min g ks rows hcov v h t)
+
+theorem Rollup.reaggregated_max_is_partial (g : α → κ) (ks : List κ) (rows : List α)
+    (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int) (h : κ → τ) (ts : List τ) :
+    (groups (fun r => h (g r)) ts rows).map
+        (fun t => sqlMax (stored g ks rows (maxAgg v) (fun k => decide (h k = t)))) =
+      storedAll (fun r => h (g r)) ts rows (maxAgg v) :=
+  List.map_congr_left (fun t _ => Rollup.reaggregate_partial_max g ks rows hcov v h t)
+
+end Partials
+
+/-- A partial computed over a join that puts one row in two groups (a tree
+read once per tag) double counts on a re-sum, while its `MAX` survives. -/
+theorem Rollup.fanout_partial_double_counts :
+    let fanned : List (Nat × Int) := [(1, 5), (2, 5)]
+    sqlSum ((([1, 2] : List Nat).map
+        (fun k => sumAgg (fun r : Nat × Int => some r.2) (slice (·.1) k fanned)))) =
+        some 10 ∧
+      sqlMax ((([1, 2] : List Nat).map
+        (fun k => maxAgg (fun r : Nat × Int => some r.2) (slice (·.1) k fanned)))) =
+        some 5 := by
+  decide
+
 end Rollup
 end Trilogy

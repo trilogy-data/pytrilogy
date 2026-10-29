@@ -5,6 +5,7 @@ the one the base rows give. Each case runs with and without the summary in
 scope; the summary must be read exactly when the rule says it can be."""
 
 import itertools
+import re
 
 import pytest
 
@@ -19,6 +20,11 @@ union all select 'a4', 'A', 'Ulmus', null, 'x', null
 union all select 'b1', 'B', 'Acer', 7, 'y', true
 union all select 'b2', 'B', 'Tilia', 2, 'x', false
 """
+
+ENRICHMENT = """select 'Acer' as species, 'broadleaf' as tree_form
+union all select 'Quercus', 'broadleaf'
+union all select 'Ulmus', null
+union all select 'Tilia', 'linden' """
 
 BASE = f"""
 key tree_id string;
@@ -36,10 +42,7 @@ query '''{TREES}''';
 
 datasource enrichment (species: species, tree_form: ?tree_form)
 grain (species)
-query '''select 'Acer' as species, 'broadleaf' as tree_form
-union all select 'Quercus', 'broadleaf'
-union all select 'Ulmus', null
-union all select 'Tilia', 'linden' ''';
+query '''{ENRICHMENT}''';
 """
 
 SUMMARY = f"""
@@ -206,3 +209,140 @@ def test_empty_summary_grand_total_is_no_row(aggregate: str):
     sql, rows = _run(model, f"select {AGGREGATES[aggregate]};")
     assert "tree_summary" in sql, sql
     assert rows == []
+
+
+# `Rollup.reaggregated_*_is_partial`: one aggregate at a fine grain and coarser
+# grains it determines groups the rows once; each coarser grain re-aggregates
+# the next finer one.
+PARTIAL_GRAINS = [
+    "city_species>city",
+    "city_species>species",
+    "city_species>form",
+    "city_species>form_case",
+    "city_species>total",
+    "city>total",
+    "species>form",
+    "species>form_case",
+    "form>total",
+]
+
+RAW_AGGREGATE = re.compile(
+    r'\b(count|sum|min|max|bool_or|bool_and)\("[^"]+"\."(tree_id|height|tall)"\)'
+)
+
+
+def _oracle_rows(
+    grains: list[list[str]], aggregate: str, where: str | None
+) -> list[tuple]:
+    """Each grain grouped from the base rows on its own, joined on the coarser
+    grain's columns."""
+    expression = aggregate.removesuffix(" as v")
+    base = (
+        f"with base as (select * from ({TREES}) t left join ({ENRICHMENT}) e"
+        f" using (species){f' where {where}' if where else ''})"
+    )
+    carried = [c for grain in grains[1:] for c in grain if c not in grains[0]]
+    tables = []
+    for index, grain in enumerate(grains):
+        keys = [*grain, *carried] if index == 0 else grain
+        columns = ", ".join([*dict.fromkeys(keys), f"{expression} as v{index}"])
+        group = " group by all" if grain else " having count(*) > 0"
+        tables.append(f"g{index} as (select {columns} from base{group})")
+    names = [[c.split(" as ")[-1] for c in grain] for grain in grains]
+    select = ", ".join(
+        [f"g0.{n}" for n in names[0]] + [f"g{i}.v{i}" for i in range(len(grains))]
+    )
+    joins = "".join(
+        f" join g{i} on "
+        + (
+            " and ".join(f"g0.{n} is not distinct from g{i}.{n}" for n in names[i])
+            or "true"
+        )
+        for i in range(1, len(grains))
+    )
+    sql = f"{base}, {', '.join(tables)} select {select} from g0{joins}"
+    executor = Dialects.DUCK_DB.default_executor()
+    return sorted(
+        (tuple(r) for r in executor.execute_raw_sql(sql).fetchall()), key=repr
+    )
+
+
+def _partial_select(grains: list[list[str]], aggregate: str, where: str | None) -> str:
+    expression = aggregate.removesuffix(" as v")
+    outputs = [f"{expression} as v0"]
+    for index, grain in enumerate(grains[1:], start=1):
+        by = ", ".join(c.split(" as ")[-1] for c in grain) or "*"
+        outputs.append(f"{expression} by {by} as v{index}")
+    hidden = [c for grain in grains[1:] for c in grain if " as " in c]
+    columns = ", ".join(
+        [*grains[0], *(f"--{c}" for c in hidden if c not in grains[0]), *outputs]
+    )
+    return f"select {columns}{f' where {where}' if where else ''};"
+
+
+def _assert_partials_reused(
+    grains: list[list[str]], aggregate: str, where: str | None
+) -> None:
+    query = _partial_select(grains, aggregate, where)
+    expected = _oracle_rows(grains, aggregate, where)
+    for model, raw in ((BASE, 1), (BASE + SUMMARY, 0)):
+        sql, rows = _run(model, query)
+        assert sorted(rows, key=repr) == expected, sql
+        assert len(RAW_AGGREGATE.findall(sql)) == raw, sql
+
+
+@pytest.mark.parametrize(
+    "grains,where,aggregate",
+    list(itertools.product(PARTIAL_GRAINS, FILTERS, AGGREGATES)),
+)
+def test_coarser_grain_reaggregates_finer_partial(
+    grains: str, where: str, aggregate: str
+):
+    _assert_partials_reused(
+        [GRAINS[g] for g in grains.split(">")], AGGREGATES[aggregate], FILTERS[where]
+    )
+
+
+@pytest.mark.parametrize("aggregate", sorted(AGGREGATES))
+def test_grain_chain_reads_rows_once(aggregate: str):
+    _assert_partials_reused(
+        [GRAINS["city_species"], GRAINS["city"], GRAINS["total"]],
+        AGGREGATES[aggregate],
+        "tree_form is not null",
+    )
+
+
+# An aggregate at a grain other than the select's beside a summary-served one:
+# it is a separate value the rows are joined to, never one the select's grain
+# re-aggregates. Each was a wrong answer when the summary was in scope.
+MIXED_GRAINS = {
+    "total_count_by_form": (
+        "select tree_form, count(tree_id) by * as v1 order by tree_form;"
+    ),
+    "total_count_beside_form_sum": (
+        "select tree_form, sum(height) as v0, count(tree_id) by * as v1"
+        " where city = 'A' order by tree_form;"
+    ),
+    "total_count_beside_city_sum": (
+        "select city, sum(height) as v0, count(tree_id) by * as v1"
+        " where tree_form = 'broadleaf' order by city;"
+    ),
+    "nested_total_beside_inner": (
+        "select city, sum(height) as v0, sum(sum(height) by city) by * as v1"
+        " where tree_form = 'broadleaf' order by city;"
+    ),
+    "city_count_beside_species_sum": (
+        "select species, sum(height) as v0, count(tree_id) by city as v1"
+        " where city = 'A' order by species;"
+    ),
+    "share_of_city": (
+        "select city, species, count(tree_id) as n, count(tree_id) by city as cn,"
+        " n / cn as share order by city, species;"
+    ),
+}
+MIXED_GRAINS_SERVED = {"nested_total_beside_inner", "share_of_city"}
+
+
+@pytest.mark.parametrize("name", sorted(MIXED_GRAINS))
+def test_aggregate_keeps_its_own_grain_beside_summary(name: str):
+    _assert_same_answer(MIXED_GRAINS[name], served=name in MIXED_GRAINS_SERVED)

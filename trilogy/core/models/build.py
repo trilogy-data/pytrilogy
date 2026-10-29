@@ -1282,10 +1282,16 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
 
     @property
     def zero_on_empty(self) -> bool:
-        """An aggregate whose value over no rows is 0, not NULL."""
-        return (
-            isinstance(self.lineage, BuildAggregateWrapper)
-            and self.lineage.function.operator in ZERO_ON_EMPTY_AGGREGATES
+        """An aggregate whose value over no rows is 0, not NULL. A sum of such
+        partials is too: a group it has no partial for is a group of no rows."""
+        if not isinstance(self.lineage, BuildAggregateWrapper):
+            return False
+        function = self.lineage.function
+        if function.operator in ZERO_ON_EMPTY_AGGREGATES:
+            return True
+        return function.operator == FunctionType.SUM and any(
+            isinstance(arg, BuildConcept) and arg.zero_on_empty
+            for arg in function.arguments
         )
 
     @property
