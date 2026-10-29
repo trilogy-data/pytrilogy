@@ -1168,7 +1168,9 @@ def partition_root_demand(
         _finer_filter_grains(conditions),
         domains,
         concept_graph,
-        condition_roots,
+        # a scan-filtered root reads the WHERE on its own scan, as a
+        # condition stage's roots do
+        condition_roots | {n for n, a in concept_attrs.items() if a.scan_filtered},
     )
     trace_buckets("entity clusters peeled", buckets, primary_group)
     scans = _condition_scans(concept_attrs, roots_by_stage)

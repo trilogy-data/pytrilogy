@@ -107,9 +107,12 @@ def gen_select_node(
     accept_partial: bool = False,
     fail_if_not_found: bool = True,
     conditions: BuildWhereClause | None = None,
+    outputs: list[BuildConcept] | None = None,
 ) -> StrategyNode | None:
+    """`outputs`, when given, are the `concepts` that survive `conditions`: the
+    rest are read only by the WHERE, so they set no grain."""
     datasources = g.scope.datasources
-    target_grain = BuildGrain.from_concepts(concepts)
+    target_grain = BuildGrain.from_concepts(outputs or concepts)
     rollup_materialized = {
         concept.canonical_address
         for datasource in datasources
@@ -151,4 +154,5 @@ def gen_select_node(
         depth=depth,
         accept_partial=accept_partial,
         conditions=conditions,
+        outputs=outputs,
     )

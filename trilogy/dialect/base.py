@@ -233,15 +233,15 @@ def _aggregates_a_constant(function: Any) -> bool:
 
 
 def _aggregates_rows(cte: Any) -> bool:
-    """A CTE computing an aggregate over the rows it reads."""
-    return (
-        isinstance(cte, CTE)
-        and cte.group_to_grain
-        and cte.render_from_clause
-        and any(
-            c.derivation == Derivation.AGGREGATE and not cte.source_map.get(c.address)
-            for c in cte.output_columns
-        )
+    """A CTE computing an aggregate over the rows it reads, including a
+    summary column it re-sums to a coarser grain."""
+    if not (isinstance(cte, CTE) and cte.group_to_grain and cte.render_from_clause):
+        return False
+    rolled = {c.address for c in cte.rollup_concepts}
+    return any(
+        c.derivation == Derivation.AGGREGATE
+        and (c.address in rolled or not cte.source_map.get(c.address))
+        for c in cte.output_columns
     )
 
 

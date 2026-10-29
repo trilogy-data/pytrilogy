@@ -152,12 +152,6 @@ def test_bound_derived_reads_beside_merged_key(model_dir: Path, side: str):
             id="merged_key_only",
         ),
         pytest.param(
-            "select org.short_e_name, count(id) as launches"
-            " order by org.short_e_name asc;",
-            [("CASC", 1), ("NASA", 2)],
-            id="group_key",
-        ),
-        pytest.param(
             "select org.state_code, count(org.short_e_name) as names"
             " order by org.state_code asc;",
             [("CN", 1), ("US", 1)],
@@ -187,7 +181,8 @@ def test_unsourced_lineage_reads_the_binding(
     assert _rows(model_dir, query) == expected
 
 
-# The summary neither binds nor declares `state.code`; `org.code` determines it.
+# The summary neither binds nor declares `state.code` or `short_e_name`;
+# `org.code` determines both.
 @pytest.mark.parametrize(
     "query,expected",
     [
@@ -205,6 +200,12 @@ def test_unsourced_lineage_reads_the_binding(
             "select org.code, state.code, launch_count order by org.code asc;",
             [("CASC", "CN", 42), ("NASA", "US", 41)],
             id="beside_surviving_key_spelling",
+        ),
+        pytest.param(
+            "select org.short_e_name, count(id) as launches"
+            " order by org.short_e_name asc;",
+            [("CASC", 42), ("NASA", 41)],
+            id="bound_derived_group_key",
         ),
     ],
 )

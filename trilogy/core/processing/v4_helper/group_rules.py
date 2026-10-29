@@ -887,11 +887,17 @@ def partition_roots(
         # conservative single-bucket bailout to swallow every keyed root. Pull
         # them out: same-source single rows still share one scan (one bucket
         # together), and the FINAL node cross-joins them onto the keyed plan.
+        # A scan-filtered root reads a finer table under the WHERE, so it is
+        # no single-row scan: it stays with the filter columns.
         single_row_items = [
-            (n, d) for n, d in main_items if d.granularity == Granularity.SINGLE_ROW
+            (n, d)
+            for n, d in main_items
+            if d.granularity == Granularity.SINGLE_ROW and not d.scan_filtered
         ]
         main_items = [
-            (n, d) for n, d in main_items if d.granularity != Granularity.SINGLE_ROW
+            (n, d)
+            for n, d in main_items
+            if d.granularity != Granularity.SINGLE_ROW or d.scan_filtered
         ]
 
         component_groups: list[list[NodeItem]] = []

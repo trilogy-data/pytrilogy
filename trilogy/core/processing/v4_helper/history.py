@@ -172,6 +172,7 @@ class V4History:
         fail_if_not_found: bool = False,
         accept_partial: bool = False,
         conditions: BuildWhereClause | None = None,
+        outputs: list[BuildConcept] | None = None,
     ) -> StrategyNode | None:
         from trilogy.core.processing.node_generators.select_node import gen_select_node
 
@@ -181,6 +182,8 @@ class V4History:
             conditions=conditions,
             promoted=environment.span_scope.extent_free,
         )
+        if outputs is not None:
+            fingerprint += f"|outputs={sorted(c.address for c in outputs)}"
         if fingerprint in self.select_history:
             rval = self.select_history[fingerprint]
             if rval:
@@ -195,6 +198,7 @@ class V4History:
             fail_if_not_found=fail_if_not_found,
             accept_partial=accept_partial,
             conditions=conditions,
+            outputs=outputs,
         )
         self.select_history[fingerprint] = gen
         if gen:

@@ -766,6 +766,85 @@ from ({seed.events.select_sql()}) group by gid''';
     return cases
 
 
+ROLLUP_MEASURES = """
+auto rollup_count <- count(event_id);
+auto rollup_amount <- sum(event_amount);
+auto rollup_nullable <- sum(nullable_amount);
+"""
+
+ROLLUP_QUERIES = (
+    ("total", "select count(event_id) as n, sum(nullable_amount) as s;"),
+    (
+        "finer_filter_total",
+        "where group_id > 1 select count(event_id) as n, sum(event_amount) as s;",
+    ),
+    (
+        "joined_filter_total",
+        "where group_id > 1 or group_name is null select sum(nullable_amount) as s;",
+    ),
+    (
+        "property_grain",
+        "select group_name, count(event_id) as n order by group_name asc;",
+    ),
+    (
+        "property_grain_compound_filter",
+        (
+            "where group_id > 1 or group_name is null "
+            "select group_name, sum(event_amount) as s order by group_name asc;"
+        ),
+    ),
+    (
+        "coarser_grain_compound_filter",
+        (
+            "where group_id > 1 or group_name is null "
+            "select nullable_name, count(event_id) as n order by nullable_name asc;"
+        ),
+    ),
+    (
+        "window_over_count",
+        (
+            "where group_id > 1 select group_name, "
+            "rank(group_name) over (order by count(event_id) by group_name desc, "
+            "group_name asc) as r order by group_name asc;"
+        ),
+    ),
+    (
+        "sum_of_counts",
+        "where group_id > 1 select sum(count(event_id) by group_name) as s;",
+    ),
+)
+
+
+def _rollup_laws(seed: SeedData) -> list[FuzzCase]:
+    summary = f"""
+datasource group_rollup (
+    gid: group_id,
+    n: rollup_count,
+    amount: rollup_amount,
+    nullable_total: ?rollup_nullable
+)
+grain (group_id)
+query '''select gid, count(eid) as n, sum(amount) as amount,
+sum(nullable_amount) as nullable_total
+from ({seed.events.select_sql()}) group by gid''';
+"""
+    return [
+        _law(
+            seed,
+            f"rollup_{name}",
+            "Rollup.sum_exact",
+            "A summary at a finer grain answers a sum or count under any "
+            "filter and target its grain determines.",
+            ("sourcing", "aggregate", "rollup"),
+            query,
+            query,
+            model_extra=ROLLUP_MEASURES,
+            twin_extra=ROLLUP_MEASURES + summary,
+        )
+        for name, query in ROLLUP_QUERIES
+    ]
+
+
 def law_cases(seed: SeedData) -> list[FuzzCase]:
     return [
         *_boolean_laws(seed),
@@ -774,4 +853,5 @@ def law_cases(seed: SeedData) -> list[FuzzCase]:
         *_pin_laws(seed),
         *_extended_laws(seed),
         *_sourcing_laws(seed),
+        *_rollup_laws(seed),
     ]

@@ -1,8 +1,8 @@
 """A summary at (city, species) serves `count(tree_id)` under `where city = ...`
-only when the filter lands on the summary's own scan. When bucketing splits the
-rolled-up root away from the filter column (an empty target grain, or a window
-pulling the fact rows into the root stream), the root must not be taken from
-the summary: the filter would never reach it (issue #782)."""
+only when the filter lands on the summary's own scan: an empty target grain and
+a window over the count both keep the rolled-up root on the filter's scan. A
+demand the summary cannot serve (an aggregate it does not carry) reads the
+fact rows instead (issue #782)."""
 
 import pytest
 
@@ -97,7 +97,14 @@ CASES = {
     ),
 }
 
-ROLLUP_SERVED = {"by_form", "by_species"}
+ROLLUP_SERVED = {
+    "by_form",
+    "by_species",
+    "dominance",
+    "rank_beside_property",
+    "total",
+    "window_over_count",
+}
 
 
 def _run(model: str, query: str) -> tuple[str, list[tuple]]:

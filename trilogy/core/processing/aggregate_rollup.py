@@ -1,6 +1,6 @@
 from collections.abc import Iterable, Mapping
 
-from trilogy.core.enums import Granularity, Purpose
+from trilogy.core.enums import Derivation, Granularity, Purpose
 from trilogy.core.models.build import (
     ADDITIVE_ROLLUP_FUNCTIONS,
     BuildAggregateWrapper,
@@ -79,27 +79,49 @@ def _safe_dropped_grain(
     return _datasource_proves_functional_dependency(dropped, base_keys, datasources)
 
 
-def _addresses_reachable(
+def _concepts_reachable(
     datasource: BuildDatasource,
-    addresses: set[str],
+    concepts: Iterable[BuildConcept],
     concepts_by_address: Mapping[str, BuildConcept] | None,
 ) -> bool:
-    """Every canonical address is bound by the datasource, or is a property whose
-    keys sit inside the datasource's grain (the planner joins the owning dim)."""
-    datasource_addresses = {c.canonical_address for c in datasource.output_concepts}
-    missing = addresses - datasource_addresses
-    if not missing:
+    """Every concept is a function of the datasource's rows: bound by it, a
+    property whose keys sit inside its grain (the planner joins the owning
+    dim), or a scalar derivation of such columns."""
+    bound = {c.canonical_address for c in datasource.output_concepts}
+    grain = set(datasource.grain.components)
+    return all(
+        _reachable(concept, bound, grain, concepts_by_address) for concept in concepts
+    )
+
+
+def _reachable(
+    concept: BuildConcept,
+    bound: set[str],
+    grain: set[str],
+    concepts_by_address: Mapping[str, BuildConcept] | None,
+) -> bool:
+    if concept.canonical_address in bound:
         return True
     if concepts_by_address is None:
         return False
-    ds_grain_components = set(datasource.grain.components)
-    for address in missing:
-        concept = concepts_by_address.get(address)
-        if concept is None or concept.purpose != Purpose.PROPERTY:
-            return False
-        if not concept.keys or not set(concept.keys).issubset(ds_grain_components):
-            return False
-    return True
+    if concept.derivation == Derivation.CONSTANT:
+        return True
+    if concept.derivation == Derivation.BASIC and concept.lineage is not None:
+        return all(
+            _reachable(
+                concepts_by_address.get(arg.address, arg),
+                bound,
+                grain,
+                concepts_by_address,
+            )
+            for arg in concept.lineage.concept_arguments
+        )
+    return (
+        concept.purpose == Purpose.PROPERTY
+        and concept.keys is not None
+        and bool(concept.keys)
+        and concept.keys.issubset(grain)
+    )
 
 
 def _conditions_supported(
@@ -109,13 +131,13 @@ def _conditions_supported(
 ) -> bool:
     if not conditions:
         return True
-    return _addresses_reachable(
+    return _concepts_reachable(
         datasource,
-        {
-            c.canonical_address
+        [
+            c
             for c in conditions.row_arguments
             if c.granularity != Granularity.SINGLE_ROW
-        },
+        ],
         concepts_by_address,
     )
 
@@ -180,20 +202,19 @@ def get_additive_rollup_concepts(
             and _is_additive_aggregate(concept)
             and _datasource_has_matching_additive_aggregate(datasource, concept)
         ]
-    target_canonicals = [
-        concepts_by_address[component].canonical_address
+    target_concepts = [
+        concepts_by_address[component]
         for component in target_grain.components
         if component in concepts_by_address
     ]
+    target_canonicals = [c.canonical_address for c in target_concepts]
     if len(target_canonicals) != len(set(target_canonicals)):
         return []
     if datasource_grain.issubset(target_grain):
         return []
     # The table must be able to GROUP BY the target grain: every component bound
-    # here or reachable as a property of this grain.
-    if not _addresses_reachable(
-        datasource, set(target_canonicals), concepts_by_address
-    ):
+    # here or a function of its rows.
+    if not _concepts_reachable(datasource, target_concepts, concepts_by_address):
         return []
 
     dropped = datasource_grain - target_grain

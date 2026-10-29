@@ -8,3 +8,4 @@ import Trilogy.Freshness
 import Trilogy.StateMerge
 import Trilogy.NullReject
 import Trilogy.Validate
+import Trilogy.Rollup

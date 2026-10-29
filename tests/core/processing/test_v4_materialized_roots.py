@@ -375,13 +375,22 @@ def test_complete_where_summary_skipped_without_condition():
         "SELECT label;",
         "SELECT order_id, label;",
         "SELECT customer_id, upper(label) -> shout;",
-        "SELECT label, count(order_id) -> orders;",
         "SELECT order_date, count(label) -> labels;",
         "WHERE label = 'East' SELECT order_id;",
     ],
 )
 def test_unsourced_lineage_binding_is_root_everywhere(select: str):
     assert _roots(select, MODEL_UNSOURCED_LINEAGE) == {"local.label"}
+
+
+def test_count_by_bound_derived_rolls_up_from_summary():
+    # `label` is a function of `agg_by_customer`'s grain key
+    assert _roots(
+        "SELECT label, count(order_id) -> orders;", MODEL_UNSOURCED_LINEAGE
+    ) == {
+        "local.label",
+        "local.orders",
+    }
 
 
 def test_rederivable_binding_off_grain_stays_derived():

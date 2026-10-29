@@ -266,13 +266,16 @@ def test_finer_request_not_served_by_coarser_summary(raw, summarized):
     )
 
 
-def test_aggregate_inside_an_expression_is_a_known_gap(raw, summarized):
-    """Only a bare aggregate is matched: `sum(x) + 0` demands the enclosing
-    BASIC, and the summary-table search never looks inside its lineage. The
-    answer is still right, just computed off the raw fact. Pinned so the day
-    that changes is a deliberate one (it would also unlock `sum(a) - sum(b)`)."""
-    assert_not_served_by_summary(
+def test_aggregate_inside_an_expression_rolls_up(raw, summarized):
+    """`sum(x) + 0` demands the enclosing BASIC; the aggregate inside it rolls
+    up from the summary at its own grain."""
+    assert_served_by_summary(
         raw, summarized, "select origin_code, sum(distance) + 0 as td;"
+    )
+    assert_served_by_summary(
+        raw,
+        summarized,
+        "select origin_code, sum(distance) - count(id) as d;",
     )
 
 

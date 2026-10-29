@@ -29,6 +29,7 @@ a design decision or a bug.
 | `Rows.lean` | distinct tuples, grain | keyed rowset keeps rows, filter pushdown through a rowset, `distinct = group`, FD extension, window = `by`, sibling aggregates |
 | `Domain.lean` | `~` padding, grain pin | materialization invariance, pin vs stored column, pin is projection-invariant, `sum(coalesce)` |
 | `Sourcing.lean` | `complete where` arms, partition unions, the cell checker | a partition family unions back to the table (split, point, bool, `is null` arm, NULL-rejecting gate, a redundant copy of an arm), an arm answers under an implying WHERE, summary table = computed aggregate |
+| `Rollup.lean` | a summary re-aggregated to a coarser grain under a WHERE | `sum` and `count` roll up exactly under any filter and target their grain determines, the grand total's no-row guard, a finer filter and `count_distinct` cannot (checked by `tests/discovery/test_rollup_resolution_laws.py`) |
 | `Freshness.lean` | watermarks, the stale verdict, the incremental refresh | verdict = refresh has a row to write, incremental = rebuild under strict arrivals (checked by `tests/execution/state/test_freshness_laws.py`, not the query fuzzer) |
 | `StateMerge.lean` | partition deltas folded into a state snapshot | disjoint overlays commute, replay is a no-op, newest claim wins as a semilattice join, the per-slice count adjustment (checked by `tests/execution/state/test_merge_laws.py`) |
 | `NullReject.lean` | the null-rejection walk, membership, outer-join upgrade, nullability inference | a proved column is non-null on every kept row, a proof on a column read off the padded side turns a left join inner, a derived column is judged by its lineage, strict and total functions (checked by `tests/optimization/test_null_rejection_laws.py` and `tests/core/test_null_function_conformance.py`) |
@@ -218,6 +219,31 @@ a design decision or a bug.
   UUID column (`string`) crashed validation, `DECIMAL(10,2)[]` ingested as
   `numeric`, and DuckDB's bitstring `BIT` as `bool`. Unsigned integers and
   `TIMESTAMP_S/MS/NS` ingested as `unknown`. Found by the conformance probe.
+
+- **A summary in scope changed answers or went unused.** A summary at
+  `(city, species)` storing `count(tree_id)` answers any `sum` or `count`
+  whose filter and target columns its grain determines
+  (`Rollup.sum_exact`, `Rollup.count_group`), grand totals and aggregates
+  inside a window included (issue #782). On main, 42 of the 108 cells of that
+  matrix skipped the summary, failed to plan, or returned wrong rows:
+  - a filtered grand total, a window over the count and a `sum` of per-species
+    counts never read it: bucketing split the rolled-up root from its filter
+    column, so the planner fell back to the row-level tables. The root is now
+    marked `scan_filtered` and stays on the filter's scan, and an aggregate
+    nested in a window rolls up at its own grain.
+  - grouping by a derivation of the summary's key (a CASE over a property of
+    `species`) never matched, since a derived column's canonical address is
+    not an environment key.
+  - a WHERE that reads both the summary and a joined dimension
+    (`city = 'B' or tree_form = 'linden'`) returned wrong rows. The pinned
+    summary scan silently dropped the atom on the joined column, the re-sum
+    grouped by columns only the WHERE reads, an optimizer fold of the re-sum
+    into its parent kept the GROUP BY but dropped the SUM, and a grand total
+    cross-joined the unfiltered sum onto the filtered rows. Such a WHERE now
+    joins the dimension onto the summary rows, filters them, then sums.
+  - an empty summary's grand total returned one NULL row where the row-level
+    plan returns none: the re-sum lacked the `HAVING count(*) > 0` guard
+    (`Rollup.bare_sum_of_count_null`, `Rollup.grand_total_count`).
 
 ## Limits
 
