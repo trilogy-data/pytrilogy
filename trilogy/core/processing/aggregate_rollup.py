@@ -232,6 +232,10 @@ def get_rollup_concepts(
             continue
         if not _datasource_has_matching_rollup_aggregate(datasource, concept):
             continue
+        # Guards against a base row landing in two summary groups, which only
+        # an additive re-sum (`ADDITIVE_ROLLUP_FUNCTIONS`) double counts.
+        # Idempotent aggregates are held to it too until relaxing it for them
+        # has law coverage.
         base_keys = _base_keys(_aggregate_inputs(concept))
         if all(
             _safe_dropped_grain(dropped_concept, base_keys, datasource_list)
@@ -272,6 +276,9 @@ def merge_rollup_concepts(
     unreached = target_components - merge_components
     if not (merge_components and unreached):
         return []
+    # Every unreached target must be a property of the merge's keys, so the
+    # join adds no rows: the fan-out guard an additive re-sum needs, applied
+    # to idempotent aggregates too for now.
     for address in unreached:
         concept = concepts_by_address.get(address)
         if (

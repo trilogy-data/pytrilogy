@@ -135,17 +135,23 @@ if TYPE_CHECKING:
 
 LOGGER_PREFIX = "[MODELS_BUILD]"
 
-# Rollable aggregates, each mapped to the function that re-aggregates its
-# precomputed per-group values into the coarser-grain value (`Rollup.lean`).
-# (`trilogy.core.processing.aggregate_rollup` builds on this; it lives here so
-# the datasource column lookup can use it without a cycle.)
+# Rollable aggregates re-aggregate their precomputed per-group values into the
+# coarser-grain value (`Rollup.lean`). Additive ones re-sum, so each base row
+# must sit in exactly one summary group (`Rollup.sum_exact` needs `Nodup`).
+# Idempotent ones re-apply themselves and tolerate a row read twice
+# (`Rollup.min_exact` does not). (`trilogy.core.processing.aggregate_rollup`
+# builds on this; it lives here so the datasource column lookup can use it
+# without a cycle.)
+ADDITIVE_ROLLUP_FUNCTIONS = {FunctionType.COUNT, FunctionType.SUM}
+IDEMPOTENT_ROLLUP_FUNCTIONS = {
+    FunctionType.MIN,
+    FunctionType.MAX,
+    FunctionType.BOOL_AND,
+    FunctionType.BOOL_OR,
+}
 ROLLUP_REAGGREGATES = {
-    FunctionType.COUNT: FunctionType.SUM,
-    FunctionType.SUM: FunctionType.SUM,
-    FunctionType.MIN: FunctionType.MIN,
-    FunctionType.MAX: FunctionType.MAX,
-    FunctionType.BOOL_AND: FunctionType.BOOL_AND,
-    FunctionType.BOOL_OR: FunctionType.BOOL_OR,
+    **{f: FunctionType.SUM for f in ADDITIVE_ROLLUP_FUNCTIONS},
+    **{f: f for f in IDEMPOTENT_ROLLUP_FUNCTIONS},
 }
 
 
