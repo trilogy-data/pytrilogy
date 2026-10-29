@@ -312,9 +312,11 @@ class DomainGraph:
         complete outright: for a statement its WHERE implies, a `complete
         where` datasource holds the whole domain."""
         promoted = [
-            replace(b, complete=True, condition=None)
-            if b.condition is not None and met(b.condition)
-            else b
+            (
+                replace(b, complete=True, condition=None)
+                if b.condition is not None and met(b.condition)
+                else b
+            )
             for b in self.binding_edges
         ]
         if all(p is b for p, b in zip(promoted, self.binding_edges)):
