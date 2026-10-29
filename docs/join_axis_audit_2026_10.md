@@ -273,8 +273,8 @@ for every v4 merge whose sides are groups:
 
 - the FINAL merge, over the cover `final_cover.elect_cover` picks from what
   each group exposes at stage 2 (its outputs; a row stream also the grain
-  keys and property-grain key its rows hold), filtered to what the group's
-  built node renders for the one over-claim open below;
+  keys and property-grain key its rows hold), less what it cannot render
+  (`final_cover.unrendered`);
 - every per-group merge (`_pre_merge_parents`), over the consumer's row
   parents, with the consumer's input contract `preserve_keys` as each side's
   carry demand. A merge assembled below the consumer (no group behind a side)
@@ -353,8 +353,8 @@ merge pairs on that plan over the sides it joins. The FINAL's filter-argument
 producers and gate hosts are elected off group outputs and the region domains
 the group graph shows each side reading.
 
-What made the cover honest (over `tests/`, the render filter now changes
-one cover):
+What made the cover honest (over all of `tests/`, the stage-2 cover equals
+the one filtered by built outputs):
 
 - a row stream exposes the grain keys its rows hold (`emitted_grain`), not
   the grain it is computable at (`f_byitem` at `(item, rid)` holds no `rid`);
@@ -362,47 +362,56 @@ one cover):
 - a filter whose every value is one row (`avg(x) by * ? yr = 1999`) exposes
   no grain;
 - a recursive walk carries its own value and the edge it walks, nothing its
-  grain key determines (`gen_recursive`).
+  grain key determines (`gen_recursive`);
+- an aggregate reads a value through a same-grain grouping twin built before
+  it (`GroupAttrs.twin_reused`, set once over the build order). It recomputes
+  that value only off a row parent that survives as a feeder, the builder's
+  redundant re-scan rule; with none it is built as its population alone, and
+  every reader of the lost value loses what it computed off it (a lost value
+  is opaque: a reader never re-derives it from its lineage). The named combo
+  in `test_v4_window_basic_merge` is the shape.
 
-`_add_relation_axis_contributors` and `_add_region_domain_contributors`
-elect off group outputs, members and concept pseudonyms. Over `tests/` the
-relation-axis pass adds no contributor at all: the cover and the authored
-axes already seat every hosting side.
+`_add_region_domain_contributors` elects off group outputs, members and
+concept pseudonyms. The relation-axis pass that sat beside it added no
+contributor anywhere in `tests/` (the cover and the authored axes already
+seat every hosting side) and is gone.
 
-**Open.**
+**What a node renders, at stage 2.** `output_concepts` is what readers read
+off a group, not what its node renders. `renders.renders` states the latter,
+and the FINAL add passes decide off it: partial completion (which side
+renders a relation member, complete unless a declared subset side), the
+descendant fold (`renders.parents_render`: what a reader's parents render)
+and alias promotion (a host renders the rename's arguments, plus the
+concepts the cover gave it; grouping rows read off rendered lineage; a
+source fed by an EXISTENCE edge is never promoted). Each rule is a measured
+shape (computed both ways over all of `tests/`, zero disagreements):
 
-1. A select-phase window whose value its condition twin computes claims it
-   at stage 2 and drops it at build (`test_v4_window_basic_merge`, the
-   named combo: `round(combo / lead(combo) ...)` under `where ratio is not
-   null`). The d0 aggregate reads its value through the d1 twin
-   (`_aggregate_reused_from_twin`), so the d0 chain is built as the
-   population (`wk`) and `satisfiable_outputs` prunes `ratio` off the d0
-   window. Stage 2 has to state that reuse before `elect_cover` can drop its
-   `rendered` filter.
-2. Three add passes still read built nodes, each for a fact stage 2 does not
-   state. Each was measured by computing its decision both ways over
-   `tests/` (`tests/core` aside):
-   - `_fold_descendant_contributors` asks what a descendant's built parents
-     render. Stage 2's nearest fact (row parents' outputs and members,
-     projected to the descendant's grain beside a grouped parent) disagrees
-     in 13 folds: a parent's node renders values no consumer listed among
-     its outputs (a rollup window's `lvl`, ncaa's `points_per_game`).
-   - `_add_partial_completion_contributors` asks which side renders a
-     relation member complete. A declared subset source is partial by
-     declaration, but a ROOT scan renders members it only advertises as
-     capability (`ka`, `kb`, `kc` beside a `union join`) and a row stream
-     reads a mate it never renders; 9 files disagree.
-   - `_promote_final_aliases_to_grouping_contributors` reads the source's
-     built `existence_concepts`/`force_group`, and its hosts' outputs miss a
-     coalescing mate the aggregate renders (`a.k` beside `b.k`). It hosts a
-     rename only where `_crosses_unsourced_aggregate` holds
-     (`concept_satisfiable` walks through aggregate lineage); a stage-2 move
-     keeps that guard.
+- a one-value group renders its value alone (`avg(x) by * ? yr = 1999`
+  holds no `yr`);
+- a reader's preserve key is a column only where the group can hold it
+  (`join_plan._widenable`), and a rowset handle or relation member only
+  under a name the group reads: the basic over side a renders the axis as
+  `ka`, never `kc`, whatever FD says;
+- a row stream renders its members and, reading source rows, the row keys
+  it is grained at (a basic at `tree_id` over a demoted merge key);
+- a grouping group renders its outputs and not the keys it carries: an
+  aggregate by `kb` over side a renders the axis as `ka`, as the demand pass
+  named it. Over the rowsets of a coalescing relation's sides it renders
+  each side's handle (`pop:a|b` by `b.k` renders `a.k`);
+- a scan or boundary computes an expression relation member off its
+  arguments (`cur_period.wk + 1`); a scan rendering one member renders every
+  datasource-bindable member (`ka`, `kb`, `kc`), never a rowset handle; a
+  boundary renders no other rowset's handle (a deferred WHERE's);
+- a reader's parents render to it as the builder slices them: a WINDOW
+  slices its ROOT parents to its grain, a row stream beside a grouped parent
+  projects its row parents to its grain, and a CONSTRAINT parent is joined
+  whole to apply its condition (the select-phase window renders its
+  condition twin's `ratio`).
 
-   The common gap: `output_concepts` is what consumers read off a group,
-   not what its node renders. A stage-2 "renders" fact (outputs, members,
-   carried preserve keys, advertised relation members) would serve all
-   three.
+**Open.** No FINAL add pass reads a built node to decide. What still reads
+them is physical: the fold's widen and the region domain's rename projection
+act on built nodes, `elect_bridges` takes its candidates from what was built,
+and `_key_bridged_members` checks built connectivity.
 
 ## 8. Not claimed
 

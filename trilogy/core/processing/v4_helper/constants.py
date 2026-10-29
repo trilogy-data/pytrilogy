@@ -66,6 +66,12 @@ GROUPING_DERIVATIONS: set[Derivation] = {
     Derivation.GROUP_TO,
 }
 
+# Derivations that collapse their input rows to their grain.
+AGGREGATING_DERIVATIONS: set[Derivation] = {
+    Derivation.AGGREGATE,
+    Derivation.GROUP_TO,
+}
+
 # Derivations evaluated against their input row stream as it stands: per row,
 # or (WINDOW) one row ranked against the others. A row padded for a ``~``
 # extension is an input like any other, so it gets a value, or takes a rank, it
