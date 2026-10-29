@@ -307,14 +307,14 @@ class DomainGraph:
                     )
         return self._whole_domain_holders.get(concept, [])
 
-    def with_conditions_met(self, met: Callable[[Any], bool]) -> "DomainGraph":
-        """Copy where a binding complete under a condition `met` accepts is
-        complete outright: for a statement its WHERE implies, a `complete
-        where` datasource holds the whole domain."""
+    def with_conditions_met(self, met: Callable[[BindingEdge], bool]) -> "DomainGraph":
+        """Copy where a conditioned binding `met` accepts is complete
+        outright: for a statement its WHERE implies, a `complete where`
+        datasource holds the whole domain."""
         promoted = [
             (
                 replace(b, complete=True, condition=None)
-                if b.condition is not None and met(b.condition)
+                if b.condition is not None and met(b)
                 else b
             )
             for b in self.binding_edges
