@@ -638,6 +638,7 @@ def gen_select_merge_node(
     depth: int,
     accept_partial: bool = False,
     conditions: BuildWhereClause | None = None,
+    outputs: list[BuildConcept] | None = None,
 ) -> StrategyNode | None:
     abstract_props = [
         c
@@ -826,9 +827,12 @@ def gen_select_merge_node(
         # The joined rows sit at the parents' finer grain; SUM-roll additive
         # aggregates up to the target (force_group + rollup_concepts make the
         # renderer emit SUM and GROUP BY at the merge level).
+        # The WHERE applies before the regroup, so columns only it reads are
+        # no group keys.
+        rollup_targets = outputs or all_concepts
         rollup_at_merge = merge_rollup_concepts(
             (parent_node.grain for parent_node in parents),
-            all_concepts,
+            rollup_targets,
             environment.concepts,
         )
         force_merge_group: bool | None = True if rollup_at_merge else None
@@ -843,7 +847,7 @@ def gen_select_merge_node(
             force_merge_group = True
 
         candidate = MergeNode(
-            output_concepts=list(all_concepts),
+            output_concepts=list(rollup_targets if rollup_at_merge else all_concepts),
             input_concepts=unique(
                 normals
                 + abstract_props

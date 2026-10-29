@@ -179,9 +179,12 @@ def test_finer_filter_source_picks_finer_summary():
     request = _request(
         "WHERE order_date >= '2024-01-01'::date SELECT customer_id, order_count;"
     )
-    ds = _finer_filter_rollup_source(request)
+    match = _finer_filter_rollup_source(request)
+    assert match is not None
+    ds, joined = match
     assert isinstance(ds, BuildDatasource)
     assert ds.name == "agg_by_customer_date"
+    assert not joined
 
 
 def test_finer_filter_source_none_without_conditions():

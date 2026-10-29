@@ -43,6 +43,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment, SpanScope
 from trilogy.core.processing import plan_trace
 from trilogy.core.processing.aggregate_rollup import (
+    _concepts_reachable,
     _conditions_supported,
     _datasource_has_matching_additive_aggregate,
     _is_additive_aggregate,
@@ -428,6 +429,7 @@ def materialized_root_addresses(
                     candidates.append(environment.concepts.get(arg.address) or arg)
     out = _binding_only_roots(candidates, environment, datasources, where)
     rolled_roots: set[str] = set()
+    rollup_sources: list[BuildDatasource] = []
     seen_candidates: set[str] = set()
     for concept in candidates:
         if concept.address in seen_candidates:
@@ -492,50 +494,131 @@ def materialized_root_addresses(
         # pushes the filter pre-aggregation, and SUM-rolls. A coarser table is
         # never matched under a finer filter, so post-rollup decoupling can't
         # double-count.
-        for ds in datasources:
-            if not _datasource_has_matching_additive_aggregate(ds, concept):
-                continue
-            rolled = get_additive_rollup_concepts(
-                datasource=ds,
-                requested_concepts=mandatory_list,
-                concepts_by_address=environment.concepts,
-                datasources=datasources,
-                target_grain=target_grain,
-                conditions=where,
-            )
-            if any(r.address == concept.address for r in rolled):
-                rolled_roots.add(concept.address)
-                break
+        sources = _rollup_sources(
+            concept, mandatory_list, target_grain, where, environment, datasources
+        )
+        if sources:
+            rolled_roots.add(concept.address)
+            rollup_sources.extend(sources)
+    nested = _nested_rollup_roots(
+        mandatory_list, out | rolled_roots, where, environment, datasources
+    )
+    rolled_roots |= nested.keys()
+    rollup_sources.extend(ds for sources in nested.values() for ds in sources)
     if rolled_roots and not _finer_filter_reaches_rollup(
-        mandatory_list, rolled_roots, target_grain, where, environment
+        mandatory_list, rolled_roots, rollup_sources, target_grain, where, environment
     ):
         return frozenset(out)
     return frozenset(out | rolled_roots)
 
 
+def scan_filtered_roots(
+    mandatory_list: list[BuildConcept],
+    materialized_roots: frozenset[str],
+    conditions: list[BuildWhereClause],
+    environment: BuildEnvironment,
+) -> frozenset[str]:
+    """Materialized aggregate roots read under a WHERE finer than their own
+    grain: the WHERE must apply on their scan (`ConceptAttrs.scan_filtered`)."""
+    where = combine_where_clauses(conditions)
+    if where is None or not materialized_roots:
+        return frozenset()
+    return frozenset(
+        concept.address
+        for concept in walk_lineage(
+            mandatory_list, descend=lambda c: c.address not in materialized_roots
+        )
+        if concept.address in materialized_roots
+        and concept.derivation == Derivation.AGGREGATE
+        and filter_finer_row_args(where, concept.grain, environment.concepts)
+    )
+
+
+def _rollup_sources(
+    concept: BuildConcept,
+    requested: list[BuildConcept],
+    target_grain: BuildGrain,
+    where: BuildWhereClause | None,
+    environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
+) -> list[BuildDatasource]:
+    """The finer summaries `concept` re-aggregates from at `target_grain`."""
+    return [
+        ds
+        for ds in datasources
+        if _datasource_has_matching_additive_aggregate(ds, concept)
+        and any(
+            r.address == concept.address
+            for r in get_additive_rollup_concepts(
+                datasource=ds,
+                requested_concepts=requested,
+                concepts_by_address=environment.concepts,
+                datasources=datasources,
+                target_grain=target_grain,
+                conditions=where,
+            )
+        )
+    ]
+
+
+def _nested_rollup_roots(
+    mandatory_list: list[BuildConcept],
+    roots: set[str],
+    where: BuildWhereClause | None,
+    environment: BuildEnvironment,
+    datasources: Sequence[BuildDatasource],
+) -> dict[str, list[BuildDatasource]]:
+    """Additive aggregates inside a demand (`count(x) by k` under a window)
+    that a summary serves at their own grain, under the same WHERE."""
+    mandatory = {c.address for c in mandatory_list}
+    out: dict[str, list[BuildDatasource]] = {}
+    for concept in walk_lineage(
+        mandatory_list, descend=lambda c: c.address not in roots
+    ):
+        if (
+            concept.address in mandatory
+            or concept.derivation != Derivation.AGGREGATE
+            or not _is_additive_aggregate(concept)
+        ):
+            continue
+        sources = _rollup_sources(
+            concept, [concept], concept.grain, where, environment, datasources
+        )
+        if sources:
+            out[concept.address] = sources
+    return out
+
+
 def _finer_filter_reaches_rollup(
     mandatory_list: list[BuildConcept],
     rolled_roots: set[str],
+    rollup_sources: list[BuildDatasource],
     target_grain: BuildGrain,
     where: BuildWhereClause | None,
     environment: BuildEnvironment,
 ) -> bool:
     """A filter finer than the target grain is only applied to a rolled-up root
     when the root shares one scan with the filter columns
-    (`_plan_finer_filter_rollup`). Bucketing separates them when the target
-    grain is empty (a single-row root) or when another demand reaches row-level
-    roots finer than the grain (a window over the fact rows); the separated
-    root would then read the summary unfiltered."""
+    (`_plan_finer_filter_rollup`). The other demands ride that scan, so each
+    must be a function of the summary's rows: an aggregate the summary does not
+    carry, or a column below its grain, needs the fact rows instead."""
     if not filter_finer_row_args(where, target_grain, environment.concepts):
         return True
-    if not target_grain.components:
-        return False
     reached = walk_lineage(
         [c for c in mandatory_list if c.address not in rolled_roots],
         descend=lambda c: c.address not in rolled_roots,
     )
     leaves = [c for c in reached if c.lineage is None]
-    return BuildGrain.from_concepts([*mandatory_list, *leaves]) == target_grain
+    if BuildGrain.from_concepts([*mandatory_list, *leaves]) == target_grain:
+        return True
+    if any(
+        c.derivation == Derivation.AGGREGATE and c.address not in rolled_roots
+        for c in reached
+    ):
+        return False
+    return any(
+        _concepts_reachable(ds, leaves, environment.concepts) for ds in rollup_sources
+    )
 
 
 def _build_from_graph(
@@ -606,6 +689,9 @@ def _build_from_graph_traced(
         materialized_roots,
         staged_conditions=staged_conditions,
         datasources=g.scope.datasources,
+        scan_filtered_roots=scan_filtered_roots(
+            mandatory_list, materialized_roots, conditions, environment
+        ),
     )
     if plan_trace.active():
         plan_trace.record(

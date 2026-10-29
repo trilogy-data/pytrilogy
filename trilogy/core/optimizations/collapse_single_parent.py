@@ -38,6 +38,7 @@ from trilogy.core.optimizations.utils import (
 from trilogy.core.processing.condition_utility import (
     gather_windows,
 )
+from trilogy.utility import unique
 
 if TYPE_CHECKING:
     from trilogy.core.domain_graph import DomainGraph
@@ -390,6 +391,10 @@ def apply_child_merge(parent: CTE, cte: CTE, merge_mode: MergeMode) -> None:
         ]
         parent.group_to_grain = True
         parent.grain = cte.grain
+        # the child's re-sum of a summary column now runs over the parent's rows
+        parent.rollup_concepts = unique(
+            parent.rollup_concepts + cte.rollup_concepts, "address"
+        )
     elif merge_mode == MergeMode.WINDOW:
         # The parent's intermediate columns may still be referenced by window
         # expressions, so extend without pruning.

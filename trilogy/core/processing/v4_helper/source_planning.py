@@ -265,6 +265,7 @@ def _direct_source(request: SourceRequest, accept_partial: bool) -> StrategyNode
         fail_if_not_found=False,
         conditions=request.conditions,
         accept_partial=accept_partial,
+        outputs=request.outputs if request.conditions else None,
     )
     if node is None or {c.address for c in outputs} == {
         c.address for c in request.outputs
@@ -1306,16 +1307,19 @@ def _merge_component_sources(
         )
     # A summary read below the target grain (a rollup binding) is summed at
     # the merge, where the dimension supplying the coarser key has been joined.
-    # Judged on the request's own concepts: the join spine the bridge carried
-    # in is what the regroup sums away, so it leaves the outputs too.
-    requested = {concept.address for concept in _requested_concepts(request)}
+    # Judged on the request's own outputs: the join spine the bridge carried
+    # in is what the regroup sums away, so it leaves the outputs too, and the
+    # condition this merge applies filters before the GROUP BY, so its columns
+    # are no group keys.
+    requested = {concept.address for concept in request.outputs}
+    targets = [concept for concept in outputs if concept.address in requested]
     rollup = merge_rollup_concepts(
         (parent.grain for parent in parents),
-        [concept for concept in outputs if concept.address in requested],
+        targets,
         request.environment.concepts,
     )
     if rollup:
-        outputs = [concept for concept in outputs if concept.address in requested]
+        outputs = targets
     return MergeNode(
         input_concepts=inputs,
         output_concepts=outputs,
@@ -1410,7 +1414,9 @@ def _complete_partial_requested(
     )
 
 
-def _finer_filter_rollup_source(request: SourceRequest) -> BuildDatasource | None:
+def _finer_filter_rollup_source(
+    request: SourceRequest,
+) -> tuple[BuildDatasource, bool] | None:
     """A single datasource that can serve an additive-rollup aggregate under a
     filter on a column *finer* than the requested grain.
 
@@ -1421,7 +1427,10 @@ def _finer_filter_rollup_source(request: SourceRequest) -> BuildDatasource | Non
     (`agg_by_customer`) can't express the filter: joining its unfiltered count
     to a separately-filtered key list double-counts. We require ONE datasource
     that binds every requested aggregate, holds the requested grain keys, and
-    supports the finer filter; otherwise there is no safe pinned source."""
+    supports the finer filter; otherwise there is no safe pinned source.
+
+    The flag is True when the WHERE also reads a dimension joined onto the
+    summary's grain, so the scan cannot apply it alone."""
     conditions = request.conditions
     if conditions is None:
         return None
@@ -1432,8 +1441,6 @@ def _finer_filter_rollup_source(request: SourceRequest) -> BuildDatasource | Non
     environment = request.environment
     target_grain = BuildGrain.from_concepts(outputs, environment=environment)
     target_components = set(target_grain.components)
-    if not target_components:
-        return None
     # Every output must be a rolled aggregate or a target-grain key; a property
     # or other shape would not survive the pinned scan + SUM-roll.
     if any(not c.is_aggregate and c.address not in target_components for c in outputs):
@@ -1441,13 +1448,15 @@ def _finer_filter_rollup_source(request: SourceRequest) -> BuildDatasource | Non
     finer = filter_finer_row_args(conditions, target_grain, environment.concepts)
     if not finer:
         return None
-    finer_canonicals = {c.canonical_address for c in finer}
-    matches: list[BuildDatasource] = []
+    condition_canonicals = {
+        c.canonical_address
+        for c in conditions.row_arguments
+        if c.granularity != Granularity.SINGLE_ROW
+    }
+    matches: list[tuple[BuildDatasource, bool]] = []
     for ds in request.graph.scope.datasources:
         ds_canonicals = {c.canonical_address for c in ds.output_concepts}
         ds_addresses = {c.address for c in ds.output_concepts}
-        if not finer_canonicals.issubset(ds_canonicals):
-            continue
         if not target_components.issubset(ds_addresses):
             continue
         rolled = get_additive_rollup_concepts(
@@ -1460,12 +1469,12 @@ def _finer_filter_rollup_source(request: SourceRequest) -> BuildDatasource | Non
         )
         rolled_addresses = {c.address for c in rolled}
         if all(agg.address in rolled_addresses for agg in aggregates):
-            matches.append(ds)
+            matches.append((ds, not condition_canonicals <= ds_canonicals))
     if not matches:
         return None
-    # Prefer the finest match closest to the requested grain (fewest dropped
-    # grain components) for a deterministic, cheapest source.
-    matches.sort(key=lambda ds: (len(ds.grain.components), ds.name))
+    # Prefer a scan that applies the WHERE alone, then the finest match closest
+    # to the requested grain (fewest dropped grain components).
+    matches.sort(key=lambda m: (m[1], len(m[0].grain.components), m[0].name))
     return matches[0]
 
 
@@ -1554,9 +1563,12 @@ def _plan_complete_where_source(request: SourceRequest) -> StrategyNode | None:
 
 
 def _plan_finer_filter_rollup(request: SourceRequest) -> StrategyNode | None:
-    ds = _finer_filter_rollup_source(request)
-    if ds is None:
+    match = _finer_filter_rollup_source(request)
+    if match is None:
         return None
+    ds, joined = match
+    if joined:
+        return _plan_joined_filter_rollup(request, ds)
     environment = request.environment
     outputs = list(request.outputs)
     scan = create_select_node(
@@ -1602,6 +1614,65 @@ def _plan_finer_filter_rollup(request: SourceRequest) -> StrategyNode | None:
         parents=[scan, key_node],
         depth=request.depth,
         force_join_type=JoinType.INNER,
+    )
+
+
+def _plan_joined_filter_rollup(
+    request: SourceRequest, ds: BuildDatasource
+) -> StrategyNode | None:
+    """The summary's rows at its own grain, joined to the dimensions the WHERE
+    reads, filtered, then summed to the requested grain: the filter selects
+    summary rows before any of them are added up."""
+    assert request.conditions is not None
+    environment = request.environment
+    outputs = list(request.outputs)
+    grain = set(ds.grain.components)
+    grain_keys = [environment.concepts[a] for a in sorted(grain)]
+    scan = create_select_node(
+        f"ds~{ds.name}",
+        unique(outputs + grain_keys, "address"),
+        g=request.graph,
+        environment=environment,
+        depth=request.depth + 1,
+    )
+    bound = {c.canonical_address for c in ds.output_concepts}
+    joined = [
+        c
+        for c in condition_row_args(request.conditions)
+        if c.canonical_address not in bound and c.granularity != Granularity.SINGLE_ROW
+    ]
+    join_keys = {
+        key
+        for c in joined
+        for key in set(c.keys or ()) | set(c.grain.components)
+        if key in grain
+    }
+    dims = plan_source(
+        SourceRequest(
+            outputs=unique(
+                joined + [k for k in grain_keys if k.address in join_keys], "address"
+            ),
+            environment=environment,
+            graph=request.graph,
+            history=request.history,
+            conditions=None,
+            deferred_conditions=_deferred_conditions(request),
+            depth=request.depth + 1,
+        )
+    )
+    if dims is None:
+        return None
+    return MergeNode(
+        input_concepts=unique(
+            [c for parent in (scan, dims) for c in parent.usable_outputs], "address"
+        ),
+        output_concepts=outputs,
+        environment=environment,
+        parents=[scan, dims],
+        depth=request.depth,
+        conditions=request.conditions.conditional,
+        force_group=True,
+        rollup_concepts=[c for c in outputs if c.is_aggregate],
     )
 
 
