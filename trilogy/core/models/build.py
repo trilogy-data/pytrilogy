@@ -58,6 +58,7 @@ from trilogy.core.grain_pin import (
     inline_basic,
     is_null_absorbing,
     pin_keys,
+    statement_graph,
 )
 from trilogy.core.models.author import (
     AggregateGrouping,
@@ -2939,6 +2940,7 @@ class Factory:
         virtual_scope_salt: str | None = None,
         join_scope: JoinScope | None = None,
         select_anchors: dict[str, frozenset[str]] | None = None,
+        select_where: WhereClause | None = None,
     ):
         self.grain = grain or Grain()
         # Each output of the select this factory builds -> its row keys. A
@@ -2946,6 +2948,10 @@ class Factory:
         # resolves against the select grain (`grain_pin`). None outside a
         # select's projection and WHERE (a datasource's columns, a ROLLUP).
         self.select_anchors = select_anchors
+        # the select's WHERE: a `complete where` it implies holds the whole
+        # domain the pins are reasoned over (`statement_graph`)
+        self.select_where = select_where
+        self._pin_graph: tuple[DomainGraph, DomainGraph] | None = None
         # building a pin's own expression: it is evaluated on the select's row
         # already, so nothing inline in it is pinned again
         self._in_grain_pin = False
@@ -3354,9 +3360,15 @@ class Factory:
             owner,
             self.select_anchors,
             self.environment,
-            assemble_full_graph(self.environment, self.domain_graph),
+            self._statement_graph(),
             self._named_pin_keys,
         )
+
+    def _statement_graph(self) -> DomainGraph:
+        full = assemble_full_graph(self.environment, self.domain_graph)
+        if self._pin_graph is None or self._pin_graph[0] is not full:
+            self._pin_graph = (full, statement_graph(full, self.select_where))
+        return self._pin_graph[1]
 
     def _named_pin_keys(self, address: str) -> frozenset[str]:
         known = self._pin_memo.get(address)
@@ -4484,7 +4496,10 @@ class Factory:
         anchors = select_anchors(
             base,
             self.environment,
-            assemble_full_graph(self.environment, self.domain_graph),
+            statement_graph(
+                assemble_full_graph(self.environment, self.domain_graph),
+                base.where_clause,
+            ),
         )
 
         materialized: dict[str, BuildConcept] = {}
@@ -4499,6 +4514,7 @@ class Factory:
             join_scope=self.join_scope,
             select_grouping=base.grouping,
             select_anchors=anchors,
+            select_where=base.where_clause,
         )
         # WHERE-scope twins (normalize_select_where_scope) are the local
         # concepts referenced by the WHERE but absent from the environment.
@@ -4538,6 +4554,7 @@ class Factory:
             # must not share addresses with select-scope twins
             virtual_scope_salt=WHERE_SCOPE_SALT,
             select_anchors=anchors,
+            select_where=base.where_clause,
         )
         # Build the WHERE-scope twins here so their refs resolve — in this
         # factory, like their inline equivalents, so bare aggregates co-grain

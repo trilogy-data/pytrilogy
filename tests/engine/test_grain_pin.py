@@ -207,6 +207,34 @@ def test_stored_only_value_cannot_be_pinned_to_another_keyspace():
         sorted_rows(executor, "select customer_id, amount_or_zero")
 
 
+_COMPLETE_WHERE = """
+key order_id int;
+key region string;
+property order_id._raw int;
+auto amount_or_zero <- coalesce(_raw, 0);
+
+partial datasource east_orders (
+    order_id: order_id, region: region, amount_or_zero: amount_or_zero
+)
+grain (order_id)
+complete where region = 'east'
+query '''select 100 as order_id, 'east' as region, 10 as amount_or_zero''';
+"""
+
+
+def test_complete_where_the_statement_implies_holds_the_whole_domain():
+    executor = executor_for(_COMPLETE_WHERE)
+    assert sorted_rows(
+        executor, "select order_id, region, amount_or_zero where region = 'east'"
+    ) == [(100, "east", 10)]
+
+
+def test_complete_where_the_statement_does_not_imply_still_pins():
+    executor = executor_for(_COMPLETE_WHERE)
+    with pytest.raises(NoDatasourceException, match="stored only at its own grain"):
+        sorted_rows(executor, "select order_id, region, amount_or_zero")
+
+
 @pytest.mark.parametrize(
     "keys, bound, expected",
     [

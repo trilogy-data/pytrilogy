@@ -5,7 +5,7 @@ from jinja2 import Template
 
 from trilogy.core.enums import FunctionType
 from trilogy.core.models.core import DataType
-from trilogy.dialect.base import BaseDialect, TableColumn
+from trilogy.dialect.base import BaseDialect, TableColumn, render_unsupported
 
 MONTH_NAME_CASE = (
     "CASE CAST(strftime('%m', {expr}) AS INTEGER) "
@@ -92,6 +92,8 @@ def date_truncate(expr: str, part: str) -> str:
 
 
 FUNCTION_MAP = {
+    # no fold over an array
+    FunctionType.ARRAY_REDUCE: render_unsupported("array_reduce"),
     FunctionType.BIT_XOR: lambda x, types: f"(({x[0]} | {x[1]}) - ({x[0]} & {x[1]}))",
     # concat() skips NULLs (coalesce-wrapped for pre-3.44 sqlite); || propagates
     FunctionType.CONCAT: lambda args, types: (

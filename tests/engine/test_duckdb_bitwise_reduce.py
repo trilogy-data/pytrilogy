@@ -5,9 +5,12 @@ from trilogy.core.enums import FunctionType
 from trilogy.dialect.base import BaseDialect
 from trilogy.dialect.bigquery import BigqueryDialect
 from trilogy.dialect.clickhouse import ClickhouseDialect
+from trilogy.dialect.mysql import MySQLDialect
 from trilogy.dialect.postgres import PostgresDialect
 from trilogy.dialect.presto import PrestoDialect
 from trilogy.dialect.snowflake import SnowflakeDialect
+from trilogy.dialect.sql_server import SqlServerDialect
+from trilogy.dialect.sqlite import SQLiteDialect
 
 
 def _value(text: str):
@@ -78,8 +81,25 @@ def test_xor_renders_per_dialect(dialect: type[BaseDialect], xor: str) -> None:
     assert dialect.FUNCTION_MAP[FunctionType.BIT_XOR](["a", "b"], []) == xor
 
 
-def test_array_reduce_is_refused_where_there_is_no_fold() -> None:
+@pytest.mark.parametrize(
+    "dialect",
+    [BigqueryDialect, PostgresDialect, MySQLDialect, SQLiteDialect, SqlServerDialect],
+)
+def test_array_reduce_is_refused_where_there_is_no_fold(
+    dialect: type[BaseDialect],
+) -> None:
     with pytest.raises(NotImplementedError, match="array_reduce"):
-        BigqueryDialect.FUNCTION_MAP[FunctionType.ARRAY_REDUCE](
+        dialect.FUNCTION_MAP[FunctionType.ARRAY_REDUCE](
             ["arr", "acc", "x", "body", "0"], []
         )
+
+
+def test_array_reduce_has_a_generic_form() -> None:
+    """Like array_transform's: the base dialect renders every function, so a
+    walk over a CTE with it (`render_cte_used_map`) never raises."""
+    assert (
+        BaseDialect.FUNCTION_MAP[FunctionType.ARRAY_REDUCE](
+            ["arr", "acc", "x", "body", "0"], []
+        )
+        == "array_reduce(arr, (acc, x) -> body, 0)"
+    )

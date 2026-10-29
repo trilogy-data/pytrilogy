@@ -666,7 +666,11 @@ FUNCTION_MAP = {
     FunctionType.BIT_XOR: lambda x, types: f"({x[0]} ^ {x[1]})",
     FunctionType.BIT_SHIFT_LEFT: lambda x, types: f"({x[0]} << {x[1]})",
     FunctionType.BIT_SHIFT_RIGHT: lambda x, types: f"({x[0]} >> {x[1]})",
-    FunctionType.ARRAY_REDUCE: render_unsupported("array_reduce"),
+    # A generic form, as for array_transform and array_filter; each dialect
+    # renders its own fold, and those with none refuse it in their own map.
+    FunctionType.ARRAY_REDUCE: lambda x, types: (
+        f"array_reduce({x[0]}, ({x[1]}, {x[2]}) -> {x[3]}, {x[4]})"
+    ),
     # generic types
     FunctionType.ALIAS: lambda x, types: f"{x[0]}",
     FunctionType.PRIOR: render_prior,

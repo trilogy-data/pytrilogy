@@ -7,10 +7,12 @@ from trilogy.core.statements.execute import (
     ProcessedQuery,
     ProcessedQueryPersist,
 )
-from trilogy.dialect.base import BaseDialect, TableColumn
+from trilogy.dialect.base import BaseDialect, TableColumn, render_unsupported
 from trilogy.utility import string_to_hash
 
 FUNCTION_MAP = {
+    # no fold over an array
+    FunctionType.ARRAY_REDUCE: render_unsupported("array_reduce"),
     FunctionType.BIT_SHIFT_LEFT: lambda x, types: f"LEFT_SHIFT({x[0]}, {x[1]})",
     FunctionType.BIT_SHIFT_RIGHT: lambda x, types: f"RIGHT_SHIFT({x[0]}, {x[1]})",
     # CONCAT skips NULLs natively; `+` propagates (CONCAT_NULL_YIELDS_NULL ON)
