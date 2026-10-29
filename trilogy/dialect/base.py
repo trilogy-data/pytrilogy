@@ -1161,6 +1161,9 @@ class BaseDialect:
 
     def normalize_db_type(self, db_type: str) -> DataType:
         """Map a database type string (from information_schema) to a DataType enum."""
+        if db_type.strip().endswith("[]"):
+            # before the precision strip: DECIMAL(10,2)[] is a list, not a decimal
+            return DataType.ARRAY
         key = db_type.lower().split("(")[0].strip()
         return self.DB_COLUMN_TYPE_MAP.get(key, DataType.UNKNOWN)
 

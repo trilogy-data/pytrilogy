@@ -907,6 +907,17 @@ class DuckDBDialect(BaseDialect):
         "int1": DataType.INTEGER,
         "hugeint": DataType.BIGINT,
         "logical": DataType.BOOL,
+        "utinyint": DataType.INTEGER,
+        "usmallint": DataType.INTEGER,
+        "uinteger": DataType.BIGINT,
+        "ubigint": DataType.BIGINT,
+        "uhugeint": DataType.BIGINT,
+        "timestamp_s": DataType.DATETIME,
+        "timestamp_ms": DataType.DATETIME,
+        "timestamp_ns": DataType.DATETIME,
+        # a bitstring, read back as '101'; SQL Server's BIT is the boolean
+        "bit": DataType.STRING,
+        "bitstring": DataType.STRING,
     }
 
     def refine_runtime_value_type_for_validation(

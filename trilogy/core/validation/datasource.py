@@ -2,6 +2,7 @@ from collections.abc import Sequence
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
+from uuid import UUID
 
 from trilogy import Environment, Executor
 from trilogy.authoring import (
@@ -52,6 +53,7 @@ from trilogy.core.validation.common import (
     ValidationTest,
     easy_query,
     grain_check_address,
+    non_null_count_address,
 )
 from trilogy.utility import unique
 
@@ -88,6 +90,87 @@ def describe_violation_row(
     return f"{rendered_keys} -> {offending}" if rendered_keys else offending
 
 
+def multiple_keys_condition(
+    distinct_keys: BuildConcept, non_null_keys: BuildConcept, rows: BuildConcept
+) -> BuildConditional:
+    """A group holding two key values, NULL counting as one: the planner groups
+    by the property, so a NULL key and a `1` key are two keys there.
+    `count(distinct k)` skips the NULL; `count(*) > count(k)` restores it."""
+    return BuildConditional(
+        left=BuildComparison(
+            left=distinct_keys, right=1, operator=ComparisonOperator.GT
+        ),
+        right=BuildParenthetical(
+            content=BuildConditional(
+                left=BuildComparison(
+                    left=non_null_keys, right=0, operator=ComparisonOperator.GT
+                ),
+                right=BuildComparison(
+                    left=rows, right=non_null_keys, operator=ComparisonOperator.GT
+                ),
+                operator=BooleanOperator.AND,
+            )
+        ),
+        operator=BooleanOperator.OR,
+    )
+
+
+def null_violation_condition(
+    concepts: list[BuildConcept],
+) -> BuildComparison | BuildConditional:
+    checks = [
+        BuildComparison(
+            left=concept, operator=ComparisonOperator.IS, right=MagicConstants.NULL
+        )
+        for concept in concepts
+    ]
+    condition: BuildComparison | BuildConditional = checks[0]
+    for check in checks[1:]:
+        condition = BuildConditional(
+            left=condition, right=check, operator=BooleanOperator.OR
+        )
+    return condition
+
+
+def null_columns(
+    datasource: BuildDatasource,
+    env: Environment,
+    build_env: BuildEnvironment,
+    exec: Executor,
+) -> set[str]:
+    """Non-nullable columns that hold a NULL anywhere in the table.
+
+    The planner trusts a non-nullable binding (an outer join turns inner, a
+    partial source answers alone), so a sample cannot judge it. One scan finds
+    whether any column breaks it; the columns named are those NULL on the
+    returned rows, at least one of them."""
+    concepts = unique(
+        [
+            build_env.concepts[col.concept.address]
+            for col in datasource.columns
+            if not col.is_nullable
+        ],
+        "address",
+    )
+    if not concepts:
+        return set()
+    query = easy_query(
+        concepts=concepts,
+        datasource=datasource,
+        env=env,
+        condition=null_violation_condition(concepts),
+        limit=SAMPLE_LIMIT,
+    )
+    result = exec.execute_raw_sql(exec.generate_sql(query)[-1])
+    columns = list(result.keys())
+    return {
+        column
+        for row in result.fetchmany(SAMPLE_LIMIT)
+        for column, value in row_to_dict(row, columns).items()
+        if value is None
+    }
+
+
 def validate_unique_properties(
     datasource: BuildDatasource,
     env: Environment,
@@ -107,16 +190,20 @@ def validate_unique_properties(
                 continue
             key = build_env.concepts[key_address]
             key_count = build_env.concepts.get(grain_check_address(key))
-            if key_count is None:
+            non_null_keys = build_env.concepts.get(non_null_count_address(key))
+            if key_count is None or non_null_keys is None:
                 continue
             query = easy_query(
-                concepts=[concept, key_count],
+                concepts=[
+                    concept,
+                    key_count,
+                    non_null_keys,
+                    build_env.concepts["grain_check"],
+                ],
                 datasource=datasource,
                 env=env,
-                condition=BuildComparison(
-                    left=key_count,
-                    right=1,
-                    operator=ComparisonOperator.GT,
+                condition=multiple_keys_condition(
+                    key_count, non_null_keys, build_env.concepts["grain_check"]
                 ),
                 grain=BuildGrain(components={concept.address}),
                 limit=10,
@@ -455,21 +542,22 @@ def type_check(
         ) and target_type.check_value(input)
 
     if target_type == DataType.STRING:
-        return isinstance(input, str)
+        # drivers hand back a UUID column as uuid.UUID; ingest maps it to string
+        return isinstance(input, (str, UUID))
     if target_type == DataType.BYTES:
         return isinstance(input, (bytes, bytearray, memoryview))
-    if target_type == DataType.INTEGER:
+    if isinstance(input, bool) and target_type != DataType.BOOL:
+        # python's bool is an int, so a BOOLEAN column would pass every numeric check
+        return target_type == DataType.UNKNOWN
+    if target_type in (DataType.INTEGER, DataType.BIGINT):
         return isinstance(input, int)
-    if target_type == DataType.BIGINT:
-        return isinstance(input, int)  # or check for larger int if needed
-    if target_type in (DataType.FLOAT, DataType.DOUBLE) or isinstance(
-        target_type, NumericType
-    ):
+    if target_type in (
+        DataType.FLOAT,
+        DataType.DOUBLE,
+        DataType.NUMBER,
+        DataType.NUMERIC,
+    ) or isinstance(target_type, NumericType):
         return isinstance(input, (float, int, Decimal))
-    if target_type == DataType.NUMBER:
-        return isinstance(input, (int, float, Decimal))
-    if target_type == DataType.NUMERIC:
-        return isinstance(input, (int, float, Decimal))
     if target_type == DataType.BOOL:
         return isinstance(input, bool)
     if target_type == DataType.DATE:
@@ -718,6 +806,23 @@ def validate_datasource(
                     )
                 )
                 cols_with_error.add(actual_address)
+
+    null_addresses = null_columns(validation_datasource, env, build_env, exec)
+    for col in datasource.columns:
+        actual_address = build_env.concepts[col.concept.address].safe_address
+        if actual_address not in null_addresses or actual_address in cols_with_error:
+            continue
+        failures.append(
+            DatasourceColumnBindingData(
+                address=col.concept.address,
+                value=None,
+                value_type=col.concept.datatype,
+                value_modifiers=[Modifier.NULLABLE],
+                actual_type=col.concept.datatype,
+                actual_modifiers=col.concept.modifiers,
+            )
+        )
+        cols_with_error.add(actual_address)
 
     if failures:
         results.append(

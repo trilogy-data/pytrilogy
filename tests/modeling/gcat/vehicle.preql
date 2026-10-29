@@ -50,7 +50,7 @@ datasource lv_info (
     LV_Max_Stage: max_stage,
     Length: ?length,
     LFlag: ?lflag,
-    Diameter: diameter,
+    Diameter: ?diameter,
     DFlag: ?dflag,
     Launch_Mass: ?launch_mass,
     MFlag: ?mflag,
