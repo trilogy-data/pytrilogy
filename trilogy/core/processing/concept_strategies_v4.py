@@ -46,6 +46,7 @@ from trilogy.core.processing.aggregate_rollup import (
     _conditions_supported,
     _datasource_has_matching_additive_aggregate,
     _is_additive_aggregate,
+    filter_finer_row_args,
     get_additive_rollup_concepts,
 )
 from trilogy.core.processing.condition_utility import (
@@ -426,6 +427,7 @@ def materialized_root_addresses(
                 if isinstance(arg, BuildConcept):
                     candidates.append(environment.concepts.get(arg.address) or arg)
     out = _binding_only_roots(candidates, environment, datasources, where)
+    rolled_roots: set[str] = set()
     seen_candidates: set[str] = set()
     for concept in candidates:
         if concept.address in seen_candidates:
@@ -502,9 +504,38 @@ def materialized_root_addresses(
                 conditions=where,
             )
             if any(r.address == concept.address for r in rolled):
-                out.add(concept.address)
+                rolled_roots.add(concept.address)
                 break
-    return frozenset(out)
+    if rolled_roots and not _finer_filter_reaches_rollup(
+        mandatory_list, rolled_roots, target_grain, where, environment
+    ):
+        return frozenset(out)
+    return frozenset(out | rolled_roots)
+
+
+def _finer_filter_reaches_rollup(
+    mandatory_list: list[BuildConcept],
+    rolled_roots: set[str],
+    target_grain: BuildGrain,
+    where: BuildWhereClause | None,
+    environment: BuildEnvironment,
+) -> bool:
+    """A filter finer than the target grain is only applied to a rolled-up root
+    when the root shares one scan with the filter columns
+    (`_plan_finer_filter_rollup`). Bucketing separates them when the target
+    grain is empty (a single-row root) or when another demand reaches row-level
+    roots finer than the grain (a window over the fact rows); the separated
+    root would then read the summary unfiltered."""
+    if not filter_finer_row_args(where, target_grain, environment.concepts):
+        return True
+    if not target_grain.components:
+        return False
+    reached = walk_lineage(
+        [c for c in mandatory_list if c.address not in rolled_roots],
+        descend=lambda c: c.address not in rolled_roots,
+    )
+    leaves = [c for c in reached if c.lineage is None]
+    return BuildGrain.from_concepts([*mandatory_list, *leaves]) == target_grain
 
 
 def _build_from_graph(
