@@ -80,10 +80,10 @@ from trilogy.core.processing.v4_helper.models import (
 from trilogy.core.processing.v4_helper.strategy_builder import (
     ParentBuild,
     _apply_input_contracts,
-    _bridge_unpaired_parents,
     _elide_passthrough_tree,
     _filter_intrinsic_pushdown_safe,
     _fold_passthrough_parents,
+    _join_elected_bridges,
     _group_to_grain_if_required,
     _hide_final_only_grain_keys,
     _parent_nodes_for,
@@ -1386,17 +1386,15 @@ def _bridge_fixture(env: BuildEnvironment):
         parents=[rows],
         environment=env,
     )
-    graph = nx.DiGraph()
-    graph.add_node("root")
-    return tree, rows, key_slice, bucket_projection, graph
+    return tree, rows, key_slice, bucket_projection
 
 
 def test_bridge_widens_a_coarse_projection_to_the_bridge_key():
     env = BuildEnvironment()
-    tree, rows, key_slice, projection, graph = _bridge_fixture(env)
+    tree, rows, key_slice, projection = _bridge_fixture(env)
 
-    merged = _bridge_unpaired_parents(
-        [key_slice, projection], graph, {"root": rows}, env
+    merged = _join_elected_bridges(
+        [key_slice, projection], [(rows, frozenset())], env
     )
 
     assert tree.address in {c.address for c in projection.output_concepts}
@@ -1408,7 +1406,7 @@ def test_bridge_refuses_a_pair_that_keys_neither_side():
     `species` does not determine what it renders: no bridge rather than a
     silent fanout."""
     env = BuildEnvironment()
-    tree, rows, key_slice, projection, graph = _bridge_fixture(env)
+    tree, rows, key_slice, projection = _bridge_fixture(env)
     hidden = SelectNode(
         input_concepts=[c for c in rows.output_concepts if c is not tree],
         output_concepts=[c for c in rows.output_concepts if c is not tree],
@@ -1418,8 +1416,8 @@ def test_bridge_refuses_a_pair_that_keys_neither_side():
     projection.parents = [hidden]
     projection.rebuild_cache()
 
-    merged = _bridge_unpaired_parents(
-        [key_slice, projection], graph, {"root": rows}, env
+    merged = _join_elected_bridges(
+        [key_slice, projection], [(rows, frozenset())], env
     )
 
     assert merged == [key_slice, projection]
@@ -1430,7 +1428,7 @@ def test_bridge_dedupes_a_projection_the_shared_column_determines():
     everything it renders: it is grouped to `species` and the bridge pairs it
     on a key of that side."""
     env = BuildEnvironment()
-    tree, rows, key_slice, projection, graph = _bridge_fixture(env)
+    tree, rows, key_slice, projection = _bridge_fixture(env)
     for concept in rows.output_concepts + projection.output_concepts:
         env.concepts[concept.address] = concept
     hidden = SelectNode(
@@ -1442,8 +1440,8 @@ def test_bridge_dedupes_a_projection_the_shared_column_determines():
     projection.parents = [hidden]
     projection.rebuild_cache()
 
-    merged = _bridge_unpaired_parents(
-        [key_slice, projection], graph, {"root": rows}, env
+    merged = _join_elected_bridges(
+        [key_slice, projection], [(rows, frozenset())], env
     )
 
     assert merged[0] is key_slice and merged[2] is rows

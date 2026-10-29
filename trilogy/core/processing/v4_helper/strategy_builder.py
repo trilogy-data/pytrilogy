@@ -3086,13 +3086,11 @@ def _pre_merge_parents(
     _widen_merge_join_keys(parents, environment, join_key_addresses)
     # After widening, not before: a parent that has just been handed the join
     # key it was missing needs no bridge.
-    if group_graph is not None and built is not None:
-        parents = _bridge_unpaired_parents(
+    if plan is not None and built is not None:
+        parents = _join_elected_bridges(
             parents,
-            group_graph,
-            built,
+            [(built[gid], plan.keys_for(gid)) for gid in plan.extras],
             environment,
-            plan.extras if plan is not None else None,
         )
     all_outputs = readable_outputs(parents)
     merged = MergeNode(
@@ -4208,76 +4206,53 @@ def _pairing_islands(outputs: list[set[str]]) -> list[set[int]]:
     return [members for members, _ in islands]
 
 
-def _bridge_unpaired_parents(
+def _join_elected_bridges(
     parents: list[StrategyNode],
-    group_graph: nx.DiGraph,
-    built: dict[str, StrategyNode],
+    bridges: Sequence[tuple[StrategyNode, frozenset[str]]],
     environment: BuildEnvironment,
-    elected: Sequence[str] | None = None,
 ) -> list[StrategyNode]:
-    """Pull in the built group that pairs contributors sharing no column, so
-    the merge below joins on an axis instead of `ON 1=1`.
+    """Join the bridges the join plan elected (`join_plan.elect_bridges`),
+    each with the keys the plan pairs it on, so the merge below joins on an
+    axis instead of `ON 1=1`.
 
     `select id, min(x) by id, min(y) by cell` leaves two aggregates, one keyed
-    on `id` and one on `cell`, with nothing that maps between them: the
-    row-grain projection of `{id, cell}` that fed the cell aggregate covers no
-    mandatory output, so neither the cover election nor a consumer's parent
-    dedup keeps it. Add it back as a join-only parent. The same between two
-    islands of contributors that pair among themselves (a customer aggregate
-    beside the customer's name, a bucket aggregate beside the bucket's region
-    domain).
+    on `id` and one on `cell`: the row stream holding both keys bridges them.
 
-    A contributor that genuinely cross joins (a global aggregate) is untouched:
-    nothing else renders its column, so it has no candidate.
-
-    A bridge pairs a contributor on whatever they share, which must identify
-    one side's rows (`_key_bridged_members`): a species bucket projected off
-    tree rows, bridged back to those rows on `species`, multiplies both.
-
-    `elected` are the bridges the join plan chose (`join_plan.elect_bridges`):
-    when given, only those are candidates."""
+    A bridge pairs a member on whatever they share, which must identify one
+    side's rows (`_key_bridged_members`): a species bucket projected off tree
+    rows, bridged back to those rows on `species`, multiplies both. A bridge
+    that no longer joins two islands as built (a member widened to its key
+    pairs directly) is not joined."""
     if len(parents) < 2:
         return parents
-    if elected is not None:
-        built = {gid: built[gid] for gid in elected}
     parents = list(parents)
     outputs = [_pairing_addresses(parent, environment) for parent in parents]
-    exposed = {
-        gid: _pairing_addresses(node, environment) for gid, node in built.items()
-    }
-    present = {id(parent) for parent in parents}
-    while True:
+    for bridge, keys in bridges:
         islands = _pairing_islands(outputs)
         if len(islands) < 2:
             break
-        candidates = _island_bridges(
-            islands, outputs, exposed, present, built, group_graph
-        )
-        if not candidates:
+        if any(bridge is parent for parent in parents):
+            continue
+        if keys:
+            _carry_join_keys(
+                [bridge],
+                _join_key_concepts([bridge], environment, set(keys)),
+                environment,
+            )
+        exposed = _pairing_addresses(bridge, environment)
+        touched = [
+            island
+            for island in islands
+            if exposed & set().union(*(outputs[i] for i in island))
+        ]
+        if len(touched) < 2:
+            continue
+        if not _key_bridged_members(parents, outputs, bridge, exposed, environment):
             break
-        # a bridge pairing every member on a key needs no repair; the most
-        # derived otherwise (the FILTER beside a derived `by` key holds the
-        # entity key but not the derived one)
-        bridge = next(
-            (
-                gid
-                for gid in candidates
-                if _pairs_on_keys(
-                    parents, outputs, built[gid], exposed[gid], environment
-                )
-            ),
-            candidates[0],
-        )
-        if not _key_bridged_members(
-            parents, outputs, built[bridge], exposed[bridge], environment
-        ):
-            break
-        # a member widened to the bridge's key may now pair its island directly
         if len(_pairing_islands(outputs)) < 2:
             continue
-        present.add(id(built[bridge]))
-        parents.append(built[bridge])
-        outputs.append(exposed[bridge])
+        parents.append(bridge)
+        outputs.append(exposed)
     return parents
 
 
@@ -4306,20 +4281,6 @@ def _pair_is_keyed(
         any(shared & relation for relation in environment.scoped_join_relations())
         or _keyed_by(member, shared, environment)
         or _keyed_by(bridge, shared, environment)
-    )
-
-
-def _pairs_on_keys(
-    parents: list[StrategyNode],
-    outputs: list[set[str]],
-    bridge: StrategyNode,
-    bridge_pairing: set[str],
-    environment: BuildEnvironment,
-) -> bool:
-    return all(
-        _pair_is_keyed(member, bridge, shared, environment)
-        for member, own in zip(parents, outputs)
-        if (shared := own & bridge_pairing)
     )
 
 
@@ -4400,36 +4361,6 @@ def _bridge_candidates(
         ),
         reverse=True,
     )
-
-
-def _island_bridges(
-    islands: list[set[int]],
-    outputs: list[set[str]],
-    exposed: dict[str, set[str]],
-    present: set[int],
-    built: dict[str, StrategyNode],
-    group_graph: nx.DiGraph,
-) -> list[str]:
-    """The built groups pairing the first island with any other that has a
-    candidate, most derived first."""
-    columns = [set().union(*(outputs[i] for i in island)) for island in islands]
-    for index, own in enumerate(columns):
-        others = set().union(*(c for i, c in enumerate(columns) if i != index))
-        candidates = [
-            gid
-            for gid, node in built.items()
-            if id(node) not in present and exposed[gid] & own and exposed[gid] & others
-        ]
-        if candidates:
-            return sorted(
-                candidates,
-                key=lambda gid: (
-                    sum(1 for a in nx.ancestors(group_graph, gid) if a in built),
-                    gid,
-                ),
-                reverse=True,
-            )
-    return []
 
 
 def _gate_grain_keys(concepts: list[BuildConcept]) -> frozenset[str]:
@@ -5407,8 +5338,8 @@ def _assemble_final_node(
         {id(built[gid]) for gid, concepts in per_group.items() if concepts},
         {id(built[gid]) for gid in ownership.owner_by_span.values() if gid in built},
     )
-    parents = _bridge_unpaired_parents(
-        parents, group_graph, built, environment, bridges
+    parents = _join_elected_bridges(
+        parents, [(built[gid], plan.keys_for(gid)) for gid in bridges], environment
     )
     parents = _pair_inside_padding_streams(parents, environment)
     _raise_if_rowset_islanded(parents, mandatory_list, environment, graph)
