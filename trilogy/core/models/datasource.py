@@ -812,9 +812,7 @@ class Datasource(HasUUID, Namespaced, BaseModel):
         built from its grain's rows, so pin its grain columns non-null (which
         also heals the partial into a plain scan)."""
         grain = self.grain.components
-        if not self.column_level_partial_addresses - grain:
-            return where
-        pins: list[Comparison | Conditional] = [
+        pins = [
             Comparison(
                 left=col.concept,
                 right=MagicConstants.NULL,
@@ -822,13 +820,12 @@ class Datasource(HasUUID, Namespaced, BaseModel):
             )
             for col in self.columns
             if col.concept.address in grain
+            and self.column_level_partial_addresses - grain
         ]
-        if where:
-            pins.append(where.conditional)  # type: ignore[arg-type]
         if not pins:
             return where
-        conditional = pins[0]
-        for pin in pins[1:]:
+        conditional: Comparison | Conditional = pins[0]
+        for pin in [*pins[1:], *([where.conditional] if where else [])]:
             conditional = Conditional(
                 left=conditional, right=pin, operator=BooleanOperator.AND
             )
