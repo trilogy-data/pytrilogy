@@ -256,6 +256,18 @@ def _predicate_safe_past_windows(candidate, cte: CTE | UnionCTE) -> bool:
     return True
 
 
+def _reads_rollup(candidate, cte: CTE | UnionCTE) -> bool:
+    """``candidate`` reads a summary column ``cte`` re-aggregates. The parent
+    binds the per-group value under the same address, so the predicate is a
+    HAVING on the rolled-up value and means nothing on the parent's rows."""
+    if not (isinstance(cte, CTE) and cte.group_to_grain and cte.rollup_concepts):
+        return False
+    if not isinstance(candidate, BuildConceptArgs):
+        return False
+    rolled = {c.address for c in cte.rollup_concepts}
+    return any(arg.address in rolled for arg in candidate.row_arguments)
+
+
 def _predicate_safe_past_grouping(candidate, cte: CTE | UnionCTE) -> bool:
     """True if ``candidate`` can be applied inside ``cte`` without changing any
     aggregate it computes.
@@ -832,6 +844,12 @@ class PredicatePushdown(OptimizationRule):
             existence_feeders.update(sources)
         optimized = False
         for candidate in candidates:
+            if _reads_rollup(candidate, cte):
+                self.debug(
+                    f"Not pushing {candidate} from {cte.name}: it reads a value "
+                    "the CTE rolls up"
+                )
+                continue
             candidate_has_existence = isinstance(candidate, BuildConceptArgs) and any(
                 arg for group in candidate.existence_arguments for arg in group
             )
@@ -892,7 +910,7 @@ class PredicatePushdownRemove(OptimizationRule):
         via a parent CTE rather than via one of `cte`'s own joined base
         datasources. Atoms that reference inline-join columns must stay in
         `cte` because no upstream filter constrains those columns."""
-        if not isinstance(atom, BuildConceptArgs):
+        if not isinstance(atom, BuildConceptArgs) or _reads_rollup(atom, cte):
             return False
         parent_names = {p.name for p in cte.dependency_nodes()}
         for c in atom.row_arguments:
@@ -967,11 +985,15 @@ class PredicatePushdownRemove(OptimizationRule):
             if all(x.address in flattened_existence for x in parent.output_columns)
             and len(flattened_existence) > 0
         ]
-        if all(
-            value
-            for key, value in parent_filter_status.items()
-            if key not in existence_only
-        ) and not any(isinstance(x, BuildDatasource) for x in cte.source.datasources):
+        if (
+            all(
+                value
+                for key, value in parent_filter_status.items()
+                if key not in existence_only
+            )
+            and not any(isinstance(x, BuildDatasource) for x in cte.source.datasources)
+            and not _reads_rollup(cte.condition, cte)
+        ):
             self.log(
                 f"All parents of {cte.name} have same filter or are existence only inputs, removing filter from {cte.name}"
             )

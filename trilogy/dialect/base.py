@@ -76,6 +76,7 @@ from trilogy.core.models.build import (
     BuildSubselectItem,
     BuildWindowItem,
     get_grouped_aggregate_wrapper,
+    rollup_reaggregate,
 )
 from trilogy.core.models.core import (
     CONCRETE_TYPES,
@@ -1520,7 +1521,7 @@ class BaseDialect:
                 rolled = INVALID_REFERENCE_STRING(
                     f"Missing rollup source reference to {c.address}"
                 )
-            summed = self.FUNCTION_MAP[FunctionType.SUM]([rolled], [])
+            summed = self.FUNCTION_MAP[rollup_reaggregate(c)]([rolled], [])
             # a pre-aggregated COUNT rolled up through a join that padded it
             # (a sparse summary table beside its dimension): the group of one
             # padded row counts nothing, 0, as the granular path says

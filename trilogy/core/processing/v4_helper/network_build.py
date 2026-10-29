@@ -46,7 +46,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.aggregate_rollup import (
     filter_finer_row_args,
-    get_additive_rollup_concepts,
+    get_rollup_concepts,
 )
 from trilogy.core.processing.condition_utility import (
     condition_implies,
@@ -125,7 +125,7 @@ def rollup_concepts_by_node(
     conditions: BuildWhereClause | None,
     deferred_conditions: BuildWhereClause | None = None,
 ) -> dict[str, list[BuildConcept]]:
-    """Datasource node -> the requested additive aggregates it SUM-rolls up to
+    """Datasource node -> the requested rollable aggregates it rolls up to
     at THIS request's grain. The graph's own rollup edges were drawn at each
     metric's declared grain, so a summary at (origin, destination, date) never
     offers `flight_count` to a request at (origin, date) through them; only a
@@ -156,7 +156,7 @@ def rollup_concepts_by_node(
     for node, datasource in graph.datasources.items():
         if not isinstance(datasource, BuildDatasource):
             continue
-        rolled = get_additive_rollup_concepts(
+        rolled = get_rollup_concepts(
             datasource=datasource,
             requested_concepts=terminals,
             concepts_by_address=environment.concepts,

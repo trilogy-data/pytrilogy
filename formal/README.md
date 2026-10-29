@@ -29,7 +29,7 @@ a design decision or a bug.
 | `Rows.lean` | distinct tuples, grain | keyed rowset keeps rows, filter pushdown through a rowset, `distinct = group`, FD extension, window = `by`, sibling aggregates |
 | `Domain.lean` | `~` padding, grain pin | materialization invariance, pin vs stored column, pin is projection-invariant, `sum(coalesce)` |
 | `Sourcing.lean` | `complete where` arms, partition unions, the cell checker | a partition family unions back to the table (split, point, bool, `is null` arm, NULL-rejecting gate, a redundant copy of an arm), an arm answers under an implying WHERE, summary table = computed aggregate |
-| `Rollup.lean` | a summary re-aggregated to a coarser grain under a WHERE | `sum` and `count` roll up exactly under any filter and target their grain determines, the grand total's no-row guard, a finer filter and `count_distinct` cannot (checked by `tests/discovery/test_rollup_resolution_laws.py`) |
+| `Rollup.lean` | a summary re-aggregated to a coarser grain under a WHERE | `sum`, `count`, `min` and `max` (so `bool_and`/`bool_or`) roll up exactly under any filter and target their grain determines, the grand total's no-row guard, a finer filter, `count_distinct` and `avg` cannot (checked by `tests/discovery/test_rollup_resolution_laws.py`) |
 | `Freshness.lean` | watermarks, the stale verdict, the incremental refresh | verdict = refresh has a row to write, incremental = rebuild under strict arrivals (checked by `tests/execution/state/test_freshness_laws.py`, not the query fuzzer) |
 | `StateMerge.lean` | partition deltas folded into a state snapshot | disjoint overlays commute, replay is a no-op, newest claim wins as a semilattice join, the per-slice count adjustment (checked by `tests/execution/state/test_merge_laws.py`) |
 | `NullReject.lean` | the null-rejection walk, membership, outer-join upgrade, nullability inference | a proved column is non-null on every kept row, a proof on a column read off the padded side turns a left join inner, a derived column is judged by its lineage, strict and total functions (checked by `tests/optimization/test_null_rejection_laws.py` and `tests/core/test_null_function_conformance.py`) |
@@ -244,6 +244,19 @@ a design decision or a bug.
   - an empty summary's grand total returned one NULL row where the row-level
     plan returns none: the re-sum lacked the `HAVING count(*) > 0` guard
     (`Rollup.bare_sum_of_count_null`, `Rollup.grand_total_count`).
+
+- **A summary's `min`/`max` went unused, and a HAVING over a re-summed count
+  filtered the wrong rows.** `Rollup.min_exact` and `Rollup.max_exact` prove
+  `min` of per-group minimums (and `max` of maximums) is exact under any key
+  predicate, and need no distinct keys, since both are idempotent. The planner
+  only treated `sum`/`count` as rollable, so every coarser `min`, `max`,
+  `bool_and` or `bool_or` read the row-level tables. Extending the law matrix
+  with a HAVING found a silent wrong answer: when the re-sum sat above a join
+  (a target or WHERE column on a joined dimension), predicate pushdown moved
+  `HAVING count(..) > 1` into the summary scan. The summary column shares the
+  query aggregate's address there, so the filter tested each per-species count
+  instead of the re-summed one. Pushdown now keeps a predicate on a value its
+  CTE rolls up.
 
 ## Limits
 

@@ -6,7 +6,7 @@ from typing import cast
 from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
 from trilogy.core.graph import DiGraph
 from trilogy.core.models.build import (
-    ADDITIVE_ROLLUP_FUNCTIONS,
+    ROLLUP_REAGGREGATES,
     BuildConcept,
     BuildDatasource,
     BuildUnionDatasource,
@@ -368,19 +368,19 @@ def prune_sources_for_aggregates(
         keep = set(exact_matches)
     else:
         keep = set()
-        additive = [
+        rollable = [
             c
             for c in aggregate_concepts
             if (signature := _aggregate_signature(c))
-            and signature[0] in ADDITIVE_ROLLUP_FUNCTIONS
+            and signature[0] in ROLLUP_REAGGREGATES
         ]
-        if len(additive) == len(aggregate_concepts):
+        if len(rollable) == len(aggregate_concepts):
             # A target component is "reachable" from a datasource's grain
             # either directly (it IS a grain component) or via property-of-key
             # (it's a Property concept whose key is in the grain). The latter
             # lets an aggregate at customer_id grain serve a region-grain
             # query — `region` is a property of `customer_id`, and the merge
-            # will join to a `customers` dim and SUM-roll counts up to region.
+            # will join to a `customers` dim and roll counts up to region.
             canonical_to_concept = {
                 bc.canonical_address: bc for bc in g.concepts.values()
             }
@@ -409,7 +409,7 @@ def prune_sources_for_aggregates(
                     continue
                 # The DS must bind a column the renderer can actually emit for
                 # this aggregate: its exact address, or — for an agent-authored
-                # alias that shares no address with anything — an additive
+                # alias that shares no address with anything — a rollable
                 # column of the same lineage signature, which
                 # `BuildDatasource.rollup_column_for` resolves and the grouping
                 # CTE re-aggregates.
@@ -420,7 +420,7 @@ def prune_sources_for_aggregates(
                         or ds.rollup_column_for(c) is not None
                     )
                     and _datasource_materializes_aggregate(ds, c)
-                    for c in additive
+                    for c in rollable
                 ):
                     keep.add(node)
 

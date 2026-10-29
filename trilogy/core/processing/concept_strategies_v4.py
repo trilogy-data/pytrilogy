@@ -45,10 +45,10 @@ from trilogy.core.processing import plan_trace
 from trilogy.core.processing.aggregate_rollup import (
     _concepts_reachable,
     _conditions_supported,
-    _datasource_has_matching_additive_aggregate,
-    _is_additive_aggregate,
+    _datasource_has_matching_rollup_aggregate,
+    _is_rollable_aggregate,
     filter_finer_row_args,
-    get_additive_rollup_concepts,
+    get_rollup_concepts,
 )
 from trilogy.core.processing.condition_utility import (
     combine_where_clauses,
@@ -385,10 +385,10 @@ def materialized_root_addresses(
     derive-from-base plan to prefer, so it is a root wherever the lineage walk
     meets it (`_binding_only_roots`).
 
-    Additive rollup: an additive AGGREGATE (sum/count) that no datasource has at
-    the exact grain, but a *finer*-grain table binds, is also treated as a root
-    scanned from that finer table; `_group_to_grain_if_required` then
-    re-aggregates it to the target grain (`sum(finer.col)`).
+    Rollup: a rollable AGGREGATE (`ROLLUP_REAGGREGATES`) that no datasource has
+    at the exact grain, but a *finer*-grain table binds, is also treated as a
+    root scanned from that finer table; `_group_to_grain_if_required` then
+    re-aggregates it to the target grain (`sum(finer.col)`, `max(finer.col)`).
 
     Condition row-args are candidates too (EXACT branch only): a WHERE over a
     materialized aggregate (`where customer_revenue > 100` beside its summary
@@ -473,11 +473,11 @@ def materialized_root_addresses(
         if (
             exact
             or condition_only
-            or not (is_aggregate and _is_additive_aggregate(concept))
+            or not (is_aggregate and _is_rollable_aggregate(concept))
         ):
             continue
         # ROLLUP: a finer-grain table binds the same aggregate expression and it
-        # can be SUM-rolled up to the target grain. Neither address nor canonical
+        # can be rolled up to the target grain. Neither address nor canonical
         # address can gate this: the finer instance is grain-pinned to a
         # different canonical, and an agent-authored alias (`sum(ss.price) as
         # total`) never shares an address with the table's bound column. The gate
@@ -485,13 +485,13 @@ def materialized_root_addresses(
         # addresses), which is exactly what the rollup matcher below re-checks.
         #
         # Marking the concept a root lets source-planning pick a table binding
-        # it. `get_additive_rollup_concepts` below is passed the filter and only
+        # it. `get_rollup_concepts` below is passed the filter and only
         # matches a datasource whose grain can express it (`_conditions_supported`):
         # a group-level filter (constant within a target-grain group) matches any
         # coarser/exact table, while a finer filter (`order_date` below a
         # `customer_id` grain) only matches a finer summary that carries the
         # column; `plan_source._plan_finer_filter_rollup` then pins that table,
-        # pushes the filter pre-aggregation, and SUM-rolls. A coarser table is
+        # pushes the filter pre-aggregation, and rolls up. A coarser table is
         # never matched under a finer filter, so post-rollup decoupling can't
         # double-count.
         sources = _rollup_sources(
@@ -546,10 +546,10 @@ def _rollup_sources(
     return [
         ds
         for ds in datasources
-        if _datasource_has_matching_additive_aggregate(ds, concept)
+        if _datasource_has_matching_rollup_aggregate(ds, concept)
         and any(
             r.address == concept.address
-            for r in get_additive_rollup_concepts(
+            for r in get_rollup_concepts(
                 datasource=ds,
                 requested_concepts=requested,
                 concepts_by_address=environment.concepts,
@@ -568,7 +568,7 @@ def _nested_rollup_roots(
     environment: BuildEnvironment,
     datasources: Sequence[BuildDatasource],
 ) -> dict[str, list[BuildDatasource]]:
-    """Additive aggregates inside a demand (`count(x) by k` under a window)
+    """rollable aggregates inside a demand (`count(x) by k` under a window)
     that a summary serves at their own grain, under the same WHERE."""
     mandatory = {c.address for c in mandatory_list}
     out: dict[str, list[BuildDatasource]] = {}
@@ -578,7 +578,7 @@ def _nested_rollup_roots(
         if (
             concept.address in mandatory
             or concept.derivation != Derivation.AGGREGATE
-            or not _is_additive_aggregate(concept)
+            or not _is_rollable_aggregate(concept)
         ):
             continue
         sources = _rollup_sources(

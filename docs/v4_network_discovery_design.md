@@ -156,7 +156,7 @@ has a home:
 - **Additive rollup at a coarser grain** (a summary at (origin, destination,
   date) serving (origin, date)). The graph's rollup edges are drawn at each
   metric's declared grain, so the network never saw the binding; only the
-  fallback recomputed `get_additive_rollup_concepts` per request.
+  fallback recomputed `get_rollup_concepts` per request.
   `network_build.rollup_concepts_by_node` now labels the candidate with the
   request-grain binding (FULL, not stored), `_network_source` draws the same
   edge on the bridge's private graph so the emitter's neighbor walk attaches
