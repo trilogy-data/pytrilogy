@@ -323,8 +323,15 @@ reading the consumer's preserve keys as asks, not columns a side holds (a
 dimension peel is never widened to its sibling dimension's key, query64).
 Among the candidates that join islands, one whose every pairing is keyed is
 preferred (a filter pairing an aggregate on its value multiplies both).
-Stage 3 still checks built connectivity and repairs a member's pairing
-(`_key_bridged_members`); it no longer chooses.
+Stage 3 joins the elected bridges in the plan's order, each widened to
+the keys the plan pairs it on (`_join_elected_bridges`); it still checks
+built connectivity and repairs a member's pairing (`_key_bridged_members`),
+but no longer searches built nodes for a bridge. Over all of `tests/` the
+search had added exactly the elected bridges at 442 of 454 islanded merges;
+the other 9 were an elected condition-phase basic whose rows hold the key it
+bridges on but whose built node did not project it (an OR of gates by
+`status` and by `customer_id`). Widened to its planned key it bridges as
+planned, and the SQL is unchanged.
 
 What made the islands honest:
 
@@ -410,8 +417,9 @@ shape (computed both ways over all of `tests/`, zero disagreements):
 
 **Open.** No FINAL add pass reads a built node to decide. What still reads
 them is physical: the fold's widen and the region domain's rename projection
-act on built nodes, `elect_bridges` takes its candidates from what was built,
-and `_key_bridged_members` checks built connectivity.
+act on built nodes, `elect_bridges` takes its candidates from what was built
+(the inline-by-every-reader fold that keeps a group unbuilt reads built
+outputs), and `_key_bridged_members` checks built connectivity.
 
 ## 8. Not claimed
 
