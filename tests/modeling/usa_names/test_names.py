@@ -130,8 +130,11 @@ order by
     exec = Dialects.DUCK_DB.default_executor(environment=env)
     sql = exec.generate_sql(query)[0]
 
+    # the by-name total re-sums the (name, year) totals: one table scan
+    assert sql.count('"usa_names"."usa_1910_current"') == 1, sql
+    assert 'sum("quizzical"."total_births")' in sql, sql
     assert """FROM
-    "bigquery-public-data"."usa_names"."usa_1910_current" as "usa_names"
+    "quizzical"
 GROUP BY
     1),""" in sql, sql
 
