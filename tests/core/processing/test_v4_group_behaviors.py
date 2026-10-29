@@ -1442,6 +1442,24 @@ def test_bridge_dedupes_a_projection_the_shared_column_determines():
     assert isinstance(merged[1], GroupNode) and merged[1].parents == [projection]
 
 
+def test_bridge_already_joined_or_pairing_one_island_is_not_joined():
+    env = BuildEnvironment()
+    a = _build_concept("a.id", Purpose.KEY)
+    b = _build_concept("b.id", Purpose.KEY)
+    c = _build_concept("c.id", Purpose.KEY)
+    left, right = _scan(env, "left", [a], a), _scan(env, "right", [b], b)
+    joined = _scan(env, "joined", [a], a)
+    one_sided = _scan(env, "one_sided", [a, c], a)
+
+    merged = _join_elected_bridges(
+        [left, right, joined],
+        [(joined, frozenset()), (one_sided, frozenset())],
+        env,
+    )
+
+    assert merged == [left, right, joined]
+
+
 def test_elide_passthrough_tree_collapses_linear_identity_projection():
     env = BuildEnvironment()
     key = _build_concept("item.id", Purpose.KEY)
