@@ -801,10 +801,35 @@ class Datasource(HasUUID, Namespaced, BaseModel):
                 )
                 for address in derived
             ],
-            where_clause=where,
+            where_clause=self._pin_grain(where),
             having_clause=having,
             meta=Metadata(line_number=line_no) if line_no else None,
         )
+
+    def _pin_grain(self, where: WhereClause | None) -> WhereClause | None:
+        """An authored `~` column outside the grain licenses extension rows: one per
+        member the grain's rows never cite, NULL at the grain. The target is
+        built from its grain's rows, so pin its grain columns non-null (which
+        also heals the partial into a plain scan)."""
+        grain = self.grain.components
+        pins = [
+            Comparison(
+                left=col.concept,
+                right=MagicConstants.NULL,
+                operator=ComparisonOperator.IS_NOT,
+            )
+            for col in self.columns
+            if col.concept.address in grain
+            and self.column_level_partial_addresses - grain
+        ]
+        if not pins:
+            return where
+        conditional: Comparison | Conditional = pins[0]
+        for pin in [*pins[1:], *([where.conditional] if where else [])]:
+            conditional = Conditional(
+                left=conditional, right=pin, operator=BooleanOperator.AND
+            )
+        return WhereClause(conditional=conditional)
 
     @property
     def concepts(self) -> list[ConceptRef]:
