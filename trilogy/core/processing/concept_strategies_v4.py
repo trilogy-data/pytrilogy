@@ -73,6 +73,7 @@ from trilogy.core.processing.v4_helper import (
     build_strategy_node,
 )
 from trilogy.core.processing.v4_helper.functional_dependency import (
+    build_fd_closure,
     build_fd_determines,
 )
 from trilogy.core.processing.v4_helper.region_domains import undemanded_spans
@@ -540,16 +541,26 @@ def _expression_reduced_grain(
     the rest, they add no rows an aggregate at the rest's grain would split."""
     components = set(grain.components)
     for address in sorted(grain.components):
-        concept = environment.concepts.get(address)
-        if concept is None or concept.derivation != Derivation.BASIC:
-            continue
         rest = components - {address}
-        if rest and all(
-            build_fd_determines(environment, rest, arg.address)
-            for arg in concept.concept_arguments
+        if rest and _scalar_of(
+            address, build_fd_closure(environment, rest), environment
         ):
             components = rest
     return BuildGrain(components=components)
+
+
+def _scalar_of(
+    address: str, closure: frozenset[str], environment: BuildEnvironment
+) -> bool:
+    """A BASIC expression whose arguments sit in `closure`, directly or through
+    other BASIC expressions (`case b2 ...` over `b2 <- concat(bucket, '!')`)."""
+    concept = environment.concepts.get(address)
+    if concept is None or concept.derivation != Derivation.BASIC:
+        return False
+    return all(
+        arg.address in closure or _scalar_of(arg.address, closure, environment)
+        for arg in concept.concept_arguments
+    )
 
 
 def scan_filtered_roots(

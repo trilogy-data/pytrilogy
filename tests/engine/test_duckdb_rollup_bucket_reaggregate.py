@@ -40,6 +40,7 @@ query '''select * from (values
 ) t(species, tree_form, lifespan)''';
 
 auto lifespan_bucket <- CASE when lifespan is null then 'Unknown' when lifespan < 50 then 'Short' else 'Long' end::string;
+auto marked_bucket <- concat(lifespan_bucket, '!');
 """
 
 SUMMARY = f"""
@@ -50,6 +51,9 @@ query '''select city, species, count(tree_id) as n from ({TREES}) group by all''
 """
 
 COLOUR = "case lifespan_bucket when 'Long' then '#1' else '#2' end::string as colour"
+MARKED_COLOUR = (
+    "case marked_bucket when 'Long!' then '#1' else '#2' end::string as colour"
+)
 
 BUCKETS = [("Long", 2), ("Short", 2), ("Unknown", 1)]
 COLOURS = {"Long": "#1", "Short": "#2", "Unknown": "#2"}
@@ -80,6 +84,13 @@ CASES = [
         [(b, n, COLOURS[b]) for b, n in BUCKETS],
         id="bucket_colour_notnull",
     ),
+    pytest.param(
+        "where city = 'A' and lifespan_bucket is not null "
+        f"select lifespan_bucket, count(tree_id) as tree_count, {MARKED_COLOUR} "
+        "order by lifespan_bucket;",
+        [(b, n, COLOURS[b]) for b, n in BUCKETS],
+        id="bucket_nested_colour_notnull",
+    ),
 ]
 
 
@@ -102,14 +113,9 @@ def test_bucket_answer_without_summary(query, expected):
 @pytest.mark.parametrize("query,expected", CASES)
 def test_bucket_answer_with_summary(query, expected):
     sql = _sql(MODEL + SUMMARY, query)
-    assert _rows(sql) == expected, sql
-
-
-@pytest.mark.parametrize("query,expected", CASES)
-def test_bucket_reads_summary(query, expected):
-    sql = _sql(MODEL + SUMMARY, query)
     assert '"tree_summary"' in sql, sql
     assert "sum(" in sql, sql
+    assert _rows(sql) == expected, sql
 
 
 MERGED_SPECIES = """
