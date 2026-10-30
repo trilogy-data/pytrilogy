@@ -1668,7 +1668,14 @@ def _group_inputs(gid: str, ctx: _InputPass) -> None:
                     stack.extend(lineage_parents.get(parent_addr, set()))
                     continue
                 ins.add(parent_addr)
-                if is_grouping and parent_addr not in fact.grain:
+                # a component of the rows the aggregate reads (a coarser
+                # aggregate's partial at `city, form`) is their identity, not
+                # a value to read at its own source grain
+                if (
+                    is_grouping
+                    and parent_addr not in fact.grain
+                    and parent_addr not in attrs[gid].aggregate_input_grain
+                ):
                     for gc in source_grain_of.get(parent_addr, frozenset()):
                         if gc not in fact.primary:
                             ins.add(gc)

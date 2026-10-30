@@ -3748,6 +3748,197 @@ def _summary_rollup_cases(seed: SeedData) -> list[FuzzCase]:
     ]
 
 
+def _site_rollup_cases(seed: SeedData) -> list[FuzzCase]:
+    """Aggregates over a fact with TWO independent keys, (group, site), each
+    with a coarser attribute shared by several of its keys (`group_class`,
+    `site_zone`). Every shape runs twice: over the raw rows, and beside a
+    summary keyed (group, site) that it must roll up.
+
+    One key on the fact cannot express these: an aggregate at a coarser grain
+    beside finer rows, several grains of one aggregate in one select, and a
+    window ordered by a coarser aggregate all need a select at two keys and an
+    aggregate at one of them. A coarser attribute unique per key collapses
+    "by class" into "by group", hiding a roll that reads the wrong grain.
+    The oracles read `events`, `groups` and `sites` only."""
+    zone = seed.sites.rows[0][1]
+    rows = (
+        ", b as (select e.eid, e.gid, e.sid, e.amount, e.nullable_amount,"
+        " e.active, g.class, s.zone from events e"
+        " left join groups g on e.gid = g.gid"
+        " left join sites s on e.sid = s.sid)\n"
+    )
+    specs = (
+        (
+            "grain_chain_count",
+            "One count at (group, site), group and total grains reads rows once.",
+            (
+                "select group_id, site_id, count(event_id) as n,"
+                " count(event_id) by group_id as gn, count(event_id) by * as t;"
+            ),
+            (
+                "select f.gid, f.sid, f.n, g.n, t.n"
+                " from (select gid, sid, count(eid) as n from b group by all) f"
+                " join (select gid, count(eid) as n from b group by all) g"
+                " on f.gid = g.gid"
+                " cross join (select count(eid) as n from b) t"
+            ),
+        ),
+        (
+            "grain_chain_sum_min_max",
+            "Sum, min and max each at a coarser grain beside the finest one.",
+            (
+                "select group_id, site_id, sum(event_amount) as s,"
+                " sum(event_amount) by group_id as gs,"
+                " min(event_amount) by group_id as glo,"
+                " max(nullable_amount) by * as thi;"
+            ),
+            (
+                "select f.gid, f.sid, f.s, g.s, g.lo, t.hi"
+                " from (select gid, sid, sum(amount) as s from b group by all) f"
+                " join (select gid, sum(amount) as s, min(amount) as lo"
+                " from b group by all) g on f.gid = g.gid"
+                " cross join (select max(nullable_amount) as hi from b) t"
+            ),
+        ),
+        (
+            "attribute_grains",
+            "Coarser attributes of both keys, and a sum at one of them.",
+            (
+                "select group_class, site_zone, sum(event_amount) as s,"
+                " sum(event_amount) by group_class as cs;"
+            ),
+            (
+                "select f.class, f.zone, f.s, c.s"
+                " from (select class, zone, sum(amount) as s from b group by all) f"
+                " join (select class, sum(amount) as s from b group by all) c"
+                " on f.class is not distinct from c.class"
+            ),
+        ),
+        (
+            "class_filtered_by_zone",
+            "Group by one key's attribute, filter on the other key's attribute.",
+            (
+                f"where site_zone = '{zone}' select group_class,"
+                " count(event_id) as n, max(nullable_amount) as hi;"
+            ),
+            (
+                "select class, count(eid), max(nullable_amount) from b"
+                f" where zone = '{zone}' group by all"
+            ),
+        ),
+        (
+            "total_beside_class",
+            "A total is one value beside every class row, not a per-class count.",
+            "select group_class, count(event_id) by * as t;",
+            (
+                "select c.class, t.n from (select distinct class from b) c"
+                " cross join (select count(eid) as n from b) t"
+            ),
+        ),
+        (
+            "total_beside_filtered_class_sum",
+            "A total beside a summary-served per-class sum, under a zone filter.",
+            (
+                f"where site_zone = '{zone}' select group_class,"
+                " sum(event_amount) as s, count(event_id) by * as t;"
+            ),
+            (
+                "select c.class, c.s, t.n"
+                f" from (select class, sum(amount) as s from b where zone = '{zone}'"
+                " group by all) c"
+                f" cross join (select count(eid) as n from b where zone = '{zone}') t"
+            ),
+        ),
+        (
+            "window_ranks_by_group_total",
+            "A window ordered by a per-group sum ranks groups, not event rows.",
+            (
+                "select group_id, site_id, rank(group_id) over (partition by"
+                " group_class order by sum(event_amount) by group_id desc) as r;"
+            ),
+            (
+                ", w as (select gid, rank() over (partition by class"
+                " order by s desc) as r from (select gid, class, sum(amount) as s"
+                " from b group by all))"
+                " select d.gid, d.sid, w.r from (select distinct gid, sid from b) d"
+                " join w on d.gid = w.gid"
+            ),
+        ),
+        (
+            "window_ranks_pairs_by_group_total",
+            (
+                "Partitioned by site, the window's rows are (group, site) pairs"
+                " only the fact holds; it ranks each pair once, not per event."
+            ),
+            (
+                "select group_id, site_id, rank(group_id) over (partition by"
+                " site_id order by sum(event_amount) by group_id desc) as r;"
+            ),
+            (
+                ", g as (select gid, sum(amount) as s from b group by all)"
+                " select d.gid, d.sid, rank() over (partition by d.sid"
+                " order by g.s desc) from (select distinct gid, sid from b) d"
+                " join g on d.gid = g.gid"
+            ),
+        ),
+        (
+            "window_lag_by_class_count",
+            (
+                "A window ordered by a per-class count reads it at the class"
+                " grain; the window ranges over every group, with events or not."
+            ),
+            (
+                "select group_id, site_id, lag(group_id) over (order by"
+                " count(event_id) by group_class desc, group_id asc) as p;"
+            ),
+            (
+                ", c as (select class, count(eid) as n from b group by all),"
+                " w as (select g.gid, lag(g.gid) over (order by c.n desc,"
+                " g.gid asc) as p from groups g"
+                " left join c on g.class is not distinct from c.class)"
+                " select d.gid, d.sid, w.p from (select distinct gid, sid from b) d"
+                " join w on d.gid = w.gid"
+            ),
+        ),
+        (
+            "max_of_group_sums",
+            "A per-class max over per-group sums rolls the sums up first.",
+            "select group_class, max(sum(event_amount) by group_id) as m;",
+            (
+                "select class, max(s) from (select gid, class, sum(amount) as s"
+                " from b group by all) group by class"
+            ),
+        ),
+        (
+            "having_over_class_sum",
+            "HAVING reads the rolled-up per-class sum.",
+            "select group_class, sum(event_amount) as s having s > 0;",
+            "select class, sum(amount) from b group by all having sum(amount) > 0",
+        ),
+        (
+            "filter_below_summary",
+            "A filter the summary does not carry: the rows must answer it.",
+            "where active select group_class, count(event_id) as n;",
+            "select class, count(eid) from b where active group by all",
+        ),
+    )
+    summary = seed.site_summary_model()
+    return [
+        _case(
+            seed,
+            "site_rollup",
+            f"{name}__{source}",
+            description,
+            ("aggregate", "rollup_source", "two_key"),
+            body,
+            rows + oracle,
+            model_extra=extra,
+        )
+        for name, description, body, oracle in specs
+        for source, extra in (("rows", ""), ("summary", summary))
+    ]
+
+
 def generate_cases(seeds: Iterable[SeedData] = SEEDS) -> list[FuzzCase]:
     cases = []
     builders = (
@@ -3777,6 +3968,7 @@ def generate_cases(seeds: Iterable[SeedData] = SEEDS) -> list[FuzzCase]:
         _padding_provenance_cases,
         _partition_cover_cases,
         _summary_rollup_cases,
+        _site_rollup_cases,
         law_cases,
     )
     for seed in seeds:

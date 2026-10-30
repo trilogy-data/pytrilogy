@@ -36,6 +36,7 @@ class SeedData:
     sales: TableData
     returns: TableData
     visits: TableData
+    sites: TableData
 
     @property
     def tables(self) -> tuple[TableData, ...]:
@@ -48,6 +49,7 @@ class SeedData:
             self.sales,
             self.returns,
             self.visits,
+            self.sites,
         )
 
     def oracle_ctes(self) -> str:
@@ -62,11 +64,13 @@ class SeedData:
 property group_id.group_name string;
 property group_id.nullable_name string?;
 property group_id.required_name string;
+property group_id.group_class string?;
 datasource groups (
     gid: group_id,
     name: group_name,
     nullable_name: nullable_name,
-    required_name: required_name
+    required_name: required_name,
+    class: group_class
 )
 grain (group_id)
 query '''{sources["groups"]}''';
@@ -75,15 +79,22 @@ key event_id int;
 property event_id.event_amount int;
 property event_id.nullable_amount int?;
 property event_id.active bool;
+key site_id string;
+property site_id.site_zone string;
 datasource events (
     eid: event_id,
     gid: group_id,
     amount: event_amount,
     nullable_amount: nullable_amount,
-    active: active
+    active: active,
+    sid: site_id
 )
 grain (event_id)
 query '''{sources["events"]}''';
+
+datasource sites (sid: site_id, zone: site_zone)
+grain (site_id)
+query '''{sources["sites"]}''';
 
 key left_id int;
 property left_id.left_key int?;
@@ -167,6 +178,34 @@ from ({self.events.select_sql()}) group by 1, 2''';
 
 """
 
+    def site_summary_model(self) -> str:
+        """A summary over `events` keyed by TWO independent fact keys,
+        (group, site). Requests at one key, at a coarser attribute of either
+        (`group_class`, `site_zone`), or at several grains at once must roll it
+        up, and an aggregate at a grain other than the select's stays a value
+        at its own grain. Derived from the events rows in SQL, like
+        `summary_model`, so either source owes the same answer."""
+        return f"""
+auto site_count <- count(event_id);
+auto site_total <- sum(event_amount);
+auto site_low <- min(event_amount);
+auto site_high <- max(nullable_amount);
+
+datasource site_summary (
+    gid: group_id,
+    sid: site_id,
+    n: site_count,
+    total: site_total,
+    low: site_low,
+    high: ?site_high,
+)
+grain (group_id, site_id)
+query '''select gid, sid, count(eid) as n, sum(amount) as total,
+min(amount) as low, max(nullable_amount) as high
+from ({self.events.select_sql()}) group by 1, 2''';
+
+"""
+
 
 @dataclass(frozen=True)
 class FuzzCase:
@@ -207,24 +246,24 @@ SEEDS: tuple[SeedData, ...] = (
         ),
         groups=TableData(
             "groups",
-            ("gid", "name", "nullable_name", "required_name"),
+            ("gid", "name", "nullable_name", "required_name", "class"),
             (
-                (1, "alpha", None, "A"),
-                (2, "beta", "bee", "B"),
-                (3, "gamma", None, "C"),
-                (4, "delta", "dee", "D"),
+                (1, "alpha", None, "A", "x"),
+                (2, "beta", "bee", "B", "x"),
+                (3, "gamma", None, "C", "y"),
+                (4, "delta", "dee", "D", None),
             ),
         ),
         events=TableData(
             "events",
-            ("eid", "gid", "amount", "nullable_amount", "active"),
+            ("eid", "gid", "amount", "nullable_amount", "active", "sid"),
             (
-                (1, 1, 10, None, True),
-                (2, 1, 5, 2, False),
-                (3, 2, 7, 7, True),
-                (4, 2, 3, None, False),
-                (5, 3, 11, 1, True),
-                (6, 4, 4, None, True),
+                (1, 1, 10, None, True, "s1"),
+                (2, 1, 5, 2, False, "s1"),
+                (3, 2, 7, 7, True, "s1"),
+                (4, 2, 3, None, False, "s2"),
+                (5, 3, 11, 1, True, "s3"),
+                (6, 4, 4, None, True, "s1"),
             ),
         ),
         left_facts=TableData(
@@ -264,6 +303,11 @@ SEEDS: tuple[SeedData, ...] = (
                 (6, 3, 19, 2),
             ),
         ),
+        sites=TableData(
+            "sites",
+            ("sid", "zone"),
+            (("s1", "north"), ("s2", "north"), ("s3", "south")),
+        ),
     ),
     SeedData(
         name="dense",
@@ -273,25 +317,25 @@ SEEDS: tuple[SeedData, ...] = (
         ),
         groups=TableData(
             "groups",
-            ("gid", "name", "nullable_name", "required_name"),
+            ("gid", "name", "nullable_name", "required_name", "class"),
             (
-                (1, "amber", "aye", "AA"),
-                (2, "blue", None, "BB"),
-                (3, "cyan", "see", "CC"),
-                (4, "dun", None, "DD"),
+                (1, "amber", "aye", "AA", "warm"),
+                (2, "blue", None, "BB", "cool"),
+                (3, "cyan", "see", "CC", "cool"),
+                (4, "dun", None, "DD", "warm"),
             ),
         ),
         events=TableData(
             "events",
-            ("eid", "gid", "amount", "nullable_amount", "active"),
+            ("eid", "gid", "amount", "nullable_amount", "active", "sid"),
             (
-                (1, 1, 0, 0, False),
-                (2, 1, -2, None, True),
-                (3, 2, 6, 3, True),
-                (4, 2, 6, 3, True),
-                (5, 3, 9, None, False),
-                (6, 3, 1, 1, True),
-                (7, 4, 12, None, False),
+                (1, 1, 0, 0, False, "p"),
+                (2, 1, -2, None, True, "q"),
+                (3, 2, 6, 3, True, "p"),
+                (4, 2, 6, 3, True, "p"),
+                (5, 3, 9, None, False, "q"),
+                (6, 3, 1, 1, True, "r"),
+                (7, 4, 12, None, False, "p"),
             ),
         ),
         left_facts=TableData(
@@ -336,6 +380,11 @@ SEEDS: tuple[SeedData, ...] = (
                 (4, 1, 4, 2),
                 (5, 2, 9, 1),
             ),
+        ),
+        sites=TableData(
+            "sites",
+            ("sid", "zone"),
+            (("p", "inner"), ("q", "outer"), ("r", "outer")),
         ),
     ),
 )

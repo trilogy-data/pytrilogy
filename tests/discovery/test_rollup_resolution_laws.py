@@ -76,6 +76,7 @@ GRAINS = {
     "form": ["tree_form"],
     "form_case": ["case when tree_form = 'broadleaf' then 'b' else 'o' end as fc"],
     "city_species": ["city", "species"],
+    "city_form": ["city", "tree_form"],
 }
 
 FILTERS = {
@@ -224,6 +225,9 @@ PARTIAL_GRAINS = [
     "species>form",
     "species>form_case",
     "form>total",
+    "city_form>city",
+    "city_form>form",
+    "city_form>total",
 ]
 
 RAW_AGGREGATE = re.compile(
