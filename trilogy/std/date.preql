@@ -16,7 +16,7 @@ type hour int;
 type minute int;
 type second numeric;
 type millisecond int;
-# 1 on Sunday through 7 on Saturday on every dialect
-type day_of_week int[1..7];
+# day_of_week() is 1-7 (Sunday first); 0..7 also admits stored 0-6 columns
+type day_of_week int[0..7];
 type day_of_week_name string;
 

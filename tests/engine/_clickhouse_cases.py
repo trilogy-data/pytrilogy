@@ -54,7 +54,7 @@ SMOKE_CASES: list[tuple[str, str, Any]] = [
     ("day", "day(cast('2024-03-15' as date))", 15),
     ("quarter", "quarter(cast('2024-08-15' as date))", 3),
     ("week", "week(cast('2024-03-15' as date))", 11),
-    ("day_of_week", "day_of_week(cast('2024-03-15' as date))", 5),  # Friday=5
+    ("day_of_week", "day_of_week(cast('2024-03-15' as date))", 6),  # Sunday=1
     ("day_name", "day_name(cast('2024-03-15' as date))", "Friday"),
     ("month_name", "month_name(cast('2024-03-15' as date))", "March"),
     ("hour", "hour(cast('2024-03-15 10:20:30' as datetime))", 10),

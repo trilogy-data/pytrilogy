@@ -236,7 +236,7 @@ limit 15;
 
     sql = base.generate_sql(queries[-1])
     assert (
-        """WHEN cast(sum("launch_info"."OrbPay") as int) = 0 THEN 1""" in sql[0]
+        """WHEN cast(round(sum("launch_info"."OrbPay")) as int) = 0 THEN 1""" in sql[0]
     ), sql[0]
 
 
