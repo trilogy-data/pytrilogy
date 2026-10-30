@@ -211,9 +211,15 @@ def satisfiable_outputs(
     # renders INVALID_REFERENCE_BUG for the condition args nothing produces.
     if not parents:
         return outputs
-    available = {
-        output.address for parent in parents for output in parent.output_concepts
-    }
+    return satisfiable_from(
+        outputs,
+        {output.address for parent in parents for output in parent.output_concepts},
+    )
+
+
+def satisfiable_from(
+    outputs: list[BuildConcept], available: set[str]
+) -> list[BuildConcept]:
     keep_addrs: set[str] = set()
     changed = True
     while changed:
@@ -336,7 +342,7 @@ def shared_filter_predicate(concepts: list[BuildConcept]) -> BuildWhereClause | 
 
 def filter_row_predicate(
     outputs: list[BuildConcept],
-    parents: list[StrategyNode],
+    parent_outputs: set[str],
     may_narrow: bool,
 ) -> BoolExpr | None:
     """The predicate a filter group's node takes into its WHERE, when its rows
@@ -344,7 +350,6 @@ def filter_row_predicate(
     where = shared_filter_predicate(outputs) if may_narrow else None
     if where is None:
         return None
-    parent_outputs = {c.address for p in parents for c in p.output_concepts}
     agg_args = [r for r in where.row_arguments if r.derivation == Derivation.AGGREGATE]
     if is_scalar_condition(where.conditional) or (
         agg_args and all(r.address in parent_outputs for r in where.row_arguments)

@@ -79,7 +79,13 @@ def _renders(
         held -= set(group.members) - set(group.output_concepts)
         held |= _side_handles(group_graph, group_edges, attrs, gid, environment)
     else:
-        held |= set(group.members)
+        # a scan projects what it is asked; a member the demand pass dropped
+        # is no column of it
+        held |= set(
+            group.output_concepts
+            if group.derivation == Derivation.ROOT and group.output_concepts
+            else group.members
+        )
         # a row stream over source rows holds the row keys it is grained at
         if group.derivation != Derivation.ROWSET and not lineage_pinned_grain(
             group.output_concepts or group.members, environment

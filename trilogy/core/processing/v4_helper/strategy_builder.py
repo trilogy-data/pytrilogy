@@ -149,13 +149,14 @@ from .projection import (
     parent_output_addresses,
     renderable_addresses,
     row_lineage_arguments,
+    satisfiable_from,
     satisfiable_outputs,
     statement_filter_population,
     widen_projection,
 )
 from .region_reads import inline_arguments_taking_a_value, nameable
 from .renders import declared_partial, parents_render, renders
-from .source_planning import SourceRequest, plan_source
+from .source_planning import SourceRequest, plan_source, scan_regroups
 
 
 @dataclass
@@ -685,36 +686,191 @@ def _select_addresses(a: GroupAttrs) -> tuple[str, ...]:
     return a.output_concepts or a.members
 
 
+class _FoldReads:
+    """What the inline fold reads of the groups it would inline over."""
+
+    def has(self, gid: str) -> bool:
+        raise NotImplementedError
+
+    def outputs(self, gids: list[str]) -> set[str]:
+        raise NotImplementedError
+
+    def barrier(self, gid: str) -> bool:
+        raise NotImplementedError
+
+    def regroups(
+        self,
+        outputs: list[BuildConcept],
+        gids: list[str],
+        environment: BuildEnvironment,
+    ) -> bool:
+        raise NotImplementedError
+
+    def twin_emits(
+        self, attrs: dict[str, GroupAttrs], addresses: set[str], skip: str | None
+    ) -> bool:
+        raise NotImplementedError
+
+
+@dataclass
+class _BuiltReads(_FoldReads):
+    """The fold read off built nodes."""
+
+    built: dict[str, StrategyNode]
+
+    def has(self, gid: str) -> bool:
+        return gid in self.built
+
+    def outputs(self, gids: list[str]) -> set[str]:
+        return {o.address for gid in gids for o in self.built[gid].output_concepts}
+
+    def barrier(self, gid: str) -> bool:
+        return _contains_shape_barrier(self.built[gid])
+
+    def regroups(
+        self,
+        outputs: list[BuildConcept],
+        gids: list[str],
+        environment: BuildEnvironment,
+    ) -> bool:
+        from trilogy.core.processing.v4_node_generators.basic import (  # cycle
+            basic_regroups,
+        )
+
+        return basic_regroups(outputs, [self.built[g] for g in gids], environment)
+
+    def twin_emits(
+        self, attrs: dict[str, GroupAttrs], addresses: set[str], skip: str | None
+    ) -> bool:
+        return _built_twin_emits(attrs, self.built, addresses, skip)
+
+
+@dataclass
+class _PlannedReads(_FoldReads):
+    """The fold read off stage-2 facts: what each group renders, and the
+    derivations above it."""
+
+    group_graph: nx.DiGraph
+    attrs: dict[str, GroupAttrs]
+    rendered: dict[str, frozenset[str]]
+    decided: set[str]
+    environment: BuildEnvironment
+    g: ReferenceGraph
+    history: V4History
+    # a ROOT's scan verdict per (group, arm_local): the search behind it is
+    # asked once per plan
+    scans: dict[tuple[str, bool], bool]
+
+    def has(self, gid: str) -> bool:
+        return gid in self.rendered
+
+    def outputs(self, gids: list[str]) -> set[str]:
+        return set().union(*(self.rendered[gid] for gid in gids))
+
+    def barrier(self, gid: str) -> bool:
+        return any(
+            self.attrs[g].derivation in _BARRIER_DERIVATIONS
+            or (self.attrs[g].derivation == Derivation.ROOT and self._scan_groups(g))
+            for g in {gid, *nx.ancestors(self.group_graph, gid)}
+            if g in self.attrs
+        )
+
+    def _scan_groups(self, gid: str) -> bool:
+        """Whether a ROOT's scan dedups its rows (`scan_regroups`)."""
+        group = self.attrs[gid]
+        arm_local = _feeds_only_aggregates(self.group_graph, self.attrs, gid)
+        if (gid, arm_local) not in self.scans:
+            self.scans[(gid, arm_local)] = self._scan(group, arm_local)
+        return self.scans[(gid, arm_local)]
+
+    def _scan(self, group: GroupAttrs, arm_local: bool) -> bool:
+        return scan_regroups(
+            SourceRequest(
+                outputs=[
+                    c
+                    for a in _select_addresses(group)
+                    if (c := _concept_at(self.environment, a)) is not None
+                ],
+                environment=self.environment,
+                graph=self.g,
+                history=self.history,
+                conditions=_wrap_atoms(group.condition_atoms),
+                arm_local=arm_local,
+            )
+        )
+
+    def regroups(
+        self,
+        outputs: list[BuildConcept],
+        gids: list[str],
+        environment: BuildEnvironment,
+    ) -> bool:
+        from trilogy.core.processing.v4_node_generators.basic import (  # cycle
+            grain_claim_unheld,
+        )
+
+        if len(gids) != 1:
+            return False
+        held = self.rendered[gids[0]]
+        concepts = [c for a in sorted(held) if (c := _concept_at(environment, a))]
+        grain = set(
+            BuildGrain.from_concepts(concepts, environment=environment).components
+        )
+        by_address = {c.address: c for c in concepts}
+        widened = list(outputs) + [
+            by_address[k]
+            for o in outputs
+            if o.lineage is not None and o.grain is not None
+            for k in sorted(o.grain.components)
+            if k in by_address and k not in {c.address for c in outputs}
+        ]
+        return grain_claim_unheld(
+            unique(widened, "address"), grain, set(held), environment
+        )
+
+    def twin_emits(
+        self, attrs: dict[str, GroupAttrs], addresses: set[str], skip: str | None
+    ) -> bool:
+        return any(
+            other != skip
+            and other in self.rendered
+            and attrs[other].depth_label == DepthLabel.D1
+            and addresses & self.rendered[other]
+            for other in self.decided
+        )
+
+
+_BARRIER_DERIVATIONS = {*GROUPING_DERIVATIONS, Derivation.ROWSET}
+
+
 def _projects_parent_rows(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
     gid: str,
-    parents: list[StrategyNode],
+    parents: list[str],
+    reads: "_FoldReads",
     environment: BuildEnvironment,
     mandatory_list: list[BuildConcept],
 ) -> bool:
     """Whether `gid`'s node would project its parents' rows as they stand: no
-    WHERE, no regroup, no subselect. Read off the graph and the parents'
-    nodes, the way its generator would, so the answer needs no node of
-    `gid`'s own."""
-    from trilogy.core.processing.v4_node_generators.basic import (  # cycle
-        basic_regroups,
-    )
-
+    WHERE, no regroup, no subselect. Read off the graph and what `reads` says
+    of the parents, the way its generator would, so the answer needs no node
+    of `gid`'s own."""
     a = attrs[gid]
     if a.condition_atoms or any(
         edge_kind(group_edges, pgid, gid) == EdgeKind.EXISTENCE
         for pgid in group_graph.predecessors(gid)
     ):
         return False
-    outputs = satisfiable_outputs(
+    available = reads.outputs(parents)
+    outputs = satisfiable_from(
         [
             c
             for addr in _select_addresses(a)
             if (c := _concept_at(environment, addr)) is not None
         ],
-        parents,
+        available,
     )
     if _lineage_existence_arg_groups(outputs):
         return False
@@ -728,15 +884,15 @@ def _projects_parent_rows(
         narrows = _filter_intrinsic_pushdown_safe(
             group_graph, attrs, gid, outputs, mandatory_list, environment
         )
-        return filter_row_predicate(outputs, parents, narrows) is None
-    return not basic_regroups(outputs, parents, environment)
+        return filter_row_predicate(outputs, available, narrows) is None
+    return not reads.regroups(outputs, parents, environment)
 
 
 def _aggregate_inlines(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
-    built: dict[str, StrategyNode],
+    reads: "_FoldReads",
     consumer: str,
     gid: str,
     environment: BuildEnvironment,
@@ -778,23 +934,23 @@ def _aggregate_inlines(
     # own CTE). Folding re-roots the aggregate on the grandparent, but the
     # resolver then binds the folded column to that sibling CTE, which isn't
     # in the aggregate's FROM: a dangling reference.
-    if _built_twin_emits(attrs, built, members, skip=gid):
+    if reads.twin_emits(attrs, members, skip=gid):
         return False
     parents = [
-        built[pgid]
-        for pgid in row_parents(group_graph, group_edges, gid)
-        if pgid in built
+        pgid for pgid in row_parents(group_graph, group_edges, gid) if reads.has(pgid)
     ]
-    if not parents or any(_contains_shape_barrier(parent) for parent in parents):
+    if not parents or any(reads.barrier(pgid) for pgid in parents):
         return False
     return _projects_parent_rows(
-        group_graph, group_edges, attrs, gid, parents, environment, mandatory_list
-    ) and _group_renderable_from(
+        group_graph,
+        group_edges,
         attrs,
-        environment,
         gid,
-        {output.address for parent in parents for output in parent.output_concepts},
-    )
+        parents,
+        reads,
+        environment,
+        mandatory_list,
+    ) and _group_renderable_from(attrs, environment, gid, reads.outputs(parents))
 
 
 def _inline_aggregate_inputs(
@@ -817,7 +973,7 @@ def _inline_aggregate_inputs(
                 group_graph,
                 group_edges,
                 attrs,
-                built,
+                _BuiltReads(built),
                 gid,
                 pgid,
                 environment,
@@ -899,7 +1055,7 @@ def _reader_inlines(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
-    built: dict[str, StrategyNode],
+    reads: "_FoldReads",
     reader: str,
     gid: str,
     environment: BuildEnvironment,
@@ -920,7 +1076,7 @@ def _reader_inlines(
             group_graph,
             group_edges,
             attrs,
-            built,
+            reads,
             aggregate,
             gid,
             environment,
@@ -933,13 +1089,13 @@ def _reader_inlines(
         return True
     # the reader's fold is decided off its parents' nodes, `gid`'s in its place
     if any(
-        pgid != gid and pgid not in built
+        pgid != gid and not reads.has(pgid)
         for pgid in row_parents(group_graph, group_edges, reader)
     ):
         return False
     return _inlined_by_every_reader(
         *_folded(group_graph, group_edges, attrs, gid),
-        built,
+        reads,
         reader,
         environment,
         mandatory_list,
@@ -950,7 +1106,7 @@ def _inlined_by_every_reader(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
-    built: dict[str, StrategyNode],
+    reads: "_FoldReads",
     gid: str,
     environment: BuildEnvironment,
     mandatory_list: list[BuildConcept],
@@ -984,7 +1140,7 @@ def _inlined_by_every_reader(
             group_graph,
             group_edges,
             attrs,
-            built,
+            reads,
             reader,
             gid,
             environment,
@@ -1002,7 +1158,7 @@ def _inlined_by_every_reader(
         return False
     return all(
         _inlined_by_every_reader(
-            group_graph, group_edges, attrs, built, twin, environment, mandatory_list
+            group_graph, group_edges, attrs, reads, twin, environment, mandatory_list
         )
         for twin in twins
     )
@@ -6347,6 +6503,46 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     return node
 
 
+def _inlined_groups(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    order: list[str],
+    environment: BuildEnvironment,
+    mandatory_list: list[BuildConcept],
+    g: ReferenceGraph,
+    history: V4History,
+) -> set[str]:
+    """The groups every reader computes inline, decided before anything is
+    built. Each is judged in build order off what the groups before it render,
+    over a copy of the plan the folds before it are applied to."""
+    graph, edges = group_graph.copy(), dict(group_edges)
+    planned = {gid: dc_replace(a) for gid, a in attrs.items()}
+    rendered = renders(graph, edges, planned, environment)
+    scans: dict[tuple[str, bool], bool] = {}
+    inlined: set[str] = set()
+    for idx, gid in enumerate(order):
+        if gid == FINAL_NODE_ID:
+            continue
+        reads = _PlannedReads(
+            graph,
+            planned,
+            rendered,
+            {other for other in order[:idx] if other in planned},
+            environment,
+            g,
+            history,
+            scans,
+        )
+        if _inlined_by_every_reader(
+            graph, edges, planned, reads, gid, environment, mandatory_list
+        ):
+            inlined.add(gid)
+            _read_parents_in_place(graph, edges, planned, gid)
+            rendered = renders(graph, edges, planned, environment)
+    return inlined
+
+
 def build_strategy_node(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -6394,13 +6590,23 @@ def build_strategy_node(
 
     order = ctx.order
     record_twin_reuse(order, attrs)
+    # decided up front, applied at each group's turn: a parent built before
+    # the fold reads the readers it has then
+    inlined = _inlined_groups(
+        group_graph,
+        group_edges,
+        attrs,
+        order,
+        environment,
+        mandatory_list,
+        g,
+        history,
+    )
     for gid in order:
         if gid == FINAL_NODE_ID:
             continue
         plan_trace.set_context(gid)
-        if _inlined_by_every_reader(
-            group_graph, group_edges, attrs, built, gid, environment, mandatory_list
-        ):
+        if gid in inlined:
             _fold_into_readers(group_graph, group_edges, attrs, gid)
             continue
         a = attrs[gid]

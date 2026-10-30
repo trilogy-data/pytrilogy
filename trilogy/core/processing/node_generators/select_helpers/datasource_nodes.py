@@ -264,7 +264,7 @@ def create_select_node(
     return finalize_select_node(candidate, environment, depth, defer_group)
 
 
-def _scan_target_grain(
+def scan_target_grain(
     concepts: list[BuildConcept], environment: BuildEnvironment
 ) -> BuildGrain:
     """A merged attribute read without its own key is the grain itself: a
@@ -284,6 +284,23 @@ def _scan_target_grain(
     return BuildGrain(components=grain.components | merged)
 
 
+def datasource_regroups(
+    datasource: BuildDatasource,
+    concepts: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> bool:
+    """Whether a scan of `concepts` off `datasource` is grouped to them: the
+    datasource is finer than they are, or declares no grain at all."""
+    datasource_grain = BuildGrain.from_concepts(
+        datasource.grain.components, environment=environment
+    )
+    if not datasource_grain.components:
+        return any(
+            x.granularity != Granularity.SINGLE_ROW for x in datasource.output_concepts
+        )
+    return not datasource_grain.issubset(scan_target_grain(concepts, environment))
+
+
 def create_datasource_node(
     datasource: BuildDatasource,
     all_concepts: list[BuildConcept],
@@ -293,24 +310,16 @@ def create_datasource_node(
     conditions: BuildWhereClause | None = None,
     injected_conditions: BoolExpr | None = None,
 ) -> tuple[StrategyNode, bool]:
-    target_grain = _scan_target_grain(all_concepts, environment)
+    target_grain = scan_target_grain(all_concepts, environment)
     datasource_grain = BuildGrain.from_concepts(
         datasource.grain.components, environment=environment
     )
-    force_group = False
-    if not datasource_grain.issubset(target_grain):
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX}_DS_NODE Select node must be wrapped in group, {datasource_grain} not subset of target grain {target_grain} from {all_concepts}"
-        )
-        force_group = True
-    else:
-        logger.info(
-            f"{padding(depth)}{LOGGER_PREFIX}_DS_NODE Select node grain {datasource_grain} is subset of target grain {target_grain}, no group required"
-        )
-    if not datasource_grain.components:
-        force_group = any(
-            x.granularity != Granularity.SINGLE_ROW for x in datasource.output_concepts
-        )
+    force_group = datasource_regroups(datasource, all_concepts, environment)
+    logger.info(
+        f"{padding(depth)}{LOGGER_PREFIX}_DS_NODE Select node of grain "
+        f"{datasource.grain} for target grain {target_grain}: "
+        f"{'wrapped in group' if force_group else 'no group required'}"
+    )
     if any(
         c.is_aggregate and nonstandard_grouping_lineage(c) is not None
         for c in all_concepts

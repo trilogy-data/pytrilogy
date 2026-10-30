@@ -87,7 +87,9 @@ def gen_filter(
         o.lineage for o in outputs if isinstance(o.lineage, BuildFilterItem)
     ]
     intrinsic = filter_row_predicate(
-        outputs, parents, intrinsic_filter_pushdown or existence_source
+        outputs,
+        {c.address for p in parents for c in p.output_concepts},
+        intrinsic_filter_pushdown or existence_source,
     )
 
     grain: BuildGrain | None = None
