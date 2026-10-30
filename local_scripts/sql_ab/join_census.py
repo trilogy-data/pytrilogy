@@ -282,7 +282,7 @@ def install() -> None:
     wrap(sb, "_fresh_final_root_projection", p_fresh_root)
     wrap(sb, "_wrap_for_grain", p_wrap_for_grain)
     wrap(sb, "_satisfy_parent_projection_contract", p_satisfy)
-    wrap(sb, "_bridge_unpaired_parents", p_bridge)
+    wrap(sb, "_join_elected_bridges", p_bridge)
     wrap(sb, "_fold_covered_contributors", p_fold_covered)
     wrap(sb, "_carry_join_keys", p_carry)
     wrap(sb, "widen_projection", p_widen)
