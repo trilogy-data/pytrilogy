@@ -1,8 +1,10 @@
+import math
 import re
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import date, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -201,11 +203,59 @@ _SET_OP_SURFACE_NAMES = {
 }
 
 
+def _lexes_whole(value: str, quote: str) -> bool:
+    """Whether ``quote + value + quote`` lexes back to ``value``: a string
+    literal keeps each backslash pair verbatim, so only a bare quote or a
+    trailing lone backslash ends it early."""
+    i = 0
+    while i < len(value):
+        if value[i] == "\\":
+            i += 2
+        elif value[i] == quote:
+            return False
+        else:
+            i += 1
+    return i == len(value)
+
+
+def string_literal(value: str) -> str:
+    """The string literal that parses back to exactly ``value``."""
+    for quote in ("'", '"'):
+        if _lexes_whole(value, quote):
+            return f"{quote}{value}{quote}"
+    if "'''" not in value and not value.endswith("'"):
+        return f"'''{value}'''"
+    raise ValueError(f"{value!r} has no exact string literal")
+
+
+def float_literal(value: float) -> str:
+    """Positional notation: the grammar has no exponent form."""
+    if not math.isfinite(value):
+        return f"'{value}'::float"
+    text = repr(value)
+    if "e" in text:
+        text = format(Decimal(text), "f")
+    return text if "." in text else f"{text}.0"
+
+
+def decimal_literal(value: Decimal) -> str:
+    """A string cast, the one exact spelling: a bare ``1.05`` is a double."""
+    if not value.is_finite():
+        raise ValueError(f"{value!r} has no exact numeric literal")
+    _, digits, exponent = value.as_tuple()
+    assert isinstance(exponent, int)
+    scale = max(-exponent, 0)
+    precision = max(len(digits) + max(exponent, 0), scale, 1)
+    return f"'{format(value, 'f')}'::numeric({precision},{scale})"
+
+
 def _storage_literal(value: bool | float | str) -> str:
     if isinstance(value, bool):
         return str(value).lower()
     if isinstance(value, str):
-        return "'" + value.replace("'", "\\'") + "'"
+        return string_literal(value)
+    if isinstance(value, float):
+        return float_literal(value)
     return repr(value)
 
 
@@ -1773,11 +1823,15 @@ class Renderer:
 
     @to_string.register
     def _(self, arg: str):
-        return f"'{arg}'"
+        return string_literal(arg)
 
     @to_string.register
     def _(self, arg: float):
-        return f"{arg}"
+        return float_literal(arg)
+
+    @to_string.register
+    def _(self, arg: Decimal):
+        return decimal_literal(arg)
 
     @to_string.register
     def _(self, arg: bool):

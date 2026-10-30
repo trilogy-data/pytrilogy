@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
 from trilogy.constants import DEFAULT_NAMESPACE, MagicConstants
@@ -43,7 +44,13 @@ from trilogy.core.models.author import (
     WindowItemOrder,
     WindowItemOver,
 )
-from trilogy.core.models.core import ArrayType, DataType, MapType, arg_to_datatype
+from trilogy.core.models.core import (
+    ArrayType,
+    DataType,
+    MapType,
+    NumericType,
+    arg_to_datatype,
+)
 from trilogy.parsing.common import arbitrary_to_concept
 from trilogy.parsing.v2.rules.conditional_rules import negate_two_valued
 from trilogy.parsing.v2.rules_context import (
@@ -626,6 +633,9 @@ def fcast(
                 processed = value.capitalize() == "True"
             case DataType.STRING:
                 processed = value
+            case NumericType():
+                # The one spelling of an exact decimal: a float_lit is a double.
+                processed = Decimal(value)
             case _:
                 raise fail(node, f"Invalid cast type {dtype}")
         if isinstance(dtype, TraitDataType):
