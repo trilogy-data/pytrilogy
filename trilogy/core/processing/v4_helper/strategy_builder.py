@@ -3045,6 +3045,7 @@ def _pre_merge_parents(
     preexisting_conditions: BoolExpr | None = None,
     attrs: dict[str, GroupAttrs] | None = None,
     origin: dict[int, str] | None = None,
+    candidates: Sequence[str] = (),
 ) -> list[StrategyNode]:
     """Collapse a multi-parent set into a single MergeNode that auto-joins
     on shared output concepts. Non-merging generators (GroupNode for
@@ -3078,7 +3079,7 @@ def _pre_merge_parents(
         attrs,
         origin,
         group_graph,
-        built,
+        candidates,
         needed,
         join_key_addresses,
         environment,
@@ -3117,16 +3118,16 @@ def _merge_plan(
     attrs: dict[str, GroupAttrs] | None,
     origin: dict[int, str] | None,
     group_graph: nx.DiGraph | None,
-    built: dict[str, StrategyNode] | None,
+    candidates: Sequence[str],
     needed: set[str] | None,
     join_key_addresses: frozenset[str],
     environment: BuildEnvironment,
 ) -> JoinPlan | None:
     """A consumer's join plan over the groups its row parents came from, with
-    the bridges it elects as extras. None when a side is no group's (a merge
-    assembled below the consumer): it bridges off what is built, and resolve
-    discovers the keys."""
-    if attrs is None or origin is None or group_graph is None or built is None:
+    the bridges it elects from `candidates` as extras. None when a side is no
+    group's (a merge assembled below the consumer): resolve discovers the
+    keys."""
+    if attrs is None or origin is None or group_graph is None:
         return None
     sides = side_groups(parents, origin)
     if len(sides) != len(parents):
@@ -3144,7 +3145,7 @@ def _merge_plan(
         group_graph,
         attrs,
         cover,
-        _bridge_candidates(group_graph, built),
+        candidates,
         [c for concepts in cover.values() for c in concepts],
         environment,
         _required_final_contract(attrs).authored_axes,
@@ -3160,6 +3161,7 @@ def _union_arm_parents(
     needed: set[str],
     group_graph: nx.DiGraph,
     built: dict[str, StrategyNode],
+    candidates: Sequence[str],
 ) -> list[StrategyNode]:
     """One parent per union arm. Arms stack, so parents merge only WITHIN an
     arm scope (a key scan beside a constant feeding the same arm), never
@@ -3177,6 +3179,7 @@ def _union_arm_parents(
                 needed=needed,
                 group_graph=group_graph,
                 built=built,
+                candidates=candidates,
             )
         )
     return arms
@@ -4350,13 +4353,25 @@ def _key_bridged_members(
 
 
 def _bridge_candidates(
-    group_graph: nx.DiGraph, built: dict[str, StrategyNode]
+    group_graph: nx.DiGraph,
+    order: Sequence[str],
+    unbuilt: Collection[str],
+    consumer: str = FINAL_NODE_ID,
 ) -> list[str]:
-    """Built groups, most derived first."""
+    """The groups the build order decides before `consumer` (every group, for
+    the FINAL: one feeding no output may sort after it) that are still in the
+    plan and built a node, most derived first. A group folded into its readers
+    left the plan at its turn."""
+    decided = order if consumer == FINAL_NODE_ID else order[: order.index(consumer)]
+    groups = {
+        gid
+        for gid in decided
+        if gid in group_graph and gid != FINAL_NODE_ID and gid not in unbuilt
+    }
     return sorted(
-        built,
+        groups,
         key=lambda gid: (
-            sum(1 for a in nx.ancestors(group_graph, gid) if a in built),
+            sum(1 for a in nx.ancestors(group_graph, gid) if a in groups),
             gid,
         ),
         reverse=True,
@@ -5118,6 +5133,7 @@ def _assemble_final_node(
     graph: ReferenceGraph,
     history: V4History,
     root_requests: dict[str, RootRequest],
+    candidates: Sequence[str] = (),
     feeder_cache: "_CleanFeederCache | None" = None,
     arms_delivered: bool = False,
 ) -> StrategyNode | None:
@@ -5234,7 +5250,7 @@ def _assemble_final_node(
         group_graph,
         attrs,
         per_group,
-        _bridge_candidates(group_graph, built),
+        candidates,
         mandatory_list,
         environment,
         final_contract.authored_axes,
@@ -5696,6 +5712,7 @@ class _GroupBuild:
     root_requests: dict[str, RootRequest]
     feeder_cache: _CleanFeederCache
     unbuilt: dict[str, list[BuildConcept]]
+    order: list[str]
 
 
 def _merge_origin_intermediates(
@@ -5875,9 +5892,10 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     )
     parent_group_ids = {parent.group_id for parent in parent_builds}
     join_key_addresses = _input_contract_join_keys(a, parent_group_ids)
+    candidates = _bridge_candidates(group_graph, ctx.order, ctx.unbuilt, gid)
     if derivation == Derivation.UNION:
         parents = _union_arm_parents(
-            parent_builds, attrs, environment, needed, group_graph, built
+            parent_builds, attrs, environment, needed, group_graph, built, candidates
         )
     else:
         # A WHERE-only root scan a constraint edge feeds into this consumer
@@ -5953,6 +5971,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                     preexisting_conditions=applied,
                     attrs=attrs,
                     origin=origin,
+                    candidates=candidates,
                 )
             outputs, named_arguments = _name_inline_arguments(
                 outputs, primary_addrs, domain_spans, environment
@@ -5980,6 +5999,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
             preexisting_conditions=applied,
             attrs=attrs,
             origin=origin,
+            candidates=candidates,
         )
     # ROOT scans source columns from datasources directly, not from their
     # group-graph predecessors. A `constraint`-edge predecessor (e.g. a
@@ -6291,11 +6311,12 @@ def build_strategy_node(
         {},
         _CleanFeederCache(environment, g, history),
         unbuilt,
+        _topological_order(group_graph, group_edges),
     )
     ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
     plan_scope = environment.span_scope
 
-    order = _topological_order(group_graph, group_edges)
+    order = ctx.order
     record_twin_reuse(order, attrs)
     for gid in order:
         if gid == FINAL_NODE_ID:
@@ -6341,6 +6362,7 @@ def build_strategy_node(
             g,
             history,
             ctx.root_requests,
+            candidates=_bridge_candidates(group_graph, order, unbuilt),
             feeder_cache=ctx.feeder_cache,
             arms_delivered=arms_delivered,
         )
