@@ -525,17 +525,40 @@ Measured: SQL capture over `tests/modeling`, `tests/engine`, `tests/complex`,
 column order, a temp-table hash, a test whose statement count varies run to
 run); 0 of 205 corpus plans moved.
 
-**Open.** What still edits built nodes, both live:
+**The FINAL election owes projections; it edits no built node.** Alias
+promotion and the region domain pass record, per contributor, the columns
+the FINAL hosts on it beyond its build (`projections`), and
+`_project_final_contributors` wraps each contributor once. The region pass
+fired in 12 statements over `tests/`, all one shape: a ROOT domain, not
+otherwise a contributor, takes a rename of its member that promotion had
+hosted on an aggregate. The built aggregate exposed the rename only through
+promotion's own wrap (12 of 12), so the "hide on the other host" was undoing
+a promotion. Moving the rename now drops it from the other host's record.
+Asking the domain's scan for the rename instead changes source selection
+(54 plans moved, and the domain read a wider scan), so it stays a projection
+over the domain. Over the region suites, 9 plans shed the dead rename column
+and nothing else moved.
 
-- the fold's widen (`_project_basic_aggregate_inputs`): 187 widens over
-  `tests/`, 130 on a merge and 57 on a scan beside a region domain. It
-  widens on what the built parent can render (`renderable_addresses`);
-  stating it at stage 2 means the parent's build renders the inlined inputs.
-- the region domain's rename projection (`_add_region_domain_contributors`):
-  12 statements (region and fuzzer-regression suites), each a rename of a
-  domain member moved onto the domain and hidden on its other host. The
-  renames come from the FINAL cover, which is elected after the build, so
-  moving it means electing the cover's renames before the domain is built.
+**The fold widen decides off planned renders.** Which BASIC inputs an
+aggregate computes on its parent was already read off its outputs. The built
+parent was read only by the satisfiability guard, and over `tests/modeling`,
+`core`, `engine`, `complex` and `discovery` (289 calls) the stage-2 guard,
+over what the aggregate's planned inputs render (`_FoldPlan.rendered` over
+`aggregate_inputs`), agreed at every call and never refused. Where the planned
+widen set and the built one differ, the built parent already holds the input:
+the region path's second call reads the merge its first call widened. The
+built parent is now read only to apply the widen.
+
+Measured: SQL capture over the same five suites against part 10 moved the 11
+rename plans (smaller, same CTEs and joins) and otherwise only the known noise;
+0 of 205 corpus plans moved.
+
+**Open.** Two stage-3 applications still read built nodes, though no
+election decision depends on them: the descendant fold widens a basic's node
+in place (`_fold_descendant_contributors`), and the fold widen projects the
+aggregate's merge after `_pre_merge_parents` assembles it. The FINAL election
+still runs after the build loop over `list(built)`; the stage-2 cover equals
+it over `tests/`, so electing it before the loop is the next step.
 
 ## 8. Not claimed
 
