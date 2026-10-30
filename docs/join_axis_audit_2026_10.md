@@ -438,7 +438,7 @@ build loop.
 Measured for the fold: the same predicate over stage-2 facts (a parent's
 `renders`, its `grain_components`, a shape barrier read off the group graph's
 derivations) agrees with the built one at 36,248 of 36,329 fold and inline
-decisions over the suite (one probe run; 579 of the decisions fold). The disagreements are almost all one physical fact:
+decisions over the suite (one probe run; 561 groups folded). The disagreements are almost all one physical fact:
 a ROOT parent whose scan source planning dedups (q21's condition-phase
 lineitem scan holds `order.id`, `supplier.id` and the two dates but not the
 line number, so it is a GROUP BY). The fold refuses to inline over a parent
