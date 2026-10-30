@@ -7,8 +7,22 @@ from trilogy.dialect.base import BaseDialect, TableColumn
 from trilogy.dialect.common import (
     CONCAT_COALESCE_UPPER,
     SQL_STANDARD_EXTRACT,
-    SQL_STANDARD_EXTRACT_DAY_OF_WEEK,
+    sunday_first_from_iso,
 )
+
+
+def day_of_week(expr: str) -> str:
+    # DAYOFWEEK follows the session's WEEK_START; the ISO form does not
+    return sunday_first_from_iso(f"DAYOFWEEKISO({expr})")
+
+
+def date_part(expr: str, part: str) -> str:
+    if part == "day_of_week":
+        return day_of_week(expr)
+    if part == "week":
+        return f"WEEKISO({expr})"
+    return f"DATE_PART({part}, {expr})"
+
 
 FUNCTION_MAP = {
     FunctionType.BIT_AND: lambda x, types: f"BITAND({x[0]}, {x[1]})",
@@ -18,7 +32,8 @@ FUNCTION_MAP = {
     FunctionType.BIT_SHIFT_RIGHT: lambda x, types: f"BITSHIFTRIGHT({x[0]}, {x[1]})",
     FunctionType.ARRAY_REDUCE: lambda x, types: f"REDUCE({x[0]}, {x[4]}, ({x[1]}, {x[2]}) -> {x[3]})",
     **SQL_STANDARD_EXTRACT,
-    **SQL_STANDARD_EXTRACT_DAY_OF_WEEK,
+    FunctionType.DAY_OF_WEEK: lambda x, types: day_of_week(x[0]),
+    FunctionType.WEEK: lambda x, types: f"WEEKISO({x[0]})",
     # math
     FunctionType.POWER: lambda x, types: f"POWER({x[0]}, {x[1]})",
     FunctionType.DIVIDE: lambda x, types: f"DIV0({x[0]},{x[1]})",
@@ -34,7 +49,7 @@ FUNCTION_MAP = {
     FunctionType.CURRENT_TIMESTAMP: lambda x, types: "CURRENT_TIMESTAMP()",
     # Snowflake date functions use different argument order
     FunctionType.DATE_TRUNCATE: lambda x, types: f"DATE_TRUNC({x[1]}, {x[0]})",
-    FunctionType.DATE_PART: lambda x, types: f"DATE_PART({x[1]}, {x[0]})",
+    FunctionType.DATE_PART: lambda x, types: date_part(x[0], x[1]),
     FunctionType.DATE_ADD: lambda x, types: f"DATEADD({x[1]}, {x[2]}, {x[0]})",
     FunctionType.DATE_SUB: lambda x, types: f"DATEADD({x[1]}, -({x[2]}), {x[0]})",
     FunctionType.DATE_DIFF: lambda x, types: f"DATEDIFF({x[2]}, {x[0]}, {x[1]})",

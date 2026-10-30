@@ -1,5 +1,5 @@
 query_id = "02"
-gen_length = 4728
+gen_length = 4740
 preql_size = 951
 comp_size = 2566
 generated_sql = """
@@ -50,7 +50,7 @@ FROM
     INNER JOIN \"memory\".\"date_dim\" as \"sales_sale_date_date\" on \"wakeful\".\"sales_sale_date_sk\" = \"sales_sale_date_date\".\"D_DATE_SK\"
 GROUP BY
     1),
-yummy as (
+uneven as (
 SELECT
     \"questionable\".\"sales_sale_date_week_seq\" as \"sales_sale_date_week_seq\",
     round(\"questionable\".\"_virt_agg_sum_2147862938205875\" / (lead(\"questionable\".\"_virt_agg_sum_2147862938205875\", 53) over (order by \"questionable\".\"sales_sale_date_week_seq\" asc )),2) as \"tuesday_increase\",
@@ -63,19 +63,19 @@ SELECT
 FROM
     \"questionable\")
 SELECT
-    \"yummy\".\"sales_sale_date_week_seq\" as \"sales_sale_date_week_seq\",
-    \"yummy\".\"sunday_increase\" as \"sunday_increase\",
-    \"yummy\".\"monday_increase\" as \"monday_increase\",
-    \"yummy\".\"tuesday_increase\" as \"tuesday_increase\",
-    \"yummy\".\"wednesday_increase\" as \"wednesday_increase\",
-    \"yummy\".\"thursday_increase\" as \"thursday_increase\",
-    \"yummy\".\"friday_increase\" as \"friday_increase\",
-    \"yummy\".\"saturday_increase\" as \"saturday_increase\"
+    \"uneven\".\"sales_sale_date_week_seq\" as \"sales_sale_date_week_seq\",
+    \"uneven\".\"sunday_increase\" as \"sunday_increase\",
+    \"uneven\".\"monday_increase\" as \"monday_increase\",
+    \"uneven\".\"tuesday_increase\" as \"tuesday_increase\",
+    \"uneven\".\"wednesday_increase\" as \"wednesday_increase\",
+    \"uneven\".\"thursday_increase\" as \"thursday_increase\",
+    \"uneven\".\"friday_increase\" as \"friday_increase\",
+    \"uneven\".\"saturday_increase\" as \"saturday_increase\"
 FROM
-    \"yummy\"
+    \"uneven\"
 WHERE
-    \"yummy\".\"sunday_increase\" is not null
+    \"uneven\".\"sunday_increase\" is not null
 
 ORDER BY 
-    \"yummy\".\"sales_sale_date_week_seq\" asc nulls first
+    \"uneven\".\"sales_sale_date_week_seq\" asc nulls first
 LIMIT (100)"""

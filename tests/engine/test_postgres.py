@@ -16,4 +16,4 @@ def test_render_query(postgres_engine):
             ten_days_from_now,
             ten_day_diff;""")[0]
     assert "(LOCALTIMESTAMP + (10) * INTERVAL '1 day')" in results2, results2
-    assert "date_part('day', " in results2
+    assert "::date - (date_trunc('day', LOCALTIMESTAMP))::date)" in results2

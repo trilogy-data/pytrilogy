@@ -118,6 +118,11 @@ def handle_cast(args, types):
         return f"cast({args[0]}  AT TIME ZONE 'UTC' as date)"
     if types[0] == DataType.TIMESTAMP and types[1] == DataType.DATETIME:
         return f"cast({args[0]}  AT TIME ZONE 'UTC' as datetime)"
+    # a DOUBLE casts to an integer half-to-even; `round` (and DECIMAL) is half-away
+    if types[0].data_type in (DataType.FLOAT, DataType.DOUBLE) and types[
+        1
+    ].data_type in (DataType.INTEGER, DataType.BIGINT):
+        return f"cast(round({args[0]}) as {args[1]})"
     return f"cast({args[0]} as {args[1]})"
 
 

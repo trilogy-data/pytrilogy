@@ -31,6 +31,7 @@ a design decision or a bug.
 | `Sourcing.lean` | `complete where` arms, partition unions, the cell checker | a partition family unions back to the table (split, point, bool, `is null` arm, NULL-rejecting gate, a redundant copy of an arm), an arm answers under an implying WHERE, summary table = computed aggregate |
 | `Rollup.lean` | a summary re-aggregated to a coarser grain under a WHERE; a query's own GROUP BY re-aggregated to its coarser grains | `sum`, `count`, `min` and `max` (so `bool_and`/`bool_or`) roll up exactly under any filter and target their grain determines, the grand total's no-row guard, a re-aggregated partial is itself a partial (so a chain of grains reads the rows once), a finer filter, a fanned-out partial's re-sum, `count_distinct` and `avg` cannot (checked by `tests/discovery/test_rollup_resolution_laws.py`) |
 | `Assert.lean` | datasource `assert` / `prior(...)` build checks: the outer join of the two sides, the edge rules, substitution into the constant check | the check is the documented rule on every group of either side, given every name substituted, exact literals and a driver-independent TRUE; a vanished group fails, a NULL key matches by identity (checked by `tests/execution/test_assertion_laws.py`) |
+| `Functions.lean` | scalar functions as rendered per dialect: `/`, casts to an integer, `date_diff`, `week`, `day_of_week` | true division (a materialized quotient reads back), a cast is `round`, `date_diff` counts boundaries so it adds along a chain, `week` is ISO and `day_of_week` is 1 on Sunday on every dialect (checked by `tests/core/test_function_laws.py` on DuckDB and SQLite) |
 | `Freshness.lean` | watermarks, the stale verdict, the incremental refresh | verdict = refresh has a row to write, incremental = rebuild under strict arrivals (checked by `tests/execution/state/test_freshness_laws.py`, not the query fuzzer) |
 | `StateMerge.lean` | partition deltas folded into a state snapshot | disjoint overlays commute, replay is a no-op, newest claim wins as a semilattice join, the per-slice count adjustment (checked by `tests/execution/state/test_merge_laws.py`) |
 | `NullReject.lean` | the null-rejection walk, membership, outer-join upgrade, nullability inference | a proved column is non-null on every kept row, a proof on a column read off the padded side turns a left join inner, a derived column is judged by its lineage, strict and total functions (checked by `tests/optimization/test_null_rejection_laws.py` and `tests/core/test_null_function_conformance.py`) |
@@ -303,6 +304,41 @@ a design decision or a bug.
   Groups are matched by identity, as GROUP BY groups a NULL key; an `=` join
   would report a NULL group vanished from a build that kept it
   (`Assert.sql_eq_join_vanishes_null_group`).
+
+- **A function meant one thing on DuckDB and another elsewhere.** Each
+  dialect renders a function its own way, so a query means the same everywhere
+  only if each rendering computes DuckDB's value. `tests/core/test_function_laws.py`
+  checks the `Functions.lean` laws on DuckDB and SQLite; on main 74 of its 163
+  cases failed.
+  - `/` typed an integer quotient INTEGER though DuckDB computes `7 / 2 = 3.5`.
+    A datasource persisted from `x / y` stored `4`, and the planner then
+    answered `select id, ratio` from that copy
+    (`Functions.int_typed_quotient_breaks_materialization`). An integer
+    quotient is now a DOUBLE, as is `avg` of integers, which was a 4-byte FLOAT
+    and stored `1/3` as `0.33333334`. SQLite, Postgres, SQL Server and Presto
+    truncate an integer quotient, so `sum(x) / count(x)` was not `avg(x)` there
+    (`Functions.trunc_ratio_is_not_avg`). They now cast the dividend.
+  - a cast to an integer rounded a DECIMAL half away from zero but a DOUBLE
+    half to even on DuckDB and Postgres, and truncated on SQLite and SQL
+    Server, so `(5 / 2)::int` was `2` while `round(5 / 2, 0)` was `3`
+    (`Functions.half_even_cast_is_not_round`). Every cast of a fraction is now
+    `round` first (`Functions.cast_is_round`).
+  - `date_diff` counted elapsed units on SQLite (`julianday` differences, which
+    also rounded 120 minutes down to 119), Postgres (interval fields) and MySQL
+    (`TIMESTAMPDIFF`). 23:00 to 01:00 was 0 days there and 1 on DuckDB, and the
+    count did not add along a chain (`Functions.elapsed_not_additive`). It now
+    counts the boundaries of both sides truncated to the part
+    (`Functions.diff_add`, `Functions.diff_eq_zero_iff`). SQL Server rendered a
+    `date_diff` it has no function for.
+  - `week` was `%W` on SQLite (0 for the first days of 2020, which is ISO week
+    1), Sunday-based on MySQL and BigQuery, and session-dependent on Snowflake.
+    It is now the ISO week everywhere, consistent with `date_trunc(x, week)`.
+  - `day_of_week` is 1 on Sunday on DuckDB, SQLite and MySQL. BigQuery
+    subtracted one, though its own `date_part(x, day_of_week)` did not
+    (`Functions.bigquery_minus_one_disagrees`). Presto, ClickHouse and
+    Snowflake returned an ISO day, and Postgres and SQL Server rendered a
+    `day_of_week()` they lack. Each now shifts its native day
+    (`Functions.sunday_first_from_iso`, `Functions.datefirst_independent`).
 
 ## Limits
 

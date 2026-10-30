@@ -5,7 +5,12 @@ from jinja2 import Template
 
 from trilogy.core.enums import FunctionType
 from trilogy.core.models.core import DataType
-from trilogy.dialect.base import BaseDialect, TableColumn, render_unsupported
+from trilogy.dialect.base import (
+    BaseDialect,
+    TableColumn,
+    render_true_divide,
+    render_unsupported,
+)
 
 MONTH_NAME_CASE = (
     "CASE CAST(strftime('%m', {expr}) AS INTEGER) "
@@ -21,6 +26,56 @@ DAY_NAME_CASE = (
     "WHEN 3 THEN 'Wednesday' WHEN 4 THEN 'Thursday' WHEN 5 THEN 'Friday' "
     "WHEN 6 THEN 'Saturday' END"
 )
+
+
+# the ISO week is the one holding its Thursday; %W counts Monday weeks from 0
+ISO_WEEK = "CAST((strftime('%j', date({expr}, '-3 days', 'weekday 4')) - 1) / 7 + 1 AS INTEGER)"
+
+# date_diff counts the part's boundaries crossed, as DuckDB does: the
+# difference of both sides truncated to the part, never the elapsed time
+TRUNCATED_EPOCH = {
+    "hour": ("%Y-%m-%d %H:00:00", 3600),
+    "minute": ("%Y-%m-%d %H:%M:00", 60),
+    "second": ("%Y-%m-%d %H:%M:%S", 1),
+}
+
+INTEGER_TYPES = (DataType.INTEGER, DataType.BIGINT)
+FRACTIONAL_TYPES = (DataType.FLOAT, DataType.DOUBLE, DataType.NUMERIC, DataType.NUMBER)
+
+
+def date_diff(first: str, second: str, part: str) -> str:
+    part = part.lower()
+    days = f"(julianday(date({second})) - julianday(date({first})))"
+    if part == "day":
+        return f"CAST({days} AS INTEGER)"
+    if part == "week":
+        return f"CAST({days} / 7 AS INTEGER)"
+    if part == "month":
+        return (
+            f"((CAST(strftime('%Y', {second}) AS INTEGER) - CAST(strftime('%Y', {first}) AS INTEGER)) * 12"
+            f" + (CAST(strftime('%m', {second}) AS INTEGER) - CAST(strftime('%m', {first}) AS INTEGER)))"
+        )
+    if part == "year":
+        return f"(CAST(strftime('%Y', {second}) AS INTEGER) - CAST(strftime('%Y', {first}) AS INTEGER))"
+    if part in TRUNCATED_EPOCH:
+        fmt, width = TRUNCATED_EPOCH[part]
+        epoch = "CAST(strftime('%s', strftime('{fmt}', {expr})) AS INTEGER)"
+        return (
+            f"(({epoch.format(fmt=fmt, expr=second)}"
+            f" - {epoch.format(fmt=fmt, expr=first)}) / {width})"
+        )
+    raise ValueError(f"Unsupported date diff part for sqlite: {part}")
+
+
+def render_cast(args: list[str], types: list) -> str:
+    # SQLite truncates a fraction cast to an integer; other engines round it
+    if (
+        len(types) == 2
+        and types[0].data_type in FRACTIONAL_TYPES
+        and types[1].data_type in INTEGER_TYPES
+    ):
+        return f"cast(round({args[0]}) as {args[1]})"
+    return f"cast({args[0]} as {args[1]})"
 
 
 def date_modifier(unit: str, amount: str, subtract: bool = False) -> str:
@@ -56,7 +111,7 @@ def date_part(expr: str, part: str) -> str:
         "hour": "CAST(strftime('%H', {expr}) AS INTEGER)",
         "minute": "CAST(strftime('%M', {expr}) AS INTEGER)",
         "second": "CAST(strftime('%S', {expr}) AS INTEGER)",
-        "week": "CAST(strftime('%W', {expr}) AS INTEGER)",
+        "week": ISO_WEEK,
         "day_of_week": "(CAST(strftime('%w', {expr}) AS INTEGER) + 1)",
     }
     if part_lower == "quarter":
@@ -94,6 +149,8 @@ def date_truncate(expr: str, part: str) -> str:
 FUNCTION_MAP = {
     # no fold over an array
     FunctionType.ARRAY_REDUCE: render_unsupported("array_reduce"),
+    FunctionType.CAST: lambda x, types: render_cast(x, types),
+    FunctionType.DIVIDE: lambda x, types: render_true_divide("REAL", x, types),
     FunctionType.BIT_XOR: lambda x, types: f"(({x[0]} | {x[1]}) - ({x[0]} & {x[1]}))",
     # concat() skips NULLs (coalesce-wrapped for pre-3.44 sqlite); || propagates
     FunctionType.CONCAT: lambda args, types: (
@@ -111,33 +168,9 @@ FUNCTION_MAP = {
     FunctionType.DATE_SUB: lambda x, types: f"datetime({x[0]}, {date_modifier(x[1], x[2], subtract=True)})",
     FunctionType.DATE_PART: lambda x, types: date_part(x[0], x[1]),
     FunctionType.DATE_TRUNCATE: lambda x, types: date_truncate(x[0], x[1]),
-    FunctionType.DATE_DIFF: lambda x, types: (
-        f"CAST((julianday({x[1]}) - julianday({x[0]})) AS INTEGER)"
-        if x[2].lower() == "day"
-        else (
-            f"CAST((julianday({x[1]}) - julianday({x[0]})) / 7 AS INTEGER)"
-            if x[2].lower() == "week"
-            else (
-                f"((CAST(strftime('%Y', {x[1]}) AS INTEGER) - CAST(strftime('%Y', {x[0]}) AS INTEGER)) * 12 + (CAST(strftime('%m', {x[1]}) AS INTEGER) - CAST(strftime('%m', {x[0]}) AS INTEGER)))"
-                if x[2].lower() == "month"
-                else (
-                    f"(CAST(strftime('%Y', {x[1]}) AS INTEGER) - CAST(strftime('%Y', {x[0]}) AS INTEGER))"
-                    if x[2].lower() == "year"
-                    else (
-                        f"CAST((julianday({x[1]}) - julianday({x[0]})) * 24 AS INTEGER)"
-                        if x[2].lower() == "hour"
-                        else (
-                            f"CAST((julianday({x[1]}) - julianday({x[0]})) * 24 * 60 AS INTEGER)"
-                            if x[2].lower() == "minute"
-                            else f"CAST((julianday({x[1]}) - julianday({x[0]})) * 24 * 60 * 60 AS INTEGER)"
-                        )
-                    )
-                )
-            )
-        )
-    ),
+    FunctionType.DATE_DIFF: lambda x, types: date_diff(x[0], x[1], x[2]),
     FunctionType.DAY: lambda x, types: f"CAST(strftime('%d', {x[0]}) AS INTEGER)",
-    FunctionType.WEEK: lambda x, types: f"CAST(strftime('%W', {x[0]}) AS INTEGER)",
+    FunctionType.WEEK: lambda x, types: ISO_WEEK.format(expr=x[0]),
     FunctionType.MONTH: lambda x, types: f"CAST(strftime('%m', {x[0]}) AS INTEGER)",
     FunctionType.QUARTER: lambda x, types: f"(((CAST(strftime('%m', {x[0]}) AS INTEGER)-1)/3)+1)",
     FunctionType.YEAR: lambda x, types: f"CAST(strftime('%Y', {x[0]}) AS INTEGER)",

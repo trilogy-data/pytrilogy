@@ -4,11 +4,11 @@ from typing import ClassVar
 from trilogy.core.enums import FunctionType, GroupMode, UnnestMode
 from trilogy.core.models.core import CONCRETE_TYPES, DataType
 from trilogy.core.statements.execute import CreateTableInfo
-from trilogy.dialect.base import BaseDialect
+from trilogy.dialect.base import BaseDialect, render_true_divide
 from trilogy.dialect.common import (
     CONCAT_COALESCE_LOWER,
     SQL_STANDARD_EXTRACT,
-    SQL_STANDARD_EXTRACT_DAY_OF_WEEK,
+    sunday_first_from_iso,
 )
 
 FUNCTION_MAP = {
@@ -20,9 +20,11 @@ FUNCTION_MAP = {
     FunctionType.ARRAY_REDUCE: lambda x, types: f"reduce({x[0]}, {x[4]}, ({x[1]}, {x[2]}) -> {x[3]}, s -> s)",
     FunctionType.INDEX_ACCESS: lambda x, types: f"element_at({x[0]},{x[1]})",
     **SQL_STANDARD_EXTRACT,
-    **SQL_STANDARD_EXTRACT_DAY_OF_WEEK,
+    FunctionType.DAY_OF_WEEK: lambda x, types: sunday_first_from_iso(
+        f"day_of_week({x[0]})"
+    ),
     # math
-    FunctionType.DIVIDE: lambda x, types: f"{x[0]}/{x[1]}",
+    FunctionType.DIVIDE: lambda x, types: render_true_divide("double", x, types),
     FunctionType.DATE_ADD: lambda x, types: f"date_add({x[1]},{x[2]}, {x[0]})",
     FunctionType.DATE_SUB: lambda x, types: f"date_add({x[1]},-({x[2]}), {x[0]})",
     FunctionType.CURRENT_DATE: lambda x, types: "CURRENT_DATE",

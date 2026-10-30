@@ -2,15 +2,49 @@ from collections.abc import Callable
 from typing import ClassVar
 
 from trilogy.core.enums import FunctionType
+from trilogy.core.models.core import DataType
 from trilogy.core.statements.execute import (
     PROCESSED_STATEMENT_TYPES,
     ProcessedQuery,
     ProcessedQueryPersist,
 )
-from trilogy.dialect.base import BaseDialect, TableColumn, render_unsupported
+from trilogy.dialect.base import (
+    BaseDialect,
+    TableColumn,
+    render_true_divide,
+    render_unsupported,
+)
 from trilogy.utility import string_to_hash
 
+
+def render_cast(args: list[str], types: list) -> str:
+    # a fraction cast to an integer truncates here; other engines round it
+    if types[0].data_type in (
+        DataType.FLOAT,
+        DataType.DOUBLE,
+        DataType.NUMERIC,
+    ) and types[1].data_type in (DataType.INTEGER, DataType.BIGINT):
+        return f"cast(round({args[0]}, 0) as {args[1]})"
+    return f"cast({args[0]} as {args[1]})"
+
+
+def date_diff(first: str, second: str, part: str) -> str:
+    # DATEDIFF counts boundaries; its week boundary is Sunday, DuckDB's is 7 days
+    if part == "week":
+        return f"(DATEDIFF(day, {first}, {second}) / 7)"
+    return f"DATEDIFF({part}, {first}, {second})"
+
+
+# the ISO day, whatever @@DATEFIRST is, then 1 on Sunday as on DuckDB
+DAY_OF_WEEK = "((DATEPART(weekday, {expr}) + @@DATEFIRST - 2) % 7 + 1) % 7 + 1"
+
+
 FUNCTION_MAP = {
+    FunctionType.CAST: lambda x, types: render_cast(x, types),
+    FunctionType.DATE_DIFF: lambda x, types: date_diff(x[0], x[1], x[2]),
+    FunctionType.DAY_OF_WEEK: lambda x, types: f"({DAY_OF_WEEK.format(expr=x[0])})",
+    FunctionType.WEEK: lambda x, types: f"DATEPART(iso_week, {x[0]})",
+    FunctionType.DIVIDE: lambda x, types: render_true_divide("float", x, types),
     # no fold over an array
     FunctionType.ARRAY_REDUCE: render_unsupported("array_reduce"),
     FunctionType.BIT_SHIFT_LEFT: lambda x, types: f"LEFT_SHIFT({x[0]}, {x[1]})",
