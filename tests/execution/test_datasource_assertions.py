@@ -505,16 +505,35 @@ class TestPartialTarget:
         assert "count(id ? source = 'A') = 1" in str(info.value)
         assert "count(id ? city = 'X') = 2" in str(info.value)
 
-    @pytest.mark.parametrize(
-        "declaration",
-        [
-            "partial datasource built (id: id, city: city) grain (id)",
-            "datasource built (id: ~id, city: city) grain (id)",
-        ],
-    )
-    def test_partial_target_without_scope_is_rejected(self, declaration: str) -> None:
+    def test_partial_target_without_scope_is_rejected(self) -> None:
         with pytest.raises(HydrationError, match="no `complete where`"):
             Environment().parse(
                 "key id int; property id.city string;\n"
-                f"{declaration} address built assert count(id) >= 1;"
+                "partial datasource built (id: id, city: city) grain (id)"
+                " address built assert count(id) >= 1;"
             )
+
+    def test_partial_key_target_checks_its_own_rows(self) -> None:
+        executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+        executor.execute_raw_sql(
+            "CREATE TABLE raw AS SELECT * FROM (VALUES ('a', 'x'), ('b', 'x'),"
+            " ('c', 'y'), ('d', 'y')) t(species, genus)"
+        )
+        executor.parse_text("""
+key species string;
+property species.genus string;
+root datasource raw (species: species, genus: genus) grain (species) address raw;
+datasource enrichment (species: ~species, genus: ?genus)
+grain (species)
+address enrichment
+assert count(species) >= 0.75 * prior(count(species));
+""")
+        enrichment = executor.environment.datasources["enrichment"]
+        executor.update_datasource(enrichment)
+        executor.execute_raw_sql("DELETE FROM raw WHERE species IN ('a', 'b')")
+        with pytest.raises(DatasourceAssertionError) as info:
+            executor.update_datasource(enrichment)
+        assert "count(species) = 2, prior(count(species)) = 4" in str(info.value)
+        assert executor.execute_raw_sql(
+            "SELECT count(*) FROM enrichment"
+        ).fetchall() == [(4,)]
