@@ -88,3 +88,21 @@ def test_filter_over_a_deduped_scan_folds_into_its_aggregate():
     """
     rows = executor.execute_text(query)[-1].fetchall()
     assert [tuple(r) for r in rows] == [(1, 0), (2, 1)]
+
+
+def test_a_scan_reads_a_class_as_requested_after_an_alias_names_it():
+    executor = Dialects.DUCK_DB.default_executor(environment=Environment())
+    executor.parse_text(MODEL)
+    executor.execute_text("select supplier_id as sid, supplier_name;")
+    build = executor.environment.materialize_for_select()
+    assert not scan_regroups(
+        SourceRequest(
+            outputs=[
+                build.concepts["local.supplier_id"],
+                build.concepts["local.supplier_name"],
+            ],
+            environment=build,
+            graph=generate_graph(build),
+            history=V4History(base_environment=executor.environment),
+        )
+    )

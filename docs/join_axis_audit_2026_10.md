@@ -433,11 +433,39 @@ computes inline is decided once, before any node is built
 (`_inlined_groups`), in build order over a copy of the plan each earlier fold
 is applied to. It reads stage-2 facts only (`_PlannedReads`): what a parent
 renders, the derivations above it, and, for a ROOT parent, whether its scan
-groups its rows. The fold itself is still applied at the group's turn in the
-loop, because a ROOT's build reads its readers (`collapse_to_grain`,
-`arm_local`): folding a basic first makes its aggregate the ROOT's reader, and
-the ROOT then skips the dedup it is built with today (`test_pair_grain_aggregate`
-grew from 3 CTEs to 6 when the folds were applied up front).
+groups its rows.
+
+**The fold, applied before the loop.** Every fold is applied before the
+first group is built, and the build loop no longer reads a node to decide one.
+Two facts made that possible:
+
+- A group's build reads its readers off the plan *before* any fold
+  (`_GroupBuild.readers`): `arm_local`, `collapse_to_grain`, `existence_source`
+  and the filter's intrinsic pushdown. Folding a basic makes its aggregate the
+  ROOT's reader, and a ROOT that read the folded graph skipped the dedup it is
+  built with (`test_pair_grain_aggregate` grew from 3 CTEs to 6). The readers
+  a ROOT is built for are the plan's, whatever reads it after a fold.
+- An aggregate's inline of an input that other readers keep is decided with
+  the folds, over the folded plan, off the same stage-2 reads
+  (`_FoldPlan.aggregate_inputs`, `_aggregate_input_groups`). The built reads
+  it used (`_BuiltReads`, `basic_regroups`) are deleted.
+
+A condition-phase twin vetoes a fold only for a value it computes: a row
+stream computes a member only off what its row parents render
+(`_PlannedReads._computes`). A condition-phase filter over a `root_d1` the
+demand pass left without `v` renders no `v ? v > 5`, so it can't stand in for
+the folded value (`test_where_on_aggregate_with_ratio_of_aggregates`).
+
+The scan verdict had two bugs, both found by running the stage-2 rule beside
+the built one. The search names an equivalence class by its representative,
+which may be an alias an earlier statement left in the environment
+(after `select supplier_id as sid`, `_virt_func_alias_…` names `supplier_id`).
+`scan_regroups` looked that address up in the environment, found nothing, read
+the source for no columns, and called it grouped. It also read a class by the
+source's binding where the build reads the request's own concept
+(`local._cs_ui_cs_ui_item_id` for `cs.item.sk` beside the q64 rowset). It now
+names each class as the request does, and otherwise by the column the source
+binds, the way the emission does.
 
 Whether a ROOT's scan groups is the network search's answer: the sources it
 picks, each read for the columns it provides and the keys it joins on, and
@@ -463,11 +491,20 @@ With it, against main: 1 of 205 corpus plans moved, and it is smaller
 filter folds into its aggregate). A SQL capture over the 3,448 tests in the
 files the disagreements came from moved nothing else but CTE names.
 
+Measured (fold up front and aggregate inputs): the stage-2 aggregate-input
+decision beside the built one over `tests/modeling`, `tests/engine`,
+`tests/complex`, `tests/discovery` and `tests/core` (8,061 decisions) agrees
+everywhere. Before the two scan fixes and the twin rule it disagreed at 61. A
+SQL capture over the same 6,920 tests against main moved no plan. The 43
+statements that differ are column order that follows the hash seed (the
+`test_grain_check_exact` validation query; `test_gcat::test_environment`), a
+temp-table hash and a test skipped on one side. 0 of 205 corpus plans moved.
+
 **Open.** What still reads built nodes is physical: the fold's widen and the
 region domain's rename projection act on built nodes, `_key_bridged_members`
-checks built connectivity, an aggregate's own inline of an input other readers
-keep (`_inline_aggregate_inputs`) reads its parents' nodes, and a ROOT's build
-reads its readers in the graph as the folds before it left it.
+checks built connectivity and repairs a member in place, and the
+unreadable-inline guard (`_raise_if_inlined_input_is_unreadable`) checks the
+built parents of an aggregate.
 
 ## 8. Not claimed
 

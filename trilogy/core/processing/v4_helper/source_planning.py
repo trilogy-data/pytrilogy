@@ -9,7 +9,7 @@ lineage-related cross product, the unconditioned retry), never a re-search.
 
 from __future__ import annotations
 
-from collections import deque
+from collections import defaultdict, deque
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import cast
@@ -389,6 +389,9 @@ def scan_regroups(request: SourceRequest) -> bool:
     solution = _memoized_search(network, request.history).solution
     if solution is None:
         return False
+    named: dict[str, list[BuildConcept]] = defaultdict(list)
+    for concept in concepts:
+        named[network.equivalence.get(concept.address, concept.address)].append(concept)
     for node in solution.sources:
         datasource = network.candidates[node].datasource
         if not isinstance(datasource, BuildDatasource):
@@ -396,15 +399,15 @@ def scan_regroups(request: SourceRequest) -> bool:
         read = set(solution.assignments.get(node, ())).union(
             *(keys for pair, keys in solution.join_keys.items() if node in pair)
         )
-        if datasource_regroups(
-            datasource,
-            [
-                request.environment.concepts[a]
-                for a in sorted(read)
-                if a in request.environment.concepts
-            ],
-            request.environment,
-        ):
+        # a class is read as the request names it, as the scan is built;
+        # else as the column the source binds for its representative
+        read_concepts = [
+            concept
+            for a in sorted(read)
+            for concept in named.get(a)
+            or _chosen_source_concepts(request.environment, network, [node], a)
+        ]
+        if datasource_regroups(datasource, read_concepts, request.environment):
             return True
     return False
 
