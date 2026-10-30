@@ -641,8 +641,11 @@ class StrategyNode:
             )
         ]
         partials = unique(self.partial_concepts + inherited_partials, "address")
-        # A projection over summary rows still holds them as partials.
-        output_addresses = {c.address for c in self.output_concepts}
+        # A projection over summary rows still holds them as partials, read
+        # into an expression here or passed through.
+        read_addresses = {c.address for c in self.output_concepts} | {
+            c.address for c in self.input_concepts
+        }
         rollups = unique(
             self.rollup_concepts
             + [
@@ -650,7 +653,7 @@ class StrategyNode:
                 for p in parent_sources
                 if isinstance(p, QueryDatasource)
                 for c in pending_rollups(p.rollup_concepts, p.grain)
-                if c.address in output_addresses
+                if c.address in read_addresses
             ],
             "address",
         )

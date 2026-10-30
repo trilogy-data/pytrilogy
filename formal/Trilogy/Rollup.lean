@@ -1,4 +1,5 @@
 import Trilogy.Agg
+import Trilogy.Functions
 
 /-!
 # Aggregate resolution from a summary table
@@ -578,6 +579,95 @@ theorem Rollup.fanout_partial_double_counts :
       sqlMax ((([1, 2] : List Nat).map
         (fun k => maxAgg (fun r : Nat × Int => some r.2) (slice (·.1) k fanned)))) =
         some 5 := by
+  decide
+
+/-- A stored column answers only an aggregate of its own argument: the stored
+`sum(x)` re-sums to `sum(x)`, never `sum(x * 2)`. A signature built from the
+argument's columns alone conflated them. -/
+theorem Rollup.stored_column_answers_its_own_argument :
+    let rows : List (Nat × Int) := [(1, 3), (2, 5)]
+    let v : Nat × Int → Option Int := fun r => some r.2
+    sqlSum (stored (·.1) [1, 2] rows (sumAgg v) (fun _ => true)) ≠
+      sumAgg (fun r => (v r).map (2 * ·)) (keep (·.1) (fun _ => true) rows) := by
+  decide
+
+/-- A partial below the target grain holds one value per finer group. Read into
+an expression without its re-sum (`sum(x) + 1` at a grain `case` derives from
+`species`), one target group answers once per finer group. -/
+theorem Rollup.unsummed_partial_splits_a_group :
+    let rows : List (Nat × Int) := [(1, 3), (2, 6)]
+    let coarse : Nat → Nat := fun _ => 0
+    (stored (·.1) [1, 2] rows (sumAgg (fun r => some r.2))
+        (fun k => decide (coarse k = 0))).length = 2 ∧
+      sqlSum (stored (·.1) [1, 2] rows (sumAgg (fun r => some r.2))
+        (fun k => decide (coarse k = 0))) = some 9 := by
+  decide
+
+/-! ## AVG from a stored SUM and COUNT
+
+`avg` does not re-aggregate itself (`Rollup.avg_not_rollable`), but it is the
+quotient of two aggregates that do. Since `/` is true division
+(`Functions.div_mul_cancel`), a summary storing `sum(x)` and `count(x)`
+answers `avg(x)` at any grain and under any filter its grain determines, as
+`case when count = 0 then null else sum / count end` over the re-summed
+parts. -/
+
+open Functions in
+/-- SQL `AVG`: the true quotient of the non-NULL inputs' sum by their count,
+NULL over no non-NULL input. -/
+def sqlAvg (xs : List (Option Int)) : Option Frac :=
+  if h : 0 < sqlCount xs then some ⟨(xs.map (·.getD 0)).sum, sqlCount xs, h⟩ else none
+
+open Functions in
+/-- `case when n = 0 then null else s / n end`, NULL-strict in both parts. A
+count is never negative, so `0 < n` is `n != 0`. -/
+def avgOfParts : Option Int → Option Int → Option Frac
+  | some s, some n => if h : 0 < n then some ⟨s, n, h⟩ else none
+  | _, _ => none
+
+theorem sqlCount_pos_some (xs : List (Option Int)) (h : 0 < sqlCount xs) :
+    sqlSum xs = some (xs.map (·.getD 0)).sum := by
+  have hs : xs.all (·.isNone) = false := by
+    apply Bool.eq_false_iff.mpr
+    intro ha
+    have hz : sqlCount xs = 0 := by
+      simp only [sqlCount, Int.natCast_eq_zero, List.countP_eq_zero]
+      intro x hx
+      simp [(all_none_iff xs).mp ha x hx]
+    omega
+  simp [sqlSum, hs]
+
+/-- **AVG rolls up from its parts.** The guarded quotient of a summary's
+re-summed `sum(x)` and `count(x)` under any predicate on its grain is the
+filtered `AVG` over the base rows, the all-NULL group and the empty answer
+included. -/
+theorem Rollup.avg_of_parts_exact (g : α → κ) (ks : List κ) (hnd : ks.Nodup)
+    (rows : List α) (hcov : ∀ r ∈ rows, g r ∈ ks)
+    (v : α → Option Int) (q : κ → Bool) :
+    avgOfParts (sqlSum (stored g ks rows (sumAgg v) q))
+        (sqlSum (stored g ks rows (countAgg v) q)) =
+      sqlAvg ((keep g q rows).map v) := by
+  rw [Rollup.sum_exact g ks hnd rows hcov v q]
+  by_cases hk : keep g q rows = []
+  · have hcov' : ∀ r ∈ keep g q rows, g r ∈ ks :=
+      fun r hr => hcov r (List.mem_filter.mp hr).1
+    have hs : stored g ks rows (countAgg v) q = [] := by
+      rw [stored_keep]; exact (storedAll_nil_iff g ks _ hcov' _).mpr hk
+    simp [hs, hk, sqlSum, avgOfParts, sqlAvg, sqlCount]
+  · rw [Rollup.count_group g ks hnd rows hcov v q hk, sumAgg]
+    by_cases hc : 0 < sqlCount ((keep g q rows).map v)
+    · simp [sqlCount_pos_some _ hc, avgOfParts, sqlAvg, hc]
+    · cases hsum : sqlSum ((keep g q rows).map v) <;> simp [avgOfParts, sqlAvg, hc]
+
+/-- The guard is needed: BigQuery renders `/` as `coalesce(safe_divide(s, n), 0)`
+and Snowflake as `div0(s, n)`, which read a group of only NULL inputs as 0,
+where `AVG` is NULL. -/
+theorem Rollup.unguarded_quotient_zero_fills :
+    let zeroDivide : Option Int → Option Int → Option Int
+      | some s, some n => if n = 0 then some 0 else some (s / n)
+      | _, _ => some 0
+    zeroDivide (sqlSum [none]) (some (sqlCount [none])) = some 0 ∧
+      (sqlAvg [none]).isNone = true := by
   decide
 
 end Rollup

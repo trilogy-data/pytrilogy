@@ -9,7 +9,10 @@ import re
 
 import pytest
 
-from trilogy import Dialects
+from trilogy import Dialects, parse
+from trilogy.dialect.base import BaseDialect
+from trilogy.dialect.bigquery import BigqueryDialect
+from trilogy.dialect.snowflake import SnowflakeDialect
 
 TREES = """
 select 'a1' as tree_id, 'A' as city, 'Acer' as species, 3 as height, 'x' as tag,
@@ -162,9 +165,9 @@ def _run(model: str, query: str) -> tuple[str, list[tuple]]:
     return sql, [tuple(r) for r in executor.execute_raw_sql(sql).fetchall()]
 
 
-def _assert_same_answer(query: str, served: bool) -> None:
+def _assert_same_answer(query: str, served: bool, summary: str = SUMMARY) -> None:
     _, without = _run(BASE, query)
-    sql, with_summary = _run(BASE + SUMMARY, query)
+    sql, with_summary = _run(BASE + summary, query)
     assert with_summary == without, sql
     assert ("tree_summary" in sql) == served, sql
 
@@ -176,6 +179,32 @@ def _assert_same_answer(query: str, served: bool) -> None:
 def test_summary_serves_every_satisfiable_query(grain: str, where: str, aggregate: str):
     _assert_same_answer(
         _select(GRAINS[grain], AGGREGATES[aggregate], FILTERS[where]), served=True
+    )
+
+
+# The same aggregates read into an expression: the summary rows the scan keeps
+# for a derived grain's inputs are re-summed before the expression reads them.
+# At the summary's own grain an expression's aggregate is still computed from
+# the base rows.
+EXACT_GRAIN = {"city_species"}
+EXPRESSIONS = {
+    "count": "count(tree_id) + 1 as v",
+    "sum": "sum(height) * 2 as v",
+    "min": "min(height) - 1 as v",
+    "max": "coalesce(max(height), 0) as v",
+    "bool_or": "not bool_or(tall) as v",
+    "bool_and": "bool_and(tall) = true as v",
+}
+
+
+@pytest.mark.parametrize(
+    "grain,where,aggregate",
+    list(itertools.product(GRAINS, FILTERS, EXPRESSIONS)),
+)
+def test_expression_over_rolled_up_aggregate(grain: str, where: str, aggregate: str):
+    _assert_same_answer(
+        _select(GRAINS[grain], EXPRESSIONS[aggregate], FILTERS[where]),
+        served=grain not in EXACT_GRAIN,
     )
 
 
@@ -202,6 +231,50 @@ def test_unservable_query_reads_base_rows(name: str):
     _assert_same_answer(UNSERVABLE[name], served=False)
 
 
+# `Rollup.stored_column_answers_its_own_argument`: a stored `sum(height)` holds
+# nothing a `sum(height * 2)` can be rolled up from.
+EXPRESSION_ARGUMENTS = {
+    "sum": "select city, sum(height * 2) as v order by city;",
+    "min": "select city, min(0 - height) as v order by city;",
+    "max": "select city, max(height + 100) as v order by city;",
+    "total": "select sum(height * 2) as v where species = 'Acer';",
+}
+
+DOUBLED_SUMMARY = (
+    SUMMARY.replace(
+        "auto summary_min", "auto summary_doubled <- sum(height * 2);\nauto summary_min"
+    )
+    .replace("n: summary_count,", "n: summary_count,\n    d: ?summary_doubled,")
+    .replace("count(tree_id) as n,", "count(tree_id) as n, sum(height * 2) as d,")
+)
+
+
+@pytest.mark.parametrize("name", sorted(EXPRESSION_ARGUMENTS))
+def test_aggregate_of_expression_is_not_its_argument(name: str):
+    _assert_same_answer(EXPRESSION_ARGUMENTS[name], served=False)
+
+
+def test_summary_serves_its_own_expression_argument():
+    _assert_same_answer(
+        EXPRESSION_ARGUMENTS["sum"], served=True, summary=DOUBLED_SUMMARY
+    )
+
+
+def test_partial_of_argument_does_not_answer_its_expression():
+    _, rows = _run(
+        BASE,
+        "select city, species, sum(height) as v0, sum(height * 2) by city as v1"
+        " order by city, species;",
+    )
+    assert rows == [
+        ("A", "Acer", 3, 16),
+        ("A", "Quercus", 5, 16),
+        ("A", "Ulmus", None, 16),
+        ("B", "Acer", 7, 18),
+        ("B", "Tilia", 2, 18),
+    ]
+
+
 @pytest.mark.parametrize("aggregate", sorted(AGGREGATES))
 def test_empty_summary_grand_total_is_no_row(aggregate: str):
     model = BASE.replace(TREES, TREES + " limit 0") + SUMMARY.replace(
@@ -210,6 +283,68 @@ def test_empty_summary_grand_total_is_no_row(aggregate: str):
     sql, rows = _run(model, f"select {AGGREGATES[aggregate]};")
     assert "tree_summary" in sql, sql
     assert rows == []
+
+
+# `Rollup.avg_of_parts_exact`: a summary storing `sum(height)` and
+# `count(height)` answers `avg(height)` as their rolled-up quotient.
+AVG_SUMMARY = (
+    SUMMARY.replace(
+        "auto summary_min", "auto summary_nonnull <- count(height);\nauto summary_min"
+    )
+    .replace("n: summary_count,", "n: summary_count,\n    nh: summary_nonnull,")
+    .replace("count(tree_id) as n,", "count(tree_id) as n, count(height) as nh,")
+)
+
+AVG_SERVED = {
+    "having": "select species, avg(height) as v where city = 'A' having v > 2 order by species;",
+    "beside_max": "select city, max(height) as m, avg(height) as v order by city;",
+    "window": (
+        "select species, rank(species) over (order by avg(height) desc, species asc)"
+        " as r where city = 'A' order by species;"
+    ),
+}
+
+# Correct from the base rows: a filter below the summary's grain, an argument
+# with no stored parts, and shapes that decline for `sum` and `count` too.
+AVG_UNSERVABLE = {
+    "row_filter": "select species, avg(height) as v where tag = 'x' order by species;",
+    "no_parts": "select city, avg(height * 2) as v order by city;",
+    "max_of_avgs": "select max(avg(height) by species) as v where city = 'A';",
+    "two_grains": (
+        "select city, avg(height) as v, avg(height) by * as t where tree_form is not null"
+        " order by city;"
+    ),
+}
+
+
+@pytest.mark.parametrize("grain,where", list(itertools.product(GRAINS, FILTERS)))
+def test_summary_serves_avg_from_sum_and_count(grain: str, where: str):
+    _assert_same_answer(
+        _select(GRAINS[grain], "avg(height) as v", FILTERS[where]),
+        served=grain not in EXACT_GRAIN,
+        summary=AVG_SUMMARY,
+    )
+
+
+@pytest.mark.parametrize("name", sorted(AVG_SERVED))
+def test_avg_from_parts_in_larger_demand(name: str):
+    _assert_same_answer(AVG_SERVED[name], served=True, summary=AVG_SUMMARY)
+
+
+@pytest.mark.parametrize("name", sorted(AVG_UNSERVABLE))
+def test_avg_without_servable_parts_reads_base_rows(name: str):
+    _assert_same_answer(AVG_UNSERVABLE[name], served=False, summary=AVG_SUMMARY)
+
+
+@pytest.mark.parametrize("dialect", [BigqueryDialect, SnowflakeDialect])
+def test_avg_of_parts_is_null_without_input(dialect: type[BaseDialect]):
+    environment, statements = parse(
+        BASE + AVG_SUMMARY + "select species, avg(height) as v;"
+    )
+    renderer = dialect()
+    query = renderer.generate_queries(environment, [statements[-1]])[-1]
+    sql = renderer.compile_statement(query)
+    assert "tree_summary" in sql and "= 0 THEN null" in sql, sql
 
 
 # `Rollup.reaggregated_*_is_partial`: one aggregate at a fine grain and coarser

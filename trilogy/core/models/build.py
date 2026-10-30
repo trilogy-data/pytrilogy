@@ -1345,7 +1345,8 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
         Deliberately grain-free: it is the identity a precomputed aggregate shares
         with every coarser aggregate it can roll up to. `canonical_address`
         cannot serve here because it bakes in the by-grain, so a summary table's
-        column and the query aggregate it answers never match on it. ``None`` for
+        column and the query aggregate it answers never match on it. Each
+        argument is identified whole: `sum(x * 2)` is not `sum(x)`. ``None`` for
         anything that is not a rollable aggregate."""
         if not isinstance(self.lineage, BuildAggregateWrapper):
             return None
@@ -1355,8 +1356,12 @@ class BuildConcept(Addressable, BuildConceptArgs, DataTyped):
             self.lineage.function.operator,
             tuple(
                 sorted(
-                    arg.canonical_address
-                    for arg in self.lineage.function.concept_arguments
+                    (
+                        arg.canonical_address
+                        if isinstance(arg, BuildConcept)
+                        else _canonical_str_for_hash(arg)
+                    )
+                    for arg in self.lineage.function.arguments
                 )
             ),
         )
@@ -3103,6 +3108,35 @@ class Factory:
         # self-referential metric out of an abstract aggregate's resolution
         # grain (see `_abstract_resolution_grain`).
         self._building: list[str] = []
+        self._stored_averages: set[tuple[str, ...]] | None = None
+
+    def _stored_average_of_parts(self, base: Concept) -> Concept:
+        """An `avg` some datasource stores the `sum` and `count` of, as their
+        quotient, so the planner answers it from the stored parts."""
+        lineage = base.lineage
+        if not (
+            isinstance(lineage, AggregateWrapper)
+            and lineage.function.operator == FunctionType.AVG
+        ):
+            return base
+        from trilogy.core.average_parts import (
+            average_of_parts,
+            is_stored_average,
+            stored_average_arguments,
+        )
+        from trilogy.parsing.common import arbitrary_to_concept
+
+        if self._stored_averages is None:
+            self._stored_averages = stored_average_arguments(self.environment)
+        if not is_stored_average(lineage, self._stored_averages):
+            return base
+        return arbitrary_to_concept(
+            average_of_parts(lineage, self.environment),
+            environment=self.environment,
+            namespace=base.namespace,
+            name=base.name,
+            metadata=base.metadata,
+        )
 
     def _build_keys(self, keys: set[str] | None) -> set[str] | None:
         if keys is None:
@@ -3615,7 +3649,7 @@ class Factory:
                 self._env_writes.add(base.address)
             self.canonical_build_cache[canonical_key] = rval
             return rval
-        base = self._grain_pinned(base)
+        base = self._grain_pinned(self._stored_average_of_parts(base))
         resolution_grain = (
             self._abstract_resolution_grain() if base.is_aggregate else self.grain
         )
