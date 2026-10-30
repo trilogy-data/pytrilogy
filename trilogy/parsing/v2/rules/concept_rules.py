@@ -17,7 +17,11 @@ from trilogy.core.enums import (
     Purpose,
     ShowCategory,
 )
-from trilogy.core.exceptions import MissingParameterException
+from trilogy.core.exceptions import (
+    InvalidSyntaxException,
+    MissingParameterException,
+)
+from trilogy.core.functions import auto_derived_function
 from trilogy.core.models.author import (
     AggregateWrapper,
     Between,
@@ -34,6 +38,7 @@ from trilogy.core.models.author import (
     Parenthetical,
     SubqueryItem,
     SubselectItem,
+    UndefinedConceptFull,
     WindowItem,
 )
 from trilogy.core.models.core import (
@@ -183,6 +188,39 @@ def parameter_declaration(
     )
 
 
+def _restates(source: Any, ftype: FunctionType, parent: Concept) -> bool:
+    if isinstance(source, AggregateWrapper) and not source.by:
+        source = source.function
+    return (
+        isinstance(source, Function)
+        and source.operator == ftype
+        and len(source.arguments) == 1
+        and getattr(source.arguments[0], "address", None) == parent.address
+    )
+
+
+def reject_function_shadow(
+    declared: str, concepts: ConceptLookup, source: Any = None
+) -> None:
+    """`parent.suffix` already reads as dot access to a single-arg function
+    (`id.count`), so a concept declared at that address with any other
+    definition would shadow it. A property form (`property id.count ...`)
+    declares `count` keyed on `id` instead, and is not checked."""
+    if "." not in declared:
+        return
+    parent_address, suffix = declared.rsplit(".", 1)
+    parent = concepts.get(parent_address)
+    if parent is None or isinstance(parent, UndefinedConceptFull):
+        return
+    ftype = auto_derived_function(parent, suffix)
+    if ftype is not None and not _restates(source, ftype, parent):
+        raise InvalidSyntaxException(
+            f"Cannot declare '{declared}': '{parent_address}.{suffix}' already "
+            f"resolves to the '{suffix}' function applied to '{parent_address}'. "
+            "Choose a different name."
+        )
+
+
 def concept_declaration(
     node: SyntaxNode,
     context: RuleContext,
@@ -195,6 +233,7 @@ def concept_declaration(
     purpose = hydrate(syntax.purpose)
     name = hydrate(syntax.name)
     datatype = hydrate(syntax.datatype)
+    reject_function_shadow(name, context.concepts)
     _, namespace, name, _ = parse_concept_reference(
         name, context.environment, concepts=context.concepts
     )
@@ -290,6 +329,8 @@ def concept_derivation(
     source_value = hydrate(syntax.source)
     while isinstance(source_value, Parenthetical):
         source_value = source_value.content
+    if isinstance(raw_name, str) and purpose != Purpose.PROPERTY:
+        reject_function_shadow(raw_name, context.concepts, source_value)
     if isinstance(source_value, SubqueryItem):
         # `auto x <- (select ...)` aliases the subquery's rowset output; share
         # the select-output lowering so both placements behave identically.

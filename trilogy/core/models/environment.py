@@ -614,6 +614,9 @@ class EnvironmentConceptDict(UserDict[str, Concept]):
         if parent is None and DEFAULT_NAMESPACE + "." + parent_addr in self.data:
             parent = self.data[DEFAULT_NAMESPACE + "." + parent_addr]
         if parent is None:
+            # chained access (`id.abs.hash`): the parent is itself derived
+            parent = self._try_resolve_derived(parent_addr)
+        if parent is None:
             return None
 
         derived = try_create_auto_derived(
