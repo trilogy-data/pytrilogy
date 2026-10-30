@@ -74,6 +74,11 @@ columns, and every query returns the same rows on both.
 - The keyspace keys a pin on its anchors (`keyspace._entity_keys`), so it is
   defined on the extension region and the region domain feeds it, as it feeds an
   aggregate by the span.
+- A pinned value planned in a group of its own (its reads reach the anchor only
+  through a many-valued path, such as an `unnest` element merged into a key)
+  preserves its anchors, and every group feeding FINAL exposes the anchors it
+  can (`group_graph._final_pin_anchors`), so FINAL pairs the value with the row
+  stream on them rather than on nothing.
 - `NULL_ABSORBING_FUNCTIONS` is the registry: another function whose output the
   select grain changes is added there, with oracle cases.
 - A pinned value read by a WHERE makes the condition node absorb the region, so
