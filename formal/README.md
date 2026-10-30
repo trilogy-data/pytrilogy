@@ -30,6 +30,7 @@ a design decision or a bug.
 | `Domain.lean` | `~` padding, grain pin | materialization invariance, pin vs stored column, pin is projection-invariant, `sum(coalesce)` |
 | `Sourcing.lean` | `complete where` arms, partition unions, the cell checker | a partition family unions back to the table (split, point, bool, `is null` arm, NULL-rejecting gate, a redundant copy of an arm), an arm answers under an implying WHERE, summary table = computed aggregate |
 | `Rollup.lean` | a summary re-aggregated to a coarser grain under a WHERE; a query's own GROUP BY re-aggregated to its coarser grains | `sum`, `count`, `min` and `max` (so `bool_and`/`bool_or`) roll up exactly under any filter and target their grain determines, the grand total's no-row guard, a re-aggregated partial is itself a partial (so a chain of grains reads the rows once), a finer filter, a fanned-out partial's re-sum, `count_distinct` and `avg` cannot (checked by `tests/discovery/test_rollup_resolution_laws.py`) |
+| `Assert.lean` | datasource `assert` / `prior(...)` build checks: the outer join of the two sides, the edge rules, substitution into the constant check | the check is the documented rule on every group of either side, given every name substituted, exact literals and a driver-independent TRUE; a vanished group fails, a NULL key matches by identity (checked by `tests/execution/test_assertion_laws.py`) |
 | `Freshness.lean` | watermarks, the stale verdict, the incremental refresh | verdict = refresh has a row to write, incremental = rebuild under strict arrivals (checked by `tests/execution/state/test_freshness_laws.py`, not the query fuzzer) |
 | `StateMerge.lean` | partition deltas folded into a state snapshot | disjoint overlays commute, replay is a no-op, newest claim wins as a semilattice join, the per-slice count adjustment (checked by `tests/execution/state/test_merge_laws.py`) |
 | `NullReject.lean` | the null-rejection walk, membership, outer-join upgrade, nullability inference | a proved column is non-null on every kept row, a proof on a column read off the padded side turns a left join inner, a derived column is judged by its lineage, strict and total functions (checked by `tests/optimization/test_null_rejection_laws.py` and `tests/core/test_null_function_conformance.py`) |
@@ -275,6 +276,33 @@ a design decision or a bug.
   meant for one grain was applied at another: a rolled root bundled with the
   select's scan, a rollup inherited past the node that had already finished
   it, and a re-sourced root that projected its finer filter column.
+
+- **A build check judged a group by another group's values, and by values it
+  had rounded.** An `assert` is checked by substituting each group's values
+  into the condition and running it as a constant query, so the verdict is the
+  documented rule only if that substitution is exact (`Assert.check_exact`).
+  Three steps were not:
+  - a `by` key the condition names (`count(id) by g >= case when g = 0 then
+    80 else 5 end`) was never substituted. The constant query resolved it
+    against whatever row it found, so every group was held to one group's
+    threshold, failing a good build or passing a bad one
+    (`Assert.unsubstituted_key_reads_another_group`).
+  - values went back to Trilogy text through the formatter's renderer. A
+    `Decimal` was converted to a double first, so two `numeric(38,2)` sums a
+    cent apart near `5e15` compared equal and `sum(x) = prior(sum(x))` passed
+    a changed build (`Assert.lossy_literal_passes_a_change`,
+    `Assert.decimal_as_double_merges_cents`). A double rendered as `1e+17` or
+    `1e-05`, and a string holding a quote rendered as `'O'Brien'`; neither
+    parses, so the check crashed. The renderer now writes positional floats,
+    picks a quote the string does not break, and spells a `Decimal` as
+    `'...'::numeric(p,s)`, a cast the parser now reads as an exact constant.
+    `trilogy fmt` broke on the same floats and quoted strings.
+  - the answer was read with `is True`, and SQLite and MySQL return `1`, so
+    every assertion failed there (`Assert.is_true_rejects_sqlite_true`).
+
+  Groups are matched by identity, as GROUP BY groups a NULL key; an `=` join
+  would report a NULL group vanished from a build that kept it
+  (`Assert.sql_eq_join_vanishes_null_group`).
 
 ## Limits
 

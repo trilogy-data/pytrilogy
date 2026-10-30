@@ -6,7 +6,7 @@ raises. Everything else (compilation, types, reflection) is shared, so this only
 swaps those.
 """
 
-from typing import Any
+from typing import Any, cast
 
 import haybarn
 from duckdb_engine import DBAPI, ConnectionWrapper, Dialect
@@ -36,7 +36,8 @@ class HaybarnDialect(Dialect):
             **cparams.get("config", {}),
             **cparams.pop("url_config", {}),
         }
-        return ConnectionWrapper(haybarn.connect(*cargs, **cparams))
+        # haybarn's connection is its own class with duckdb's interface.
+        return ConnectionWrapper(cast(Any, haybarn.connect(*cargs, **cparams)))
 
     def do_rollback(self, connection: Any) -> None:
         try:

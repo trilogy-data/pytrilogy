@@ -1,3 +1,4 @@
+import math
 import re
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
@@ -2581,6 +2582,8 @@ class BaseDialect:
             return f"{e}"
         elif isinstance(e, str):
             return self.render_string_literal(e)
+        elif isinstance(e, float) and not math.isfinite(e):
+            return f"CAST('{e}' AS {self.DATATYPE_MAP[DataType.FLOAT]})"
         elif isinstance(e, (int, float)):
             return str(e)
         elif isinstance(e, Decimal):
