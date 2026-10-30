@@ -539,6 +539,14 @@ def _feeds_only_aggregates(
     )
 
 
+def _arm_local(readers: "_Plan", gid: str, arms_delivered: bool) -> bool:
+    """Whether a ROOT's scan may read a coalescing axis off one arm: its rows
+    feed only aggregates in the plan before any fold."""
+    return arms_delivered or _feeds_only_aggregates(
+        readers.group_graph, readers.attrs, gid
+    )
+
+
 def _leaf_datasources(node: StrategyNode) -> dict[str, BuildDatasource]:
     """The concrete datasources scanned in this subtree: its physical join
     footprint. Used to decide whether a per-consumer ROOT re-slice genuinely
@@ -699,9 +707,11 @@ class _PlannedReads:
     environment: BuildEnvironment
     g: ReferenceGraph
     history: V4History
-    # a ROOT's scan verdict per (group, arm_local): the search behind it is
-    # asked once per plan
-    scans: dict[tuple[str, bool], bool]
+    # a ROOT's scan verdict: the search behind it is asked once per plan
+    scans: dict[str, bool]
+    # the plan before any fold, which a ROOT's build reads its readers off
+    readers: "_Plan"
+    arms_delivered: bool
 
     def has(self, gid: str) -> bool:
         return gid in self.rendered
@@ -719,11 +729,10 @@ class _PlannedReads:
 
     def _scan_groups(self, gid: str) -> bool:
         """Whether a ROOT's scan dedups its rows (`scan_regroups`)."""
-        group = self.attrs[gid]
-        arm_local = _feeds_only_aggregates(self.group_graph, self.attrs, gid)
-        if (gid, arm_local) not in self.scans:
-            self.scans[(gid, arm_local)] = self._scan(group, arm_local)
-        return self.scans[(gid, arm_local)]
+        if gid not in self.scans:
+            arm_local = _arm_local(self.readers, gid, self.arms_delivered)
+            self.scans[gid] = self._scan(self.attrs[gid], arm_local)
+        return self.scans[gid]
 
     def _scan(self, group: GroupAttrs, arm_local: bool) -> bool:
         return scan_regroups(
@@ -953,23 +962,17 @@ def _aggregate_input_groups(
 
 
 def _raise_if_inlined_input_is_unreadable(
-    candidates: list[tuple[str, StrategyNode]],
-    attrs: dict[str, GroupAttrs],
-    built: dict[str, StrategyNode],
-    gid: str,
-    environment: BuildEnvironment,
+    reads: _PlannedReads, gid: str, inputs: list[str]
 ) -> None:
-    """The groups folded into `gid` were never built, so nothing else can
-    supply their members: `gid`'s parents must render each, and no
-    condition-phase twin may have materialized one since."""
-    if not attrs[gid].inlined_members:
-        return
-    available = {o.address for _, node in candidates for o in node.output_concepts}
+    """The groups folded into aggregate `gid` are never built, so nothing else
+    can supply their members: the groups it reads must render each, and no
+    condition-phase twin built before it may compute one."""
+    available = reads.outputs([pgid for pgid in inputs if reads.has(pgid)])
     unreadable = [
         address
-        for address in attrs[gid].inlined_members
-        if _built_twin_emits(attrs, built, {address})
-        or (concept := _concept_at(environment, address)) is None
+        for address in reads.attrs[gid].inlined_members
+        if reads.twin_emits(reads.attrs, {address}, skip=None)
+        or (concept := _concept_at(reads.environment, address)) is None
         or not concept_satisfiable(concept, available)
     ]
     if unreadable:
@@ -977,22 +980,6 @@ def _raise_if_inlined_input_is_unreadable(
             f"[v4] {gid} was planned to compute {unreadable} inline, but its "
             "parents cannot render them. This is a planner bug."
         )
-
-
-def _built_twin_emits(
-    attrs: dict[str, GroupAttrs],
-    built: dict[str, StrategyNode],
-    addresses: set[str],
-    skip: str | None = None,
-) -> bool:
-    """Whether a built condition-phase (D1) group other than `skip` emits any
-    of `addresses`."""
-    return any(
-        other != skip
-        and attrs[other].depth_label == DepthLabel.D1
-        and addresses & {o.address for o in node.output_concepts}
-        for other, node in built.items()
-    )
 
 
 def _condition_twins(attrs: dict[str, GroupAttrs], gid: str) -> list[str]:
@@ -1299,9 +1286,6 @@ def _parent_nodes_for(
 
     if attrs[gid].derivation == Derivation.AGGREGATE:
         candidates = [(pgid, built[pgid]) for pgid in aggregate_inputs if pgid in built]
-        _raise_if_inlined_input_is_unreadable(
-            candidates, attrs, built, gid, environment
-        )
     elif attrs[gid].inlined_members:
         raise ValueError(
             f"[v4] {gid} was planned to be computed inline along with "
@@ -6351,9 +6335,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     # aggregates) asks the same question when the WHERE placed on each is
     # the same; the second reads the first's answer.
     unfolded = ctx.readers
-    arm_local = arms_delivered or _feeds_only_aggregates(
-        unfolded.group_graph, unfolded.attrs, gid
-    )
+    arm_local = _arm_local(unfolded, gid, arms_delivered)
     request = (
         RootRequest(
             frozenset(c.address for c in outputs),
@@ -6498,6 +6480,8 @@ def _inlined_groups(
     mandatory_list: list[BuildConcept],
     g: ReferenceGraph,
     history: V4History,
+    readers: "_Plan",
+    arms_delivered: bool,
 ) -> "_FoldPlan":
     """The inline fold, decided before anything is built. Each group is
     judged in build order off what the groups before it render, over a copy of
@@ -6506,7 +6490,7 @@ def _inlined_groups(
     graph, edges = group_graph.copy(), dict(group_edges)
     planned = {gid: dc_replace(a) for gid, a in attrs.items()}
     rendered = renders(graph, edges, planned, environment)
-    scans: dict[tuple[str, bool], bool] = {}
+    scans: dict[str, bool] = {}
     inlined: set[str] = set()
     for idx, gid in enumerate(order):
         if gid == FINAL_NODE_ID:
@@ -6521,6 +6505,8 @@ def _inlined_groups(
             g,
             history,
             scans,
+            readers,
+            arms_delivered,
         )
         if _inlined_by_every_reader(
             graph, edges, planned, reads, gid, environment, mandatory_list
@@ -6528,29 +6514,27 @@ def _inlined_groups(
             inlined.add(gid)
             _read_parents_in_place(graph, edges, planned, gid)
             rendered = renders(graph, edges, planned, environment)
-    aggregate_inputs = {
-        gid: _aggregate_input_groups(
+    aggregate_inputs: dict[str, list[str]] = {}
+    for idx, gid in enumerate(order):
+        if gid not in planned or planned[gid].derivation != Derivation.AGGREGATE:
+            continue
+        reads = _PlannedReads(
             graph,
             edges,
             planned,
-            _PlannedReads(
-                graph,
-                edges,
-                planned,
-                rendered,
-                {other for other in order[:idx] if other in planned},
-                environment,
-                g,
-                history,
-                scans,
-            ),
-            gid,
+            rendered,
+            {other for other in order[:idx] if other in planned},
             environment,
-            mandatory_list,
+            g,
+            history,
+            scans,
+            readers,
+            arms_delivered,
         )
-        for idx, gid in enumerate(order)
-        if gid in planned and planned[gid].derivation == Derivation.AGGREGATE
-    }
+        aggregate_inputs[gid] = _aggregate_input_groups(
+            graph, edges, planned, reads, gid, environment, mandatory_list
+        )
+        _raise_if_inlined_input_is_unreadable(reads, gid, aggregate_inputs[gid])
     return _FoldPlan(inlined, aggregate_inputs)
 
 
@@ -6578,6 +6562,11 @@ def build_strategy_node(
 
     order = _topological_order(group_graph, group_edges)
     record_twin_reuse(order, attrs)
+    readers = _Plan(
+        group_graph.copy(),
+        dict(group_edges),
+        {gid: dc_replace(a) for gid, a in attrs.items()},
+    )
     folds = _inlined_groups(
         group_graph,
         group_edges,
@@ -6587,6 +6576,8 @@ def build_strategy_node(
         mandatory_list,
         g,
         history,
+        readers,
+        arms_delivered,
     )
     built: dict[str, StrategyNode] = {}
     unbuilt: dict[str, list[BuildConcept]] = {}
@@ -6607,11 +6598,7 @@ def build_strategy_node(
         _CleanFeederCache(environment, g, history),
         unbuilt,
         order,
-        _Plan(
-            group_graph.copy(),
-            dict(group_edges),
-            {gid: dc_replace(a) for gid, a in attrs.items()},
-        ),
+        readers,
         folds,
     )
     ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
