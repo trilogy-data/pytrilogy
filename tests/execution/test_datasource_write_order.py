@@ -431,7 +431,7 @@ def test_storage_values_render_as_literals() -> None:
         "true",
         "3",
         "1.5",
-        "'it\\'s'",
+        '"it\'s"',
     ]
     assert [_copy_option_value(v) for v in (False, 3, "it's")] == [
         "false",

@@ -7,6 +7,7 @@ watermark-fresh file would never be rebuilt and every read of the new column
 would fail at execution.
 """
 
+from pathlib import Path
 from unittest.mock import patch
 
 import duckdb
@@ -210,23 +211,27 @@ def test_a_parquet_column_of_another_kind_is_drift(tmp_path):
 def test_a_numeric_stored_as_double_is_not_drift(tmp_path):
     """A numeric DuckDB computes in floating point (`geo_y(...)`) is written as
     DOUBLE; reading that back as drift rebuilt the asset on every run."""
-    target = tmp_path / "target.parquet"
+    assert _numeric_drift(tmp_path / "double", "1.5::DOUBLE") is None
+    assert (
+        _numeric_drift(tmp_path / "string", "'1.5'")
+        == "type of lat (string vs numeric)"
+    )
+
+
+def _numeric_drift(root: Path, lat: str) -> str | None:
+    # One session per file: a raw COPY bypasses the executor's file-cache
+    # flush, so a same-second rewrite in one session reads the old footer.
+    root.mkdir()
+    target = root / "target.parquet"
     executor = Dialects.DUCK_DB.default_executor(
-        environment=Environment(working_path=tmp_path)
+        environment=Environment(working_path=root)
     )
     executor.parse_text(
         f"key id int;\nproperty id.lat numeric;\n"
         f"datasource target (id, lat) file `{target.as_posix()}`;"
     )
-    datasource = executor.environment.datasources["target"]
     executor.execute_raw_sql(
-        f"COPY (SELECT 1 AS id, 1.5::DOUBLE AS lat) TO '{target.as_posix()}'"
+        f"COPY (SELECT 1 AS id, {lat} AS lat) TO '{target.as_posix()}'"
         " (FORMAT PARQUET)"
     )
-    assert schema_mismatch(datasource, executor) is None
-
-    executor.execute_raw_sql(
-        f"COPY (SELECT 1 AS id, '1.5' AS lat) TO '{target.as_posix()}'"
-        " (FORMAT PARQUET)"
-    )
-    assert schema_mismatch(datasource, executor) == "type of lat (string vs numeric)"
+    return schema_mismatch(executor.environment.datasources["target"], executor)

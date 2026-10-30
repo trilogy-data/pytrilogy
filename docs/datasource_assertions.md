@@ -146,7 +146,13 @@ swapping in a repointed copy and hiding every other datasource, then joins
 the two result sets on the grain in Python and checks each row by
 substituting the values into the template and running it as a constant query.
 The comparison itself therefore keeps the engine's semantics rather than
-reimplementing them.
+reimplementing them. Every name in the template is substituted, the `by` keys
+with the group's own values (a NULL key as `null`), and every value is written
+as a literal that parses back to it exactly: a `Decimal` as
+`'...'::numeric(p,s)`, a float in positional notation, a string in a quote it
+does not contain. `formal/Trilogy/Assert.lean` proves the verdict is the rule
+above on every group of either side under those conditions, and
+`tests/execution/test_assertion_laws.py` checks it on random builds.
 
 What a check costs is reads, and the asset is often remote. Assertions whose
 side queries come out at the same grain (compared with `Grain.from_concepts`
