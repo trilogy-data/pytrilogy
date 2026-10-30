@@ -686,71 +686,13 @@ def _select_addresses(a: GroupAttrs) -> tuple[str, ...]:
     return a.output_concepts or a.members
 
 
-class _FoldReads:
-    """What the inline fold reads of the groups it would inline over."""
-
-    def has(self, gid: str) -> bool:
-        raise NotImplementedError
-
-    def outputs(self, gids: list[str]) -> set[str]:
-        raise NotImplementedError
-
-    def barrier(self, gid: str) -> bool:
-        raise NotImplementedError
-
-    def regroups(
-        self,
-        outputs: list[BuildConcept],
-        gids: list[str],
-        environment: BuildEnvironment,
-    ) -> bool:
-        raise NotImplementedError
-
-    def twin_emits(
-        self, attrs: dict[str, GroupAttrs], addresses: set[str], skip: str | None
-    ) -> bool:
-        raise NotImplementedError
-
-
 @dataclass
-class _BuiltReads(_FoldReads):
-    """The fold read off built nodes."""
-
-    built: dict[str, StrategyNode]
-
-    def has(self, gid: str) -> bool:
-        return gid in self.built
-
-    def outputs(self, gids: list[str]) -> set[str]:
-        return {o.address for gid in gids for o in self.built[gid].output_concepts}
-
-    def barrier(self, gid: str) -> bool:
-        return _contains_shape_barrier(self.built[gid])
-
-    def regroups(
-        self,
-        outputs: list[BuildConcept],
-        gids: list[str],
-        environment: BuildEnvironment,
-    ) -> bool:
-        from trilogy.core.processing.v4_node_generators.basic import (  # cycle
-            basic_regroups,
-        )
-
-        return basic_regroups(outputs, [self.built[g] for g in gids], environment)
-
-    def twin_emits(
-        self, attrs: dict[str, GroupAttrs], addresses: set[str], skip: str | None
-    ) -> bool:
-        return _built_twin_emits(attrs, self.built, addresses, skip)
-
-
-@dataclass
-class _PlannedReads(_FoldReads):
+class _PlannedReads:
     """The fold read off stage-2 facts: what each group renders, and the
     derivations above it."""
 
     group_graph: nx.DiGraph
+    group_edges: EdgeMap
     attrs: dict[str, GroupAttrs]
     rendered: dict[str, frozenset[str]]
     decided: set[str]
@@ -835,8 +777,22 @@ class _PlannedReads(_FoldReads):
             other != skip
             and other in self.rendered
             and attrs[other].depth_label == DepthLabel.D1
-            and addresses & self.rendered[other]
+            and self._computes(other, addresses & self.rendered[other])
             for other in self.decided
+        )
+
+    def _computes(self, gid: str, addresses: set[str]) -> bool:
+        """Whether `gid`'s node computes any of `addresses`: a row stream
+        computes a member only off what its row parents render."""
+        if self.attrs[gid].derivation in (Derivation.ROOT, *_BARRIER_DERIVATIONS):
+            return bool(addresses)
+        available = self.outputs(
+            read_row_parents(self.group_graph, self.group_edges, self.attrs, gid)
+        )
+        return any(
+            (concept := _concept_at(self.environment, a)) is None
+            or concept_satisfiable(concept, available)
+            for a in addresses
         )
 
 
@@ -849,7 +805,7 @@ def _projects_parent_rows(
     attrs: dict[str, GroupAttrs],
     gid: str,
     parents: list[str],
-    reads: "_FoldReads",
+    reads: "_PlannedReads",
     environment: BuildEnvironment,
     mandatory_list: list[BuildConcept],
 ) -> bool:
@@ -892,7 +848,7 @@ def _aggregate_inlines(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
-    reads: "_FoldReads",
+    reads: "_PlannedReads",
     consumer: str,
     gid: str,
     environment: BuildEnvironment,
@@ -953,40 +909,44 @@ def _aggregate_inlines(
     ) and _group_renderable_from(attrs, environment, gid, reads.outputs(parents))
 
 
-def _inline_aggregate_inputs(
-    candidates: list[tuple[str, StrategyNode]],
+def _aggregate_input_groups(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
-    built: dict[str, StrategyNode],
+    reads: "_PlannedReads",
     gid: str,
     environment: BuildEnvironment,
     mandatory_list: list[BuildConcept],
-) -> list[tuple[str, StrategyNode]]:
-    """Read, in place of each input aggregate `gid` computes inline, that
-    input's own parents; to a fixed point, since those may be inlined too."""
-    _raise_if_inlined_input_is_unreadable(candidates, attrs, built, gid, environment)
+) -> list[str]:
+    """The groups aggregate `gid` reads: in place of each input it computes
+    inline, that input's own parents; to a fixed point, since those may be
+    inlined too."""
+    candidates = [
+        pgid
+        for pgid in read_row_parents(group_graph, group_edges, attrs, gid)
+        if reads.has(pgid)
+    ]
     while True:
-        expanded: list[tuple[str, StrategyNode]] = []
-        for pgid, node in candidates:
+        expanded: list[str] = []
+        for pgid in candidates:
             if _aggregate_inlines(
                 group_graph,
                 group_edges,
                 attrs,
-                _BuiltReads(built),
+                reads,
                 gid,
                 pgid,
                 environment,
                 mandatory_list,
             ):
                 expanded.extend(
-                    (fgid, built[fgid])
+                    fgid
                     for fgid in row_parents(group_graph, group_edges, pgid)
-                    if fgid in built
+                    if reads.has(fgid)
                 )
             else:
-                expanded.append((pgid, node))
-        deduped = list(dict(expanded).items())
+                expanded.append(pgid)
+        deduped = list(dict.fromkeys(expanded))
         if deduped == candidates:
             return candidates
         candidates = deduped
@@ -1055,7 +1015,7 @@ def _reader_inlines(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
-    reads: "_FoldReads",
+    reads: "_PlannedReads",
     reader: str,
     gid: str,
     environment: BuildEnvironment,
@@ -1106,7 +1066,7 @@ def _inlined_by_every_reader(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
-    reads: "_FoldReads",
+    reads: "_PlannedReads",
     gid: str,
     environment: BuildEnvironment,
     mandatory_list: list[BuildConcept],
@@ -1311,6 +1271,7 @@ def _parent_nodes_for(
     staged_conditions: list[BuildWhereClause] | None = None,
     feeder_cache: "_CleanFeederCache | None" = None,
     arms_delivered: bool = False,
+    aggregate_inputs: Sequence[str] = (),
 ) -> list[ParentBuild]:
     """Look up the already-built StrategyNodes for `gid`'s lineage
     predecessors. Topological order guarantees they exist (or that the
@@ -1337,15 +1298,9 @@ def _parent_nodes_for(
             candidates.append((pgid, node))
 
     if attrs[gid].derivation == Derivation.AGGREGATE:
-        candidates = _inline_aggregate_inputs(
-            candidates,
-            group_graph,
-            group_edges,
-            attrs,
-            built,
-            gid,
-            environment,
-            mandatory_list,
+        candidates = [(pgid, built[pgid]) for pgid in aggregate_inputs if pgid in built]
+        _raise_if_inlined_input_is_unreadable(
+            candidates, attrs, built, gid, environment
         )
     elif attrs[gid].inlined_members:
         raise ValueError(
@@ -5923,6 +5878,25 @@ def _read_first_rows(
     return rewritten, [window]
 
 
+@dataclass(frozen=True)
+class _FoldPlan:
+    """The inline fold, decided before anything is built: the groups every
+    reader computes inline, and the groups each aggregate reads in place of
+    the inputs it alone computes inline."""
+
+    inlined: set[str]
+    aggregate_inputs: dict[str, list[str]]
+
+
+@dataclass(frozen=True)
+class _Plan:
+    """A group graph with its edges and attrs."""
+
+    group_graph: nx.DiGraph
+    group_edges: EdgeMap
+    attrs: dict[str, GroupAttrs]
+
+
 @dataclass
 class _GroupBuild:
     """What every group of one `build_strategy_node` call reads and fills."""
@@ -5943,6 +5917,9 @@ class _GroupBuild:
     feeder_cache: _CleanFeederCache
     unbuilt: dict[str, list[BuildConcept]]
     order: list[str]
+    # the plan before any fold: a group's build reads its readers there
+    readers: "_Plan"
+    folds: "_FoldPlan"
 
 
 def _merge_origin_intermediates(
@@ -6119,6 +6096,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
         staged_conditions=staged_conditions,
         feeder_cache=feeder_cache,
         arms_delivered=arms_delivered,
+        aggregate_inputs=ctx.folds.aggregate_inputs.get(gid, ()),
     )
     parent_group_ids = {parent.group_id for parent in parent_builds}
     join_key_addresses = _input_contract_join_keys(a, parent_group_ids)
@@ -6372,7 +6350,10 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     # The same root in two phases (the d1 twin feeding the condition-phase
     # aggregates) asks the same question when the WHERE placed on each is
     # the same; the second reads the first's answer.
-    arm_local = arms_delivered or _feeds_only_aggregates(group_graph, attrs, gid)
+    unfolded = ctx.readers
+    arm_local = arms_delivered or _feeds_only_aggregates(
+        unfolded.group_graph, unfolded.attrs, gid
+    )
     request = (
         RootRequest(
             frozenset(c.address for c in outputs),
@@ -6410,15 +6391,20 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
             conditions=condition_for_generator,
             preexisting_conditions=preexisting,
             intrinsic_filter_pushdown=_filter_intrinsic_pushdown_safe(
-                group_graph, attrs, gid, outputs, mandatory_list, environment
+                unfolded.group_graph,
+                unfolded.attrs,
+                gid,
+                outputs,
+                mandatory_list,
+                environment,
             ),
             existence_source=any(
-                edge_kind(group_edges, gid, succ) == EdgeKind.EXISTENCE
-                for succ in group_graph.successors(gid)
+                edge_kind(unfolded.group_edges, gid, succ) == EdgeKind.EXISTENCE
+                for succ in unfolded.group_graph.successors(gid)
             ),
             collapse_to_grain=all(
-                attrs[succ].derivation != Derivation.AGGREGATE
-                for succ in group_graph.successors(gid)
+                unfolded.attrs[succ].derivation != Derivation.AGGREGATE
+                for succ in unfolded.group_graph.successors(gid)
             ),
             complete_partials=complete_partials,
             history=history,
@@ -6512,10 +6498,11 @@ def _inlined_groups(
     mandatory_list: list[BuildConcept],
     g: ReferenceGraph,
     history: V4History,
-) -> set[str]:
-    """The groups every reader computes inline, decided before anything is
-    built. Each is judged in build order off what the groups before it render,
-    over a copy of the plan the folds before it are applied to."""
+) -> "_FoldPlan":
+    """The inline fold, decided before anything is built. Each group is
+    judged in build order off what the groups before it render, over a copy of
+    the plan the folds before it are applied to; each aggregate's inputs over
+    the plan every fold is applied to."""
     graph, edges = group_graph.copy(), dict(group_edges)
     planned = {gid: dc_replace(a) for gid, a in attrs.items()}
     rendered = renders(graph, edges, planned, environment)
@@ -6526,6 +6513,7 @@ def _inlined_groups(
             continue
         reads = _PlannedReads(
             graph,
+            edges,
             planned,
             rendered,
             {other for other in order[:idx] if other in planned},
@@ -6540,7 +6528,30 @@ def _inlined_groups(
             inlined.add(gid)
             _read_parents_in_place(graph, edges, planned, gid)
             rendered = renders(graph, edges, planned, environment)
-    return inlined
+    aggregate_inputs = {
+        gid: _aggregate_input_groups(
+            graph,
+            edges,
+            planned,
+            _PlannedReads(
+                graph,
+                edges,
+                planned,
+                rendered,
+                {other for other in order[:idx] if other in planned},
+                environment,
+                g,
+                history,
+                scans,
+            ),
+            gid,
+            environment,
+            mandatory_list,
+        )
+        for idx, gid in enumerate(order)
+        if gid in planned and planned[gid].derivation == Derivation.AGGREGATE
+    }
+    return _FoldPlan(inlined, aggregate_inputs)
 
 
 def build_strategy_node(
@@ -6565,6 +6576,18 @@ def build_strategy_node(
         mandatory_list, environment, g.scope.datasources
     )
 
+    order = _topological_order(group_graph, group_edges)
+    record_twin_reuse(order, attrs)
+    folds = _inlined_groups(
+        group_graph,
+        group_edges,
+        attrs,
+        order,
+        environment,
+        mandatory_list,
+        g,
+        history,
+    )
     built: dict[str, StrategyNode] = {}
     unbuilt: dict[str, list[BuildConcept]] = {}
     ctx = _GroupBuild(
@@ -6583,32 +6606,24 @@ def build_strategy_node(
         {},
         _CleanFeederCache(environment, g, history),
         unbuilt,
-        _topological_order(group_graph, group_edges),
+        order,
+        _Plan(
+            group_graph.copy(),
+            dict(group_edges),
+            {gid: dc_replace(a) for gid, a in attrs.items()},
+        ),
+        folds,
     )
     ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
     plan_scope = environment.span_scope
 
-    order = ctx.order
-    record_twin_reuse(order, attrs)
-    # decided up front, applied at each group's turn: a parent built before
-    # the fold reads the readers it has then
-    inlined = _inlined_groups(
-        group_graph,
-        group_edges,
-        attrs,
-        order,
-        environment,
-        mandatory_list,
-        g,
-        history,
-    )
     for gid in order:
-        if gid == FINAL_NODE_ID:
+        if gid in folds.inlined:
+            _fold_into_readers(group_graph, group_edges, attrs, gid)
+    for gid in order:
+        if gid == FINAL_NODE_ID or gid in folds.inlined:
             continue
         plan_trace.set_context(gid)
-        if gid in inlined:
-            _fold_into_readers(group_graph, group_edges, attrs, gid)
-            continue
         a = attrs[gid]
         # Scope the group's extent routing over its whole build, including the
         # consumer-side re-sources `_parent_nodes_for` plans below. A region
