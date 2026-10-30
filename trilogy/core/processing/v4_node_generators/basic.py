@@ -131,7 +131,27 @@ def _grain_claim_needs_group(
     if not parent_grain or parent_grain.issubset({c.address for c in outputs}):
         return False
     _expose_parent_grain(parent, parent_grain, environment)
-    if parent_grain.issubset({c.address for c in parent.output_concepts}):
+    return grain_claim_unheld(
+        outputs,
+        parent_grain,
+        {c.address for c in parent.output_concepts},
+        environment,
+    )
+
+
+def grain_claim_unheld(
+    outputs: list[BuildConcept],
+    parent_grain: set[str],
+    parent_outputs: set[str],
+    environment: BuildEnvironment,
+) -> bool:
+    """Whether a projection of `outputs` off a parent at `parent_grain` claims
+    a grain the parent's rows do not hold, with nothing to widen back to."""
+    if (
+        not parent_grain
+        or parent_grain.issubset({c.address for c in outputs})
+        or parent_grain.issubset(parent_outputs)
+    ):
         return False
     claimed = BuildGrain.from_concepts(outputs).components
     return not all(

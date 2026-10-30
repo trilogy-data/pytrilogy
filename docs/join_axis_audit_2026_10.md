@@ -428,27 +428,46 @@ comparison, which builds nothing and must raise the clean disconnected error.
 With both rules, the files those came from re-checked equal (1,893
 elections).
 
-**Open.** No FINAL add pass and no bridge election reads a built node. What
-still reads them is physical: the fold's widen and the region domain's rename
-projection act on built nodes, `_key_bridged_members` checks built
-connectivity, and the inline-by-every-reader fold (`_inlined_by_every_reader`,
-`_aggregate_inlines`) decides off its parents' built nodes, so it stays in the
-build loop.
+**The inline fold, decided before the loop.** Which groups every reader
+computes inline is decided once, before any node is built
+(`_inlined_groups`), in build order over a copy of the plan each earlier fold
+is applied to. It reads stage-2 facts only (`_PlannedReads`): what a parent
+renders, the derivations above it, and, for a ROOT parent, whether its scan
+groups its rows. The fold itself is still applied at the group's turn in the
+loop, because a ROOT's build reads its readers (`collapse_to_grain`,
+`arm_local`): folding a basic first makes its aggregate the ROOT's reader, and
+the ROOT then skips the dedup it is built with today (`test_pair_grain_aggregate`
+grew from 3 CTEs to 6 when the folds were applied up front).
 
-Measured for the fold: the same predicate over stage-2 facts (a parent's
-`renders`, its `grain_components`, a shape barrier read off the group graph's
-derivations) agrees with the built one at 36,248 of 36,329 fold and inline
-decisions over the suite (one probe run; 561 groups folded). The disagreements are almost all one physical fact:
-a ROOT parent whose scan source planning dedups (q21's condition-phase
-lineitem scan holds `order.id`, `supplier.id` and the two dates but not the
-line number, so it is a GROUP BY). The fold refuses to inline over a parent
-that groups, and stage 2 does not know the datasource grain. Over 80 parent
-reads behind the disagreements on the main shapes, 64 were that barrier; the
-rest were `renders` and the built node differing on a column
-(`return_date.week_seq`, `a.l_key`, `launch_tag` rendered but not built;
-`user_id` built but not rendered). So the fold moves before the loop once a
-ROOT group states at stage 2 whether its scan holds its rows' identity, and
-those four render differences are ruled on.
+Whether a ROOT's scan groups is the network search's answer: the sources it
+picks, each read for the columns it provides and the keys it joins on, and
+grouped when the datasource is finer than those or declares no grain
+(`source_planning.scan_regroups` over `datasource_regroups`, the one rule
+`create_datasource_node` applies). The search is pure and memoized on the
+request, so asking it at stage 2 builds nothing. A grain read off datasource
+metadata alone missed the source a merge reads for its join keys (`items`
+read for `(order_id, product_id)` beside `orders` and `products`).
+
+A ROOT renders the columns it scans: its outputs, or its members when the
+demand pass left it none. A member the demand pass dropped is no column of it
+(`root_d1` holds `v` as a member under `where a > 0`, and a condition-phase
+filter folded over it could not read `v`).
+
+Measured: the stage-2 predicate beside the built one over all of `tests/`
+(39,679 decisions) disagreed at 25 before the scan rule took the search's
+answer; the remaining shapes were a ROOT grouped inside a merge, a
+condition-carrying scan regrouped after its WHERE, and the render differences
+above.
+With it, against main: 1 of 205 corpus plans moved, and it is smaller
+(`_q83_with_sales_measure`, 7 CTEs to 4, 7 joins to 5: the return-date
+filter folds into its aggregate). A SQL capture over the 3,448 tests in the
+files the disagreements came from moved nothing else but CTE names.
+
+**Open.** What still reads built nodes is physical: the fold's widen and the
+region domain's rename projection act on built nodes, `_key_bridged_members`
+checks built connectivity, an aggregate's own inline of an input other readers
+keep (`_inline_aggregate_inputs`) reads its parents' nodes, and a ROOT's build
+reads its readers in the graph as the folds before it left it.
 
 ## 8. Not claimed
 

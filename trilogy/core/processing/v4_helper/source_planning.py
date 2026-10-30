@@ -52,6 +52,7 @@ from trilogy.core.processing.node_generators.presence_probe import (
 from trilogy.core.processing.node_generators.select_helpers.datasource_nodes import (
     create_select_node,
     create_select_node_candidate,
+    datasource_regroups,
     finalize_select_node,
     subgraph_concepts,
 )
@@ -367,6 +368,44 @@ def _inject_rollup_edges(
             drawn.add(concept_node)
     graph.add_edges_from(edges)
     return drawn
+
+
+def scan_regroups(request: SourceRequest) -> bool:
+    """Whether the scan this request plans groups its rows: a source the
+    search picks is finer than what it is read for, the columns it provides
+    and the keys it joins on (`datasource_regroups`). Read off the search
+    alone, so it is known before any node is built."""
+    concepts = _search_concepts_for_bridge(request)
+    network = build_source_network(
+        concepts,
+        request.environment,
+        request.graph,
+        request.conditions,
+        request.deferred_conditions,
+        request.arm_local,
+        partial_ok=_undemanded_reach_keys(request, concepts),
+    )
+    solution = _memoized_search(network, request.history).solution
+    if solution is None:
+        return False
+    for node in solution.sources:
+        datasource = network.candidates[node].datasource
+        if not isinstance(datasource, BuildDatasource):
+            continue
+        read = set(solution.assignments.get(node, ())).union(
+            *(keys for pair, keys in solution.join_keys.items() if node in pair)
+        )
+        if datasource_regroups(
+            datasource,
+            [
+                request.environment.concepts[a]
+                for a in sorted(read)
+                if a in request.environment.concepts
+            ],
+            request.environment,
+        ):
+            return True
+    return False
 
 
 def _memoized_search(network: SourceNetwork, history: V4History) -> SearchResult:
