@@ -63,6 +63,7 @@ from trilogy.core.processing import plan_trace
 from trilogy.core.processing.aggregate_rollup import (
     _is_rollable_aggregate,
     finer_than_grain,
+    pending_rollups,
 )
 from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
@@ -4609,7 +4610,9 @@ def _group_to_grain_if_required(
         for concept in mandatory_list
         if concept.address in final_contract.output_addresses
     ]
-    if isinstance(node, (GroupNode, WindowNode)) or node.force_group:
+    if isinstance(node, (GroupNode, WindowNode)):
+        return node
+    if node.force_group and not _holds_summary_rows(node, contract_outputs):
         return node
     # A non-standard-grouping (ROLLUP/CUBE/GROUPING SETS) contributor's rows are
     # already final-shape: subtotal/total rows are distinct outputs, so a dedup
@@ -4665,6 +4668,18 @@ def _group_to_grain_if_required(
         preexisting_conditions=node.preexisting_conditions,
         hidden_concepts=set(node.hidden_concepts) if node.hidden_concepts else None,
         rollup_concepts=rollup or None,
+    )
+
+
+def _holds_summary_rows(node: StrategyNode, outputs: list[BuildConcept]) -> bool:
+    """A grouping that kept a summary's keys (a join handle a filter needed)
+    still holds a summary value per summary row; the dedup to the requested
+    grain is the re-sum that finishes it."""
+    resolved = node.resolve()
+    demanded = {c.address for c in outputs}
+    return any(
+        c.address in demanded
+        for c in pending_rollups(resolved.rollup_concepts, resolved.grain)
     )
 
 
