@@ -830,6 +830,35 @@ ROLLUP_QUERIES = (
         "max_of_mins",
         "where group_id > 1 select max(min(nullable_amount) by group_name) as m;",
     ),
+    (
+        "partial_grains",
+        (
+            "select group_id, count(event_id) as n, count(event_id) by group_name "
+            "as gn, count(event_id) by * as t order by group_id asc;"
+        ),
+    ),
+    (
+        "partial_compound_filter",
+        (
+            "where group_id > 1 or group_name is null "
+            "select group_id, sum(nullable_amount) as s, sum(nullable_amount) by "
+            "nullable_name as ns order by group_id asc;"
+        ),
+    ),
+    (
+        "partial_min_max",
+        (
+            "select group_id, min(nullable_amount) as lo, min(nullable_amount) by * "
+            "as tlo, max(event_amount) by group_name as ghi order by group_id asc;"
+        ),
+    ),
+    (
+        "mixed_grain_total",
+        (
+            "where group_id > 1 select group_name, sum(event_amount) as s, "
+            "count(event_id) by * as t order by group_name asc;"
+        ),
+    ),
 )
 
 
@@ -853,7 +882,11 @@ from ({seed.events.select_sql()}) group by gid''';
         _law(
             seed,
             f"rollup_{name}",
-            "Rollup.min_exact" if "min" in name else "Rollup.sum_exact",
+            (
+                "Rollup.reaggregated_sum_is_partial"
+                if name.startswith("partial")
+                else "Rollup.min_exact" if "min" in name else "Rollup.sum_exact"
+            ),
             "A summary at a finer grain answers a rollable aggregate under any "
             "filter and target its grain determines.",
             ("sourcing", "aggregate", "rollup"),

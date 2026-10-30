@@ -29,7 +29,7 @@ a design decision or a bug.
 | `Rows.lean` | distinct tuples, grain | keyed rowset keeps rows, filter pushdown through a rowset, `distinct = group`, FD extension, window = `by`, sibling aggregates |
 | `Domain.lean` | `~` padding, grain pin | materialization invariance, pin vs stored column, pin is projection-invariant, `sum(coalesce)` |
 | `Sourcing.lean` | `complete where` arms, partition unions, the cell checker | a partition family unions back to the table (split, point, bool, `is null` arm, NULL-rejecting gate, a redundant copy of an arm), an arm answers under an implying WHERE, summary table = computed aggregate |
-| `Rollup.lean` | a summary re-aggregated to a coarser grain under a WHERE | `sum`, `count`, `min` and `max` (so `bool_and`/`bool_or`) roll up exactly under any filter and target their grain determines, the grand total's no-row guard, a finer filter, `count_distinct` and `avg` cannot (checked by `tests/discovery/test_rollup_resolution_laws.py`) |
+| `Rollup.lean` | a summary re-aggregated to a coarser grain under a WHERE; a query's own GROUP BY re-aggregated to its coarser grains | `sum`, `count`, `min` and `max` (so `bool_and`/`bool_or`) roll up exactly under any filter and target their grain determines, the grand total's no-row guard, a re-aggregated partial is itself a partial (so a chain of grains reads the rows once), a finer filter, a fanned-out partial's re-sum, `count_distinct` and `avg` cannot (checked by `tests/discovery/test_rollup_resolution_laws.py`) |
 | `Freshness.lean` | watermarks, the stale verdict, the incremental refresh | verdict = refresh has a row to write, incremental = rebuild under strict arrivals (checked by `tests/execution/state/test_freshness_laws.py`, not the query fuzzer) |
 | `StateMerge.lean` | partition deltas folded into a state snapshot | disjoint overlays commute, replay is a no-op, newest claim wins as a semilattice join, the per-slice count adjustment (checked by `tests/execution/state/test_merge_laws.py`) |
 | `NullReject.lean` | the null-rejection walk, membership, outer-join upgrade, nullability inference | a proved column is non-null on every kept row, a proof on a column read off the padded side turns a left join inner, a derived column is judged by its lineage, strict and total functions (checked by `tests/optimization/test_null_rejection_laws.py` and `tests/core/test_null_function_conformance.py`) |
@@ -257,6 +257,24 @@ a design decision or a bug.
   query aggregate's address there, so the filter tested each per-species count
   instead of the re-summed one. Pushdown now keeps a predicate on a value its
   CTE rolls up.
+
+- **One aggregate at several grains grouped the rows once per grain, and an
+  aggregate at another grain beside a summary returned wrong rows.**
+  `Rollup.reaggregated_sum_is_partial` (and its `count`, `min` and `max`
+  twins) proves that re-aggregating a GROUP BY at grain `g` to a coarser grain
+  `h ∘ g` gives the table a GROUP BY at `h ∘ g` stores, so a query's own
+  groups are a summary for every coarser grain it asks for. The planner now
+  rewrites `sum(x) by city` beside `sum(x) by city, species` as the `SUM` of
+  the finer value, and a chain of grains reads the rows once. The new
+  multi-grain axis of the law matrix (438 cells) found five wrong answers on
+  main, all with a summary in scope and an aggregate whose grain is not the
+  select's: `select tree_form, count(tree_id) by *` read 12 for a two-species
+  form instead of 6, `count(..) by *` beside a per-city `sum` came back per
+  city, and `sum(sum(x) by city) by *` beside `sum(x) by city` returned the
+  inner value un-rolled, one row per species. In all of them a rollup flag
+  meant for one grain was applied at another: a rolled root bundled with the
+  select's scan, a rollup inherited past the node that had already finished
+  it, and a re-sourced root that projected its finer filter column.
 
 ## Limits
 

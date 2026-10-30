@@ -60,7 +60,10 @@ from trilogy.core.models.core import arg_to_datatype
 from trilogy.core.models.execute import Join
 from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing import plan_trace
-from trilogy.core.processing.aggregate_rollup import _is_rollable_aggregate
+from trilogy.core.processing.aggregate_rollup import (
+    _is_rollable_aggregate,
+    finer_than_grain,
+)
 from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
     condition_implies,
@@ -4836,6 +4839,10 @@ def _resourced_root_contributor(
     # cross-join input via `_filter_arg_parents`) is untouched.
     bucket_members = _own_members(attrs, gid)
     seen_group_addrs = {c.address for c in group_concepts}
+    # A materialized aggregate's scan applies a WHERE finer than its grain
+    # itself (`ConceptAttrs.scan_filtered`); projecting that filter column
+    # would read the summary's rows at the filter's grain, un-rolled.
+    rolled = [c for c in group_concepts if c.is_aggregate]
     filter_only_concepts = [
         c
         for address in sorted(
@@ -4846,6 +4853,7 @@ def _resourced_root_contributor(
         )
         if address not in seen_group_addrs
         and (c := _concept_at(environment, address)) is not None
+        and not any(finer_than_grain(c, r.grain, environment.concepts) for r in rolled)
     ]
     group_concepts.extend(filter_only_concepts)
     root_atoms = _atoms_at(attrs, gid)

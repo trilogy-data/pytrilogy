@@ -72,6 +72,7 @@ from trilogy.core.models.execute import (
 )
 from trilogy.core.optimization import optimize_ctes
 from trilogy.core.processing import null_provenance, plan_trace
+from trilogy.core.processing.aggregate_rollup import reaggregate_partials
 from trilogy.core.processing.concept_strategies_v4 import (
     V4History,
     append_existence_check,
@@ -1039,6 +1040,27 @@ def _session_build_caches(
     return caches
 
 
+def _reaggregate_partials(
+    statement: BuildSelectLineage, environment: BuildEnvironment
+) -> BuildSelectLineage:
+    """Point every coarser aggregate the statement demands at a finer demanded
+    partial of it, in this statement's own environment."""
+    rewritten = reaggregate_partials(
+        statement.output_components,
+        environment.concepts,
+        environment.datasources.values(),
+    )
+    if not rewritten:
+        return statement
+    for address, concept in rewritten.items():
+        environment.concepts[address] = concept
+        environment.canonical_concepts[concept.canonical_address] = concept
+    return replace(
+        statement,
+        selection=[rewritten.get(c.address, c) for c in statement.selection],
+    )
+
+
 def get_query_node(
     environment: Environment,
     statement: SelectLineage | MultiSelectLineage,
@@ -1100,6 +1122,8 @@ def get_query_node(
         datasource_build_cache=caches.datasource_build_cache,
         scoped_joins=caches.scoped_joins,
     )
+    if isinstance(build_statement, BuildSelectLineage):
+        build_statement = _reaggregate_partials(build_statement, build_environment)
     carried = _carry_order_by_concepts(build_statement)
     graph = generate_scope_graph(
         build_environment, statement, environment, build_statement

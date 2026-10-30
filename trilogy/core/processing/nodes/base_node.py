@@ -21,6 +21,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.execute import Join, QueryDatasource, UnnestJoin
+from trilogy.core.processing.aggregate_rollup import pending_rollups
 from trilogy.core.processing.condition_utility import (
     drop_proven_non_null,
     merge_conditions_and_dedup,
@@ -640,6 +641,19 @@ class StrategyNode:
             )
         ]
         partials = unique(self.partial_concepts + inherited_partials, "address")
+        # A projection over summary rows still holds them as partials.
+        output_addresses = {c.address for c in self.output_concepts}
+        rollups = unique(
+            self.rollup_concepts
+            + [
+                c
+                for p in parent_sources
+                if isinstance(p, QueryDatasource)
+                for c in pending_rollups(p.rollup_concepts, p.grain)
+                if c.address in output_addresses
+            ],
+            "address",
+        )
 
         return QueryDatasource(
             input_concepts=self.input_concepts,
@@ -655,7 +669,7 @@ class StrategyNode:
             grain=grain,
             condition=self.conditions,
             partial_concepts=partials,
-            rollup_concepts=self.rollup_concepts,
+            rollup_concepts=rollups,
             nullable_concepts=nullable,
             force_group=self.force_group,
             hidden_concepts=self.hidden_concepts,
