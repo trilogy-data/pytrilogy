@@ -29,6 +29,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing import plan_trace
 from trilogy.core.processing.aggregate_rollup import (
     _is_rollable_aggregate,
+    at_own_grain,
     filter_finer_row_args,
     get_rollup_concepts,
     merge_rollup_concepts,
@@ -1275,6 +1276,29 @@ def _scan_renders_root(
     )
 
 
+def _summary_partials(
+    parents: list[StrategyNode], targets: list[BuildConcept]
+) -> list[BuildConcept]:
+    """Rollable aggregates a parent scans off a summary finer than their own
+    grain. A merge that keeps the summary's keys (a join handle a later group
+    needs) cannot sum them yet; it carries them as partials, so the group that
+    drops those keys re-sums them instead of deduplicating them."""
+    scanned = {
+        concept.address: parent.datasource
+        for parent in parents
+        if isinstance(parent, SelectNode) and parent.datasource is not None
+        for concept in parent.output_concepts
+    }
+    return [
+        concept
+        for concept in targets
+        if concept.is_aggregate
+        and _is_rollable_aggregate(concept)
+        and (ds := scanned.get(concept.address)) is not None
+        and not at_own_grain(concept, ds.grain)
+    ]
+
+
 def _merge_component_sources(
     request: SourceRequest,
     parents: list[StrategyNode],
@@ -1330,7 +1354,7 @@ def _merge_component_sources(
             request.conditions.conditional if request.conditions is not None else None
         ),
         force_group=True if rollup else None,
-        rollup_concepts=rollup or None,
+        rollup_concepts=rollup or _summary_partials(parents, targets) or None,
         preserve_parents=preserve_parents,
     )
 

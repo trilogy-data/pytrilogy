@@ -279,11 +279,9 @@ def _scan_target_grain(
     }
     if not merged:
         return grain
-    rest = [c for c in concepts if c.address not in merged]
-    return BuildGrain(
-        components=BuildGrain.from_concepts(rest, environment=environment).components
-        | merged
-    )
+    # the merged keys still determine the rest: `count(x) by species` beside a
+    # merged `species` is no grain component of its own
+    return BuildGrain(components=grain.components | merged)
 
 
 def create_datasource_node(

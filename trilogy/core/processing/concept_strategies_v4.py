@@ -73,6 +73,7 @@ from trilogy.core.processing.v4_helper import (
     build_strategy_node,
 )
 from trilogy.core.processing.v4_helper.functional_dependency import (
+    build_fd_closure,
     build_fd_determines,
 )
 from trilogy.core.processing.v4_helper.region_domains import undemanded_spans
@@ -429,7 +430,9 @@ def materialized_root_addresses(
                 if isinstance(arg, BuildConcept):
                     candidates.append(environment.concepts.get(arg.address) or arg)
     out = _binding_only_roots(candidates, environment, datasources, where)
-    row_grain = _keyed_grain(target_grain, environment)
+    row_grain = _expression_reduced_grain(
+        _keyed_grain(target_grain, environment), environment
+    )
     rolled_roots: set[str] = set()
     rollup_sources: list[BuildDatasource] = []
     seen_candidates: set[str] = set()
@@ -528,6 +531,36 @@ def _keyed_grain(grain: BuildGrain, environment: BuildEnvironment) -> BuildGrain
         else:
             components.add(address)
     return BuildGrain(components=components)
+
+
+def _expression_reduced_grain(
+    grain: BuildGrain, environment: BuildEnvironment
+) -> BuildGrain:
+    """`grain` without components that are scalar expressions of the others
+    (`case bucket when ... end` beside `bucket`): constant within each group of
+    the rest, they add no rows an aggregate at the rest's grain would split."""
+    components = set(grain.components)
+    for address in sorted(grain.components):
+        rest = components - {address}
+        if rest and _scalar_of(
+            address, build_fd_closure(environment, rest), environment
+        ):
+            components = rest
+    return BuildGrain(components=components)
+
+
+def _scalar_of(
+    address: str, closure: frozenset[str], environment: BuildEnvironment
+) -> bool:
+    """A BASIC expression whose arguments sit in `closure`, directly or through
+    other BASIC expressions (`case b2 ...` over `b2 <- concat(bucket, '!')`)."""
+    concept = environment.concepts.get(address)
+    if concept is None or concept.derivation != Derivation.BASIC:
+        return False
+    return all(
+        arg.address in closure or _scalar_of(arg.address, closure, environment)
+        for arg in concept.concept_arguments
+    )
 
 
 def scan_filtered_roots(
