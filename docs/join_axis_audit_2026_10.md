@@ -415,20 +415,40 @@ shape (computed both ways over all of `tests/`, zero disagreements):
   whole to apply its condition (the select-phase window renders its
   condition twin's `ratio`).
 
-**Open.** No FINAL add pass reads a built node to decide. What still reads
-them is physical: the fold's widen and the region domain's rename projection
-act on built nodes, `elect_bridges` takes its candidates from what was built
-(the inline-by-every-reader fold that keeps a group unbuilt reads built
-outputs), and `_key_bridged_members` checks built connectivity.
+**Bridge candidates from the build order.** `elect_bridges` takes its
+candidates from the build order, not from `built`: the groups the order
+decides before the consumer (every group, for the FINAL; a group feeding no
+output may sort after the FINAL node), still in the plan, that built a node,
+most derived first (`_bridge_candidates`). A group folded into its readers
+leaves the plan at its turn, so it is never a candidate. Over all of `tests/`
+(5,925 elections, 307 bridged) the election from the order differed from the
+one from `built` only where the FINAL's slice of the order cut off a group
+sorted after it (117, all one shape), and at `root_d1` beside a disconnected
+comparison, which builds nothing and must raise the clean disconnected error.
+With both rules, the files those came from re-checked equal (1,893
+elections).
 
-Measured for the candidates: electing over every group not downstream of
-all of a merge's sides, ranked by ancestors, picks the same bridges as the
-built candidates at 4,961 of 4,962 merges over all of `tests/` (115 of them
-bridged). The one difference is a group later in the build order than the
-consumer (`root_d1` beside a disconnected comparison, which must raise the
-clean disconnected error). So the candidates are a stage-2 fact once build
-order and the inline fold are: the fold has to be decided before the build
-loop first, as twin reuse was.
+**Open.** No FINAL add pass and no bridge election reads a built node. What
+still reads them is physical: the fold's widen and the region domain's rename
+projection act on built nodes, `_key_bridged_members` checks built
+connectivity, and the inline-by-every-reader fold (`_inlined_by_every_reader`,
+`_aggregate_inlines`) decides off its parents' built nodes, so it stays in the
+build loop.
+
+Measured for the fold: the same predicate over stage-2 facts (a parent's
+`renders`, its `grain_components`, a shape barrier read off the group graph's
+derivations) agrees with the built one at 36,248 of 36,329 fold and inline
+decisions over the suite (one probe run; 561 groups folded). The disagreements are almost all one physical fact:
+a ROOT parent whose scan source planning dedups (q21's condition-phase
+lineitem scan holds `order.id`, `supplier.id` and the two dates but not the
+line number, so it is a GROUP BY). The fold refuses to inline over a parent
+that groups, and stage 2 does not know the datasource grain. Over 80 parent
+reads behind the disagreements on the main shapes, 64 were that barrier; the
+rest were `renders` and the built node differing on a column
+(`return_date.week_seq`, `a.l_key`, `launch_tag` rendered but not built;
+`user_id` built but not rendered). So the fold moves before the loop once a
+ROOT group states at stage 2 whether its scan holds its rows' identity, and
+those four render differences are ruled on.
 
 ## 8. Not claimed
 
