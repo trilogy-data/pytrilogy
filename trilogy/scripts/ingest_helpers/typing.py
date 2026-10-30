@@ -66,6 +66,12 @@ _CURRENCY_PATTERNS: dict[str, Any] = {
     },
 }
 
+DAY_OF_WEEK_PATTERNS = [
+    r"(?:^|_)dow(?:$|_)",
+    r"day_of_week",
+    r"(?:^|_)weekday(?:$|_)",
+]
+
 # Rich type detection mappings
 RICH_TYPE_PATTERNS: dict[str, dict[str, Any]] = {
     "currency": _CURRENCY_PATTERNS,
@@ -101,15 +107,20 @@ RICH_TYPE_PATTERNS: dict[str, dict[str, Any]] = {
             "value_range": (1, 31),
         },
         "day_of_week": {
-            "patterns": [
-                r"(?:^|_)dow(?:$|_)",
-                r"day_of_week",
-                r"(?:^|_)weekday(?:$|_)",
-            ],
+            "patterns": DAY_OF_WEEK_PATTERNS,
             "import": "std.date",
             "type_name": "day_of_week",
             "base_type": _INT_TYPES,
-            "value_range": (0, 7),
+            "value_range": (1, 7),
+        },
+        # a column holding a 0 counts from 0; one with only 1..6 reads as 1-based
+        "day_of_week_zero_index": {
+            "patterns": DAY_OF_WEEK_PATTERNS,
+            "import": "std.date",
+            "type_name": "day_of_week_zero_index",
+            "base_type": _INT_TYPES,
+            "value_range": (0, 6),
+            "priority": -1,
         },
         "quarter": {
             "patterns": [

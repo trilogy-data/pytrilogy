@@ -853,8 +853,17 @@ class TestRichTypeDetection:
         )
         assert detect_rich_type("dow", DataType.INTEGER, [0, 6]) == (
             "std.date",
+            "day_of_week_zero_index",
+        )
+        assert detect_rich_type("dow", DataType.INTEGER, [1, 7]) == (
+            "std.date",
             "day_of_week",
         )
+        assert detect_rich_type("dow", DataType.INTEGER, [1, 6]) == (
+            "std.date",
+            "day_of_week",
+        )
+        assert detect_rich_type("dow", DataType.INTEGER, [0, 7]) == (None, None)
         assert detect_rich_type("qoy", DataType.INTEGER, [1, 4]) == (
             "std.date",
             "quarter",
@@ -881,7 +890,7 @@ class TestRichTypeDetection:
         )
         assert detect_rich_type("weekday", DataType.INTEGER, [0, 6]) == (
             "std.date",
-            "day_of_week",
+            "day_of_week_zero_index",
         )
         # Bare `day` needs a word boundary, and is still value-gated.
         assert detect_rich_type("days_since_signup", DataType.INTEGER, [1, 5]) == (

@@ -16,7 +16,9 @@ type hour int;
 type minute int;
 type second numeric;
 type millisecond int;
-# day_of_week() is 1-7 (Sunday first); 0..7 also admits stored 0-6 columns
-type day_of_week int[0..7];
+# 1 on Sunday through 7 on Saturday, as day_of_week() returns on every dialect
+type day_of_week int[1..7];
+# 0 on Sunday through 6 on Saturday, as a stored column may count (TPC-DS d_dow)
+type day_of_week_zero_index int[0..6];
 type day_of_week_name string;
 
