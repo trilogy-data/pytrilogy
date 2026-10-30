@@ -13,7 +13,7 @@ generator dispatch lives in `v4_node_generators.dispatch.build_node`."""
 
 import logging
 from collections import Counter, defaultdict
-from collections.abc import Callable, Collection, Iterator, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from dataclasses import replace as dc_replace
@@ -2032,11 +2032,14 @@ def _project_basic_aggregate_inputs(
     outputs: list[BuildConcept],
     primary_addrs: set[str],
     parents: list[StrategyNode],
+    planned: set[str],
     environment: BuildEnvironment,
     region_spans: frozenset[str],
     named: frozenset[str] = frozenset(),
 ) -> list[StrategyNode]:
     """Project scalar aggregate inputs without exposing the merge's join inputs.
+    Whether the parent can compute them is read off what the aggregate's
+    planned inputs render (`planned`), not off the built parent.
 
     `region_spans`: the parent is the solid row stream beside a region domain
     (so a plain scan is projected too, and the spans it joins the domain on
@@ -2085,7 +2088,7 @@ def _project_basic_aggregate_inputs(
         available |= set.intersection(
             *(renderable_addresses(arm) for arm in parent.parents)
         )
-    if not all(concept_satisfiable(concept, available) for concept in scalar_inputs):
+    if not all(concept_satisfiable(concept, planned) for concept in scalar_inputs):
         return parents
     # one the parent already computes is not an input to hand it
     parent_outputs = {o.address for o in parent.output_concepts}
@@ -5765,6 +5768,11 @@ class _FoldPlan:
 
     inlined: set[str]
     aggregate_inputs: dict[str, list[str]]
+    # what each group renders over the folded plan
+    rendered: dict[str, frozenset[str]]
+
+    def render(self, gids: Iterable[str]) -> set[str]:
+        return set().union(*(self.rendered[gid] for gid in gids))
 
 
 @dataclass(frozen=True)
@@ -6068,6 +6076,11 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                     outputs,
                     primary_addrs,
                     solid,
+                    ctx.folds.render(
+                        build.group_id
+                        for p, build in zip(parents, parent_builds)
+                        if p not in domains and p not in feeders
+                    ),
                     environment,
                     region_spans=domain_spans,
                     named=named_arguments,
@@ -6139,6 +6152,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
             outputs,
             primary_addrs,
             parents,
+            ctx.folds.render(ctx.folds.aggregate_inputs.get(gid, ())),
             environment,
             region_spans=frozenset().union(*(region_reads(p) for p in parents)),
         )
@@ -6430,7 +6444,7 @@ def _inlined_groups(
             graph, edges, planned, reads, gid, environment, mandatory_list
         )
         _raise_if_inlined_input_is_unreadable(reads, gid, aggregate_inputs[gid])
-    return _FoldPlan(inlined, aggregate_inputs)
+    return _FoldPlan(inlined, aggregate_inputs, rendered)
 
 
 def build_strategy_node(
