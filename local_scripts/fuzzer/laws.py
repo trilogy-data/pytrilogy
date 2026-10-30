@@ -859,6 +859,22 @@ ROLLUP_QUERIES = (
             "count(event_id) by * as t order by group_name asc;"
         ),
     ),
+    (
+        "window_coarser_order",
+        (
+            "select group_id, group_name, rank(group_id) over (partition by "
+            "group_name order by count(event_id) by group_name desc) as r, "
+            "rank(group_id) over (order by sum(event_amount) by * desc) as t "
+            "order by group_id asc;"
+        ),
+    ),
+    (
+        "window_coarser_lag",
+        (
+            "select group_id, lag(group_id) over (order by sum(event_amount) by "
+            "group_name desc, group_id asc) as p order by group_id asc;"
+        ),
+    ),
 )
 
 

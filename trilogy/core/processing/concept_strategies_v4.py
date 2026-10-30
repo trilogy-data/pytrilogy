@@ -590,6 +590,7 @@ def _nested_rollup_roots(
     that a summary serves at their own grain, under the same WHERE."""
     mandatory = {c.address for c in mandatory_list}
     out: dict[str, list[BuildDatasource]] = {}
+    rows = _nested_row_grains(mandatory_list, roots, environment)
     for concept in walk_lineage(
         mandatory_list, descend=lambda c: c.address not in roots
     ):
@@ -597,6 +598,7 @@ def _nested_rollup_roots(
             concept.address in mandatory
             or concept.derivation != Derivation.AGGREGATE
             or not _is_rollable_aggregate(concept)
+            or not all(at_own_grain(concept, grain) for grain in rows[concept.address])
         ):
             continue
         sources = _rollup_sources(
@@ -604,6 +606,34 @@ def _nested_rollup_roots(
         )
         if sources:
             out[concept.address] = sources
+    return out
+
+
+def _nested_row_grains(
+    mandatory_list: list[BuildConcept],
+    roots: set[str],
+    environment: BuildEnvironment,
+) -> dict[str, list[BuildGrain]]:
+    """Each concept under the demand -> the grains of the rows it is read
+    beside. An aggregate's arguments are read on their own rows; any other
+    derivation (a window, an expression) reads its arguments on the rows it is
+    evaluated at, so a coarser aggregate under it shares a finer scan."""
+    out: dict[str, list[BuildGrain]] = {}
+    seen: set[tuple[str, frozenset[str]]] = set()
+    stack = [(concept, mandatory_list) for concept in mandatory_list]
+    while stack:
+        concept, beside = stack.pop()
+        grain = _keyed_grain(BuildGrain.from_concepts(beside), environment)
+        key = (concept.address, frozenset(grain.components))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.setdefault(concept.address, []).append(grain)
+        if concept.lineage is None or concept.address in roots:
+            continue
+        args = list(concept.lineage.concept_arguments)
+        below = args if concept.derivation == Derivation.AGGREGATE else beside + args
+        stack.extend((arg, below) for arg in args)
     return out
 
 

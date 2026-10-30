@@ -2152,6 +2152,55 @@ def _subtree_pinned_addresses(
     return pinned
 
 
+def _window_rows_at_grain(
+    outputs: list[BuildConcept],
+    parents: list[StrategyNode],
+    environment: BuildEnvironment,
+) -> list[StrategyNode]:
+    """A window ranks the distinct rows at the grain of what it reads. A
+    parent finer than that (fact rows brought in only to compute a coarser
+    aggregate the window orders by) repeats each row once per fact row, so it
+    is grouped first. The group keeps every parent column at or above that
+    grain, which a later pass may carry through the window."""
+    needed = {c.address: c for c in outputs}
+    for concept in outputs:
+        if concept.lineage is not None:
+            needed |= {a.address: a for a in concept.lineage.concept_arguments}
+    grain = {
+        component
+        for concept in needed.values()
+        if not concept.grain.abstract
+        for component in concept.grain.components
+    }
+    kept = unique(
+        [
+            concept
+            for parent in parents
+            for concept in parent.output_concepts
+            if concept.address in needed
+            or concept.grain.abstract
+            or concept.grain.components <= grain
+        ],
+        "address",
+    )
+    addresses = {concept.address for concept in kept}
+    if all(
+        build_fd_determines_all(
+            environment, addresses, parent.resolve().grain.components
+        )
+        for parent in parents
+    ):
+        return parents
+    return [
+        GroupNode(
+            output_concepts=kept,
+            input_concepts=kept,
+            environment=environment,
+            parents=parents,
+        )
+    ]
+
+
 def _parents_already_at_input_grain(
     outputs: list[BuildConcept],
     parents: list[StrategyNode],
@@ -6113,6 +6162,8 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                     parents=parents,
                 )
             ]
+    if derivation == Derivation.WINDOW and parents:
+        parents = _window_rows_at_grain(outputs, parents, environment)
     if derivation == Derivation.AGGREGATE and a.aggregate_first_row_grains:
         outputs, parents = _read_first_rows(
             outputs, a.aggregate_first_row_grains, parents, environment
