@@ -1844,8 +1844,15 @@ def function_args_to_output_purpose(args, environment: Environment) -> Purpose:
     return Purpose.PROPERTY
 
 
-def auto_derived_function(parent: Concept, suffix: str) -> FunctionType | None:
-    """The single-arg function `parent.suffix` dot access resolves to, if any."""
+def try_create_auto_derived(
+    parent: Concept, suffix: str, environment: Environment
+) -> Concept | None:
+    """Try to create a derived concept from a parent and suffix.
+
+    If the suffix matches a single-arg function valid for the parent's
+    datatype, returns the derived Concept. Otherwise returns None."""
+    from trilogy.core.models.author import Grain
+
     try:
         ftype = FunctionType(suffix)
     except ValueError:
@@ -1862,21 +1869,6 @@ def auto_derived_function(parent: Concept, suffix: str) -> FunctionType | None:
             return None
     elif isinstance(valid, set) and parent_dt not in valid:
         return None
-    return ftype
-
-
-def try_create_auto_derived(
-    parent: Concept, suffix: str, environment: Environment
-) -> Concept | None:
-    """Try to create a derived concept from a parent and suffix.
-
-    If the suffix matches a single-arg function valid for the parent's
-    datatype, returns the derived Concept. Otherwise returns None."""
-    from trilogy.core.models.author import Grain
-
-    ftype = auto_derived_function(parent, suffix)
-    if ftype is None:
-        return None
 
     func = FunctionFactory(environment).create_function(args=[parent], operator=ftype)
 
@@ -1891,18 +1883,6 @@ def try_create_auto_derived(
             keys=set(),
         )
 
-    if parent.purpose == Purpose.METRIC:
-        # a row op over a metric (`id.count.abs`) stays at the metric's grain;
-        # keyed on the metric it would join the grain the metric groups to
-        return Concept(
-            name=f"{parent.name}.{suffix}",
-            datatype=func.output_datatype,
-            purpose=Purpose.METRIC,
-            lineage=func,
-            grain=parent.grain,
-            namespace=parent.namespace,
-            keys=set(parent.keys or ()),
-        )
     purpose = (
         Purpose.CONSTANT
         if parent.purpose == Purpose.CONSTANT

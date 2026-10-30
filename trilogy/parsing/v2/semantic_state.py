@@ -425,10 +425,7 @@ class ConceptLookup:
         if "." not in address:
             return None
         parent_address, suffix = address.rsplit(".", 1)
-        # chained access (`id.abs.hash`) derives each link in turn
-        parent = self._existing_concept(parent_address) or self._auto_derive(
-            parent_address
-        )
+        parent = self._existing_concept(parent_address)
         if parent is None:
             return None
 
