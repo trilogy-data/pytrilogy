@@ -10,7 +10,10 @@ The fixed datasets deliberately include:
 - nullable and required attributes, `is null`, `is not null`, and boolean `not`;
 - duplicate and null join keys plus side-exclusive key domains;
 - different many-to-many fanout ratios across two facts;
-- zero, negative, and repeated measures.
+- zero, negative, and repeated measures;
+- a fact with two independent keys (`group_id`, `site_id`), each with a coarser
+  attribute several of its keys share (`group_class`, sometimes null;
+  `site_zone`).
 
 The generated families cover scalar filters, grouped aggregates, WHERE/HAVING,
 nested and membership rowsets, filtered/statistical functions, ROLLUP/CUBE,
@@ -47,6 +50,17 @@ unfiltered and fannable. Grouping by `group_id` cannot expose that -- the
 summary binds that key itself, so the filter lands on the summary scan anyway --
 which is why the whole class went unexercised until a planner bug that inflated
 `count` past the table's own row count still passed 238/238.
+
+The `site_rollup` family aggregates over that two-key fact, each shape once over
+the raw rows and once beside a summary keyed (group, site) that it must roll up:
+one aggregate at several grains, grains built from both keys' attributes, a
+total beside per-class rows, windows ordered by a coarser aggregate, and nested
+and HAVING reads of a rolled value. A fact with one key cannot express these: a
+coarser aggregate beside finer rows needs a select at two keys, and an attribute
+unique per key folds "by class" into "by group". Its oracles read `events`,
+`groups` and `sites` only. It reaches wrong answers the single-key schema could
+not: a window ranking fact rows instead of its own, a total read off a summary
+at the select's grain, a partial deduplicated by value instead of re-summed.
 
 The `partition_cover` family reads a column only two `complete where` arms bind,
 so each case must first prove the pair covers the domain. The arms exhaust one

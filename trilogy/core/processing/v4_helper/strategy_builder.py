@@ -3916,10 +3916,20 @@ def _projection_root_concepts(
         # for such identifiers.
         if grain_components != {concept.address}:
             addresses.update(concept.keys or set())
+    # an aggregate is read at its own grain: a key finer than it (`site` under
+    # a sum by `zone`) would read a summary's rows un-rolled
+    rolled = [c for c in concepts if c.is_aggregate]
+    named = {c.address for c in concepts}
     return [
         c
         for address in sorted(addresses)
         if (c := _concept_at(environment, address)) is not None
+        and (
+            address in named
+            or not any(
+                finer_than_grain(c, r.grain, environment.concepts) for r in rolled
+            )
+        )
     ]
 
 

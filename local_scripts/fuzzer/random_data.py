@@ -22,7 +22,13 @@ def random_seed(seed: int, rows: int) -> SeedData:
     groups: list[Row] = []
     for index, group_id in enumerate(group_ids):
         nullable_name = None if index % 3 == seed % 3 else f"n{index}"
-        groups.append((group_id, f"group_{index}", nullable_name, f"R{index}"))
+        # shared by several groups, and null for some: a coarser grouping
+        group_class = None if index % 4 == 3 else f"c{index % 3}"
+        groups.append(
+            (group_id, f"group_{index}", nullable_name, f"R{index}", group_class)
+        )
+    site_ids = [f"s{index}" for index in range(rng.randint(3, 5))]
+    sites = tuple((sid, f"z{index % 2}") for index, sid in enumerate(site_ids))
 
     events: list[Row] = []
     for index in range(row_count):
@@ -30,13 +36,27 @@ def random_seed(seed: int, rows: int) -> SeedData:
         nullable_amount = None if rng.random() < 0.4 else rng.randint(-500, 500)
         active = rng.random() < 0.5
         events.append(
-            (index + 1, rng.choice(group_ids), amount, nullable_amount, active)
+            (
+                index + 1,
+                rng.choice(group_ids),
+                amount,
+                nullable_amount,
+                active,
+                rng.choice(site_ids),
+            )
         )
-    events[0] = (*events[0][:3], None, False)
-    events[1] = (*events[1][:3], rng.randint(-500, 500), True)
+    events[0] = (*events[0][:3], None, False, events[0][5])
+    events[1] = (*events[1][:3], rng.randint(-500, 500), True, events[1][5])
     duplicate_amount = nonzero_int(rng, -10_000, 10_000)
-    events[2] = (events[2][0], group_ids[1], duplicate_amount, events[2][3], True)
-    events[3] = (events[3][0], group_ids[1], duplicate_amount, events[3][3], True)
+    for index in (2, 3):
+        events[index] = (
+            events[index][0],
+            group_ids[1],
+            duplicate_amount,
+            events[index][3],
+            True,
+            site_ids[0],
+        )
 
     join_domain = rng.sample(range(-100, 101), 6)
     left_facts = keyed_rows(rng, row_count, join_domain, include_null=True)
@@ -83,12 +103,12 @@ def random_seed(seed: int, rows: int) -> SeedData:
         ),
         groups=TableData(
             "groups",
-            ("gid", "name", "nullable_name", "required_name"),
+            ("gid", "name", "nullable_name", "required_name", "class"),
             tuple(groups),
         ),
         events=TableData(
             "events",
-            ("eid", "gid", "amount", "nullable_amount", "active"),
+            ("eid", "gid", "amount", "nullable_amount", "active", "sid"),
             tuple(events),
         ),
         left_facts=TableData(
@@ -109,6 +129,7 @@ def random_seed(seed: int, rows: int) -> SeedData:
         sales=TableData("sales", ("id", "gid", "amount"), sales),
         returns=TableData("returns", ("id", "gid", "amount"), returns),
         visits=TableData("visits", ("id", "gid", "amount", "slot"), visits),
+        sites=TableData("sites", ("sid", "zone"), sites),
     )
 
 
