@@ -4376,11 +4376,9 @@ def _join_elected_bridges(
     `select id, min(x) by id, min(y) by cell` leaves two aggregates, one keyed
     on `id` and one on `cell`: the row stream holding both keys bridges them.
 
-    A bridge pairs a member on whatever they share, which must identify one
-    side's rows (`_key_bridged_members`): a species bucket projected off tree
-    rows, bridged back to those rows on `species`, multiplies both. A bridge
-    that no longer joins two islands as built (a member widened to its key
-    pairs directly) is not joined."""
+    The plan elects only bridges whose every pairing is keyed. A bridge that
+    no longer joins two islands as built (a member widened to its key pairs
+    directly) is not joined."""
     if len(parents) < 2:
         return parents
     parents = list(parents)
@@ -4405,106 +4403,9 @@ def _join_elected_bridges(
         ]
         if len(touched) < 2:
             continue
-        if not _key_bridged_members(parents, outputs, bridge, exposed, environment):
-            break
-        if len(_pairing_islands(outputs)) < 2:
-            continue
         parents.append(bridge)
         outputs.append(exposed)
     return parents
-
-
-def _keyed_by(
-    node: StrategyNode, shared: set[str], environment: BuildEnvironment
-) -> bool:
-    """`shared` identifies `node`'s rows: it holds or determines every key of
-    the grain the node resolves to. A node claiming no grain (one row, or
-    nothing known) is taken as keyed, as the merge always has."""
-    return all(
-        key in shared
-        or build_fd_determines(environment, shared, key, include_empty_grain=False)
-        for key in node.resolve().grain.components
-    )
-
-
-def _pair_is_keyed(
-    member: StrategyNode,
-    bridge: StrategyNode,
-    shared: set[str],
-    environment: BuildEnvironment,
-) -> bool:
-    # an authored axis (`subset join a.k = b.k`) is the pairing the
-    # statement asked for, whatever it keys
-    return (
-        any(shared & relation for relation in environment.scoped_join_relations())
-        or _keyed_by(member, shared, environment)
-        or _keyed_by(bridge, shared, environment)
-    )
-
-
-def _key_bridged_members(
-    parents: list[StrategyNode],
-    outputs: list[set[str]],
-    bridge: StrategyNode,
-    bridge_pairing: set[str],
-    environment: BuildEnvironment,
-) -> bool:
-    """Make every member the bridge pairs with pair on a key of one side.
-
-    Shared columns that identify neither side's rows multiply both. Repair, in
-    order: widen the member with the bridge's grain keys when its own parents
-    render them (the pair becomes a row-identity lookup); else dedupe the
-    member to the shared columns when they determine everything it renders;
-    else refuse the bridge, and the keyless-join guard names the gap rather
-    than the merge fanning out silently. Edits `parents` and `outputs` in
-    place."""
-    bridge_keys = set(bridge.resolve().grain.components)
-    key_concepts = [c for c in bridge.output_concepts if c.address in bridge_keys]
-    for idx, member in enumerate(parents):
-        shared = outputs[idx] & bridge_pairing
-        if not shared or _pair_is_keyed(member, bridge, shared, environment):
-            continue
-        if (
-            len(key_concepts) == len(bridge_keys)
-            and isinstance(member, _WIDENABLE_PROJECTIONS)
-            and not member.force_group
-        ):
-            available = parent_output_addresses(member)
-            # a key the member would hold partial where the bridge holds it
-            # complete is no repair (read off a declared-subset member)
-            partial_on_member = {
-                c.address
-                for c in get_all_parent_partial(
-                    key_concepts, member.parents, environment
-                )
-            } - {c.address for c in bridge.partial_concepts}
-            if not partial_on_member and all(
-                concept_satisfiable(c, available) for c in key_concepts
-            ):
-                widen_projection(
-                    member,
-                    key_concepts,
-                    input_candidates=key_concepts,
-                    available_addresses=available,
-                )
-                outputs[idx] = _pairing_addresses(member, environment)
-                continue
-        if isinstance(member, SelectNode) and all(
-            c.address in shared
-            or build_fd_determines(
-                environment, shared, c.address, include_empty_grain=False
-            )
-            for c in member.output_concepts
-        ):
-            parents[idx] = GroupNode(
-                output_concepts=list(member.output_concepts),
-                input_concepts=list(member.output_concepts),
-                environment=environment,
-                parents=[member],
-            )
-            continue
-        return False
-    return True
 
 
 def _bridge_candidates(

@@ -891,28 +891,26 @@ def elect_bridges(
     current = plan(extras=bridges)
     while len(current.islands()) > 1:
         islands = len(current.islands())
-        joining = [
-            (gid, trial)
-            for gid in candidates
-            if gid not in cover
-            and gid not in bridges
-            and len((trial := plan(extras=[*bridges, gid])).islands()) < islands
-        ]
-        if not joining:
-            return current
-        # a bridge every pairing of which is keyed first: shared columns that
-        # identify neither side multiply both
-        gid, current = next(
+        # a bridge every pairing of which is keyed: shared columns that
+        # identify neither side multiply both, so none is elected and the
+        # keyless-join guard names the gap
+        elected = next(
             (
                 (gid, trial)
-                for gid, trial in joining
-                if all(
+                for gid in candidates
+                if gid not in cover
+                and gid not in bridges
+                and len((trial := plan(extras=[*bridges, gid])).islands()) < islands
+                and all(
                     p.kind != PairingKind.BLEND
                     for p in trial.pairings
                     if gid in (p.left, p.right)
                 )
             ),
-            joining[0],
+            None,
         )
+        if elected is None:
+            return current
+        gid, current = elected
         bridges.append(gid)
     return current
