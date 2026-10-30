@@ -44,6 +44,9 @@ def transform_date_part(part: str) -> str:
     part_upper = part.upper()
     if part_upper == "DAY_OF_WEEK":
         return "DAYOFWEEK"
+    # WEEK counts Sunday weeks from 0
+    if part_upper == "WEEK":
+        return "ISOWEEK"
     return part_upper
 
 
@@ -133,9 +136,9 @@ FUNCTION_MAP = {
         f"TIMESTAMP '{x}'" if x.tzinfo else f"DATETIME '{x}'"
     ),
     **SQL_STANDARD_EXTRACT,
-    # BigQuery's DAYOFWEEK returns 1 for Sunday, so it does not take the
-    # shared entry.
-    FunctionType.DAY_OF_WEEK: lambda x, types: f"EXTRACT(DAYOFWEEK from {x[0]})-1",
+    # DAYOFWEEK is 1 on Sunday, as on DuckDB
+    FunctionType.DAY_OF_WEEK: lambda x, types: f"EXTRACT(DAYOFWEEK from {x[0]})",
+    FunctionType.WEEK: lambda x, types: f"EXTRACT(ISOWEEK from {x[0]})",
     # math
     FunctionType.POWER: lambda x, types: f"POWER({x[0]}, {x[1]})",
     FunctionType.DIVIDE: lambda x, types: f"COALESCE(SAFE_DIVIDE({x[0]},{x[1]}),0)",

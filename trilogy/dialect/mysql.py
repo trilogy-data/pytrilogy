@@ -42,9 +42,35 @@ def date_interval(function: str, args: list[str]) -> str:
     return f"{function}({args[0]}, INTERVAL ({args[2]}) {grain})"
 
 
+TRUNCATED_FORMAT = {
+    DatePart.HOUR: "%Y-%m-%d %H:00:00",
+    DatePart.MINUTE: "%Y-%m-%d %H:%i:00",
+    DatePart.SECOND: "%Y-%m-%d %H:%i:%s",
+}
+
+
 def date_diff(first: str, second: str, part: str) -> str:
-    grain = DatePart(part).value.upper()
-    return f"TIMESTAMPDIFF({grain}, {first}, {second})"
+    """The part boundaries crossed, as DuckDB counts them; TIMESTAMPDIFF
+    counts whole elapsed units."""
+    grain = DatePart(part)
+    years = f"(YEAR({second}) - YEAR({first}))"
+    if grain == DatePart.YEAR:
+        return years
+    if grain == DatePart.QUARTER:
+        return f"({years} * 4 + QUARTER({second}) - QUARTER({first}))"
+    if grain == DatePart.MONTH:
+        return f"({years} * 12 + MONTH({second}) - MONTH({first}))"
+    if grain == DatePart.DAY:
+        return f"DATEDIFF({second}, {first})"
+    if grain == DatePart.WEEK:
+        return f"(DATEDIFF({second}, {first}) DIV 7)"
+    if grain in TRUNCATED_FORMAT:
+        fmt = TRUNCATED_FORMAT[grain]
+        return (
+            f"TIMESTAMPDIFF({grain.value.upper()}, DATE_FORMAT({first}, '{fmt}'),"
+            f" DATE_FORMAT({second}, '{fmt}'))"
+        )
+    raise NotImplementedError(f"Date diff not implemented for grain {grain}")
 
 
 def render_cast(args: list[str]) -> str:
@@ -98,8 +124,14 @@ FUNCTION_MAP = {
     FunctionType.DATE_PART: lambda x, types: (
         f"DAYOFWEEK({x[0]})"
         if DatePart(x[1]) == DatePart.DAY_OF_WEEK
-        else f"EXTRACT({DatePart(x[1]).value.upper()} FROM {x[0]})"
+        # mode 3 is the ISO week; EXTRACT(WEEK) counts Sunday weeks from 0
+        else (
+            f"WEEK({x[0]}, 3)"
+            if DatePart(x[1]) == DatePart.WEEK
+            else f"EXTRACT({DatePart(x[1]).value.upper()} FROM {x[0]})"
+        )
     ),
+    FunctionType.WEEK: lambda x, types: f"WEEK({x[0]}, 3)",
     FunctionType.DATE_DIFF: lambda x, types: date_diff(x[0], x[1], x[2]),
     FunctionType.DAY_OF_WEEK: lambda x, types: f"DAYOFWEEK({x[0]})",
     FunctionType.FORMAT_TIME: lambda x, types: f"DATE_FORMAT({x[0]}, {x[1]})",

@@ -654,6 +654,14 @@ def render_prior(args: list[str], types: list[Any]) -> str:
     )
 
 
+def render_true_divide(float_type: str, args: list[str], types: list) -> str:
+    """`/` on an engine that truncates an integer quotient: Trilogy's `/` is
+    true division, so the dividend is cast to a float first."""
+    if types and all(t.data_type in (DataType.INTEGER, DataType.BIGINT) for t in types):
+        return " / ".join([f"cast({args[0]} as {float_type})", *args[1:]])
+    return " / ".join(args)
+
+
 def render_unsupported(name: str) -> Callable[..., str]:
     def render(args: list[str], types: list) -> str:
         raise NotImplementedError(f"`{name}` is not supported by this dialect")

@@ -381,9 +381,12 @@ SQL_STANDARD_EXTRACT: dict[FunctionType, Callable[..., str]] = {
     FunctionType.QUARTER: lambda x, types: f"EXTRACT(QUARTER from {x[0]})",
 }
 
-SQL_STANDARD_EXTRACT_DAY_OF_WEEK: dict[FunctionType, Callable[..., str]] = {
-    FunctionType.DAY_OF_WEEK: lambda x, types: f"EXTRACT(DAYOFWEEK from {x[0]})",
-}
+
+# day_of_week is 1 on Sunday through 7 on Saturday, as on DuckDB; an ISO day
+# (1 on Monday through 7 on Sunday) shifts by one
+def sunday_first_from_iso(iso_day: str) -> str:
+    return f"({iso_day} % 7 + 1)"
+
 
 # Native CONCAT propagates NULL; wrap each argument to match trilogy's
 # null-skipping semantics.

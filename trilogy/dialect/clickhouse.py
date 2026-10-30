@@ -4,7 +4,16 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from trilogy.core.enums import FunctionType, UnnestMode
 from trilogy.core.models.core import DataType, MapWrapper
 from trilogy.dialect.base import BaseDialect, array_element_type, is_array_arg
-from trilogy.dialect.common import CONCAT_COALESCE_LOWER
+from trilogy.dialect.common import CONCAT_COALESCE_LOWER, sunday_first_from_iso
+
+
+def date_part(expr: str, part: str) -> str:
+    if part == "day_of_week":
+        return sunday_first_from_iso(f"toDayOfWeek({expr})")
+    if part == "week":
+        return f"toISOWeek({expr})"
+    return f"EXTRACT({part} FROM {expr})"
+
 
 if TYPE_CHECKING:
     from trilogy.core.models.execute import CTE, UnionCTE
@@ -98,7 +107,9 @@ FUNCTION_MAP = {
     FunctionType.MINUTE: lambda x, types: f"toMinute({x[0]})",
     FunctionType.HOUR: lambda x, types: f"toHour({x[0]})",
     FunctionType.DAY: lambda x, types: f"toDayOfMonth({x[0]})",
-    FunctionType.DAY_OF_WEEK: lambda x, types: f"toDayOfWeek({x[0]})",
+    FunctionType.DAY_OF_WEEK: lambda x, types: sunday_first_from_iso(
+        f"toDayOfWeek({x[0]})"
+    ),
     FunctionType.MONTH: lambda x, types: f"toMonth({x[0]})",
     FunctionType.QUARTER: lambda x, types: f"toQuarter({x[0]})",
     FunctionType.YEAR: lambda x, types: f"toYear({x[0]})",
@@ -109,12 +120,11 @@ FUNCTION_MAP = {
     # CH versions ≥25 alias dateAdd/date_add to `plus` (binary +) with a 3-arg
     # mismatch error. INTERVAL syntax is the portable form.
     FunctionType.DATE_TRUNCATE: lambda x, types: f"date_trunc('{x[1]}', {x[0]})",
-    FunctionType.DATE_PART: lambda x, types: f"EXTRACT({x[1]} FROM {x[0]})",
+    FunctionType.DATE_PART: lambda x, types: date_part(x[0], x[1]),
     FunctionType.DATE_ADD: lambda x, types: f"({x[0]} + INTERVAL ({x[2]}) {x[1]})",
     FunctionType.DATE_SUB: lambda x, types: f"({x[0]} - INTERVAL ({x[2]}) {x[1]})",
     FunctionType.DATE_DIFF: lambda x, types: f"dateDiff('{x[2]}', {x[0]}, {x[1]})",
-    # toWeek mode 1 = ISO (Mon-Sun); default mode 0 returns Sun-Sat with off-by-one
-    FunctionType.WEEK: lambda x, types: f"toWeek({x[0]}, 1)",
+    FunctionType.WEEK: lambda x, types: f"toISOWeek({x[0]})",
     # casts
     FunctionType.DATE: lambda x, types: f"toDate({x[0]})",
     FunctionType.DATETIME: lambda x, types: f"toDateTime64({x[0]}, 3)",

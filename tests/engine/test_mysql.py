@@ -111,7 +111,7 @@ def test_mysql_window_order_by_has_no_nulls_clause():
 
 def test_mysql_date_functions():
     assert date_diff("started_at", "ended_at", "day") == (
-        "TIMESTAMPDIFF(DAY, started_at, ended_at)"
+        "DATEDIFF(ended_at, started_at)"
     )
     assert date_truncate("created_at", "month") == (
         "TIMESTAMP(DATE_FORMAT(created_at, '%Y-%m-01 00:00:00'))"

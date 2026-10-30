@@ -95,6 +95,7 @@ _INTEGER_DATE_PART_TRAITS = {
     "minute",
     "second",
     "day_of_week",
+    "day_of_week_zero_index",
 }
 
 

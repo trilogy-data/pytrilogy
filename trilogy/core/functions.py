@@ -111,13 +111,24 @@ def get_coalesce_output_type(args: list[Any]) -> CONCRETE_TYPES:
 
 def get_avg_output_type(args: list[Any]) -> CONCRETE_TYPES:
     """AVG of an integer input is fractional — SQL engines return a double —
-    so integer families promote to FLOAT. Fractional inputs (float, numeric)
+    so integer families promote to DOUBLE. Fractional inputs (float, numeric)
     keep their type, matching how engines average decimals."""
     base = arg_to_datatype(args[0])
     unwrapped = base.type if isinstance(base, TraitDataType) else base
     if unwrapped in (DataType.INTEGER, DataType.BIGINT):
-        return DataType.FLOAT
+        return DataType.DOUBLE
     return base
+
+
+def get_divide_output_type(args: list[Any]) -> CONCRETE_TYPES:
+    """`/` is true division, so a quotient of integers is the DOUBLE engines
+    compute; engines that truncate cast an operand
+    (`BaseDialect.INTEGER_DIVISION_TRUNCATES`)."""
+    types = [arg_to_datatype(x) for x in args]
+    bases = {x.type if isinstance(x, TraitDataType) else x for x in types}
+    if bases <= {DataType.INTEGER, DataType.BIGINT}:
+        return DataType.DOUBLE
+    return merge_datatypes(types)
 
 
 # Functions whose result can leave the input's declared value domain: the sum
@@ -1044,6 +1055,7 @@ FUNCTION_REGISTRY: dict[FunctionType, FunctionConfig] = {
     FunctionType.DIVIDE: FunctionConfig(
         valid_inputs=NUMERIC_INPUT_TYPES,
         output_purpose=Purpose.PROPERTY,
+        output_type_function=get_divide_output_type,
         arg_count=InfiniteFunctionArgs,
     ),
     FunctionType.BIT_AND: FunctionConfig(

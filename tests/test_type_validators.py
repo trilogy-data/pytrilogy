@@ -829,7 +829,7 @@ def test_aggregates_drop_value_domain(backend: ParserBackend):
         at_bats = env.concepts["at_bats"].datatype
         assert at_bats is DataType.BIGINT
         assert not isinstance(at_bats, ValidatedType)
-        assert env.concepts["mean_ab"].datatype is DataType.FLOAT
+        assert env.concepts["mean_ab"].datatype is DataType.DOUBLE
         Environment().parse(
             prelude + "select sum(ab) as at_bats having at_bats > 20000;"
         )
