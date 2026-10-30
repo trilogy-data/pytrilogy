@@ -29,7 +29,7 @@ a design decision or a bug.
 | `Rows.lean` | distinct tuples, grain | keyed rowset keeps rows, filter pushdown through a rowset, `distinct = group`, FD extension, window = `by`, sibling aggregates |
 | `Domain.lean` | `~` padding, grain pin | materialization invariance, pin vs stored column, pin is projection-invariant, `sum(coalesce)` |
 | `Sourcing.lean` | `complete where` arms, partition unions, the cell checker | a partition family unions back to the table (split, point, bool, `is null` arm, NULL-rejecting gate, a redundant copy of an arm), an arm answers under an implying WHERE, summary table = computed aggregate |
-| `Rollup.lean` | a summary re-aggregated to a coarser grain under a WHERE; a query's own GROUP BY re-aggregated to its coarser grains | `sum`, `count`, `min` and `max` (so `bool_and`/`bool_or`) roll up exactly under any filter and target their grain determines, the grand total's no-row guard, a re-aggregated partial is itself a partial (so a chain of grains reads the rows once), a finer filter, a fanned-out partial's re-sum, `count_distinct` and `avg` cannot (checked by `tests/discovery/test_rollup_resolution_laws.py`) |
+| `Rollup.lean` | a summary re-aggregated to a coarser grain under a WHERE; a query's own GROUP BY re-aggregated to its coarser grains | `sum`, `count`, `min` and `max` (so `bool_and`/`bool_or`) roll up exactly under any filter and target their grain determines, the grand total's no-row guard, a re-aggregated partial is itself a partial (so a chain of grains reads the rows once), a finer filter, a fanned-out partial's re-sum, `count_distinct` and `avg` cannot, but `avg` is the guarded quotient of a stored `sum` and `count`, and a stored column answers only an aggregate of its own argument (checked by `tests/discovery/test_rollup_resolution_laws.py`) |
 | `Assert.lean` | datasource `assert` / `prior(...)` build checks: the outer join of the two sides, the edge rules, substitution into the constant check | the check is the documented rule on every group of either side, given every name substituted, exact literals and a driver-independent TRUE; a vanished group fails, a NULL key matches by identity (checked by `tests/execution/test_assertion_laws.py`) |
 | `Functions.lean` | scalar functions as rendered per dialect: `/`, casts to an integer, `date_diff`, `week`, `day_of_week` | true division (a materialized quotient reads back), a cast is `round`, `date_diff` counts boundaries so it adds along a chain, `week` is ISO and `day_of_week` is 1 on Sunday on every dialect (checked by `tests/core/test_function_laws.py` on DuckDB and SQLite) |
 | `Freshness.lean` | watermarks, the stale verdict, the incremental refresh | verdict = refresh has a row to write, incremental = rebuild under strict arrivals (checked by `tests/execution/state/test_freshness_laws.py`, not the query fuzzer) |
@@ -277,6 +277,32 @@ a design decision or a bug.
   meant for one grain was applied at another: a rolled root bundled with the
   select's scan, a rollup inherited past the node that had already finished
   it, and a re-sourced root that projected its finer filter column.
+
+- **A summary answered `sum(x * 2)` with its `sum(x)`, and split a group an
+  expression read.** `avg` does not re-aggregate, but it is the quotient of
+  two aggregates that do: `Rollup.avg_of_parts_exact` proves
+  `case when count = 0 then null else sum / count end` over a summary's
+  re-summed `sum(x)` and `count(x)` is the filtered `AVG` of the base rows,
+  the all-NULL group included. The guard is needed because BigQuery and
+  Snowflake read `NULL / 0` as 0 (`Rollup.unguarded_quotient_zero_fills`).
+  The planner now builds `avg(x)` as that quotient whenever a datasource
+  stores both parts, so a summary answers it at any grain it answers `sum` at.
+  Before, `avg` always read the row-level tables. Extending the law matrix to
+  `avg`, and to expressions over each rollable aggregate, found two silent
+  wrong answers on main:
+  - the signature that matches a query aggregate to a stored column named the
+    columns its argument reads, not the argument. A summary's `sum(height)`
+    answered `sum(height * 2)`, `min(0 - height)` and `max(height + 100)`, and
+    a query's own `sum(height)` partial answered `sum(height * 2) by city`
+    with no summary in scope (`Rollup.stored_column_answers_its_own_argument`).
+    The signature now identifies each argument whole.
+  - a summary scan grouped to a derived grain's inputs (`case when species =
+    'Acer' then 'b' else 'o' end` keeps `species`) holds one partial per input
+    value. A node that read the partial into an expression, as in
+    `sum(height) + 1`, dropped the pending re-sum, so the `'o'` group came
+    back once per species (`Rollup.unsummed_partial_splits_a_group`). A node
+    now carries the re-sum of every partial it reads, not only those it
+    outputs.
 
 - **A build check judged a group by another group's values, and by values it
   had rounded.** An `assert` is checked by substituting each group's values
