@@ -1,5 +1,6 @@
 """Format command for Trilogy CLI."""
 
+import multiprocessing
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path as PathLib
@@ -72,7 +73,10 @@ def fmt(ctx, input) -> None:
                 # originals (no writes yet, so the parser never reads a
                 # mid-write file), then commit writes serially after every
                 # worker has produced output.
-                with ProcessPoolExecutor() as executor:
+                # spawn, not fork: a fork of a threaded caller (DuckDB, a test
+                # runner) can deadlock or die in the child.
+                spawn = multiprocessing.get_context("spawn")
+                with ProcessPoolExecutor(mp_context=spawn) as executor:
                     futures = {executor.submit(render_file, f): f for f in files}
                     for future in as_completed(futures):
                         file_path, formatted, query_count, error = future.result()
