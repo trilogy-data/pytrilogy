@@ -321,12 +321,13 @@ nothing); a side the plan never elected is a planner bug. Per-group merges
 take their bridge candidates from the same election over their row parents,
 reading the consumer's preserve keys as asks, not columns a side holds (a
 dimension peel is never widened to its sibling dimension's key, query64).
-Among the candidates that join islands, one whose every pairing is keyed is
-preferred (a filter pairing an aggregate on its value multiplies both).
-Stage 3 joins the elected bridges in the plan's order, each widened to
-the keys the plan pairs it on (`_join_elected_bridges`); it still checks
-built connectivity and repairs a member's pairing (`_key_bridged_members`),
-but no longer searches built nodes for a bridge. Over all of `tests/` the
+Only a candidate whose every pairing is keyed is elected (a filter pairing
+an aggregate on its value multiplies both); with none, the plan stays
+islanded and the keyless-join guard names the gap. Stage 3 joins the
+elected bridges in the plan's order, each widened to the keys the plan pairs
+it on (`_join_elected_bridges`), skipping one that no longer joins two
+islands as built; it neither searches built nodes for a bridge nor repairs
+a member's pairing. Over all of `tests/` the
 search had added exactly the elected bridges at 442 of 454 islanded merges;
 the other 9 were an elected condition-phase basic whose rows hold the key it
 bridges on but whose built node did not project it (an OR of gates by
@@ -500,11 +501,41 @@ statements that differ are column order that follows the hash seed (the
 `test_grain_check_exact` validation query; `test_gcat::test_environment`), a
 temp-table hash and a test skipped on one side. 0 of 205 corpus plans moved.
 
-**Open.** What still reads built nodes is physical: the fold's widen and the
-region domain's rename projection act on built nodes, `_key_bridged_members`
-checks built connectivity and repairs a member in place, and the
-unreadable-inline guard (`_raise_if_inlined_input_is_unreadable`) checks the
-built parents of an aggregate.
+**One arm_local rule.** A ROOT's scan verdict at stage 2 reads `arm_local`
+as its build does (`_arm_local`): off the plan before any fold, or'd with
+`arms_delivered`. The stage-2 rule had read the partly folded copy and
+dropped `arms_delivered`; the graphs agreed everywhere, the flag did not.
+Over 657 scan verdicts the flag moved and the verdict never did.
+
+**The unreadable-inline guard, at stage 2.** `_inlined_groups` raises when an
+aggregate's planned inputs don't render a member folded into it, or a
+planned condition-phase twin before it computes one. The built check beside
+it flagged nothing over 8,273 aggregate builds and is gone.
+
+**Keyed bridges, at stage 2.** `_key_bridged_members` checked each member
+the bridge paired with on stage-3 grains and repaired an unkeyed pair in
+place (widen the member to the bridge key, dedupe it, or refuse). Over all
+of `tests/` the repairs fired only in their own three unit tests, on
+hand-built nodes, and `elect_bridges` fell back to an unkeyed (BLEND) bridge
+at 0 of 307 elections. The election is now keyed only and the repairs are
+deleted.
+
+Measured: SQL capture over `tests/modeling`, `tests/engine`, `tests/complex`,
+`tests/discovery` and `tests/core` against part 9 moved no plan (hash-seed
+column order, a temp-table hash, a test whose statement count varies run to
+run); 0 of 205 corpus plans moved.
+
+**Open.** What still edits built nodes, both live:
+
+- the fold's widen (`_project_basic_aggregate_inputs`): 187 widens over
+  `tests/`, 130 on a merge and 57 on a scan beside a region domain. It
+  widens on what the built parent can render (`renderable_addresses`);
+  stating it at stage 2 means the parent's build renders the inlined inputs.
+- the region domain's rename projection (`_add_region_domain_contributors`):
+  12 statements (region and fuzzer-regression suites), each a rename of a
+  domain member moved onto the domain and hidden on its other host. The
+  renames come from the FINAL cover, which is elected after the build, so
+  moving it means electing the cover's renames before the domain is built.
 
 ## 8. Not claimed
 
