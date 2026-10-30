@@ -346,3 +346,108 @@ MIXED_GRAINS_SERVED = {"nested_total_beside_inner", "share_of_city"}
 @pytest.mark.parametrize("name", sorted(MIXED_GRAINS))
 def test_aggregate_keeps_its_own_grain_beside_summary(name: str):
     _assert_same_answer(MIXED_GRAINS[name], served=name in MIXED_GRAINS_SERVED)
+
+
+# A window is evaluated once per tuple of its grain (content, partition and the
+# ordering aggregate's grain) and joined to the select's rows. The aggregate it
+# orders by is a value at its own grain: never repeated once per base row, never
+# read off a finer summary row without re-aggregating.
+WINDOW_SELECTS = {"city_species": ["city", "species"], "species": ["species"]}
+WINDOW_BYS = {
+    "unscoped": None,
+    "species": ["species"],
+    "city": ["city"],
+    "form": ["tree_form"],
+    "total": [],
+}
+WINDOW_PARTITIONS = {"none": [], "city": ["city"]}
+WINDOW_FILTERS = ["none", "city", "form", "empty"]
+
+
+def _window_cases() -> list[tuple[str, ...]]:
+    return [
+        (window, select, by, partition, where, aggregate)
+        for window, select, by, partition, where, aggregate in itertools.product(
+            ["rank", "lag"],
+            WINDOW_SELECTS,
+            WINDOW_BYS,
+            WINDOW_PARTITIONS,
+            WINDOW_FILTERS,
+            AGGREGATES,
+        )
+        if {*WINDOW_PARTITIONS[partition], *(WINDOW_BYS[by] or [])}
+        <= {*WINDOW_SELECTS[select], "tree_form"}
+    ]
+
+
+def _window_grain(partition: list[str], by: list[str]) -> list[str]:
+    return list(dict.fromkeys(["species", *partition, *by]))
+
+
+def _window_call(
+    window: str, content: str, partition: list[str], order: str, ties: list[str]
+) -> str:
+    over = f"partition by {', '.join(partition)} " if partition else ""
+    if window == "rank":
+        return f"rank({content}) over ({over}order by {order} desc)"
+    tiebreak = ", ".join(f"{c} asc" for c in ties if not c.endswith("tree_form"))
+    return f"lag({content}) over ({over}order by {order} desc, {tiebreak})"
+
+
+def _window_oracle(
+    window: str,
+    keys: list[str],
+    by: list[str],
+    partition: list[str],
+    expression: str,
+    where: str | None,
+) -> list[tuple]:
+    grain = _window_grain(partition, by)
+    call = _window_call(
+        window,
+        "" if window == "rank" else "r.species",
+        [f"r.{c}" for c in partition],
+        "a.a",
+        [f"r.{c}" for c in grain],
+    )
+    by_match = " and ".join(f"r.{c} is not distinct from a.{c}" for c in by)
+    key_match = " and ".join(f"s.{c} = w.{c}" for c in keys if c in grain)
+    sql = (
+        f"with base as (select * from ({TREES}) t left join ({ENRICHMENT}) e"
+        f" using (species){f' where {where}' if where else ''}),"
+        f" r as (select distinct {', '.join(grain)} from base),"
+        f" a as (select {', '.join([*by, f'{expression} as a'])} from base"
+        f"{' group by all' if by else ''}),"
+        f" w as (select r.*, {call} as w from r join a on {by_match or 'true'}),"
+        f" s as (select distinct {', '.join(keys)} from base)"
+        f" select {', '.join(f's.{k}' for k in keys)}, w.w from s join w on {key_match}"
+    )
+    executor = Dialects.DUCK_DB.default_executor()
+    return sorted(
+        (tuple(r) for r in executor.execute_raw_sql(sql).fetchall()), key=repr
+    )
+
+
+@pytest.mark.parametrize("window,select,by,partition,where,aggregate", _window_cases())
+def test_window_orders_by_aggregate_at_its_own_grain(
+    window: str, select: str, by: str, partition: str, where: str, aggregate: str
+):
+    keys = WINDOW_SELECTS[select]
+    scoped = WINDOW_BYS[by]
+    over = WINDOW_PARTITIONS[partition]
+    condition = FILTERS[where]
+    expression = AGGREGATES[aggregate].removesuffix(" as v")
+    inner = (
+        expression if scoped is None else f"{expression} by {', '.join(scoped) or '*'}"
+    )
+    # an unscoped aggregate under a window is at the window content's grain
+    by_keys = ["species"] if scoped is None else scoped
+    call = _window_call(window, "species", over, inner, _window_grain(over, by_keys))
+    query = (
+        f"select {', '.join(keys)}, {call} as w"
+        f"{f' where {condition}' if condition else ''};"
+    )
+    expected = _window_oracle(window, keys, by_keys, over, expression, condition)
+    for model in (BASE, BASE + SUMMARY):
+        sql, rows = _run(model, query)
+        assert sorted(rows, key=repr) == expected, sql
