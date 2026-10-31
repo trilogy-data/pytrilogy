@@ -120,3 +120,102 @@ def test_filter_reads_the_complete_where_source(query: str, expected: list[tuple
     assert '"trees_a"' in sql, sql
     assert 'as "trees"' not in sql, sql
     assert [tuple(r) for r in executor.execute_raw_sql(sql).fetchall()] == expected
+
+
+MERGED_SPECIES = """
+property tree_id.raw_species string;
+auto merged_species <- coalesce(raw_species, 'x');
+merge merged_species into species;
+
+datasource raw (tree_id: tree_id, raw_species: raw_species)
+grain (tree_id)
+query '''select 't1' as tree_id, 'oak' as raw_species
+union all select 't2', 'pine'
+union all select 't3', 'elm'
+union all select 'b1', 'elm' ''';
+"""
+
+
+@pytest.mark.parametrize("extra", ["", MERGED_SPECIES], ids=["species", "merged"])
+@pytest.mark.parametrize(
+    "query, expected",
+    [
+        (
+            "select upper(species) as s, native_ecoregions where city = 'A' and bucket = 'Other';",
+            [("ELM", [3])],
+        ),
+        (
+            "select upper(species) as s, native_ecoregions where city = 'A' and bucket = 'Same' order by s;",
+            [("OAK", [1, 2]), ("PINE", [2])],
+        ),
+        (
+            "select upper(species) as s where city = 'A' and bucket = 'Same' order by s;",
+            [("OAK",), ("PINE",)],
+        ),
+    ],
+)
+def test_pinned_filter_beside_species_grain_outputs(
+    query: str, expected: list[tuple], extra: str
+):
+    """A merged unnest axis does not split `city` (a key bound beside the rows,
+    on no side of the merge) off the row stream: sourced alone, it met the
+    pinned value on nothing."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(MODEL + extra)
+    sql = executor.generate_sql(query)[-1]
+    assert "on 1=1" not in sql, sql
+    assert [tuple(r) for r in executor.execute_raw_sql(sql).fetchall()] == expected
+
+
+PADDED_SPECIES = (
+    MODEL.replace(
+        "union all select 't3', 'A', 'elm', 3.0'''",
+        "union all select 't3', 'A', 'elm', 3.0\nunion all select 't4', 'A', 'ash', 4.0'''",
+    )
+    .replace(
+        "union all select 'b1', 'B', 'elm', 9.0'''",
+        "union all select 'b1', 'B', 'elm', 9.0\nunion all select 't4', 'A', 'ash', 4.0'''",
+    )
+    .replace(
+        "union all select 'elm', [3]'''",
+        "union all select 'elm', [3]\nunion all select 'ash', []::int[]'''",
+    )
+)
+
+
+@pytest.mark.parametrize(
+    "query, expected",
+    [
+        (
+            "select species, bucket where city = 'A' order by species, bucket;",
+            [
+                ("ash", "Other"),
+                ("elm", "Other"),
+                ("oak", "Native"),
+                ("oak", "Same"),
+                ("pine", "Same"),
+            ],
+        ),
+        (
+            "select latitude where city = 'A' and bucket = 'Other' order by latitude;",
+            [(3.0,), (4.0,)],
+        ),
+        pytest.param(
+            "select upper(species) as s where city = 'A' and bucket = 'Other' order by s;",
+            [("ASH",), ("ELM",)],
+            marks=pytest.mark.xfail(
+                strict=True,
+                reason="a species-anchored pin is evaluated over the unnest's rows, "
+                "not the anchor's, so a species with no element is dropped",
+            ),
+        ),
+    ],
+)
+def test_pinned_filter_on_padded_species(query: str, expected: list[tuple]):
+    """`ash` has no native ecoregion: under the padding `trees_a` brings, its
+    pinned bucket is the ELSE branch, and the WHERE reads the value the
+    projection shows."""
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(PADDED_SPECIES)
+    sql = executor.generate_sql(query)[-1]
+    assert [tuple(r) for r in executor.execute_raw_sql(sql).fetchall()] == expected
