@@ -15,7 +15,7 @@ import logging
 from collections import Counter, defaultdict
 from collections.abc import Callable, Collection, Iterable, Iterator, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from dataclasses import replace as dc_replace
 from datetime import date, datetime
 from functools import partial
@@ -4458,6 +4458,18 @@ def _filter_arg_producers(
     }
 
 
+def _planned_side(built: dict[str, StrategyNode], gid: str) -> StrategyNode:
+    """The node of a side the FINAL plan elected. A FINAL-only group whose
+    outputs another group delivers may build nothing; electing it is a plan
+    that cannot be assembled."""
+    if (node := built.get(gid)) is None:
+        raise UnbuiltGroupException(
+            f"[v4] FINAL join plan elected group {gid}, which built nothing. "
+            "This is a planner bug."
+        )
+    return node
+
+
 def _filter_arg_parents(
     built: dict[str, StrategyNode], producers: dict[str, str]
 ) -> tuple[list[StrategyNode], list[BuildConcept]]:
@@ -4466,7 +4478,7 @@ def _filter_arg_parents(
     nodes: list[StrategyNode] = []
     concepts: list[BuildConcept] = []
     for addr, gid in producers.items():
-        supplier = built[gid]
+        supplier = _planned_side(built, gid)
         concept = next(o for o in supplier.output_concepts if o.address == addr)
         # The group is being pulled in PRECISELY to supply this column, so a
         # projection that hides it defeats the purpose: the FINAL merge reads
@@ -4503,10 +4515,15 @@ def _filter_arg_producer(
 @dataclass
 class _FinalExtras:
     """The groups the FINAL merge joins beside its sides to evaluate its
-    WHERE, by the address each is joined for."""
+    WHERE, by the address each is joined for, and the arguments a ROOT side
+    carries through its wrap instead."""
 
     arg_producers: dict[str, str]
     gate_hosts: dict[str, str]
+    carried: dict[str, str] = field(default_factory=dict)
+
+    def carried_by(self, gid: str) -> list[str]:
+        return [addr for addr, side in self.carried.items() if side == gid]
 
     @property
     def groups(self) -> list[str]:
@@ -4527,9 +4544,10 @@ def _final_extra_sides(
     """The groups the FINAL merge joins beside its sides to evaluate its WHERE:
     each filter-only argument's producer, and the row stream computing a gate
     key none of them renders (`count(id) by genus`, genus derived). A ROOT
-    contributor counts only its cover: its wrap may re-source it to that, and
-    the merge skips an argument a side still holds."""
+    contributor holds its cover, plus each argument it outputs that no other
+    side does: it carries that through its wrap rather than joining again."""
     sides = [*per_group, *bridges]
+    roots = [g for g in per_group if attrs[g].derivation == Derivation.ROOT]
     available = set().union(
         *(
             (
@@ -4543,6 +4561,10 @@ def _final_extra_sides(
     spans = frozenset().union(
         *(_group_region_reads(group_graph, attrs, gid) for gid in sides)
     )
+    carried = _filter_arg_producers(
+        group_graph, attrs, roots, filter_only_addrs - available, spans
+    )
+    available |= set(carried)
     extras = _FinalExtras(
         _filter_arg_producers(
             group_graph,
@@ -4552,6 +4574,7 @@ def _final_extra_sides(
             spans,
         ),
         {},
+        carried,
     )
     args = [c for addr in extras.arg_producers if (c := _concept_at(environment, addr))]
     for address in sorted(_gate_grain_keys(args) - available):
@@ -4980,6 +5003,7 @@ def _assemble_sole_contributor(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     built: dict[str, StrategyNode],
+    candidates: Sequence[str],
     environment: BuildEnvironment,
 ) -> StrategyNode:
     """FINAL when one group covers every output: that group's node, deduped
@@ -5027,7 +5051,7 @@ def _assemble_sole_contributor(
         feeder_nodes, _ = _filter_arg_parents(
             built,
             _filter_arg_producers(
-                group_graph, attrs, built, filter_only_addrs - sole_avail
+                group_graph, attrs, candidates, filter_only_addrs - sole_avail
             ),
         )
         feeder_outs = [{o.address for o in f.output_concepts} for f in feeder_nodes]
@@ -5121,6 +5145,7 @@ def _apply_final_conditions(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
     built: dict[str, StrategyNode],
+    candidates: Sequence[str],
     environment: BuildEnvironment,
     feeder_cache: "_CleanFeederCache | None",
 ) -> StrategyNode:
@@ -5140,7 +5165,7 @@ def _apply_final_conditions(
         _filter_arg_producers(
             group_graph,
             attrs,
-            built,
+            candidates,
             _region_paired_args(filter_only_addrs, avail, spans, environment),
             spans,
         ),
@@ -5343,6 +5368,7 @@ def _assemble_final_node(
         group_graph=group_graph,
         attrs=attrs,
         built=built,
+        candidates=cover.groups,
         environment=environment,
         feeder_cache=feeder_cache,
     )
@@ -5383,6 +5409,7 @@ def _assemble_final_node(
             group_graph,
             attrs,
             built,
+            cover.groups,
             environment,
         )
 
@@ -5442,7 +5469,7 @@ def _assemble_final_node(
         seen_group_concepts = {concept.address for concept in group_concepts}
         group_concepts.extend(
             c
-            for address in sorted(carry)
+            for address in sorted(carry | set(extras.carried_by(gid)))
             if (c := _concept_at(environment, address)) is not None
             and address not in seen_group_concepts
         )
@@ -5502,7 +5529,9 @@ def _assemble_final_node(
         {id(built[gid]) for gid in ownership.owner_by_span.values() if gid in built},
     )
     parents = _join_elected_bridges(
-        parents, [(built[gid], plan.keys_for(gid)) for gid in bridges], environment
+        parents,
+        [(_planned_side(built, gid), plan.keys_for(gid)) for gid in bridges],
+        environment,
     )
     parents = _pair_inside_padding_streams(parents, environment)
     _raise_if_rowset_islanded(parents, mandatory_list, environment, graph)
@@ -5594,8 +5623,8 @@ def _assemble_final_node(
         carried = {o.address for p in parents for o in p.output_concepts}
         for address in sorted(gate_keys - carried):
             host = extras.gate_hosts.get(address)
-            if host and built[host] not in parents:
-                parents = parents + [built[host]]
+            if host and (node := _planned_side(built, host)) not in parents:
+                parents = parents + [node]
     parents = parents + arg_nodes
     sides = side_groups(parents, origin)
     if unplanned := set(sides) - set(plan.contributors):

@@ -1,9 +1,15 @@
+import pytest
+
 from trilogy import Environment
 from trilogy.core import graph as nx
 from trilogy.core.enums import Derivation
+from trilogy.core.exceptions import UnbuiltGroupException
 from trilogy.core.processing.v4_helper.constants import FINAL_NODE_ID
 from trilogy.core.processing.v4_helper.models import DepthLabel, GroupAttrs
-from trilogy.core.processing.v4_helper.strategy_builder import _final_extra_sides
+from trilogy.core.processing.v4_helper.strategy_builder import (
+    _final_extra_sides,
+    _planned_side,
+)
 
 MODEL = """
 key tree_id string;
@@ -49,3 +55,37 @@ def test_gate_key_no_side_renders_is_joined_from_its_row_stream():
     assert extras.arg_producers == {"local.x_genus": "agg"}
     assert extras.gate_hosts == {"local.genus": "basic"}
     assert extras.groups == ["agg", "basic"]
+
+
+def test_root_side_carries_an_argument_it_outputs():
+    env = Environment()
+    env.parse(MODEL)
+    build = env.materialize_for_select()
+    graph = nx.DiGraph()
+    for gid in ("rows", "basic", FINAL_NODE_ID):
+        graph.add_node(gid)
+    attrs = {
+        "rows": _attrs(Derivation.ROOT, "local.tree_id", "local.raw_species"),
+        "basic": _attrs(Derivation.BASIC, "local.genus", "local.tree_id"),
+        FINAL_NODE_ID: _attrs(None),
+    }
+
+    extras = _final_extra_sides(
+        graph,
+        attrs,
+        ["rows", "basic"],
+        {"rows": [build.concepts["local.tree_id"]]},
+        [],
+        {"local.raw_species"},
+        build,
+    )
+
+    assert extras.carried == {"local.raw_species": "rows"}
+    assert extras.carried_by("rows") == ["local.raw_species"]
+    assert extras.arg_producers == {}
+    assert extras.groups == []
+
+
+def test_planned_side_that_built_nothing_raises():
+    with pytest.raises(UnbuiltGroupException, match="built nothing"):
+        _planned_side({}, "basic")
