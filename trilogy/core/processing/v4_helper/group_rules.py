@@ -632,7 +632,43 @@ def _relation_side_partitions(
         members = [item for item in main_items if item[0] in component]
         assigned.update(item[0] for item in members)
         partitions.append(members)
+    if not _relation_splits(partitions, relation_pairs, roots, lineage):
+        return [main_items]
     return partitions
+
+
+def _side_roots(node: str, roots: set[str], lineage: nx.DiGraph) -> set[str]:
+    if node in roots:
+        return {node}
+    return nx.ancestors(lineage, node) & roots if node in lineage else set()
+
+
+def _relation_splits(
+    partitions: list[list[NodeItem]],
+    relation_pairs: set[frozenset[str]],
+    roots: set[str],
+    lineage: nx.DiGraph,
+) -> bool:
+    """Whether the partitions are the sides of a relation: some relation reads
+    its two sides from different partitions, and every partition is a side of
+    one. A partition reading no side (a bare key output beside a merged axis,
+    `city` beside `unnest(...)` merged into `ecoregion_id`) is related to the
+    rows by its datasource, not by any edge, so sourcing it apart cross-joins
+    it; like a zero-reach root it keeps every root in one scan."""
+    separated = False
+    sided: set[int] = set()
+    for pair in relation_pairs:
+        left, right = (
+            {
+                i
+                for i, members in enumerate(partitions)
+                if any(node in sides for node, _ in members)
+            }
+            for sides in (_side_roots(node, roots, lineage) for node in pair)
+        )
+        separated |= left != right
+        sided |= left | right
+    return separated and len(sided) == len(partitions)
 
 
 def _rooted_on_both_sides(
