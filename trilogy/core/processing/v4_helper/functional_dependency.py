@@ -38,10 +38,14 @@ def concept_attr_fd_closure(
             # mirroring build_fd_closure, unless they only determine the value
             # conditionally, which is not an FD at all (see
             # `ConceptAttrs.keys_are_conditional_fd`).
-            if (attrs.grain_components and attrs.grain_components <= closure) or (
-                bool(attrs.keys)
-                and not attrs.keys_are_conditional_fd
-                and attrs.keys <= closure
+            if (
+                (attrs.grain_components and attrs.grain_components <= closure)
+                or (
+                    bool(attrs.keys)
+                    and not attrs.keys_are_conditional_fd
+                    and attrs.keys <= closure
+                )
+                or any(d <= closure for d in attrs.binding_determinants)
             ):
                 closure.add(attrs.address)
                 changed = True
