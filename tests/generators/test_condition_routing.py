@@ -685,3 +685,47 @@ def test_merge_dedup_keeps_parent_with_nested_condition():
     assert grouped_filtered.identifier in merged
     assert plain_parent.identifier in merged
     assert not removed
+
+
+def test_merge_dedup_keeps_complete_where_scan():
+    env = Environment()
+    env.parse(
+        """
+key tree_id int;
+property tree_id.city string;
+
+partial datasource trees_a (tree_id: tree_id, city: city)
+grain (tree_id)
+complete where city = 'A'
+address trees_a_table;
+
+datasource trees (tree_id: tree_id, city: city)
+grain (tree_id)
+address trees_table;
+""",
+        persist=True,
+    )
+    build_env = env.materialize_for_select()
+    tree_id = build_env.concepts["tree_id"]
+
+    def scan(name: str) -> QueryDatasource:
+        ds = build_env.datasources[name]
+        return QueryDatasource(
+            input_concepts=[tree_id],
+            output_concepts=[tree_id],
+            source_map={tree_id.address: {ds}},
+            datasources=[ds],
+            grain=BuildGrain.from_concepts([tree_id]),
+            joins=[],
+            source_type=SourceType.DIRECT_SELECT,
+        )
+
+    subset, full = scan("trees_a"), scan("trees")
+
+    _, merged, removed = deduplicate_nodes(
+        {subset.identifier: subset, full.identifier: full}, "", build_env
+    )
+
+    assert subset.identifier in merged
+    assert full.identifier in merged
+    assert not removed

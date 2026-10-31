@@ -517,7 +517,35 @@ def materialized_root_addresses(
         mandatory_list, rolled_roots, rollup_sources, target_grain, where, environment
     ):
         return frozenset(out)
-    return frozenset(out | rolled_roots)
+    pinned = bool(filter_finer_row_args(where, target_grain, environment.concepts))
+    return frozenset(
+        out
+        | rolled_roots
+        | _summary_bound_expressions(mandatory_list, rollup_sources, pinned)
+    )
+
+
+def _summary_bound_expressions(
+    mandatory_list: list[BuildConcept],
+    rollup_sources: list[BuildDatasource],
+    pinned: bool,
+) -> set[str]:
+    """Scalar demands a rollup's summary stores (`year(plant_date)` in its
+    grain) are read from it beside the rolled aggregate; rebuilt from the fact
+    rows they would join those rows back onto the summary and fan it out.
+    Only the pinned finer-filter scan binds a same-expression alias (`year(
+    plant_date) as y`) by canonical; elsewhere the column must be named."""
+    bound = {
+        c.canonical_address if pinned else c.address
+        for ds in rollup_sources
+        for c in ds.output_concepts
+    }
+    return {
+        c.address
+        for c in mandatory_list
+        if c.derivation == Derivation.BASIC
+        and (c.canonical_address if pinned else c.address) in bound
+    }
 
 
 def _keyed_grain(grain: BuildGrain, environment: BuildEnvironment) -> BuildGrain:
@@ -697,9 +725,28 @@ def _finer_filter_reaches_rollup(
         for c in reached
     ):
         return False
+    demands = [c for c in mandatory_list if c.address not in rolled_roots]
     return any(
-        _concepts_reachable(ds, leaves, environment.concepts) for ds in rollup_sources
+        _concepts_reachable(
+            ds, _summary_leaves(demands, rolled_roots, ds), environment.concepts
+        )
+        for ds in rollup_sources
     )
+
+
+def _summary_leaves(
+    demands: list[BuildConcept], rolled_roots: set[str], datasource: BuildDatasource
+) -> list[BuildConcept]:
+    """The columns `datasource` must supply for `demands`: a derived concept the
+    summary binds (`year(plant_date)` stored at its grain) is read, not rebuilt
+    from its finer inputs."""
+    bound = {c.canonical_address for c in datasource.output_concepts}
+    reached = walk_lineage(
+        demands,
+        descend=lambda c: c.address not in rolled_roots
+        and c.canonical_address not in bound,
+    )
+    return [c for c in reached if c.lineage is None or c.canonical_address in bound]
 
 
 def _build_from_graph(

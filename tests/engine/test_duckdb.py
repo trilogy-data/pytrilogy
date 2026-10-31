@@ -2592,6 +2592,28 @@ LIMIT 10;"""
     assert len(results) == 5
 
 
+@mark.parametrize(
+    "query, expected",
+    [
+        ("select 1 as one, --u;", [(1,), (1,), (1,)]),
+        ("select 1 as one, --unnest([1,2,3]) as v;", [(1,), (1,), (1,)]),
+        ("select arr, --u order by u desc limit 2;", [([1, 2, 3],), ([1, 2, 3],)]),
+        ("select --u, count(u)->c;", [(1,), (1,), (1,)]),
+    ],
+)
+def test_hidden_unnest_keeps_cardinality(query, expected):
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text("const arr <- [1,2,3]; auto u <- unnest(arr);")
+    assert executor.execute_text(query)[-1].fetchall() == expected
+
+
+def test_hidden_unnest_orders_by_hidden_column():
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text("const arr <- [3,1,2]; auto u <- unnest(arr);")
+    results = executor.execute_text("select u * 10 as t, --u order by u asc;")
+    assert results[-1].fetchall() == [(10,), (20,), (30,)]
+
+
 @mark.skip("Date spine not yet supported")
 def test_date_spine():
     executor = Dialects.DUCK_DB.default_executor()

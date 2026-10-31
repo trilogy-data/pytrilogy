@@ -1459,6 +1459,19 @@ class _InputPass:
     scoped_axis_mates: dict[str, frozenset[str]] | None
     solid: set[str]
     source_grain_of: dict[str, frozenset[str]]
+    pin_anchors: dict[str, frozenset[str]]
+
+
+def _final_pin_anchors(ctx: _InputPass) -> frozenset[str]:
+    """A pinned value is evaluated on the select's rows, keyed by its anchors
+    (`grain_pin`): FINAL pairs it with the row stream on them, so every group
+    feeding FINAL exposes the anchors it can."""
+    return frozenset().union(
+        *(
+            ctx.pin_anchors.get(gid, frozenset())
+            for gid in ctx.group_graph.predecessors(FINAL_NODE_ID)
+        )
+    )
 
 
 def _group_inputs(gid: str, ctx: _InputPass) -> None:
@@ -1513,6 +1526,7 @@ def _group_inputs(gid: str, ctx: _InputPass) -> None:
                 final_args_here &= fact.primary | fact.grain
             outs |= final_args_here
             outs |= cap_gid & region_join_keys
+            outs |= cap_gid & _final_pin_anchors(ctx)
             if gid in domain_gids:
                 outs |= cap_gid & final_gate_grains
             # a dim peel beside a region domain joins the region's rows
@@ -1759,6 +1773,16 @@ def _compute_concept_sets(
     topo = _topological_dependency_order(group_graph, group_edges)
     if topo is None:
         return
+    pin_anchors = {
+        gid: frozenset().union(
+            *(
+                concept_attrs[nid].grain_pin_anchors
+                for nid in bucket.primary_node_ids
+                if nid in concept_attrs
+            )
+        )
+        for gid, bucket in buckets.items()
+    }
 
     mate_accumulator: dict[str, set[str]] = {}
     for ca in concept_attrs.values():
@@ -1867,6 +1891,8 @@ def _compute_concept_sets(
                 if (
                     addr in grain_mates
                     or addr in hidden_spans
+                    # a pinned value is evaluated on its anchors' rows
+                    or addr in pin_anchors.get(gid, frozenset())
                     or fact.behavior.can_preserve(
                         concept_graph,
                         concept_edges,
@@ -1959,6 +1985,7 @@ def _compute_concept_sets(
         scoped_axis_mates=scoped_axis_mates,
         solid=solid,
         source_grain_of=source_grain_of,
+        pin_anchors=pin_anchors,
     )
     for gid in reversed(topo):
         _group_inputs(gid, ctx)

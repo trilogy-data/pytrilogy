@@ -76,7 +76,8 @@ def _has_applied_condition(source: QueryDatasource | BuildDatasource) -> bool:
         return bool(source.condition) or any(
             _has_applied_condition(parent) for parent in source.datasources
         )
-    return bool(source.where)
+    # a `complete where` binding holds only the rows its clause selects
+    return bool(source.where or source.non_partial_for)
 
 
 def _join_padded_addresses(
