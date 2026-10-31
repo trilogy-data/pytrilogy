@@ -145,6 +145,19 @@ MERGED_CASES = [
         [(s, "broadleaf", n) for s, n in SPECIES_COUNTS],
         id="spotlight",
     ),
+    pytest.param(
+        "select upper(species) as s, count(tree_id) as tree_count "
+        "where city = 'A' order by s;",
+        [("ACER RUBRUM", 2), ("QUERCUS ALBA", 1), ("TILIA CORDATA", 1)]
+        + [("ULMUS AMERICANA", 1)],
+        id="scalar_of_key",
+    ),
+    pytest.param(
+        "select split(species, ' ')[1] as genus_name, count(tree_id) as tree_count "
+        "order by tree_count desc, genus_name asc;",
+        [("Acer", 3), ("Quercus", 1), ("Tilia", 1), ("Ulmus", 1)],
+        id="genus_of_key",
+    ),
 ]
 
 

@@ -302,18 +302,18 @@ AVG_SERVED = {
         "select species, rank(species) over (order by avg(height) desc, species asc)"
         " as r where city = 'A' order by species;"
     ),
-}
-
-# Correct from the base rows: a filter below the summary's grain, an argument
-# with no stored parts, and shapes that decline for `sum` and `count` too.
-AVG_UNSERVABLE = {
-    "row_filter": "select species, avg(height) as v where tag = 'x' order by species;",
-    "no_parts": "select city, avg(height * 2) as v order by city;",
-    "max_of_avgs": "select max(avg(height) by species) as v where city = 'A';",
     "two_grains": (
         "select city, avg(height) as v, avg(height) by * as t where tree_form is not null"
         " order by city;"
     ),
+}
+
+# Correct from the base rows: a filter below the summary's grain, an argument
+# with no stored parts, and a shape that declines for `sum` and `count` too.
+AVG_UNSERVABLE = {
+    "row_filter": "select species, avg(height) as v where tag = 'x' order by species;",
+    "no_parts": "select city, avg(height * 2) as v order by city;",
+    "max_of_avgs": "select max(avg(height) by species) as v where city = 'A';",
 }
 
 
