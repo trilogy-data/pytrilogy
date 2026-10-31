@@ -589,26 +589,44 @@ Measured: SQL capture over the same five suites against part 12 moved no plan
 (only the `grain_check` hash-seed column order and `test_validate_fix_types`'
 statement count); 0 of 205 corpus plans moved.
 
+**The FINAL merge joins the plan's filter-argument producers.** The plan's
+extra sides record the group elected for each address (`_FinalExtras`), and
+the merge joins those groups instead of searching `built` again; the gate
+host comes from the same record. The merge still decides which arguments it
+needs from what its parents hold, because a ROOT contributor may or may not
+be re-sourced to its cover depending on the built node's grain
+(`_wrap_for_grain`). So the plan counts a ROOT contributor as holding only
+its cover, and the merge skips an argument a parent still holds. Over
+`tests/modeling`, `core`, `engine`, `complex` and `discovery` (3,438
+multi-contributor FINALs, 46 with filter arguments), every argument the merge
+needed had a planned producer, and it was the group the `built` search picked.
+The plan elected an extra producer at 5 FINALs where the ROOT kept the
+argument; the merge skips those. No gate host fired in those suites.
+
 **Open.**
 
-1. The FINAL merge re-decides, over `built`, what its plan already elected:
-   `_filter_arg_parents(…, built, …)` picks each filter-only argument's
-   producer and `_gate_key_row_stream(…, built)` the row stream for a gate
-   key, the same choices `_final_extra_sides` made over the planned groups.
-   The `unplanned` check after them only validates the agreement. Join the
-   plan's extras instead (and `_apply_final_conditions`, on the sole
-   contributor path, the same way).
-2. `grouping_sibling` reads `node_nulls_grouping_keys` off each built
+1. Which filter arguments the FINAL merge needs is still read off its built
+   parents: whether a ROOT contributor's wrap re-sources it away from an
+   argument depends on the built node's grain. Stating the wrap at stage 2
+   would let the plan say exactly what each side holds.
+2. The sole contributor path (`_assemble_sole_contributor`) and
+   `_apply_final_conditions` still pick filter-argument producers over
+   `built`.
+3. `grouping_sibling` reads `node_nulls_grouping_keys` off each built
    contributor; a grouping-sets group is a stage-2 fact.
-3. With no `per_group`, the FINAL takes `next(iter(built.values()))`: the
+4. With no `per_group`, the FINAL takes `next(iter(built.values()))`: the
    first group built, where the planned groups name it.
-4. A non-FINAL consumer's bridge candidates (`_bridge_candidates(…,
+5. A non-FINAL consumer's bridge candidates (`_bridge_candidates(…,
    ctx.unbuilt, gid)`) differ from the planned ones only where the plan
    raises (above).
-5. The fold widen still projects the aggregate's merge after
+6. The fold widen still projects the aggregate's merge after
    `_pre_merge_parents` assembles it, inside the aggregate's build. No
    decision reads the built node; asking a ROOT for the derived column
    instead changes source selection.
+7. A planned FINAL side (bridge, extra) is indexed in `built` with no guard.
+   A FINAL-only group whose outputs another group delivers may legally build
+   nothing (`_raise_if_unbuilt_group_owed`); elected, it would raise a bare
+   `KeyError`. No test reaches it.
 
 The rest of `_assemble_final_node`'s reads of `built` apply decisions: the
 passthroughs and projections, each contributor's node, bridge nodes by the
