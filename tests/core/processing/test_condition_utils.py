@@ -22,6 +22,8 @@ from trilogy.core.processing.condition_utility import (
     condition_implies_with_extras,
     condition_value_implies,
     conditions_mutually_exclusive,
+    conditions_partition_covers,
+    conditions_partition_domain,
     decompose_condition,
     filter_union_children,
     flatten_conditions,
@@ -254,6 +256,42 @@ class TestStripConditionAtoms:
         assert cond_dbh in atoms
         assert cond_extra in atoms
         assert cond_bos not in atoms
+
+
+class TestValueSetCells:
+    def setup_method(self):
+        self.tri = _enum_concept("tri", ["x", "y", "z"])
+
+    def test_value_set_arm_partitions_with_point(self):
+        arms = [_eq(self.tri, "x"), _in(self.tri, ("y", "z"))]
+        assert conditions_partition_domain(arms)  # type: ignore[arg-type]
+        assert merge_conditions(arms) is None  # type: ignore[arg-type]
+
+    def test_overlapping_value_sets_do_not_partition(self):
+        arms = [_in(self.tri, ("x", "y")), _in(self.tri, ("y", "z"))]
+        assert not conditions_partition_domain(arms)  # type: ignore[arg-type]
+
+    def test_cover_never_mixes_a_point_with_its_value_set(self):
+        arms = [_eq(self.tri, "x"), _eq(self.tri, "y"), _in(self.tri, ("y", "z"))]
+        assert conditions_partition_covers(arms) == [(0, 2)]  # type: ignore[arg-type]
+
+    def test_parenthesized_single_value(self):
+        single = BuildComparison(
+            left=self.tri,
+            right=BuildParenthetical(content="x"),
+            operator=ComparisonOperator.IN,
+        )
+        assert conditions_partition_domain([single, _in(self.tri, ("y", "z"))])  # type: ignore[list-item]
+        assert condition_implies(_eq(self.tri, "x"), single)
+
+    def test_open_string_domain_needs_a_gap_arm(self):
+        assert not conditions_partition_domain([_in(city, ("USBOS", "USSFO"))])
+        ne = BuildComparison(left=city, right="USBOS", operator=ComparisonOperator.NE)
+        assert conditions_partition_domain([_in(city, ("USBOS",)), ne])
+
+    def test_null_member_is_not_reasoned_over(self):
+        arms = [_in(self.tri, ("x", None)), _in(self.tri, ("y", "z"))]  # type: ignore[arg-type]
+        assert not conditions_partition_domain(arms)  # type: ignore[arg-type]
 
 
 class TestMergeConditions:

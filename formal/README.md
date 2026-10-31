@@ -33,6 +33,7 @@ a design decision or a bug.
 | `Assert.lean` | datasource `assert` / `prior(...)` build checks: the outer join of the two sides, the edge rules, substitution into the constant check | the check is the documented rule on every group of either side, given every name substituted, exact literals and a driver-independent TRUE; a vanished group fails, a NULL key matches by identity (checked by `tests/execution/test_assertion_laws.py`) |
 | `Functions.lean` | scalar functions as rendered per dialect: `/`, casts to an integer, `date_diff`, `week`, `day_of_week` | true division (a materialized quotient reads back), a cast is `round`, `date_diff` counts boundaries so it adds along a chain, `week` is ISO and `day_of_week` is 1 on Sunday on every dialect (checked by `tests/core/test_function_laws.py` on DuckDB and SQLite) |
 | `Cost.lean` | which answering datasource is read: a `complete where` arm stored at a grain | a source whose arm implies another's and whose grain is coarser stores no more rows on any data, a filtered table and a complete summary have no order, a partial summary answers exactly under an implying WHERE and loses rows under any other, a pin to values in `S` implies `x in S` (checked by `tests/discovery/test_cheapest_source_laws.py`) |
+| `Stack.lean` | a partition family stacked into one source: value-set arms, summaries stacked at their grain | `x in S` is the disjunction of `x = a` over `S`, so the cell checker covers families mixing `=` and `in` arms, a per-value arm choice can count a value twice, stacked summaries are exact and repeat no grain value when the grain determines each arm, and repeat one when it does not (checked by `tests/discovery/test_partition_family_laws.py`) |
 | `Freshness.lean` | watermarks, the stale verdict, the incremental refresh | verdict = refresh has a row to write, incremental = rebuild under strict arrivals (checked by `tests/execution/state/test_freshness_laws.py`, not the query fuzzer) |
 | `StateMerge.lean` | partition deltas folded into a state snapshot | disjoint overlays commute, replay is a no-op, newest claim wins as a semilattice join, the per-slice count adjustment (checked by `tests/execution/state/test_merge_laws.py`) |
 | `NullReject.lean` | the null-rejection walk, membership, outer-join upgrade, nullability inference | a proved column is non-null on every kept row, a proof on a column read off the padded side turns a left join inner, a derived column is judged by its lineage, strict and total functions (checked by `tests/optimization/test_null_rejection_laws.py` and `tests/core/test_null_function_conformance.py`) |
@@ -401,6 +402,30 @@ a design decision or a bug.
     planner's twin dedup all broke ties by datasource name. Each now ranks a
     candidate by how many others in scope dominate it, which never puts the
     costlier one first, since dominance is transitive.
+
+- **A partition family with a value-set arm could not union, and summaries
+  stacked across arms repeated a grain value.** `Stack.lean` models stacking
+  a family. On main, 119 of 630 law cases failed:
+  - 117 declined to answer. The family `trees_a (complete where city = 'A')`
+    and `trees_bc (complete where city in ('B', 'C'))` partitions an enum
+    `city`, but the enum cover search picks arms one value at a time and read
+    only `x = a` claims, so `x in (...)` arms never joined a family. Taking
+    them per value would be unsound: `x = 'B'` for B and `x in ('B', 'C')`
+    for C count B twice (`Stack.per_value_choice_double_counts`). Since
+    `x in S` is the disjunction of `x = a` over `S`
+    (`Stack.in_is_eq_disjunction`), the cell checker (`Sourcing.checker_exact`)
+    now reads `in` atoms, and an enum family the per-value search cannot
+    cover falls back to its exact covers. `x in ('A')` builds as a
+    parenthesized literal, which neither the checker nor the value-pin
+    implication read; both do now.
+  - 2 wrong answers. Species summaries per city, `(species, n) grain
+    (species) complete where city = 'A'` (and `'B'`, `'C'`), unioned into
+    one species summary that stored `Acer` once per city
+    (`Stack.unbound_arm_repeats_grain`). Stacking stores one row per grain
+    value, each that value's whole aggregate, when the grain determines the
+    arm (`Stack.stacked_keys_nodup`, `Stack.stacked_summary_sum_exact`). An
+    arm now joins a family only when its discriminator is bound (the FK rule
+    claims the grain determines it) or follows from declared keys.
 
 ## Limits
 
