@@ -32,6 +32,7 @@ a design decision or a bug.
 | `Rollup.lean` | a summary re-aggregated to a coarser grain under a WHERE; a query's own GROUP BY re-aggregated to its coarser grains | `sum`, `count`, `min` and `max` (so `bool_and`/`bool_or`) roll up exactly under any filter and target their grain determines, the grand total's no-row guard, a re-aggregated partial is itself a partial (so a chain of grains reads the rows once), a finer filter, a fanned-out partial's re-sum, `count_distinct` and `avg` cannot, but `avg` is the guarded quotient of a stored `sum` and `count`, and a stored column answers only an aggregate of its own argument (checked by `tests/discovery/test_rollup_resolution_laws.py`) |
 | `Assert.lean` | datasource `assert` / `prior(...)` build checks: the outer join of the two sides, the edge rules, substitution into the constant check | the check is the documented rule on every group of either side, given every name substituted, exact literals and a driver-independent TRUE; a vanished group fails, a NULL key matches by identity (checked by `tests/execution/test_assertion_laws.py`) |
 | `Functions.lean` | scalar functions as rendered per dialect: `/`, casts to an integer, `date_diff`, `week`, `day_of_week` | true division (a materialized quotient reads back), a cast is `round`, `date_diff` counts boundaries so it adds along a chain, `week` is ISO and `day_of_week` is 1 on Sunday on every dialect (checked by `tests/core/test_function_laws.py` on DuckDB and SQLite) |
+| `Cost.lean` | which answering datasource is read: a `complete where` arm stored at a grain | a source whose arm implies another's and whose grain is coarser stores no more rows on any data, a filtered table and a complete summary have no order, a partial summary answers exactly under an implying WHERE and loses rows under any other, a pin to values in `S` implies `x in S` (checked by `tests/discovery/test_cheapest_source_laws.py`) |
 | `Freshness.lean` | watermarks, the stale verdict, the incremental refresh | verdict = refresh has a row to write, incremental = rebuild under strict arrivals (checked by `tests/execution/state/test_freshness_laws.py`, not the query fuzzer) |
 | `StateMerge.lean` | partition deltas folded into a state snapshot | disjoint overlays commute, replay is a no-op, newest claim wins as a semilattice join, the per-slice count adjustment (checked by `tests/execution/state/test_merge_laws.py`) |
 | `NullReject.lean` | the null-rejection walk, membership, outer-join upgrade, nullability inference | a proved column is non-null on every kept row, a proof on a column read off the padded side turns a left join inner, a derived column is judged by its lineage, strict and total functions (checked by `tests/optimization/test_null_rejection_laws.py` and `tests/core/test_null_function_conformance.py`) |
@@ -365,6 +366,41 @@ a design decision or a bug.
     Snowflake returned an ISO day, and Postgres and SQL Server rendered a
     `day_of_week()` they lack. Each now shifts its native day
     (`Functions.sunday_first_from_iso`, `Functions.datefirst_independent`).
+
+- **A partial summary answered unfiltered rollups, and a cheaper source in
+  scope went unread.** Every datasource that answers a query gives its rows, so
+  the choice among them is cost alone. One order needs no statistics: a source
+  whose `complete where` arm implies another's and whose grain is coarser
+  stores no more rows on any data (`Cost.dominated_le`). A filtered table and a
+  complete summary have no such order (`Cost.partial_and_summary_incomparable`).
+  `tests/discovery/test_cheapest_source_laws.py` runs 63 queries over 38 sets of
+  filtered tables and summaries and checks the rows and the table read. On
+  main 602 of its 2394 cases failed:
+  - 338 were wrong answers. A summary with `complete where city = 'A'`, or a
+    `partial datasource` summary with no arm at all, was read as complete by
+    every rollup path: `select count(tree_id)` gave 3 trees for 6 and
+    `select city, count(tree_id)` gave B and C a count of 0
+    (`Cost.unimplied_partial_summary_loses_rows`). The rollup matchers checked
+    the summary's grain and filter columns but never its arm. A partial summary
+    now rolls up only under a WHERE that implies its arm
+    (`Cost.partial_summary_sum_exact`), and one with no arm never does. A `~`
+    key column is padding, not missing rows, so it still rolls up.
+  - 64 read such a summary where it did not answer and the rows matched only
+    because the data did.
+  - 176 read the full table beside a `complete where city in ('A', 'B')` copy
+    under `city = 'A'`, `city = 'B'` or `(city = 'A' or city = 'B')`. Implication
+    compared atoms by syntax. It now also compares value pins: `x = a`,
+    `x in (...)` and disjunctions of them over one column imply `x in S` when
+    their values lie in `S` (`Cost.value_set_implies`,
+    `Cost.disjunction_is_union`). A NULL literal matches no row, so a list
+    holding one is not reasoned over (`Cost.null_member_matches_nothing`).
+  - 24 read a dominated summary: `sum_cs` beside its `complete where` copy for a
+    coarser rollup, `sum_c` beside its copy for a filtered grand total, and
+    `sum_cs` beside the coarser `sum_s` for a grand total. The pinned
+    finer-filter scan, the `complete where` scan and the legacy select
+    planner's twin dedup all broke ties by datasource name. Each now ranks a
+    candidate by how many others in scope dominate it, which never puts the
+    costlier one first, since dominance is transitive.
 
 ## Limits
 

@@ -11,3 +11,4 @@ import Trilogy.Validate
 import Trilogy.Rollup
 import Trilogy.Assert
 import Trilogy.Functions
+import Trilogy.Cost

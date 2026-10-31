@@ -50,6 +50,7 @@ from trilogy.core.processing.aggregate_rollup import (
     at_own_grain,
     filter_finer_row_args,
     get_rollup_concepts,
+    holds_every_kept_row,
 )
 from trilogy.core.processing.condition_utility import (
     combine_where_clauses,
@@ -626,6 +627,7 @@ def _rollup_sources(
         ds
         for ds in datasources
         if _datasource_has_matching_rollup_aggregate(ds, concept)
+        and holds_every_kept_row(ds, where)
         and any(
             r.address == concept.address
             for r in get_rollup_concepts(

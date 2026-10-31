@@ -47,6 +47,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.aggregate_rollup import (
     filter_finer_row_args,
     get_rollup_concepts,
+    holds_every_kept_row,
 )
 from trilogy.core.processing.condition_utility import (
     condition_implies,
@@ -155,6 +156,8 @@ def rollup_concepts_by_node(
     out: dict[str, list[BuildConcept]] = {}
     for node, datasource in graph.datasources.items():
         if not isinstance(datasource, BuildDatasource):
+            continue
+        if not holds_every_kept_row(datasource, conditions):
             continue
         rolled = get_rollup_concepts(
             datasource=datasource,
