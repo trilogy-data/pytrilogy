@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 
+from trilogy.core.enums import Purpose
 from trilogy.core.models.build import BuildConcept, BuildDatasource
 from trilogy.core.models.build_environment import BuildEnvironment, EnvCache
 
@@ -123,6 +124,8 @@ class _FDFacts:
     closures: dict[tuple[frozenset[str], bool], frozenset[str]]
     # grain -> `minimize_build_grain` of it; pure over the closures above.
     minimized: dict[frozenset[str], frozenset[str]]
+    # address -> the row determinants of every datasource binding it
+    bound_on: dict[str, frozenset[str]]
     # address -> the environment keys it adds (as the key's concept address
     # or an equivalent: a key can differ from its concept's own address, and
     # the closure carries both) and the rows whose grain or keys read it
@@ -182,6 +185,7 @@ def _fd_facts(environment: BuildEnvironment) -> _FDFacts:
             equivalents=equivalents,
             closures={},
             minimized={},
+            bound_on=_bound_on(environment),
             entry_triggers=entry_triggers,
             row_triggers=row_triggers,
         ),
@@ -250,6 +254,27 @@ def build_fd_determines_all(
     return set(targets) <= build_fd_closure(
         environment, determinants, include_empty_grain=include_empty_grain
     )
+
+
+def _bound_on(environment: BuildEnvironment) -> dict[str, frozenset[str]]:
+    out: dict[str, set[str]] = {}
+    for datasource in environment.datasources.values():
+        determinants = datasource.row_determinants
+        for column in datasource.columns:
+            if column.concept.address not in determinants:
+                out.setdefault(column.concept.address, set()).update(determinants)
+    return {address: frozenset(keys) for address, keys in out.items()}
+
+
+def row_keys(concept: BuildConcept, environment: BuildEnvironment) -> frozenset[str]:
+    """The keys whose rows `concept` lives on: its declared keys, or for a
+    bare key, the row determinants of every table binding it beside its grain
+    (the facts a foreign key is read off)."""
+    if concept.keys:
+        return frozenset(concept.keys)
+    if concept.purpose != Purpose.KEY:
+        return frozenset()
+    return _fd_facts(environment).bound_on.get(concept.address, frozenset())
 
 
 def minimize_build_grain(

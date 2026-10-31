@@ -27,7 +27,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation, Granularity
+from trilogy.core.enums import Derivation, Granularity, Purpose
 
 from .edges import EdgeMap, lineage_predecessors
 from .functional_dependency import concept_attr_fd_closure, concept_attr_fd_determines
@@ -88,6 +88,8 @@ def native_grain_filter_inputs(
     CTE itself is still a row-preserving/subsetting stream over `x`. Use the
     lineage input grains so join keys from that row stream can ride through.
     A one-value filter (`avg(x) by * ? cond`) is one row whatever it reads.
+    A key parent is read on the rows of a table binding it beside its grain,
+    so those determinants ride too.
     """
     if bucket.primary_node_ids and all(
         concept_attrs[p].granularity == Granularity.SINGLE_ROW
@@ -97,7 +99,7 @@ def native_grain_filter_inputs(
     inherited: set[str] = set()
     for primary in bucket.primary_members:
         for parent in _lineage_parents(concept_graph, concept_edges, primary):
-            inherited.update(concept_attrs[parent].grain_components)
+            inherited |= _row_grain(concept_attrs[parent])
             inherited.update(concept_attrs[parent].keys)
     if inherited:
         return frozenset(inherited)
@@ -126,10 +128,20 @@ def native_grain_basic_inherited(
     inherited: set[str] = set()
     for primary in bucket.primary_members:
         for parent in _lineage_parents(concept_graph, concept_edges, primary):
-            inherited.update(concept_attrs[parent].grain_components)
+            inherited |= _row_grain(concept_attrs[parent])
     if inherited:
         return frozenset(inherited)
     return frozenset(bucket.grain_components)
+
+
+def _row_grain(attrs: ConceptAttrs) -> frozenset[str]:
+    """The grain of the rows a lineage parent is read on: its own, and for a
+    key, the determinants of the tables binding it beside their grain."""
+    out = set(attrs.grain_components)
+    if attrs.purpose == Purpose.KEY:
+        for determinants in attrs.binding_determinants:
+            out |= determinants
+    return frozenset(out)
 
 
 # ----- can_preserve implementations -----------------------------------

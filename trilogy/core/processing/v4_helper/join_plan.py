@@ -23,7 +23,7 @@ from trilogy.core.models.build import (
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 
-from .concept_graph import _statement_scoped_relation_members
+from .concept_graph import _scope_and_phase, _statement_scoped_relation_members
 from .constants import FINAL_NODE_ID, GROUPING_DERIVATIONS
 from .functional_dependency import build_fd_closure, build_fd_determines_all
 from .models import GroupAttrs
@@ -307,7 +307,26 @@ def row_identity(
             if parent in attrs
         )
     )
+    # a WHERE gate over a row expression with no grain of its own
+    # (`upper(species) != 'X'`) is its own row stream, identified by the keys
+    # the expression is a function of
+    if (
+        not keys
+        and group.derivation == Derivation.BASIC
+        and not group.grain_components
+        and _scope_and_phase(group.label)[1] == "condition"
+    ):
+        keys |= _member_keys(group.primary_members, environment) & available
     return frozenset(keys) | (held & available)
+
+
+def _member_keys(members: Iterable[str], environment: BuildEnvironment) -> set[str]:
+    out: set[str] = set()
+    for address in members:
+        concept = environment.concepts.get(address)
+        if concept is not None and concept.keys:
+            out |= set(concept.keys)
+    return out
 
 
 def _fd_determined(
