@@ -81,7 +81,7 @@ def authored_datasources(environment: BuildEnvironment) -> list[BuildDatasource]
     """The environment's bindings as authored: what a plan's scope is decided
     from. Planning reads bindings off its graph's scope; the readers that take
     the authored set instead are model facts, not plan facts: the FD rows
-    (`functional_dependency._build_fd_concepts`), the domain graph's minted
+    (`functional_dependency._fd_rows`), the domain graph's minted
     binding and FD edges, and the join-side owners a diagnostic names."""
     return list(environment.datasources.values())
 

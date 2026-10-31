@@ -416,38 +416,6 @@ def concept_collection_equivalent_addresses(
     return addresses
 
 
-def _addr_keys(
-    addr: str,
-    environment: BuildEnvironment,
-    pmap: dict[str, BuildConcept],
-) -> frozenset[str]:
-    concept = pmap.get(addr) or environment.concepts.get(addr)
-    return frozenset(concept.keys) if concept and concept.keys else frozenset()
-
-
-def _key_reduces_to(
-    components: frozenset[str],
-    target: set[str],
-    environment: BuildEnvironment,
-    pmap: dict[str, BuildConcept],
-    _seen: frozenset[str] = frozenset(),
-) -> bool:
-    """Do `components` transitively reduce — via FK key bindings — to a subset
-    of `target`? A component is covered if it is already in `target` or every
-    key it binds to reduces to `target` (e.g. nation.id -> customer.id)."""
-    for comp in components:
-        if comp in target:
-            continue
-        if comp in _seen:
-            return False
-        keys = _addr_keys(comp, environment, pmap)
-        if not keys:
-            return False
-        if not _key_reduces_to(keys, target, environment, pmap, _seen | {comp}):
-            return False
-    return True
-
-
 def concepts_to_build_grain_concepts(
     concepts: Iterable[BuildConcept | str],
     environment: BuildEnvironment | None,
@@ -490,18 +458,20 @@ def concepts_to_build_grain_concepts(
             continue
         final.add(sub.address)
 
-    # Key-hierarchy reduction: drop a component whose FK key chain transitively
-    # reduces to the other retained components. `concept_is_relevant` only drops
-    # a key one level away (its immediate `keys` are present); this folds the
-    # full chain (e.g. nation.id -> customer.id -> order.id), so a grain never
-    # carries a key that another retained key already determines.
+    # Drop a component the others determine: a key chain (nation.id ->
+    # customer.id -> order.id), or a key a table binds beside its grain.
     if environment is not None:
-        pmap = {c.address: c for c in pconcepts}
+        from trilogy.core.processing.v4_helper.functional_dependency import (
+            build_fd_determines,
+        )
+
         reduced = set(final)
         for addr in sorted(final):
-            keys = _addr_keys(addr, environment, pmap)
-            if keys and _key_reduces_to(
-                keys, reduced - {addr} - padded, environment, pmap
+            if build_fd_determines(
+                environment,
+                reduced - {addr} - padded,
+                addr,
+                include_empty_grain=False,
             ):
                 reduced.discard(addr)
         final = reduced
@@ -2306,6 +2276,25 @@ class BuildDatasource:
                 return column
         return None
 
+    @property
+    def bound_discriminators(self) -> frozenset[str]:
+        """The columns its `complete where` reads that it binds."""
+        if self.non_partial_for is None:
+            return frozenset()
+        bound = {c.concept.address for c in self.columns}
+        return frozenset(
+            c.address
+            for c in self.non_partial_for.concept_arguments
+            if c.address in bound
+        )
+
+    @property
+    def row_determinants(self) -> frozenset[str]:
+        """What each row's bindings are a function of, model-wide: the grain,
+        plus a bound discriminator, since an arm is unique on its grain only
+        among its own rows (`Stack.unbound_arm_repeats_grain`)."""
+        return frozenset(self.grain.components) | self.bound_discriminators
+
     def rollup_column_for(self, concept: BuildConcept) -> BuildColumnAssignment | None:
         """`aggregate_column_for`, restricted to tables this concept could be
         rolled up from — i.e. not ones strictly coarser than it, which hold
@@ -2315,11 +2304,18 @@ class BuildDatasource:
         `concept.grain`: callers re-grain a concept onto the source they are
         asking about (`QueryDatasource.get_alias`), which would make every
         request look exact. Whether the render actually wraps the column in SUM
-        is decided separately, by `CTE.rollup_concepts`."""
+        is decided separately, by `CTE.rollup_concepts`. An arm that binds its
+        discriminator outside its grain holds rows at both, constant in the
+        discriminator: a partial at that grain, not a coarser value."""
         lineage = concept.lineage
         if not isinstance(lineage, BuildAggregateWrapper):
             return None
-        if self.grain.components.issubset({c.address for c in lineage.by}):
+        by = {c.address for c in lineage.by}
+        grain = set(self.grain.components)
+        stacked = set(self.row_determinants)
+        if stacked != grain:
+            return None if stacked < by else self.aggregate_column_for(concept)
+        if grain.issubset(by):
             return None
         return self.aggregate_column_for(concept)
 
@@ -2487,7 +2483,24 @@ class BuildUnionDatasource:
 
     @property
     def grain(self) -> BuildGrain:
-        return reduce(lambda x, y: x.union(y.grain), self.children, BuildGrain())
+        """The arms' grain plus each arm's bound discriminator: an arm is
+        unique on its grain only among its own rows, so a grain value can
+        repeat across arms (`Stack.stacked_summary_sum_exact`)."""
+        grain = reduce(lambda x, y: x.union(y.grain), self.children, BuildGrain())
+        return grain.union(BuildGrain(components=set(self.bound_discriminators)))
+
+    @property
+    def bound_discriminators(self) -> frozenset[str]:
+        """The columns the arms' `complete where` clauses read that every arm
+        binds. Each base row has one value of each, so the arms partition the
+        rows on them."""
+        bound = {c.concept.address for c in self.columns}
+        return frozenset(
+            address
+            for child in self.children
+            for address in child.bound_discriminators
+            if address in bound
+        )
 
     @property
     def column_level_partial_addresses(self) -> set[str]:
@@ -3637,7 +3650,7 @@ class Factory:
                 lineage=None,
                 grain=new_grain,
                 namespace=base.namespace,
-                keys=self._build_keys(base.effective_keys(self.environment)),
+                keys=self._build_keys(base.keys),
                 modifiers=base.modifiers,
                 pseudonyms=base_pseudonyms,
                 derivation=derivation,
@@ -3779,7 +3792,7 @@ class Factory:
             lineage=build_lineage,
             grain=new_grain,
             namespace=base.namespace,
-            keys=self._build_keys(base.effective_keys(self.environment)),
+            keys=self._build_keys(base.keys),
             modifiers=base.modifiers,
             pseudonyms=base_pseudonyms,
             ## instantiated values

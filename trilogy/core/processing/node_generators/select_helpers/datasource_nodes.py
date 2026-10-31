@@ -19,7 +19,12 @@ from trilogy.core.models.build import (
     nonstandard_grouping_lineage,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
-from trilogy.core.processing.aggregate_rollup import get_rollup_concepts
+from trilogy.core.processing.aggregate_rollup import (
+    arm_rollup_concepts,
+    get_rollup_concepts,
+    holds_every_kept_row,
+    source_rollup_concepts,
+)
 from trilogy.core.processing.condition_utility import (
     condition_implies,
     condition_proves_non_null,
@@ -309,7 +314,10 @@ def create_datasource_node(
     depth: int,
     conditions: BuildWhereClause | None = None,
     injected_conditions: BoolExpr | None = None,
+    stacked: bool = False,
 ) -> tuple[StrategyNode, bool]:
+    """`stacked`: the scan is one arm of a covering union, which holds the
+    rows the arm alone lacks."""
     target_grain = scan_target_grain(all_concepts, environment)
     datasource_grain = BuildGrain.from_concepts(
         datasource.grain.components, environment=environment
@@ -325,8 +333,17 @@ def create_datasource_node(
         for c in all_concepts
     ):
         force_group = True
-    rollup_concepts = (
-        get_rollup_concepts(
+    if stacked:
+        rollup_concepts = arm_rollup_concepts(
+            datasource,
+            all_concepts,
+            environment.concepts,
+            list(datasources),
+            target_grain,
+            conditions,
+        )
+    elif force_group and holds_every_kept_row(datasource, conditions):
+        rollup_concepts = get_rollup_concepts(
             datasource=datasource,
             requested_concepts=all_concepts,
             concepts_by_address=environment.concepts,
@@ -334,9 +351,8 @@ def create_datasource_node(
             target_grain=target_grain,
             conditions=conditions,
         )
-        if force_group
-        else []
-    )
+    else:
+        rollup_concepts = []
     rollup_addresses = {c.address for c in rollup_concepts}
     datasource_output_addresses = {c.address for c in datasource.output_concepts}
 
@@ -485,6 +501,7 @@ def create_union_datasource_candidate(
             datasources,
             depth + 1,
             injected_conditions=injected_cond,
+            stacked=True,
         )
         parents.append(subnode)
         force_group = force_group or fg
@@ -505,19 +522,32 @@ def create_union_datasource_candidate(
         strip_atoms(conditions.conditional, unclaimed) if conditions else None
     )
     union_partials = [c for c in all_concepts if c.address in partial]
+    # Arms already at the stack's grain scan their stored partials as-is; the
+    # stack still sums them across arms.
+    stack_rollups = source_rollup_concepts(
+        datasource=effective_union,
+        requested_concepts=all_concepts,
+        concepts_by_address=environment.concepts,
+        datasources=datasources,
+        target_grain=scan_target_grain(all_concepts, environment),
+    )
+    if stack_rollups:
+        force_group = True
+        group_source_count = max(group_source_count, 1)
     logger.info(
         f"{padding(depth)}{LOGGER_PREFIX} returning union node with {len(parents)} branch(es)"
     )
-    return (
-        UnionNode(
-            output_concepts=all_concepts,
-            input_concepts=all_concepts,
-            environment=environment,
-            parents=parents,
-            depth=depth,
-            partial_concepts=union_partials,
-            preexisting_conditions=union_preexisting,
+    union = UnionNode(
+        output_concepts=all_concepts,
+        input_concepts=all_concepts,
+        environment=environment,
+        parents=parents,
+        depth=depth,
+        partial_concepts=union_partials,
+        preexisting_conditions=union_preexisting,
+        grain=BuildGrain.from_concepts(
+            effective_union.grain.components, environment=environment
         ),
-        force_group,
-        group_source_count,
     )
+    union.rollup_concepts = stack_rollups
+    return union, force_group, group_source_count
