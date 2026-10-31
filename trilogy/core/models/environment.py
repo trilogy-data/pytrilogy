@@ -950,6 +950,15 @@ class Environment:
             )
             determinants = frozenset(grain.components) | (arm & bound)
             out.append((determinants, bound - determinants))
+        # A declared property is a function of its keys, which is how a key
+        # can determine an arm's discriminator (`property tree_id.source`).
+        for concept in self.concepts.values():
+            if (
+                concept.keys
+                and concept.purpose == Purpose.PROPERTY
+                and concept.derivation != Derivation.FILTER
+            ):
+                out.append((frozenset(concept.keys), frozenset({concept.address})))
         self._binding_fds = (stamp, tuple(out))
         return self._binding_fds[1]
 

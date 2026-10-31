@@ -8,13 +8,16 @@ def axis_member_keys(address: str, environment: BuildEnvironment) -> frozenset[s
     members = environment.scoped_join_key_groups.get(address)
     if not members:
         return frozenset()
+    # Imported lazily: the v4 helper package imports join resolution.
+    from trilogy.core.processing.v4_helper.functional_dependency import row_keys
+
     out: set[str] = set()
     for member in members:
         concept = environment.alias_origin_lookup.get(
             member
         ) or environment.concepts.get(member)
         if concept is not None:
-            out |= set(concept.keys or ())
+            out |= row_keys(concept, environment)
     return frozenset(out)
 
 
