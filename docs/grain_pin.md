@@ -85,7 +85,11 @@ columns, and every query returns the same rows on both.
   on the row scan, which can then read the `complete where` binding it implies.
   An atom keyed within the anchors is copied onto the scans the pin is
   evaluated over (`PlacementReason.PIN_INPUT`): it keeps or drops an anchor's
-  rows whole, so the pin needs no anchor it drops.
+  rows whole, so the pin needs no anchor it drops. So is an atom on a row
+  stream carrying the anchors that reads nothing those scans read
+  (`city = 'A'` beside a species-anchored bucket): the scan then reads the
+  anchors' own rows, so a species whose `unnest` is empty keeps its padded
+  ELSE value instead of vanishing with the empty unnest.
 - A merged unnest axis (`merge tree_eco_region into ecoregion_id`) is a relation,
   and roots on its two sides are sourced apart. A root on no side of it (`city`,
   a key bound beside the rows) is not, so the roots stay one scan rather than

@@ -200,14 +200,17 @@ PADDED_SPECIES = (
             "select latitude where city = 'A' and bucket = 'Other' order by latitude;",
             [(3.0,), (4.0,)],
         ),
-        pytest.param(
+        (
             "select upper(species) as s where city = 'A' and bucket = 'Other' order by s;",
             [("ASH",), ("ELM",)],
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="a species-anchored pin is evaluated over the unnest's rows, "
-                "not the anchor's, so a species with no element is dropped",
-            ),
+        ),
+        (
+            "select species, native_ecoregions where city = 'A' and bucket = 'Other' order by species;",
+            [("ash", []), ("elm", [3])],
+        ),
+        (
+            "select species where city = 'A' and bucket = 'Same' order by species;",
+            [("oak",), ("pine",)],
         ),
     ],
 )
