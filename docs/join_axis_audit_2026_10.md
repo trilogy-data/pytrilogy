@@ -585,6 +585,10 @@ consumers) the planned list differed at 10, all in two tests whose
 disconnected ROOT raises (`test_q64_nested_membership_two_source_agg_clean_
 error`, `test_where_on_both_islands_raises`).
 
+Measured: SQL capture over the same five suites against part 12 moved no plan
+(only the `grain_check` hash-seed column order and `test_validate_fix_types`'
+statement count); 0 of 205 corpus plans moved.
+
 **Open.**
 
 1. The FINAL merge re-decides, over `built`, what its plan already elected:
