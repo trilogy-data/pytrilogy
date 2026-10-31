@@ -25,6 +25,7 @@ from trilogy.core.models.build import (
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.aggregate_rollup import (
     get_rollup_concepts,
+    holds_every_kept_row,
     merge_rollup_concepts,
 )
 from trilogy.core.processing.condition_utility import (
@@ -104,6 +105,8 @@ def create_pruned_concept_graph(
     rollup_edges: list[tuple[str, str]] = []
     for node_address, datasource in list(g.datasources.items()):
         if not isinstance(datasource, BuildDatasource):
+            continue
+        if not holds_every_kept_row(datasource, conditions):
             continue
         for concept in get_rollup_concepts(
             datasource=datasource,

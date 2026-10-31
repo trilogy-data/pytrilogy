@@ -19,6 +19,7 @@ from trilogy.core.processing.condition_utility import (
     condition_required_addresses,
     decompose_condition,
 )
+from trilogy.core.processing.source_dominance import dominators
 from trilogy.core.processing.utility import padding
 
 LOGGER_PREFIX = "[GEN_ROOT_MERGE_NODE]"
@@ -117,22 +118,28 @@ def _ds_mat_score(
     datasources: dict[str, "BuildDatasource | BuildUnionDatasource"],
     relevant_concepts: list[str],
     partial_map: dict[str, list[str]],
-) -> tuple[int, float, str]:
+    pool: list[BuildDatasource | BuildUnionDatasource],
+) -> tuple[int, int, float, str]:
+    """Complete for the request first, then not dominated by a twin
+    (`source_dominance`), then the cheapest format."""
     partial_count = sum(
         1 for x in partial_map.get(ds_name, []) if x in relevant_concepts
     )
     ds = datasources.get(ds_name)
     if ds is None:
-        return (partial_count, 2, ds_name)
+        return (partial_count, 0, 2, ds_name)
+    dominated = dominators(ds, pool)
     if isinstance(ds, BuildDatasource):
         return (
             partial_count,
+            dominated,
             get_materialization_score(ds.address, bool(ds.non_partial_for)),
             ds_name,
         )
     if isinstance(ds, BuildUnionDatasource):
         return (
             partial_count,
+            dominated,
             max(
                 get_materialization_score(child.address, bool(ds.non_partial_for))
                 + 0.11
@@ -140,7 +147,7 @@ def _ds_mat_score(
             ),
             ds_name,
         )
-    return (partial_count, 2, ds_name)
+    return (partial_count, dominated, 2, ds_name)
 
 
 def deduplicate_datasources(
@@ -167,10 +174,11 @@ def deduplicate_datasources(
         if len(ds_list) == 1:
             deduplicated.append(ds_list[0])
         else:
+            pool = [datasources[n] for n in ds_list if n in datasources]
             best_ds = min(
                 ds_list,
                 key=lambda n: _ds_mat_score(
-                    n, datasources, relevant_concepts, partial_map
+                    n, datasources, relevant_concepts, partial_map, pool
                 ),
             )
             deduplicated.append(best_ds)

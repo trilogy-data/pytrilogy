@@ -10,6 +10,7 @@ from trilogy.core.models.build import (
     BuildGrain,
     BuildWhereClause,
 )
+from trilogy.core.processing.condition_utility import condition_implies
 
 
 def _aggregate_inputs(concept: BuildConcept) -> list[BuildConcept]:
@@ -218,6 +219,25 @@ def pending_rollups(
     re-aggregated to its own grain is final: a consumer that inherited it
     would re-aggregate a total once per row it joins."""
     return [c for c in rollups if not at_own_grain(c, grain)]
+
+
+def holds_every_kept_row(
+    datasource: BuildDatasource, conditions: BuildWhereClause | None
+) -> bool:
+    """A `complete where` summary rolls up only under a WHERE that implies its
+    arm (`Cost.partial_summary_sum_exact`). Read as complete, it drops every
+    group outside the arm (`Cost.unimplied_partial_summary_loses_rows`). A
+    `partial datasource` with no arm holds a subset no WHERE completes; a `~`
+    column is padding, not missing rows."""
+    arm = datasource.non_partial_for
+    if arm is None:
+        return all(
+            c.address in datasource.column_level_partial_addresses
+            for c in datasource.partial_concepts
+        )
+    return conditions is not None and condition_implies(
+        conditions.conditional, arm.conditional
+    )
 
 
 def get_rollup_concepts(

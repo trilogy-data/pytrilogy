@@ -740,7 +740,7 @@ def condition_implies_with_extras(
     Otherwise returns (False, [])."""
     query_atoms = decompose_condition(query)
     required_atoms = decompose_condition(required)
-    if not all(atom in query_atoms for atom in required_atoms):
+    if not all(_atom_implied(query_atoms, atom) for atom in required_atoms):
         return False, []
     return True, [atom for atom in query_atoms if atom not in required_atoms]
 
@@ -749,9 +749,56 @@ def condition_implies(
     query: BoolExpr,
     required: BoolExpr,
 ) -> bool:
-    """True if every AND-atom of required appears in query's AND-atoms (query is a superset)."""
+    """True if every AND-atom of required appears in query's AND-atoms, or is
+    a value pin some query atom pins within (`_pinned_values`)."""
     implied, _ = condition_implies_with_extras(query, required)
     return implied
+
+
+def _atom_implied(query_atoms: list[BoolExpr], required: BoolExpr) -> bool:
+    """`Cost.value_set_implies`: `x = 'a'` implies `x in ('a', 'b')`."""
+    if required in query_atoms:
+        return True
+    pinned = _pinned_values(required)
+    if pinned is None:
+        return False
+    address, allowed = pinned
+    return any(
+        (held := _pinned_values(atom)) is not None
+        and held[0] == address
+        and held[1] <= allowed
+        for atom in query_atoms
+    )
+
+
+def _pinned_values(atom: object) -> tuple[str, frozenset[object]] | None:
+    """The column an atom pins and the literals it allows: `x = a`,
+    `x in (...)`, or a disjunction of those over one column
+    (`Cost.disjunction_is_union`). A NULL literal matches no row, so a list
+    holding one is not reasoned over (`Cost.null_member_matches_nothing`)."""
+    if isinstance(atom, BuildParenthetical):
+        return _pinned_values(atom.content)
+    if isinstance(atom, BuildConditional) and atom.operator == BooleanOperator.OR:
+        left, right = _pinned_values(atom.left), _pinned_values(atom.right)
+        if left is None or right is None or left[0] != right[0]:
+            return None
+        return left[0], left[1] | right[1]
+    if not isinstance(atom, BuildComparison):
+        return None
+    if atom.operator == ComparisonOperator.IN and isinstance(atom.left, BuildConcept):
+        concept, literal = atom.left, atom.right
+    elif atom.operator != ComparisonOperator.EQ:
+        return None
+    elif isinstance(atom.left, BuildConcept):
+        concept, literal = atom.left, atom.right
+    elif isinstance(atom.right, BuildConcept):
+        concept, literal = atom.right, atom.left
+    else:
+        return None
+    values = _literal_values(literal)
+    if not values or any(is_null_literal(v) for v in values):
+        return None
+    return concept.address, frozenset(values)
 
 
 # Only genuine literals have an enumerable allowed-value set. Anything else

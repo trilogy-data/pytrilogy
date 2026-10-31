@@ -8,7 +8,9 @@ lists every module and, under "What it found", every bug found so far. Read it
 first.
 
 Recent rounds: `Assert.lean` (#799, datasource `assert`/`prior`), and
-`Functions.lean` (#802, scalar functions per dialect).
+`Functions.lean` (#802, scalar functions per dialect), and `Cost.lean`
+(which answering datasource is read: partial summaries, value-pin
+implication, dominance ranking).
 
 ## The recipe
 
@@ -78,6 +80,22 @@ questions:
   Hunt for a planner path that accepts it anyway.
 - The harness is `tests/discovery/test_rollup_resolution_laws.py`. Extend its
   matrix rather than starting a new one.
+
+### 1b. Cheapest source (`Cost.lean` follow-ons)
+
+`tests/discovery/test_cheapest_source_laws.py` holds the planner to
+`Cost.dominated_le`: never read a source an answering source in scope
+dominates. Open leads:
+- `source_dominance.dominates` compares grains by component subset, not the FD
+  closure, so a summary at `(city)` does not count as coarser than a row table
+  at `(tree_id)`. Sound, only incomplete.
+- The network search's only dominance axis is `unfiltered_sources`
+  (an IMPLIED_EXACT twin with the same columns). Two rollup bindings at
+  different grains tie there; the matrix has no shape that reaches it yet.
+- Partition families of partial summaries (`complete where` arms that union
+  to the table) are untested as rollup sources.
+- Not a bug: a summary binding `city: ~city` claims absent cities have no
+  rows (padding), so it rolls up as complete and absent cities count 0.
 
 ### 2. Optimizer rule soundness
 

@@ -32,6 +32,7 @@ from trilogy.core.processing.aggregate_rollup import (
     at_own_grain,
     filter_finer_row_args,
     get_rollup_concepts,
+    holds_every_kept_row,
     merge_rollup_concepts,
 )
 from trilogy.core.processing.condition_utility import (
@@ -61,6 +62,7 @@ from trilogy.core.processing.node_generators.select_node import (
     validate_query_is_resolvable,
 )
 from trilogy.core.processing.nodes import MergeNode, SelectNode, StrategyNode
+from trilogy.core.processing.source_dominance import dominators
 from trilogy.core.processing.v4_helper.condition_injection import condition_row_args
 from trilogy.core.processing.v4_helper.constants import ROW_SHAPE_BARRIER_DERIVATIONS
 from trilogy.core.processing.v4_helper.functional_dependency import build_fd_closure
@@ -1528,6 +1530,8 @@ def _finer_filter_rollup_source(
         ds_canonicals = {c.canonical_address for c in ds.output_concepts}
         if not target_canonicals.issubset(ds_canonicals):
             continue
+        if not holds_every_kept_row(ds, conditions):
+            continue
         rolled = get_rollup_concepts(
             datasource=ds,
             requested_concepts=list(outputs),
@@ -1541,9 +1545,18 @@ def _finer_filter_rollup_source(
             matches.append((ds, not condition_canonicals <= ds_canonicals))
     if not matches:
         return None
-    # Prefer a scan that applies the WHERE alone, then the finest match closest
-    # to the requested grain (fewest dropped grain components).
-    matches.sort(key=lambda m: (m[1], len(m[0].grain.components), m[0].name))
+    # Prefer a scan that applies the WHERE alone, then one no other match holds
+    # fewer rows than, then the finest match closest to the requested grain
+    # (fewest dropped grain components).
+    pool = [ds for ds, _ in matches]
+    matches.sort(
+        key=lambda m: (
+            m[1],
+            dominators(m[0], pool),
+            len(m[0].grain.components),
+            m[0].name,
+        )
+    )
     return matches[0]
 
 
@@ -1619,7 +1632,7 @@ def _plan_complete_where_source(request: SourceRequest) -> StrategyNode | None:
         matches.append(ds)
     if not matches:
         return None
-    matches.sort(key=lambda ds: ds.name)
+    matches.sort(key=lambda ds: (dominators(ds, matches), ds.name))
     ds = matches[0]
     return create_select_node(
         f"ds~{ds.name}",
