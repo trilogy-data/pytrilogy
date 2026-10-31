@@ -4409,12 +4409,12 @@ def _join_elected_bridges(
 def _bridge_candidates(
     group_graph: nx.DiGraph,
     order: Sequence[str],
-    unbuilt: Collection[str],
+    unbuilt: Collection[str] = (),
     consumer: str = FINAL_NODE_ID,
 ) -> list[str]:
     """The groups the build order decides before `consumer` (every group, for
     the FINAL: one feeding no output may sort after it) that are still in the
-    plan and built a node, most derived first. A group folded into its readers
+    plan and not `unbuilt`, most derived first. A group folded into its readers
     left the plan at its turn."""
     decided = order if consumer == FINAL_NODE_ID else order[: order.index(consumer)]
     groups = {
@@ -5193,11 +5193,12 @@ def _gate_key_row_stream(
 
 @dataclass
 class _FinalCover:
-    """The FINAL election, decided before the build loop: the concepts each
-    contributor provides, and the columns owed on a contributor beyond its
-    build: hosted over it (`projections`) or passed through it from an
-    ancestor contributor (`passthroughs`)."""
+    """The FINAL election, decided before the build loop over the planned
+    `groups`: the concepts each contributor provides, and the columns owed on
+    a contributor beyond its build: hosted over it (`projections`) or passed
+    through it from an ancestor contributor (`passthroughs`)."""
 
+    groups: list[str]
     per_group: dict[str, list[BuildConcept]]
     projections: dict[str, list[BuildConcept]]
     passthroughs: dict[str, list[BuildConcept]]
@@ -5213,6 +5214,7 @@ def _elect_final_cover(
 ) -> _FinalCover:
     """Elect the FINAL's contributors from `groups`, off what each renders."""
     cover = _FinalCover(
+        list(groups),
         elect_cover(
             group_graph,
             group_edges,
@@ -5269,7 +5271,6 @@ def _assemble_final_node(
     history: V4History,
     root_requests: dict[str, RootRequest],
     cover: "_FinalCover",
-    candidates: Sequence[str] = (),
     feeder_cache: "_CleanFeederCache | None" = None,
     arms_delivered: bool = False,
 ) -> StrategyNode | None:
@@ -5360,7 +5361,7 @@ def _assemble_final_node(
         group_graph,
         attrs,
         per_group,
-        candidates,
+        _bridge_candidates(group_graph, cover.groups),
         mandatory_list,
         environment,
         final_contract.authored_axes,
@@ -5376,7 +5377,7 @@ def _assemble_final_node(
         + _final_extra_sides(
             group_graph,
             attrs,
-            list(built),
+            cover.groups,
             [*per_group, *bridges],
             filter_only_addrs,
             environment,
@@ -6614,7 +6615,6 @@ def build_strategy_node(
             history,
             ctx.root_requests,
             cover,
-            candidates=_bridge_candidates(group_graph, order, unbuilt),
             feeder_cache=ctx.feeder_cache,
             arms_delivered=arms_delivered,
         )
