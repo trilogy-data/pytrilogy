@@ -43,8 +43,9 @@ ORDER BY
 LIMIT (100)"""
 
 
-# GCAT's fact tables hold foreign keys its dimension tables lack, so each
-# dimension's complete binding of its key fails containment.
+# GCAT's fact tables can hold foreign keys its dimension tables lack (the
+# cached snapshot does; the live one is backfilled), so each such dimension's
+# complete binding of its key fails containment.
 ORPHAN_KEYS = {
     ("org.code", "organizations"),
     ("payload.launch.org.code", "organizations"),
@@ -84,7 +85,7 @@ def test_environment(gcat_env):
     for child in children:
         if not ORPHAN_PATTERN.search(str(child)):
             raise child
-    assert orphans == ORPHAN_KEYS
+    assert orphans <= ORPHAN_KEYS
     assert "year" in gcat_env.environment.concepts["launch_date.year"].datatype.traits
 
 

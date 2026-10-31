@@ -573,10 +573,46 @@ Measured: SQL capture over the same five suites (7,515 tests) against part 11
 moved no plan (only `test_gcat::test_environment`'s hash-seed column order);
 0 of 205 corpus plans moved.
 
-**Open.** The fold widen still projects the aggregate's merge after
-`_pre_merge_parents` assembles it, inside the aggregate's build. No decision
-reads the built node; asking a ROOT for the derived column instead changes
-source selection.
+**The FINAL extra sides and bridges read the planned groups.** The groups
+`_elect_final_cover` elects from (`_FinalCover.groups`) are also the
+candidates `elect_bridges` and `_final_extra_sides` read; neither reads the
+build loop's `built` or `unbuilt` any more. Over `tests/modeling`, `core`,
+`engine`, `complex` and `discovery`, the candidates, the elected bridges and
+the extra sides over the planned groups equaled the built ones at all 3,416
+multi-contributor FINALs. A non-FINAL consumer's bridge candidates still drop
+the groups built so far that came back empty; over the same suites (31,355
+consumers) the planned list differed at 10, all in two tests whose
+disconnected ROOT raises (`test_q64_nested_membership_two_source_agg_clean_
+error`, `test_where_on_both_islands_raises`).
+
+Measured: SQL capture over the same five suites against part 12 moved no plan
+(only the `grain_check` hash-seed column order and `test_validate_fix_types`'
+statement count); 0 of 205 corpus plans moved.
+
+**Open.**
+
+1. The FINAL merge re-decides, over `built`, what its plan already elected:
+   `_filter_arg_parents(…, built, …)` picks each filter-only argument's
+   producer and `_gate_key_row_stream(…, built)` the row stream for a gate
+   key, the same choices `_final_extra_sides` made over the planned groups.
+   The `unplanned` check after them only validates the agreement. Join the
+   plan's extras instead (and `_apply_final_conditions`, on the sole
+   contributor path, the same way).
+2. `grouping_sibling` reads `node_nulls_grouping_keys` off each built
+   contributor; a grouping-sets group is a stage-2 fact.
+3. With no `per_group`, the FINAL takes `next(iter(built.values()))`: the
+   first group built, where the planned groups name it.
+4. A non-FINAL consumer's bridge candidates (`_bridge_candidates(…,
+   ctx.unbuilt, gid)`) differ from the planned ones only where the plan
+   raises (above).
+5. The fold widen still projects the aggregate's merge after
+   `_pre_merge_parents` assembles it, inside the aggregate's build. No
+   decision reads the built node; asking a ROOT for the derived column
+   instead changes source selection.
+
+The rest of `_assemble_final_node`'s reads of `built` apply decisions: the
+passthroughs and projections, each contributor's node, bridge nodes by the
+planned id, and the ROOT re-source.
 
 ## 8. Not claimed
 
