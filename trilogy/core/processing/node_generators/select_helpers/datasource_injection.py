@@ -36,6 +36,9 @@ from trilogy.core.processing.condition_utility import (
     effective_enum_domain,
     merge_conditions,
 )
+from trilogy.core.processing.v4_helper.functional_dependency import (
+    build_fd_determines_all,
+)
 
 
 def _datasource_score(ds: BuildDatasource) -> int:
@@ -371,13 +374,29 @@ def get_union_sources(
         merge_key = _merge_key(dses, merge_key_addr)
         if merge_key is None:
             continue
-        if isinstance(merge_key.datatype, EnumType):
-            result = _best_enum_union(dses, merge_key.datatype, merge_key, excluded)
-            if result:
-                final.extend(result)
-        elif best := _best_range_cover(dses, excluded):
+        if isinstance(merge_key.datatype, EnumType) and (
+            result := _best_enum_union(dses, merge_key.datatype, merge_key, excluded)
+        ):
+            final.extend(result)
+        # Value-set arms (`x in (...)`) cover jointly, which the per-value
+        # enum search cannot see (`Stack.per_value_choice_double_counts`);
+        # the cell model checks them exactly. One arm left by the statement's
+        # gate is a scan, not a union.
+        elif (best := _best_range_cover(dses, excluded)) and _shares_data(
+            best, merge_key
+        ):
             final.append(best)
     return final
+
+
+def _shares_data(cover: list[BuildDatasource], key: BuildConcept) -> bool:
+    """A cover worth a union: two or more arms that share a column besides
+    an enum discriminator, as `_enum_cover_units` requires."""
+    if len(cover) < 2:
+        return False
+    if not isinstance(key.datatype, EnumType):
+        return True
+    return bool(frozenset.intersection(*(_columns(ds) for ds in cover)) - {key.address})
 
 
 def _best_range_cover(
@@ -403,6 +422,21 @@ def _best_range_cover(
     return [arms[i] for i in sorted(best)]
 
 
+def stacks_at_grain(ds: BuildDatasource, environment: BuildEnvironment) -> bool:
+    """Whether stacking this arm with its siblings still stores one row per
+    grain value: true when the grain determines the arm, so each grain value's
+    rows lie in one arm (`Stack.stacked_summary_sum_exact`). A bound
+    discriminator is the binding's own FK claim; an unbound one must follow
+    from the grain, or a grain value repeats across arms
+    (`Stack.unbound_arm_repeats_grain`)."""
+    if ds.non_partial_for is None or not ds.grain.components:
+        return True
+    unbound = {c.address for c in ds.non_partial_for.concept_arguments} - _columns(ds)
+    return not unbound or build_fd_determines_all(
+        environment, ds.grain.components, unbound
+    )
+
+
 def union_sources(
     scope: ScopeDatasources, environment: BuildEnvironment
 ) -> list[tuple[BuildUnionDatasource, list[BuildConcept]]]:
@@ -412,9 +446,10 @@ def union_sources(
     decided once when its reference graph is generated, over the domain the
     statement's row gate leaves (``excluded_enum_values``)."""
     datasources = scope.datasources
+    stackable = [ds for ds in datasources if stacks_at_grain(ds, environment)]
     excluded = scope.excluded_enum_values
     out: list[tuple[BuildUnionDatasource, list[BuildConcept]]] = []
-    for group in get_union_sources(datasources, excluded):
+    for group in get_union_sources(stackable, excluded):
         merged = merge_conditions(
             [
                 child.non_partial_for.conditional

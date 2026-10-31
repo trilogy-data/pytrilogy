@@ -7,10 +7,11 @@ law suite then holds the implementation to the theorems. `formal/README.md`
 lists every module and, under "What it found", every bug found so far. Read it
 first.
 
-Recent rounds: `Assert.lean` (#799, datasource `assert`/`prior`), and
-`Functions.lean` (#802, scalar functions per dialect), and `Cost.lean`
+Recent rounds: `Assert.lean` (#799, datasource `assert`/`prior`),
+`Functions.lean` (#802, scalar functions per dialect), `Cost.lean`
 (which answering datasource is read: partial summaries, value-pin
-implication, dominance ranking).
+implication, dominance ranking), and `Stack.lean` (stacking a partition
+family: value-set arms, arms the grain does not determine).
 
 ## The recipe
 
@@ -92,8 +93,19 @@ dominates. Open leads:
 - The network search's only dominance axis is `unfiltered_sources`
   (an IMPLIED_EXACT twin with the same columns). Two rollup bindings at
   different grains tie there; the matrix has no shape that reaches it yet.
-- Partition families of partial summaries (`complete where` arms that union
-  to the table) are untested as rollup sources.
+- Partition families of partial summaries never serve a rollup: with the
+  base table in scope the planner reads the base, and with only the family it
+  declines (`summary_family` in `tests/discovery/test_partition_family_laws.py`).
+  Sound, but a missed serve. `Stack.stacked_summary_sum_exact` is the law a
+  union-of-summaries rollup would rest on.
+- Not an engine bug: an arm that binds its discriminator outside its grain
+  (`(species, city) grain (species) complete where city = 'A'`) claims
+  species determines city globally, by the FK rule in
+  `Environment.fk_derived_keys`. The geography models rely on that rule
+  (`tree_id -> city` comes only from per-city arms), so it cannot be scoped
+  to the arm. When the data breaks the claim, answers by `(city, species)`
+  are wrong. A validation check that a family's FK claims hold across arms
+  would catch it.
 - Not a bug: a summary binding `city: ~city` claims absent cities have no
   rows (padding), so it rolls up as complete and absent cities count 0.
 
