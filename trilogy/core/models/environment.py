@@ -928,6 +928,7 @@ class Environment:
         Two datasources can bind the same key at different grains; the later
         declaration wins, matching the parse-time overwrite this replaced.
         """
+        return {}
         stamp = (self.datasources.content_version, self.concepts.content_version)
         if self._fk_derived_keys is not None and self._fk_derived_keys[0] == stamp:
             return self._fk_derived_keys[1]
