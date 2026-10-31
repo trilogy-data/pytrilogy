@@ -248,39 +248,39 @@ def test_covers_stops_at_a_partial_binding():
     assert graph.covers({"user"}, "state")
 
 
-def test_fd_population_scope():
-    scoped = FDEdge(
-        determinants=frozenset({"k"}),
-        dependent="v",
-        provenance=EdgeProvenance.BINDING,
-        scope="partial_source",
-    )
-    partial_binding = [
-        BindingEdge("partial_source", "partial_source", "k", complete=False),
-        BindingEdge("partial_source", "partial_source", "v", complete=True),
-    ]
-    graph = DomainGraph(binding_edges=partial_binding, fd_edges=[scoped])
-    # holds on its own population
-    assert graph.determines({"k"}, "v", population="partial_source")
-    # a partial binding does NOT globalize the FD
-    assert not graph.determines({"k"}, "v")
-    # a complete binding of all involved concepts does (dimension-table rule)
-    complete_binding = [
-        BindingEdge("dim", "dim", "k", complete=True),
-        BindingEdge("dim", "dim", "v", complete=True),
-    ]
-    global_ok = DomainGraph(
-        binding_edges=complete_binding,
+def test_binding_fd_holds_model_wide():
+    """A `~` binding bounds a value's domain, not its uniqueness: the FD it
+    declares holds globally."""
+    graph = DomainGraph(
+        binding_edges=[
+            BindingEdge("partial_source", "partial_source", "k", complete=False),
+            BindingEdge("partial_source", "partial_source", "v", complete=True),
+        ],
         fd_edges=[
             FDEdge(
                 determinants=frozenset({"k"}),
                 dependent="v",
                 provenance=EdgeProvenance.BINDING,
-                scope="dim",
+                scope="partial_source",
             )
         ],
     )
-    assert global_ok.determines({"k"}, "v")
+    assert graph.determines({"k"}, "v")
+
+
+def test_arm_fd_carries_its_discriminator():
+    """An arm is unique on its grain only among its own rows, so the FD it
+    mints is determined by the grain and the discriminator it binds."""
+    env, _ = parse(
+        "key species string;\n"
+        "key city enum<string>['A', 'B'];\n"
+        "key tree_id string;\n"
+        "partial datasource arm_a (species, city, tree_id) grain (species)"
+        " complete where city = 'A' address arm_a;"
+    )
+    fds = {fd.dependent: fd.determinants for fd in mint_fd_edges(env)}
+    assert fds["local.tree_id"] == frozenset({"local.species", "local.city"})
+    assert "local.city" not in fds
 
 
 def test_overlay_does_not_mutate_base():
