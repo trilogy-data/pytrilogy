@@ -4596,6 +4596,22 @@ def _final_extra_sides(
     return extras
 
 
+def _join_gate_hosts(
+    parents: list[StrategyNode],
+    gate_keys: frozenset[str],
+    extras: _FinalExtras,
+    built: dict[str, StrategyNode],
+) -> list[StrategyNode]:
+    """`parents` plus the row stream the plan elected for each gate key none
+    of them carries (a key pinned to columns their rows lack)."""
+    carried = {o.address for p in parents for o in p.output_concepts}
+    for address in sorted(gate_keys - carried):
+        host = extras.gate_hosts.get(address)
+        if host and (node := _planned_side(built, host)) not in parents:
+            parents = parents + [node]
+    return parents
+
+
 def _group_region_reads(
     group_graph: nx.DiGraph, attrs: dict[str, GroupAttrs], gid: str
 ) -> frozenset[str]:
@@ -5626,13 +5642,7 @@ def _assemble_final_node(
     # `_apply_final_conditions`: carried hidden, or the merge joins on nothing.
     if arg_nodes and (gate_keys := _gate_grain_keys(arg_concepts) - available):
         _widen_merge_join_keys([*parents, *arg_nodes], environment, gate_keys)
-        # one no contributor can render (a key pinned to columns its rows
-        # lack) is joined in from the row stream computing it
-        carried = {o.address for p in parents for o in p.output_concepts}
-        for address in sorted(gate_keys - carried):
-            host = extras.gate_hosts.get(address)
-            if host and (node := _planned_side(built, host)) not in parents:
-                parents = parents + [node]
+        parents = _join_gate_hosts(parents, gate_keys, extras, built)
     parents = parents + arg_nodes
     sides = side_groups(parents, origin)
     if unplanned := set(sides) - set(plan.contributors):

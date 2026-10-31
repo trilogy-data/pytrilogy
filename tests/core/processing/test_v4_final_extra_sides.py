@@ -1,3 +1,6 @@
+from dataclasses import dataclass
+from types import SimpleNamespace
+
 import pytest
 
 from trilogy import Environment
@@ -8,6 +11,8 @@ from trilogy.core.processing.v4_helper.constants import FINAL_NODE_ID
 from trilogy.core.processing.v4_helper.models import DepthLabel, GroupAttrs
 from trilogy.core.processing.v4_helper.strategy_builder import (
     _final_extra_sides,
+    _FinalExtras,
+    _join_gate_hosts,
     _planned_side,
 )
 
@@ -84,6 +89,26 @@ def test_root_side_carries_an_argument_it_outputs():
     assert extras.carried_by("rows") == ["local.raw_species"]
     assert extras.arg_producers == {}
     assert extras.groups == []
+
+
+@dataclass
+class _Node:
+    output_concepts: list[SimpleNamespace]
+
+
+def _node(*addresses: str) -> _Node:
+    return _Node([SimpleNamespace(address=a) for a in addresses])
+
+
+def test_gate_key_no_parent_carries_joins_its_planned_host():
+    rows, basic = _node("local.tree_id"), _node("local.genus", "local.tree_id")
+    extras = _FinalExtras({"local.x_genus": "agg"}, {"local.genus": "basic"})
+    keys = frozenset({"local.genus"})
+
+    assert _join_gate_hosts([rows], keys, extras, {"basic": basic}) == [rows, basic]
+    assert _join_gate_hosts([basic], keys, extras, {"basic": basic}) == [basic]
+    with pytest.raises(UnbuiltGroupException, match="built nothing"):
+        _join_gate_hosts([rows], keys, extras, {})
 
 
 def test_planned_side_that_built_nothing_raises():
