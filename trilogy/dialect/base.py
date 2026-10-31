@@ -3037,11 +3037,68 @@ class BaseDialect:
         self,
         query: ProcessedQuery,
     ) -> list[CompiledCTE]:
-        return [self.render_cte(cte) for cte in query.ctes[:-1]] + [
-            # last CTE needs to respect the user output order
-            self.render_cte(
-                sort_select_output_processed(query.ctes[-1], query), auto_sort=False
-            )
+        compiled = [
+            self.render_cte(self._expose_inline_unnests(cte)) for cte in query.ctes[:-1]
+        ]
+        # last CTE needs to respect the user output order
+        final = sort_select_output_processed(query.ctes[-1], query)
+        if self._hidden_inline_unnests(final):
+            assert isinstance(final, CTE)
+            return compiled + self._project_over_hidden_unnest(final)
+        return compiled + [self.render_cte(final, auto_sort=False)]
+
+    def _hidden_inline_unnests(self, cte: CTE | UnionCTE) -> set[str]:
+        """Unnests a DIRECT-mode dialect renders in the SELECT list itself: one
+        left off the projection would also drop the rows it expands into."""
+        if self.UNNEST_MODE != UnnestMode.DIRECT or not isinstance(cte, CTE):
+            return set()
+        return {c.address for c in cte.join_derived_concepts} & cte.hidden_concepts
+
+    def _expose_inline_unnests(self, cte: CTE | UnionCTE) -> CTE | UnionCTE:
+        hidden = self._hidden_inline_unnests(cte)
+        if not hidden:
+            return cte
+        assert isinstance(cte, CTE)
+        return replace(cte, hidden_concepts=cte.hidden_concepts - hidden)
+
+    def _project_over_hidden_unnest(self, cte: CTE) -> list[CompiledCTE]:
+        """Render the final CTE with its hidden unnest projected, then select
+        the visible columns from it, ordering and limiting by alias."""
+        q = self.QUOTE_CHARACTER
+        outputs = {c.address: c for c in cte.output_columns}
+        items = cte.order_by.items if cte.order_by else []
+        keys = [
+            (outputs[i.expr.address], i.order)
+            for i in items
+            if isinstance(i.expr, BuildConcept) and i.expr.address in outputs
+        ]
+        by_alias = len(keys) == len(items)
+        inner = replace(
+            cte,
+            hidden_concepts=cte.hidden_concepts
+            - self._hidden_inline_unnests(cte)
+            - ({c.address for c, _ in keys} if by_alias else set()),
+            order_by=None if by_alias else cte.order_by,
+            limit=None if by_alias else cte.limit,
+        )
+        name = f'"{cte.name}"' if self.QUOTE_CTE_NAMES else cte.name
+        outer = self.render_sql_template(
+            select_columns=[
+                f"{q}{c.safe_address}{q}"
+                for c in cte.output_columns
+                if c.address not in cte.hidden_concepts
+            ],
+            base=name,
+            order_by=(
+                [self.render_ordering(f"{q}{c.safe_address}{q}", o) for c, o in keys]
+                if by_alias and keys
+                else None
+            ),
+            limit=cte.limit if by_alias else None,
+        )
+        return [
+            self.render_cte(inner, auto_sort=False),
+            CompiledCTE(name="", statement=outer),
         ]
 
     def create_show_output(
