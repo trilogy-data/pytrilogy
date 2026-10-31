@@ -1436,8 +1436,6 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
                     _, _, parent_keys = x.get_select_grain_and_keys(grain, environment)
                     if parent_keys:
                         pkeys.update(parent_keys)
-                    elif x.is_own_key:
-                        pkeys.add(x.address)
                 # already reduced: re-reducing would drop a grouping spec's
                 # select-local flags, the only row identity rollup subtotals have
                 final_grain = (

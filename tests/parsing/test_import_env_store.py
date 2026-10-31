@@ -110,8 +110,9 @@ def test_store_disabled_flag(model_dir: Path, monkeypatch):
 
 def test_datasource_fk_binding_never_rewrites_a_concept(tmp_path: Path):
     """A datasource binding an imported KEY at a wider grain declares an FK, and
-    that declaration is derived on demand — it never writes back onto the
-    concept, so it cannot leak into the shared cached child env."""
+    that declaration is an FD of the importing environment's bindings: it
+    never writes back onto the concept, so it cannot leak into the shared
+    cached child env."""
     (tmp_path / "child.preql").write_text("key code string;\n")
     (tmp_path / "root.preql").write_text(
         "import child;\n"
@@ -121,12 +122,12 @@ def test_datasource_fk_binding_never_rewrites_a_concept(tmp_path: Path):
     env_a = Environment(working_path=str(tmp_path))
     parse("import root as root;", env_a)
     assert not env_a.concepts.data["root.code"].keys
-    assert env_a.fk_derived_keys()["root.code"] == frozenset({"root.tag"})
+    assert env_a.binding_determines({"root.tag"}, "root.code")
 
     env_b = Environment(working_path=str(tmp_path))
     parse("import child as child;", env_b)
     assert not env_b.concepts.data["child.code"].keys
-    assert "child.code" not in env_b.fk_derived_keys()
+    assert not env_b.binding_fds()
 
 
 def _entry_for(name: str):
