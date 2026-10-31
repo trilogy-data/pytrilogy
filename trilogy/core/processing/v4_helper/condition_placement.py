@@ -1826,12 +1826,12 @@ def _pin_input_placements(
     placements: list[ConditionPlacement], scope: _PlacementScope
 ) -> list[ConditionPlacement]:
     """Copy a row atom onto the scans the pin is evaluated over when it keeps
-    or drops an anchor's rows whole: keyed within the anchors, or hosted on a
-    row stream carrying them and reading nothing the pin reads. The pin meets
-    the select's rows on its anchors (`grain_pin`), so it needs no anchor the
-    atom drops, and the scan reads the anchors' own rows (an anchor whose
-    many-valued path is empty keeps its padded value) and the binding the
-    atom selects."""
+    or drops an anchor's rows whole: keyed within the anchors, or hosted on the
+    select's own row stream (no scan of the pin) carrying them and reading
+    nothing the target scan reads. The pin meets the select's rows on its
+    anchors (`grain_pin`), so it needs no anchor the atom drops, and the scan
+    reads the anchors' own rows (an anchor whose many-valued path is empty
+    keeps its padded value) and the binding the atom selects."""
     hosts = {
         gid: anchors
         for gid, anchors in scope.pin_sealed_relatable.items()
@@ -1865,7 +1865,9 @@ def _pin_input_placements(
                 if input_keys <= anchors or (
                     not row_inputs & scope.group_members[gid]
                     and any(
-                        anchors <= scope.group_members[h] for h in placement.group_ids
+                        h not in scope.pin_sealed_relatable
+                        and anchors <= scope.group_members[h]
+                        for h in placement.group_ids
                     )
                 ):
                     extra.append(
