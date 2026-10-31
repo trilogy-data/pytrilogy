@@ -91,6 +91,48 @@ class TestConditionImplies:
     def test_different_value_not_implied(self):
         assert not condition_implies(cond_bos, cond_sfo)
 
+    def test_value_pin_implies_wider_set(self):
+        wide = _in(city, ("USBOS", "USSFO"))
+        assert condition_implies(cond_bos, wide)
+        assert condition_implies(cond_bos_and_dbh, wide)
+        assert condition_implies(_in(city, ("USSFO",)), wide)
+        assert not condition_implies(cond_nyc, wide)
+        assert not condition_implies(wide, cond_bos)
+
+    def test_reversed_equality_pins(self):
+        reversed_bos = BuildComparison(
+            left="USBOS", right=city, operator=ComparisonOperator.EQ
+        )
+        assert condition_implies(reversed_bos, _in(city, ("USBOS", "USSFO")))
+
+    def test_disjunction_on_one_column_is_union(self):
+        either = BuildParenthetical(
+            content=BuildConditional(
+                left=cond_bos, right=cond_sfo, operator=BooleanOperator.OR
+            )
+        )
+        assert condition_implies(either, _in(city, ("USBOS", "USSFO")))
+        assert not condition_implies(either, _in(city, ("USBOS",)))
+        mixed = BuildConditional(
+            left=cond_bos, right=cond_dbh, operator=BooleanOperator.OR
+        )
+        assert not condition_implies(mixed, _in(city, ("USBOS", "USSFO")))
+
+    def test_null_literal_is_not_reasoned_over(self):
+        is_null = BuildComparison(left=city, right=None, operator=ComparisonOperator.IS)
+        assert not condition_implies(is_null, _in(city, (None, "USBOS")))  # type: ignore[arg-type]
+        assert not condition_implies(cond_bos, _in(city, (None, "USBOS")))  # type: ignore[arg-type]
+
+    def test_concept_comparison_is_not_a_pin(self):
+        assert not condition_implies(
+            BuildComparison(left=city, right=dbh, operator=ComparisonOperator.EQ),
+            _in(city, ("USBOS",)),
+        )
+        assert not condition_implies(
+            BuildComparison(left=city, right="USBOS", operator=ComparisonOperator.NE),
+            _in(city, ("USBOS",)),
+        )
+
 
 class TestConditionImpliesWithExtras:
     def test_exact_match_no_extras(self):
