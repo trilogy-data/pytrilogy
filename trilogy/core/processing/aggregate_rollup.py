@@ -8,6 +8,7 @@ from trilogy.core.models.build import (
     BuildConcept,
     BuildDatasource,
     BuildGrain,
+    BuildUnionDatasource,
     BuildWhereClause,
 )
 from trilogy.core.processing.condition_utility import condition_implies
@@ -222,7 +223,8 @@ def pending_rollups(
 
 
 def holds_every_kept_row(
-    datasource: BuildDatasource, conditions: BuildWhereClause | None
+    datasource: BuildDatasource | BuildUnionDatasource,
+    conditions: BuildWhereClause | None,
 ) -> bool:
     """A `complete where` summary rolls up only under a WHERE that implies its
     arm (`Cost.partial_summary_sum_exact`). Read as complete, it drops every
@@ -309,6 +311,105 @@ def get_rollup_concepts(
         ):
             rollups.append(concept)
     return rollups
+
+
+def source_rollup_concepts(
+    datasource: BuildDatasource | BuildUnionDatasource,
+    requested_concepts: list[BuildConcept],
+    concepts_by_address: Mapping[str, BuildConcept],
+    datasources: Iterable[BuildDatasource],
+    target_grain: BuildGrain,
+    conditions: BuildWhereClause | None = None,
+) -> list[BuildConcept]:
+    """`get_rollup_concepts` for a scan or a stacked family. The arms partition
+    the base rows on their bound discriminators, so summing the arms drops a
+    discriminator exactly (`Stack.stacked_summary_sum_exact`); each arm still
+    rolls to the target grain plus those discriminators under the usual
+    guard."""
+    if isinstance(datasource, BuildDatasource):
+        # an arm binding its discriminator outside its grain is a stack of one
+        if datasource.bound_discriminators - datasource.grain.components:
+            return source_rollup_concepts(
+                BuildUnionDatasource(children=[datasource]),
+                requested_concepts,
+                concepts_by_address,
+                datasources,
+                target_grain,
+                conditions,
+            )
+        return get_rollup_concepts(
+            datasource,
+            requested_concepts,
+            concepts_by_address,
+            datasources,
+            target_grain,
+            conditions,
+        )
+    # Arms that bind their discriminator outside their grain store partials
+    # even when the stack's rows sit at the target grain.
+    if datasource.grain.issubset(target_grain) and all(
+        arm.grain == datasource.grain for arm in datasource.children
+    ):
+        return []
+    # A grand total sums every arm's partials once, discriminator or not.
+    arm_grain = (
+        BuildGrain(components=target_grain.components | datasource.bound_discriminators)
+        if target_grain.components
+        else target_grain
+    )
+    datasource_list = list(datasources)
+    common: dict[str, BuildConcept] | None = None
+    for arm in datasource.children:
+        rolled = arm_rollup_concepts(
+            arm,
+            requested_concepts,
+            concepts_by_address,
+            datasource_list,
+            arm_grain,
+            conditions,
+        )
+        found = {c.address: c for c in rolled}
+        common = (
+            found if common is None else {a: common[a] for a in common if a in found}
+        )
+        if not common:
+            return []
+    return list((common or {}).values())
+
+
+def arm_rollup_concepts(
+    arm: BuildDatasource,
+    requested_concepts: list[BuildConcept],
+    concepts_by_address: Mapping[str, BuildConcept],
+    datasources: list[BuildDatasource],
+    arm_grain: BuildGrain,
+    conditions: BuildWhereClause | None,
+) -> list[BuildConcept]:
+    """A stacked arm's partials at `arm_grain`: stored when the arm is already
+    at it, rolled up when it is finer."""
+    if not arm.grain.issubset(arm_grain):
+        return get_rollup_concepts(
+            arm,
+            requested_concepts,
+            concepts_by_address,
+            datasources,
+            arm_grain,
+            conditions,
+        )
+    if not _conditions_supported(arm, conditions, concepts_by_address):
+        return []
+    targets = [concepts_by_address.get(a) for a in arm_grain.components]
+    if any(t is None for t in targets) or not _concepts_reachable(
+        arm, [t for t in targets if t is not None], concepts_by_address
+    ):
+        return []
+    return [
+        concept
+        for concept in requested_concepts
+        if concept.is_aggregate
+        and _is_rollable_aggregate(concept)
+        and _datasource_has_matching_rollup_aggregate(arm, concept)
+    ]
 
 
 def merge_rollup_concepts(

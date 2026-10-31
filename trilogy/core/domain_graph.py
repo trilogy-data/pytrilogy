@@ -697,10 +697,9 @@ class DomainGraph:
         `dependent` for the rows of `population` (a datasource identifier, or
         None for the global domain)?
 
-        An FD scoped to a source population applies globally only when that
-        source binds all involved concepts completely (the complete-binding
-        rule); otherwise it applies only when queried against its own
-        population. Closure is transitive over ≡-classes.
+        A binding FD holds model-wide: its determinants already carry an
+        arm's discriminator (`_row_determinants`). Closure is transitive over
+        ≡-classes.
         """
         rep = self._equivalence_classes()
         closure = self._fd_closure(
@@ -710,24 +709,19 @@ class DomainGraph:
 
     def _canonical_fd_edges(self) -> list[tuple[frozenset[str], str, str | None, bool]]:
         """Each FD as (canonical determinants, canonical dependent, scope,
-        applies-globally), the last by the complete-binding rule."""
+        applies-globally)."""
         if self._canonical_fds is not None:
             return self._canonical_fds
         rep = self._equivalence_classes()
-        complete_bindings: dict[str, set[str]] = {}
-        for b in self.binding_edges:
-            if b.complete and b.condition is None:
-                complete_bindings.setdefault(b.datasource, set()).add(
-                    rep.get(b.concept, b.concept)
-                )
-        canonical: list[tuple[frozenset[str], str, str | None, bool]] = []
-        for fd in self.fd_edges:
-            determinants = frozenset(rep.get(a, a) for a in fd.determinants)
-            dependent = rep.get(fd.dependent, fd.dependent)
-            is_global = fd.scope is None or (determinants | {dependent}) <= (
-                complete_bindings.get(fd.scope, set())
+        canonical: list[tuple[frozenset[str], str, str | None, bool]] = [
+            (
+                frozenset(rep.get(a, a) for a in fd.determinants),
+                rep.get(fd.dependent, fd.dependent),
+                fd.scope,
+                True,
             )
-            canonical.append((determinants, dependent, fd.scope, is_global))
+            for fd in self.fd_edges
+        ]
         self._canonical_fds = canonical
         return canonical
 
@@ -1007,10 +1001,26 @@ def mint_binding_edges(environment: Any) -> list[BindingEdge]:
     return out
 
 
+def _row_determinants(datasource: Any) -> frozenset[str]:
+    """What a table's bindings are a function of: its grain, plus the
+    discriminator it binds when it is a `complete where` arm, which is unique
+    on its grain only among its own rows (`Stack.unbound_arm_repeats_grain`).
+    A `~` column is unique per row all the same: partiality bounds a value's
+    domain (`DomainGraph.covers`), not its uniqueness."""
+    grain = frozenset(datasource.grain.components)
+    non_partial_for = datasource.non_partial_for
+    if not grain or non_partial_for is None:
+        return grain
+    bound = {column.concept.address for column in datasource.columns}
+    return grain | {
+        c.address for c in non_partial_for.concept_arguments if c.address in bound
+    }
+
+
 def mint_fd_edges(environment: Any) -> list[FDEdge]:
     out: list[FDEdge] = []
     for concept in _unique_concepts(environment):
-        keys = concept.effective_keys(environment)
+        keys = concept.keys
         if keys:
             out.append(
                 FDEdge(
@@ -1020,7 +1030,7 @@ def mint_fd_edges(environment: Any) -> list[FDEdge]:
                 )
             )
     for datasource in environment.datasources.values():
-        grain = {c for c in datasource.grain.components}
+        grain = _row_determinants(datasource)
         if not grain:
             continue
         for column in datasource.columns:
@@ -1029,7 +1039,7 @@ def mint_fd_edges(environment: Any) -> list[FDEdge]:
                 continue
             out.append(
                 FDEdge(
-                    determinants=frozenset(grain),
+                    determinants=grain,
                     dependent=address,
                     provenance=EdgeProvenance.BINDING,
                     scope=datasource.identifier,

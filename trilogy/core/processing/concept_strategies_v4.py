@@ -37,6 +37,7 @@ from trilogy.core.models.build import (
     BuildFunction,
     BuildGrain,
     BuildMultiSelectLineage,
+    BuildUnionDatasource,
     BuildUnionSelectLineage,
     BuildWhereClause,
 )
@@ -49,8 +50,8 @@ from trilogy.core.processing.aggregate_rollup import (
     _is_rollable_aggregate,
     at_own_grain,
     filter_finer_row_args,
-    get_rollup_concepts,
     holds_every_kept_row,
+    source_rollup_concepts,
 )
 from trilogy.core.processing.condition_utility import (
     combine_where_clauses,
@@ -218,7 +219,9 @@ def _datasource_materializes(
 
 
 def _scan_rows_at_grain(
-    ds: BuildDatasource, target_grain: BuildGrain, environment: BuildEnvironment
+    ds: BuildDatasource | BuildUnionDatasource,
+    target_grain: BuildGrain,
+    environment: BuildEnvironment,
 ) -> bool:
     """One scan row per `target_grain` tuple: the datasource's declared grain,
     or that grain plus components it functionally determines, which are
@@ -282,7 +285,7 @@ _COLUMN_READABLE = frozenset(
 def _conditions_cannot_move(
     concept: BuildConcept,
     derivations: set[Derivation],
-    ds: BuildDatasource,
+    ds: BuildDatasource | BuildUnionDatasource,
     where: BuildWhereClause | None,
     environment: BuildEnvironment,
 ) -> bool:
@@ -298,6 +301,29 @@ def _conditions_cannot_move(
     if Derivation.WINDOW in derivations:
         return False
     return _scan_rows_at_grain(ds, concept.grain, environment)
+
+
+def _union_materializes(
+    concept: BuildConcept,
+    union: BuildUnionDatasource,
+    where: BuildWhereClause | None,
+    environment: BuildEnvironment,
+) -> bool:
+    """A stacked family stores `concept` when it holds every kept row and
+    every arm binds the column and can express the conditions; the stack heals
+    the arms' partial columns (`union_unhealed_partial_addresses`)."""
+    if not holds_every_kept_row(union, where):
+        return False
+    unhealed = union.column_level_partial_addresses
+    return all(
+        _conditions_supported(arm, where, environment.concepts)
+        and any(
+            col.concept.canonical_address == concept.canonical_address
+            and col.concept.address not in unhealed
+            for col in arm.columns
+        )
+        for arm in union.children
+    )
 
 
 def _lineage_derivations(
@@ -370,6 +396,7 @@ def materialized_root_addresses(
     environment: BuildEnvironment,
     conditions: list[BuildWhereClause],
     datasources: Sequence[BuildDatasource],
+    unions: Sequence[BuildUnionDatasource] = (),
 ) -> frozenset[str]:
     """Demanded derived concepts that a datasource materializes directly: a
     precomputed / pre-aggregated summary table or a persisted derived column.
@@ -476,6 +503,16 @@ def materialized_root_addresses(
                     out.add(concept.address)
                     exact = True
                     break
+            if not exact and any(
+                _scan_rows_at_grain(union, target_grain, environment)
+                and _conditions_cannot_move(
+                    concept, derivations, union, where, environment
+                )
+                and _union_materializes(concept, union, where, environment)
+                for union in unions
+            ):
+                out.add(concept.address)
+                exact = True
         # A rolled root joins the target-grain scan, so an aggregate at another
         # grain (`count(x) by *` beside per-city rows) plans as its own group.
         if (
@@ -504,13 +541,19 @@ def materialized_root_addresses(
         # never matched under a finer filter, so post-rollup decoupling can't
         # double-count.
         sources = _rollup_sources(
-            concept, mandatory_list, target_grain, where, environment, datasources
+            concept,
+            mandatory_list,
+            target_grain,
+            where,
+            environment,
+            datasources,
+            unions,
         )
         if sources:
             rolled_roots.add(concept.address)
             rollup_sources.extend(sources)
     nested = _nested_rollup_roots(
-        mandatory_list, out | rolled_roots, where, environment, datasources
+        mandatory_list, out | rolled_roots, where, environment, datasources, unions
     )
     rolled_roots |= nested.keys()
     rollup_sources.extend(ds for sources in nested.values() for ds in sources)
@@ -621,25 +664,38 @@ def _rollup_sources(
     where: BuildWhereClause | None,
     environment: BuildEnvironment,
     datasources: Sequence[BuildDatasource],
+    unions: Sequence[BuildUnionDatasource] = (),
 ) -> list[BuildDatasource]:
-    """The finer summaries `concept` re-aggregates from at `target_grain`."""
-    return [
-        ds
-        for ds in datasources
-        if _datasource_has_matching_rollup_aggregate(ds, concept)
-        and holds_every_kept_row(ds, where)
-        and any(
+    """The finer summaries `concept` re-aggregates from at `target_grain`. A
+    stacked family serves it when every arm rolls it up: the arms hold
+    disjoint rows (`Stack.stacked_summary_sum_exact`), so its arms are the
+    summaries read."""
+    out: list[BuildDatasource] = []
+    sources: list[BuildDatasource | BuildUnionDatasource] = [*datasources, *unions]
+    for source in sources:
+        if not holds_every_kept_row(source, where):
+            continue
+        if isinstance(source, BuildDatasource) and not (
+            _datasource_has_matching_rollup_aggregate(source, concept)
+        ):
+            continue
+        if any(
             r.address == concept.address
-            for r in get_rollup_concepts(
-                datasource=ds,
+            for r in source_rollup_concepts(
+                datasource=source,
                 requested_concepts=requested,
                 concepts_by_address=environment.concepts,
                 datasources=datasources,
                 target_grain=target_grain,
                 conditions=where,
             )
-        )
-    ]
+        ):
+            out.extend(
+                source.children
+                if isinstance(source, BuildUnionDatasource)
+                else [source]
+            )
+    return out
 
 
 def _nested_rollup_roots(
@@ -648,6 +704,7 @@ def _nested_rollup_roots(
     where: BuildWhereClause | None,
     environment: BuildEnvironment,
     datasources: Sequence[BuildDatasource],
+    unions: Sequence[BuildUnionDatasource] = (),
 ) -> dict[str, list[BuildDatasource]]:
     """rollable aggregates inside a demand (`count(x) by k` under a window)
     that a summary serves at their own grain, under the same WHERE."""
@@ -665,7 +722,7 @@ def _nested_rollup_roots(
         ):
             continue
         sources = _rollup_sources(
-            concept, [concept], concept.grain, where, environment, datasources
+            concept, [concept], concept.grain, where, environment, datasources, unions
         )
         if sources:
             out[concept.address] = sources
@@ -979,7 +1036,11 @@ def _search_concepts(
     # summary doesn't combine with the rest of the query), fall back to the
     # derive-from-base plan: try the direct source first.
     materialized_roots = materialized_root_addresses(
-        mandatory_list, environment, conditions, g.scope.datasources
+        mandatory_list,
+        environment,
+        conditions,
+        g.scope.datasources,
+        [ds for ds in g.datasources.values() if isinstance(ds, BuildUnionDatasource)],
     )
     info = _build_from_graph(
         mandatory_list,

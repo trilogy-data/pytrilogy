@@ -14,11 +14,12 @@ from trilogy.core.models.build import (
     BuildDatasource,
     BuildFilterItem,
     BuildRowsetItem,
+    BuildUnionDatasource,
 )
 from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.processing.aggregate_rollup import (
     _is_rollable_aggregate,
-    get_rollup_concepts,
+    source_rollup_concepts,
 )
 from trilogy.core.processing.basic_graph import (
     build_basic_concept_graph,
@@ -173,19 +174,38 @@ def rollup_edges(
         for ds in datasources
         if any(_is_rollable_aggregate(c) for c in ds.output_concepts)
     ]
-    if not binding:
+    return _source_rollup_edges(
+        concepts,
+        [(datasource_to_node(ds), ds) for ds in binding],
+        datasources,
+        node_stash,
+    )
+
+
+def _source_rollup_edges(
+    concepts: list[BuildConcept],
+    sources: list[tuple[str, BuildDatasource | BuildUnionDatasource]],
+    datasources: Sequence[BuildDatasource],
+    node_stash: dict[str, str],
+) -> list[tuple[str, str]]:
+    if not sources:
         return []
     concepts_by_address = {c.address: c for c in concepts}
     targets = [c for c in concepts if c.is_aggregate and _is_rollable_aggregate(c)]
     edges: list[tuple[str, str]] = []
-    for datasource in binding:
-        ds_node = datasource_to_node(datasource)
-        bound = {c.address for c in datasource.output_concepts}
+    for ds_node, datasource in sources:
+        # A stack's stored aggregate is a partial at the stack's grain, so
+        # binding the address is no reason to skip it.
+        bound = (
+            {c.address for c in datasource.output_concepts}
+            if isinstance(datasource, BuildDatasource)
+            else set()
+        )
         for concept in targets:
             # Already bound by address — the existing column edge covers it.
             if concept.address in bound:
                 continue
-            if not get_rollup_concepts(
+            if not source_rollup_concepts(
                 datasource=datasource,
                 requested_concepts=[concept],
                 concepts_by_address=concepts_by_address,
@@ -311,14 +331,24 @@ def generate_graph(
         default_concept_graph=default_concept_graph,
     )
     edges: list[tuple[str, str]] = []
+    unions: list[tuple[str, BuildDatasource | BuildUnionDatasource]] = []
     for union, emits in union_sources(g.scope, environment):
         node = union_to_node(union)
         g.datasources[node] = union
         g.add_datasource_node(node, union)
+        unions.append((node, union))
         for concept in emits:
             cnode = concept_to_node(concept)
             g.concepts.setdefault(cnode, concept)
             edges.append((node, cnode))
             edges.append((cnode, node))
     g.add_edges_from(edges)
+    g.add_edges_from(
+        _source_rollup_edges(
+            list(environment.concepts.values()),
+            unions,
+            list(g.scope.datasources),
+            {},
+        )
+    )
     return g

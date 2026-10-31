@@ -503,19 +503,12 @@ def concept_list_to_keys(
             concept = environment.concepts[concept.address]
         if isinstance(concept, UndefinedConcept):
             continue
-        # A derived value over a bare KEY is keyed by that key itself. Its
-        # fk-derived keys (a fact grain asserting it determines the key —
-        # `Environment.fk_derived_keys`, last declaration wins) describe that
-        # fact's rows, not the key's identity: inheriting them re-keys the
-        # derivation onto whichever fact was declared last, and an undemanded
-        # partial (`~`) binder then elects into the plan and fans it out
-        # (partial-binder filtered-count fuzzer bugs).
+        # A derived value over a bare KEY is keyed by that key itself.
         if concept.is_own_key:
             final_keys.append(concept.address)
             continue
-        concept_keys = concept.effective_keys(environment)
-        if concept_keys:
-            final_keys += list(concept_keys)
+        if concept.keys:
+            final_keys += list(concept.keys)
         elif concept.purpose != Purpose.PROPERTY:
             final_keys.append(concept.address)
     return set(final_keys)
@@ -712,10 +705,12 @@ def concept_is_relevant(
         and all(c in other_addresses for c in concept.keys)
     ):
         return False
-    if concept.purpose == Purpose.KEY:
-        key_keys = concept.effective_keys(environment)
-        if key_keys and all(c in other_addresses for c in key_keys):
-            return False
+    if (
+        concept.purpose == Purpose.KEY
+        and concept.keys
+        and all(c in other_addresses for c in concept.keys)
+    ):
+        return False
     if concept.purpose in (Purpose.METRIC,) and all(
         c in other_addresses for c in concept.grain.components
     ):
@@ -839,8 +834,22 @@ def concepts_to_grain_concepts_ordered(
             continue
         seen.add(sub.address)
         output.append(sub.address)
+    return minimize_by_bindings(output, environment)
 
-    return output
+
+def minimize_by_bindings(
+    components: list[str], environment: Environment | None
+) -> list[str]:
+    """`components` without those the others' datasource bindings determine
+    (a key a table binds beside its grain): they add no rows."""
+    if environment is None:
+        return components
+    kept = list(components)
+    for address in sorted(components):
+        rest = set(kept) - {address}
+        if rest and environment.binding_determines(rest, address):
+            kept.remove(address)
+    return kept
 
 
 def concepts_to_grain_concepts(
@@ -1118,7 +1127,7 @@ def function_to_concept(
         if is_metric or x.is_own_key:
             key_grain.append(x.address)
         # otherwse, for row ops, assume keys are transitive
-        elif x_keys := x.effective_keys(environment):
+        elif x_keys := x.keys:
             key_grain += [*x_keys]
         else:
             key_grain.append(x.address)
@@ -1974,7 +1983,7 @@ def comparison_to_concept(
         if is_metric or x.is_own_key:
             key_grain.append(x.address)
         # otherwse, for row ops, assume keys are transitive
-        elif x_keys := x.effective_keys(environment):
+        elif x_keys := x.keys:
             key_grain += [*x_keys]
         else:
             key_grain.append(x.address)

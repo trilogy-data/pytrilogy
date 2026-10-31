@@ -16,6 +16,7 @@ from trilogy.core.models.build import (
     BuildConditional,
     BuildDatasource,
     BuildFunction,
+    BuildGrain,
     BuildParenthetical,
     BuildUnionDatasource,
     BuildWhereClause,
@@ -467,6 +468,19 @@ def union_sources(
         common = set(group[0].output_concepts)
         for child in group[1:]:
             common &= set(child.output_concepts)
+        # An arm's aggregate is a partial at the stack's grain when the arm
+        # binds a discriminator outside its own grain; only a rollup reads it.
+        stack_grain = BuildGrain.from_concepts(
+            union.grain.components, environment=environment
+        )
+        common = {
+            c
+            for c in common
+            if not c.is_aggregate
+            or stack_grain.issubset(
+                BuildGrain.from_concepts(c.grain.components, environment=environment)
+            )
+        }
         emits = sorted(common, key=lambda c: c.address) + union_derived_concepts(
             group, environment, datasources
         )

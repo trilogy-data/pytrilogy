@@ -123,7 +123,7 @@ def _covered_by_grain(
         return False
     seen.add(address)
     concept = _resolve_in(address, local, environment)
-    keys = concept.effective_keys(environment) if concept is not None else None
+    keys = concept.keys if concept is not None else None
     if not keys:
         return False
     return all(_covered_by_grain(k, cover, local, environment, seen) for k in keys)

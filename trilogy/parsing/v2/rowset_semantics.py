@@ -127,7 +127,7 @@ def _rowset_concept(
         # A rowset output snapshots its source's identity, including keys a
         # datasource declaration implies — the rowset namespace has no
         # datasource of its own to re-derive them from later.
-        keys=orig_concept.effective_keys(context.environment),
+        keys=orig_concept.keys,
         derivation=Derivation.ROWSET,
         granularity=orig_concept.granularity,
         pseudonyms={
