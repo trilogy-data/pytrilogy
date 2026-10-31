@@ -283,6 +283,26 @@ def _stored_key(candidate: SourceCandidate, address: str) -> bool:
     return binding is not None and binding.stored
 
 
+def _has_filtered_twin(network: SourceNetwork, node: str, read: frozenset[str]) -> bool:
+    """Another source the WHERE pre-filters (IMPLIED_EXACT) reads every value
+    `node` provides or joins on from the same column, so it holds the rows of
+    `node` the query keeps."""
+    candidate = network.candidates[node]
+    if not read or candidate.condition.partial_is_full:
+        return False
+    return any(
+        other.condition.partial_is_full
+        and all(
+            (mine := candidate.bindings.get(address)) is not None
+            and (theirs := other.bindings.get(address)) is not None
+            and mine.address == theirs.address
+            for address in read
+        )
+        for name, other in network.candidates.items()
+        if name != node
+    )
+
+
 def _solution_for(
     network: SourceNetwork, sources: frozenset[str], targets: list[str]
 ) -> SourceSolution:
@@ -339,6 +359,11 @@ def _solution_for(
             for node, addresses in assignments.items()
             for address in addresses
             if not _stored_key(network.candidates[node], address)
+        ),
+        unfiltered_sources=sum(
+            1
+            for node in sources
+            if _has_filtered_twin(network, node, assignments[node] | joined_on[node])
         ),
         connectors=len(connectors),
         derived_joins=derived_joins,
