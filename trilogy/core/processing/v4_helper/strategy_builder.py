@@ -3792,8 +3792,8 @@ def _fold_descendant_contributors(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
     attrs: dict[str, GroupAttrs],
-    built: dict[str, StrategyNode],
     per_group: dict[str, list[BuildConcept]],
+    passthroughs: dict[str, list[BuildConcept]],
     rendered: dict[str, frozenset[str]],
     environment: BuildEnvironment,
 ) -> None:
@@ -3807,7 +3807,7 @@ def _fold_descendant_contributors(
     S on whatever column they happen to share, which for a rename of a
     grouping key is the value itself and fans out. Works for any basic, not
     just renames: B already resolved against S, we only widen its projection.
-    Edits `per_group` in place.
+    Edits `per_group` in place; B's passthrough is owed in `passthroughs`.
 
     Passthrough = add S's concepts to B's input AND output: `resolve_concept_
     map` sources an output from a parent only when it's also an input
@@ -3821,30 +3821,35 @@ def _fold_descendant_contributors(
             Derivation.WINDOW,
         ):
             continue
-        b_node = built[b_gid]
-        b_ancestors = nx.ancestors(group_graph, b_gid)
         reads = parents_render(
             group_graph, group_edges, attrs, b_gid, rendered, environment
         )
-        available = parent_output_addresses(b_node)
-        dirty = False
-        for s_gid in b_ancestors:
-            if s_gid not in per_group or s_gid == b_gid:
+        for s_gid in nx.ancestors(group_graph, b_gid):
+            if s_gid not in per_group:
                 continue
             s_concepts = per_group[s_gid]
             if not all(c.address in reads for c in s_concepts):
                 continue
-            dirty |= widen_projection(
-                b_node,
-                s_concepts,
-                input_candidates=s_concepts,
-                available_addresses=available,
-                rebuild=False,
-            )
             per_group[b_gid].extend(s_concepts)
+            passthroughs.setdefault(b_gid, []).extend(s_concepts)
             del per_group[s_gid]
-        if dirty:
-            b_node.rebuild_cache()
+
+
+def _pass_through_final_contributors(
+    built: dict[str, StrategyNode],
+    passthroughs: dict[str, list[BuildConcept]],
+) -> None:
+    """Widen a copy of each basic the FINAL reads an ancestor contributor's
+    columns through, taking as inputs the ones its parents render."""
+    for gid, concepts in passthroughs.items():
+        node = built[gid].copy()
+        if widen_projection(
+            node,
+            concepts,
+            input_candidates=concepts,
+            available_addresses=parent_output_addresses(node),
+        ):
+            built[gid] = node
 
 
 def _hosts_rename(
@@ -5186,6 +5191,73 @@ def _gate_key_row_stream(
     return hosts[0][1] if hosts else None
 
 
+@dataclass
+class _FinalCover:
+    """The FINAL election, decided before the build loop: the concepts each
+    contributor provides, and the columns owed on a contributor beyond its
+    build: hosted over it (`projections`) or passed through it from an
+    ancestor contributor (`passthroughs`)."""
+
+    per_group: dict[str, list[BuildConcept]]
+    projections: dict[str, list[BuildConcept]]
+    passthroughs: dict[str, list[BuildConcept]]
+
+
+def _elect_final_cover(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    groups: Sequence[str],
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> _FinalCover:
+    """Elect the FINAL's contributors from `groups`, off what each renders."""
+    cover = _FinalCover(
+        elect_cover(
+            group_graph,
+            group_edges,
+            attrs,
+            groups,
+            mandatory_list,
+            environment,
+            attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership(),
+        ),
+        {},
+        {},
+    )
+    if not cover.per_group:
+        return cover
+    rendered = renders(group_graph, group_edges, attrs, environment)
+    _add_partial_completion_contributors(
+        groups, cover.per_group, attrs, rendered, environment
+    )
+    _fold_descendant_contributors(
+        group_graph,
+        group_edges,
+        attrs,
+        cover.per_group,
+        cover.passthroughs,
+        rendered,
+        environment,
+    )
+    _promote_final_aliases_to_grouping_contributors(
+        group_graph,
+        group_edges,
+        attrs,
+        cover.per_group,
+        cover.projections,
+        mandatory_list,
+        rendered,
+        environment,
+    )
+    # last: the promotion above drops a contributor left with no concepts,
+    # which is all a row-only domain ever has
+    _add_region_domain_contributors(
+        group_graph, attrs, groups, cover.per_group, cover.projections, environment
+    )
+    return cover
+
+
 def _assemble_final_node(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -5196,12 +5268,13 @@ def _assemble_final_node(
     graph: ReferenceGraph,
     history: V4History,
     root_requests: dict[str, RootRequest],
+    cover: "_FinalCover",
     candidates: Sequence[str] = (),
     feeder_cache: "_CleanFeederCache | None" = None,
     arms_delivered: bool = False,
 ) -> StrategyNode | None:
-    """Build the FINAL output node: merge the minimum set of built groups
-    that together cover `mandatory_list`. When a single group already covers
+    """Build the FINAL output node: merge the groups the stage-2 `cover`
+    elected to cover `mandatory_list`. When a single group already covers
     every mandatory concept, return it as-is. Otherwise wrap the contributing
     groups in a MergeNode whose auto-join logic links them on shared output
     concepts.
@@ -5239,15 +5312,7 @@ def _assemble_final_node(
     )
 
     ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
-    per_group = elect_cover(
-        group_graph,
-        group_edges,
-        attrs,
-        list(built),
-        mandatory_list,
-        environment,
-        ownership,
-    )
+    per_group = cover.per_group
     if not per_group:
         return apply_final_conditions(
             _group_to_grain_if_required(
@@ -5257,30 +5322,8 @@ def _assemble_final_node(
                 environment,
             )
         )
-    rendered = renders(group_graph, group_edges, attrs, environment)
-    _add_partial_completion_contributors(
-        list(built), per_group, attrs, rendered, environment
-    )
-    _fold_descendant_contributors(
-        group_graph, group_edges, attrs, built, per_group, rendered, environment
-    )
-    projections: dict[str, list[BuildConcept]] = {}
-    _promote_final_aliases_to_grouping_contributors(
-        group_graph,
-        group_edges,
-        attrs,
-        per_group,
-        projections,
-        mandatory_list,
-        rendered,
-        environment,
-    )
-    # last: the promotion above drops a contributor left with no concepts,
-    # which is all a row-only domain ever has
-    _add_region_domain_contributors(
-        group_graph, attrs, list(built), per_group, projections, environment
-    )
-    _project_final_contributors(built, projections, environment)
+    _pass_through_final_contributors(built, cover.passthroughs)
+    _project_final_contributors(built, cover.projections, environment)
     contributing = list(per_group.keys())
     final_probe_args = (
         [
@@ -6516,6 +6559,21 @@ def build_strategy_node(
     for gid in order:
         if gid in folds.inlined:
             _fold_into_readers(group_graph, group_edges, attrs, gid)
+    # a group none of whose selected columns resolves builds nothing
+    contributors = [
+        gid
+        for gid in order
+        if gid != FINAL_NODE_ID
+        and gid not in folds.inlined
+        and any(
+            _concept_at(environment, a) is not None
+            for a in _select_addresses(attrs[gid])
+        )
+    ]
+    with under_span_scope(environment, _final_span_scope(plan_scope)):
+        cover = _elect_final_cover(
+            group_graph, group_edges, attrs, contributors, mandatory_list, environment
+        )
     for gid in order:
         if gid == FINAL_NODE_ID or gid in folds.inlined:
             continue
@@ -6555,6 +6613,7 @@ def build_strategy_node(
             g,
             history,
             ctx.root_requests,
+            cover,
             candidates=_bridge_candidates(group_graph, order, unbuilt),
             feeder_cache=ctx.feeder_cache,
             arms_delivered=arms_delivered,

@@ -553,12 +553,30 @@ Measured: SQL capture over the same five suites against part 10 moved the 11
 rename plans (smaller, same CTEs and joins) and otherwise only the known noise;
 0 of 205 corpus plans moved.
 
-**Open.** Two stage-3 applications still read built nodes, though no
-election decision depends on them: the descendant fold widens a basic's node
-in place (`_fold_descendant_contributors`), and the fold widen projects the
-aggregate's merge after `_pre_merge_parents` assembles it. The FINAL election
-still runs after the build loop over `list(built)`; the stage-2 cover equals
-it over `tests/`, so electing it before the loop is the next step.
+**The FINAL cover is elected before the build loop.** `_elect_final_cover`
+runs the cover, partial completion, the descendant fold, alias promotion and
+the region domain pass over the build order (minus FINAL, folded groups and
+groups none of whose selected columns resolve), off planned renders. Over
+`tests/modeling`, `core`, `engine`, `complex` and `discovery`, the election
+over the build order equaled the one over `list(built)` at all 10,933
+FINALs. The only planned groups that built nothing (2) select nothing, which
+stage 2 sees; the other unbuilt shape, a disconnected `root_d1`, raises
+before the FINAL.
+
+**The descendant fold owes a passthrough.** `_fold_descendant_contributors`
+records the ancestor contributor's columns on the basic (`passthroughs`), and
+`_pass_through_final_contributors` widens a copy of the built node before the
+FINAL projections wrap it. Over the same suites the fold moved 212
+contributors, widened 184 nodes, and never one another built group reads.
+
+Measured: SQL capture over the same five suites (7,515 tests) against part 11
+moved no plan (only `test_gcat::test_environment`'s hash-seed column order);
+0 of 205 corpus plans moved.
+
+**Open.** The fold widen still projects the aggregate's merge after
+`_pre_merge_parents` assembles it, inside the aggregate's build. No decision
+reads the built node; asking a ROOT for the derived column instead changes
+source selection.
 
 ## 8. Not claimed
 
