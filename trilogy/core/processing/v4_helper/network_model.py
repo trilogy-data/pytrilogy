@@ -501,6 +501,10 @@ class SolutionCost:
     # connector's subplan. At equal scan count the cover storing the column
     # wins, instead of whichever source sorts first.
     derived_terminals: int
+    # Sources read in full beside a twin the WHERE pre-filters: a `complete
+    # where` binding the query implies (IMPLIED_EXACT) reading the same
+    # columns holds only the rows the query keeps, so it outranks them.
+    unfiltered_sources: int
     connectors: int
     derived_joins: int
 

@@ -79,6 +79,13 @@ columns, and every query returns the same rows on both.
   preserves its anchors, and every group feeding FINAL exposes the anchors it
   can (`group_graph._final_pin_anchors`), so FINAL pairs the value with the row
   stream on them rather than on nothing.
+- That group, and the scans feeding only it, complete their relations inside
+  the pin, so a WHERE atom over the row stream alone does not treat the stream
+  as one side of them (`condition_placement._pin_sealed_relatable`): it stays
+  on the row scan, which can then read the `complete where` binding it implies.
+  An atom keyed within the anchors is copied onto the scans the pin is
+  evaluated over (`PlacementReason.PIN_INPUT`): it keeps or drops an anchor's
+  rows whole, so the pin needs no anchor it drops.
 - `NULL_ABSORBING_FUNCTIONS` is the registry: another function whose output the
   select grain changes is added there, with oracle cases.
 - A pinned value read by a WHERE makes the condition node absorb the region, so

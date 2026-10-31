@@ -81,6 +81,9 @@ class PlacementReason(Enum):
     # A row atom over something absent on a region that has a domain,
     # restated at FINAL where the domain's rows join back.
     FINAL_SPAN_DOMAIN = "final_span_domain"
+    # A row atom keyed on a pinned value's anchors, restricting the scan the
+    # pin is evaluated over to the select's rows.
+    PIN_INPUT = "pin_input"
 
 
 @dataclass(frozen=True)
@@ -1075,6 +1078,7 @@ class _PlacementScope:
     attrs_by_address: dict[str, ConceptAttrs]
     group_own_keys: dict[str, set[str]]
     group_relatable: dict[str, set[str]]
+    pin_sealed_relatable: dict[str, set[str]]
     existence_set_producers: set[str]
     subset_sources: set[str]
     rowset_final_groups: set[str]
@@ -1082,18 +1086,33 @@ class _PlacementScope:
     def rowset_boundary_deferred(self, gid: str) -> bool:
         return len(self.rowset_final_groups) > 1 and gid in self.rowset_final_groups
 
-    def in_active_relation(self, gid: str) -> bool:
-        return _group_in_active_relation(gid, self)
+    def in_active_relation(self, gid: str, reads_pin: bool = True) -> bool:
+        return _group_in_active_relation(gid, self, reads_pin)
+
+    def reads_pin(self, row_inputs: set[str]) -> bool:
+        return any(
+            ca.grain_pin_anchors
+            for addr in row_inputs
+            if (ca := self.attrs_by_address.get(addr)) is not None
+        )
 
 
-def _group_in_active_relation(gid: str, scope: _PlacementScope) -> bool:
+def _group_in_active_relation(
+    gid: str, scope: _PlacementScope, reads_pin: bool = True
+) -> bool:
     attrs_by_address = scope.attrs_by_address
     buckets = scope.buckets
     environment = scope.environment
     group_graph = scope.group_graph
     group_members = scope.group_members
     group_own_keys = scope.group_own_keys
-    group_relatable = scope.group_relatable
+    # an atom over the row stream alone never meets a pinned value's
+    # relations, which complete inside the pin (`_pin_sealed_relatable`)
+    group_relatable = (
+        scope.group_relatable
+        if reads_pin
+        else scope.group_relatable | scope.pin_sealed_relatable
+    )
     lineage_ancestors_graph = scope.lineage_ancestors_graph
     scoped_join_key_groups = scope.scoped_join_key_groups
     scoped_join_member_addresses = scope.scoped_join_member_addresses
@@ -1251,10 +1270,12 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
     # post-merge (`WHERE coalesce(b_store, a_store) is not null`
     # renders at the final select); filtering one boundary by its own
     # key both no-ops locally and perturbs the anchor-LEFT join shape.
+    reads_pin = scope.reads_pin(row_inputs)
     active_relation_hosts = {
         gid
         for gid in candidates
-        if scope.in_active_relation(gid) or scope.rowset_boundary_deferred(gid)
+        if scope.in_active_relation(gid, reads_pin)
+        or scope.rowset_boundary_deferred(gid)
     }
     # A flagged NON-rowset host (a FINAL contributor that is one side
     # of an active preserving relation, such as the aligns read-back's
@@ -1589,6 +1610,38 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
     return out
 
 
+def _pin_sealed_relatable(
+    buckets: dict[str, GroupBucket],
+    group_members: dict[str, set[str]],
+    attrs_by_address: dict[str, ConceptAttrs],
+    lineage_ancestors_graph: nx.DiGraph,
+) -> dict[str, set[str]]:
+    """A pinned value's group and the groups feeding only it complete their
+    relations inside the pin and meet the select's rows on its anchors alone
+    (`grain_pin`), so those anchors are all such a group relates on."""
+    anchors: dict[str, set[str]] = {}
+    for gid, members in group_members.items():
+        pins = {
+            a
+            for m in members
+            if (ca := attrs_by_address.get(m)) is not None
+            for a in ca.grain_pin_anchors
+        }
+        if pins:
+            anchors[gid] = pins
+    changed = bool(anchors)
+    while changed:
+        changed = False
+        for gid in buckets:
+            if gid in anchors or gid not in lineage_ancestors_graph:
+                continue
+            succs = set(lineage_ancestors_graph.successors(gid))
+            if succs and succs <= anchors.keys():
+                anchors[gid] = set().union(*(anchors[s] for s in succs))
+                changed = True
+    return anchors
+
+
 def plan_condition_placements(
     group_graph: nx.DiGraph,
     group_edges: EdgeMap,
@@ -1721,6 +1774,9 @@ def plan_condition_placements(
         attrs_by_address=attrs_by_address,
         group_own_keys=group_own_keys,
         group_relatable=group_relatable,
+        pin_sealed_relatable=_pin_sealed_relatable(
+            buckets, group_members, attrs_by_address, lineage_ancestors_graph
+        ),
         existence_set_producers=existence_set_producers,
         subset_sources=subset_sources,
         rowset_final_groups=rowset_final_groups,
@@ -1761,8 +1817,56 @@ def plan_condition_placements(
                 scoped_join_member_addresses,
             )
         )
+    placements.extend(_pin_input_placements(placements, scope))
     _check_final_atoms_precede_aggregates(placements, mandatory_list, environment)
     return placements
+
+
+def _pin_input_placements(
+    placements: list[ConditionPlacement], scope: _PlacementScope
+) -> list[ConditionPlacement]:
+    """Copy a row atom keyed within a pinned value's anchors onto the scans
+    the pin is evaluated over. The pin meets the select's rows on its anchors
+    (`grain_pin`) and the atom keeps or drops an anchor's rows whole, so the
+    pin needs no anchor the atom drops, and the scan can read the binding
+    that atom selects."""
+    hosts = {
+        gid: anchors
+        for gid, anchors in scope.pin_sealed_relatable.items()
+        if scope.buckets[gid].derivation == Derivation.ROOT
+        and anchors & scope.group_members[gid]
+    }
+    if not hosts:
+        return []
+    extra: list[ConditionPlacement] = []
+    for placement in placements:
+        if placement.reason is not PlacementReason.UPSTREAM_MOST:
+            continue
+        atom = placement.atom
+        row_inputs = {c.address for c in atom.row_arguments}
+        if not row_inputs or any(atom.existence_arguments):
+            continue
+        if scope.reads_pin(row_inputs) or any(
+            is_presence_probe(addr) for addr in row_inputs
+        ):
+            continue
+        input_keys: set[str] = set()
+        for addr in row_inputs:
+            ca = scope.attrs_by_address.get(addr)
+            if ca is None:
+                break
+            input_keys |= ca.keys or {addr}
+        else:
+            for gid, anchors in hosts.items():
+                if gid not in placement.group_ids and input_keys <= anchors:
+                    extra.append(
+                        ConditionPlacement(
+                            atom=atom,
+                            group_ids=(gid,),
+                            reason=PlacementReason.PIN_INPUT,
+                        )
+                    )
+    return extra
 
 
 def _crosses_outer_aggregate(concept: BuildConcept) -> bool:
