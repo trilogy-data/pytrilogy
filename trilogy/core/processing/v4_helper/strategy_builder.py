@@ -659,6 +659,19 @@ def node_nulls_grouping_keys(node: StrategyNode) -> bool:
     )
 
 
+def _groups_null_grouping_keys(
+    attrs: dict[str, GroupAttrs], gids: Iterable[str], environment: BuildEnvironment
+) -> bool:
+    """`node_nulls_grouping_keys` of these groups' nodes, read off what each
+    outputs at stage 2."""
+    return any(
+        nonstandard_grouping_lineage(concept) is not None
+        for gid in gids
+        for address in attrs[gid].output_concepts
+        if (concept := _concept_at(environment, address)) is not None
+    )
+
+
 def _nonstandard_grouping_key_addresses(
     environment: BuildEnvironment, attrs: dict[str, GroupAttrs], gid: str
 ) -> set[str]:
@@ -5452,7 +5465,7 @@ def _assemble_final_node(
     # A grouping-sets sibling suppresses the FINAL dedup (`_group_to_grain_if_
     # required` passes a subtotal-bearing merge through), so a row-grain leaf
     # contributor must dedup itself before the merge instead.
-    grouping_sibling = any(node_nulls_grouping_keys(built[g]) for g in contributing)
+    grouping_sibling = _groups_null_grouping_keys(attrs, contributing, environment)
 
     parents: list[StrategyNode] = []
     for gid in contributing:
@@ -5563,16 +5576,11 @@ def _assemble_final_node(
         for c in mandatory_list
         if c.address in available or c.address in pseudonym_only
     ]
-    # Pull in any filter-only condition arg (e.g. the global aggregate) not
-    # already supplied by a contributor, as a hidden cross-join input.
+    # Each filter-only arg no side holds (e.g. the global aggregate) joins
+    # from the producer the plan elected, as a hidden cross-join input; a ROOT
+    # side carried its own through its wrap.
     spans = frozenset().union(*(region_reads(p) for p in parents))
-    # The plan elected each argument's producer; a parent holding one already
-    # (a ROOT contributor left whole by its wrap) supplies it itself.
-    demanded = _region_paired_args(filter_only_addrs, available, spans, environment)
-    arg_nodes, arg_concepts = _filter_arg_parents(
-        built,
-        {a: gid for a, gid in extras.arg_producers.items() if a in demanded},
-    )
+    arg_nodes, arg_concepts = _filter_arg_parents(built, extras.arg_producers)
     # A filter-only arg a contributor ALREADY supplies (`rs.sa is not null`
     # beside a boundary outputting rs.sa) must ride the merge as a hidden
     # input; otherwise the merge's WHERE references a column it never
