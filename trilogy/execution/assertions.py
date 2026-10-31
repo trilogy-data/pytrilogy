@@ -40,7 +40,7 @@ from trilogy.core.assertions import (
     plan_assertion,
     substitute,
 )
-from trilogy.core.enums import DatasourceState
+from trilogy.core.enums import DatasourceState, Modifier
 from trilogy.core.models.author import ConceptRef, Grain
 from trilogy.core.models.datasource import Address, Datasource, DatasourceAssertion
 from trilogy.core.models.environment import Environment
@@ -84,6 +84,11 @@ def pinned_datasource(
     pinned = datasource.duplicate()
     pinned.address = address
     pinned.status = DatasourceState.PUBLISHED
+    if pinned.non_partial_for is None:
+        # A `~key` with no `complete where` holds part of the key's domain but
+        # every row of its own; those rows are the population being checked.
+        for column in pinned.columns:
+            column.modifiers = [m for m in column.modifiers if m != Modifier.PARTIAL]
     key = datasource.identifier
     others = [k for k in environment.datasources if k != key]
     with hidden_datasources(environment, others):

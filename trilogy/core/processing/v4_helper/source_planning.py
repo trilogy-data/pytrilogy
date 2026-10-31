@@ -1519,11 +1519,14 @@ def _finer_filter_rollup_source(
         for c in conditions.row_arguments
         if c.granularity != Granularity.SINGLE_ROW
     }
+    target_canonicals = {
+        environment.concepts[c].canonical_address if c in environment.concepts else c
+        for c in target_components
+    }
     matches: list[tuple[BuildDatasource, bool]] = []
     for ds in request.graph.scope.datasources:
         ds_canonicals = {c.canonical_address for c in ds.output_concepts}
-        ds_addresses = {c.address for c in ds.output_concepts}
-        if not target_components.issubset(ds_addresses):
+        if not target_canonicals.issubset(ds_canonicals):
             continue
         rolled = get_rollup_concepts(
             datasource=ds,
