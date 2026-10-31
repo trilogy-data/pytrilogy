@@ -3394,7 +3394,11 @@ def _apply_input_contracts(
     )
 
 
-def _fd_at_grain(concept: BuildConcept, grain_components: frozenset[str]) -> bool:
+def _fd_at_grain(
+    concept: BuildConcept,
+    grain_components: frozenset[str],
+    environment: BuildEnvironment,
+) -> bool:
     if concept.address in grain_components:
         return True
     concept_grain = (
@@ -3403,7 +3407,11 @@ def _fd_at_grain(concept: BuildConcept, grain_components: frozenset[str]) -> boo
     if concept_grain and concept_grain <= grain_components:
         return True
     concept_keys = frozenset(concept.keys or set())
-    return bool(concept_keys) and concept_keys <= grain_components
+    if concept_keys and concept_keys <= grain_components:
+        return True
+    return build_fd_determines(
+        environment, grain_components, concept.address, include_empty_grain=False
+    )
 
 
 def _satisfy_parent_projection_contract(
@@ -3456,7 +3464,7 @@ def _satisfy_parent_projection_contract(
             addr
             for addr in parent_needed
             if (c := _concept_at(environment, addr)) is not None
-            and _fd_at_grain(c, projection_grain_components)
+            and _fd_at_grain(c, projection_grain_components, environment)
         }
         fd_needed = {
             addr
@@ -3493,7 +3501,7 @@ def _satisfy_parent_projection_contract(
             addr
             for addr in own_needed
             if (c := _concept_at(environment, addr)) is not None
-            and _fd_at_grain(c, projection_grain_components)
+            and _fd_at_grain(c, projection_grain_components, environment)
         }
         if own_needed - carry:
             projected.append(parent)
@@ -4218,7 +4226,8 @@ def _wrap_for_grain(
     # stay beside the orthogonal dims (a leaf dim outside the grouping key list
     # must join back per distinct pair, not per source row).
     if merge_grain_components and any(
-        not _fd_at_grain(concept, merge_grain_components) for concept in needed_concepts
+        not _fd_at_grain(concept, merge_grain_components, environment)
+        for concept in needed_concepts
     ):
         if not dedup_orthogonal:
             return [parent_node]

@@ -4,7 +4,7 @@ import copy
 import difflib
 import os
 from collections import UserDict, defaultdict
-from collections.abc import ItemsView, Iterator, Mapping, ValuesView
+from collections.abc import ItemsView, Iterable, Iterator, Mapping, ValuesView
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -901,8 +901,14 @@ class Environment:
     # attributed per parse instead. See ``Datasource.declared_in``.
     declaring_file: Path | str | None = None
     parameters: dict[str, Any] = field(default_factory=dict)
-    # (content stamp, map) for fk_derived_keys.
-    _fk_derived_keys: tuple[tuple[int, int], dict[str, frozenset[str]]] | None = None
+    # (content stamp, rows) for binding_fds.
+    _binding_fds: (
+        tuple[tuple[int, int], tuple[tuple[frozenset[str], frozenset[str]], ...]] | None
+    ) = None
+    # determinants -> closure under `binding_fds`; reset with it.
+    _binding_closures: dict[frozenset[str], frozenset[str]] = field(
+        default_factory=dict
+    )
     # (len(merges) it covers, declared-edge graph over them): the merge lint's
     # base graph, extended per accepted merge instead of rebuilt per check.
     _merge_lint_graph: tuple[int, DomainGraph] | None = None
@@ -918,43 +924,65 @@ class Environment:
         self.parameters.update(kwargs)
         return self
 
-    def fk_derived_keys(self) -> dict[str, frozenset[str]]:
-        """Keys a datasource declaration implies for the KEY concepts it binds.
-
-        A datasource that binds a ``Purpose.KEY`` concept OUTSIDE its own grain
-        is asserting that its grain determines that key — the classic foreign
-        key on a fact table. The assertion belongs to the datasource, so it is
-        derived here on demand rather than written back onto the concept.
-        Two datasources can bind the same key at different grains; the later
-        declaration wins, matching the parse-time overwrite this replaced.
-        """
+    def binding_fds(self) -> tuple[tuple[frozenset[str], frozenset[str]], ...]:
+        """(determinants, bound) per datasource: a table binding columns at
+        its grain declares each a function of its rows, the foreign key on a
+        fact table included. An arm is unique on its grain only among its own
+        rows, so its determinants add the discriminator it binds
+        (`Stack.unbound_arm_repeats_grain`). Every table contributes its own
+        dependency; none overwrites another's."""
         stamp = (self.datasources.content_version, self.concepts.content_version)
-        if self._fk_derived_keys is not None and self._fk_derived_keys[0] == stamp:
-            return self._fk_derived_keys[1]
-        out: dict[str, frozenset[str]] = {}
+        if self._binding_fds is not None and self._binding_fds[0] == stamp:
+            return self._binding_fds[1]
+        self._binding_closures = {}
+        out: list[tuple[frozenset[str], frozenset[str]]] = []
         for datasource in self.datasources.values():
             grain = datasource.grain
             if not grain or not grain.components:
                 continue
-            resolved = [self.concepts.get(g) for g in grain.components]
-            if any(k is None for k in resolved):
-                continue
-            components = [k for k in resolved if k is not None]
-            new_keys = frozenset(k.address for k in components)
-            for column in datasource.columns:
-                address = column.concept.address
-                if address in grain.components:
-                    continue
-                target = self.concepts.get(address)
-                if target is None or target.purpose != Purpose.KEY:
-                    continue
-                # A grain component that already binds this key describes the
-                # opposite direction; inheriting would invert the relationship.
-                if any(address in (k.keys or set()) for k in components):
-                    continue
-                out[address] = new_keys
-        self._fk_derived_keys = (stamp, out)
-        return out
+            bound = frozenset(c.concept.address for c in datasource.columns)
+            arm = (
+                frozenset(
+                    c.address for c in datasource.non_partial_for.concept_arguments
+                )
+                if datasource.non_partial_for is not None
+                else frozenset()
+            )
+            determinants = frozenset(grain.components) | (arm & bound)
+            out.append((determinants, bound - determinants))
+        # A declared property is a function of its keys, which is how a key
+        # can determine an arm's discriminator (`property tree_id.source`).
+        for concept in self.concepts.values():
+            if (
+                concept.keys
+                and concept.purpose == Purpose.PROPERTY
+                and concept.derivation != Derivation.FILTER
+            ):
+                out.append((frozenset(concept.keys), frozenset({concept.address})))
+        self._binding_fds = (stamp, tuple(out))
+        return self._binding_fds[1]
+
+    def binding_determines(self, determinants: Iterable[str], address: str) -> bool:
+        """Whether datasource bindings make `address` a function of
+        `determinants`, transitively."""
+        return address in self.binding_closure(determinants)
+
+    def binding_closure(self, determinants: Iterable[str]) -> frozenset[str]:
+        rows = self.binding_fds()
+        seed = frozenset(determinants)
+        cached = self._binding_closures.get(seed)
+        if cached is not None:
+            return cached
+        closure = set(seed)
+        changed = True
+        while changed:
+            changed = False
+            for keys, bound in rows:
+                if keys <= closure and not bound <= closure:
+                    closure |= bound
+                    changed = True
+        result = self._binding_closures[seed] = frozenset(closure)
+        return result
 
     def materialize_for_select(
         self,

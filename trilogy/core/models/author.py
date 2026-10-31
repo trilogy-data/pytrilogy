@@ -1307,18 +1307,6 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
             self.purpose == Purpose.KEY and not self.keys
         )
 
-    def effective_keys(self, environment: Environment | None) -> set[str] | None:
-        """``keys``, falling back to what a datasource declaration implies.
-
-        A datasource binding this KEY outside its own grain asserts that the
-        grain determines it (see ``Environment.fk_derived_keys``). The
-        assertion lives on the datasource, not on the concept, so every reader
-        that treats ``keys`` as a functional dependency resolves it here."""
-        if self.keys or environment is None or self.purpose != Purpose.KEY:
-            return self.keys
-        derived = environment.fk_derived_keys().get(self.address)
-        return set(derived) if derived else self.keys
-
     def get_select_grain_and_keys(
         self, grain: Grain, environment: Environment, pin_bare_aggregates: bool = True
     ) -> tuple[
@@ -1354,7 +1342,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
             ),
         )
         final_grain = grain if not self.grain.components else self.grain
-        keys = self.effective_keys(environment)
+        keys = self.keys
         if not new_lineage:
             return new_lineage, final_grain, keys
 
@@ -2570,9 +2558,9 @@ def _non_aggregate_row_refs(expr, environment: Environment) -> list[ConceptRef]:
         return [expr]
     if isinstance(expr, (FunctionCallWrapper, Parenthetical)):
         return _non_aggregate_row_refs(expr.content, environment)
-    if isinstance(expr, Function):
+    if isinstance(expr, (Function, CaseWhen, CaseSimpleWhen, CaseElse)):
         out: list[ConceptRef] = []
-        for arg in expr.arguments:
+        for arg in _case_or_function_parts(expr):
             out += _non_aggregate_row_refs(arg, environment)
         return out
     if isinstance(expr, (Comparison, Conditional)):
@@ -2580,6 +2568,18 @@ def _non_aggregate_row_refs(expr, environment: Environment) -> list[ConceptRef]:
             expr.left, environment
         ) + _non_aggregate_row_refs(expr.right, environment)
     return []
+
+
+def _case_or_function_parts(
+    expr: Function | CaseWhen | CaseSimpleWhen | CaseElse,
+) -> list[Any]:
+    if isinstance(expr, Function):
+        return list(expr.arguments)
+    if isinstance(expr, CaseWhen):
+        return [expr.comparison, expr.expr]
+    if isinstance(expr, CaseSimpleWhen):
+        return [expr.value_expr, expr.expr]
+    return [expr.expr]
 
 
 def _aggregate_by_grain_refs(expr, environment: Environment) -> tuple[list[str], bool]:
@@ -2614,8 +2614,8 @@ def _aggregate_by_grain_refs(expr, environment: Environment) -> tuple[list[str],
         left_refs, left_by = _aggregate_by_grain_refs(expr.left, environment)
         right_refs, right_by = _aggregate_by_grain_refs(expr.right, environment)
         return left_refs + right_refs, left_by or right_by
-    if isinstance(expr, Function):
-        for arg in expr.arguments:
+    if isinstance(expr, (Function, CaseWhen, CaseSimpleWhen, CaseElse)):
+        for arg in _case_or_function_parts(expr):
             arg_refs, arg_by = _aggregate_by_grain_refs(arg, environment)
             refs.extend(arg_refs)
             has_by = has_by or arg_by

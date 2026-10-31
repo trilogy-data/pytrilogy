@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 
+from trilogy.core.enums import Purpose
 from trilogy.core.models.build import BuildConcept, BuildDatasource
 from trilogy.core.models.build_environment import BuildEnvironment, EnvCache
 
@@ -38,10 +39,14 @@ def concept_attr_fd_closure(
             # mirroring build_fd_closure, unless they only determine the value
             # conditionally, which is not an FD at all (see
             # `ConceptAttrs.keys_are_conditional_fd`).
-            if (attrs.grain_components and attrs.grain_components <= closure) or (
-                bool(attrs.keys)
-                and not attrs.keys_are_conditional_fd
-                and attrs.keys <= closure
+            if (
+                (attrs.grain_components and attrs.grain_components <= closure)
+                or (
+                    bool(attrs.keys)
+                    and not attrs.keys_are_conditional_fd
+                    and attrs.keys <= closure
+                )
+                or any(d <= closure for d in attrs.binding_determinants)
             ):
                 closure.add(attrs.address)
                 changed = True
@@ -66,12 +71,33 @@ def concept_attr_fd_determines(
     )
 
 
-def _build_fd_concepts(environment: BuildEnvironment) -> Iterator[BuildConcept]:
-    # The authored bindings, not a plan's scope: a row is a column's CONCEPT
-    # (grain, keys), which a heal or a hidden partition arm leaves unchanged.
-    yield from environment.concepts.values()
+def _fd_rows(
+    environment: BuildEnvironment,
+) -> Iterator[tuple[str, frozenset[str], frozenset[str]]]:
+    """(address, grain, keys) rows: each concept, and each datasource column.
+    A table binding a column at its grain declares it a function of the row
+    (the foreign key on a fact table, an attribute on a dimension), over the
+    table's `row_determinants`: an arm is unique on its grain only among its
+    own rows. The authored bindings, not a plan's scope: a heal or a hidden
+    partition arm leaves a column's concept unchanged."""
+    for concept in environment.concepts.values():
+        yield _row(concept, _grain_of(concept))
     for datasource in environment.datasources.values():
-        yield from datasource.output_concepts
+        grain = frozenset(datasource.grain.components)
+        determinants = datasource.row_determinants
+        for concept in datasource.output_concepts:
+            components = _grain_of(concept)
+            yield _row(concept, determinants if components == grain else components)
+
+
+def _grain_of(concept: BuildConcept) -> frozenset[str]:
+    return frozenset(concept.grain.components) if concept.grain else frozenset()
+
+
+def _row(
+    concept: BuildConcept, grain: frozenset[str]
+) -> tuple[str, frozenset[str], frozenset[str]]:
+    return (concept.address, grain, frozenset(concept.keys or ()))
 
 
 @dataclass(frozen=True)
@@ -98,6 +124,8 @@ class _FDFacts:
     closures: dict[tuple[frozenset[str], bool], frozenset[str]]
     # grain -> `minimize_build_grain` of it; pure over the closures above.
     minimized: dict[frozenset[str], frozenset[str]]
+    # address -> the row determinants of every datasource binding it
+    bound_on: dict[str, frozenset[str]]
     # address -> the environment keys it adds (as the key's concept address
     # or an equivalent: a key can differ from its concept's own address, and
     # the closure carries both) and the rows whose grain or keys read it
@@ -137,12 +165,7 @@ def _fd_facts(environment: BuildEnvironment) -> _FDFacts:
         equivalents[key] = equivalent
     rows: list[tuple[str, frozenset[str], frozenset[str]]] = []
     seen: set[tuple[str, frozenset[str], frozenset[str]]] = set()
-    for concept in _build_fd_concepts(environment):
-        row = (
-            concept.address,
-            frozenset(concept.grain.components) if concept.grain else frozenset(),
-            frozenset(concept.keys or ()),
-        )
+    for row in _fd_rows(environment):
         if row in seen:
             continue
         seen.add(row)
@@ -162,6 +185,7 @@ def _fd_facts(environment: BuildEnvironment) -> _FDFacts:
             equivalents=equivalents,
             closures={},
             minimized={},
+            bound_on=_bound_on(environment),
             entry_triggers=entry_triggers,
             row_triggers=row_triggers,
         ),
@@ -230,6 +254,27 @@ def build_fd_determines_all(
     return set(targets) <= build_fd_closure(
         environment, determinants, include_empty_grain=include_empty_grain
     )
+
+
+def _bound_on(environment: BuildEnvironment) -> dict[str, frozenset[str]]:
+    out: dict[str, set[str]] = {}
+    for datasource in environment.datasources.values():
+        determinants = datasource.row_determinants
+        for column in datasource.columns:
+            if column.concept.address not in determinants:
+                out.setdefault(column.concept.address, set()).update(determinants)
+    return {address: frozenset(keys) for address, keys in out.items()}
+
+
+def row_keys(concept: BuildConcept, environment: BuildEnvironment) -> frozenset[str]:
+    """The keys whose rows `concept` lives on: its declared keys, or for a
+    bare key, the row determinants of every table binding it beside its grain
+    (the facts a foreign key is read off)."""
+    if concept.keys:
+        return frozenset(concept.keys)
+    if concept.purpose != Purpose.KEY:
+        return frozenset()
+    return _fd_facts(environment).bound_on.get(concept.address, frozenset())
 
 
 def minimize_build_grain(

@@ -156,15 +156,37 @@ auto cell_a <- concat(
 """
 
 
-def test_key_filter_determined_by_grain_has_no_group():
+_DETERMINED_ARM_MODEL = _PARTITION_MODEL.replace(
+    "key source_label enum<string>['MUNI','OSM'];",
+    "property tree_id.source_label enum<string>['MUNI','OSM'];",
+)
+
+
+def _key_filter(model: str) -> tuple[str, list[str]]:
     env = Environment()
-    env.parse(_PARTITION_MODEL)
+    env.parse(model)
     executor = Dialects.DUCK_DB.default_executor(environment=env)
     query = "select tree_id, cell_a where city = 'USBOS' order by tree_id asc;"
     sql = executor.generate_sql(query)[-1]
-    assert "GROUP BY" not in sql, sql
     rows = executor.execute_text(query)[-1].fetchall()
-    assert [row[0] for row in rows] == ["t1", "t2", "t3"]
+    return sql, [row[0] for row in rows]
+
+
+def test_key_filter_determined_by_grain_has_no_group():
+    """The arms partition on `source_label`, a property of `tree_id`: a tree
+    lies in one arm, so `(tree_id, source_label) -> city` gives `tree_id ->
+    city` and the rows need no regroup."""
+    sql, rows = _key_filter(_DETERMINED_ARM_MODEL)
+    assert "GROUP BY" not in sql, sql
+    assert rows == ["t1", "t2", "t3"]
+
+
+def test_key_filter_over_undetermined_arms_regroups():
+    """A tree id may repeat across arms when nothing ties it to one
+    `source_label`, so its city is per arm and the rows regroup."""
+    sql, rows = _key_filter(_PARTITION_MODEL)
+    assert "GROUP BY" in sql, sql
+    assert rows == ["t1", "t2", "t3"]
 
 
 _REDUNDANT_GRAIN_MODEL = """

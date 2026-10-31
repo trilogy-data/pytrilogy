@@ -279,11 +279,22 @@ class CTE:
         if self.base_name == parent.name:
             self.base_name_override = inline_datasource.safe_location
             self.base_alias_override = inline_datasource.safe_identifier
-        for k, v in self.source_map.items():
-            self.source_map[k] = [
-                inline_datasource.safe_identifier if x == parent.safe_identifier else x
-                for x in v
-            ]
+        # An entry the consumer only carried as metadata (never rendered off
+        # this parent) names a column the raw table lacks: drop it rather than
+        # point it at the table, where a later pass would trust it.
+        renders = set(inline_datasource.output_lcl.addresses)
+        for c in inline_datasource.output_concepts:
+            renders |= c.pseudonyms
+        for k, v in list(self.source_map.items()):
+            if parent.safe_identifier not in v:
+                continue
+            kept = [x for x in v if x != parent.safe_identifier]
+            if k in renders:
+                kept.append(inline_datasource.safe_identifier)
+            if kept:
+                self.source_map[k] = kept
+            else:
+                del self.source_map[k]
         for k, v in self.existence_source_map.items():
             self.existence_source_map[k] = [
                 inline_datasource.safe_identifier if x == parent.safe_identifier else x
