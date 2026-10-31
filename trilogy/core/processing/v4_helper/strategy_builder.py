@@ -5322,12 +5322,6 @@ def _assemble_final_node(
                 environment,
             )
         )
-    unbuilt = sorted(set(per_group) - set(built))
-    if unbuilt:
-        raise UnresolvableQueryException(
-            f"The FINAL cover elected {unbuilt}, which built nothing. This is a"
-            " planner bug."
-        )
     _pass_through_final_contributors(built, cover.passthroughs)
     _project_final_contributors(built, cover.projections, environment)
     contributing = list(per_group.keys())

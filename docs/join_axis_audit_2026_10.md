@@ -561,7 +561,7 @@ groups none of whose selected columns resolve), off planned renders. Over
 over the build order equaled the one over `list(built)` at all 10,933
 FINALs. The only planned groups that built nothing (2) select nothing, which
 stage 2 sees; the other unbuilt shape, a disconnected `root_d1`, raises
-before the FINAL. A contributor that builds nothing is now a planner error.
+before the FINAL.
 
 **The descendant fold owes a passthrough.** `_fold_descendant_contributors`
 records the ancestor contributor's columns on the basic (`passthroughs`), and
