@@ -837,6 +837,17 @@ def concepts_to_grain_concepts_ordered(
     return minimize_by_bindings(output, environment)
 
 
+def _bindings_minimal(grain: Grain, environment: Environment) -> Grain:
+    """A row expression's grain is the union of its inputs' grains, less what
+    the rest of it determines through datasource bindings."""
+    if len(grain.components) < 2:
+        return grain
+    kept = minimize_by_bindings(grain.component_order, environment)
+    return Grain(
+        components=set(kept), component_order=kept, where_clause=grain.where_clause
+    )
+
+
 def minimize_by_bindings(
     components: list[str], environment: Environment | None
 ) -> list[str]:
@@ -1117,6 +1128,8 @@ def function_to_concept(
     grain: Grain | None = Grain()
     for x in pkeys:
         grain += x.grain
+    if grain is not None:
+        grain = _bindings_minimal(grain, environment)
     if parent.operator in FunctionClass.ONE_TO_MANY.value:
         # if the function will create more rows, we don't know what grain this is at
         grain = None
@@ -1899,6 +1912,8 @@ def subselect_to_concept(
     grain: Grain = Grain()
     for x in pkeys:
         grain += x.grain
+    if grain is not None:
+        grain = _bindings_minimal(grain, environment)
     modifiers = get_lineage_modifiers(parent, environment)
     key_grain: list[str] = []
     for x in pkeys:
@@ -1968,6 +1983,8 @@ def comparison_to_concept(
     grain: Grain | None = Grain()
     for x in pkeys:
         grain += x.grain
+    if grain is not None:
+        grain = _bindings_minimal(grain, environment)
     # Conditional/Between have no comparison operator; only a Comparison can
     # carry a row-expanding one.
     if (

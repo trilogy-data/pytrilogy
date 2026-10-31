@@ -1548,6 +1548,22 @@ def _rowset_key_handles(
     return out
 
 
+def _binding_determinants(
+    address: str, datasources: Sequence[BuildDatasource]
+) -> tuple[frozenset[str], ...]:
+    return tuple(
+        sorted(
+            {
+                ds.row_determinants
+                for ds in datasources
+                if address not in ds.row_determinants
+                and any(c.concept.address == address for c in ds.columns)
+            },
+            key=sorted,
+        )
+    )
+
+
 def _grain_pin_anchors(concept: BuildConcept) -> frozenset[str]:
     lineage = concept.lineage
     if not (
@@ -1743,6 +1759,7 @@ def _add_concept(
         ),
         grain_pin_anchors=_grain_pin_anchors(concept),
         keys=frozenset(concept.keys or set()),
+        binding_determinants=_binding_determinants(concept.address, datasources),
         pseudonyms=frozenset(concept.pseudonyms),
         is_rename=is_rename,
     )
