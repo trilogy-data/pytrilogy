@@ -2443,6 +2443,14 @@ def _add_rowset_handle_relations(
                     add_edge(graph, edges, mate_nid, handle_nid, EdgeKind.RELATION)
 
 
+def _joins_no_key(condition: ConceptAttrs, scalar: ConceptAttrs) -> bool:
+    return not (
+        condition.grain_pin_anchors
+        or scalar.address in condition.grain_components
+        or condition.grain_components <= scalar.grain_components
+    )
+
+
 def _scalar_row_sources(
     graph: nx.DiGraph, edges: EdgeMap, attrs: dict[str, ConceptAttrs], nid: str
 ) -> list[str]:
@@ -2964,17 +2972,16 @@ def build_concept_graph(
             continue
         if any(True for _ in graph.successors(src)):
             continue
-        # a scalar output is filtered where its row inputs are read, unless
-        # the condition is keyed on the scalar itself or pinned to its rows
+        # a scalar output whose grain lacks a condition's key has nothing to
+        # join it on, so the condition filters the scans its inputs come from
         targets = dict.fromkeys(
             row_source
             for dst in mandatory_blank_ids
             if dst in graph.nodes
             for row_source in (
-                [dst]
-                if attrs[src].grain_pin_anchors
-                or attrs[dst].address in attrs[src].grain_components
-                else _scalar_row_sources(graph, edges, attrs, dst)
+                _scalar_row_sources(graph, edges, attrs, dst)
+                if _joins_no_key(attrs[src], attrs[dst])
+                else [dst]
             )
         )
         for dst in targets:
