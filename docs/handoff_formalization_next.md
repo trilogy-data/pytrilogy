@@ -8,7 +8,8 @@ lists every module and, under "What it found", every bug found so far. Read it
 first.
 
 Recent rounds: `Assert.lean` (#799, datasource `assert`/`prior`),
-`Functions.lean` (#802, scalar functions per dialect), `Cost.lean`
+`Functions.lean` (#802, scalar functions per dialect), `Fixpoint.lean` (#833,
+the optimizer's termination contract), `Cost.lean`
 (which answering datasource is read: partial summaries, value-pin
 implication, dominance ranking), `Stack.lean` (stacking a partition
 family: value-set arms, arms the grain does not determine), #821, which
@@ -81,11 +82,12 @@ unnested list (area 0b).
 
 ## Candidate areas
 
-**Suggested next: area 2, optimizer rule soundness.** Every other area has had
-a round; no optimizer rule has. Start with `join_upgrade.py` and
-`strip_redundant_not_null.py`, whose guards `NullReject.lean` already models,
-then move to `predicate_pushdown.py`, the riskiest. The leads in areas 0, 0b, 1
-and 1b are smaller and suit a short round.
+**Suggested next: area 2, optimizer rule soundness.** `Fixpoint.lean` (#833)
+proved the optimizer *terminates* under its WHERE-atom contract; nothing yet
+proves a rule *preserves rows*. Start with `strip_redundant_not_null.py` and
+`join_upgrade.py`, whose guards `NullReject.lean` already models, then move to
+`predicate_pushdown.py`, the riskiest. The leads in areas 0, 0b, 1 and 1b are
+smaller and suit a short round.
 
 ### 0. Binding FDs (done in `Binding.lean`; leads left)
 
@@ -202,6 +204,18 @@ dominates. Open leads:
 
 ### 2. Optimizer rule soundness
 
+**Already done: termination (`Fixpoint.lean`, #833).** The driver reruns its
+phases until a pass changes nothing. `atom_contract.py` registers *removers*
+(phases that drop WHERE atoms) with the predicate they drop by; adders gate on
+`removable`, and under `enforce_fixpoint_contract` (on in the test suite and
+the fuzzer) the driver raises when a phase adds an atom a fact remover would
+drop, or hits its pass cap. `Fixpoint.strip_never_cycles` proves a fact
+remover never re-fires under the contract. Its own limits, worth extending:
+`PredicatePushdownRemove` judges atoms by *other* atoms and is gated but
+outside the model, and merges (`CollapseSingleParent`) are exempt as finite.
+Termination says nothing about rows: a rule can converge and still drop or
+duplicate them.
+
 Each rule in `trilogy/core/optimizations/` rewrites CTEs and must preserve rows.
 A natural Lean shape is a rule as a function on a small plan AST, with the
 theorem `eval (rule p) = eval p` under the rule's guard, plus a counterexample
@@ -209,14 +223,17 @@ showing the guard is necessary. Good first targets, roughly in order of how
 self-contained they are:
 - `strip_redundant_not_null.py`: dropping `x is not null` is sound only when
   the column is proved non-null. `NullReject.lean` already has the proof
-  machinery.
+  machinery, and the rule's predicate is now the registered fact remover in
+  `atom_contract.py`, so the soundness theorem and `Fixpoint`'s `R` are the
+  same predicate. Prove `R a -> eval (strip p) = eval p`.
 - `join_upgrade.py` and `value_set_join_upgrade.py`: outer to inner. Compare
   `NullReject.proofs_sound`.
 - `merge_irrelevant_group_by.py` and `identity_group.py`: a GROUP BY is a no-op
   when its keys are a key of the input (`Rows.lean` has `distinct = group`).
 - `predicate_pushdown.py`: pushing past a NULL-extending join or an aggregate.
   The guards include `_predicate_safe_past_null_extension`. This one is
-  historically the riskiest.
+  historically the riskiest, and #833 rewrote it substantially (gating on
+  `removable`), so re-probe it rather than trusting older notes.
 - `existence_having_fold.py` and `semi_join_pushdown.py`.
 
 Test each rule by running a query with the rule disabled and enabled and
