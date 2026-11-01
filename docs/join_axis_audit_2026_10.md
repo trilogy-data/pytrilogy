@@ -713,6 +713,37 @@ a statement `test_validate_fix` compiles in one chunked run and not the
 other (both compile 17 run alone), and two tests that compile nothing in an
 archive export. 0 of 205 corpus plans moved.
 
+**The FINAL WHERE applier reads what its contributor holds, the regions it
+reads and what each feeder carries.** `_apply_final_conditions` picked the
+filter-only arguments' producers off the built node's outputs and
+`region_reads(node)`, and widened on relation keys off each feeder's built
+outputs. It now takes the contributor's planned holdings, its
+`_group_region_reads` and each producer's `carries`. The holdings are
+`cover.holds(gid)` less what the FINAL dedup projects away: the dedup keeps
+the contract's outputs, so a filter-only argument the contributor held is
+gone after it and its producer (often the contributor itself, joined back on
+its span) is joined in. The dedup's decision and its projection are split
+(`_final_dedup_targets`, `_dedup_to_targets`), and `_final_dedup` returns the
+projected node with what it keeps. The uncovered FINAL computes the cover's
+renders too, so it holds the same way.
+
+Measured over `tests/core`, `engine`, `complex`, `discovery`, each
+`tests/modeling` suite and the root `tests/test_*.py` files: 306 FINAL WHERE
+applications. At 224 the planned and built answers agreed outright. At 74 the
+planned holdings disagreed until they were narrowed by the dedup (67 joined
+the contributor back as its own producer, 7 an unnest's ROOT split). At 6 the
+feeders' planned relation members differed from their built outputs, but
+each touched the same relations, so the widen keys agreed. At the 4
+`test_derived_key_domain` FINALs (Open item 2) the planned region reads are
+empty where the built node read `customer_id`. The producer there is a
+global aggregate and the node already carries the span, so the widen was a
+no-op. SQL capture over the same suites (13,156 statements) against part 18
+moved no plan: only the `grain_check` hash-seed column order (41), BigQuery
+temp table names, `test_gcat::test_environment`, the
+`test_declared_join_beside_a_property_of_the_superset_key` join type, the
+`test_validate_fix` chunked statement, and two tests that compile nothing in
+an archive export. 0 of 205 corpus plans moved.
+
 **Open.**
 
 1. The fold widen still projects the aggregate's merge after
@@ -722,7 +753,14 @@ archive export. 0 of 205 corpus plans moved.
 2. A ROOT that re-sources a filter argument through a nested plan reads that
    plan's region domain, which the outer group graph does not hold. The
    planned region reads cannot see it until the nested plan's domains are
-   stage-2 facts; no decision reads it yet (the 4 FINALs above).
+   stage-2 facts. The FINAL WHERE applier reads the planned region reads
+   there and its widen is a no-op; no decision depends on the domain yet.
+3. Region spans are still read off built nodes in two places: the FINAL
+   merge's `region_reads(p) for p in parents` (which spans it emits as hidden
+   region keys), and `_build_group`'s `region_reads(p)` over each group's
+   parents, one of which feeds `_project_basic_aggregate_inputs`. The planned
+   twin is `_group_region_reads` over the planned parents. Probe them before
+   swapping; the nested-plan gap in item 2 applies.
 
 The rest of `_assemble_final_node`'s reads of `built` apply decisions: the
 passthroughs and projections, each contributor's node, bridge nodes by the
