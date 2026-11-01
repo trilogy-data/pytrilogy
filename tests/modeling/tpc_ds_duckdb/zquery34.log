@@ -1,5 +1,5 @@
 query_id = "34"
-gen_length = 2857
+gen_length = 2858
 preql_size = 1483
 comp_size = 1449
 generated_sql = """
@@ -25,7 +25,7 @@ GROUP BY
     1,
     2
 HAVING
-    \"cnt\" BETWEEN 15 AND 20
+    sum(1) BETWEEN 15 AND 20
 )
 SELECT
     \"store_sales_customer_customers\".\"C_LAST_NAME\" as \"store_sales_customer_last_name\",

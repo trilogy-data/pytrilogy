@@ -1,5 +1,5 @@
 query_id = "64"
-gen_length = 15180
+gen_length = 15290
 preql_size = 4382
 comp_size = 3783
 generated_sql = """
@@ -167,6 +167,7 @@ SELECT
     \"protective\".\"ss_customer_current_address_street_number\" as \"c_sn\",
     \"protective\".\"ss_customer_current_address_zip\" as \"c_zip\",
     \"protective\".\"ss_item_product_name\" as \"p_name\",
+    \"protective\".\"ss_item_sk\" as \"agg_00_item_sk_00\",
     \"protective\".\"ss_item_sk\" as \"ss_item_sk\",
     \"protective\".\"ss_pos_address_city\" as \"b_city\",
     \"protective\".\"ss_pos_address_sk\" as \"ss_pos_address_sk\",
@@ -174,6 +175,7 @@ SELECT
     \"protective\".\"ss_pos_address_street_number\" as \"b_sn\",
     \"protective\".\"ss_pos_address_zip\" as \"b_zip\",
     \"protective\".\"ss_store_name\" as \"s_name\",
+    \"protective\".\"ss_store_sk\" as \"agg_00_store_sk_00\",
     \"protective\".\"ss_store_sk\" as \"ss_store_sk\",
     \"protective\".\"ss_store_zip\" as \"s_zip\"
 FROM

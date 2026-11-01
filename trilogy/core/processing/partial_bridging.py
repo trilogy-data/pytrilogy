@@ -151,25 +151,45 @@ def _pair_siblings(
         if other.identifier == ds.identifier or _partition_disjoint(ds, other):
             continue
         grain = set(other.grain.components)
-        if not (grain & key_spellings and grain - key_spellings):
+        if not grain - key_spellings:
             continue
-        if any(
+        partial = any(
             _structural_partial(other, c) and c.concept.address in key_spellings
             for c in other.columns
-        ):
-            partials.append(other)
-        else:
+        )
+        if grain & key_spellings:
+            (partials if partial else anchors).append(other)
+        # a fact binding the key complete as a column (an order's customer)
+        # holds its members as surely as one keyed by it
+        elif not partial and key_spellings & {c.concept.address for c in other.columns}:
             anchors.append(other)
     return anchors, partials
 
 
 def _any_supplies_killers(
-    siblings: list[BuildDatasource], killers: set[str], facts: ModelFacts
+    siblings: list[BuildDatasource],
+    killers: set[str],
+    facts: ModelFacts,
+    span_binders: set[str],
+    datasources: Sequence[BuildDatasource],
 ) -> bool:
     """Whether some sibling's rows carry a value for every killer, so the WHERE
-    keeps them."""
+    keeps them. A row reaching a killer through a `~` table on another key (an
+    order's return quantity, beside a `~` notes table) is kept wherever that
+    table matches; one reaching it only through a `~` binder of this span (the
+    healed table, or a peer channel's returns) is a row of that binder, and a
+    partition disjoint from the sibling never matches it."""
     wanted = {facts.canonical.get(k, k) for k in killers}
-    return any(wanted <= facts.lookup_supply(s.identifier) for s in siblings)
+    return any(
+        wanted
+        <= facts.lookup_supply(
+            s.identifier,
+            without=span_binders
+            | {d.identifier for d in datasources if _partition_disjoint(s, d)},
+            matched=True,
+        )
+        for s in siblings
+    )
 
 
 def _read_partials(
@@ -288,7 +308,8 @@ def decide_heal(
             read = anchors + _read_partials(
                 ds, partials, component_refs, facts, environment
             )
-            if _any_supplies_killers(read, killers, facts):
+            span_binders = {ds.identifier} | {p.identifier for p in partials}
+            if _any_supplies_killers(read, killers, facts, span_binders, datasources):
                 continue
             if authored.keyspace.binding_is_complete(ds.identifier, span):
                 healed.add(span)

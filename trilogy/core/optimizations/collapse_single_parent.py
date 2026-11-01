@@ -613,6 +613,19 @@ class CollapseSingleParent(OptimizationRule):
             )
             return False, None
 
+        # A consumer that already reads the parent, as a CTE or as a table it
+        # inlined, would hold the parent twice under one name after the repoint.
+        if any(
+            parent.name
+            in {d.name for d in consumer.dependency_nodes(include_inlined=True)}
+            for consumer in inverse_map.get(cte.name, [])
+            if isinstance(consumer, CTE)
+        ):
+            self.debug(
+                f"A consumer of {cte.name} already reads {parent.name}, skipping"
+            )
+            return False, None
+
         # A shared parent only accepts a rename-only projection, whose fold
         # merely appends output columns (no condition, regroup, or joins) and
         # leaves the other consumers unaffected. That covers PASSTHROUGH and
@@ -625,14 +638,7 @@ class CollapseSingleParent(OptimizationRule):
                 and is_passthrough_projection(cte)
                 and passthrough_renders_from_parent(cte, parent)
             )
-            # A consumer that already depends on the parent would join the
-            # parent to itself under one alias after the repoint, so keep this
-            # child materialized.
-            consumer_joins_parent = any(
-                parent.name in {d.name for d in consumer.dependency_nodes()}
-                for consumer in inverse_map.get(cte.name, [])
-            )
-            if not rename_only or consumer_joins_parent:
+            if not rename_only:
                 self.debug(f"Parent {parent.name} has multiple children, skipping")
                 return False, None
             merge_mode = MergeMode.PASSTHROUGH

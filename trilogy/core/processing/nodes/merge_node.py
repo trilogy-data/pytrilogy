@@ -49,7 +49,7 @@ from trilogy.core.processing.join_resolution import (
     held_region_spans,
     merge_partial_addresses,
     narrow_keyless_joins,
-    partial_binding_sources,
+    preserved_sources,
     prune_outer_join_pairs,
 )
 from trilogy.core.processing.nodes.base_node import (
@@ -956,7 +956,9 @@ class MergeNode(StrategyNode):
             partial_concepts=unique(
                 self.partial_concepts
                 + [c for c in final_output_concepts if c.address in joined_partials]
-                + self._extent_free_partials(final_datasets, final_output_concepts),
+                + self._extent_free_partials(
+                    final_datasets, final_output_concepts, qd_joins
+                ),
                 "address",
             ),
             rollup_concepts=rollup_concepts,
@@ -974,6 +976,7 @@ class MergeNode(StrategyNode):
         self,
         sources: list[QueryDatasource | BuildDatasource],
         outputs: list[BuildConcept],
+        joins: list[SourceJoin | UnnestJoin],
     ) -> list[BuildConcept]:
         """Span keys this merge covers only PARTIALLY.
 
@@ -981,13 +984,25 @@ class MergeNode(StrategyNode):
         column holds just the members the facts below bound; the unmatched
         members belong to the elected owner. Marking them partial makes the
         assembly above preserve the owner's rows instead of INNER-joining them
-        away."""
+        away. A side the joins preserve that binds the span complete (the
+        customers beside a `~` notes table) holds every member here."""
         if not self.span_scope.extent_free:
             return []
+        preserved = preserved_sources(sources, joins)
+        partial = {
+            source.identifier: {c.address for c in source.partial_concepts}
+            for source in sources
+        }
         bound_partially = {
             span
             for span in self.span_scope.extent_free
-            if any(partial_binding_sources(source, span) for source in sources)
+            if any(span in partial[source.identifier] for source in sources)
+            and not any(
+                source.identifier in preserved
+                and span in {c.address for c in source.output_concepts}
+                and span not in partial[source.identifier]
+                for source in sources
+            )
         }
         # what the span's region domain carries is held here for those same
         # members only (the names of customers WITH an order)

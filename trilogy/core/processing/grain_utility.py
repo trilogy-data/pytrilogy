@@ -16,6 +16,7 @@ from trilogy.core.models.build import (
     BoolExpr,
     BuildComparison,
     BuildConcept,
+    BuildConceptArgs,
     BuildDatasource,
     BuildFilterItem,
     BuildFunction,
@@ -492,6 +493,12 @@ def _is_filter_population(
         and not _reads_partner(source, partner)
     ):
         return False
+    # A `~` side lacks members whatever the WHERE says: a WHERE on the key
+    # alone (`cust_id != 10`) filters both sides alike, so its narrowness is
+    # the `~`, not the WHERE.
+    partial_keys = join_addresses & {c.address for c in source.partial_concepts}
+    if partial_keys - partner.partial and _filters_only_keys(source, join_addresses):
+        return False
     held = held_region_spans(source)
     if join_addresses & partner.regions and not join_addresses & held:
         return False
@@ -616,6 +623,17 @@ def _rejects_padding(source: GrainSource) -> bool:
     return any(
         gather_non_null_proofs(condition) or gather_or_groups(condition)
         for condition in collect_applied_conditions(source)
+    )
+
+
+def _filters_only_keys(source: GrainSource, keys: set[str]) -> bool:
+    """Whether every condition applied in `source` reads only the join `keys`,
+    which the other side holds too: it rejects none of `source`'s own rows."""
+    conditions = collect_applied_conditions(source)
+    return bool(conditions) and all(
+        isinstance(condition, BuildConceptArgs)
+        and {c.address for c in condition.row_arguments} <= keys
+        for condition in conditions
     )
 
 

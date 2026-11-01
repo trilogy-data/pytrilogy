@@ -1,5 +1,5 @@
 query_id = "41"
-gen_length = 2066
+gen_length = 2079
 preql_size = 1244
 comp_size = 1166
 generated_sql = """
@@ -17,7 +17,7 @@ WHERE
 GROUP BY
     1
 HAVING
-    \"manufact_matches\" > 0
+    count(\"item_items\".\"I_ITEM_SK\") > 0
 ),
 highfalutin as (
 SELECT

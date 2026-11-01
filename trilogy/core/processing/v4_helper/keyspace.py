@@ -52,7 +52,7 @@ empties it (`emptied_by`).
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, field
 from weakref import WeakKeyDictionary
 
@@ -109,19 +109,25 @@ class ModelFacts:
     reach: dict[frozenset[str], frozenset[str]] = field(default_factory=dict)
 
     def lookup_supply(
-        self, identifier: str, without: str | None = None
+        self,
+        identifier: str,
+        without: str | Collection[str] | None = None,
+        matched: bool = False,
     ) -> frozenset[str]:
         """What a row of source `identifier` has a value for by keyed lookup,
         with the `without` source left out of the model. The FD closure is the
         wrong tool for this: a same-grain sibling binding its keys `~` is in
         the closure yet may hold no row for the key. The lookup over-
         approximates (a nullable FK may miss), the safe direction for the
-        pin-heal: a killer counted as suppliable only blocks healing."""
+        pin-heal: a killer counted as suppliable only blocks healing.
+        `matched`: what SOME row has a value for, through `~` lookups too
+        (an order with a return has its quantity)."""
         source = next(s for s in self.sources if s.identifier == identifier)
-        if without is None:
+        if without is None and not matched:
             return frozenset(source.carried)
-        rest = tuple(s for s in self.sources if s.identifier != without)
-        return frozenset(_carried(source, rest))
+        left_out = {without} if isinstance(without, str) else set(without or ())
+        rest = tuple(s for s in self.sources if s.identifier not in left_out)
+        return frozenset(_carried(source, rest, matched))
 
     def component_of(self, identifier: str) -> frozenset[str]:
         """Every address bound by a source connected to `identifier` through
@@ -387,11 +393,14 @@ def _generated_domains(
     return tuple(out[address] for address in sorted(out))
 
 
-def _carried(anchor: _SourceFacts, sources: tuple[_SourceFacts, ...]) -> Carried:
+def _carried(
+    anchor: _SourceFacts, sources: tuple[_SourceFacts, ...], matched: bool = False
+) -> Carried:
     """Every address a row of `anchor` has a value for, by keyed lookup.
 
     A lookup enters a source only through its whole grain, and never one whose
-    grain is bound `~`: that source may hold no row for the anchor's key.
+    grain is bound `~` unless `matched`: that source may hold no row for the
+    anchor's key, so only the rows it matches have its values.
     A source is re-entered only once a grain address it reads has improved:
     re-entering on the same paths improves nothing."""
     carried = dict(anchor.bound)
@@ -403,7 +412,9 @@ def _carried(anchor: _SourceFacts, sources: tuple[_SourceFacts, ...]) -> Carried
     while changed:
         changed = False
         for i, other in enumerate(sources):
-            if other is anchor or not other.grain or other.grain_is_partial:
+            if other is anchor or not other.grain:
+                continue
+            if other.grain_is_partial and not matched:
                 continue
             if not other.grain <= carried.keys():
                 continue
