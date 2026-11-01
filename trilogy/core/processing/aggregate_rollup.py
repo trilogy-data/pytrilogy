@@ -1,12 +1,13 @@
 from collections.abc import Iterable, Mapping
 from dataclasses import replace
 
-from trilogy.core.enums import Derivation, Granularity, Purpose
+from trilogy.core.enums import Derivation, FunctionType, Granularity, Purpose
 from trilogy.core.models.build import (
     ROLLUP_REAGGREGATES,
     BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
+    BuildFunction,
     BuildGrain,
     BuildUnionDatasource,
     BuildWhereClause,
@@ -202,15 +203,47 @@ def finer_than_grain(
     )
 
 
-def at_own_grain(concept: BuildConcept, grain: BuildGrain) -> bool:
+def at_own_grain(
+    concept: BuildConcept,
+    grain: BuildGrain,
+    concepts_by_address: Mapping[str, BuildConcept] | None = None,
+) -> bool:
     """An aggregate a request at `grain` asks for at that grain. One at
     another grain (`count(x) by *` beside per-city rows) is a separate value
-    the request joins, never one it groups."""
-    return _grain_identity(concept.grain) == _grain_identity(grain)
+    the request joins, never one it groups. A rename is the value it names
+    (`species as s` groups as `species`)."""
+    return _grain_identity(concept.grain, concepts_by_address) == _grain_identity(
+        grain, concepts_by_address
+    )
 
 
-def _grain_identity(grain: BuildGrain) -> frozenset[str]:
-    return frozenset() if grain.abstract else frozenset(grain.components)
+def renamed_source(
+    address: str, concepts_by_address: Mapping[str, BuildConcept]
+) -> str:
+    """The address a chain of pure renames ends at."""
+    seen = {address}
+    concept = concepts_by_address.get(address)
+    while (
+        concept is not None
+        and isinstance(concept.lineage, BuildFunction)
+        and concept.lineage.operator == FunctionType.ALIAS
+        and len(concept.lineage.concept_arguments) == 1
+        and concept.lineage.concept_arguments[0].address not in seen
+    ):
+        address = concept.lineage.concept_arguments[0].address
+        seen.add(address)
+        concept = concepts_by_address.get(address)
+    return address
+
+
+def _grain_identity(
+    grain: BuildGrain, concepts_by_address: Mapping[str, BuildConcept] | None = None
+) -> frozenset[str]:
+    if grain.abstract:
+        return frozenset()
+    if concepts_by_address is None:
+        return frozenset(grain.components)
+    return frozenset(renamed_source(c, concepts_by_address) for c in grain.components)
 
 
 def pending_rollups(

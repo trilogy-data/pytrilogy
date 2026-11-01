@@ -519,7 +519,7 @@ def materialized_root_addresses(
             exact
             or condition_only
             or not (is_aggregate and _is_rollable_aggregate(concept))
-            or not at_own_grain(concept, row_grain)
+            or not at_own_grain(concept, row_grain, environment.concepts)
         ):
             continue
         # ROLLUP: a finer-grain table binds the same aggregate expression and it
@@ -578,18 +578,26 @@ def _summary_bound_expressions(
     grain) are read from it beside the rolled aggregate; rebuilt from the fact
     rows they would join those rows back onto the summary and fan it out.
     Only the pinned finer-filter scan binds a same-expression alias (`year(
-    plant_date) as y`) by canonical; elsewhere the column must be named."""
+    plant_date) as y`) by canonical; elsewhere the column must be named. A
+    scalar over a stored column (`plant_year::int`, a rename of it) reads
+    that column from the summary."""
     bound = {
         c.canonical_address if pinned else c.address
         for ds in rollup_sources
         for c in ds.output_concepts
     }
-    return {
-        c.address
-        for c in mandatory_list
-        if c.derivation == Derivation.BASIC
-        and (c.canonical_address if pinned else c.address) in bound
-    }
+    out: set[str] = set()
+    for concept in walk_lineage(
+        mandatory_list,
+        descend=lambda c: c.derivation == Derivation.BASIC
+        and (c.canonical_address if pinned else c.address) not in bound,
+    ):
+        if (
+            concept.derivation == Derivation.BASIC
+            and (concept.canonical_address if pinned else concept.address) in bound
+        ):
+            out.add(concept.address)
+    return out
 
 
 def _keyed_grain(
