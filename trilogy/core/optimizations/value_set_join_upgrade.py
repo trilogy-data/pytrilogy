@@ -515,14 +515,15 @@ def _joined_complete(concept: BuildConcept, side_cte: CTE, graph: DomainGraph) -
     row finds a partner (a `~` enrichment LEFT joined from its complete key)."""
     if side_cte.condition is not None or not side_cte.joins:
         return False
-    if not all(isinstance(join, Join) for join in side_cte.joins):
+    joins = [join for join in side_cte.joins if isinstance(join, Join)]
+    if len(joins) != len(side_cte.joins):
         return False
     parents = {p.name: p for p in side_cte.parent_ctes if isinstance(p, CTE)}
     for name in side_cte.source_map.get(concept.address, []):
         source = parents.get(name)
         if source is None or not _complete_values(concept, source, graph):
             continue
-        if all(_keeps_rows_of(join, source, graph) for join in side_cte.joins):
+        if all(_keeps_rows_of(join, source, graph) for join in joins):
             return True
     return False
 
