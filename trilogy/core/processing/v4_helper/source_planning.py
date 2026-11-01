@@ -296,10 +296,16 @@ def _condition_arg_lineage_roots(request: SourceRequest) -> list[BuildConcept]:
     lineage (a RECURSIVE collapses to a single-step CASE), giving wrong rows.
     Such an arg must be sourced through its own node and joined, which is left
     to `gen_root`'s `_resolve_root_condition_sources` fallback; the bridge
-    triggers it by failing to source the arg here."""
+    triggers it by failing to source the arg here.
+
+    An arg some datasource stores completely is read as itself: its roots
+    would demand the finer rows it was derived from and fan a summary out."""
     roots: list[BuildConcept] = []
+    datasources = request.graph.scope.datasources
     for concept in condition_row_args(request.conditions):
         if concept.lineage is None:
+            continue
+        if _single_source_covers({concept.address}, datasources):
             continue
         if concept.derivation in ROW_SHAPE_BARRIER_DERIVATIONS:
             continue
