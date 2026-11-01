@@ -2443,6 +2443,23 @@ def _add_rowset_handle_relations(
                     add_edge(graph, edges, mate_nid, handle_nid, EdgeKind.RELATION)
 
 
+def _scalar_row_sources(
+    graph: nx.DiGraph, edges: EdgeMap, attrs: dict[str, ConceptAttrs], nid: str
+) -> list[str]:
+    """The nodes a BASIC scalar's rows are read from: through BASIC lineage
+    parents down to the first non-BASIC one."""
+    if attrs[nid].derivation != Derivation.BASIC:
+        return [nid]
+    parents = [
+        p
+        for p in graph.predecessors(nid)
+        if edge_kind(edges, p, nid) == EdgeKind.LINEAGE
+    ]
+    if not parents:
+        return [nid]
+    return [s for p in parents for s in _scalar_row_sources(graph, edges, attrs, p)]
+
+
 def _constrain_aggregates_by_root_conditions(
     graph: nx.DiGraph,
     edges: EdgeMap,
@@ -2947,8 +2964,15 @@ def build_concept_graph(
             continue
         if any(True for _ in graph.successors(src)):
             continue
-        for dst in mandatory_blank_ids:
-            if dst not in graph.nodes or graph.has_edge(src, dst):
+        # a scalar output is filtered where its row inputs are read
+        targets = dict.fromkeys(
+            row_source
+            for dst in mandatory_blank_ids
+            if dst in graph.nodes
+            for row_source in _scalar_row_sources(graph, edges, attrs, dst)
+        )
+        for dst in targets:
+            if graph.has_edge(src, dst):
                 continue
             if _constraint_crosses_rowset(attrs, src, dst):
                 continue

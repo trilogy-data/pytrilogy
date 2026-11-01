@@ -218,6 +218,7 @@ OPEN: dict[tuple[str, str], tuple[str, tuple[str, ...] | None]] = {
             NO_EXISTENCE_PROOF,
             {
                 "key_and_property": ("none", "species", "property", "year"),
+                "property": ("none", "species", "property", "year"),
                 "stored": None,
             }.get(shape, ("none", "species", "property")),
         )
@@ -235,21 +236,6 @@ OPEN: dict[tuple[str, str], tuple[str, tuple[str, ...] | None]] = {
         for shape in RELATION
     },
 }
-
-# The tree plan itself raises: no answer to compare.
-TREE_PLAN_RAISES = {
-    (
-        "existence",
-        "property",
-        "year",
-    ): "the tree plan raises a keyless-join error under a stored-column WHERE",
-    (
-        "existence",
-        "scalar",
-        "year",
-    ): "the tree plan raises a keyless-join error under a stored-column WHERE",
-}
-
 
 def _run(model: str, query: str) -> tuple[str, list[tuple]]:
     executor = Dialects.DUCK_DB.default_executor()
@@ -271,8 +257,6 @@ def _assert_same_answer(query: str, served: bool) -> None:
 
 
 def _marks(rule: str, shape: str, where: str) -> list:
-    if (rule, shape, where) in TREE_PLAN_RAISES:
-        return [pytest.mark.skip(reason=TREE_PLAN_RAISES[(rule, shape, where)])]
     reason, filters = OPEN.get((rule, shape), ("", ()))
     if filters is None or where in filters:
         return [pytest.mark.xfail(strict=True, reason=reason)]
@@ -332,23 +316,31 @@ def test_scalar_of_an_aggregates_grain(select: str, where: str):
         (
             "auto c <- case when bucket = 'Native' then count(tree_id) by bucket end;"
             " select sum(c) as n;",
-            4,
+            [(4,)],
         ),
         (
             "auto ub <- upper(bucket);"
             " auto c <- case when ub = 'NATIVE' then count(tree_id) by bucket end;"
             " select sum(c) as n;",
-            4,
+            [(4,)],
         ),
         (
             "select sum(case when bucket = 'Native' then count(tree_id) by bucket end)"
             " as n where city = 'A';",
-            3,
+            [(3,)],
+        ),
+        (
+            "select split(species, ' ')[1] as g where plant_year > 2000;",
+            [("Acer",), ("Opuntia",), ("Tilia",)],
+        ),
+        (
+            "select common_names[1] as c where plant_year > 2000;",
+            [("linden",), ("red maple",), (None,)],
         ),
     ],
 )
-def test_scalar_of_an_aggregates_grain_answer(query: str, expected: int):
-    assert _run(BASE, query)[1] == [(expected,)]
+def test_tree_plan_answer(query: str, expected: list[tuple]):
+    assert _run(BASE, query)[1] == expected
 
 
 @pytest.mark.parametrize("select,where", _cases("unservable", UNSERVABLE))
