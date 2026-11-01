@@ -4782,35 +4782,24 @@ def _hide_final_only_grain_keys(
     node.rebuild_cache()
 
 
-def _subtree_applies_conditions(node: StrategyNode, where: BuildWhereClause) -> bool:
-    """Whether some node in this subtree already applies (implies) `where`.
+def _group_applies_conditions(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    where: BuildWhereClause,
+) -> bool:
+    """Whether the atoms placed at `gid`, or above it and still holding on its
+    rows, imply `where`.
 
     A FINAL-deferred atom can be double-placed at a lower host (the aggregate
     group's pre-filter wrapper). Re-applying it on a sole contributor is at
     best redundant; for a ROLLUP contributor it is destructive: the feeder
     re-join pairs on grouping keys the ROLLUP NULLs at subtotal rows, so the
     subtotal/total rows drop."""
-    row_args = {c.address for c in condition_row_args(where)}
-    stack: list[StrategyNode] = [node]
-    while stack:
-        current = stack.pop()
-        for applied in (current.conditions, current.preexisting_conditions):
-            if applied is not None and condition_implies(applied, where.conditional):
-                return True
-        for parent in current.parents:
-            # A standard GroupNode applies its WHERE to the rows it aggregates.
-            # The groups it emits are gated only when the atom is decided per
-            # group, i.e. every row arg is one of its outputs; otherwise a row
-            # stream merged back onto those groups re-admits rows the atom
-            # rejects, so nothing applied at or below it counts for `node`.
-            if (
-                isinstance(parent, GroupNode)
-                and not node_nulls_grouping_keys(parent)
-                and not row_args <= {o.address for o in parent.output_concepts}
-            ):
-                continue
-            stack.append(parent)
-    return False
+    held = _wrap_atoms(
+        _atoms_at(attrs, gid) + accumulated_atoms_above(group_graph, attrs, gid)
+    )
+    return held is not None and condition_implies(held.conditional, where.conditional)
 
 
 def _push_row_condition_before_group(
@@ -5059,7 +5048,7 @@ def _assemble_sole_contributor(
     # its join back rides the relation axis, which only the raw
     # contributor can still widen to.
     final_already_applied = final_conditions is not None and (
-        _subtree_applies_conditions(sole_node, final_conditions)
+        _group_applies_conditions(group_graph, attrs, gid, final_conditions)
     )
     # A row condition available on the contributor's input is
     # population-scope. Apply it there before aggregation rather than
