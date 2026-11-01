@@ -61,7 +61,12 @@ from trilogy.core.processing.node_generators.select_helpers.datasource_nodes imp
 from trilogy.core.processing.node_generators.select_node import (
     validate_query_is_resolvable,
 )
-from trilogy.core.processing.nodes import MergeNode, SelectNode, StrategyNode
+from trilogy.core.processing.nodes import (
+    GroupNode,
+    MergeNode,
+    SelectNode,
+    StrategyNode,
+)
 from trilogy.core.processing.source_dominance import dominators
 from trilogy.core.processing.v4_helper.condition_injection import condition_row_args
 from trilogy.core.processing.v4_helper.constants import ROW_SHAPE_BARRIER_DERIVATIONS
@@ -296,10 +301,16 @@ def _condition_arg_lineage_roots(request: SourceRequest) -> list[BuildConcept]:
     lineage (a RECURSIVE collapses to a single-step CASE), giving wrong rows.
     Such an arg must be sourced through its own node and joined, which is left
     to `gen_root`'s `_resolve_root_condition_sources` fallback; the bridge
-    triggers it by failing to source the arg here."""
+    triggers it by failing to source the arg here.
+
+    An arg some datasource stores completely is read as itself: its roots
+    would demand the finer rows it was derived from and fan a summary out."""
     roots: list[BuildConcept] = []
+    datasources = request.graph.scope.datasources
     for concept in condition_row_args(request.conditions):
         if concept.lineage is None:
+            continue
+        if _single_source_covers({concept.address}, datasources):
             continue
         if concept.derivation in ROW_SHAPE_BARRIER_DERIVATIONS:
             continue
@@ -1351,6 +1362,60 @@ def _summary_partials(
     ]
 
 
+def _summary_partial_hosts(
+    parents: list[StrategyNode], partials: list[BuildConcept]
+) -> list[StrategyNode]:
+    addresses = {c.address for c in partials}
+    return [
+        parent
+        for parent in parents
+        if addresses & {c.address for c in parent.output_concepts}
+    ]
+
+
+def _group_fanning_parents(
+    request: SourceRequest,
+    parents: list[StrategyNode],
+    partials: list[BuildConcept],
+    needed: set[str],
+) -> list[StrategyNode]:
+    """A parent finer than the summary carrying `partials` repeats each summary
+    row once per row of its own, and the re-sum then counts those repeats.
+    When it supplies nothing the request needs beyond the columns it shares
+    with the summary, it only restricts the summary's rows: group it to those
+    columns so the join pairs one row per summary row."""
+    hosts = _summary_partial_hosts(parents, partials)
+    if len(hosts) != 1:
+        return parents
+    host = hosts[0]
+    host_addresses = {c.address for c in host.output_concepts}
+    regrouped: list[StrategyNode] = []
+    for parent in parents:
+        grain = parent.grain.components if parent.grain is not None else set()
+        shared = [c for c in parent.output_concepts if c.address in host_addresses]
+        own = {c.address for c in parent.output_concepts} - host_addresses
+        if (
+            parent is host
+            or not grain
+            or grain <= host_addresses
+            or not shared
+            or own & needed
+        ):
+            regrouped.append(parent)
+            continue
+        regrouped.append(
+            GroupNode(
+                output_concepts=shared,
+                input_concepts=parent.output_concepts,
+                environment=request.environment,
+                parents=[parent],
+                depth=request.depth,
+                force_group=True,
+            )
+        )
+    return regrouped
+
+
 def _merge_component_sources(
     request: SourceRequest,
     parents: list[StrategyNode],
@@ -1396,6 +1461,15 @@ def _merge_component_sources(
     )
     if rollup:
         outputs = targets
+    partials = [] if rollup else _summary_partials(parents, targets)
+    if partials:
+        needed = requested | {c.address for c in condition_row_args(request.conditions)}
+        parents = _group_fanning_parents(request, parents, partials, needed)
+        inputs = unique(
+            [concept for parent in parents for concept in parent.usable_outputs],
+            "address",
+        )
+        outputs = [c for c in outputs if c.address in {i.address for i in inputs}]
     return MergeNode(
         input_concepts=inputs,
         output_concepts=outputs,
@@ -1406,7 +1480,7 @@ def _merge_component_sources(
             request.conditions.conditional if request.conditions is not None else None
         ),
         force_group=True if rollup else None,
-        rollup_concepts=rollup or _summary_partials(parents, targets) or None,
+        rollup_concepts=rollup or partials or None,
         preserve_parents=preserve_parents,
     )
 
