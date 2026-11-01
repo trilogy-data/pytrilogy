@@ -76,13 +76,18 @@ def get_derivable_concepts(
         available: Set of canonical addresses of complete concepts (will be mutated)
         already_present: Set of canonical addresses already in the datasource (skip these)
     """
-    if not graph.roots:
+    if not graph.dependencies:
         return
 
     # Track which concepts we've already processed
     processed: set[str] = set()
-    # Queue of concept addresses to check
-    to_check: list[str] = list(graph.roots)
+    # Queue of concept addresses to check: the roots, and whatever reads a
+    # stored column directly (`plant_year::int` beside a stored `plant_year`)
+    to_check: list[str] = list(graph.roots) + [
+        dependent
+        for address in available
+        for dependent in graph.reverse_deps.get(address, [])
+    ]
 
     while to_check:
         addr = to_check.pop()

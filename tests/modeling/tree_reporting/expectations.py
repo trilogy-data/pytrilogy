@@ -13,22 +13,9 @@ def keyed(city: str, charts: list[str], variants: list[str]) -> list[str]:
     return [f"{city} {chart}{variant}" for chart in charts for variant in variants]
 
 
-SELECTORS = [
-    "species:selector-genus-top",
-    "species:selector-genus-all",
-    "species:selector-species-top",
-    "species:selector-species-all",
-]
 SPECIES_VARIANTS = ["", " [cross:native_locality_bucket]", " [species]", " [cultivar]"]
 
 SERVED: dict[str, str] = {
-    # #827 G2/G3: the same column selected twice (option_value, option_label).
-    **{
-        key: "trees"
-        for key in keyed("USBOS", SELECTORS, ["", " [cross:native_locality_bucket]"])
-    },
-    **{key: "trees" for key in keyed("USBOS", SELECTORS[2:], [" [cultivar]"])},
-    **{key: "trees" for key in keyed("ALL", SELECTORS, [""])},
     # #827 K3: a ratio over the total beside coalesce(common_names[1], species).
     **{
         key: "trees"
@@ -52,12 +39,6 @@ SERVED: dict[str, str] = {
     **{key: "trees" for key in keyed("USBOS", ["species:context"], SPECIES_VARIANTS)},
     # No city filter and no tree concept: answered from the species dimension alone.
     "ALL species:context": "neither",
-    # #827 Y3 `plant_year::int::year`: re-derived from plant_date, so the year summary cannot serve it.
-    **{
-        key: "trees"
-        for key in keyed("USBOS", ["species:sp-age-distribution"], SPECIES_VARIANTS)
-    },
-    "ALL species:sp-age-distribution": "trees",
 }
 
 NULL_CELL = (

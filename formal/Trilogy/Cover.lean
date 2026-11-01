@@ -1,0 +1,251 @@
+import Trilogy.Rollup
+
+/-!
+# When a count summary covers a query
+
+`Rollup.lean` proves that re-aggregating a summary under a key predicate is
+exact. This module names what the planner must recognize as a key predicate
+or a target of the key before it reads the summary, one rule per shape of
+query. A summary stores `count(x)` per group of its grain `g`; everything
+below is a function of the summary key `k`, so each reduces to
+`Rollup.count_coalesce` or `Rollup.reaggregate_partial_count`.
+
+1. **Value, not spelling** (`target_tuple_count`, `duplicate_target_slice`).
+   A target group is any function of the key: a rename (`species as s`), a
+   scalar of a stored column (`plant_year::int`, `plant_date.year` against a
+   stored `year(plant_date)`), a tuple, a column listed twice.
+2. **A key predicate inside the aggregate** (`filtered_count_exact`,
+   `case_count_exact`). `count(x ? c)` with `c` a function of the key is the
+   re-sum of the groups `c` keeps, written `sum(case when c then n end)` when
+   it shares a scan with other aggregates.
+3. **A distinct count of the counted key** (`count_distinct_of_key_exact`).
+   On rows where the counted key is unique, `count_distinct(x)` is `count(x)`.
+4. **Siblings at other grains** (`ratio_parts_exact`). A total `count(x) by *`
+   beside a derived dimension is two independent re-sums of one summary.
+5. **Existence** (`exists_by_value`). With no aggregate at all, the values of
+   a key function over the kept rows are its values over the summary's
+   groups, since GROUP BY emits only groups that hold a row.
+6. **A relation keyed on the grain** (`keyed_relation_count`). Counting by a
+   value `t` the key relates to (an ecoregion of a species' range, a biome of
+   it) is the re-sum of the groups related to `t`: the relation is a key
+   predicate. Joining the summary to relation PAIRS and re-summing counts a
+   group once per pair, so the joined pairs must be distinct per `(k, t)`
+   (`collapsed_fanout_double_counts`).
+
+What each rule needs of the summary is the same: the counted key is the
+summary's own aggregate argument (`Rollup.stored_column_answers_its_own_argument`),
+every row lands in one group (`Rollup.fanout_partial_double_counts`), and a
+condition or target finer than the key is refused
+(`Rollup.finer_filter_unservable`).
+-/
+
+namespace Trilogy
+namespace Cover
+
+open Rollup
+
+variable {α κ τ : Type} [DecidableEq κ] [DecidableEq τ]
+
+/-! ## 1. Value, not spelling -/
+
+/-- **A tuple of key functions is a target.** Any list of columns that are
+functions of the summary key, renamed, computed or repeated, groups the
+summary as it groups the rows. -/
+theorem target_tuple_count (g : α → κ) (ks : List κ) (hnd : ks.Nodup)
+    (rows : List α) (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int)
+    (h₁ h₂ : κ → τ) (t : τ × τ)
+    (hne : slice (fun r => (h₁ (g r), h₂ (g r))) t rows ≠ []) :
+    sqlSum (stored g ks rows (countAgg v) (fun k => decide ((h₁ k, h₂ k) = t))) =
+      countAgg v (slice (fun r => (h₁ (g r), h₂ (g r))) t rows) :=
+  Rollup.reaggregate_partial_count g ks hnd rows hcov v (fun k => (h₁ k, h₂ k)) t hne
+
+omit [DecidableEq κ] in
+/-- A column listed twice adds no group: the pair `(h, h)` keeps a row at
+`(a, b)` only when `a = b`, and then keeps the rows `h` keeps at `a`. -/
+theorem duplicate_target_slice (g : α → κ) (h : κ → τ) (a b : τ) (rows : List α) :
+    slice (fun r => (h (g r), h (g r))) (a, b) rows =
+      if a = b then slice (fun r => h (g r)) a rows else [] := by
+  by_cases hab : a = b
+  · subst hab
+    simp [slice]
+  · simp only [hab, ite_false, slice]
+    apply List.filter_eq_nil_iff.mpr
+    intro r _
+    simp only [Prod.mk.injEq, decide_eq_true_eq, not_and]
+    intro ha hb
+    exact hab (ha ▸ hb)
+
+omit [DecidableEq κ] in
+/-- Two spellings of one value answer alike: grouping depends on the target
+only as a function of the key. -/
+theorem target_by_value (g : α → κ) (h₁ h₂ : κ → τ) (heq : ∀ k, h₁ k = h₂ k)
+    (t : τ) (rows : List α) :
+    slice (fun r => h₁ (g r)) t rows = slice (fun r => h₂ (g r)) t rows := by
+  simp [slice, heq]
+
+/-! ## 2. A key predicate inside the aggregate -/
+
+/-- `x ? c`: the value where `c` holds, NULL elsewhere. -/
+def filtered (v : α → Option Int) (c : α → Bool) : α → Option Int :=
+  fun r => if c r then v r else none
+
+theorem count_filtered (v : α → Option Int) (c : α → Bool) (rows : List α) :
+    sqlCount (rows.map (filtered v c)) = sqlCount ((rows.filter c).map v) := by
+  induction rows with
+  | nil => rfl
+  | cons r rs ih =>
+    by_cases hc : c r <;>
+      simp_all [sqlCount, filtered, List.countP_cons]
+
+omit [DecidableEq κ] in
+theorem keep_filter (g : α → κ) (q c : κ → Bool) (rows : List α) :
+    (keep g q rows).filter (fun r => c (g r)) = keep g (fun k => q k && c k) rows := by
+  simp [keep, List.filter_filter, Bool.and_comm]
+
+/-- **A filtered count rolls up.** `count(x ? c)` with `c` a function of the
+summary key is the re-sum of the groups `q` and `c` both keep. -/
+theorem filtered_count_exact (g : α → κ) (ks : List κ) (hnd : ks.Nodup)
+    (rows : List α) (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int)
+    (q c : κ → Bool) :
+    coalesce0 (sqlSum (stored g ks rows (countAgg v) (fun k => q k && c k))) =
+      sqlCount ((keep g q rows).map (filtered v (fun r => c (g r)))) := by
+  rw [count_filtered, keep_filter]
+  exact Rollup.count_coalesce g ks hnd rows hcov v _
+
+/-- The summary read under `q`, each group's count kept where `c` holds:
+`sum(case when c then n end)`, the form a filtered count takes when it
+shares a scan with other aggregates. -/
+def storedCase (g : α → κ) (ks : List κ) (rows : List α)
+    (agg : List α → Option Int) (q c : κ → Bool) : List (Option Int) :=
+  ((groups g ks rows).filter q).map (fun k => if c k then agg (slice g k rows) else none)
+
+omit [DecidableEq κ] in
+theorem sum_getD_case (xs : List κ) (f : κ → Option Int) (c : κ → Bool) :
+    ((xs.map (fun k => if c k then f k else none)).map (·.getD 0)).sum =
+      (((xs.filter c).map f).map (·.getD 0)).sum := by
+  induction xs with
+  | nil => rfl
+  | cons k ks ih => by_cases hc : c k <;> simp_all
+
+theorem case_count_exact (g : α → κ) (ks : List κ) (hnd : ks.Nodup)
+    (rows : List α) (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int)
+    (q c : κ → Bool) :
+    coalesce0 (sqlSum (storedCase g ks rows (countAgg v) q c)) =
+      sqlCount ((keep g q rows).map (filtered v (fun r => c (g r)))) := by
+  rw [← filtered_count_exact g ks hnd rows hcov v q c, coalesce0_sqlSum,
+    coalesce0_sqlSum, storedCase, sum_getD_case, stored, List.filter_filter]
+  simp only [Bool.and_comm]
+
+/-! ## 3. A distinct count of the counted key -/
+
+/-- The number of distinct values. -/
+def distinctCount : List Int → Nat
+  | [] => 0
+  | x :: xs => (if x ∈ xs then 0 else 1) + distinctCount xs
+
+/-- SQL `COUNT(DISTINCT x)`: the distinct non-NULL inputs. -/
+def sqlCountDistinct (xs : List (Option Int)) : Int := distinctCount (xs.filterMap id)
+
+theorem distinctCount_nodup (l : List Int) (h : l.Nodup) : distinctCount l = l.length := by
+  induction l with
+  | nil => rfl
+  | cons x xs ih =>
+    rw [List.nodup_cons] at h
+    simp [distinctCount, h.1, ih h.2, Nat.add_comm]
+
+theorem filterMap_length (xs : List (Option Int)) :
+    ((xs.filterMap id).length : Int) = sqlCount xs := by
+  induction xs with
+  | nil => rfl
+  | cons x xs ih => cases x <;> simp_all [sqlCount] <;> omega
+
+/-- **A distinct count of the counted key rolls up.** Where every kept row
+carries its own value of the counted key (`tree_id` on rows at its grain),
+`count_distinct(x)` is the summary's re-summed `count(x)`. -/
+theorem count_distinct_of_key_exact (g : α → κ) (ks : List κ) (hnd : ks.Nodup)
+    (rows : List α) (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int)
+    (q : κ → Bool) (hkey : ((rows.map v).filterMap id).Nodup) :
+    coalesce0 (sqlSum (stored g ks rows (countAgg v) q)) =
+      sqlCountDistinct ((keep g q rows).map v) := by
+  have hsub : (((keep g q rows).map v).filterMap id).Sublist ((rows.map v).filterMap id) :=
+    ((List.filter_sublist).map v).filterMap id
+  rw [Rollup.count_coalesce g ks hnd rows hcov v q, sqlCountDistinct,
+    distinctCount_nodup _ (hkey.sublist hsub), filterMap_length]
+
+/-- A key read twice, as a join that fans a row out leaves it, is no key:
+two copies of one tree count once distinct and twice summed. -/
+theorem fanned_key_counts_twice :
+    let rows : List (Nat × Option Int) := [(1, some 7), (1, some 7)]
+    sqlCountDistinct (rows.map (·.2)) = 1 ∧ sqlCount (rows.map (·.2)) = 2 := by
+  decide
+
+/-! ## 4. Siblings at other grains -/
+
+/-- **A ratio over the total rolls up in both parts.** The per-group count at
+any target of the key and the grand total beside it are each a re-sum of the
+same summary, so neither rules out the other. -/
+theorem ratio_parts_exact (g : α → κ) (ks : List κ) (hnd : ks.Nodup)
+    (rows : List α) (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int)
+    (q : κ → Bool) (h : κ → τ) (t : τ)
+    (hne : keep g (fun k => q k && decide (h k = t)) rows ≠ []) :
+    sqlSum (stored g ks rows (countAgg v) (fun k => q k && decide (h k = t))) =
+        some (sqlCount ((keep g (fun k => q k && decide (h k = t)) rows).map v)) ∧
+      total (stored g ks rows (countAgg v) q) (sqlSum (stored g ks rows (countAgg v) q)) =
+        total (keep g q rows) (countAgg v (keep g q rows)) :=
+  ⟨Rollup.count_group g ks hnd rows hcov v _ hne,
+    Rollup.grand_total_count g ks hnd rows hcov v q⟩
+
+/-! ## 5. Existence -/
+
+omit [DecidableEq τ] in
+/-- **A complete summary proves which values exist.** The values of a key
+function over the rows `q` keeps are its values over the summary's groups
+`q` keeps: a selection of keys and their properties, with no aggregate, reads
+the summary. -/
+theorem exists_by_value (g : α → κ) (ks : List κ) (rows : List α)
+    (hcov : ∀ r ∈ rows, g r ∈ ks) (q : κ → Bool) (h : κ → τ) (t : τ) :
+    t ∈ (keep g q rows).map (fun r => h (g r)) ↔
+      t ∈ ((groups g ks rows).filter q).map h := by
+  constructor
+  · intro ht
+    obtain ⟨r, hr, rfl⟩ := List.mem_map.mp ht
+    have hk := List.mem_filter.mp hr
+    exact List.mem_map.mpr ⟨g r,
+      List.mem_filter.mpr ⟨mem_groups g ks rows hcov r hk.1, hk.2⟩, rfl⟩
+  · intro ht
+    obtain ⟨k, hk, rfl⟩ := List.mem_map.mp ht
+    have ⟨hg, hq⟩ := List.mem_filter.mp hk
+    obtain ⟨r, hr⟩ := List.exists_mem_of_ne_nil _
+      (slice_ne_nil_of_mem_groups g ks rows k hg)
+    have ⟨hrows, hgr⟩ := List.mem_filter.mp hr
+    have hgr : g r = k := of_decide_eq_true hgr
+    exact List.mem_map.mpr ⟨r, List.mem_filter.mpr ⟨hrows, hgr ▸ hq⟩, by rw [hgr]⟩
+
+/-! ## 6. A relation keyed on the grain -/
+
+omit [DecidableEq τ] in
+/-- **A count by a related value rolls up.** Counting the rows whose key
+relates to `t` (`e ∈ native_ecoregions k`, `∃ e ∈ native_ecoregions k,
+biome e = t`) is the re-sum of the groups related to `t`. -/
+theorem keyed_relation_count (g : α → κ) (ks : List κ) (hnd : ks.Nodup)
+    (rows : List α) (hcov : ∀ r ∈ rows, g r ∈ ks) (v : α → Option Int)
+    (q : κ → Bool) (R : κ → τ → Bool) (t : τ) :
+    coalesce0 (sqlSum (stored g ks rows (countAgg v) (fun k => q k && R k t))) =
+      sqlCount (((keep g q rows).filter (fun r => R (g r) t)).map v) := by
+  rw [keep_filter g q (fun k => R k t)]
+  exact Rollup.count_coalesce g ks hnd rows hcov v _
+
+/-- Re-summing a summary joined to relation pairs counts a group once per
+pair. A species of two trees ranging over two forest ecoregions has 2 trees in
+the forest biome; summed over its (species, ecoregion) pairs it has 4. -/
+theorem collapsed_fanout_double_counts :
+    let pairs : List (Nat × Nat) := [(1, 1), (1, 2)]
+    let biome : Nat → Nat := fun _ => 0
+    let n : Nat → Int := fun _ => 2
+    ((pairs.filter (fun p => biome p.2 = 0)).map (fun p => n p.1)).sum = 4 ∧
+      ((([1] : List Nat).filter (fun k => pairs.any (fun p => p.1 = k && biome p.2 = 0))).map
+        n).sum = 2 := by
+  decide
+
+end Cover
+end Trilogy

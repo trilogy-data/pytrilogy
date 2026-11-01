@@ -1122,6 +1122,28 @@ def renamed_coalescing_relation(
     ]
 
 
+def _scalar_of_materialized(
+    concept: BuildConcept,
+    materialized_roots: frozenset[str],
+    environment: BuildEnvironment,
+) -> bool:
+    """A scalar over stored columns only (`plant_year::int` beside a summary
+    storing `plant_year`): evaluated on the rows those columns arrive on, it
+    adds no row identity of its own."""
+    if concept.derivation != Derivation.BASIC or concept.lineage is None:
+        return False
+    arguments = concept.lineage.concept_arguments
+    return bool(arguments) and all(
+        argument.address in materialized_roots
+        or _scalar_of_materialized(
+            environment.concepts.get(argument.address) or argument,
+            materialized_roots,
+            environment,
+        )
+        for argument in arguments
+    )
+
+
 def through_renames(concepts: list[BuildConcept]) -> list[BuildConcept]:
     """`concepts` plus the sources their pure renames project."""
     out: list[BuildConcept] = []
@@ -1675,6 +1697,8 @@ def _add_concept(
     out_grain = frozenset(concept.grain.components) if concept.grain else frozenset()
     if not is_materialized_root:
         out_grain = axis_scalar_reads(concept, environment) or out_grain
+    if _scalar_of_materialized(concept, materialized_roots, environment):
+        out_grain = frozenset()
     if (
         not is_materialized_root
         and concept.derivation == Derivation.AGGREGATE
