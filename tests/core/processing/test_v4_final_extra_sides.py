@@ -10,10 +10,13 @@ from trilogy.core.exceptions import UnbuiltGroupException
 from trilogy.core.processing.v4_helper.constants import FINAL_NODE_ID
 from trilogy.core.processing.v4_helper.models import DepthLabel, GroupAttrs
 from trilogy.core.processing.v4_helper.strategy_builder import (
+    _bridge_candidates,
     _final_extra_sides,
+    _FinalCover,
     _FinalExtras,
     _join_gate_hosts,
     _planned_side,
+    _uncovered_final_side,
 )
 
 MODEL = """
@@ -114,3 +117,33 @@ def test_gate_key_no_parent_carries_joins_its_planned_host():
 def test_planned_side_that_built_nothing_raises():
     with pytest.raises(UnbuiltGroupException, match="built nothing"):
         _planned_side({}, "basic")
+
+
+def test_uncovered_final_is_the_first_planned_group():
+    first, second = _node("local.a"), _node("local.b")
+    assert _uncovered_final_side({"b": second, "a": first}, ["a", "b"]) is first
+    with pytest.raises(UnbuiltGroupException, match="built nothing"):
+        _uncovered_final_side({"b": second}, ["a", "b"])
+
+
+def test_bridge_candidates_are_planned_groups_decided_before_the_consumer():
+    graph = nx.DiGraph()
+    graph.add_edges_from([("root", "basic"), ("basic", "agg"), ("agg", FINAL_NODE_ID)])
+    planned = ["root", "basic", "agg"]
+    assert _bridge_candidates(graph, planned, "agg") == ["basic", "root"]
+    assert _bridge_candidates(graph, planned) == ["agg", "basic", "root"]
+    assert _bridge_candidates(graph, ["root", "agg"], "agg") == ["root"]
+
+
+def test_cover_holds_what_a_contributor_renders_and_is_owed():
+    env = Environment().parse(MODEL)[0].materialize_for_select()
+    genus = env.concepts["local.genus"]
+    cover = _FinalCover(
+        ["basic"],
+        {},
+        {"basic": [genus]},
+        {},
+        {"basic": frozenset({"local.tree_id"})},
+    )
+    assert cover.holds("basic") == {"local.tree_id", "local.genus"}
+    assert cover.holds("other") == set()
