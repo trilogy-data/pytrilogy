@@ -689,6 +689,30 @@ second atom re-sources its filter argument (`activity`, `coalesce(flag, 1)`)
 through a nested plan at stage 3, and that plan has a region domain of its
 own (`grp:root:root:∅:extent:local.customer_id`) that this graph never holds.
 
+**The sole path reads an aggregate's planned input rows for a WHERE it
+applies before the aggregate.** A sole contributor that aggregates takes the
+FINAL row condition on its input rows when those rows hold every row
+argument (`_row_condition_before_aggregate`). Before, this was decided by
+walking the built node down to its GroupNode and reading the parents'
+outputs. The rows are now what the aggregate's input groups carry, less what
+its scalar input projection hides: an inlined CASE reads its own arguments
+below that projection (`count(status)` beside the statement-wide gate
+`count(customer_id) by * > 2` drops the gate column). The projection's rule
+is shared with the build (`_aggregate_scalar_inputs`,
+`_aggregate_input_keep`). A plan that pushes onto a node that cannot take
+the condition raises.
+
+Measured over the same suites: at 281 of 283 sole-contributor FINALs with a
+deferred WHERE, the planned rows agreed with the built walk (5 pushes). The
+2 others are the `test_v4_window_basic_merge` named-combo FINALs, where the
+walk found a grain dedup over the window's own rows and filtered between
+them. That was never a push before an aggregate, and the two filters render
+the same SQL. SQL capture over the same suites (12,594 tests) against part
+17 moved no plan: only BigQuery temp table names, `test_gcat::test_environment`,
+a statement `test_validate_fix` compiles in one chunked run and not the
+other (both compile 17 run alone), and two tests that compile nothing in an
+archive export. 0 of 205 corpus plans moved.
+
 **Open.**
 
 1. The fold widen still projects the aggregate's merge after
