@@ -17,6 +17,7 @@ from trilogy.core.processing.v4_helper.models import (
     GroupAttrs,
 )
 from trilogy.core.processing.v4_helper.strategy_builder import (
+    _assemble_final_node,
     _bridge_candidates,
     _final_dedup,
     _final_extra_sides,
@@ -277,3 +278,32 @@ def test_final_dedup_holds_only_what_its_projection_keeps(
 
     assert type(node) is node_type
     assert holds == held
+
+
+def test_uncovered_final_dedups_its_first_planned_group():
+    env = Environment().parse(MODEL)[0].materialize_for_select()
+    species = env.concepts["local.raw_species"]
+    columns = [env.concepts["local.tree_id"], species]
+    scan = SelectNode(
+        input_concepts=columns,
+        output_concepts=columns,
+        environment=env,
+        datasource=env.datasources["trees"],
+    )
+    attrs = {
+        "scan": _attrs(Derivation.ROOT, "local.tree_id", "local.raw_species"),
+        FINAL_NODE_ID: GroupAttrs(
+            depth_label=DepthLabel.D0,
+            final_contract=FinalAssemblyContract(
+                output_addresses=frozenset({species.address})
+            ),
+        ),
+    }
+    cover = _FinalCover(["scan"], {}, {}, {})
+
+    final = _assemble_final_node(
+        nx.DiGraph(), {}, attrs, {"scan": scan}, [species], env, None, None, {}, cover
+    )
+
+    assert isinstance(final, GroupNode)
+    assert [c.address for c in final.output_concepts] == [species.address]
