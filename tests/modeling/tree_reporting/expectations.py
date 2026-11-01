@@ -52,12 +52,6 @@ SERVED: dict[str, str] = {
     **{key: "trees" for key in keyed("USBOS", ["species:context"], SPECIES_VARIANTS)},
     # No city filter and no tree concept: answered from the species dimension alone.
     "ALL species:context": "neither",
-    # #827 Y3 `plant_year::int::year`: re-derived from plant_date, so the year summary cannot serve it.
-    **{
-        key: "trees"
-        for key in keyed("USBOS", ["species:sp-age-distribution"], SPECIES_VARIANTS)
-    },
-    "ALL species:sp-age-distribution": "trees",
 }
 
 NULL_CELL = (
