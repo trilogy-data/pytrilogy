@@ -663,17 +663,42 @@ SQL capture over the same five suites (10,572 tests) against part 15 moved
 no plan: only the `grain_check` hash-seed column order, pytest temp-dir and
 script paths, and repeat counts. 0 of 205 corpus plans moved.
 
+**The sole path reads where condition placement put the FINAL WHERE.**
+Whether a sole contributor already applies the deferred WHERE (an atom also
+placed at the aggregate group's pre-filter wrapper, which a ROLLUP
+contributor must not have re-applied over its subtotal rows) is now read off
+the group graph: the atoms placed at the contributor plus those placed above
+it that still hold on its rows (`accumulated_atoms_above`, the same set the
+built nodes carry as `preexisting_conditions`). The walk over the built
+subtree (`_subtree_applies_conditions`) is deleted.
+
+Measured over `tests/modeling`, `core`, `engine`, `complex`, `discovery` and
+the root `tests/test_*.py` files: at all 330 sole-contributor FINALs with a
+deferred WHERE the placed atoms agreed with the built walk (32 already
+applied). SQL capture over the same suites (12,561 tests) against part 16
+moved no plan: only CTE alias names that follow run order (equal when both
+sides run the same chunks), BigQuery temp table names, the
+`test_declared_join_beside_a_property_of_the_superset_key` join type, and two
+tests that compile nothing in an archive export. 0 of 205 corpus plans moved.
+
+The planned region reads still miss the domain the built sole node reads at
+4 FINALs (`test_derived_key_domain`, `count(customer_id) by * > 2` beside
+`activity = 'dormant'` or `coalesce(flag, 1) = 1`). The walk is not missing
+a fact of this graph: no group in it has extent spans. The ROOT hosting the
+second atom re-sources its filter argument (`activity`, `coalesce(flag, 1)`)
+through a nested plan at stage 3, and that plan has a region domain of its
+own (`grp:root:root:∅:extent:local.customer_id`) that this graph never holds.
+
 **Open.**
 
 1. The fold widen still projects the aggregate's merge after
    `_pre_merge_parents` assembles it, inside the aggregate's build. No
    decision reads the built node; asking a ROOT for the derived column
    instead changes source selection.
-2. The sole path still asks the built subtree whether it already applied the
-   FINAL WHERE (`_subtree_applies_conditions`), where condition placement
-   decided it.
-3. The planned region reads miss a domain the built sole node reads at the 4
-   FINALs above; the walk should find it before a decision reads it.
+2. A ROOT that re-sources a filter argument through a nested plan reads that
+   plan's region domain, which the outer group graph does not hold. The
+   planned region reads cannot see it until the nested plan's domains are
+   stage-2 facts; no decision reads it yet (the 4 FINALs above).
 
 The rest of `_assemble_final_node`'s reads of `built` apply decisions: the
 passthroughs and projections, each contributor's node, bridge nodes by the
