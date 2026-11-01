@@ -143,6 +143,22 @@ def _reachable_input(
     return reachable
 
 
+def _merged_elements(
+    bucket: GroupBucket, concept_attrs: dict[str, ConceptAttrs] | None
+) -> set[str]:
+    """The key an unnested element is merged into: the expansion emits it
+    under that spelling too (`merge tree_eco_region into ecoregion_id`)."""
+    if bucket.derivation != Derivation.UNNEST or not concept_attrs:
+        return set()
+    pseudonyms = {
+        p
+        for ca in concept_attrs.values()
+        if ca.address in bucket.primary_members
+        for p in ca.pseudonyms
+    }
+    return set(bucket.grain_components) & pseudonyms
+
+
 def _candidate_groups(
     atom: BoolExpr,
     row_inputs: set[str],
@@ -303,13 +319,14 @@ def _producer_closures(
     row_inputs: set[str],
     group_graph: nx.DiGraph,
     buckets: dict[str, GroupBucket],
+    group_outputs: dict[str, set[str]],
 ) -> list[set[str]]:
     closures: list[set[str]] = []
     for addr in row_inputs:
         producers = [
             gid
             for gid, b in buckets.items()
-            if b.depth_label == DepthLabel.D0 and addr in set(b.primary_members)
+            if b.depth_label == DepthLabel.D0 and addr in group_outputs[gid]
         ]
         if not producers:
             continue
@@ -323,12 +340,11 @@ def _producer_closures(
 def _producer_groups(
     row_inputs: set[str],
     buckets: dict[str, GroupBucket],
+    group_outputs: dict[str, set[str]],
 ) -> set[str]:
     producer_groups: set[str] = set()
     for addr in row_inputs:
-        producers = [
-            gid for gid, b in buckets.items() if addr in set(b.primary_members)
-        ]
+        producers = [gid for gid in buckets if addr in group_outputs[gid]]
         main_producers = [
             gid
             for gid in producers
@@ -1075,6 +1091,8 @@ class _PlacementScope:
     lineage_ancestors_graph: nx.DiGraph
     host_graph: nx.DiGraph
     group_members: dict[str, set[str]]
+    # primary members, plus the key an unnested element is merged into
+    group_outputs: dict[str, set[str]]
     attrs_by_address: dict[str, ConceptAttrs]
     group_own_keys: dict[str, set[str]]
     group_relatable: dict[str, set[str]]
@@ -1400,7 +1418,7 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
                 )
             )
             return out
-    closures = _producer_closures(row_inputs, group_graph, buckets)
+    closures = _producer_closures(row_inputs, group_graph, buckets, scope.group_outputs)
     restricted = [gid for gid in candidates if all(gid in reach for reach in closures)]
     # A self-contained membership whose ONLY hosts are membership-set
     # producers (output and set share one scan, so the set's producer is
@@ -1513,7 +1531,7 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
         # selected aggregate and window reads (`sum(x) by *` included): host
         # it on the row stream that joins its inputs, never on a group that
         # produces one of them. FINAL only when no such host exists.
-        producers = set(_producer_groups(row_inputs, buckets))
+        producers = set(_producer_groups(row_inputs, buckets, scope.group_outputs))
         restricted = [gid for gid in restricted if gid not in producers]
         if not restricted:
             out.append(
@@ -1530,7 +1548,7 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
     # two boundaries' presence probes) can end up with only such hosts;
     # its correct home is then FINAL, above every barrier.
     if restricted:
-        producer_groups = _producer_groups(row_inputs, buckets)
+        producer_groups = _producer_groups(row_inputs, buckets, scope.group_outputs)
         consumed_barriers: set[str] = set(producer_groups)
         for producer in producer_groups:
             consumed_barriers |= nx.ancestors(group_graph, producer)
@@ -1692,8 +1710,12 @@ def plan_condition_placements(
         group_graph, group_edges, EdgeKind.LINEAGE, EdgeKind.CONSTRAINT
     )
     host_graph = _host_election_graph(lineage_ancestors_graph, group_edges, buckets)
+    group_outputs = {
+        gid: set(b.primary_members) | _merged_elements(b, concept_attrs)
+        for gid, b in buckets.items()
+    }
     group_members: dict[str, set[str]] = {
-        gid: set(b.primary_members) | b.carried for gid, b in buckets.items()
+        gid: group_outputs[gid] | b.carried for gid, b in buckets.items()
     }
     # Addresses a group can pair a relation on beyond its listed members: the
     # KEYS of its members (a group hosting only `a.aw` still joins on a.aw's
@@ -1771,6 +1793,7 @@ def plan_condition_placements(
         lineage_ancestors_graph=lineage_ancestors_graph,
         host_graph=host_graph,
         group_members=group_members,
+        group_outputs=group_outputs,
         attrs_by_address=attrs_by_address,
         group_own_keys=group_own_keys,
         group_relatable=group_relatable,

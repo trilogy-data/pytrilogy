@@ -801,6 +801,15 @@ def _consumer_required_input_grain(
             if axis_grouped_away:
                 continue
             grain |= pred_grain
+        elif (
+            attrs[pred].derivation == Derivation.UNNEST
+            and attrs[gid].derivation in GROUPING_DERIVATIONS
+            and len(row_preds) > 1
+        ):
+            # an unnest beside the rows it expands pairs with them on their
+            # identity; on the grouping key alone, every row of a group meets
+            # every element (`Unnest.coarse_pair_overcounts`)
+            grain |= attrs[gid].aggregate_input_grain
     return frozenset(grain)
 
 

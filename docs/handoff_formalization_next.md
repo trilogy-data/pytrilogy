@@ -13,8 +13,9 @@ Recent rounds: `Assert.lean` (#799, datasource `assert`/`prior`),
 implication, dominance ranking), `Stack.lean` (stacking a partition
 family: value-set arms, arms the grain does not determine), #821, which
 made datasource bindings functional-dependency facts in place of FK-derived
-keys, and `Binding.lean`, which models those facts (area 0 below records what
-is left of it).
+keys, `Binding.lean`, which models those facts (area 0 below records what
+is left of it), and `Unnest.lean`, filtering rows by the elements of an
+unnested list (area 0b).
 
 ## The recipe
 
@@ -89,26 +90,13 @@ in `formal/README.md`. Leads left:
   agree (`tests/engine/test_subset_merged_key_derivation.py`). The fuzzer's
   random seeds break that claim for the base `events` table; the
   `merged_axis_pin` family lists regions only for groups with events.
-- **A pinned CASE over a merged unnest key alone raises the keyless-join
-  guard** (on main too). With `auto bucket <- case when region_id = 0 ...`
-  (no property of `region_id` read) over `merge group_region into region_id`,
-  `select event_id where bucket = 'S'` joins the pin's `regions` scan to the
-  row stream holding `region_id` on no key, and the guard names it. The
-  fuzzer family's bucket also reads `region_kind` and plans. An error, not a
-  wrong answer.
-- **`select city, count(tree_id) where ecoregion_id = 3`** over
-  `tests/engine/test_grain_pin_unnest_merge_filter.py`'s model raises
-  "could only be placed after the aggregates". The atom reads the merged
-  unnest axis, which the pre-aggregate row stream never carries. It is an
-  error, not a wrong answer, and the same on main.
+- **Done in `Unnest.lean`**: the pinned CASE over a merged unnest key no
+  longer reproduces (0 errors in 360 probes over 15 random seeds), and an
+  aggregate filtered on the merged unnest key now plans. See area 0b.
 - **Three readers of row determinants**: `BuildDatasource.row_determinants`,
   `Environment.binding_fds` (inline) and `domain_graph._row_determinants`
   compute the same set. The law suite pins the first two; folding them into
   one would remove the risk of drift.
-- **The keyless-join guard misses a deduped list unnest.** An unnest of
-  `group_regions` read without `group_id` outputs only elements, so the guard
-  still treats it as a literal `unnest([...])`. The plans that produced one
-  are fixed, but the guard would not name a new one.
 - **`_pin_input_placements`**: the FD test and the declared-keys test agree on
   every placement the suite reaches (4,377 calls, 20 with a host). A shape
   where they differ needs a pin anchored on a key that a binding (not a
@@ -120,6 +108,28 @@ in `formal/README.md`. Leads left:
   concept's DECLARED `keys` on purpose: a property is read beside its key.
   Switching them to binding rows would pull every table binding a key into
   those plans.
+
+### 0b. Unnest filters (done in `Unnest.lean`; leads left)
+
+`tests/unnest/test_unnest_filter_laws.py` holds row, aggregate and paired-element
+queries over a species-keyed list to the reference, in four spellings: the
+element itself, the key it is `~`-merged into, a plain (EQUAL) merge over
+honest data, and the `~` merge beside a second table binding `~species`.
+Leads left:
+- **The keyless-join guard still exempts an unnest emitting only its
+  elements.** The plans that built one (a private scan of the list for a
+  condition copy, a root slice of the list alone) are fixed, but the guard
+  cannot tell a deduped list column from a literal `unnest([...])`. Marking the
+  UnnestNode's source (literal vs column) would let it.
+- **A plain merge over data that breaks it pads.** With `eco` listing a
+  region no list names, `select tree_id where ecoregion_id = k or ...` read
+  `ecoregion_id` from `eco` and padded a NULL tree. With the element now read
+  in place the row filter no longer joins `eco`, but a selected key still
+  pads a member no tree lists, by design (the suite expects `(None, k)`).
+  Completeness validation of a merge over a computed (unnest) origin would
+  report the broken claim; it does not check one today.
+- **Unnest of a fact-level list** (a property of the row key itself, not of a
+  dimension) is not in the suite.
 
 ### 1. Answering from intermediate aggregates (`Rollup.lean` follow-ons)
 

@@ -69,6 +69,7 @@ from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
     condition_implies,
     decompose_condition,
+    gather_non_null_proofs,
 )
 from trilogy.core.processing.discovery_utility import raise_if_disconnected_for
 from trilogy.core.processing.grain_utility import non_null_proofs
@@ -1313,7 +1314,9 @@ def _parent_nodes_for(
         return {o.address for o in node.output_concepts} & needed
 
     consumer = attrs[gid]
-    slices_roots = (
+    # an unnest repeats its parent's rows, and its readers pair with it on
+    # them: a slice of the list alone pairs on nothing
+    slices_roots = consumer.derivation != Derivation.UNNEST and (
         consumer.derivation in GROUPING_DERIVATIONS
         or _valued_on_another_fact(consumer.primary_members, environment)
         or _reads_only_merged_attributes(consumer.primary_members, environment)
@@ -2230,6 +2233,16 @@ def _equality_pinned_addresses(condition: BoolExpr | None) -> set[str]:
     return pinned
 
 
+def _unnested_addresses(node: StrategyNode) -> set[str]:
+    return {
+        address
+        for n in _iter_strategy_nodes(node)
+        if isinstance(n, UnnestNode)
+        for c in n.unnest_concepts
+        for address in (c.address, *c.pseudonyms)
+    }
+
+
 def _subtree_pinned_addresses(
     node: StrategyNode, seen: set[int] | None = None
 ) -> set[str]:
@@ -2384,8 +2397,11 @@ def _parents_already_at_input_grain(
         # A leftover component the stream pins to a single literal
         # (`channel = 'STORE'` under an all-channel union) can't split any
         # input-grain key group, so the rows are still unique at the input
-        # grain without it.
-        if not unresolved or set(unresolved) <= _subtree_pinned_addresses(parent):
+        # grain without it. An unnested element can: a list repeats a value
+        # (`[3, 3]`), so its rows are unique only on the element's ordinal.
+        if not unresolved or set(unresolved) <= (
+            _subtree_pinned_addresses(parent) - _unnested_addresses(parent)
+        ):
             return True
         if (
             isinstance(parent, SelectNode)
@@ -3902,6 +3918,23 @@ def _fold_descendant_contributors(
             del per_group[s_gid]
 
 
+def _distinct_rows(node: StrategyNode, elements: set[str]) -> StrategyNode:
+    """`node`'s rows, once each, when they carry the expanded rows' columns
+    beside the element: joined as a filter, a repeated element would repeat
+    every row it matches (`Unnest.self_join_squares`). Elements alone (a
+    literal `unnest([...])`) are the rows themselves, repeats included."""
+    outputs = list(node.output_concepts)
+    if {c.address for c in outputs} <= elements:
+        return node
+    return GroupNode(
+        output_concepts=outputs,
+        input_concepts=outputs,
+        environment=node.environment,
+        parents=[node],
+        force_group=True,
+    )
+
+
 def _element_filters(
     parents: list[StrategyNode],
     parent_builds: Sequence["ParentBuild"],
@@ -3937,15 +3970,17 @@ def _fold_into_argument_unnests(
     FINAL WHERE argument is read on. `select tree_id where ecoregion_id = 2`
     relates `ecoregion_id` to trees only through the unnest of their species'
     regions; joined beside the trees instead, the argument pairs with no row
-    of them and the merge cross-joins (`_fold_descendant_contributors`)."""
+    of them and the merge cross-joins (`_fold_descendant_contributors`).
+
+    A WHERE that can keep a row with no element (`e > 1 or city = 'B'`) also
+    keeps the rows the expansion drops (an empty list): the contributor stays,
+    and the unnest joins beside it on the keys of its rows."""
     covered = {c.address for c in mandatory_list}
-    args = {
-        arg.address
-        for atom in attrs[FINAL_NODE_ID].condition_atoms
-        for arg in atom.row_arguments
-    } - covered
+    atoms = attrs[FINAL_NODE_ID].condition_atoms
+    args = {arg.address for atom in atoms for arg in atom.row_arguments} - covered
     if not args:
         return
+    non_null = set().union(*(gather_non_null_proofs(atom) for atom in atoms))
     names = set(args)
     for relation in environment.scoped_join_relations():
         if relation & args:
@@ -3953,8 +3988,12 @@ def _fold_into_argument_unnests(
     for b_gid, group in attrs.items():
         if b_gid in per_group or group.derivation != Derivation.UNNEST:
             continue
-        if not names & set(group.output_concepts):
+        read = names & set(group.output_concepts)
+        if not read:
             continue
+        rejects_absent = bool(read & non_null) or bool(
+            _merged_spellings(group, environment) & non_null
+        )
         reads = parents_render(
             group_graph, group_edges, attrs, b_gid, rendered, environment
         )
@@ -3966,9 +4005,17 @@ def _fold_into_argument_unnests(
             s_concepts = per_group[s_gid]
             if not all(concept_satisfiable(c, reads) for c in s_concepts):
                 continue
-            per_group.setdefault(b_gid, []).extend(s_concepts)
-            passthroughs.setdefault(b_gid, []).extend(s_concepts)
-            del per_group[s_gid]
+            moved = (
+                s_concepts
+                if rejects_absent
+                else [c for c in s_concepts if c.purpose == Purpose.KEY]
+            )
+            if not moved:
+                continue
+            per_group.setdefault(b_gid, []).extend(moved)
+            passthroughs.setdefault(b_gid, []).extend(moved)
+            if rejects_absent:
+                del per_group[s_gid]
 
 
 def _pass_through_final_contributors(
@@ -4676,6 +4723,19 @@ class _FinalExtras:
         )
 
 
+def _merged_spellings(group: GroupAttrs, environment: BuildEnvironment) -> set[str]:
+    """The keys an unnest's elements are merged into: the expansion emits each
+    element under that spelling too, so a WHERE reading the key reads it here
+    rather than joining the key's own table beside the expansion."""
+    if group.derivation != Derivation.UNNEST:
+        return set()
+    return {
+        concept.address
+        for address in group.output_concepts
+        if (concept := environment.concepts.get(address)) is not None
+    } - set(group.output_concepts)
+
+
 def _final_extra_sides(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
@@ -4697,7 +4757,8 @@ def _final_extra_sides(
             (
                 {c.address for c in per_group[gid]}
                 if gid in per_group and attrs[gid].derivation == Derivation.ROOT
-                else attrs[gid].output_concepts
+                else set(attrs[gid].output_concepts)
+                | _merged_spellings(attrs[gid], environment)
             )
             for gid in sides
         )
@@ -6648,7 +6709,13 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                 ),
                 output_concepts=node.output_concepts,
                 environment=environment,
-                parents=[node, *element_filters],
+                parents=[
+                    node,
+                    *(
+                        _distinct_rows(f, _unnested_addresses(node))
+                        for f in element_filters
+                    ),
+                ],
                 force_join_type=JoinType.INNER,
             )
     # a generator may hand back a parent's node; that one keeps its group
