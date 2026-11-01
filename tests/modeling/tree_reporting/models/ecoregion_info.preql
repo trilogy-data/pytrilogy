@@ -1,0 +1,53 @@
+import core;
+import ecoregion_common;
+
+root datasource ecoregion_update_time (
+    data_updated_through: ecoregion_data_updated_through
+)
+file `./ecoregion_update_time.py`;
+
+
+root datasource raw_ecoregion_info (
+    ecoregion_id,
+    ecoregion_name,
+    ?realm,
+    ?biome,
+    ?biome_code,
+    ?realm_code,
+    ?country_codes,
+    ?centroid_lat,
+    ?centroid_lon,
+    ?geometry_geojson,
+    ?bbox_min_lat,
+    ?bbox_min_lon,
+    ?bbox_max_lat,
+    ?bbox_max_lon,
+    ?is_terrestrial,
+    ?source_version,
+)
+grain (ecoregion_id)
+file `./ecoregion_info.py`;
+
+
+datasource ecoregion_info (
+    ecoregion_id,
+    ecoregion_name,
+    ?realm,
+    ?biome,
+    ?biome_code,
+    ?realm_code,
+    ?country_codes,
+    ?centroid_lat,
+    ?centroid_lon,
+    ?geometry_geojson,
+    ?bbox_min_lat,
+    ?bbox_min_lon,
+    ?bbox_max_lat,
+    ?bbox_max_lon,
+    ?is_terrestrial,
+    ?source_version,
+    ecoregion_data_updated_through,
+)
+grain (ecoregion_id)
+file f`./fixtures/ecoregion_info_v{data_version}.parquet`
+freshness by ecoregion_data_updated_through;

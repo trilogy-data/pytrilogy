@@ -1,0 +1,37 @@
+# The tree-level buckets the dashboard summaries are keyed on, declared once
+# for the job that builds them (tree_rollups.preql) and the browser scope that
+# reads them (tree_rollup_source.preql).
+#
+# A summary serves a chart only when the chart groups and filters by one of
+# these concepts: the planner matches a summary's grain by lineage, so a chart
+# that re-derives the bucket from the raw column (or filters the raw column)
+# reads the trees. The labels are functions of the bucket, not of the raw
+# column, for the same reason.
+import tree_common;
+
+auto plant_year <- year(plant_date);
+
+# Trunk diameter in inches, five classes; null when the tree has no DBH.
+auto dbh_class <- case
+    when diameter_at_breast_height is null then null
+    when diameter_at_breast_height < 6 then 1
+    when diameter_at_breast_height < 12 then 2
+    when diameter_at_breast_height < 24 then 3
+    when diameter_at_breast_height < 36 then 4
+    else 5
+end;
+auto dbh_class_label <- case dbh_class
+    when 1 then 'Under 6"'
+    when 2 then '6–12"'
+    when 3 then '12–24"'
+    when 4 then '24–36"'
+    when 5 then 'Over 36"'
+end;
+
+# The dashboard dot map's cells: three decimals (about 110 m north-south) for
+# one city, where a cell is about a pixel of the card, and two for the
+# all-cities view.
+auto map_cell_latitude <- round(latitude, 3);
+auto map_cell_longitude <- round(longitude, 3);
+auto map_coarse_cell_latitude <- round(latitude, 2);
+auto map_coarse_cell_longitude <- round(longitude, 2);

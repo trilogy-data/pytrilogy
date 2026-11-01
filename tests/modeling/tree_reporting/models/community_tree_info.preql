@@ -1,0 +1,60 @@
+import tree_common;
+
+# One property per city, not one shared scalar. This feeds every city's
+# `{code}_published_data_updated_through`, so a single shared timestamp would make
+# one approval anywhere mark all fourteen city Parquets stale and re-materialize
+# every one — a full re-download of every municipal dataset to publish one tree.
+#
+# Per-city *columns* rather than a `city`-grained property with a filtered
+# datasource: Trilogy pushes a `complete where` clause into row queries but not
+# into the watermark probe, which stays `SELECT MAX(col) FROM uv_run(...)` over
+# every row. Verified — with a row-per-city layout a Boston-only approval moved
+# San Francisco's watermark too.
+property <*>.ussfo_community_data_updated_through datetime; # when approved community submissions for USSFO are through
+property <*>.usnyc_community_data_updated_through datetime; # when approved community submissions for USNYC are through
+property <*>.usbos_community_data_updated_through datetime; # when approved community submissions for USBOS are through
+property <*>.frpar_community_data_updated_through datetime; # when approved community submissions for FRPAR are through
+property <*>.usbtv_community_data_updated_through datetime; # when approved community submissions for USBTV are through
+property <*>.cavan_community_data_updated_through datetime; # when approved community submissions for CAVAN are through
+property <*>.deber_community_data_updated_through datetime; # when approved community submissions for DEBER are through
+property <*>.nlams_community_data_updated_through datetime; # when approved community submissions for NLAMS are through
+property <*>.gblon_community_data_updated_through datetime; # when approved community submissions for GBLON are through
+property <*>.aumel_community_data_updated_through datetime; # when approved community submissions for AUMEL are through
+property <*>.arbue_community_data_updated_through datetime; # when approved community submissions for ARBUE are through
+property <*>.uslax_community_data_updated_through datetime; # when approved community submissions for USLAX are through
+property <*>.uswas_community_data_updated_through datetime; # when approved community submissions for USWAS are through
+property <*>.ustem_community_data_updated_through datetime; # when approved community submissions for USTEM are through
+property <*>.grath_community_data_updated_through datetime; # when approved community submissions for GRATH are through
+property <*>.grmlo_community_data_updated_through datetime; # when approved community submissions for GRMLO are through
+property <*>.grsan_community_data_updated_through datetime; # when approved community submissions for GRSAN are through
+property <*>.usden_community_data_updated_through datetime; # when approved community submissions for USDEN are through
+property <*>.cacal_community_data_updated_through datetime; # when approved community submissions for CACAL are through
+property <*>.caedm_community_data_updated_through datetime; # when approved community submissions for CAEDM are through
+property <*>.cawpg_community_data_updated_through datetime; # when approved community submissions for CAWPG are through
+property <*>.cator_community_data_updated_through datetime; # when approved community submissions for CATOR are through
+property <*>.camtl_community_data_updated_through datetime; # when approved community submissions for CAMTL are through
+property <*>.caque_community_data_updated_through datetime; # when approved community submissions for CAQUE are through
+property <*>.calon_community_data_updated_through datetime; # when approved community submissions for CALON are through
+property <*>.cahfx_community_data_updated_through datetime; # when approved community submissions for CAHFX are through
+property <*>.cakgn_community_data_updated_through datetime; # when approved community submissions for CAKGN are through
+property <*>.calet_community_data_updated_through datetime; # when approved community submissions for CALET are through
+property <*>.cavic_community_data_updated_through datetime; # when approved community submissions for CAVIC are through
+property <*>.cakel_community_data_updated_through datetime; # when approved community submissions for CAKEL are through
+property <*>.canwe_community_data_updated_through datetime; # when approved community submissions for CANWE are through
+property <*>.camis_community_data_updated_through datetime; # when approved community submissions for CAMIS are through
+property <*>.caott_community_data_updated_through datetime; # when approved community submissions for CAOTT are through
+property <*>.cabur_community_data_updated_through datetime; # when approved community submissions for CABUR are through
+property <*>.caajx_community_data_updated_through datetime; # when approved community submissions for CAAJX are through
+property <*>.camon_community_data_updated_through datetime; # when approved community submissions for CAMON are through
+property <*>.jptyo_community_data_updated_through datetime; # when approved community submissions for JPTYO are through
+property <*>.cobog_community_data_updated_through datetime; # when approved community submissions for COBOG are through
+property <*>.twtpe_community_data_updated_through datetime; # when approved community submissions for TWTPE are through
+property <*>.dkcph_community_data_updated_through datetime; # when approved community submissions for DKCPH are through
+property <*>.fihel_community_data_updated_through datetime; # when approved community submissions for FIHEL are through
+property <*>.ussto_community_data_updated_through datetime; # when approved community submissions for USSTO are through
+
+# The community *rows* are declared per city too, in each city's own tree model,
+# as a `complete where city = 'X' and {code}_source = 'COMMUNITY_X'` partition.
+# They deliberately do not live here as one shared partial datasource: with no
+# `complete where` clause such a source is never a union candidate for any city,
+# so Trilogy silently emits zero community rows.

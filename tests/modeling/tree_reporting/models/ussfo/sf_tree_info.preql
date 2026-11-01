@@ -1,0 +1,116 @@
+import ..tree_common;
+import ..community_tree_info;
+import ..satellite_tree_info;
+import ..tree_dedup;
+
+key ussfo_source enum<string>['SF_OPENDATA', 'COMMUNITY_USSFO', 'OSM_USSFO', 'SATELLITE_USSFO'];
+
+# Feed the shared cross-source merge (../tree_dedup.preql): it classifies rows
+# by the label's prefix and records provenance from it.
+auto ussfo_source_label <- concat(ussfo_source, '');
+merge ussfo_source_label into source_label;
+
+auto ussfo_published_data_updated_through <- greatest(ussfo_data_updated_through, ussfo_community_data_updated_through, ussfo_osm_data_updated_through, ussfo_satellite_data_updated_through);
+
+root datasource sf_update_time (
+    data_updated_through: ussfo_data_updated_through
+)
+file `./sf_update_time.py`;
+
+# Only this city's column, so an approval elsewhere does not mark USSFO's
+# Parquet stale. Trilogy probes this as MAX over the one column.
+root datasource ussfo_community_update_time (
+    ussfo_community_data_updated_through: ussfo_community_data_updated_through
+)
+file `../community_update_time.py`;
+
+# Likewise for reviewed aerial-imagery detections: one column, this city's.
+root datasource ussfo_satellite_update_time (
+    ussfo_satellite_data_updated_through: ussfo_satellite_data_updated_through
+)
+file `../satellite_update_time.py`;
+
+
+
+
+
+# GCS publication time of the staged OSM parquet (see sf_osm_extract.py);
+# it only moves when an extraction is re-run and uploaded.
+root datasource ussfo_osm_update_time (
+    data_updated_through: ussfo_osm_data_updated_through
+)
+file `./sf_osm_probe.py`;
+
+# OpenStreetMap trees, read from the staged parquet in GCS rather than
+# Overpass -- extraction is decoupled from refresh (see shared/osm.py and
+# EXTENDING.md).  Overlapping rows are resolved by the
+# shared cluster merge (../tree_dedup.preql).
+root partial datasource ussfo_osm_tree_info extends tree_partition (
+    data_source: ussfo_source,
+    species: ?raw_species,
+)
+complete where city = 'USSFO' and ussfo_source = 'OSM_USSFO'
+file `./fixtures/ussfo_osm_staging.parquet`;
+
+# The ingest emits canonical column names, as the community and satellite
+# partitions below already do and as every city written since Calgary does.
+# It used to emit the portal's own spelling (treeid, qspecies, plantdate, dbh)
+# and lean on this block to rename them; that ended when the portal renamed
+# every one of those columns out from under us.
+root partial datasource sf_raw_tree_info extends tree_partition (
+    data_source: ussfo_source,
+)
+complete where city = 'USSFO' and ussfo_source = 'SF_OPENDATA'
+file `./sf_tree_info.py`;
+
+
+# Approved community submissions for this city. The shared ingest script emits
+# every city's rows; the `complete where` clause is what narrows it to SF and
+# makes this a disjoint partition alongside sf_raw_tree_info.
+root partial datasource sf_community_tree_info extends tree_partition (
+    data_source: ussfo_source,
+)
+complete where city = 'USSFO' and ussfo_source = 'COMMUNITY_USSFO'
+file `../community_tree_info.py`
+where city = 'USSFO';
+
+# Reviewed aerial-imagery detections (reviewer/satellite.ts), read from the
+# public export the reviewer publishes.  A detection the reviewer linked to
+# an inventory tree arrives at that tree's coordinates, so the shared cluster
+# merge absorbs it; an unlinked one publishes as its own tree until the
+# inventory catches up.  See ../satellite_tree_info.py.
+root partial datasource ussfo_satellite_tree_info extends tree_partition (
+    data_source: ussfo_source,
+)
+complete where city = 'USSFO' and ussfo_source = 'SATELLITE_USSFO'
+file `../satellite_tree_info.py`
+where city = 'USSFO';
+
+
+
+# --- Cross-source dedup and attribute merge --------------------------------
+#
+# Shared: ../tree_dedup.preql groups the three partitions into one cluster per
+# tree and picks each canonical attribute across the cluster; this city's grid
+# cell size and its calibration live in DEDUP_CELL_METRES in shared/ingest.py.
+# The only per-city line is the dbh merge, because Boston imputes it.
+merge merged_dbh into diameter_at_breast_height;
+# Position: the survivor's own point.  A city with an Overture lookup imports
+# ../tree_position.preql instead, which merges the corrected point.
+merge merged_latitude into latitude;
+merge merged_longitude into longitude;
+
+
+# The `where` below is the prune: this target publishes only the row that owns
+# its cluster, so the parquet holds exactly one tree per row.  It needs
+# pytrilogy 0.3.348+ and fails quietly on older planners -- see "The prune" in
+# ../tree_dedup.preql.
+partial datasource sf_tree_info extends published_tree_info (
+    data_source: ussfo_source,
+    ussfo_published_data_updated_through,
+)
+complete where city = 'USSFO'
+file f`./fixtures/ussfo_tree_info_v{data_version}.parquet`
+freshness by ussfo_published_data_updated_through
+assert @source_kept(tree_id, ussfo_source, 'SF_OPENDATA', 0.75)
+assert @source_kept(tree_id, ussfo_source, 'OSM_USSFO', 0.75);

@@ -1845,6 +1845,15 @@ def _row_lineage_closure(concept: BuildConcept) -> list[BuildConcept]:
     return list(iter_row_lineage(concept))
 
 
+def _output_spelling(
+    concept: BuildConcept, outputs: dict[str, BuildConcept]
+) -> BuildConcept | None:
+    """The output naming `concept`'s column: itself, or a merge twin."""
+    if concept.address in outputs:
+        return outputs[concept.address]
+    return next((o for o in outputs.values() if concept.address in o.pseudonyms), None)
+
+
 def _aggregate_row_preserving_inputs(concept: BuildConcept) -> list[BuildConcept]:
     if not isinstance(concept.lineage, BuildAggregateWrapper):
         return []
@@ -2666,6 +2675,79 @@ def _carry_planned_keys(
         )
 
 
+def _project_planned_keys(
+    parents: list[StrategyNode],
+    origin: dict[int, str],
+    plan: JoinPlan,
+    environment: BuildEnvironment,
+    producers: Sequence[StrategyNode] = (),
+) -> list[StrategyNode]:
+    """Hand each parent the planned keys widening in place could not. One its
+    outputs render is projected over it: the plan pairs `min(x) by row_key`
+    with an aggregate by `tree_id` on `row_key`. One they determine but do
+    not render (`cluster_id`, computed off other aggregates) is looked up from
+    a built producer keyed within the parent's outputs."""
+    out: list[StrategyNode] = []
+    for parent in parents:
+        gid = _origin_group(parent, origin)
+        outputs = {c.address for c in parent.output_concepts}
+        owed = _join_key_concepts(
+            parents, environment, set(plan.keys_for(gid) if gid else ()) - outputs
+        )
+        rendered = [
+            c
+            for c in owed
+            if concept_satisfiable(c, outputs) and not _carry_needs_own_node(c)
+        ]
+        lookups = [
+            producer
+            for c in owed
+            if c not in rendered
+            and (producer := _key_lookup(c, outputs, producers)) is not None
+        ]
+        if not rendered and not lookups:
+            out.append(parent)
+            continue
+        node = parent
+        if lookups:
+            looked_up = [
+                c
+                for c in owed
+                if c not in rendered and any(c.address in p.output_lcl for p in lookups)
+            ]
+            node = MergeNode(
+                input_concepts=readable_outputs([parent, *lookups]),
+                output_concepts=[*parent.output_concepts, *looked_up],
+                environment=environment,
+                parents=[parent, *unique(lookups, "identifier")],
+            )
+        if rendered:
+            node = SelectNode(
+                output_concepts=list(node.output_concepts),
+                input_concepts=list(node.output_concepts),
+                environment=environment,
+                parents=[node],
+                partial_concepts=list(node.partial_concepts),
+            )
+            widen_projection(node, rendered)
+        if gid is not None:
+            origin[id(node)] = gid
+        out.append(node)
+    return out
+
+
+def _key_lookup(
+    key: BuildConcept, outputs: set[str], producers: Sequence[StrategyNode]
+) -> StrategyNode | None:
+    """A producer of `key` whose grain the parent's outputs hold, so joining
+    it on that grain looks one value up per parent row."""
+    for producer in producers:
+        grain = set(producer.resolve().grain.components)
+        if key.address in producer.output_lcl and grain and grain <= outputs:
+            return producer
+    return None
+
+
 def _carry_join_keys(
     parents: list[StrategyNode],
     join_key_concepts: list[BuildConcept],
@@ -3292,6 +3374,15 @@ def _pre_merge_parents(
         environment,
     )
     _widen_merge_join_keys(parents, environment, join_key_addresses)
+    if plan is not None and origin is not None:
+        _carry_planned_keys(parents, origin, plan, environment)
+        parents = _project_planned_keys(
+            parents,
+            origin,
+            plan,
+            environment,
+            [built[gid] for gid in candidates if built and gid in built],
+        )
     # After widening, not before: a parent that has just been handed the join
     # key it was missing needs no bridge.
     if plan is not None and built is not None:
@@ -6544,6 +6635,18 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                         )
                         concept_match = candidate
                         break
+                    else:
+                        # No parent renders it, so it is derived at the
+                        # aggregate: keep the row columns it reads (a merge
+                        # twin a parent outputs under its other name) in the
+                        # dedup, which then groups on them too.
+                        for arg in _row_lineage_closure(candidate)[1:]:
+                            read = _output_spelling(
+                                arg, normalize_parent_output_by_addr
+                            )
+                            if read is not None and read.address not in matched_addrs:
+                                matched_addrs.add(read.address)
+                                normalize_concepts.append(read)
             if concept_match is not None and concept_match.address not in matched_addrs:
                 matched_addrs.add(concept_match.address)
                 normalize_concepts.append(concept_match)
