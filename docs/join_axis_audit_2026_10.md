@@ -603,30 +603,50 @@ needed had a planned producer, and it was the group the `built` search picked.
 The plan elected an extra producer at 5 FINALs where the ROOT kept the
 argument; the merge skips those. No gate host fired in those suites.
 
+**A ROOT side carries the filter arguments it outputs.** The plan no longer
+guesses whether a ROOT contributor's wrap keeps an argument: a filter-only
+argument that no side's cover holds but a ROOT contributor outputs is
+assigned to that contributor (`_FinalExtras.carried`), which adds it to its
+re-source request, so its wrap keeps it. The merge joins exactly the plan's
+producers; it no longer reads which arguments its built parents hold. The
+sole-contributor path and `_apply_final_conditions` elect producers over the
+planned groups, the FINAL's grouping-sets sibling is read off the
+contributors' outputs, and a planned FINAL side that built nothing raises
+`UnbuiltGroupException` instead of a bare `KeyError`.
+
+Measured over `tests/modeling`, `core`, `engine`, `complex` and `discovery`
+against part 14: 46 multi-contributor FINALs with filter arguments, 10
+arguments carried by a ROOT side, 39 joined from a producer, and every
+producer the plan elected was one the merge needed. The two FINALs where the
+merge asks for a region grain key no group produces
+(`test_padded_region_derivation_is_null_on_padding`, `count(customer_id) by
+*`) dropped it before as well. The sole/apply elections over the planned
+groups equaled the built ones at all 393 calls, and the grouping-sets sibling
+at all 3,430 FINALs (24 true). SQL capture moved the 5 plans where the merge
+re-joined a whole ROOT for an argument that ROOT contributed, all smaller
+(`test_union_join_anchor_where_*` 10 to 6 CTEs and 5 to 3 joins, the pivot
+subset join 18 to 16 CTEs, `test_dimension_attribute_read_on_the_fact_stream`
+3 to 2 CTEs and 2 to 1 joins). Everything else that moved was known noise
+(`grain_check` column order, `test_gcat::test_environment`, BigQuery temp
+table names, and `test_declared_join_beside_a_property_of_the_superset_key`,
+whose join type varies with the hash seed on main too). 0 of 205 corpus plans
+moved.
+
 **Open.**
 
-1. Which filter arguments the FINAL merge needs is still read off its built
-   parents: whether a ROOT contributor's wrap re-sources it away from an
-   argument depends on the built node's grain. Stating the wrap at stage 2
-   would let the plan say exactly what each side holds.
-2. The sole contributor path (`_assemble_sole_contributor`) and
-   `_apply_final_conditions` still pick filter-argument producers over
-   `built`.
-3. `grouping_sibling` reads `node_nulls_grouping_keys` off each built
-   contributor; a grouping-sets group is a stage-2 fact.
-4. With no `per_group`, the FINAL takes `next(iter(built.values()))`: the
-   first group built, where the planned groups name it.
-5. A non-FINAL consumer's bridge candidates (`_bridge_candidates(…,
+1. With no `per_group`, the FINAL takes `next(iter(built.values()))`: the
+   first group built, where the planned groups name it. No test in the five
+   suites reaches it.
+2. A non-FINAL consumer's bridge candidates (`_bridge_candidates(…,
    ctx.unbuilt, gid)`) differ from the planned ones only where the plan
    raises (above).
-6. The fold widen still projects the aggregate's merge after
+3. The fold widen still projects the aggregate's merge after
    `_pre_merge_parents` assembles it, inside the aggregate's build. No
    decision reads the built node; asking a ROOT for the derived column
    instead changes source selection.
-7. A planned FINAL side (bridge, extra) is indexed in `built` with no guard.
-   A FINAL-only group whose outputs another group delivers may legally build
-   nothing (`_raise_if_unbuilt_group_owed`); elected, it would raise a bare
-   `KeyError`. No test reaches it.
+4. The sole-contributor path still decides whether to apply the FINAL WHERE
+   over the raw contributor (probe arguments, relation- or region-paired
+   feeders) off the built node's outputs and region reads.
 
 The rest of `_assemble_final_node`'s reads of `built` apply decisions: the
 passthroughs and projections, each contributor's node, bridge nodes by the
