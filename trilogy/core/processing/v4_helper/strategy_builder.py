@@ -2694,15 +2694,25 @@ def _project_planned_keys(
         owed = _join_key_concepts(
             parents, environment, set(plan.keys_for(gid) if gid else ()) - outputs
         )
+        # a projection only stands in for the in-place widening an aggregate
+        # cannot take; anything widenable already declined what it skipped
         rendered = [
             c
             for c in owed
-            if concept_satisfiable(c, outputs) and not _carry_needs_own_node(c)
+            if isinstance(parent, GroupNode)
+            and concept_satisfiable(c, outputs)
+            and not _carry_needs_own_node(c)
         ]
+        determined = (
+            build_fd_closure(environment, frozenset(outputs), include_empty_grain=False)
+            if len(owed) > len(rendered)
+            else frozenset()
+        )
         lookups = [
             producer
             for c in owed
             if c not in rendered
+            and c.address in determined
             and (producer := _key_lookup(c, outputs, producers)) is not None
         ]
         if not rendered and not lookups:
