@@ -2424,6 +2424,39 @@ def _constrain_aggregates_by_root_conditions(
             ):
                 continue
             add_edge(graph, edges, src, dst, EdgeKind.LINEAGE)
+    _constrain_aggregates_by_merged_expansions(graph, edges, attrs, row_arg_addresses)
+
+
+def _constrain_aggregates_by_merged_expansions(
+    graph: nx.DiGraph,
+    edges: EdgeMap,
+    attrs: dict[str, ConceptAttrs],
+    row_arg_addresses: set[str],
+) -> None:
+    """A WHERE on a key an `unnest` is merged into reads the element on the
+    rows the unnest expands: the merge is the only relation between that key
+    and those rows. An aggregate over them reads the expansion as a row
+    parent, so the WHERE filters its input rows rather than its output."""
+    for src, node in list(attrs.items()):
+        if src not in graph or node.derivation != Derivation.UNNEST or node.label != "":
+            continue
+        merged = [
+            dst
+            for dst in graph.successors(src)
+            if edge_kind(edges, src, dst) == EdgeKind.RELATION
+            and attrs[dst].address in row_arg_addresses
+        ]
+        if not merged:
+            continue
+        for dst, consumer in attrs.items():
+            if (
+                dst in graph
+                and consumer.label == ""
+                and consumer.derivation == Derivation.AGGREGATE
+                and consumer.depth_label == DepthLabel.D0
+                and not graph.has_edge(src, dst)
+            ):
+                add_edge(graph, edges, src, dst, EdgeKind.LINEAGE)
 
 
 def build_concept_graph(

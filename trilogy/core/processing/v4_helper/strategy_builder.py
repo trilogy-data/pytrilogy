@@ -69,6 +69,7 @@ from trilogy.core.processing.condition_utility import (
     combine_condition_atoms,
     condition_implies,
     decompose_condition,
+    gather_non_null_proofs,
 )
 from trilogy.core.processing.discovery_utility import raise_if_disconnected_for
 from trilogy.core.processing.grain_utility import non_null_proofs
@@ -1313,7 +1314,9 @@ def _parent_nodes_for(
         return {o.address for o in node.output_concepts} & needed
 
     consumer = attrs[gid]
-    slices_roots = (
+    # an unnest repeats its parent's rows, and its readers pair with it on
+    # them: a slice of the list alone pairs on nothing
+    slices_roots = consumer.derivation != Derivation.UNNEST and (
         consumer.derivation in GROUPING_DERIVATIONS
         or _valued_on_another_fact(consumer.primary_members, environment)
         or _reads_only_merged_attributes(consumer.primary_members, environment)
@@ -2239,6 +2242,16 @@ def _equality_pinned_addresses(condition: BoolExpr | None) -> set[str]:
     return pinned
 
 
+def _unnested_addresses(node: StrategyNode) -> set[str]:
+    return {
+        address
+        for n in _iter_strategy_nodes(node)
+        if isinstance(n, UnnestNode)
+        for c in n.unnest_concepts
+        for address in (c.address, *c.pseudonyms)
+    }
+
+
 def _subtree_pinned_addresses(
     node: StrategyNode, seen: set[int] | None = None
 ) -> set[str]:
@@ -2393,8 +2406,11 @@ def _parents_already_at_input_grain(
         # A leftover component the stream pins to a single literal
         # (`channel = 'STORE'` under an all-channel union) can't split any
         # input-grain key group, so the rows are still unique at the input
-        # grain without it.
-        if not unresolved or set(unresolved) <= _subtree_pinned_addresses(parent):
+        # grain without it. An unnested element can: a list repeats a value
+        # (`[3, 3]`), so its rows are unique only on the element's ordinal.
+        if not unresolved or set(unresolved) <= (
+            _subtree_pinned_addresses(parent) - _unnested_addresses(parent)
+        ):
             return True
         if (
             isinstance(parent, SelectNode)
@@ -4011,6 +4027,23 @@ def _fold_descendant_contributors(
             del per_group[s_gid]
 
 
+def _distinct_rows(node: StrategyNode, elements: set[str]) -> StrategyNode:
+    """`node`'s rows, once each, when they carry the expanded rows' columns
+    beside the element: joined as a filter, a repeated element would repeat
+    every row it matches (`Unnest.self_join_squares`). Elements alone (a
+    literal `unnest([...])`) are the rows themselves, repeats included."""
+    outputs = list(node.output_concepts)
+    if {c.address for c in outputs} <= elements:
+        return node
+    return GroupNode(
+        output_concepts=outputs,
+        input_concepts=outputs,
+        environment=node.environment,
+        parents=[node],
+        force_group=True,
+    )
+
+
 def _element_filters(
     parents: list[StrategyNode],
     parent_builds: Sequence["ParentBuild"],
@@ -4046,15 +4079,17 @@ def _fold_into_argument_unnests(
     FINAL WHERE argument is read on. `select tree_id where ecoregion_id = 2`
     relates `ecoregion_id` to trees only through the unnest of their species'
     regions; joined beside the trees instead, the argument pairs with no row
-    of them and the merge cross-joins (`_fold_descendant_contributors`)."""
+    of them and the merge cross-joins (`_fold_descendant_contributors`).
+
+    A WHERE that can keep a row with no element (`e > 1 or city = 'B'`) also
+    keeps the rows the expansion drops (an empty list): the contributor stays,
+    and the unnest joins beside it on the keys of its rows."""
     covered = {c.address for c in mandatory_list}
-    args = {
-        arg.address
-        for atom in attrs[FINAL_NODE_ID].condition_atoms
-        for arg in atom.row_arguments
-    } - covered
+    atoms = attrs[FINAL_NODE_ID].condition_atoms
+    args = {arg.address for atom in atoms for arg in atom.row_arguments} - covered
     if not args:
         return
+    non_null = set().union(*(gather_non_null_proofs(atom) for atom in atoms))
     names = set(args)
     for relation in environment.scoped_join_relations():
         if relation & args:
@@ -4062,8 +4097,12 @@ def _fold_into_argument_unnests(
     for b_gid, group in attrs.items():
         if b_gid in per_group or group.derivation != Derivation.UNNEST:
             continue
-        if not names & set(group.output_concepts):
+        read = names & set(group.output_concepts)
+        if not read:
             continue
+        rejects_absent = bool(read & non_null) or bool(
+            _merged_spellings(group, environment) & non_null
+        )
         reads = parents_render(
             group_graph, group_edges, attrs, b_gid, rendered, environment
         )
@@ -4075,9 +4114,17 @@ def _fold_into_argument_unnests(
             s_concepts = per_group[s_gid]
             if not all(concept_satisfiable(c, reads) for c in s_concepts):
                 continue
-            per_group.setdefault(b_gid, []).extend(s_concepts)
-            passthroughs.setdefault(b_gid, []).extend(s_concepts)
-            del per_group[s_gid]
+            moved = (
+                s_concepts
+                if rejects_absent
+                else [c for c in s_concepts if c.purpose == Purpose.KEY]
+            )
+            if not moved:
+                continue
+            per_group.setdefault(b_gid, []).extend(moved)
+            passthroughs.setdefault(b_gid, []).extend(moved)
+            if rejects_absent:
+                del per_group[s_gid]
 
 
 def _pass_through_final_contributors(
@@ -4785,6 +4832,19 @@ class _FinalExtras:
         )
 
 
+def _merged_spellings(group: GroupAttrs, environment: BuildEnvironment) -> set[str]:
+    """The keys an unnest's elements are merged into: the expansion emits each
+    element under that spelling too, so a WHERE reading the key reads it here
+    rather than joining the key's own table beside the expansion."""
+    if group.derivation != Derivation.UNNEST:
+        return set()
+    return {
+        concept.address
+        for address in group.output_concepts
+        if (concept := environment.concepts.get(address)) is not None
+    } - set(group.output_concepts)
+
+
 def _final_extra_sides(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
@@ -4806,7 +4866,8 @@ def _final_extra_sides(
             (
                 {c.address for c in per_group[gid]}
                 if gid in per_group and attrs[gid].derivation == Derivation.ROOT
-                else attrs[gid].output_concepts
+                else set(attrs[gid].output_concepts)
+                | _merged_spellings(attrs[gid], environment)
             )
             for gid in sides
         )
@@ -4916,19 +4977,46 @@ def _group_to_grain_if_required(
     those keys (and the join handle) without changing the dedup grain.
     Aggregates/windows already sit at their own grain and are left untouched;
     a MergeNode resolves its own grouping via `force_group`."""
+    targets = _final_dedup_targets(node, mandatory_list, final_contract, environment)
+    return node if targets is None else _dedup_to_targets(node, targets, environment)
+
+
+def _final_dedup(
+    node: StrategyNode,
+    holds: frozenset[str],
+    mandatory_list: list[BuildConcept],
+    final_contract: FinalAssemblyContract,
+    environment: BuildEnvironment,
+) -> tuple[StrategyNode, frozenset[str]]:
+    """`_group_to_grain_if_required`, and what of `holds` the dedup keeps."""
+    targets = _final_dedup_targets(node, mandatory_list, final_contract, environment)
+    if targets is None:
+        return node, holds
+    return _dedup_to_targets(node, targets, environment), holds & {
+        t.address for t in targets
+    }
+
+
+def _final_dedup_targets(
+    node: StrategyNode,
+    mandatory_list: list[BuildConcept],
+    final_contract: FinalAssemblyContract,
+    environment: BuildEnvironment,
+) -> list[BuildConcept] | None:
+    """The outputs the FINAL dedup projects `node` to; None when it keeps it."""
     from trilogy.core.processing.discovery_utility import check_if_group_required
 
     if not final_contract.deduplicate_to_grain:
-        return node
+        return None
     contract_outputs = [
         concept
         for concept in mandatory_list
         if concept.address in final_contract.output_addresses
     ]
     if isinstance(node, (GroupNode, WindowNode)):
-        return node
+        return None
     if node.force_group and not _holds_summary_rows(node, contract_outputs):
-        return node
+        return None
     # A non-standard-grouping (ROLLUP/CUBE/GROUPING SETS) contributor's rows are
     # already final-shape: subtotal/total rows are distinct outputs, so a dedup
     # to the requested grain re-aggregates them away (and a grouping()-derived
@@ -4936,7 +5024,7 @@ def _group_to_grain_if_required(
     # Skipping the dedup here is what obliges the FINAL not to join such a
     # node on a non-unique key: same predicate, both sides.
     if node_nulls_grouping_keys(node):
-        return node
+        return None
     if (
         check_if_group_required(
             downstream_concepts=contract_outputs,
@@ -4945,7 +5033,7 @@ def _group_to_grain_if_required(
         ).required
         is not True
     ):
-        return node
+        return None
     mandatory_addrs = set(final_contract.output_addresses)
     targets = [o for o in node.output_concepts if o.address in mandatory_addrs]
     # Pseudonym fallback: a struct field surfaces under its origin address
@@ -4959,6 +5047,12 @@ def _group_to_grain_if_required(
             for o in node.output_concepts
             if any(output_covers(o, m) for m in contract_outputs)
         ]
+    return targets
+
+
+def _dedup_to_targets(
+    node: StrategyNode, targets: list[BuildConcept], environment: BuildEnvironment
+) -> StrategyNode:
     if isinstance(node, MergeNode):
         # Narrow to the requested grain *before* force-grouping: a MergeNode
         # exposes its join/filter columns as outputs, so force_group alone
@@ -5305,7 +5399,7 @@ def _assemble_sole_contributor(
     final_conditions: BuildWhereClause | None,
     final_probe_args: list[BuildConcept],
     filter_only_addrs: set[str],
-    apply_final_conditions: Callable[[StrategyNode], StrategyNode],
+    apply_final_conditions: Callable[[StrategyNode, str, frozenset[str]], StrategyNode],
     mandatory_list: list[BuildConcept],
     final_contract: FinalAssemblyContract,
     group_graph: nx.DiGraph,
@@ -5372,7 +5466,7 @@ def _assemble_sole_contributor(
             outs & (spans | sole_avail) - mandatory_addresses for outs in feeder_outs
         )
     if final_probe_args or relation_paired_feeders or region_paired_feeders:
-        conditioned = apply_final_conditions(sole_node)
+        conditioned = apply_final_conditions(sole_node, gid, cover.holds(gid))
         # The feeder join reads the probe at ITS OWN row grain (the fact
         # side of the relation), fanning the contributor out; the merge's
         # claimed grain predates that join, so grain-satisfaction checks
@@ -5420,11 +5514,8 @@ def _assemble_sole_contributor(
         sole_node,
         mandatory_addresses,
     )
-    final_node = _group_to_grain_if_required(
-        sole_node,
-        mandatory_list,
-        final_contract,
-        environment,
+    final_node, holds = _final_dedup(
+        sole_node, cover.holds(gid), mandatory_list, final_contract, environment
     )
     # The multi-contributor path projects `per_group` directly; the
     # single-contributor path returns the node's raw output, which can name a
@@ -5432,7 +5523,9 @@ def _assemble_sole_contributor(
     # the hidden bridge concepts can't perturb the grain decision above.
     _bridge_pseudonyms(final_node, per_group[gid])
     conditioned = (
-        final_node if final_already_applied else apply_final_conditions(final_node)
+        final_node
+        if final_already_applied
+        else apply_final_conditions(final_node, gid, holds)
     )
     if conditioned is final_node:
         return conditioned
@@ -5449,6 +5542,8 @@ def _assemble_sole_contributor(
 
 def _apply_final_conditions(
     node: StrategyNode,
+    gid: str,
+    holds: frozenset[str],
     final_conditions: BuildWhereClause | None,
     filter_only_addrs: set[str],
     mandatory_list: list[BuildConcept],
@@ -5459,8 +5554,8 @@ def _apply_final_conditions(
     environment: BuildEnvironment,
     feeder_cache: "_CleanFeederCache | None",
 ) -> StrategyNode:
-    """`node` under the WHERE deferred onto FINAL, its filter-only args'
-    producers joined in as hidden inputs."""
+    """`node`, contributor `gid` holding `holds`, under the WHERE deferred onto
+    FINAL, its filter-only args' producers joined in as hidden inputs."""
     mandatory_addresses = {c.address for c in mandatory_list}
     if final_conditions is None:
         return node
@@ -5468,18 +5563,16 @@ def _apply_final_conditions(
     # extra align inputs (per-arm keys folded into the align key) that
     # aren't mandatory and don't render at this layer.
     keep = [o for o in node.output_concepts if o.address in mandatory_addresses]
-    avail = {o.address for o in node.output_concepts}
-    spans = region_reads(node)
-    arg_nodes, arg_concepts = _filter_arg_parents(
-        built,
-        _filter_arg_producers(
-            group_graph,
-            attrs,
-            candidates,
-            _region_paired_args(filter_only_addrs, avail, spans, environment),
-            spans,
-        ),
+    avail = set(holds)
+    spans = _group_region_reads(group_graph, attrs, gid)
+    producers = _filter_arg_producers(
+        group_graph,
+        attrs,
+        candidates,
+        _region_paired_args(filter_only_addrs, avail, spans, environment),
+        spans,
     )
+    arg_nodes, arg_concepts = _filter_arg_parents(built, producers)
     row_arg_addrs = {c.address for c in condition_row_args(final_conditions)}
     row_concepts = [
         concept for concept in node.output_concepts if concept.address in row_arg_addrs
@@ -5508,12 +5601,12 @@ def _apply_final_conditions(
         # A row-level atom over the facts (`undelivered`) beside a node
         # holding a region joins it on the span: cross-joined, any fact
         # row's value would pass for every member of the region.
-        if node_spans := region_reads(node):
-            _widen_merge_join_keys([node, *arg_nodes], environment, node_spans)
+        if spans:
+            _widen_merge_join_keys([node, *arg_nodes], environment, spans)
     if arg_nodes and environment.scoped_join_key_groups:
         relation_keys: set[str] = set()
-        for feeder in arg_nodes:
-            feeder_outs = {o.address for o in feeder.output_concepts}
+        for feeder in set(producers.values()):
+            feeder_outs = carries(attrs[feeder], frozenset(), frozenset(), environment)
             for relation in environment.scoped_join_relations():
                 if feeder_outs & relation:
                     relation_keys |= relation
@@ -5604,9 +5697,9 @@ def _elect_final_cover(
         {},
         {},
     )
+    rendered = cover.rendered = renders(group_graph, group_edges, attrs, environment)
     if not cover.per_group:
         return cover
-    rendered = cover.rendered = renders(group_graph, group_edges, attrs, environment)
     _add_partial_completion_contributors(
         groups, cover.per_group, attrs, rendered, environment
     )
@@ -5703,14 +5796,15 @@ def _assemble_final_node(
     ownership = attrs[FINAL_NODE_ID].extent_ownership or ExtentOwnership()
     per_group = cover.per_group
     if not per_group:
-        return apply_final_conditions(
-            _group_to_grain_if_required(
-                _uncovered_final_side(built, cover.groups),
-                mandatory_list,
-                final_contract,
-                environment,
-            )
+        first = cover.groups[0]
+        node, holds = _final_dedup(
+            _uncovered_final_side(built, cover.groups),
+            cover.holds(first),
+            mandatory_list,
+            final_contract,
+            environment,
         )
+        return apply_final_conditions(node, first, holds)
     _pass_through_final_contributors(built, cover.passthroughs)
     _project_final_contributors(built, cover.projections, environment)
     contributing = list(per_group.keys())
@@ -6769,7 +6863,13 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                 ),
                 output_concepts=node.output_concepts,
                 environment=environment,
-                parents=[node, *element_filters],
+                parents=[
+                    node,
+                    *(
+                        _distinct_rows(f, _unnested_addresses(node))
+                        for f in element_filters
+                    ),
+                ],
                 force_join_type=JoinType.INNER,
             )
     # a generator may hand back a parent's node; that one keeps its group

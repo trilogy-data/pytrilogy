@@ -39,6 +39,7 @@ a design decision or a bug.
 | `NullReject.lean` | the null-rejection walk, membership, outer-join upgrade, nullability inference | a proved column is non-null on every kept row, a proof on a column read off the padded side turns a left join inner, a derived column is judged by its lineage, strict and total functions (checked by `tests/optimization/test_null_rejection_laws.py` and `tests/core/test_null_function_conformance.py`) |
 | `Validate.lean` | datasource validation: nullability, declared ranges, grain, complete bindings, `unique` properties, `complete where` containment | each check fails exactly when the claim the planner trusts fails, under Kleene WHERE and GROUP BY's NULL grouping (checked by `tests/core/validation/test_validation_laws.py` and `tests/core/validation/test_type_conformance.py`) |
 | `Fixpoint.lean` | the optimizer driver's repeat-until-quiet passes; the WHERE-atom contract between fact removers (`StripRedundantNotNull`) and every other phase | under the contract a fact remover never changes the plan after its first run, so it cannot take part in a cycle; pushdown before its gate broke the contract and cycled (checked on every phase of every planned query in the test suite: `atom_contract.contract_violations`, and by `tests/optimization/test_fixpoint_contract_laws.py`) |
+| `Unnest.lean` | filtering rows by the elements of an unnested list: the padded expansion, the kept rows, aggregates over them, how the elements pair with the rows they expand | a WHERE on an element keeps a row iff a padded element passes, a disjunct over the row alone keeps it whatever its list holds, an aggregate reads each kept row once, a filter keeps a sub-multiset of the expansion, pairing on the grouping key or on nothing overcounts, the key an element is merged into pads a member no list names (checked by `tests/unnest/test_unnest_filter_laws.py`) |
 | `Binding.lean` | datasource bindings as functional dependencies: row determinants, the closure over every table's bindings, `row_keys`, the cross-table binding check | a table unique on its grain satisfies its own bindings, the closure is sound when every binding holds, one table's binding can break on another's rows, stacked arms are unique on grain plus discriminator and not on grain alone, a grainless table determines nothing (checked by `tests/core/test_binding_fd_laws.py` and `tests/core/validation/test_validation_laws.py`) |
 
 ## What it found
@@ -495,6 +496,30 @@ a design decision or a bug.
   filter into a CTE whose parents already enforced it, and
   `PredicatePushdownRemove` dropped it every pass. That remover judges atoms by
   other atoms, so it is outside the model; pushdown now gates on it too.
+- **Aggregates filtered by an unnested element overcounted, and a `~` binding
+  of the list's key cross-joined it.** `Unnest.lean` models a WHERE on an
+  element as keeping a row iff one of its padded elements passes. On main, 248
+  of 324 cases in `tests/unnest/test_unnest_filter_laws.py` fail.
+  `select city, count(tree_id) where tree_eco_region = 3` returned `A 3` for
+  one matching tree: the condition copy of the unnest read the list from a
+  private scan without `species` and joined the trees `ON 1=1`
+  (`Unnest.keyless_pair_keeps_every_row`). It now reads the shared scan, and
+  an aggregate joins an unnest beside its rows on its input grain, not its
+  grouping key (`Unnest.coarse_pair_overcounts`). A list repeating the
+  filtered value (`[3, 3]`) counted its tree twice: the input dedup skipped a
+  column the WHERE pins, which an element is not unique on
+  (`Unnest.pinned_element_repeats`, `Unnest.expansion_sum_overcounts`), and the
+  FINAL's element filter squared the repeats (`Unnest.self_join_squares`).
+  Spelled as the key the element is merged into, every aggregate raised
+  "could only be placed after the aggregates": the unnest now feeds the
+  aggregate as a row parent and answers for the merged key in placement. A
+  WHERE that a row with no element can pass (`e > 1 or city = 'B'`) dropped
+  such rows, or padded a NULL row from the key's table
+  (`Unnest.or_keeps_disjunct`, `Unnest.key_table_pads_a_row`). Any table
+  binding `~species` made the unnest read a slice of the list alone, so even
+  `select event_id, region_id` cross-joined every event with every region.
+  The `merged_axis_pin` family adds an aggregate over the merged key and an
+  OR beside it; the full fuzzer passes 3,132 of 3,132.
 
 ## Limits
 

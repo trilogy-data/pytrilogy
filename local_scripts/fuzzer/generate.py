@@ -3992,7 +3992,7 @@ query '''select eid, amount * 2 as extra from ({events}) as e where eid % 3 = 0'
 auto bucket <- case when region_id = 0 then 'Native'
 when region_kind = 'dry' then 'Same' else 'Other' end;
 """
-    bucketed = f"""(select e.eid, e.gid, e.sid, s.zone,
+    bucketed = f"""(select e.eid, e.gid, e.sid, s.zone, u.rid,
 case when u.rid = 0 then 'Native' when u.rid = 1 then 'Same' else 'Other' end as bucket
 from events as e
 left join sites as s on s.sid = e.sid
@@ -4057,6 +4057,24 @@ left join (select gid, unnest({regions}) as rid from groups) as u on u.gid = e.g
                 f"select zone, count(distinct eid) from {bucketed}"
                 " where bucket = 'Native' group by zone"
             ),
+        ),
+        (
+            "count_by_zone_under_merged_key",
+            "Events counted by a site property under the merged key itself.",
+            "select site_zone, count(event_id) as n where region_id = 1;",
+            (
+                f"select zone, count(distinct eid) from {bucketed}"
+                " where rid = 1 group by zone"
+            ),
+        ),
+        (
+            "row_key_under_merged_key_or_site",
+            (
+                "The merged key or a site: an event whose group lists no "
+                "region still passes on its site."
+            ),
+            f"select event_id where region_id = 2 or site_id = '{site}';",
+            f"select distinct eid from {bucketed} where rid = 2 or {gate}",
         ),
     )
     # `group_id` also merged from a derivation over a second table's column,
