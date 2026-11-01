@@ -1,5 +1,11 @@
 # Benchmark plans allowed to be larger than on main, each with why.
 # Read by .scripts/check_benchmark_growth.py; remove an entry once the plan shrinks back.
 
-["tpc_ds_duckdb/zquery98.log"]
-reason = "item.class is read from the contributor the cover elected for it (the row stream carrying it at the merge's planned key) instead of being widened onto the item dimension scan by the merge grain: one more pass-through column in an intermediate CTE, no added CTE or join"
+["tpc_ds_duckdb/zquery21.log"]
+reason = "HAVING restates its aggregate instead of the SELECT alias over a raw table: a FROM column of the alias's name binds first (formal/Trilogy/Rewrite.lean, alias_shadowed)"
+
+["tpc_ds_duckdb/zquery73.log"]
+reason = "HAVING restates its aggregate instead of the SELECT alias over a raw table: a FROM column of the alias's name binds first (formal/Trilogy/Rewrite.lean, alias_shadowed)"
+
+["tpc_ds_duckdb/zquery78.log"]
+reason = "HAVING restates its aggregate instead of the SELECT alias over a raw table: a FROM column of the alias's name binds first (formal/Trilogy/Rewrite.lean, alias_shadowed)"
