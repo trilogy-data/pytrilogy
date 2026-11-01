@@ -33,6 +33,11 @@ class ConfigurationException(Exception):
     pass
 
 
+class OptimizationNonConvergence(RuntimeError):
+    """The optimizer driver hit a pass or loop cap, or a phase broke the
+    WHERE-atom contract that keeps rules from undoing each other."""
+
+
 class QueryTimeoutException(Exception):
     """A statement was cancelled for outliving the configured query timeout.
 

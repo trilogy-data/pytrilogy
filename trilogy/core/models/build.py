@@ -335,8 +335,6 @@ def concept_is_relevant(
     concept: BuildConcept,
     others: list[BuildConcept],
 ) -> bool:
-    # ``other_addresses`` is invariant across the whole recursion; compute it
-    # once here rather than re-deriving it at every recursive node.
     return _concept_is_relevant(
         concept, concept_collection_equivalent_addresses(others)
     )
@@ -447,12 +445,14 @@ def concepts_to_build_grain_concepts(
     # `grain_satisfied_by_pregrain` checks (a stray alias makes pregrain
     # look like a superset of the target and force_group=True flips on).
     # Sorting by `len(equivalent_addresses)` puts canonicals first.
-    determinants = [c for c in pconcepts if c.address not in padded]
+    determinants = concept_collection_equivalent_addresses(
+        c for c in pconcepts if c.address not in padded
+    )
     final: set[str] = set()
     for sub in sorted(
         pconcepts, key=lambda c: (len(c.equivalent_addresses), c.address)
     ):
-        if not concept_is_relevant(sub, determinants):
+        if not _concept_is_relevant(sub, determinants):
             continue
         if final & sub.equivalent_addresses:
             continue

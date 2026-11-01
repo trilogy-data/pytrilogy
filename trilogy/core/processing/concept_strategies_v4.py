@@ -752,12 +752,22 @@ def _nested_row_grains(
     evaluated at, so a coarser aggregate under it shares a finer scan."""
     out: dict[str, list[BuildGrain]] = {}
     seen: set[tuple[str, frozenset[str]]] = set()
-    stack = [(concept, mandatory_list) for concept in mandatory_list]
+    visited: set[tuple[str, frozenset[str]]] = set()
+    grains: dict[frozenset[str], BuildGrain] = {}
+    top = {c.address: c for c in mandatory_list}
+    stack = [(concept, top) for concept in mandatory_list]
     while stack:
         concept, beside = stack.pop()
-        grain = _keyed_grain(
-            BuildGrain.from_concepts(beside), environment, windows=True
-        )
+        beside_key = frozenset(beside)
+        if (concept.address, beside_key) in visited:
+            continue
+        visited.add((concept.address, beside_key))
+        grain = grains.get(beside_key)
+        if grain is None:
+            grain = _keyed_grain(
+                BuildGrain.from_concepts(beside.values()), environment, windows=True
+            )
+            grains[beside_key] = grain
         key = (concept.address, frozenset(grain.components))
         if key in seen:
             continue
@@ -765,9 +775,9 @@ def _nested_row_grains(
         out.setdefault(concept.address, []).append(grain)
         if concept.lineage is None or concept.address in roots:
             continue
-        args = list(concept.lineage.concept_arguments)
-        below = args if concept.derivation == Derivation.AGGREGATE else beside + args
-        stack.extend((arg, below) for arg in args)
+        args = {c.address: c for c in concept.lineage.concept_arguments}
+        below = args if concept.derivation == Derivation.AGGREGATE else beside | args
+        stack.extend((arg, below) for arg in args.values())
     return out
 
 

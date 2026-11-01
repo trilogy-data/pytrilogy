@@ -7,6 +7,7 @@ from functools import partial
 
 from trilogy.constants import CONFIG, Optimizations, logger
 from trilogy.core.domain_graph import DomainGraph
+from trilogy.core.exceptions import OptimizationNonConvergence
 from trilogy.core.models.execute import CTE, Join, UnionCTE
 from trilogy.core.optimizations import (
     CollapseSingleParent,
@@ -27,6 +28,10 @@ from trilogy.core.optimizations import (
     UpgradeJoinOnGuards,
     UpgradeOuterFromKeySetEquivalence,
     optimization_log,
+)
+from trilogy.core.optimizations.atom_contract import (
+    atom_snapshot,
+    contract_violations,
 )
 from trilogy.core.optimizations.collapse_single_parent import (
     grouped_unbound_passthrough_should_wait,
@@ -673,12 +678,10 @@ def optimize_ctes(
         if not any(pass_changed.values()):
             break
     else:
-        logger.warning(
-            optimization_log(
-                "Driver",
-                f"plan still changing after MAX_OPTIMIZATION_PASSES="
-                f"{MAX_OPTIMIZATION_PASSES}",
-            )
+        changing = [name for name, changed in pass_changed.items() if changed]
+        _nonconvergence(
+            f"plan still changing after MAX_OPTIMIZATION_PASSES="
+            f"{MAX_OPTIMIZATION_PASSES}; last pass changed {changing}"
         )
 
     input, root_cte = state.input, state.root_cte
@@ -693,6 +696,12 @@ def optimize_ctes(
         "final sweep", "filter_irrelevant_ctes", 1, before, final, root_cte, {}
     )
     return final
+
+
+def _nonconvergence(message: str) -> None:
+    if CONFIG.optimizations.enforce_fixpoint_contract:
+        raise OptimizationNonConvergence(message)
+    logger.warning(optimization_log("Driver", message))
 
 
 @dataclass
@@ -732,6 +741,8 @@ def _phase_settled(
 def _run_phase(phase: OptimizationRulePlan, name: str, state: _PlanState) -> bool:
     rule = phase.make_rule()
     before = plan_trace.cte_snapshot([*state.input, state.root_cte])
+    enforce = CONFIG.optimizations.enforce_fixpoint_contract
+    atoms_before = atom_snapshot([*state.input, state.root_cte]) if enforce else {}
     phase_merged: dict[str, str] = {}
     loops = 0
     complete = False
@@ -752,13 +763,19 @@ def _run_phase(phase: OptimizationRulePlan, name: str, state: _PlanState) -> boo
         phase_changed = phase_changed or actions_taken
         loops += 1
     if not complete:
-        logger.warning(
-            optimization_log(
-                "Driver",
-                f"{name} hit MAX_OPTIMIZATION_LOOPS={MAX_OPTIMIZATION_LOOPS} "
-                "without converging",
-            )
+        _nonconvergence(
+            f"{name} hit MAX_OPTIMIZATION_LOOPS={MAX_OPTIMIZATION_LOOPS} "
+            "without converging"
         )
+    if enforce and phase_changed:
+        violations = contract_violations(
+            phase.name,
+            atoms_before,
+            [*state.input, state.root_cte],
+            set(phase_merged.values()),
+        )
+        if violations:
+            raise OptimizationNonConvergence("; ".join(violations))
     # an unchanged phase leaves an already-normalized list as it was
     if phase_changed or not state.normalized:
         state.input = reorder_ctes(filter_irrelevant_ctes(state.input, state.root_cte))

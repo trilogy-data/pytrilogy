@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 from trilogy.core.enums import (
     BooleanOperator,
     Derivation,
@@ -19,6 +21,11 @@ from trilogy.core.models.execute import (
     Join,
     RecursiveCTE,
     UnionCTE,
+)
+from trilogy.core.optimizations.atom_contract import (
+    and_atoms,
+    register_remover,
+    removable,
 )
 from trilogy.core.optimizations.base_optimization import MergedCTEMap, OptimizationRule
 from trilogy.core.optimizations.utils import (
@@ -686,6 +693,14 @@ class PredicatePushdown(OptimizationRule):
                 ):
                     self.log("Parent condition is not scalar, not safe to push up")
                     return False
+                # the fixpoint contract (atom_contract): never add what a
+                # remover drops, or the two undo each other every pass
+                if remover := removable(parent_cte, candidate):
+                    self.debug(
+                        f"Not pushing {candidate} into {parent_cte.name}: "
+                        f"{remover} would drop it"
+                    )
+                    return False
                 if parent_cte.condition:
                     parent_cte.condition = append_condition(
                         parent_cte.condition, candidate
@@ -900,152 +915,163 @@ class PredicatePushdown(OptimizationRule):
         return optimized, None
 
 
+def _atom_sourced_only_from_parents(atom, cte: CTE) -> bool:
+    """True if every concept referenced by `atom` is materialized in `cte`
+    via a parent CTE rather than via one of `cte`'s own joined base
+    datasources. Atoms that reference inline-join columns must stay in
+    `cte` because no upstream filter constrains those columns."""
+    if not isinstance(atom, BuildConceptArgs) or _reads_rollup(atom, cte):
+        return False
+    parent_names = {p.name for p in cte.dependency_nodes()}
+    for c in atom.row_arguments:
+        sources = cte.source_map.get(c.address)
+        if not sources:
+            return False
+        if not all(s in parent_names for s in sources):
+            return False
+    return True
+
+
+def _atom_covered_by_applicable_parents(
+    atom, cte: CTE, existence_only: set[str]
+) -> bool:
+    """True if every non-existence parent that exposes `atom`'s row
+    arguments already enforces `atom`. Parents that do not expose those
+    concepts cannot filter on them and are irrelevant."""
+    atom_args = {c.address for c in atom.row_arguments}
+    relevant_parents = [
+        p
+        for p in cte.dependency_nodes()
+        if p.name not in existence_only and atom_args.issubset(output_addresses(p))
+    ]
+    if not relevant_parents:
+        return False
+    return all(_parent_covers_condition(p, atom) for p in relevant_parents)
+
+
+def _defers_to_join_upgrade(cte: CTE) -> bool:
+    """Whether atom removal on `cte` should wait for join types to settle.
+
+    A pending OUTER join makes the WHERE load-bearing beyond row selection:
+    the join-upgrade phase after this one reads it to prove the NULL-padded
+    rows can never survive. Dropping a redundant atom is row-equivalent but
+    erases that proof, leaving the join outer. The post-upgrade instance of
+    the rule sweeps these up once the proofs have been consumed.
+    """
+    return any(
+        isinstance(join, Join) and join.join_type in OUTER_JOIN_TYPES
+        for join in cte.joins or []
+    )
+
+
+@dataclass
+class _Removal:
+    surviving: list
+    # parents feeding only the dropped existence filter
+    existence_only: list[str]
+
+
+def _pushdown_removal(
+    cte: CTE, condition, after_join_upgrades: bool
+) -> _Removal | None:
+    """What `PredicatePushdownRemove` does to `cte` under `condition`: the
+    atoms its parents already enforce are dropped. None when it drops none."""
+    parents = cte.dependency_nodes()
+    if not parents or condition is None:
+        return None
+    flattened_existence = [x.address for y in condition.existence_arguments for x in y]
+    existence_only = [
+        parent.name
+        for parent in parents
+        if all(x.address in flattened_existence for x in parent.output_columns)
+        and len(flattened_existence) > 0
+    ]
+    if (
+        all(
+            _parent_covers_condition(parent, condition)
+            for parent in parents
+            if parent.name not in existence_only
+        )
+        and not any(isinstance(x, BuildDatasource) for x in cte.source.datasources)
+        and not _reads_rollup(condition, cte)
+    ):
+        return _Removal([], existence_only)
+    # Per-conjunct removal: even when the full condition is not covered,
+    # an atom sourced entirely from parent CTEs and covered by every parent
+    # that exposes its concepts is redundant.
+    if not after_join_upgrades and _defers_to_join_upgrade(cte):
+        return None
+    existence_set = set(existence_only)
+    if (
+        isinstance(condition, BuildConditional)
+        and condition.operator == BooleanOperator.AND
+    ):
+        atoms = condition.decompose()
+    else:
+        atoms = [condition]
+    surviving: list = []
+    for atom in atoms:
+        if not (
+            _atom_sourced_only_from_parents(atom, cte)
+            and _atom_covered_by_applicable_parents(atom, cte, existence_set)
+        ):
+            surviving.append(atom)
+            continue
+        # A source parent on the nullable side of an outer join here lets
+        # NULL-padded rows bypass the parent's filter; keep the atom.
+        atom_sources: set[str] = set()
+        if isinstance(atom, BuildConceptArgs):
+            for c in atom.row_arguments:
+                atom_sources.update(cte.source_map.get(c.address, []) or [])
+        if any(_parent_nullable_in_cte(cte, src) for src in atom_sources):
+            surviving.append(atom)
+    if len(surviving) == len(atoms):
+        return None
+    return _Removal(surviving, [])
+
+
+def _removes_atom(cte: CTE, atom, after_join_upgrades: bool) -> bool:
+    condition = (
+        cte.condition
+        if cte.condition is not None and atom in and_atoms(cte.condition)
+        else append_condition(cte.condition, atom)
+    )
+    removal = _pushdown_removal(cte, condition, after_join_upgrades)
+    return removal is not None and atom not in removal.surviving
+
+
+@register_remover("predicate_pushdown.remove")
+def pushdown_remove_drops(cte: CTE, atom) -> bool:
+    return _removes_atom(cte, atom, after_join_upgrades=False)
+
+
+@register_remover("predicate_pushdown.remove.after_join_upgrades")
+def pushdown_remove_after_upgrades_drops(cte: CTE, atom) -> bool:
+    return _removes_atom(cte, atom, after_join_upgrades=True)
+
+
 class PredicatePushdownRemove(OptimizationRule):
     def __init__(self, *args, after_join_upgrades: bool = False, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.after_join_upgrades = after_join_upgrades
-
-    def _atom_sourced_only_from_parents(self, atom, cte: CTE) -> bool:
-        """True if every concept referenced by `atom` is materialized in `cte`
-        via a parent CTE rather than via one of `cte`'s own joined base
-        datasources. Atoms that reference inline-join columns must stay in
-        `cte` because no upstream filter constrains those columns."""
-        if not isinstance(atom, BuildConceptArgs) or _reads_rollup(atom, cte):
-            return False
-        parent_names = {p.name for p in cte.dependency_nodes()}
-        for c in atom.row_arguments:
-            sources = cte.source_map.get(c.address)
-            if not sources:
-                return False
-            if not all(s in parent_names for s in sources):
-                return False
-        return True
-
-    def _atom_covered_by_applicable_parents(
-        self, atom, cte: CTE, existence_only: set[str]
-    ) -> bool:
-        """True if every non-existence parent that exposes `atom`'s row
-        arguments already enforces `atom`. Parents that do not expose those
-        concepts cannot filter on them and are irrelevant."""
-        atom_args = {c.address for c in atom.row_arguments}
-        relevant_parents = [
-            p
-            for p in cte.dependency_nodes()
-            if p.name not in existence_only and atom_args.issubset(output_addresses(p))
-        ]
-        if not relevant_parents:
-            return False
-        return all(_parent_covers_condition(p, atom) for p in relevant_parents)
-
-    def _defers_to_join_upgrade(self, cte: CTE) -> bool:
-        """Whether atom removal on `cte` should wait for join types to settle.
-
-        A pending OUTER join makes the WHERE load-bearing beyond row selection:
-        the join-upgrade phase after this one reads it to prove the NULL-padded
-        rows can never survive. Dropping a redundant atom is row-equivalent but
-        erases that proof, leaving the join outer. The post-upgrade instance of
-        this rule sweeps these up once the proofs have been consumed.
-        """
-        if self.after_join_upgrades:
-            return False
-        return any(
-            isinstance(join, Join) and join.join_type in OUTER_JOIN_TYPES
-            for join in cte.joins or []
-        )
 
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
     ) -> tuple[bool, MergedCTEMap | None]:
         if isinstance(cte, UnionCTE):
             return False, None
-        optimized = False
-
-        parents = cte.dependency_nodes()
-        if not parents:
-            self.debug(f"No parent CTEs for {cte.name}")
-
+        removal = _pushdown_removal(cte, cte.condition, self.after_join_upgrades)
+        if removal is None:
             return False, None
-
-        if not cte.condition:
-            self.debug(f"No CTE condition for {cte.name}")
-            return False, None
-
-        parent_filter_status = {
-            parent.name: _parent_covers_condition(parent, cte.condition)
-            for parent in parents
-        }
-
-        flattened_existence = [
-            x.address for y in cte.condition.existence_arguments for x in y
-        ]
-
-        existence_only = [
-            parent.name
-            for parent in parents
-            if all(x.address in flattened_existence for x in parent.output_columns)
-            and len(flattened_existence) > 0
-        ]
-        if (
-            all(
-                value
-                for key, value in parent_filter_status.items()
-                if key not in existence_only
-            )
-            and not any(isinstance(x, BuildDatasource) for x in cte.source.datasources)
-            and not _reads_rollup(cte.condition, cte)
-        ):
-            self.log(
-                f"All parents of {cte.name} have same filter or are existence only inputs, removing filter from {cte.name}"
-            )
-            cte.condition = None
-            if existence_only:
-                original = [y.name for y in parents]
-                cte.parent_ctes = [x for x in parents if x.name not in existence_only]
-                self.log(
-                    f"new parents for {cte.name} are {[x.name for x in cte.parent_ctes]}, vs {original}"
-                )
-            return True, None
-
-        # Per-conjunct removal: even when the full condition is not covered,
-        # an atom sourced entirely from parent CTEs and covered by every parent
-        # that exposes its concepts is redundant.
-        if self._defers_to_join_upgrade(cte):
-            return optimized, None
-        existence_set = set(existence_only)
-        if (
-            isinstance(cte.condition, BuildConditional)
-            and cte.condition.operator == BooleanOperator.AND
-        ):
-            atoms = cte.condition.decompose()
-        else:
-            atoms = [cte.condition]
-        surviving: list = []
-        removed = 0
-        for atom in atoms:
-            if not (
-                self._atom_sourced_only_from_parents(atom, cte)
-                and self._atom_covered_by_applicable_parents(atom, cte, existence_set)
-            ):
-                surviving.append(atom)
-                continue
-            # A source parent on the nullable side of an outer join here lets
-            # NULL-padded rows bypass the parent's filter; keep the atom.
-            atom_sources: set[str] = set()
-            if isinstance(atom, BuildConceptArgs):
-                for c in atom.row_arguments:
-                    atom_sources.update(cte.source_map.get(c.address, []) or [])
-            if any(_parent_nullable_in_cte(cte, src) for src in atom_sources):
-                surviving.append(atom)
-                continue
-            self.log(
-                f"Removing redundant atom {atom} from {cte.name}: covered by parent CTE(s) and sourced only from parents"
-            )
-            removed += 1
-        if removed:
-            if surviving:
-                cte.condition = combine_condition_atoms(surviving)
-            else:
-                cte.condition = None
-            return True, None
-
-        return optimized, None
+        self.log(
+            f"Removing atoms of {cte.name}'s WHERE its parents already enforce; "
+            f"{len(removal.surviving)} remain"
+        )
+        cte.condition = combine_condition_atoms(removal.surviving)
+        if removal.existence_only:
+            cte.parent_ctes = [
+                x
+                for x in cte.dependency_nodes()
+                if x.name not in removal.existence_only
+            ]
+        return True, None

@@ -18,6 +18,7 @@ from local_scripts.fuzzer.generate import generate_cases
 from local_scripts.fuzzer.models import SEEDS, FuzzCase
 from local_scripts.fuzzer.random_data import generate_random_seeds
 from trilogy import Dialects
+from trilogy.constants import CONFIG
 
 ROOT = Path(__file__).resolve().parent
 
@@ -435,6 +436,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    # every generated plan checks the optimizer's fixpoint contract
+    CONFIG.optimizations.enforce_fixpoint_contract = True
     if args.random_datasets < 0:
         print("--random-datasets cannot be negative.", file=sys.stderr)
         return 2

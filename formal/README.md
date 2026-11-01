@@ -38,6 +38,7 @@ a design decision or a bug.
 | `StateMerge.lean` | partition deltas folded into a state snapshot | disjoint overlays commute, replay is a no-op, newest claim wins as a semilattice join, the per-slice count adjustment (checked by `tests/execution/state/test_merge_laws.py`) |
 | `NullReject.lean` | the null-rejection walk, membership, outer-join upgrade, nullability inference | a proved column is non-null on every kept row, a proof on a column read off the padded side turns a left join inner, a derived column is judged by its lineage, strict and total functions (checked by `tests/optimization/test_null_rejection_laws.py` and `tests/core/test_null_function_conformance.py`) |
 | `Validate.lean` | datasource validation: nullability, declared ranges, grain, complete bindings, `unique` properties, `complete where` containment | each check fails exactly when the claim the planner trusts fails, under Kleene WHERE and GROUP BY's NULL grouping (checked by `tests/core/validation/test_validation_laws.py` and `tests/core/validation/test_type_conformance.py`) |
+| `Fixpoint.lean` | the optimizer driver's repeat-until-quiet passes; the WHERE-atom contract between fact removers (`StripRedundantNotNull`) and every other phase | under the contract a fact remover never changes the plan after its first run, so it cannot take part in a cycle; pushdown before its gate broke the contract and cycled (checked on every phase of every planned query in the test suite: `atom_contract.contract_violations`, and by `tests/optimization/test_fixpoint_contract_laws.py`) |
 | `Binding.lean` | datasource bindings as functional dependencies: row determinants, the closure over every table's bindings, `row_keys`, the cross-table binding check | a table unique on its grain satisfies its own bindings, the closure is sound when every binding holds, one table's binding can break on another's rows, stacked arms are unique on grain plus discriminator and not on grain alone, a grainless table determines nothing (checked by `tests/core/test_binding_fd_laws.py` and `tests/core/validation/test_validation_laws.py`) |
 
 ## What it found
@@ -481,6 +482,19 @@ a design decision or a bug.
   base `events` table binds `group_id` complete while a random group has no
   event, and a `~` merge of that key licenses padding the group. With honest
   data both spellings agree (`tests/engine/test_subset_merged_key_derivation.py`).
+
+- **Predicate pushdown and the NOT NULL strip undid each other**
+  (`Fixpoint.ungated_cycles`). Pushdown pushed `tree_id is not null` into a
+  scan whose `tree_id` cannot be NULL; `StripRedundantNotNull` dropped it; the
+  next pass pushed it again, so every such query ran the optimizer to its pass
+  cap (issue #830). Pushdown now skips an atom the stripper would drop, judged
+  by the stripper's own predicate (`Fixpoint.push_keeps`); the driver now
+  checks that no phase adds an atom a fact remover drops
+  (`Fixpoint.strip_never_cycles`).
+  The check found a second pair at once: pushdown pushed a rowset's existence
+  filter into a CTE whose parents already enforced it, and
+  `PredicatePushdownRemove` dropped it every pass. That remover judges atoms by
+  other atoms, so it is outside the model; pushdown now gates on it too.
 
 ## Limits
 
