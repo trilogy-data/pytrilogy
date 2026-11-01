@@ -81,7 +81,9 @@ class Model:
         return closure
 
     def bound_on(self, column: str) -> set[str]:
-        return {d for t in self.tables for det, c in t.fds() if c == column for d in det}
+        return {
+            d for t in self.tables for det, c in t.fds() if c == column for d in det
+        }
 
     @property
     def addresses(self) -> list[str]:
@@ -96,9 +98,15 @@ def _model(seed: int) -> Model:
         grain = rng.sample(KEYS, rng.choice([0, 1, 1, 1, 2]))
         others = [k for k in KEYS if k not in grain]
         bound = grain + rng.sample(others, rng.randint(1, len(others)))
-        bound += [p for p, key in properties.items() if key in bound and rng.random() < 0.5]
+        bound += [
+            p for p, key in properties.items() if key in bound and rng.random() < 0.5
+        ]
         candidates = [k for k in bound if k in KEYS and k not in grain]
-        disc = [rng.choice(candidates)] if grain and candidates and rng.random() < 0.3 else []
+        disc = (
+            [rng.choice(candidates)]
+            if grain and candidates and rng.random() < 0.3
+            else []
+        )
         tables.append(Table(f"t{i}", grain, bound, disc))
     return Model(properties, tables)
 

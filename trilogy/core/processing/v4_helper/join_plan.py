@@ -749,6 +749,17 @@ def _pair(
     return Pairing(left, right, frozenset(keys), kind, frozenset(implied))
 
 
+def _delivered_keys(
+    group: GroupAttrs, concepts: Sequence[BuildConcept]
+) -> frozenset[str]:
+    """The keys a ROOT contributor delivers: the FINAL wraps it to their grain,
+    so its rows are unique on them, and a row expansion of it (an unnest
+    carrying them) pairs with it there."""
+    if group.derivation != Derivation.ROOT:
+        return frozenset()
+    return frozenset(c.address for c in concepts if c.purpose == Purpose.KEY)
+
+
 def plan_final_join(
     group_graph: nx.DiGraph,
     attrs: dict[str, GroupAttrs],
@@ -780,6 +791,7 @@ def plan_final_join(
         | attrs[gid].emitted_grain
         | attrs[gid].anchor_keys
         | attrs[gid].extent_spans
+        | _delivered_keys(attrs[gid], cover[gid])
         for gid in contributors
     }
     carry_demands = {

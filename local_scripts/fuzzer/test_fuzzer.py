@@ -12,7 +12,7 @@ from local_scripts.fuzzer.runner import CaseOutcome, CaseResult, run_case, write
 # Every seed instantiates the same builders, so a corpus is exactly
 # `CASES_PER_SEED * len(seeds)`. Adding or removing cases changes this one
 # number and every total below follows from it.
-CASES_PER_SEED = 243
+CASES_PER_SEED = 257
 
 
 def test_generated_corpus_is_stable_and_covers_requested_families() -> None:
@@ -47,6 +47,7 @@ def test_generated_corpus_is_stable_and_covers_requested_families() -> None:
         "join",
         "law",
         "membership",
+        "merged_axis_pin",
         "multiway_join",
         "named_grouping_window",
         "padding_provenance",

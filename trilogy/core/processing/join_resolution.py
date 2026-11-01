@@ -1249,9 +1249,11 @@ def _row_independent(ds: DataSource) -> bool:
     # An UNNEST source here is the standalone literal flavor (`unnest([1,2,3])
     # as value` beside an unrelated scan): its fan-out is authored by the
     # query, not a lost join key. A row-correlated unnest rides an UnnestJoin,
-    # never a keyless SourceJoin.
+    # never a keyless SourceJoin. One carrying its parent's columns beside
+    # the elements (`group_id` beside `unnest(group_regions)`) is correlated.
     if isinstance(ds, QueryDatasource) and ds.source_type == SourceType.UNNEST:
-        return True
+        elements = {c.address for c in ds.join_derived_concepts}
+        return all(c.address in elements for c in ds.output_concepts)
     outputs = ds.output_concepts
     if bool(outputs) and all(c.granularity == Granularity.SINGLE_ROW for c in outputs):
         return True

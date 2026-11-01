@@ -84,6 +84,7 @@ from trilogy.core.processing.nodes import (
     SelectNode,
     StrategyNode,
     UnionNode,
+    UnnestNode,
     WindowNode,
 )
 from trilogy.core.processing.nodes.base_node import (
@@ -2657,6 +2658,9 @@ def _carry_join_keys(
             ):
                 _widen_passthrough_group(parent, join_key_concepts)
             continue
+        if isinstance(parent, UnnestNode):
+            _widen_unnest_passthrough(parent, join_key_concepts)
+            continue
         if parent.force_group or not isinstance(parent, _WIDENABLE_PROJECTIONS):
             continue
         # A leaf datasource scan can still emit any column its datasource binds,
@@ -2746,6 +2750,22 @@ def _carry_join_keys(
                     dirty = True
             if dirty:
                 parent.rebuild_cache()
+
+
+def _widen_unnest_passthrough(
+    node: UnnestNode, join_key_concepts: list[BuildConcept]
+) -> None:
+    """An unnest repeats each parent row per element, so it carries any column
+    its parent already emits beside the element; it computes nothing else."""
+    outputs = {c.address for c in node.output_concepts}
+    from_parents = parent_output_addresses(node)
+    carried = [
+        c
+        for c in join_key_concepts
+        if c.address not in outputs and c.address in from_parents
+    ]
+    if carried:
+        widen_projection(node, carried, input_candidates=carried)
 
 
 def _descends_from_any(node: StrategyNode, targets: set[int]) -> bool:
@@ -3852,6 +3872,75 @@ def _fold_descendant_contributors(
             if not all(c.address in reads for c in s_concepts):
                 continue
             per_group[b_gid].extend(s_concepts)
+            passthroughs.setdefault(b_gid, []).extend(s_concepts)
+            del per_group[s_gid]
+
+
+def _element_filters(
+    parents: list[StrategyNode],
+    parent_builds: Sequence["ParentBuild"],
+    group: GroupAttrs,
+    group_edges: EdgeMap,
+    gid: str,
+) -> list[StrategyNode]:
+    """Constraint parents of an unnest that hold its elements (a condition
+    copy of the unnest, filtering `group_region = 1`). Their rows are elements,
+    not the rows the unnest expands: merged in before it, they pair with the
+    array's rows on nothing; they join the elements after."""
+    members = set(group.primary_members)
+    out = []
+    for parent, build in zip(parents, parent_builds):
+        if edge_kind(group_edges, build.group_id, gid) != EdgeKind.CONSTRAINT:
+            continue
+        if members & {o.address for o in parent.output_concepts}:
+            out.append(parent)
+    return out
+
+
+def _fold_into_argument_unnests(
+    group_graph: nx.DiGraph,
+    group_edges: EdgeMap,
+    attrs: dict[str, GroupAttrs],
+    per_group: dict[str, list[BuildConcept]],
+    passthroughs: dict[str, list[BuildConcept]],
+    rendered: dict[str, frozenset[str]],
+    mandatory_list: list[BuildConcept],
+    environment: BuildEnvironment,
+) -> None:
+    """Read a ROOT contributor's columns through the unnest of its rows that a
+    FINAL WHERE argument is read on. `select tree_id where ecoregion_id = 2`
+    relates `ecoregion_id` to trees only through the unnest of their species'
+    regions; joined beside the trees instead, the argument pairs with no row
+    of them and the merge cross-joins (`_fold_descendant_contributors`)."""
+    covered = {c.address for c in mandatory_list}
+    args = {
+        arg.address
+        for atom in attrs[FINAL_NODE_ID].condition_atoms
+        for arg in atom.row_arguments
+    } - covered
+    if not args:
+        return
+    names = set(args)
+    for relation in environment.scoped_join_relations():
+        if relation & args:
+            names |= relation
+    for b_gid, group in attrs.items():
+        if b_gid in per_group or group.derivation != Derivation.UNNEST:
+            continue
+        if not names & set(group.output_concepts):
+            continue
+        reads = parents_render(
+            group_graph, group_edges, attrs, b_gid, rendered, environment
+        )
+        # an unnest repeats its parents' rows, so it renders what they hold
+        # and the row derivations over it (`group_id * 10` beside the unnest)
+        for s_gid in list(per_group):
+            if attrs[s_gid].derivation not in (Derivation.ROOT, Derivation.BASIC):
+                continue
+            s_concepts = per_group[s_gid]
+            if not all(concept_satisfiable(c, reads) for c in s_concepts):
+                continue
+            per_group.setdefault(b_gid, []).extend(s_concepts)
             passthroughs.setdefault(b_gid, []).extend(s_concepts)
             del per_group[s_gid]
 
@@ -5342,6 +5431,16 @@ def _elect_final_cover(
         rendered,
         environment,
     )
+    _fold_into_argument_unnests(
+        group_graph,
+        group_edges,
+        attrs,
+        cover.per_group,
+        cover.passthroughs,
+        rendered,
+        mandatory_list,
+        environment,
+    )
     _promote_final_aliases_to_grouping_contributors(
         group_graph,
         group_edges,
@@ -6127,6 +6226,7 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
     parent_group_ids = {parent.group_id for parent in parent_builds}
     join_key_addresses = _input_contract_join_keys(a, parent_group_ids)
     candidates = _bridge_candidates(group_graph, ctx.planned, gid)
+    element_filters: list[StrategyNode] = []
     if derivation == Derivation.UNION:
         parents = _union_arm_parents(
             parent_builds, attrs, environment, needed, group_graph, built, candidates
@@ -6227,8 +6327,12 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
                 + domains
                 + feeders
             )
+        if derivation == Derivation.UNNEST:
+            element_filters = _element_filters(
+                parents, parent_builds, a, group_edges, gid
+            )
         parents = _pre_merge_parents(
-            parents,
+            [p for p in parents if p not in element_filters],
             environment,
             join_key_addresses=join_key_addresses,
             needed=needed,
@@ -6445,6 +6549,29 @@ def _build_group(gid: str, ctx: _GroupBuild) -> StrategyNode | None:
         )
         if node is not None and derivation == Derivation.AGGREGATE:
             node.distinct_counts = frozenset(a.aggregate_distinct_addrs)
+        if node is not None and element_filters:
+            # the filter join hides the expanded rows from a later widening,
+            # so the expansion carries its parents' columns up front
+            widen_projection(
+                node,
+                [
+                    o
+                    for parent in node.parents
+                    for o in parent.output_concepts
+                    if o.address not in parent.hidden_concepts
+                ],
+            )
+            node = MergeNode(
+                input_concepts=unique(
+                    node.output_concepts
+                    + [o for f in element_filters for o in f.output_concepts],
+                    "address",
+                ),
+                output_concepts=node.output_concepts,
+                environment=environment,
+                parents=[node, *element_filters],
+                force_join_type=JoinType.INNER,
+            )
     # a generator may hand back a parent's node; that one keeps its group
     if node is not None and node.origin_group is None:
         node.origin_group = gid

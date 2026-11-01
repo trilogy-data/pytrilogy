@@ -11,9 +11,10 @@ Recent rounds: `Assert.lean` (#799, datasource `assert`/`prior`),
 `Functions.lean` (#802, scalar functions per dialect), `Cost.lean`
 (which answering datasource is read: partial summaries, value-pin
 implication, dominance ranking), `Stack.lean` (stacking a partition
-family: value-set arms, arms the grain does not determine), and #821, which
+family: value-set arms, arms the grain does not determine), #821, which
 made datasource bindings functional-dependency facts in place of FK-derived
-keys (no Lean module yet; see area 0).
+keys, and `Binding.lean`, which models those facts (area 0 below records what
+is left of it).
 
 ## The recipe
 
@@ -59,43 +60,53 @@ keys (no Lean module yet; see area 0).
 
 ## Candidate areas
 
-### 0. Binding FDs (recommended next)
+### 0. Binding FDs (done in `Binding.lean`; leads left)
 
-#821 removed `Environment.fk_derived_keys`: a table binding a KEY beside its
-grain no longer rewrites that key's `keys`. Instead each binding is an FD fact.
-A table binding column `c` says its `row_determinants` (its grain, plus a
-discriminator it binds, since an arm is unique on its grain only among its own
-rows) determine `c`. The readers are `BuildDatasource.row_determinants`,
-`Environment.binding_fds`/`binding_determines`/`bound_on`, and in
-`trilogy/core/processing/v4_helper/functional_dependency.py` `_fd_rows`,
-`build_fd_closure`, `row_keys` and `minimize_build_grain`. None of it has a
-Lean statement. Leads:
-- **Model the bindings.** A table as rows plus a grain and a set of bound
-  columns. State that a binding beside the grain is an FD from the row
-  determinants, that the closure over the union of all bindings is sound when
-  every binding holds, and the counterexample when one does not hold. Take
-  the per-arm case (`row_determinants` includes a bound discriminator) from
-  `Stack.unbound_arm_repeats_grain`. A grainless table determines nothing.
-  Then hold `build_fd_closure` and `row_keys` to the model in a Python law
-  suite, with random tables and bindings.
-- **Validate the claims.** Each binding is an FD assertion the data can
-  break. The old per-city case (a family's arms disagree on `species ->
-  city`) is one instance. A validation check that every binding's FD holds
-  belongs with `Validate.lean` and `tests/core/validation/`. A related idea
-  from review: a family-level declaration that the grain is unique model-wide,
-  so an arm's determinants are its grain alone.
-- **Hunt siblings of the last wrong answer.** `_relation_side_partitions`
-  (`group_rules.py`) split two keys that only a table binding relates
-  (`species`, `tree_id`) across a merged unnest axis, under a pinned WHERE and
-  a partial table on `tree_id` (`test_pinned_filter_beside_species_grain_outputs`).
-  The fuzzer never generated the shape; a family for it is worth adding. Audit
-  the other root-partition rules for the same gap. `_cosource_component_groups`
-  deliberately does not pair two keys: `count(user_id)` reads the users
-  table, not the fact's FK column.
-- **`_pin_input_placements`** (`condition_placement.py`) now asks whether the
-  pin anchors FD-determine an atom's inputs. No shape in the suite or 30 probe
-  variants changes its SQL, so the old declared-keys check may never have been
-  wrong. A distinguishing test would settle it.
+`Binding.lean` models a binding as an FD from a table's row determinants,
+proves the closure sound, and holds `build_fd_closure`, `binding_closure`,
+`row_keys` and `bound_on` to it (`tests/core/test_binding_fd_laws.py`).
+Validation checks every binding across the tables binding its columns, and
+the `merged_axis_pin` fuzzer family covers #821's shape. See "What it found"
+in `formal/README.md`. Leads left:
+- **A family-level "grain is unique model-wide" declaration** (proposed, not
+  built). An arm's row determinants carry its bound discriminator because an
+  arm is unique on its grain only among its own rows
+  (`Binding.arm_grain_alone_fails`). A family whose grain is unique across all
+  arms (`tree_id` arms split by `city`) could declare it, say
+  `partition family trees unique grain`, and its arms' determinants would
+  then be the grain alone, so `tree_id -> city` would hold model-wide. The
+  declaration is one more FD claim the data can break, so it needs a
+  validation check: the grain check over the union of the arms, which
+  `cross_check_exact` already covers if the family is treated as one table.
+- **OPEN WRONG ANSWER (on main too): a derivation over a subset-merged key
+  pads rows.** With `auto merged_group <- coalesce(raw_group, -1); merge
+  merged_group into ~group_id;` and `raw_groups (eid: event_id, gid:
+  raw_group)`, `select group_id * 10 as g, event_id, group_regions` returns a
+  group with no events as `(30, NULL, [1])`, while `select group_id, event_id,
+  group_regions` does not. Both send the same root request; the derived form
+  sources `group_id` off `raw_groups` (the merge origin's coalesce), whose
+  binding is partial, and the `partial_domain` rule FULL-joins the group list
+  to complete it. The fuzzer's `merged_axis_pin` family hits it on random
+  seeds 5001 and 5009 (`group_beside_row_key_under_bucket_merged_group`); the
+  fixed-seed CI corpus passes.
+- **`select city, count(tree_id) where ecoregion_id = 3`** over
+  `tests/engine/test_grain_pin_unnest_merge_filter.py`'s model raises
+  "could only be placed after the aggregates". The atom reads the merged
+  unnest axis, which the pre-aggregate row stream never carries. It is an
+  error, not a wrong answer, and the same on main.
+- **Three readers of row determinants**: `BuildDatasource.row_determinants`,
+  `Environment.binding_fds` (inline) and `domain_graph._row_determinants`
+  compute the same set. The law suite pins the first two; folding them into
+  one would remove the risk of drift.
+- **The keyless-join guard misses a deduped list unnest.** An unnest of
+  `group_regions` read without `group_id` outputs only elements, so the guard
+  still treats it as a literal `unnest([...])`. The plans that produced one
+  are fixed, but the guard would not name a new one.
+- **`_pin_input_placements`**: the FD test and the declared-keys test agree on
+  every placement the suite reaches (4,377 calls, 20 with a host). A shape
+  where they differ needs a pin anchored on a key that a binding (not a
+  declared key) relates to the atom's input, with the pin's scan reading that
+  input; none was found.
 - **Declared-key readers that are right as they are.**
   `_condition_source_concepts`, `_arm_scopes_sourcing`,
   `merge_node._existence_only` and `_stamp_determining_key_roots` read a
