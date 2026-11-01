@@ -412,8 +412,39 @@ def arm_rollup_concepts(
     ]
 
 
+def fans_out_rollup(
+    parents: list[tuple[BuildGrain | None, frozenset[str]]],
+    rollable: list[BuildConcept],
+    concepts_by_address: Mapping[str, BuildConcept],
+) -> bool:
+    """A parent the summary's rows join to more than one row of: its grain is
+    not determined by the summary's (the tree rows beside a year summary they
+    supply `planted_year` to), so each summary row repeats per tree and a
+    re-sum counts it that many times."""
+    rolled = {c.address for c in rollable}
+    summary_keys: set[str] = set()
+    for grain, outputs in parents:
+        if outputs & rolled and grain:
+            summary_keys |= set(grain.components)
+    if not summary_keys:
+        return False
+    for grain, outputs in parents:
+        if outputs & rolled or not grain:
+            continue
+        for address in set(grain.components) - summary_keys:
+            concept = concepts_by_address.get(address)
+            if (
+                concept is None
+                or concept.purpose != Purpose.PROPERTY
+                or not concept.keys
+                or not concept.keys.issubset(summary_keys)
+            ):
+                return True
+    return False
+
+
 def merge_rollup_concepts(
-    parent_grains: Iterable[BuildGrain | None],
+    parents: Iterable[tuple[BuildGrain | None, frozenset[str]]],
     all_concepts: list[BuildConcept],
     concepts_by_address: Mapping[str, BuildConcept],
 ) -> list[BuildConcept]:
@@ -426,10 +457,13 @@ def merge_rollup_concepts(
     rollable = [c for c in all_concepts if c.is_aggregate and _is_rollable_aggregate(c)]
     if not rollable or len(rollable) != sum(1 for c in all_concepts if c.is_aggregate):
         return []
+    parents = list(parents)
     merge_components: set[str] = set()
-    for grain in parent_grains:
+    for grain, _ in parents:
         if grain and grain.components:
             merge_components.update(grain.components)
+    if fans_out_rollup(parents, rollable, concepts_by_address):
+        return []
     target_components = {c.address for c in all_concepts if not c.is_aggregate}
     # A grain component must actually be summed AWAY. When every one of them
     # survives into the output the merge already sits at the target's row

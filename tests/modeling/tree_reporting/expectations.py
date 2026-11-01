@@ -52,33 +52,20 @@ SERVED: dict[str, str] = {
     **{key: "trees" for key in keyed("USBOS", ["species:context"], SPECIES_VARIANTS)},
     # No city filter and no tree concept: answered from the species dimension alone.
     "ALL species:context": "neither",
-    # #827 Y3 `plant_year::int::year`: the year summary joined back to the tree rows (see WRONG_ANSWERS).
+    # #827 Y3 `plant_year::int::year`: re-derived from plant_date, so the year summary cannot serve it.
     **{
-        key: "mixed"
+        key: "trees"
         for key in keyed("USBOS", ["species:sp-age-distribution"], SPECIES_VARIANTS)
     },
-    "ALL species:sp-age-distribution": "mixed",
+    "ALL species:sp-age-distribution": "trees",
 }
 
-AGE_FAN_OUT = (
-    "unfiled: sp-age-distribution joins tree_rollup_year back to the tree rows on (city, species, plant_year) "
-    "and re-sums it per tree, so a bucket of n trees counts n*n"
-)
 NULL_CELL = (
     "unfiled: tree_rollup_source binds map_cell_* / map_coarse_cell_* without `?`, so the summary plan drops "
     "`WHERE map_cell_latitude IS NOT NULL` and returns the unpositioned trees as a NULL cell; the tree plan keeps it"
 )
 
 WRONG_ANSWERS: dict[str, str] = {
-    **{
-        key: AGE_FAN_OUT
-        for key in keyed(
-            "USBOS",
-            ["species:sp-age-distribution"],
-            ["", " [cross:native_locality_bucket]", " [species]"],
-        )
-    },
-    "ALL species:sp-age-distribution": AGE_FAN_OUT,
     **{
         key: NULL_CELL
         for key in keyed(
