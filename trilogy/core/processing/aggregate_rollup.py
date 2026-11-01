@@ -7,6 +7,7 @@ from trilogy.core.models.build import (
     BuildAggregateWrapper,
     BuildConcept,
     BuildDatasource,
+    BuildFilterItem,
     BuildFunction,
     BuildGrain,
     BuildUnionDatasource,
@@ -76,8 +77,9 @@ def _safe_dropped_grain(
     seen: frozenset[str] = frozenset(),
 ) -> bool:
     """`dropped` is a function of the aggregated row, so each row sits in one
-    group of it: a row key, a property of row keys, or a property of such
-    properties (`tree_form` of `species` of `tree_id`)."""
+    group of it: a row key, a property of row keys, a property of such
+    properties (`tree_form` of `species` of `tree_id`), or a scalar of such
+    functions (`split(species, ' ')[1]`)."""
     if dropped.granularity == Granularity.SINGLE_ROW:
         return True
     if dropped.address in base_keys:
@@ -86,6 +88,20 @@ def _safe_dropped_grain(
         return True
     if _datasource_proves_functional_dependency(dropped, base_keys, datasources):
         return True
+    if dropped.derivation == Derivation.BASIC and dropped.lineage is not None:
+        seen = seen | {dropped.address}
+        arguments = dropped.lineage.concept_arguments
+        return bool(arguments) and all(
+            argument.address not in seen
+            and _safe_dropped_grain(
+                concepts_by_address.get(argument.address, argument),
+                base_keys,
+                datasources,
+                concepts_by_address,
+                seen,
+            )
+            for argument in arguments
+        )
     if dropped.purpose != Purpose.PROPERTY or not dropped.keys:
         return False
     seen = seen | {dropped.address}
@@ -634,3 +650,85 @@ def reaggregate_partials(
             fine = min(candidates, key=lambda c: (len(c.grain.components), c.address))
             rewritten[coarse.address] = _reaggregated(coarse, fine)
     return rewritten
+
+
+def _distinct_count_key(concept: BuildConcept) -> BuildConcept | None:
+    """The key a `count_distinct(k)` counts, `k ? c` included."""
+    if not isinstance(concept.lineage, BuildAggregateWrapper):
+        return None
+    function = concept.lineage.function
+    if function.operator != FunctionType.COUNT_DISTINCT:
+        return None
+    arguments = function.concept_arguments
+    if len(arguments) != 1:
+        return None
+    key = arguments[0]
+    if isinstance(key.lineage, BuildFilterItem) and isinstance(
+        key.lineage.content, BuildConcept
+    ):
+        key = key.lineage.content
+    return key if key.purpose == Purpose.KEY else None
+
+
+def distinct_key_counts(
+    demanded: Iterable[BuildConcept],
+    conditions: BuildWhereClause | None,
+    concepts_by_address: Mapping[str, BuildConcept],
+    datasources: Iterable[BuildDatasource],
+) -> dict[str, BuildConcept]:
+    """Each demanded `count_distinct(k)` a summary storing `count(k)` can
+    answer, re-expressed as `count(k)` (`Cover.count_distinct_of_key_exact`):
+    on rows where every grouping and WHERE column is a function of the key,
+    each value of `k` is one row. An unnested or other fanned-out column
+    repeats the key, so it keeps its distinct count."""
+    datasource_list = list(datasources)
+    stored = {
+        c.rollup_signature
+        for ds in datasource_list
+        for c in ds.output_concepts
+        if c.rollup_signature is not None
+    }
+    row_columns = [
+        c for c in (conditions.row_arguments if conditions else [])
+        if c.granularity != Granularity.SINGLE_ROW
+    ]
+    rewritten: dict[str, BuildConcept] = {}
+    for concept in _distinct_counts(demanded, concepts_by_address):
+        key = _distinct_count_key(concept)
+        if key is None or (FunctionType.COUNT, (key.canonical_address,)) not in stored:
+            continue
+        assert isinstance(concept.lineage, BuildAggregateWrapper)
+        grouping = [
+            concepts_by_address.get(address)
+            for address in _grain_identity(concept.grain)
+        ]
+        if not all(
+            column is not None
+            and _safe_dropped_grain(
+                column, {key.address}, datasource_list, concepts_by_address
+            )
+            for column in [*grouping, *row_columns]
+        ):
+            continue
+        count = replace(concept.lineage.function, operator=FunctionType.COUNT)
+        rewritten[concept.address] = replace(
+            concept, lineage=replace(concept.lineage, function=count)
+        )
+    return rewritten
+
+
+def _distinct_counts(
+    concepts: Iterable[BuildConcept], concepts_by_address: Mapping[str, BuildConcept]
+) -> list[BuildConcept]:
+    found: dict[str, BuildConcept] = {}
+    stack = list(concepts)
+    while stack:
+        concept = concepts_by_address.get(stack.pop().address)
+        if concept is None or concept.address in found:
+            continue
+        found[concept.address] = concept
+        if concept.lineage is not None and not isinstance(
+            concept.lineage, BuildFilterItem
+        ):
+            stack.extend(concept.lineage.concept_arguments)
+    return [c for c in found.values() if _distinct_count_key(c) is not None]

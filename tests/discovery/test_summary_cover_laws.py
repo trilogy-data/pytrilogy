@@ -146,6 +146,7 @@ UNSERVABLE = {
     "finer_condition": "species, count(tree_id ? dbh > 10) as n",
     "finer_target": "dbh, count(tree_id) as n",
     "distinct_non_key": "count_distinct(dbh) as n",
+    "distinct_fanned": "ecoregion_id, count_distinct(tree_id) as n",
     "finer_existence": "dbh",
 }
 
