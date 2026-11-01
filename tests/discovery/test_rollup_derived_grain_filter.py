@@ -1,10 +1,17 @@
 """A filter on a summary's derived grain column (`cell_lat <- round(latitude, 2)`)
 is a predicate on the stored column: it must not pull the column's lineage roots
-into the search, which joins the tree rows back and fans the count out (#829)."""
+into the search, which joins the tree rows back and fans the count out (#829).
+Should a plan still join the summary to the finer rows, the rows are grouped to
+the shared columns first, so the re-sum counts each summary row once."""
 
 import pytest
 
 from trilogy import Dialects
+from trilogy.core.enums import Derivation
+from trilogy.core.models.build import BuildConcept
+from trilogy.core.processing.v4_helper import source_planning
+from trilogy.core.processing.v4_helper.condition_injection import condition_row_args
+from trilogy.core.processing.v4_helper.source_planning import SourceRequest
 
 TREES = """
 select 1 as tree_id, 'A' as city, 'Acer rubrum' as species, 37.771 as latitude
@@ -71,3 +78,31 @@ def test_derived_grain_filter_reads_summary(name: str) -> None:
     assert rows == expected, sql
     if summary_only:
         assert "trees_all" not in sql and "trees_a" not in sql, sql
+
+
+def _every_derived_arg_root(request: SourceRequest) -> list[BuildConcept]:
+    return [
+        source
+        for concept in condition_row_args(request.conditions)
+        if concept.lineage is not None
+        for source in concept.sources
+        if source.derivation == Derivation.ROOT
+    ]
+
+
+@pytest.mark.parametrize("name", ["not_null", "city_not_null"])
+def test_summary_joined_to_finer_rows_does_not_fan_out(
+    name: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        source_planning, "_condition_arg_lineage_roots", _every_derived_arg_root
+    )
+    query, expected, _ = CASES[name]
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.parse_text(MODEL)
+    sql = executor.generate_sql(query)[-1]
+    rows = [
+        tuple(float(v) if not isinstance(v, int) else v for v in row)
+        for row in executor.execute_raw_sql(sql).fetchall()
+    ]
+    assert rows == expected, sql
