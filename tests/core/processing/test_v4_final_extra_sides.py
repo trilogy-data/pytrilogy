@@ -8,10 +8,17 @@ from trilogy.core import graph as nx
 from trilogy.core.enums import AggregateGroupingMode, ComparisonOperator, Derivation
 from trilogy.core.exceptions import UnbuiltGroupException
 from trilogy.core.models.build import BuildComparison, BuildWhereClause
+from trilogy.core.processing.nodes import GroupNode
+from trilogy.core.processing.nodes.select_node_v2 import SelectNode
 from trilogy.core.processing.v4_helper.constants import FINAL_NODE_ID
-from trilogy.core.processing.v4_helper.models import DepthLabel, GroupAttrs
+from trilogy.core.processing.v4_helper.models import (
+    DepthLabel,
+    FinalAssemblyContract,
+    GroupAttrs,
+)
 from trilogy.core.processing.v4_helper.strategy_builder import (
     _bridge_candidates,
+    _final_dedup,
     _final_extra_sides,
     _FinalCover,
     _FinalExtras,
@@ -239,3 +246,34 @@ def test_row_condition_applies_before_an_aggregate_whose_input_rows_hold_it(
         )
     )
     assert _row_condition_before_aggregate(graph, attrs, "agg", where, env) is applied
+
+
+@pytest.mark.parametrize(
+    "dedup,node_type,held",
+    [
+        (True, GroupNode, {"local.raw_species"}),
+        (False, SelectNode, {"local.tree_id", "local.raw_species"}),
+    ],
+)
+def test_final_dedup_holds_only_what_its_projection_keeps(
+    dedup: bool, node_type: type, held: set[str]
+):
+    env = Environment().parse(MODEL)[0].materialize_for_select()
+    species = env.concepts["local.raw_species"]
+    columns = [env.concepts["local.tree_id"], species]
+    scan = SelectNode(
+        input_concepts=columns,
+        output_concepts=columns,
+        environment=env,
+        datasource=env.datasources["trees"],
+    )
+    contract = FinalAssemblyContract(
+        output_addresses=frozenset({species.address}), deduplicate_to_grain=dedup
+    )
+
+    node, holds = _final_dedup(
+        scan, frozenset(c.address for c in columns), [species], contract, env
+    )
+
+    assert type(node) is node_type
+    assert holds == held
