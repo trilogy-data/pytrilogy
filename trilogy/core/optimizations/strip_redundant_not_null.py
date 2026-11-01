@@ -117,42 +117,52 @@ def _read_off_rejected_side(
     return len(sources) == 1 and (sources[0], address) in rejected
 
 
+class _NotNullFacts:
+    """What `cte` guarantees non-null, read once for all its atoms."""
+
+    def __init__(self, cte: CTE) -> None:
+        self.cte = cte
+        self.nullable = _nullable_before_own_filter(cte)
+        self.output = equivalent_addresses(cte.output_columns)
+        self.rejected = _inner_join_rejected(cte)
+
+    def redundant(self, atom: object) -> str | None:
+        """Why `atom` is a tautological `X IS NOT NULL` in the CTE, if it is."""
+        concept = _not_null_concept(atom)
+        if concept is None or not is_scalar_condition(atom):
+            return None
+        if _read_off_rejected_side(self.cte, concept.address, self.rejected):
+            return f"{concept.address} IS NOT NULL is an INNER key"
+        if (
+            concept.derivation == Derivation.ROOT
+            and not concept.equivalent_addresses.isdisjoint(self.output)
+            and concept.equivalent_addresses.isdisjoint(self.nullable)
+        ):
+            return f"dropping tautological {concept.address} IS NOT NULL"
+        return None
+
+
+def redundant_not_null(cte: CTE, atom: object) -> bool:
+    """Whether `atom` would be stripped from `cte`'s WHERE: a rule adding it
+    there would only be undone."""
+    return _NotNullFacts(cte).redundant(atom) is not None
+
+
 class StripRedundantNotNull(OptimizationRule):
     def optimize(
         self, cte: CTE | UnionCTE, inverse_map: dict[str, list[CTE | UnionCTE]]
     ) -> tuple[bool, MergedCTEMap | None]:
         if not isinstance(cte, CTE) or cte.condition is None:
             return False, None
-        nullable = _nullable_before_own_filter(cte)
-        output = equivalent_addresses(cte.output_columns)
-        atoms = _and_atoms(cte.condition)
+        facts = _NotNullFacts(cte)
         survivors: list = []
-        dropped = False
-        rejected = _inner_join_rejected(cte)
-        for atom in atoms:
-            concept = _not_null_concept(atom)
-            if (
-                concept is not None
-                and is_scalar_condition(atom)
-                and _read_off_rejected_side(cte, concept.address, rejected)
-            ):
-                dropped = True
-                self.log(f"{cte.name}: {concept.address} IS NOT NULL is an INNER key")
-                continue
-            if (
-                concept is not None
-                and concept.derivation == Derivation.ROOT
-                and is_scalar_condition(atom)
-                and not concept.equivalent_addresses.isdisjoint(output)
-                and concept.equivalent_addresses.isdisjoint(nullable)
-            ):
-                dropped = True
-                self.log(
-                    f"{cte.name}: dropping tautological {concept.address} IS NOT NULL"
-                )
-                continue
-            survivors.append(atom)
-        if not dropped:
+        for atom in _and_atoms(cte.condition):
+            reason = facts.redundant(atom)
+            if reason is None:
+                survivors.append(atom)
+            else:
+                self.log(f"{cte.name}: {reason}")
+        if len(survivors) == len(_and_atoms(cte.condition)):
             return False, None
         cte.condition = combine_condition_atoms(survivors)
         return True, None
