@@ -39,6 +39,7 @@ a design decision or a bug.
 | `NullReject.lean` | the null-rejection walk, membership, outer-join upgrade, nullability inference | a proved column is non-null on every kept row, a proof on a column read off the padded side turns a left join inner, a derived column is judged by its lineage, strict and total functions (checked by `tests/optimization/test_null_rejection_laws.py` and `tests/core/test_null_function_conformance.py`) |
 | `Validate.lean` | datasource validation: nullability, declared ranges, grain, complete bindings, `unique` properties, `complete where` containment | each check fails exactly when the claim the planner trusts fails, under Kleene WHERE and GROUP BY's NULL grouping (checked by `tests/core/validation/test_validation_laws.py` and `tests/core/validation/test_type_conformance.py`) |
 | `Fixpoint.lean` | the optimizer driver's repeat-until-quiet passes; the WHERE-atom contract between fact removers (`StripRedundantNotNull`) and every other phase | under the contract a fact remover never changes the plan after its first run, so it cannot take part in a cycle; pushdown before its gate broke the contract and cycled (checked on every phase of every planned query in the test suite: `atom_contract.contract_violations`, and by `tests/optimization/test_fixpoint_contract_laws.py`) |
+| `Rewrite.lean` | optimizer rules as rewrites of joined rows: the NOT NULL strip, outer-join upgrades, predicate pushdown and its removal; a value a partial scan computes; a WHERE over an aggregate decided through a join; the per-query `~` heal; a filtered value at its keys' grain; a HAVING alias | each rule keeps the rows under the guard it checks (`strip_sound`, `full_to_left`, `left_to_inner`, `or_forces_side`, `push_inner`, `push_preserved`, `push_padded`, `remove_inner`, `push_group_key`, `push_window_partition`), with a counterexample per guard; a strict value pads as computed (`pad_strict`), a null-sensitive one does not; an atom false on an empty group is decided by the groups it kept (`kept_exact`), `count = 0` is not (checked by `tests/optimization/test_rule_soundness_laws.py` against a pre-joined twin and with each rule disabled, and `tests/dialect/test_having_alias_shadowing.py`) |
 | `Unnest.lean` | filtering rows by the elements of an unnested list: the padded expansion, the kept rows, aggregates over them, how the elements pair with the rows they expand | a WHERE on an element keeps a row iff a padded element passes, a disjunct over the row alone keeps it whatever its list holds, an aggregate reads each kept row once, a filter keeps a sub-multiset of the expansion, pairing on the grouping key or on nothing overcounts, the key an element is merged into pads a member no list names (checked by `tests/unnest/test_unnest_filter_laws.py`) |
 | `Binding.lean` | datasource bindings as functional dependencies: row determinants, the closure over every table's bindings, `row_keys`, the cross-table binding check | a table unique on its grain satisfies its own bindings, the closure is sound when every binding holds, one table's binding can break on another's rows, stacked arms are unique on grain plus discriminator and not on grain alone, a grainless table determines nothing (checked by `tests/core/test_binding_fd_laws.py` and `tests/core/validation/test_validation_laws.py`) |
 
@@ -520,6 +521,48 @@ a design decision or a bug.
   `select event_id, region_id` cross-joined every event with every region.
   The `merged_axis_pin` family adds an aggregate over the merged key and an
   OR beside it; the full fuzzer passes 3,132 of 3,132.
+
+- **Plans that one optimizer rule happened to repair, and padded plans that
+  dropped or invented rows** (`Rewrite.lean`, 0.3.439). Disabling each rule
+  over the fuzzer corpus (1,305 cases, 2,140 firings) changed no rows, but
+  the TPC-DS corpus and a padded model checked against a pre-joined twin
+  found eleven bugs, most on main and several masked by the rule that ran:
+  - A null-sensitive value computed in a `~` scan padded to NULL
+    (`pad_null_sensitive`): `where returned = false` (`returned <- rqty is
+    not null`) lost every order with no return over a query or file table,
+    while `select order_id, returned` said `false`. Inlining hid it over a
+    plain table. `in`/`not in` count as null-sensitive (membership is total).
+  - `having c > 3` beside a FROM column `c` filtered on the column and
+    returned nothing (`alias_shadowed`); the alias is kept only over CTEs.
+  - The FINAL WHERE read a filter-only argument its deduplicated contributor
+    had projected away; pushdown moved the atom and hid it.
+  - A filtered value computed per row upstream and grouped at its key's grain
+    split a key into two groups (`grouped_filter_fans_out`): q97 with
+    `merge_aggregate` off returned (54151, 28207) against the reference's
+    (54150, 28203).
+  - `where count(order_id) by cust_id = 0 select reason, ...` returned every
+    row: the atom was a HAVING on the aggregate and the rows joined it
+    preserving (`absent_accepting_keeps_rejected`). An atom true on an empty
+    group is now restated at FINAL.
+  - A gated dimension peel lost its join key (hidden by the gate, or never
+    scanned), so `where count(...) by cust_id > 1 select amount, name` failed
+    to plan.
+  - A WHERE on an order column dropped the `~` on a notes table for the query,
+    losing customers with no note (`fk_anchor_keeps_padded`): an order
+    carrying the customer is an anchor, and a value it reaches through another
+    `~` table keeps its row.
+  - In an extent-free group a `~` lookup keyed by the span (notes beside
+    customers) joined INNER and lost the customer's region; a `~` side whose
+    WHERE rejects only on the shared key is not the WHERE's population; a
+    merge preserving a complete binder of an extent-free span is not partial
+    on it.
+  - `CollapseSingleParent` folded a CTE into a table its consumer had already
+    inlined, so one name meant two sources: a binder error here, and a silent
+    wrong column where the names overlap.
+  Open: a row-level FINAL filter argument (`where rqty > 1 or sum(amount) by
+  cust_id > 8 select name`) still joins as a bare value set, ON 1=1 (strict
+  xfail in the suite). Not a bug: `query-3`'s narrowed `subset join` over
+  data that breaks the declaration.
 
 ## Limits
 

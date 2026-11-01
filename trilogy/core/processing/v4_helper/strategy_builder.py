@@ -2672,9 +2672,26 @@ def _carry_planned_keys(
         gid = _origin_group(parent, origin)
         if gid is None or not (keys := plan.keys_for(gid)):
             continue
-        _carry_join_keys(
-            [parent], _join_key_concepts(parents, environment, set(keys)), environment
-        )
+        concepts = _join_key_concepts(parents, environment, set(keys))
+        # a gate that hid the key it was joined on still holds the column
+        hidden = [
+            c
+            for c in parent.output_concepts
+            if c.address in keys and c.address in parent.hidden_concepts
+        ]
+        if hidden:
+            parent.unhide_output_concepts(hidden)
+        _carry_join_keys([parent], concepts, environment)
+        # a merge whose scans were built without a stored key reads it off the
+        # scan; a derived key re-derived below would mean another relation's
+        held = {o.address for o in parent.output_concepts}
+        for concept in concepts:
+            if (
+                concept.address not in held
+                and concept.derivation == Derivation.ROOT
+                and not parent.force_group
+            ):
+                _widen_scan_chain(parent, concept)
     mates = _unprojected_expression_mates(parents, environment)
     if mates:
         _carry_join_keys(
@@ -5825,9 +5842,10 @@ def _assemble_final_node(
     # uses).
     final_needed = set(mandatory_addresses) | set(final_merge_grain)
     parents = _fold_constant_parents(parents, final_needed)
+    # the FINAL WHERE reads its filter-only args off these parents
     parents = _satisfy_parent_projection_contract(
         parents,
-        final_needed,
+        final_needed | filter_only_addrs,
         final_merge_grain,
         environment,
     )

@@ -15,8 +15,9 @@ implication, dominance ranking), `Stack.lean` (stacking a partition
 family: value-set arms, arms the grain does not determine), #821, which
 made datasource bindings functional-dependency facts in place of FK-derived
 keys, `Binding.lean`, which models those facts (area 0 below records what
-is left of it), and `Unnest.lean`, filtering rows by the elements of an
-unnested list (area 0b).
+is left of it), `Unnest.lean`, filtering rows by the elements of an
+unnested list (area 0b), and `Rewrite.lean`, optimizer rules as rewrites
+that keep rows (area 2).
 
 ## The recipe
 
@@ -80,14 +81,36 @@ unnested list (area 0b).
      wrong row persists: #838's `~group_id` cross join came down to one extra
      table.
 
+8. **Lessons from `Rewrite.lean` (area 2).**
+   - Disable each optimizer rule and compare rows, and also compare against
+     an oracle. Rule-off and rule-on agree on any bug they share, and most
+     of this round's bugs were in the plan the rules received: a rule
+     (inlining, collapse, pushdown) happened to repair it. Ablating every
+     toggle over the fuzzer changed nothing; a padded model checked against
+     the same model over one pre-joined table found eleven bugs.
+   - Query-addressed tables are never inlined. The fuzzer's datasources are
+     all query-addressed, so it never exercises `datasource_inlining`, and
+     plain-table tests miss what inlining hides. Run both addressings
+     (`SPLIT` / `SPLIT_QUERY` in the rule suite).
+   - The TPC-DS corpus at sf=0.1 ablates in ~20 minutes; it found q97's
+     fan-out. A size-budget failure after a fix is worth reading, not
+     rebaselining: two of this round's overruns were a heal the fix had
+     stopped making by mistake.
+
 ## Candidate areas
 
-**Suggested next: area 2, optimizer rule soundness.** `Fixpoint.lean` (#833)
-proved the optimizer *terminates* under its WHERE-atom contract; nothing yet
-proves a rule *preserves rows*. Start with `strip_redundant_not_null.py` and
-`join_upgrade.py`, whose guards `NullReject.lean` already models, then move to
-`predicate_pushdown.py`, the riskiest. The leads in areas 0, 0b, 1 and 1b are
-smaller and suit a short round.
+**Suggested next: the open row-argument cross join (area 2), then area 1.**
+`tests/optimization/test_rule_soundness_laws.py::test_open_row_arg_cross_join`
+is a strict xfail, wrong on main too: `where (rqty > 1) or (sum(amount) by
+cust_id > 8) select name` (a row-level argument of an atom placed at FINAL,
+beside a dimension peel) joins the argument's producer as a bare value set,
+ON 1=1. `_final_extra_sides` / `_filter_arg_parents` treat a filter-argument
+producer as a cross-join input (right for a global aggregate), and
+`plan_final_join` asks extras to carry no key. A ROOT producer of a
+row-level argument needs re-sourcing with the key its row determines, as
+`_resourced_root_contributor` does for a ROOT contributor. The sole-contributor
+path (`_apply_final_conditions`) is where this query lands. Delta-reduced
+shapes are in the xfail's `OPEN` list.
 
 ### 0. Binding FDs (done in `Binding.lean`; leads left)
 
@@ -202,45 +225,41 @@ dominates. Open leads:
 - Not a bug: a summary binding `city: ~city` claims absent cities have no
   rows (padding), so it rolls up as complete and absent cities count 0.
 
-### 2. Optimizer rule soundness
+### 2. Optimizer rule soundness (done in `Rewrite.lean`; leads left)
 
-**Already done: termination (`Fixpoint.lean`, #833).** The driver reruns its
-phases until a pass changes nothing. `atom_contract.py` registers *removers*
-(phases that drop WHERE atoms) with the predicate they drop by; adders gate on
-`removable`, and under `enforce_fixpoint_contract` (on in the test suite and
-the fuzzer) the driver raises when a phase adds an atom a fact remover would
-drop, or hits its pass cap. `Fixpoint.strip_never_cycles` proves a fact
-remover never re-fires under the contract. Its own limits, worth extending:
-`PredicatePushdownRemove` judges atoms by *other* atoms and is gated but
-outside the model, and merges (`CollapseSingleParent`) are exempt as finite.
-Termination says nothing about rows: a rule can converge and still drop or
-duplicate them.
-
-Each rule in `trilogy/core/optimizations/` rewrites CTEs and must preserve rows.
-A natural Lean shape is a rule as a function on a small plan AST, with the
-theorem `eval (rule p) = eval p` under the rule's guard, plus a counterexample
-showing the guard is necessary. Good first targets, roughly in order of how
-self-contained they are:
-- `strip_redundant_not_null.py`: dropping `x is not null` is sound only when
-  the column is proved non-null. `NullReject.lean` already has the proof
-  machinery, and the rule's predicate is now the registered fact remover in
-  `atom_contract.py`, so the soundness theorem and `Fixpoint`'s `R` are the
-  same predicate. Prove `R a -> eval (strip p) = eval p`.
-- `join_upgrade.py` and `value_set_join_upgrade.py`: outer to inner. Compare
-  `NullReject.proofs_sound`.
-- `merge_irrelevant_group_by.py` and `identity_group.py`: a GROUP BY is a no-op
-  when its keys are a key of the input (`Rows.lean` has `distinct = group`).
-- `predicate_pushdown.py`: pushing past a NULL-extending join or an aggregate.
-  The guards include `_predicate_safe_past_null_extension`. This one is
-  historically the riskiest, and #833 rewrote it substantially (gating on
-  `removable`), so re-probe it rather than trusting older notes.
-- `existence_having_fold.py` and `semi_join_pushdown.py`.
-
-Test each rule by running a query with the rule disabled and enabled and
-comparing rows: a twin-run harness like the fuzzer's `law` family
-(`local_scripts/fuzzer/laws.py`). Per the standing rules, count corpus firings
-of any guard you change, and run `python -m local_scripts.fuzzer` for planner
-or optimizer changes.
+`Rewrite.lean` proves the NOT NULL strip, outer-join upgrades (FULL to LEFT,
+LEFT to INNER, the OR rule) and pushdown (into an INNER side, a preserved
+side, a padded side under a null-rejecting atom, past GROUP BY keys and a
+window's partition, never past a LIMIT) keep the rows, with a counterexample
+per guard. `tests/optimization/test_rule_soundness_laws.py` holds the real
+planner to a pre-joined twin over table and query addresses, disables each
+rule over the same queries, and checks `redundant_not_null`'s premise
+directly: every column it would strip is never NULL in its CTE before the
+WHERE. "What it found" in `formal/README.md` lists the eleven fixes. Leads:
+- **The row-argument cross join** above (suggested next).
+- **Both FLAT-model planning failures in the 800-query sweep** (wrong on
+  main too): `where ((count(order_id) by cust_id = 0) and (reason is not
+  null)) and (sum(amount) by cust_id > 8) select note` over one pre-joined
+  table fails with the keyless-join guard. Two cust-level aggregates beside
+  a row atom, selecting only a cust attribute.
+- **q83 with its heal blocked returned no rows.** A broken intermediate of
+  this round stopped `decide_heal` for query83's returns, and the unhealed
+  plan returned nothing against the reference's rows. The heal is back, so it
+  is unreachable today, but the unhealed path has a wrong answer in it:
+  force `decide_heal` to return `{}` and compare q83 with `query83.sql`.
+- **Not modelled yet:** `merge_irrelevant_group_by` / `identity_group`
+  (GROUP BY a key of the input, `Rows.distinct_eq_group`),
+  `value_set_join_upgrade`, `existence_having_fold`, `semi_join_pushdown`.
+  Disabling them over the corpus changed no rows; a model and a law suite
+  would make that a proof.
+- `PredicatePushdownRemove`'s whole-condition path (every parent covers the
+  WHERE) does not check `_parent_nullable_in_cte`, which the per-atom path
+  does. No shape reaching it was found (it needs a column read only off a
+  padded parent that another parent also filters); `Rewrite.remove_past_padding`
+  says what goes wrong if one does.
+- Not a bug: TPC-DS `query-3`'s `subset join wr_grouped.wr_wp_id =
+  ws_grouped.ws_wp_id` over returns listing web pages no sale has; key-set
+  equivalence narrows on the declaration, by design.
 
 ### 3. Leftover function leads (verified on main after #802)
 

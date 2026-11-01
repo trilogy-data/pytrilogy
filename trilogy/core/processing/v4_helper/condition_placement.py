@@ -10,7 +10,7 @@ from enum import Enum
 
 from trilogy.core import graph as nx
 from trilogy.core.constants import ALL_ROWS_ADDRESS
-from trilogy.core.enums import Derivation
+from trilogy.core.enums import ComparisonOperator, Derivation
 from trilogy.core.exceptions import (
     DisconnectedConceptsException,
     UnresolvableQueryException,
@@ -18,7 +18,9 @@ from trilogy.core.exceptions import (
 from trilogy.core.models.build import (
     BoolExpr,
     BuildAggregateWrapper,
+    BuildComparison,
     BuildConcept,
+    BuildConceptArgs,
     BuildRowsetItem,
     BuildWhereClause,
 )
@@ -26,6 +28,7 @@ from trilogy.core.models.build_environment import BuildEnvironment
 from trilogy.core.models.keyspace import Keyspace
 from trilogy.core.processing.condition_utility import (
     decompose_condition,
+    gather_non_null_proofs,
 )
 from trilogy.core.processing.discovery_utility import (
     _output_is_rootless,
@@ -491,6 +494,7 @@ def _uncovered_exposing_output_contributor(
     group_graph: nx.DiGraph,
     mandatory_addrs: set[str],
     environment: BuildEnvironment,
+    accepts_absent: bool = False,
 ) -> bool:
     """Whether some select-phase group producing a mandatory output sits outside
     the chosen hosts' downstream cover AND can expose every atom input, i.e. an
@@ -567,14 +571,53 @@ def _uncovered_exposing_output_contributor(
                 build_fd_determines_all(environment, host.grain_components, own_outputs)
                 for host in collapsing_hosts
             )
-            and row_inputs <= final_exposable
-            and not all(
-                _decided_per_group(row_inputs, host, buckets)
-                for host in collapsing_hosts
+            and (
+                accepts_absent
+                or (
+                    row_inputs <= final_exposable
+                    and not all(
+                        _decided_per_group(row_inputs, host, buckets)
+                        for host in collapsing_hosts
+                    )
+                )
             )
         ):
             return True
     return False
+
+
+_ABSENT_COMPARISONS = (
+    (ComparisonOperator.EQ, lambda a, b: a == b),
+    (ComparisonOperator.NE, lambda a, b: a != b),
+    (ComparisonOperator.GT, lambda a, b: a > b),
+    (ComparisonOperator.LT, lambda a, b: a < b),
+    (ComparisonOperator.GTE, lambda a, b: a >= b),
+    (ComparisonOperator.LTE, lambda a, b: a <= b),
+)
+
+
+def holds_on_absent_group(atom: BoolExpr) -> bool:
+    """Whether `atom` can hold for a key no group of the aggregate it reads
+    formed: a COUNT reads 0 there, any other aggregate NULL. Joining the rows to
+    the groups the atom kept cannot decide such an atom, since a key it
+    rejected looks the same there as a key with no rows."""
+    if not isinstance(atom, BuildConceptArgs):
+        return False
+    aggregates = [c for c in atom.row_arguments if c.is_aggregate]
+    if not aggregates:
+        return False
+    if (
+        isinstance(atom, BuildComparison)
+        and isinstance(atom.left, BuildConcept)
+        and atom.left.zero_on_empty
+        and isinstance(atom.right, (int, float))
+        and not isinstance(atom.right, bool)
+    ):
+        for operator, test in _ABSENT_COMPARISONS:
+            if atom.operator == operator:
+                return bool(test(0, atom.right))
+    proofs = gather_non_null_proofs(atom)
+    return not any(c.address in proofs and not c.zero_on_empty for c in aggregates)
 
 
 def _decided_per_group(
@@ -1616,6 +1659,7 @@ def _place_atom(atom: BoolExpr, scope: _PlacementScope) -> list[ConditionPlaceme
             group_graph,
             {c.address for c in mandatory_list},
             environment,
+            accepts_absent=holds_on_absent_group(atom),
         )
     ):
         out.append(

@@ -1,0 +1,334 @@
+"""Optimizer rule soundness (formal/Trilogy/Rewrite.lean), checked on random queries.
+
+The model reads customers, orders, a `~` returns table and a `~` notes table, so
+plans carry outer joins, padded columns, null-sensitive derivations and the
+WHEREs the rules rewrite. Each case requires:
+
+- every rule keeps the rows: the query with one rule disabled returns what it
+  returns with every rule on (`strip_sound`, `left_to_inner`, `full_to_left`,
+  `push_inner`, `push_padded`, `push_group_key`, ...)
+- the padded model answers as the same model over one pre-joined table, whether
+  its tables are inlinable (`address`) or not (`query`): a scan never hands a
+  padded row the NULL of a value the join computes (`pad_null_sensitive`)
+- `redundant_not_null` drops an atom only from a CTE whose rows hold no NULL
+  in its column before the WHERE runs (`strip_sound`'s premise)
+"""
+
+import random
+import re
+from collections.abc import Iterator
+from contextlib import contextmanager
+
+import pytest
+
+from trilogy import Dialects, Environment
+from trilogy.constants import CONFIG
+from trilogy.core.models.execute import CTE
+from trilogy.core.optimizations.atom_contract import and_atoms
+from trilogy.core.optimizations.strip_redundant_not_null import redundant_not_null
+from trilogy.core.processing.condition_utility import _not_null_concept
+from trilogy.core.query_processor import process_query
+from trilogy.core.statements.execute import ProcessedQuery
+
+TABLES = """
+CREATE TABLE customers AS SELECT * FROM (VALUES
+ (1, 'ann', 'n'), (2, NULL, 's'), (3, 'cat', NULL), (4, 'dan', 'n')) t(c, name, region);
+CREATE TABLE orders AS SELECT * FROM (VALUES
+ (10, 1, 5), (11, 1, NULL), (12, 2, 7), (13, 3, 1), (14, 4, 2), (15, 4, 3)) t(o, c, amt);
+CREATE TABLE returns AS SELECT * FROM (VALUES
+ (10, 'dmg', 1), (12, NULL, 2), (13, 'late', NULL)) t(o, reason, qty);
+CREATE TABLE notes AS SELECT * FROM (VALUES (1, 'vip'), (3, NULL), (4, 'x')) t(c, note);
+CREATE TABLE flat AS
+SELECT o.o, o.c, o.amt, c.name, c.region, r.reason, r.qty, n.note
+FROM orders o JOIN customers c ON o.c = c.c
+LEFT JOIN returns r ON o.o = r.o LEFT JOIN notes n ON o.c = n.c;
+"""
+
+HEAD = """
+key cust_id int;
+key order_id int;
+property cust_id.name string?;
+property cust_id.region string?;
+property cust_id.note string?;
+property order_id.amount int?;
+property order_id.reason string?;
+property order_id.rqty int?;
+auto returned <- rqty is not null;
+auto label <- coalesce(reason, 'none');
+auto small <- rqty not in (2, 9);
+auto bucket <- case when rqty > 1 then 'big' else 'small' end;
+"""
+
+SPLIT = HEAD + """
+datasource customers (c: cust_id, name: name, region: region)
+grain (cust_id) address customers;
+datasource orders (o: order_id, c: cust_id, amt: amount)
+grain (order_id) address orders;
+datasource returns (o: ~order_id, reason: reason, qty: rqty)
+grain (order_id) address returns;
+datasource notes (c: ~cust_id, note: note)
+grain (cust_id) address notes;
+"""
+
+# a query address is never inlined, so its scan computes what it is asked for
+SPLIT_QUERY = re.sub(
+    r"address (\w+);", lambda m: f"query '''select * from {m.group(1)}''';", SPLIT
+)
+
+FLAT = HEAD + """
+datasource flat (o: order_id, c: cust_id, amt: amount, name: name, region: region,
+    reason: reason, qty: rqty, note: note)
+grain (order_id) address flat;
+"""
+
+COLS = ["cust_id", "order_id", "name", "region", "note", "amount", "reason", "rqty"]
+INTS = ["cust_id", "order_id", "amount", "rqty"]
+STRS = ["name", "region", "note", "reason", "label", "bucket"]
+FLAGS = ["returned", "small"]
+
+RULES = [
+    "strip_redundant_not_null",
+    "upgrade_condition_joins",
+    "upgrade_outer_key_set_equivalence",
+    "predicate_pushdown",
+    "datasource_inlining",
+    "merge_aggregate",
+]
+
+
+def _atom(rng: random.Random) -> str:
+    choices = [
+        lambda: f"{rng.choice(COLS)} is not null",
+        lambda: f"{rng.choice(COLS)} is not null",
+        lambda: f"{rng.choice(COLS + FLAGS)} is null",
+        lambda: f"{rng.choice(INTS)} > {rng.randint(0, 11)}",
+        lambda: f"{rng.choice(INTS)} != {rng.randint(0, 11)}",
+        lambda: (
+            f"{rng.choice(STRS)} = "
+            f"'{rng.choice(['ann', 'n', 'dmg', 'none', 'vip', 'big', 'small'])}'"
+        ),
+        lambda: f"coalesce({rng.choice(INTS)}, 0) = 0",
+        lambda: f"{rng.choice(FLAGS)} = {rng.choice(['true', 'false'])}",
+        lambda: f"count(order_id) by cust_id {rng.choice(['>', '='])} {rng.randint(0, 2)}",
+        lambda: f"sum(amount) by cust_id > {rng.randint(0, 8)}",
+        lambda: f"{rng.choice(INTS)} in ({rng.randint(0, 12)}, {rng.randint(0, 12)})",
+    ]
+    return rng.choice(choices)()
+
+
+def _condition(rng: random.Random, depth: int) -> str:
+    roll = rng.random()
+    if depth <= 0 or roll < 0.45:
+        return _atom(rng)
+    if roll < 0.55:
+        return f"not ({_condition(rng, depth - 1)})"
+    op = "and" if roll < 0.85 else "or"
+    return f"({_condition(rng, depth - 1)}) {op} ({_condition(rng, depth - 1)})"
+
+
+def _query(rng: random.Random) -> str:
+    cols = rng.sample(COLS, rng.randint(1, 3))
+    where = _condition(rng, rng.randint(0, 2))
+    shape = rng.random()
+    if shape < 0.4:
+        return f"where {where} select {', '.join(cols)};"
+    if shape < 0.65:
+        group = rng.choice(["cust_id", "region", "name"])
+        agg = rng.choice(
+            ["count(order_id)", "sum(amount)", "max(rqty)", "count(reason)"]
+        )
+        having = (
+            f" having n {rng.choice(['>', '<'])} {rng.randint(0, 6)}"
+            if rng.random() < 0.3
+            else ""
+        )
+        return f"where {where} select {group}, {agg} -> n{having};"
+    if shape < 0.85:
+        body = ", ".join(sorted({"order_id", "cust_id", *cols}))
+        tail = rng.choice(
+            [
+                "select rs.order_id;",
+                "select rs.cust_id, count(rs.order_id) -> n;",
+                f"where rs.order_id > {rng.randint(9, 15)} select rs.order_id, rs.cust_id;",
+            ]
+        )
+        return f"with rs as where {where} select {body};\n{tail}"
+    return f"where {where} select {', '.join(cols)}, count(order_id) by cust_id -> n;"
+
+
+def _rows(model: str, text: str) -> list[tuple]:
+    executor = Dialects.DUCK_DB.default_executor()
+    try:
+        executor.execute_raw_sql(TABLES)
+        executor.parse_text(model)
+        rows = executor.execute_text(text)[-1].fetchall()
+    finally:
+        executor.close()
+    return sorted((tuple(r) for r in rows), key=repr)
+
+
+@contextmanager
+def _disabled(rule: str) -> Iterator[None]:
+    setattr(CONFIG.optimizations, rule, False)
+    try:
+        yield
+    finally:
+        setattr(CONFIG.optimizations, rule, True)
+
+
+REGRESSIONS = [
+    # a null-sensitive flag over the `~` returns table: the order no return
+    # lists reads false, computed after the join, not NULL from the scan
+    "where returned = false select order_id;",
+    "where returned is null select order_id;",
+    "where small = true select order_id, amount;",
+    "where returned = false or amount > 100 select order_id;",
+    # the FINAL WHERE reads its filter-only arg off the deduplicated row side
+    "where returned = true select reason, count(order_id) by cust_id -> n;",
+    # an OR whose disjuncts each prove a different returns column
+    "where rqty > 1 or reason = 'dmg' select order_id, amount;",
+    "where (reason = 'late' or rqty = 2) and note is null select order_id;",
+    # a disjunct reading only orders keeps the order no return lists
+    "where rqty > 1 or amount = 3 select order_id;",
+    # `is null` on the padded side is not pushed into the returns scan
+    "where reason is null select order_id, cust_id;",
+    "where note is null and region = 'n' select cust_id, count(order_id) -> n;",
+    # an atom true on an empty group is not decided by the groups it kept
+    "where count(order_id) by cust_id = 0 select reason, count(order_id) by cust_id -> n;",
+    "where count(order_id) by cust_id != 2 select reason, cust_id, count(order_id) by cust_id -> n;",
+    "where count(order_id) by cust_id is null select reason, count(order_id) by cust_id -> n;",
+    # a gated dimension peel pairs back on the key it hid or never scanned
+    "where count(order_id) by cust_id > 1 select amount, name;",
+    "where count(order_id) by cust_id > 1 select order_id, reason, name;",
+    "where (region = 'n' and count(order_id) by cust_id = 1) or amount = 3 select reason, region;",
+    # a WHERE on an order column keeps the customer the `~` notes table lacks
+    "where returned = true select cust_id, note;",
+    "where order_id in (10, 12) select cust_id, note;",
+    "where returned = true select region, note;",
+    "with rs as where count(order_id) by cust_id = 1 select amount, cust_id, note, order_id, rqty;\nselect rs.order_id;",
+    # a `~` lookup beside its complete dimension keeps the dimension's members
+    "where sum(amount) by cust_id > 1 select region, reason, note;",
+    "where ((sum(amount) by cust_id > 0) or (reason is not null)) and (cust_id != 10) select note, amount;",
+    "where (name is not null) and ((bucket = 'big') or (sum(amount) by cust_id > 4)) select cust_id, note, order_id;",
+    # an inlined table and a CTE collapsed into it no longer share one name
+    "where returned = false select rqty, region, count(order_id) by cust_id -> n;",
+]
+
+# Wrong on main and on this branch: a row-level FINAL filter argument (`rqty`)
+# is joined as a bare value set, ON 1=1 (docs/handoff_formalization_next.md).
+OPEN = [
+    "where (rqty > 1) or (sum(amount) by cust_id > 8) select name;",
+    "where (rqty > 1) or (count(order_id) by cust_id > 1) select region;",
+]
+
+
+@pytest.mark.xfail(strict=True, reason="row-level FINAL filter arg cross-joined")
+@pytest.mark.parametrize("text", OPEN)
+def test_open_row_arg_cross_join(text: str) -> None:
+    assert _rows(SPLIT, text) == _rows(FLAT, text), text
+
+
+@pytest.mark.parametrize("model", [SPLIT, SPLIT_QUERY], ids=["table", "query"])
+@pytest.mark.parametrize("text", REGRESSIONS)
+def test_padded_model_matches_prejoined(model: str, text: str) -> None:
+    assert _rows(model, text) == _rows(FLAT, text), text
+
+
+@pytest.mark.parametrize("model", [SPLIT, SPLIT_QUERY], ids=["table", "query"])
+@pytest.mark.parametrize("seed", range(30))
+def test_random_padded_model_matches_prejoined(model: str, seed: int) -> None:
+    text = _query(random.Random(seed))
+    assert _rows(model, text) == _rows(FLAT, text), text
+
+
+@pytest.mark.parametrize("rule", RULES)
+@pytest.mark.parametrize("text", REGRESSIONS)
+def test_rule_keeps_rows(rule: str, text: str) -> None:
+    expected = _rows(SPLIT_QUERY, text)
+    with _disabled(rule):
+        assert _rows(SPLIT_QUERY, text) == expected, (rule, text)
+
+
+@pytest.mark.parametrize("seed", range(30))
+def test_random_rule_keeps_rows(seed: int) -> None:
+    text = _query(random.Random(500 + seed))
+    expected = _rows(SPLIT, text)
+    for rule in RULES:
+        with _disabled(rule):
+            assert _rows(SPLIT, text) == expected, (rule, text)
+
+
+def _null_probe(processed: ProcessedQuery, cte: CTE, address: str) -> str:
+    """`cte`'s rows before its WHERE, counted where `address` is NULL."""
+    executor = Dialects.DUCK_DB.default_executor()
+    dialect = executor.generator
+    concept = next(c for c in cte.output_columns if c.address == address)
+    ctes = dialect.generate_ctes(processed)
+    body = ",\n".join(f'"{c.name}" as ({c.statement})' for c in ctes)
+    executor.close()
+    return (
+        f'WITH {body}\nSELECT count(*) FROM "{cte.name}" '
+        f'WHERE "{cte.name}"."{concept.safe_address}" IS NULL'
+    )
+
+
+def _strip_candidates(processed: ProcessedQuery) -> list[tuple[CTE, str]]:
+    out = []
+    for cte in processed.ctes:
+        if not isinstance(cte, CTE) or cte.condition is None:
+            continue
+        for atom in and_atoms(cte.condition):
+            concept = _not_null_concept(atom)
+            if concept is None or not redundant_not_null(cte, atom):
+                continue
+            if any(c.address == concept.address for c in cte.output_columns):
+                out.append((cte, concept.address))
+    return out
+
+
+@pytest.mark.parametrize("model", [SPLIT, SPLIT_QUERY], ids=["table", "query"])
+@pytest.mark.parametrize("seed", range(30))
+def test_stripped_column_never_null_before_where(model: str, seed: int) -> None:
+    rng = random.Random(900 + seed)
+    column = rng.choice(COLS)
+    others = rng.sample([c for c in COLS if c != column], 2)
+    text = (
+        f"where {column} is not null and {_condition(rng, 1)} "
+        f"select {', '.join(others)}, {column};"
+    )
+    env = Environment()
+    env.parse(model)
+    _, statements = env.parse(text)
+    with _disabled("strip_redundant_not_null"):
+        processed = process_query(env, statements[-1])
+    executor = Dialects.DUCK_DB.default_executor()
+    executor.execute_raw_sql(TABLES)
+    try:
+        for cte, address in _strip_candidates(processed):
+            kept, hidden = cte.condition, cte.hidden_concepts
+            cte.condition, cte.hidden_concepts = None, hidden - {address}
+            try:
+                probe = _null_probe(processed, cte, address)
+            finally:
+                cte.condition, cte.hidden_concepts = kept, hidden
+            assert executor.execute_raw_sql(probe).fetchone()[0] == 0, (
+                text,
+                cte.name,
+                address,
+            )
+    finally:
+        executor.close()
+
+
+@pytest.mark.parametrize("model", [SPLIT, FLAT], ids=["split", "flat"])
+def test_filtered_value_collapses_to_its_key(model: str) -> None:
+    """`Rewrite.grouped_filter_fans_out`: a filtered value a parent computed per
+    order row is grouped at its customer key with MAX, not as a group key, or
+    customer 1 (one order over 4, one not) counts twice (TPC-DS q97)."""
+    text = (
+        "auto big <- cust_id ? amount > 4;\n"
+        "select sum(case when big is not null then 1 else 0 end) -> n, "
+        "count(cust_id) -> m;"
+    )
+    with _disabled("merge_aggregate"):
+        assert _rows(model, text) == [(2, 4)]

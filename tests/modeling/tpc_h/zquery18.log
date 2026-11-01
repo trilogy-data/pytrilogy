@@ -1,5 +1,5 @@
 query_id = "18"
-gen_length = 1240
+gen_length = 1253
 preql_size = 317
 comp_size = 543
 generated_sql = """
@@ -24,7 +24,7 @@ FROM
 GROUP BY
     1
 HAVING
-    \"qty_per_order\" > 300
+    sum(\"lineitem\".\"l_quantity\") > 300
 )
 SELECT
     \"thoughtful\".\"order_customer_name\" as \"order_customer_name\",

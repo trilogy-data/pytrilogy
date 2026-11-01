@@ -1,5 +1,5 @@
 query_id = "78"
-gen_length = 6713
+gen_length = 6967
 preql_size = 2560
 comp_size = 2512
 generated_sql = """
@@ -102,7 +102,7 @@ GROUP BY
     2,
     3
 HAVING
-    ( coalesce(\"ws_qty\",0) > 0 or coalesce(\"cs_qty\",0) > 0 )
+    ( coalesce(sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'WEB' THEN \"abundant\".\"sales_quantity\" ELSE NULL END),0) > 0 or coalesce(sum(CASE WHEN coalesce(\"abundant\".\"sales_channel\",\"cheerful\".\"sales_channel\") = 'CATALOG' THEN \"abundant\".\"sales_quantity\" ELSE NULL END),0) > 0 )
 )
 SELECT
     \"yummy\".\"sales_sale_date_year\" as \"ss_sold_year\",

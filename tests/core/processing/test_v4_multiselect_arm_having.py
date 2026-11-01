@@ -54,7 +54,8 @@ def test_multiselect_arm_having_filters_that_arm():
     executor = Dialects.DUCK_DB.default_executor(environment=env)
     sql = executor.generate_sql(_QUERY)[-1]
     rows = executor.execute_text(_QUERY)[-1].fetchall()
-    assert 'HAVING\n    "tickets" > 1' in sql, sql
+    # inlined, not the alias: `tickets` also names the table in its FROM
+    assert 'HAVING\n    count("tickets"."tid") > 1' in sql, sql
     # cat, tcat, tickets, ocat, total -- arm A drops `b`, so its columns are NULL
     # while arm B still contributes `b` through the FULL join.
     assert [tuple(r) for r in rows] == [

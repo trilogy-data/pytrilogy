@@ -247,6 +247,28 @@ def _aggregates_rows(cte: Any) -> bool:
     )
 
 
+def _having_aliases(cte: "CTE | UnionCTE", select_columns: dict[str, str]) -> set[str]:
+    """Outputs a HAVING may reference by their SELECT alias. The dialect binds a
+    FROM column of the same name first, so `having c > 3` beside a table column
+    `c` filters on that column. A table, file or query may hold columns the
+    model never declares, so only a scope of CTEs, whose columns are their
+    outputs, is known to leave the alias free."""
+    if not isinstance(cte, CTE) or cte.inlined_parents:
+        return set()
+    if any(isinstance(ds, BuildDatasource) for ds in cte.source.datasources):
+        return set()
+    taken = {
+        c.safe_address for parent in cte.parent_ctes for c in parent.output_columns
+    }
+    return {
+        c.address
+        for c in cte.output_columns
+        if c.address in select_columns
+        and not cte.source_map.get(c.address)
+        and c.safe_address not in taken
+    }
+
+
 def _needs_arithmetic_parentheses(
     expr: Any, parent_operator: FunctionType | None = None
 ) -> bool:
@@ -2976,15 +2998,13 @@ class BaseDialect:
             # operands, not inside nested functions/aggregates/case/etc. A
             # column passed through from a parent keeps its qualified source:
             # its bare alias is also that parent's column name, and ambiguous
-            # beside a second parent holding it.
+            # beside a second parent holding it. A source column of the alias's
+            # name binds before the alias, so it is used only where every
+            # column in scope is known (`_having_aliases`).
             rendered_having: str | None = self.render_expr(
                 having,
                 cte,
-                materialized_addresses={
-                    address
-                    for address in select_columns
-                    if not cte.source_map.get(address)
-                },
+                materialized_addresses=_having_aliases(cte, select_columns),
             )
         else:
             rendered_having = self.render_expr(having, cte) if having else None

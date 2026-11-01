@@ -224,6 +224,17 @@ def _candidate(
         stored,
         exempt=promoted,
     )
+    # Padding a value the scan computes for its own rows reads NULL on the rows
+    # it lacks; a null-sensitive one (`rqty is not null`) holds a value there,
+    # so it is computed after the join, from the padded inputs.
+    emitted = {
+        address
+        for address in emitted
+        if address not in partial
+        or (concept := _concept(address, environment)) is None
+        or concept.spellings & stored
+        or not null_sensitive(concept)
+    }
     return SourceCandidate(
         node=node,
         datasource=datasource,
@@ -456,7 +467,13 @@ def _expr_null_sensitive(expr: object) -> bool:
     if isinstance(expr, BuildParenthetical):
         return _expr_null_sensitive(expr.content)
     if isinstance(expr, BuildComparison):
-        if expr.operator in (ComparisonOperator.IS, ComparisonOperator.IS_NOT):
+        # membership matches by identity, so it is never NULL
+        if expr.operator in (
+            ComparisonOperator.IS,
+            ComparisonOperator.IS_NOT,
+            ComparisonOperator.IN,
+            ComparisonOperator.NOT_IN,
+        ):
             return True
         return _expr_null_sensitive(expr.left) or _expr_null_sensitive(expr.right)
     if isinstance(expr, BuildConditional):

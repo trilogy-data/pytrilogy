@@ -36,6 +36,7 @@ from trilogy.core.models.build import (
     BuildCaseWhen,
     BuildComparison,
     BuildConcept,
+    BuildConceptArgs,
     BuildDatasource,
     BuildFilterItem,
     BuildFunction,
@@ -645,14 +646,15 @@ class CTE:
         return address in nullable
 
     def filter_collapses_to_grain(self, c: BuildConcept) -> bool:
-        """A locally-computed filter virtual whose keys are covered by this
-        grouping CTE's grain but whose predicate reads columns outside it is a
-        property of the grain, not a grouping key: the per-row
-        ``CASE WHEN cond THEN content END`` fans a mixed key out into
-        ``{content, NULL}``, so keeping it in GROUP BY breaks the contract that
-        the stream is deduplicated to the grain. The renderer collapses it with
-        MAX instead (dialect/base.py). When the CTE's own condition implies the
-        predicate, the CASE is elided to bare content, which the grain
+        """A filter virtual whose keys are covered by this grouping CTE's grain
+        but whose predicate reads columns outside it is a property of the grain,
+        not a grouping key: the per-row ``CASE WHEN cond THEN content END`` fans
+        a mixed key out into ``{content, NULL}``, so keeping it in GROUP BY
+        breaks the contract that the stream is deduplicated to the grain. The
+        renderer collapses it with MAX instead (dialect/base.py). A parent that
+        computed it per row hands this CTE the same fan-out; MAX of a value the
+        grain determines is that value. When the CTE's own condition implies
+        the predicate, its own CASE is elided to bare content, which the grain
         determines, and it stays a group key."""
         from trilogy.core.processing.condition_utility import condition_implies
 
@@ -661,8 +663,6 @@ class CTE:
             and c.derivation == Derivation.FILTER
             and isinstance(c.lineage, BuildFilterItem)
         ):
-            return False
-        if self.source_map.get(c.address, []):
             return False
         grain_components = set(self.grain.components)
         keys = c.keys or set()
@@ -675,6 +675,12 @@ class CTE:
         where_args = {a.address for a in c.lineage.where.row_arguments}
         if where_args <= grain_components:
             return False
+        if self.source_map.get(c.address, []):
+            # this CTE's own WHERE runs before the GROUP BY and reads the row
+            return not (
+                isinstance(self.condition, BuildConceptArgs)
+                and c.address in {a.address for a in self.condition.row_arguments}
+            )
         where_cond = c.lineage.where.conditional
         return self.condition is None or not (
             self.condition == where_cond
@@ -823,6 +829,8 @@ class CTE:
         def check_is_not_in_group(c: BuildConcept):
             if c.address in rollup_addresses:
                 return True
+            if self.filter_collapses_to_grain(c):
+                return True
             if len(self.source_map.get(c.address, [])) > 0:
                 return False
             if c.derivation == Derivation.ROWSET:
@@ -846,9 +854,6 @@ class CTE:
             if c.derivation == Derivation.CONSTANT:
                 return True
             if c.purpose == Purpose.CONSTANT and c.is_aggregate:
-                return True
-
-            if self.filter_collapses_to_grain(c):
                 return True
 
             if (

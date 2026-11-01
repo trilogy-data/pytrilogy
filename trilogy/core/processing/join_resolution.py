@@ -390,6 +390,11 @@ def _extent_free_join(
         binder, other = (
             (left_facts, right_facts) if left_binds else (right_facts, left_facts)
         )
+        # A binder keyed by the span itself (a `~` notes table beside the
+        # customers) is a lookup, not a fact referencing it: it has no rows of
+        # its own to anchor, and the members it lacks keep the other side's.
+        if binder.grain and binder.grain <= span_keys:
+            return None, None
         # The other side carrying the span's whole domain and the binder no
         # NULL on it: every binder row has its partner, so anchoring preserves
         # nothing. Typed INNER here rather than left to the narrowing pass,

@@ -1,5 +1,5 @@
 query_id = "73"
-gen_length = 2865
+gen_length = 2931
 preql_size = 1308
 comp_size = 1437
 generated_sql = """
@@ -25,7 +25,7 @@ GROUP BY
     1,
     2
 HAVING
-    \"ticket_cnt\" >= 1 and \"ticket_cnt\" <= 5
+    count(\"store_sales_store_sales\".\"SS_ITEM_SK\") >= 1 and count(\"store_sales_store_sales\".\"SS_ITEM_SK\") <= 5
 )
 SELECT
     \"store_sales_customer_customers\".\"C_LAST_NAME\" as \"store_sales_customer_last_name\",
