@@ -632,21 +632,46 @@ table names, and `test_declared_join_beside_a_property_of_the_superset_key`,
 whose join type varies with the hash seed on main too). 0 of 205 corpus plans
 moved.
 
+**Every consumer's bridge candidates, the uncovered FINAL and the sole
+path's pairing read the plan.** A non-FINAL consumer's bridge candidates are
+the planned groups (`_FinalCover.groups`, the build context's `planned`)
+decided before it, not the build order minus the groups `ctx.unbuilt` has
+recorded so far. A FINAL no group covers is the first planned group
+(`_uncovered_final_side`), raising `UnbuiltGroupException` if it built
+nothing. The sole-contributor path decides whether to apply the FINAL WHERE
+over the raw contributor off stage-2 facts: the contributor holds what it
+renders plus what the election owes on it (`_FinalCover.holds`), a feeder
+what its rows hold or can be widened to (`join_plan.carries`, the plan's own
+`_held` term), and its region reads are `_group_region_reads`.
+
+Measured over `tests/modeling`, `core`, `engine`, `complex` and `discovery`:
+the planned bridge candidates equaled the built ones at 41,715 of 41,725
+non-FINAL consumers, the 10 others in the two disconnected-ROOT raise tests
+above. No FINAL went uncovered. At all 251 sole-contributor FINALs with a
+deferred WHERE the planned feeder elections equaled the built ones, and the
+pairing decision (22 relation-paired, 34 region-paired) agreed. A feeder's
+`output_concepts` alone does not: it misses the relation key a rowset
+boundary or a pinned row stream carries (`cat_avg.category`,
+`ecoregion_id`), 21 decisions; `exposes` still misses the rowset's (1).
+The planned region reads miss a domain the built node reads at 4 FINALs
+(`test_derived_key_domain`'s `count(customer_id) by * > 2` gate), where no
+feeder pairs on a span, so no decision moved.
+
+SQL capture over the same five suites (10,572 tests) against part 15 moved
+no plan: only the `grain_check` hash-seed column order, pytest temp-dir and
+script paths, and repeat counts. 0 of 205 corpus plans moved.
+
 **Open.**
 
-1. With no `per_group`, the FINAL takes `next(iter(built.values()))`: the
-   first group built, where the planned groups name it. No test in the five
-   suites reaches it.
-2. A non-FINAL consumer's bridge candidates (`_bridge_candidates(…,
-   ctx.unbuilt, gid)`) differ from the planned ones only where the plan
-   raises (above).
-3. The fold widen still projects the aggregate's merge after
+1. The fold widen still projects the aggregate's merge after
    `_pre_merge_parents` assembles it, inside the aggregate's build. No
    decision reads the built node; asking a ROOT for the derived column
    instead changes source selection.
-4. The sole-contributor path still decides whether to apply the FINAL WHERE
-   over the raw contributor (probe arguments, relation- or region-paired
-   feeders) off the built node's outputs and region reads.
+2. The sole path still asks the built subtree whether it already applied the
+   FINAL WHERE (`_subtree_applies_conditions`), where condition placement
+   decided it.
+3. The planned region reads miss a domain the built sole node reads at the 4
+   FINALs above; the walk should find it before a decision reads it.
 
 The rest of `_assemble_final_node`'s reads of `built` apply decisions: the
 passthroughs and projections, each contributor's node, bridge nodes by the
