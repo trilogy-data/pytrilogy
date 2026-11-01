@@ -2041,6 +2041,78 @@ def _name_inline_arguments(
     return rewritten, frozenset(c.address for c in named.values())
 
 
+def _aggregate_scalar_inputs(
+    outputs: list[BuildConcept],
+    primary_addrs: set[str],
+    region_spans: frozenset[str],
+    named: frozenset[str],
+    environment: BuildEnvironment,
+) -> list[BuildConcept]:
+    """The BASIC row inputs an aggregate projects onto its merged input rows:
+    none under a nonstandard grouping unless beside a region domain."""
+    scalar_inputs: list[BuildConcept] = []
+    for concept in outputs:
+        if concept.address not in primary_addrs:
+            continue
+        if nonstandard_grouping_lineage(concept) is not None and not region_spans:
+            return []
+        scalar_inputs.extend(
+            aggregate_input
+            for aggregate_input in _aggregate_row_preserving_inputs(concept)
+            if aggregate_input.derivation == Derivation.BASIC
+            # beside a region domain only an argument that takes a value on
+            # a padded row (CASE, COALESCE) has to be computed before the
+            # padding; arithmetic is NULL there either way and inlines
+            and not (
+                region_spans
+                and aggregate_input.address not in named
+                and not _takes_a_value_beside(
+                    aggregate_input, region_spans, environment
+                )
+            )
+        )
+    return scalar_inputs
+
+
+def _aggregate_input_keep(
+    outputs: list[BuildConcept],
+    primary_addrs: set[str],
+    scalar_inputs: list[BuildConcept],
+) -> set[str]:
+    """What an aggregate's projected input rows keep beside its scalar inputs.
+
+    Every direct argument this group reads, not just the BASIC ones projected:
+    narrowing to the projected subset drops a sibling aggregate's own argument
+    (`count_distinct(warehouse)` beside `bool_or(is_returned)`) and leaves it
+    unsourced. Only ONE lineage level, so the raw column behind a projected
+    BASIC (`_ret` under `is_returned`) still stays hidden. Grain components
+    come from the projected inputs alone: an aggregate's `by` args are also
+    direct arguments, and their key grain is not part of the row stream this
+    group aggregates over. A FILTER argument renders inline as a CASE over its
+    content and WHERE row inputs, so those count as direct. So does a BASIC
+    argument left to render inline (`sum(amount * 2)` beside a projected
+    `count(status)`): its row inputs are what it reads."""
+    keep = {concept.address for concept in outputs}
+    projected_addrs = {concept.address for concept in scalar_inputs}
+    for concept in outputs:
+        if concept.address not in primary_addrs or concept.lineage is None:
+            continue
+        for arg in concept.lineage.concept_arguments:
+            keep.add(arg.address)
+            if (
+                arg.derivation == Derivation.BASIC
+                and arg.address not in projected_addrs
+            ):
+                keep.update(c.address for c in _row_lineage_closure(arg))
+            if isinstance(arg.lineage, BuildFilterItem):
+                keep.update(a.address for a in arg.lineage.where.row_arguments)
+                keep.update(a.address for a in arg.lineage.content_concept_arguments)
+    for concept in scalar_inputs:
+        if concept.grain is not None:
+            keep.update(concept.grain.components)
+    return keep
+
+
 def _project_basic_aggregate_inputs(
     outputs: list[BuildConcept],
     primary_addrs: set[str],
@@ -2068,27 +2140,9 @@ def _project_basic_aggregate_inputs(
         )
     ):
         return parents
-    scalar_inputs: list[BuildConcept] = []
-    for concept in outputs:
-        if concept.address not in primary_addrs:
-            continue
-        if nonstandard_grouping_lineage(concept) is not None and not region_spans:
-            return parents
-        scalar_inputs.extend(
-            aggregate_input
-            for aggregate_input in _aggregate_row_preserving_inputs(concept)
-            if aggregate_input.derivation == Derivation.BASIC
-            # beside a region domain only an argument that takes a value on
-            # a padded row (CASE, COALESCE) has to be computed before the
-            # padding; arithmetic is NULL there either way and inlines
-            and not (
-                region_spans
-                and aggregate_input.address not in named
-                and not _takes_a_value_beside(
-                    aggregate_input, region_spans, environment
-                )
-            )
-        )
+    scalar_inputs = _aggregate_scalar_inputs(
+        outputs, primary_addrs, region_spans, named, environment
+    )
     if not scalar_inputs:
         return parents
 
@@ -2139,36 +2193,8 @@ def _project_basic_aggregate_inputs(
             available_addresses=available - computed,
         )
 
-    # Keep every direct argument this group reads, not just the BASIC ones
-    # widened above: narrowing to the widened subset drops a sibling aggregate's
-    # own argument (`count_distinct(warehouse)` beside `bool_or(is_returned)`)
-    # and leaves it unsourced. Only ONE lineage level, so the raw column behind
-    # a projected BASIC (`_ret` under `is_returned`) still stays hidden. Grain
-    # components come from the widened inputs alone: an aggregate's `by` args
-    # are also direct arguments, and their key grain is not part of the row
-    # stream this group aggregates over. A FILTER argument renders inline as
-    # a CASE over its content and WHERE row inputs, so those count as direct.
-    # So does a BASIC argument left to render inline (`sum(amount * 2)`
-    # beside a projected `count(status)`): its row inputs are what it reads.
-    keep = {concept.address for concept in outputs} | set(region_spans)
-    keep.update(concept.address for concept in between)
-    projected_addrs = {concept.address for concept in scalar_inputs}
-    for concept in outputs:
-        if concept.address not in primary_addrs or concept.lineage is None:
-            continue
-        for arg in concept.lineage.concept_arguments:
-            keep.add(arg.address)
-            if (
-                arg.derivation == Derivation.BASIC
-                and arg.address not in projected_addrs
-            ):
-                keep.update(c.address for c in _row_lineage_closure(arg))
-            if isinstance(arg.lineage, BuildFilterItem):
-                keep.update(a.address for a in arg.lineage.where.row_arguments)
-                keep.update(a.address for a in arg.lineage.content_concept_arguments)
-    for concept in scalar_inputs:
-        if concept.grain is not None:
-            keep.update(concept.grain.components)
+    keep = _aggregate_input_keep(outputs, primary_addrs, scalar_inputs)
+    keep |= set(region_spans) | {concept.address for concept in between}
     projected = [
         concept for concept in parent.output_concepts if concept.address in keep
     ]
@@ -4814,25 +4840,76 @@ def _group_applies_conditions(
     return held is not None and condition_implies(held.conditional, where.conditional)
 
 
+def _aggregate_input_rows(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    environment: BuildEnvironment,
+) -> frozenset[str]:
+    """The columns the rows aggregate `gid` reads hold: what its input groups
+    carry, less what its scalar input projection hides (the arguments of a
+    CASE it computes inline)."""
+    a = attrs[gid]
+    held = frozenset().union(
+        *(
+            carries(attrs[p], frozenset(), frozenset(), environment)
+            for p in group_graph.predecessors(gid)
+        )
+    )
+    outputs = [c for addr in a.output_concepts if (c := _concept_at(environment, addr))]
+    primary = set(a.primary_members)
+    scalar = _aggregate_scalar_inputs(
+        outputs, primary, frozenset(), frozenset(), environment
+    )
+    if not scalar:
+        return held
+    return held & _aggregate_input_keep(outputs, primary, scalar)
+
+
+def _row_condition_before_aggregate(
+    group_graph: nx.DiGraph,
+    attrs: dict[str, GroupAttrs],
+    gid: str,
+    where: BuildWhereClause,
+    environment: BuildEnvironment,
+) -> bool:
+    """Whether a sole aggregate contributor's input rows hold every row arg of
+    the FINAL WHERE, so it applies before the aggregate."""
+    if attrs[gid].derivation not in AGGREGATING_DERIVATIONS:
+        return False
+    held = _aggregate_input_rows(group_graph, attrs, gid, environment)
+    return bool(held) and all(arg.address in held for arg in condition_row_args(where))
+
+
 def _push_row_condition_before_group(
     node: StrategyNode,
     where: BuildWhereClause,
     environment: BuildEnvironment,
-) -> bool:
+) -> None:
     current = node
     while isinstance(current, SelectNode) and len(current.parents) == 1:
         current = current.parents[0]
     if not isinstance(current, GroupNode) or not current.parents:
-        return False
+        raise ValueError(
+            f"[v4] planned to apply {where.conditional} before an aggregate, "
+            f"but the contributor built {type(current).__name__}. This is a "
+            "planner bug."
+        )
     parent_output_by_addr = {
         output.address: output
         for parent in current.parents
         for output in parent.output_concepts
     }
-    if any(
-        arg.address not in parent_output_by_addr for arg in condition_row_args(where)
-    ):
-        return False
+    missing = [
+        arg.address
+        for arg in condition_row_args(where)
+        if arg.address not in parent_output_by_addr
+    ]
+    if missing:
+        raise ValueError(
+            f"[v4] planned to apply {where.conditional} before an aggregate, "
+            f"but its input rows do not carry {missing}. This is a planner bug."
+        )
     parent_outputs = list(parent_output_by_addr.values())
     current.parents = [
         SelectNode(
@@ -4844,7 +4921,6 @@ def _push_row_condition_before_group(
         )
     ]
     current.rebuild_cache()
-    return True
 
 
 def _clear_groupmate_completed_partials(
@@ -5070,8 +5146,11 @@ def _assemble_sole_contributor(
         final_conditions is not None
         and not final_already_applied
         and not final_conditions.existence_arguments
-        and _push_row_condition_before_group(sole_node, final_conditions, environment)
+        and _row_condition_before_aggregate(
+            group_graph, attrs, gid, final_conditions, environment
+        )
     ):
+        _push_row_condition_before_group(sole_node, final_conditions, environment)
         final_already_applied = True
     # Same again for a feeder joining a region holder on its span (`select
     # name where status is null`: the condition scan carries `customer_id`,
