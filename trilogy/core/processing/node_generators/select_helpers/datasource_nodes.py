@@ -162,9 +162,7 @@ def subgraph_concepts(
     for c in unique(list(requested), "address"):
         by_canonical[c.canonical_address].append(c)
     out: list[BuildConcept] = []
-    for node in subgraph:
-        if not node.startswith("c~"):
-            continue
+    for node in (n for n in subgraph if n.startswith("c~")):
         winner = environment.canonical_concepts[extract_address(node)]
         out.extend(by_canonical.get(winner.canonical_address) or [winner])
     return unique(out, "address")
