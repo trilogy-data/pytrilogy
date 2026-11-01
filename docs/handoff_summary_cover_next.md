@@ -66,47 +66,6 @@ Gotchas:
 
 ## Open items, in order
 
-### 0. Pre-existing wrong answer on main: a CASE over a per-bucket aggregate fans out
-
-```
-select sum(case when bucket = 'Native' then count(tree_id) by bucket else null end) as n;
-```
-
-On the cover suite's model (`BASE` in the test file), the tree plan returns
-**8**. The answer is **4**: Native has 4 trees, and the summary plan says 4.
-`select sum(count(tree_id) by bucket)` (7, correct) shows the aggregate is
-fine; the CASE breaks it. The final CTE reads `bucket` for the CASE from
-`enrichment`, which sits at species grain, not from the per-bucket aggregate
-CTE that already outputs `bucket`:
-
-```
-SELECT sum(CASE WHEN "quizzical"."bucket" = 'Native' THEN "wakeful"."_virt_agg_count_..." END)
-FROM "wakeful"
-INNER JOIN "quizzical" on "wakeful"."bucket" is not distinct from "quizzical"."bucket"
-```
-
-`wakeful` is (bucket, count), and `quizzical` is (species, bucket). The join
-repeats each bucket once per species (Native has 2), so the sum doubles. It
-reproduces with no summary in scope, so this is a planner sourcing bug, not
-a rollup one.
-
-How to take it:
-- Model it first. The law: a scalar over an aggregate's own grain columns is
-  evaluated on the aggregate's rows. Reading a grain column from a finer table
-  joined back on it multiplies each row by that table's rows per value. This
-  belongs in `Rows.lean` (FD extension) or a small `Cover.lean` counterexample
-  closed by `decide`: per-bucket count `[(N, 4)]`, joined to
-  `[(s1, N), (s2, N)]`, sums to 8.
-- Then find why the CASE's `bucket` binds to the enrichment scan. The
-  aggregate group outputs `bucket`, so the FINAL should read it there. Suspects:
-  stage-2 projection or region reads choosing a source for a BASIC's input
-  when the same address is offered by two parents, one at a finer grain (the
-  join-plan parts 11-20 area; see `project_join_plan_part*` memory notes).
-- Add the shape to the suite. Vary it: `max(...)`, a CASE over `count(...) by
-  species` with a species property, a CASE over the key itself. It belongs
-  under `SIBLINGS` or a new "expression over an aggregate" rule, and the
-  summary-off half of `_assert_same_answer` catches it.
-
 ### 1. Rule 2, filtered counts (`summary:local-native-share`, `species:sp-biome-fit`)
 
 `count(x ? c)` with `c` a function of the key. `_is_rollable_aggregate` and
@@ -148,9 +107,9 @@ answers right today.
 
 - Rule 1 corner: a scalar of a key (`split(species, ' ')[1]`) under a WHERE
   on `plant_year` isn't read from the year summary.
-- `select common_names[1] as c where plant_year > 2000` (and the genus
-  version) raises a keyless-join error with no summary at all. These are
-  skipped in `TREE_PLAN_RAISES`.
+- Rule 7 corner (`over_aggregate/key_property`): a species property inside
+  the CASE (`case when common_names[1] = ... then count(x) by species end`)
+  answers right but reads the trees.
 
 ## Done means
 
