@@ -189,8 +189,6 @@ def _walk_aggregate_grain_inputs(
     # a scalar of an inner aggregate's grain keys is read on its rows
     inner_grain = _inner_aggregate_grain(concept.lineage)
     for arg in concept.lineage.concept_arguments:
-        if not isinstance(arg, BuildConcept):
-            continue
         if _function_of(arg, inner_grain):
             collected.extend(
                 environment.concepts[g]
@@ -1418,22 +1416,17 @@ def _inner_aggregate_grain(arg: BuildConceptArgs) -> set[str]:
     return {
         key
         for c in arg.concept_arguments
-        if isinstance(c, BuildConcept) and c.derivation == Derivation.AGGREGATE
+        if c.derivation == Derivation.AGGREGATE
         for key in c.grain.components
     }
 
 
 def _function_of(concept: BuildConcept, keys: set[str]) -> bool:
-    if not keys:
-        return False
     if concept.address in keys or concept.canonical_address in keys:
         return True
-    if concept.derivation != Derivation.BASIC or concept.lineage is None:
+    if concept.derivation != Derivation.BASIC or not keys:
         return False
-    return all(
-        isinstance(c, BuildConcept) and _function_of(c, keys)
-        for c in concept.lineage.concept_arguments
-    )
+    return all(_function_of(c, keys) for c in concept.concept_arguments)
 
 
 def _counted_key(concept: BuildConcept) -> BuildConcept | None:
@@ -2463,9 +2456,9 @@ def _scalar_row_sources(
         for p in graph.predecessors(nid)
         if edge_kind(edges, p, nid) == EdgeKind.LINEAGE
     ]
-    if not parents:
-        return [nid]
-    return [s for p in parents for s in _scalar_row_sources(graph, edges, attrs, p)]
+    return [
+        s for p in parents for s in _scalar_row_sources(graph, edges, attrs, p)
+    ] or [nid]
 
 
 def _constrain_aggregates_by_root_conditions(

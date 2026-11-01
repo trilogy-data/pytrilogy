@@ -2585,8 +2585,6 @@ def _non_aggregate_row_refs(expr, environment: Environment) -> list[ConceptRef]:
 def _function_of_addresses(
     concept: Concept, addresses: set[str], environment: Environment
 ) -> bool:
-    if not addresses:
-        return False
     if concept.address in addresses:
         return True
     if concept.derivation != Derivation.BASIC or concept.lineage is None:
