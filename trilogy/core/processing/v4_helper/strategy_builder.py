@@ -2864,8 +2864,12 @@ def _widen_unnest_passthrough(
     node: UnnestNode, join_key_concepts: list[BuildConcept]
 ) -> None:
     """An unnest repeats each parent row per element, so it carries any column
-    its parent already emits beside the element; it computes nothing else."""
-    outputs = {c.address for c in node.output_concepts}
+    its parent already emits beside the element; it computes nothing else. The
+    element is emitted under any merge twin of it too (`ecoregion_id` beside
+    `unnest(native_ecoregions)`), which is no parent column to carry."""
+    outputs = {
+        address for c in node.output_concepts for address in (c.address, *c.pseudonyms)
+    }
     from_parents = parent_output_addresses(node)
     carried = [
         c

@@ -9,7 +9,6 @@ from tests.modeling.tree_reporting.generate_fixtures import (
     EXPECTED_SURVIVORS,
 )
 
-NATIVE_RANGE_BUG = "#835: array_agg(biome) over the merged unnest FULL JOINs the ecoregions, adding a null-species row"
 SUMMARIES = [*harness.COUNT_SUMMARIES, "tree_rollup_city"]
 
 
@@ -72,7 +71,6 @@ def test_summary_build_matches_fixture(name: str, tmp_path: Path) -> None:
         assert all(values_match(a, b) for a, b in zip(left, right)), (left, right)
 
 
-@pytest.mark.xfail(strict=True, reason=NATIVE_RANGE_BUG)
 def test_native_range_build_matches_fixture(tmp_path: Path) -> None:
     name = "species_native_range"
     assert ordered(build("tree_rollups", name, tmp_path, name)) == ordered(

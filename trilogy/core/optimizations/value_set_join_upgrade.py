@@ -496,6 +496,8 @@ def _complete_values(
         return bool(args) and all(
             _complete_values(arg, side_cte, graph) for arg in args
         )
+    if _joined_complete(concept, side_cte, graph):
+        return True
     if concept.derivation == Derivation.UNNEST:
         # Every element of every list read comes out, so the elements are
         # complete when the lists are, over the rows the unnest reads.
@@ -505,6 +507,47 @@ def _complete_values(
             for arg in concept.concept_arguments
         )
     return False
+
+
+def _joined_complete(concept: BuildConcept, side_cte: CTE, graph: DomainGraph) -> bool:
+    """A column read off one parent keeps every value that parent carries when
+    each join keeps every row of it: the parent is the preserved side, or each
+    row finds a partner (a `~` enrichment LEFT joined from its complete key)."""
+    if side_cte.condition is not None or not side_cte.joins:
+        return False
+    if not all(isinstance(join, Join) for join in side_cte.joins):
+        return False
+    parents = {p.name: p for p in side_cte.parent_ctes if isinstance(p, CTE)}
+    for name in side_cte.source_map.get(concept.address, []):
+        source = parents.get(name)
+        if source is None or not _complete_values(concept, source, graph):
+            continue
+        if all(_keeps_rows_of(join, source, graph) for join in side_cte.joins):
+            return True
+    return False
+
+
+def _keeps_rows_of(join: Join, source: CTE, graph: DomainGraph) -> bool:
+    on_right = join.right is source
+    preserved = (
+        (JoinType.RIGHT_OUTER, JoinType.FULL)
+        if on_right
+        else (JoinType.LEFT_OUTER, JoinType.FULL)
+    )
+    if join.join_type in preserved:
+        return True
+    return bool(join.pairs) and all(
+        (
+            _pair_side_fully_matches(
+                pair.right, join.right, pair.left, pair.node, graph
+            )
+            if on_right
+            else _pair_side_fully_matches(
+                pair.left, pair.node, pair.right, join.right, graph
+            )
+        )
+        for pair in join.pairs
+    )
 
 
 def _unnested_parent(side_cte: CTE) -> list[CTE]:
