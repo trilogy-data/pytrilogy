@@ -2964,12 +2964,18 @@ def build_concept_graph(
             continue
         if any(True for _ in graph.successors(src)):
             continue
-        # a scalar output is filtered where its row inputs are read
+        # a scalar output is filtered where its row inputs are read, unless
+        # the condition is keyed on the scalar itself or pinned to its rows
         targets = dict.fromkeys(
             row_source
             for dst in mandatory_blank_ids
             if dst in graph.nodes
-            for row_source in _scalar_row_sources(graph, edges, attrs, dst)
+            for row_source in (
+                [dst]
+                if attrs[src].grain_pin_anchors
+                or attrs[dst].address in attrs[src].grain_components
+                else _scalar_row_sources(graph, edges, attrs, dst)
+            )
         )
         for dst in targets:
             if graph.has_edge(src, dst):
