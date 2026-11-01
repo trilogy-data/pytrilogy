@@ -976,6 +976,15 @@ class Environment:
         `determinants`, transitively."""
         return address in self.binding_closure(determinants)
 
+    def bound_on(self, address: str) -> frozenset[str]:
+        """The determinants of every table binding `address` beside them: the
+        rows a key is read on outside its own table."""
+        out: set[str] = set()
+        for determinants, bound in self.binding_fds():
+            if address in bound:
+                out |= determinants
+        return frozenset(out)
+
     def binding_closure(self, determinants: Iterable[str]) -> frozenset[str]:
         rows = self.binding_fds()
         seed = frozenset(determinants)

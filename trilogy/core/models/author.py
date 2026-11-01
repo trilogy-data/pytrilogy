@@ -1407,6 +1407,7 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
                 # keeps its own row identity in the grain: the sum is constant
                 # within x but the expression still varies per w's row.
                 pkeys: set[str] = set(by_refs)
+                pins = _pin_anchors(new_lineage)
                 for x_ref in _non_aggregate_row_refs(new_lineage, environment):
                     x = environment.concepts[x_ref.address]
                     if isinstance(x, UndefinedConcept):
@@ -1420,8 +1421,13 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
                     elif x.purpose == Purpose.KEY:
                         # A bare key peer has no keys of its own; its row
                         # identity is itself (`coalesce(min(id) by cell, id)`
-                        # varies per id, not per cell).
-                        pkeys.add(x.address)
+                        # varies per id, not per cell). A pinned value is
+                        # evaluated on the rows its pin key is read on.
+                        pkeys |= (
+                            environment.bound_on(x.address)
+                            if x.address in pins
+                            else {x.address}
+                        ) or {x.address}
                 final_grain = Grain.from_concepts(pkeys, environment)
                 keys = final_grain.components
             else:
@@ -1436,6 +1442,9 @@ class Concept(Addressable, DataTyped, ConceptArgs, ReferenceReplaceable, Namespa
                     _, _, parent_keys = x.get_select_grain_and_keys(grain, environment)
                     if parent_keys:
                         pkeys.update(parent_keys)
+                    elif x.purpose == Purpose.KEY and _is_alias(new_lineage):
+                        # a renamed key reads the rows that bind it
+                        pkeys |= environment.bound_on(x.address)
                 # already reduced: re-reducing would drop a grouping spec's
                 # select-local flags, the only row identity rollup subtotals have
                 final_grain = (
@@ -2568,6 +2577,16 @@ def _non_aggregate_row_refs(expr, environment: Environment) -> list[ConceptRef]:
             expr.left, environment
         ) + _non_aggregate_row_refs(expr.right, environment)
     return []
+
+
+def _pin_anchors(expr: Any) -> set[str]:
+    if isinstance(expr, Function) and expr.operator == FunctionType.GRAIN_PIN:
+        return {a.address for a in expr.arguments[1:] if isinstance(a, ConceptRef)}
+    return set()
+
+
+def _is_alias(expr: Any) -> bool:
+    return isinstance(expr, Function) and expr.operator == FunctionType.ALIAS
 
 
 def _case_or_function_parts(
