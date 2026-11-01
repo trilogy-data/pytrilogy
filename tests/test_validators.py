@@ -781,10 +781,15 @@ def test_multi_datasource_count_distinct_metric_is_skipped():
         ''';
         """)
 
-    # Under SUM-based comparison the totals would be 4 vs 3 and trigger an
-    # error; under COUNT_DISTINCT they would be 2 vs 2 and not — but neither
-    # comparison is meaningful for a COUNT_DISTINCT metric, so we simply skip.
-    validate_environment(executor.environment, exec=executor)
+    # Totals of a COUNT_DISTINCT metric are not comparable, so none is reported.
+    # Both tables still claim `region` determines the metric, and EU breaks it.
+    results = validate_environment(
+        executor.environment, exec=executor, generate_only=True
+    )
+    errors = [str(r.result) for r in results if r.result]
+    assert len(errors) == 1, errors
+    assert "bound beside (local.region)" in errors[0], errors
+    assert "'EU'" in errors[0], errors
 
 
 def test_inferred_type_check():

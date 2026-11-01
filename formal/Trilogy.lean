@@ -14,3 +14,4 @@ import Trilogy.Functions
 import Trilogy.Cost
 import Trilogy.Stack
 import Trilogy.Fixpoint
+import Trilogy.Binding

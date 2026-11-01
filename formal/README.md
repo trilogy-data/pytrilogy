@@ -39,6 +39,7 @@ a design decision or a bug.
 | `NullReject.lean` | the null-rejection walk, membership, outer-join upgrade, nullability inference | a proved column is non-null on every kept row, a proof on a column read off the padded side turns a left join inner, a derived column is judged by its lineage, strict and total functions (checked by `tests/optimization/test_null_rejection_laws.py` and `tests/core/test_null_function_conformance.py`) |
 | `Validate.lean` | datasource validation: nullability, declared ranges, grain, complete bindings, `unique` properties, `complete where` containment | each check fails exactly when the claim the planner trusts fails, under Kleene WHERE and GROUP BY's NULL grouping (checked by `tests/core/validation/test_validation_laws.py` and `tests/core/validation/test_type_conformance.py`) |
 | `Fixpoint.lean` | the optimizer driver's repeat-until-quiet passes; the WHERE-atom contract between fact removers (`StripRedundantNotNull`) and every other phase | under the contract a fact remover never changes the plan after its first run, so it cannot take part in a cycle; pushdown before its gate broke the contract and cycled (checked on every phase of every planned query in the test suite: `atom_contract.contract_violations`, and by `tests/optimization/test_fixpoint_contract_laws.py`) |
+| `Binding.lean` | datasource bindings as functional dependencies: row determinants, the closure over every table's bindings, `row_keys`, the cross-table binding check | a table unique on its grain satisfies its own bindings, the closure is sound when every binding holds, one table's binding can break on another's rows, stacked arms are unique on grain plus discriminator and not on grain alone, a grainless table determines nothing (checked by `tests/core/test_binding_fd_laws.py` and `tests/core/validation/test_validation_laws.py`) |
 
 ## What it found
 
@@ -445,7 +446,42 @@ a design decision or a bug.
   axis split `species` off `tree_id`, which one table binds together, and
   re-read species by ecoregion alone, returning NULL species rows (2 cases in
   `tests/engine/test_grain_pin_unnest_merge_filter.py` fail on main). The
-  binding FDs themselves have no Lean model yet.
+  next entry models the bindings in Lean.
+
+- **A grainless table's columns read as constants, no check held a binding
+  across tables, and filtering facts by a dimension's unnested list
+  cross-joined.** `Binding.lean` models a binding as an FD from the table's
+  row determinants. On main, 58 of 300 cases in
+  `tests/core/test_binding_fd_laws.py` failed: `_fd_rows` gave a grainless
+  table's columns an empty grain, so `build_fd_closure` with
+  `include_empty_grain=True` put every key such a table binds into every
+  closure (`Binding.grainless_binding_claims_a_constant`). A grainless table
+  now contributes nothing (`Binding.grainless_determines_nothing`). Each
+  table's grain check proves its own bindings (`Binding.binding_holds`), but
+  the planner reads them model-wide, and a species dimension binding `city`
+  breaks on trees whose species sits in two cities
+  (`Binding.binding_breaks_on_another_table`). Validation now checks every
+  binding over the union of the tables binding its columns
+  (`Binding.cross_check_exact`; 23 of 41 validation cases have no check on
+  main). It flagged an existing fixture whose two region summaries disagree.
+  The fuzzer's new `merged_axis_pin` family reproduces #821's wrong answer
+  (24 of 168 fail before that fix) and led to a wider one on main: a WHERE on
+  the unnest of a dimension's list, reached through a fact's key, paired the
+  fact rows with the elements on nothing (`ON 1=1`), so
+  `select tree_id where ecoregion_id = 2` returned every tree. 16 of 17 cases
+  in `tests/engine/test_unnest_dimension_list_filter.py` fail on main. A ROOT
+  contributor's join identity is now the keys it delivers, an unnest carries
+  a join key its parent emits, the FINAL reads a contributor's columns through
+  the unnest a WHERE argument is read on, and a condition copy of the unnest
+  joins after the expansion instead of before it. The keyless-join guard no
+  longer exempts an unnest carrying its parent's columns.
+  `_pin_input_placements`' FD test and the declared-keys test it replaced
+  agree on every placement in 2,314 grain-pin, unnest and partial tests
+  (4,377 calls, 20 with a host); no distinguishing shape was found.
+  Two mismatches the family found on random seeds were its own fixture: the
+  base `events` table binds `group_id` complete while a random group has no
+  event, and a `~` merge of that key licenses padding the group. With honest
+  data both spellings agree (`tests/engine/test_subset_merged_key_derivation.py`).
 
 - **Predicate pushdown and the NOT NULL strip undid each other**
   (`Fixpoint.ungated_cycles`). Pushdown pushed `tree_id is not null` into a

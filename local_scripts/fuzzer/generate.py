@@ -3939,6 +3939,153 @@ def _site_rollup_cases(seed: SeedData) -> list[FuzzCase]:
     ]
 
 
+def _merged_axis_pin_cases(seed: SeedData) -> list[FuzzCase]:
+    """A WHERE over a value read through a merged `unnest` axis, beside a
+    `complete where` arm and a partial table on the row key.
+
+    `group_id` and `event_id` are related only by the tables that bind them
+    together; no lineage edge or declared key joins them. The bucket is read
+    per (event, region) through `unnest(group_regions)` merged into
+    `region_id`, and the arm's padding pins it to the select's rows. A planner
+    that decides the two keys are unrelated without asking the FD model
+    sources `group_id` off the unnest rows by region alone, and every event
+    sharing a region comes back with the wrong group, or a NULL one (#821,
+    when `group_id` is also a merge target). The oracles join the seed rows
+    directly; a group with no region reads the
+    ELSE branch, as the pin does. Regions are listed only for groups with
+    events: `events` binds `group_id` complete, a claim a listed group without
+    an event breaks, and a `~` merge then licenses padding that group."""
+    events = seed.events.select_sql()
+    groups = seed.groups.select_sql()
+    site = seed.events.rows[0][5]
+    regions = (
+        "case when abs(gid) % 4 = 3 then []::int[]"
+        " else [abs(gid) % 3, (abs(gid) + 1) % 3] end"
+    )
+    model = f"""
+key region_id int;
+property region_id.region_kind string;
+property group_id.group_regions list<int>;
+auto group_region <- unnest(group_regions);
+merge group_region into region_id;
+property event_id.extra_amount int;
+
+partial datasource events_first (eid: event_id, gid: group_id, sid: site_id)
+grain (event_id)
+complete where site_id = '{site}'
+query '''select eid, gid, sid from ({events}) as e where sid = '{site}' ''';
+
+root datasource group_region_lists (gid: group_id, regions: ?group_regions)
+grain (group_id)
+query '''select gid, {regions} as regions from ({groups}) as g
+where gid in (select gid from ({events}) as e)''';
+
+root datasource region_kinds (rid: region_id, kind: ?region_kind)
+grain (region_id)
+query '''select 0 as rid, 'wet' as kind union all select 1, 'dry'
+union all select 2, 'cold' ''';
+
+datasource event_extra (eid: ~event_id, extra: extra_amount)
+grain (event_id)
+query '''select eid, amount * 2 as extra from ({events}) as e where eid % 3 = 0''';
+
+auto bucket <- case when region_id = 0 then 'Native'
+when region_kind = 'dry' then 'Same' else 'Other' end;
+"""
+    bucketed = f"""(select e.eid, e.gid, e.sid, s.zone,
+case when u.rid = 0 then 'Native' when u.rid = 1 then 'Same' else 'Other' end as bucket
+from events as e
+left join sites as s on s.sid = e.sid
+left join (select gid, unnest({regions}) as rid from groups) as u on u.gid = e.gid
+) as eb"""
+    gate = f"sid = '{site}'"
+    specs = (
+        (
+            "row_key_under_arm_and_bucket",
+            "The row key, gated by the arm's site and a bucket.",
+            f"select event_id where site_id = '{site}' and bucket = 'Other';",
+            f"select distinct eid from {bucketed} where {gate} and bucket = 'Other'",
+        ),
+        (
+            "group_beside_row_key_under_bucket",
+            (
+                "A derivation of the group beside the row key: the group must "
+                "be read on the event's row, not off the region it unnests to."
+            ),
+            "select group_id * 10 as g, event_id where bucket = 'Same';",
+            f"select distinct gid * 10, eid from {bucketed} where bucket = 'Same'",
+        ),
+        (
+            "group_derivation_under_arm_and_bucket",
+            "A group-grain output under the arm's site and a bucket.",
+            f"select group_id * 10 as g where site_id = '{site}' and bucket = 'Native';",
+            f"select distinct gid * 10 from {bucketed} where {gate} and bucket = 'Native'",
+        ),
+        (
+            "group_and_site_under_bucket",
+            "The group beside the site it is bound with on the fact.",
+            (
+                f"select group_id * 10 as g, site_id where site_id = '{site}'"
+                " and bucket = 'Same';"
+            ),
+            f"select distinct gid * 10, sid from {bucketed} where {gate} and bucket = 'Same'",
+        ),
+        (
+            "group_and_bucket_under_arm",
+            "The bucket itself beside the group, gated by the arm's site.",
+            f"select group_id, bucket where site_id = '{site}';",
+            f"select distinct gid, bucket from {bucketed} where {gate}",
+        ),
+        (
+            "partial_column_under_bucket",
+            "A column only the partial table binds, beside the row key.",
+            (
+                f"select event_id, extra_amount where site_id = '{site}'"
+                " and bucket = 'Other';"
+            ),
+            (
+                f"select distinct eb.eid, x.amount * 2 from {bucketed}"
+                " left join events as x on x.eid = eb.eid and x.eid % 3 = 0"
+                f" where eb.{gate} and eb.bucket = 'Other'"
+            ),
+        ),
+        (
+            "count_by_zone_under_bucket",
+            "Events counted by a site property under a bucket.",
+            "select site_zone, count(event_id) as n where bucket = 'Native';",
+            (
+                f"select zone, count(distinct eid) from {bucketed}"
+                " where bucket = 'Native' group by zone"
+            ),
+        ),
+    )
+    # `group_id` also merged from a derivation over a second table's column,
+    # so the group is reachable by a merge edge as well as by its bindings.
+    merged = f"""
+property event_id.raw_group int;
+auto merged_group <- coalesce(raw_group, -1);
+merge merged_group into ~group_id;
+
+datasource raw_groups (eid: event_id, gid: raw_group)
+grain (event_id)
+query '''select eid, gid from ({events}) as e''';
+"""
+    return [
+        _case(
+            seed,
+            "merged_axis_pin",
+            f"{name}{suffix}",
+            description,
+            ("unnest", "merge", "grain_pin", "partition"),
+            query,
+            oracle,
+            model_extra=model + extra,
+        )
+        for name, description, query, oracle in specs
+        for suffix, extra in (("", ""), ("_merged_group", merged))
+    ]
+
+
 def generate_cases(seeds: Iterable[SeedData] = SEEDS) -> list[FuzzCase]:
     cases = []
     builders = (
@@ -3969,6 +4116,7 @@ def generate_cases(seeds: Iterable[SeedData] = SEEDS) -> list[FuzzCase]:
         _partition_cover_cases,
         _summary_rollup_cases,
         _site_rollup_cases,
+        _merged_axis_pin_cases,
         law_cases,
     )
     for seed in seeds:
