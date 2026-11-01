@@ -186,8 +186,18 @@ def _walk_aggregate_grain_inputs(
             return _walk_aggregate_grain_inputs(content, environment, seen)
         return []
     collected: list[BuildConcept] = []
+    # a scalar of an inner aggregate's grain keys is read on its rows
+    inner_grain = _inner_aggregate_grain(concept.lineage)
     for arg in concept.lineage.concept_arguments:
-        if isinstance(arg, BuildConcept):
+        if not isinstance(arg, BuildConcept):
+            continue
+        if _function_of(arg, inner_grain):
+            collected.extend(
+                environment.concepts[g]
+                for g in sorted(inner_grain)
+                if g in environment.concepts
+            )
+        else:
             collected.extend(_walk_aggregate_grain_inputs(arg, environment, seen))
     return collected
 
@@ -1363,6 +1373,13 @@ def _aggregate_input_grain(
                     or c.derivation not in ROW_SHAPE_BARRIER_DERIVATIONS
                 )
             ]
+            # A scalar of an inner aggregate's own grain keys is evaluated on
+            # that aggregate's rows; its own (finer) grain would fan them out.
+            inner_grain = _inner_aggregate_grain(arg)
+            on_inner = [c for c in sub_args if _function_of(c, inner_grain)]
+            if on_inner:
+                input_grain.update(inner_grain)
+                sub_args = [c for c in sub_args if c not in on_inner]
         else:
             continue
         for sub in sub_args:
@@ -1395,6 +1412,28 @@ def _aggregate_input_grain(
             frozenset(input_grain), environment
         )
     return minimize_build_grain(environment, input_grain)
+
+
+def _inner_aggregate_grain(arg: BuildConceptArgs) -> set[str]:
+    return {
+        key
+        for c in arg.concept_arguments
+        if isinstance(c, BuildConcept) and c.derivation == Derivation.AGGREGATE
+        for key in c.grain.components
+    }
+
+
+def _function_of(concept: BuildConcept, keys: set[str]) -> bool:
+    if not keys:
+        return False
+    if concept.address in keys or concept.canonical_address in keys:
+        return True
+    if concept.derivation != Derivation.BASIC or concept.lineage is None:
+        return False
+    return all(
+        isinstance(c, BuildConcept) and _function_of(c, keys)
+        for c in concept.lineage.concept_arguments
+    )
 
 
 def _counted_key(concept: BuildConcept) -> BuildConcept | None:

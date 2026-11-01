@@ -141,6 +141,26 @@ RELATION = {
     "member_property": "biome, count(tree_id) as n",
 }
 
+# `Cover.case_on_aggregate_rows`, `Cover.finer_grain_read_fans_out`: a scalar
+# of an aggregate's grain is read on its rows, not from a finer table.
+OVER_AGGREGATE = {
+    "case": "sum(case when bucket = 'Native' then count(tree_id) by bucket end) as n",
+    "case_else": (
+        "sum(case when bucket = 'Native' then count(tree_id) by bucket else 0 end) as n"
+    ),
+    "max": "max(case when bucket = 'Native' then count(tree_id) by bucket end) as n",
+    "scalar": (
+        "sum(case when upper(bucket) = 'NATIVE' then count(tree_id) by bucket end) as n"
+    ),
+    "key": (
+        "sum(case when species = 'Acer rubrum' then count(tree_id) by species end) as n"
+    ),
+    "key_property": (
+        "sum(case when common_names[1] = 'red maple' then count(tree_id) by species end) as n"
+    ),
+    "bare": "sum(count(tree_id) by bucket) as n",
+}
+
 # Shapes no rule covers: a condition, target or count finer than the key.
 UNSERVABLE = {
     "finer_condition": "species, count(tree_id ? dbh > 10) as n",
@@ -203,6 +223,10 @@ OPEN: dict[tuple[str, str], tuple[str, tuple[str, ...] | None]] = {
         )
         for shape in EXISTENCE
     },
+    ("over_aggregate", "key_property"): (
+        "rule 7: a species property inside the CASE is not read beside the summary",
+        None,
+    ),
     **{
         ("relation", shape): (
             "rule 6: a summary is never joined through the fan-out it is keyed on",
@@ -295,6 +319,36 @@ def test_existence_reads_the_summary(select: str, where: str):
 @pytest.mark.parametrize("select,where", _cases("relation", RELATION))
 def test_relation_keyed_on_the_grain(select: str, where: str):
     _assert_same_answer(_query(select, where), served=True)
+
+
+@pytest.mark.parametrize("select,where", _cases("over_aggregate", OVER_AGGREGATE))
+def test_scalar_of_an_aggregates_grain(select: str, where: str):
+    _assert_same_answer(_query(select, where), served=True)
+
+
+@pytest.mark.parametrize(
+    "query,expected",
+    [
+        (
+            "auto c <- case when bucket = 'Native' then count(tree_id) by bucket end;"
+            " select sum(c) as n;",
+            4,
+        ),
+        (
+            "auto ub <- upper(bucket);"
+            " auto c <- case when ub = 'NATIVE' then count(tree_id) by bucket end;"
+            " select sum(c) as n;",
+            4,
+        ),
+        (
+            "select sum(case when bucket = 'Native' then count(tree_id) by bucket end)"
+            " as n where city = 'A';",
+            3,
+        ),
+    ],
+)
+def test_scalar_of_an_aggregates_grain_answer(query: str, expected: int):
+    assert _run(BASE, query)[1] == [(expected,)]
 
 
 @pytest.mark.parametrize("select,where", _cases("unservable", UNSERVABLE))
