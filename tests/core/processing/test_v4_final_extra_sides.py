@@ -5,8 +5,9 @@ import pytest
 
 from trilogy import Environment
 from trilogy.core import graph as nx
-from trilogy.core.enums import Derivation
+from trilogy.core.enums import AggregateGroupingMode, ComparisonOperator, Derivation
 from trilogy.core.exceptions import UnbuiltGroupException
+from trilogy.core.models.build import BuildComparison, BuildWhereClause
 from trilogy.core.processing.v4_helper.constants import FINAL_NODE_ID
 from trilogy.core.processing.v4_helper.models import DepthLabel, GroupAttrs
 from trilogy.core.processing.v4_helper.strategy_builder import (
@@ -14,6 +15,7 @@ from trilogy.core.processing.v4_helper.strategy_builder import (
     _final_extra_sides,
     _FinalCover,
     _FinalExtras,
+    _group_applies_conditions,
     _join_gate_hosts,
     _planned_side,
     _uncovered_final_side,
@@ -147,3 +149,56 @@ def test_cover_holds_what_a_contributor_renders_and_is_owed():
     )
     assert cover.holds("basic") == {"local.tree_id", "local.genus"}
     assert cover.holds("other") == set()
+
+
+def _placed_atom_graph(
+    host: str, mode: AggregateGroupingMode
+) -> tuple[nx.DiGraph, dict[str, GroupAttrs], BuildWhereClause]:
+    env = Environment().parse(MODEL)[0].materialize_for_select()
+    atom = BuildComparison(
+        left=env.concepts["local.raw_species"],
+        right="oak",
+        operator=ComparisonOperator.EQ,
+    )
+    graph = nx.DiGraph()
+    graph.add_edges_from(
+        [
+            ("root", "agg"),
+            ("agg", "basic"),
+            ("basic", FINAL_NODE_ID),
+            ("side", FINAL_NODE_ID),
+        ]
+    )
+    attrs = {
+        "root": _attrs(Derivation.ROOT, "local.tree_id", "local.raw_species"),
+        "agg": GroupAttrs(
+            depth_label=DepthLabel.D0,
+            derivation=Derivation.AGGREGATE,
+            primary_members=("local.x_genus",),
+            grain_components=frozenset({"local.genus"}),
+            grouping_mode=mode,
+        ),
+        "basic": _attrs(Derivation.BASIC, "local.genus"),
+        "side": _attrs(Derivation.ROOT, "local.tree_id", "local.raw_species"),
+        FINAL_NODE_ID: _attrs(None),
+    }
+    attrs[host].condition_atoms.append(atom)
+    return graph, attrs, BuildWhereClause(conditional=atom)
+
+
+@pytest.mark.parametrize(
+    "host,mode,applied",
+    [
+        ("basic", AggregateGroupingMode.STANDARD, True),
+        ("root", AggregateGroupingMode.ROLLUP, True),
+        ("agg", AggregateGroupingMode.ROLLUP, True),
+        ("root", AggregateGroupingMode.STANDARD, True),
+        ("side", AggregateGroupingMode.STANDARD, False),
+        ("agg", AggregateGroupingMode.STANDARD, False),
+    ],
+)
+def test_sole_contributor_reads_where_condition_placement_put_the_atom(
+    host: str, mode: AggregateGroupingMode, applied: bool
+):
+    graph, attrs, where = _placed_atom_graph(host, mode)
+    assert _group_applies_conditions(graph, attrs, "basic", where) is applied
