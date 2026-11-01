@@ -15,9 +15,10 @@ repeats (`Stack.stacked_keys_nodup`).
 
 An arm whose discriminator the grain does not determine breaks this: a
 species summary per city stores `Acer` once per city
-(`Stack.unbound_arm_repeats_grain`). A bound discriminator is the binding's
-own claim that the grain determines it (the FK rule); an unbound one has to
-follow from declared keys.
+(`Stack.unbound_arm_repeats_grain`). Binding the discriminator does not
+make the grain determine it: an arm is unique on its grain only among its
+own rows, so the engine keys its rows by grain and discriminator together
+and re-sums them to the grain (`Rollup.lean`).
 
 The section after that covers value-set arms. `x in S` is the disjunction of
 `x = a` over `S`, which the cell checker already models as an arm
